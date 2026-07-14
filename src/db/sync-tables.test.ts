@@ -41,3 +41,48 @@ describe('missingRequired', () => {
     expect(missingRequired('sync_state', {})).toEqual(['key', 'value']);
   });
 });
+
+describe('writableFields for tasks', () => {
+  it('keeps the whitelisted fields', () => {
+    expect(
+      writableFields('tasks', {
+        title: 'Milch kaufen',
+        notes: 'fettarm',
+        dueAt: '2026-07-15T00:00:00.000Z',
+        priority: 1,
+        completedAt: null,
+        recurrenceRule: null,
+      }),
+    ).toEqual({
+      title: 'Milch kaufen',
+      notes: 'fettarm',
+      dueAt: '2026-07-15T00:00:00.000Z',
+      priority: 1,
+      completedAt: null,
+      recurrenceRule: null,
+    });
+  });
+
+  it('drops fields a client must never set', () => {
+    const fields = writableFields('tasks', {
+      title: 'Milch kaufen',
+      id: 'attacker-chosen',
+      updatedAt: '1970-01-01T00:00:00.000Z',
+      deletedAt: null,
+    });
+
+    expect(fields).toEqual({ title: 'Milch kaufen' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('missingRequired for tasks', () => {
+  it('passes when title is present', () => {
+    expect(missingRequired('tasks', { title: 'Milch kaufen' })).toEqual([]);
+  });
+
+  it('names the missing title, so the push can 400 instead of 500', () => {
+    expect(missingRequired('tasks', {})).toEqual(['title']);
+  });
+});
