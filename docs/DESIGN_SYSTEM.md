@@ -9,12 +9,12 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 ### Bereichsfarben (tragen die Orientierung)
 
-| Bereich | Farbe | Rolle |
-|---|---|---|
-| Aufgaben | Koralle / Mango | Primärfarbe der App |
-| Termine | Teal | ruhig, strukturiert |
-| Journal | Warmes Violett | persönlich, introspektiv |
-| Gewohnheiten | Sattes Grün | Wachstum, Streaks |
+| Bereich      | Farbe           | Rolle                    |
+| ------------ | --------------- | ------------------------ |
+| Aufgaben     | Koralle / Mango | Primärfarbe der App      |
+| Termine      | Teal            | ruhig, strukturiert      |
+| Journal      | Warmes Violett  | persönlich, introspektiv |
+| Gewohnheiten | Sattes Grün     | Wachstum, Streaks        |
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 

@@ -41,13 +41,13 @@ docs/                     Vision, Architektur, Design, Workflow, ADRs
 
 ## Wo liegt was?
 
-| Ich suche… | Datei |
-|---|---|
-| das Datenmodell | `src/db/schema.ts` |
+| Ich suche…                         | Datei                                           |
+| ---------------------------------- | ----------------------------------------------- |
+| das Datenmodell                    | `src/db/schema.ts`                              |
 | wie eine Änderung zum Server kommt | `src/local/outbox.ts`, dann `src/local/sync.ts` |
-| Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
-| die Journal-Verschlüsselung | `src/crypto/journal.ts` |
-| warum etwas so entschieden wurde | `docs/adr/` |
+| Farben, Abstände, Motion           | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
+| die Journal-Verschlüsselung        | `src/crypto/journal.ts`                         |
+| warum etwas so entschieden wurde   | `docs/adr/`                                     |
 
 ## Wichtige Invarianten
 

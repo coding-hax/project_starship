@@ -49,15 +49,15 @@ Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgele
 
 ## Roadmap (strikt sequenziell)
 
-| Milestone | Inhalt | Fertig, wenn |
-|---|---|---|
-| **M0** Fundament | Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA-Installierbarkeit, Sync-Grundgerüst (Outbox) | App lässt sich auf dem iPhone installieren, Login per Face ID, leere Tabs |
-| **M1** Aufgaben | CRUD, Fälligkeit, Priorität, Swipe-Erledigen, offline | Aufgabe offline anlegen, online wiederfinden |
-| **M2** Termine (lokal) | Tages-/Wochenansicht, CRUD, Serientermine (RRULE) | Termine funktionieren vollständig ohne externen Kalender |
-| **M3** Journal | Editor, Stimmung, Tags, lokale Suche, E2E-Verschlüsselung | Server kennt keinen Klartext |
-| **M4** Gewohnheiten | Habits, Abhaken, Streaks, Wochenraster | Streak über Tageswechsel korrekt |
-| **M5** Heute-Dashboard | Zusammenführung, Web Push für Erinnerungen | Eine Ansicht ersetzt alle Tabs |
-| **M6** Sprachmemo | Aufnahme → Transkript → strukturierter Terminvorschlag mit Bestätigung | „Termin am 4.8. bei Dr. XY" wird korrekt zum Termin |
+| Milestone              | Inhalt                                                                                              | Fertig, wenn                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **M0** Fundament       | Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA-Installierbarkeit, Sync-Grundgerüst (Outbox) | App lässt sich auf dem iPhone installieren, Login per Face ID, leere Tabs |
+| **M1** Aufgaben        | CRUD, Fälligkeit, Priorität, Swipe-Erledigen, offline                                               | Aufgabe offline anlegen, online wiederfinden                              |
+| **M2** Termine (lokal) | Tages-/Wochenansicht, CRUD, Serientermine (RRULE)                                                   | Termine funktionieren vollständig ohne externen Kalender                  |
+| **M3** Journal         | Editor, Stimmung, Tags, lokale Suche, E2E-Verschlüsselung                                           | Server kennt keinen Klartext                                              |
+| **M4** Gewohnheiten    | Habits, Abhaken, Streaks, Wochenraster                                                              | Streak über Tageswechsel korrekt                                          |
+| **M5** Heute-Dashboard | Zusammenführung, Web Push für Erinnerungen                                                          | Eine Ansicht ersetzt alle Tabs                                            |
+| **M6** Sprachmemo      | Aufnahme → Transkript → strukturierter Terminvorschlag mit Bestätigung                              | „Termin am 4.8. bei Dr. XY" wird korrekt zum Termin                       |
 
 ## Erfolgskriterien
 

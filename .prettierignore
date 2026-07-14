@@ -1,0 +1,8 @@
+.next/
+node_modules/
+pnpm-lock.yaml
+src/db/migrations/
+playwright-report/
+test-results/
+public/sw.js
+public/sw.js.map

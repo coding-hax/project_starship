@@ -2,18 +2,18 @@
 
 ## Stack
 
-| Schicht | Wahl | Warum |
-|---|---|---|
-| Framework | Next.js (App Router) + TypeScript | Frontend und API in einem Repo, ein Deploy |
-| UI | Tailwind + shadcn/ui + Motion | schnelle, konsistente Basis; Animationen ohne Eigenbau |
-| Lokaler Speicher | IndexedDB via **Dexie** | Wahrheit für die UI, offline-fähig |
-| PWA | **Serwist** (Service Worker, Manifest) | Home-Screen-Installation, Precaching, Web Push |
-| Server-DB | **Postgres (Neon, EU-Region)** | Sync-Ziel und Backup, Standard-SQL |
-| ORM | **Drizzle** | typsicher, leichte Migrationen, kein Vendor-Bezug |
-| Hosting | **Vercel Hobby** (kostenlos, privat) | 0 € laufende Kosten |
-| Hintergrundjobs | **GitHub Actions Cron** (~alle 15 min) | umgeht die Cron-Limits des Hobby-Plans, kostenlos |
-| Auth | **Passkey / WebAuthn** | Face ID auf dem iPhone, kein Passwort |
-| Tests | Vitest (Logik) + Playwright (E2E) | |
+| Schicht          | Wahl                                   | Warum                                                  |
+| ---------------- | -------------------------------------- | ------------------------------------------------------ |
+| Framework        | Next.js (App Router) + TypeScript      | Frontend und API in einem Repo, ein Deploy             |
+| UI               | Tailwind + shadcn/ui + Motion          | schnelle, konsistente Basis; Animationen ohne Eigenbau |
+| Lokaler Speicher | IndexedDB via **Dexie**                | Wahrheit für die UI, offline-fähig                     |
+| PWA              | **Serwist** (Service Worker, Manifest) | Home-Screen-Installation, Precaching, Web Push         |
+| Server-DB        | **Postgres (Neon, EU-Region)**         | Sync-Ziel und Backup, Standard-SQL                     |
+| ORM              | **Drizzle**                            | typsicher, leichte Migrationen, kein Vendor-Bezug      |
+| Hosting          | **Vercel Hobby** (kostenlos, privat)   | 0 € laufende Kosten                                    |
+| Hintergrundjobs  | **GitHub Actions Cron** (~alle 15 min) | umgeht die Cron-Limits des Hobby-Plans, kostenlos      |
+| Auth             | **Passkey / WebAuthn**                 | Face ID auf dem iPhone, kein Passwort                  |
+| Tests            | Vitest (Logik) + Playwright (E2E)      |                                                        |
 
 **Portabilitätsregel:** keine Vercel- oder Neon-spezifischen Primitive.
 Ein Umzug auf einen eigenen Server muss eine Konfigurations-, keine Umbauentscheidung sein.
@@ -29,6 +29,7 @@ UI  ──liest/schreibt──►  IndexedDB (Dexie)  ──►  Outbox-Queue  �
 ```
 
 Die UI spricht **niemals** direkt mit der API. Jede Mutation:
+
 1. schreibt sofort nach IndexedDB (UI aktualisiert sich instant),
 2. legt einen Eintrag in die Outbox,
 3. die Outbox wird abgearbeitet, sobald Netz da ist.
@@ -41,12 +42,12 @@ kein Designproblem.
 
 ### Pflicht-Spalten für jede synchronisierte Tabelle
 
-| Spalte | Zweck |
-|---|---|
+| Spalte        | Zweck                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------ |
 | `id` (UUIDv7) | clientseitig erzeugt, damit Offline-Anlage ohne Server-Roundtrip geht; zeitlich sortierbar |
-| `updated_at` | Konfliktauflösung + inkrementeller Pull |
-| `deleted_at` | **Soft Delete** — harte Löschung würde beim Sync „wiederauferstehen" |
-| `synced_at` | lokal: wurde erfolgreich übertragen |
+| `updated_at`  | Konfliktauflösung + inkrementeller Pull                                                    |
+| `deleted_at`  | **Soft Delete** — harte Löschung würde beim Sync „wiederauferstehen"                       |
+| `synced_at`   | lokal: wurde erfolgreich übertragen                                                        |
 
 ### Sync-Ablauf
 
@@ -116,8 +117,8 @@ Der GitHub-Actions-Cron bleibt trotzdem nötig: für Backups und für terminiert
 
 ## Umgebungen
 
-| Env | Zweck |
-|---|---|
-| lokal | `pnpm dev` gegen lokale Postgres in Docker |
-| Preview | jeder PR bekommt eine Vercel-Preview + eigene Neon-Branch-DB |
-| Produktion | `main` → Vercel Production |
+| Env        | Zweck                                                        |
+| ---------- | ------------------------------------------------------------ |
+| lokal      | `pnpm dev` gegen lokale Postgres in Docker                   |
+| Preview    | jeder PR bekommt eine Vercel-Preview + eigene Neon-Branch-DB |
+| Produktion | `main` → Vercel Production                                   |

@@ -14,6 +14,7 @@ Wer sie ändern will, schreibt ein neues ADR, das dieses ganz oder teilweise abl
 **Entscheidung:** Progressive Web App, installiert über „Zum Home-Bildschirm".
 
 **Begründung:**
+
 - Der App Store setzt das Apple Developer Program (99 USD **pro Jahr**) voraus — genau die
   wiederkehrende Gebühr, die ausgeschlossen wurde.
 - Der kostenlose Weg über eine Apple-ID in Xcode läuft nach 7 Tagen ab und ist unbrauchbar.
@@ -23,6 +24,7 @@ Wer sie ändern will, schreibt ein neues ADR, das dieses ganz oder teilweise abl
 - Web Push funktioniert für installierte PWAs seit iOS 16.4, inklusive Badge.
 
 **Konsequenzen:**
+
 - Kein Background Sync auf iOS — synchronisiert wird beim Öffnen/Fokussieren. Akzeptiert.
 - iOS kann Cache bei sehr langer Nichtnutzung verwerfen. Unkritisch, weil der Server die Wahrheit hält.
 - Kein App-Store-Eintrag. Irrelevant bei einem Nutzer.
@@ -41,6 +43,7 @@ Wer sie ändern will, schreibt ein neues ADR, das dieses ganz oder teilweise abl
 entschärft — eine kalte Datenbank ist unsichtbar, wenn die UI ohnehin aus IndexedDB liest.
 
 **Konsequenzen (bewusst akzeptiert):**
+
 - Cron auf dem Hobby-Plan ist zu selten → Hintergrundjobs laufen über **GitHub Actions Cron**.
 - Keine langlaufenden Prozesse → Sync-Jobs müssen gestückelt und idempotent sein.
 - Betreiber sind US-Unternehmen → **das Journal wird Ende-zu-Ende verschlüsselt** (siehe 4).
@@ -60,6 +63,7 @@ auf Feldebene über `updated_at`.
 lösen ein Problem, das hier nicht existiert, und bringen dafür Komplexität und Abhängigkeitsrisiko.
 
 **Konsequenzen:**
+
 - Jede synchronisierte Tabelle braucht `id` (UUIDv7), `updated_at`, `deleted_at`, `synced_at`.
 - Harte Löschungen sind verboten (Tombstones), sonst „auferstehen" gelöschte Datensätze beim Sync.
 - Echte Konflikte sind selten und werden protokolliert, nicht stillschweigend verworfen.
@@ -75,6 +79,7 @@ Der Server speichert nur Chiffrat.
 in einer Local-first-App ohnehin lokal läuft, kostet die Verschlüsselung praktisch nichts.
 
 **Konsequenzen:**
+
 - Keine serverseitige Suche über Journal-Inhalte. Bewusst akzeptiert.
 - Passphrase verloren = Journal verloren. Recovery-Key wird beim Einrichten einmalig angezeigt.
 - Metadaten (Datum, Stimmung, Tags) bleiben zunächst unverschlüsselt, damit Filter serverseitig gehen.
@@ -90,6 +95,7 @@ in einer Local-first-App ohnehin lokal läuft, kostet die Verschlüsselung prakt
 die alleinige Wahrheit für die Termine, die in ihr stehen.
 
 **Begründung:**
+
 - CalDAV-Zwei-Wege-Sync ist der mit Abstand komplexeste Teil des Projekts: Polling statt Push,
   Loop-Vermeidung über etag/ctag, Serientermin-Ausnahmen, Konfliktauflösung bei beidseitiger
   Änderung. Hoher Aufwand, hohe Fehleranfälligkeit, dauerhafte Wartungslast.
@@ -97,6 +103,7 @@ die alleinige Wahrheit für die Termine, die in ihr stehen.
   bestehenden Kalender überhaupt ablöst.
 
 **Konsequenzen:**
+
 - Datenmodell wird deutlich einfacher: keine `calendar_links`, keine `external_uid`/`etag`.
 - Kein Apple-Passwort auf dem Server → weniger Angriffsfläche.
 - Serientermine bleiben nötig, aber nur in einfacher Form (täglich/wöchentlich/monatlich + Enddatum).

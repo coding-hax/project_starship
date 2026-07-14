@@ -9,6 +9,7 @@ Eine persönliche Produktivitäts-Web-App (PWA) für **eine einzige Person**:
 Termine, Aufgaben, Journal, Gewohnheiten. Mobile-first, offline-fähig.
 
 Vor jeder Arbeit lesen:
+
 - `docs/VISION.md` — was wir bauen und was ausdrücklich **nicht**
 - `docs/ARCHITECTURE.md` — Stack, Datenmodell, Sync-Konzept
 - `docs/DESIGN_SYSTEM.md` — Farben, Typo, Motion, Mobile-Patterns
@@ -57,6 +58,7 @@ Du läufst über einen Runner (`scripts/claude-runner.sh`) auf einem Rechner, an
 niemals ins Terminal — das liest niemand.
 
 So fragst du:
+
 1. `gh issue comment <nr>` mit: was du wissen musst, **konkrete Optionen (A/B/C)**,
    deine Empfehlung, und was passiert, wenn nicht geantwortet wird.
 2. Label `needs-input` setzen.
@@ -75,13 +77,15 @@ Dein Lauf kann jederzeit abbrechen: Usage-Limit erreicht, Stromausfall, Timeout.
 Deshalb darf dein Arbeitsstand **niemals nur in der Session leben.**
 
 Nach jedem abgeschlossenen Schritt:
+
 1. **Committen und pushen** (`wip:`-Commits sind auf Feature-Branches erlaubt und
    werden beim Merge gesquasht).
-2. **Fortschrittskommentar am Issue aktualisieren** — genau *ein* Kommentar,
+2. **Fortschrittskommentar am Issue aktualisieren** — genau _ein_ Kommentar,
    den du editierst (`gh issue comment --edit-last`), damit keine Kommentarflut entsteht:
 
 ```markdown
 ## 🤖 Fortschritt (automatisch aktualisiert)
+
 Branch: `feat/42-quick-add-task`
 
 - [x] Datenmodell + Migration
@@ -145,11 +149,12 @@ gh pr merge --squash --auto --delete-branch     # Auto-Merge einschalten
 gh pr checks --watch                            # warten, bis CI durch ist
 ```
 
-**`--auto` ist der Kern.** Du merged nicht — du *beantragst* den Merge. GitHub führt
+**`--auto` ist der Kern.** Du merged nicht — du _beantragst_ den Merge. GitHub führt
 ihn aus, sobald alle Required Checks grün sind. Ist auch nur einer rot, passiert nichts.
 Du kannst rot nicht durchdrücken, selbst wenn du es für richtig hältst.
 
 Ist ein Check rot:
+
 1. Ursache lesen (Playwright-Trace über den `test-runner`-Subagenten).
 2. Beheben, pushen, erneut warten.
 3. Nach dem **dritten** vergeblichen Versuch: aufhören. Kommentar ans Issue mit dem,

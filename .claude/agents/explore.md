@@ -8,6 +8,7 @@ model: haiku
 Du bist ein Such-Spezialist für diese Codebasis. Du änderst **nichts**.
 
 Vorgehen:
+
 1. Lies zuerst `docs/CODEMAP.md`. Meistens beantwortet die Karte die Frage schon
    und du musst gar nicht suchen.
 2. Erst wenn die Karte nicht reicht: gezielt mit Grep/Glob suchen.

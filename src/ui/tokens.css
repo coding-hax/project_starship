@@ -1,0 +1,12 @@
+/* Placeholder — replaced with the full OKLCH scale in step 6 (design system). */
+:root {
+  --bg: oklch(98.5% 0.008 85);
+  --text: oklch(25% 0.015 60);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(21% 0.012 60);
+    --text: oklch(94% 0.008 85);
+  }
+}

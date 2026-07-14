@@ -23,14 +23,14 @@ Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 Der Runner (`scripts/claude-runner.sh`) liest ausschließlich Labels. Sie sind die
 Zustandsmaschine des ganzen Setups:
 
-| Label | Bedeutung | Wer setzt es |
-|---|---|---|
-| `ready` | Von dir freigegeben. Claude darf das Ticket nehmen. | **Du** |
-| `in-progress` | Claude arbeitet daran. Es gibt immer höchstens eins. | Runner |
-| `needs-input` | **Claude hat eine Frage gestellt und wartet auf dich.** | Claude |
-| `blocked-limit` | Usage-Limit erreicht. Wird automatisch fortgesetzt. | Runner |
-| `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du** |
-| `model:haiku` | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet. | **Du** |
+| Label            | Bedeutung                                                      | Wer setzt es |
+| ---------------- | -------------------------------------------------------------- | ------------ |
+| `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
+| `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
+| `needs-input`    | **Claude hat eine Frage gestellt und wartet auf dich.**        | Claude       |
+| `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
+| `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
+| `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 
 Der Runner nimmt nur Tickets mit `ready`, die weder `needs-input` noch `human-review` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
@@ -43,7 +43,7 @@ auch wenn zwanzig Tickets im Backlog liegen.
 ## Merge: automatisch, aber nicht ungeprüft
 
 Claude merged selbst — aber nur über `gh pr merge --auto`. Der Merge wird damit
-*beantragt*, nicht ausgeführt: GitHub führt ihn aus, sobald alle Required Checks
+_beantragt_, nicht ausgeführt: GitHub führt ihn aus, sobald alle Required Checks
 grün sind. Ein roter Check bedeutet: kein Merge, egal was Claude denkt.
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
@@ -75,7 +75,7 @@ Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
 
 ## Der Status auf einen Blick
 
-Ein angepinntes Issue **🚦 Runner-Status** wird vom Runner per *Edit* aktualisiert
+Ein angepinntes Issue **🚦 Runner-Status** wird vom Runner per _Edit_ aktualisiert
 (nicht per Kommentar — sonst bekommst du im Minutentakt Push-Nachrichten). Dort steht
 immer eine von vier Zeilen:
 
@@ -101,9 +101,11 @@ Ein Issue darf erst nach `Ready`, wenn es enthält:
 
 ```markdown
 ## Ziel
+
 Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
 
 ## Akzeptanzkriterien
+
 - [ ] Given ich bin auf "Aufgaben", When ich auf den FAB tippe,
       Then öffnet sich ein Bottom-Sheet mit fokussiertem Titelfeld.
 - [ ] Given ich bin offline, When ich eine Aufgabe speichere,
@@ -112,16 +114,20 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
       Then existiert die Aufgabe serverseitig.
 
 ## Betroffene Dateien
+
 <!-- Wird beim Ticketschreiben ausgefüllt. Spart dem Agenten die Suche = spart Tokens. -->
+
 - `src/features/tasks/quick-add.tsx` (neu)
 - `src/local/outbox.ts` (lesen, nicht ändern)
 - `tests/tasks.spec.ts` (erweitern)
 
 ## Nicht-Ziele
+
 - Keine Wiederholungsregeln (eigenes Ticket)
 - Keine Anhänge
 
 ## Milestone
+
 M1 – Aufgaben
 ```
 
@@ -159,11 +165,13 @@ Was nicht als Kriterium dasteht, wird nicht gebaut.
 ## Was Claude autonom darf und was nicht
 
 **Darf:**
+
 - Issues lesen, kommentieren, Branch anlegen, implementieren, testen, PR öffnen
 - Fehlgeschlagene Tests analysieren und beheben
 - Neue Issues für Gefundenes anlegen (statt es nebenbei mitzuerledigen)
 
 **Darf nicht ohne Rückfrage:**
+
 - Neue Dependencies einführen (→ ADR)
 - Das Datenmodell ändern (→ ADR + Migration)
 - Von Vision oder Architektur abweichen

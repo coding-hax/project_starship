@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+
+/* Design tokens live in src/ui/tokens.css — components never use raw colours. */
+@import '../ui/tokens.css';
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}

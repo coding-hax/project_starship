@@ -37,12 +37,14 @@ Baue **kein einziges Feature** — weder Aufgaben noch Termine noch sonst etwas.
 M0 ist fertig, wenn ein leeres, installierbares App-Gerüst steht, das grün durch die CI geht.
 
 ### 1. Fundament
+
 - `git init`, sinnvolle `.gitignore`
 - pnpm, Next.js (App Router) + TypeScript + Tailwind
 - ESLint + Prettier, dazu die Skripte `dev`, `lint`, `typecheck`, `test`, `e2e`
 - Ordnerstruktur exakt wie in `docs/CODEMAP.md` beschrieben
 
 ### 2. Datenbank
+
 - Drizzle einrichten, Postgres lokal via Docker Compose für die Entwicklung
 - `src/db/schema.ts` mit den **Pflichtspalten** aus `ARCHITECTURE.md`
   (`id` UUIDv7, `updated_at`, `deleted_at`, `synced_at`) — aber **noch ohne Feature-Tabellen**.
@@ -50,33 +52,39 @@ M0 ist fertig, wenn ein leeres, installierbares App-Gerüst steht, das grün dur
 - Skripte `db:generate`, `db:migrate`
 
 ### 3. Local-first-Grundgerüst
+
 - `src/local/dexie.ts`, `src/local/outbox.ts`, `src/local/sync.ts`
 - Nur das **Gerüst**: Outbox-Queue, Push/Pull-Endpunkte unter `src/app/api/sync/`,
   Last-Write-Wins. Noch keine Entität, die damit synchronisiert wird.
 - Das ist der wichtigste Teil von M0. Lieber hier gründlich sein als schnell.
 
 ### 4. Auth
+
 - Passkey/WebAuthn, Single-User gegen `OWNER_USER_ID` aus der Env
 - Recovery-Code beim ersten Start, einmalig angezeigt
 - Session-Cookie: httpOnly, Secure, SameSite=Lax, lange Laufzeit
 
 ### 5. PWA
+
 - Serwist: Service Worker + Manifest + Icons
 - Muss sich auf dem iPhone über Safari → „Zum Home-Bildschirm" installieren lassen
   und dort im Standalone-Modus starten. **Das ist ein Akzeptanzkriterium, kein Extra.**
 
 ### 6. Design-System
+
 - Farbtokens (OKLCH, hell + dunkel) aus `docs/DESIGN_SYSTEM.md` in `src/ui/tokens.css`
 - App-Shell: Bottom-Navigation (Mobile) / Sidebar (Desktop), vier leere Tabs,
   Safe-Area-Insets, `prefers-reduced-motion` respektiert
 
 ### 7. Tests & CI
+
 - Vitest (Logik) und Playwright (E2E) einrichten
 - Playwright: `trace: 'retain-on-failure'`, Screenshots und Video nur bei Fehlschlag
 - Ein erster E2E-Test: App startet, Login per Passkey (gemockt), vier Tabs sind erreichbar
 - GitHub Actions: `lint` → `typecheck` → `test` → `e2e`, läuft bei jedem PR
 
 ### 8. GitHub-Setup
+
 - Labels anlegen: `ready`, `in-progress`, `needs-input`, `blocked-limit`,
   `human-approved`, `model:haiku`
 - Milestones anlegen: M0 bis M6 (Titel aus `docs/VISION.md`)
@@ -92,11 +100,13 @@ M0 ist fertig, wenn ein leeres, installierbares App-Gerüst steht, das grün dur
   absichtlich kaputten Test testen: der Check MUSS rot werden.
 
 ### 9. Runner scharf schalten
+
 - `scripts/claude-runner.sh` ausführbar machen, Pfade prüfen
 - `scripts/systemd-setup.md` abarbeiten (Timer alle 20 Minuten)
 - **Aber noch nicht starten** — erst wenn der Mensch das freigibt.
 
 ### 10. Aufräumen
+
 - `docs/CODEMAP.md` an die tatsächlich entstandene Struktur anpassen
 - **Diese Datei (`START-HERE.md`) löschen**
 - Kurzen Bericht schreiben: was steht, was fehlt, was du anders gemacht hast als geplant

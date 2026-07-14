@@ -93,6 +93,6 @@ WSL2 ist der deutlich weniger schmerzhafte Weg.
 - Fragen von Claude kommen als **Issue-Kommentar** → Push-Nachricht aufs Handy.
 - Fertige Arbeit kommt als **Pull Request** → du liest den Diff und mergst per Daumen.
 - Der aktuelle Zustand steht immer im angepinnten Issue **🚦 Runner-Status**.
-  Das wird per *Edit* aktualisiert, nicht per Kommentar — sonst spammt es dich zu.
+  Das wird per _Edit_ aktualisiert, nicht per Kommentar — sonst spammt es dich zu.
 
 Das Terminal brauchst du nie.
