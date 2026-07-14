@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: starship-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: starship
+      POSTGRES_PASSWORD: starship
+      POSTGRES_DB: starship
+    ports:
+      - '5432:5432'
+    volumes:
+      - starship-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U starship -d starship']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  starship-pgdata:
