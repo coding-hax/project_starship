@@ -8,6 +8,11 @@ async function seedTask(page: Page, payload: Record<string, unknown>): Promise<s
   );
 }
 
+/** Scoped to the task list — a page-wide listitem query also matches the nav tabs. */
+function taskItems(page: Page) {
+  return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
+}
+
 test.beforeEach(async ({ page }) => {
   await resetDatabase();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
@@ -46,7 +51,7 @@ test('completed tasks sit below open ones and look visually done', async ({ page
   await seedTask(page, { title: 'Offen' });
   await seedTask(page, { title: 'Erledigt', completedAt: new Date().toISOString() });
 
-  const items = page.getByRole('listitem');
+  const items = taskItems(page);
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toHaveText(/Offen/);
   await expect(items.nth(1)).toHaveText(/Erledigt/);
@@ -60,7 +65,7 @@ test('tasks are sorted by due date, undated ones last', async ({ page }) => {
   await seedTask(page, { title: 'Übermorgen', dueAt: '2026-07-16T09:00:00.000Z' });
   await seedTask(page, { title: 'Morgen', dueAt: '2026-07-15T09:00:00.000Z' });
 
-  const items = page.getByRole('listitem');
+  const items = taskItems(page);
   await expect(items).toHaveCount(3);
   await expect(items.nth(0)).toHaveText(/Morgen/);
   await expect(items.nth(1)).toHaveText(/Übermorgen/);
