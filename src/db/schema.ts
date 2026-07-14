@@ -1,4 +1,13 @@
-import { bigint, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 /**
  * The four columns every synchronised table must carry (ARCHITECTURE.md).
@@ -36,6 +45,31 @@ export const syncState = pgTable(
 
 export type SyncState = typeof syncState.$inferSelect;
 export type NewSyncState = typeof syncState.$inferInsert;
+
+/**
+ * `recurrenceRule` is reserved for a later milestone (see VISION.md) — carried in
+ * the schema now so M1 does not need another migration to add it, but nothing
+ * writes to it yet.
+ */
+export const tasks = pgTable(
+  'tasks',
+  {
+    ...syncColumns,
+    title: text('title').notNull(),
+    notes: text('notes'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    priority: integer('priority').notNull().default(0),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    recurrenceRule: text('recurrence_rule'),
+  },
+  (table) => [
+    index('tasks_updated_at_idx').on(table.updatedAt),
+    index('tasks_due_at_idx').on(table.dueAt),
+  ],
+);
+
+export type Task = typeof tasks.$inferSelect;
+export type NewTask = typeof tasks.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* Auth. None of this is ever synchronised, so none of it carries syncColumns. */

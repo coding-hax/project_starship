@@ -15,6 +15,13 @@
       "when": 1784017299956,
       "tag": "0001_flowery_hex",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784026634940,
+      "tag": "0002_simple_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }
