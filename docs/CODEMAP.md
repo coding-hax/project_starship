@@ -45,11 +45,17 @@ src/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
       use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung
       task-list.css           Karten-Styles für die Liste, in globals.css importiert
+      quick-add.tsx           FAB + Sheet + Titelfeld, speichert via outbox.mutate()
+      quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
     events/ journal/ habits/  (leer, ab M2/M3/M4)
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel, Spacing, Motion
     shell.css               App-Shell: Bottom-Nav (mobil) / Sidebar (Desktop)
     nav.tsx                 Die vier Tabs
+    sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
+    sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
+    fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
+    fab.css                 Position + Größe des FAB
     sync-boot.tsx           startet den Sync beim Mount
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
 tests/
