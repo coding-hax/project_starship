@@ -32,7 +32,7 @@ Zustandsmaschine des ganzen Setups:
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 
-Der Runner nimmt nur Tickets mit `ready`, die weder `needs-input` noch `human-review` tragen.
+Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
 auch wenn zwanzig Tickets im Backlog liegen.
 

@@ -1,25 +1,73 @@
 #!/usr/bin/env bash
 # Claude-Runner: pollt GitHub Issues, arbeitet EIN Ticket, überlebt Limits.
-# Läuft per systemd-Timer alle 20 Minuten. Braucht: gh, jq, claude, flock.
+# Läuft per launchd (macOS) oder systemd (Linux) alle 20 Minuten.
+#
+# Braucht: gh, jq und die EIGENSTÄNDIGE claude-CLI im PATH.
+# (Die VS-Code-Erweiterung zählt nicht — sie legt `claude` nicht in den PATH.)
+#
+# Bewusst OHNE flock und timeout: beides sind GNU-Werkzeuge und fehlen auf macOS.
+# Das Skript bringt portable Ersatzlösungen mit und läuft so auf beiden Systemen.
 set -uo pipefail
 
-REPO_DIR="${REPO_DIR:-$HOME/projects/meine-app}"
-STATUS_ISSUE="${STATUS_ISSUE:-1}"     # Nr. des angepinnten Issues "🚦 Runner-Status"
-MAX_RUNTIME="${MAX_RUNTIME:-45m}"     # Notbremse gegen hängende Läufe
+REPO_DIR="${REPO_DIR:-$HOME/Documents/Max/vsc/claude proj/project_starship}"
+STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Issues "🚦 Runner-Status"
+MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe.
 STATE_DIR="$REPO_DIR/.runner"
 
-cd "$REPO_DIR" || exit 1
+cd "$REPO_DIR" || { echo "REPO_DIR nicht gefunden: $REPO_DIR" >&2; exit 1; }
 mkdir -p "$STATE_DIR"
 
+for tool in gh jq claude; do
+  command -v "$tool" >/dev/null 2>&1 || { echo "'$tool' fehlt im PATH." >&2; exit 1; }
+done
+
 # --- Nie zwei Läufe gleichzeitig -------------------------------------------
-exec 9>"$STATE_DIR/lock"
-flock -n 9 || { echo "läuft bereits"; exit 0; }
+# mkdir ist atomar auf POSIX — das ersetzt flock, das es auf macOS nicht gibt.
+LOCK="$STATE_DIR/lock.d"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  OWNER=$(cat "$LOCK/pid" 2>/dev/null || echo "")
+  if [ -n "$OWNER" ] && kill -0 "$OWNER" 2>/dev/null; then
+    echo "läuft bereits (PID $OWNER)"; exit 0
+  fi
+  # Verwaister Lock (Rechner abgestürzt, Prozess tot) — übernehmen.
+  rm -rf "$LOCK"
+  mkdir "$LOCK" 2>/dev/null || { echo "läuft bereits"; exit 0; }
+fi
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
 
 ts() { date "+%d.%m. %H:%M"; }
 
 status() {   # Status-Issue per EDIT aktualisieren, nicht per Kommentar
              # (sonst bekommst du bei jedem Lauf eine Push-Nachricht aufs Handy)
+  [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
   gh issue edit "$STATUS_ISSUE" --body "$1" >/dev/null 2>&1
+}
+
+# --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
+TIMED_OUT="$STATE_DIR/timed-out"
+run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
+  local secs="$1"; shift
+  rm -f "$TIMED_OUT"
+
+  "$@" > "$LOG" 2>&1 &
+  local cmd_pid=$!
+
+  (
+    sleep "$secs"
+    if kill -0 "$cmd_pid" 2>/dev/null; then
+      touch "$TIMED_OUT"
+      kill -TERM "$cmd_pid" 2>/dev/null
+      sleep 10
+      kill -KILL "$cmd_pid" 2>/dev/null
+    fi
+  ) &
+  local watchdog=$!
+
+  wait "$cmd_pid"; local rc=$?
+  kill "$watchdog" 2>/dev/null
+  wait "$watchdog" 2>/dev/null
+  return $rc
 }
 
 # --- Welches Ticket? --------------------------------------------------------
@@ -84,15 +132,16 @@ EOF
 ARGS=(-p "$PROMPT" --output-format json
       --model "$MODEL"
       --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
-# Hinweis: Opus steht auf dem Pro-Plan in Claude Code NICHT zur Verfügung.
-# Geplant wird im Chat, ausgeführt wird hier mit Sonnet bzw. Haiku.
+# Hinweis: Opus ist fuer den Runner tabu (siehe docs/TOKEN-BUDGET.md).
+# Geplant wird im Chat, ausgefuehrt wird hier mit Sonnet bzw. Haiku.
 
 if [ "$MODE" = "resume" ] && [ -s "$SID_FILE" ]; then
   ARGS+=(--resume "$(cat "$SID_FILE")")
 fi
 
-OUT=$(timeout "$MAX_RUNTIME" claude "${ARGS[@]}" 2>&1 | tee "$LOG")
+run_limited "$MAX_RUNTIME" claude "${ARGS[@]}"
 RC=$?
+OUT=$(cat "$LOG" 2>/dev/null || echo "")
 
 # Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue)
 echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
@@ -116,8 +165,9 @@ _Stand: $(ts)_"
   exit 0     # kein Fehler — der Timer probiert es einfach wieder
 fi
 
-if [ $RC -eq 124 ]; then
-  status "⏱️ Lauf an #$ISSUE nach $MAX_RUNTIME abgebrochen (Notbremse).
+if [ -f "$TIMED_OUT" ]; then
+  rm -f "$TIMED_OUT"
+  status "⏱️ Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse).
 Wird beim nächsten Lauf fortgesetzt.
 _Stand: $(ts)_"
   exit 0
