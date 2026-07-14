@@ -32,10 +32,17 @@ export function writableFields(
   table: SyncTable,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  const allowed = SYNC_REGISTRY[table].writable as readonly string[];
+  const entry = SYNC_REGISTRY[table];
+  const allowed = entry.writable as readonly string[];
+  const columns = entry.table as unknown as Record<string, { dataType?: string }>;
   const out: Record<string, unknown> = {};
   for (const field of allowed) {
-    if (field in payload) out[field] = payload[field];
+    if (!(field in payload)) continue;
+    const value = payload[field];
+    // The wire format is JSON, so a timestamp column's value arrives as an ISO
+    // string — drizzle's `timestamp` columns need an actual Date to insert/update.
+    out[field] =
+      typeof value === 'string' && columns[field]?.dataType === 'date' ? new Date(value) : value;
   }
   return out;
 }

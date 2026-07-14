@@ -56,11 +56,25 @@ describe('writableFields for tasks', () => {
     ).toEqual({
       title: 'Milch kaufen',
       notes: 'fettarm',
-      dueAt: '2026-07-15T00:00:00.000Z',
+      // A timestamp column needs a Date to insert/update — the wire format only has
+      // the ISO string.
+      dueAt: new Date('2026-07-15T00:00:00.000Z'),
       priority: 1,
       completedAt: null,
       recurrenceRule: null,
     });
+  });
+
+  it('converts a timestamp field to a Date, leaving null as-is', () => {
+    const fields = writableFields('tasks', {
+      title: 'Wäsche',
+      completedAt: '2026-07-15T09:00:00.000Z',
+    });
+
+    expect(fields.completedAt).toBeInstanceOf(Date);
+    expect((fields.completedAt as Date).toISOString()).toBe('2026-07-15T09:00:00.000Z');
+
+    expect(writableFields('tasks', { title: 'Wäsche', completedAt: null }).completedAt).toBeNull();
   });
 
   it('drops fields a client must never set', () => {
