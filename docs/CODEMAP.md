@@ -40,7 +40,12 @@ src/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code
   crypto/                   (leer — Journal-Verschlüsselung kommt in M3)
-  features/                 (leer — tasks/ events/ journal/ habits/ ab M1)
+  features/
+    tasks/
+      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
+      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung
+      task-list.css           Karten-Styles für die Liste, in globals.css importiert
+    events/ journal/ habits/  (leer, ab M2/M3/M4)
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel, Spacing, Motion
     shell.css               App-Shell: Bottom-Nav (mobil) / Sidebar (Desktop)
@@ -51,6 +56,7 @@ tests/
   helpers.ts                virtueller Authenticator, DB-Zugriff, Reset
   shell.spec.ts             Login, vier Tabs, aktiver Tab
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
+  tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
