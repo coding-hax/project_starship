@@ -1,0 +1,162 @@
+/**
+ * The app shell. Bottom nav on mobile, sidebar from 768px up.
+ *
+ * Safe-area insets are not cosmetic: without them the nav sits under the iPhone's
+ * home indicator and the last tab is unreachable.
+ */
+
+.shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+}
+
+.shell__main {
+  padding: var(--space-6) var(--space-4);
+  padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+  max-width: 720px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+/* --------------------------------- nav ---------------------------------- */
+
+.nav {
+  position: sticky;
+  bottom: 0;
+  background: color-mix(in oklch, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav__list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav__item {
+  flex: 1;
+}
+
+.nav__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  /* Touch targets are never below 44px. */
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-1);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.nav__link:hover {
+  color: var(--text);
+}
+
+.nav__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* ------------------------------- desktop -------------------------------- */
+
+@media (min-width: 768px) {
+  .shell {
+    grid-template-rows: none;
+    grid-template-columns: 232px 1fr;
+  }
+
+  .shell__main {
+    grid-column: 2;
+    padding: var(--space-12) var(--space-8);
+    max-width: 880px;
+    margin-inline: 0;
+  }
+
+  .nav {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    padding: var(--space-6) var(--space-3);
+    backdrop-filter: none;
+    background: var(--surface);
+  }
+
+  .nav__list {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .nav__link {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    font-size: 15px;
+  }
+
+  .nav__link:hover {
+    background: var(--surface-raised);
+  }
+}
+
+/* ------------------------------ auth page ------------------------------- */
+
+.auth {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  text-align: center;
+  max-width: 420px;
+  margin-inline: auto;
+}
+
+.auth__button {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.auth__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth__code {
+  display: block;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, monospace;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+.auth__error {
+  color: var(--danger);
+}

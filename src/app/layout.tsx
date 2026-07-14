@@ -4,13 +4,29 @@ import './globals.css';
 
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-sans',
+  variable: '--font-inter',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
   title: 'Starship',
   description: 'Termine, Aufgaben, Journal und Gewohnheiten an einem Ort.',
+  applicationName: 'Starship',
+  manifest: '/manifest.webmanifest',
+  // iOS ignores the manifest for the home-screen icon and the standalone flag;
+  // it reads these. Without them "Zum Home-Bildschirm" opens a Safari tab.
+  appleWebApp: {
+    capable: true,
+    title: 'Starship',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
 };
 
 export const viewport: Viewport = {

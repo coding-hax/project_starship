@@ -1,12 +1,99 @@
-/* Placeholder — replaced with the full OKLCH scale in step 6 (design system). */
+/**
+ * Design tokens (docs/DESIGN_SYSTEM.md).
+ *
+ * Everything is OKLCH so lightness stays perceptually even across hues — a coral and
+ * a teal at the same L actually look equally bright, which is the whole reason the
+ * area colours can sit next to each other without one shouting.
+ *
+ * Components never use a raw colour. They use these names.
+ * Every token exists in light AND dark. Dark mode is not a retrofit.
+ */
+
 :root {
+  /* --- neutrals: warm, never pure white or pure black --------------------- */
   --bg: oklch(98.5% 0.008 85);
-  --text: oklch(25% 0.015 60);
+  --surface: oklch(100% 0 0);
+  --surface-raised: oklch(96.5% 0.012 85);
+  --text: oklch(27% 0.015 60);
+  --text-muted: oklch(52% 0.015 60);
+  --border: oklch(90% 0.012 75);
+
+  /* --- area colours: they carry the orientation --------------------------- */
+  --area-tasks: oklch(70% 0.17 42); /* coral / mango — the app's primary */
+  --area-events: oklch(66% 0.11 195); /* teal — calm, structured */
+  --area-journal: oklch(63% 0.14 305); /* warm violet — personal */
+  --area-habits: oklch(66% 0.15 148); /* green — growth, streaks */
+
+  /* The default accent is the primary area colour. */
+  --accent: var(--area-tasks);
+  --accent-fg: oklch(99% 0.005 85);
+
+  /* --- semantic ----------------------------------------------------------- */
+  --success: oklch(66% 0.15 148);
+  --warning: oklch(76% 0.14 75);
+  --danger: oklch(60% 0.19 27);
+
+  /* --- shape & space ------------------------------------------------------ */
+  --radius-card: 14px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* Soft, low-opacity, sits underneath. No hard edges. */
+  --shadow-raised: 0 1px 2px oklch(27% 0.015 60 / 0.04), 0 6px 20px oklch(27% 0.015 60 / 0.06);
+
+  /* --- motion: 150–250 ms. Anything slower feels sluggish. ----------------- */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Touch targets are never smaller than this. */
+  --touch-target: 44px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: oklch(21% 0.012 60);
+    --bg: oklch(20.5% 0.012 60);
+    --surface: oklch(24% 0.013 60);
+    --surface-raised: oklch(27.5% 0.014 60);
     --text: oklch(94% 0.008 85);
+    --text-muted: oklch(70% 0.012 75);
+    --border: oklch(33% 0.014 60);
+
+    /* Lifted and slightly desaturated: on a dark ground the same chroma reads as neon. */
+    --area-tasks: oklch(75% 0.15 42);
+    --area-events: oklch(72% 0.1 195);
+    --area-journal: oklch(70% 0.13 305);
+    --area-habits: oklch(72% 0.13 148);
+
+    --accent-fg: oklch(18% 0.012 60);
+
+    --success: oklch(72% 0.13 148);
+    --warning: oklch(80% 0.12 75);
+    --danger: oklch(68% 0.17 27);
+
+    --shadow-raised: 0 1px 2px oklch(0% 0 0 / 0.3), 0 6px 20px oklch(0% 0 0 / 0.35);
+  }
+}
+
+/**
+ * Motion explains where things came from. When the user has asked for less of it,
+ * that intent wins over every animation in this codebase.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

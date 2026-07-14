@@ -1,11 +1,53 @@
 @import 'tailwindcss';
-
-/* Design tokens live in src/ui/tokens.css — components never use raw colours. */
 @import '../ui/tokens.css';
+@import '../ui/shell.css';
+
+/* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist
+   and nobody has to reach for a raw colour to get their work done. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --color-tasks: var(--area-tasks);
+  --color-events: var(--area-events);
+  --color-journal: var(--area-journal);
+  --color-habits: var(--area-habits);
+
+  --radius-card: var(--radius-card);
+  --radius-pill: var(--radius-pill);
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+html {
+  /* The nav must not sit under the home indicator. */
+  background: var(--bg);
+  color-scheme: light dark;
+}
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
