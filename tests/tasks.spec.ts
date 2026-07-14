@@ -285,7 +285,7 @@ test('der Undo-Toast macht die Erledigung rückgängig, der Server landet am off
   expect(row.rows[0].completed_at).toBeNull();
 });
 
-test('offline erledigt greift sofort in der UI und liegt in der Outbox', async ({
+test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht online die Datenbank', async ({
   page,
   context,
 }) => {
@@ -302,6 +302,14 @@ test('offline erledigt greift sofort in der UI und liegt in der Outbox', async (
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
   await context.setOffline(false);
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query('SELECT completed_at FROM tasks WHERE title = $1', [title]),
+  );
+  expect(row.rows[0].completed_at).not.toBeNull();
 });
 
 test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({
