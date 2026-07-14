@@ -81,13 +81,13 @@ Ein angepinntes Status-Issue wird vom Runner per _Edit_ aktualisiert
 **Die Farbe steht im Titel, nicht nur im Text.** Damit siehst du den Zustand schon in
 der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 
-| Titel | Bedeutung | Musst du etwas tun? |
-|---|---|---|
-| 🟢 `Runner · läuft · zuletzt #42` | arbeitet | nein |
-| 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
-| 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
-| 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
-| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready` | nein (außer du willst was) |
+| Titel                                       | Bedeutung                       | Musst du etwas tun?        |
+| ------------------------------------------- | ------------------------------- | -------------------------- |
+| 🟢 `Runner · läuft · zuletzt #42`           | arbeitet                        | nein                       |
+| 🟡 `Runner · wartet auf dich (#42)`         | Frage offen oder Freigabe nötig | **ja**                     |
+| 🔴 `Runner · Fehler bei #42`                | abgebrochen, Details am Ticket  | **ja**                     |
+| 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter         | nein                       |
+| ⚪️ `Runner · nichts zu tun`                 | kein Ticket auf `ready`         | nein (außer du willst was) |
 
 Nur **Gelb und Rot** verlangen dich. Alles andere ist Information.
 
