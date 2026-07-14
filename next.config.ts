@@ -27,6 +27,8 @@ const withSerwist = withSerwistInit({
 });
 
 const nextConfig: NextConfig = {
+  // A stray lockfile further up the tree makes Next guess the wrong workspace root.
+  outputFileTracingRoot: import.meta.dirname,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
