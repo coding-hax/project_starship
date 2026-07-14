@@ -53,18 +53,25 @@ milestone "M5 – Heute-Dashboard" "Zusammenführung, Web Push für Erinnerungen
 milestone "M6 – Sprachmemo"      "Aufnahme → Transkript → strukturierter Terminvorschlag"
 
 # --- 4. Status-Issue -------------------------------------------------------
+# Der Runner schreibt die Farbe in den TITEL, damit man den Zustand in der
+# Issue-Liste sieht, ohne reinzuklicken. Der Titel ändert sich also laufend —
+# gesucht wird deshalb nach dem stabilen Teil, nicht nach dem ganzen Titel.
+# Sonst legt ein zweiter Lauf ein Duplikat an.
 echo "==> Status-Issue"
-EXISTING=$(gh issue list --state open --search "🚦 Runner-Status in:title" \
-             --json number -q '.[0].number // empty' 2>/dev/null || echo "")
+EXISTING=$(gh issue list --state open --limit 50 --json number,title \
+             -q '[.[] | select(.title | test("Runner"))] | .[0].number // empty' 2>/dev/null || echo "")
 if [ -n "$EXISTING" ]; then
   STATUS_ISSUE="$EXISTING"
   echo "    existiert: #$STATUS_ISSUE"
 else
-  URL=$(gh issue create --title "🚦 Runner-Status" \
-    --body "✅ Noch nichts zu tun — kein Ticket mit Label \`ready\`.
+  URL=$(gh issue create --title "⚪️ Runner · nichts zu tun" \
+    --body "⚪️ Kein Ticket mit Label \`ready\`. Ich habe nichts zu arbeiten.
 
 _Dieses Issue wird vom Runner per **Edit** aktualisiert, nicht per Kommentar.
-Sonst bekommst du im 20-Minuten-Takt eine Push-Nachricht._")
+Sonst bekommst du im 20-Minuten-Takt eine Push-Nachricht._
+
+**Die Farbe im Titel ist der Zustand:**
+🟢 läuft · 🟡 wartet auf dich · 🔴 Fehler · 🔵 pausiert (Limit) · ⚪️ nichts zu tun")
   STATUS_ISSUE="${URL##*/}"
   echo "    angelegt: #$STATUS_ISSUE"
 fi
