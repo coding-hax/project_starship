@@ -75,14 +75,25 @@ Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
 
 ## Der Status auf einen Blick
 
-Ein angepinntes Issue **🚦 Runner-Status** wird vom Runner per _Edit_ aktualisiert
-(nicht per Kommentar — sonst bekommst du im Minutentakt Push-Nachrichten). Dort steht
-immer eine von vier Zeilen:
+Ein angepinntes Status-Issue wird vom Runner per _Edit_ aktualisiert
+(nicht per Kommentar — sonst bekommst du im Minutentakt Push-Nachrichten).
 
-- 🟢 Läuft, zuletzt an #42 gearbeitet
-- ⏸️ Limit erreicht, #42 pausiert, nächster Versuch in ~20 Min
-- ❌ Fehler bei #42 (Details als Kommentar am Ticket)
-- ✅ Nichts zu tun — kein Ticket mit `ready`
+**Die Farbe steht im Titel, nicht nur im Text.** Damit siehst du den Zustand schon in
+der Issue-Liste auf dem Handy und musst nicht hineinklicken:
+
+| Titel | Bedeutung | Musst du etwas tun? |
+|---|---|---|
+| 🟢 `Runner · läuft · zuletzt #42` | arbeitet | nein |
+| 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
+| 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
+| 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
+| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready` | nein (außer du willst was) |
+
+Nur **Gelb und Rot** verlangen dich. Alles andere ist Information.
+
+Gelb erscheint auch dann, wenn der Runner selbst gerade nichts zu tun hat, aber
+irgendwo ein `needs-input` hängt — „nichts zu tun" wäre in dem Fall eine Lüge,
+die dich das Ticket übersehen ließe.
 
 ## Board-Spalten
 

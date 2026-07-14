@@ -10,7 +10,7 @@
 set -uo pipefail
 
 REPO_DIR="${REPO_DIR:-$HOME/Documents/Max/vsc/claude proj/project_starship}"
-STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Issues "🚦 Runner-Status"
+STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
 MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe.
 STATE_DIR="$REPO_DIR/.runner"
 
@@ -38,10 +38,32 @@ trap 'rm -rf "$LOCK"' EXIT
 
 ts() { date "+%d.%m. %H:%M"; }
 
-status() {   # Status-Issue per EDIT aktualisieren, nicht per Kommentar
-             # (sonst bekommst du bei jedem Lauf eine Push-Nachricht aufs Handy)
+# Status-Issue per EDIT aktualisieren, nicht per Kommentar
+# (sonst bekommst du bei jedem Lauf eine Push-Nachricht aufs Handy).
+#
+# Die Farbe steht im TITEL, nicht nur im Text: auf dem Handy sieht man in der
+# Issue-Liste sonst nur die statische Ampel und muss reinklicken, um den Zustand
+# zu erfahren. Genau das soll man sich sparen.
+#
+#   🟢 läuft            – nichts zu tun
+#   🟡 wartet auf dich  – EINGREIFEN (Frage offen oder Freigabe nötig)
+#   🔴 Fehler           – EINGREIFEN
+#   🔵 Limit erreicht   – pausiert, läuft von selbst weiter
+#   ⚪️ nichts zu tun    – kein Ticket auf `ready`
+status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
-  gh issue edit "$STATUS_ISSUE" --body "$1" >/dev/null 2>&1
+  gh issue edit "$STATUS_ISSUE" \
+    --title "$2 Runner · $1" \
+    --body "$3
+
+_Stand: $(ts)_" >/dev/null 2>&1
+}
+
+# Wartet irgendein Ticket auf den Menschen? Dann ist Gelb die Wahrheit,
+# auch wenn der Runner selbst gerade nichts zu tun hat.
+waiting_issues() {
+  gh issue list --label needs-input --state open --limit 20 \
+    --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
 
 # --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
@@ -83,8 +105,26 @@ if [ -z "$ISSUE" ]; then
             -q '[.[] | select((.labels | map(.name)
                    | index("needs-input")) | not)]
                 | sort_by(.number) | .[0].number // empty')
-  [ -z "$ISSUE" ] && { status "✅ Nichts zu tun — kein Ticket mit Label \`ready\`.
-_Stand: $(ts)_"; exit 0; }
+  if [ -z "$ISSUE" ]; then
+    # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
+    # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
+    WAITING=$(waiting_issues)
+    if [ -n "$WAITING" ]; then
+      status "wartet auf dich ($WAITING)" "🟡" \
+        "🟡 **Ich warte auf eine Antwort von dir.**
+
+Offene Fragen an: $WAITING
+
+Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
+sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
+    else
+      status "nichts zu tun" "⚪️" \
+        "⚪️ Kein Ticket mit Label \`ready\`. Ich habe nichts zu arbeiten.
+
+Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
+    fi
+    exit 0
+  fi
   gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
   MODE=start
 fi
@@ -149,8 +189,22 @@ echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
 # --- Auswertung -------------------------------------------------------------
 if [ $RC -eq 0 ]; then
   gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
-  status "🟢 Läuft. Zuletzt an #$ISSUE gearbeitet.
-_Stand: $(ts)_"
+
+  # Der Lauf war sauber — aber hat Claude dabei eine Frage gestellt?
+  # Dann wartet das Ticket jetzt auf dich, und Grün wäre irreführend.
+  WAITING=$(waiting_issues)
+  if [ -n "$WAITING" ]; then
+    status "wartet auf dich ($WAITING)" "🟡" \
+      "🟡 **Ich warte auf eine Antwort von dir.**
+
+Offene Fragen an: $WAITING
+
+Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
+Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`."
+  else
+    status "läuft · zuletzt #$ISSUE" "🟢" \
+      "🟢 **Läuft.** Zuletzt an #$ISSUE gearbeitet. Nichts zu tun für dich."
+  fi
   exit 0
 fi
 
@@ -158,18 +212,20 @@ fi
 # -> auf null/nicht-null prüfen und die Ausgabe lesen.
 if echo "$OUT" | grep -qiE "usage limit|rate limit|limit reached|quota"; then
   gh issue edit "$ISSUE" --add-label blocked-limit >/dev/null
-  status "⏸️ **Limit erreicht.** Ticket #$ISSUE ist angehalten und wird
-automatisch fortgesetzt, sobald wieder Kontingent da ist.
-Nächster Versuch: in ~20 Minuten.
-_Stand: $(ts)_"
+  status "Limit erreicht · #$ISSUE pausiert" "🔵" \
+    "🔵 **Limit erreicht.** Ticket #$ISSUE ist angehalten und wird automatisch
+fortgesetzt, sobald wieder Kontingent da ist. Nächster Versuch: in ~20 Minuten.
+
+**Kein Eingreifen nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar,
+nicht in der Session."
   exit 0     # kein Fehler — der Timer probiert es einfach wieder
 fi
 
 if [ -f "$TIMED_OUT" ]; then
   rm -f "$TIMED_OUT"
-  status "⏱️ Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse).
-Wird beim nächsten Lauf fortgesetzt.
-_Stand: $(ts)_"
+  status "Notbremse bei #$ISSUE" "🔵" \
+    "🔵 Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse gegen hängende Läufe).
+Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**"
   exit 0
 fi
 
@@ -179,6 +235,9 @@ Letzte Zeilen:
 $(tail -n 20 "$LOG")
 \`\`\`"
 gh issue edit "$ISSUE" --add-label needs-input >/dev/null
-status "❌ Fehler bei #$ISSUE — Details stehen als Kommentar am Ticket.
-_Stand: $(ts)_"
+status "Fehler bei #$ISSUE" "🔴" \
+  "🔴 **Fehler bei #$ISSUE.** Der Runner ist abgebrochen (Exit $RC).
+
+Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
+solange das Label \`needs-input\` hängt."
 exit 1
