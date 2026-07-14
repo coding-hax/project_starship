@@ -300,9 +300,17 @@ OUT=$(cat "$LOG" 2>/dev/null || echo "")
 # Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue)
 echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
 
+# Ein frueherer Lauf koennte blocked-limit gesetzt haben. Wenn wir hier ankommen,
+# ist das Limit vorbei (sonst waeren wir oben schon uebersprungen worden) — das
+# Label ist also in JEDEM Ausgang unten stale, egal ob Erfolg oder Fehler. Weg
+# damit, bevor wir es weiter unten bei Bedarf (429) neu setzen.
+gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
+
+TRANSIENT_FILE="$STATE_DIR/transient-$ISSUE"
+
 # --- Auswertung -------------------------------------------------------------
 if [ $RC -eq 0 ]; then
-  gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
+  rm -f "$TRANSIENT_FILE"
 
   # Der Lauf war sauber — aber hat Claude dabei eine Frage gestellt?
   # Dann wartet das Ticket jetzt auf dich, und Grün wäre irreführend.
@@ -364,6 +372,54 @@ if [ -f "$TIMED_OUT" ]; then
     "🔵 Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse gegen hängende Läufe).
 Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**"
   exit 0
+fi
+
+# --- Vorübergehender API-Fehler? ---------------------------------------------
+# Weder Limit noch inhaltlicher Fehlschlag am Ticket — ein Hänger mitten in der
+# Antwort (5xx, "overloaded", abgebrochene Verbindung, Timeout). Der Arbeitsstand
+# liegt in Git und im Fortschrittskommentar; der richtige Umgang ist ein neuer
+# Versuch beim nächsten Takt, kein needs-input.
+RESULT_TXT=$(echo "$OUT" | jq -r '.result // empty' 2>/dev/null)
+API_STATUS=$(echo "$OUT" | jq -r '.api_error_status // empty' 2>/dev/null)
+
+IS_TRANSIENT=0
+case "$API_STATUS" in
+  500|502|503|504|529) IS_TRANSIENT=1 ;;
+esac
+if [ "$IS_TRANSIENT" -eq 0 ] \
+   && printf '%s\n%s' "$OUT" "$RESULT_TXT" \
+        | grep -qiE "api error|server error|overloaded|connection error|timed? ?out"; then
+  IS_TRANSIENT=1
+fi
+
+if [ "$IS_TRANSIENT" -eq 1 ]; then
+  COUNT=$(( $(cat "$TRANSIENT_FILE" 2>/dev/null || echo 0) + 1 ))
+
+  if [ "$COUNT" -lt 3 ]; then
+    echo "$COUNT" > "$TRANSIENT_FILE"
+    status "vorübergehender API-Fehler bei #$ISSUE" "🔵" \
+      "🔵 **Vorübergehender API-Fehler bei #$ISSUE** (Versuch $COUNT von 3). Neuer
+Versuch beim nächsten Takt. **Kein Eingreifen nötig.** Der Arbeitsstand liegt in
+Git und im Fortschrittskommentar, nicht in der Session."
+    exit 0     # kein Fehler — der Timer probiert es einfach wieder
+  fi
+
+  # Drittes Mal in Folge — das ist kein Zufall mehr.
+  rm -f "$TRANSIENT_FILE"
+  gh issue comment "$ISSUE" --body "🤖 Der Runner ist dreimal in Folge an einem
+vorübergehenden API-Fehler gescheitert (zuletzt Exit $RC).
+Letzte Zeilen:
+\`\`\`
+$(tail -n 20 "$LOG")
+\`\`\`"
+  gh issue edit "$ISSUE" --add-label needs-input >/dev/null
+  status "Fehler bei #$ISSUE" "🔴" \
+    "🔴 **Fehler bei #$ISSUE.** Dreimal in Folge ein vorübergehender API-Fehler —
+das ist kein Zufall mehr.
+
+Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
+solange das Label \`needs-input\` hängt."
+  exit 1
 fi
 
 gh issue comment "$ISSUE" --body "🤖 Der Runner ist mit einem Fehler abgebrochen (Exit $RC).
