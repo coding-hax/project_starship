@@ -53,6 +53,9 @@ src/
     sync-boot.tsx           startet den Sync beim Mount
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
 tests/
+  global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
+  global-teardown.ts        gibt das Lock wieder frei (nur das eigene)
+  run-lock.ts               Pfad des Lockfiles + Port, gemeinsame Quelle für Setup und Config
   helpers.ts                virtueller Authenticator, DB-Zugriff, Reset
   shell.spec.ts             Login, vier Tabs, aktiver Tab
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
