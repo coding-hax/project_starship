@@ -43,8 +43,10 @@ src/
   features/
     tasks/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
+      task-item.tsx           eine Zeile: Checkbox + Swipe-nach-rechts zum Erledigen
       use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung
-      task-list.css           Karten-Styles für die Liste, in globals.css importiert
+      use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
+      task-list.css           Karten-, Checkbox- und Swipe-Styles, in globals.css importiert
       quick-add.tsx           FAB + Sheet + Titelfeld, speichert via outbox.mutate()
       quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
     events/ journal/ habits/  (leer, ab M2/M3/M4)
@@ -56,6 +58,8 @@ src/
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
     fab.css                 Position + Größe des FAB
+    toast.tsx               Wiederverwendbares Undo-Toast (role="status")
+    toast.css                Position über der Bottom-Nav, wie der FAB
     sync-boot.tsx           startet den Sync beim Mount
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
 tests/

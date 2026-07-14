@@ -39,6 +39,31 @@
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
+  /* Only relevant while a swipe is releasing — see .task-list__item--dragging,
+     which turns this off so the row follows the pointer with no lag. */
+  transition: transform var(--duration-base) var(--ease-spring);
+  /* Let the browser keep handling vertical scroll; only the horizontal axis is ours. */
+  touch-action: pan-y;
+}
+
+.task-list__item--dragging {
+  transition: none;
+}
+
+.task-list__checkbox-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  flex-shrink: 0;
+}
+
+.task-list__checkbox {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .task-list__item--done {
