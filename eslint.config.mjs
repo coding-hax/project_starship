@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     'src/db/migrations/**',
     'playwright-report/**',
     'test-results/**',
+    // Serwist build output, not source.
+    'public/sw.js',
+    'public/swe-worker-*.js',
   ]),
 ]);
 
