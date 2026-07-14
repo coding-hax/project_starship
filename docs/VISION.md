@@ -66,14 +66,24 @@ Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgele
 - Die App funktioniert im Zug ohne Netz.
 - Ich habe alle vier alten Apps vom Home-Screen gelöscht.
 
-## Offene Annahmen (bitte bestätigen oder korrigieren)
+## Entschieden (2026-07-14)
 
-Diese Punkte sind aktuell als Annahme gesetzt und werden so gebaut,
-solange nichts anderes entschieden wird:
+Diese Punkte standen als Annahme im Raum und sind nach dem Bootstrap beantwortet.
+Sie werden nicht in jedem Ticket neu diskutiert.
 
-- **Serientermine** werden in M2 in einfacher Form unterstützt (täglich/wöchentlich/monatlich, mit Enddatum). Verschobene oder ausgefallene Einzeltermine einer Serie sind ein eigenes, späteres Ticket — ohne Kalender-Sync brauchen wir die volle RRULE-Komplexität nicht.
-- **Wiederkehrende Aufgaben** ("jeden Montag Müll rausbringen") gibt es ab M1 in einfacher Form.
-- **Habits** sind binär (erledigt / nicht erledigt) mit Streak. Mengenziele ("3 Liter Wasser") kommen erst, wenn sie fehlen.
-- **Journal** ist freier Text plus Stimmung (5-stufig) und Tags. Keine vorgegebenen Prompts.
-- **Erinnerungen** laufen über Web Push (ab M5), nicht über E-Mail.
+- **Habits** sind **binär** (erledigt / nicht erledigt) mit Streak. Mengenziele
+  („3 Liter Wasser") kommen erst, wenn sie im Alltag fehlen — sie ließen sich additiv
+  ergänzen, ohne Bestehendes zu brechen.
+- **Journal:** Text, Stimmung **und Tags** liegen gemeinsam in **einem** Chiffrat.
+  Nur `entry_date` bleibt im Klartext. Siehe **ADR-0004** — das ersetzt den
+  Metadaten-Absatz aus ADR-0001 §4. Folge: keine serverseitige Filterung über
+  Journalinhalte. Kein Verlust, weil in einer Local-first-App ohnehin lokal gefiltert wird.
+- **Wiederkehrende Aufgaben** kommen **nicht** in M1. M1 macht Aufgaben richtig gut
+  (erfassen, Fälligkeit, Priorität, Swipe, offline). Wiederholung wird ein eigenes
+  Ticket, sobald sie fehlt. Die Spalte `recurrence_rule` bleibt im Schema reserviert.
+- **Erinnerungen** laufen über **Web Push ab M5**, nicht früher und nicht über E-Mail.
+- **Serientermine** werden in M2 in einfacher Form unterstützt (täglich/wöchentlich/
+  monatlich, mit Enddatum). Verschobene oder ausgefallene Einzeltermine einer Serie
+  sind ein eigenes, späteres Ticket — ohne Kalender-Sync brauchen wir die volle
+  RRULE-Komplexität nicht.
 - **UI-Sprache Deutsch**, Wochenstart Montag, 24-Stunden-Format.

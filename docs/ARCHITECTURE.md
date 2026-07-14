@@ -61,7 +61,7 @@ kein Designproblem.
 ```
 tasks           id, title, notes, due_at, priority, completed_at, recurrence_rule, ...
 events          id, title, location, starts_at, ends_at, all_day, recurrence_rule, ...
-journal_entries id, entry_date, ciphertext, nonce, mood, tags[], ...   ← Inhalt nur als Chiffrat
+journal_entries id, entry_date, ciphertext, nonce, ...   ← Text, Stimmung UND Tags im Chiffrat (ADR-0004)
 habits          id, name, schedule (daily|weekly|custom), color, archived_at, ...
 habit_logs      id, habit_id, log_date, done, ...
 sync_state      key, value            ← letzter Pull-Zeitstempel etc.
@@ -80,8 +80,12 @@ die App ist die alleinige Wahrheit für ihre Termine (siehe ADR-0002).
   die Suche läuft ohnehin lokal über IndexedDB.
 - **Folge:** Passphrase verloren = Journal verloren. Recovery-Key wird beim Einrichten
   einmalig angezeigt und muss in den Passwortmanager.
-- Metadaten (Datum, Stimmung, Tags) bleiben unverschlüsselt, damit Filter serverseitig gehen.
-  Wenn das zu viel ist, werden auch die Tags verschlüsselt — bitte bewusst entscheiden.
+- **Stimmung und Tags sind mitverschlüsselt** (ADR-0004). Sie liegen gemeinsam mit dem
+  Text in **einem** Chiffrat — nicht in eigenen verschlüsselten Spalten, sonst erzeugt
+  derselbe Tag denselben Chiffretext und der Server kann über Häufigkeiten Rückschlüsse
+  ziehen. Nur `entry_date` bleibt im Klartext, weil der inkrementelle Sync es braucht.
+- **Folge:** keine serverseitige Filterung oder Aggregation über Journalinhalte.
+  Bewusst akzeptiert — in einer Local-first-App läuft ohnehin jede Abfrage lokal.
 
 ## Kalender: kein externer Sync
 

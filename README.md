@@ -43,8 +43,21 @@ Installierbarkeit — ohne dass irgendein Test rot wird.
 `src/local/outbox.ts` nach IndexedDB und von dort in den Sync. Wer das umgeht, hat
 local-first kaputtgemacht.
 
+## Live
+
+**https://starship-alpha.vercel.app** — Vercel (Production), Postgres auf Neon
+(`eu-central-1`, Frankfurt). Pushes auf `main` deployen automatisch; `main` ist
+branch-geschützt, es geht also nur live, was durch alle vier CI-Checks kommt.
+
+Passkeys sind **an die Domain gebunden**. Ein lokal auf `localhost` angelegter Passkey
+funktioniert online nicht und umgekehrt — das ist die Sicherheitsgarantie von WebAuthn,
+kein Fehler. Lokale Entwicklung und Produktion sind zwei getrennte Welten mit zwei
+getrennten Datenbanken.
+
 ## Stand
 
-M0 (Fundament) steht: Passkey-Login, Sync-Grundgerüst mit Outbox, PWA,
-Design-Tokens, App-Shell, CI mit vier Required Checks. Noch **kein** Feature —
-Aufgaben sind M1.
+M0 (Fundament) steht und ist verifiziert: PWA auf dem iPhone im Standalone-Modus
+installiert, Login per Face ID, Sync-Grundgerüst mit Outbox (Mutation überlebt Reload
+und landet in Postgres), Design-Tokens, App-Shell, CI mit vier Required Checks.
+
+Noch **kein** Feature — Aufgaben sind M1.
