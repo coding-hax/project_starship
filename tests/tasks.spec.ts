@@ -1,5 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase } from './helpers';
+import { registerPasskey, resetDatabase, withDb } from './helpers';
+
+const QUICK_ADD_LABEL = 'Aufgabe erfassen';
+
+async function openQuickAdd(page: Page) {
+  await page.getByRole('button', { name: QUICK_ADD_LABEL }).click();
+}
+
+function quickAddTitleField(page: Page) {
+  return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
+}
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
   return page.evaluate(
@@ -87,4 +97,99 @@ test('tasks stay visible offline, with a calm notice instead of an error', async
   await expect(page.getByText('Bleibt da')).toBeVisible();
 
   await context.setOffline(false);
+});
+
+test('der FAB öffnet ein Sheet mit fokussiertem Titelfeld', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeVisible();
+  await expect(quickAddTitleField(page)).toBeFocused();
+});
+
+test('n öffnet auf Desktop dasselbe Sheet wie der FAB', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await page.keyboard.press('n');
+
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeVisible();
+  await expect(quickAddTitleField(page)).toBeFocused();
+});
+
+test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Wäsche aufhängen');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  await expect(page.getByText('Wäsche aufhängen')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
+});
+
+test('ein leerer Titel wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeVisible();
+  await expect(quickAddTitleField(page)).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+});
+
+test('offline gespeichert: sofort sichtbar, genau ein Eintrag in der Outbox', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await context.setOffline(true);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Im Zug notiert');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  await expect(page.getByText('Im Zug notiert')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  await context.setOffline(false);
+});
+
+test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await context.setOffline(true);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Zug-Notiz für den Server');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await expect(page.getByText('Zug-Notiz für den Server')).toBeVisible();
+
+  await context.setOffline(false);
+  // beforeEach cuts the sync endpoints so the list can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM tasks WHERE title = $1', ['Zug-Notiz für den Server']),
+  );
+  expect(row.rowCount).toBe(1);
+});
+
+test('bei reduzierter Bewegung öffnet das Sheet nur mit einem Opacity-Übergang', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  const transitionProperty = await dialog.evaluate(
+    (el) => getComputedStyle(el.firstElementChild as Element).transitionProperty,
+  );
+  expect(transitionProperty).toBe('opacity');
 });
