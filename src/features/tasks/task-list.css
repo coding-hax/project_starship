@@ -1,0 +1,63 @@
+/**
+ * Task list (docs/DESIGN_SYSTEM.md): cards, not rows, on every breakpoint until a
+ * table earns its complexity. Completed tasks recede rather than disappear, so
+ * "done" still reads as a small win instead of just vanishing.
+ */
+
+.task-list__offline {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.task-list__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.task-list__item--done {
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+.task-list__title {
+  flex: 1;
+  color: var(--text);
+}
+
+.task-list__item--done .task-list__title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.task-list__due {
+  font-size: 14px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

@@ -54,7 +54,7 @@ export async function resetDatabase() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
-        'DELETE FROM recovery_codes; DELETE FROM sync_state;',
+        'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks;',
     );
   });
 }
@@ -64,7 +64,7 @@ declare global {
   interface Window {
     __starship: {
       mutate: (input: {
-        table: 'sync_state';
+        table: 'sync_state' | 'tasks';
         rowId?: string;
         op: 'upsert' | 'delete';
         payload?: Record<string, unknown>;

@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import '../ui/tokens.css';
 @import '../ui/shell.css';
+@import '../features/tasks/task-list.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist
    and nobody has to reach for a raw colour to get their work done. */
