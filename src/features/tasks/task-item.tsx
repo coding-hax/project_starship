@@ -33,6 +33,9 @@ export function TaskItem({ task, onToggle }: TaskItemProps) {
 
   function handlePointerDown(event: ReactPointerEvent<HTMLLIElement>) {
     if (event.button !== 0) return;
+    // The checkbox is its own control — capturing the pointer here would steal the
+    // click the browser is about to synthesize for it.
+    if ((event.target as HTMLElement).closest('input')) return;
     setStartX(event.clientX);
     setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);

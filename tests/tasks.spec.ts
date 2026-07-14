@@ -366,5 +366,7 @@ test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation',
 
   const item = taskItems(page).filter({ hasText: 'Ruhig bitte' });
   const transitionDuration = await item.evaluate((el) => getComputedStyle(el).transitionDuration);
-  expect(transitionDuration).toBe('0.01ms');
+  // Chromium serializes very small numbers in exponential notation (e.g. "1e-05s"),
+  // so compare the parsed value rather than the exact string.
+  expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
