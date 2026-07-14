@@ -95,3 +95,5 @@ export const recoveryCodes = pgTable('recovery_codes', {
 
 export type Credential = typeof credentials.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+
+// Beweis-PR: berührt einen geschützten Pfad. Wird nach der Prüfung zurückgenommen.
