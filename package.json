@@ -19,6 +19,8 @@
     "db:down": "docker compose down"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
     "drizzle-orm": "^0.45.2",
     "next": "16.2.10",
     "pg": "^8.22.0",
