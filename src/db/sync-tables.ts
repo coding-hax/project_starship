@@ -1,5 +1,5 @@
 import type { SyncTable } from '@/local/types';
-import { syncState } from './schema';
+import { syncState, tasks } from './schema';
 
 /**
  * The only tables the sync engine may touch, and the only fields a client may write.
@@ -16,6 +16,11 @@ export const SYNC_REGISTRY = {
     table: syncState,
     writable: ['key', 'value'],
     required: ['key', 'value'],
+  },
+  tasks: {
+    table: tasks,
+    writable: ['title', 'notes', 'dueAt', 'priority', 'completedAt', 'recurrenceRule'],
+    required: ['title'],
   },
 } as const satisfies Record<
   SyncTable,

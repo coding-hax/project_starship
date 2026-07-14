@@ -3,8 +3,8 @@
  * Shared by both sides so the shapes cannot drift apart.
  */
 
-/** Tables the sync engine is allowed to touch. M0 ships no feature tables yet. */
-export const SYNC_TABLES = ['sync_state'] as const;
+/** Tables the sync engine is allowed to touch. */
+export const SYNC_TABLES = ['sync_state', 'tasks'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export function isSyncTable(value: unknown): value is SyncTable {
