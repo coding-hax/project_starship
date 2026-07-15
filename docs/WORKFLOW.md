@@ -83,7 +83,8 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 
 | Titel | Bedeutung | Musst du etwas tun? |
 |---|---|---|
-| 🟢 `Runner · läuft · zuletzt #42` | arbeitet | nein |
+| 🟠 `Runner · arbeitet an #42 (seit 18:49)` | Lauf läuft gerade, vor dem `claude`-Aufruf gesetzt | nein |
+| 🟢 `Runner · läuft · zuletzt #42` | Lauf ist zurück, nichts offen | nein |
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
 | 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
 | 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
