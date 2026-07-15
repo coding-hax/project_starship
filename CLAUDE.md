@@ -36,6 +36,10 @@ Vor jeder Arbeit lesen:
 - Branch: `feat/<issue-nr>-<slug>`, `fix/<issue-nr>-<slug>`, `chore/…`
 - Commits: Conventional Commits (`feat(tasks): add swipe to complete`)
 - PR-Titel enthält `Closes #<issue-nr>`.
+- Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
+  Sync) werden **vor** `ready` von Opus im Chat geplant (Label `needs-plan`, siehe
+  `docs/WORKFLOW.md`). Der Runner baut niemals ohne Plan; Opus bleibt im Runner tabu,
+  einfache/mechanische Tickets dürfen `needs-plan` überspringen.
 
 ## Befehle
 

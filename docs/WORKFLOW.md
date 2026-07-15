@@ -8,6 +8,7 @@ kein zweites System, kein Kontextbruch.
 
 ```
 Issue (mit Akzeptanzkriterien)
+   └─► [nur bei Komplexität] needs-plan → Opus plant im Chat → ready
    └─► Branch feat/<nr>-<slug>
          └─► Implementierung + Playwright-Tests
                └─► PR (Closes #<nr>)
@@ -18,6 +19,22 @@ Issue (mit Akzeptanzkriterien)
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
+**Planungsschritt vor `ready`:** Komplexe Tickets (mehrdeutig, architektonisch,
+mehrere Dateien, geschützte Pfade, Migrationen, Krypto, Sync) bekommen zuerst das
+Label `needs-plan`. Opus plant sie **im Chat** — nie im Runner, siehe
+`docs/TOKEN-BUDGET.md` — bis Schrittfolge, Testplan, Risiko/Rückweg und
+Wiederaufnahmepunkte konkret genug sind, dass Sonnet/Haiku keine
+Architektur-Entscheidungen mehr treffen müssen. Erst danach: `needs-plan` runter,
+`ready` rauf.
+
+Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
+`needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
+Tokens kosten, ohne die Ausführung konkreter zu machen.
+
+**Kein Code-Änderungsbedarf am Runner:** Er nimmt ohnehin nur Tickets mit `ready`.
+Ein Ticket mit `needs-plan` und ohne `ready` liegt automatisch still, auch ohne
+eigene Guard-Logik im Runner-Skript.
+
 ## Labels — sie steuern den Runner
 
 Der Runner (`scripts/claude-runner.sh`) liest ausschließlich Labels. Sie sind die
@@ -25,6 +42,7 @@ Zustandsmaschine des ganzen Setups:
 
 | Label            | Bedeutung                                                      | Wer setzt es |
 | ---------------- | -------------------------------------------------------------- | ------------ |
+| `needs-plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-input`    | **Claude hat eine Frage gestellt und wartet auf dich.**        | Claude       |
@@ -34,7 +52,8 @@ Zustandsmaschine des ganzen Setups:
 
 Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
-auch wenn zwanzig Tickets im Backlog liegen.
+auch wenn zwanzig Tickets im Backlog liegen. Ein `needs-plan`-Ticket trägt per
+Definition kein `ready`, solange der Plan fehlt — es bleibt also automatisch liegen.
 
 **Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt dich)
 → du antwortest als Kommentar → du entfernst `needs-input` → beim nächsten Lauf
@@ -108,6 +127,11 @@ Ein Issue darf erst nach `Ready`, wenn es enthält:
 - **Akzeptanzkriterien** im Given/When/Then-Format
 - **Nicht-Ziele** (was in diesem Ticket ausdrücklich nicht passiert)
 - **Betroffener Milestone**
+
+Ein Ticket mit dem Label `needs-plan` ist per Definition **nicht** ready — ihm fehlt
+der Plan aus dem vorherigen Abschnitt (Schrittfolge, Testplan, Risiko/Rückweg,
+Wiederaufnahmepunkte). Erst wenn Opus diesen Plan im Chat ergänzt hat und
+`needs-plan` gegen `ready` tauscht, darf der Runner es nehmen.
 
 ### Issue-Template
 
