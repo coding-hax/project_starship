@@ -71,6 +71,9 @@ declare global {
       }) => Promise<string>;
       sync: () => Promise<void>;
       size: () => Promise<number>;
+      pending: () => Promise<
+        Array<{ table: string; rowId: string; op: string; payload: Record<string, unknown> }>
+      >;
     };
   }
 }
