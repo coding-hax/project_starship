@@ -1,9 +1,11 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Toast } from '@/ui/toast';
+import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
+import { useDeleteTask } from './use-delete-task';
 import { useTasks } from './use-tasks';
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
@@ -32,7 +34,21 @@ function useOnline(): boolean {
 export function TaskList() {
   const tasks = useTasks();
   const online = useOnline();
-  const { toggleComplete, undo, handleUndo, dismissUndo } = useCompleteTask();
+  const {
+    toggleComplete,
+    undo: completeUndo,
+    handleUndo: handleCompleteUndo,
+    dismissUndo: dismissCompleteUndo,
+  } = useCompleteTask();
+  const {
+    deleteTask,
+    undo: deleteUndo,
+    handleUndo: handleDeleteUndo,
+    dismissUndo: dismissDeleteUndo,
+  } = useDeleteTask();
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  const editingTask = tasks?.find((task) => task.id === editingTaskId) ?? null;
 
   return (
     <>
@@ -49,18 +65,37 @@ export function TaskList() {
       ) : (
         <ul className="task-list" aria-label="Aufgaben">
           {tasks.map((task) => (
-            <TaskItem key={task.id} task={task} onToggle={() => toggleComplete(task)} />
+            <TaskItem
+              key={task.id}
+              task={task}
+              onToggle={() => toggleComplete(task)}
+              onEdit={() => setEditingTaskId(task.id)}
+              onDelete={() => deleteTask(task)}
+            />
           ))}
         </ul>
       )}
 
-      {undo && (
+      <TaskEditor task={editingTask} onClose={() => setEditingTaskId(null)} />
+
+      {/* Only one undo action is ever in flight — completing and deleting are
+          separate gestures a user cannot trigger in the same instant. */}
+      {deleteUndo ? (
         <Toast
-          message={`„${undo.title}" erledigt`}
+          message={`„${deleteUndo.title}" gelöscht`}
           actionLabel="Rückgängig"
-          onAction={handleUndo}
-          onDismiss={dismissUndo}
+          onAction={handleDeleteUndo}
+          onDismiss={dismissDeleteUndo}
         />
+      ) : (
+        completeUndo && (
+          <Toast
+            message={`„${completeUndo.title}" erledigt`}
+            actionLabel="Rückgängig"
+            onAction={handleCompleteUndo}
+            onDismiss={dismissCompleteUndo}
+          />
+        )
       )}
     </>
   );
