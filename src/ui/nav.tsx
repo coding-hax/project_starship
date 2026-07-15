@@ -18,6 +18,7 @@ const TABS = [
 
 export function Nav() {
   const pathname = usePathname();
+  const settingsActive = pathname === '/einstellungen' || pathname.startsWith('/einstellungen/');
 
   return (
     <nav aria-label="Hauptnavigation" className="nav">
@@ -41,6 +42,18 @@ export function Nav() {
           );
         })}
       </ul>
+      {/* Not a fifth tab (DESIGN_SYSTEM.md keeps the bottom nav at four) — the entry
+          point into Einstellungen lives in the header area instead. */}
+      <Link
+        href="/einstellungen"
+        aria-label="Einstellungen"
+        aria-current={settingsActive ? 'page' : undefined}
+        className="nav__settings"
+      >
+        <span aria-hidden="true" className="nav__icon">
+          ⚙
+        </span>
+      </Link>
     </nav>
   );
 }
