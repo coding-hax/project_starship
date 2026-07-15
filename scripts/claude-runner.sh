@@ -136,6 +136,26 @@ status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
 _Stand: $(ts)_" >/dev/null 2>&1
 }
 
+# Traegt den skriptseitig bekannten Endgrund (Limit/Notbremse) in den
+# BESTEHENDEN Fortschrittskommentar nach -- der Agent kennt beim Abbruch
+# selbst nur "gate-rot"/"frage-offen" (siehe Prompt), nicht Limit/Timeout, denn
+# der Prozess ist in dem Moment schon tot. Kein neuer Kommentar, keine Flut:
+# nur anhaengen und per --edit-last zurueckschreiben. Gibt es (noch) keinen
+# Fortschrittskommentar (Lauf brach ganz frueh ab), passiert nichts -- der
+# Status-Issue-Text reicht dann aus.
+append_end_reason() {   # $1 = Issue-Nr, $2 = Endgrund-Text
+  local issue="$1" reason="$2" last
+  last=$(gh issue view "$issue" --json comments -q '.comments[-1].body // empty' 2>/dev/null)
+  case "$last" in
+    *"Fortschritt (automatisch aktualisiert)"*)
+      gh issue comment "$issue" --edit-last --body "$last
+
+_Lauf-Ende $(ts): ${reason}, unfertig — nächster Lauf macht weiter._" >/dev/null 2>&1
+      ;;
+    *) ;;
+  esac
+}
+
 # Wartet irgendein Ticket auf den Menschen? Dann ist Gelb die Wahrheit,
 # auch wenn der Runner selbst gerade nichts zu tun hat.
 waiting_issues() {
@@ -285,7 +305,14 @@ Ablauf:
    und mach beim nächsten offenen Punkt weiter. Fang NICHT von vorne an.
 4. Arbeite die Akzeptanzkriterien ab. Committe nach jedem abgeschlossenen
    Schritt und pushe den Branch.
-5. Halte den Fortschrittskommentar am Issue nach JEDEM Schritt aktuell.
+5. Halte den Fortschrittskommentar am Issue nach JEDEM Schritt aktuell. Bevor du
+   feststeckst oder der Lauf endet, ohne dass das Ticket fertig ist: ergaenze im
+   Fortschrittskommentar einen Blocker-Abschnitt (nicht nur "← HIER WEITER"):
+   - aktuelle Wiederaufnahmestelle (wie bisher),
+   - bei rotem Gate: der konkrete Testname + Kernursache, ein bis zwei Zeilen,
+     KEIN Log-Dump,
+   - Endgrund: 'gate-rot' oder 'frage-offen' (Limit/Timeout traegt das Runner-
+     Skript selbst nach, das musst du nicht tun).
 6. Wenn du eine Entscheidung brauchst: Kommentar am Issue mit konkreten
    Optionen und deiner Empfehlung, Label 'needs-input' setzen, beenden.
    Rate niemals. Schreib die Frage NICHT nach stdout.
@@ -374,6 +401,7 @@ if [ "$API_STATUS" = "429" ] \
   fi
 
   gh issue edit "$ISSUE" --add-label blocked-limit >/dev/null
+  append_end_reason "$ISSUE" "Session-Limit"
   status "Limit erreicht · #$ISSUE pausiert" "🔵" \
     "🔵 **Limit erreicht.** Ticket #$ISSUE ist angehalten und wird automatisch
 fortgesetzt, sobald wieder Kontingent da ist.${WHEN}
@@ -385,6 +413,7 @@ fi
 
 if [ -f "$TIMED_OUT" ]; then
   rm -f "$TIMED_OUT"
+  append_end_reason "$ISSUE" "Notbremse ${MAX_RUNTIME}s"
   status "Notbremse bei #$ISSUE" "🔵" \
     "🔵 Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse gegen hängende Läufe).
 Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**"
