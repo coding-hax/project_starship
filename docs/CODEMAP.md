@@ -43,10 +43,13 @@ src/
   features/
     tasks/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
-      task-item.tsx           eine Zeile: Checkbox + Swipe-nach-rechts zum Erledigen
+      task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen)
       use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung
       use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
-      task-list.css           Karten-, Checkbox- und Swipe-Styles, in globals.css importiert
+      use-delete-task.ts      Tombstone per Swipe, Undo via outbox-Op `restore`
+      task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder
+      task-editor.css         Styles fürs Editor-Sheet
+      task-list.css           Karten-, Checkbox-, Swipe- und Lösch-Bestätigungs-Styles
       quick-add.tsx           FAB + Sheet + Titelfeld, speichert via outbox.mutate()
       quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
     events/ journal/ habits/  (leer, ab M2/M3/M4)

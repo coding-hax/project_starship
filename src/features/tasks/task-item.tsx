@@ -5,29 +5,41 @@ import type { TaskView } from './use-tasks';
 
 /** Below this, releasing is a cancelled swipe — the row just springs back. */
 const SWIPE_THRESHOLD_PX = 80;
+/** Movement at or below this counts as a tap rather than a drag. */
+const TAP_TOLERANCE_PX = 8;
 
 export interface TaskItemProps {
   task: TaskView;
   onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
 function formatDueAt(dueAt: string): string {
-  return new Date(dueAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  const date = new Date(dueAt);
+  const day = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  const time = date.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${day} ${time}`;
 }
 
 /**
- * Swipe right to toggle done (docs/DESIGN_SYSTEM.md: "Swipe-Gesten"), always via
+ * Swipe right to toggle done, swipe left to reveal a delete confirmation (both via
  * Pointer Events rather than Touch Events — that also makes the gesture driveable
  * with a mouse and with Playwright's synthetic pointer events, with no branching
- * for input type.
+ * for input type). Tapping the row without a meaningful drag opens the editor.
  *
- * Left swipe (move/delete) is a separate, later ticket — this component only ever
- * reads a positive delta.
+ * Moving (docs/DESIGN_SYSTEM.md: "verschieben/löschen") is a separate, later ticket —
+ * a left swipe here only ever leads to delete.
  */
-export function TaskItem({ task, onToggle }: TaskItemProps) {
+export function TaskItem({ task, onToggle, onEdit, onDelete }: TaskItemProps) {
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [startX, setStartX] = useState<number | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isDone = task.completedAt !== null;
 
@@ -43,7 +55,7 @@ export function TaskItem({ task, onToggle }: TaskItemProps) {
 
   function handlePointerMove(event: ReactPointerEvent<HTMLLIElement>) {
     if (!dragging || startX === null) return;
-    setDragX(Math.max(0, event.clientX - startX));
+    setDragX(event.clientX - startX);
   }
 
   function endDrag(event: ReactPointerEvent<HTMLLIElement>) {
@@ -53,8 +65,37 @@ export function TaskItem({ task, onToggle }: TaskItemProps) {
     }
     setDragging(false);
     setStartX(null);
-    if (dragX > SWIPE_THRESHOLD_PX) onToggle();
+    const delta = dragX;
     setDragX(0);
+
+    if (delta > SWIPE_THRESHOLD_PX) {
+      onToggle();
+    } else if (delta < -SWIPE_THRESHOLD_PX) {
+      setConfirmingDelete(true);
+    } else if (Math.abs(delta) <= TAP_TOLERANCE_PX) {
+      onEdit();
+    }
+  }
+
+  if (confirmingDelete) {
+    return (
+      <li
+        className="task-list__item task-list__item--confirm-delete"
+        onClick={() => setConfirmingDelete(false)}
+      >
+        <span className="task-list__confirm-text">{`„${task.title}" löschen?`}</span>
+        <button
+          type="button"
+          className="task-list__confirm-delete"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+        >
+          Löschen
+        </button>
+      </li>
+    );
   }
 
   return (

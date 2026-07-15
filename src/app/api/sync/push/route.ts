@@ -78,7 +78,11 @@ export async function POST(request: Request) {
 
       const fields = writableFields(mutation.table, mutation.payload ?? {});
       const deletedAt =
-        mutation.op === 'delete' ? incomingUpdatedAt : (existing?.deletedAt ?? null);
+        mutation.op === 'delete'
+          ? incomingUpdatedAt
+          : mutation.op === 'restore'
+            ? null
+            : (existing?.deletedAt ?? null);
 
       if (existing) {
         await tx

@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetDatabase, withDb } from './helpers';
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
+const EDITOR_LABEL = 'Aufgabe bearbeiten';
 
 async function openQuickAdd(page: Page) {
   await page.getByRole('button', { name: QUICK_ADD_LABEL }).click();
@@ -9,6 +10,22 @@ async function openQuickAdd(page: Page) {
 
 function quickAddTitleField(page: Page) {
   return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
+}
+
+function editorDialog(page: Page) {
+  return page.getByRole('dialog', { name: EDITOR_LABEL });
+}
+
+async function tapTask(page: Page, title: string) {
+  await taskItems(page).filter({ hasText: title }).click();
+}
+
+/** Mirrors task-editor.tsx's own conversion, so the assertion does not depend on
+ * which timezone happens to run the test. */
+function isoToLocalInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -54,6 +71,34 @@ async function swipeRight(locator: Locator, distancePx: number) {
   await locator.dispatchEvent('pointerup', {
     pointerId: 1,
     clientX: startX + distancePx,
+    clientY,
+    bubbles: true,
+  });
+}
+
+/** Same as `swipeRight`, other direction — starts near the right edge, drags left. */
+async function swipeLeft(locator: Locator, distancePx: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('swipeLeft: target has no bounding box');
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + box.width - 20;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX - distancePx,
+    clientY,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX - distancePx,
     clientY,
     bubbles: true,
   });
@@ -151,9 +196,7 @@ test('n öffnet auf Desktop dasselbe Sheet wie der FAB', async ({ page }) => {
   await expect(quickAddTitleField(page)).toBeFocused();
 });
 
-test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', async ({
-  page,
-}) => {
+test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', async ({ page }) => {
   await page.goto('/aufgaben');
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Wäsche aufhängen');
@@ -190,10 +233,7 @@ test('offline gespeichert: sofort sichtbar, genau ein Eintrag in der Outbox', as
   await context.setOffline(false);
 });
 
-test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({
-  page,
-  context,
-}) => {
+test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({ page, context }) => {
   await page.goto('/aufgaben');
   await context.setOffline(true);
 
@@ -312,9 +352,7 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
   expect(row.rows[0].completed_at).not.toBeNull();
 });
 
-test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({
-  page,
-}) => {
+test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({ page }) => {
   await page.goto('/aufgaben');
   const title = 'Toggle-Testfall';
   await seedTask(page, { title, completedAt: new Date().toISOString() });
@@ -328,9 +366,7 @@ test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', a
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 });
 
-test('ein Klick auf die Checkbox erledigt die Aufgabe genauso wie der Swipe', async ({
-  page,
-}) => {
+test('ein Klick auf die Checkbox erledigt die Aufgabe genauso wie der Swipe', async ({ page }) => {
   await page.goto('/aufgaben');
   const title = 'Checkbox-Testfall';
   await seedTask(page, { title });
@@ -365,9 +401,7 @@ test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }
   expect(box?.height).toBeGreaterThanOrEqual(44);
 });
 
-test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation', async ({
-  page,
-}) => {
+test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'Ruhig bitte' });
@@ -377,4 +411,161 @@ test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation',
   // Chromium serializes very small numbers in exponential notation (e.g. "1e-05s"),
   // so compare the parsed value rather than the exact string.
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
+});
+
+test('Tippen auf eine Aufgabe öffnet den Editor mit Titel, Notiz, Fälligkeit und Priorität', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const dueAt = '2026-07-20T09:00:00.000Z';
+  await seedTask(page, { title: 'Bearbeiten', notes: 'Eine Notiz', dueAt, priority: 1 });
+
+  await tapTask(page, 'Bearbeiten');
+
+  const dialog = editorDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'Titel' })).toHaveValue('Bearbeiten');
+  await expect(dialog.getByRole('textbox', { name: 'Notiz' })).toHaveValue('Eine Notiz');
+  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(dueAt));
+  await expect(dialog.getByRole('radio', { name: 'Hoch' })).toBeChecked();
+});
+
+test('nur die geänderte Priorität landet in der Mutation, nicht der ganze Datensatz', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Nur Priorität ändern', priority: 0 });
+
+  await tapTask(page, 'Nur Priorität ändern');
+  const dialog = editorDialog(page);
+  await dialog.getByRole('radio', { name: 'Dringend' }).check();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.op).toBe('upsert');
+  expect(last.payload).toEqual({ priority: 2 });
+});
+
+test('eine gesetzte Fälligkeit sortiert die Liste korrekt und zeigt die Uhrzeit im 24h-Format', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Ohne Termin' });
+  await seedTask(page, { title: 'Früh dran' });
+
+  await tapTask(page, 'Früh dran');
+  const dialog = editorDialog(page);
+  await dialog.getByLabel('Fälligkeit').fill('2026-07-16T14:30');
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('Früh dran');
+  // A 12-hour clock would read "02:30 PM" — this proves it is not that.
+  await expect(items.nth(0)).toContainText('14:30');
+  await expect(items.nth(1)).toContainText('Ohne Termin');
+});
+
+test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet er den Editor', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Nur angetippt links';
+  await seedTask(page, { title });
+  const item = taskItems(page).filter({ hasText: title });
+
+  await swipeLeft(item, 20); // below the 80px threshold
+
+  await expect(page.getByRole('button', { name: 'Löschen' })).toHaveCount(0);
+  await expect(editorDialog(page)).toBeHidden();
+});
+
+test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen Undo-Toast', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Wird gelöscht';
+  const id = await seedTask(page, { title });
+  const item = taskItems(page).filter({ hasText: title });
+
+  await swipeLeft(item, 120);
+  const confirmButton = page.getByRole('button', { name: 'Löschen' });
+  await expect(confirmButton).toBeVisible();
+  await confirmButton.click();
+
+  // Scoped to the list, not `page.getByText` — the undo toast's own message
+  // ("„<title>" gelöscht") embeds the title too, so a page-wide text query would
+  // still match after the row is gone.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+
+  // A tombstone, never a hard DELETE (CLAUDE.md rule 8 / ADR-0001 §3) — proven by
+  // the op the outbox actually queued for this row.
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.op).toBe('delete');
+  expect(last.rowId).toBe(id);
+});
+
+test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server landet ohne Tombstone', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Löschen rückgängig';
+  await seedTask(page, { title });
+  const item = taskItems(page).filter({ hasText: title });
+
+  await swipeLeft(item, 120);
+  await page.getByRole('button', { name: 'Löschen' }).click();
+  // Scoped to the list — the undo toast's own message embeds the title too.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Rückgängig' }).click();
+
+  await expect(taskItems(page).filter({ hasText: title })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
+
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT deleted_at FROM tasks WHERE title = $1', [title]),
+  );
+  expect(row.rows[0].deleted_at).toBeNull();
+});
+
+test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, die Zeile bleibt bestehen', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Offline löschen';
+  await seedTask(page, { title });
+  await context.setOffline(true);
+
+  const item = taskItems(page).filter({ hasText: title });
+  await swipeLeft(item, 120);
+  await page.getByRole('button', { name: 'Löschen' }).click();
+
+  // Scoped to the list — the undo toast's own message embeds the title too.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  // One entry for the seed, one for the delete — both still queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+  await context.setOffline(false);
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT deleted_at FROM tasks WHERE title = $1', [title]),
+  );
+  expect(row.rowCount).toBe(1); // tombstoned, not hard-deleted — the row still exists
+  expect(row.rows[0].deleted_at).not.toBeNull();
 });
