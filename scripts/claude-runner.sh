@@ -121,6 +121,7 @@ reset_epoch() {
 # Issue-Liste sonst nur die statische Ampel und muss reinklicken, um den Zustand
 # zu erfahren. Genau das soll man sich sparen.
 #
+#   🟠 arbeitet an #N   – Lauf ist unterwegs, vor dem `claude`-Aufruf gesetzt
 #   🟢 läuft            – nichts zu tun
 #   🟡 wartet auf dich  – EINGREIFEN (Frage offen oder Freigabe nötig)
 #   🔴 Fehler           – EINGREIFEN
@@ -245,6 +246,22 @@ fi
 
 SID_FILE="$STATE_DIR/session-$ISSUE"
 LOG="$STATE_DIR/last-run.log"
+
+# Ab hier ist $ISSUE fest und der claude-Aufruf steht kurz bevor. Genau das war
+# die Luecke aus #19: zwischen Ticketwahl und Rueckkehr des Laufs (bis zu
+# MAX_RUNTIME = 45 Minuten) stand im Status-Ticket noch der Stand des LETZTEN
+# Laufs. Deshalb hier -- VOR dem claude-Aufruf -- schon "arbeitet an" setzen.
+#
+# Bricht dieser Lauf hart ab (Absturz, Stromausfall), bleibt zwar "arbeitet an"
+# stehen -- aber der naechste Lauf ueberschreibt es sofort wieder an genau
+# dieser Stelle (Start oder Resume), bevor er selbst zu arbeiten beginnt. Ein
+# irrefuehrender Zustand ueberlebt also nie mehr als bis zum naechsten Takt.
+START_HM=$(date "+%H:%M")
+status "arbeitet an #$ISSUE (seit $START_HM)" "🟠" \
+  "🟠 **Arbeitet gerade an #$ISSUE**, seit $START_HM.
+
+Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
+hier keine anderen Status (🟡/🔴) folgen."
 
 # --- Modell nach Label ------------------------------------------------------
 # Mechanische Tickets (Umbenennen, Doku, Boilerplate) brauchen kein Sonnet.
