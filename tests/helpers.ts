@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
 import { Client } from 'pg';
 
 /**
@@ -38,6 +38,20 @@ export async function registerPasskey(page: Page) {
   await page.waitForURL('**/heute');
 }
 
+/**
+ * A second, independent "device": its own IndexedDB (a fresh browser context),
+ * but the same authenticated session as `page` — reusing the passkey ceremony
+ * would need a recovery code and a second virtual authenticator for no benefit,
+ * since what #29 exercises is the sync pull path, not credential handling.
+ */
+export async function openSecondDevice(browser: Browser, page: Page) {
+  const storageState = await page.context().storageState();
+  const context = await browser.newContext({ storageState });
+  const devicePage = await context.newPage();
+  await devicePage.goto('/heute');
+  return devicePage;
+}
+
 /** The tests assert against the real database, not against what the UI claims. */
 export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -74,6 +88,7 @@ declare global {
       pending: () => Promise<
         Array<{ table: string; rowId: string; op: string; payload: Record<string, unknown> }>
       >;
+      startSync: () => () => void;
     };
   }
 }

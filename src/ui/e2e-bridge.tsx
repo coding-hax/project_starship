@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { mutate, pending, size } from '@/local/outbox';
-import { sync } from '@/local/sync';
+import { startSync, sync } from '@/local/sync';
 
 /**
  * A handle on the real outbox for the E2E suite.
@@ -18,7 +18,7 @@ import { sync } from '@/local/sync';
 export function E2EBridge() {
   useEffect(() => {
     Object.assign(window, {
-      __starship: { mutate, sync, pending, size },
+      __starship: { mutate, sync, pending, size, startSync },
     });
   }, []);
 
