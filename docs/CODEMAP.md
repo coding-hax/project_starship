@@ -83,6 +83,7 @@ scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
+  vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
   launchd-setup.md          Runner als Dienst auf macOS
   systemd-setup.md          Runner als Dienst auf Linux
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
