@@ -46,3 +46,29 @@ test('the navigation marks the current tab', async ({ page }) => {
     'page',
   );
 });
+
+test('the navigation sits where its layout puts it: bottom bar on mobile, left sidebar on desktop', async ({
+  page,
+}, testInfo) => {
+  await registerPasskey(page);
+
+  const viewport = page.viewportSize();
+  const navBox = await page.getByRole('navigation', { name: 'Hauptnavigation' }).boundingBox();
+  const mainBox = await page.locator('main.shell__main').boundingBox();
+  expect(viewport).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+
+  if (testInfo.project.name === 'mobile') {
+    // Bottom bar: its bottom edge reaches the viewport bottom, not sitting under the status bar,
+    // with the content above it and no dead space at the top.
+    expect(navBox!.y + navBox!.height).toBeGreaterThan(viewport!.height - 2);
+    expect(mainBox!.y).toBeLessThan(navBox!.y);
+    expect(mainBox!.y).toBeLessThan(viewport!.height / 2);
+  } else {
+    // Sidebar: full-height, hugging the left edge, with the content to its right.
+    expect(navBox!.x).toBeLessThan(2);
+    expect(navBox!.height).toBeGreaterThan(viewport!.height - 2);
+    expect(mainBox!.x).toBeGreaterThan(navBox!.x + navBox!.width - 2);
+  }
+});

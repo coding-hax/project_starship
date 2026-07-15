@@ -29,6 +29,9 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   // A stray lockfile further up the tree makes Next guess the wrong workspace root.
   outputFileTracingRoot: import.meta.dirname,
+  // Default bottom-left badge sits on top of the mobile bottom nav (#26) — dev-only,
+  // but it broke real clicks on the nav links while running against `pnpm dev`.
+  devIndicators: { position: 'top-right' },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
