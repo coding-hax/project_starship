@@ -98,7 +98,7 @@ gh api -X PUT "repos/$SLUG/branches/main/protection" \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["quality", "e2e", "test-integrity", "protected-paths"]
+    "contexts": ["quality", "e2e", "test-integrity", "protected-paths", "schema-drift"]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,
@@ -107,7 +107,7 @@ gh api -X PUT "repos/$SLUG/branches/main/protection" \
   "allow_deletions": false
 }
 JSON
-echo "    Required Checks: quality, e2e, test-integrity, protected-paths"
+echo "    Required Checks: quality, e2e, test-integrity, protected-paths, schema-drift"
 
 echo ""
 echo "Fertig. Prüfen:"
