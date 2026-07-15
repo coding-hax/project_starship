@@ -17,7 +17,8 @@ export interface Mutation {
   table: SyncTable;
   /** UUIDv7 of the affected row, generated on the client. */
   rowId: string;
-  op: 'upsert' | 'delete';
+  /** `restore` clears `deleted_at` — the only way to undo a swipe-to-delete. */
+  op: 'upsert' | 'delete' | 'restore';
   /**
    * Only the fields this mutation actually changed. A partial payload is what lets
    * two devices edit different fields of the same row without clobbering each other.

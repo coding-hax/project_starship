@@ -15,7 +15,7 @@ export interface MutateInput {
   table: SyncTable;
   /** Omit to create a new row — a UUIDv7 is generated locally, no server roundtrip. */
   rowId?: string;
-  op: 'upsert' | 'delete';
+  op: 'upsert' | 'delete' | 'restore';
   /** Only the changed fields. */
   payload?: Record<string, unknown>;
 }
@@ -43,7 +43,8 @@ export async function mutate(input: MutateInput): Promise<string> {
       id: rowId,
       updatedAt: now,
       // Soft delete only. A hard delete would resurrect the row on the next pull.
-      deletedAt: input.op === 'delete' ? now : (existing?.deletedAt ?? null),
+      deletedAt:
+        input.op === 'delete' ? now : input.op === 'restore' ? null : (existing?.deletedAt ?? null),
       syncedAt: null,
       data: { ...(existing?.data ?? {}), ...(input.payload ?? {}) },
     };
