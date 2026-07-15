@@ -1,0 +1,63 @@
+/**
+ * Undo toast: sits above the bottom nav on mobile the same way the FAB does, so it
+ * never gets clipped by the safe area. It temporarily covers the FAB — acceptable,
+ * because it is gone again in a few seconds.
+ */
+
+.toast {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-raised);
+}
+
+.toast__message {
+  flex: 1;
+  font-size: 14px;
+}
+
+.toast__action {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.toast__action:active {
+  opacity: 0.85;
+}
+
+.toast__dismiss {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .toast {
+    left: auto;
+    right: var(--space-6);
+    bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+    max-width: 360px;
+  }
+}

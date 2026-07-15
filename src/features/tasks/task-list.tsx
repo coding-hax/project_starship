@@ -1,6 +1,9 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
+import { Toast } from '@/ui/toast';
+import { TaskItem } from './task-item';
+import { useCompleteTask } from './use-complete-task';
 import { useTasks } from './use-tasks';
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
@@ -26,13 +29,10 @@ function useOnline(): boolean {
   );
 }
 
-function formatDueAt(dueAt: string): string {
-  return new Date(dueAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-}
-
 export function TaskList() {
   const tasks = useTasks();
   const online = useOnline();
+  const { toggleComplete, undo, handleUndo, dismissUndo } = useCompleteTask();
 
   return (
     <>
@@ -49,17 +49,18 @@ export function TaskList() {
       ) : (
         <ul className="task-list" aria-label="Aufgaben">
           {tasks.map((task) => (
-            <li
-              key={task.id}
-              className={
-                task.completedAt ? 'task-list__item task-list__item--done' : 'task-list__item'
-              }
-            >
-              <span className="task-list__title">{task.title}</span>
-              {task.dueAt && <span className="task-list__due">{formatDueAt(task.dueAt)}</span>}
-            </li>
+            <TaskItem key={task.id} task={task} onToggle={() => toggleComplete(task)} />
           ))}
         </ul>
+      )}
+
+      {undo && (
+        <Toast
+          message={`„${undo.title}" erledigt`}
+          actionLabel="Rückgängig"
+          onAction={handleUndo}
+          onDismiss={dismissUndo}
+        />
       )}
     </>
   );
