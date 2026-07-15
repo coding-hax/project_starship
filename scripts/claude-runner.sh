@@ -217,6 +217,7 @@ ISSUE=$(echo "$WIP" | jq -r '[.[] | select((.labels | map(.name)
              | index("needs-input")) | not)]
            | sort_by(.number) | .[0].number // empty')
 MODE=resume
+RUN_ROLE=build
 
 if [ -z "$ISSUE" ]; then
   # Steht ein Ticket in Arbeit, das auf DICH wartet? Dann ist hier Schluss.
@@ -234,34 +235,71 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     exit 0
   fi
 
-  # 2) Sonst: ältestes Ticket mit Label "ready", das nicht auf mich wartet
-  ISSUE=$(gh issue list --label ready --state open --limit 30 \
+  # 2) Sonst: ältestes Ticket mit Label "needs-plan" -> Planer-Lauf (Opus, nur
+  #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
+  #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
+  #    komplett übersprungen, weder geplant noch gebaut.
+  ISSUE=$(gh issue list --label needs-plan --state open --limit 30 \
             --json number,labels \
-            -q '[.[] | select((.labels | map(.name)
-                   | index("needs-input")) | not)]
+            -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
+                     | select((.labels | map(.name) | index("no-opus")) | not)]
                 | sort_by(.number) | .[0].number // empty')
-  if [ -z "$ISSUE" ]; then
-    # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
-    # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-    WAITING=$(waiting_issues)
-    if [ -n "$WAITING" ]; then
-      status "wartet auf dich ($WAITING)" "🟡" \
-        "🟡 **Ich warte auf eine Antwort von dir.**
+  if [ -n "$ISSUE" ]; then
+    RUN_ROLE=plan
+    MODE=start
+    [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
+  else
+    # 3) Sonst: ältestes Ticket mit Label "ready", das nicht auf mich wartet.
+    #    Both-Label-Wächter: ein Ticket mit "needs-plan" UND "ready" gleichzeitig
+    #    gilt als inkonsistent und wurde oben bereits als needs-plan gefangen —
+    #    hier zusätzlich explizit ausgeschlossen, falls die Planer-Abfrage leer
+    #    blieb (z. B. wegen needs-input/no-opus) aber "ready" trotzdem noch dran hängt.
+    ISSUE=$(gh issue list --label ready --state open --limit 30 \
+              --json number,labels \
+              -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
+                       | select((.labels | map(.name) | index("needs-plan")) | not)]
+                  | sort_by(.number) | .[0].number // empty')
+    if [ -z "$ISSUE" ]; then
+      # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
+      # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
+      WAITING=$(waiting_issues)
+      if [ -n "$WAITING" ]; then
+        status "wartet auf dich ($WAITING)" "🟡" \
+          "🟡 **Ich warte auf eine Antwort von dir.**
 
 Offene Fragen an: $WAITING
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
-    else
-      status "nichts zu tun" "⚪️" \
-        "⚪️ Kein Ticket mit Label \`ready\`. Ich habe nichts zu arbeiten.
+      else
+        status "nichts zu tun" "⚪️" \
+          "⚪️ Kein Ticket mit Label \`ready\` oder \`needs-plan\`. Ich habe nichts zu arbeiten.
 
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
+      fi
+      exit 0
     fi
+    gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
+    MODE=start
+  fi
+fi
+
+# --- Budget-Deckel für den Planer (ADR-0005) --------------------------------
+# Nur für RUN_ROLE=plan relevant. Zähler pro Ticket+Tag, hochgezählt VOR dem
+# Lauf, damit ein abstürzender Lauf das Budget nicht umgeht.
+if [ "$RUN_ROLE" = "plan" ]; then
+  COUNTER="$STATE_DIR/opus-$(date +%Y%m%d)-$ISSUE"
+  N=$(cat "$COUNTER" 2>/dev/null || echo 0)
+  if [ "$N" -ge 2 ] 2>/dev/null; then
+    gh issue comment "$ISSUE" --body "🤖 Opus-Tagesbudget (2 Läufe) für dieses Ticket ist erschöpft, der Plan ist noch nicht fertig. Morgen geht es automatisch weiter — oder Label \`no-opus\` setzen und selbst planen." >/dev/null 2>&1
+    gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+    status "wartet auf dich (#$ISSUE)" "🟡" \
+      "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Zwei Planer-Läufe heute, Plan noch nicht fertig.
+
+Setze \`no-opus\`, um selbst zu planen, oder warte bis morgen — dann läuft der Planer automatisch weiter."
     exit 0
   fi
-  gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
-  MODE=start
+  echo $((N + 1)) > "$COUNTER"
 fi
 
 SID_FILE="$STATE_DIR/session-$ISSUE"
@@ -277,21 +315,35 @@ LOG="$STATE_DIR/last-run.log"
 # dieser Stelle (Start oder Resume), bevor er selbst zu arbeiten beginnt. Ein
 # irrefuehrender Zustand ueberlebt also nie mehr als bis zum naechsten Takt.
 START_HM=$(date "+%H:%M")
-status "arbeitet an #$ISSUE (seit $START_HM)" "🟠" \
-  "🟠 **Arbeitet gerade an #$ISSUE**, seit $START_HM.
+if [ "$RUN_ROLE" = "plan" ]; then
+  status "plant #$ISSUE (seit $START_HM)" "🟠" \
+    "🟠 **Plant gerade #$ISSUE** (Opus, nur lesend), seit $START_HM.
 
 Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen."
+else
+  status "arbeitet an #$ISSUE (seit $START_HM)" "🟠" \
+    "🟠 **Arbeitet gerade an #$ISSUE**, seit $START_HM.
 
-# --- Modell nach Label ------------------------------------------------------
-# Mechanische Tickets (Umbenennen, Doku, Boilerplate) brauchen kein Sonnet.
+Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
+hier keine anderen Status (🟡/🔴) folgen."
+fi
+
+# --- Modell nach Rolle/Label -------------------------------------------------
+# Planer-Rolle läuft immer mit Opus (siehe ADR-0005), unabhängig vom Label.
+# Für die Bau-Rolle: mechanische Tickets (Umbenennen, Doku, Boilerplate)
+# brauchen kein Sonnet.
 LABELS=$(gh issue view "$ISSUE" --json labels -q '.labels[].name' | tr '\n' ' ')
-case "$LABELS" in
-  *model:haiku*) MODEL="haiku" ;;
-  *)             MODEL="sonnet" ;;
-esac
+if [ "$RUN_ROLE" = "plan" ]; then
+  MODEL="opus"
+else
+  case "$LABELS" in
+    *model:haiku*) MODEL="haiku" ;;
+    *)             MODEL="sonnet" ;;
+  esac
+fi
 
-# --- Der Prompt -------------------------------------------------------------
+# --- Der Bau-Prompt -----------------------------------------------------------
 read -r -d '' PROMPT <<EOF
 Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
@@ -326,12 +378,45 @@ Ablauf:
 8. 'in-progress' entfernen, wenn der PR gemerged ist.
 EOF
 
+# --- Der Planer-Prompt (RUN_ROLE=plan, siehe ADR-0005) -----------------------
+# Nur lesend: kein Edit/Write, kein Branch, kein Commit. Schreibt den Plan
+# inkrementell in EINEN Kommentar und flippt needs-plan -> ready erst, wenn
+# der Plan wirklich fertig ist.
+read -r -d '' PLAN_PROMPT <<EOF
+Du arbeitest UNBEAUFSICHTIGT als **Planer** (Opus, nur lesend). Ändere KEINEN
+Code, lege KEINEN Branch an, committe NICHT.
+
+1. Lies CLAUDE.md, docs/ (v. a. docs/adr/, docs/ARCHITECTURE.md), das Issue
+   (gh issue view $ISSUE --comments) und den **aktuellen Code** der betroffenen
+   Dateien.
+2. Existiert bereits ein Plan-Kommentar mit „🧠 Plan (Opus) — Status: in
+   Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEIM PLANEN",
+   statt neu zu beginnen.
+3. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last)
+   einen **dateiweisen** Umsetzungsplan: pro Datei was sich ändert, Testplan,
+   Risiko/Rückweg, Wiederaufnahmepunkte. Statuszeile oben: „🧠 Plan (Opus) —
+   Status: **in Arbeit**" + Marker „← HIER WEITER BEIM PLANEN: <Abschnitt>".
+4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
+   Statuszeile auf „Status: **wartet auf Entscheidung**", Label
+   'needs-input' setzen, beenden. Rate nie.
+5. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
+   entfernen, dann gh issue edit $ISSUE --remove-label needs-plan --add-label
+   ready. Erst dieser abschließende Schritt flippt das Label.
+EOF
+
 # --- Claude starten ---------------------------------------------------------
-ARGS=(-p "$PROMPT" --output-format json
-      --model "$MODEL"
-      --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
-# Hinweis: Opus ist fuer den Runner tabu (siehe docs/TOKEN-BUDGET.md).
-# Geplant wird im Chat, ausgefuehrt wird hier mit Sonnet bzw. Haiku.
+if [ "$RUN_ROLE" = "plan" ]; then
+  ARGS=(-p "$PLAN_PROMPT" --output-format json
+        --model "$MODEL"
+        --allowedTools "Read,Grep,Glob,Bash")
+else
+  ARGS=(-p "$PROMPT" --output-format json
+        --model "$MODEL"
+        --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
+fi
+# Opus ist fuer den Runner tabu (siehe docs/TOKEN-BUDGET.md) -- ausser in den
+# nur-lesenden Denk-Rollen aus docs/adr/0005-opus-im-runner.md (RUN_ROLE=plan).
+# Bauen laeuft immer mit Sonnet bzw. Haiku.
 
 if [ "$MODE" = "resume" ] && [ -s "$SID_FILE" ]; then
   ARGS+=(--resume "$(cat "$SID_FILE")")
@@ -349,6 +434,23 @@ echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
 # Label ist also in JEDEM Ausgang unten stale, egal ob Erfolg oder Fehler. Weg
 # damit, bevor wir es weiter unten bei Bedarf (429) neu setzen.
 gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
+
+# --- Read-only-Netz für den Planer (ADR-0005) --------------------------------
+# Opus laeuft in RUN_ROLE=plan ohne Edit/Write, aber Bash bleibt fuer 'gh' und
+# lesende Inspektion erlaubt -- ein Fehlverhalten koennte den Baum trotzdem
+# beschmutzen. Das darf nie unbemerkt durchrutschen: verwerfen, als Fehler
+# behandeln, unabhaengig von RC (auch ein "erfolgreicher" Lauf zaehlt hier nicht).
+if [ "$RUN_ROLE" = "plan" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  git checkout -- . 2>/dev/null
+  git clean -fd 2>/dev/null
+  gh issue comment "$ISSUE" --body "🤖 Der Planer-Lauf (Opus, nur lesend) hat entgegen der Regel Dateien im Arbeitsbaum verändert. Verworfen, kein Commit. Siehe ADR-0005 (Read-only-Netz)." >/dev/null 2>&1
+  gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+  status "Fehler bei #$ISSUE" "🔴" \
+    "🔴 **Fehler bei #$ISSUE.** Der Planer-Lauf hat unerwartet Dateien geändert — verworfen, kein Commit.
+
+Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an, solange \`needs-input\` hängt."
+  exit 1
+fi
 
 TRANSIENT_FILE="$STATE_DIR/transient-$ISSUE"
 
