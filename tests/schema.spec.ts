@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { getTableColumns, getTableName, isTable } from 'drizzle-orm';
-import * as schema from '@/db/schema';
+import { getTableColumns, getTableName } from 'drizzle-orm';
+import {
+  authChallenges,
+  credentials,
+  recoveryCodes,
+  sessions,
+  syncState,
+  tasks,
+} from '@/db/schema';
 import { withDb } from './helpers';
 
 /**
@@ -11,8 +18,10 @@ import { withDb } from './helpers';
  * themselves* — not just the code — fail to reproduce the schema. That is a
  * different failure mode than schema-drift (ci.yml), which only compares
  * schema.ts against the migration files without ever touching a real database.
+ *
+ * New table in schema.ts? Add it here too.
  */
-const tables = Object.values(schema).filter(isTable);
+const tables = [syncState, tasks, credentials, sessions, authChallenges, recoveryCodes];
 
 for (const table of tables) {
   const tableName = getTableName(table);
