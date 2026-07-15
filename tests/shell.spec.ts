@@ -46,3 +46,23 @@ test('the navigation marks the current tab', async ({ page }) => {
     'page',
   );
 });
+
+test('the bottom nav sits at the bottom edge of the viewport on mobile', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'nav is a sidebar on desktop, not a bottom bar');
+  await registerPasskey(page);
+
+  const viewport = page.viewportSize();
+  const navBox = await page.getByRole('navigation', { name: 'Hauptnavigation' }).boundingBox();
+  const mainBox = await page.locator('main.shell__main').boundingBox();
+  expect(viewport).not.toBeNull();
+  expect(navBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+
+  // The nav's bottom edge must reach the bottom of the viewport, not sit under the status bar.
+  expect(navBox!.y + navBox!.height).toBeGreaterThan(viewport!.height - 2);
+  // Main content starts above the nav, with no dead space between them and the top.
+  expect(mainBox!.y).toBeLessThan(navBox!.y);
+  expect(mainBox!.y).toBeLessThan(viewport!.height / 2);
+});
