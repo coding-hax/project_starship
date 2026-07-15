@@ -60,6 +60,30 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
+  # --- Guard: schema drift --------------------------------------------------
+  # #28: prod ran on a schema that no longer matched src/db/schema.ts because a
+  # migration was never generated/applied. `drizzle-kit generate` diffs the code
+  # against the committed migration snapshots without touching a real database —
+  # any leftover diff means schema.ts and src/db/migrations disagree.
+  schema-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Fail if generate produced an uncommitted migration
+        run: |
+          if [ -n "$(git status --porcelain src/db/migrations)" ]; then
+            echo "src/db/schema.ts and src/db/migrations have diverged."
+            echo "Run 'pnpm db:generate' locally and commit the result."
+            git status --porcelain src/db/migrations
+            exit 1
+          fi
+          echo "✓ Migrations match src/db/schema.ts."
+
   # --- Guard: no weakened tests --------------------------------------------
   test-integrity:
     runs-on: ubuntu-latest

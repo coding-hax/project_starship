@@ -79,10 +79,12 @@ tests/
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
+  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
+  vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
   launchd-setup.md          Runner als Dienst auf macOS
   systemd-setup.md          Runner als Dienst auf Linux
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
