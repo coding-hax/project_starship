@@ -1,0 +1,65 @@
+name: Post-Deploy Smoke Test
+
+# #28: a broken prod schema was invisible until a device tried to sync. This
+# workflow fires whenever Vercel reports a deployment status (the GitHub
+# integration posts `deployment_status` on every build outcome) and, for a
+# successful Production deploy, calls a real DB-backed, authenticated endpoint.
+# A 500 here means the deployed schema does not match the code — exactly
+# today's incident — and gets flagged loudly instead of waiting for a device.
+on:
+  deployment_status
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    if: >
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/sync/pull with a real owner session
+        id: smoke
+        env:
+          SESSION_TOKEN: ${{ secrets.SMOKE_TEST_SESSION_TOKEN }}
+        run: |
+          URL="${{ github.event.deployment_status.environment_url }}"
+          if [ -z "$URL" ]; then URL="${{ github.event.deployment_status.target_url }}"; fi
+
+          if [ -z "$SESSION_TOKEN" ]; then
+            echo "::warning::SMOKE_TEST_SESSION_TOKEN is not set — skipping smoke test. One-time setup: log in on prod, copy the 'starship_session' cookie value, then 'gh secret set SMOKE_TEST_SESSION_TOKEN'. See issue #28."
+            exit 0
+          fi
+
+          echo "Smoke-testing $URL/api/sync/pull"
+          STATUS=$(curl -s -o /tmp/body.json -w '%{http_code}' \
+            -H "Cookie: starship_session=$SESSION_TOKEN" \
+            "$URL/api/sync/pull")
+          echo "HTTP $STATUS"
+          cat /tmp/body.json
+          echo ""
+
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Post-deploy smoke test failed — /api/sync/pull returned $STATUS (expected 200) on $URL"
+            echo "url=$URL" >>"$GITHUB_OUTPUT"
+            echo "status=$STATUS" >>"$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "✓ /api/sync/pull returned 200 on $URL"
+
+      # Nobody watches the Actions tab (docs/CLAUDE.md: unattended operation) — a
+      # failed run alone would go unnoticed. An issue with 'needs-input' is the
+      # same phone-visible channel every other alert in this repo already uses.
+      - name: Open an alert issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🔴 Post-Deploy Smoke Test fehlgeschlagen ($(date -u +%Y-%m-%dT%H:%MZ))" \
+            --label needs-input \
+            --body "\`/api/sync/pull\` hat nach dem Deploy nicht 200 geliefert (URL: ${{ steps.smoke.outputs.url }}, HTTP ${{ steps.smoke.outputs.status }}). Das deutet auf ein Schema-Drift zwischen Prod-DB und Code hin (wie #28). Details im Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

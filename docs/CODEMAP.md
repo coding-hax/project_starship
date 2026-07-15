@@ -79,6 +79,7 @@ tests/
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
+  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
