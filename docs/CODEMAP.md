@@ -17,6 +17,7 @@ src/
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/kalender/         Termine            (leer bis M2)
     (app)/journal/          Journal            (leer bis M3)
+    (app)/einstellungen/    Einstellungen — aktuell nur der Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
@@ -53,10 +54,14 @@ src/
       quick-add.tsx           FAB + Sheet + Titelfeld, speichert via outbox.mutate()
       quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
     events/ journal/ habits/  (leer, ab M2/M3/M4)
+    export/
+      export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
+      export-panel.tsx         Button + Status in Einstellungen
+      export.css               Styles für das Export-Panel
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel, Spacing, Motion
     shell.css               App-Shell: Bottom-Nav (mobil) / Sidebar (Desktop)
-    nav.tsx                 Die vier Tabs
+    nav.tsx                 Die vier Tabs + Einstellungen-Einstieg (kein fünfter Tab)
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
@@ -73,6 +78,7 @@ tests/
   shell.spec.ts             Login, vier Tabs, aktiver Tab
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
+  export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
