@@ -130,24 +130,51 @@ export function scheduleSync(delayMs = 500): void {
   }, delayMs);
 }
 
+/** A tab left open elsewhere gets changes from other devices without a reload. */
+const PULL_INTERVAL_MS = 30_000;
+
 /**
- * Wires up the triggers from ARCHITECTURE.md: app start, foreground, reconnect.
+ * Wires up the triggers from ARCHITECTURE.md: app start, foreground, reconnect —
+ * plus a visible-tab poll and a `focus` pull (#29), since neither reconnect nor
+ * visibilitychange fires for a tab that was never backgrounded or offline.
  * Returns a teardown function.
  */
 export function startSync(): () => void {
+  let interval: ReturnType<typeof setInterval> | null = null;
+
+  const startInterval = () => {
+    if (interval) return;
+    interval = setInterval(() => void sync(), PULL_INTERVAL_MS);
+  };
+  const stopInterval = () => {
+    if (interval) clearInterval(interval);
+    interval = null;
+  };
+
   const onOnline = () => void sync();
+  const onFocus = () => void sync();
   const onVisible = () => {
-    if (document.visibilityState === 'visible') void sync();
+    if (document.visibilityState === 'visible') {
+      void sync();
+      startInterval();
+    } else {
+      // No background sync (ADR-0001) — the interval pauses, not just the requests.
+      stopInterval();
+    }
   };
 
   window.addEventListener('online', onOnline);
+  window.addEventListener('focus', onFocus);
   document.addEventListener('visibilitychange', onVisible);
 
   void sync();
+  if (document.visibilityState === 'visible') startInterval();
 
   return () => {
     window.removeEventListener('online', onOnline);
+    window.removeEventListener('focus', onFocus);
     document.removeEventListener('visibilitychange', onVisible);
+    stopInterval();
     if (debounce) clearTimeout(debounce);
   };
 }
