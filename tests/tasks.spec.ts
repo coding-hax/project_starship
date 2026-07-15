@@ -496,7 +496,10 @@ test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen 
   await expect(confirmButton).toBeVisible();
   await confirmButton.click();
 
-  await expect(page.getByText(title)).toHaveCount(0);
+  // Scoped to the list, not `page.getByText` — the undo toast's own message
+  // ("„<title>" gelöscht") embeds the title too, so a page-wide text query would
+  // still match after the row is gone.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
 
@@ -518,11 +521,12 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
 
   await swipeLeft(item, 120);
   await page.getByRole('button', { name: 'Löschen' }).click();
-  await expect(page.getByText(title)).toHaveCount(0);
+  // Scoped to the list — the undo toast's own message embeds the title too.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Rückgängig' }).click();
 
-  await expect(page.getByText(title)).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: title })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.unroute('**/api/sync/**');
@@ -548,7 +552,8 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
   await swipeLeft(item, 120);
   await page.getByRole('button', { name: 'Löschen' }).click();
 
-  await expect(page.getByText(title)).toHaveCount(0);
+  // Scoped to the list — the undo toast's own message embeds the title too.
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
   // One entry for the seed, one for the delete — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
