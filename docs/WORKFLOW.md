@@ -7,6 +7,8 @@ kein zweites System, kein Kontextbruch.
 ## Der Zyklus
 
 ```
+Issue (grobe Idee, vom Handy eingeworfen)
+   └─► [optional] needs-research → Opus recherchiert den Fit → needs-input → du entscheidest
 Issue (mit Akzeptanzkriterien)
    └─► [nur bei Komplexität] needs-plan → Opus plant im Chat → ready
    └─► Branch feat/<nr>-<slug>
@@ -19,6 +21,19 @@ Issue (mit Akzeptanzkriterien)
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
+**Recherche-Schritt vor `needs-plan` (optional, Idee-Ebene):** Wirfst du eine grobe
+Feature-Idee als Issue ein, setzt du das Label `needs-research`. Der Runner lässt
+Opus dann nur-lesend prüfen, *ob* & *was*: Fit zu `docs/VISION.md`,
+`docs/ARCHITECTURE.md`, `docs/DESIGN_SYSTEM.md` und bestehendem Code, 2–3 Ansätze
+mit Trade-offs, Empfehlung, **grober** Schnitt — **kein dateiweiser Plan, kein
+Code-Wie**, das ist eine Stufe abstrakter als `needs-plan`. Widerspricht die Idee
+der Vision, steht das klar in der Überlegung — Opus verwirft sie nicht
+eigenmächtig, das entscheidest du. Ist die Überlegung fertig, tauscht der
+abschließende Lauf `needs-research` gegen `needs-input`; sagst du dann „ja",
+nimmst du `needs-input` runter und setzt `needs-plan` — erst der Planer-Lauf macht
+daraus einen dateiweisen Umsetzungsplan (die Konzept-Entscheidung aus der
+Recherche wird dabei nicht neu aufgerollt).
+
 **Planungsschritt vor `ready`:** Komplexe Tickets (mehrdeutig, architektonisch,
 mehrere Dateien, geschützte Pfade, Migrationen, Krypto, Sync) bekommen zuerst das
 Label `needs-plan`. Geplant wird von Opus, nie gebaut — siehe `docs/TOKEN-BUDGET.md`
@@ -29,21 +44,34 @@ Architektur-Entscheidungen mehr treffen müssen. Erst danach: `needs-plan` runte
 
 **Automatik im Runner:** Ein `needs-plan`-Ticket (ohne `needs-input`, ohne
 `no-opus`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
-(`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit) und mit einem
-Tagesbudget von 2 Opus-Läufen pro Ticket. Der Plan entsteht inkrementell in **einem**
-Kommentar (`--edit-last`); erst der abschließende Lauf entfernt `needs-plan` und
-setzt `ready`. Bricht ein Planer-Lauf ab (Limit, Timeout, Budget erschöpft), bleiben
-Label, Teilplan und Wiederaufnahme-Marker stehen — der nächste Lauf setzt dort fort,
-nie von vorne. Ein Ticket mit **beiden** Labeln `needs-plan` und `ready` gilt als
-inkonsistent und wird als `needs-plan` behandelt, nicht gebaut.
+(`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit). Der Plan
+entsteht inkrementell in **einem** Kommentar (`--edit-last`); erst der
+abschließende Lauf entfernt `needs-plan` und setzt `ready`. Bricht ein
+Planer-Lauf ab (Limit, Timeout), bleiben Label, Teilplan und
+Wiederaufnahme-Marker stehen — der nächste Lauf setzt dort fort, nie von vorne.
+Ein Ticket mit **beiden** Labeln `needs-plan` und `ready` gilt als inkonsistent
+und wird als `needs-plan` behandelt, nicht gebaut. `needs-research` läuft
+genauso (eigener Recherche-Prompt statt Planungs-Prompt, `--allowedTools
+"Read,Grep,Glob,Bash,WebSearch"` — die bounded Web-Recherche aus dem
+Recherche-Prompt braucht das zusätzliche Werkzeug), flippt aber auf
+`needs-input` statt `ready`, weil danach eine Entscheidung ansteht, kein Bau.
+Für **kein** Denk-Label (`needs-plan` oder `needs-research`) gibt es einen
+Tages-Deckel — Planung und Recherche laufen so oft, wie sie brauchen (siehe
+ADR-0005, PR #46). Kill-Switch für beide: `no-opus`.
+
+Reihenfolge, wenn mehrere Labels gleichzeitig offen stehen: ein laufendes
+`in-progress`-Bau-Ticket geht vor, danach `needs-plan`, danach `needs-research`,
+erst danach `ready`. Ein Ticket mit `needs-research` **und** `ready` gleichzeitig
+gilt ebenso als inkonsistent wie bei `needs-plan` — es wird über den
+Recherche-Zweig gefangen, nicht gebaut.
 
 Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
 `needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
 Tokens kosten, ohne die Ausführung konkreter zu machen.
 
 **Kein Code-Änderungsbedarf am Runner:** Er nimmt ohnehin nur Tickets mit `ready`.
-Ein Ticket mit `needs-plan` und ohne `ready` liegt automatisch still, auch ohne
-eigene Guard-Logik im Runner-Skript.
+Ein Ticket mit `needs-plan` oder `needs-research` und ohne `ready` liegt
+automatisch still, auch ohne eigene Guard-Logik im Runner-Skript.
 
 ## Labels — sie steuern den Runner
 
@@ -52,6 +80,7 @@ Zustandsmaschine des ganzen Setups:
 
 | Label            | Bedeutung                                                      | Wer setzt es |
 | ---------------- | -------------------------------------------------------------- | ------------ |
+| `needs-research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-input`. | **Du**       |
 | `needs-plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
