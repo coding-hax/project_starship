@@ -1,9 +1,15 @@
 @import 'tailwindcss';
 @import '../ui/tokens.css';
+@import '../ui/motion.css';
 @import '../ui/shell.css';
 @import '../ui/sheet.css';
 @import '../ui/fab.css';
 @import '../ui/toast.css';
+@import '../ui/row.css';
+@import '../ui/section-card.css';
+@import '../ui/toggle.css';
+@import '../ui/segmented-control.css';
+@import '../ui/slider.css';
 @import '../features/tasks/task-list.css';
 @import '../features/tasks/quick-add.css';
 @import '../features/tasks/task-editor.css';
@@ -45,6 +51,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: calc(16px * var(--font-scale, 1));
   /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
   line-height: 1.5;

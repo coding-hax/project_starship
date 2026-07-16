@@ -56,10 +56,22 @@
 
   /* Touch targets are never smaller than this. */
   --touch-target: 44px;
+
+  /* Einstellungen (ADR-0006): multiplies body text size, default = unscaled. */
+  --font-scale: 1;
 }
 
+/*
+ * Dark mode has two triggers, and both need the same values: the OS preference
+ * (`prefers-color-scheme`) and an explicit in-app choice (`data-theme`, set by
+ * `use-appearance.ts` on <html>). `:not([data-theme='hell'])` lets an explicit
+ * light choice cancel the OS preference; `[data-theme='dunkel']` forces dark
+ * regardless of the OS. The values are intentionally duplicated rather than
+ * shared through a third selector — plain CSS has no mixin to factor them
+ * through, and the two triggers must stay independently readable.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='hell']) {
     --bg: oklch(20.5% 0.012 60);
     --surface: oklch(24% 0.013 60);
     --surface-raised: oklch(27.5% 0.014 60);
@@ -83,9 +95,32 @@
   }
 }
 
+:root[data-theme='dunkel'] {
+  --bg: oklch(20.5% 0.012 60);
+  --surface: oklch(24% 0.013 60);
+  --surface-raised: oklch(27.5% 0.014 60);
+  --text: oklch(94% 0.008 85);
+  --text-muted: oklch(70% 0.012 75);
+  --border: oklch(33% 0.014 60);
+
+  --area-tasks: oklch(75% 0.15 42);
+  --area-events: oklch(72% 0.1 195);
+  --area-journal: oklch(70% 0.13 305);
+  --area-habits: oklch(72% 0.13 148);
+
+  --accent-fg: oklch(18% 0.012 60);
+
+  --success: oklch(72% 0.13 148);
+  --warning: oklch(80% 0.12 75);
+  --danger: oklch(68% 0.17 27);
+
+  --shadow-raised: 0 1px 2px oklch(0% 0 0 / 0.3), 0 6px 20px oklch(0% 0 0 / 0.35);
+}
+
 /**
  * Motion explains where things came from. When the user has asked for less of it,
- * that intent wins over every animation in this codebase.
+ * that intent wins over every animation in this codebase — via the OS preference
+ * or via the explicit in-app toggle (`data-reduce-motion`, set by `use-appearance.ts`).
  */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -96,4 +131,13 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+:root[data-reduce-motion='true'] *,
+:root[data-reduce-motion='true'] *::before,
+:root[data-reduce-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

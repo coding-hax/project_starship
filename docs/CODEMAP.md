@@ -17,7 +17,7 @@ src/
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/kalender/         Termine            (leer bis M2)
     (app)/journal/          Journal            (leer bis M3)
-    (app)/einstellungen/    Einstellungen — aktuell nur der Export-Button
+    (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
@@ -58,8 +58,12 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
+    settings/
+      use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
+      appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
   ui/
-    tokens.css              OKLCH-Farbtokens, hell + dunkel, Spacing, Motion
+    tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
+    motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
     shell.css               App-Shell: Bottom-Nav (mobil) / Sidebar (Desktop)
     nav.tsx                 Die vier Tabs + Einstellungen-Einstieg (kein fünfter Tab)
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
@@ -68,6 +72,11 @@ src/
     fab.css                 Position + Größe des FAB
     toast.tsx               Wiederverwendbares Undo-Toast (role="status")
     toast.css                Position über der Bottom-Nav, wie der FAB
+    row.tsx / row.css       Label-links-Control-rechts-Zeile, Basis jeder Einstellungszeile
+    section-card.tsx / .css Karte mit optionaler Überschrift/Aufklappen, gruppiert Rows
+    toggle.tsx / .css       Switch (role="switch"), Federknopf
+    segmented-control.tsx / .css  Radiogroup mit gleitendem Auswahl-Indikator
+    slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
     sync-boot.tsx           startet den Sync beim Mount
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
 tests/
@@ -79,6 +88,7 @@ tests/
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
+  settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)

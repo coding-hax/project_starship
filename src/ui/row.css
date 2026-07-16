@@ -1,0 +1,36 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--touch-target);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row__label {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.row__description {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.row__control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}

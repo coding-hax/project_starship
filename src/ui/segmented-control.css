@@ -1,0 +1,48 @@
+.segmented {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--segmented-count, 1), 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  min-height: var(--touch-target);
+}
+
+.segmented__indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--segmented-count, 1));
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  translate: calc(var(--segmented-index, 0) * 100%) 0;
+  transition: translate var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.segmented__option {
+  position: relative;
+  z-index: 1;
+  min-height: calc(var(--touch-target) - 4px);
+  padding: 0 var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring-snappy);
+}
+
+.segmented__option[aria-checked='true'] {
+  color: var(--text);
+}
+
+.segmented__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

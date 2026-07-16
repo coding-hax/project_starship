@@ -1,0 +1,51 @@
+.toggle {
+  --toggle-track-w: 44px;
+  --toggle-track-h: 26px;
+
+  position: relative;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle::before {
+  content: '';
+  width: var(--toggle-track-w);
+  height: var(--toggle-track-h);
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  transition: background var(--duration-fast) var(--ease-spring-snappy);
+}
+
+.toggle[data-checked='true']::before {
+  background: var(--accent);
+}
+
+.toggle__knob {
+  position: absolute;
+  left: calc(50% - (var(--toggle-track-w) / 2) + 2px);
+  width: calc(var(--toggle-track-h) - 4px);
+  height: calc(var(--toggle-track-h) - 4px);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  translate: 0 0;
+  transition: translate var(--duration-spring-snappy) var(--ease-spring-snappy);
+}
+
+.toggle[data-checked='true'] .toggle__knob {
+  translate: calc(var(--toggle-track-w) - var(--toggle-track-h)) 0;
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
+}

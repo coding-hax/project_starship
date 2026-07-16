@@ -39,10 +39,28 @@ export const viewport: Viewport = {
   ],
 };
 
+// Runs before the first paint so the chosen theme/text-scale apply immediately —
+// without it, the page would flash light before this script's own React tree mounts
+// and reads the same localStorage keys (`use-appearance.ts`, ADR-0006).
+const THEME_BOOTSTRAP_SCRIPT = `(function () {
+  try {
+    var html = document.documentElement;
+    var theme = localStorage.getItem('starship:theme');
+    var reduceMotion = localStorage.getItem('starship:reduce-motion');
+    var textScale = localStorage.getItem('starship:text-scale');
+    if (theme === 'hell' || theme === 'dunkel') html.setAttribute('data-theme', theme);
+    if (reduceMotion === 'true') html.setAttribute('data-reduce-motion', 'true');
+    if (textScale) html.style.setProperty('--font-scale', textScale);
+  } catch (e) {}
+})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de" className={inter.variable}>
-      <body>{children}</body>
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        {children}
+      </body>
     </html>
   );
 }
