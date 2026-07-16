@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '../ui/tokens.css';
+@import '../ui/motion.css';
 @import '../ui/shell.css';
 @import '../ui/sheet.css';
 @import '../ui/fab.css';

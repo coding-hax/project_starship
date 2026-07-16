@@ -1,0 +1,45 @@
+/**
+ * Spring-motion tokens (ADR-0006, docs/adr/0006-design-sprache-m3-expressive.md).
+ *
+ * `linear()` approximates a lightly-damped spring without a JS motion library — the
+ * same trick `sheet.css` already uses via `@starting-style`. `--ease-spring` (plain
+ * cubic-bezier) stays as the fallback for engines where `linear()` misbehaves; both
+ * are drop-in equivalents wherever they're used.
+ *
+ * Two presets, not one, because the primitives need two different feels:
+ * - snappy: a state flips (toggle knob, checkmark) — brief, slightly overshooting.
+ * - smooth: something reveals or slides into place (expand, slider thumb) — settles
+ *   without overshoot, so it doesn't fight the thing it's revealing.
+ *
+ * Overshoot is capped at 5% and the whole curve stays under 250ms — the bounds ADR-0006
+ * sets so this stays "begründetes taktiles Feedback", not the bounce DESIGN_SYSTEM.md
+ * forbids. `prefers-reduced-motion` needs no extra handling here: the global rule in
+ * tokens.css already zeroes every `transition-duration`, overshoot included.
+ */
+
+:root {
+  --ease-spring-snappy: linear(
+    0,
+    0.32 12.5%,
+    0.72 34%,
+    0.92 54%,
+    1.05 70%,
+    1.02 82%,
+    1 92%,
+    1
+  );
+  --duration-spring-snappy: 190ms;
+
+  --ease-spring-smooth: linear(0, 0.3 16%, 0.62 38%, 0.84 58%, 0.95 76%, 1 92%, 1);
+  --duration-spring-smooth: 240ms;
+}
+
+/* Tactile press feedback for anything draggable/tappable (slider thumb, toggle knob).
+   Touch target itself never shrinks — only its visual knob does. */
+.spring-press {
+  transition: scale var(--duration-fast) var(--ease-spring-snappy);
+}
+
+.spring-press:active {
+  scale: 0.96;
+}
