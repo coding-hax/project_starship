@@ -21,11 +21,21 @@ Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
 **Planungsschritt vor `ready`:** Komplexe Tickets (mehrdeutig, architektonisch,
 mehrere Dateien, geschützte Pfade, Migrationen, Krypto, Sync) bekommen zuerst das
-Label `needs-plan`. Opus plant sie **im Chat** — nie im Runner, siehe
-`docs/TOKEN-BUDGET.md` — bis Schrittfolge, Testplan, Risiko/Rückweg und
+Label `needs-plan`. Geplant wird von Opus, nie gebaut — siehe `docs/TOKEN-BUDGET.md`
+und `docs/adr/0005-opus-im-runner.md` — bis Schrittfolge, Testplan, Risiko/Rückweg und
 Wiederaufnahmepunkte konkret genug sind, dass Sonnet/Haiku keine
 Architektur-Entscheidungen mehr treffen müssen. Erst danach: `needs-plan` runter,
 `ready` rauf.
+
+**Automatik im Runner:** Ein `needs-plan`-Ticket (ohne `needs-input`, ohne
+`no-opus`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
+(`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit) und mit einem
+Tagesbudget von 2 Opus-Läufen pro Ticket. Der Plan entsteht inkrementell in **einem**
+Kommentar (`--edit-last`); erst der abschließende Lauf entfernt `needs-plan` und
+setzt `ready`. Bricht ein Planer-Lauf ab (Limit, Timeout, Budget erschöpft), bleiben
+Label, Teilplan und Wiederaufnahme-Marker stehen — der nächste Lauf setzt dort fort,
+nie von vorne. Ein Ticket mit **beiden** Labeln `needs-plan` und `ready` gilt als
+inkonsistent und wird als `needs-plan` behandelt, nicht gebaut.
 
 Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
 `needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur

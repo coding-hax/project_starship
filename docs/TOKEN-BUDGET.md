@@ -24,7 +24,10 @@ zu leeren, Sonnet sieht also alles, was Opus erarbeitet hat.
 
 **Die eine harte Regel:** Opus mit Effort „high" ist die teuerste Kombination, die
 es gibt. Sie ist für Architektur, Ticketschrieb und Bugs, an denen Sonnet zweimal
-gescheitert ist. **Niemals** für Implementierung, niemals für Suchen, niemals im Runner.
+gescheitert ist. **Niemals** für Implementierung, niemals für Suchen, niemals im Runner
+— außer in den drei eng begrenzten, nur-lesenden Denk-Rollen (Planung, Feature-
+Recherche, Eskalation) aus `docs/adr/0005-opus-im-runner.md`: Budget-Deckel 2 Läufe
+pro Denk-Ticket/Tag, Kill-Switch `no-opus`, nie Bauen.
 
 ---
 
