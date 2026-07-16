@@ -59,11 +59,35 @@ Zustandsmaschine des ganzen Setups:
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
+| `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
 
 Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
 auch wenn zwanzig Tickets im Backlog liegen. Ein `needs-plan`-Ticket trägt per
 Definition kein `ready`, solange der Plan fehlt — es bleibt also automatisch liegen.
+
+## Modell-Eskalation beim Bauen (ADR-0007)
+
+Bleibt ein Ticket in der Bau-Rolle dreimal in Folge ohne Fortschritt stecken,
+schaltet der Runner eine Modellstufe hoch: `sonnet` (bzw. `haiku` bei
+`model:haiku`) → `opus`. Auf `opus` baut der letzte Versuch tatsächlich Code —
+das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
+
+- **Fortschritt** = neuer Commit auf dem Feature-Branch (Vergleich der
+  Branch-Spitze auf `origin` vor/nach dem Lauf). Fortschritt setzt Stufe und
+  Fehlversuchs-Zähler zurück.
+- **Kein Fortschritt** = kein neuer Commit **und** dieselbe Blocker-Signatur
+  wie im Vorlauf (siehe #33). Ein Lauf, der durch Limit oder Notbremse
+  unterbrochen wurde, zählt nie als Fehlversuch.
+- Bleibt Opus als höchste Stufe ebenfalls dreimal ohne Fortschritt: Stop,
+  Label `needs-input`, Blocker-Kommentar am Ticket.
+- **Opus-Deckel:** höchstens 2 Opus-Bau-Läufe pro Ticket und Kalendertag.
+  Überschreitung → sofort `needs-input`, kein weiterer Opus-Bau-Versuch an
+  diesem Tag.
+- Zustand liegt dateibasiert unter `.runner/` (`tier-<nr>`, `failcount-<nr>`,
+  `opus-<datum>-<nr>`) und überlebt Neustarts.
+
+Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 
 **Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt dich)
 → du antwortest als Kommentar → du entfernst `needs-input` → beim nächsten Lauf
