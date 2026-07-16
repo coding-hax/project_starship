@@ -60,6 +60,24 @@ zu geben wäre der falsche Ausweg: das gilt dann für **jedes** Skript auf dem R
 
 ---
 
+### 6. iCloud & Netzwerkvolumes — die zweite TCC-Falle
+
+iCloud Drive (`~/Library/Mobile Documents`) und `/Volumes` (externe Laufwerke — ein
+Symlink wie `Festplatte MAC → /` zieht einen `/Volumes`-Scan ins gesamte Dateisystem)
+sind eigene TCC-Kategorien und **nicht** durch Punkt 5 abgedeckt (siehe #38).
+
+Leg das Repo **nie** in iCloud Drive ab. Runner und Agent scannen ausschließlich im
+Repo, nie rekursiv über `~`, `/` oder `/Volumes` — das ist als Leitplanke im
+Bau- und Planer-Prompt in `scripts/claude-runner.sh` verankert.
+
+**Kein TCC-Grant im Voraus setzen:** ein versehentlich erteilter Grant ist breiter als
+nötig und kehrt zurück, sobald der Runner erneut dorthin greift — Ursache vermeiden
+statt Zugriff gewähren. Greift die Leitplanke einmal nicht, hängt der Lauf nicht
+dauerhaft: `MAX_RUNTIME` würgt ihn ab, der nächste Lauf macht am Fortschrittskommentar
+weiter. Wie bei Punkt 5 gilt: **kein** Full-Disk-Access für `/bin/bash` oder `claude`.
+
+---
+
 ## ⚠️ Runner pausieren, wenn du selbst am Code arbeitest
 
 Wenn du im VS-Code-Panel arbeitest und der Timer währenddessen losläuft, hantieren

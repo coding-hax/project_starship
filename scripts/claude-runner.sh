@@ -512,6 +512,14 @@ Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Arbeite an Issue #$ISSUE in diesem Repo.
 
+**Dateizugriff bleibt im Repo.** Führe keine rekursiven oder dateisystemweiten Suchen
+außerhalb dieses Repos (des ausgecheckten Arbeitsbaums) aus — kein 'find', 'grep -r',
+'mdfind' oder 'locate' über das Home-Verzeichnis, '/' oder '/Volumes' — und betritt
+niemals '/Volumes' oder '~/Library/Mobile Documents' (iCloud). Solche Zugriffe lösen
+auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert, bis
+die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
+nur, wenn ein Ticket sie ausdrücklich verlangt.
+
 Ablauf:
 1. Lies CLAUDE.md und die Dokumente in docs/.
 2. Lies das Issue: gh issue view $ISSUE --comments
@@ -548,6 +556,14 @@ EOF
 read -r -d '' PLAN_PROMPT <<EOF
 Du arbeitest UNBEAUFSICHTIGT als **Planer** (Opus, nur lesend). Ändere KEINEN
 Code, lege KEINEN Branch an, committe NICHT.
+
+**Dateizugriff bleibt im Repo.** Führe keine rekursiven oder dateisystemweiten Suchen
+außerhalb dieses Repos (des ausgecheckten Arbeitsbaums) aus — kein 'find', 'grep -r',
+'mdfind' oder 'locate' über das Home-Verzeichnis, '/' oder '/Volumes' — und betritt
+niemals '/Volumes' oder '~/Library/Mobile Documents' (iCloud). Solche Zugriffe lösen
+auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert, bis
+die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
+nur, wenn ein Ticket sie ausdrücklich verlangt.
 
 1. Lies CLAUDE.md, docs/ (v. a. docs/adr/, docs/ARCHITECTURE.md), das Issue
    (gh issue view $ISSUE --comments) und den **aktuellen Code** der betroffenen
