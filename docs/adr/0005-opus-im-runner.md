@@ -1,6 +1,6 @@
 # ADR-0005: Opus im Runner — erlaubte Ausnahmen und Grenzen
 
-Status: **angenommen** · Datum: 2026-07-16
+Status: **angenommen**, Eskalations-Rolle teilweise ersetzt durch ADR-0007 · Datum: 2026-07-16
 
 ## Kontext
 
@@ -21,9 +21,13 @@ Opus ist im Runner ausschließlich in **drei nur-lesenden Denk-Rollen** erlaubt:
 
 1. **Planung** (`needs-plan` → `ready`, dieses Ticket, #42).
 2. **Feature-Recherche** (`needs-research`, Folge-Ticket #43).
-3. **Eskalation** nach drei erfolglosen Bau-Versuchen (#34).
+3. **Eskalation** nach drei erfolglosen Bau-Versuchen (#34) — **teilweise
+   ersetzt durch ADR-0007**: dort baut Opus als letzte Eskalationsstufe
+   tatsächlich, mit eigenem Deckel und eigenen Grenzen. Die Details stehen in
+   ADR-0007, nicht hier.
 
-**Bauen bleibt immer Sonnet/Haiku.** Opus schreibt in keiner dieser Rollen
+**Bauen bleibt immer Sonnet/Haiku** — außer in der Eskalations-Rolle aus
+ADR-0007. Opus schreibt in Planung und Feature-Recherche keinen
 Produktionscode.
 
 ## Grenzen

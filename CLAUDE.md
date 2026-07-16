@@ -40,8 +40,11 @@ Vor jeder Arbeit lesen:
   Sync) werden **vor** `ready` von Opus geplant (Label `needs-plan`, siehe
   `docs/WORKFLOW.md`). Der Runner baut niemals ohne Plan; Opus bleibt im Runner tabu,
   außer in den eng begrenzten Denk-Rollen aus `docs/adr/0005-opus-im-runner.md`
-  (Planung, Feature-Recherche, Eskalation — nie Bauen). Einfache/mechanische Tickets
-  dürfen `needs-plan` überspringen.
+  (Planung, Feature-Recherche — nie Bauen) und der Eskalations-Rolle aus
+  `docs/adr/0007-opus-eskalation-baut.md` (Opus baut als letzte Stufe, wenn
+  Sonnet/Haiku dreimal ohne Fortschritt bleiben; Deckel max. 2 Läufe/Ticket/Tag,
+  Kill-Switch `no-escalation`). Einfache/mechanische Tickets dürfen `needs-plan`
+  überspringen.
 
 ## Befehle
 

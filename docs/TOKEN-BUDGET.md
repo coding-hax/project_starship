@@ -25,9 +25,13 @@ zu leeren, Sonnet sieht also alles, was Opus erarbeitet hat.
 **Die eine harte Regel:** Opus mit Effort „high" ist die teuerste Kombination, die
 es gibt. Sie ist für Architektur, Ticketschrieb und Bugs, an denen Sonnet zweimal
 gescheitert ist. **Niemals** für Implementierung, niemals für Suchen, niemals im Runner
-— außer in den drei eng begrenzten, nur-lesenden Denk-Rollen (Planung, Feature-
-Recherche, Eskalation) aus `docs/adr/0005-opus-im-runner.md`: Budget-Deckel 2 Läufe
-pro Denk-Ticket/Tag, Kill-Switch `no-opus`, nie Bauen.
+— außer in den zwei eng begrenzten, nur-lesenden Denk-Rollen (Planung, Feature-
+Recherche) aus `docs/adr/0005-opus-im-runner.md` (kein Tages-Deckel, Kill-Switch
+`no-opus`, nie Bauen) und der **Eskalations-Rolle** aus
+`docs/adr/0007-opus-eskalation-baut.md`: Bleibt ein Ticket auf Sonnet/Haiku
+dreimal ohne Fortschritt, baut Opus als letzte Stufe selbst — mit hartem Deckel
+**max. 2 Opus-Bau-Läufe pro Ticket/Tag** und Kill-Switch `no-escalation`. Das ist
+die einzige Stelle im Repo, an der Opus produktiv schreibt.
 
 ---
 
