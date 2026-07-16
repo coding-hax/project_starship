@@ -49,15 +49,19 @@ Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgele
 
 ## Roadmap (strikt sequenziell)
 
-| Milestone              | Inhalt                                                                                              | Fertig, wenn                                                              |
-| ---------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| **M0** Fundament       | Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA-Installierbarkeit, Sync-Grundgerüst (Outbox) | App lässt sich auf dem iPhone installieren, Login per Face ID, leere Tabs |
-| **M1** Aufgaben        | CRUD, Fälligkeit, Priorität, Swipe-Erledigen, offline                                               | Aufgabe offline anlegen, online wiederfinden                              |
-| **M2** Termine (lokal) | Tages-/Wochenansicht, CRUD, Serientermine (RRULE)                                                   | Termine funktionieren vollständig ohne externen Kalender                  |
-| **M3** Journal         | Editor, Stimmung, Tags, lokale Suche, E2E-Verschlüsselung                                           | Server kennt keinen Klartext                                              |
-| **M4** Gewohnheiten    | Habits, Abhaken, Streaks, Wochenraster                                                              | Streak über Tageswechsel korrekt                                          |
-| **M5** Heute-Dashboard | Zusammenführung, Web Push für Erinnerungen                                                          | Eine Ansicht ersetzt alle Tabs                                            |
-| **M6** Sprachmemo      | Aufnahme → Transkript → strukturierter Terminvorschlag mit Bestätigung                              | „Termin am 4.8. bei Dr. XY" wird korrekt zum Termin                       |
+**„Heute" ist keine eigene Phase, sondern eine Klammer.** Jeder Milestone ergänzt seine
+eigene Heute-Sektion — so ist das Kernversprechen „ein Ort für den Tag" ab M1 nutzbar und
+wächst mit, statt am Ende in einem großen Dashboard-Milestone zusammengeklebt zu werden.
+
+| Milestone                      | Inhalt                                                                                                                                                                 | Heute-Sektion                | Fertig, wenn                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------- |
+| **M0** Fundament ✅            | Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA-Installierbarkeit, Sync-Grundgerüst (Outbox)                                                                   | —                            | Installierbar auf dem iPhone, Login per Face ID, leere Tabs                   |
+| **M1** Sync-Härtung + Aufgaben | `storage.persist()`, Delete-gewinnt-Regel + Server-Sequenz **jetzt, solange die DB leer ist (Migration gratis)**; Aufgaben-CRUD, Fälligkeit, Priorität, Swipe, offline | zeigt (nur) Aufgaben         | Aufgabe offline anlegen/wiederfinden; Konflikt- und Delete-Semantik getestet |
+| **M2** Gewohnheiten            | Habits binär, Abhaken, Streaks, Wochenraster — kleinstes Datenmodell, schneller Win, tägliche Nutzung                                                                 | + Streaks                    | Streak über Tageswechsel korrekt                                             |
+| **M3** Push & Erinnerungen     | Web Push; fällige Aufgaben morgens, Streak-Erinnerung abends — Aufgaben + Habits **sind** die Use-Cases; **Ersatz für den GitHub-Actions-Cron**                        | —                            | Erinnerung kommt zuverlässig, ohne dass die App offen ist                    |
+| **M4** Journal (E2EE)          | Editor, Stimmung, Tags, lokale Suche, Ende-zu-Ende-Verschlüsselung — Sync ist jetzt 2× bewiesen, Verschlüsselung sicher obendrauf                                      | + „heute schon geschrieben?" | Server kennt keinen Klartext                                                  |
+| **M5** Termine (lokal)         | Tages-/Wochenansicht, CRUD, Serientermine **inkl. verschobener/ausgefallener Einzeltermine (Ausnahmen) von Anfang an** — härteste Domäne, kommt zuletzt                | + Termine des Tages          | Termine vollständig ohne externen Kalender, Serien-Ausnahmen korrekt         |
+| **M6** Sprachmemo              | Aufnahme → Transkript → strukturierter Vorschlag mit Bestätigung — nach der #47-Recherche, wenn die Privacy-Frage geklärt ist                                          | —                            | „Termin am 4.8. bei Dr. XY" wird korrekt zum Termin                          |
 
 ## Erfolgskriterien
 
@@ -79,11 +83,27 @@ Sie werden nicht in jedem Ticket neu diskutiert.
   Metadaten-Absatz aus ADR-0001 §4. Folge: keine serverseitige Filterung über
   Journalinhalte. Kein Verlust, weil in einer Local-first-App ohnehin lokal gefiltert wird.
 - **Wiederkehrende Aufgaben** kommen **nicht** in M1. M1 macht Aufgaben richtig gut
-  (erfassen, Fälligkeit, Priorität, Swipe, offline). Wiederholung wird ein eigenes
-  Ticket, sobald sie fehlt. Die Spalte `recurrence_rule` bleibt im Schema reserviert.
-- **Erinnerungen** laufen über **Web Push ab M5**, nicht früher und nicht über E-Mail.
-- **Serientermine** werden in M2 in einfacher Form unterstützt (täglich/wöchentlich/
-  monatlich, mit Enddatum). Verschobene oder ausgefallene Einzeltermine einer Serie
-  sind ein eigenes, späteres Ticket — ohne Kalender-Sync brauchen wir die volle
-  RRULE-Komplexität nicht.
+  (erfassen, Fälligkeit, Priorität, Swipe, offline) — plus die Sync-Härtung. Wiederholung
+  wird ein eigenes Ticket, sobald sie fehlt. Die Spalte `recurrence_rule` bleibt reserviert.
 - **UI-Sprache Deutsch**, Wochenstart Montag, 24-Stunden-Format.
+
+## Geändert (2026-07-16)
+
+Roadmap nach externem Review neu sortiert. Zwei Umbauten und drei Verschiebungen — die
+Produktprinzipien bleiben unberührt, nur Reihenfolge und Zuschnitt ändern sich.
+
+- **„Heute" wird Klammer statt Phase.** Der frühere M5-Dashboard-Milestone ist aufgelöst;
+  jeder Milestone liefert seine eigene Heute-Sektion (siehe Spalte oben). Das Kernversprechen
+  ist ab M1 nutzbar, nicht erst am Ende.
+- **Sync-Härtung zieht nach M1 vor — jetzt, solange die DB leer ist.** `storage.persist()`,
+  die Delete-gewinnt-Regel und die server-monotone Sequenz (statt Konfliktauflösung über
+  Client-Uhren) werden gebaut, bevor echte Daten existieren — dann ist die Migration gratis.
+  (Tickets: #52, #53.)
+- **Kalender/Termine wandern von M2 ganz nach hinten (M5).** Härteste Domäne, kommt zuletzt.
+  Die frühere Vereinfachung „Serien-Ausnahmen sind ein späteres Ticket" wird **bewusst
+  aufgehoben**: verschobene und ausgefallene Einzeltermine einer Serie werden in M5 **von
+  Anfang an** gebaut, weil der Milestone ohnehin die schwierigste Domäne einmal richtig macht.
+- **Erinnerungen werden ein eigener Milestone M3 (vorher „Web Push ab M5").** Aufgaben und
+  Habits sind genau die Reminder-Use-Cases (fällige Tasks morgens, Streak-Erinnerung abends),
+  also folgt Push direkt darauf. Ersetzt zugleich den GitHub-Actions-Cron.
+- **Sprachmemo (M6)** bleibt zuletzt und startet erst nach der #47-Recherche (Privacy geklärt).
