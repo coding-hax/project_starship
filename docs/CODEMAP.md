@@ -13,10 +13,10 @@ im selben PR. Eine veraltete Karte ist schlimmer als keine.
 src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
-    (app)/heute/            Dashboard          (leer bis M5)
+    (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
-    (app)/kalender/         Termine            (leer bis M2)
-    (app)/journal/          Journal            (leer bis M3)
+    (app)/kalender/         Termine            (leer bis M5)
+    (app)/journal/          Journal            (leer bis M4)
     (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
@@ -40,7 +40,7 @@ src/
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code
-  crypto/                   (leer — Journal-Verschlüsselung kommt in M3)
+  crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
   features/
     tasks/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
@@ -110,7 +110,7 @@ docs/                       Vision, Architektur, Design, Workflow, Token-Budget,
 | den Vertrag zwischen Client und Sync-API | `src/local/types.ts`                            |
 | wer reindarf                             | `src/auth/session.ts` (`requireOwner`)          |
 | Farben, Abstände, Motion                 | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
-| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (ab M3)                 |
+| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (ab M4)                 |
 | warum etwas so entschieden wurde         | `docs/adr/`                                     |
 
 ## Wichtige Invarianten
