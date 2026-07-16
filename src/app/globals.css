@@ -51,6 +51,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: calc(16px * var(--font-scale, 1));
   /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
