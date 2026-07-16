@@ -390,38 +390,54 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     MODE=start
     [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
   else
-    # 3) Sonst: ältestes Ticket mit Label "ready", das nicht auf mich wartet.
-    #    Both-Label-Wächter: ein Ticket mit "needs-plan" UND "ready" gleichzeitig
-    #    gilt als inkonsistent und wurde oben bereits als needs-plan gefangen —
-    #    hier zusätzlich explizit ausgeschlossen, falls die Planer-Abfrage leer
-    #    blieb (z. B. wegen needs-input/no-opus) aber "ready" trotzdem noch dran hängt.
-    ISSUE=$(gh issue list --label ready --state open --limit 30 \
+    # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
+    #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
+    #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
+    ISSUE=$(gh issue list --label needs-research --state open --limit 30 \
               --json number,labels \
               -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                       | select((.labels | map(.name) | index("needs-plan")) | not)]
+                       | select((.labels | map(.name) | index("no-opus")) | not)]
                   | sort_by(.number) | .[0].number // empty')
-    if [ -z "$ISSUE" ]; then
-      # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
-      # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-      WAITING=$(waiting_issues)
-      if [ -n "$WAITING" ]; then
-        status "wartet auf dich ($WAITING)" "🟡" \
-          "🟡 **Ich warte auf eine Antwort von dir.**
+    if [ -n "$ISSUE" ]; then
+      RUN_ROLE=research
+      MODE=start
+      [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
+    else
+      # 3) Sonst: ältestes Ticket mit Label "ready", das nicht auf mich wartet.
+      #    Both-Label-Wächter: ein Ticket mit "needs-plan"/"needs-research" UND
+      #    "ready" gleichzeitig gilt als inkonsistent und wurde oben bereits
+      #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
+      #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
+      #    "ready" trotzdem noch dran hängt.
+      ISSUE=$(gh issue list --label ready --state open --limit 30 \
+                --json number,labels \
+                -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
+                         | select((.labels | map(.name) | index("needs-plan")) | not)
+                         | select((.labels | map(.name) | index("needs-research")) | not)]
+                    | sort_by(.number) | .[0].number // empty')
+      if [ -z "$ISSUE" ]; then
+        # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
+        # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
+        WAITING=$(waiting_issues)
+        if [ -n "$WAITING" ]; then
+          status "wartet auf dich ($WAITING)" "🟡" \
+            "🟡 **Ich warte auf eine Antwort von dir.**
 
 Offene Fragen an: $WAITING
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
-      else
-        status "nichts zu tun" "⚪️" \
-          "⚪️ Kein Ticket mit Label \`ready\` oder \`needs-plan\`. Ich habe nichts zu arbeiten.
+        else
+          status "nichts zu tun" "⚪️" \
+            "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
 
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
+        fi
+        exit 0
       fi
-      exit 0
+      gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
+      MODE=start
     fi
-    gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
-    MODE=start
   fi
 fi
 
@@ -453,6 +469,12 @@ if [ "$RUN_ROLE" = "plan" ]; then
 
 Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen."
+elif [ "$RUN_ROLE" = "research" ]; then
+  status "recherchiert #$ISSUE (seit $START_HM)" "🟠" \
+    "🟠 **Recherchiert gerade #$ISSUE** (Opus, nur lesend), seit $START_HM.
+
+Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
+hier keine anderen Status (🟡/🔴) folgen."
 else
   status "arbeitet an #$ISSUE (seit $START_HM)" "🟠" \
     "🟠 **Arbeitet gerade an #$ISSUE**, seit $START_HM.
@@ -462,13 +484,14 @@ hier keine anderen Status (🟡/🔴) folgen."
 fi
 
 # --- Modell nach Rolle/Label/Eskalationsstufe --------------------------------
-# Planer-Rolle läuft immer mit Opus (siehe ADR-0005), unabhängig vom Label.
-# Bau-Rolle: 'tier_current' liefert die aktuelle Eskalationsstufe (ADR-0007) --
-# Default 'sonnet' bzw. 'haiku' bei Label 'model:haiku', nach drei erfolglosen
-# Läufen 'opus'. Kill-Switch 'no-escalation' friert auf der Default-Stufe ein,
-# unabhaengig von einer eventuell schon gesetzten Stufe.
+# Planer- und Recherche-Rolle laufen immer mit Opus (siehe ADR-0005),
+# unabhängig vom Label. Bau-Rolle: 'tier_current' liefert die aktuelle
+# Eskalationsstufe (ADR-0007) -- Default 'sonnet' bzw. 'haiku' bei Label
+# 'model:haiku', nach drei erfolglosen Läufen 'opus'. Kill-Switch
+# 'no-escalation' friert auf der Default-Stufe ein, unabhaengig von einer
+# eventuell schon gesetzten Stufe.
 LABELS=$(gh issue view "$ISSUE" --json labels -q '.labels[].name' | tr '\n' ' ')
-if [ "$RUN_ROLE" = "plan" ]; then
+if [ "$RUN_ROLE" = "plan" ] || [ "$RUN_ROLE" = "research" ]; then
   MODEL="opus"
 else
   case "$LABELS" in
@@ -583,22 +606,70 @@ nur, wenn ein Ticket sie ausdrücklich verlangt.
    ready. Erst dieser abschließende Schritt flippt das Label.
 EOF
 
+# --- Der Recherche-Prompt (RUN_ROLE=research, siehe ADR-0005 + #43) ----------
+# Nur lesend: kein Edit/Write, kein Branch, kein Commit. Idee-/Feature-Ebene
+# (Ob & Was, grober Schnitt) -- KEIN dateiweiser Plan, das ist RUN_ROLE=plan.
+# Schreibt die Überlegung inkrementell in EINEN Kommentar und flippt
+# needs-research -> needs-input erst, wenn die Überlegung wirklich fertig ist
+# (auch dann, wenn die Idee der Vision widerspricht -- nie eigenmächtig
+# verwerfen, das entscheidet der Mensch).
+read -r -d '' RESEARCH_PROMPT <<EOF
+Du arbeitest UNBEAUFSICHTIGT als **Feature-Rechercheur** (Opus, nur lesend).
+Ändere KEINEN Code, lege KEINEN Branch an, committe NICHT.
+
+**Dateizugriff bleibt im Repo.** Führe keine rekursiven oder dateisystemweiten Suchen
+außerhalb dieses Repos (des ausgecheckten Arbeitsbaums) aus — kein 'find', 'grep -r',
+'mdfind' oder 'locate' über das Home-Verzeichnis, '/' oder '/Volumes' — und betritt
+niemals '/Volumes' oder '~/Library/Mobile Documents' (iCloud). Solche Zugriffe lösen
+auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert, bis
+die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
+nur, wenn ein Ticket sie ausdrücklich verlangt.
+
+1. Verstehe die Idee im Issue (gh issue view $ISSUE --comments).
+2. Prüfe den Fit gegen docs/VISION.md, docs/ARCHITECTURE.md, docs/DESIGN_SYSTEM.md
+   und den bestehenden Code. Optional knappe Web-Recherche (bounded) über das
+   WebSearch-Werkzeug.
+3. Existiert bereits ein Rechercheergebnis-Kommentar mit „🔎 Recherche — Status:
+   in Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEI DER
+   RECHERCHE", statt neu zu beginnen.
+4. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last) eine
+   **Überlegung** auf Idee-/Feature-Ebene: Was ist es? Passt es zur Vision
+   (auch: passt es *nicht* — das klar benennen, nicht eigenmächtig verwerfen)?
+   2–3 Ansätze mit Trade-offs, Empfehlung, grober Scope. **Kein Code, keine
+   dateiweise Umsetzung** — das ist der spätere Planer-Lauf (needs-plan).
+   Statuszeile oben: „🔎 Recherche — Status: **in Arbeit**" + Marker „← HIER
+   WEITER BEI DER RECHERCHE: <Abschnitt>".
+5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
+   zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
+   gh issue edit $ISSUE --remove-label needs-research --add-label needs-input.
+   Erst dieser abschließende Schritt flippt das Label — der Mensch entscheidet
+   danach, ob daraus needs-plan wird oder die Idee verworfen wird.
+EOF
+
 # --- Claude starten ---------------------------------------------------------
-if [ "$RUN_ROLE" = "plan" ]; then
-  ARGS=(-p "$PLAN_PROMPT" --output-format json
-        --model "$MODEL"
-        --allowedTools "Read,Grep,Glob,Bash")
-else
-  ARGS=(-p "$PROMPT" --output-format json
-        --model "$MODEL"
-        --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
-fi
+case "$RUN_ROLE" in
+  plan)
+    ARGS=(-p "$PLAN_PROMPT" --output-format json
+          --model "$MODEL"
+          --allowedTools "Read,Grep,Glob,Bash")
+    ;;
+  research)
+    ARGS=(-p "$RESEARCH_PROMPT" --output-format json
+          --model "$MODEL"
+          --allowedTools "Read,Grep,Glob,Bash,WebSearch")
+    ;;
+  *)
+    ARGS=(-p "$PROMPT" --output-format json
+          --model "$MODEL"
+          --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
+    ;;
+esac
 # Opus ist fuer den Runner tabu (siehe docs/TOKEN-BUDGET.md) -- ausser in den
-# nur-lesenden Denk-Rollen aus docs/adr/0005-opus-im-runner.md (RUN_ROLE=plan)
-# und der Eskalations-Rolle aus docs/adr/0007-opus-eskalation-baut.md: dort baut
-# Opus als letzte Modellstufe tatsaechlich (RUN_ROLE=build, MODEL=opus, siehe
-# tier_current oben), mit Deckel 2 Laeufe/Ticket/Tag und Kill-Switch
-# no-escalation.
+# nur-lesenden Denk-Rollen aus docs/adr/0005-opus-im-runner.md (RUN_ROLE=plan,
+# RUN_ROLE=research) und der Eskalations-Rolle aus
+# docs/adr/0007-opus-eskalation-baut.md: dort baut Opus als letzte Modellstufe
+# tatsaechlich (RUN_ROLE=build, MODEL=opus, siehe tier_current oben), mit
+# Deckel 2 Laeufe/Ticket/Tag und Kill-Switch no-escalation.
 
 if [ "$MODE" = "resume" ] && [ -s "$SID_FILE" ]; then
   ARGS+=(--resume "$(cat "$SID_FILE")")
@@ -617,18 +688,22 @@ echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
 # damit, bevor wir es weiter unten bei Bedarf (429) neu setzen.
 gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
 
-# --- Read-only-Netz für den Planer (ADR-0005) --------------------------------
-# Opus laeuft in RUN_ROLE=plan ohne Edit/Write, aber Bash bleibt fuer 'gh' und
-# lesende Inspektion erlaubt -- ein Fehlverhalten koennte den Baum trotzdem
-# beschmutzen. Das darf nie unbemerkt durchrutschen: verwerfen, als Fehler
-# behandeln, unabhaengig von RC (auch ein "erfolgreicher" Lauf zaehlt hier nicht).
-if [ "$RUN_ROLE" = "plan" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+# --- Read-only-Netz für Planer & Rechercheur (ADR-0005) ----------------------
+# Opus laeuft in RUN_ROLE=plan/research ohne Edit/Write, aber Bash bleibt fuer
+# 'gh' und lesende Inspektion erlaubt -- ein Fehlverhalten koennte den Baum
+# trotzdem beschmutzen. Das darf nie unbemerkt durchrutschen: verwerfen, als
+# Fehler behandeln, unabhaengig von RC (auch ein "erfolgreicher" Lauf zaehlt
+# hier nicht).
+if { [ "$RUN_ROLE" = "plan" ] || [ "$RUN_ROLE" = "research" ]; } \
+   && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   git checkout -- . 2>/dev/null
   git clean -fd 2>/dev/null
-  gh issue comment "$ISSUE" --body "🤖 Der Planer-Lauf (Opus, nur lesend) hat entgegen der Regel Dateien im Arbeitsbaum verändert. Verworfen, kein Commit. Siehe ADR-0005 (Read-only-Netz)." >/dev/null 2>&1
+  ROLE_LABEL="Planer-Lauf"
+  [ "$RUN_ROLE" = "research" ] && ROLE_LABEL="Recherche-Lauf"
+  gh issue comment "$ISSUE" --body "🤖 Der $ROLE_LABEL (Opus, nur lesend) hat entgegen der Regel Dateien im Arbeitsbaum verändert. Verworfen, kein Commit. Siehe ADR-0005 (Read-only-Netz)." >/dev/null 2>&1
   gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
   status "Fehler bei #$ISSUE" "🔴" \
-    "🔴 **Fehler bei #$ISSUE.** Der Planer-Lauf hat unerwartet Dateien geändert — verworfen, kein Commit.
+    "🔴 **Fehler bei #$ISSUE.** Der $ROLE_LABEL hat unerwartet Dateien geändert — verworfen, kein Commit.
 
 Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an, solange \`needs-input\` hängt."
   exit 1
