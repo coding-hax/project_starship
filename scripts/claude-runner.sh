@@ -22,21 +22,6 @@ for tool in gh jq claude; do
   command -v "$tool" >/dev/null 2>&1 || { echo "'$tool' fehlt im PATH." >&2; exit 1; }
 done
 
-# --- Nie zwei Läufe gleichzeitig -------------------------------------------
-# mkdir ist atomar auf POSIX — das ersetzt flock, das es auf macOS nicht gibt.
-LOCK="$STATE_DIR/lock.d"
-if ! mkdir "$LOCK" 2>/dev/null; then
-  OWNER=$(cat "$LOCK/pid" 2>/dev/null || echo "")
-  if [ -n "$OWNER" ] && kill -0 "$OWNER" 2>/dev/null; then
-    echo "läuft bereits (PID $OWNER)"; exit 0
-  fi
-  # Verwaister Lock (Rechner abgestürzt, Prozess tot) — übernehmen.
-  rm -rf "$LOCK"
-  mkdir "$LOCK" 2>/dev/null || { echo "läuft bereits"; exit 0; }
-fi
-echo $$ > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
-
 ts() { date "+%d.%m. %H:%M"; }
 
 # Unix-Zeit -> "Mo 14:51". BSD (macOS) und GNU (Linux) sprechen hier verschiedene
@@ -163,6 +148,140 @@ waiting_issues() {
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
 
+# --- Modell-Eskalation beim Bauen (ADR-0007) --------------------------------
+# Sourcebare Hilfsfunktionen, rein dateibasiert unter $STATE_DIR -- damit ohne
+# einen echten Lauf testbar (siehe scripts/tests/escalation.test.sh). Betrifft
+# ausschließlich RUN_ROLE=build; die nur-lesenden Denk-Rollen aus ADR-0005
+# (Planung, Feature-Recherche) laufen unveraendert immer mit Opus, ohne Stufen.
+
+# Portable sha1: macOS bringt 'shasum', Linux ueblicherweise 'sha1sum'.
+sha1_of() {
+  printf '%s' "$1" | shasum -a 1 2>/dev/null | cut -d' ' -f1 \
+    || printf '%s' "$1" | sha1sum 2>/dev/null | cut -d' ' -f1
+}
+
+# Aktuelle Bau-Modellstufe fuer ein Ticket. Kein tier-<nr> (noch) niemals
+# eskaliert) -> Default aus dem Label 'model:haiku', sonst 'sonnet'.
+tier_current() {   # $1 = Issue-Nr -> sonnet|opus|haiku
+  local issue="$1"
+  local f="$STATE_DIR/tier-$issue"
+  if [ -s "$f" ]; then
+    cat "$f"
+    return 0
+  fi
+  if gh issue view "$issue" --json labels -q '.labels[].name' 2>/dev/null \
+       | grep -qx "model:haiku"; then
+    echo haiku
+  else
+    echo sonnet
+  fi
+}
+
+# Schaltet eine Stufe hoch. Die Leiter hat nur einen Sprung: sonnet/haiku -> opus.
+# Auf opus (Spitze) angekommen: kein weiterer Bump, Rueckgabe 1 signalisiert
+# "erschoepft" an den Aufrufer.
+tier_bump() {   # $1 = Issue-Nr
+  local issue="$1"
+  [ "$(tier_current "$issue")" = "opus" ] && return 1
+  echo opus > "$STATE_DIR/tier-$issue"
+  echo 0 > "$STATE_DIR/failcount-$issue"
+  return 0
+}
+
+# Zurueck auf die Default-Stufe -- nach Fortschritt (siehe build_escalation_eval).
+tier_reset() {   # $1 = Issue-Nr
+  local issue="$1"
+  rm -f "$STATE_DIR/tier-$issue" "$STATE_DIR/failcount-$issue" \
+        "$STATE_DIR/blocker-sig-$issue" "$STATE_DIR/branch-head-$issue"
+}
+
+# sha1 der Blocker-Kennzeilen (Endgrund + Wiederaufnahmestelle) aus dem
+# LETZTEN Kommentar -- aber nur, wenn das ueberhaupt der Fortschrittskommentar
+# ist (#33). Kein Fortschrittskommentar (Lauf brach ganz frueh ab) -> leer.
+blocker_sig() {   # $1 = Issue-Nr
+  local issue="$1" last body
+  last=$(gh issue view "$issue" --json comments -q '.comments[-1].body // empty' 2>/dev/null)
+  case "$last" in
+    *"Fortschritt (automatisch aktualisiert)"*) ;;
+    *) return 0 ;;
+  esac
+  body=$(printf '%s' "$last" | grep -E "Lauf-Ende|← HIER WEITER|Endgrund" 2>/dev/null)
+  [ -z "$body" ] && return 0
+  sha1_of "$body"
+}
+
+# SHA der Feature-Branch-Spitze auf origin (leer, wenn (noch) kein Branch existiert).
+branch_tip() {   # $1 = Issue-Nr
+  local issue="$1"
+  git ls-remote --heads origin \
+        "feat/${issue}-*" "fix/${issue}-*" "chore/${issue}-*" 2>/dev/null \
+    | awk '{print $1}' | head -1
+}
+
+# Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
+# Ausgaengen der Bau-Rolle aufgerufen (RC=0-Zweig, letzter Fehlschlag-Zweig) --
+# ausdruecklich NICHT bei Limit/429, Notbremse oder einem noch laufenden
+# Transient-Retry: dort ist gar nicht zu Ende gearbeitet worden (Infrastruktur,
+# nicht Inhalt), das darf kein Fehlversuch sein.
+build_escalation_eval() {
+  [ "$RUN_ROLE" = "build" ] || return 0
+  case "$LABELS" in *no-escalation*) return 0 ;; esac
+
+  local after
+  after=$(branch_tip "$ISSUE")
+  if [ -n "$after" ] && [ "$after" != "${BEFORE_TIP:-}" ]; then
+    tier_reset "$ISSUE"     # Fortschritt -- zurueck auf die Default-Stufe.
+    return 0
+  fi
+
+  local sig prev fc
+  sig=$(blocker_sig "$ISSUE")
+  prev=$(cat "$STATE_DIR/blocker-sig-$ISSUE" 2>/dev/null || echo "")
+  [ -n "$sig" ] && printf '%s' "$sig" > "$STATE_DIR/blocker-sig-$ISSUE"
+
+  # Nur eine ECHTE Aenderung gegenueber einer bereits bekannten Signatur zaehlt
+  # als "die Wand hat sich bewegt". Gibt es noch keine gespeicherte Signatur
+  # (erster Fehlversuch ueberhaupt), ist das keine Aenderung, sondern die
+  # Baseline -- der Fehlversuch selbst zaehlt trotzdem (siehe fc++ unten).
+  if [ -n "$prev" ] && [ -n "$sig" ] && [ "$sig" != "$prev" ]; then
+    echo 0 > "$STATE_DIR/failcount-$ISSUE"
+    return 0
+  fi
+
+  fc=$(( $(cat "$STATE_DIR/failcount-$ISSUE" 2>/dev/null || echo 0) + 1 ))
+  echo "$fc" > "$STATE_DIR/failcount-$ISSUE"
+  [ "$fc" -ge 3 ] || return 0
+
+  if tier_bump "$ISSUE"; then
+    gh issue comment "$ISSUE" --body \
+      "🤖 Drei Läufe ohne Fortschritt auf der aktuellen Modellstufe — der nächste Bau-Versuch eskaliert auf Opus (siehe ADR-0007, Deckel 2 Opus-Bau-Läufe/Tag)." \
+      >/dev/null 2>&1
+  else
+    gh issue comment "$ISSUE" --body \
+      "🤖 Auch Opus ist dreimal in Folge ohne Fortschritt stecken geblieben. Die Eskalation ist erschöpft." \
+      >/dev/null 2>&1
+    gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+  fi
+}
+
+# Harter Opus-Bau-Deckel (ADR-0007): hoechstens 2 Opus-Bau-Laeufe pro Ticket
+# und Kalendertag. Eigener, tagesgestempelter Zaehler -- unabhaengig vom
+# (inzwischen abgeschafften, PR #46) Deckel der nur-lesenden Denk-Rollen, weil
+# Opus hier tatsaechlich schreibt statt nur zu lesen.
+opus_build_cap_reached() {   # $1 = Issue-Nr -> 0 (Deckel erreicht) / 1 (noch Luft)
+  local issue="$1" count
+  count=$(cat "$STATE_DIR/opus-build-$(date +%Y%m%d)-$issue" 2>/dev/null || echo 0)
+  [ "${count:-0}" -ge 2 ] 2>/dev/null
+}
+
+opus_build_cap_reserve() {   # $1 = Issue-Nr -- verbraucht einen der 2 Slots fuer heute
+  local issue="$1"
+  local f="$STATE_DIR/opus-build-$(date +%Y%m%d)-$issue"
+  local count
+  count=$(cat "$f" 2>/dev/null || echo 0)
+  echo $((count + 1)) > "$f"
+}
+
 # --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
 TIMED_OUT="$STATE_DIR/timed-out"
 run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
@@ -188,6 +307,28 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   wait "$watchdog" 2>/dev/null
   return $rc
 }
+
+# --- Der imperative Hauptteil ------------------------------------------------
+# Gekapselt in main(), damit Tests die obigen Funktionen sourcen koennen, ohne
+# einen echten Lauf zu starten (Source-Guard ganz unten). Verhalten beim
+# direkten Aufruf ('bash scripts/claude-runner.sh' bzw. per launchd/systemd)
+# ist unveraendert -- reiner Refactor dieses Abschnitts.
+main() {
+
+# --- Nie zwei Läufe gleichzeitig -------------------------------------------
+# mkdir ist atomar auf POSIX — das ersetzt flock, das es auf macOS nicht gibt.
+LOCK="$STATE_DIR/lock.d"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  OWNER=$(cat "$LOCK/pid" 2>/dev/null || echo "")
+  if [ -n "$OWNER" ] && kill -0 "$OWNER" 2>/dev/null; then
+    echo "läuft bereits (PID $OWNER)"; exit 0
+  fi
+  # Verwaister Lock (Rechner abgestürzt, Prozess tot) — übernehmen.
+  rm -rf "$LOCK"
+  mkdir "$LOCK" 2>/dev/null || { echo "läuft bereits"; exit 0; }
+fi
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
 
 # --- Kontingent erschöpft? Dann gar nicht erst starten ----------------------
 # Der Timer tickt weiter alle 20 Minuten. Solange das Limit nachweislich noch
@@ -289,7 +430,9 @@ fi
 # parken widerspräche dem Ziel unbeaufsichtigten Fortschritts. Die Obergrenze ist
 # das echte Nutzungs-/Session-Limit des Plans (429 -> blocked-limit, wird unten
 # behandelt und läuft von selbst weiter), die Handbremse der Kill-Switch 'no-opus'
-# in der Ticket-Auswahl. Siehe ADR-0005.
+# in der Ticket-Auswahl. Siehe ADR-0005. Fürs Bauen gilt das NICHT: die
+# Eskalations-Rolle (ADR-0007) hat einen harten Tages-Deckel, siehe unten bei
+# der Modellwahl.
 
 SID_FILE="$STATE_DIR/session-$ISSUE"
 LOG="$STATE_DIR/last-run.log"
@@ -318,19 +461,50 @@ Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen."
 fi
 
-# --- Modell nach Rolle/Label -------------------------------------------------
+# --- Modell nach Rolle/Label/Eskalationsstufe --------------------------------
 # Planer-Rolle läuft immer mit Opus (siehe ADR-0005), unabhängig vom Label.
-# Für die Bau-Rolle: mechanische Tickets (Umbenennen, Doku, Boilerplate)
-# brauchen kein Sonnet.
+# Bau-Rolle: 'tier_current' liefert die aktuelle Eskalationsstufe (ADR-0007) --
+# Default 'sonnet' bzw. 'haiku' bei Label 'model:haiku', nach drei erfolglosen
+# Läufen 'opus'. Kill-Switch 'no-escalation' friert auf der Default-Stufe ein,
+# unabhaengig von einer eventuell schon gesetzten Stufe.
 LABELS=$(gh issue view "$ISSUE" --json labels -q '.labels[].name' | tr '\n' ' ')
 if [ "$RUN_ROLE" = "plan" ]; then
   MODEL="opus"
 else
   case "$LABELS" in
-    *model:haiku*) MODEL="haiku" ;;
-    *)             MODEL="sonnet" ;;
+    *no-escalation*)
+      case "$LABELS" in
+        *model:haiku*) MODEL="haiku" ;;
+        *)             MODEL="sonnet" ;;
+      esac
+      ;;
+    *) MODEL=$(tier_current "$ISSUE") ;;
   esac
 fi
+
+# --- Opus-Bau-Deckel (ADR-0007) ----------------------------------------------
+# Nur relevant, wenn die Eskalation tatsaechlich bei Opus angekommen ist. Der
+# Deckel greift VOR dem claude-Aufruf, damit ein erschoepftes Tagesbudget nicht
+# noch einen (teuren) dritten Opus-Lauf kostet.
+if [ "$RUN_ROLE" = "build" ] && [ "$MODEL" = "opus" ]; then
+  if opus_build_cap_reached "$ISSUE"; then
+    gh issue comment "$ISSUE" --body \
+      "🤖 Opus-Tagesbudget (2 Bau-Läufe) für #$ISSUE ist für heute erschöpft — die Eskalation bleibt auf der höchsten Stufe stecken.
+
+Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Willst du dauerhaft bei Sonnet/Haiku bleiben, setze das Label \`no-escalation\`." \
+      >/dev/null 2>&1
+    gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+    status "wartet auf dich (#$ISSUE)" "🟡" \
+      "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Ich warte auf dich."
+    exit 0
+  fi
+  opus_build_cap_reserve "$ISSUE"
+fi
+
+# Vor dem Lauf die Branch-Spitze merken -- der Vergleich danach entscheidet
+# in build_escalation_eval, ob dieser Lauf Fortschritt gebracht hat (ADR-0007).
+BEFORE_TIP=""
+[ "$RUN_ROLE" = "build" ] && BEFORE_TIP=$(branch_tip "$ISSUE")
 
 # --- Der Bau-Prompt -----------------------------------------------------------
 read -r -d '' PROMPT <<EOF
@@ -404,8 +578,11 @@ else
         --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
 fi
 # Opus ist fuer den Runner tabu (siehe docs/TOKEN-BUDGET.md) -- ausser in den
-# nur-lesenden Denk-Rollen aus docs/adr/0005-opus-im-runner.md (RUN_ROLE=plan).
-# Bauen laeuft immer mit Sonnet bzw. Haiku.
+# nur-lesenden Denk-Rollen aus docs/adr/0005-opus-im-runner.md (RUN_ROLE=plan)
+# und der Eskalations-Rolle aus docs/adr/0007-opus-eskalation-baut.md: dort baut
+# Opus als letzte Modellstufe tatsaechlich (RUN_ROLE=build, MODEL=opus, siehe
+# tier_current oben), mit Deckel 2 Laeufe/Ticket/Tag und Kill-Switch
+# no-escalation.
 
 if [ "$MODE" = "resume" ] && [ -s "$SID_FILE" ]; then
   ARGS+=(--resume "$(cat "$SID_FILE")")
@@ -446,6 +623,10 @@ TRANSIENT_FILE="$STATE_DIR/transient-$ISSUE"
 # --- Auswertung -------------------------------------------------------------
 if [ $RC -eq 0 ]; then
   rm -f "$TRANSIENT_FILE"
+
+  # Fortschritts-/Fehlschlag-Auswertung fuer die Eskalation (ADR-0007) -- ein
+  # sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein Commit).
+  build_escalation_eval
 
   # Der Lauf war sauber — aber hat Claude dabei eine Frage gestellt?
   # Dann wartet das Ticket jetzt auf dich, und Grün wäre irreführend.
@@ -515,7 +696,8 @@ fi
 # Weder Limit noch inhaltlicher Fehlschlag am Ticket — ein Hänger mitten in der
 # Antwort (5xx, "overloaded", abgebrochene Verbindung, Timeout). Der Arbeitsstand
 # liegt in Git und im Fortschrittskommentar; der richtige Umgang ist ein neuer
-# Versuch beim nächsten Takt, kein needs-input.
+# Versuch beim nächsten Takt, kein needs-input. Zaehlt bewusst NICHT als
+# Eskalations-Fehlversuch (ADR-0007) -- Infrastruktur, kein Inhalt.
 RESULT_TXT=$(echo "$OUT" | jq -r '.result // empty' 2>/dev/null)
 API_STATUS=$(echo "$OUT" | jq -r '.api_error_status // empty' 2>/dev/null)
 
@@ -559,6 +741,10 @@ solange das Label \`needs-input\` hängt."
   exit 1
 fi
 
+# Ein "echter" inhaltlicher Fehlschlag (weder Limit noch Notbremse noch
+# Infrastruktur) -- das zaehlt als Eskalations-Fehlversuch (ADR-0007).
+build_escalation_eval
+
 gh issue comment "$ISSUE" --body "🤖 Der Runner ist mit einem Fehler abgebrochen (Exit $RC).
 Letzte Zeilen:
 \`\`\`
@@ -571,3 +757,10 @@ status "Fehler bei #$ISSUE" "🔴" \
 Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
 solange das Label \`needs-input\` hängt."
 exit 1
+
+}
+
+# Nur ausfuehren, wenn direkt gestartet -- nicht beim Sourcen durch Tests.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
