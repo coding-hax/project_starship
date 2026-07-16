@@ -9,6 +9,7 @@
 @import '../ui/section-card.css';
 @import '../ui/toggle.css';
 @import '../ui/segmented-control.css';
+@import '../ui/slider.css';
 @import '../features/tasks/task-list.css';
 @import '../features/tasks/quick-add.css';
 @import '../features/tasks/task-editor.css';
