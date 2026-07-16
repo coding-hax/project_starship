@@ -101,7 +101,7 @@ test('Theme, Toggle und Slider sind fokussierbar, Space schaltet den Toggle, der
 });
 
 test.describe('reduced motion', () => {
-  test.use({ reducedMotion: 'reduce' });
+  test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
   test('der Toggle wechselt zuverlässig ohne Bewegungsabhängigkeit', async ({ page }) => {
     await registerPasskey(page);
