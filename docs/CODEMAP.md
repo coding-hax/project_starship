@@ -17,7 +17,7 @@ src/
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/kalender/         Termine            (leer bis M2)
     (app)/journal/          Journal            (leer bis M3)
-    (app)/einstellungen/    Einstellungen — aktuell nur der Export-Button
+    (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
