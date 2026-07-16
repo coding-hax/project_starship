@@ -284,23 +284,12 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
   fi
 fi
 
-# --- Budget-Deckel für den Planer (ADR-0005) --------------------------------
-# Nur für RUN_ROLE=plan relevant. Zähler pro Ticket+Tag, hochgezählt VOR dem
-# Lauf, damit ein abstürzender Lauf das Budget nicht umgeht.
-if [ "$RUN_ROLE" = "plan" ]; then
-  COUNTER="$STATE_DIR/opus-$(date +%Y%m%d)-$ISSUE"
-  N=$(cat "$COUNTER" 2>/dev/null || echo 0)
-  if [ "$N" -ge 2 ] 2>/dev/null; then
-    gh issue comment "$ISSUE" --body "🤖 Opus-Tagesbudget (2 Läufe) für dieses Ticket ist erschöpft, der Plan ist noch nicht fertig. Morgen geht es automatisch weiter — oder Label \`no-opus\` setzen und selbst planen." >/dev/null 2>&1
-    gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
-    status "wartet auf dich (#$ISSUE)" "🟡" \
-      "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Zwei Planer-Läufe heute, Plan noch nicht fertig.
-
-Setze \`no-opus\`, um selbst zu planen, oder warte bis morgen — dann läuft der Planer automatisch weiter."
-    exit 0
-  fi
-  echo $((N + 1)) > "$COUNTER"
-fi
+# Kein Tages-Deckel fürs Denken (Planung/Recherche): ein komplexer Plan darf so
+# viele Opus-Läufe kosten, wie er braucht — ihn nach zwei Läufen für einen Tag zu
+# parken widerspräche dem Ziel unbeaufsichtigten Fortschritts. Die Obergrenze ist
+# das echte Nutzungs-/Session-Limit des Plans (429 -> blocked-limit, wird unten
+# behandelt und läuft von selbst weiter), die Handbremse der Kill-Switch 'no-opus'
+# in der Ticket-Auswahl. Siehe ADR-0005.
 
 SID_FILE="$STATE_DIR/session-$ISSUE"
 LOG="$STATE_DIR/last-run.log"

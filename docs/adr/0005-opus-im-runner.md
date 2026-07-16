@@ -28,9 +28,11 @@ Produktionscode.
 
 ## Grenzen
 
-- **Budget-Deckel:** maximal 2 Opus-Läufe pro Denk-Ticket pro Kalendertag. Wird der
-  Deckel erreicht, bevor der Plan fertig ist, kommentiert der Runner den Stand und
-  setzt `needs-input` statt eines weiteren Opus-Laufs.
+- **Kein künstlicher Tages-Deckel fürs Denken:** Planung und Recherche laufen so oft,
+  wie sie brauchen. Ein komplexer Plan kann mehrere Opus-Läufe kosten, und ihn nach
+  einer festen Zahl für einen Tag zu parken widerspräche dem Ziel unbeaufsichtigten
+  Fortschritts. Die Obergrenze ist das echte Nutzungs-/Session-Limit des Plans
+  (429 → `blocked-limit`, automatische Fortsetzung), nicht ein fester Zähler.
 - **Kill-Switch:** Label `no-opus` am Ticket unterbindet jede Opus-Nutzung —
   der Planer überspringt das Ticket vollständig, weder Planung noch Bau durch Opus.
 - **Strikt nur-lesend:** Opus läuft mit `--allowedTools "Read,Grep,Glob,Bash"`, ohne
@@ -50,5 +52,5 @@ Produktionscode.
   Planer-Lauf ab, bleiben Label, Teilplan und Wiederaufnahme-Marker stehen — der
   nächste Lauf setzt am Marker fort, nie von vorne.
 - `scripts/claude-runner.sh` bekommt eine zweite Rolle (`RUN_ROLE=plan` neben
-  `RUN_ROLE=build`) mit eigenem Prompt, eigenen `--allowedTools` und dem
-  Budget-Zähler unter `.runner/opus-<datum>-<issue>`.
+  `RUN_ROLE=build`) mit eigenem Prompt und eigenen `--allowedTools`. Einen festen
+  Budget-Zähler gibt es bewusst nicht (siehe „Grenzen").
