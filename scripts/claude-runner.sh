@@ -107,7 +107,7 @@ reset_epoch() {
 # zu erfahren. Genau das soll man sich sparen.
 #
 #   🟠 arbeitet an #N   – Lauf ist unterwegs, vor dem `claude`-Aufruf gesetzt
-#   🟢 läuft            – nichts zu tun
+#   🟢 wartet/nichts offen – Ruhe: nächster Takt startet ggf. automatisch, kein Eingreifen
 #   🟡 wartet auf dich  – EINGREIFEN (Frage offen oder Freigabe nötig)
 #   🔴 Fehler           – EINGREIFEN
 #   🔵 Limit erreicht   – pausiert, läuft von selbst weiter
@@ -146,6 +146,38 @@ _Lauf-Ende $(ts): ${reason}, unfertig — nächster Lauf macht weiter._" >/dev/n
 waiting_issues() {
   gh issue list --label needs-input --state open --limit 20 \
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
+}
+
+# Einmaliger Schnappschuss aller offenen Issues mit Labels.
+queue_snapshot() {
+  gh issue list --state open --limit 50 --json number,labels 2>/dev/null || echo '[]'
+}
+
+# Offene Queue-Arbeit als "#a, #b" (leer = nichts offen).
+# ready|needs-plan|needs-research, jeweils OHNE needs-input. (#1/Status-Issue
+# trägt keins dieser Labels und fällt automatisch raus.)
+queue_pending() {   # $1 = snapshot-json
+  printf '%s' "$1" | jq -r '
+    [ .[] | (.labels|map(.name)) as $l
+      | select( ($l|index("ready")) or ($l|index("needs-plan")) or ($l|index("needs-research")) )
+      | select( ($l|index("needs-input"))|not )
+      | .number ]
+    | sort | map("#"+tostring) | join(", ")' 2>/dev/null
+}
+
+# Das Ticket, das der Runner beim NÄCHSTEN Takt tatsächlich nähme — dieselbe
+# Präzedenz wie main(): in-progress -> needs-plan -> ready. Leer, wenn nichts
+# baubereit ist (z. B. nur needs-research offen).
+queue_next() {   # $1 = snapshot-json
+  printf '%s' "$1" | jq -r '
+    def pick($has; $hasnt):
+      [ .[] | (.labels|map(.name)) as $l
+        | select( $has  | all(. as $x | ($l|index($x))) )
+        | select( $hasnt| any(. as $x | ($l|index($x))) | not )
+        | .number ] | sort | .[0];
+    ( pick(["in-progress"]; ["needs-input"])
+      // pick(["needs-plan"]; ["needs-input","no-opus"])
+      // pick(["ready"];     ["needs-input","needs-plan"]) ) // empty' 2>/dev/null
 }
 
 # --- Modell-Eskalation beim Bauen (ADR-0007) --------------------------------
@@ -428,10 +460,23 @@ Offene Fragen an: $WAITING
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
         else
-          status "nichts zu tun" "⚪️" \
-            "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
+          # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
+          # oben) -- einzig needs-research kaeme hier noch als Queue-Arbeit in
+          # Frage, ist aber (mangels Runner-Zweig, siehe #43) nicht baubereit.
+          SNAP=$(queue_snapshot)
+          PENDING=$(queue_pending "$SNAP")
+          if [ -n "$PENDING" ]; then
+            status "wartet auf nächsten Lauf · Queue: $PENDING" "🟢" \
+              "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
+
+In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
+(z. B. nur Recherche). **Kein Eingreifen nötig.**"
+          else
+            status "nichts zu tun" "⚪️" \
+              "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
 
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
+          fi
         fi
         exit 0
       fi
@@ -731,8 +776,30 @@ Offene Fragen an: $WAITING
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
 Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`."
   else
-    status "läuft · zuletzt #$ISSUE" "🟢" \
-      "🟢 **Läuft.** Zuletzt an #$ISSUE gearbeitet. Nichts zu tun für dich."
+    SNAP=$(queue_snapshot)
+    PENDING=$(queue_pending "$SNAP")
+    NEXT=$(queue_next "$SNAP")
+    if [ -n "$PENDING" ]; then
+      if [ -n "$NEXT" ]; then
+        status "wartet auf nächsten Lauf · als Nächstes #$NEXT" "🟢" \
+          "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
+
+Zuletzt an #$ISSUE gearbeitet. Als Nächstes ist **#$NEXT** dran. Der nächste Takt
+startet automatisch (~20 Min) — **kein Eingreifen nötig.**
+
+Offene Queue: $PENDING"
+      else
+        status "wartet auf nächsten Lauf · Queue: $PENDING" "🟢" \
+          "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
+
+Zuletzt an #$ISSUE gearbeitet. In der Queue liegt noch Arbeit ($PENDING), aber
+derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**"
+      fi
+    else
+      status "nichts offen · zuletzt #$ISSUE" "🟢" \
+        "🟢 **Nichts offen.** Zuletzt an #$ISSUE gearbeitet, die Queue ist leer.
+Kein Eingreifen nötig."
+    fi
   fi
   exit 0
 fi

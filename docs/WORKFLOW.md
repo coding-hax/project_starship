@@ -166,11 +166,15 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | Titel | Bedeutung | Musst du etwas tun? |
 |---|---|---|
 | 🟠 `Runner · arbeitet an #42 (seit 18:49)` | Lauf läuft gerade, vor dem `claude`-Aufruf gesetzt | nein |
-| 🟢 `Runner · läuft · zuletzt #42` | Lauf ist zurück, nichts offen | nein |
+| 🟢 `Runner · wartet auf nächsten Lauf · als Nächstes #43` | idle (kein laufender Prozess), Queue nicht leer, nächster Takt startet automatisch | nein |
+| 🟢 `Runner · nichts offen · zuletzt #42` | idle, Queue leer | nein |
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
 | 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
 | 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
-| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready` | nein (außer du willst was) |
+| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready`, `needs-plan` oder `needs-research` | nein (außer du willst was) |
+
+🟢 heißt jetzt ausdrücklich **idle**: kein laufender Prozess, egal ob noch Arbeit
+in der Queue liegt oder nicht — das unterscheidet den Titel klar von 🟠.
 
 Nur **Gelb und Rot** verlangen dich. Alles andere ist Information.
 
