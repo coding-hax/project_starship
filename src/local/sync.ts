@@ -15,12 +15,13 @@ let rerun = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
 export async function sync(): Promise<void> {
-  // Coalesce, but never at the cost of dropping work: a call that arrives while a
-  // sync is running asks the running one to loop once more, then joins it. Simply
-  // returning the in-flight promise would let `await sync()` resolve on a run that
-  // began *before* the caller's mutation was enqueued — the push would then never
-  // have sent it, and the row would sit in the outbox until the next trigger. The
-  // extra push/pull is cheap and idempotent (ADR-0008).
+  // Coalesce overlapping triggers into the running sync, but never let coalescing
+  // drop a caller's own work. A call arriving mid-run flags a rerun and joins the
+  // in-flight promise; the loop takes another lap only if that rerun coincides with
+  // queued work. So a sync() issued right after mutate() is guaranteed to push that
+  // mutation — its `await` cannot resolve on a run that began before the row existed
+  // — while overlapping *pull-only* triggers (the visible-tab interval and a focus
+  // firing together, #29) enqueue nothing and still collapse into a single pull.
   if (inFlight) {
     rerun = true;
     return inFlight;
@@ -32,7 +33,7 @@ export async function sync(): Promise<void> {
         rerun = false;
         await push();
         await pull();
-      } while (rerun);
+      } while (rerun && (await pending()).length > 0);
     } finally {
       inFlight = null;
     }
