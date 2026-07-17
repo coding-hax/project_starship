@@ -20,9 +20,25 @@ export interface MutateInput {
   payload?: Record<string, unknown>;
 }
 
+/**
+ * A logical clock, not a display of the actual time: `Date.now()` only has
+ * millisecond resolution, so two `mutate()` calls in the same tick would get an
+ * identical `createdAt` — and `pending()`'s ordering (this device's arrival order,
+ * ADR-0008) would then depend on IndexedDB's tie-break by primary key (the
+ * mutation's random UUIDv7), not on call order. Nudging forward by at least 1ms
+ * per call keeps `createdAt` strictly increasing, so it stays a valid stand-in for
+ * "the order this device made these mutations in".
+ */
+let lastTimestamp = 0;
+function nextTimestamp(): string {
+  const now = Date.now();
+  lastTimestamp = now > lastTimestamp ? now : lastTimestamp + 1;
+  return new Date(lastTimestamp).toISOString();
+}
+
 export async function mutate(input: MutateInput): Promise<string> {
   const rowId = input.rowId ?? uuidv7();
-  const now = new Date().toISOString();
+  const now = nextTimestamp();
 
   await db.transaction('rw', db.records, db.outbox, async () => {
     const existing = await db.records.get([input.table, rowId] as never);

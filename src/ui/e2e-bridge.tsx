@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { db } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
 import { getStoragePersistenceStatus } from './persist-storage';
@@ -19,7 +20,16 @@ import { getStoragePersistenceStatus } from './persist-storage';
 export function E2EBridge() {
   useEffect(() => {
     Object.assign(window, {
-      __starship: { mutate, sync, pending, size, startSync, persistStatus: getStoragePersistenceStatus },
+      __starship: {
+        mutate,
+        sync,
+        pending,
+        size,
+        startSync,
+        persistStatus: getStoragePersistenceStatus,
+        debugRecords: () => db.records.toArray(),
+        debugMeta: () => db.meta.toArray(),
+      },
     });
   }, []);
 

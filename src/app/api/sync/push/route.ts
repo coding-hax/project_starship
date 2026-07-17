@@ -1,3 +1,5 @@
+import { appendFileSync } from 'node:fs';
+import path from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
@@ -131,6 +133,16 @@ export async function POST(request: Request) {
       }
     }
   });
+
+  const debugLogPath = path.join(process.cwd(), 'tests', '.debug-push.log');
+  for (const mutation of mutations) {
+    const entry = SYNC_REGISTRY[mutation.table];
+    const [check] = await db.select().from(entry.table).where(eq(entry.table.id, mutation.rowId)).limit(1);
+    appendFileSync(
+      debugLogPath,
+      `post-commit rowId=${mutation.rowId} table=${mutation.table} found=${!!check} row=${JSON.stringify(check)}\n`,
+    );
+  }
 
   const response: PushResponse = { applied, conflicts, rejected };
   return NextResponse.json(response);
