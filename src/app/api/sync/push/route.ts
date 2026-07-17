@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
+import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
   isSyncTable,
   type Mutation,
@@ -12,16 +13,28 @@ import {
 } from '@/local/types';
 
 /**
+ * A fixed, arbitrary key for `pg_advisory_xact_lock` — any bigint works, it only
+ * has to be the same one on every call so that pushes serialize against each other.
+ */
+const PUSH_LOCK_KEY = 5_326_004;
+
+/**
  * Applies the client outbox.
  *
- * Idempotent through the row id: replaying a mutation compares equal timestamps,
- * writes the same values and yields the same state. A dropped connection mid-push
- * is therefore harmless — the client just sends it again.
+ * Idempotent through the row id: replaying a mutation writes the same fields and
+ * yields the same state, modulo an extra `sync_seq` bump — harmless, since `upsert`
+ * is tombstone-neutral and never resurrects a deleted row. A dropped connection
+ * mid-push is therefore harmless — the client just sends it again.
  *
- * Last-write-wins: a mutation is applied when its updatedAt is not older than what
- * the server holds. The payload is partial, so two devices touching different fields
- * of the same row do not clobber each other. A genuinely stale mutation is reported
- * as a conflict, never silently swallowed (ADR-0001).
+ * Arrival wins (ADR-0008): every mutation is applied and stamped with the next
+ * `sync_seq`, in the order the client sent them (its outbox is already createdAt-
+ * ascending, i.e. this device's arrival order). A mutation based on a row version
+ * something else has since overwritten is still applied — it is reported as a
+ * conflict, never silently dropped (ADR-0001). `pg_advisory_xact_lock` serializes
+ * concurrent pushes so sequence-assignment order always matches commit order —
+ * otherwise a later-committing transaction could hand out a lower `sync_seq` than
+ * one that is still in flight, and that row would never appear to a puller reading
+ * the sequence range in between (ADR-0008).
  */
 export async function POST(request: Request) {
   try {
@@ -43,7 +56,8 @@ export async function POST(request: Request) {
     if (
       !isSyncTable(m?.table) ||
       typeof m?.rowId !== 'string' ||
-      typeof m?.updatedAt !== 'string'
+      typeof m?.updatedAt !== 'string' ||
+      (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null)
     ) {
       return NextResponse.json({ error: 'malformed mutation' }, { status: 400 });
     }
@@ -54,40 +68,37 @@ export async function POST(request: Request) {
   const rejected: PushRejection[] = [];
   const now = new Date();
 
-  // Oldest first, so a newer mutation always lands on top of an older one.
-  const ordered = [...mutations].sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
-
   await db.transaction(async (tx) => {
-    for (const mutation of ordered) {
+    await tx.execute(sql`select pg_advisory_xact_lock(${PUSH_LOCK_KEY})`);
+
+    // Receipt order, not updatedAt order: the client's outbox is already this
+    // device's arrival order, and arrival — not the client clock — decides now.
+    for (const mutation of mutations) {
       const entry = SYNC_REGISTRY[mutation.table];
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
 
       const [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
 
-      if (existing && existing.updatedAt > incomingUpdatedAt) {
-        conflicts.push({
-          mutationId: mutation.id,
-          rowId: mutation.rowId,
-          reason: 'stale',
-          incomingUpdatedAt: mutation.updatedAt,
-          storedUpdatedAt: existing.updatedAt.toISOString(),
-        });
-        continue;
-      }
+      const deletedAt = resolveDeletedAt(
+        mutation.op,
+        existing?.deletedAt ?? null,
+        incomingUpdatedAt,
+      );
+      const conflict = detectOverwrite(mutation.baseSeq, existing?.syncSeq ?? null);
 
       const fields = writableFields(mutation.table, mutation.payload ?? {});
-      const deletedAt =
-        mutation.op === 'delete'
-          ? incomingUpdatedAt
-          : mutation.op === 'restore'
-            ? null
-            : (existing?.deletedAt ?? null);
 
       if (existing) {
         await tx
           .update(table)
-          .set({ ...fields, updatedAt: incomingUpdatedAt, deletedAt, syncedAt: now })
+          .set({
+            ...fields,
+            updatedAt: incomingUpdatedAt,
+            deletedAt,
+            syncedAt: now,
+            syncSeq: sql`nextval('sync_seq')`,
+          })
           .where(eq(table.id, mutation.rowId));
       } else {
         // Creating a row: the NOT NULL columns must be present. Reject at the door
@@ -104,10 +115,20 @@ export async function POST(request: Request) {
           updatedAt: incomingUpdatedAt,
           deletedAt,
           syncedAt: now,
-        } as typeof table.$inferInsert);
+          syncSeq: sql`nextval('sync_seq')`,
+        } as unknown as typeof table.$inferInsert);
       }
 
       applied.push(mutation.id);
+      if (conflict) {
+        conflicts.push({
+          mutationId: mutation.id,
+          rowId: mutation.rowId,
+          reason: 'overwritten',
+          incomingUpdatedAt: mutation.updatedAt,
+          overwrittenUpdatedAt: (existing?.updatedAt ?? incomingUpdatedAt).toISOString(),
+        });
+      }
     }
   });
 

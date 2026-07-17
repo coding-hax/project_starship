@@ -3,16 +3,18 @@ import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
 import { SYNC_REGISTRY } from '@/db/sync-tables';
+import { selectSince } from '@/local/conflict';
 import { SYNC_TABLES, type ChangeRow, type PullResponse } from '@/local/types';
 
 /**
- * Everything that changed since `since`, oldest first.
+ * Everything that arrived after `since`, oldest arrival first.
  *
  * Soft-deleted rows are included on purpose: the client needs the tombstone, or a
  * row deleted on the phone would live on forever on the laptop.
  *
- * The cursor returned is the server clock, not the newest row's timestamp — that
- * keeps the client from anchoring on a stale local clock.
+ * `since`/the returned cursor are `sync_seq` values (ADR-0008), not timestamps — a
+ * client clock set far in the past or future can no longer cause a row to be
+ * skipped or re-fetched forever.
  */
 export async function GET(request: Request) {
   try {
@@ -24,13 +26,12 @@ export async function GET(request: Request) {
     throw error;
   }
 
-  const raw = new URL(request.url).searchParams.get('since') ?? new Date(0).toISOString();
-  const since = new Date(raw);
-  if (Number.isNaN(since.getTime())) {
-    return NextResponse.json({ error: 'since must be an ISO timestamp' }, { status: 400 });
+  const raw = new URL(request.url).searchParams.get('since');
+  const since = raw === null ? 0 : Number.parseInt(raw, 10);
+  if (!Number.isInteger(since)) {
+    return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const now = new Date();
   const changes: ChangeRow[] = [];
 
   for (const name of SYNC_TABLES) {
@@ -40,8 +41,8 @@ export async function GET(request: Request) {
     const rows = await db
       .select()
       .from(table)
-      .where(gt(table.updatedAt, since))
-      .orderBy(asc(table.updatedAt));
+      .where(gt(table.syncSeq, since))
+      .orderBy(asc(table.syncSeq));
 
     for (const row of rows) {
       const data: Record<string, unknown> = {};
@@ -54,13 +55,15 @@ export async function GET(request: Request) {
         id: row.id,
         updatedAt: row.updatedAt.toISOString(),
         deletedAt: row.deletedAt?.toISOString() ?? null,
+        syncSeq: row.syncSeq,
         data,
       });
     }
   }
 
-  changes.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
+  changes.sort((a, b) => a.syncSeq - b.syncSeq);
 
-  const response: PullResponse = { changes, now: now.toISOString() };
+  const { cursor } = selectSince(changes, since);
+  const response: PullResponse = { changes, cursor };
   return NextResponse.json(response);
 }
