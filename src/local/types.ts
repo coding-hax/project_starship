@@ -24,8 +24,14 @@ export interface Mutation {
    * two devices edit different fields of the same row without clobbering each other.
    */
   payload: Record<string, unknown>;
-  /** ISO. The logical timestamp last-write-wins compares against. */
+  /** ISO. Display/tiebreaker only — no longer the conflict authority (ADR-0008). */
   updatedAt: string;
+  /**
+   * `syncSeq` of the row version this mutation was based on, `null` for a new row.
+   * Lets the server detect — independent of any client clock — whether this write
+   * overwrites a change from another device that it never saw (ADR-0008).
+   */
+  baseSeq: number | null;
 }
 
 export interface OutboxEntry extends Mutation {
@@ -41,9 +47,11 @@ export interface PushRequest {
 export interface PushConflict {
   mutationId: string;
   rowId: string;
-  reason: 'stale';
+  /** This write overwrote a change it never saw. Informative, never silent (ADR-0001). */
+  reason: 'overwritten';
   incomingUpdatedAt: string;
-  storedUpdatedAt: string;
+  /** `updatedAt` of the row version that got overwritten. */
+  overwrittenUpdatedAt: string;
 }
 
 export interface PushRejection {
@@ -53,9 +61,12 @@ export interface PushRejection {
 }
 
 export interface PushResponse {
-  /** Mutation ids that were applied or were already applied. Safe to drop from the outbox. */
+  /**
+   * Mutation ids that were applied — including the conflicted ones (arrival wins,
+   * ADR-0008). Safe to drop from the outbox.
+   */
   applied: string[];
-  /** Rejected as older than what the server holds. Logged, never silently dropped. */
+  /** Informative subset of `applied` that overwrote an unseen change. Never silently dropped. */
   conflicts: PushConflict[];
   /** Malformed creates. Dropped from the queue — retrying forever would just wedge it. */
   rejected: PushRejection[];
@@ -67,11 +78,13 @@ export interface ChangeRow {
   id: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** Arrival order (ADR-0008) — what the client's pull cursor advances by. */
+  syncSeq: number;
   data: Record<string, unknown>;
 }
 
 export interface PullResponse {
   changes: ChangeRow[];
-  /** Server clock at the moment of the read — the cursor for the next pull. */
-  now: string;
+  /** Highest `syncSeq` among the returned changes — the cursor for the next pull. */
+  cursor: number;
 }
