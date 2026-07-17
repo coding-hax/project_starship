@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
+import { getStoragePersistenceStatus } from './persist-storage';
 
 /**
  * A handle on the real outbox for the E2E suite.
@@ -18,7 +19,7 @@ import { startSync, sync } from '@/local/sync';
 export function E2EBridge() {
   useEffect(() => {
     Object.assign(window, {
-      __starship: { mutate, sync, pending, size, startSync },
+      __starship: { mutate, sync, pending, size, startSync, persistStatus: getStoragePersistenceStatus },
     });
   }, []);
 
