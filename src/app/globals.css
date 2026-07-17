@@ -13,6 +13,7 @@
 @import '../features/tasks/task-list.css';
 @import '../features/tasks/quick-add.css';
 @import '../features/tasks/task-editor.css';
+@import '../features/tasks/capture-confirm.css';
 @import '../features/export/export.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist

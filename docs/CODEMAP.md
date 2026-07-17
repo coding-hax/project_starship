@@ -17,7 +17,7 @@ src/
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/kalender/         Termine            (leer bis M5)
     (app)/journal/          Journal            (leer bis M4)
-    (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Export-Button
+    (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Spracherfassung (CapturePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
@@ -52,8 +52,11 @@ src/
       task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder
       task-editor.css         Styles fürs Editor-Sheet
       task-list.css           Karten-, Checkbox-, Swipe- und Lösch-Bestätigungs-Styles
-      quick-add.tsx           FAB + Sheet + Titelfeld, speichert via outbox.mutate()
+      quick-add.tsx           FAB + Sheet + Titelfeld, parst Freitext (parse-task-input), speichert via outbox.mutate()
       quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
+      parse-task-input.ts     reiner Parser: Freitext -> { title, dueAt } (relative Tage, Wochentage, Datum, Uhrzeit)
+      capture-confirm.tsx     Bestätigungs-Sheet für eine per Freitext erkannte Fälligkeit (issue #47 AC1)
+      capture-confirm.css     Styles fürs Bestätigungs-Sheet, Summary mit tabular-nums
     events/ journal/ habits/  (leer, ab M2/M3/M4)
     export/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
@@ -62,6 +65,8 @@ src/
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
+      use-capture-prefs.ts    „ohne Bestätigung direkt anlegen" — gerätelokal in localStorage (issue #47 AC3)
+      capture-panel.tsx       Toggle für use-capture-prefs in den Einstellungen
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
@@ -88,6 +93,7 @@ tests/
   shell.spec.ts             Login, vier Tabs, aktiver Tab
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
+  capture.spec.ts           Freitext-Fälligkeit: Bestätigungs-Sheet, Direkt-Pfad + Undo, offline (issue #47)
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
