@@ -83,7 +83,8 @@ src/
     toggle.tsx / .css       Switch (role="switch"), Federknopf
     segmented-control.tsx / .css  Radiogroup mit gleitendem Auswahl-Indikator
     slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
-    sync-boot.tsx           startet den Sync beim Mount
+    sync-boot.tsx           startet den Sync beim Mount + fragt persistenten Storage an (issue #52)
+    persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
 tests/
   global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
@@ -95,6 +96,7 @@ tests/
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
   capture.spec.ts           Freitext-Fälligkeit: Bestätigungs-Sheet, Direkt-Pfad + Undo, offline (issue #47)
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
+  persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/

@@ -89,6 +89,7 @@ declare global {
         Array<{ table: string; rowId: string; op: string; payload: Record<string, unknown> }>
       >;
       startSync: () => () => void;
+      persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
     };
   }
 }
