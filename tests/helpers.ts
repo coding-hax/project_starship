@@ -61,6 +61,24 @@ export async function skewClock(page: Page, at: string) {
   await page.clock.setFixedTime(at);
 }
 
+/**
+ * Freezes an already-installed fake clock at the page's *own* current time, so the
+ * fastForward that follows advances a known, deterministic amount.
+ *
+ * `page.clock.pauseAt(Date.now())` read the time in the **Node** test process, not in
+ * the browser. The installed fake clock keeps ticking at real rate, and the CDP round
+ * trip that carries `pauseAt` to the browser takes a few milliseconds — long enough
+ * for the browser clock to tick past the captured value, so `pauseAt` rejected with
+ * "cannot fast-forward to the past" and the #29 poll tests flaked (#75). Reading the
+ * time inside the page and pausing a beat ahead keeps the target ahead of the still-
+ * advancing clock. The one-second lead is far smaller than any interval the callers
+ * fast-forward through, so it changes nothing they assert on.
+ */
+export async function freezeClock(page: Page) {
+  const browserNow = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(browserNow + 1_000);
+}
+
 /** The tests assert against the real database, not against what the UI claims. */
 export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
