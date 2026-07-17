@@ -22,6 +22,20 @@
       "when": 1784026634940,
       "tag": "0002_simple_roxanne_simpson",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784289592133,
+      "tag": "0003_good_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784289604167,
+      "tag": "0004_backfill_sync_seq",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { db, getMeta, META_LAST_PULLED_AT, setMeta } from './dexie';
+import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
 import type { Mutation, PullResponse, PushResponse } from './types';
 
@@ -11,16 +11,29 @@ import type { Mutation, PullResponse, PushResponse } from './types';
  */
 
 let inFlight: Promise<void> | null = null;
+let rerun = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
 export async function sync(): Promise<void> {
-  // Coalesce: a second call while one is running joins the running one.
-  if (inFlight) return inFlight;
+  // Coalesce overlapping triggers into the running sync, but never let coalescing
+  // drop a caller's own work. A call arriving mid-run flags a rerun and joins the
+  // in-flight promise; the loop takes another lap only if that rerun coincides with
+  // queued work. So a sync() issued right after mutate() is guaranteed to push that
+  // mutation — its `await` cannot resolve on a run that began before the row existed
+  // — while overlapping *pull-only* triggers (the visible-tab interval and a focus
+  // firing together, #29) enqueue nothing and still collapse into a single pull.
+  if (inFlight) {
+    rerun = true;
+    return inFlight;
+  }
 
   inFlight = (async () => {
     try {
-      await push();
-      await pull();
+      do {
+        rerun = false;
+        await push();
+        await pull();
+      } while (rerun && (await pending()).length > 0);
     } finally {
       inFlight = null;
     }
@@ -40,6 +53,7 @@ export async function push(): Promise<void> {
     op: entry.op,
     payload: entry.payload,
     updatedAt: entry.updatedAt,
+    baseSeq: entry.baseSeq,
   }));
 
   let response: Response;
@@ -72,9 +86,10 @@ export async function push(): Promise<void> {
   await markApplied(mutations.filter((m) => appliedIds.has(m.id)));
 
   if (result.conflicts.length > 0) {
-    // Logged, never silently dropped (ADR-0001).
-    console.warn('[sync] mutations rejected as stale', result.conflicts);
-    await discardStale(result.conflicts.map((c) => c.mutationId));
+    // Arrival wins (ADR-0008) — a conflicted mutation was still applied (see
+    // markApplied above), this is purely informative. Logged, never silently
+    // dropped (ADR-0001).
+    console.warn('[sync] mutations overwrote an unseen change', result.conflicts);
   }
 
   if (result.rejected.length > 0) {
@@ -85,17 +100,17 @@ export async function push(): Promise<void> {
 }
 
 export async function pull(): Promise<void> {
-  const since = (await getMeta<string>(META_LAST_PULLED_AT)) ?? new Date(0).toISOString();
+  const since = (await getMeta<number>(META_LAST_PULLED_SEQ)) ?? 0;
 
   let response: Response;
   try {
-    response = await fetch(`/api/sync/pull?since=${encodeURIComponent(since)}`);
+    response = await fetch(`/api/sync/pull?since=${since}`);
   } catch {
     return; // Offline. Try again on the next trigger.
   }
   if (!response.ok) return;
 
-  const { changes, now }: PullResponse = await response.json();
+  const { changes, cursor }: PullResponse = await response.json();
 
   await db.transaction('rw', db.records, db.outbox, async () => {
     for (const change of changes) {
@@ -106,7 +121,9 @@ export async function pull(): Promise<void> {
       const queued = await db.outbox.where('table').equals(change.table).toArray();
       if (queued.some((m) => m.rowId === change.id)) continue;
 
-      if (local && local.updatedAt > change.updatedAt) continue;
+      // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
+      // legitimate incoming change, nor let a stale one through.
+      if (local?.syncSeq != null && local.syncSeq >= change.syncSeq) continue;
 
       await db.records.put({
         table: change.table,
@@ -114,12 +131,13 @@ export async function pull(): Promise<void> {
         updatedAt: change.updatedAt,
         deletedAt: change.deletedAt,
         syncedAt: change.updatedAt,
+        syncSeq: change.syncSeq,
         data: change.data,
       });
     }
   });
 
-  await setMeta(META_LAST_PULLED_AT, now);
+  await setMeta(META_LAST_PULLED_SEQ, cursor);
 }
 
 /** Debounced trigger — call after a mutation without hammering the endpoint. */

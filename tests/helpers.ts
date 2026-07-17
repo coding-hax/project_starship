@@ -52,6 +52,15 @@ export async function openSecondDevice(browser: Browser, page: Page) {
   return devicePage;
 }
 
+/**
+ * Skews one device's clock without touching its timers — `scheduleSync`'s
+ * debounce and `startSync`'s poll interval keep firing normally. Used to prove
+ * that arrival order, not the client clock, decides sync conflicts (ADR-0008, #53).
+ */
+export async function skewClock(page: Page, at: string) {
+  await page.clock.setFixedTime(at);
+}
+
 /** The tests assert against the real database, not against what the UI claims. */
 export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: process.env.DATABASE_URL });

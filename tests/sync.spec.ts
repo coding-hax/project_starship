@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openSecondDevice, registerPasskey, resetDatabase, withDb } from './helpers';
+import { openSecondDevice, registerPasskey, resetDatabase, skewClock, withDb } from './helpers';
 
 // Mirrors PULL_INTERVAL_MS in src/local/sync.ts. Not imported — that module pulls
 // in Dexie/IndexedDB bindings that do not resolve outside a browser context.
@@ -294,5 +294,237 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     expect(counts.removedListeners).toBe(counts.addedListeners);
     expect(counts.intervalsCreated).toBe(1);
     expect(counts.intervalsCleared).toBe(counts.intervalsCreated);
+  });
+});
+
+/** Edits an existing row on a device and pushes it — used to build arrival order. */
+async function editTaskOnDevice(devicePage: Page, rowId: string, title: string) {
+  await devicePage.evaluate(
+    async ({ id, t }) => {
+      await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'upsert', payload: { title: t } });
+      await window.__starship.sync();
+    },
+    { id: rowId, t: title },
+  );
+}
+
+/**
+ * ADR-0008 / #53: arrival at the server, not the client clock, decides sync
+ * conflicts. These reproduce the exact failure mode ADR-0001's old
+ * `updated_at`-based last-write-wins had — a clock-skewed device's write must
+ * neither be silently rejected nor silently swallow another device's change.
+ */
+test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () => {
+  test('a write from a clock skewed into the past still wins when it arrives last', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+    page.on('request', (req) => {
+      if (req.url().includes('/api/sync/push')) console.log('DEBUG A push req', req.postData());
+    });
+    page.on('response', async (res) => {
+      if (res.url().includes('/api/sync/push')) console.log('DEBUG A push res', res.status(), await res.text());
+    });
+
+    const rowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Original' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+    console.log('DEBUG rowId returned', rowId);
+
+    const afterCreate = await withDb((c) => c.query('SELECT id, title, sync_seq FROM tasks'));
+    console.log('DEBUG all tasks after A create+sync', JSON.stringify(afterCreate.rows));
+
+    const devicePage = await openSecondDevice(browser, page);
+    // Pull the original row first, so device B's edit carries the correct baseSeq.
+    const pullResult = await devicePage.evaluate(async () => {
+      const res = await fetch('/api/sync/pull?since=0');
+      return { status: res.status, body: await res.text() };
+    });
+    console.log('DEBUG B raw pull', JSON.stringify(pullResult));
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    const warnings: string[] = [];
+    devicePage.on('console', (msg) => {
+      if (msg.type() === 'warning') warnings.push(msg.text());
+    });
+    devicePage.on('request', (req) => {
+      if (req.url().includes('/api/sync/push')) console.log('DEBUG push req', req.postData());
+    });
+    devicePage.on('response', async (res) => {
+      if (res.url().includes('/api/sync/push')) console.log('DEBUG push res', await res.text());
+    });
+
+    // A arrives first, with a normal clock.
+    await editTaskOnDevice(page, rowId, 'Von A, aktuelle Uhr');
+
+    console.log('DEBUG B records before edit', JSON.stringify(await devicePage.evaluate(() => (window.__starship as unknown as { debugRecords: () => unknown }).debugRecords())));
+    console.log('DEBUG B meta before edit', JSON.stringify(await devicePage.evaluate(() => (window.__starship as unknown as { debugMeta: () => unknown }).debugMeta())));
+
+    // B arrives second, but its clock is skewed ten years into the past — under
+    // the old updated_at comparison this write would have been rejected as
+    // "stale" even though it is, in fact, the newer arrival.
+    await skewClock(devicePage, '2016-01-01T00:00:00Z');
+    await editTaskOnDevice(devicePage, rowId, 'Von B, verstellte Uhr');
+
+    const result = await withDb((c) =>
+      c.query('SELECT title, sync_seq FROM tasks WHERE id = $1', [rowId]),
+    );
+    // Last arrival wins, not the write with the "newer-looking" timestamp.
+    expect(result.rows[0].title).toBe('Von B, verstellte Uhr');
+
+    // Nothing vanished silently — the overwrite was reported (ADR-0001). The
+    // console event arrives over its own CDP channel, slightly after the
+    // `sync()` call above resolves — poll instead of asserting immediately.
+    await expect.poll(() => warnings.some((w) => w.includes('overwrote'))).toBe(true);
+
+    await devicePage.close();
+  });
+
+  test('delete beats a competing update, in both arrival orders', async ({ page, browser }) => {
+    await registerPasskey(page);
+
+    async function deleteThenUpdateOrUpdateThenDelete(deleteFirst: boolean) {
+      const rowId = await page.evaluate(async () => {
+        const id = await window.__starship.mutate({
+          table: 'tasks',
+          op: 'upsert',
+          payload: { title: 'Wird gelöscht' },
+        });
+        await window.__starship.sync();
+        return id;
+      });
+
+      const devicePage = await openSecondDevice(browser, page);
+      await devicePage.evaluate(() => window.__starship.sync());
+
+      if (deleteFirst) {
+        await page.evaluate(
+          (id) =>
+            window.__starship
+              .mutate({ table: 'tasks', rowId: id, op: 'delete' })
+              .then(() => window.__starship.sync()),
+          rowId,
+        );
+        await editTaskOnDevice(devicePage, rowId, 'Update nach Delete');
+      } else {
+        await editTaskOnDevice(devicePage, rowId, 'Update vor Delete');
+        await page.evaluate(
+          (id) =>
+            window.__starship
+              .mutate({ table: 'tasks', rowId: id, op: 'delete' })
+              .then(() => window.__starship.sync()),
+          rowId,
+        );
+      }
+
+      const result = await withDb((c) =>
+        c.query('SELECT deleted_at FROM tasks WHERE id = $1', [rowId]),
+      );
+      expect(result.rows[0].deleted_at, `deleteFirst=${deleteFirst}`).not.toBeNull();
+
+      await devicePage.close();
+    }
+
+    // Order 1: delete arrives, then an update — tombstone-neutral upsert must
+    // not resurrect the row.
+    await deleteThenUpdateOrUpdateThenDelete(true);
+    // Order 2: update arrives, then the delete — the row must still end deleted.
+    await deleteThenUpdateOrUpdateThenDelete(false);
+  });
+
+  test('restore vs. a competing delete: whichever arrives last decides', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+    page.on('response', async (res) => {
+      if (res.url().includes('/api/sync/push')) console.log('DEBUG push res (page)', await res.text());
+    });
+
+    // Case 1: delete, then restore — undo wins because it arrives last.
+    const deletedRowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'A' } });
+      await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'delete' });
+      await window.__starship.sync();
+      return id;
+    });
+    const deviceA = await openSecondDevice(browser, page);
+    await deviceA.evaluate(() => window.__starship.sync());
+    await deviceA.evaluate(
+      (id) =>
+        window.__starship
+          .mutate({ table: 'tasks', rowId: id, op: 'restore' })
+          .then(() => window.__starship.sync()),
+      deletedRowId,
+    );
+
+    const restored = await withDb((c) =>
+      c.query('SELECT deleted_at FROM tasks WHERE id = $1', [deletedRowId]),
+    );
+    expect(restored.rows[0].deleted_at).toBeNull();
+    await deviceA.close();
+
+    // Case 2: restore, then a competing delete — the later delete wins.
+    const restoredRowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'B' } });
+      await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'delete' });
+      await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'restore' });
+      await window.__starship.sync();
+      return id;
+    });
+    const deviceB = await openSecondDevice(browser, page);
+    await deviceB.evaluate(() => window.__starship.sync());
+    await deviceB.evaluate(
+      (id) =>
+        window.__starship
+          .mutate({ table: 'tasks', rowId: id, op: 'delete' })
+          .then(() => window.__starship.sync()),
+      restoredRowId,
+    );
+
+    const deletedAgain = await withDb((c) =>
+      c.query('SELECT deleted_at FROM tasks WHERE id = $1', [restoredRowId]),
+    );
+    expect(deletedAgain.rows[0].deleted_at).not.toBeNull();
+    await deviceB.close();
+  });
+
+  test('the pull cursor does not skip a row with a backdated client clock', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    // Establish a baseline so device B's cursor is not simply "start of time".
+    await page.evaluate(async () => {
+      await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Normal, aktuelle Uhr' } });
+      await window.__starship.sync();
+    });
+
+    const devicePage = await openSecondDevice(browser, page);
+    await devicePage.goto('/aufgaben');
+    await expect(devicePage.getByText('Normal, aktuelle Uhr')).toBeVisible();
+
+    // Device A's clock now looks ten years in the past. Under the old
+    // timestamp-based pull cursor this row would compare "older" than device
+    // B's last-pulled timestamp and never be fetched.
+    await skewClock(page, '2016-01-01T00:00:00Z');
+    await page.evaluate(async () => {
+      await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Rückdatiert' } });
+      await window.__starship.sync();
+    });
+
+    await devicePage.evaluate(() => window.__starship.sync());
+    await expect(devicePage.getByText('Rückdatiert')).toBeVisible();
+
+    await devicePage.close();
   });
 });
