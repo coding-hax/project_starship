@@ -22,6 +22,7 @@ src/
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
     api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
+    api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
     layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest)
     manifest.ts             Web-App-Manifest (Next-Metadata-Route)
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js
