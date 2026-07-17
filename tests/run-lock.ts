@@ -4,3 +4,6 @@ import path from 'node:path';
 export const LOCK_FILE = path.join(process.cwd(), '.e2e.lock');
 
 export const PORT = 3100;
+
+/** Prod-build server for the offline-critical spec — the dev server never ships a service worker. */
+export const PORT_PROD = 3101;
