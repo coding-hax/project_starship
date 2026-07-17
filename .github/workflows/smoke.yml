@@ -1,0 +1,155 @@
+name: Post-Deploy Smoke
+
+# #56: CI green does not mean prod is healthy — a missing env var, Neon unreachable
+# (#28/#32), stale service-worker caching, or a broken build artefact only ever
+# surfaced when the owner opened the app by hand. This workflow reacts to Vercel's
+# `deployment_status` event (no cron, no polling) and checks the NEW deployment —
+# matched by commit SHA via `/api/health`, so a stale CDN copy can never be mistaken
+# for the deploy under test — with a small read-only Playwright spec on top.
+# On a confirmed red result it opens a revert PR through the *normal* pipeline
+# (protected-paths gate, required checks, auto-merge) instead of any
+# Vercel-specific rollback, plus an issue so the real bug gets triaged like any
+# other ticket.
+#
+# Replaces .github/workflows/smoke-test.yml (#28): that workflow's DB check needed
+# a manually-rotated session-token secret and is a strict subset of what this one
+# does (DB liveness without a secret, plus version match, Playwright, auto-revert).
+# Keeping both would double the alert issues on every deploy.
+on:
+  deployment_status
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  smoke:
+    if: >
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git revert needs the deployed commit in history
+          # REVERT_PAT (if set up) lets a revert PR trigger required-checks CI —
+          # a PR opened with the default GITHUB_TOKEN cannot, by GitHub's own
+          # anti-recursion rule, so it would never pick up its required checks.
+          token: ${{ secrets.REVERT_PAT || secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve target URL + expected SHA
+        id: target
+        run: |
+          URL="${{ github.event.deployment_status.environment_url }}"
+          if [ -z "$URL" ]; then URL="${{ github.event.deployment_status.target_url }}"; fi
+          if [ -z "$URL" ]; then URL="${{ vars.PROD_URL }}"; fi
+          echo "url=$URL" >>"$GITHUB_OUTPUT"
+          echo "sha=${{ github.event.deployment.sha }}" >>"$GITHUB_OUTPUT"
+
+      - name: Poll /api/health until it reports the new version
+        id: health
+        run: |
+          URL="${{ steps.target.outputs.url }}"
+          EXPECTED="${{ steps.target.outputs.sha }}"
+          STATUS=0; OK=false; VERSION=""
+          # ~10x/15s: covers a Vercel/CDN edge that briefly still answers with the
+          # previous deployment right after the `deployment_status` event fires.
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL/api/health" || echo 0)
+            VERSION=$(node -pe "try{require('/tmp/health.json').version||''}catch(e){''}" 2>/dev/null || echo "")
+            OK=$(node -pe "try{String(!!require('/tmp/health.json').ok)}catch(e){'false'}" 2>/dev/null || echo "false")
+            echo "Versuch $i: HTTP $STATUS, version=$VERSION, ok=$OK"
+            if [ "$VERSION" = "$EXPECTED" ]; then break; fi
+            sleep 15
+          done
+          echo "status=$STATUS" >>"$GITHUB_OUTPUT"
+          echo "ok=$OK" >>"$GITHUB_OUTPUT"
+          echo "version=$VERSION" >>"$GITHUB_OUTPUT"
+
+      - name: Run the read-only smoke spec against the new deployment
+        id: playwright
+        if: steps.health.outputs.version == steps.target.outputs.sha
+        env:
+          SMOKE_URL: ${{ steps.target.outputs.url }}
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          if pnpm e2e:smoke; then
+            echo "result=pass" >>"$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide
+        id: decide
+        env:
+          EXPECTED_SHA: ${{ steps.target.outputs.sha }}
+          HEALTH_VERSION: ${{ steps.health.outputs.version }}
+          HEALTH_OK: ${{ steps.health.outputs.ok }}
+          HEALTH_STATUS: ${{ steps.health.outputs.status }}
+          PLAYWRIGHT_RESULT: ${{ steps.playwright.outputs.result || 'fail' }}
+        run: |
+          DECISION=$(bash scripts/smoke-decide.sh)
+          echo "Entscheidung: $DECISION"
+          echo "decision=$DECISION" >>"$GITHUB_OUTPUT"
+
+      # --- REVERT: confirmed red on the NEW deploy -----------------------------
+      - name: Revert the deployed commit
+        if: steps.decide.outputs.decision == 'REVERT'
+        id: revert
+        env:
+          GH_TOKEN: ${{ secrets.REVERT_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          SHA="${{ steps.target.outputs.sha }}"
+          SHORT="${SHA:0:8}"
+          BRANCH="revert/smoke-$SHORT"
+          git config user.name "starship-smoke-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          # main is merged with --squash (CLAUDE.md), so the deployed commit is
+          # single-parent — plain revert, no `-m 1` ("mainline was specified but
+          # commit is not a merge" otherwise).
+          git revert --no-edit "$SHA"
+          git push origin "$BRANCH"
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh pr create --base main --head "$BRANCH" \
+            --title "revert: Prod-Smoke rot nach $SHORT" \
+            --body "Automatischer Revert von \`$SHA\` — der Post-Deploy-Smoke hat gegen genau diese Version Health=${{ steps.health.outputs.ok }}/${{ steps.health.outputs.status }} und Playwright=${{ steps.playwright.outputs.result || 'fail' }} gemessen. Läuft durch die normale Pipeline (inkl. protected-paths, falls der Revert geschützte Pfade berührt). Run: $RUN_URL"
+
+          if [ -n "${{ secrets.REVERT_PAT }}" ]; then
+            gh pr merge --squash --auto "$BRANCH"
+          else
+            echo "::warning::REVERT_PAT ist nicht gesetzt — der PR wurde mit GITHUB_TOKEN erstellt und bekommt daher nie seine Required Checks (GitHub verhindert das für PRs von Actions). Bitte manuell mergen oder einmalig 'gh secret set REVERT_PAT' mit einem fine-grained PAT (contents:write, pull-requests:write) einrichten."
+            gh pr edit "$BRANCH" --add-label needs-input
+          fi
+
+          echo "pr_url=$(gh pr view "$BRANCH" --json url -q .url)" >>"$GITHUB_OUTPUT"
+
+      - name: Alert issue — Revert
+        if: steps.decide.outputs.decision == 'REVERT'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue create \
+            --title "🔴 Prod-Smoke fehlgeschlagen ($(date -u +%Y-%m-%dT%H:%MZ))" \
+            --label needs-input \
+            --body "Post-Deploy-Smoke war rot **am bestätigt neuen Deploy** (\`${{ steps.target.outputs.sha }}\`): Health ok=${{ steps.health.outputs.ok }} status=${{ steps.health.outputs.status }}, Playwright=${{ steps.playwright.outputs.result || 'fail' }}. Revert-PR: ${{ steps.revert.outputs.pr_url }}. Run: $RUN_URL"
+
+      # --- AMBIGUOUS: version never matched — never revert on this alone -------
+      - name: Alert issue — Ambiguous
+        if: steps.decide.outputs.decision == 'AMBIGUOUS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue create \
+            --title "🟡 Prod-Smoke konnte den neuen Deploy nicht bestätigen ($(date -u +%Y-%m-%dT%H:%MZ))" \
+            --label needs-input \
+            --body "\`/api/health\` hat auch nach mehreren Versuchen nicht die erwartete Version \`${{ steps.target.outputs.sha }}\` gemeldet (zuletzt: \`${{ steps.health.outputs.version }}\`). Kein Revert — das könnte Cache/Timing sein, kein bestätigter Fehler. Bitte manuell prüfen. Run: $RUN_URL"
