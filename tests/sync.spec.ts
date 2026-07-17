@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openSecondDevice, registerPasskey, resetDatabase, skewClock, withDb } from './helpers';
+import {
+  freezeClock,
+  openSecondDevice,
+  registerPasskey,
+  resetDatabase,
+  skewClock,
+  withDb,
+} from './helpers';
 
 // Mirrors PULL_INTERVAL_MS in src/local/sync.ts. Not imported — that module pulls
 // in Dexie/IndexedDB bindings that do not resolve outside a browser context.
@@ -116,7 +123,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     await createTaskOnDevice(devicePage, 'Von Gerät B erstellt');
 
     // Freeze, then jump forward exactly one interval — deterministic, no real wait.
-    await page.clock.pauseAt(Date.now());
+    await freezeClock(page);
     await page.clock.fastForward(PULL_INTERVAL_MS + 1_000);
 
     await expect(page.getByText('Von Gerät B erstellt')).toBeVisible();
@@ -160,7 +167,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     const devicePage = await openSecondDevice(browser, page);
     await createTaskOnDevice(devicePage, 'Sollte nicht erscheinen, Tab ist versteckt');
 
-    await page.clock.pauseAt(Date.now());
+    await freezeClock(page);
     // Several interval periods' worth of time — if the interval were still running,
     // this would have fired it several times over.
     await page.clock.fastForward(PULL_INTERVAL_MS * 3);
@@ -207,7 +214,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
 
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
 
-    await page.clock.pauseAt(Date.now());
+    await freezeClock(page);
     await page.clock.fastForward(PULL_INTERVAL_MS + 1_000);
 
     expect(pageErrors).toEqual([]);
