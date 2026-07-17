@@ -99,6 +99,7 @@ tests/
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
+  tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
   vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
