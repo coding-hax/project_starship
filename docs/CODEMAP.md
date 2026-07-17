@@ -37,7 +37,8 @@ src/
     types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten)
     dexie.ts                IndexedDB-Definition (outbox, records, meta)
     outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch
-    sync.ts                 Push/Pull, Last-Write-Wins, Trigger (Start/Foreground/online)
+    sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
+    conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code
@@ -90,9 +91,9 @@ tests/
   global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
   global-teardown.ts        gibt das Lock wieder frei (nur das eigene)
   run-lock.ts               Pfad des Lockfiles + Port, gemeinsame Quelle für Setup und Config
-  helpers.ts                virtueller Authenticator, DB-Zugriff, Reset
+  helpers.ts                virtueller Authenticator, DB-Zugriff, Reset, Clock-Skew (skewClock)
   shell.spec.ts             Login, vier Tabs, aktiver Tab
-  sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session
+  sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session, Konfliktauflösung unter Uhrversatz (#53)
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
   capture.spec.ts           Freitext-Fälligkeit: Bestätigungs-Sheet, Direkt-Pfad + Undo, offline (issue #47)
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline

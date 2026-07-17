@@ -37,22 +37,31 @@ Die UI spricht **niemals** direkt mit der API. Jede Mutation:
 ### Konfliktauflösung
 
 Ein Nutzer, maximal zwei bis drei Geräte → **kein CRDT nötig.**
-Last-Write-Wins auf Feldebene über `updated_at` reicht. Konflikte sind hier ein Randfall,
-kein Designproblem.
+**Neueste Ankunft am Server gewinnt** — eine globale, server-monotone Sequenz
+(`sync_seq`), nicht die Client-Uhr, entscheidet einen Konflikt (ADR-0008).
+`updated_at` bleibt Anzeige/Tiebreaker, ist aber nicht mehr Autorität: ein
+verstelltes Gerätedatum kann eine Mutation weder fälschlich als „veraltet"
+ablehnen noch eine fremde beim Pull überspringen. Ein Konflikt (eine Mutation
+überschreibt eine noch nicht gesehene fremde Änderung) wird protokolliert,
+nie still verworfen — die Mutation wird trotzdem angewandt. Löschen schlägt
+ein Feld-Update immer, in beiden Ankunftsreihenfolgen (`src/local/conflict.ts`).
 
 ### Pflicht-Spalten für jede synchronisierte Tabelle
 
 | Spalte        | Zweck                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------ |
 | `id` (UUIDv7) | clientseitig erzeugt, damit Offline-Anlage ohne Server-Roundtrip geht; zeitlich sortierbar |
-| `updated_at`  | Konfliktauflösung + inkrementeller Pull                                                    |
+| `updated_at`  | Anzeige/Tiebreaker — nicht mehr die Konflikt-Autorität (ADR-0008)                          |
 | `deleted_at`  | **Soft Delete** — harte Löschung würde beim Sync „wiederauferstehen"                       |
 | `synced_at`   | lokal: wurde erfolgreich übertragen                                                        |
+| `sync_seq`    | server-monotone Ankunftsreihenfolge, die Konflikt-Autorität (ADR-0008)                     |
 
 ### Sync-Ablauf
 
 - **Push:** Outbox der Reihe nach an `POST /api/sync/push`. Idempotent über die Client-`id`.
-- **Pull:** `GET /api/sync/pull?since=<updated_at>` liefert alle Änderungen seit T.
+  Jede Mutation trägt `baseSeq` (die `sync_seq`, auf der sie fußt); der Server vergibt beim
+  Schreiben `nextval('sync_seq')`, serialisiert über `pg_advisory_xact_lock`.
+- **Pull:** `GET /api/sync/pull?since=<sync_seq>` liefert alle Änderungen mit höherer Sequenz.
 - **Wann:** beim App-Start, beim Foreground (`visibilitychange`), nach jeder Mutation (debounced), sowie beim Wiedererlangen von Konnektivität (`online`-Event).
 - **iOS-Realität:** Background Sync existiert auf iOS nicht. Es wird ausschließlich synchronisiert, wenn die App im Vordergrund ist. Das ist akzeptiert.
 
@@ -64,10 +73,10 @@ events          id, title, location, starts_at, ends_at, all_day, recurrence_rul
 journal_entries id, entry_date, ciphertext, nonce, ...   ← Text, Stimmung UND Tags im Chiffrat (ADR-0004)
 habits          id, name, schedule (daily|weekly|custom), color, archived_at, ...
 habit_logs      id, habit_id, log_date, done, ...
-sync_state      key, value            ← letzter Pull-Zeitstempel etc.
+sync_state      key, value            ← letzter Pull-Cursor (sync_seq) etc.
 ```
 
-Alle Tabellen tragen die vier Pflicht-Spalten oben.
+Alle Tabellen tragen die fünf Pflicht-Spalten oben.
 Es gibt **keine** Felder für externe Kalender (`external_uid`, `etag`, `calendar_links`) —
 die App ist die alleinige Wahrheit für ihre Termine (siehe ADR-0002).
 
