@@ -46,9 +46,16 @@ jobs:
       - name: Resolve target URL + expected SHA
         id: target
         run: |
-          URL="${{ github.event.deployment_status.environment_url }}"
+          # #66: the URLs in the deployment_status event are per-deploy
+          # (starship-<hash>.vercel.app) and sit behind Vercel Deployment Protection.
+          # They answer 200 with an SSO HTML page instead of JSON, so /api/health
+          # never yields a version and every deploy looks red. The production alias
+          # is public, so it goes first. The SHA poll below still proves we measured
+          # the new code — and via the alias it additionally proves the alias has
+          # actually switched over, which is what "prod is live" really means.
+          URL="${{ vars.PROD_URL }}"
+          if [ -z "$URL" ]; then URL="${{ github.event.deployment_status.environment_url }}"; fi
           if [ -z "$URL" ]; then URL="${{ github.event.deployment_status.target_url }}"; fi
-          if [ -z "$URL" ]; then URL="${{ vars.PROD_URL }}"; fi
           echo "url=$URL" >>"$GITHUB_OUTPUT"
           echo "sha=${{ github.event.deployment.sha }}" >>"$GITHUB_OUTPUT"
 
