@@ -16,6 +16,12 @@ function confirmDialog(page: Page) {
   return page.getByRole('dialog', { name: CONFIRM_LABEL });
 }
 
+/** Scoped to the task list — the undo toast's own message embeds the title too,
+ * so a page-wide text query would still match after the row is gone. */
+function taskItems(page: Page) {
+  return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
+}
+
 async function submitQuickAdd(page: Page, text: string) {
   await openQuickAdd(page);
   await quickAddTitleField(page).fill(text);
@@ -74,7 +80,14 @@ test('AC1: eine erkannte Fälligkeit öffnet das Bestätigungs-Sheet mit aufgel�
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Arzt anrufen')).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Arzt anrufen' })).toBeVisible();
+
+  // beforeEach cuts the sync endpoints so the list can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
   const row = await withDb((client) =>
     client.query('SELECT due_at FROM tasks WHERE title = $1', ['Arzt anrufen']),
   );
@@ -90,7 +103,7 @@ test('AC1: "Abbrechen" verwirft den Entwurf, es wird nichts angelegt', async ({ 
   await dialog.getByRole('button', { name: 'Abbrechen' }).click();
 
   await expect(dialog).toBeHidden();
-  await expect(page.getByText('Zahnarzt')).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 });
 
@@ -99,7 +112,7 @@ test('AC2: eine Eingabe ohne Datum legt sofort an, ohne Bestätigungs-Sheet', as
   await submitQuickAdd(page, 'Wäsche waschen');
 
   await expect(confirmDialog(page)).toBeHidden();
-  await expect(page.getByText('Wäsche waschen')).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Wäsche waschen' })).toBeVisible();
 });
 
 test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die Anlage per Tombstone rückgängig macht', async ({
@@ -112,7 +125,7 @@ test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die 
   await submitQuickAdd(page, 'Übergabe morgen 15:00');
 
   await expect(confirmDialog(page)).toBeHidden();
-  await expect(page.getByText('Übergabe')).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Übergabe' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'angelegt' })).toBeVisible();
   const undoButton = page.getByRole('button', { name: 'Rückgängig' });
   await expect(undoButton).toBeVisible();
@@ -126,29 +139,30 @@ test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die 
 
   await undoButton.click();
 
-  await expect(page.getByText('Übergabe')).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: 'Übergabe' })).toHaveCount(0);
   const lastEntry = (await page.evaluate(() => window.__starship.pending())).at(-1);
   expect(lastEntry?.op).toBe('delete');
 });
 
 test('AC5: offline im Bestätigungs-Sheet angelegt übersteht den Reload und erreicht online die Datenbank', async ({
   page,
-  context,
 }) => {
   await page.goto('/aufgaben');
-  await context.setOffline(true);
+  // beforeEach already cut the sync endpoints — exactly what a train tunnel looks
+  // like to the outbox (sync.spec.ts). `context.setOffline` would also block the
+  // reload below (ERR_INTERNET_DISCONNECTED), so this mirrors sync.spec.ts's own
+  // "survives a reload" test rather than tasks.spec.ts's offline-banner tests.
 
   await submitQuickAdd(page, 'Im Zug notiert morgen um 8');
   await confirmDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 
-  await expect(page.getByText('Im Zug notiert')).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Im Zug notiert' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await page.reload();
-  await expect(page.getByText('Im Zug notiert')).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Im Zug notiert' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
-  await context.setOffline(false);
   await page.unroute('**/api/sync/**');
   await page.evaluate(() => window.__starship.sync());
 
