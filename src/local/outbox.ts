@@ -24,19 +24,22 @@ export async function mutate(input: MutateInput): Promise<string> {
   const rowId = input.rowId ?? uuidv7();
   const now = new Date().toISOString();
 
-  const mutation: OutboxEntry = {
-    id: uuidv7(),
-    table: input.table,
-    rowId,
-    op: input.op,
-    payload: input.payload ?? {},
-    updatedAt: now,
-    createdAt: now,
-    attempts: 0,
-  };
-
   await db.transaction('rw', db.records, db.outbox, async () => {
     const existing = await db.records.get([input.table, rowId] as never);
+
+    const mutation: OutboxEntry = {
+      id: uuidv7(),
+      table: input.table,
+      rowId,
+      op: input.op,
+      payload: input.payload ?? {},
+      updatedAt: now,
+      // The row version this edit was based on — null for a new row. Lets the
+      // server detect an overwrite independent of any client clock (ADR-0008).
+      baseSeq: existing?.syncSeq ?? null,
+      createdAt: now,
+      attempts: 0,
+    };
 
     const next: LocalRecord = {
       table: input.table,
@@ -46,6 +49,8 @@ export async function mutate(input: MutateInput): Promise<string> {
       deletedAt:
         input.op === 'delete' ? now : input.op === 'restore' ? null : (existing?.deletedAt ?? null),
       syncedAt: null,
+      // Unchanged until the next pull confirms the row's new sync_seq.
+      syncSeq: existing?.syncSeq ?? null,
       data: { ...(existing?.data ?? {}), ...(input.payload ?? {}) },
     };
 
@@ -98,8 +103,10 @@ export async function markFailed(ids: string[], error: string): Promise<void> {
 }
 
 /**
- * The server holds something newer. The mutation is dead — keeping it queued would
- * retry it forever. ADR-0001: conflicts get logged, not silently discarded.
+ * The mutation was rejected as malformed (missing a required field). It is dead —
+ * keeping it queued would retry it forever. A genuine conflict is no longer routed
+ * here: arrival wins (ADR-0008), so a conflicted mutation is applied and goes
+ * through `markApplied` instead.
  */
 export async function discardStale(ids: string[]): Promise<void> {
   await db.outbox.bulkDelete(ids);
