@@ -22,6 +22,7 @@ src/
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
     api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
+    api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
     layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest)
     manifest.ts             Web-App-Manifest (Next-Metadata-Route)
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js
@@ -95,6 +96,7 @@ scripts/
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
   vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
+  smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright
   launchd-setup.md          Runner als Dienst auf macOS
   systemd-setup.md          Runner als Dienst auf Linux
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs

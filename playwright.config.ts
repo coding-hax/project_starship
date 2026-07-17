@@ -10,6 +10,9 @@ const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './tests',
+  // Owns its own config (playwright.smoke.config.ts) and target — no webServer, no
+  // DB run-lock, points at SMOKE_URL instead of the local dev server. See #56.
+  testIgnore: /smoke\.prod\.spec\.ts$/,
   fullyParallel: false, // one database, one owner — parallel runs would fight over it
   // …and this enforces it: a second concurrent run aborts instead of wiping our credentials.
   globalSetup: './tests/global-setup.ts',
