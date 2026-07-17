@@ -30,6 +30,13 @@ assignees: ''
 - `src/local/outbox.ts` (lesen, nicht ändern)
 - `tests/….spec.ts` (erweitern)
 
+## Betroffene Docs
+
+<!-- Welche Docs der Agent lesen MUSS. Die Bau-Rolle liest sonst nur
+     CLAUDE.md + docs/CODEMAP.md. Leer lassen, wenn keine nötig. -->
+
+- `docs/ARCHITECTURE.md` (bei Schema/Migration)
+
 ## Nicht-Ziele
 
 <!-- Was in diesem Ticket ausdrücklich NICHT passiert. -->

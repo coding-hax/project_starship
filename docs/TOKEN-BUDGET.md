@@ -68,6 +68,13 @@ formatiert wird — dann gibt Claude nie ein Output-Token für Einrückung aus:
 Jede Datei, die im Ticket steht, muss nicht gesucht werden. Der Abschnitt
 „Betroffene Dateien" im Issue-Template ist kein Formalismus, er ist der Sparplan.
 
+Dasselbe gilt für Docs: Die Bau-Rolle (`RUN_ROLE=build`) liest vorab nur noch
+`CLAUDE.md` + `docs/CODEMAP.md`. Alles weitere liest sie nur auf Auslöser
+(Schema/UI/Journal/Architektur) oder wenn das Ticket es unter „Betroffene
+Dateien"/„Betroffene Docs" nennt — statt bei jedem Lauf VISION, ARCHITECTURE,
+DESIGN_SYSTEM, WORKFLOW und alle ADRs vorzulesen. Die Denk-Rollen (`plan`,
+`research`) sind davon ausgenommen: dort ist die breite Lektüre der Auftrag.
+
 ### 3. Suchen und Testen in Subagenten
 
 Beide laufen auf Haiku in **eigenen** Kontextfenstern und geben nur die
@@ -87,6 +94,14 @@ Claude führt lokal nur den Spec zum aktuellen Ticket aus.
 Der stabile Präfix (System-Prompt, Tool-Definitionen, CLAUDE.md) wird gecacht und
 ist dann drastisch billiger. **Jede Änderung an CLAUDE.md invalidiert den Cache.**
 Also: CLAUDE.md schlank halten und _nicht dauernd anfassen_.
+
+Aus demselben Grund kappt der Runner `--resume` beim Bauen nach **2
+Fortsetzungen** (Issue #62): Nach 20+ Minuten zwischen zwei Läufen ist der
+Prompt-Cache ohnehin kalt, und ein `--resume` spielt dann die komplette
+bisherige Konversation als frische Input-Tokens erneut ein — die Ersparnis
+existiert also gar nicht mehr. Da der Bau-Stand in Git + Fortschrittskommentar
+liegt, ist ein frischer Start nach dem Deckel sicher und meist billiger als
+das Resume.
 
 ### 6. MCP-Server sparsam einsetzen
 

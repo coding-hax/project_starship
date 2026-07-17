@@ -227,6 +227,23 @@ tier_reset() {   # $1 = Issue-Nr
         "$STATE_DIR/blocker-sig-$issue" "$STATE_DIR/branch-head-$issue"
 }
 
+# Resume-Deckel (#62): Nach 20+ Minuten ist der Prompt-Cache kalt; ein --resume
+# spielt die ganze bisherige Konversation als frische Input-Tokens erneut ein.
+# Der Bau-Stand liegt ohnehin in Git + Fortschrittskommentar -- ein frischer
+# Start ist also sicher. Deshalb: nach 2 Fortsetzungen einer Session frisch
+# starten. Zaehler dateibasiert je Ticket unter $STATE_DIR (analog failcount).
+resume_allowed() {   # $1 = Issue-Nr -> 0 (resume ok, zaehlt hoch) / 1 (kappen, Reset)
+  local issue="$1" f cnt
+  f="$STATE_DIR/resume-count-$issue"
+  cnt=$(cat "$f" 2>/dev/null || echo 0)
+  if [ "${cnt:-0}" -ge 2 ]; then
+    echo 0 > "$f"
+    return 1
+  fi
+  echo $((cnt + 1)) > "$f"
+  return 0
+}
+
 # sha1 der Blocker-Kennzeilen (Endgrund + Wiederaufnahmestelle) aus dem
 # LETZTEN Kommentar -- aber nur, wenn das ueberhaupt der Fortschrittskommentar
 # ist (#33). Kein Fortschrittskommentar (Lauf brach ganz frueh ab) -> leer.
@@ -589,7 +606,15 @@ die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb de
 nur, wenn ein Ticket sie ausdrücklich verlangt.
 
 Ablauf:
-1. Lies CLAUDE.md und die Dokumente in docs/.
+1. Pflichtlektüre ist NUR CLAUDE.md und docs/CODEMAP.md. Nichts sonst liest du
+   vorab. Weitere Dokumente liest du gezielt, sobald das Ticket sie nennt oder
+   einer dieser Auslöser zutrifft:
+   - Schema-/Migrations-Arbeit → docs/ARCHITECTURE.md + docs/adr/0003-m0-dependencies.md
+   - UI-/Design-Arbeit → docs/DESIGN_SYSTEM.md
+   - Journal-/Krypto-Arbeit → docs/adr/0004-journal-metadaten-verschluesseln.md
+   - Architektur-/Grundsatzfrage → das passende ADR unter docs/adr/
+   Die im Ticket unter „Betroffene Dateien"/„Betroffene Docs" genannten Pfade
+   sind Pflicht — lies sie selektiv, nie das halbe Repo.
 2. Lies das Issue: gh issue view $ISSUE --comments
 3. Falls es bereits einen Branch und einen Fortschrittskommentar gibt:
    checke den Branch aus, lies den Fortschrittskommentar und 'git log',
@@ -717,7 +742,14 @@ esac
 # Deckel 2 Laeufe/Ticket/Tag und Kill-Switch no-escalation.
 
 if [ "$MODE" = "resume" ] && [ -s "$SID_FILE" ]; then
-  ARGS+=(--resume "$(cat "$SID_FILE")")
+  # Resume-Deckel nur fuers Bauen (#62): die Denk-Rollen (plan/research) tragen
+  # ihren Kontext bewusst in der Session -- dort ist die breite Lektuere der
+  # Auftrag. Fuers Bauen liegt der Stand in Git + Fortschrittskommentar.
+  if [ "$RUN_ROLE" != "build" ] || resume_allowed "$ISSUE"; then
+    ARGS+=(--resume "$(cat "$SID_FILE")")
+  fi
+  # sonst: Deckel erreicht -> frischer Start ohne --resume (Zaehler wurde
+  # in resume_allowed auf 0 zurueckgesetzt).
 fi
 
 run_limited "$MAX_RUNTIME" claude "${ARGS[@]}"
