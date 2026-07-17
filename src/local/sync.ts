@@ -11,16 +11,28 @@ import type { Mutation, PullResponse, PushResponse } from './types';
  */
 
 let inFlight: Promise<void> | null = null;
+let rerun = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 
 export async function sync(): Promise<void> {
-  // Coalesce: a second call while one is running joins the running one.
-  if (inFlight) return inFlight;
+  // Coalesce, but never at the cost of dropping work: a call that arrives while a
+  // sync is running asks the running one to loop once more, then joins it. Simply
+  // returning the in-flight promise would let `await sync()` resolve on a run that
+  // began *before* the caller's mutation was enqueued — the push would then never
+  // have sent it, and the row would sit in the outbox until the next trigger. The
+  // extra push/pull is cheap and idempotent (ADR-0008).
+  if (inFlight) {
+    rerun = true;
+    return inFlight;
+  }
 
   inFlight = (async () => {
     try {
-      await push();
-      await pull();
+      do {
+        rerun = false;
+        await push();
+        await pull();
+      } while (rerun);
     } finally {
       inFlight = null;
     }
