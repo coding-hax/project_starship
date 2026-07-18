@@ -104,6 +104,7 @@ tests/
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
+  tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   check-sync-invariants.sh  Wächter gegen direkten fetch(/api) außerhalb der Outbox (#58)
   check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)

@@ -27,6 +27,7 @@ jobs:
       - run: pnpm test
       - run: bash scripts/tests/escalation.test.sh
       - run: bash scripts/tests/research-mode.test.sh
+      - run: bash scripts/tests/round-snap.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
