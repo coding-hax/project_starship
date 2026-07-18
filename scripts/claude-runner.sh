@@ -334,26 +334,39 @@ opus_build_cap_reserve() {   # $1 = Issue-Nr -- verbraucht einen der 2 Slots fue
 }
 
 # --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
+# Killt bisher nur den direkten 'claude'-Prozess -- ein haengengebliebenes
+# Kind (z.B. 'pnpm e2e', das claude selbst per Bash-Tool startet) ueberlebt
+# die Notbremse und laeuft munter weiter (#64). Deshalb die ganze
+# Prozessgruppe killen, nicht nur den einen PID.
+#
+# 'setsid' waere der uebliche Weg dahin, ist aber ein util-linux-Tool und
+# fehlt auf macOS (siehe Kopf-Kommentar zu flock/timeout) -- 'set -m'
+# (bash-Jobcontrol) erreicht denselben Effekt portabel: ein im Monitor-Modus
+# gestarteter Hintergrund-Job bekommt eine EIGENE Prozessgruppe, deren
+# Gruppen-ID gleich der PID seines ersten Prozesses ist. 'kill -- -$pid'
+# (negative PID = Gruppen-ID) trifft damit die ganze Gruppe.
 TIMED_OUT="$STATE_DIR/timed-out"
 run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   local secs="$1"; shift
   rm -f "$TIMED_OUT"
 
+  set -m
   "$@" > "$LOG" 2>&1 &
   local cmd_pid=$!
+  set +m
 
   (
     sleep "$secs"
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$TIMED_OUT"
-      kill -TERM "$cmd_pid" 2>/dev/null
+      kill -TERM -- "-$cmd_pid" 2>/dev/null
       sleep 10
-      kill -KILL "$cmd_pid" 2>/dev/null
+      kill -KILL -- "-$cmd_pid" 2>/dev/null
     fi
   ) &
   local watchdog=$!
 
-  wait "$cmd_pid"; local rc=$?
+  wait "$cmd_pid" 2>/dev/null; local rc=$?
   kill "$watchdog" 2>/dev/null
   wait "$watchdog" 2>/dev/null
   return $rc
