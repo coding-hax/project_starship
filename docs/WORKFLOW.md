@@ -260,6 +260,34 @@ Was nicht als Kriterium dasteht, wird nicht gebaut.
 
 **Kein Merge bei rotem Build. Keine Ausnahme.**
 
+## Migrationen (Drizzle + Dexie)
+
+Migrationen sind hier doppelt heikel: **Server-Schema** (Drizzle) und **Client-Schema**
+(Dexie-Version) müssen zusammenpassen, und alte Clients mit ungesyncter Outbox dürfen
+nicht brechen. Der `schema-drift`-Guard fängt nur die *fehlende* Server-Migration —
+nicht die Client-Seite und nicht die Rückwärtskompatibilität.
+
+Berührt ein Ticket `src/db/schema.ts` oder `src/local/dexie.ts`, konsultiert der
+Bau-Agent **zuerst** den `db-migration`-Subagenten (`.claude/agents/db-migration.md`,
+nur-lesend) und arbeitet dessen vier Schritte ab:
+
+1. Generiertes SQL zeigen und begründen — Up-Pfad aus `pnpm db:generate`, Down-Pfad
+   als handgeschriebenes Reverse-SQL im PR-Text (CLAUDE.md Regel 4).
+2. Rückwärtskompatibilität: „Kann ein Client mit ALTEM Dexie-Schema und ungesyncter
+   Outbox noch pushen?" — additive Spalten (nullable/Default) ja, umbenannte oder
+   gelöschte Spalten nein.
+3. Dexie-Versions-Bump (`db.version(N)` in `src/local/dexie.ts`) im selben PR, wenn
+   sich das Client-Schema mitbewegt — nicht nötig bei server-only-Tabellen oder einer
+   additiven Spalte im generischen `records`-Store.
+4. `src/db/**` und `src/local/**` sind protected paths — kein Auto-Merge, Kommentar
+   + `human-approved` anfordern (siehe unten).
+
+Ein optionaler Hinweis-Check (`scripts/check-dexie-bump.sh`) läuft im `quality`-Job:
+Server-Migration berührt, aber kein Dexie-Bump → `::warning::`-Annotation. Das ist
+ein **Hinweis, kein Gate** (`exit 0` immer) — additive Server-Änderungen und
+server-only-Tabellen brauchen legitim keinen Dexie-Bump, ein hart-fehlschlagender
+Check würde nur Fehlalarme produzieren.
+
 ## Playwright-Regeln
 
 - Konfiguration: `trace: 'retain-on-failure'`, `screenshot: 'only-on-failure'`,
