@@ -333,6 +333,29 @@ opus_build_cap_reserve() {   # $1 = Issue-Nr -- verbraucht einen der 2 Slots fue
   echo $((count + 1)) > "$f"
 }
 
+# Baut einen lesbaren Fehlerausschnitt fuer Issue-Kommentare (#64): bei
+# '--output-format json' ist $LOG oft eine einzige Riesenzeile -- 'tail -n 20'
+# postet diese Zeile bisher komplett und ungekuerzt ins Ticket. Bevorzugt
+# '.result' aus dem geparsten JSON (das ist bereits lesbarer Klartext, keine
+# JSON-Huelle), mit hartem Zeichenlimit. Schlaegt das Parsen fehl (z.B. hat
+# die Notbremse mitten in der Antwort abgebrochen -> kaputtes JSON), auf das
+# ebenfalls gekuerzte Rohlog zurueckfallen.
+ERROR_EXCERPT_LIMIT=1500
+error_excerpt() {   # kein Argument -- liest $OUT und $LOG
+  local txt
+  txt=$(printf '%s' "$OUT" | jq -r '.result // empty' 2>/dev/null)
+  [ -z "$txt" ] && txt=$(tail -n 20 "$LOG" 2>/dev/null)
+  if [ "${#txt}" -gt "$ERROR_EXCERPT_LIMIT" ]; then
+    # Byteweises Schneiden (C-Locale) kann mitten in ein Mehrbyte-UTF-8-Zeichen
+    # (Umlaute!) treffen -- iconv -c wirft am Ende ein angeschnittenes Zeichen
+    # sauber weg, statt eine kaputte Byte-Sequenz zu posten.
+    printf '%s\n…(gekürzt)' \
+      "$(printf '%s' "${txt:0:$ERROR_EXCERPT_LIMIT}" | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null)"
+  else
+    printf '%s' "$txt"
+  fi
+}
+
 # --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
 # Killt bisher nur den direkten 'claude'-Prozess -- ein haengengebliebenes
 # Kind (z.B. 'pnpm e2e', das claude selbst per Bash-Tool startet) ueberlebt
@@ -996,7 +1019,7 @@ Git und im Fortschrittskommentar, nicht in der Session."
 vorübergehenden API-Fehler gescheitert (zuletzt Exit $RC).
 Letzte Zeilen:
 \`\`\`
-$(tail -n 20 "$LOG")
+$(error_excerpt)
 \`\`\`"
   gh issue edit "$ISSUE" --add-label needs-input >/dev/null
   status "Fehler bei #$ISSUE" "🔴" \
@@ -1015,7 +1038,7 @@ build_escalation_eval
 gh issue comment "$ISSUE" --body "🤖 Der Runner ist mit einem Fehler abgebrochen (Exit $RC).
 Letzte Zeilen:
 \`\`\`
-$(tail -n 20 "$LOG")
+$(error_excerpt)
 \`\`\`"
 gh issue edit "$ISSUE" --add-label needs-input >/dev/null
 status "Fehler bei #$ISSUE" "🔴" \
