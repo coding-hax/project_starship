@@ -89,6 +89,9 @@
   height: 8px;
   border-radius: var(--radius-pill);
   flex-shrink: 0;
+  /* Static, token-driven colour — no motion to begin with, so nothing for
+     prefers-reduced-motion to override. */
+  transition: none;
 }
 
 .task-list__priority-dot--hoch {
@@ -104,6 +107,9 @@
   color: var(--text-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  /* Static, token-driven colour — no motion to begin with, so nothing for
+     prefers-reduced-motion to override. */
+  transition: none;
 }
 
 .task-list__due--overdue {
