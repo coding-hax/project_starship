@@ -114,6 +114,10 @@ scripts/
   smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright
   launchd-setup.md          Runner als Dienst auf macOS
   systemd-setup.md          Runner als Dienst auf Linux
+.github/workflows/
+  ci.yml                    Lint, Typecheck, Vitest, Playwright, Schema-Drift-, Test-Integrity- und Protected-Paths-Gate
+  smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
+  interaction-limit-reminder.yml  monatlicher Cron, erinnert 30 Tage vor Ablauf des Interaction Limit per Issue (#70)
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
 ```
 
