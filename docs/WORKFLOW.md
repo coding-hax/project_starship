@@ -89,6 +89,11 @@ Zustandsmaschine des ganzen Setups:
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 | `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
+| `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
+
+Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
+Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
+testlos gerechtfertigt ist, du setzt das Label.
 
 Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
@@ -249,6 +254,9 @@ Was nicht als Kriterium dasteht, wird nicht gebaut.
 2. `pnpm typecheck`
 3. `pnpm test` (Vitest)
 4. `pnpm e2e` (Playwright, gegen Preview-Deployment)
+5. `scripts/check-sync-invariants.sh` — kein Feature-Code spricht direkt gegen `/api`
+6. `scripts/check-test-integrity.sh` — Anwesenheits-Gate: Code ohne Test ist rot,
+   außer das PR trägt `tests-exempt`
 
 **Kein Merge bei rotem Build. Keine Ausnahme.**
 

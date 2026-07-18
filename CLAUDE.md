@@ -199,6 +199,9 @@ weißt das. Deshalb:
   Der CI-Wächter `test-integrity` findet das und lehnt den PR ab.
 - Testanzahl darf nie sinken. Wenn ein Test wirklich obsolet ist: begründen,
   `human-approved` anfordern.
+- Code ohne begleitenden Test ist ein rotes Anwesenheits-Gate in `test-integrity`.
+  Einzige Entrinnung ist das vom Menschen gesetzte Label `tests-exempt` für
+  nachweislich testlose Änderungen (reines Refactor, Typ-Only) — nie selbst setzen.
 
 ## Definition of Done
 
