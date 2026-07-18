@@ -21,12 +21,15 @@ test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Krei
   page,
   context,
 }) => {
-  // 1. Service Worker aktiv? Nicht nur DOM da — `ready` allein beweist noch nicht,
-  // dass dieser Client von ihm kontrolliert wird (clientsClaim/skipWaiting, src/app/sw.ts).
+  // 1. Service Worker aktiv? Nicht nur DOM da — `ready` beweist nur, dass ein Worker
+  // aktiv ist, nicht dass DIESE Seite von ihm kontrolliert wird: clientsClaim
+  // (src/app/sw.ts) beansprucht bestehende Clients erst nach Abschluss der
+  // Aktivierung, was mit der ersten Navigation racen kann. Eine frische Navigation
+  // NACH `ready` wird dagegen immer vom bereits aktiven Worker bedient — deterministisch,
+  // kein längeres Warten auf dasselbe Rennen.
   await page.evaluate(() => navigator.serviceWorker.ready);
-  await expect
-    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null))
-    .toBe(true);
+  await page.reload();
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
 
   // 2. Offline.
   await context.setOffline(true);
