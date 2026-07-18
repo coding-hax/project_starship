@@ -6,7 +6,7 @@ import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
-import { useTasks } from './use-tasks';
+import { isDueTodayOrOverdue, useTasks } from './use-tasks';
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
   window.addEventListener('online', callback);
@@ -31,8 +31,18 @@ function useOnline(): boolean {
   );
 }
 
-export function TaskList() {
-  const tasks = useTasks();
+export interface TaskListProps {
+  /**
+   * Restricts the list to open tasks due today or overdue — the /heute dashboard
+   * subset (issue #87). Everything else (editor, undo toasts, offline notice)
+   * stays the same so the two lists don't drift apart.
+   */
+  dueTodayOnly?: boolean;
+}
+
+export function TaskList({ dueTodayOnly = false }: TaskListProps = {}) {
+  const allTasks = useTasks();
+  const tasks = dueTodayOnly ? allTasks?.filter((task) => isDueTodayOrOverdue(task)) : allTasks;
   const online = useOnline();
   const {
     toggleComplete,
@@ -48,7 +58,7 @@ export function TaskList() {
   } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
-  const editingTask = tasks?.find((task) => task.id === editingTaskId) ?? null;
+  const editingTask = allTasks?.find((task) => task.id === editingTaskId) ?? null;
 
   return (
     <>
@@ -61,9 +71,11 @@ export function TaskList() {
       )}
 
       {tasks === undefined ? null : tasks.length === 0 ? (
-        <p className="task-list__empty">Keine Aufgaben. Genieß die Ruhe.</p>
+        <p className="task-list__empty">
+          {dueTodayOnly ? 'Nichts fällig. Genieß den Tag.' : 'Keine Aufgaben. Genieß die Ruhe.'}
+        </p>
       ) : (
-        <ul className="task-list" aria-label="Aufgaben">
+        <ul className="task-list" aria-label={dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben'}>
           {tasks.map((task) => (
             <TaskItem
               key={task.id}
