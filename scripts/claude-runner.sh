@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude-Runner: pollt GitHub Issues, arbeitet EIN Ticket, überlebt Limits.
-# Läuft per launchd (macOS) oder systemd (Linux) alle 20 Minuten.
+# Läuft per launchd (macOS) oder systemd (Linux) alle 5 Minuten.
 #
 # Braucht: gh, jq und die EIGENSTÄNDIGE claude-CLI im PATH.
 # (Die VS-Code-Erweiterung zählt nicht — sie legt `claude` nicht in den PATH.)
@@ -11,7 +11,9 @@ set -uo pipefail
 
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
-MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe.
+MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
+MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
+TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
 STATE_DIR="$REPO_DIR/.runner"
 LIMIT_UNTIL="$STATE_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 
@@ -39,7 +41,7 @@ d_plus()  { date -v+"$1"d "+$2" 2>/dev/null || date -d "+$1 day" "+$2" 2>/dev/nu
 # Minuten fehlen bei :00 ("resets 9pm"). am/pm ist immer da (hour12).
 #
 # Trotzdem Best Effort: der Wortlaut ist nicht garantiert. Kein Treffer -> leer ->
-# der Aufrufer faellt auf den 20-Minuten-Takt zurueck. Ein Fehlparsen darf den
+# der Aufrufer faellt auf den 5-Minuten-Takt zurueck. Ein Fehlparsen darf den
 # Runner nie stilllegen.
 #
 # Ueberall ERE (grep -E / sed -E), nirgends BRE-Alternation (\|) — die ist eine
@@ -91,7 +93,7 @@ reset_epoch() {
     ts_out=$((ts_out + 60))                        # eine Minute Puffer
     # Ein Session-Limit setzt nach spaetestens ~5h aus. Alles darueber ist ein
     # alter Log oder ein Fehlparsen — dann NICHT pausieren, sondern verwerfen und
-    # den 20-Minuten-Takt weiterlaufen lassen. Lieber umsonst aufwachen (429 ist
+    # den 5-Minuten-Takt weiterlaufen lassen. Lieber umsonst aufwachen (429 ist
     # gratis) als stundenlang blind schlafen.
     [ $((ts_out - now)) -gt 21600 ] && return 1
   fi
@@ -359,9 +361,16 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
 
 # --- Der imperative Hauptteil ------------------------------------------------
 # Gekapselt in main(), damit Tests die obigen Funktionen sourcen koennen, ohne
-# einen echten Lauf zu starten (Source-Guard ganz unten). Verhalten beim
-# direkten Aufruf ('bash scripts/claude-runner.sh' bzw. per launchd/systemd)
-# ist unveraendert -- reiner Refactor dieses Abschnitts.
+# einen echten Lauf zu starten (Source-Guard ganz unten).
+#
+# Ticket-Chaining (#61): main() haelt Lock + Limit-Check (Tick-Ebene, genau
+# einmal) und schleift darum eine Chain-Schleife, die run_round() bis zu
+# MAX_ROUNDS mal aufruft -- so laeuft nach einem sauber beendeten Lauf sofort
+# das naechste baubereite Ticket, statt den Tick zu beenden und bis zu 20 (jetzt
+# 5) Minuten auf den naechsten Takt zu warten. run_round() enthaelt die
+# komplette bisherige Ticketwahl+Bau/Plan/Recherche-Logik, unveraendert bis auf
+# 'exit N' -> 'return N' (main() soll den Tick erst NACH der letzten Runde
+# verlassen, nicht die Funktion nach der ersten).
 main() {
 
 # --- Nie zwei Läufe gleichzeitig -------------------------------------------
@@ -380,7 +389,7 @@ echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
 
 # --- Kontingent erschöpft? Dann gar nicht erst starten ----------------------
-# Der Timer tickt weiter alle 20 Minuten. Solange das Limit nachweislich noch
+# Der Timer tickt weiter alle 5 Minuten. Solange das Limit nachweislich noch
 # steht, hat es keinen Sinn, einen Agenten hochzufahren. Die Datei enthält eine
 # Unix-Zeit und entsteht unten aus der Reset-Angabe von 'claude -p'.
 # Fehlt sie oder ist sie abgelaufen, läuft alles wie immer — ein Fehlparsen darf
@@ -395,10 +404,36 @@ if [ -s "$LIMIT_UNTIL" ]; then
   rm -f "$LIMIT_UNTIL"
 fi
 
+# --- Chain-Schleife: mehrere Runden pro Tick (#61) --------------------------
+# Weiter nur nach einem SAUBER gruenen run_round() (RC=0, keine offene Frage --
+# siehe run_round: CHAIN_STATUS wird dort ganz oben auf 'stop' gesetzt und nur
+# im gruenen Zweig auf 'continue' umgeschaltet). Jeder andere Ausgang
+# (needs-input, blocked-limit, Notbremse, Transient-Retry, roter/harter Exit,
+# Opus-Deckel, Read-only-Netz-Verletzung, 'nichts zu tun') laesst 'stop' stehen
+# und bricht die Kette sofort ab. Die erste Runde laeuft immer; TICK_BUDGET
+# wird erst VOR jeder weiteren Runde geprueft -- die laufende Runde selbst
+# bleibt durch MAX_RUNTIME gedeckelt (Notbremse bleibt PRO LAUF).
+ROUND=0; CHAIN_STATUS=continue; DID_WORK=0; LAST_ISSUE=""; RC=0
+TICK_START=$(date +%s)
+while [ "$CHAIN_STATUS" = continue ] && [ "$ROUND" -lt "$MAX_ROUNDS" ]; do
+  if [ "$ROUND" -gt 0 ]; then
+    NOW_TS=$(date +%s)
+    [ $((NOW_TS - TICK_START)) -ge "$TICK_BUDGET" ] && break
+  fi
+  ROUND=$((ROUND + 1))
+  run_round; RC=$?
+done
+exit "$RC"
+
+}
+
+run_round() {
+CHAIN_STATUS=stop
+
 # --- Welches Ticket? --------------------------------------------------------
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
-#    Filter nimmt der Timer es alle 20 Minuten neu auf — mit derselben offenen
+#    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
 #    Frage und vollem Token-Verbrauch.
 WIP=$(gh issue list --label in-progress --state open --limit 10 \
         --json number,labels 2>/dev/null || echo '[]')
@@ -422,7 +457,7 @@ Ticket $PARKED ist in Arbeit, hängt aber an einer offenen Frage.
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
-    exit 0
+    return 0
   fi
 
   # 2) Sonst: ältestes Ticket mit Label "needs-plan" -> Planer-Lauf (Opus, nur
@@ -475,7 +510,7 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
 Offene Fragen an: $WAITING
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
-sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
+sonst starte ich in 5 Minuten mit derselben offenen Frage neu."
         else
           # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
           # oben) -- einzig needs-research kaeme hier noch als Queue-Arbeit in
@@ -488,6 +523,13 @@ sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
 
 In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
 (z. B. nur Recherche). **Kein Eingreifen nötig.**"
+          elif [ "${DID_WORK:-0}" = 1 ]; then
+            # Chaining (#61): eine frühere Runde in diesem Tick hat produktiv
+            # gearbeitet, jetzt ist die Queue leer -- ⚪️ "nichts zu tun" wäre
+            # hier eine Lüge (klingt nach "nie etwas getan"), 🟢 ist korrekt.
+            status "läuft · zuletzt #$LAST_ISSUE" "🟢" \
+              "🟢 **Nichts offen.** Zuletzt an #$LAST_ISSUE gearbeitet, die Queue ist leer.
+Kein Eingreifen nötig."
           else
             status "nichts zu tun" "⚪️" \
               "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
@@ -495,7 +537,7 @@ In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
           fi
         fi
-        exit 0
+        return 0
       fi
       gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
       MODE=start
@@ -581,7 +623,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Willst du dauerhaft b
     gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
     status "wartet auf dich (#$ISSUE)" "🟡" \
       "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Ich warte auf dich."
-    exit 0
+    return 0
   fi
   opus_build_cap_reserve "$ISSUE"
 fi
@@ -783,7 +825,7 @@ if { [ "$RUN_ROLE" = "plan" ] || [ "$RUN_ROLE" = "research" ]; } \
     "🔴 **Fehler bei #$ISSUE.** Der $ROLE_LABEL hat unerwartet Dateien geändert — verworfen, kein Commit.
 
 Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an, solange \`needs-input\` hängt."
-  exit 1
+  return 1
 fi
 
 TRANSIENT_FILE="$STATE_DIR/transient-$ISSUE"
@@ -808,6 +850,13 @@ Offene Fragen an: $WAITING
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
 Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`."
   else
+    # Einzige Stelle, die die Chain-Schleife in main() fortsetzt (#61) --
+    # sauberer Lauf, keine offene Frage. Jeder andere Zweig in run_round()
+    # laesst das eingangs gesetzte CHAIN_STATUS=stop stehen.
+    CHAIN_STATUS=continue
+    DID_WORK=1
+    LAST_ISSUE="$ISSUE"
+
     SNAP=$(queue_snapshot)
     PENDING=$(queue_pending "$SNAP")
     NEXT=$(queue_next "$SNAP")
@@ -817,7 +866,7 @@ Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-appro
           "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
 Zuletzt an #$ISSUE gearbeitet. Als Nächstes ist **#$NEXT** dran. Der nächste Takt
-startet automatisch (~20 Min) — **kein Eingreifen nötig.**
+startet automatisch (~5 Min) — **kein Eingreifen nötig.**
 
 Offene Queue: $PENDING"
       else
@@ -833,7 +882,7 @@ derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.
 Kein Eingreifen nötig."
     fi
   fi
-  exit 0
+  return 0
 fi
 
 # Exit-Codes von 'claude -p' sind nicht dokumentiert stabil
@@ -855,11 +904,11 @@ if [ "$API_STATUS" = "429" ] \
     echo "$TS" > "$LIMIT_UNTIL"
     WHEN=" Nächster Versuch: $(fmt_hm "$TS") Uhr."
   else
-    # Nicht deutbar -> 20-Minuten-Takt wie bisher (die Retries kosten im Limit
+    # Nicht deutbar -> 5-Minuten-Takt wie bisher (die Retries kosten im Limit
     # nichts, sie kommen sofort als 429 zurueck). Den Wortlaut aber mitschreiben:
     # so haben wir beim naechsten unbekannten Limit-Text die Vorlage zum Nachschaerfen.
     printf '%s\t%s\n' "$(ts)" "$RESULT_TXT" >> "$STATE_DIR/unparsed-limits.log"
-    WHEN=" Nächster Versuch: in ~20 Minuten."
+    WHEN=" Nächster Versuch: in ~5 Minuten."
   fi
 
   gh issue edit "$ISSUE" --add-label blocked-limit >/dev/null
@@ -870,7 +919,7 @@ fortgesetzt, sobald wieder Kontingent da ist.${WHEN}
 
 **Kein Eingreifen nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar,
 nicht in der Session."
-  exit 0     # kein Fehler — der Timer probiert es einfach wieder
+  return 0     # kein Fehler — der Timer probiert es einfach wieder
 fi
 
 if [ -f "$TIMED_OUT" ]; then
@@ -879,7 +928,7 @@ if [ -f "$TIMED_OUT" ]; then
   status "Notbremse bei #$ISSUE" "🔵" \
     "🔵 Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse gegen hängende Läufe).
 Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**"
-  exit 0
+  return 0
 fi
 
 # --- Vorübergehender API-Fehler? ---------------------------------------------
@@ -910,7 +959,7 @@ if [ "$IS_TRANSIENT" -eq 1 ]; then
       "🔵 **Vorübergehender API-Fehler bei #$ISSUE** (Versuch $COUNT von 3). Neuer
 Versuch beim nächsten Takt. **Kein Eingreifen nötig.** Der Arbeitsstand liegt in
 Git und im Fortschrittskommentar, nicht in der Session."
-    exit 0     # kein Fehler — der Timer probiert es einfach wieder
+    return 0     # kein Fehler — der Timer probiert es einfach wieder
   fi
 
   # Drittes Mal in Folge — das ist kein Zufall mehr.
@@ -928,7 +977,7 @@ das ist kein Zufall mehr.
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
 solange das Label \`needs-input\` hängt."
-  exit 1
+  return 1
 fi
 
 # Ein "echter" inhaltlicher Fehlschlag (weder Limit noch Notbremse noch
@@ -946,7 +995,7 @@ status "Fehler bei #$ISSUE" "🔴" \
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
 solange das Label \`needs-input\` hängt."
-exit 1
+return 1
 
 }
 

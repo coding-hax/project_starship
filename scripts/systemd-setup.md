@@ -1,7 +1,10 @@
 # Runner als Dienst einrichten (Linux / macOS via WSL o. ä.)
 
-Der Runner ist zustandslos: er schaut alle 20 Minuten nach, ob es Arbeit gibt,
-und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft.
+Der Runner ist zustandslos: er schaut alle 5 Minuten nach, ob es Arbeit gibt,
+und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft. Innerhalb
+eines Takts kettet er bis zu 3 Tickets hintereinander (Ticket-Chaining, #61) --
+der 5-Minuten-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
+eine offene Frage bemerkt wird.
 
 ## Voraussetzung: die eigenständige CLI
 
@@ -59,11 +62,11 @@ ExecStart=%h/projects/meine-app/scripts/claude-runner.sh
 
 ```ini
 [Unit]
-Description=Claude Runner alle 20 Minuten
+Description=Claude Runner alle 5 Minuten
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=20min
+OnUnitActiveSec=5min
 Persistent=true
 
 [Install]
@@ -84,7 +87,7 @@ journalctl --user -u claude-runner -f   # Live-Log (brauchst du im Alltag nicht)
 ## Auf Windows
 
 Entweder in WSL2 wie oben, oder über die Aufgabenplanung
-(Trigger: alle 20 Minuten, Aktion: `wsl.exe bash /pfad/claude-runner.sh`).
+(Trigger: alle 5 Minuten, Aktion: `wsl.exe bash /pfad/claude-runner.sh`).
 WSL2 ist der deutlich weniger schmerzhafte Weg.
 
 ## Was du davon auf dem Handy siehst

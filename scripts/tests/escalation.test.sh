@@ -138,6 +138,11 @@ export PATH="$FAKEBIN:$PATH"
 export REPO_DIR="$TMP/repo"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=0
+# AC2/AC6 rufen main() auf und treffen dabei jeweils einen Stop-Zweig in der
+# ersten Runde (Limit bzw. Opus-Deckel) -- zur Robustheit trotzdem isoliert
+# auf eine Runde, unabhaengig vom Chaining (#61, eigene Testdatei
+# scripts/tests/chaining.test.sh).
+export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
