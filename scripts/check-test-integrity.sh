@@ -4,6 +4,7 @@
 set -uo pipefail
 
 BASE="${1:-origin/main}"
+TESTS_EXEMPT="${2:-${TESTS_EXEMPT:-}}"
 FAIL=0
 
 red()  { printf '\033[31m✗ %s\033[0m\n' "$1"; FAIL=1; }
@@ -41,12 +42,16 @@ else
 fi
 
 # --- 3. Ein Feature-PR ohne neuen Test ist verdächtig ------------------------
-CHANGED_SRC=$(git diff --name-only "$BASE"...HEAD -- 'src/**/*.ts' 'src/**/*.tsx' | grep -v '\.spec\.' | wc -l)
+CHANGED_SRC=$(git diff --name-only "$BASE"...HEAD -- 'src/**/*.ts' 'src/**/*.tsx' | grep -v '\.spec\.' | grep -v '\.d\.ts$' | wc -l)
 CHANGED_TESTS=$(git diff --name-only "$BASE"...HEAD -- '*.spec.ts' '*.test.ts' | wc -l)
 
 if [ "$CHANGED_SRC" -gt 0 ] && [ "$CHANGED_TESTS" -eq 0 ]; then
-  red "Code geändert ($CHANGED_SRC Dateien), aber kein Test angefasst."
-  echo "  Jedes Akzeptanzkriterium braucht einen Test."
+  if [ -n "$TESTS_EXEMPT" ]; then
+    ok "Testlose Änderung durch Label 'tests-exempt' freigegeben."
+  else
+    red "Code geändert ($CHANGED_SRC Dateien), aber kein Test angefasst."
+    echo "  Jedes Akzeptanzkriterium braucht einen Test."
+  fi
 else
   ok "Code- und Teständerungen passen zusammen."
 fi

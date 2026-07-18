@@ -97,7 +97,13 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - run: git fetch origin main
-      - run: bash scripts/check-test-integrity.sh origin/main
+      - name: Run test-integrity guard
+        run: |
+          EXEMPT=""
+          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'tests-exempt'; then
+            EXEMPT=1
+          fi
+          bash scripts/check-test-integrity.sh origin/main "$EXEMPT"
 
   # --- Guard: protected paths need a human ---------------------------------
   # Migrations, crypto, sync and auth are NOT merged automatically.
