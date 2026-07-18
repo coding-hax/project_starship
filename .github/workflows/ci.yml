@@ -29,6 +29,8 @@ jobs:
       - run: bash scripts/tests/research-mode.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
       - run: bash scripts/tests/smoke.test.sh
+      - run: bash scripts/check-sync-invariants.sh
+      - run: bash scripts/tests/sync-invariants.test.sh
 
   e2e:
     runs-on: ubuntu-latest
