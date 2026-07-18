@@ -24,6 +24,11 @@ const withSerwist = withSerwistInit({
   swDest: 'public/sw.js',
   // A service worker in dev fights hot reload and caches stale code.
   disable: process.env.NODE_ENV === 'development',
+  // @serwist/next defaults to a full page reload on the `online` event. That
+  // fights local-first (ARCHITECTURE.md: reconnect already triggers a quiet
+  // sync via src/local/sync.ts's own `online` listener) and would blow away
+  // whatever is open in the UI the moment connectivity returns.
+  reloadOnOnline: false,
 });
 
 const nextConfig: NextConfig = {

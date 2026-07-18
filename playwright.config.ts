@@ -1,12 +1,23 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config } from 'dotenv';
-import { PORT } from './tests/run-lock';
+import { PORT, PORT_PROD } from './tests/run-lock';
 
 // The specs assert against the real database, so they need DATABASE_URL.
 // In CI it comes from the environment and the missing file is fine.
 config({ path: '.env.local' });
 
 const baseURL = `http://localhost:${PORT}`;
+const baseURLProd = `http://localhost:${PORT_PROD}`;
+
+// The service worker is only built in production (next.config.ts: `disable:
+// NODE_ENV === 'development'`) — the dev server the other projects use never
+// registers one. offline-critical.spec.ts needs the real thing, so it gets its
+// own prod-build server instead.
+const e2eEnv = {
+  NEXT_PUBLIC_E2E: '1',
+  RP_ID: 'localhost',
+  RP_NAME: 'Starship',
+};
 
 export default defineConfig({
   testDir: './tests',
@@ -32,31 +43,59 @@ export default defineConfig({
   },
 
   // Every feature test runs in both viewports. A layout that only works on desktop
-  // is not done.
+  // is not done. offline-critical.spec.ts is the exception — it needs a real service
+  // worker, so it runs only against the prod-build projects below.
   projects: [
     {
       name: 'mobile',
+      testIgnore: /offline-critical\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } },
     },
     {
       name: 'desktop',
+      testIgnore: /offline-critical\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      name: 'offline-mobile',
+      testMatch: /offline-critical\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 375, height: 812 },
+        baseURL: baseURLProd,
+      },
+    },
+    {
+      name: 'offline-desktop',
+      testMatch: /offline-critical\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        baseURL: baseURLProd,
+      },
     },
   ],
 
-  webServer: {
-    command: 'pnpm dev --port ' + PORT,
-    url: baseURL,
-    // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
-    // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
-    // Refusing to start says what is wrong; reusing hides it.
-    reuseExistingServer: false,
-    timeout: 120_000,
-    env: {
-      NEXT_PUBLIC_E2E: '1',
-      RP_ID: 'localhost',
-      RP_ORIGIN: baseURL,
-      RP_NAME: 'Starship',
+  webServer: [
+    {
+      command: 'pnpm dev --port ' + PORT,
+      url: baseURL,
+      // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
+      // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
+      // Refusing to start says what is wrong; reusing hides it.
+      reuseExistingServer: false,
+      timeout: 120_000,
+      env: { ...e2eEnv, RP_ORIGIN: baseURL },
     },
-  },
+    {
+      // NEXT_PUBLIC_E2E is inlined at build time — it must be set on the build step
+      // too, or the E2E bridge (src/ui/e2e-bridge.tsx) is simply missing from the bundle.
+      command: `pnpm build && pnpm start --port ${PORT_PROD}`,
+      url: baseURLProd,
+      reuseExistingServer: false,
+      // A production build needs more room than the dev server's plain boot.
+      timeout: 300_000,
+      env: { ...e2eEnv, RP_ORIGIN: baseURLProd },
+    },
+  ],
 });
