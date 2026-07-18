@@ -11,7 +11,9 @@ set -uo pipefail
 
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
-MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe.
+MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
+MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
+TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
 STATE_DIR="$REPO_DIR/.runner"
 LIMIT_UNTIL="$STATE_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 
@@ -359,9 +361,16 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
 
 # --- Der imperative Hauptteil ------------------------------------------------
 # Gekapselt in main(), damit Tests die obigen Funktionen sourcen koennen, ohne
-# einen echten Lauf zu starten (Source-Guard ganz unten). Verhalten beim
-# direkten Aufruf ('bash scripts/claude-runner.sh' bzw. per launchd/systemd)
-# ist unveraendert -- reiner Refactor dieses Abschnitts.
+# einen echten Lauf zu starten (Source-Guard ganz unten).
+#
+# Ticket-Chaining (#61): main() haelt Lock + Limit-Check (Tick-Ebene, genau
+# einmal) und schleift darum eine Chain-Schleife, die run_round() bis zu
+# MAX_ROUNDS mal aufruft -- so laeuft nach einem sauber beendeten Lauf sofort
+# das naechste baubereite Ticket, statt den Tick zu beenden und bis zu 20 (jetzt
+# 5) Minuten auf den naechsten Takt zu warten. run_round() enthaelt die
+# komplette bisherige Ticketwahl+Bau/Plan/Recherche-Logik, unveraendert bis auf
+# 'exit N' -> 'return N' (main() soll den Tick erst NACH der letzten Runde
+# verlassen, nicht die Funktion nach der ersten).
 main() {
 
 # --- Nie zwei Läufe gleichzeitig -------------------------------------------
@@ -395,6 +404,32 @@ if [ -s "$LIMIT_UNTIL" ]; then
   rm -f "$LIMIT_UNTIL"
 fi
 
+# --- Chain-Schleife: mehrere Runden pro Tick (#61) --------------------------
+# Weiter nur nach einem SAUBER gruenen run_round() (RC=0, keine offene Frage --
+# siehe run_round: CHAIN_STATUS wird dort ganz oben auf 'stop' gesetzt und nur
+# im gruenen Zweig auf 'continue' umgeschaltet). Jeder andere Ausgang
+# (needs-input, blocked-limit, Notbremse, Transient-Retry, roter/harter Exit,
+# Opus-Deckel, Read-only-Netz-Verletzung, 'nichts zu tun') laesst 'stop' stehen
+# und bricht die Kette sofort ab. Die erste Runde laeuft immer; TICK_BUDGET
+# wird erst VOR jeder weiteren Runde geprueft -- die laufende Runde selbst
+# bleibt durch MAX_RUNTIME gedeckelt (Notbremse bleibt PRO LAUF).
+ROUND=0; CHAIN_STATUS=continue; DID_WORK=0; LAST_ISSUE=""; RC=0
+TICK_START=$(date +%s)
+while [ "$CHAIN_STATUS" = continue ] && [ "$ROUND" -lt "$MAX_ROUNDS" ]; do
+  if [ "$ROUND" -gt 0 ]; then
+    NOW_TS=$(date +%s)
+    [ $((NOW_TS - TICK_START)) -ge "$TICK_BUDGET" ] && break
+  fi
+  ROUND=$((ROUND + 1))
+  run_round; RC=$?
+done
+exit "$RC"
+
+}
+
+run_round() {
+CHAIN_STATUS=stop
+
 # --- Welches Ticket? --------------------------------------------------------
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
@@ -422,7 +457,7 @@ Ticket $PARKED ist in Arbeit, hängt aber an einer offenen Frage.
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
-    exit 0
+    return 0
   fi
 
   # 2) Sonst: ältestes Ticket mit Label "needs-plan" -> Planer-Lauf (Opus, nur
@@ -495,7 +530,7 @@ In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
           fi
         fi
-        exit 0
+        return 0
       fi
       gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
       MODE=start
@@ -581,7 +616,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Willst du dauerhaft b
     gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
     status "wartet auf dich (#$ISSUE)" "🟡" \
       "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Ich warte auf dich."
-    exit 0
+    return 0
   fi
   opus_build_cap_reserve "$ISSUE"
 fi
@@ -783,7 +818,7 @@ if { [ "$RUN_ROLE" = "plan" ] || [ "$RUN_ROLE" = "research" ]; } \
     "🔴 **Fehler bei #$ISSUE.** Der $ROLE_LABEL hat unerwartet Dateien geändert — verworfen, kein Commit.
 
 Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an, solange \`needs-input\` hängt."
-  exit 1
+  return 1
 fi
 
 TRANSIENT_FILE="$STATE_DIR/transient-$ISSUE"
@@ -808,6 +843,13 @@ Offene Fragen an: $WAITING
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
 Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`."
   else
+    # Einzige Stelle, die die Chain-Schleife in main() fortsetzt (#61) --
+    # sauberer Lauf, keine offene Frage. Jeder andere Zweig in run_round()
+    # laesst das eingangs gesetzte CHAIN_STATUS=stop stehen.
+    CHAIN_STATUS=continue
+    DID_WORK=1
+    LAST_ISSUE="$ISSUE"
+
     SNAP=$(queue_snapshot)
     PENDING=$(queue_pending "$SNAP")
     NEXT=$(queue_next "$SNAP")
@@ -833,7 +875,7 @@ derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.
 Kein Eingreifen nötig."
     fi
   fi
-  exit 0
+  return 0
 fi
 
 # Exit-Codes von 'claude -p' sind nicht dokumentiert stabil
@@ -870,7 +912,7 @@ fortgesetzt, sobald wieder Kontingent da ist.${WHEN}
 
 **Kein Eingreifen nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar,
 nicht in der Session."
-  exit 0     # kein Fehler — der Timer probiert es einfach wieder
+  return 0     # kein Fehler — der Timer probiert es einfach wieder
 fi
 
 if [ -f "$TIMED_OUT" ]; then
@@ -879,7 +921,7 @@ if [ -f "$TIMED_OUT" ]; then
   status "Notbremse bei #$ISSUE" "🔵" \
     "🔵 Lauf an #$ISSUE nach ${MAX_RUNTIME}s abgebrochen (Notbremse gegen hängende Läufe).
 Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**"
-  exit 0
+  return 0
 fi
 
 # --- Vorübergehender API-Fehler? ---------------------------------------------
@@ -910,7 +952,7 @@ if [ "$IS_TRANSIENT" -eq 1 ]; then
       "🔵 **Vorübergehender API-Fehler bei #$ISSUE** (Versuch $COUNT von 3). Neuer
 Versuch beim nächsten Takt. **Kein Eingreifen nötig.** Der Arbeitsstand liegt in
 Git und im Fortschrittskommentar, nicht in der Session."
-    exit 0     # kein Fehler — der Timer probiert es einfach wieder
+    return 0     # kein Fehler — der Timer probiert es einfach wieder
   fi
 
   # Drittes Mal in Folge — das ist kein Zufall mehr.
@@ -928,7 +970,7 @@ das ist kein Zufall mehr.
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
 solange das Label \`needs-input\` hängt."
-  exit 1
+  return 1
 fi
 
 # Ein "echter" inhaltlicher Fehlschlag (weder Limit noch Notbremse noch
@@ -946,7 +988,7 @@ status "Fehler bei #$ISSUE" "🔴" \
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #$ISSUE nicht wieder an,
 solange das Label \`needs-input\` hängt."
-exit 1
+return 1
 
 }
 
