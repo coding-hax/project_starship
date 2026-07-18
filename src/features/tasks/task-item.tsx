@@ -8,6 +8,16 @@ const SWIPE_THRESHOLD_PX = 80;
 /** Movement at or below this counts as a tap rather than a drag. */
 const TAP_TOLERANCE_PX = 8;
 
+/**
+ * Mirrors task-editor.tsx's PRIORITIES values. `0` (Normal) renders no badge at
+ * all — dezent means the common case stays quiet, only the two elevated levels
+ * earn a dot.
+ */
+const PRIORITY_META: Record<number, { label: string; className: string }> = {
+  1: { label: 'Hoch', className: 'task-list__priority-dot--hoch' },
+  2: { label: 'Dringend', className: 'task-list__priority-dot--dringend' },
+};
+
 export interface TaskItemProps {
   task: TaskView;
   onToggle: () => void;
@@ -42,6 +52,8 @@ export function TaskItem({ task, onToggle, onEdit, onDelete }: TaskItemProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isDone = task.completedAt !== null;
+  const priorityMeta = PRIORITY_META[task.priority];
+  const isOverdue = task.dueAt !== null && !isDone && new Date(task.dueAt) < new Date();
 
   function handlePointerDown(event: ReactPointerEvent<HTMLLIElement>) {
     if (event.button !== 0) return;
@@ -119,8 +131,25 @@ export function TaskItem({ task, onToggle, onEdit, onDelete }: TaskItemProps) {
           aria-label={`${task.title} als erledigt markieren`}
         />
       </span>
-      <span className="task-list__title">{task.title}</span>
-      {task.dueAt && <span className="task-list__due">{formatDueAt(task.dueAt)}</span>}
+      <span className="task-list__title">
+        {priorityMeta && (
+          <span
+            className={`task-list__priority-dot ${priorityMeta.className}`}
+            role="img"
+            aria-label={`Priorität: ${priorityMeta.label}`}
+          />
+        )}
+        {task.title}
+      </span>
+      {task.dueAt && (
+        <span
+          className={
+            isOverdue ? 'task-list__due task-list__due--overdue' : 'task-list__due'
+          }
+        >
+          {formatDueAt(task.dueAt)}
+        </span>
+      )}
     </li>
   );
 }
