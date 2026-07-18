@@ -10,10 +10,13 @@
 # ungebundenen Datei list-X.json (wie in den Schwesterdateien). Für die
 # Chaining-Tests muss sich der Zustand aber ZWISCHEN Runden ändern können
 # (z. B. needs-plan -> ready, so wie es der echte Planer-Lauf am Ende tut).
-# Dafür zaehlt der Stub Runden an der WIP-Abfrage ('issue list --label
-# in-progress', die IMMER die erste gh-Anfrage in run_round() ist) hoch und
-# bevorzugt eine rundenspezifische Datei list-X-rN.json, falls vorhanden --
-# sonst faellt er auf die ungebundene list-X.json zurück.
+# Dafür zaehlt der Stub Runden an ROUND_SNAP hoch -- der EINEN, ungelabelten
+# 'issue list --json number,labels,createdAt'-Abfrage (#64), die IMMER die
+# erste gh-Anfrage in run_round() ist -- und bevorzugt je Label eine
+# rundenspezifische Datei list-X-rN.json, falls vorhanden, sonst die
+# ungebundene list-X.json. Ein zweiter ungelabelter Aufruf OHNE createdAt
+# (queue_snapshot(), fuer die Status-Anzeige) liest dieselbe Runde, zaehlt
+# aber NICHT hoch.
 set -uo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,6 +40,21 @@ cat > "$FAKEBIN/gh" <<'STUB'
 G="$GHSTATE_DIR"
 mkdir -p "$G"
 
+resolve_label_data() {   # $1 = Label, $2 = Runde -> JSON-Array auf stdout
+  local label="$1" round="$2" file
+  file="$G/list-$label-r$round.json"
+  [ -f "$file" ] || file="$G/list-$label.json"
+  cat "$file" 2>/dev/null || echo '[]'
+}
+
+merged_snapshot() {   # $1 = Runde -> vereinigtes Array ueber alle 4 Ticketwahl-Labels
+  local round="$1"
+  { resolve_label_data in-progress "$round"
+    resolve_label_data needs-plan "$round"
+    resolve_label_data needs-research "$round"
+    resolve_label_data ready "$round"; } | jq -s 'add // []'
+}
+
 case "${1:-} ${2:-}" in
   "issue list")
     shift 2
@@ -50,16 +68,21 @@ case "${1:-} ${2:-}" in
         *) shift ;;
       esac
     done
-    # Rundenzaehler: die WIP-Abfrage ('--label in-progress') ist immer die
-    # erste gh-Anfrage in run_round() -- daran haengt sich der Zaehler.
-    if [ "$label" = "in-progress" ]; then
+    if [ -z "$label" ] && [ "$json" = "number,labels,createdAt" ]; then
+      # ROUND_SNAP (#64): die neue Ein-Abfrage-Ticketwahl -- IMMER die erste
+      # gh-Anfrage in run_round() -- daran haengt sich der Rundenzaehler.
       round=$(( $(cat "$G/round" 2>/dev/null || echo 0) + 1 ))
       echo "$round" > "$G/round"
+      data=$(merged_snapshot "$round")
+    elif [ -n "$label" ]; then
+      round=$(cat "$G/round" 2>/dev/null || echo 0)
+      data=$(resolve_label_data "$label" "$round")
+    else
+      # queue_snapshot() -- ungelabelt, aber ohne createdAt (Status-Anzeige
+      # nach einer Runde). Liest dieselbe Runde, zaehlt aber nicht hoch.
+      round=$(cat "$G/round" 2>/dev/null || echo 0)
+      data=$(merged_snapshot "$round")
     fi
-    round=$(cat "$G/round" 2>/dev/null || echo 0)
-    file="$G/list-$label-r$round.json"
-    [ -f "$file" ] || file="$G/list-$label.json"
-    data=$(cat "$file" 2>/dev/null || echo '[]')
     if [ -n "$q" ]; then
       printf '%s' "$data" | jq -r "$q"
     else

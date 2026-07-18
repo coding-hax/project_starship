@@ -114,13 +114,24 @@ reset_epoch() {
 #   🔴 Fehler           – EINGREIFEN
 #   🔵 Limit erreicht   – pausiert, läuft von selbst weiter
 #   ⚪️ nichts zu tun    – kein Ticket auf `ready`
+# Nur bei inhaltlicher Aenderung schreiben (#64): status() editierte bisher
+# bedingungslos, "⚪️ nichts zu tun" landet so 72x am Tag identisch neu im
+# Issue. sha1 ueber Titel+Emoji+Text -- ausdruecklich OHNE den "_Stand:_"-
+# Zeitstempel, den die Funktion selbst erst unten anhaengt, sonst waere der
+# Hash immer verschieden und die Optimierung wirkungslos. Datei bleibt leer
+# (kein Schreiben), wenn gh fehlschlaegt -- der naechste Aufruf versucht es
+# dann erneut, egal ob inhaltlich gleich oder nicht.
+STATUS_HASH_FILE="$STATE_DIR/status-hash"
 status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
+  local sig
+  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$3")
+  [ "$(cat "$STATUS_HASH_FILE" 2>/dev/null)" = "$sig" ] && return 0
   gh issue edit "$STATUS_ISSUE" \
     --title "$2 Runner · $1" \
     --body "$3
 
-_Stand: $(ts)_" >/dev/null 2>&1
+_Stand: $(ts)_" >/dev/null 2>&1 && printf '%s' "$sig" > "$STATUS_HASH_FILE"
 }
 
 # Traegt den skriptseitig bekannten Endgrund (Limit/Notbremse) in den
@@ -467,16 +478,25 @@ run_round() {
 CHAIN_STATUS=stop
 
 # --- Welches Ticket? --------------------------------------------------------
+# EIN Schnappschuss aller offenen Issues (Nr., Labels, Erstellt-Datum) statt
+# fuenf sequenzieller 'gh issue list'-Aufrufe (needs-input, in-progress,
+# needs-plan, needs-research, ready) -- lokal mit jq gefiltert. Die
+# Praezedenz bleibt exakt erhalten: in-progress -> needs-plan ->
+# needs-research -> ready, je aelteste zuerst (createdAt), inklusive aller
+# Ausschluesse (needs-input, no-opus, Beide-Label-Guard).
+ROUND_SNAP=$(gh issue list --state open --limit 100 \
+               --json number,labels,createdAt 2>/dev/null || echo '[]')
+
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
 #    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
 #    Frage und vollem Token-Verbrauch.
-WIP=$(gh issue list --label in-progress --state open --limit 10 \
-        --json number,labels 2>/dev/null || echo '[]')
+WIP=$(printf '%s' "$ROUND_SNAP" \
+        | jq -c '[.[] | select(.labels | map(.name) | index("in-progress"))]')
 
 ISSUE=$(echo "$WIP" | jq -r '[.[] | select((.labels | map(.name)
              | index("needs-input")) | not)]
-           | sort_by(.number) | .[0].number // empty')
+           | sort_by(.createdAt) | .[0].number // empty')
 MODE=resume
 RUN_ROLE=build
 
@@ -500,11 +520,11 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
   #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
   #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
   #    komplett übersprungen, weder geplant noch gebaut.
-  ISSUE=$(gh issue list --label needs-plan --state open --limit 30 \
-            --json number,labels \
-            -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                     | select((.labels | map(.name) | index("no-opus")) | not)]
-                | sort_by(.number) | .[0].number // empty')
+  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+            '[.[] | select(.labels | map(.name) | index("needs-plan"))
+                  | select((.labels | map(.name) | index("needs-input")) | not)
+                  | select((.labels | map(.name) | index("no-opus")) | not)]
+                | sort_by(.createdAt) | .[0].number // empty')
   if [ -n "$ISSUE" ]; then
     RUN_ROLE=plan
     MODE=start
@@ -513,11 +533,11 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
     #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
     #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
-    ISSUE=$(gh issue list --label needs-research --state open --limit 30 \
-              --json number,labels \
-              -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                       | select((.labels | map(.name) | index("no-opus")) | not)]
-                  | sort_by(.number) | .[0].number // empty')
+    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+              '[.[] | select(.labels | map(.name) | index("needs-research"))
+                    | select((.labels | map(.name) | index("needs-input")) | not)
+                    | select((.labels | map(.name) | index("no-opus")) | not)]
+                  | sort_by(.createdAt) | .[0].number // empty')
     if [ -n "$ISSUE" ]; then
       RUN_ROLE=research
       MODE=start
@@ -529,16 +549,19 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
       #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
       #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
       #    "ready" trotzdem noch dran hängt.
-      ISSUE=$(gh issue list --label ready --state open --limit 30 \
-                --json number,labels \
-                -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                         | select((.labels | map(.name) | index("needs-plan")) | not)
-                         | select((.labels | map(.name) | index("needs-research")) | not)]
-                    | sort_by(.number) | .[0].number // empty')
+      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                '[.[] | select(.labels | map(.name) | index("ready"))
+                      | select((.labels | map(.name) | index("needs-input")) | not)
+                      | select((.labels | map(.name) | index("needs-plan")) | not)
+                      | select((.labels | map(.name) | index("needs-research")) | not)]
+                    | sort_by(.createdAt) | .[0].number // empty')
       if [ -z "$ISSUE" ]; then
         # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
         # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-        WAITING=$(waiting_issues)
+        # (aus dem gleichen ROUND_SNAP -- kein sechster Aufruf.)
+        WAITING=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                    '[.[] | select(.labels | map(.name) | index("needs-input"))]
+                      | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
         if [ -n "$WAITING" ]; then
           status "wartet auf dich ($WAITING)" "🟡" \
             "🟡 **Ich warte auf eine Antwort von dir.**
