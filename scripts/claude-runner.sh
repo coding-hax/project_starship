@@ -406,6 +406,26 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   return $rc
 }
 
+# --- .runner/ räumt sich auf (#64) -------------------------------------------
+# tier-/failcount-/opus-build-<datum>-/session--Dateien geschlossener Tickets
+# blieben bisher fuer immer liegen. Einmal PRO TICK (nicht pro Runde) alles
+# aelter als 7 Tage weg. Ausdruecklich verschont: 'limit-until' (kein
+# Ticket-Bezug, gehoert nicht zu den vier Mustern) und die Session-Datei des
+# GERADE laufenden Tickets, egal wie alt (z. B. ein Ticket, das laenger als
+# 7 Tage an einem Wochenlimit haengt).
+cleanup_state_dir() {
+  local keep_session
+  keep_session=$(gh issue list --label in-progress --state open --limit 5 \
+                   --json number -q '.[0].number // empty' 2>/dev/null)
+  local -a find_args=(
+    "$STATE_DIR" -maxdepth 1
+    '(' -name 'tier-*' -o -name 'failcount-*' -o -name 'opus-build-*' -o -name 'session-*' ')'
+    -mtime +7
+  )
+  [ -n "$keep_session" ] && find_args+=(-not -name "session-$keep_session")
+  find "${find_args[@]}" -delete 2>/dev/null
+}
+
 # --- Der imperative Hauptteil ------------------------------------------------
 # Gekapselt in main(), damit Tests die obigen Funktionen sourcen koennen, ohne
 # einen echten Lauf zu starten (Source-Guard ganz unten).
@@ -434,6 +454,8 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
+
+cleanup_state_dir
 
 # --- Kontingent erschöpft? Dann gar nicht erst starten ----------------------
 # Der Timer tickt weiter alle 5 Minuten. Solange das Limit nachweislich noch
