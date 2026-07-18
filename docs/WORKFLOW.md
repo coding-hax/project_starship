@@ -65,6 +65,35 @@ erst danach `ready`. Ein Ticket mit `needs-research` **und** `ready` gleichzeiti
 gilt ebenso als inkonsistent wie bei `needs-plan` — es wird über den
 Recherche-Zweig gefangen, nicht gebaut.
 
+**Reihenfolge INNERHALB eines Labels — die Prioritäts-Queue (#91):** Standardmäßig
+nimmt der Runner je Label das **älteste per `createdAt`**. Willst du ein bestimmtes
+Ticket vorziehen, ohne Labels umzuhängen, trägst du es in das angepinnte
+**Queue-Issue** (`QUEUE_ISSUE`) ein. Dessen Body hat drei Sektionen, die je eine
+Stufe ordnen:
+
+```
+## Build       ordnet 'ready'
+#88
+#86
+
+## Plan        ordnet 'needs-plan'
+#91
+
+## Research    ordnet 'needs-research'
+#54
+```
+
+Zahlen oben = zuerst. Wichtig:
+
+- **Das Label bleibt das Tor.** Ein Eintrag in der Queue macht ein Ticket **nicht**
+  baubereit — nur was `ready`/`needs-plan`/`needs-research` trägt (und nicht
+  `needs-input`/`no-opus`), wird überhaupt bearbeitet. Die Queue **ordnet nur**.
+- **Nicht Gelistetes rutscht dahinter**, in der bisherigen `createdAt`-Reihenfolge.
+- **Leeres/fehlendes Queue-Issue → exakt bisheriges Verhalten.** Setzt du
+  `QUEUE_ISSUE=0` (oder editierst den Body nie), ändert sich nichts.
+
+Vom Handy aus editierst du dafür nur den Issue-Body — kein Commit, kein Branch.
+
 Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
 `needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
 Tokens kosten, ohne die Ausführung konkreter zu machen.
