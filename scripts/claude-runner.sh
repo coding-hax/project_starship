@@ -819,8 +819,14 @@ run_limited "$MAX_RUNTIME" claude "${ARGS[@]}"
 RC=$?
 OUT=$(cat "$LOG" 2>/dev/null || echo "")
 
-# Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue)
-echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
+# Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue).
+# Nach einem Timeout-Kill (Notbremse) oder sonst kaputtem $OUT ist '.result'
+# kein valides JSON -> jq liefert leer -> eine leere Zeile wuerde die noch
+# gueltige alte ID ueberschreiben, und der naechste Lauf koennte nicht mehr
+# per --resume fortsetzen (#64). Nur bei einem NICHT-leeren Treffer schreiben,
+# alte Datei sonst unangetastet lassen.
+NEW_SID=$(echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null)
+[ -n "$NEW_SID" ] && printf '%s' "$NEW_SID" > "$SID_FILE"
 
 # Ein frueherer Lauf koennte blocked-limit gesetzt haben. Wenn wir hier ankommen,
 # ist das Limit vorbei (sonst waeren wir oben schon uebersprungen worden) — das
