@@ -11,6 +11,7 @@ set -uo pipefail
 
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
+QUEUE_ISSUE="${QUEUE_ISSUE:-0}"         # Nr. des Prioritäts-Queue-Issues (0 = aus)
 MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
 MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
 TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
@@ -166,6 +167,43 @@ queue_snapshot() {
   gh issue list --state open --limit 50 --json number,labels 2>/dev/null || echo '[]'
 }
 
+# --- Prioritäts-Queue (#91) -------------------------------------------------
+# Ein vom Menschen editierbares Issue (QUEUE_ISSUE) bestimmt die REIHENFOLGE
+# innerhalb eines Labels — ohne dass man Labels umhängen muss. Body-Sektionen
+# '## Build' (ordnet 'ready'), '## Plan' (needs-plan), '## Research'
+# (needs-research); Zahlen oben = zuerst. Das Label bleibt das Tor: die Queue
+# ordnet nur, sie macht kein ungelabeltes Ticket baubereit. Nicht Gelistetes
+# rutscht wie bisher HINTER das Gelistete, dort 'ältestes createdAt zuerst'.
+# Leeres/fehlendes Queue-Issue -> exakt bisheriges Verhalten.
+
+# Holt den Queue-Body EINMAL pro Tick (leer, wenn kein QUEUE_ISSUE gesetzt).
+queue_body() {
+  [ "${QUEUE_ISSUE:-0}" -gt 0 ] 2>/dev/null || { printf ''; return 0; }
+  gh issue view "$QUEUE_ISSUE" --json body -q '.body // ""' 2>/dev/null || printf ''
+}
+
+# $1 = Sektion (Build|Plan|Research), $2 = Body-Text
+# -> JSON-Array der Ticket-Nummern in genannter Reihenfolge (dublettenbereinigt,
+#    Reihenfolge bleibt erhalten). Mehrere '#NN' pro Zeile sind erlaubt.
+queue_order() {
+  local section="$1" body="${2:-}"
+  [ -n "$body" ] || { printf '[]'; return 0; }
+  printf '%s\n' "$body" | awk -v sec="$section" '
+    /^##[[:space:]]/ {
+      inSec = (tolower($0) ~ ("^##[[:space:]]+" tolower(sec) "([[:space:]]|$)")) ? 1 : 0
+      next
+    }
+    inSec {
+      s = $0
+      while (match(s, /#[0-9]+/)) {
+        print substr(s, RSTART + 1, RLENGTH - 1)
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }
+  ' | jq -R 'select(length > 0) | tonumber' \
+    | jq -sc 'reduce .[] as $n ([]; if index($n) then . else . + [$n] end)'
+}
+
 # Offene Queue-Arbeit als "#a, #b" (leer = nichts offen).
 # ready|needs-plan|needs-research, jeweils OHNE needs-input. (#1/Status-Issue
 # trägt keins dieser Labels und fällt automatisch raus.)
@@ -181,16 +219,19 @@ queue_pending() {   # $1 = snapshot-json
 # Das Ticket, das der Runner beim NÄCHSTEN Takt tatsächlich nähme — dieselbe
 # Präzedenz wie main(): in-progress -> needs-plan -> ready. Leer, wenn nichts
 # baubereit ist (z. B. nur needs-research offen).
-queue_next() {   # $1 = snapshot-json
-  printf '%s' "$1" | jq -r '
-    def pick($has; $hasnt):
+queue_next() {   # $1 = snapshot-json, $2 = queue-body (optional)
+  printf '%s' "$1" | jq -r \
+    --argjson plan  "$(queue_order Plan "${2:-}")" \
+    --argjson ready "$(queue_order Build "${2:-}")" '
+    def pick($has; $hasnt; $order):
       [ .[] | (.labels|map(.name)) as $l
         | select( $has  | all(. as $x | ($l|index($x))) )
-        | select( $hasnt| any(. as $x | ($l|index($x))) | not )
-        | .number ] | sort | .[0];
-    ( pick(["in-progress"]; ["needs-input"])
-      // pick(["needs-plan"]; ["needs-input","no-opus"])
-      // pick(["ready"];     ["needs-input","needs-plan"]) ) // empty' 2>/dev/null
+        | select( $hasnt| any(. as $x | ($l|index($x))) | not ) ]
+      | sort_by( (.number as $n | ($order|index($n)) // 100000000), .number )
+      | .[0].number;
+    ( pick(["in-progress"]; ["needs-input"]; [])
+      // pick(["needs-plan"]; ["needs-input","no-opus"]; $plan)
+      // pick(["ready"];     ["needs-input","needs-plan"]; $ready) ) // empty' 2>/dev/null
 }
 
 # --- Modell-Eskalation beim Bauen (ADR-0007) --------------------------------
@@ -509,6 +550,14 @@ CHAIN_STATUS=stop
 ROUND_SNAP=$(gh issue list --state open --limit 100 \
                --json number,labels,createdAt 2>/dev/null || echo '[]')
 
+# Prioritäts-Queue (#91) EINMAL einlesen (ein gh-Aufruf) und je Denk-/Bau-Stufe
+# die gewünschte Reihenfolge bestimmen. Leer, solange kein QUEUE_ISSUE gesetzt
+# ist -> die sort_by-Ausdrücke unten fallen dann auf 'ältestes createdAt' zurück.
+QUEUE_BODY=$(queue_body)
+ORDER_PLAN=$(queue_order Plan "$QUEUE_BODY")
+ORDER_RESEARCH=$(queue_order Research "$QUEUE_BODY")
+ORDER_READY=$(queue_order Build "$QUEUE_BODY")
+
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
 #    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
@@ -542,11 +591,12 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
   #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
   #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
   #    komplett übersprungen, weder geplant noch gebaut.
-  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_PLAN" \
             '[.[] | select(.labels | map(.name) | index("needs-plan"))
                   | select((.labels | map(.name) | index("needs-input")) | not)
                   | select((.labels | map(.name) | index("no-opus")) | not)]
-                | sort_by(.createdAt) | .[0].number // empty')
+                | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                | .[0].number // empty')
   if [ -n "$ISSUE" ]; then
     RUN_ROLE=plan
     MODE=start
@@ -555,11 +605,12 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
     #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
     #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
-    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_RESEARCH" \
               '[.[] | select(.labels | map(.name) | index("needs-research"))
                     | select((.labels | map(.name) | index("needs-input")) | not)
                     | select((.labels | map(.name) | index("no-opus")) | not)]
-                  | sort_by(.createdAt) | .[0].number // empty')
+                  | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                  | .[0].number // empty')
     if [ -n "$ISSUE" ]; then
       RUN_ROLE=research
       MODE=start
@@ -571,12 +622,13 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
       #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
       #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
       #    "ready" trotzdem noch dran hängt.
-      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_READY" \
                 '[.[] | select(.labels | map(.name) | index("ready"))
                       | select((.labels | map(.name) | index("needs-input")) | not)
                       | select((.labels | map(.name) | index("needs-plan")) | not)
                       | select((.labels | map(.name) | index("needs-research")) | not)]
-                    | sort_by(.createdAt) | .[0].number // empty')
+                    | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                    | .[0].number // empty')
       if [ -z "$ISSUE" ]; then
         # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
         # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
@@ -955,7 +1007,7 @@ Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-appro
 
     SNAP=$(queue_snapshot)
     PENDING=$(queue_pending "$SNAP")
-    NEXT=$(queue_next "$SNAP")
+    NEXT=$(queue_next "$SNAP" "${QUEUE_BODY:-}")
     if [ -n "$PENDING" ]; then
       if [ -n "$NEXT" ]; then
         status "wartet auf nächsten Lauf · als Nächstes #$NEXT" "🟢" \
