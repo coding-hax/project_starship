@@ -130,6 +130,12 @@ export PATH="$FAKEBIN:$PATH"
 export REPO_DIR="$TMP/repo"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=0
+# Diese Tests pruefen die Ticket-AUSWAHL, nicht das Chaining (#61) -- ohne
+# diesen Riegel wuerde main() bis zu MAX_ROUNDS mal laufen und mangels
+# Zustandsaenderung im Stub dasselbe Ticket erneut waehlen, was Test 5
+# (Resumability, prueft eine session-Datei aus der ERSTEN Runde) verfaelscht.
+# Chaining hat seine eigene Testdatei: scripts/tests/chaining.test.sh.
+export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
