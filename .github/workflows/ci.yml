@@ -31,6 +31,9 @@ jobs:
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
+      - run: git fetch origin main
+      - run: bash scripts/check-dexie-bump.sh origin/main
+      - run: bash scripts/tests/dexie-bump.test.sh
 
   e2e:
     runs-on: ubuntu-latest
