@@ -39,12 +39,20 @@ Produktionscode.
   (429 → `blocked-limit`, automatische Fortsetzung), nicht ein fester Zähler.
 - **Kill-Switch:** Label `no-opus` am Ticket unterbindet jede Opus-Nutzung —
   der Planer überspringt das Ticket vollständig, weder Planung noch Bau durch Opus.
-- **Strikt nur-lesend:** Opus läuft mit `--allowedTools "Read,Grep,Glob,Bash"`, ohne
-  `Edit`/`Write`. Bash ausschließlich für `gh` und lesende Inspektion.
+- **Strikt nur-lesend, präventiv erzwungen (#63):** Opus läuft mit
+  `--allowedTools "Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"`
+  (Recherche zusätzlich `WebSearch`), ohne `Edit`/`Write` und **ohne pauschales
+  `Bash`**. Erlaubt ist nur, was der Auftrag braucht: `gh` für Issue lesen,
+  Kommentar posten, Label setzen — sowie lesende `git`-Inspektion. Alles andere
+  (`git commit`, `git push`, beliebige Shell-Befehle, …) weist Claude Code selbst
+  ab, bevor es läuft — nicht erst hinterher per Kontrolle.
 - **Kein Branch, kein Commit:** Der Planer legt keinen Branch an und committet nicht.
-- **Read-only-Netz:** Bleibt der Arbeitsbaum nach einem Planer-Lauf trotzdem
-  schmutzig (`git status --porcelain` nicht leer), verwirft der Runner die Änderungen
-  und behandelt den Lauf als Fehler — das darf nie unbemerkt durchrutschen.
+- **Read-only-Netz als zweite Absicherung, nicht als einzige:** Bleibt der
+  Arbeitsbaum nach einem Planer-Lauf trotzdem schmutzig (`git status --porcelain`
+  nicht leer), verwirft der Runner die Änderungen und behandelt den Lauf als
+  Fehler — das darf nie unbemerkt durchrutschen. Vor #63 war das die einzige
+  Absicherung (detektivisch, nach dem Lauf); jetzt ist es Netz und doppelter
+  Boden hinter der präventiven Allowlist.
 
 ## Konsequenzen
 
@@ -58,3 +66,5 @@ Produktionscode.
 - `scripts/claude-runner.sh` bekommt eine zweite Rolle (`RUN_ROLE=plan` neben
   `RUN_ROLE=build`) mit eigenem Prompt und eigenen `--allowedTools`. Einen festen
   Budget-Zähler gibt es bewusst nicht (siehe „Grenzen").
+- `scripts/tests/` prüft, dass `RUN_ROLE=plan`/`RUN_ROLE=research` nicht mit
+  einem pauschalen `Bash` starten (#63).

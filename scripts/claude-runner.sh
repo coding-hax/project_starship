@@ -759,16 +759,24 @@ nur, wenn ein Ticket sie ausdrücklich verlangt.
 EOF
 
 # --- Claude starten ---------------------------------------------------------
+# Praeventiv statt nur detektiv (#63): die Denk-Rollen bekommen keinen
+# pauschalen Bash-Zugriff mehr, sondern eine Allowlist, die genau das erlaubt,
+# was ihr Auftrag braucht -- 'gh' fuer Kommentare/Labels/Issue-Lektuere, sowie
+# lesende git-Inspektion. Das git-status-Netz weiter unten bleibt zusaetzlich
+# bestehen (Netz und doppelter Boden, siehe ADR-0005), faengt aber jetzt nur
+# noch ab, was trotz Allowlist irgendwie durchrutscht.
+READONLY_TOOLS="Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+
 case "$RUN_ROLE" in
   plan)
     ARGS=(-p "$PLAN_PROMPT" --output-format json
           --model "$MODEL"
-          --allowedTools "Read,Grep,Glob,Bash")
+          --allowedTools "$READONLY_TOOLS")
     ;;
   research)
     ARGS=(-p "$RESEARCH_PROMPT" --output-format json
           --model "$MODEL"
-          --allowedTools "Read,Grep,Glob,Bash,WebSearch")
+          --allowedTools "$READONLY_TOOLS,WebSearch")
     ;;
   *)
     ARGS=(-p "$PROMPT" --output-format json
@@ -807,12 +815,13 @@ echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
 # damit, bevor wir es weiter unten bei Bedarf (429) neu setzen.
 gh issue edit "$ISSUE" --remove-label blocked-limit >/dev/null 2>&1
 
-# --- Read-only-Netz für Planer & Rechercheur (ADR-0005) ----------------------
-# Opus laeuft in RUN_ROLE=plan/research ohne Edit/Write, aber Bash bleibt fuer
-# 'gh' und lesende Inspektion erlaubt -- ein Fehlverhalten koennte den Baum
-# trotzdem beschmutzen. Das darf nie unbemerkt durchrutschen: verwerfen, als
-# Fehler behandeln, unabhaengig von RC (auch ein "erfolgreicher" Lauf zaehlt
-# hier nicht).
+# --- Read-only-Netz für Planer & Rechercheur (ADR-0005 + #63) ----------------
+# Opus laeuft in RUN_ROLE=plan/research ohne Edit/Write und ohne pauschalen
+# Bash-Zugriff -- nur die Allowlist $READONLY_TOOLS oben. Dieses Netz ist die
+# zweite Absicherung, kein Ersatz dafuer: selbst mit enger Allowlist koennte
+# ein Fehlverhalten (z.B. ueber ein erlaubtes Werkzeug) den Baum beschmutzen.
+# Das darf nie unbemerkt durchrutschen: verwerfen, als Fehler behandeln,
+# unabhaengig von RC (auch ein "erfolgreicher" Lauf zaehlt hier nicht).
 if { [ "$RUN_ROLE" = "plan" ] || [ "$RUN_ROLE" = "research" ]; } \
    && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
   git checkout -- . 2>/dev/null
