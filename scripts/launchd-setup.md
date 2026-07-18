@@ -1,7 +1,10 @@
 # Runner als Dienst einrichten (macOS / launchd)
 
-Der Runner ist zustandslos: er schaut alle 20 Minuten nach, ob es Arbeit gibt,
-und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft.
+Der Runner ist zustandslos: er schaut alle 5 Minuten nach, ob es Arbeit gibt,
+und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft. Innerhalb
+eines Takts kettet er bis zu 3 Tickets hintereinander (Ticket-Chaining, #61) --
+der 5-Minuten-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
+eine offene Frage bemerkt wird.
 
 > **Linux?** Dann gilt `systemd-setup.md`. Diese Datei ist das macOS-Gegenstück —
 > `systemd` gibt es hier nicht, der Dienst heißt `launchd`.
@@ -176,9 +179,9 @@ Ohne sie schreibt der Runner keinen Status — er läuft trotzdem.
     <string>/Users/max</string>
   </dict>
 
-  <!-- Alle 20 Minuten. -->
+  <!-- Alle 5 Minuten (#61). -->
   <key>StartInterval</key>
-  <integer>1200</integer>
+  <integer>300</integer>
 
   <!-- Nicht sofort beim Laden loslaufen — sonst startet ein Agent in dem Moment,
        in dem du den Timer aktivierst. -->
@@ -196,6 +199,15 @@ Ohne sie schreibt der Runner keinen Status — er läuft trotzdem.
 **Der `PATH`-Eintrag ist nicht optional.** launchd erbt nicht deine Shell-Umgebung.
 Ohne ihn findet das Skript weder `gh` noch `claude` und bricht bei jedem Lauf ab.
 Prüf den echten Pfad mit `which claude gh jq node` und trag die Verzeichnisse ein.
+
+**#61 (Ticket-Chaining + 5-Minuten-Takt):** Diese Datei liegt im Repo, die echte
+`~/Library/LaunchAgents/de.starship.runner.plist` **nicht** — ein PR kann sie nicht
+ändern. Trag `StartInterval` dort von Hand auf `300` ein (siehe oben) und lade neu
+(nächster Absatz). Ohne diesen Handgriff bleibt der Takt bei 20 Minuten; das
+Chaining selbst (`MAX_ROUNDS`/`TICK_BUDGET` in `scripts/claude-runner.sh`, Default
+3 Runden bzw. `MAX_RUNTIME`) wirkt dagegen sofort mit dem nächsten Lauf, unabhängig
+von der plist. Beide Werte lassen sich optional unter `EnvironmentVariables`
+überschreiben — der Default reicht normalerweise.
 
 **Nach jeder Änderung an der plist neu laden.** launchd hält die alte Fassung im
 Speicher; ein bloßes Speichern der Datei ändert nichts:
@@ -242,8 +254,8 @@ Die CLI formatiert ihn in zwei Formen:
 | Reset | Meldung | Verhalten |
 |---|---|---|
 | ≤ 24 h (Session-Limit) | `resets 9pm` | pausiert bis 21:01 |
-| > 24 h (Wochenlimit) | `resets Jul 17, 5:09pm` | schläft bis Freitag — **kein** 20-Minuten-Takt |
-| nicht lesbar | — | fällt auf den 20-Minuten-Takt zurück |
+| > 24 h (Wochenlimit) | `resets Jul 17, 5:09pm` | schläft bis Freitag — **kein** 5-Minuten-Takt |
+| nicht lesbar | — | fällt auf den 5-Minuten-Takt zurück |
 
 Der Zeitpunkt steht in `.runner/limit-until` (Unix-Zeit). **Ein Fehlparsen darf den
 Runner nie stilllegen**, deshalb wird eine unplausible Zeit verworfen statt geglaubt —
