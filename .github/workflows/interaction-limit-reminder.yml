@@ -1,0 +1,77 @@
+name: Interaction-Limit-Erinnerung
+
+# #70: Das Interaction Limit (collaborators_only) laeuft am 17.01.2027 ab und
+# faellt danach STILLSCHWEIGEND weg -- keine GitHub-Mail, keine Warnung. Dieser
+# Workflow erinnert 30 Tage vorher per Issue daran, das Limit manuell zu
+# verlaengern.
+#
+# Kein Auto-Renew: das braeuchte einen langlebigen Admin-PAT in den Secrets
+# eines OEFFENTLICHEN Repos, erreichbar fuer jeden Workflow auf main. Um einen
+# Injection-Vektor zu schliessen, entstuende ein groesserer. Das Verlaengern
+# kostet den Menschen zweimal im Jahr zehn Sekunden.
+#
+# GET /repos/{owner}/{repo}/interaction-limits braucht `administration` --
+# das gibt es in der permissions-Liste des GITHUB_TOKEN nicht (403). Deshalb
+# steht das Ablaufdatum unten als Konstante, kein API-Wert.
+on:
+  schedule:
+    - cron: '17 11 1 * *' # monatlich am 1. -- nur das Datum unten entscheidet, ob etwas passiert
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Erinnerung erzwingen, auch wenn es noch nicht 30 Tage bis zum Ablauf sind (zum Testen)'
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ablauf pruefen und ggf. Erinnerungs-Issue anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          # Einzige Stelle mit dem Ablaufdatum -- bei Verlaengerung hier nachziehen.
+          EXPIRY="2027-01-17T11:36:24Z"
+
+          NOW_EPOCH=$(date -u +%s)
+          EXPIRY_EPOCH=$(date -u -d "$EXPIRY" +%s)
+          DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+          echo "Tage bis Ablauf: $DAYS_LEFT"
+
+          if [ "$DAYS_LEFT" -gt 30 ] && [ "$FORCE" != "true" ]; then
+            echo "✓ Noch mehr als 30 Tage bis Ablauf -- keine Aktion."
+            exit 0
+          fi
+
+          MARKER="Interaction-Limit-Erinnerung"
+          EXISTING=$(gh issue list --search "$MARKER in:title" --state open --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "✓ Erinnerungs-Issue #$EXISTING ist bereits offen -- keine zweite anlegen."
+            exit 0
+          fi
+
+          BODY_FILE=$(mktemp)
+          {
+            echo "Das Interaction Limit (\`collaborators_only\`) läuft am **${EXPIRY}** ab und fällt danach stillschweigend weg -- keine GitHub-Mail, keine Warnung."
+            echo ""
+            echo "Zum Verlängern:"
+            echo ""
+            echo '```'
+            echo "gh api --method PUT repos/coding-hax/project_starship/interaction-limits \\"
+            echo "  -f limit=collaborators_only -f expiry=six_months"
+            echo '```'
+            echo ""
+            echo "Danach muss das Datum **im Workflow selbst** nachgezogen werden: \`.github/workflows/interaction-limit-reminder.yml\`, Konstante \`EXPIRY\`."
+          } > "$BODY_FILE"
+
+          gh issue create \
+            --title "$MARKER: Ablauf am ${EXPIRY}" \
+            --label needs-input \
+            --body-file "$BODY_FILE"
