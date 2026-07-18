@@ -539,6 +539,115 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   expect(row.rows[0].deleted_at).toBeNull();
 });
 
+function priorityDotFor(page: Page, title: string) {
+  return taskItems(page).filter({ hasText: title }).locator('.task-list__priority-dot');
+}
+
+function dueLabelFor(page: Page, title: string) {
+  return taskItems(page).filter({ hasText: title }).locator('.task-list__due');
+}
+
+/** Resolves a token the same way the browser would for any element on the page —
+ * used so colour assertions never hardcode an OKLCH literal that could drift. */
+async function resolveColorToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+test('Priorität „Normal" bleibt ohne Punkt, „Hoch" und „Dringend" zeigen einen dezenten Punkt (issue #86 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Normale Aufgabe', priority: 0 });
+  await seedTask(page, { title: 'Hohe Priorität', priority: 1 });
+  await seedTask(page, { title: 'Dringende Aufgabe', priority: 2 });
+
+  await expect(priorityDotFor(page, 'Normale Aufgabe')).toHaveCount(0);
+  await expect(priorityDotFor(page, 'Hohe Priorität')).toHaveClass(
+    /task-list__priority-dot--hoch/,
+  );
+  await expect(priorityDotFor(page, 'Dringende Aufgabe')).toHaveClass(
+    /task-list__priority-dot--dringend/,
+  );
+
+  const hochColor = await priorityDotFor(page, 'Hohe Priorität').evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  expect(hochColor).toBe(await resolveColorToken(page, '--warning'));
+  const dringendColor = await priorityDotFor(page, 'Dringende Aufgabe').evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  expect(dringendColor).toBe(await resolveColorToken(page, '--danger'));
+});
+
+test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige oder erledigte nicht (issue #86 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Überfällig', dueAt: '2020-01-01T09:00:00.000Z' });
+  await seedTask(page, { title: 'Noch Zeit', dueAt: '2099-01-01T09:00:00.000Z' });
+  await seedTask(page, {
+    title: 'Erledigt trotz alter Fälligkeit',
+    dueAt: '2020-01-01T09:00:00.000Z',
+    completedAt: new Date().toISOString(),
+  });
+
+  await expect(dueLabelFor(page, 'Überfällig')).toHaveClass(/task-list__due--overdue/);
+  await expect(dueLabelFor(page, 'Noch Zeit')).not.toHaveClass(/task-list__due--overdue/);
+  await expect(dueLabelFor(page, 'Erledigt trotz alter Fälligkeit')).not.toHaveClass(
+    /task-list__due--overdue/,
+  );
+
+  const overdueColor = await dueLabelFor(page, 'Überfällig').evaluate(
+    (el) => getComputedStyle(el).color,
+  );
+  expect(overdueColor).toBe(await resolveColorToken(page, '--danger'));
+  const numericFormat = await dueLabelFor(page, 'Überfällig').evaluate(
+    (el) => getComputedStyle(el).fontVariantNumeric,
+  );
+  expect(numericFormat).toContain('tabular-nums');
+});
+
+test('Prioritäts-Punkt und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #86 AC3)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Dringend im Dunkeln', priority: 2, dueAt: '2020-01-01T09:00:00.000Z' });
+
+  const dot = priorityDotFor(page, 'Dringend im Dunkeln');
+  const due = dueLabelFor(page, 'Dringend im Dunkeln');
+
+  // No transition on either element — static, token-driven colour needs no motion
+  // to begin with, so `prefers-reduced-motion` has nothing to override here.
+  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
+    'none',
+  );
+  await expect.poll(() => due.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
+    'none',
+  );
+
+  const lightDotColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const lightDueColor = await due.evaluate((el) => getComputedStyle(el).color);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+
+  const darkDotColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const darkDueColor = await due.evaluate((el) => getComputedStyle(el).color);
+
+  // Still resolve to the semantic token, just its dark-mode value — proving the
+  // override in tokens.css actually reaches these elements, not a hardcoded colour.
+  expect(darkDotColor).toBe(await resolveColorToken(page, '--danger'));
+  expect(darkDueColor).toBe(await resolveColorToken(page, '--danger'));
+  expect(darkDotColor).not.toBe(lightDotColor);
+  expect(darkDueColor).not.toBe(lightDueColor);
+});
+
 test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, die Zeile bleibt bestehen', async ({
   page,
   context,
