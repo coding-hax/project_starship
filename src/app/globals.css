@@ -66,3 +66,20 @@ h3 {
   font-weight: 650;
   letter-spacing: -0.01em;
 }
+
+/*
+ * Header↔content rhythm — one app-wide rule on the spacing scale
+ * (docs/DESIGN_SYSTEM.md), so the gap under a heading is never ad hoc. Page title,
+ * then section, then sub-section, each tighter than the last.
+ */
+h1 {
+  margin-block-end: var(--space-6);
+}
+
+h2 {
+  margin-block: var(--space-6) var(--space-3);
+}
+
+h3 {
+  margin-block: var(--space-4) var(--space-2);
+}
