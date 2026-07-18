@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude-Runner: pollt GitHub Issues, arbeitet EIN Ticket, überlebt Limits.
-# Läuft per launchd (macOS) oder systemd (Linux) alle 20 Minuten.
+# Läuft per launchd (macOS) oder systemd (Linux) alle 5 Minuten.
 #
 # Braucht: gh, jq und die EIGENSTÄNDIGE claude-CLI im PATH.
 # (Die VS-Code-Erweiterung zählt nicht — sie legt `claude` nicht in den PATH.)
@@ -41,7 +41,7 @@ d_plus()  { date -v+"$1"d "+$2" 2>/dev/null || date -d "+$1 day" "+$2" 2>/dev/nu
 # Minuten fehlen bei :00 ("resets 9pm"). am/pm ist immer da (hour12).
 #
 # Trotzdem Best Effort: der Wortlaut ist nicht garantiert. Kein Treffer -> leer ->
-# der Aufrufer faellt auf den 20-Minuten-Takt zurueck. Ein Fehlparsen darf den
+# der Aufrufer faellt auf den 5-Minuten-Takt zurueck. Ein Fehlparsen darf den
 # Runner nie stilllegen.
 #
 # Ueberall ERE (grep -E / sed -E), nirgends BRE-Alternation (\|) — die ist eine
@@ -93,7 +93,7 @@ reset_epoch() {
     ts_out=$((ts_out + 60))                        # eine Minute Puffer
     # Ein Session-Limit setzt nach spaetestens ~5h aus. Alles darueber ist ein
     # alter Log oder ein Fehlparsen — dann NICHT pausieren, sondern verwerfen und
-    # den 20-Minuten-Takt weiterlaufen lassen. Lieber umsonst aufwachen (429 ist
+    # den 5-Minuten-Takt weiterlaufen lassen. Lieber umsonst aufwachen (429 ist
     # gratis) als stundenlang blind schlafen.
     [ $((ts_out - now)) -gt 21600 ] && return 1
   fi
@@ -389,7 +389,7 @@ echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
 
 # --- Kontingent erschöpft? Dann gar nicht erst starten ----------------------
-# Der Timer tickt weiter alle 20 Minuten. Solange das Limit nachweislich noch
+# Der Timer tickt weiter alle 5 Minuten. Solange das Limit nachweislich noch
 # steht, hat es keinen Sinn, einen Agenten hochzufahren. Die Datei enthält eine
 # Unix-Zeit und entsteht unten aus der Reset-Angabe von 'claude -p'.
 # Fehlt sie oder ist sie abgelaufen, läuft alles wie immer — ein Fehlparsen darf
@@ -433,7 +433,7 @@ CHAIN_STATUS=stop
 # --- Welches Ticket? --------------------------------------------------------
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
-#    Filter nimmt der Timer es alle 20 Minuten neu auf — mit derselben offenen
+#    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
 #    Frage und vollem Token-Verbrauch.
 WIP=$(gh issue list --label in-progress --state open --limit 10 \
         --json number,labels 2>/dev/null || echo '[]')
@@ -510,7 +510,7 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
 Offene Fragen an: $WAITING
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
-sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
+sonst starte ich in 5 Minuten mit derselben offenen Frage neu."
         else
           # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
           # oben) -- einzig needs-research kaeme hier noch als Queue-Arbeit in
@@ -523,6 +523,13 @@ sonst starte ich in 20 Minuten mit derselben offenen Frage neu."
 
 In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
 (z. B. nur Recherche). **Kein Eingreifen nötig.**"
+          elif [ "${DID_WORK:-0}" = 1 ]; then
+            # Chaining (#61): eine frühere Runde in diesem Tick hat produktiv
+            # gearbeitet, jetzt ist die Queue leer -- ⚪️ "nichts zu tun" wäre
+            # hier eine Lüge (klingt nach "nie etwas getan"), 🟢 ist korrekt.
+            status "läuft · zuletzt #$LAST_ISSUE" "🟢" \
+              "🟢 **Nichts offen.** Zuletzt an #$LAST_ISSUE gearbeitet, die Queue ist leer.
+Kein Eingreifen nötig."
           else
             status "nichts zu tun" "⚪️" \
               "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
@@ -859,7 +866,7 @@ Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-appro
           "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
 Zuletzt an #$ISSUE gearbeitet. Als Nächstes ist **#$NEXT** dran. Der nächste Takt
-startet automatisch (~20 Min) — **kein Eingreifen nötig.**
+startet automatisch (~5 Min) — **kein Eingreifen nötig.**
 
 Offene Queue: $PENDING"
       else
@@ -897,11 +904,11 @@ if [ "$API_STATUS" = "429" ] \
     echo "$TS" > "$LIMIT_UNTIL"
     WHEN=" Nächster Versuch: $(fmt_hm "$TS") Uhr."
   else
-    # Nicht deutbar -> 20-Minuten-Takt wie bisher (die Retries kosten im Limit
+    # Nicht deutbar -> 5-Minuten-Takt wie bisher (die Retries kosten im Limit
     # nichts, sie kommen sofort als 429 zurueck). Den Wortlaut aber mitschreiben:
     # so haben wir beim naechsten unbekannten Limit-Text die Vorlage zum Nachschaerfen.
     printf '%s\t%s\n' "$(ts)" "$RESULT_TXT" >> "$STATE_DIR/unparsed-limits.log"
-    WHEN=" Nächster Versuch: in ~20 Minuten."
+    WHEN=" Nächster Versuch: in ~5 Minuten."
   fi
 
   gh issue edit "$ISSUE" --add-label blocked-limit >/dev/null
