@@ -76,17 +76,11 @@ case "${1:-} ${2:-}" in
     printf '%s' "$body" > "$G/lastcomment-$issue"
     ;;
   "issue list")
-    label=""
-    args=("$@")
-    i=0
-    while [ $i -lt ${#args[@]} ]; do
-      if [ "${args[$i]}" = "--label" ]; then label="${args[$((i+1))]}"; fi
-      i=$((i+1))
-    done
-    case "$label" in
-      in-progress) cat "$G/wip.json" 2>/dev/null || echo "[]" ;;
-      *) echo "[]" ;;
-    esac
+    # Diese Testdatei braucht nur EIN Ticket (das in-progress-Ticket aus
+    # setup_issue()) -- sowohl fuer die alte gelabelte Abfrage als auch fuer
+    # die neue ungelabelte Ein-Abfrage-Ticketwahl (#64, ROUND_SNAP) liefert
+    # wip.json bereits die passende Form (Nr. + Labels-Array).
+    cat "$G/wip.json" 2>/dev/null || echo "[]"
     ;;
   *) ;;
 esac

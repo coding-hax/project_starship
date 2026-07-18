@@ -114,13 +114,24 @@ reset_epoch() {
 #   🔴 Fehler           – EINGREIFEN
 #   🔵 Limit erreicht   – pausiert, läuft von selbst weiter
 #   ⚪️ nichts zu tun    – kein Ticket auf `ready`
+# Nur bei inhaltlicher Aenderung schreiben (#64): status() editierte bisher
+# bedingungslos, "⚪️ nichts zu tun" landet so 72x am Tag identisch neu im
+# Issue. sha1 ueber Titel+Emoji+Text -- ausdruecklich OHNE den "_Stand:_"-
+# Zeitstempel, den die Funktion selbst erst unten anhaengt, sonst waere der
+# Hash immer verschieden und die Optimierung wirkungslos. Datei bleibt leer
+# (kein Schreiben), wenn gh fehlschlaegt -- der naechste Aufruf versucht es
+# dann erneut, egal ob inhaltlich gleich oder nicht.
+STATUS_HASH_FILE="$STATE_DIR/status-hash"
 status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
+  local sig
+  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$3")
+  [ "$(cat "$STATUS_HASH_FILE" 2>/dev/null)" = "$sig" ] && return 0
   gh issue edit "$STATUS_ISSUE" \
     --title "$2 Runner · $1" \
     --body "$3
 
-_Stand: $(ts)_" >/dev/null 2>&1
+_Stand: $(ts)_" >/dev/null 2>&1 && printf '%s' "$sig" > "$STATUS_HASH_FILE"
 }
 
 # Traegt den skriptseitig bekannten Endgrund (Limit/Notbremse) in den
@@ -333,30 +344,86 @@ opus_build_cap_reserve() {   # $1 = Issue-Nr -- verbraucht einen der 2 Slots fue
   echo $((count + 1)) > "$f"
 }
 
+# Baut einen lesbaren Fehlerausschnitt fuer Issue-Kommentare (#64): bei
+# '--output-format json' ist $LOG oft eine einzige Riesenzeile -- 'tail -n 20'
+# postet diese Zeile bisher komplett und ungekuerzt ins Ticket. Bevorzugt
+# '.result' aus dem geparsten JSON (das ist bereits lesbarer Klartext, keine
+# JSON-Huelle), mit hartem Zeichenlimit. Schlaegt das Parsen fehl (z.B. hat
+# die Notbremse mitten in der Antwort abgebrochen -> kaputtes JSON), auf das
+# ebenfalls gekuerzte Rohlog zurueckfallen.
+ERROR_EXCERPT_LIMIT=1500
+error_excerpt() {   # kein Argument -- liest $OUT und $LOG
+  local txt
+  txt=$(printf '%s' "$OUT" | jq -r '.result // empty' 2>/dev/null)
+  [ -z "$txt" ] && txt=$(tail -n 20 "$LOG" 2>/dev/null)
+  if [ "${#txt}" -gt "$ERROR_EXCERPT_LIMIT" ]; then
+    # Byteweises Schneiden (C-Locale) kann mitten in ein Mehrbyte-UTF-8-Zeichen
+    # (Umlaute!) treffen -- iconv -c wirft am Ende ein angeschnittenes Zeichen
+    # sauber weg, statt eine kaputte Byte-Sequenz zu posten.
+    printf '%s\n…(gekürzt)' \
+      "$(printf '%s' "${txt:0:$ERROR_EXCERPT_LIMIT}" | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null)"
+  else
+    printf '%s' "$txt"
+  fi
+}
+
 # --- Ersatz für `timeout` (fehlt auf macOS) --------------------------------
+# Killt bisher nur den direkten 'claude'-Prozess -- ein haengengebliebenes
+# Kind (z.B. 'pnpm e2e', das claude selbst per Bash-Tool startet) ueberlebt
+# die Notbremse und laeuft munter weiter (#64). Deshalb die ganze
+# Prozessgruppe killen, nicht nur den einen PID.
+#
+# 'setsid' waere der uebliche Weg dahin, ist aber ein util-linux-Tool und
+# fehlt auf macOS (siehe Kopf-Kommentar zu flock/timeout) -- 'set -m'
+# (bash-Jobcontrol) erreicht denselben Effekt portabel: ein im Monitor-Modus
+# gestarteter Hintergrund-Job bekommt eine EIGENE Prozessgruppe, deren
+# Gruppen-ID gleich der PID seines ersten Prozesses ist. 'kill -- -$pid'
+# (negative PID = Gruppen-ID) trifft damit die ganze Gruppe.
 TIMED_OUT="$STATE_DIR/timed-out"
 run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   local secs="$1"; shift
   rm -f "$TIMED_OUT"
 
+  set -m
   "$@" > "$LOG" 2>&1 &
   local cmd_pid=$!
+  set +m
 
   (
     sleep "$secs"
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$TIMED_OUT"
-      kill -TERM "$cmd_pid" 2>/dev/null
+      kill -TERM -- "-$cmd_pid" 2>/dev/null
       sleep 10
-      kill -KILL "$cmd_pid" 2>/dev/null
+      kill -KILL -- "-$cmd_pid" 2>/dev/null
     fi
   ) &
   local watchdog=$!
 
-  wait "$cmd_pid"; local rc=$?
+  wait "$cmd_pid" 2>/dev/null; local rc=$?
   kill "$watchdog" 2>/dev/null
   wait "$watchdog" 2>/dev/null
   return $rc
+}
+
+# --- .runner/ räumt sich auf (#64) -------------------------------------------
+# tier-/failcount-/opus-build-<datum>-/session--Dateien geschlossener Tickets
+# blieben bisher fuer immer liegen. Einmal PRO TICK (nicht pro Runde) alles
+# aelter als 7 Tage weg. Ausdruecklich verschont: 'limit-until' (kein
+# Ticket-Bezug, gehoert nicht zu den vier Mustern) und die Session-Datei des
+# GERADE laufenden Tickets, egal wie alt (z. B. ein Ticket, das laenger als
+# 7 Tage an einem Wochenlimit haengt).
+cleanup_state_dir() {
+  local keep_session
+  keep_session=$(gh issue list --label in-progress --state open --limit 5 \
+                   --json number -q '.[0].number // empty' 2>/dev/null)
+  local -a find_args=(
+    "$STATE_DIR" -maxdepth 1
+    '(' -name 'tier-*' -o -name 'failcount-*' -o -name 'opus-build-*' -o -name 'session-*' ')'
+    -mtime +7
+  )
+  [ -n "$keep_session" ] && find_args+=(-not -name "session-$keep_session")
+  find "${find_args[@]}" -delete 2>/dev/null
 }
 
 # --- Der imperative Hauptteil ------------------------------------------------
@@ -387,6 +454,8 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
+
+cleanup_state_dir
 
 # --- Kontingent erschöpft? Dann gar nicht erst starten ----------------------
 # Der Timer tickt weiter alle 5 Minuten. Solange das Limit nachweislich noch
@@ -431,16 +500,25 @@ run_round() {
 CHAIN_STATUS=stop
 
 # --- Welches Ticket? --------------------------------------------------------
+# EIN Schnappschuss aller offenen Issues (Nr., Labels, Erstellt-Datum) statt
+# fuenf sequenzieller 'gh issue list'-Aufrufe (needs-input, in-progress,
+# needs-plan, needs-research, ready) -- lokal mit jq gefiltert. Die
+# Praezedenz bleibt exakt erhalten: in-progress -> needs-plan ->
+# needs-research -> ready, je aelteste zuerst (createdAt), inklusive aller
+# Ausschluesse (needs-input, no-opus, Beide-Label-Guard).
+ROUND_SNAP=$(gh issue list --state open --limit 100 \
+               --json number,labels,createdAt 2>/dev/null || echo '[]')
+
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
 #    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
 #    Frage und vollem Token-Verbrauch.
-WIP=$(gh issue list --label in-progress --state open --limit 10 \
-        --json number,labels 2>/dev/null || echo '[]')
+WIP=$(printf '%s' "$ROUND_SNAP" \
+        | jq -c '[.[] | select(.labels | map(.name) | index("in-progress"))]')
 
 ISSUE=$(echo "$WIP" | jq -r '[.[] | select((.labels | map(.name)
              | index("needs-input")) | not)]
-           | sort_by(.number) | .[0].number // empty')
+           | sort_by(.createdAt) | .[0].number // empty')
 MODE=resume
 RUN_ROLE=build
 
@@ -464,11 +542,11 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
   #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
   #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
   #    komplett übersprungen, weder geplant noch gebaut.
-  ISSUE=$(gh issue list --label needs-plan --state open --limit 30 \
-            --json number,labels \
-            -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                     | select((.labels | map(.name) | index("no-opus")) | not)]
-                | sort_by(.number) | .[0].number // empty')
+  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+            '[.[] | select(.labels | map(.name) | index("needs-plan"))
+                  | select((.labels | map(.name) | index("needs-input")) | not)
+                  | select((.labels | map(.name) | index("no-opus")) | not)]
+                | sort_by(.createdAt) | .[0].number // empty')
   if [ -n "$ISSUE" ]; then
     RUN_ROLE=plan
     MODE=start
@@ -477,11 +555,11 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
     #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
     #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
-    ISSUE=$(gh issue list --label needs-research --state open --limit 30 \
-              --json number,labels \
-              -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                       | select((.labels | map(.name) | index("no-opus")) | not)]
-                  | sort_by(.number) | .[0].number // empty')
+    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+              '[.[] | select(.labels | map(.name) | index("needs-research"))
+                    | select((.labels | map(.name) | index("needs-input")) | not)
+                    | select((.labels | map(.name) | index("no-opus")) | not)]
+                  | sort_by(.createdAt) | .[0].number // empty')
     if [ -n "$ISSUE" ]; then
       RUN_ROLE=research
       MODE=start
@@ -493,16 +571,19 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
       #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
       #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
       #    "ready" trotzdem noch dran hängt.
-      ISSUE=$(gh issue list --label ready --state open --limit 30 \
-                --json number,labels \
-                -q '[.[] | select((.labels | map(.name) | index("needs-input")) | not)
-                         | select((.labels | map(.name) | index("needs-plan")) | not)
-                         | select((.labels | map(.name) | index("needs-research")) | not)]
-                    | sort_by(.number) | .[0].number // empty')
+      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                '[.[] | select(.labels | map(.name) | index("ready"))
+                      | select((.labels | map(.name) | index("needs-input")) | not)
+                      | select((.labels | map(.name) | index("needs-plan")) | not)
+                      | select((.labels | map(.name) | index("needs-research")) | not)]
+                    | sort_by(.createdAt) | .[0].number // empty')
       if [ -z "$ISSUE" ]; then
         # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
         # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-        WAITING=$(waiting_issues)
+        # (aus dem gleichen ROUND_SNAP -- kein sechster Aufruf.)
+        WAITING=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                    '[.[] | select(.labels | map(.name) | index("needs-input"))]
+                      | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
         if [ -n "$WAITING" ]; then
           status "wartet auf dich ($WAITING)" "🟡" \
             "🟡 **Ich warte auf eine Antwort von dir.**
@@ -806,8 +887,14 @@ run_limited "$MAX_RUNTIME" claude "${ARGS[@]}"
 RC=$?
 OUT=$(cat "$LOG" 2>/dev/null || echo "")
 
-# Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue)
-echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null > "$SID_FILE"
+# Session-ID sichern (nur Komfort — die echte Wahrheit liegt in Git + Issue).
+# Nach einem Timeout-Kill (Notbremse) oder sonst kaputtem $OUT ist '.result'
+# kein valides JSON -> jq liefert leer -> eine leere Zeile wuerde die noch
+# gueltige alte ID ueberschreiben, und der naechste Lauf koennte nicht mehr
+# per --resume fortsetzen (#64). Nur bei einem NICHT-leeren Treffer schreiben,
+# alte Datei sonst unangetastet lassen.
+NEW_SID=$(echo "$OUT" | jq -r '.session_id // empty' 2>/dev/null)
+[ -n "$NEW_SID" ] && printf '%s' "$NEW_SID" > "$SID_FILE"
 
 # Ein frueherer Lauf koennte blocked-limit gesetzt haben. Wenn wir hier ankommen,
 # ist das Limit vorbei (sonst waeren wir oben schon uebersprungen worden) — das
@@ -977,7 +1064,7 @@ Git und im Fortschrittskommentar, nicht in der Session."
 vorübergehenden API-Fehler gescheitert (zuletzt Exit $RC).
 Letzte Zeilen:
 \`\`\`
-$(tail -n 20 "$LOG")
+$(error_excerpt)
 \`\`\`"
   gh issue edit "$ISSUE" --add-label needs-input >/dev/null
   status "Fehler bei #$ISSUE" "🔴" \
@@ -996,7 +1083,7 @@ build_escalation_eval
 gh issue comment "$ISSUE" --body "🤖 Der Runner ist mit einem Fehler abgebrochen (Exit $RC).
 Letzte Zeilen:
 \`\`\`
-$(tail -n 20 "$LOG")
+$(error_excerpt)
 \`\`\`"
 gh issue edit "$ISSUE" --add-label needs-input >/dev/null
 status "Fehler bei #$ISSUE" "🔴" \

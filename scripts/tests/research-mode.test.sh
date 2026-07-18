@@ -27,9 +27,13 @@ mkdir -p "$GHSTATE_DIR"
 # --- Stub 'gh' ---------------------------------------------------------------
 # Deckt genau die Aufrufe ab, die die Ticket-Auswahl in main() macht:
 # 'issue list --label <L> [--json J] [-q Q]' liest die Antwort aus
-# $G/list-<L>.json und wendet -- falls -q gesetzt ist -- echtes jq darauf an,
-# genau wie das echte 'gh'. 'issue view --json labels -q ...' und
-# 'issue edit'/'issue comment' analog zu escalation.test.sh.
+# $G/list-<L>.json. Die neue Ein-Abfrage-Ticketwahl (#64, ROUND_SNAP) fragt
+# OHNE --label alle offenen Issues auf einmal ab -- der Stub baut das aus
+# denselben vier list-<L>.json-Fixtures zusammen (in-progress, needs-plan,
+# needs-research, ready); needs-input bleibt aussen vor, das fragt weiterhin
+# waiting_issues() gezielt gelabelt ab. Wendet -- falls -q gesetzt ist --
+# echtes jq darauf an, genau wie das echte 'gh'. 'issue view --json labels
+# -q ...' und 'issue edit'/'issue comment' analog zu escalation.test.sh.
 cat > "$FAKEBIN/gh" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -48,7 +52,16 @@ case "${1:-} ${2:-}" in
         *) shift ;;
       esac
     done
-    data=$(cat "$G/list-$label.json" 2>/dev/null || echo '[]')
+    if [ -n "$label" ]; then
+      data=$(cat "$G/list-$label.json" 2>/dev/null || echo '[]')
+    else
+      # ROUND_SNAP (#64) bzw. queue_snapshot() -- beide fragen ungelabelt
+      # alle offenen Issues ab. Aus den vier Ticketwahl-Fixtures zusammenbauen.
+      data=$({ cat "$G/list-in-progress.json" 2>/dev/null || echo '[]'
+               cat "$G/list-needs-plan.json" 2>/dev/null || echo '[]'
+               cat "$G/list-needs-research.json" 2>/dev/null || echo '[]'
+               cat "$G/list-ready.json" 2>/dev/null || echo '[]'; } | jq -s 'add // []')
+    fi
     if [ -n "$q" ]; then
       printf '%s' "$data" | jq -r "$q"
     else
