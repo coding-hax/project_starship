@@ -37,6 +37,7 @@ label "needs-input"    "D93F0B" "Claude hat eine Frage gestellt und wartet auf d
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
 label "human-approved" "5319E7" "Deine Freigabe für einen PR, der geschützte Pfade berührt."
 label "model:haiku"    "BFDADC" "Mechanisches Ticket — Runner nimmt Haiku statt Sonnet."
+label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Menschen freigegeben."
 
 # --- 3. Milestones ---------------------------------------------------------
 echo "==> Milestones"
