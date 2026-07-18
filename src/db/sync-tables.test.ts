@@ -1,5 +1,7 @@
+import { getTableColumns } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { missingRequired, writableFields } from './sync-tables';
+import { missingRequired, SYNC_REGISTRY, writableFields } from './sync-tables';
 
 describe('writableFields', () => {
   it('keeps the whitelisted fields', () => {
@@ -98,5 +100,22 @@ describe('missingRequired for tasks', () => {
 
   it('names the missing title, so the push can 400 instead of 500', () => {
     expect(missingRequired('tasks', {})).toEqual(['title']);
+  });
+});
+
+describe('sync columns present', () => {
+  // A synchronised table without these carries no way to soft-delete or resolve
+  // conflicts — typecheck alone would not catch a table that forgets to spread
+  // `syncColumns` (SYNC_REGISTRY types `table` as `unknown`).
+  const requiredColumns = ['id', 'updated_at', 'deleted_at', 'synced_at'];
+
+  it.each(Object.keys(SYNC_REGISTRY))('%s carries every sync column', (name) => {
+    const entry = SYNC_REGISTRY[name as keyof typeof SYNC_REGISTRY];
+    const columns = getTableColumns(entry.table as PgTable);
+    const columnNames = Object.values(columns).map((column) => column.name);
+
+    for (const required of requiredColumns) {
+      expect(columnNames).toContain(required);
+    }
   });
 });
