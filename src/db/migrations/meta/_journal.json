@@ -36,6 +36,13 @@
       "when": 1784289604167,
       "tag": "0004_backfill_sync_seq",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784450332543,
+      "tag": "0005_wakeful_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

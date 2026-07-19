@@ -137,30 +137,45 @@ test('a soft-deleted task is not shown', async ({ page }) => {
   await expect(page.getByText('Verschwindet')).toHaveCount(0);
 });
 
-test('completed tasks sit below open ones and look visually done', async ({ page }) => {
+test('Erledigen lässt die Aufgabe an ihrer Position — sie sieht erledigt aus, springt aber nicht ans Ende (issue #88 AC2)', async ({
+  page,
+}) => {
   await page.goto('/aufgaben');
-  await seedTask(page, { title: 'Offen' });
-  await seedTask(page, { title: 'Erledigt', completedAt: new Date().toISOString() });
+  await seedTask(page, { title: 'Zuerst angelegt', createdAt: '2026-07-01T00:00:00.000Z' });
+  await seedTask(page, { title: 'Danach angelegt', createdAt: '2026-07-02T00:00:00.000Z' });
+
+  await checkboxFor(page, 'Zuerst angelegt').click();
 
   const items = taskItems(page);
   await expect(items).toHaveCount(2);
-  await expect(items.nth(0)).toHaveText(/Offen/);
-  await expect(items.nth(1)).toHaveText(/Erledigt/);
-  // Visually receded, not just reordered.
-  await expect(items.nth(1)).toHaveClass(/task-list__item--done/);
+  await expect(items.nth(0)).toHaveText(/Zuerst angelegt/);
+  // Visually receded, not moved.
+  await expect(items.nth(0)).toHaveClass(/task-list__item--done/);
+  await expect(items.nth(1)).toHaveText(/Danach angelegt/);
 });
 
-test('tasks are sorted by due date, undated ones last', async ({ page }) => {
+test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Status spielen keine Rolle (issue #88 AC3)', async ({
+  page,
+}) => {
   await page.goto('/aufgaben');
-  await seedTask(page, { title: 'Ohne Termin' });
-  await seedTask(page, { title: 'Übermorgen', dueAt: '2026-07-16T09:00:00.000Z' });
-  await seedTask(page, { title: 'Morgen', dueAt: '2026-07-15T09:00:00.000Z' });
+  await seedTask(page, {
+    title: 'Zuerst angelegt',
+    dueAt: '2026-07-20T09:00:00.000Z',
+    createdAt: '2026-07-10T08:00:00.000Z',
+  });
+  await seedTask(page, {
+    title: 'Danach angelegt, aber früher fällig',
+    dueAt: '2026-07-15T09:00:00.000Z',
+    createdAt: '2026-07-10T09:00:00.000Z',
+    completedAt: '2026-07-11T00:00:00.000Z',
+  });
+  await seedTask(page, { title: 'Zuletzt angelegt, ohne Termin', createdAt: '2026-07-10T10:00:00.000Z' });
 
   const items = taskItems(page);
   await expect(items).toHaveCount(3);
-  await expect(items.nth(0)).toHaveText(/Morgen/);
-  await expect(items.nth(1)).toHaveText(/Übermorgen/);
-  await expect(items.nth(2)).toHaveText(/Ohne Termin/);
+  await expect(items.nth(0)).toHaveText(/Zuerst angelegt/);
+  await expect(items.nth(1)).toHaveText(/Danach angelegt, aber früher fällig/);
+  await expect(items.nth(2)).toHaveText(/Zuletzt angelegt, ohne Termin/);
 });
 
 test('tasks stay visible offline, with a calm notice instead of an error', async ({
@@ -448,12 +463,12 @@ test('nur die geänderte Priorität landet in der Mutation, nicht der ganze Date
   expect(last.payload).toEqual({ priority: 2 });
 });
 
-test('eine gesetzte Fälligkeit sortiert die Liste korrekt und zeigt die Uhrzeit im 24h-Format', async ({
+test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber nicht die Position (issue #88 AC3)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
-  await seedTask(page, { title: 'Ohne Termin' });
-  await seedTask(page, { title: 'Früh dran' });
+  await seedTask(page, { title: 'Ohne Termin', createdAt: '2026-07-01T00:00:00.000Z' });
+  await seedTask(page, { title: 'Früh dran', createdAt: '2026-07-02T00:00:00.000Z' });
 
   await tapTask(page, 'Früh dran');
   const dialog = editorDialog(page);
@@ -463,10 +478,11 @@ test('eine gesetzte Fälligkeit sortiert die Liste korrekt und zeigt die Uhrzeit
 
   const items = taskItems(page);
   await expect(items).toHaveCount(2);
-  await expect(items.nth(0)).toContainText('Früh dran');
+  // Creation order, unchanged by the new due date.
+  await expect(items.nth(0)).toContainText('Ohne Termin');
+  await expect(items.nth(1)).toContainText('Früh dran');
   // A 12-hour clock would read "02:30 PM" — this proves it is not that.
-  await expect(items.nth(0)).toContainText('14:30');
-  await expect(items.nth(1)).toContainText('Ohne Termin');
+  await expect(items.nth(1)).toContainText('14:30');
 });
 
 test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet er den Editor', async ({
@@ -677,4 +693,123 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
   );
   expect(row.rowCount).toBe(1); // tombstoned, not hard-deleted — the row still exists
   expect(row.rows[0].deleted_at).not.toBeNull();
+});
+
+test('ein per Schnellerfassung angelegtes Todo erscheint unten in der Liste (issue #88 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Schon da', createdAt: '2026-07-01T00:00:00.000Z' });
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Frisch angelegt');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('Schon da');
+  await expect(items.nth(1)).toContainText('Frisch angelegt');
+});
+
+test('die Position unten bleibt nach einem Reload erhalten (issue #88 AC1)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Älter', createdAt: '2026-07-01T00:00:00.000Z' });
+  await seedTask(page, { title: 'Neuer', createdAt: '2026-07-05T00:00:00.000Z' });
+
+  await page.reload();
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('Älter');
+  await expect(items.nth(1)).toContainText('Neuer');
+});
+
+test('offline angelegt landet unten, bleibt dort nach dem Sync (issue #88 AC1)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Bestand', createdAt: '2026-07-01T00:00:00.000Z' });
+  await context.setOffline(true);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Offline neu');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText('Bestand');
+  await expect(items.nth(1)).toContainText('Offline neu');
+
+  await context.setOffline(false);
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT created_at FROM tasks WHERE title = $1', ['Offline neu']),
+  );
+  expect(row.rowCount).toBe(1);
+
+  await page.reload();
+  const itemsAfterSync = taskItems(page);
+  await expect(itemsAfterSync).toHaveCount(2);
+  await expect(itemsAfterSync.nth(0)).toContainText('Bestand');
+  await expect(itemsAfterSync.nth(1)).toContainText('Offline neu');
+});
+
+test('Scroll-Anker: bei wenig Inhalt bleibt die Liste am natürlichen Seitenanfang (issue #88 AC Scroll-Anker)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, {
+    title: 'Erledigt',
+    createdAt: '2026-07-01T00:00:00.000Z',
+    completedAt: '2026-07-01T01:00:00.000Z',
+  });
+  await seedTask(page, { title: 'Offen', createdAt: '2026-07-02T00:00:00.000Z' });
+
+  await page.reload();
+  await expect(taskItems(page)).toHaveCount(2);
+
+  // Too little content to overflow the viewport — nothing to scroll to, so the
+  // page stays exactly where it loaded.
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo oben (issue #88 AC Scroll-Anker)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+
+  // Enough completed history to overflow both viewports in the test matrix
+  // (375×812 and 1280×800).
+  for (let i = 0; i < 20; i++) {
+    await seedTask(page, {
+      title: `Erledigt ${i}`,
+      createdAt: new Date(Date.UTC(2026, 6, 1, 0, i)).toISOString(),
+      completedAt: new Date(Date.UTC(2026, 6, 1, 1, i)).toISOString(),
+    });
+  }
+  await seedTask(page, {
+    title: 'Ältestes offenes Todo',
+    createdAt: new Date(Date.UTC(2026, 6, 1, 2, 0)).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Neuestes Todo',
+    createdAt: new Date(Date.UTC(2026, 6, 1, 2, 1)).toISOString(),
+  });
+
+  // The scroll anchor runs once on mount — a fresh navigation, not the live
+  // updates from seeding above.
+  await page.reload();
+  await expect(taskItems(page)).toHaveCount(22);
+
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const anchor = taskItems(page).filter({ hasText: 'Ältestes offenes Todo' });
+  await expect(anchor).toBeInViewport();
+  // Scrolled well past the old history — proves this is a real jump, not a
+  // one-pixel nudge that happens to satisfy toBeInViewport.
+  await expect(taskItems(page).filter({ hasText: 'Erledigt 0' })).not.toBeInViewport();
 });

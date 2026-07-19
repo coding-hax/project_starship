@@ -77,11 +77,18 @@ export const tasks = pgTable(
     priority: integer('priority').notNull().default(0),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     recurrenceRule: text('recurrence_rule'),
+    /**
+     * Stable creation timestamp — `syncSeq` changes on every update, so it cannot
+     * anchor the chronological running list (issue #88). `defaultNow()` backfills
+     * existing rows and covers old clients that push a create without it.
+     */
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('tasks_updated_at_idx').on(table.updatedAt),
     index('tasks_due_at_idx').on(table.dueAt),
     index('tasks_sync_seq_idx').on(table.syncSeq),
+    index('tasks_created_at_idx').on(table.createdAt),
   ],
 );
 
