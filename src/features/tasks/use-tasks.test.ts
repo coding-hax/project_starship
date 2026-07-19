@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareTasks, toTaskView, type TaskView } from './use-tasks';
+import { compareTasks, isDueTodayOrOverdue, toTaskView, type TaskView } from './use-tasks';
 
 describe('toTaskView', () => {
   it('reads the writable task fields out of a local record', () => {
@@ -70,5 +70,44 @@ describe('compareTasks', () => {
       openWithLateDue,
       doneWithEarlyDue,
     ]);
+  });
+});
+
+describe('isDueTodayOrOverdue', () => {
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    ...overrides,
+  });
+
+  const now = new Date('2026-07-18T12:00:00.000Z');
+
+  it('is true for an open task overdue from an earlier day', () => {
+    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-17T09:00:00.000Z' }), now)).toBe(true);
+  });
+
+  it('is true for an open task due later today, even though the time has not passed yet', () => {
+    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-18T18:00:00.000Z' }), now)).toBe(true);
+  });
+
+  it('is false for an open task due on a future day', () => {
+    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-19T09:00:00.000Z' }), now)).toBe(false);
+  });
+
+  it('is false for an undated task', () => {
+    expect(isDueTodayOrOverdue(task({ dueAt: null }), now)).toBe(false);
+  });
+
+  it('is false for a completed task, even if its due date was today or earlier', () => {
+    expect(
+      isDueTodayOrOverdue(
+        task({ dueAt: '2026-07-17T09:00:00.000Z', completedAt: '2026-07-17T10:00:00.000Z' }),
+        now,
+      ),
+    ).toBe(false);
   });
 });

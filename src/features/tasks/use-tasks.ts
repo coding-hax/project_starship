@@ -41,6 +41,22 @@ export function compareTasks(a: TaskView, b: TaskView): number {
   return a.dueAt.localeCompare(b.dueAt);
 }
 
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/**
+ * Open, dated tasks due today (local calendar day) or earlier — the /heute
+ * dashboard subset (issue #87). Undated tasks and tasks due later than today are
+ * excluded, and so is anything already completed.
+ */
+export function isDueTodayOrOverdue(task: TaskView, now: Date = new Date()): boolean {
+  if (task.completedAt !== null || task.dueAt === null) return false;
+  const startOfTomorrow = startOfLocalDay(now);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  return new Date(task.dueAt) < startOfTomorrow;
+}
+
 /**
  * Reads straight from IndexedDB (CLAUDE.md rule 8) — never a `fetch`. `liveQuery`
  * re-runs the query and re-renders whenever a mutation or a pull touches `tasks`,
