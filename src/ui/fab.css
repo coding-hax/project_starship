@@ -7,7 +7,7 @@
 .fab {
   position: fixed;
   right: var(--space-4);
-  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4));
+  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset));
   width: 56px;
   height: 56px;
   min-width: var(--touch-target);
@@ -40,6 +40,6 @@
 
 @media (min-width: 768px) {
   .fab {
-    bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+    bottom: calc(var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset));
   }
 }
