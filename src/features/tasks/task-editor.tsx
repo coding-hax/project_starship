@@ -129,7 +129,12 @@ export function TaskEditor({ task, onClose, nestCandidates, hasChildren }: TaskE
             aria-label="Fälligkeit"
           />
         </label>
-        {!hasChildren && (
+        {/* Gated on `open`, unlike the fields above: its <option> text nodes are
+            real DOM text (unlike an <input>'s value), so leaving this mounted
+            while the sheet is closed would make every top-level task title
+            match twice — once in the list, once here — and break any bare
+            page-wide text query. */}
+        {open && !hasChildren && (
           <label className="task-editor__field">
             <span>Unteraufgabe von</span>
             <select
