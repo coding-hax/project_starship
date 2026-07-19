@@ -74,6 +74,8 @@ test('die Heute-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen e
 
   await page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }).click();
 
-  await expect(page.getByText('Wird erledigt')).toHaveCount(0);
+  // Not `page.getByText('Wird erledigt')` — the undo toast's own text ("„Wird
+  // erledigt" erledigt") contains that same substring, scoped to the list instead.
+  await expect(dueTaskItems(page)).toHaveCount(0);
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
 });
