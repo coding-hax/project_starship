@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigint,
   index,
   integer,
@@ -83,12 +84,19 @@ export const tasks = pgTable(
      * existing rows and covers old clients that push a create without it.
      */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Self-referencing, nullable — one level of subtasks (issue #89). No `onDelete`
+     * cascade: deleting is always a tombstone (see ARCHITECTURE.md), never a hard
+     * `DELETE`, so the FK action never fires. Cascading to children is app logic.
+     */
+    parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id),
   },
   (table) => [
     index('tasks_updated_at_idx').on(table.updatedAt),
     index('tasks_due_at_idx').on(table.dueAt),
     index('tasks_sync_seq_idx').on(table.syncSeq),
     index('tasks_created_at_idx').on(table.createdAt),
+    index('tasks_parent_id_idx').on(table.parentId),
   ],
 );
 

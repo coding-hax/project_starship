@@ -22,6 +22,8 @@ export interface Mutation {
   /**
    * Only the fields this mutation actually changed. A partial payload is what lets
    * two devices edit different fields of the same row without clobbering each other.
+   * For `tasks`, this is also how nesting travels: `parentId` (uuid or `null`) rides
+   * along in this generic payload — no structural change needed here (issue #89).
    */
   payload: Record<string, unknown>;
   /** ISO. Display/tiebreaker only — no longer the conflict authority (ADR-0008). */
