@@ -10,6 +10,7 @@ describe('toTaskView', () => {
         dueAt: '2026-07-15T00:00:00.000Z',
         priority: 2,
         completedAt: null,
+        createdAt: '2026-07-10T00:00:00.000Z',
       }),
     ).toEqual({
       id: 'id-1',
@@ -18,6 +19,7 @@ describe('toTaskView', () => {
       dueAt: '2026-07-15T00:00:00.000Z',
       priority: 2,
       completedAt: null,
+      createdAt: '2026-07-10T00:00:00.000Z',
     });
   });
 
@@ -29,6 +31,7 @@ describe('toTaskView', () => {
       dueAt: null,
       priority: 0,
       completedAt: null,
+      createdAt: new Date(0).toISOString(),
     });
   });
 });
@@ -41,34 +44,43 @@ describe('compareTasks', () => {
     dueAt: null,
     priority: 0,
     completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
     ...overrides,
   });
 
-  it('sorts open tasks by due date, ascending', () => {
-    const later = task({ id: 'later', dueAt: '2026-07-16T00:00:00.000Z' });
-    const sooner = task({ id: 'sooner', dueAt: '2026-07-15T00:00:00.000Z' });
+  it('sorts strictly by createdAt, ascending', () => {
+    const later = task({ id: 'later', createdAt: '2026-07-16T00:00:00.000Z' });
+    const sooner = task({ id: 'sooner', createdAt: '2026-07-15T00:00:00.000Z' });
 
     expect([later, sooner].sort(compareTasks)).toEqual([sooner, later]);
   });
 
-  it('puts undated open tasks after dated ones', () => {
-    const undated = task({ id: 'undated' });
-    const dated = task({ id: 'dated', dueAt: '2026-07-15T00:00:00.000Z' });
-
-    expect([undated, dated].sort(compareTasks)).toEqual([dated, undated]);
-  });
-
-  it('puts every completed task after every open task, regardless of due date', () => {
-    const doneWithEarlyDue = task({
+  it('leaves a completed task in its creation-order position, not moved to the end', () => {
+    const doneFirst = task({
       id: 'done',
-      dueAt: '2026-07-01T00:00:00.000Z',
+      createdAt: '2026-07-01T00:00:00.000Z',
       completedAt: '2026-07-14T00:00:00.000Z',
     });
-    const openWithLateDue = task({ id: 'open', dueAt: '2026-08-01T00:00:00.000Z' });
+    const openLater = task({ id: 'open', createdAt: '2026-07-02T00:00:00.000Z' });
 
-    expect([doneWithEarlyDue, openWithLateDue].sort(compareTasks)).toEqual([
-      openWithLateDue,
-      doneWithEarlyDue,
+    expect([openLater, doneFirst].sort(compareTasks)).toEqual([doneFirst, openLater]);
+  });
+
+  it('ignores due date entirely — createdAt is the only sort key', () => {
+    const earlierDueLaterCreated = task({
+      id: 'a',
+      dueAt: '2026-07-01T00:00:00.000Z',
+      createdAt: '2026-07-10T00:00:00.000Z',
+    });
+    const laterDueEarlierCreated = task({
+      id: 'b',
+      dueAt: '2026-08-01T00:00:00.000Z',
+      createdAt: '2026-07-05T00:00:00.000Z',
+    });
+
+    expect([earlierDueLaterCreated, laterDueEarlierCreated].sort(compareTasks)).toEqual([
+      laterDueEarlierCreated,
+      earlierDueLaterCreated,
     ]);
   });
 });
@@ -81,6 +93,7 @@ describe('isDueTodayOrOverdue', () => {
     dueAt: null,
     priority: 0,
     completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
     ...overrides,
   });
 

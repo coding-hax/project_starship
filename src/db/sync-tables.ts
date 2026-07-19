@@ -19,7 +19,7 @@ export const SYNC_REGISTRY = {
   },
   tasks: {
     table: tasks,
-    writable: ['title', 'notes', 'dueAt', 'priority', 'completedAt', 'recurrenceRule'],
+    writable: ['title', 'notes', 'dueAt', 'priority', 'completedAt', 'recurrenceRule', 'createdAt'],
     required: ['title'],
   },
 } as const satisfies Record<

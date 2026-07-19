@@ -45,9 +45,9 @@ src/
   crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
   features/
     tasks/
-      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch
+      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88)
       task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen)
-      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung
+      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung strikt nach createdAt (issue #88)
       use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
       use-delete-task.ts      Tombstone per Swipe, Undo via outbox-Op `restore`
       task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder

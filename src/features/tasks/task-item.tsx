@@ -112,6 +112,7 @@ export function TaskItem({ task, onToggle, onEdit, onDelete }: TaskItemProps) {
 
   return (
     <li
+      data-task-id={task.id}
       className={
         (isDone ? 'task-list__item task-list__item--done' : 'task-list__item') +
         (dragging ? ' task-list__item--dragging' : '')

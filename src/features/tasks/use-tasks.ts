@@ -13,6 +13,7 @@ export interface TaskView {
   dueAt: string | null;
   priority: number;
   completedAt: string | null;
+  createdAt: string;
 }
 
 export function toTaskView(id: string, data: Record<string, unknown>): TaskView {
@@ -23,22 +24,20 @@ export function toTaskView(id: string, data: Record<string, unknown>): TaskView 
     dueAt: typeof data.dueAt === 'string' ? data.dueAt : null,
     priority: typeof data.priority === 'number' ? data.priority : 0,
     completedAt: typeof data.completedAt === 'string' ? data.completedAt : null,
+    // Falls back to the epoch, not "now" — a record pulled without a createdAt
+    // (pre-#88 server row) sorts to the top of the running list rather than
+    // jumping to the bottom on every reload.
+    createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date(0).toISOString(),
   };
 }
 
 /**
- * Open tasks first (sorted by due date, undated last), completed tasks below —
- * regardless of due date, so "done" always reads as done.
+ * Strictly chronological — a running list (issue #88). New tasks land at the
+ * bottom, completed ones stay exactly where they were created; "done" is shown
+ * via styling (task-list__item--done), never by moving the row.
  */
 export function compareTasks(a: TaskView, b: TaskView): number {
-  const aDone = a.completedAt !== null;
-  const bDone = b.completedAt !== null;
-  if (aDone !== bDone) return aDone ? 1 : -1;
-
-  if (a.dueAt === null && b.dueAt === null) return 0;
-  if (a.dueAt === null) return 1;
-  if (b.dueAt === null) return -1;
-  return a.dueAt.localeCompare(b.dueAt);
+  return a.createdAt.localeCompare(b.createdAt);
 }
 
 function startOfLocalDay(date: Date): Date {

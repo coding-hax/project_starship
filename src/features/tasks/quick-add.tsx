@@ -61,7 +61,9 @@ export function QuickAddTask() {
   }
 
   async function createTask(title: string, dueAt: string | null, showUndo: boolean) {
-    const payload: Record<string, unknown> = { title };
+    // Anchors the chronological running list (issue #88) — set once, here, and
+    // never touched again by an edit.
+    const payload: Record<string, unknown> = { title, createdAt: new Date().toISOString() };
     if (dueAt) payload.dueAt = dueAt;
     const taskId = await mutate({ table: 'tasks', op: 'upsert', payload });
 
