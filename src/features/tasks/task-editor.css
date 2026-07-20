@@ -11,7 +11,8 @@
 
 .task-editor__title,
 .task-editor__notes,
-.task-editor__due {
+.task-editor__due,
+.task-editor__parent {
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
@@ -29,7 +30,8 @@
 
 .task-editor__title:focus,
 .task-editor__notes:focus,
-.task-editor__due:focus {
+.task-editor__due:focus,
+.task-editor__parent:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

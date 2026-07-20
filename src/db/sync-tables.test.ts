@@ -93,6 +93,22 @@ describe('writableFields for tasks', () => {
   });
 });
 
+describe('writableFields for tasks.parentId (issue #89)', () => {
+  it('passes a uuid through unchanged — parentId is not a timestamp column', () => {
+    expect(
+      writableFields('tasks', { title: 'Wäsche', parentId: 'parent-uuid' }).parentId,
+    ).toBe('parent-uuid');
+  });
+
+  it('allows null — un-nesting back to top-level', () => {
+    expect(writableFields('tasks', { title: 'Wäsche', parentId: null }).parentId).toBeNull();
+  });
+
+  it('is not required — a create without parentId is still valid', () => {
+    expect(missingRequired('tasks', { title: 'Wäsche' })).toEqual([]);
+  });
+});
+
 describe('missingRequired for tasks', () => {
   it('passes when title is present', () => {
     expect(missingRequired('tasks', { title: 'Milch kaufen' })).toEqual([]);

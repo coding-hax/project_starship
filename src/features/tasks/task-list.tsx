@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { mutate } from '@/local/outbox';
 import { Toast } from '@/ui/toast';
 import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
-import { isDueTodayOrOverdue, useTasks } from './use-tasks';
+import { groupTasks, isDueTodayOrOverdue, resolveNestTarget, useTasks } from './use-tasks';
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
   window.addEventListener('online', callback);
@@ -57,10 +58,45 @@ export function TaskList({ dueTodayOnly = false }: TaskListProps = {}) {
     dismissUndo: dismissDeleteUndo,
   } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  // Ephemeral, not persisted (per-ticket decision) — default expanded, so a
+  // reload never hides subtasks the user hasn't deliberately collapsed.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const listRef = useRef<HTMLUListElement | null>(null);
   const anchoredRef = useRef(false);
 
   const editingTask = allTasks?.find((task) => task.id === editingTaskId) ?? null;
+  // Grouped from the full list, not the /heute-filtered `tasks` — nesting still
+  // needs the whole task graph even when the view itself renders flat (issue #89).
+  const nodes = groupTasks(allTasks ?? []);
+  const editingNode = nodes.find((node) => node.task.id === editingTaskId);
+  const nestCandidates = nodes
+    .filter((node) => node.task.id !== editingTaskId)
+    .map((node) => node.task);
+
+  function toggleExpanded(taskId: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Drag-to-nest drop (issue #89) — the primary path, the editor's "Unteraufgabe
+   * von" field is the deterministic second one. `resolveNestTarget` encodes the
+   * one-level rule (dropping on a child attaches to *its* parent); a no-op drop
+   * (dropped back where it already was) skips the mutation entirely.
+   */
+  async function handleNest(draggedId: string, dropTargetId: string | null) {
+    const dragged = allTasks?.find((task) => task.id === draggedId);
+    const parentId = resolveNestTarget(draggedId, dropTargetId, allTasks ?? []);
+    if (!dragged || dragged.parentId === parentId) return;
+    await mutate({ table: 'tasks', rowId: draggedId, op: 'upsert', payload: { parentId } });
+  }
 
   /**
    * Chat-style scroll anchor (issue #88): on open, land on the oldest open task
@@ -103,25 +139,62 @@ export function TaskList({ dueTodayOnly = false }: TaskListProps = {}) {
           className="task-list"
           aria-label={dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben'}
         >
-          {tasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              task={task}
-              onToggle={() => toggleComplete(task)}
-              onEdit={() => setEditingTaskId(task.id)}
-              onDelete={() => deleteTask(task)}
-            />
-          ))}
+          {dueTodayOnly
+            ? tasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  onToggle={() => toggleComplete(task)}
+                  onEdit={() => setEditingTaskId(task.id)}
+                  onDelete={() => deleteTask(task)}
+                />
+              ))
+            : nodes.map((node) => (
+                <Fragment key={node.task.id}>
+                  <TaskItem
+                    task={node.task}
+                    isParent={node.total > 0}
+                    progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
+                    expanded={!collapsed.has(node.task.id)}
+                    onToggleExpand={() => toggleExpanded(node.task.id)}
+                    onToggle={() => toggleComplete(node.task)}
+                    onEdit={() => setEditingTaskId(node.task.id)}
+                    onDelete={() => deleteTask(node.task, node.children)}
+                    onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
+                  />
+                  {node.children.map((child) => (
+                    <TaskItem
+                      key={child.id}
+                      task={child}
+                      isChild
+                      visible={!collapsed.has(node.task.id)}
+                      onToggle={() => toggleComplete(child)}
+                      onEdit={() => setEditingTaskId(child.id)}
+                      onDelete={() => deleteTask(child)}
+                      onDropOnTask={(targetId) => handleNest(child.id, targetId)}
+                    />
+                  ))}
+                </Fragment>
+              ))}
         </ul>
       )}
 
-      <TaskEditor task={editingTask} onClose={() => setEditingTaskId(null)} />
+      <TaskEditor
+        task={editingTask}
+        onClose={() => setEditingTaskId(null)}
+        nestCandidates={nestCandidates}
+        hasChildren={(editingNode?.total ?? 0) > 0}
+      />
 
       {/* Only one undo action is ever in flight — completing and deleting are
           separate gestures a user cannot trigger in the same instant. */}
       {deleteUndo ? (
         <Toast
-          message={`„${deleteUndo.title}" gelöscht`}
+          message={
+            deleteUndo.childIds.length > 0
+              ? `„${deleteUndo.title}" + ${deleteUndo.childIds.length} Unteraufgabe${deleteUndo.childIds.length === 1 ? '' : 'n'} gelöscht`
+              : `„${deleteUndo.title}" gelöscht`
+          }
           actionLabel="Rückgängig"
           onAction={handleDeleteUndo}
           onDismiss={dismissDeleteUndo}

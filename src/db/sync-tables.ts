@@ -19,7 +19,16 @@ export const SYNC_REGISTRY = {
   },
   tasks: {
     table: tasks,
-    writable: ['title', 'notes', 'dueAt', 'priority', 'completedAt', 'recurrenceRule', 'createdAt'],
+    writable: [
+      'title',
+      'notes',
+      'dueAt',
+      'priority',
+      'completedAt',
+      'recurrenceRule',
+      'createdAt',
+      'parentId',
+    ],
     required: ['title'],
   },
 } as const satisfies Record<

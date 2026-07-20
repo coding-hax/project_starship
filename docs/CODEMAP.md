@@ -45,12 +45,12 @@ src/
   crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
   features/
     tasks/
-      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88)
-      task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen)
-      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung strikt nach createdAt (issue #88)
+      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88); gruppiert via groupTasks (issue #89), löst Drag-Drop über resolveNestTarget auf
+      task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen); Eltern-Zeile mit Disclosure + Fortschritt, Long-Press hebt ein Blatt fürs Drag-to-Nest an (issue #89)
+      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung strikt nach createdAt (issue #88); groupTasks (eine Ebene Eltern/Kind) + resolveNestTarget (issue #89)
       use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
-      use-delete-task.ts      Tombstone per Swipe, Undo via outbox-Op `restore`
-      task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder
+      use-delete-task.ts      Tombstone per Swipe, Undo via outbox-Op `restore`; löscht die Kinder eines Elterns mit, Undo stellt beide wieder her (issue #89)
+      task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder; „Unteraufgabe von"-Feld als deterministischer Zweitpfad zum Drag-to-Nest (issue #89)
       task-editor.css         Styles fürs Editor-Sheet
       task-list.css           Karten-, Checkbox-, Swipe- und Lösch-Bestätigungs-Styles
       quick-add.tsx           FAB + Sheet + Titelfeld, parst Freitext (parse-task-input), speichert via outbox.mutate()
