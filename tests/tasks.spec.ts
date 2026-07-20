@@ -1,5 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, withDb } from './helpers';
+import { freezeClock, registerPasskey, resetDatabase, withDb } from './helpers';
+
+/** Mirrors task-item.tsx's own LONG_PRESS_MS — how long a hold picks a row up
+ * for drag-to-nest instead of starting a swipe. */
+const LONG_PRESS_MS = 400;
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const EDITOR_LABEL = 'Aufgabe bearbeiten';
@@ -812,4 +816,256 @@ test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo 
   // Scrolled well past the old history — proves this is a real jump, not a
   // one-pixel nudge that happens to satisfy toBeInViewport.
   await expect(taskItems(page).filter({ hasText: 'Erledigt 0' })).not.toBeInViewport();
+});
+
+/* -------------------------------------------------------------------------- */
+/* Subtasks / nesting (issue #89)                                             */
+/* -------------------------------------------------------------------------- */
+
+function disclosureFor(page: Page, title: string) {
+  return taskItems(page).filter({ hasText: title }).getByRole('button', { name: /Unteraufgaben/ });
+}
+
+function progressFor(page: Page, title: string) {
+  return taskItems(page).filter({ hasText: title }).locator('.task-list__progress');
+}
+
+function nestSelect(page: Page) {
+  return page.getByRole('combobox', { name: 'Unteraufgabe von' });
+}
+
+test('Im Editor „Unteraufgabe von" wählen macht die Aufgabe zum Kind, die Eltern-Zeile zeigt den Fortschritt (issue #89 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+
+  await tapTask(page, 'Unteraufgabe');
+  await nestSelect(page).selectOption({ label: 'Elternaufgabe' });
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(taskItems(page)).toHaveCount(2);
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+
+  const pending = await page.evaluate(() => window.__starship.pending());
+  const last = pending[pending.length - 1];
+  expect(last.payload.parentId).toBeTruthy();
+});
+
+test('eine Eltern-Zeile hat im Editor keinen Nest-Zweig — ein Elternteil kann nicht selbst verschachtelt werden (issue #89 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  await tapTask(page, 'Elternaufgabe');
+  await expect(nestSelect(page)).toHaveCount(0);
+});
+
+test('das Nest-Ziel-Dropdown bietet nur Top-Level-Aufgaben an, nie ein bestehendes Kind (issue #89 AK2)', async ({
+  page,
+}) => {
+  // Ein Drop *per Drag* auf ein Kind hängt sich an dessen Eltern (resolveNestTarget,
+  // per Vitest deterministisch geprüft, plus der echte Drag-Test). Der
+  // Editor-Fallback wählt den einfacheren Weg: ein Kind taucht im Dropdown gar
+  // nicht erst als Ziel auf, sodass diese Falle über den Editor-Pfad gar nicht
+  // erst entstehen kann.
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+  await seedTask(page, { title: 'Neue Unteraufgabe' });
+
+  await tapTask(page, 'Neue Unteraufgabe');
+  const options = await nestSelect(page).locator('option').allTextContents();
+  expect(options).toContain('Elternaufgabe');
+  expect(options).not.toContain('Kind');
+});
+
+test('Eltern-Zeile lässt sich auf-/zuklappen (issue #89 AK3)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const childItem = taskItems(page).filter({ hasText: 'Kind' });
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(childItem).toHaveJSProperty('inert', false);
+
+  await disclosure.click();
+
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childItem).toHaveJSProperty('inert', true);
+});
+
+test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblicklich (issue #89 AK3)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  const childItem = taskItems(page).filter({ hasText: 'Kind' });
+  const transitionDuration = await childItem.evaluate(
+    (el) => getComputedStyle(el).transitionDuration,
+  );
+  expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
+});
+
+test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erledigen (issue #89 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/2');
+
+  await checkboxFor(page, 'Kind A').click();
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('1/2');
+  await expect(checkboxFor(page, 'Elternaufgabe')).not.toBeChecked();
+});
+
+test('„Keine (Top-Level)" im Editor löst ein Kind wieder aus der Gruppe (issue #89 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  await tapTask(page, 'Kind');
+  await nestSelect(page).selectOption({ label: 'Keine (Top-Level)' });
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  // Kein Kind mehr — die Eltern-Zeile zeigt keinen Fortschritt mehr an.
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveCount(0);
+
+  const pending = await page.evaluate(() => window.__starship.pending());
+  const last = pending[pending.length - 1];
+  expect(last.payload.parentId).toBeNull();
+});
+
+test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und Kinder wieder her (issue #89 AK6)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+  await expect(taskItems(page)).toHaveCount(3);
+
+  const parentItem = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  await swipeLeft(parentItem, 120);
+  await page.getByRole('button', { name: 'Löschen' }).click();
+
+  await expect(taskItems(page)).toHaveCount(0);
+  await expect(
+    page.getByRole('status').filter({ hasText: '2 Unteraufgaben gelöscht' }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'Rückgängig' }).click();
+
+  await expect(taskItems(page)).toHaveCount(3);
+});
+
+test('Kinder werden chronologisch nach Erstellzeit sortiert, unabhängig von der Reihenfolge des Anlegens (issue #89 AK7)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, {
+    title: 'Kind B (später erstellt)',
+    parentId,
+    createdAt: '2026-07-05T00:00:00.000Z',
+  });
+  await seedTask(page, {
+    title: 'Kind A (früher erstellt)',
+    parentId,
+    createdAt: '2026-07-01T00:00:00.000Z',
+  });
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toHaveText(/Elternaufgabe/);
+  await expect(items.nth(1)).toHaveText(/Kind A \(früher erstellt\)/);
+  await expect(items.nth(2)).toHaveText(/Kind B \(später erstellt\)/);
+});
+
+test('Drag & Drop: eine Aufgabe per Long-Press auf eine andere ziehen macht sie zur Unteraufgabe — der primäre Weg neben dem Editor (issue #89 AK1)', async ({
+  page,
+}) => {
+  // A fake clock makes the long-press threshold deterministic — no real 400ms
+  // wall-clock pause, which CLAUDE.md forbids as a test crutch.
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Unteraufgabe' });
+  const target = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const dragBox = await dragged.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!dragBox || !targetBox) throw new Error('drag test: missing bounding box');
+
+  const startX = dragBox.x + dragBox.width / 2;
+  const startY = dragBox.y + dragBox.height / 2;
+  const endX = targetBox.x + targetBox.width / 2;
+  const endY = targetBox.y + targetBox.height / 2;
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY: startY,
+    button: 0,
+    bubbles: true,
+  });
+  // Jump past LONG_PRESS_MS so the row picks up for nesting rather than swiping.
+  await freezeClock(page);
+  await page.clock.fastForward(LONG_PRESS_MS + 100);
+
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: endX,
+    clientY: endY,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: endX,
+    clientY: endY,
+    bubbles: true,
+  });
+
+  await expect(taskItems(page)).toHaveCount(2);
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+});
+
+test('ein Kind wird offline über den Editor zugeordnet und erreicht online die Datenbank mit gesetztem parent_id (issue #89 AK Offline)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+  await context.setOffline(true);
+
+  await tapTask(page, 'Unteraufgabe');
+  await nestSelect(page).selectOption({ label: 'Elternaufgabe' });
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+
+  await context.setOffline(false);
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT parent_id FROM tasks WHERE title = $1', ['Unteraufgabe']),
+  );
+  expect(row.rows[0].parent_id).toBe(parentId);
 });

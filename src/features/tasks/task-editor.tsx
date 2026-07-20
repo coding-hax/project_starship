@@ -30,6 +30,14 @@ export interface TaskEditorProps {
    * closing transition, so the content does not flash empty while it fades out. */
   task: TaskView | null;
   onClose: () => void;
+  /**
+   * Top-level tasks `task` could become a subtask of (issue #89) — excludes
+   * `task` itself. Deterministic second path to nesting, alongside drag-to-nest.
+   */
+  nestCandidates: TaskView[];
+  /** `task` itself has subtasks — nesting it would create a second level, which
+   * is not allowed, so the nest field is hidden entirely for a parent. */
+  hasChildren: boolean;
 }
 
 /**
@@ -38,11 +46,15 @@ export interface TaskEditorProps {
  * mutation (issue #8 AC2) — two devices touching different fields of the same row
  * must not clobber each other (ADR-0001 §3).
  */
-export function TaskEditor({ task, onClose }: TaskEditorProps) {
+/** Sentinel for the "no parent" option — a real id can never equal this. */
+const NO_PARENT = '';
+
+export function TaskEditor({ task, onClose, nestCandidates, hasChildren }: TaskEditorProps) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [priority, setPriority] = useState(0);
+  const [parentId, setParentId] = useState(NO_PARENT);
   const titleRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
 
@@ -57,6 +69,7 @@ export function TaskEditor({ task, onClose }: TaskEditorProps) {
       setNotes(task.notes ?? '');
       setDueAt(isoToLocalInput(task.dueAt));
       setPriority(task.priority);
+      setParentId(task.parentId ?? NO_PARENT);
     }
     wasOpenRef.current = open;
   }, [open, task]);
@@ -73,12 +86,14 @@ export function TaskEditor({ task, onClose }: TaskEditorProps) {
 
     const nextNotes = notes.trim() || null;
     const nextDueAt = localInputToIso(dueAt);
+    const nextParentId = hasChildren ? task.parentId : parentId || null;
 
     const payload: Record<string, unknown> = {};
     if (trimmedTitle !== task.title) payload.title = trimmedTitle;
     if (nextNotes !== task.notes) payload.notes = nextNotes;
     if (nextDueAt !== task.dueAt) payload.dueAt = nextDueAt;
     if (priority !== task.priority) payload.priority = priority;
+    if (nextParentId !== task.parentId) payload.parentId = nextParentId;
 
     onClose();
     if (Object.keys(payload).length > 0) {
@@ -114,6 +129,29 @@ export function TaskEditor({ task, onClose }: TaskEditorProps) {
             aria-label="Fälligkeit"
           />
         </label>
+        {/* Gated on `open`, unlike the fields above: its <option> text nodes are
+            real DOM text (unlike an <input>'s value), so leaving this mounted
+            while the sheet is closed would make every top-level task title
+            match twice — once in the list, once here — and break any bare
+            page-wide text query. */}
+        {open && !hasChildren && (
+          <label className="task-editor__field">
+            <span>Unteraufgabe von</span>
+            <select
+              className="task-editor__parent"
+              value={parentId}
+              onChange={(event) => setParentId(event.target.value)}
+              aria-label="Unteraufgabe von"
+            >
+              <option value={NO_PARENT}>Keine (Top-Level)</option>
+              {nestCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <fieldset className="task-editor__priority">
           <legend>Priorität</legend>
           {PRIORITIES.map((p) => (

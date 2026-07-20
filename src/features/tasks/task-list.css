@@ -50,6 +50,81 @@
   transition: none;
 }
 
+/* Picked up for drag-to-nest (issue #89) — raised above its siblings while it
+   follows the pointer; `--dragging` (always set together with this) already
+   turns off the transition, so the translate/scale tracks the pointer with no
+   lag. `prefers-reduced-motion` needs no extra handling: the global rule in
+   tokens.css zeroes `transition-duration` everywhere, so nothing here animates
+   in the first place for those users — the lift is a static offset. */
+.task-list__item--lifted {
+  position: relative;
+  z-index: 1;
+}
+
+/* Indented under its parent (issue #89) — width shrinks with the indent so the
+   right edge still lines up with every other card. Stays mounted while its
+   parent is collapsed (`--collapsed`) so the reveal can animate instead of
+   just popping in; `inert` (set in task-item.tsx) keeps it out of the tab
+   order and the accessibility tree while hidden. */
+.task-list__item--child {
+  width: calc(100% - var(--space-8));
+  margin-left: var(--space-8);
+  max-height: 96px;
+  opacity: 1;
+  transition:
+    transform var(--duration-base) var(--ease-spring),
+    max-height var(--duration-spring-smooth) var(--ease-spring-smooth),
+    opacity var(--duration-spring-smooth) var(--ease-spring-smooth),
+    padding var(--duration-spring-smooth) var(--ease-spring-smooth),
+    margin var(--duration-spring-smooth) var(--ease-spring-smooth),
+    border-width var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.task-list__item--collapsed {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-width: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.task-list__disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.task-list__disclosure-icon {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.task-list__disclosure[aria-expanded='true'] .task-list__disclosure-icon {
+  transform: rotate(-135deg);
+}
+
+.task-list__progress {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .task-list__checkbox-wrap {
   display: flex;
   align-items: center;

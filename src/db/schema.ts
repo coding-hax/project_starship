@@ -1,5 +1,8 @@
 import {
+  type AnyPgColumn,
   bigint,
+  boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -7,6 +10,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -83,17 +87,76 @@ export const tasks = pgTable(
      * existing rows and covers old clients that push a create without it.
      */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Self-referencing, nullable — one level of subtasks (issue #89). No `onDelete`
+     * cascade: deleting is always a tombstone (see ARCHITECTURE.md), never a hard
+     * `DELETE`, so the FK action never fires. Cascading to children is app logic.
+     */
+    parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id),
   },
   (table) => [
     index('tasks_updated_at_idx').on(table.updatedAt),
     index('tasks_due_at_idx').on(table.dueAt),
     index('tasks_sync_seq_idx').on(table.syncSeq),
     index('tasks_created_at_idx').on(table.createdAt),
+    index('tasks_parent_id_idx').on(table.parentId),
   ],
 );
 
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+
+/**
+ * `schedule: 'custom'` is reserved for a later milestone (no UI yet), analogous to
+ * `recurrenceRule` on `tasks` — carried now so M2 does not need a second migration.
+ */
+export const habits = pgTable(
+  'habits',
+  {
+    ...syncColumns,
+    name: text('name').notNull(),
+    schedule: text('schedule').$type<'daily' | 'weekly' | 'custom'>().notNull(),
+    color: text('color'),
+    /** Archiving, not deleting — the streak history stays intact. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('habits_updated_at_idx').on(table.updatedAt),
+    index('habits_sync_seq_idx').on(table.syncSeq),
+    index('habits_created_at_idx').on(table.createdAt),
+  ],
+);
+
+export type Habit = typeof habits.$inferSelect;
+export type NewHabit = typeof habits.$inferInsert;
+
+/**
+ * `logDate` is a calendar day (`date`, not `timestamp`) — a streak is decided by
+ * day boundaries, not by the moment the log was written. No `onDelete` cascade on
+ * `habitId`: deleting is always a tombstone (see ARCHITECTURE.md), never a hard
+ * `DELETE`, so the FK action never fires.
+ */
+export const habitLogs = pgTable(
+  'habit_logs',
+  {
+    ...syncColumns,
+    habitId: uuid('habit_id')
+      .notNull()
+      .references(() => habits.id),
+    logDate: date('log_date').notNull(),
+    done: boolean('done').notNull().default(true),
+  },
+  (table) => [
+    index('habit_logs_updated_at_idx').on(table.updatedAt),
+    index('habit_logs_sync_seq_idx').on(table.syncSeq),
+    index('habit_logs_habit_id_idx').on(table.habitId),
+    uniqueIndex('habit_logs_habit_id_log_date_idx').on(table.habitId, table.logDate),
+  ],
+);
+
+export type HabitLog = typeof habitLogs.$inferSelect;
+export type NewHabitLog = typeof habitLogs.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* Auth. None of this is ever synchronised, so none of it carries syncColumns. */
