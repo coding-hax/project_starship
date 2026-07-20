@@ -30,6 +30,11 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
+  // registerPasskey already lands on /heute — navigate once more so every test
+  // starts from a clean mount, then seed. Seeding *before* this would reload the
+  // page a second time and re-mount SyncBoot mid-test (issue #103, found via the
+  // AC4 test racing its own automatic sync).
+  await page.goto('/heute');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -40,7 +45,6 @@ test('eine tägliche Gewohnheit erscheint in der Heute-Sektion und lässt sich a
   page,
 }) => {
   await seedHabit(page, { name: 'Wasser trinken', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
 
   const item = habitTodayItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
@@ -56,7 +60,6 @@ test('eine wöchentliche Gewohnheit ohne Log in dieser Woche erscheint ebenfalls
   page,
 }) => {
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
-  await page.goto('/heute');
 
   await expect(habitTodayItems(page).filter({ hasText: 'Joggen' })).toBeVisible();
 });
@@ -71,7 +74,6 @@ test('eine wöchentliche Gewohnheit, die diese Woche schon erledigt wurde, ersch
     archivedAt: null,
   });
   await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
-  await page.goto('/heute');
 
   await expect(habitTodayItems(page).filter({ hasText: 'Großeinkauf' })).toHaveCount(0);
 });
@@ -86,7 +88,6 @@ test('eine wöchentliche Gewohnheit, die letzte Woche erledigt wurde, ist diese 
     archivedAt: null,
   });
   await seedHabitLog(page, { habitId, logDate: LAST_MONDAY, done: true });
-  await page.goto('/heute');
 
   await expect(habitTodayItems(page).filter({ hasText: 'Wohnung putzen' })).toBeVisible();
 });
@@ -99,7 +100,6 @@ test('erneutes Tippen nimmt die Markierung zurück, ohne einen zweiten Log-Eintr
   page,
 }) => {
   await seedHabit(page, { name: 'Meditieren', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
   const checkbox = habitTodayItems(page).filter({ hasText: 'Meditieren' }).getByRole('checkbox');
 
   await checkbox.click();
@@ -121,7 +121,6 @@ test('erneutes Tippen nimmt die Markierung zurück, ohne einen zweiten Log-Eintr
 
 test('der abgehakte Stand bleibt nach einem Reload erhalten (issue #103 AC3)', async ({ page }) => {
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
   await habitTodayItems(page).filter({ hasText: 'Lesen' }).getByRole('checkbox').click();
   await expect(
     habitTodayItems(page).filter({ hasText: 'Lesen' }).getByRole('checkbox'),
@@ -144,18 +143,24 @@ test('offline abgehakt erreicht online den Server als habit_log (issue #103 AC4)
   context,
 }) => {
   await seedHabit(page, { name: 'Vitamine', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
   await context.setOffline(true);
 
   await habitTodayItems(page).filter({ hasText: 'Vitamine' }).getByRole('checkbox').click();
   await expect(
     habitTodayItems(page).filter({ hasText: 'Vitamine' }).getByRole('checkbox'),
   ).toBeChecked();
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+  // Not `size()` — seeding above already queued its own (unrelated) 'habits'
+  // mutation, so only the habit_logs side of the outbox is asserted here.
+  await expect
+    .poll(async () => {
+      const entries = await page.evaluate(() => window.__starship.pending());
+      return entries.filter((entry) => entry.table === 'habit_logs').length;
+    })
+    .toBe(1);
 
   await context.setOffline(false);
   // beforeEach cuts the sync endpoints so the list can only ever come from
-  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  // IndexedDB — lift that here to let the queued mutations actually reach Postgres.
   await page.unroute('**/api/sync/**');
   await page.evaluate(() => window.__starship.sync());
 
@@ -177,8 +182,6 @@ test('offline abgehakt erreicht online den Server als habit_log (issue #103 AC4)
 test('ohne Gewohnheiten zeigt die Heute-Sektion einen Leerzustand mit Verweis auf die Verwaltung', async ({
   page,
 }) => {
-  await page.goto('/heute');
-
   await expect(page.getByText('Noch keine Gewohnheiten.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Jetzt anlegen' })).toHaveAttribute(
     'href',
@@ -205,7 +208,6 @@ test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, au
   page,
 }) => {
   await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
 
   const dot = habitTodayItems(page)
     .filter({ hasText: 'Standardfarbe' })
@@ -224,7 +226,6 @@ test('bei reduzierter Bewegung ist die Abhak-Animation augenblicklich (issue #10
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await seedHabit(page, { name: 'Ruhig abhaken', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
 
   const item = habitTodayItems(page).filter({ hasText: 'Ruhig abhaken' });
   const transitionDuration = await item.evaluate((el) => getComputedStyle(el).transitionDuration);
@@ -237,7 +238,6 @@ test('die Abhak-Animation bewegt ausschließlich Opacity/Scale, keine Layout-Eig
   page,
 }) => {
   await seedHabit(page, { name: 'Sanft', schedule: 'daily', color: null, archivedAt: null });
-  await page.goto('/heute');
 
   const item = habitTodayItems(page).filter({ hasText: 'Sanft' });
   const itemTransitionProperty = await item.evaluate(
