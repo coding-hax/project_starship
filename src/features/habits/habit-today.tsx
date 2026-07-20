@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { isDueToday, toDateKey } from './due-today';
+import { computeStreak } from './streak';
 import { useHabitLogs } from './use-habit-logs';
 import { useHabits } from './use-habits';
 import { useToggleHabitLog } from './use-toggle-habit-log';
@@ -33,8 +34,9 @@ export function HabitToday() {
     );
   }
 
-  const today = toDateKey(new Date());
-  const due = active.filter((habit) => isDueToday(habit, logs, new Date()));
+  const now = new Date();
+  const today = toDateKey(now);
+  const due = active.filter((habit) => isDueToday(habit, logs, now));
 
   if (due.length === 0) {
     return <p className="habit-today__empty">Für heute nichts offen.</p>;
@@ -46,6 +48,7 @@ export function HabitToday() {
         const doneToday = logs.some(
           (log) => log.habitId === habit.id && log.logDate === today && log.done,
         );
+        const streak = computeStreak(habit, logs, now);
         return (
           <li
             key={habit.id}
@@ -59,6 +62,15 @@ export function HabitToday() {
               aria-hidden="true"
             />
             <span className="habit-today__name">{habit.name}</span>
+            {streak > 0 && (
+              <span
+                className="habit-today__streak"
+                style={{ color: `var(${habit.color ?? '--area-habits'})` }}
+                aria-label={`Streak: ${streak}`}
+              >
+                <span aria-hidden="true">🔥</span> {streak}
+              </span>
+            )}
             <span className="habit-today__checkbox-wrap">
               <input
                 type="checkbox"

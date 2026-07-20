@@ -54,6 +54,12 @@
   text-decoration: line-through;
 }
 
+.habit-today__streak {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .habit-today__checkbox-wrap {
   display: flex;
   align-items: center;
