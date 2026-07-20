@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import {
   freezeClock,
@@ -533,5 +534,100 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
     await expect(devicePage.getByText('Rückdatiert')).toBeVisible();
 
     await devicePage.close();
+  });
+});
+
+/**
+ * M2 foundation (#101) — data model only, no UI. Mirrors the sync_state offline
+ * test above: the outbox does not know or care what table it is carrying.
+ */
+test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
+  test('a habit and a log created offline reach Postgres with a sync_seq once online', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    const logId = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-07-15', done: true },
+        }),
+      habitId,
+    );
+
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+    const beforeSync = await withDb((c) => c.query('SELECT * FROM habits'));
+    expect(beforeSync.rowCount).toBe(0);
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const habitRow = await withDb((c) =>
+      c.query('SELECT name, schedule, sync_seq FROM habits WHERE id = $1', [habitId]),
+    );
+    expect(habitRow.rowCount).toBe(1);
+    expect(habitRow.rows[0].name).toBe('Meditieren');
+    expect(habitRow.rows[0].schedule).toBe('daily');
+    expect(habitRow.rows[0].sync_seq).not.toBeNull();
+
+    const logRow = await withDb((c) =>
+      c.query('SELECT habit_id, log_date, done, sync_seq FROM habit_logs WHERE id = $1', [logId]),
+    );
+    expect(logRow.rowCount).toBe(1);
+    expect(logRow.rows[0].habit_id).toBe(habitId);
+    // Postgres returns a `date` column as a JS Date at UTC midnight via `pg` — compare
+    // the calendar day, not the instant, so a non-UTC test runner cannot flake this.
+    expect((logRow.rows[0].log_date as Date).toISOString().slice(0, 10)).toBe('2026-07-15');
+    expect(logRow.rows[0].done).toBe(true);
+    expect(logRow.rows[0].sync_seq).not.toBeNull();
+  });
+
+  test('habit_logs enforces UNIQUE(habit_id, log_date) at the database level', async ({ page }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Laufen', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Two distinct rows (distinct ids, as two devices racing offline would produce)
+    // for the same habit and calendar day. The whitelist/required-fields layer in
+    // src/db/sync-tables.ts has no opinion on this — it is a database constraint.
+    await withDb((c) =>
+      c.query(
+        'INSERT INTO habit_logs (id, sync_seq, habit_id, log_date, done) ' +
+          "VALUES ($1, nextval('sync_seq'), $2, '2026-07-15', true)",
+        [randomUUID(), habitId],
+      ),
+    );
+
+    await expect(
+      withDb((c) =>
+        c.query(
+          'INSERT INTO habit_logs (id, sync_seq, habit_id, log_date, done) ' +
+            "VALUES ($1, nextval('sync_seq'), $2, '2026-07-15', true)",
+          [randomUUID(), habitId],
+        ),
+      ),
+    ).rejects.toThrow(/duplicate key value violates unique constraint/);
   });
 });

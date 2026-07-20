@@ -3,6 +3,8 @@ import { getTableColumns, getTableName } from 'drizzle-orm';
 import {
   authChallenges,
   credentials,
+  habitLogs,
+  habits,
   recoveryCodes,
   sessions,
   syncState,
@@ -21,7 +23,16 @@ import { withDb } from './helpers';
  *
  * New table in schema.ts? Add it here too.
  */
-const tables = [syncState, tasks, credentials, sessions, authChallenges, recoveryCodes];
+const tables = [
+  syncState,
+  tasks,
+  habits,
+  habitLogs,
+  credentials,
+  sessions,
+  authChallenges,
+  recoveryCodes,
+];
 
 for (const table of tables) {
   const tableName = getTableName(table);
