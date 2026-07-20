@@ -1,0 +1,15 @@
+/** The entry point into the habits management screen (issue #102) — habits have
+ *  no tab of their own, so "Heute" is the only way in (docs/DESIGN_SYSTEM.md). */
+
+.heute__habits-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  margin-top: var(--space-4);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  color: var(--area-habits);
+  font-weight: 600;
+  text-decoration: none;
+}

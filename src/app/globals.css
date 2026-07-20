@@ -15,6 +15,9 @@
 @import '../features/tasks/task-editor.css';
 @import '../features/tasks/capture-confirm.css';
 @import '../features/export/export.css';
+@import '../features/habits/habit-list.css';
+@import '../features/habits/habit-editor.css';
+@import './(app)/heute/heute.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist
    and nobody has to reach for a raw colour to get their work done. */

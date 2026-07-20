@@ -14,6 +14,8 @@ src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
     (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
+    (app)/heute/gewohnheiten/ page.tsx         Gewohnheiten-Verwaltung (issue #102) — kein eigener Tab, Einstieg über Heute
+    (app)/heute/heute.css   Link „Gewohnheiten verwalten" (issue #102)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/kalender/         Termine            (leer bis M5)
     (app)/journal/          Journal            (leer bis M4)
@@ -58,7 +60,13 @@ src/
       parse-task-input.ts     reiner Parser: Freitext -> { title, dueAt } (relative Tage, Wochentage, Datum, Uhrzeit)
       capture-confirm.tsx     Bestätigungs-Sheet für eine per Freitext erkannte Fälligkeit (issue #47 AC1)
       capture-confirm.css     Styles fürs Bestätigungs-Sheet, Summary mit tabular-nums
-    events/ journal/ habits/  (leer, ab M2/M3/M4)
+    events/ journal/          (leer, ab M3/M4)
+    habits/
+      use-habits.ts            Dexie-Live-Query auf `records` (table='habits'); HabitView + toHabitView (issue #102)
+      use-archive-habit.ts     Archivieren/Reaktivieren (setzt/löscht archivedAt, nie deletedAt) mit Undo-Toast (issue #102)
+      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard)
+      habit-editor.tsx / .css  Bottom-Sheet für Anlegen + Bearbeiten (Name, Rhythmus, Farbe aus den vier Bereichsfarben)
+      add-habit-fab.tsx        FAB + Sheet fürs Anlegen, gleiche Form wie quick-add.tsx
     export/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
@@ -99,6 +107,7 @@ tests/
   heute.spec.ts             /heute: nur offene, heute fällige/überfällige Aufgaben, Leerzustand, TaskItem-Wiederverwendung (issue #87)
   capture.spec.ts           Freitext-Fälligkeit: Bestätigungs-Sheet, Direkt-Pfad + Undo, offline (issue #47)
   export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
+  habits.spec.ts            Gewohnheiten: anlegen, bearbeiten, archivieren/reaktivieren, offline (issue #102)
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts

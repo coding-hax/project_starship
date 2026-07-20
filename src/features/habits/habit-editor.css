@@ -1,0 +1,74 @@
+/**
+ * The habit create/edit sheet — same field styling as task-editor.css so every
+ * sheet in the app reads as one system.
+ */
+
+.habit-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.habit-editor__name {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+}
+
+.habit-editor__name:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.habit-editor__colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.habit-editor__colors legend {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: var(--space-2);
+}
+
+.habit-editor__color-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  color: var(--text);
+}
+
+.habit-editor__color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.habit-editor__submit {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.habit-editor__submit:active {
+  opacity: 0.85;
+}
