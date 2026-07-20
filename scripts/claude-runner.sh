@@ -167,14 +167,14 @@ queue_snapshot() {
   gh issue list --state open --limit 50 --json number,labels 2>/dev/null || echo '[]'
 }
 
-# --- Prioritäts-Queue (#91) -------------------------------------------------
-# Ein vom Menschen editierbares Issue (QUEUE_ISSUE) bestimmt die REIHENFOLGE
-# innerhalb eines Labels — ohne dass man Labels umhängen muss. Body-Sektionen
-# '## Build' (ordnet 'ready'), '## Plan' (needs-plan), '## Research'
-# (needs-research); Zahlen oben = zuerst. Das Label bleibt das Tor: die Queue
-# ordnet nur, sie macht kein ungelabeltes Ticket baubereit. Nicht Gelistetes
-# rutscht wie bisher HINTER das Gelistete, dort 'ältestes createdAt zuerst'.
-# Leeres/fehlendes Queue-Issue -> exakt bisheriges Verhalten.
+# --- Prioritäts-Queue (#91, umgebaut #109) ----------------------------------
+# Ein vom Menschen editierbares Issue (QUEUE_ISSUE) ist eine FLACHE REIHENFOLGE
+# von '#NN'. Wer gelistet ist, wird bearbeitet — in genau dieser Reihenfolge,
+# das Label ist für die AUSWAHL egal (das Eintragen ersetzt 'ready'). Ausnahmen,
+# die erhalten bleiben: 'needs-input'/'no-opus' schließen weiter aus; die ROLLE
+# kommt aus dem Label ('needs-plan' -> Planlauf, 'needs-research' -> Recherche,
+# sonst bauen). Nicht Gelistetes läuft über den Fallback (Label-Reihenfolge nach
+# createdAt). Leeres/fehlendes Queue-Issue -> exakt Fallback-Verhalten.
 
 # Holt den Queue-Body EINMAL pro Tick (leer, wenn kein QUEUE_ISSUE gesetzt).
 queue_body() {
@@ -182,25 +182,17 @@ queue_body() {
   gh issue view "$QUEUE_ISSUE" --json body -q '.body // ""' 2>/dev/null || printf ''
 }
 
-# $1 = Sektion (Build|Plan|Research), $2 = Body-Text
-# -> JSON-Array der Ticket-Nummern in genannter Reihenfolge (dublettenbereinigt,
-#    Reihenfolge bleibt erhalten). Mehrere '#NN' pro Zeile sind erlaubt.
-queue_order() {
-  local section="$1" body="${2:-}"
+# $1 = Body-Text -> JSON-Array ALLER '#NN' in Dokumentreihenfolge
+# (dublettenbereinigt). Überschriften/Text drumherum sind egal; es zählt nur die
+# Reihenfolge der Nummern. Bogus-Nummern (kein offenes Ticket) sind harmlos — die
+# Auswahl unten iteriert reale Tickets und ignoriert Ränge ohne Treffer.
+queue_order_flat() {
+  local body="${1:-}"
   [ -n "$body" ] || { printf '[]'; return 0; }
-  printf '%s\n' "$body" | awk -v sec="$section" '
-    /^##[[:space:]]/ {
-      inSec = (tolower($0) ~ ("^##[[:space:]]+" tolower(sec) "([[:space:]]|$)")) ? 1 : 0
-      next
-    }
-    inSec {
-      s = $0
-      while (match(s, /#[0-9]+/)) {
-        print substr(s, RSTART + 1, RLENGTH - 1)
-        s = substr(s, RSTART + RLENGTH)
-      }
-    }
-  ' | jq -R 'select(length > 0) | tonumber' \
+  printf '%s\n' "$body" \
+    | { grep -oE '#[0-9]+' || true; } \
+    | tr -d '#' \
+    | jq -R 'select(length > 0) | tonumber' \
     | jq -sc 'reduce .[] as $n ([]; if index($n) then . else . + [$n] end)'
 }
 
@@ -220,18 +212,23 @@ queue_pending() {   # $1 = snapshot-json
 # Präzedenz wie main(): in-progress -> needs-plan -> ready. Leer, wenn nichts
 # baubereit ist (z. B. nur needs-research offen).
 queue_next() {   # $1 = snapshot-json, $2 = queue-body (optional)
-  printf '%s' "$1" | jq -r \
-    --argjson plan  "$(queue_order Plan "${2:-}")" \
-    --argjson ready "$(queue_order Build "${2:-}")" '
-    def pick($has; $hasnt; $order):
-      [ .[] | (.labels|map(.name)) as $l
-        | select( $has  | all(. as $x | ($l|index($x))) )
-        | select( $hasnt| any(. as $x | ($l|index($x))) | not ) ]
-      | sort_by( (.number as $n | ($order|index($n)) // 100000000), .number )
-      | .[0].number;
-    ( pick(["in-progress"]; ["needs-input"]; [])
-      // pick(["needs-plan"]; ["needs-input","no-opus"]; $plan)
-      // pick(["ready"];     ["needs-input","needs-plan"]; $ready) ) // empty' 2>/dev/null
+  printf '%s' "$1" | jq -r --argjson order "$(queue_order_flat "${2:-}")" '
+    def has($l): .labels | map(.name) | index($l);
+    # Dieselbe Präzedenz wie die Auswahl in run_round: laufendes in-progress,
+    # dann die flache Queue (Label egal), dann die Label-Reihenfolge als Fallback.
+    ( ( [ .[] | select(has("in-progress")) | select(has("needs-input")|not) ]
+          | sort_by(.createdAt) | .[0].number )
+      // ( [ .[] | (.number) as $n | ($order|index($n)) as $r
+            | select($r != null) | select(has("needs-input")|not) | select(has("no-opus")|not)
+            | {number:$n, r:$r} ] | sort_by(.r) | .[0].number )
+      // ( [ .[] | select(has("needs-plan")) | select(has("needs-input")|not) | select(has("no-opus")|not) ]
+            | sort_by(.createdAt) | .[0].number )
+      // ( [ .[] | select(has("needs-research")) | select(has("needs-input")|not) | select(has("no-opus")|not) ]
+            | sort_by(.createdAt) | .[0].number )
+      // ( [ .[] | select(has("ready")) | select(has("needs-input")|not)
+              | select(has("needs-plan")|not) | select(has("needs-research")|not) ]
+            | sort_by(.createdAt) | .[0].number )
+    ) // empty' 2>/dev/null
 }
 
 # --- Modell-Eskalation beim Bauen (ADR-0007) --------------------------------
@@ -550,13 +547,11 @@ CHAIN_STATUS=stop
 ROUND_SNAP=$(gh issue list --state open --limit 100 \
                --json number,labels,createdAt 2>/dev/null || echo '[]')
 
-# Prioritäts-Queue (#91) EINMAL einlesen (ein gh-Aufruf) und je Denk-/Bau-Stufe
-# die gewünschte Reihenfolge bestimmen. Leer, solange kein QUEUE_ISSUE gesetzt
-# ist -> die sort_by-Ausdrücke unten fallen dann auf 'ältestes createdAt' zurück.
+# Prioritäts-Queue (#109) EINMAL einlesen (ein gh-Aufruf): flache Reihenfolge
+# aller gelisteten '#NN'. Leer, solange kein QUEUE_ISSUE gesetzt/leer ist -> die
+# Queue-Auswahl unten greift dann nicht und es bleibt bei der Label-Reihenfolge.
 QUEUE_BODY=$(queue_body)
-ORDER_PLAN=$(queue_order Plan "$QUEUE_BODY")
-ORDER_RESEARCH=$(queue_order Research "$QUEUE_BODY")
-ORDER_READY=$(queue_order Build "$QUEUE_BODY")
+QUEUE_ORDER=$(queue_order_flat "$QUEUE_BODY")
 
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
@@ -587,15 +582,48 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     return 0
   fi
 
+  # 2) NEU (#109): Queue zuerst — flache Reihenfolge, LABEL EGAL. Das erste
+  #    gelistete, offene Ticket (ohne 'needs-input'/'no-opus') wird bearbeitet;
+  #    das Eintragen in die Queue IST das Freigabesignal (ersetzt 'ready' für
+  #    gelistete Tickets). Die ROLLE kommt weiter aus dem Label: 'needs-plan' ->
+  #    Planlauf, 'needs-research' -> Recherche, sonst bauen.
+  QPICK=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$QUEUE_ORDER" '
+    [ .[] | (.labels|map(.name)) as $l | (.number) as $n
+      | ($order|index($n)) as $rank
+      | select($rank != null)
+      | select( ($l|index("needs-input"))|not )
+      | select( ($l|index("no-opus"))|not )
+      | { n:$n, rank:$rank,
+          role: (if ($l|index("needs-plan")) then "plan"
+                 elif ($l|index("needs-research")) then "research"
+                 else "build" end) } ]
+    | sort_by(.rank) | .[0] // {}
+    | if .n then "\(.n) \(.role)" else "" end')
+  if [ -n "$QPICK" ]; then
+    ISSUE=${QPICK%% *}
+    RUN_ROLE=${QPICK##* }
+    if [ "$RUN_ROLE" = build ]; then
+      gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
+      MODE=start
+    else
+      MODE=start
+      [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
+    fi
+  fi
+
+  # 3) Sonst (Queue leer/nichts wählbar): Fallback auf die Label-Reihenfolge —
+  #    needs-plan -> needs-research -> ready, je ältestes createdAt. Unverändert,
+  #    außer dass die Queue hier nicht mehr mitordnet (das erledigt (2)).
+  if [ -z "$ISSUE" ]; then
   # 2) Sonst: ältestes Ticket mit Label "needs-plan" -> Planer-Lauf (Opus, nur
   #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
   #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
   #    komplett übersprungen, weder geplant noch gebaut.
-  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_PLAN" \
+  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
             '[.[] | select(.labels | map(.name) | index("needs-plan"))
                   | select((.labels | map(.name) | index("needs-input")) | not)
                   | select((.labels | map(.name) | index("no-opus")) | not)]
-                | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                | sort_by(.createdAt)
                 | .[0].number // empty')
   if [ -n "$ISSUE" ]; then
     RUN_ROLE=plan
@@ -605,11 +633,11 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
     #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
     #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
-    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_RESEARCH" \
+    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
               '[.[] | select(.labels | map(.name) | index("needs-research"))
                     | select((.labels | map(.name) | index("needs-input")) | not)
                     | select((.labels | map(.name) | index("no-opus")) | not)]
-                  | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                  | sort_by(.createdAt)
                   | .[0].number // empty')
     if [ -n "$ISSUE" ]; then
       RUN_ROLE=research
@@ -622,12 +650,12 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
       #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
       #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
       #    "ready" trotzdem noch dran hängt.
-      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$ORDER_READY" \
+      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
                 '[.[] | select(.labels | map(.name) | index("ready"))
                       | select((.labels | map(.name) | index("needs-input")) | not)
                       | select((.labels | map(.name) | index("needs-plan")) | not)
                       | select((.labels | map(.name) | index("needs-research")) | not)]
-                    | sort_by( (.number as $n | ($order|index($n)) // 100000000), .createdAt )
+                    | sort_by(.createdAt)
                     | .[0].number // empty')
       if [ -z "$ISSUE" ]; then
         # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
@@ -675,6 +703,7 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
       gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
       MODE=start
     fi
+  fi
   fi
 fi
 

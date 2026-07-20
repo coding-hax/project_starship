@@ -65,32 +65,31 @@ erst danach `ready`. Ein Ticket mit `needs-research` **und** `ready` gleichzeiti
 gilt ebenso als inkonsistent wie bei `needs-plan` — es wird über den
 Recherche-Zweig gefangen, nicht gebaut.
 
-**Reihenfolge INNERHALB eines Labels — die Prioritäts-Queue (#91):** Standardmäßig
-nimmt der Runner je Label das **älteste per `createdAt`**. Willst du ein bestimmtes
-Ticket vorziehen, ohne Labels umzuhängen, trägst du es in das angepinnte
-**Queue-Issue** (`QUEUE_ISSUE`) ein. Dessen Body hat drei Sektionen, die je eine
-Stufe ordnen:
+**Die Prioritäts-Queue (#91, umgebaut #109) — eine flache Reihenfolge, Label egal:**
+Das angepinnte **Queue-Issue** (`QUEUE_ISSUE`) ist eine schlichte, geordnete Liste von
+`#NN`. **Wer gelistet ist, wird bearbeitet — in genau dieser Reihenfolge**, ganz ohne
+`ready` zu setzen. Das Eintragen in die Queue **ersetzt** die `ready`-Freigabe.
 
 ```
-## Build       ordnet 'ready'
-#88
-#86
-
-## Plan        ordnet 'needs-plan'
-#91
-
-## Research    ordnet 'needs-research'
-#54
+#101
+#98
+#104
 ```
 
 Zahlen oben = zuerst. Wichtig:
 
-- **Das Label bleibt das Tor.** Ein Eintrag in der Queue macht ein Ticket **nicht**
-  baubereit — nur was `ready`/`needs-plan`/`needs-research` trägt (und nicht
-  `needs-input`/`no-opus`), wird überhaupt bearbeitet. Die Queue **ordnet nur**.
-- **Nicht Gelistetes rutscht dahinter**, in der bisherigen `createdAt`-Reihenfolge.
-- **Leeres/fehlendes Queue-Issue → exakt bisheriges Verhalten.** Setzt du
-  `QUEUE_ISSUE=0` (oder editierst den Body nie), ändert sich nichts.
+- **Das Label ist für die Auswahl egal.** Ein gelistetes Ticket wird bearbeitet, auch
+  ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `needs-plan` → Planlauf,
+  `needs-research` → Recherche, **sonst bauen**.
+- **Weiterhin ausgeschlossen:** `needs-input` (wartet auf dich) und `no-opus`
+  (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
+  gelistet ist.
+- **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
+  gelistetes, unfertiges Ticket gebaut. Der Merge-Schutz für geschützte Pfade
+  (`human-approved`) bleibt davon unberührt — er sitzt in CI, nicht in der Auswahl.
+- **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
+  (`needs-plan` → `needs-research` → `ready`, je ältestes `createdAt`).
+- **Leeres/fehlendes Queue-Issue → reiner Fallback**, also das bisherige Verhalten.
 
 Vom Handy aus editierst du dafür nur den Issue-Body — kein Commit, kein Branch.
 
