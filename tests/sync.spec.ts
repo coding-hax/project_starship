@@ -585,13 +585,17 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
     expect(habitRow.rows[0].sync_seq).not.toBeNull();
 
     const logRow = await withDb((c) =>
-      c.query('SELECT habit_id, log_date, done, sync_seq FROM habit_logs WHERE id = $1', [logId]),
+      c.query(
+        'SELECT habit_id, log_date::text AS log_date, done, sync_seq FROM habit_logs WHERE id = $1',
+        [logId],
+      ),
     );
     expect(logRow.rowCount).toBe(1);
     expect(logRow.rows[0].habit_id).toBe(habitId);
-    // Postgres returns a `date` column as a JS Date at UTC midnight via `pg` — compare
-    // the calendar day, not the instant, so a non-UTC test runner cannot flake this.
-    expect((logRow.rows[0].log_date as Date).toISOString().slice(0, 10)).toBe('2026-07-15');
+    // `::text` avoids `pg`'s automatic `date` → local-midnight `Date` parsing — that
+    // conversion, not the stored value, is what would shift the calendar day in a
+    // timezone east of UTC (e.g. Europe/Berlin in summer).
+    expect(logRow.rows[0].log_date).toBe('2026-07-15');
     expect(logRow.rows[0].done).toBe(true);
     expect(logRow.rows[0].sync_seq).not.toBeNull();
   });
