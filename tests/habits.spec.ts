@@ -22,7 +22,7 @@ function editDialog(page: Page) {
 
 /** Scoped to the active list — the archived section has its own list further down. */
 function habitItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten' }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).getByRole('listitem');
 }
 
 function archivedHabitItems(page: Page) {
@@ -155,7 +155,7 @@ test('Archivieren entfernt die Gewohnheit aus der aktiven Liste und zeigt einen 
   const item = habitItems(page).filter({ hasText: 'Tagebuch' });
   await expect(item).toBeVisible();
 
-  await item.getByRole('button', { name: 'Archivieren' }).click();
+  await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
 
   await expect(item).toHaveCount(0);
   await expect(page.getByRole('status').filter({ hasText: 'archiviert' })).toBeVisible();
@@ -172,7 +172,7 @@ test('der Undo-Toast beim Archivieren macht es rückgängig, die Gewohnheit ist 
   await seedHabit(page, { name: 'Stretching', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Stretching' });
 
-  await item.getByRole('button', { name: 'Archivieren' }).click();
+  await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
   await expect(item).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Rückgängig' }).click();
@@ -268,7 +268,7 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   await context.setOffline(true);
 
   const item = habitItems(page).filter({ hasText: 'Offline archivieren' });
-  await item.getByRole('button', { name: 'Archivieren' }).click();
+  await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
   await expect(item).toHaveCount(0);
   // One entry for the seed, one for the archive — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
