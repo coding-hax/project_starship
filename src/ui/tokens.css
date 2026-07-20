@@ -57,6 +57,11 @@
   /* Touch targets are never smaller than this. */
   --touch-target: 44px;
 
+  /* Height the on-screen keyboard currently covers, kept in sync by
+     `keyboard-inset.tsx`. 0 whenever no keyboard is up (and always on desktop).
+     Bottom-anchored UI (FAB, sheet, toast) adds it so inputs never hide behind it. */
+  --keyboard-inset: 0px;
+
   /* Einstellungen (ADR-0006): multiplies body text size, default = unscaled. */
   --font-scale: 1;
 }

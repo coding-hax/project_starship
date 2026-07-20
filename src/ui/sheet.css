@@ -42,7 +42,8 @@ dialog.sheet::backdrop {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   background: var(--surface);
   box-shadow: var(--shadow-raised);
-  padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom));
+  padding: var(--space-6) var(--space-4)
+    calc(var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset));
   transform: translateY(0);
   opacity: 1;
   transition:

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { KeyboardInset } from '@/ui/keyboard-inset';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,6 +34,9 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // Chrome/Android then resizes the layout to the keyboard natively; other engines
+  // ignore it and lean on `keyboard-inset.tsx` instead. Harmless where unsupported.
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#faf8f5' },
     { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
@@ -59,6 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="de" className={inter.variable}>
       <body>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        <KeyboardInset />
         {children}
       </body>
     </html>
