@@ -8,7 +8,6 @@ const YESTERDAY = '2026-07-14';
 const TWO_DAYS_AGO = '2026-07-13';
 const TOMORROW = '2026-07-16T12:00:00.000Z'; // skewed to after skipping TODAY
 
-const MONDAY_THIS_WEEK = '2026-07-13';
 const MONDAY_LAST_WEEK = '2026-07-06';
 const MONDAY_TWO_WEEKS_AGO = '2026-06-29';
 
@@ -121,7 +120,11 @@ test('zwei aufeinanderfolgende Wochen zeigen Streak 2 (issue #104 AC3)', async (
     archivedAt: null,
   });
   await seedHabitLog(page, { habitId, logDate: MONDAY_LAST_WEEK, done: true });
-  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  // Logged *today* rather than on Monday — a weekly habit done earlier in the
+  // current week (but not today) drops out of the Heute-Sektion entirely
+  // (issue #103), so a today-log is the only way the row — and its streak —
+  // stays visible for this week's completion.
+  await seedHabitLog(page, { habitId, logDate: TODAY, done: true });
 
   const item = habitTodayItems(page).filter({ hasText: 'Großputz' });
   await expect(item.getByLabel('Streak: 2')).toBeVisible();
@@ -134,9 +137,10 @@ test('eine ausgelassene Woche setzt die Serie zurück (issue #104 AC3)', async (
     color: null,
     archivedAt: null,
   });
-  // Two weeks ago and this week are done, but last week was skipped.
+  // Two weeks ago and this week (logged today, see the test above) are done,
+  // but last week was skipped.
   await seedHabitLog(page, { habitId, logDate: MONDAY_TWO_WEEKS_AGO, done: true });
-  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  await seedHabitLog(page, { habitId, logDate: TODAY, done: true });
 
   const item = habitTodayItems(page).filter({ hasText: 'Fenster putzen' });
   await expect(item.getByLabel('Streak: 1')).toBeVisible();
