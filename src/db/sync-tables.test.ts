@@ -119,6 +119,100 @@ describe('missingRequired for tasks', () => {
   });
 });
 
+describe('writableFields for habits', () => {
+  it('keeps the whitelisted fields, coercing timestamp columns to Date', () => {
+    const fields = writableFields('habits', {
+      name: 'Meditieren',
+      schedule: 'daily',
+      color: '#7c9885',
+      archivedAt: null,
+      createdAt: '2026-07-15T09:00:00.000Z',
+    });
+
+    expect(fields.name).toBe('Meditieren');
+    expect(fields.schedule).toBe('daily');
+    expect(fields.color).toBe('#7c9885');
+    expect(fields.archivedAt).toBeNull();
+    expect(fields.createdAt).toBeInstanceOf(Date);
+    expect((fields.createdAt as Date).toISOString()).toBe('2026-07-15T09:00:00.000Z');
+  });
+
+  it('drops fields a client must never set', () => {
+    const fields = writableFields('habits', {
+      name: 'Meditieren',
+      schedule: 'daily',
+      id: 'attacker-chosen',
+      updatedAt: '1970-01-01T00:00:00.000Z',
+    });
+
+    expect(fields).toEqual({ name: 'Meditieren', schedule: 'daily' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('missingRequired for habits', () => {
+  it('passes when name and schedule are present', () => {
+    expect(missingRequired('habits', { name: 'Meditieren', schedule: 'daily' })).toEqual([]);
+  });
+
+  it('names what a create is missing', () => {
+    expect(missingRequired('habits', { name: 'Meditieren' })).toEqual(['schedule']);
+    expect(missingRequired('habits', {})).toEqual(['name', 'schedule']);
+  });
+});
+
+describe('writableFields for habit_logs (issue #101)', () => {
+  it('keeps the whitelisted fields', () => {
+    expect(
+      writableFields('habit_logs', {
+        habitId: 'habit-uuid',
+        logDate: '2026-07-15',
+        done: true,
+      }),
+    ).toEqual({ habitId: 'habit-uuid', logDate: '2026-07-15', done: true });
+  });
+
+  it('leaves logDate as a plain YYYY-MM-DD string — it is a calendar day, not a timestamp', () => {
+    // The wire format for a `date` column is already `dataType: 'string'` in
+    // Drizzle (unlike `timestamp`, which is `'date'`), so writableFields must NOT
+    // run it through `new Date(...)` — that would risk a timezone-shifted day.
+    const fields = writableFields('habit_logs', {
+      habitId: 'habit-uuid',
+      logDate: '2026-07-15',
+    });
+
+    expect(fields.logDate).toBe('2026-07-15');
+    expect(fields.logDate).not.toBeInstanceOf(Date);
+  });
+
+  it('drops fields a client must never set', () => {
+    const fields = writableFields('habit_logs', {
+      habitId: 'habit-uuid',
+      logDate: '2026-07-15',
+      id: 'attacker-chosen',
+      syncSeq: 999,
+    });
+
+    expect(fields).toEqual({ habitId: 'habit-uuid', logDate: '2026-07-15' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('syncSeq');
+  });
+});
+
+describe('missingRequired for habit_logs', () => {
+  it('passes when habitId and logDate are present', () => {
+    expect(missingRequired('habit_logs', { habitId: 'habit-uuid', logDate: '2026-07-15' })).toEqual(
+      [],
+    );
+  });
+
+  it('names what a create is missing', () => {
+    expect(missingRequired('habit_logs', { habitId: 'habit-uuid' })).toEqual(['logDate']);
+    expect(missingRequired('habit_logs', {})).toEqual(['habitId', 'logDate']);
+  });
+});
+
 describe('sync columns present', () => {
   // A synchronised table without these carries no way to soft-delete or resolve
   // conflicts — typecheck alone would not catch a table that forgets to spread

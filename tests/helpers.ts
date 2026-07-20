@@ -95,7 +95,9 @@ export async function resetDatabase() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
-        'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks;',
+        'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
+        // habit_logs first — it references habits via a foreign key.
+        'DELETE FROM habit_logs; DELETE FROM habits;',
     );
   });
 }
@@ -105,7 +107,7 @@ declare global {
   interface Window {
     __starship: {
       mutate: (input: {
-        table: 'sync_state' | 'tasks';
+        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;

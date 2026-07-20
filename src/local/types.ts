@@ -4,11 +4,31 @@
  */
 
 /** Tables the sync engine is allowed to touch. */
-export const SYNC_TABLES = ['sync_state', 'tasks'] as const;
+export const SYNC_TABLES = ['sync_state', 'tasks', 'habits', 'habit_logs'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export function isSyncTable(value: unknown): value is SyncTable {
   return typeof value === 'string' && (SYNC_TABLES as readonly string[]).includes(value);
+}
+
+/**
+ * The client-side view of a `habits` row's `data` field (`LocalRecord.data` /
+ * `Mutation.payload`, see below) — the wire shape, not the Drizzle-inferred server
+ * type (`Habit` in `src/db/schema.ts`), so timestamps are ISO strings here.
+ */
+export interface HabitData {
+  name: string;
+  schedule: 'daily' | 'weekly' | 'custom';
+  color: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+}
+
+/** Same as `HabitData`, for `habit_logs`. `logDate` is `YYYY-MM-DD`, not a timestamp. */
+export interface HabitLogData {
+  habitId: string;
+  logDate: string;
+  done: boolean;
 }
 
 export interface Mutation {
