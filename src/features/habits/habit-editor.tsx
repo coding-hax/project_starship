@@ -50,16 +50,15 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   // Load values exactly once, on the closed->open transition — not on every
   // re-render, or a live-query update elsewhere would overwrite mid-typing input.
   useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      if (mode === 'edit' && habit) {
-        setName(habit.name);
-        setSchedule(habit.schedule === 'weekly' ? 'weekly' : 'daily');
-        setColor(habit.color ?? '');
-      } else {
-        setName('');
-        setSchedule('daily');
-        setColor('');
-      }
+    if (open && !wasOpenRef.current && mode === 'edit' && habit) {
+      setName(habit.name);
+      setSchedule(habit.schedule === 'weekly' ? 'weekly' : 'daily');
+      setColor(habit.color ?? '');
+    }
+    if (open && !wasOpenRef.current && mode === 'create') {
+      setName('');
+      setSchedule('daily');
+      setColor('');
     }
     wasOpenRef.current = open;
   }, [open, mode, habit]);
