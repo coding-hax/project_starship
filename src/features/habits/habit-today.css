@@ -1,0 +1,77 @@
+/**
+ * Today's habit check-off list (issue #103): same card shape as task-list.css /
+ * habit-list.css, so /heute reads as one system across sections.
+ */
+
+.habit-today__empty {
+  padding: var(--space-4);
+  color: var(--text-muted);
+}
+
+.habit-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.habit-today__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  /* Only opacity moves here (AC5) — `prefers-reduced-motion` needs no extra
+     handling: tokens.css's global rule zeroes transition-duration everywhere. */
+  transition: opacity var(--duration-base) var(--ease-spring);
+}
+
+.habit-today__item--done {
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+.habit-today__color {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.habit-today__name {
+  flex: 1;
+  color: var(--text);
+}
+
+.habit-today__item--done .habit-today__name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.habit-today__checkbox-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  flex-shrink: 0;
+}
+
+.habit-today__checkbox {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  /* The other half of AC5's "opacity/scale only" check-off animation. */
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.habit-today__checkbox:checked {
+  transform: scale(1.12);
+}
