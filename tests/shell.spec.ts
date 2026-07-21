@@ -55,10 +55,9 @@ test('the navigation marks the current tab', async ({ page }) => {
   );
 });
 
-test('at 375px every tab label fits on one line with a ≥44×44px touch target (issue #123 AC2)', async ({
+test('every tab label fits on one line with a ≥44×44px touch target (issue #123 AC2)', async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'the label-wrap risk only exists at 375px');
+}) => {
   await registerPasskey(page);
 
   // Scope to the nav: /heute also carries a "Gewohnheiten verwalten" shortcut link,
@@ -80,10 +79,9 @@ test('at 375px every tab label fits on one line with a ≥44×44px touch target 
   }
 });
 
-test('the sidebar at 1280px carries the same five entries as the bottom bar (issue #123 AC3)', async ({
+test('the nav carries the same five entries in both layouts (issue #123 AC3)', async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'sidebar-only layout');
+}) => {
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
@@ -121,8 +119,7 @@ test('Einstellungen is reachable from the header and keeps its active state (iss
 
 test('the bottom nav still reserves space for the home indicator (issue #123 AC6)', async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'the home indicator only exists on the bottom bar');
+}) => {
   await registerPasskey(page);
 
   const usesSafeArea = await page.evaluate(() => {
