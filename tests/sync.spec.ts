@@ -4,7 +4,7 @@ import {
   freezeClock,
   openSecondDevice,
   registerPasskey,
-  resetDatabase,
+  resetAppData,
   skewClock,
   withDb,
 } from './helpers';
@@ -23,7 +23,7 @@ async function createTaskOnDevice(devicePage: Page, title: string) {
 }
 
 test.beforeEach(async () => {
-  await resetDatabase();
+  await resetAppData();
 });
 
 /**

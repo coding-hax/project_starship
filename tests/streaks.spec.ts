@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, skewClock } from './helpers';
+import { registerPasskey, resetAppData, skewClock } from './helpers';
 
 // A Wednesday, same reference date as habits-heute.spec.ts.
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -30,7 +30,7 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);

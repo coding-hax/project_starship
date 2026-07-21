@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+// Asserts the *signed-out* shell, so it opts out of the shared owner session that the
+// `setup` project hands to every other project (#115).
+test.use({ storageState: { cookies: [], origins: [] } });
+
 /**
  * Read-only post-deploy smoke (#56). Runs against `SMOKE_URL` in production, and
  * locally as part of `pnpm e2e` — same spec, no separate thing to keep green. It is

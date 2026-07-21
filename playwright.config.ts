@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config } from 'dotenv';
-import { PORT, PORT_PROD } from './tests/run-lock';
+import { AUTH_STATE, PORT, PORT_PROD } from './tests/run-lock';
 
 // The specs assert against the real database, so they need DATABASE_URL.
 // In CI it comes from the environment and the missing file is fine.
@@ -74,21 +74,44 @@ export default defineConfig({
   // run here and passed only because an earlier `pnpm build` had left `public/sw.js`
   // behind for the dev server to serve — an accident, not coverage (#115).
   projects: [
+    // Runs the real WebAuthn ceremony once and leaves the session in AUTH_STATE; every
+    // project below starts from it instead of registering a passkey per test (#115).
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        // Whichever server this scope actually boots.
+        baseURL: E2E_SCOPE === 'offline' ? baseURLProd : baseURL,
+      },
+    },
     {
       name: 'mobile',
       testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } },
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 375, height: 812 },
+        storageState: AUTH_STATE,
+      },
     },
     {
       name: 'desktop',
       testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        storageState: AUTH_STATE,
+      },
     },
     {
       name: 'offline-mobile',
       testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
+        storageState: AUTH_STATE,
         viewport: { width: 375, height: 812 },
         baseURL: baseURLProd,
       },
@@ -96,8 +119,10 @@ export default defineConfig({
     {
       name: 'offline-desktop',
       testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
+        storageState: AUTH_STATE,
         viewport: { width: 1280, height: 800 },
         baseURL: baseURLProd,
       },
