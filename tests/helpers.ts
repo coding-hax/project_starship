@@ -45,7 +45,12 @@ export async function registerPasskey(page: Page) {
     .get('/api/auth/status')
     .then((r) => r.ok() && r.json().then((s: { authenticated?: boolean }) => !!s.authenticated))
     .catch(() => false);
-  if (authenticated) return;
+  if (authenticated) {
+    // Same postcondition as the full ceremony: signed in AND sitting on a loaded /heute.
+    // Callers rely on it — they reach straight for `window.__starship` afterwards.
+    await page.goto('/heute');
+    return;
+  }
 
   await enableVirtualAuthenticator(page);
 
