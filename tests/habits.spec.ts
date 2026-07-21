@@ -33,8 +33,20 @@ async function expandArchived(page: Page) {
   await page.getByRole('button', { name: 'Archiviert' }).click();
 }
 
+/**
+ * Opens the editor by hitting the habit's name button.
+ *
+ * Clicking the list item itself used to work while the item was a single row, but
+ * since #105 it also holds the week grid — so the item's centre point lands on a
+ * day cell and toggles a log instead of opening the editor. The regex is anchored
+ * so it matches the name button ("Joggen Wöchentlich") and not the seven grid
+ * buttons, whose accessible names read "Mo: Joggen offen".
+ */
 async function tapHabit(page: Page, name: string) {
-  await habitItems(page).filter({ hasText: name }).click();
+  await habitItems(page)
+    .filter({ hasText: name })
+    .getByRole('button', { name: new RegExp(`^${name}\\b`) })
+    .click();
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
