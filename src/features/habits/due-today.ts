@@ -18,6 +18,16 @@ export function currentWeekRange(date: Date): { start: string; end: string } {
   return { start: toDateKey(monday), end: toDateKey(sunday) };
 }
 
+/** The 7 date keys of the Mon–Sun week containing `date`, Monday first (issue #105). */
+export function weekDays(date: Date): string[] {
+  const weekday = date.getDay(); // 0 = Sunday
+  const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() + diffToMonday);
+  return Array.from({ length: 7 }, (_, offset) =>
+    toDateKey(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + offset)),
+  );
+}
+
 /**
  * Which habits belong in the Heute check-off list (issue #103). Daily habits are
  * always due — the point there is the check-off itself, not a filter. Weekly
