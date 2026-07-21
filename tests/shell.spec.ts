@@ -25,18 +25,22 @@ test('passkey setup issues a recovery code exactly once and opens the app', asyn
   await expect(page.getByTestId('recovery-code')).toHaveCount(0);
 });
 
-test('all four tabs are reachable', async ({ page }) => {
+test('all five tabs are reachable and mark themselves current (issue #123 AC1)', async ({
+  page,
+}) => {
   await registerPasskey(page);
 
-  for (const [label, path] of [
-    ['Aufgaben', '/aufgaben'],
-    ['Kalender', '/kalender'],
-    ['Journal', '/journal'],
-    ['Heute', '/heute'],
+  for (const [label, path, heading] of [
+    ['Aufgaben', '/aufgaben', 'Aufgaben'],
+    ['Gewohnheiten', '/gewohnheiten', 'Gewohnheiten verwalten'],
+    ['Kalender', '/kalender', 'Kalender'],
+    ['Journal', '/journal', 'Journal'],
+    ['Heute', '/heute', 'Heute'],
   ] as const) {
     await page.getByRole('link', { name: label }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
-    await expect(page.getByRole('heading', { name: label, level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    await expect(page.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
   }
 });
 
@@ -49,6 +53,114 @@ test('the navigation marks the current tab', async ({ page }) => {
     'aria-current',
     'page',
   );
+});
+
+test('at 375px every tab label fits on one line with a ≥44×44px touch target (issue #123 AC2)', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'the label-wrap risk only exists at 375px');
+  await registerPasskey(page);
+
+  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+    const link = page.getByRole('link', { name: label });
+    const box = await link.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+
+    const wrapped = await link.locator('.nav__label').evaluate((el) => {
+      // A wrapped label is roughly twice as tall as its single-line lineHeight.
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+      return el.clientHeight > lineHeight * 1.5;
+    });
+    expect(wrapped).toBe(false);
+  }
+});
+
+test('the sidebar at 1280px carries the same five entries as the bottom bar (issue #123 AC3)', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'sidebar-only layout');
+  await registerPasskey(page);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+    await expect(nav.getByRole('link', { name: label })).toBeVisible();
+  }
+});
+
+test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404ing (issue #123 AC4)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const response = await page.goto('/heute/gewohnheiten');
+  expect(response?.status()).toBeLessThan(400);
+  await expect(page).toHaveURL(/\/gewohnheiten$/);
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 })).toBeVisible();
+
+  const redirected = response!.request().redirectedFrom();
+  expect(redirected).not.toBeNull();
+  expect(await redirected!.response().then((r) => r?.status())).toBe(308);
+});
+
+test('Einstellungen is reachable from the header and keeps its active state (issue #123 AC5)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  await expect(settings).not.toHaveAttribute('aria-current', 'page');
+  await settings.click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+  await expect(settings).toHaveAttribute('aria-current', 'page');
+});
+
+test('the bottom nav still reserves space for the home indicator (issue #123 AC6)', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'the home indicator only exists on the bottom bar');
+  await registerPasskey(page);
+
+  const usesSafeArea = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (
+          rule instanceof CSSStyleRule &&
+          rule.selectorText === '.nav' &&
+          rule.style.paddingBottom.includes('env(safe-area-inset-bottom)')
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+  expect(usesSafeArea).toBe(true);
+});
+
+test('the header and nav respect reduced motion and stay legible in dark mode (issue #123 AC7)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await registerPasskey(page);
+
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  const duration = await settings.evaluate((el) => getComputedStyle(el).transitionDuration);
+  expect(parseFloat(duration)).toBeLessThan(0.001);
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  const habitsTab = page.getByRole('link', { name: 'Gewohnheiten' });
+  await habitsTab.click();
+  await expect(habitsTab).toHaveAttribute('aria-current', 'page');
+  const darkColor = await habitsTab.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).not.toBe('rgb(0, 0, 0)');
 });
 
 test('the navigation sits where its layout puts it: bottom bar on mobile, left sidebar on desktop', async ({

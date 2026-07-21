@@ -40,6 +40,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
+  // Habits moved to their own tab at /gewohnheiten (issue #123). Permanent so
+  // bookmarks, an already-open tab, and the service worker's cached shell all
+  // still land in the right place.
+  async redirects() {
+    return [{ source: '/heute/gewohnheiten', destination: '/gewohnheiten', permanent: true }];
+  },
 };
 
 export default withSerwist(nextConfig);

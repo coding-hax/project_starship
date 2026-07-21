@@ -1,5 +1,5 @@
-/** The entry point into the habits management screen (issue #102) — habits have
- *  no tab of their own, so "Heute" is the only way in (docs/DESIGN_SYSTEM.md). */
+/** A shortcut into the habits management screen (issue #102), which also has its
+ *  own tab in the nav (issue #123) — this stays as a quick jump from Heute. */
 
 .heute__habits-link {
   display: inline-flex;
