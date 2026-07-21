@@ -61,8 +61,11 @@ test('at 375px every tab label fits on one line with a ≥44×44px touch target 
   test.skip(testInfo.project.name !== 'mobile', 'the label-wrap risk only exists at 375px');
   await registerPasskey(page);
 
+  // Scope to the nav: /heute also carries a "Gewohnheiten verwalten" shortcut link,
+  // which a bare name match would collide with.
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
-    const link = page.getByRole('link', { name: label });
+    const link = nav.getByRole('link', { name: label });
     const box = await link.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -131,10 +134,15 @@ test('the bottom nav still reserves space for the home indicator (issue #123 AC6
         continue;
       }
       for (const rule of Array.from(rules)) {
+        // Assert against the rule's serialized text, not `rule.style`: lightningcss
+        // lowers the sibling `color-mix()` background into a nested `@supports`, and
+        // per CSS nesting the declarations after it — padding-bottom included — move
+        // into an implicit `&` block, so `rule.style.paddingBottom` reads empty even
+        // though the declaration is still applied to `.nav`.
         if (
           rule instanceof CSSStyleRule &&
           rule.selectorText === '.nav' &&
-          rule.style.paddingBottom.includes('env(safe-area-inset-bottom)')
+          rule.cssText.includes('padding-bottom: env(safe-area-inset-bottom)')
         ) {
           return true;
         }
@@ -156,7 +164,9 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
   expect(parseFloat(duration)).toBeLessThan(0.001);
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const habitsTab = page.getByRole('link', { name: 'Gewohnheiten' });
+  // Scope to the nav to avoid /heute's "Gewohnheiten verwalten" shortcut link.
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  const habitsTab = nav.getByRole('link', { name: 'Gewohnheiten' });
   await habitsTab.click();
   await expect(habitsTab).toHaveAttribute('aria-current', 'page');
   const darkColor = await habitsTab.evaluate((el) => getComputedStyle(el).color);
