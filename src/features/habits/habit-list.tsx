@@ -4,8 +4,11 @@ import { useState } from 'react';
 import { SectionCard } from '@/ui/section-card';
 import { Toast } from '@/ui/toast';
 import { HabitEditor } from './habit-editor';
+import { HabitWeekGrid } from './habit-week-grid';
 import { useArchiveHabit } from './use-archive-habit';
+import { useHabitLogs, type HabitLogView } from './use-habit-logs';
 import { useHabits, type HabitView } from './use-habits';
+import { useToggleHabitLog } from './use-toggle-habit-log';
 
 const SCHEDULE_LABELS: Record<HabitView['schedule'], string> = {
   daily: 'Täglich',
@@ -15,27 +18,32 @@ const SCHEDULE_LABELS: Record<HabitView['schedule'], string> = {
 
 interface HabitRowProps {
   habit: HabitView;
+  logs: HabitLogView[];
   onEdit: () => void;
   onToggleArchive: () => void;
+  onToggleLog: (habitId: string, logDate: string) => void;
 }
 
-function HabitRow({ habit, onEdit, onToggleArchive }: HabitRowProps) {
+function HabitRow({ habit, logs, onEdit, onToggleArchive, onToggleLog }: HabitRowProps) {
   const archived = habit.archivedAt !== null;
 
   return (
     <li className="habit-list__item" data-habit-id={habit.id}>
-      <span
-        className="habit-list__color"
-        style={{ background: `var(${habit.color ?? '--area-habits'})` }}
-        aria-hidden="true"
-      />
-      <button type="button" className="habit-list__name" onClick={onEdit}>
-        <span className="habit-list__title">{habit.name}</span>
-        <span className="habit-list__schedule">{SCHEDULE_LABELS[habit.schedule]}</span>
-      </button>
-      <button type="button" className="habit-list__archive" onClick={onToggleArchive}>
-        {archived ? 'Reaktivieren' : 'Archivieren'}
-      </button>
+      <div className="habit-list__row">
+        <span
+          className="habit-list__color"
+          style={{ background: `var(${habit.color ?? '--area-habits'})` }}
+          aria-hidden="true"
+        />
+        <button type="button" className="habit-list__name" onClick={onEdit}>
+          <span className="habit-list__title">{habit.name}</span>
+          <span className="habit-list__schedule">{SCHEDULE_LABELS[habit.schedule]}</span>
+        </button>
+        <button type="button" className="habit-list__archive" onClick={onToggleArchive}>
+          {archived ? 'Reaktivieren' : 'Archivieren'}
+        </button>
+      </div>
+      <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} />
     </li>
   );
 }
@@ -47,12 +55,15 @@ function HabitRow({ habit, onEdit, onToggleArchive }: HabitRowProps) {
  */
 export function HabitList() {
   const habits = useHabits();
+  const logs = useHabitLogs();
+  const toggleLog = useToggleHabitLog(logs);
   const { toggleArchive, undo, handleUndo, dismissUndo } = useArchiveHabit();
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
 
   const active = habits?.filter((habit) => habit.archivedAt === null) ?? [];
   const archived = habits?.filter((habit) => habit.archivedAt !== null) ?? [];
   const editingHabit = habits?.find((habit) => habit.id === editingHabitId) ?? null;
+  const visibleLogs = logs ?? [];
 
   return (
     <>
@@ -68,8 +79,10 @@ export function HabitList() {
                 <HabitRow
                   key={habit.id}
                   habit={habit}
+                  logs={visibleLogs}
                   onEdit={() => setEditingHabitId(habit.id)}
                   onToggleArchive={() => toggleArchive(habit)}
+                  onToggleLog={toggleLog}
                 />
               ))}
             </ul>
@@ -82,8 +95,10 @@ export function HabitList() {
                   <HabitRow
                     key={habit.id}
                     habit={habit}
+                    logs={visibleLogs}
                     onEdit={() => setEditingHabitId(habit.id)}
                     onToggleArchive={() => toggleArchive(habit)}
+                    onToggleLog={toggleLog}
                   />
                 ))}
               </ul>

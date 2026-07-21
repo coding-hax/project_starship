@@ -65,11 +65,12 @@ src/
       use-habits.ts            Dexie-Live-Query auf `records` (table='habits'); HabitView + toHabitView (issue #102)
       use-habit-logs.ts        Dexie-Live-Query auf `records` (table='habit_logs'); HabitLogView + toHabitLogView (issue #103)
       use-toggle-habit-log.ts  Abhaken/Zurücknehmen für heute via Outbox, findet die bestehende Log-Zeile statt UNIQUE(habit_id, log_date) zu riskieren (issue #103)
-      due-today.ts             reine Logik: welche Habits gehören in die Heute-Sektion (daily immer, weekly noch nicht in der laufenden Mo–So-Woche erledigt) (issue #103)
+      due-today.ts             reine Logik: welche Habits gehören in die Heute-Sektion (daily immer, weekly noch nicht in der laufenden Mo–So-Woche erledigt) (issue #103); weekDays — die 7 Datums-Keys Mo–So einer Woche (issue #105)
       streak.ts                reine Logik: computeStreak — aufeinanderfolgende Tage (daily/custom) bzw. Mo–So-Wochen (weekly) bis heute/laufende Woche; offener heutiger Tag/laufende Woche bricht nicht, ausgelassener schon (issue #104)
       habit-today.tsx / .css   Heute-Sektion: Abhak-Liste, Zeile bleibt nach dem Abhaken sichtbar (Undo per erneutem Tippen) (issue #103); Streak-Badge (🔥) je Zeile, nur wenn > 0 (issue #104)
+      habit-week-grid.tsx / .css  Wochenraster Mo–So je Habit-Zeile, heutiger Tag markiert, Zelle direkt abhakbar über useToggleHabitLog (issue #105)
       use-archive-habit.ts     Archivieren/Reaktivieren (setzt/löscht archivedAt, nie deletedAt) mit Undo-Toast (issue #102)
-      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard)
+      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard); jede Zeile zeigt zusätzlich das Wochenraster (issue #105)
       habit-editor.tsx / .css  Bottom-Sheet für Anlegen + Bearbeiten (Name, Rhythmus, Farbe aus den vier Bereichsfarben)
       add-habit-fab.tsx        FAB + Sheet fürs Anlegen, gleiche Form wie quick-add.tsx
     export/

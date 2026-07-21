@@ -1,0 +1,49 @@
+/**
+ * Compact Mon–Sun grid per habit row (issue #105) — sits inside habit-list__item,
+ * same token vocabulary as habit-list.css/habit-today.css.
+ */
+
+.habit-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  /* No gap: at 375px the card's own padding (habit-list.css) already eats most of
+     the width budget; any gap here pushes cells under the 44px touch target. */
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.habit-week-grid__cell {
+  display: flex;
+}
+
+.habit-week-grid__day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: var(--touch-target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  /* Only background/opacity move here — no layout properties (same rule as
+     habit-today.css's check-off animation, AC4/reduced-motion). */
+  transition:
+    background-color var(--duration-fast) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-spring);
+}
+
+.habit-week-grid__day[data-today] {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.habit-week-grid__day--done {
+  border-color: transparent;
+  color: var(--accent-fg);
+}
