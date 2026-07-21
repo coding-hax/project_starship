@@ -46,9 +46,9 @@ const prodServer = {
 
 export default defineConfig({
   testDir: './tests',
-  // Owns its own config (playwright.smoke.config.ts) and target — no webServer, no
-  // DB run-lock, points at SMOKE_URL instead of the local dev server. See #56.
-  testIgnore: /smoke\.prod\.spec\.ts$/,
+  // No config-level testIgnore on purpose (#115): a project that declares its own
+  // `testIgnore` REPLACES the config-level one, so a global rule here would silently
+  // apply to some projects and not others. Every project below states its own scope.
   fullyParallel: false, // one database, one owner — parallel runs would fight over it
   // …and this enforces it: a second concurrent run aborts instead of wiping our credentials.
   globalSetup: './tests/global-setup.ts',
@@ -68,22 +68,25 @@ export default defineConfig({
   },
 
   // Every feature test runs in both viewports. A layout that only works on desktop
-  // is not done. offline-critical.spec.ts is the exception — it needs a real service
-  // worker, so it runs only against the prod-build projects below.
+  // is not done. Two specs are the exception and run only against the prod-build
+  // projects below: offline-critical.spec.ts needs a real service worker, and
+  // smoke.prod.spec.ts asserts a production artefact (`/sw.js`). The latter used to
+  // run here and passed only because an earlier `pnpm build` had left `public/sw.js`
+  // behind for the dev server to serve — an accident, not coverage (#115).
   projects: [
     {
       name: 'mobile',
-      testIgnore: /offline-critical\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } },
     },
     {
       name: 'desktop',
-      testIgnore: /offline-critical\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {
       name: 'offline-mobile',
-      testMatch: /offline-critical\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 375, height: 812 },
@@ -92,7 +95,7 @@ export default defineConfig({
     },
     {
       name: 'offline-desktop',
-      testMatch: /offline-critical\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 800 },

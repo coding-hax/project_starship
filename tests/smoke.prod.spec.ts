@@ -2,9 +2,13 @@ import { expect, test } from '@playwright/test';
 
 /**
  * Read-only post-deploy smoke (#56). Runs against `SMOKE_URL` in production, and
- * against the normal local `baseURL` as part of the regular `pnpm e2e` suite — same
- * spec, no separate thing to keep green. It is the real single-user prod DB, so:
- * no login, no mutation, ever.
+ * locally as part of `pnpm e2e` — same spec, no separate thing to keep green. It is
+ * the real single-user prod DB, so: no login, no mutation, ever.
+ *
+ * Locally it runs in the `offline-*` projects, i.e. against the production-build
+ * server, because `/sw.js` only exists in a production build (#115). It used to run
+ * against the dev server and passed only because an earlier `pnpm build` had left
+ * `public/sw.js` behind for it to serve — accidental, not real coverage.
  */
 
 test('the shell renders a login or setup screen without a session', async ({ page }) => {
