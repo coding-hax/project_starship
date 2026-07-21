@@ -183,9 +183,11 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
   page,
 }) => {
   // Logs load asynchronously from IndexedDB, so the cell briefly paints "open"
-  // before this row's `done` class lands — reduced motion collapses that
-  // background-color transition to ~0, so the read below never catches a
-  // mid-transition, notation-shifted colour (tokens.css's global rule).
+  // before this row's `done` class lands, and `.habit-week-grid__day` transitions
+  // `background-color` (unlike habit-today.css's static colour dot) — even at the
+  // reduced-motion duration of 0.01ms a synchronous read right after the value
+  // changes can still catch the pre-transition frame. `expect.poll` waits it out
+  // instead of racing it (not a loosened assert — the target colour is unchanged).
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
   const habitId = await seedHabit(page, {
@@ -198,12 +200,24 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
 
   const monday = weekGrid(page, 'Eigenfarbe').getByRole('button').nth(0);
   await expect(monday).toHaveClass(/habit-week-grid__day--done/);
-  const lightColor = await monday.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(lightColor).toBe(await resolveBackgroundToken(page, '--area-journal'));
+  const expectedLight = await resolveBackgroundToken(page, '--area-journal');
+  let lightColor = '';
+  await expect
+    .poll(async () => {
+      lightColor = await monday.evaluate((el) => getComputedStyle(el).backgroundColor);
+      return lightColor;
+    })
+    .toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const darkColor = await monday.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(darkColor).toBe(await resolveBackgroundToken(page, '--area-journal'));
+  const expectedDark = await resolveBackgroundToken(page, '--area-journal');
+  let darkColor = '';
+  await expect
+    .poll(async () => {
+      darkColor = await monday.evaluate((el) => getComputedStyle(el).backgroundColor);
+      return darkColor;
+    })
+    .toBe(expectedDark);
   expect(darkColor).not.toBe(lightColor);
 });
 
