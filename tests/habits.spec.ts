@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, withDb } from './helpers';
+import { registerPasskey, resetAppData, withDb } from './helpers';
 
 const ADD_LABEL = 'Gewohnheit anlegen';
 const EDIT_LABEL = 'Gewohnheit bearbeiten';
@@ -45,7 +45,7 @@ async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
   // with the sync endpoints cut, that is the only way any of these tests can pass.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, withDb } from './helpers';
+import { registerPasskey, resetAppData, withDb } from './helpers';
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
@@ -55,7 +55,7 @@ async function enableDirectCapture(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { freezeClock, registerPasskey, resetDatabase, withDb } from './helpers';
+import { freezeClock, registerPasskey, resetAppData, withDb } from './helpers';
 
 /** Mirrors task-item.tsx's own LONG_PRESS_MS — how long a hold picks a row up
  * for drag-to-nest instead of starting a swipe. */
@@ -109,7 +109,7 @@ async function swipeLeft(locator: Locator, distancePx: number) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
   // with the sync endpoints cut, that is the only way any of these tests can pass.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));

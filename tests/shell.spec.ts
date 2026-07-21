@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { registerPasskey, resetDatabase } from './helpers';
 
+// Drives the auth UI itself and asserts the never-registered state, so it opts out of
+// the shared owner session and keeps the full reset (#115).
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.beforeEach(async () => {
   await resetDatabase();
 });

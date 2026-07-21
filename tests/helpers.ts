@@ -1,5 +1,8 @@
 import type { Browser, Page } from '@playwright/test';
 import { Client } from 'pg';
+import { AUTH_STATE } from './run-lock';
+
+export { AUTH_STATE };
 
 /**
  * Chrome's virtual authenticator. This is not a mock of our auth code — the real
@@ -24,8 +27,31 @@ export async function enableVirtualAuthenticator(page: Page) {
   return { client, authenticatorId };
 }
 
-/** Registers a passkey from a clean state and lands on /heute. */
+/**
+ * Makes sure the page is signed in, and is cheap when it already is (#115).
+ *
+ * The suite used to run this full WebAuthn ceremony in every single test — 59 call
+ * sites × 2 viewports, each a page load, a click, a recovery-code wait and a redirect.
+ * That was the bulk of the runtime. Now the `setup` project registers once and the
+ * projects start from its `storageState`, so the status probe below short-circuits.
+ *
+ * It stays self-healing: the specs that legitimately wipe credentials (shell.spec.ts
+ * asserts the pristine "Passkey einrichten" state) leave the shared session invalid,
+ * so the next caller registers again — and writes the refreshed state back, which the
+ * following contexts pick up. Costs one ceremony after such a test instead of all of them.
+ */
 export async function registerPasskey(page: Page) {
+  const authenticated = await page.request
+    .get('/api/auth/status')
+    .then((r) => r.ok() && r.json().then((s: { authenticated?: boolean }) => !!s.authenticated))
+    .catch(() => false);
+  if (authenticated) {
+    // Same postcondition as the full ceremony: signed in AND sitting on a loaded /heute.
+    // Callers rely on it — they reach straight for `window.__starship` afterwards.
+    await page.goto('/heute');
+    return;
+  }
+
   await enableVirtualAuthenticator(page);
 
   await page.goto('/anmelden');
@@ -36,6 +62,8 @@ export async function registerPasskey(page: Page) {
   await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
 
   await page.waitForURL('**/heute');
+
+  await page.context().storageState({ path: AUTH_STATE });
 }
 
 /**
@@ -90,13 +118,33 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
   }
 }
 
-/** A clean slate: no credential, no session, no synced row. */
+/**
+ * Clears the app's own rows but leaves the owner signed in — the default (#115).
+ *
+ * Wiping `sessions`/`credentials` too (what the old `resetDatabase` did everywhere)
+ * invalidated the shared session, which forced every test to re-run the WebAuthn
+ * ceremony. Domain tests only need empty data, not a logged-out browser.
+ */
+export async function resetAppData() {
+  await withDb(async (client) => {
+    await client.query(
+      'DELETE FROM sync_state; DELETE FROM tasks; ' +
+        // habit_logs first — it references habits via a foreign key.
+        'DELETE FROM habit_logs; DELETE FROM habits;',
+    );
+  });
+}
+
+/**
+ * A truly clean slate: no credential, no session, no synced row. Only for specs that
+ * assert the pristine, never-registered state (shell.spec.ts). It logs the shared
+ * session out — `registerPasskey` notices and re-registers for whoever comes next.
+ */
 export async function resetDatabase() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
-        // habit_logs first — it references habits via a foreign key.
         'DELETE FROM habit_logs; DELETE FROM habits;',
     );
   });

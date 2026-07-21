@@ -4,7 +4,7 @@ import {
   freezeClock,
   openSecondDevice,
   registerPasskey,
-  resetDatabase,
+  resetAppData,
   skewClock,
   withDb,
 } from './helpers';
@@ -23,7 +23,7 @@ async function createTaskOnDevice(devicePage: Page, title: string) {
 }
 
 test.beforeEach(async () => {
-  await resetDatabase();
+  await resetAppData();
 });
 
 /**
@@ -96,12 +96,18 @@ test('a delete is a tombstone, never a hard delete', async ({ page }) => {
   expect(result.rows[0].deleted_at).not.toBeNull();
 });
 
-test('the sync endpoints reject a request without a session', async ({ request }) => {
-  const push = await request.post('/api/sync/push', { data: { mutations: [] } });
-  expect(push.status()).toBe(401);
+// The point of this one is the *absence* of a session, so it opts out of the shared
+// owner state the `setup` project hands to every project (#115).
+test.describe('ohne Session', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
 
-  const pull = await request.get('/api/sync/pull');
-  expect(pull.status()).toBe(401);
+  test('the sync endpoints reject a request without a session', async ({ request }) => {
+    const push = await request.post('/api/sync/push', { data: { mutations: [] } });
+    expect(push.status()).toBe(401);
+
+    const pull = await request.get('/api/sync/pull');
+    expect(pull.status()).toBe(401);
+  });
 });
 
 /**

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase } from './helpers';
+import { registerPasskey, resetAppData } from './helpers';
 
 const EXPORT_BUTTON = 'Alles exportieren';
 
@@ -25,7 +25,7 @@ async function triggerExport(page: Page) {
 }
 
 test.beforeEach(async () => {
-  await resetDatabase();
+  await resetAppData();
 });
 
 test('Alles exportieren lädt alle lokalen Datensätze als JSON, inklusive Tombstones', async ({

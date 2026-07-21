@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetDatabase } from './helpers';
+import { registerPasskey, resetAppData } from './helpers';
 
 test.beforeEach(async () => {
-  await resetDatabase();
+  await resetAppData();
 });
 
 test('Bewegung reduzieren schaltet den Toggle und bleibt nach Reload erhalten', async ({

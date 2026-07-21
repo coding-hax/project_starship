@@ -45,3 +45,6 @@ public/sw.js
 public/sw.js.map
 public/swe-worker-*.js
 /.e2e.lock
+
+# Owner session produced by the e2e setup project (#115) — never commit a session.
+playwright/.auth/
