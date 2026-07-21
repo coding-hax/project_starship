@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config } from 'dotenv';
-import { PORT, PORT_PROD } from './tests/run-lock';
+import { AUTH_STATE, PORT, PORT_PROD } from './tests/run-lock';
 
 // The specs assert against the real database, so they need DATABASE_URL.
 // In CI it comes from the environment and the missing file is fine.
@@ -19,11 +19,36 @@ const e2eEnv = {
   RP_NAME: 'Starship',
 };
 
+// 'main' = dev server only, 'offline' = production build only, unset = both (#115).
+const E2E_SCOPE = process.env.E2E_SCOPE ?? 'all';
+
+const devServer = {
+  command: 'pnpm dev --port ' + PORT,
+  url: baseURL,
+  // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
+  // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
+  // Refusing to start says what is wrong; reusing hides it.
+  reuseExistingServer: false,
+  timeout: 120_000,
+  env: { ...e2eEnv, RP_ORIGIN: baseURL },
+};
+
+const prodServer = {
+  // NEXT_PUBLIC_E2E is inlined at build time — it must be set on the build step
+  // too, or the E2E bridge (src/ui/e2e-bridge.tsx) is simply missing from the bundle.
+  command: `pnpm build && pnpm start --port ${PORT_PROD}`,
+  url: baseURLProd,
+  reuseExistingServer: false,
+  // A production build needs more room than the dev server's plain boot.
+  timeout: 300_000,
+  env: { ...e2eEnv, RP_ORIGIN: baseURLProd },
+};
+
 export default defineConfig({
   testDir: './tests',
-  // Owns its own config (playwright.smoke.config.ts) and target — no webServer, no
-  // DB run-lock, points at SMOKE_URL instead of the local dev server. See #56.
-  testIgnore: /smoke\.prod\.spec\.ts$/,
+  // No config-level testIgnore on purpose (#115): a project that declares its own
+  // `testIgnore` REPLACES the config-level one, so a global rule here would silently
+  // apply to some projects and not others. Every project below states its own scope.
   fullyParallel: false, // one database, one owner — parallel runs would fight over it
   // …and this enforces it: a second concurrent run aborts instead of wiping our credentials.
   globalSetup: './tests/global-setup.ts',
@@ -43,59 +68,74 @@ export default defineConfig({
   },
 
   // Every feature test runs in both viewports. A layout that only works on desktop
-  // is not done. offline-critical.spec.ts is the exception — it needs a real service
-  // worker, so it runs only against the prod-build projects below.
+  // is not done. Two specs are the exception and run only against the prod-build
+  // projects below: offline-critical.spec.ts needs a real service worker, and
+  // smoke.prod.spec.ts asserts a production artefact (`/sw.js`). The latter used to
+  // run here and passed only because an earlier `pnpm build` had left `public/sw.js`
+  // behind for the dev server to serve — an accident, not coverage (#115).
   projects: [
+    // Runs the real WebAuthn ceremony once and leaves the session in AUTH_STATE; every
+    // project below starts from it instead of registering a passkey per test (#115).
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        // Whichever server this scope actually boots.
+        baseURL: E2E_SCOPE === 'offline' ? baseURLProd : baseURL,
+      },
+    },
     {
       name: 'mobile',
-      testIgnore: /offline-critical\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 375, height: 812 } },
+      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 375, height: 812 },
+        storageState: AUTH_STATE,
+      },
     },
     {
       name: 'desktop',
-      testIgnore: /offline-critical\.spec\.ts$/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
+      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+        storageState: AUTH_STATE,
+      },
     },
     {
       name: 'offline-mobile',
-      testMatch: /offline-critical\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
+        storageState: AUTH_STATE,
         viewport: { width: 375, height: 812 },
         baseURL: baseURLProd,
       },
     },
     {
       name: 'offline-desktop',
-      testMatch: /offline-critical\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
+        storageState: AUTH_STATE,
         viewport: { width: 1280, height: 800 },
         baseURL: baseURLProd,
       },
     },
   ],
 
+  // `webServer` is global: Playwright boots EVERY entry before any project runs. So a
+  // run that only needs the dev server would still pay the full production build —
+  // which only offline-critical.spec.ts actually needs. E2E_SCOPE (#115) lets CI split
+  // the suite into two parallel jobs, each booting just its own server. Unset (a plain
+  // local `pnpm e2e`) keeps both, so nothing changes for developers.
   webServer: [
-    {
-      command: 'pnpm dev --port ' + PORT,
-      url: baseURL,
-      // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
-      // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
-      // Refusing to start says what is wrong; reusing hides it.
-      reuseExistingServer: false,
-      timeout: 120_000,
-      env: { ...e2eEnv, RP_ORIGIN: baseURL },
-    },
-    {
-      // NEXT_PUBLIC_E2E is inlined at build time — it must be set on the build step
-      // too, or the E2E bridge (src/ui/e2e-bridge.tsx) is simply missing from the bundle.
-      command: `pnpm build && pnpm start --port ${PORT_PROD}`,
-      url: baseURLProd,
-      reuseExistingServer: false,
-      // A production build needs more room than the dev server's plain boot.
-      timeout: 300_000,
-      env: { ...e2eEnv, RP_ORIGIN: baseURLProd },
-    },
+    ...(E2E_SCOPE === 'offline' ? [] : [devServer]),
+    ...(E2E_SCOPE === 'main' ? [] : [prodServer]),
   ],
 });

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetDatabase } from './helpers';
+import { registerPasskey, resetAppData } from './helpers';
 
 /**
  * Keyboard-safe layout (#106). Headless Chromium never shows a real software
@@ -10,7 +10,7 @@ import { registerPasskey, resetDatabase } from './helpers';
  */
 test.describe('Keyboard-safe Layout (#106)', () => {
   test.beforeEach(async () => {
-    await resetDatabase();
+    await resetAppData();
   });
 
   test('Viewport-Meta deklariert interactive-widget=resizes-content', async ({ page }) => {

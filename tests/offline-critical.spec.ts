@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetDatabase, withDb } from './helpers';
+import { registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
  * The one spec that proves the full offline round-trip (issue #57): a real service
@@ -12,7 +12,7 @@ import { registerPasskey, resetDatabase, withDb } from './helpers';
  * whole point is watching the round trip actually reach Postgres.
  */
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   await registerPasskey(page);
   await page.goto('/aufgaben');
 });

@@ -37,11 +37,18 @@ jobs:
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh
 
-  e2e:
+  # --- e2e, split in two halves that run in parallel (#115) -------------------
+  # The production build is only needed by offline-critical.spec.ts (it wants a real
+  # service worker). Because Playwright's `webServer` list is global, every run used
+  # to pay that build. E2E_SCOPE now boots just the server a half needs, and the two
+  # halves run as separate jobs — separate runners, separate Postgres containers, so
+  # nothing is shared and no run-lock or database contention is possible.
+  #
+  # NOTE: the required status check is the aggregate job named `e2e` below. Do not
+  # rename these two without updating branch protection, or a failing half would stop
+  # blocking the merge.
+  e2e-main:
     runs-on: ubuntu-latest
-
-    # The specs assert against the real database. The whole point is proving a mutation
-    # actually lands in Postgres — not that a mock said it did.
     services:
       postgres:
         image: postgres:17-alpine
@@ -62,14 +69,85 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      # The browser binaries are the slow part and they are cacheable; the apt
+      # packages behind `--with-deps` are not, so they stay a separate step.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install-deps chromium
+      - run: pnpm exec playwright install chromium
       - run: pnpm db:migrate
-      - run: pnpm e2e
+      - run: pnpm exec playwright test --project=mobile --project=desktop
+        env:
+          E2E_SCOPE: main
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-main
           path: playwright-report/
+
+  e2e-offline:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: starship
+          POSTGRES_PASSWORD: starship
+          POSTGRES_DB: starship
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U starship -d starship"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install-deps chromium
+      - run: pnpm exec playwright install chromium
+      # This half is the only one that runs `next build`, so it is the only one that
+      # benefits from Next's incremental build cache.
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - run: pnpm db:migrate
+      - run: pnpm exec playwright test --project=offline-mobile --project=offline-desktop
+        env:
+          E2E_SCOPE: offline
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-offline
+          path: playwright-report/
+
+  # The required status check. Keeping this name means branch protection and
+  # auto-merge stay untouched by the split above. `if: always()` plus the explicit
+  # result check matters: a failed `needs` would otherwise leave this job *skipped*,
+  # and a skipped required check never turns the merge red.
+  e2e:
+    needs: [e2e-main, e2e-offline]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Both e2e halves must be green
+        run: |
+          echo "e2e-main:    ${{ needs.e2e-main.result }}"
+          echo "e2e-offline: ${{ needs.e2e-offline.result }}"
+          [ "${{ needs.e2e-main.result }}" = "success" ] \
+            && [ "${{ needs.e2e-offline.result }}" = "success" ]
 
   # --- Guard: schema drift --------------------------------------------------
   # #28: prod ran on a schema that no longer matched src/db/schema.ts because a

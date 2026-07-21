@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, skewClock } from './helpers';
+import { registerPasskey, resetAppData, skewClock } from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
 const NOW = '2026-07-18T12:00:00.000Z';
@@ -19,7 +19,7 @@ async function seedTask(page: Page, payload: Record<string, unknown>): Promise<s
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
