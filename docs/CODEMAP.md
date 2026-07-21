@@ -14,7 +14,7 @@ src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
     (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
-    (app)/heute/heute.css   Shortcut-Link „Gewohnheiten verwalten" (issue #102)
+    (app)/heute/heute.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126) + Shortcut-Link „Gewohnheiten verwalten" (issue #102)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
     (app)/kalender/         Termine            (leer bis M5)
@@ -86,7 +86,7 @@ src/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
     shell.css               App-Shell: Header + Bottom-Nav (mobil) / Header + Sidebar (Desktop)
-    app-header.tsx           Einstellungen-Einstieg, sitzt über der Nav statt als fünfter Tab (issue #123)
+    app-header.tsx           Einstellungen-Einstieg, zwei Varianten: `chrome` (Shell, nur ab 768px) und `inline` (nur auf /heute, mobil) (issue #123, #126)
     nav.tsx                 Die fünf Tabs (issue #123)
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity

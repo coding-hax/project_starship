@@ -170,6 +170,79 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
   expect(darkColor).not.toBe('rgb(0, 0, 0)');
 });
 
+test('mobile shows the settings entry point only inline on Heute, never on the other four screens (issue #126 AC1+AC2)', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'asserts the mobile-only header placement');
+  await registerPasskey(page);
+
+  const heuteSettings = page.getByRole('link', { name: 'Einstellungen' });
+  await expect(heuteSettings).toBeVisible();
+
+  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+    await page.goto(path);
+    await expect(page.getByRole('link', { name: 'Einstellungen' })).toHaveCount(0);
+  }
+});
+
+test('desktop keeps the settings entry point reachable from every screen via the sidebar column, with the active state intact (issue #126 AC3+AC4)', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'asserts the desktop-only sidebar placement');
+  await registerPasskey(page);
+
+  for (const path of ['/heute', '/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+    await page.goto(path);
+    await expect(page.getByRole('link', { name: 'Einstellungen' })).toBeVisible();
+  }
+
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  await settings.click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+  await expect(settings).toHaveAttribute('aria-current', 'page');
+});
+
+test('switching tabs never shifts where main starts, whether or not the settings entry point is present (issue #126 AC6)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  const main = page.locator('main.shell__main');
+  const heuteY = (await main.boundingBox())!.y;
+
+  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+    await page.goto(path);
+    const box = await main.boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.y - heuteY)).toBeLessThan(1);
+  }
+});
+
+test('the settings entry point never slides under the status bar (issue #126 AC5)', async ({ page }) => {
+  await registerPasskey(page);
+
+  const usesSafeAreaTop = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (
+          rule instanceof CSSStyleRule &&
+          rule.selectorText === '.shell__main' &&
+          rule.cssText.includes('env(safe-area-inset-top)')
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+  expect(usesSafeAreaTop).toBe(true);
+});
+
 test('the navigation sits where its layout puts it: bottom bar on mobile, left sidebar on desktop', async ({
   page,
 }, testInfo) => {

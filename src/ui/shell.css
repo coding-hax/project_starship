@@ -14,6 +14,7 @@
 .shell__main {
   grid-row: 2;
   padding: var(--space-6) var(--space-4);
+  padding-top: calc(var(--space-6) + env(safe-area-inset-top));
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
   max-width: 720px;
   width: 100%;
@@ -22,13 +23,24 @@
 
 /* ------------------------------- header ---------------------------------- */
 
-.app-header {
-  grid-row: 1;
+/*
+ * Einstellungen has two entry points (issue #126):
+ * - `chrome` sits in the shared shell, above `main`. On mobile it stays hidden —
+ *   every screen but Heute would otherwise carry a header for one icon — and only
+ *   reappears from `md` up, where it's reachable from every screen via the sidebar
+ *   column. Because it's either always-hidden or always-shown per breakpoint
+ *   regardless of route, switching tabs never changes its footprint (Smooth-Regel 3).
+ * - `inline` is the mobile stand-in: rendered by the Heute page itself, next to its
+ *   heading, so it never touches the shell grid at all.
+ */
+.app-header--chrome {
+  display: none;
+}
+
+.app-header--inline {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: var(--space-2) var(--space-4);
-  padding-top: calc(var(--space-2) + env(safe-area-inset-top));
 }
 
 .app-header__settings {
@@ -113,10 +125,17 @@
     grid-template-columns: 232px 1fr;
   }
 
-  .app-header {
+  .app-header--chrome {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
     grid-column: 2;
     grid-row: 1;
     padding: var(--space-3) var(--space-8) 0;
+  }
+
+  .app-header--inline {
+    display: none;
   }
 
   .shell__main {
