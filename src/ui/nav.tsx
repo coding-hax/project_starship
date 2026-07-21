@@ -7,18 +7,18 @@ import { usePathname } from 'next/navigation';
  * One navigation, two shapes: bottom bar on mobile, sidebar from `md` up.
  * Not a second design — the same links, laid out differently (DESIGN_SYSTEM.md).
  *
- * Habits deliberately have no tab; they live inside "Heute".
+ * Einstellungen is not a tab here — its entry point lives in AppHeader instead.
  */
 const TABS = [
   { href: '/heute', label: 'Heute', accent: 'var(--accent)', icon: '◉' },
   { href: '/aufgaben', label: 'Aufgaben', accent: 'var(--area-tasks)', icon: '✓' },
+  { href: '/gewohnheiten', label: 'Gewohnheiten', accent: 'var(--area-habits)', icon: '↻' },
   { href: '/kalender', label: 'Kalender', accent: 'var(--area-events)', icon: '▤' },
   { href: '/journal', label: 'Journal', accent: 'var(--area-journal)', icon: '✎' },
 ] as const;
 
 export function Nav() {
   const pathname = usePathname();
-  const settingsActive = pathname === '/einstellungen' || pathname.startsWith('/einstellungen/');
 
   return (
     <nav aria-label="Hauptnavigation" className="nav">
@@ -42,18 +42,6 @@ export function Nav() {
           );
         })}
       </ul>
-      {/* Not a fifth tab (DESIGN_SYSTEM.md keeps the bottom nav at four) — the entry
-          point into Einstellungen lives in the header area instead. */}
-      <Link
-        href="/einstellungen"
-        aria-label="Einstellungen"
-        aria-current={settingsActive ? 'page' : undefined}
-        className="nav__settings"
-      >
-        <span aria-hidden="true" className="nav__icon">
-          ⚙
-        </span>
-      </Link>
     </nav>
   );
 }

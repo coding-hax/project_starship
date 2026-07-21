@@ -36,9 +36,19 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: import.meta.dirname,
   // Default bottom-left badge sits on top of the mobile bottom nav (#26) — dev-only,
   // but it broke real clicks on the nav links while running against `pnpm dev`.
-  devIndicators: { position: 'top-right' },
+  // Since #123 the Einstellungen entry lives in the top-right header, so top-right now
+  // collides too. With the bottom bar and both header corners taken there is no free
+  // corner in both viewports; under E2E the dev-only badge is simply turned off so it
+  // can never sit on a real control.
+  devIndicators: process.env.NEXT_PUBLIC_E2E === '1' ? false : { position: 'top-right' },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
+  },
+  // Habits moved to their own tab at /gewohnheiten (issue #123). Permanent so
+  // bookmarks, an already-open tab, and the service worker's cached shell all
+  // still land in the right place.
+  async redirects() {
+    return [{ source: '/heute/gewohnheiten', destination: '/gewohnheiten', permanent: true }];
   },
 };
 

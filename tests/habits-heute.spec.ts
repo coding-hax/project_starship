@@ -185,7 +185,7 @@ test('ohne Gewohnheiten zeigt die Heute-Sektion einen Leerzustand mit Verweis au
   await expect(page.getByText('Noch keine Gewohnheiten.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Jetzt anlegen' })).toHaveAttribute(
     'href',
-    '/heute/gewohnheiten',
+    '/gewohnheiten',
   );
 });
 

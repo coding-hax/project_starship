@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
 });
 
 /* -------------------------------------------------------------------------- */

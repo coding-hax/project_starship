@@ -14,9 +14,9 @@ src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
     (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
-    (app)/heute/gewohnheiten/ page.tsx         Gewohnheiten-Verwaltung (issue #102) — kein eigener Tab, Einstieg über Heute
-    (app)/heute/heute.css   Link „Gewohnheiten verwalten" (issue #102)
+    (app)/heute/heute.css   Shortcut-Link „Gewohnheiten verwalten" (issue #102)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
+    (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
     (app)/kalender/         Termine            (leer bis M5)
     (app)/journal/          Journal            (leer bis M4)
     (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Spracherfassung (CapturePanel) + Export-Button
@@ -85,8 +85,9 @@ src/
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
-    shell.css               App-Shell: Bottom-Nav (mobil) / Sidebar (Desktop)
-    nav.tsx                 Die vier Tabs + Einstellungen-Einstieg (kein fünfter Tab)
+    shell.css               App-Shell: Header + Bottom-Nav (mobil) / Header + Sidebar (Desktop)
+    app-header.tsx           Einstellungen-Einstieg, sitzt über der Nav statt als fünfter Tab (issue #123)
+    nav.tsx                 Die fünf Tabs (issue #123)
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
@@ -106,7 +107,7 @@ tests/
   global-teardown.ts        gibt das Lock wieder frei (nur das eigene)
   run-lock.ts               Pfad des Lockfiles + Port (Dev) + PORT_PROD (Offline-Spec), gemeinsame Quelle für Setup und Config
   helpers.ts                virtueller Authenticator, DB-Zugriff, Reset, Clock-Skew (skewClock)
-  shell.spec.ts             Login, vier Tabs, aktiver Tab
+  shell.spec.ts             Login, fünf Tabs, aktiver Tab, Header-Einstellungen, Redirect /heute/gewohnheiten (issue #123)
   offline-critical.spec.ts  Kritischer Pfad SW → IndexedDB → Outbox → Postgres, läuft gegen echten Prod-Build (issue #57)
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session, Konfliktauflösung unter Uhrversatz (#53)
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline

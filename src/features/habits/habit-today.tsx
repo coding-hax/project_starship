@@ -8,9 +8,9 @@ import { useHabits } from './use-habits';
 import { useToggleHabitLog } from './use-toggle-habit-log';
 
 /**
- * The daily check-off list (issue #103). Habits have no tab of their own
- * (docs/DESIGN_SYSTEM.md) — this sits on /heute next to the link into the
- * management screen (issue #102), which is the other entry point.
+ * The daily check-off list (issue #103), on /heute next to the shortcut into the
+ * management screen (issue #102) — the /gewohnheiten tab (issue #123) is the
+ * other entry point.
  *
  * Unlike the task list, a checked-off row stays in place rather than
  * disappearing: the tap that checked it is also how you undo it (AC2), so the
@@ -29,7 +29,7 @@ export function HabitToday() {
     return (
       <p className="habit-today__empty">
         Noch keine Gewohnheiten.{' '}
-        <Link href="/heute/gewohnheiten">Jetzt anlegen</Link>
+        <Link href="/gewohnheiten">Jetzt anlegen</Link>
       </p>
     );
   }

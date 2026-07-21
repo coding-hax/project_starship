@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/auth/session';
+import { AppHeader } from '@/ui/app-header';
 import { E2EBridge } from '@/ui/e2e-bridge';
 import { Nav } from '@/ui/nav';
 import { SyncBoot } from '@/ui/sync-boot';
@@ -13,6 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="shell">
+      <AppHeader />
       <Nav />
       <main className="shell__main">{children}</main>
       <SyncBoot />

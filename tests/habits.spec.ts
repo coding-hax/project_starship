@@ -65,7 +65,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('ein designter Leerzustand statt eines leeren Screens', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await expect(page.getByText('Keine Gewohnheiten. Leg deine erste an.')).toBeVisible();
 });
 
@@ -74,7 +74,7 @@ test('ein designter Leerzustand statt eines leeren Screens', async ({ page }) =>
 /* -------------------------------------------------------------------------- */
 
 test('eine per FAB angelegte Gewohnheit erscheint sofort in der Liste', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await openAddHabit(page);
 
   await expect(createDialog(page)).toBeVisible();
@@ -91,7 +91,7 @@ test('eine per FAB angelegte Gewohnheit erscheint sofort in der Liste', async ({
 });
 
 test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await openAddHabit(page);
 
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
@@ -102,7 +102,7 @@ test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async (
 });
 
 test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await openAddHabit(page);
   await nameField(page).fill('Meditieren');
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
@@ -115,7 +115,7 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
 /* -------------------------------------------------------------------------- */
 
 test('Tippen auf eine Gewohnheit öffnet den Editor mit Name und Rhythmus', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
 
   await tapHabit(page, 'Joggen');
@@ -129,7 +129,7 @@ test('Tippen auf eine Gewohnheit öffnet den Editor mit Name und Rhythmus', asyn
 test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensatz', async ({
   page,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
 
   await tapHabit(page, 'Lesen');
@@ -145,7 +145,7 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
 });
 
 test('eine Farbe wählen und speichern setzt die Eigenfarbe der Gewohnheit', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Dehnen', schedule: 'daily', color: null, archivedAt: null });
 
   await tapHabit(page, 'Dehnen');
@@ -162,7 +162,7 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Gewohnheit', asy
 test('Archivieren entfernt die Gewohnheit aus der aktiven Liste und zeigt einen Undo-Toast', async ({
   page,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Tagebuch', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Tagebuch' });
   await expect(item).toBeVisible();
@@ -180,7 +180,7 @@ test('Archivieren entfernt die Gewohnheit aus der aktiven Liste und zeigt einen 
 test('der Undo-Toast beim Archivieren macht es rückgängig, die Gewohnheit ist wieder aktiv', async ({
   page,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Stretching', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Stretching' });
 
@@ -205,7 +205,7 @@ test('der Undo-Toast beim Archivieren macht es rückgängig, die Gewohnheit ist 
 test('Reaktivieren aus dem Archiv macht die Gewohnheit ohne Undo-Angebot wieder aktiv', async ({
   page,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, {
     name: 'Alte Gewohnheit',
     schedule: 'daily',
@@ -231,7 +231,7 @@ test('offline angelegt: sofort sichtbar, genau ein Eintrag in der Outbox', async
   page,
   context,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await context.setOffline(true);
 
   await openAddHabit(page);
@@ -248,7 +248,7 @@ test('nach dem Onlinegehen erreicht die offline angelegte Gewohnheit die echte D
   page,
   context,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await context.setOffline(true);
 
   await openAddHabit(page);
@@ -275,7 +275,7 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   page,
   context,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Offline archivieren', schedule: 'daily', color: null, archivedAt: null });
   await context.setOffline(true);
 
@@ -318,7 +318,7 @@ function colorDotFor(page: Page, name: string) {
 test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode', async ({
   page,
 }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', color: null, archivedAt: null });
 
   const dot = colorDotFor(page, 'Standardfarbe');
@@ -333,7 +333,7 @@ test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, au
 });
 
 test('eine gewählte Eigenfarbe zeigt den passenden Bereichs-Token', async ({ page }) => {
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, {
     name: 'Eigenfarbe',
     schedule: 'daily',
@@ -350,7 +350,7 @@ test('bei reduzierter Bewegung öffnet das Anlegen-Sheet nur mit einem Opacity-�
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await openAddHabit(page);
 
   const dialog = createDialog(page);
@@ -364,7 +364,7 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/heute/gewohnheiten');
+  await page.goto('/gewohnheiten');
   await seedHabit(page, {
     name: 'Archiviert & ruhig',
     schedule: 'daily',

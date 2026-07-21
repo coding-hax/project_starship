@@ -68,7 +68,7 @@ Diese vier Regeln sind nicht verhandelbar, sie sind das Produktversprechen:
 
 ## Mobile-Patterns
 
-- **Bottom-Navigation**, 4 Tabs: Heute · Aufgaben · Kalender · Journal (Habits leben im „Heute").
+- **Bottom-Navigation**, 5 Tabs: Heute · Aufgaben · Gewohnheiten · Kalender · Journal. Einstellungen ist kein Tab — der Einstieg sitzt im Header.
 - Touch-Ziele mindestens **44 × 44 px**.
 - `env(safe-area-inset-*)` überall — die Navigation darf nicht unter dem Home-Indicator kleben.
 - **Swipe-Gesten:** nach rechts = erledigen, nach links = verschieben/löschen. Immer mit Undo-Toast.
