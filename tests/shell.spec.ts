@@ -107,7 +107,11 @@ test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404i
 
 test('Einstellungen is reachable from the header and keeps its active state (issue #123 AC5)', async ({
   page,
-}) => {
+}, testInfo) => {
+  // Since #126, the header only persists across navigation on desktop — on mobile it's
+  // scoped to /heute alone, so the link this test clicks away from no longer exists once
+  // it lands on /einstellungen. Mobile's entry point is covered by the #126 AC1+AC2 test.
+  test.skip(testInfo.project.name !== 'desktop', 'header only persists across nav on desktop');
   await registerPasskey(page);
 
   const settings = page.getByRole('link', { name: 'Einstellungen' });
