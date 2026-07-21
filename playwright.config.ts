@@ -19,6 +19,31 @@ const e2eEnv = {
   RP_NAME: 'Starship',
 };
 
+// 'main' = dev server only, 'offline' = production build only, unset = both (#115).
+const E2E_SCOPE = process.env.E2E_SCOPE ?? 'all';
+
+const devServer = {
+  command: 'pnpm dev --port ' + PORT,
+  url: baseURL,
+  // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
+  // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
+  // Refusing to start says what is wrong; reusing hides it.
+  reuseExistingServer: false,
+  timeout: 120_000,
+  env: { ...e2eEnv, RP_ORIGIN: baseURL },
+};
+
+const prodServer = {
+  // NEXT_PUBLIC_E2E is inlined at build time — it must be set on the build step
+  // too, or the E2E bridge (src/ui/e2e-bridge.tsx) is simply missing from the bundle.
+  command: `pnpm build && pnpm start --port ${PORT_PROD}`,
+  url: baseURLProd,
+  reuseExistingServer: false,
+  // A production build needs more room than the dev server's plain boot.
+  timeout: 300_000,
+  env: { ...e2eEnv, RP_ORIGIN: baseURLProd },
+};
+
 export default defineConfig({
   testDir: './tests',
   // Owns its own config (playwright.smoke.config.ts) and target — no webServer, no
@@ -76,26 +101,13 @@ export default defineConfig({
     },
   ],
 
+  // `webServer` is global: Playwright boots EVERY entry before any project runs. So a
+  // run that only needs the dev server would still pay the full production build —
+  // which only offline-critical.spec.ts actually needs. E2E_SCOPE (#115) lets CI split
+  // the suite into two parallel jobs, each booting just its own server. Unset (a plain
+  // local `pnpm e2e`) keeps both, so nothing changes for developers.
   webServer: [
-    {
-      command: 'pnpm dev --port ' + PORT,
-      url: baseURL,
-      // Never reuse: a foreign process on 3100 (or a dev server on its way out) would be
-      // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
-      // Refusing to start says what is wrong; reusing hides it.
-      reuseExistingServer: false,
-      timeout: 120_000,
-      env: { ...e2eEnv, RP_ORIGIN: baseURL },
-    },
-    {
-      // NEXT_PUBLIC_E2E is inlined at build time — it must be set on the build step
-      // too, or the E2E bridge (src/ui/e2e-bridge.tsx) is simply missing from the bundle.
-      command: `pnpm build && pnpm start --port ${PORT_PROD}`,
-      url: baseURLProd,
-      reuseExistingServer: false,
-      // A production build needs more room than the dev server's plain boot.
-      timeout: 300_000,
-      env: { ...e2eEnv, RP_ORIGIN: baseURLProd },
-    },
+    ...(E2E_SCOPE === 'offline' ? [] : [devServer]),
+    ...(E2E_SCOPE === 'main' ? [] : [prodServer]),
   ],
 });
