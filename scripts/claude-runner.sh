@@ -850,6 +850,17 @@ Ablauf:
      KEIN Log-Dump,
    - Endgrund: 'gate-rot' oder 'frage-offen' (Limit/Timeout traegt das Runner-
      Skript selbst nach, das musst du nicht tun).
+   Steht im Fortschrittskommentar bereits ein Abschnitt "## Was schon versucht
+   wurde": lies ihn ZUERST und schlage keinen dort als ausgeschlossen
+   vermerkten Weg erneut ein -- das waere ein Fehlschlag des Tickets, nicht
+   nur verlorene Zeit. Ab dem ERSTEN erfolglosen Bau-Lauf haengst du selbst
+   an diesen Abschnitt an (er waechst, wird nie ueberschrieben): was du
+   versucht hast, woran es scheiterte, was damit ausgeschlossen ist -- in
+   Klartext, kein Signatur-Hash. Ab demselben Zeitpunkt schneidest du die
+   Checkliste feiner: ein Haken je Fehlereinheit (je rotem Test, je rotem
+   Check) statt je Phase, mit Gruppenkopf "(N von M gruen)"; jede geloeste
+   Einheit einzeln committen und pushen, der Marker "← HIER WEITER" ruckt auf
+   die naechste offene Einheit, geloeste bleiben abgehakt.
 6. Wenn du eine Entscheidung brauchst: Kommentar am Issue mit konkreten
    Optionen und deiner Empfehlung, Label 'needs-input' setzen, beenden.
    Rate niemals. Schreib die Frage NICHT nach stdout.
