@@ -129,6 +129,7 @@ scripts/
   check-sync-invariants.sh  Wächter gegen direkten fetch(/api) außerhalb der Outbox (#58)
   check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)
   tests/dexie-bump.test.sh  Fixture-Tests für check-dexie-bump.sh (#59)
+  tests/limit-until.test.sh Fixture-Tests: abgelaufenes 'limit-until' hebt die Pause selbst auf, aktives bleibt unangetastet, fehlender/kaputter Wert pausiert nicht dauerhaft (#121)
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
   vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
   smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright
