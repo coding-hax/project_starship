@@ -9,6 +9,35 @@
   color: var(--text-muted);
 }
 
+.habit-list__month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-2);
+}
+
+.habit-list__month-nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.habit-list__month-nav-label {
+  min-width: 10ch;
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 .habit-list {
   display: flex;
   flex-direction: column;

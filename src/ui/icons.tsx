@@ -79,3 +79,19 @@ export function IconSettings({ className }: IconProps) {
     </svg>
   );
 }
+
+export function IconChevronLeft({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+
+export function IconChevronRight({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
