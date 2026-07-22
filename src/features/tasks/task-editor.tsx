@@ -160,6 +160,12 @@ export function TaskEditor({ task, onClose, nestCandidates, hasChildren }: TaskE
                 type="radio"
                 name="priority"
                 checked={priority === p.value}
+                // A tap's default action focuses the radio, stealing focus from the
+                // title field mid-typing (#138) — same effect as SegmentedControl's
+                // explicit focus() call, just via the browser's native default this
+                // time. Suppressing it leaves focus where it was; `onChange` still
+                // fires via the click that follows.
+                onPointerDown={(event) => event.preventDefault()}
                 onChange={() => setPriority(p.value)}
               />
               {p.label}
