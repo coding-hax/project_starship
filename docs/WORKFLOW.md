@@ -117,6 +117,7 @@ Zustandsmaschine des ganzen Setups:
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 | `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
+| `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
 | `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
 
 Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
@@ -145,9 +146,13 @@ das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
   Label `needs-input`, Blocker-Kommentar am Ticket.
 - **Opus-Deckel:** höchstens 2 Opus-Bau-Läufe pro Ticket und Kalendertag.
   Überschreitung → sofort `needs-input`, kein weiterer Opus-Bau-Versuch an
-  diesem Tag.
+  diesem Tag. Die Meldung erscheint höchstens einmal je Ticket und Tag und
+  nennt `opus-boost` als Ausweg vom Handy: das Label hebt die Zwei-Grenze für
+  dieses Ticket auf, ohne den Zähler zu nullen, und wird von einem Opus-Lauf
+  ohne Fortschritt wieder abgezogen. `no-escalation` gewinnt gegen
+  `opus-boost`.
 - Zustand liegt dateibasiert unter `.runner/` (`tier-<nr>`, `failcount-<nr>`,
-  `opus-<datum>-<nr>`) und überlebt Neustarts.
+  `opus-<datum>-<nr>`, `opus-cap-msg-<datum>-<nr>`) und überlebt Neustarts.
 
 Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 
