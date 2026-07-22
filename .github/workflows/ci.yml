@@ -48,8 +48,19 @@ jobs:
   # NOTE: the required status check is the aggregate job named `e2e` below. Do not
   # rename these two without updating branch protection, or a failing half would stop
   # blocking the merge.
+  #
+  # e2e-main is further split into a 3-way shard matrix (#118): the ~4.6s/test that's
+  # left after #115 is real work (page boot, sync, expect.poll), nothing left to
+  # optimize away, only to distribute. Each shard is its own job with its own
+  # Postgres — sharding only splits which tests run where, never a database, so
+  # nothing here shares state across shards. fail-fast is off so a red shard doesn't
+  # cancel the others: we want the full picture (and the full merged report) every run.
   e2e-main:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:17-alpine
@@ -79,14 +90,42 @@ jobs:
       - run: pnpm exec playwright install-deps chromium
       - run: pnpm exec playwright install chromium
       - run: pnpm db:migrate
-      - run: pnpm exec playwright test --project=mobile --project=desktop
+      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/3 --reporter=blob
         env:
           E2E_SCOPE: main
+      # Blob keeps every shard's attachments (traces, screenshots, video) so the
+      # merge step below can rebuild one HTML report with all of them, pass or fail.
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
+        with:
+          name: blob-report-main-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
+
+  # Recombines the per-shard blob reports from e2e-main into the one HTML report a
+  # human would actually open. Runs regardless of shard outcome (`if: always()`) —
+  # it only builds a report, it never gates the merge (that's still `e2e` below).
+  e2e-main-report:
+    if: always()
+    needs: [e2e-main]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-main-*
+          merge-multiple: true
+      - run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
+      - uses: actions/upload-artifact@v4
         with:
           name: playwright-report-main
           path: playwright-report/
+          retention-days: 14
 
   e2e-offline:
     runs-on: ubuntu-latest
