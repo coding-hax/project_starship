@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -47,6 +47,18 @@ export function SegmentedControl<T extends string>({
     }
   }
 
+  /**
+   * A pointer tap's default action includes focusing the target — fine on its own,
+   * but next to a text field (#138) it steals focus mid-typing, which on mobile
+   * closes the keyboard and shifts any bottom sheet anchored above it. Suppressing
+   * that default leaves focus wherever it already was; `onClick` still fires and
+   * still selects. Keyboard activation (Tab/Space/Enter/arrows) never dispatches
+   * `pointerdown`, so roving-tabindex navigation is untouched.
+   */
+  function handlePointerDown(event: PointerEvent) {
+    event.preventDefault();
+  }
+
   return (
     <div
       className="segmented"
@@ -70,6 +82,7 @@ export function SegmentedControl<T extends string>({
           aria-checked={option.value === value}
           tabIndex={option.value === value ? 0 : -1}
           className="segmented__option"
+          onPointerDown={handlePointerDown}
           onClick={() => onChange(option.value)}
           onKeyDown={(event) => handleKeyDown(event, index)}
         >
