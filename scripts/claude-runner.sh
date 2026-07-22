@@ -334,6 +334,16 @@ build_escalation_eval() {
     return 0
   fi
 
+  # opus-boost (#136) wird von einem ERGEBNISLOSEN Opus-Bau-Lauf verbraucht --
+  # ein Tap deckt genau einen erfolglosen Versuch ab. Bei Fortschritt (Zweig
+  # oben) bleibt das Label bewusst haengen, auf einem anderen Modell als Opus
+  # waere der Verbrauch verschwendet.
+  if [ "$MODEL" = "opus" ]; then
+    case "$LABELS" in
+      *opus-boost*) gh issue edit "$ISSUE" --remove-label opus-boost >/dev/null 2>&1 ;;
+    esac
+  fi
+
   local sig prev fc
   sig=$(blocker_sig "$ISSUE")
   prev=$(cat "$STATE_DIR/blocker-sig-$ISSUE" 2>/dev/null || echo "")
@@ -368,8 +378,9 @@ build_escalation_eval() {
 # und Kalendertag. Eigener, tagesgestempelter Zaehler -- unabhaengig vom
 # (inzwischen abgeschafften, PR #46) Deckel der nur-lesenden Denk-Rollen, weil
 # Opus hier tatsaechlich schreibt statt nur zu lesen.
-opus_build_cap_reached() {   # $1 = Issue-Nr -> 0 (Deckel erreicht) / 1 (noch Luft)
-  local issue="$1" count
+opus_build_cap_reached() {   # $1 = Issue-Nr, $2 = LABELS (optional) -> 0 (Deckel erreicht) / 1 (noch Luft)
+  local issue="$1" labels="${2:-}" count
+  case "$labels" in *opus-boost*) return 1 ;; esac
   count=$(cat "$STATE_DIR/opus-build-$(date +%Y%m%d)-$issue" 2>/dev/null || echo 0)
   [ "${count:-0}" -ge 2 ] 2>/dev/null
 }
@@ -445,19 +456,19 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
 }
 
 # --- .runner/ räumt sich auf (#64) -------------------------------------------
-# tier-/failcount-/opus-build-<datum>-/session--Dateien geschlossener Tickets
-# blieben bisher fuer immer liegen. Einmal PRO TICK (nicht pro Runde) alles
-# aelter als 7 Tage weg. Ausdruecklich verschont: 'limit-until' (kein
-# Ticket-Bezug, gehoert nicht zu den vier Mustern) und die Session-Datei des
-# GERADE laufenden Tickets, egal wie alt (z. B. ein Ticket, das laenger als
-# 7 Tage an einem Wochenlimit haengt).
+# tier-/failcount-/opus-build-<datum>-/opus-cap-msg-<datum>-/session--Dateien
+# geschlossener Tickets blieben bisher fuer immer liegen. Einmal PRO TICK
+# (nicht pro Runde) alles aelter als 7 Tage weg. Ausdruecklich verschont:
+# 'limit-until' (kein Ticket-Bezug, gehoert nicht zu den Mustern) und die
+# Session-Datei des GERADE laufenden Tickets, egal wie alt (z. B. ein Ticket,
+# das laenger als 7 Tage an einem Wochenlimit haengt).
 cleanup_state_dir() {
   local keep_session
   keep_session=$(gh issue list --label in-progress --state open --limit 5 \
                    --json number -q '.[0].number // empty' 2>/dev/null)
   local -a find_args=(
     "$STATE_DIR" -maxdepth 1
-    '(' -name 'tier-*' -o -name 'failcount-*' -o -name 'opus-build-*' -o -name 'session-*' ')'
+    '(' -name 'tier-*' -o -name 'failcount-*' -o -name 'opus-build-*' -o -name 'opus-cap-msg-*' -o -name 'session-*' ')'
     -mtime +7
   )
   [ -n "$keep_session" ] && find_args+=(-not -name "session-$keep_session")
@@ -776,12 +787,18 @@ fi
 # Deckel greift VOR dem claude-Aufruf, damit ein erschoepftes Tagesbudget nicht
 # noch einen (teuren) dritten Opus-Lauf kostet.
 if [ "$RUN_ROLE" = "build" ] && [ "$MODEL" = "opus" ]; then
-  if opus_build_cap_reached "$ISSUE"; then
-    gh issue comment "$ISSUE" --body \
-      "🤖 Opus-Tagesbudget (2 Bau-Läufe) für #$ISSUE ist für heute erschöpft — die Eskalation bleibt auf der höchsten Stufe stecken.
+  if opus_build_cap_reached "$ISSUE" "$LABELS"; then
+    # Meldung hoechstens einmal je Ticket und Tag (#136) -- eine tagesgestempelte
+    # Stempeldatei statt bei jedem Tick erneut zu posten.
+    CAP_MSG_STAMP="$STATE_DIR/opus-cap-msg-$(date +%Y%m%d)-$ISSUE"
+    if [ ! -e "$CAP_MSG_STAMP" ]; then
+      gh issue comment "$ISSUE" --body \
+        "🤖 Opus-Tagesbudget (2 Bau-Läufe) für #$ISSUE ist für heute erschöpft — die Eskalation bleibt auf der höchsten Stufe stecken.
 
-Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Willst du dauerhaft bei Sonnet/Haiku bleiben, setze das Label \`no-escalation\`." \
-      >/dev/null 2>&1
+Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opus-boost\`, um für dieses Ticket noch heute einen weiteren Opus-Bau-Versuch freizugeben (wird nur bei ausbleibendem Fortschritt wieder abgezogen). Willst du dauerhaft bei Sonnet/Haiku bleiben, setze stattdessen das Label \`no-escalation\`." \
+        >/dev/null 2>&1
+      touch "$CAP_MSG_STAMP"
+    fi
     gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
     status "wartet auf dich (#$ISSUE)" "🟡" \
       "🟡 **Opus-Tagesbudget für #$ISSUE erschöpft.** Ich warte auf dich."
