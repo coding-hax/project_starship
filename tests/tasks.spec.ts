@@ -467,6 +467,34 @@ test('nur die geänderte Priorität landet in der Mutation, nicht der ganze Date
   expect(last.payload).toEqual({ priority: 2 });
 });
 
+test('Tippen auf die Priorität lässt Fokus im Titelfeld, Weitertippen hängt an statt zu ersetzen (#138)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Bericht', priority: 0 });
+  await tapTask(page, 'Bericht');
+
+  const dialog = editorDialog(page);
+  const titleField = dialog.getByRole('textbox', { name: 'Titel' });
+  await expect(titleField).toBeFocused();
+  await titleField.press('End');
+
+  await dialog.getByRole('radio', { name: 'Hoch' }).click();
+
+  await expect(titleField).toBeFocused();
+  await expect(dialog.getByRole('radio', { name: 'Hoch' })).toBeChecked();
+
+  await page.keyboard.type(' schreiben');
+  await expect(titleField).toHaveValue('Bericht schreiben');
+
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.payload).toEqual({ title: 'Bericht schreiben', priority: 1 });
+});
+
 test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber nicht die Position (issue #88 AC3)', async ({
   page,
 }) => {

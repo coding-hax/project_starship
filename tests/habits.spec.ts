@@ -111,6 +111,51 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: Tippen auf den Rhythmus stiehlt dem Namensfeld nicht den Fokus (#138)  */
+/* -------------------------------------------------------------------------- */
+
+test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippen hängt an statt zu ersetzen (#138)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+
+  await nameField(page).pressSequentially('Wasser');
+  await createDialog(page).getByRole('radio', { name: 'Wöchentlich' }).click();
+
+  await expect(nameField(page)).toBeFocused();
+  await expect(createDialog(page).getByRole('radio', { name: 'Wöchentlich' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+
+  await page.keyboard.type(' trinken');
+  await expect(nameField(page)).toHaveValue('Wasser trinken');
+
+  await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
+  await expect(createDialog(page)).toBeHidden();
+  const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
+  await expect(item).toBeVisible();
+  await expect(item).toContainText('Wöchentlich');
+});
+
+test('Tastaturbedienung des Rhythmus bleibt unverändert: Tab erreicht die Auswahl, Pfeiltasten verschieben Fokus und Auswahl (#138)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+  await nameField(page).fill('Lesen');
+
+  await page.keyboard.press('Tab');
+  await expect(createDialog(page).getByRole('radio', { name: 'Täglich' })).toBeFocused();
+
+  await page.keyboard.press('ArrowRight');
+  const weekly = createDialog(page).getByRole('radio', { name: 'Wöchentlich' });
+  await expect(weekly).toBeFocused();
+  await expect(weekly).toHaveAttribute('aria-checked', 'true');
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Bearbeiten und Archivieren funktionieren; archivierte verschwinden     */
 /* -------------------------------------------------------------------------- */
 
