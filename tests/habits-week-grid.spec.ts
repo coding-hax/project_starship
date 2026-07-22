@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, skewClock, withDb } from './helpers';
+import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // A Wednesday, same reference date as habits-heute.spec.ts / streaks.spec.ts.
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -26,7 +26,14 @@ function weekGrid(page: Page, habitName: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  // resetAppData, not resetDatabase: wiping sessions/credentials forces registerPasskey
+  // through a full re-registration every test, and that leaves goto('/gewohnheiten')
+  // racing session propagation — a stale session redirects to /anmelden, where the app
+  // layout (and with it the E2E bridge) never mounts, so window.__starship never appears
+  // and the wait below hits its timeout (#120). The stable habit specs (habits-heute,
+  // streaks) all reset only app data; this one diverged for no reason. Domain tests need
+  // empty rows, not a logged-out browser.
+  await resetAppData();
   // The grid must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
