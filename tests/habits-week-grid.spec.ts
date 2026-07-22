@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetDatabase, skewClock, withDb } from './helpers';
+import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // A Wednesday, same reference date as habits-heute.spec.ts / streaks.spec.ts.
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -26,12 +26,29 @@ function weekGrid(page: Page, habitName: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await resetDatabase();
+  // resetAppData, not resetDatabase: wiping sessions/credentials forces registerPasskey
+  // through a full re-registration every test, and that leaves goto('/gewohnheiten')
+  // racing session propagation — a stale session redirects to /anmelden, where the app
+  // layout (and with it the E2E bridge) never mounts, so window.__starship never appears
+  // and the wait below hits its timeout (#120). The stable habit specs (habits-heute,
+  // streaks) all reset only app data; this one diverged for no reason. Domain tests need
+  // empty rows, not a logged-out browser.
+  await resetAppData();
   // The grid must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
   await page.goto('/gewohnheiten');
+  // The E2E bridge attaches window.__starship from a post-hydration effect
+  // (src/ui/e2e-bridge.tsx), which can land after goto's load event. These tests
+  // reach for seedHabit → window.__starship.mutate as their very first step, with no
+  // UI interaction in between to gate on — so wait for the handle before touching it.
+  // Poll on an explicit timer, not the default rAF: skewClock above installed a fake
+  // clock (page.clock.setFixedTime), under which rAF is not guaranteed to advance,
+  // while ordinary timers keep firing. A condition, not a fixed timeout.
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -140,8 +157,11 @@ test('offline getippt erreicht der Log online den Server (issue #105 AC3)', asyn
     })
     .toBe(1);
 
-  await context.setOffline(false);
+  // Must unroute before going online: the app's own 'online' listener fires an
+  // automatic sync() the instant we go online, and unrouting after that races its
+  // in-flight request against the route being torn down — the request never settles (#120).
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
