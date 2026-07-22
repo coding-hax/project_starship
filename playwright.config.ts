@@ -49,13 +49,17 @@ export default defineConfig({
   // No config-level testIgnore on purpose (#115): a project that declares its own
   // `testIgnore` REPLACES the config-level one, so a global rule here would silently
   // apply to some projects and not others. Every project below states its own scope.
-  fullyParallel: false, // one database, one owner — parallel runs would fight over it
-  // …and this enforces it: a second concurrent run aborts instead of wiping our credentials.
+  // fullyParallel only changes how tests are handed out for sharding/ordering — with
+  // workers fixed at 1 below, exactly one test still runs at a time. Without it,
+  // `--shard` divides by file, not by test, so shards land unevenly (#118). A second
+  // concurrent *run* is still refused by the run-lock in global-setup.ts below —
+  // that's the actual guard against fighting over one database.
+  fullyParallel: true,
   globalSetup: './tests/global-setup.ts',
   globalTeardown: './tests/global-teardown.ts',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  workers: 1, // one database, one owner — parallel workers would fight over it
   reporter: process.env.CI ? [['html'], ['list']] : 'list',
 
   use: {
