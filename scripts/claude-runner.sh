@@ -338,7 +338,7 @@ build_escalation_eval() {
   # ein Tap deckt genau einen erfolglosen Versuch ab. Bei Fortschritt (Zweig
   # oben) bleibt das Label bewusst haengen, auf einem anderen Modell als Opus
   # waere der Verbrauch verschwendet.
-  if [ "$MODEL" = "opus" ]; then
+  if [ "${MODEL:-}" = "opus" ]; then
     case "$LABELS" in
       *opus-boost*) gh issue edit "$ISSUE" --remove-label opus-boost >/dev/null 2>&1 ;;
     esac
