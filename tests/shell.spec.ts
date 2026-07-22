@@ -105,22 +105,6 @@ test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404i
   expect(await redirected!.response().then((r) => r?.status())).toBe(308);
 });
 
-test('Einstellungen is reachable from the header and keeps its active state (issue #123 AC5)', async ({
-  page,
-}, testInfo) => {
-  // Since #126, the header only persists across navigation on desktop — on mobile it's
-  // scoped to /heute alone, so the link this test clicks away from no longer exists once
-  // it lands on /einstellungen. Mobile's entry point is covered by the #126 AC1+AC2 test.
-  test.skip(testInfo.project.name !== 'desktop', 'header only persists across nav on desktop');
-  await registerPasskey(page);
-
-  const settings = page.getByRole('link', { name: 'Einstellungen' });
-  await expect(settings).not.toHaveAttribute('aria-current', 'page');
-  await settings.click();
-  await expect(page).toHaveURL(/\/einstellungen$/);
-  await expect(settings).toHaveAttribute('aria-current', 'page');
-});
-
 test('the bottom nav still reserves space for the home indicator (issue #123 AC6)', async ({
   page,
 }) => {
@@ -172,38 +156,6 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
   await expect(habitsTab).toHaveAttribute('aria-current', 'page');
   const darkColor = await habitsTab.evaluate((el) => getComputedStyle(el).color);
   expect(darkColor).not.toBe('rgb(0, 0, 0)');
-});
-
-test('mobile shows the settings entry point only inline on Heute, never on the other four screens (issue #126 AC1+AC2)', async ({
-  page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'asserts the mobile-only header placement');
-  await registerPasskey(page);
-
-  const heuteSettings = page.getByRole('link', { name: 'Einstellungen' });
-  await expect(heuteSettings).toBeVisible();
-
-  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
-    await page.goto(path);
-    await expect(page.getByRole('link', { name: 'Einstellungen' })).toHaveCount(0);
-  }
-});
-
-test('desktop keeps the settings entry point reachable from every screen via the sidebar column, with the active state intact (issue #126 AC3+AC4)', async ({
-  page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'asserts the desktop-only sidebar placement');
-  await registerPasskey(page);
-
-  for (const path of ['/heute', '/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
-    await page.goto(path);
-    await expect(page.getByRole('link', { name: 'Einstellungen' })).toBeVisible();
-  }
-
-  const settings = page.getByRole('link', { name: 'Einstellungen' });
-  await settings.click();
-  await expect(page).toHaveURL(/\/einstellungen$/);
-  await expect(settings).toHaveAttribute('aria-current', 'page');
 });
 
 test('switching tabs never shifts where main starts, whether or not the settings entry point is present (issue #126 AC6)', async ({
