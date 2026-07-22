@@ -105,18 +105,6 @@ test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404i
   expect(await redirected!.response().then((r) => r?.status())).toBe(308);
 });
 
-test('Einstellungen is reachable from the header and keeps its active state (issue #123 AC5)', async ({
-  page,
-}) => {
-  await registerPasskey(page);
-
-  const settings = page.getByRole('link', { name: 'Einstellungen' });
-  await expect(settings).not.toHaveAttribute('aria-current', 'page');
-  await settings.click();
-  await expect(page).toHaveURL(/\/einstellungen$/);
-  await expect(settings).toHaveAttribute('aria-current', 'page');
-});
-
 test('the bottom nav still reserves space for the home indicator (issue #123 AC6)', async ({
   page,
 }) => {
@@ -227,6 +215,47 @@ test('the active tab colors its icon via currentColor, with no second color defi
     iconColor: getComputedStyle(el.querySelector('svg')!).color,
   }));
   expect(iconColor).toBe(linkColor);
+});
+
+test('switching tabs never shifts where main starts, whether or not the settings entry point is present (issue #126 AC6)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  const main = page.locator('main.shell__main');
+  const heuteY = (await main.boundingBox())!.y;
+
+  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+    await page.goto(path);
+    const box = await main.boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.y - heuteY)).toBeLessThan(1);
+  }
+});
+
+test('the settings entry point never slides under the status bar (issue #126 AC5)', async ({ page }) => {
+  await registerPasskey(page);
+
+  const usesSafeAreaTop = await page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      for (const rule of Array.from(rules)) {
+        if (
+          rule instanceof CSSStyleRule &&
+          rule.selectorText === '.shell__main' &&
+          rule.cssText.includes('env(safe-area-inset-top)')
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+  expect(usesSafeAreaTop).toBe(true);
 });
 
 test('the navigation sits where its layout puts it: bottom bar on mobile, left sidebar on desktop', async ({

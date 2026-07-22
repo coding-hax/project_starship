@@ -89,9 +89,15 @@ export default defineConfig({
         baseURL: E2E_SCOPE === 'offline' ? baseURLProd : baseURL,
       },
     },
+    // A handful of shell assertions only hold in one layout (#126: the settings entry
+    // point is inline on Heute for mobile, in the sidebar for desktop). Those live in
+    // `*.mobile.spec.ts` / `*.desktop.spec.ts` and are routed by project here — the way
+    // Playwright scopes tests to a viewport. Doing it with `test.skip(project.name !== …)`
+    // inside a shared file would be a runtime skip, which `test-integrity` rejects and
+    // rightly so: nothing in the file tells a scoped test apart from a disabled one.
     {
       name: 'mobile',
-      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|.*\.desktop)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -101,7 +107,7 @@ export default defineConfig({
     },
     {
       name: 'desktop',
-      testIgnore: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|.*\.mobile)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
