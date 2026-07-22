@@ -51,8 +51,7 @@
 }
 
 .app-header__icon {
-  font-size: 20px;
-  line-height: 1;
+  display: flex;
 }
 
 /* --------------------------------- nav ---------------------------------- */
@@ -101,8 +100,7 @@
 }
 
 .nav__icon {
-  font-size: 20px;
-  line-height: 1;
+  display: flex;
 }
 
 /* ------------------------------- desktop -------------------------------- */
