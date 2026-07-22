@@ -30,6 +30,7 @@ jobs:
       - run: bash scripts/tests/round-snap.test.sh
       - run: bash scripts/tests/queue-priority.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
+      - run: bash scripts/tests/limit-until.test.sh
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
