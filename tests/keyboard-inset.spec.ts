@@ -102,7 +102,9 @@ test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => 
       )
       .toBe('300px');
 
-    const sheetContent = page.locator('.sheet__content');
+    // Scope to the open sheet: a closed <dialog> keeps its .sheet__content in the
+    // DOM but is out of the a11y tree, so getByRole('dialog') matches only this one.
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
     const before = await sheetContent.boundingBox();
 
     await page.getByRole('radio', { name: 'Wöchentlich' }).click();
