@@ -116,6 +116,16 @@ test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => 
       getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
     );
     expect(inset).toBe('300px');
-    expect(await sheetContent.boundingBox()).toEqual(before);
+    // Round to whole pixels: boundingBox() carries sub-pixel rendering noise
+    // (e.g. 129 vs 129.019...) that's irrelevant to the regression being guarded.
+    const round = (box: NonNullable<Awaited<ReturnType<typeof sheetContent.boundingBox>>>) => ({
+      x: Math.round(box.x),
+      y: Math.round(box.y),
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+    });
+    const after = await sheetContent.boundingBox();
+    expect(after).not.toBeNull();
+    expect(round(after!)).toEqual(round(before!));
   });
 });
