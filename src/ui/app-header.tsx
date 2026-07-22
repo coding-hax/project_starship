@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { IconSettings } from './icons';
 
 /**
  * The Einstellungen entry point. Lives outside <Nav> so a fifth bottom-nav slot
@@ -20,7 +21,7 @@ export function AppHeader() {
         className="app-header__settings"
       >
         <span aria-hidden="true" className="app-header__icon">
-          ⚙
+          <IconSettings />
         </span>
       </Link>
     </header>
