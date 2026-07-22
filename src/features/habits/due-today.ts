@@ -9,6 +9,64 @@ export function toDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+const MONTH_NAMES = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
+/** The first of `date`'s month, local calendar (issue #124). */
+export function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+/** `date`'s month shifted by `delta` months, always normalized to the 1st. */
+export function addMonths(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
+}
+
+/** `"Juli 2026"` — the month bar heading (issue #124). */
+export function monthLabel(date: Date): string {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** `"15. Juli 2026"` from a `YYYY-MM-DD` date key, for a cell's accessible name. */
+export function dayLabel(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return `${day}. ${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+/**
+ * Mon–Sun grid cells for the month containing `date`, as date keys — `null`
+ * pads the leading/trailing weeks so every row stays a full Mon–Sun week
+ * (issue #124 AC1). Length is always a multiple of 7.
+ */
+export function monthDays(date: Date): Array<string | null> {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = new Date(year, month, 1).getDay(); // 0 = Sunday
+  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1;
+
+  const days: Array<string | null> = Array.from({ length: leadingBlanks }, () => null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    days.push(toDateKey(new Date(year, month, day)));
+  }
+  const trailingBlanks = (7 - (days.length % 7)) % 7;
+  for (let i = 0; i < trailingBlanks; i += 1) days.push(null);
+
+  return days;
+}
+
 /** Monday–Sunday range containing `date`, as date keys (ISO week, Monday = start). */
 export function currentWeekRange(date: Date): { start: string; end: string } {
   const weekday = date.getDay(); // 0 = Sunday

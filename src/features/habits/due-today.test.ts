@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { currentWeekRange, isDueToday, toDateKey } from './due-today';
+import {
+  addMonths,
+  currentWeekRange,
+  dayLabel,
+  isDueToday,
+  monthDays,
+  monthLabel,
+  startOfMonth,
+  toDateKey,
+} from './due-today';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -89,5 +98,51 @@ describe('isDueToday', () => {
   it('ignores logs for a different habit', () => {
     const logs = [log({ habitId: 'other-habit', logDate: '2026-07-13', done: true })];
     expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+  });
+});
+
+describe('startOfMonth / addMonths (issue #124)', () => {
+  it('normalizes any day of the month to its 1st', () => {
+    expect(startOfMonth(WEDNESDAY)).toEqual(new Date(2026, 6, 1));
+  });
+
+  it('steps forward and backward across a year boundary', () => {
+    expect(addMonths(new Date(2026, 0, 1), -1)).toEqual(new Date(2025, 11, 1));
+    expect(addMonths(new Date(2025, 11, 1), 1)).toEqual(new Date(2026, 0, 1));
+  });
+});
+
+describe('monthLabel / dayLabel (issue #124)', () => {
+  it('formats month and year in German', () => {
+    expect(monthLabel(new Date(2026, 6, 1))).toBe('Juli 2026');
+  });
+
+  it('formats a date key as day, month and year', () => {
+    expect(dayLabel('2026-07-05')).toBe('5. Juli 2026');
+  });
+});
+
+describe('monthDays (issue #124 AC1)', () => {
+  it('pads a month that starts mid-week to full Mon–Sun rows', () => {
+    // July 2026 starts on a Wednesday: 2 leading blanks, 31 days, 2 trailing.
+    const days = monthDays(new Date(2026, 6, 15));
+    expect(days).toHaveLength(35);
+    expect(days.slice(0, 2)).toEqual([null, null]);
+    expect(days[2]).toBe('2026-07-01');
+    expect(days[32]).toBe('2026-07-31');
+    expect(days.slice(33)).toEqual([null, null]);
+  });
+
+  it('needs no leading blanks when the month starts on a Monday', () => {
+    // June 2026 starts on a Monday.
+    const days = monthDays(new Date(2026, 5, 10));
+    expect(days[0]).toBe('2026-06-01');
+    expect(days.filter((day) => day !== null)).toHaveLength(30);
+  });
+
+  it('is always a multiple of 7', () => {
+    for (let month = 0; month < 12; month += 1) {
+      expect(monthDays(new Date(2026, month, 1)).length % 7).toBe(0);
+    }
   });
 });
