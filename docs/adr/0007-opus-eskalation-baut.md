@@ -44,6 +44,15 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
 - **Kill-Switch:** Label `no-escalation` friert ein Ticket auf der
   Standard-Stufe ein — es wird nie hochgeschaltet, unabhängig vom
   Fehlversuchs-Zähler.
+- **Boost (#136):** Label `opus-boost` hebt den Opus-Deckel **für dieses eine
+  Ticket** auf, **ohne** den Tageszähler zu nullen — der Zähler läuft unter
+  dem Label normal weiter, es umgeht nur die Zwei-Grenze. Verbraucht wird das
+  Label von einem Opus-Bau-Lauf **ohne** Fortschritt (derselbe Begriff wie
+  oben); bringt der Lauf Fortschritt, bleibt es dran. `no-escalation` hat
+  Vorrang: ist beides gesetzt, greift die Eskalation ohnehin nie, also bleibt
+  `opus-boost` unangetastet liegen. Die Erschöpfungsmeldung erscheint
+  höchstens einmal je Ticket und Kalendertag und nennt `opus-boost` als
+  Ausweg.
 
 ## Grenzen
 
@@ -73,3 +82,8 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
 - `scripts/claude-runner.sh` bekommt Tier-Zustand (`tier-<nr>`,
   `failcount-<nr>`), Fortschritts-/Fehlschlag-Erkennung und den Opus-Bau-Deckel
   (`opus-<datum>-<nr>`), alles dateibasiert unter `.runner/`.
+- Der Bau-Prompt verlangt ab dem ersten erfolglosen Lauf einen wachsenden
+  „## Was schon versucht wurde"-Abschnitt im Fortschrittskommentar (zuerst
+  lesen, ausgeschlossene Wege nicht wiederholen) sowie eine ab dann je
+  Fehlereinheit statt je Phase geschnittene Checkliste, mit Einzel-Commit pro
+  gelöster Einheit (#136).

@@ -43,8 +43,11 @@ Vor jeder Arbeit lesen:
   (Planung, Feature-Recherche — nie Bauen) und der Eskalations-Rolle aus
   `docs/adr/0007-opus-eskalation-baut.md` (Opus baut als letzte Stufe, wenn
   Sonnet/Haiku dreimal ohne Fortschritt bleiben; Deckel max. 2 Läufe/Ticket/Tag,
-  Kill-Switch `no-escalation`). Einfache/mechanische Tickets dürfen `needs-plan`
-  überspringen.
+  Kill-Switch `no-escalation`, Deckel-Bypass fürs laufende Ticket per Label
+  `opus-boost` — hebt nur die Zwei-Grenze auf, ohne den Tageszähler zu nullen,
+  und wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen;
+  `no-escalation` gewinnt gegen `opus-boost`). Einfache/mechanische Tickets
+  dürfen `needs-plan` überspringen.
 
 ## Befehle
 
@@ -108,6 +111,33 @@ Zuletzt: 13.07. 14:20
 
 Der Marker `← HIER WEITER` ist die Wiederaufnahmestelle. Wenn du einen Lauf beginnst
 und dieser Kommentar existiert, **fängst du dort an — nicht von vorne.**
+
+**Ab dem ersten erfolglosen Bau-Lauf** (siehe ADR-0007) gilt zusätzlich:
+
+- Ein Abschnitt „## Was schon versucht wurde" im Fortschrittskommentar **wächst**
+  über Läufe hinweg, statt überschrieben zu werden — was versucht wurde, woran
+  es scheiterte, was damit ausgeschlossen ist, in Klartext (kein Signatur-Hash).
+  Existiert er bereits, liest du ihn **zuerst** und schlägst keinen dort als
+  ausgeschlossen vermerkten Weg erneut ein — Wiederholung ist ein Fehlschlag
+  des Tickets, nicht nur verlorene Zeit.
+- Die Checkliste wird feiner geschnitten: ein Haken **je Fehlereinheit** (je
+  rotem Test, je rotem Check) statt je Phase, mit Gruppenkopf „(N von M grün)".
+  Jede gelöste Einheit wird **einzeln** committet und gepusht, der Marker
+  `← HIER WEITER` rückt auf die nächste offene Einheit, gelöste bleiben
+  abgehakt.
+
+```markdown
+## Fortschritt
+- [x] AppHeader in Varianten chrome/inline
+- [x] Layout-Shift beim Tab-Wechsel vermieden
+- Tests (3 von 6 grün):
+  - [x] shell.spec.ts:114 Header-Aktivzustand
+  - [x] shell.spec.ts:180 mobile Platzierung
+  - [x] shell.spec.ts:195 Sidebar-Platzierung
+  - [ ] ← HIER WEITER: habits.spec.ts:247 sync-Timeout
+  - [ ] habits.spec.ts:274 sync-Timeout
+  - [ ] habits-heute.spec.ts:141 sync-Timeout
+```
 
 ### Wenn ein Lauf abgebrochen wird
 
