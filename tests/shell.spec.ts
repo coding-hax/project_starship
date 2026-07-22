@@ -156,6 +156,65 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
   await expect(habitsTab).toHaveAttribute('aria-current', 'page');
   const darkColor = await habitsTab.evaluate((el) => getComputedStyle(el).color);
   expect(darkColor).not.toBe('rgb(0, 0, 0)');
+
+  // The icon's contour (stroke="currentColor") only stays legible if it actually
+  // inherits the link's color instead of carrying its own (issue #125 AC3).
+  const iconColor = await habitsTab.locator('svg').evaluate((el) => getComputedStyle(el).color);
+  expect(iconColor).toBe(darkColor);
+});
+
+test('every tab and the settings entry render an SVG icon at 24px — no Unicode glyph remains (issue #125 AC1/AC4)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+    const svg = nav.getByRole('link', { name: label }).locator('svg');
+    await expect(svg).toHaveCount(1);
+    const box = await svg.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeCloseTo(24, 0);
+    expect(box!.height).toBeCloseTo(24, 0);
+  }
+
+  await expect(page.getByRole('link', { name: 'Einstellungen' }).locator('svg')).toHaveCount(1);
+});
+
+test('nav icons are invisible to screen readers; the tab label stays the accessible name (issue #125 AC7)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+    const link = nav.getByRole('link', { name: label });
+    await expect(link).toHaveAccessibleName(label);
+    await expect(link.locator('svg')).toHaveAttribute('aria-hidden', 'true');
+  }
+
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  await expect(settings).toHaveAccessibleName('Einstellungen');
+  await expect(settings.locator('svg')).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('the active tab colors its icon via currentColor, with no second color definition (issue #125 AC2)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  const habitsTab = nav.getByRole('link', { name: 'Gewohnheiten' });
+  await habitsTab.click();
+
+  // Read both colors in one round-trip: the link's color transitions on activation
+  // (.nav__link { transition: color }), so two separate evaluate() calls can catch
+  // it mid-animation and see two different instants, not two different colors.
+  const { linkColor, iconColor } = await habitsTab.evaluate((el) => ({
+    linkColor: getComputedStyle(el).color,
+    iconColor: getComputedStyle(el.querySelector('svg')!).color,
+  }));
+  expect(iconColor).toBe(linkColor);
 });
 
 test('switching tabs never shifts where main starts, whether or not the settings entry point is present (issue #126 AC6)', async ({

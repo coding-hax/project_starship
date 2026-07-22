@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { IconSettings } from './icons';
 
 type AppHeaderProps = {
   /**
@@ -26,7 +27,7 @@ export function AppHeader({ variant = 'chrome' }: AppHeaderProps) {
         className="app-header__settings"
       >
         <span aria-hidden="true" className="app-header__icon">
-          ⚙
+          <IconSettings />
         </span>
       </Link>
     </header>

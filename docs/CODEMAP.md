@@ -65,12 +65,12 @@ src/
       use-habits.ts            Dexie-Live-Query auf `records` (table='habits'); HabitView + toHabitView (issue #102)
       use-habit-logs.ts        Dexie-Live-Query auf `records` (table='habit_logs'); HabitLogView + toHabitLogView (issue #103)
       use-toggle-habit-log.ts  Abhaken/Zurücknehmen für heute via Outbox, findet die bestehende Log-Zeile statt UNIQUE(habit_id, log_date) zu riskieren (issue #103)
-      due-today.ts             reine Logik: welche Habits gehören in die Heute-Sektion (daily immer, weekly noch nicht in der laufenden Mo–So-Woche erledigt) (issue #103); weekDays — die 7 Datums-Keys Mo–So einer Woche (issue #105)
+      due-today.ts             reine Logik: welche Habits gehören in die Heute-Sektion (daily immer, weekly noch nicht in der laufenden Mo–So-Woche erledigt) (issue #103); weekDays — die 7 Datums-Keys Mo–So einer Woche (issue #105); monthDays/monthLabel/addMonths/dayLabel — Monatsraster + Monatsleiste (issue #124)
       streak.ts                reine Logik: computeStreak — aufeinanderfolgende Tage (daily/custom) bzw. Mo–So-Wochen (weekly) bis heute/laufende Woche; offener heutiger Tag/laufende Woche bricht nicht, ausgelassener schon (issue #104)
       habit-today.tsx / .css   Heute-Sektion: Abhak-Liste, Zeile bleibt nach dem Abhaken sichtbar (Undo per erneutem Tippen) (issue #103); Streak-Badge (🔥) je Zeile, nur wenn > 0 (issue #104)
-      habit-week-grid.tsx / .css  Wochenraster Mo–So je Habit-Zeile, heutiger Tag markiert, Zelle direkt abhakbar über useToggleHabitLog (issue #105)
+      habit-week-grid.tsx / .css  Monatsraster Mo–So je Habit-Zeile (issue #105 → #124), heutiger Tag nur im laufenden Monat markiert, Zukunft gesperrt, Zelle direkt abhakbar über useToggleHabitLog
       use-archive-habit.ts     Archivieren/Reaktivieren (setzt/löscht archivedAt, nie deletedAt) mit Undo-Toast (issue #102)
-      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard); jede Zeile zeigt zusätzlich das Wochenraster (issue #105)
+      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard); Monatsleiste (‹/›) steuert den Monat aller Raster gemeinsam (issue #124); jede Zeile zeigt zusätzlich das Monatsraster
       habit-editor.tsx / .css  Bottom-Sheet für Anlegen + Bearbeiten (Name, Rhythmus, Farbe aus den vier Bereichsfarben)
       add-habit-fab.tsx        FAB + Sheet fürs Anlegen, gleiche Form wie quick-add.tsx
     export/
@@ -117,6 +117,7 @@ tests/
   habits.spec.ts            Gewohnheiten: anlegen, bearbeiten, archivieren/reaktivieren, offline (issue #102)
   habits-heute.spec.ts      Gewohnheiten in der Heute-Sektion: sichtbar, abhaken/zurücknehmen, Reload, Leerzustand, offline (issue #103)
   streaks.spec.ts           Streak-Badge in der Heute-Sektion: daily 3 Tage/ausgelassen, Tageswechsel (page.clock), weekly 2 Wochen/Reset (issue #104)
+  habits-week-grid.spec.ts Monatsraster: Monatsanfang eingerückt, Blättern via ‹/›, Zellen über Monate hinweg, Vergangenheit nachträglich abhakbar, Zukunft gesperrt, Heute nur im laufenden Monat, Streak reagiert sofort, leerer Monat, offline, Tokens/Dark/reduced-motion (issue #105 → #124)
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts

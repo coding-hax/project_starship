@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from './icons';
 
 /**
  * One navigation, two shapes: bottom bar on mobile, sidebar from `md` up.
@@ -10,11 +11,11 @@ import { usePathname } from 'next/navigation';
  * Einstellungen is not a tab here — its entry point lives in AppHeader instead.
  */
 const TABS = [
-  { href: '/heute', label: 'Heute', accent: 'var(--accent)', icon: '◉' },
-  { href: '/aufgaben', label: 'Aufgaben', accent: 'var(--area-tasks)', icon: '✓' },
-  { href: '/gewohnheiten', label: 'Gewohnheiten', accent: 'var(--area-habits)', icon: '↻' },
-  { href: '/kalender', label: 'Kalender', accent: 'var(--area-events)', icon: '▤' },
-  { href: '/journal', label: 'Journal', accent: 'var(--area-journal)', icon: '✎' },
+  { href: '/heute', label: 'Heute', accent: 'var(--accent)', Icon: IconToday },
+  { href: '/aufgaben', label: 'Aufgaben', accent: 'var(--area-tasks)', Icon: IconTasks },
+  { href: '/gewohnheiten', label: 'Gewohnheiten', accent: 'var(--area-habits)', Icon: IconHabits },
+  { href: '/kalender', label: 'Kalender', accent: 'var(--area-events)', Icon: IconCalendar },
+  { href: '/journal', label: 'Journal', accent: 'var(--area-journal)', Icon: IconJournal },
 ] as const;
 
 export function Nav() {
@@ -34,7 +35,7 @@ export function Nav() {
                 style={active ? { color: tab.accent } : undefined}
               >
                 <span aria-hidden="true" className="nav__icon">
-                  {tab.icon}
+                  <tab.Icon />
                 </span>
                 <span className="nav__label">{tab.label}</span>
               </Link>

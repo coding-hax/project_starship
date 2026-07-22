@@ -66,6 +66,18 @@ Diese vier Regeln sind nicht verhandelbar, sie sind das Produktversprechen:
 3. **Kein Layout-Shift.** Platz wird vorher reserviert.
 4. **60 fps beim Scrollen.** Keine teuren Schatten oder Filter auf Listenelementen.
 
+## Icon-Sprache
+
+Keine Icon-Library — der Satz lebt handgezeichnet in `src/ui/icons.tsx`, damit er als
+Satz sichtbar bleibt und kein Kilobyte ungenutztes Set ins Bundle kommt (issue #125).
+Ein neues Icon hält sich an dieselbe Form:
+
+- 24×24 Viewbox, Strichstärke 1.5, `stroke-linecap`/`stroke-linejoin: round`.
+- Kontur statt Fläche: `fill="none"`, `stroke="currentColor"` — Farbe kommt aus CSS,
+  Aktiv-Akzent und Dark Mode brauchen keinen Sonderfall.
+- Nie ein Unicode-Glyph: jedes System zeichnet die anders (Strichstärke, Grundlinie,
+  auf iOS teils sogar farbig als Emoji).
+
 ## Mobile-Patterns
 
 - **Bottom-Navigation**, 5 Tabs: Heute · Aufgaben · Gewohnheiten · Kalender · Journal. Einstellungen ist kein Tab.

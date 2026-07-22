@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SectionCard } from '@/ui/section-card';
 import { Toast } from '@/ui/toast';
+import { addMonths, monthLabel, startOfMonth } from './due-today';
 import { HabitEditor } from './habit-editor';
 import { HabitWeekGrid } from './habit-week-grid';
 import { useArchiveHabit } from './use-archive-habit';
@@ -19,12 +21,20 @@ const SCHEDULE_LABELS: Record<HabitView['schedule'], string> = {
 interface HabitRowProps {
   habit: HabitView;
   logs: HabitLogView[];
+  viewedMonth: Date;
   onEdit: () => void;
   onToggleArchive: () => void;
   onToggleLog: (habitId: string, logDate: string) => void;
 }
 
-function HabitRow({ habit, logs, onEdit, onToggleArchive, onToggleLog }: HabitRowProps) {
+function HabitRow({
+  habit,
+  logs,
+  viewedMonth,
+  onEdit,
+  onToggleArchive,
+  onToggleLog,
+}: HabitRowProps) {
   const archived = habit.archivedAt !== null;
 
   return (
@@ -43,8 +53,38 @@ function HabitRow({ habit, logs, onEdit, onToggleArchive, onToggleLog }: HabitRo
           {archived ? 'Reaktivieren' : 'Archivieren'}
         </button>
       </div>
-      <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} />
+      <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} viewedMonth={viewedMonth} />
     </li>
+  );
+}
+
+interface MonthNavProps {
+  viewedMonth: Date;
+  onChange: (month: Date) => void;
+}
+
+/** Month bar above the list — one control for all habit grids at once (issue #124 AC2). */
+function MonthNav({ viewedMonth, onChange }: MonthNavProps) {
+  return (
+    <div className="habit-list__month-nav">
+      <button
+        type="button"
+        className="habit-list__month-nav-button"
+        aria-label="Vorheriger Monat"
+        onClick={() => onChange(addMonths(viewedMonth, -1))}
+      >
+        <IconChevronLeft />
+      </button>
+      <span className="habit-list__month-nav-label">{monthLabel(viewedMonth)}</span>
+      <button
+        type="button"
+        className="habit-list__month-nav-button"
+        aria-label="Nächster Monat"
+        onClick={() => onChange(addMonths(viewedMonth, 1))}
+      >
+        <IconChevronRight />
+      </button>
+    </div>
   );
 }
 
@@ -59,6 +99,7 @@ export function HabitList() {
   const toggleLog = useToggleHabitLog(logs);
   const { toggleArchive, undo, handleUndo, dismissUndo } = useArchiveHabit();
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  const [viewedMonth, setViewedMonth] = useState<Date>(() => startOfMonth(new Date()));
 
   const active = habits?.filter((habit) => habit.archivedAt === null) ?? [];
   const archived = habits?.filter((habit) => habit.archivedAt !== null) ?? [];
@@ -71,6 +112,8 @@ export function HabitList() {
         <p className="habit-list__empty">Keine Gewohnheiten. Leg deine erste an.</p>
       ) : (
         <>
+          <MonthNav viewedMonth={viewedMonth} onChange={setViewedMonth} />
+
           {active.length === 0 ? (
             <p className="habit-list__empty">Keine aktiven Gewohnheiten.</p>
           ) : (
@@ -80,6 +123,7 @@ export function HabitList() {
                   key={habit.id}
                   habit={habit}
                   logs={visibleLogs}
+                  viewedMonth={viewedMonth}
                   onEdit={() => setEditingHabitId(habit.id)}
                   onToggleArchive={() => toggleArchive(habit)}
                   onToggleLog={toggleLog}
@@ -96,6 +140,7 @@ export function HabitList() {
                     key={habit.id}
                     habit={habit}
                     logs={visibleLogs}
+                    viewedMonth={viewedMonth}
                     onEdit={() => setEditingHabitId(habit.id)}
                     onToggleArchive={() => toggleArchive(habit)}
                     onToggleLog={toggleLog}

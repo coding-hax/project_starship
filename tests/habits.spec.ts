@@ -256,10 +256,13 @@ test('nach dem Onlinegehen erreicht die offline angelegte Gewohnheit die echte D
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
   await expect(habitItems(page).filter({ hasText: 'Server-Ziel' })).toBeVisible();
 
-  await context.setOffline(false);
   // beforeEach cuts the sync endpoints so the list can only ever come from
   // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  // Must happen before setOffline(false): the app's own 'online' listener fires an
+  // automatic sync() the instant we go online, and unrouting after that races its
+  // in-flight request against the route being torn down — the request never settles (#120).
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -285,8 +288,9 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   // One entry for the seed, one for the archive — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
-  await context.setOffline(false);
+  // Order matters here — see the comment at the equivalent point above (#120).
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
