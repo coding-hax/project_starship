@@ -114,6 +114,17 @@ test.describe('reduced motion', () => {
   });
 });
 
+test('die Open-Meteo-Quellenangabe steht in den Einstellungen und ist von dort erreichbar (issue #155 AC5)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const link = page.getByRole('link', { name: 'Open-Meteo' });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://open-meteo.com/');
+});
+
 test('die Einstellungen-Primitive tragen keine teuren Filter (60-fps-Versprechen)', async ({
   page,
 }) => {

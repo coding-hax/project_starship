@@ -78,15 +78,16 @@ src/
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
     weather/
-      forecast.ts              Open-Meteo: fetchForecast/parseForecast, isStale (3h-Fenster), weekdayLabel, formatAge — Bonn fest verdrahtet (issue #139, ADR-0009)
+      forecast.ts              Open-Meteo: fetchForecast/parseForecast, isStale (3h-Fenster), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Bonn fest verdrahtet (issue #139, ADR-0009; Feinschliff issue #155)
       wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
-      use-weather-forecast.ts  Live-Query auf db.weather (eigene Tabelle, nie synchronisiert), Refresh nur wenn stale, Fehler überschreiben den Cache nie
-      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Heute, Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3)
+      use-weather-forecast.ts  Live-Query auf db.weather (eigene Tabelle, nie synchronisiert), Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
+      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Heute, Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155)
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
       use-capture-prefs.ts    „ohne Bestätigung direkt anlegen" — gerätelokal in localStorage (issue #47 AC3)
       capture-panel.tsx       Toggle für use-capture-prefs in den Einstellungen
+      attribution-panel.tsx   Quellenangabe Open-Meteo (CC BY 4.0), aus /heute hierher verschoben (issue #155)
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
@@ -124,8 +125,8 @@ tests/
   streaks.spec.ts           Streak-Badge in der Heute-Sektion: daily 3 Tage/ausgelassen, Tageswechsel (page.clock), weekly 2 Wochen/Reset (issue #104)
   habits-week-grid.spec.ts Monatsraster: Monatsanfang eingerückt, Blättern via ‹/›, Zellen über Monate hinweg, Vergangenheit nachträglich abhakbar, Zukunft gesperrt, Heute nur im laufenden Monat, Streak reagiert sofort, leerer Monat, offline, Tokens/Dark/reduced-motion (issue #105 → #124)
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
-  weather.spec.ts           Wetter auf Heute: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139) — ruft nie die echte Open-Meteo-API
-  settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
+  weather.spec.ts           Wetter auf Heute: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
+  settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
