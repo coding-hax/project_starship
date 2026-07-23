@@ -60,8 +60,6 @@ test('every tab label fits on one line with a ≥44×44px touch target (issue #1
 }) => {
   await registerPasskey(page);
 
-  // Scope to the nav: /heute also carries a "Gewohnheiten verwalten" shortcut link,
-  // which a bare name match would collide with.
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
     const link = nav.getByRole('link', { name: label });
@@ -149,7 +147,6 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
   expect(parseFloat(duration)).toBeLessThan(0.001);
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  // Scope to the nav to avoid /heute's "Gewohnheiten verwalten" shortcut link.
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   const habitsTab = nav.getByRole('link', { name: 'Gewohnheiten' });
   await habitsTab.click();

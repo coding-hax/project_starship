@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { HabitToday } from '@/features/habits/habit-today';
 import { TaskList } from '@/features/tasks/task-list';
 import { AppHeader } from '@/ui/app-header';
@@ -15,9 +14,6 @@ export default function HeutePage() {
       <TaskList dueTodayOnly />
       <h2>Gewohnheiten</h2>
       <HabitToday />
-      <Link href="/gewohnheiten" className="heute__habits-link">
-        Gewohnheiten verwalten
-      </Link>
     </>
   );
 }
