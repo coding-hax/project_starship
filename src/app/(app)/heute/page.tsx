@@ -1,5 +1,6 @@
 import { HabitToday } from '@/features/habits/habit-today';
 import { TaskList } from '@/features/tasks/task-list';
+import { WeatherForecast } from '@/features/weather/weather-forecast';
 import { AppHeader } from '@/ui/app-header';
 
 export const metadata = { title: 'Heute · Starship' };
@@ -11,6 +12,7 @@ export default function HeutePage() {
         <h1>Heute</h1>
         <AppHeader variant="inline" />
       </div>
+      <WeatherForecast />
       <TaskList dueTodayOnly />
       <h2>Gewohnheiten</h2>
       <HabitToday />

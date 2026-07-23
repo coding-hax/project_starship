@@ -80,6 +80,71 @@ export function IconSettings({ className }: IconProps) {
   );
 }
 
+// --- Wetter (issue #139): dieselbe Sprache, sieben WMO-Kategorien (wmo-icon.ts) ---
+
+export function IconWeatherClear({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <circle cx="12" cy="12" r="4.5" />
+      <path d="M12 3v2.5M12 18.5V21M4.4 4.4l1.8 1.8M17.8 17.8l1.8 1.8M3 12h2.5M18.5 12H21M4.4 19.6l1.8-1.8M17.8 6.2l1.8-1.8" />
+    </svg>
+  );
+}
+
+export function IconWeatherPartlyCloudy({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M9.5 9.5a4 4 0 0 1 7.6 1.8" />
+      <path d="M9.5 9.5v-.1M9.5 5.5v1.5M6 8l1.2 1M13.5 5l-.7 1.3" />
+      <path d="M7 20h10a3.5 3.5 0 0 0 .3-7 5 5 0 0 0-9.7 1.2A3.5 3.5 0 0 0 7 20z" />
+    </svg>
+  );
+}
+
+export function IconWeatherCloudy({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6.5 19h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 19z" />
+    </svg>
+  );
+}
+
+export function IconWeatherFog({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6.5 10.5h11a4 4 0 0 0 .1-8 6 6 0 0 0-11.5 1.8" />
+      <path d="M4 14.5h16M4 18h16" />
+    </svg>
+  );
+}
+
+export function IconWeatherRain({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6.5 13h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 13z" />
+      <path d="M8.5 16.5l-1 3M12.5 16.5l-1 3M16.5 16.5l-1 3" />
+    </svg>
+  );
+}
+
+export function IconWeatherSnow({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6.5 12h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 12z" />
+      <path d="M9 17v4M7 18.2l4 1.6M13 18.2l-4 1.6M15 17v4M13 18.2l4 1.6M17 18.2l-4 1.6" />
+    </svg>
+  );
+}
+
+export function IconWeatherThunderstorm({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6.5 11h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 11z" />
+      <path d="M13 14l-3 4.5h3L11 22" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
