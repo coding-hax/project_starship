@@ -92,11 +92,15 @@ assert_eq "AC: leere Queue -> queue_next leer" "" "$(queue_next "$SNAP")"
 assert_eq "AC: leere Queue -> queue_pending leer" "" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
-# 6. Ältestes gewinnt innerhalb einer Stufe
+# 6. Ältestes gewinnt innerhalb einer Stufe -- sortiert nach 'createdAt', nicht
+#    nach Array-Reihenfolge oder Issue-Nummer (gleiche Regel wie ROUND_SNAP,
+#    siehe round-snap.test.sh/#64). #82 steht zuerst im Array, ist aber JÜNGER
+#    erstellt als #81 -- ohne echtes createdAt faellt sort_by(.createdAt) auf
+#    die Array-Reihenfolge zurueck und waehlt faelschlich #82 (#149).
 # ==============================================================================
 SNAP='[
-  {"number":82,"labels":['"$(label ready)"']},
-  {"number":81,"labels":['"$(label ready)"']}
+  {"number":82,"labels":['"$(label ready)"'],"createdAt":"2024-06-01T00:00:00Z"},
+  {"number":81,"labels":['"$(label ready)"'],"createdAt":"2024-01-01T00:00:00Z"}
 ]'
 assert_eq "AC: innerhalb 'ready' gewinnt das älteste Ticket" "81" "$(queue_next "$SNAP")"
 
