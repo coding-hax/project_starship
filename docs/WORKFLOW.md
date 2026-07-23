@@ -205,9 +205,16 @@ er überhaupt an eine Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| grün | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
 | rot, **nur** `protected-paths` | Label `needs-input`, Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
+| hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
+| grün | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
+
+Die Reihenfolge der Zeilen ist die Prüfreihenfolge: `pending` → `failing` →
+`behind` → `success`. Ein noch laufender Shard darf nicht durch ein Nachziehen
+abgewürgt werden, und ein roter Check wird erst behoben, bevor überhaupt an
+ein Nachziehen gedacht wird — `behind` wird also nur geprüft, wenn feststeht,
+dass nichts mehr läuft und nichts rot ist.
 
 Ein Draft-PR wird **nie** gemerged, egal wie grün die Checks sind — erst der
 grüne Takt hebt ihn aus dem Entwurf. Läuft die CI noch zu einem
@@ -224,20 +231,50 @@ schon versucht wurde". Rot aus demselben Grund wie beim letzten Mal zählt
 weiterhin als Fehlversuch der bestehenden Eskalation (ADR-0007, `blocker_sig`)
 — nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`.
 
-**Die Wache gilt auch für `parked`-Tickets (#154).** Die Tabelle oben
-beobachtet nur das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins,
-das an `protected-paths` hing und auf `human-approved` wartete) fiel bisher
-aus der Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145),
-aber die Ticketauswahl greift es erst wieder auf, sobald `needs-input`
-manuell weg ist. Wurde der PR in der Zwischenzeit komplett grün, blieb der
-Draft für immer Draft. Deshalb prüft der Takt **zusätzlich** — vor jeder
-Ticketauswahl, ohne den Bauplatz des laufenden Tickets zu berühren — **alle**
-offenen `parked`-Tickets: Ist der PR eines davon komplett grün, fallen
-`parked` **und** `needs-input` weg, der Draft wird `ready`, Auto-Merge
+**`behind`: ein zurückgefallener PR-Branch wird selbst nachgezogen (#160).**
+`required_status_checks.strict=true` (siehe Branch-Schutz unten) verlangt den
+aktuellen Stand von `main` — GitHub zieht den PR-Branch dabei aber nicht selbst
+nach, und Auto-Merge wartet still auf etwas, das nie passiert, sobald `main`
+während des Baus oder während CI läuft weiterwandert. `strict: true` bleibt
+trotzdem stehen: es ist die einzige Zusicherung, dass unbeaufsichtigt gemergter
+Code gegen das aktuelle `main` getestet wurde (zwei für sich grüne PRs können
+inhaltlich kollidieren, ohne dass ein Check das sieht). Der Takt zieht deshalb
+selbst nach, sobald ein offener PR laut `mergeStateStatus` (`gh pr view`)
+`BEHIND` ist und seine Checks nicht mehr laufen: `git fetch origin main
+<branch>`, `git merge origin/main`, `git push` — bewusst **kein**
+`gh pr update-branch`, das scheitert, sobald der Branch Workflow-Dateien
+berührt (`refusing to allow an OAuth App to … without 'workflow' scope`),
+ausgerechnet bei den Tickets, die `.github/` anfassen und ohnehin am längsten
+auf eine Freigabe warten. Klappt der Merge, läuft CI von selbst neu, der
+nächste Takt sieht wieder `pending`. Scheitert er an einem echten Konflikt,
+wird **kein** Commit erzwungen — der Merge wird abgebrochen, der Arbeitsbaum
+kehrt sauber zum vorherigen Branch zurück, und ein Bau-Agent startet gezielt
+mit den Konfliktdateien im Auftrag (derselbe Mechanismus wie bei einem roten
+Check).
+
+**Die Wache gilt auch für `parked`-Tickets (#154), inklusive `behind`.** Die
+Tabelle oben beobachtet nur das eine `in-progress`-Ticket — ein
+`parked`-Ticket (z. B. eins, das an `protected-paths` hing und auf
+`human-approved` wartete) fiel bisher aus der Wache heraus: kein
+`in-progress` mehr (der Bauplatz ist frei, #145), aber die Ticketauswahl
+greift es erst wieder auf, sobald `needs-input` manuell weg ist. Wurde der PR
+in der Zwischenzeit komplett grün, blieb der Draft für immer Draft; lag er nur
+hinter `main`, wartete er ebenso ewig. Deshalb prüft der Takt **zusätzlich** —
+vor jeder Ticketauswahl, ohne den Bauplatz des laufenden Tickets zu berühren —
+**alle** offenen `parked`-Tickets: Ist der PR eines davon komplett grün,
+fallen `parked` **und** `needs-input` weg, der Draft wird `ready`, Auto-Merge
 aktiviert — genau wie beim laufenden Ticket, nur ohne dass vorher ein Mensch
-`needs-input` hätte entfernen müssen. Läuft die CI noch oder ist sie rot,
-bleibt das Ticket unverändert geparkt. Das kostet nie einen Agentenlauf, nur
-gh-Aufrufe — das Statusticket nennt freigegebene Tickets im nächsten Update.
+`needs-input` hätte entfernen müssen. Liegt er nur hinter `main`, wird er per
+`git` nachgezogen, bleibt aber geparkt (die nächste Runde sieht dann wieder
+laufende Checks). Ein Konflikt beim Nachziehen eines geparkten Tickets startet
+hier bewusst **keinen** Agenten — das würde das WIP-Limit=1 verletzen, falls
+gerade ein anderes Ticket `in-progress` ist. Das geparkte Ticket bleibt dann
+liegen und bekommt seinen Fix-Agenten regulär, sobald es selbst wieder an die
+Reihe kommt (Schritt 1b) und der Bau-Agent den Konflikt als Teil seiner
+normalen Arbeit löst. Läuft die CI noch oder ist sie rot, bleibt das Ticket
+unverändert geparkt. Das kostet außer im Konfliktfall nie einen Agentenlauf,
+nur gh-/git-Aufrufe — das Statusticket nennt freigegebene Tickets im nächsten
+Update.
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
 

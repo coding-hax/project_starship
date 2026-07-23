@@ -137,7 +137,7 @@ scripts/
   tests/dexie-bump.test.sh  Fixture-Tests für check-dexie-bump.sh (#59)
   tests/limit-until.test.sh Fixture-Tests: abgelaufenes 'limit-until' hebt die Pause selbst auf, aktives bleibt unangetastet, fehlender/kaputter Wert pausiert nicht dauerhaft (#121)
   tests/opus-boost.test.sh Fixture-Tests (T1-T7): Label 'opus-boost' umgeht den Opus-Tagesdeckel je Ticket ohne Zähler-Reset, wird bei Nicht-Fortschritt abgezogen, no-escalation gewinnt, Erschöpfungsmeldung nur einmal/Tag (#136)
-  tests/ci-watch.test.sh   Fixture-Tests (T1-T6): CI-Wache vor der Ticketauswahl -- laeuft noch/gruen/rot/nur-protected-paths-rot/noch-kein-PR/kein-Ticketwechsel waehrend CI laeuft (#147)
+  tests/ci-watch.test.sh   Fixture-Tests (T1-T9): CI-Wache vor der Ticketauswahl -- laeuft noch/gruen/rot/nur-protected-paths-rot/noch-kein-PR/kein-Ticketwechsel waehrend CI laeuft (#147); Zustand 'behind' zieht main per git nach, Konflikt startet Fix-Agenten, geparkte Tickets ohne Agentenlauf (#160)
   tests/parked-label.test.sh Fixture-Tests: in-progress+needs-input wird zu 'parked' (Selbstheilung), ein zuvor geparktes Ticket wird vor Queue/Label-Kaskade fortgesetzt, Status nennt parkende Tickets zusätzlich (#145)
   tests/parked-ci-watch.test.sh Fixture-Tests (T1-T6): CI-Wache für ALLE 'parked'-Tickets gleichzeitig -- gruen wird freigegeben (ready+Auto-Merge, kein Agentenlauf), pending/rot bleibt geparkt, laufendes Ticket wird nicht verzögert, Status nennt die Freigabe (#154)
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
