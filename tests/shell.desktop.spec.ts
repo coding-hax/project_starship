@@ -44,3 +44,17 @@ test('the settings entry point stays reachable from every screen via the sidebar
   await expect(page).toHaveURL(/\/einstellungen$/);
   await expect(settings).toHaveAttribute('aria-current', 'page');
 });
+
+test('auf /heute rutscht der Inhalt bei 1280px nicht unter die Kopfzeile der Shell (issue #137 AC6)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/heute');
+
+  const header = page.locator('.app-header--chrome');
+  const main = page.locator('main.shell__main');
+  const [headerBox, mainBox] = await Promise.all([header.boundingBox(), main.boundingBox()]);
+  expect(headerBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(mainBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
+});

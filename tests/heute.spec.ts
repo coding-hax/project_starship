@@ -79,3 +79,18 @@ test('die Heute-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen e
   await expect(dueTaskItems(page)).toHaveCount(0);
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
 });
+
+test('kein "Gewohnheiten verwalten"-Link mehr auf /heute — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
+  page,
+}) => {
+  await page.goto('/heute');
+
+  await expect(page.getByRole('link', { name: 'Gewohnheiten verwalten' })).toHaveCount(0);
+
+  await page
+    .getByRole('navigation', { name: 'Hauptnavigation' })
+    .getByRole('link', { name: 'Gewohnheiten' })
+    .click();
+  await expect(page).toHaveURL(/\/gewohnheiten$/);
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 })).toBeVisible();
+});
