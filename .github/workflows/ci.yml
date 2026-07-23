@@ -27,16 +27,20 @@ jobs:
       - run: pnpm test
       - run: bash scripts/tests/escalation.test.sh
       - run: bash scripts/tests/research-mode.test.sh
+      - run: bash scripts/tests/chaining.test.sh
       - run: bash scripts/tests/round-snap.test.sh
       - run: bash scripts/tests/queue-priority.test.sh
+      - run: bash scripts/tests/status-queue.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
       - run: bash scripts/tests/limit-until.test.sh
+      - run: bash scripts/tests/opus-boost.test.sh
       - run: bash scripts/tests/parked-label.test.sh
       - run: bash scripts/tests/ci-watch.test.sh
       - run: bash scripts/tests/parked-ci-watch.test.sh
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
+      - run: bash scripts/tests/test-integrity.test.sh
       - run: git fetch origin main
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh

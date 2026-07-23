@@ -185,9 +185,12 @@ park_issue() {   # $1 = Issue-Nr
   gh issue edit "$1" --remove-label in-progress --add-label parked >/dev/null 2>&1
 }
 
-# Einmaliger Schnappschuss aller offenen Issues mit Labels.
+# Einmaliger Schnappschuss aller offenen Issues mit Labels. Braucht 'createdAt'
+# genau wie ROUND_SNAP (siehe run_round()) -- sonst sortiert queue_next() unten
+# gegen ein fehlendes Feld und faellt auf die API-Reihenfolge zurueck, statt
+# wirklich das aelteste Ticket zu waehlen (#149).
 queue_snapshot() {
-  gh issue list --state open --limit 50 --json number,labels 2>/dev/null || echo '[]'
+  gh issue list --state open --limit 50 --json number,labels,createdAt 2>/dev/null || echo '[]'
 }
 
 # --- Prioritäts-Queue (#91, umgebaut #109) ----------------------------------
@@ -245,8 +248,6 @@ queue_next() {   # $1 = snapshot-json, $2 = queue-body (optional)
             | select($r != null) | select(has("needs-input")|not) | select(has("no-opus")|not)
             | {number:$n, r:$r} ] | sort_by(.r) | .[0].number )
       // ( [ .[] | select(has("needs-plan")) | select(has("needs-input")|not) | select(has("no-opus")|not) ]
-            | sort_by(.createdAt) | .[0].number )
-      // ( [ .[] | select(has("needs-research")) | select(has("needs-input")|not) | select(has("no-opus")|not) ]
             | sort_by(.createdAt) | .[0].number )
       // ( [ .[] | select(has("ready")) | select(has("needs-input")|not)
               | select(has("needs-plan")|not) | select(has("needs-research")|not) ]
