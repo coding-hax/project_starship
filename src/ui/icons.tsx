@@ -26,9 +26,10 @@ export function IconToday({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
       {/* Sun (issue #157): distinct from IconWeatherClear via few, long rays and a
-          near-solid core (tiny radius, thick stroke) instead of its eight short
-          rays around an open ring. */}
-      <circle cx="12" cy="12" r="1.25" />
+          filled core (open ring there) — the one deliberate exception to "Kontur
+          statt Fläche", called for in the ticket so the core reads as solid rather
+          than as a crosshair. */}
+      <circle cx="12" cy="12" r="2.25" fill="currentColor" stroke="none" />
       <path d="M12 6V2M12 18v4M18 12h4M6 12H2" />
     </svg>
   );

@@ -6,6 +6,7 @@ const NOW = '2026-07-18T12:00:00.000Z';
 const YESTERDAY_MORNING = '2026-07-17T09:00:00.000Z';
 const TODAY_EVENING = '2026-07-18T18:00:00.000Z';
 const TOMORROW_MORNING = '2026-07-19T09:00:00.000Z';
+const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
   // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
@@ -24,6 +25,11 @@ test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
+  // Default: abort, like weather.spec.ts (the real API is never reachable from a
+  // spec). registerPasskey below already lands on /heute, which fires the first
+  // forecast fetch — without this, that request would hit the real network and
+  // cache real data before a per-test mock ever gets a chance to register.
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
 });
@@ -136,7 +142,7 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
   page,
 }) => {
   const dates = ['2026-07-18', '2026-07-19', '2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24'];
-  await page.route('https://api.open-meteo.com/**', (route) =>
+  await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: {
         daily: {
