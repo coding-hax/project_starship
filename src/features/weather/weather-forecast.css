@@ -3,6 +3,10 @@
  * paint reserves the height and nothing shifts once the cache (or the network)
  * answers. */
 .weather-forecast {
+  /* Anchors the absolutely-positioned caption below — its own box never grows to
+   * include it, so the caption's appearance/disappearance can't shift anything
+   * that comes after this section (issue #155). */
+  position: relative;
   margin-bottom: var(--space-6);
 }
 
@@ -29,6 +33,15 @@
 .weather-forecast__day--skeleton {
   background: var(--surface-raised);
   animation: weather-forecast-pulse 1.4s ease-in-out infinite;
+}
+
+/* Weekend columns get a visibly heavier frame than the 1px border every column
+ * already has. An `outline` never participates in layout (unlike a wider `border`,
+ * which would eat into the padding or grow the column) — column width and padding
+ * stay exactly as they are for every one of the seven cells (issue #155). */
+.weather-forecast__day--weekend {
+  outline: 1px solid var(--border);
+  outline-offset: 0;
 }
 
 /* The skeleton reuses the loaded column's own classes with placeholder content
@@ -91,9 +104,15 @@
 }
 
 .weather-forecast__caption {
-  margin: var(--space-2) 0 0;
+  /* Out of flow entirely (see .weather-forecast) — it never affects the section's
+   * own height, so it can appear/disappear without shifting anything below. */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: var(--space-1) 0 0;
   font-size: 12px;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .weather-forecast__empty {

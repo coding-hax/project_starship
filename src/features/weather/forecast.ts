@@ -57,17 +57,35 @@ export async function fetchForecast(): Promise<WeatherDay[]> {
 
 const WEEKDAY_LABELS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']; // Date#getDay(): 0 = Sunday
 
-/** German weekday abbreviation for a `YYYY-MM-DD` date key, local calendar day. */
-export function weekdayLabel(dateKey: string): string {
+function localWeekday(dateKey: string): number {
   const [year, month, day] = dateKey.split('-').map(Number);
-  return WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()];
+  return new Date(year, month - 1, day).getDay();
 }
 
-/** The visible age hint (AC4: offline shows the last known forecast with its age). */
-export function formatAge(fetchedAt: string, now: Date = new Date()): string {
-  const diffMs = Math.max(0, now.getTime() - new Date(fetchedAt).getTime());
-  if (diffMs < 60_000) return 'gerade eben';
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 60) return `vor ${minutes} Min.`;
-  return `vor ${Math.round(minutes / 60)} Std.`;
+/** German weekday abbreviation for a `YYYY-MM-DD` date key, local calendar day. */
+export function weekdayLabel(dateKey: string): string {
+  return WEEKDAY_LABELS[localWeekday(dateKey)];
+}
+
+/** Saturday or Sunday, local calendar day (issue #155: stronger column border). */
+export function isWeekend(dateKey: string): boolean {
+  const day = localWeekday(dateKey);
+  return day === 0 || day === 6;
+}
+
+/**
+ * Two failed refresh attempts' worth of the 3h `REFRESH_INTERVAL_MS` — past this,
+ * the caption becomes a real warning instead of routine housekeeping (issue #155).
+ */
+const STALE_WARNING_THRESHOLD_MS = 8 * 60 * 60 * 1000;
+
+export function isStaleWarning(fetchedAt: string, now: Date = new Date()): boolean {
+  return now.getTime() - new Date(fetchedAt).getTime() >= STALE_WARNING_THRESHOLD_MS;
+}
+
+/** `HH:MM`, 24-hour, local time (VISION) — the last successful fetch (issue #155). */
+export function formatStaleSince(fetchedAt: string): string {
+  const date = new Date(fetchedAt);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

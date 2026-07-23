@@ -9,7 +9,7 @@ import {
   IconWeatherSnow,
   IconWeatherThunderstorm,
 } from '@/ui/icons';
-import { formatAge, weekdayLabel } from './forecast';
+import { formatStaleSince, isStaleWarning, isWeekend, weekdayLabel } from './forecast';
 import { useWeatherForecast } from './use-weather-forecast';
 import type { WeatherCategory } from './wmo-icon';
 import { weatherCategory } from './wmo-icon';
@@ -49,9 +49,10 @@ export function WeatherForecast() {
     );
   }
 
-  // `loading` and `ready` share this exact shape — including the caption row below
-  // — so the very first paint already reserves the height the loaded state needs
-  // and nothing shifts once the cache (or the network) answers (Smooth-Regel 3).
+  // `loading` and `ready` share this exact grid shape, so the very first paint
+  // already reserves the height the loaded state needs (Smooth-Regel 3). The
+  // caption below is absolutely positioned and outside this flow entirely —
+  // its own appearance can't shift anything, loading or not.
   return (
     <section className="weather-forecast" aria-label="Wettervorhersage Bonn, sieben Tage">
       <ol className="weather-forecast__days" aria-hidden={phase === 'loading' || undefined}>
@@ -59,8 +60,16 @@ export function WeatherForecast() {
           ? days.map((day) => {
               const category = weatherCategory(day.weatherCode);
               const Icon = ICON_BY_CATEGORY[category];
+              const weekend = isWeekend(day.date);
               return (
-                <li key={day.date} className="weather-forecast__day">
+                <li
+                  key={day.date}
+                  className={
+                    weekend
+                      ? 'weather-forecast__day weather-forecast__day--weekend'
+                      : 'weather-forecast__day'
+                  }
+                >
                   <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
                   <span
                     className="weather-forecast__icon"
@@ -90,11 +99,11 @@ export function WeatherForecast() {
               </li>
             ))}
       </ol>
-      <p className="weather-forecast__caption" style={phase === 'loading' ? { visibility: 'hidden' } : undefined}>
-        {phase === 'ready' && fetchedAt
-          ? `Wetter: Open-Meteo · aktualisiert ${formatAge(fetchedAt)}`
-          : ' '}
-      </p>
+      {phase === 'ready' && fetchedAt && isStaleWarning(fetchedAt) ? (
+        // Absolutely positioned (weather-forecast.css) so its appearance never shifts
+        // the content below — the section's own height never includes it (issue #155).
+        <p className="weather-forecast__caption">Stand: {formatStaleSince(fetchedAt)}</p>
+      ) : null}
     </section>
   );
 }
