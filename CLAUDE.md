@@ -187,10 +187,10 @@ du unnötig liest, kostet ihn Arbeitszeit am Ende der Woche.
    überall eingesetzt vervielfachen sie den Verbrauch. Nur für lesende, klar
    begrenzte Aufgaben: suchen, testen, prüfen.
 
-## Merge — der Runner-Takt wacht, du endest beim Push
+## Merge — du hebst deinen PR selbst aus dem Entwurf (#167)
 
 Du wartest nicht mehr selbst auf CI. Dein Lauf endet, sobald der Branch
-gepusht und ein **Draft**-PR offen ist:
+gepusht ist. Existiert für dieses Ticket noch kein PR:
 
 ```bash
 gh pr create --draft --fill --title "feat(...): … — Closes #<nr>"   # nur beim ERSTEN Push
@@ -199,17 +199,33 @@ gh pr create --draft --fill --title "feat(...): … — Closes #<nr>"   # nur be
 Existiert für dieses Ticket schon ein offener PR (Fortsetzung eines Laufs):
 **kein** zweiter — push einfach weiter auf denselben Branch.
 
+**Endet dein Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
+gepusht — also nicht über eine offene Frage, siehe unten), hebst du den PR
+**selbst** aus dem Entwurf und aktivierst Auto-Merge, bevor du beendest:
+
+```bash
+gh pr ready                                     # ohne Nummer -> PR des aktuellen Branches
+gh pr merge --squash --auto --delete-branch
+```
+
+Du musst dafür **nicht** wissen, ob CI schon grün ist — das ist der Punkt:
+Auto-Merge greift ohnehin erst, wenn alle Required Checks grün sind. Kippt
+ein Shard, passiert schlicht nichts, bis du (oder ein Fix-Lauf) es behebst.
+Ein Entwurf bedeutet jetzt: **der Lauf ist nicht sauber zu Ende gekommen** —
+nicht mehr „der Runner hat noch nicht hingeschaut".
+
 **Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das war früher
-dein Job; jetzt übernimmt ihn der Runner-Takt (alle ~5 Minuten, kostet ohne
-Agentenlauf nichts):
+dein Job; die CI-Wache im Runner-Takt (alle ~5 Minuten, kostet ohne
+Agentenlauf nichts) bleibt trotzdem bestehen — sie wird seltener gebraucht,
+nicht überflüssig:
 
 - **CI läuft noch** → nichts tun. `in-progress` bleibt stehen, kein anderes
   Ticket wird angefasst — der Bauplatz ist weiter belegt, auch wenn gerade
   kein Agent läuft.
-- **CI grün** → der Takt setzt den Draft auf `ready` und aktiviert Auto-Merge
-  (`gh pr merge --squash --auto --delete-branch`) — **ohne** dich, **ohne**
-  Agentenlauf. Ein Draft-PR wird nie gemerged, egal wie grün — erst dieser
-  Schritt hebt ihn aus dem Entwurf.
+- **CI grün** → GitHub merged von selbst, sobald du (oder ein früherer Lauf)
+  den PR bereits auf `ready` gesetzt und Auto-Merge aktiviert hat — **ohne**
+  weiteren Runner-Takt. War der PR aus einem abgebrochenen Lauf noch Entwurf,
+  hebt ihn die Wache als Sicherheitsnetz selbst an (nur bei bereits grüner CI).
 - **CI rot** (außer `protected-paths`, siehe unten) → der Takt startet dich
   gezielt neu, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag —
   nicht der rohen Log-Ausgabe. Lies den bestehenden Branch, `git log` und den
@@ -223,6 +239,10 @@ Agentenlauf nichts):
   ans Issue mit dem, was du versucht hast, Label `needs-input`. Drei rote
   Runden bedeuten, dass das Ticket falsch geschnitten ist — das ist eine
   menschliche Entscheidung, keine technische.
+
+Stellst du stattdessen eine Frage (`needs-input`, siehe „Autonomer Betrieb"
+oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
+ready` erreichst.
 
 ### Geschützte Pfade — hier merged niemand automatisch
 
@@ -241,6 +261,10 @@ beobachtet die CI ab jetzt, nicht du). Was du tust:
    sofort, der Runner wählt als nächstes ein anderes, statt auf das rote
    CI-Ergebnis zu warten.
 3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
+4. Trotzdem `gh pr ready` und `gh pr merge --squash --auto --delete-branch`
+   ausführen, bevor du beendest: der PR ist damit kein Entwurf mehr, aber
+   `protected-paths` hält ihn rot, bis der Mensch freigibt — das ist die
+   eigentliche Schranke, nicht der Entwurfsstatus.
 
 Das ist die vorgesehene Genehmigungs-Schranke, kein Fund für einen Fix-Lauf. Bleibt
 `protected-paths` als **einziger** roter Check stehen und `needs-input` fehlt trotzdem

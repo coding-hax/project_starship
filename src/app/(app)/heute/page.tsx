@@ -13,7 +13,8 @@ export default function HeutePage() {
         <AppHeader variant="inline" />
       </div>
       <WeatherForecast />
-      <TaskList dueTodayOnly />
+      <h2 id="heute-aufgaben-heading">Aufgaben</h2>
+      <TaskList dueTodayOnly headingId="heute-aufgaben-heading" />
       <h2>Gewohnheiten</h2>
       <HabitToday />
     </>
