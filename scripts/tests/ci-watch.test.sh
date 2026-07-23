@@ -87,6 +87,11 @@ case "${1:-} ${2:-}" in
     pr="$3"
     cat "$G/checks-$pr.json" 2>/dev/null || echo "[]"
     ;;
+  "pr view")
+    pr="$3"
+    cat "$G/mergestate-$pr.json" 2>/dev/null \
+      || printf '{"headRefName":"unknown","mergeStateStatus":"CLEAN"}'
+    ;;
   "pr ready")
     pr="$3"
     touch "$G/ready-$pr"
@@ -111,9 +116,34 @@ exit 0
 STUB
 
 # --- Stub 'git' ---------------------------------------------------------------
+# Erweitert um das, was pr_catch_up_behind() (#160) braucht: ein steuerbares
+# 'merge' (Konflikt via Marker-Datei), passende Antworten fuer status/diff/
+# rev-parse. Alles andere (fetch/checkout/push/merge --abort) bleibt ein
+# folgenloses exit 0, wie zuvor.
 cat > "$FAKEBIN/git" <<'STUB'
 #!/usr/bin/env bash
-exit 0
+G="$GHSTATE_DIR"
+case "${1:-}" in
+  status)
+    [ -e "$G/git-dirty" ] && printf ' M some/file.ts\n'
+    exit 0
+    ;;
+  rev-parse)
+    printf 'main\n'
+    exit 0
+    ;;
+  merge)
+    case "${2:-}" in
+      --abort) exit 0 ;;
+      *) [ -e "$G/git-merge-conflict" ] && exit 1; exit 0 ;;
+    esac
+    ;;
+  diff)
+    [ -e "$G/git-merge-conflict" ] && printf 'src/a.ts\nsrc/b.ts\n'
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
 STUB
 
 # --- Stub 'claude' -------------------------------------------------------------
@@ -159,6 +189,17 @@ setup_pr() {
   local issue="$1" pr="$2"
   printf '[{"number":%s,"headRefName":"fix/%s-runner-ci-watch"}]' "$pr" "$issue" \
     > "$GHSTATE_DIR/prlist.json"
+}
+
+# $1 = Issue-Nr, $2 = PR-Nr -> markiert den PR als hinter 'main' (#160),
+# alle Checks gruen -- genau die Konstellation, in der die Wache die
+# Reihenfolge pending -> failing -> behind -> success anwenden muss.
+setup_behind() {
+  local issue="$1" pr="$2"
+  printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+    > "$GHSTATE_DIR/checks-$pr.json"
+  printf '{"headRefName":"fix/%s-runner-ci-watch","mergeStateStatus":"BEHIND"}' \
+    "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
 }
 
 assert_file_absent() {
@@ -279,6 +320,76 @@ LABELS_310=$(cat "$GHSTATE_DIR/labels-310" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_310" in
   *in-progress*) red "T6: #310 wird NICHT angefasst, während #306 auf CI wartet (Labels: $LABELS_310)" ;;
   *) ok "T6: #310 wird nicht angefasst, während #306 auf CI wartet" ;;
+esac
+
+# ==============================================================================
+# T7 -- PR liegt hinter main, Checks grün, kein Konflikt (#160) -> per git
+#       nachgezogen und gepusht, KEIN Agentenlauf, KEIN Auto-Merge (CI muss
+#       nach dem Push erst neu laufen)
+# ==============================================================================
+reset_state
+setup_wip_issue 401
+setup_pr 401 701
+setup_behind 401 701
+run_round
+assert_file_absent "T7: kein Agentenlauf beim reinen Nachziehen" "$GHSTATE_DIR/claude-called"
+assert_file_absent "T7: kein Auto-Merge direkt nach dem Nachziehen" "$GHSTATE_DIR/merged-701"
+assert_contains "T7: Status zeigt wieder 'CI läuft'" \
+  "CI läuft" "$(cat "$GHSTATE_DIR/status-title" 2>/dev/null)"
+IN_PROGRESS_401=$(cat "$GHSTATE_DIR/labels-401" 2>/dev/null | tr '\n' ' ')
+case "$IN_PROGRESS_401" in
+  *in-progress*) ok "T7: Ticket bleibt in-progress nach dem Nachziehen" ;;
+  *) red "T7: Ticket bleibt in-progress nach dem Nachziehen (Labels: $IN_PROGRESS_401)" ;;
+esac
+
+# ==============================================================================
+# T8 -- Nachziehen scheitert an einem echten Merge-Konflikt -> Fix-Agent mit
+#       den Konfliktdateien im Auftrag, sauberer Arbeitsbaum (kein Auto-Merge)
+# ==============================================================================
+reset_state
+setup_wip_issue 402
+setup_pr 402 702
+setup_behind 402 702
+touch "$GHSTATE_DIR/git-merge-conflict"
+run_round
+assert_file_present "T8: ein Fix-Agent läuft bei einem Merge-Konflikt" \
+  "$GHSTATE_DIR/claude-called"
+assert_file_absent "T8: kein Auto-Merge bei einem Merge-Konflikt" "$GHSTATE_DIR/merged-702"
+PROMPT_702=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T8: Auftrag nennt den Merge-Konflikt" "Merge-Konflikt" "$PROMPT_702"
+assert_contains "T8: Auftrag nennt die Konfliktdatei a.ts" "src/a.ts" "$PROMPT_702"
+assert_contains "T8: Auftrag nennt die Konfliktdatei b.ts" "src/b.ts" "$PROMPT_702"
+assert_not_contains "T8: kein 'gh pr update-branch' im Auftrag" "update-branch" "$PROMPT_702"
+
+# ==============================================================================
+# T9 -- Auch ein GEPARKTES Ticket (#154) mit zurückgefallenem PR wird per git
+#       nachgezogen -- OHNE ein parallel laufendes in-progress-Ticket zu
+#       stören und OHNE selbst einen Agenten zu starten (WIP-Limit=1)
+# ==============================================================================
+reset_state
+: > "$GHSTATE_DIR/labels-410"
+echo "in-progress" >> "$GHSTATE_DIR/labels-410"
+: > "$GHSTATE_DIR/labels-403"
+echo "parked" >> "$GHSTATE_DIR/labels-403"
+printf '[
+  {"number":410,"labels":[{"name":"in-progress"}],"createdAt":"2026-01-01T00:00:00Z"},
+  {"number":403,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}
+]' > "$GHSTATE_DIR/wip.json"
+printf '[{"number":810,"headRefName":"fix/410-runner-ci-watch"},{"number":703,"headRefName":"fix/403-runner-ci-watch"}]' \
+  > "$GHSTATE_DIR/prlist.json"
+printf '[{"bucket":"pending","name":"e2e"}]' > "$GHSTATE_DIR/checks-810.json"
+setup_behind 403 703
+run_round
+assert_file_absent "T9: kein Agentenlauf beim Nachziehen eines geparkten Tickets" \
+  "$GHSTATE_DIR/claude-called"
+assert_file_absent "T9: kein Auto-Merge direkt nach dem Nachziehen (geparkt)" \
+  "$GHSTATE_DIR/merged-703"
+assert_file_absent "T9: das laufende Ticket wird durchs Nachziehen nicht gestört" \
+  "$GHSTATE_DIR/merged-810"
+LABELS_403=$(cat "$GHSTATE_DIR/labels-403" 2>/dev/null | tr '\n' ' ')
+case "$LABELS_403" in
+  *parked*) ok "T9: Ticket bleibt geparkt, bis CI nach dem Nachziehen neu grün ist" ;;
+  *) red "T9: Ticket bleibt geparkt (Labels: $LABELS_403)" ;;
 esac
 
 # ==============================================================================

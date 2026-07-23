@@ -356,10 +356,12 @@ pr_for_issue() {   # $1 = Issue-Nr -> PR-Nummer (leer, wenn keiner offen)
         '[.[] | select(.headRefName | test($pat))] | .[0].number // empty'
 }
 
-# CI-Gesamtzustand eines PR: pending | success | failing. 'pending' hat
-# Vorrang vor 'failing' -- ein noch laufender Shard darf einen bereits roten
-# Check nicht uebertoenen: erst wenn das Bild vollstaendig ist, wird
-# entschieden (die AC nennt "laeuft noch -> nichts tun" zuerst).
+# CI-Gesamtzustand eines PR: pending | failing | behind | success. Reihenfolge
+# ist Absicht (#160): 'pending' hat Vorrang vor 'failing' -- ein noch
+# laufender Shard darf einen bereits roten Check nicht uebertoenen. 'behind'
+# wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft und nichts
+# rot ist -- ein zurueckgefallener Branch mit rotem Check wird also erst
+# repariert, nicht vorschnell nachgezogen.
 pr_ci_state() {   # $1 = PR-Nr
   local pr="$1" json total pending failing
   json=$(gh pr checks "$pr" --json bucket,name,description,link 2>/dev/null)
@@ -369,7 +371,61 @@ pr_ci_state() {   # $1 = PR-Nr
   if [ "${pending:-0}" -gt 0 ]; then echo pending; return 0; fi
   failing=$(printf '%s' "$json" \
     | jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")] | length')
-  if [ "${failing:-0}" -eq 0 ]; then echo success; else echo failing; fi
+  if [ "${failing:-0}" -gt 0 ]; then echo failing; return 0; fi
+  if pr_is_behind "$pr"; then echo behind; return 0; fi
+  echo success
+}
+
+# GitHub berechnet mergeStateStatus serverseitig -- BEHIND heisst: der
+# PR-Branch hat Commits von 'main' noch nicht. Kein eigener git-Vergleich
+# noetig, kein 'gh pr update-branch' (#160: scheitert an Workflow-Dateien
+# ohne 'workflow'-Scope).
+pr_merge_state() {   # $1 = PR-Nr -> JSON {headRefName, mergeStateStatus}
+  gh pr view "$1" --json headRefName,mergeStateStatus 2>/dev/null
+}
+
+pr_is_behind() {   # $1 = PR-Nr -> 0 (hinter main) / 1 (aktuell/unbekannt)
+  local pr="$1" state
+  state=$(pr_merge_state "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
+  [ "$state" = "BEHIND" ]
+}
+
+# Zieht 'main' per git in einen zurueckgefallenen PR-Branch: fetch + merge +
+# push -- bewusst ueber git, nicht 'gh pr update-branch' (#160). Erwartet
+# einen sauberen Arbeitsbaum (der Bau-Agent endet immer mit Push, nie mit
+# offenen Aenderungen); ein dreckiger Baum hier waere ein Bug anderswo und
+# wird konservativ als Fehler behandelt, statt riskant drueberzumergen.
+#
+# Scheitert der Merge an einem echten Konflikt: kein Commit, Merge wird
+# abgebrochen, der Arbeitsbaum kehrt sauber zum vorherigen Branch zurueck --
+# die Konfliktdateien landen als kommagetrennte Liste auf stdout, fuer den
+# Fix-Agenten-Auftrag.
+#
+# Rueckgabewert: 0 nachgezogen+gepusht | 1 Konflikt (Dateien auf stdout) | 2 Fehler
+pr_catch_up_behind() {   # $1 = PR-Nr
+  local pr="$1" branch cur rc conflicts
+  branch=$(pr_merge_state "$pr" | jq -r '.headRefName // empty' 2>/dev/null)
+  [ -z "$branch" ] && return 2
+  [ -n "$(git status --porcelain 2>/dev/null)" ] && return 2
+
+  cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if [ -z "$cur" ] || [ "$cur" = "HEAD" ]; then cur=main; fi
+
+  git fetch origin main "$branch" --quiet 2>/dev/null || return 2
+  git checkout -B "$branch" "origin/$branch" --quiet 2>/dev/null || return 2
+
+  if git merge origin/main --no-edit --quiet 2>/dev/null; then
+    git push origin "HEAD:$branch" --quiet 2>/dev/null
+    rc=$?
+    git checkout "$cur" --quiet 2>/dev/null
+    [ "$rc" -eq 0 ] && return 0 || return 2
+  fi
+
+  conflicts=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+  git merge --abort 2>/dev/null
+  git checkout "$cur" --quiet 2>/dev/null
+  printf '%s' "$conflicts"
+  return 1
 }
 
 # Sind ALLE roten Checks genau 'protected-paths'? Dann ist das kein Fund fuer
@@ -694,9 +750,19 @@ fi
 # komplett gruen (z.B. weil ein Mensch 'human-approved' gesetzt hat und
 # 'protected-paths' nachgelaufen ist), blieb der Draft bisher fuer immer
 # Draft -- niemand hat mehr hingeschaut. Hier werden ALLE 'parked'-Tickets
-# geprueft, nicht nur eins, und zwar rein ueber gh-Aufrufe -- es startet
+# geprueft, nicht nur eins, und zwar rein ueber gh-/git-Aufrufe -- es startet
 # niemals ein Agent, verzoegert also das ggf. laufende 'in-progress'-Ticket
 # nicht. Noch laufende oder rote Checks aendern nichts (Ticket bleibt geparkt).
+#
+# 'behind' (#160): liegt ein geparkter PR hinter 'main', wird per git
+# nachgezogen -- sonst wartet ein laengst freigegebener PR ewig weiter, weil
+# ihn ausser dieser Wache niemand mehr anfasst. Scheitert das Nachziehen an
+# einem echten Konflikt, wird HIER bewusst KEIN Agent gestartet (WIP-Limit=1,
+# siehe CLAUDE.md Regel 1 -- ein evtl. laufendes 'in-progress'-Ticket darf
+# nicht durch ein zweites Ticket gestoert werden). Das Ticket bleibt geparkt
+# und wird beim naechsten Takt erneut versucht; sobald es regulaer per
+# Ticketwahl fortgesetzt wird (Schritt 1b), loest der Bau-Agent den Konflikt
+# als Teil seiner normalen Arbeit.
 RELEASED_PARKED_NOTE=""
 RELEASED_PARKED_NUMS='[]'
 PARKED_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
@@ -706,7 +772,12 @@ if [ -n "$PARKED_LIST" ]; then
     [ -z "$PN" ] && continue
     PPR=$(pr_for_issue "$PN")
     [ -z "$PPR" ] && continue
-    [ "$(pr_ci_state "$PPR")" = "success" ] || continue
+    PSTATE=$(pr_ci_state "$PPR")
+    if [ "$PSTATE" = "behind" ]; then
+      pr_catch_up_behind "$PPR" >/dev/null
+      continue
+    fi
+    [ "$PSTATE" = "success" ] || continue
     gh pr ready "$PPR" >/dev/null 2>&1
     gh pr merge --squash --auto --delete-branch "$PPR" >/dev/null 2>&1
     gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
@@ -779,6 +850,34 @@ Takt beobachtet die CI weiter."
         fi
         CI_FIX=1
         CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
+        ;;
+      behind)
+        CONFLICT_FILES=$(pr_catch_up_behind "$PR_NUM")
+        case $? in
+          0)
+            status "CI läuft für #$ISSUE" "🟢" \
+              "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
+
+Der nächste Takt prüft erneut. **Kein Eingreifen nötig.**"
+            return 0
+            ;;
+          1)
+            CI_FIX=1
+            CI_SUMMARY="### Merge-Konflikt beim Nachziehen von \`main\`
+PR #$PR_NUM (#$ISSUE) liegt hinter \`main\`. Das automatische Nachziehen (\`git fetch\` +
+\`git merge origin/main\`) ist an einem echten Konflikt gescheitert.
+
+Betroffene Dateien: ${CONFLICT_FILES:-unbekannt}
+
+Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
+\`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen."
+            ;;
+          *)
+            status "CI läuft für #$ISSUE" "🟢" \
+              "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich. Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
+            return 0
+            ;;
+        esac
         ;;
     esac
   fi
