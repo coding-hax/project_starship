@@ -393,6 +393,43 @@ case "$LABELS_403" in
 esac
 
 # ==============================================================================
+# T10 -- Bau-Prompt weist an: geschuetzten Pfad beim Oeffnen des Draft-PR
+#        SELBST als needs-input markieren und in diesem Lauf nicht wieder
+#        abnehmen (#163) -- die Wache bleibt nur das Sicherheitsnetz
+# ==============================================================================
+reset_state
+setup_wip_issue 320
+printf '[]' > "$GHSTATE_DIR/prlist.json"   # noch kein PR -> generischer Bau-Prompt
+run_round
+PROMPT_320=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T10: Bau-Prompt weist an, needs-input bei geschuetzten Pfaden selbst zu setzen" \
+  "add-label needs-input" "$PROMPT_320"
+assert_contains "T10: Bau-Prompt untersagt, es im selben Lauf wieder abzunehmen" \
+  "NICHT wieder ab" "$PROMPT_320"
+
+# ==============================================================================
+# T11 -- protected-paths allein rot, needs-input haengt bereits dran (z. B.
+#        vom Bau-Agent selbst gesetzt, #163) -> erneutes Setzen durch die
+#        Wache bleibt folgenlos, kein Fehler, kein Fix-Agent, kein Auto-Merge
+# ==============================================================================
+reset_state
+setup_wip_issue 306
+setup_pr 306 506
+: > "$GHSTATE_DIR/labels-306"
+printf 'in-progress\nneeds-input\n' >> "$GHSTATE_DIR/labels-306"
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
+  > "$GHSTATE_DIR/checks-506.json"
+run_round
+assert_file_absent "T11: kein Agentenlauf, needs-input haengt schon vom Bau-Agent" \
+  "$GHSTATE_DIR/claude-called"
+LABELS_306=$(cat "$GHSTATE_DIR/labels-306" 2>/dev/null | tr '\n' ' ')
+case "$LABELS_306" in
+  *needs-input*) ok "T11: needs-input bleibt stehen, erneutes Setzen ist folgenlos" ;;
+  *) red "T11: needs-input bleibt stehen (Labels: $LABELS_306)" ;;
+esac
+assert_file_absent "T11: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-506"
+
+# ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
   ok "Alle CI-Wache-Tests grün."
