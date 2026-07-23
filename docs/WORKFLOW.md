@@ -395,6 +395,31 @@ Check würde nur Fehlalarme produzieren.
 - **Offline-Tests sind Pflicht** — `context.setOffline(true)`, Mutation, wieder online,
   Assertion gegen den Serverzustand.
 
+### Wie ein Flake-Fix belegt wird
+
+„Zehnmal hintereinander grün" heißt **zehn Wiederholungen des betroffenen Tests**,
+nicht zehn volle Suiteläufe (#146 — genau das hat #131 drei Bau-Läufe und das
+gesamte Opus-Tagesbudget gekostet, obwohl der Code die ganze Zeit fertig war: ein
+Lauf-Fenster ist 45 Minuten, zehn volle Suiten brauchen bei ~26 Minuten je Lauf
+über vier Stunden). `@playwright/test` bringt dafür die passenden Flags mit:
+
+```bash
+pnpm exec playwright test tests/habits.spec.ts \
+  -g "nach dem Onlinegehen" \
+  --repeat-each=10 --fail-on-flaky-tests --project=mobile
+```
+
+- `--repeat-each=10` wiederholt genau die per `-g`/Dateiname eingegrenzten Tests
+  zehnmal in einem einzigen Serverstart — statt zehnmal die ganze Suite hochzufahren.
+- `--fail-on-flaky-tests` ist das, was „ohne Retry" tatsächlich meint: ein Test, der
+  erst im Retry grün wird, färbt den Lauf rot, statt als Erfolg durchzugehen.
+
+Ein Akzeptanzkriterium, das sich nicht innerhalb eines Lauf-Fensters prüfen lässt,
+ist keine Anforderung, sondern eine Sackgasse — der Runner kann es weder erfüllen
+noch verwerfen. Deshalb gilt beim Ticketschnitt: **jedes Akzeptanzkriterium muss
+innerhalb eines Lauf-Fensters prüfbar sein.** „N ganze Suiten hintereinander" ist
+als Nachweisform ausgeschlossen.
+
 ## Was Claude autonom darf und was nicht
 
 **Darf:**
