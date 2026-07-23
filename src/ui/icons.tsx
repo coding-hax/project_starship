@@ -25,8 +25,11 @@ const svgProps = {
 export function IconToday({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
-      <circle cx="12" cy="12" r="7" />
-      <circle cx="12" cy="12" r="2.5" />
+      {/* Sun (issue #157): distinct from IconWeatherClear via few, long rays and a
+          near-solid core (tiny radius, thick stroke) instead of its eight short
+          rays around an open ring. */}
+      <circle cx="12" cy="12" r="1.25" />
+      <path d="M12 6V2M12 18v4M18 12h4M6 12H2" />
     </svg>
   );
 }
@@ -72,10 +75,13 @@ export function IconJournal({ className }: IconProps) {
 export function IconSettings({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
-      <circle cx="12" cy="12" r="3.5" />
-      <path
-        d="M18 12h3M3 12h3M12 18v3M12 3v3M18.36 18.36l-2.12-2.12M7.76 7.76 5.64 5.64M18.36 5.64l-2.12 2.12M7.76 16.24l-2.12 2.12"
-      />
+      {/* Two horizontal sliders with handles (issue #157) — replaces the old
+          gear-as-radial-strokes shape, which read as IconWeatherClear's sun once
+          the forecast landed on the same screen. */}
+      <path d="M3.5 8h6.5M15.5 8h5" />
+      <circle cx="12.5" cy="8" r="2" />
+      <path d="M3.5 16h4.5M13.5 16h7" />
+      <circle cx="10.5" cy="16" r="2" />
     </svg>
   );
 }
