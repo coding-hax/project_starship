@@ -152,6 +152,8 @@ und Fortschrittskommentar und macht weiter. **Kein Neuanfang, kein Rollback.**
 - Ein zweites Ticket beginnen, während eines auf `in-progress` steht
 - Eine Frage stellen, ohne das Label `needs-input` zu setzen (sonst startet der
   Runner dich in 20 Minuten erneut mit derselben offenen Frage)
+- Auf CI warten (`gh pr checks --watch`) oder lokal die volle `pnpm e2e`-Suite
+  laufen lassen — dein Lauf endet beim Push, der Runner-Takt beobachtet die CI
 
 ## Token-Disziplin — das ist eine harte Regel, keine Bitte
 
@@ -178,28 +180,42 @@ du unnötig liest, kostet ihn Arbeitszeit am Ende der Woche.
    überall eingesetzt vervielfachen sie den Verbrauch. Nur für lesende, klar
    begrenzte Aufgaben: suchen, testen, prüfen.
 
-## Merge — du merged selbst, aber du bestimmst nicht, wann
+## Merge — der Runner-Takt wacht, du endest beim Push
 
-Wenn ein Ticket fertig ist:
+Du wartest nicht mehr selbst auf CI. Dein Lauf endet, sobald der Branch
+gepusht und ein **Draft**-PR offen ist:
 
 ```bash
-gh pr create --fill --title "feat(...): … — Closes #<nr>"
-gh pr merge --squash --auto --delete-branch     # Auto-Merge einschalten
-gh pr checks --watch                            # warten, bis CI durch ist
+gh pr create --draft --fill --title "feat(...): … — Closes #<nr>"   # nur beim ERSTEN Push
 ```
 
-**`--auto` ist der Kern.** Du merged nicht — du _beantragst_ den Merge. GitHub führt
-ihn aus, sobald alle Required Checks grün sind. Ist auch nur einer rot, passiert nichts.
-Du kannst rot nicht durchdrücken, selbst wenn du es für richtig hältst.
+Existiert für dieses Ticket schon ein offener PR (Fortsetzung eines Laufs):
+**kein** zweiter — push einfach weiter auf denselben Branch.
 
-Ist ein Check rot:
+**Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das war früher
+dein Job; jetzt übernimmt ihn der Runner-Takt (alle ~5 Minuten, kostet ohne
+Agentenlauf nichts):
 
-1. Ursache lesen (Playwright-Trace über den `test-runner`-Subagenten).
-2. Beheben, pushen, erneut warten.
-3. Nach dem **dritten** vergeblichen Versuch: aufhören. Kommentar ans Issue mit dem,
-   was du versucht hast und woran es scheitert, Label `needs-input`, Lauf beenden.
-   Drei rote Runden bedeuten, dass das Ticket falsch geschnitten ist — das ist eine
-   menschliche Entscheidung, keine technische.
+- **CI läuft noch** → nichts tun. `in-progress` bleibt stehen, kein anderes
+  Ticket wird angefasst — der Bauplatz ist weiter belegt, auch wenn gerade
+  kein Agent läuft.
+- **CI grün** → der Takt setzt den Draft auf `ready` und aktiviert Auto-Merge
+  (`gh pr merge --squash --auto --delete-branch`) — **ohne** dich, **ohne**
+  Agentenlauf. Ein Draft-PR wird nie gemerged, egal wie grün — erst dieser
+  Schritt hebt ihn aus dem Entwurf.
+- **CI rot** (außer `protected-paths`, siehe unten) → der Takt startet dich
+  gezielt neu, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag —
+  nicht der rohen Log-Ausgabe. Lies den bestehenden Branch, `git log` und den
+  Fortschrittskommentar (inkl. „Was schon versucht wurde") zuerst, behebe die
+  Ursache (Playwright-Trace zuerst lesen, dann fixen — kein `.skip`, kein
+  hochgesetzter Timeout, kein gelockertes Assert), lass die schnellen Tore
+  (`pnpm lint`, `pnpm typecheck`, `pnpm test`) lokal grün werden, push wieder
+  auf denselben Branch. Kein neuer PR.
+- Nach dem **dritten** vergeblichen Versuch mit derselben Fehlerursache
+  (bestehende Eskalation, siehe ADR-0007/`blocker_sig`): aufhören, Kommentar
+  ans Issue mit dem, was du versucht hast, Label `needs-input`. Drei rote
+  Runden bedeuten, dass das Ticket falsch geschnitten ist — das ist eine
+  menschliche Entscheidung, keine technische.
 
 ### Geschützte Pfade — hier merged niemand automatisch
 
@@ -207,16 +223,21 @@ Ist ein Check rot:
 `.github/` und `scripts/`.
 
 Ein Fehler ist dort kein Bug, sondern **Datenverlust**. Der CI-Check `protected-paths`
-schlägt fehl, sobald ein PR sie berührt, und lässt den PR offen stehen. Was du tust:
+schlägt fehl, sobald ein PR sie berührt. Berührt dein Diff einen dieser Pfade:
+schreib den Kommentar **sofort beim Öffnen des Draft-PR** — warte nicht auf das
+rote CI-Ergebnis, das bekommst du ohnehin nicht mehr live mit (der Runner-Takt
+beobachtet die CI ab jetzt, nicht du). Was du tust:
 
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, und was schiefgehen könnte.
 2. Label `human-approved` anfordern — nicht selbst setzen.
-3. Lauf beenden.
 
-Der Mensch setzt das Label vom Handy aus, der Check läuft automatisch neu, der
-Auto-Merge greift. Versuche **nie**, diesen Check zu umgehen, ihn abzuschalten oder
-die Änderung so umzuschneiden, dass sie am Wächter vorbeirutscht. Das wäre der
-schwerste Vertrauensbruch, der in diesem Repo möglich ist.
+Bleibt `protected-paths` als **einziger** roter Check stehen, setzt der Runner-Takt
+`needs-input` — das ist die vorgesehene Genehmigungs-Schranke, kein Fund für einen
+Fix-Lauf. Der Mensch setzt vom Handy aus `human-approved` **und entfernt**
+`needs-input` — danach läuft der Check automatisch neu, der nächste Takt sieht grün
+und aktiviert Auto-Merge. Versuche **nie**, diesen Check zu umgehen, ihn
+abzuschalten oder die Änderung so umzuschneiden, dass sie am Wächter vorbeirutscht.
+Das wäre der schwerste Vertrauensbruch, der in diesem Repo möglich ist.
 
 ### Tests sind kein Hindernis, sie sind der Auftrag
 
