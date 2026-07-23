@@ -21,6 +21,18 @@ Issue (mit Akzeptanzkriterien)
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
+**„Wartend" ist nicht „in Arbeit" (#145).** Ein Ticket, an dem *niemand* sitzt,
+weil eine Frage an dich offen ist, belegt keinen Bauplatz — nur ein Ticket, an
+dem der Runner gerade tatsächlich baut, tut das. Stellt Claude eine Frage
+(Label `needs-input`), gibt das Ticket im selben Zug `in-progress` ab und trägt
+stattdessen `parked`: sichtbar wartend, aber frei für die Auswahl des nächsten
+Tickets. Antwortest du und entfernst `needs-input`, wird das `parked`-Ticket vor
+Queue und Label-Kaskade fortgesetzt (Branch, `git log` und Fortschrittskommentar
+wie gewohnt — kein Neuanfang). Das gilt **nicht** für `blocked-limit`: ein
+Usage-Limit löst sich von selbst in Minuten und bleibt bewusst `in-progress`, der
+Runner fängt in der Zwischenzeit nichts Neues an (siehe Abschnitt „Zwei Arten des
+Wartens" unten).
+
 **Recherche-Schritt vor `needs-plan` (optional, Idee-Ebene):** Wirfst du eine grobe
 Feature-Idee als Issue ein, setzt du das Label `needs-research`. Der Runner lässt
 Opus dann nur-lesend prüfen, *ob* & *was*: Fit zu `docs/VISION.md`,
@@ -113,6 +125,7 @@ Zustandsmaschine des ganzen Setups:
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-input`    | **Claude hat eine Frage gestellt und wartet auf dich.**        | Claude       |
+| `parked`         | Wartet auf dich (`needs-input`), belegt aber **keinen Bauplatz** mehr — löst `in-progress` ab, siehe #145. | Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
@@ -128,6 +141,20 @@ Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
 Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
 auch wenn zwanzig Tickets im Backlog liegen. Ein `needs-plan`-Ticket trägt per
 Definition kein `ready`, solange der Plan fehlt — es bleibt also automatisch liegen.
+
+**Zwei Arten des Wartens (#145).** Nicht jedes „warten" ist gleich:
+
+- **Wartet auf einen Menschen** (`needs-input`/`parked`): kann Minuten bis Tage
+  dauern. Das Ticket gibt `in-progress` ab, der Runner wählt in der Zwischenzeit
+  ein anderes. Betrifft es einen PR mit geschützten Pfaden, setzt du
+  `human-approved` statt `needs-input` zu entfernen.
+- **Wartet auf die Zeit** (`blocked-limit`, und — sobald gebaut — CI-Wartezeit):
+  löst sich von selbst in Minuten. Das Ticket **bleibt** `in-progress`, der
+  Runner fängt nichts Neues an, weil es ohnehin gleich weitergeht.
+
+Die Unterscheidung ist der Grund, warum `parked` ein eigenes Label ist statt
+`in-progress` einfach zu entfernen: die Auswahl-Logik muss beide Fälle
+unterschiedlich behandeln können, nicht nur den Text der Statusmeldung.
 
 ## Modell-Eskalation beim Bauen (ADR-0007)
 
@@ -157,8 +184,10 @@ das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
 Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 
 **Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt dich)
-→ du antwortest als Kommentar → du entfernst `needs-input` → beim nächsten Lauf
-(max. 20 Minuten später) macht Claude weiter.
+→ du antwortest als Kommentar → du entfernst `needs-input` → das Ticket wechselt von
+`parked` zurück auf `in-progress` und wird vor Queue/Label-Kaskade fortgesetzt, beim
+nächsten Lauf (max. 20 Minuten später). In der Zwischenzeit hat der Runner an anderen
+Tickets weitergearbeitet, nicht stillgestanden.
 
 ## Merge: automatisch, aber nicht ungeprüft
 
