@@ -13,7 +13,7 @@ im selben PR. Eine veraltete Karte ist schlimmer als keine.
 src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
-    (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
+    (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit); Wetter (WeatherForecast) ganz oben, vor der Aufgabenliste (issue #139)
     (app)/heute/heute.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
@@ -37,7 +37,7 @@ src/
     migrations/             generierte Migrationen, nie von Hand ändern
   local/
     types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten)
-    dexie.ts                IndexedDB-Definition (outbox, records, meta)
+    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139)
     outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch
     sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
@@ -77,6 +77,11 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
+    weather/
+      forecast.ts              Open-Meteo: fetchForecast/parseForecast, isStale (3h-Fenster), weekdayLabel, formatAge — Bonn fest verdrahtet (issue #139, ADR-0009)
+      wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
+      use-weather-forecast.ts  Live-Query auf db.weather (eigene Tabelle, nie synchronisiert), Refresh nur wenn stale, Fehler überschreiben den Cache nie
+      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Heute, Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3)
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
@@ -119,6 +124,7 @@ tests/
   streaks.spec.ts           Streak-Badge in der Heute-Sektion: daily 3 Tage/ausgelassen, Tageswechsel (page.clock), weekly 2 Wochen/Reset (issue #104)
   habits-week-grid.spec.ts Monatsraster: Monatsanfang eingerückt, Blättern via ‹/›, Zellen über Monate hinweg, Vergangenheit nachträglich abhakbar, Zukunft gesperrt, Heute nur im laufenden Monat, Streak reagiert sofort, leerer Monat, offline, Tokens/Dark/reduced-motion (issue #105 → #124)
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
+  weather.spec.ts           Wetter auf Heute: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139) — ruft nie die echte Open-Meteo-API
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
@@ -126,7 +132,7 @@ scripts/
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
-  check-sync-invariants.sh  Wächter gegen direkten fetch(/api) außerhalb der Outbox (#58)
+  check-sync-invariants.sh  Wächter gegen direkten fetch(/api/) außerhalb der Outbox (#58); Trenner-Slash Pflicht, sonst false-positiv auf Fremdquellen wie https://api.open-meteo.com (#139)
   check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)
   tests/dexie-bump.test.sh  Fixture-Tests für check-dexie-bump.sh (#59)
   tests/limit-until.test.sh Fixture-Tests: abgelaufenes 'limit-until' hebt die Pause selbst auf, aktives bleibt unangetastet, fehlender/kaputter Wert pausiert nicht dauerhaft (#121)

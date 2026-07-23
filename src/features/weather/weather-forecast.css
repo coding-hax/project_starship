@@ -27,10 +27,27 @@
 }
 
 .weather-forecast__day--skeleton {
-  /* Matches a loaded column's height: weekday line + 24px icon + two temp lines. */
-  height: 88px;
   background: var(--surface-raised);
   animation: weather-forecast-pulse 1.4s ease-in-out infinite;
+}
+
+/* The skeleton reuses the loaded column's own classes with placeholder content
+ * (a &nbsp; instead of real text, an empty 24×24 box instead of the icon) — same
+ * line-boxes, same height, just invisible, so nothing shifts once real data lands. */
+.weather-forecast__day--skeleton .weather-forecast__weekday,
+.weather-forecast__day--skeleton .weather-forecast__temp-max,
+.weather-forecast__day--skeleton .weather-forecast__temp-min {
+  border-radius: 4px;
+  background: var(--border);
+  color: transparent;
+}
+
+.weather-forecast__icon--placeholder {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
 }
 
 @keyframes weather-forecast-pulse {
