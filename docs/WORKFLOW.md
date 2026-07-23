@@ -224,6 +224,21 @@ schon versucht wurde". Rot aus demselben Grund wie beim letzten Mal zählt
 weiterhin als Fehlversuch der bestehenden Eskalation (ADR-0007, `blocker_sig`)
 — nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`.
 
+**Die Wache gilt auch für `parked`-Tickets (#154).** Die Tabelle oben
+beobachtet nur das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins,
+das an `protected-paths` hing und auf `human-approved` wartete) fiel bisher
+aus der Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145),
+aber die Ticketauswahl greift es erst wieder auf, sobald `needs-input`
+manuell weg ist. Wurde der PR in der Zwischenzeit komplett grün, blieb der
+Draft für immer Draft. Deshalb prüft der Takt **zusätzlich** — vor jeder
+Ticketauswahl, ohne den Bauplatz des laufenden Tickets zu berühren — **alle**
+offenen `parked`-Tickets: Ist der PR eines davon komplett grün, fallen
+`parked` **und** `needs-input` weg, der Draft wird `ready`, Auto-Merge
+aktiviert — genau wie beim laufenden Ticket, nur ohne dass vorher ein Mensch
+`needs-input` hätte entfernen müssen. Läuft die CI noch oder ist sie rot,
+bleibt das Ticket unverändert geparkt. Das kostet nie einen Agentenlauf, nur
+gh-Aufrufe — das Statusticket nennt freigegebene Tickets im nächsten Update.
+
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
 
 ```bash

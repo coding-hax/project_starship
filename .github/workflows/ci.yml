@@ -33,6 +33,7 @@ jobs:
       - run: bash scripts/tests/limit-until.test.sh
       - run: bash scripts/tests/parked-label.test.sh
       - run: bash scripts/tests/ci-watch.test.sh
+      - run: bash scripts/tests/parked-ci-watch.test.sh
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
