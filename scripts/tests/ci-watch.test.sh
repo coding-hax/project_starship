@@ -430,6 +430,55 @@ esac
 assert_file_absent "T11: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-506"
 
 # ==============================================================================
+# T12 -- Bau-Prompt (#167): weist an, den PR am sauberen Ende SELBST aus dem
+#        Entwurf zu heben und Auto-Merge zu aktivieren, ohne auf CI-Gruen zu
+#        warten -- statt auf den naechsten Wache-Takt
+# ==============================================================================
+reset_state
+setup_wip_issue 321
+printf '[]' > "$GHSTATE_DIR/prlist.json"   # noch kein PR -> generischer Bau-Prompt
+run_round
+PROMPT_321=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T12: Bau-Prompt weist an, 'gh pr ready' selbst auszufuehren" \
+  "gh pr ready" "$PROMPT_321"
+assert_contains "T12: Bau-Prompt weist an, Auto-Merge selbst zu aktivieren" \
+  "gh pr merge --squash --auto --delete-branch" "$PROMPT_321"
+
+# ==============================================================================
+# T13 -- Bau-Prompt (#167): auch im Zweig fuer geschuetzte Pfade bleibt die
+#        Anweisung stehen -- needs-input haelt das Ticket geparkt, aber der
+#        PR soll trotzdem kein Entwurf mehr sein ('protected-paths' haelt ihn
+#        ohnehin rot, bis ein Mensch freigibt)
+# ==============================================================================
+reset_state
+setup_wip_issue 322
+printf '[]' > "$GHSTATE_DIR/prlist.json"
+run_round
+PROMPT_322=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T13: Bau-Prompt haelt an 'gh pr ready' fest, auch bei needs-input aus Schritt 7" \
+  "wegen eines" "$PROMPT_322"
+assert_contains "T13: Bau-Prompt erwaehnt, dass protected-paths trotzdem rot haelt" \
+  "protected-paths" "$PROMPT_322"
+
+# ==============================================================================
+# T14 -- CI-Fix-Prompt (#167): erhaelt dieselbe Anweisung -- der Fix-Agent
+#        raeumt das Sicherheitsnetz mit auf, statt sich auf einen frueheren
+#        Lauf zu verlassen
+# ==============================================================================
+reset_state
+setup_wip_issue 323
+setup_pr 323 523
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"1 test failed"}]' \
+  > "$GHSTATE_DIR/checks-523.json"
+run_round
+PROMPT_523=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T14: CI-Fix-Prompt ist der richtige (Was rot ist)" "Was rot ist" "$PROMPT_523"
+assert_contains "T14: CI-Fix-Prompt weist an, 'gh pr ready' selbst auszufuehren" \
+  "gh pr ready" "$PROMPT_523"
+assert_contains "T14: CI-Fix-Prompt weist an, Auto-Merge selbst zu aktivieren" \
+  "gh pr merge --squash --auto --delete-branch" "$PROMPT_523"
+
+# ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
   ok "Alle CI-Wache-Tests grün."

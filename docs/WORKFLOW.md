@@ -189,18 +189,31 @@ Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 nächsten Lauf (max. 20 Minuten später). In der Zwischenzeit hat der Runner an anderen
 Tickets weitergearbeitet, nicht stillgestanden.
 
-## Merge: der Runner-Takt wacht, Claude endet beim Push (#147)
+## Merge: Claude hebt seinen PR selbst aus dem Entwurf (#147, #167)
 
-Claude wartet nicht mehr selbst auf CI. Der Bau-Lauf endet, sobald der Branch
-gepusht und ein **Draft**-PR offen ist (`gh pr create --draft --fill --title
-"… — Closes #<nr>"`, nur beim ersten Push — Folgeläufe pushen auf denselben
-Branch, kein zweiter PR). Weder `gh pr checks --watch` noch ein voller
-`pnpm e2e`-Lauf kommen im Bau-Auftrag noch vor; die schnellen Tore (`pnpm lint`,
+Claude wartet nicht mehr selbst auf CI. Existiert für das Ticket noch kein
+PR, öffnet der erste Push einen **Draft**-PR (`gh pr create --draft --fill
+--title "… — Closes #<nr>"`); Folgeläufe pushen auf denselben Branch, kein
+zweiter PR. Weder `gh pr checks --watch` noch ein voller `pnpm e2e`-Lauf
+kommen im Bau-Auftrag noch vor; die schnellen Tore (`pnpm lint`,
 `pnpm typecheck`, `pnpm test`) laufen weiterhin lokal vor dem Push.
 
-Ab dem Push übernimmt der **Runner-Takt** (alle ~5 Minuten) die Beobachtung —
-für ein `in-progress`-Ticket mit offenem PR prüft er dessen CI-Zustand, bevor
-er überhaupt an eine Fortsetzung oder ein anderes Ticket denkt:
+**Endet der Bau-Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
+gepusht — nicht über eine offene Frage), hebt Claude den PR **selbst** aus
+dem Entwurf und aktiviert Auto-Merge, bevor der Lauf endet:
+`gh pr ready` + `gh pr merge --squash --auto --delete-branch` (ohne
+PR-Nummer — wirkt auf den PR des aktuellen Branches). Das setzt nicht
+voraus, dass CI schon grün ist: Auto-Merge greift ohnehin erst, wenn alle
+Required Checks durch sind, GitHub liefert diese Zusicherung, nicht Claudes
+Einschätzung. **Ein Entwurf bedeutet ab jetzt: der Lauf ist nicht sauber zu
+Ende gekommen** (Notbremse, Limit, harter Fehler) — nicht mehr „es hat noch
+niemand hingeschaut". Bei einer offenen Frage (`needs-input`) endet der Lauf
+bewusst **vor** diesem Schritt, der PR bleibt Entwurf.
+
+Der **Runner-Takt** (alle ~5 Minuten) bleibt trotzdem als Beobachter aktiv —
+er wird seltener gebraucht, nicht überflüssig. Für ein `in-progress`-Ticket
+mit offenem PR prüft er dessen CI-Zustand, bevor er überhaupt an eine
+Fortsetzung oder ein anderes Ticket denkt:
 
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
@@ -208,7 +221,8 @@ er überhaupt an eine Fortsetzung oder ein anderes Ticket denkt:
 | rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
-| grün | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
+| grün, aber noch Entwurf (Sicherheitsnetz — z. B. nach einem abgebrochenen Lauf) | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
+| grün, schon `ready` | nichts zu tun — GitHub mergt von selbst, sobald die Required Checks final durch sind | nein |
 
 Die Reihenfolge der Zeilen ist die Prüfreihenfolge: `pending` → `failing` →
 `behind` → `success`. Ein noch laufender Shard darf nicht durch ein Nachziehen
@@ -216,8 +230,9 @@ abgewürgt werden, und ein roter Check wird erst behoben, bevor überhaupt an
 ein Nachziehen gedacht wird — `behind` wird also nur geprüft, wenn feststeht,
 dass nichts mehr läuft und nichts rot ist.
 
-Ein Draft-PR wird **nie** gemerged, egal wie grün die Checks sind — erst der
-grüne Takt hebt ihn aus dem Entwurf. Läuft die CI noch zu einem
+In aller Regel ist der PR beim ersten grünen Blick des Takts schon `ready`
+(Claude hat das selbst am Lauf-Ende erledigt) — der Merge passiert dann durch
+GitHub, ohne dass der Takt noch etwas tun muss. Läuft die CI noch zu einem
 `in-progress`-Ticket, bleibt das Ticket `in-progress` (nicht "an dich
 zurückgegeben" wie bei einer offenen Frage) — der Bauplatz ist weiter belegt,
 weil es gleich weitergeht, nicht weil auf dich gewartet wird. Das unterscheidet
@@ -257,16 +272,19 @@ Tabelle oben beobachtet nur das eine `in-progress`-Ticket — ein
 `parked`-Ticket (z. B. eins, das an `protected-paths` hing und auf
 `human-approved` wartete) fiel bisher aus der Wache heraus: kein
 `in-progress` mehr (der Bauplatz ist frei, #145), aber die Ticketauswahl
-greift es erst wieder auf, sobald `needs-input` manuell weg ist. Wurde der PR
-in der Zwischenzeit komplett grün, blieb der Draft für immer Draft; lag er nur
-hinter `main`, wartete er ebenso ewig. Deshalb prüft der Takt **zusätzlich** —
+greift es erst wieder auf, sobald `needs-input` manuell weg ist. Seit #167
+ist so ein PR beim Parken meist schon `ready` (Claude setzt das selbst, auch
+im geschützten-Pfad-Fall) — trotzdem bleibt die Wache das Sicherheitsnetz für
+den Rest: ein Lauf, der noch vor dem Ready-Schritt abgebrochen ist, oder ein
+Draft, der nur hinter `main` liegt. Deshalb prüft der Takt **zusätzlich** —
 vor jeder Ticketauswahl, ohne den Bauplatz des laufenden Tickets zu berühren —
-**alle** offenen `parked`-Tickets: Ist der PR eines davon komplett grün,
-fallen `parked` **und** `needs-input` weg, der Draft wird `ready`, Auto-Merge
-aktiviert — genau wie beim laufenden Ticket, nur ohne dass vorher ein Mensch
-`needs-input` hätte entfernen müssen. Liegt er nur hinter `main`, wird er per
-`git` nachgezogen, bleibt aber geparkt (die nächste Runde sieht dann wieder
-laufende Checks). Ein Konflikt beim Nachziehen eines geparkten Tickets startet
+**alle** offenen `parked`-Tickets: Ist der PR eines davon komplett grün und
+noch Entwurf, fallen `parked` **und** `needs-input` weg, der Draft wird
+`ready`, Auto-Merge aktiviert — genau wie beim laufenden Ticket, nur ohne
+dass vorher ein Mensch `needs-input` hätte entfernen müssen. Liegt er nur
+hinter `main`, wird er per `git` nachgezogen, bleibt aber geparkt (die
+nächste Runde sieht dann wieder laufende Checks). Ein Konflikt beim
+Nachziehen eines geparkten Tickets startet
 hier bewusst **keinen** Agenten — das würde das WIP-Limit=1 verletzen, falls
 gerade ein anderes Ticket `in-progress` ist. Das geparkte Ticket bleibt dann
 liegen und bekommt seinen Fix-Agenten regulär, sobald es selbst wieder an die
@@ -300,8 +318,11 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
   `src/app/api/sync/`, Auth, `.github/` oder `scripts/` berührt werden. Der Bau-Agent
   setzt beim Öffnen des Draft-PR selbst `needs-input` und nimmt es in diesem Lauf
   nicht wieder ab (#163) — die Wache setzt es nur nach, falls es einmal fehlt (z. B.
-  nach einem abgebrochenen Lauf), folgenlos, wenn es schon dranhängt. Der PR bleibt
-  offen, bis **du** das Label `human-approved` setzt **und** `needs-input` entfernst.
+  nach einem abgebrochenen Lauf), folgenlos, wenn es schon dranhängt. Seit #167 hebt
+  der Bau-Agent den PR trotz `needs-input` selbst aus dem Entwurf und aktiviert
+  Auto-Merge — `protected-paths` hält ihn dennoch rot, das ist die eigentliche
+  Schranke, nicht der Entwurfsstatus. Der PR bleibt offen, bis **du** das Label
+  `human-approved` setzt **und** `needs-input` entfernst.
   Danach läuft der Check automatisch neu, und der nächste Takt sieht grün und
   aktiviert Auto-Merge.
 
@@ -318,8 +339,8 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | Titel | Bedeutung | Musst du etwas tun? |
 |---|---|---|
 | 🟠 `Runner · arbeitet an #42 (seit 18:49)` | Lauf läuft gerade, vor dem `claude`-Aufruf gesetzt | nein |
-| 🟢 `Runner · CI läuft für #42` | Draft-PR wartet auf CI-Checks — kein lokaler Prozess (#147) | nein |
-| 🟢 `Runner · wartet auf Merge · #42` | CI grün, Draft auf `ready` gesetzt, Auto-Merge aktiviert | nein |
+| 🟢 `Runner · CI läuft für #42` | PR wartet auf CI-Checks (meist schon `ready`, seit #167) — kein lokaler Prozess (#147) | nein |
+| 🟢 `Runner · wartet auf Merge · #42` | CI gerade grün geworden, Wache hat einen noch offenen Draft auf `ready` gesetzt, Auto-Merge aktiviert (Sicherheitsnetz, #167) | nein |
 | 🟢 `Runner · wartet auf nächsten Lauf · als Nächstes #43` | idle (kein laufender Prozess), Queue nicht leer, nächster Takt startet automatisch | nein |
 | 🟢 `Runner · nichts offen · zuletzt #42` | idle, Queue leer | nein |
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
