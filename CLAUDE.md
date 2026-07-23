@@ -76,6 +76,13 @@ So fragst du:
 2. Label `needs-input` setzen.
 3. Lauf beenden.
 
+Mehr brauchst du hier nicht zu tun: der Runner nimmt dir danach `in-progress` ab
+und trägt stattdessen `parked` ein (#145) — dein Ticket wartet dann sichtbar,
+belegt aber keinen Bauplatz mehr, und der nächste Takt kann ein anderes Ticket
+wählen. Antwortet der Mensch und entfernt `needs-input`, wird genau dieses
+Ticket vor Queue und Label-Kaskade fortgesetzt (Branch, `git log` und
+Fortschrittskommentar wie gewohnt) — nicht neu gestartet.
+
 Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich vorgehen?"
 ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach links
 öffnet ein Menü. Ich empfehle A mit Undo-Toast." ist eine.
