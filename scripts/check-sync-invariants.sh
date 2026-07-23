@@ -13,8 +13,13 @@ ok()   { printf '\033[32m✓ %s\033[0m\n' "$1"; }
 # src/local/**    -> der Sync selbst (das ist die eine Stelle, die spricht)
 # src/app/api/**  -> Server-Routen (kein Client-fetch)
 # src/app/anmelden/** und src/auth/** -> Auth ist bewusst nicht Outbox-geführt
+#
+# Der Pfad-Trenner nach "api" ist Pflicht ("/api/"), nicht nur "/api": eine Fremd-
+# quelle wie "https://api.open-meteo.com" (issue #139, ADR-0009) enthält sonst
+# zufällig die Zeichenfolge "/api" (aus "https://api...") und würde als eigener
+# /api-Zugriff durchgehen, obwohl sie mit unserer API nichts zu tun hat.
 HITS=$(grep -rEn "fetch\s*\(" "$SCAN_ROOT" --include='*.ts' --include='*.tsx' 2>/dev/null \
-  | grep '/api' \
+  | grep '/api/' \
   | grep -v -E '/(local|app/api|app/anmelden|auth)/')
 
 if [ -n "$HITS" ]; then
