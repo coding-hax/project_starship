@@ -334,6 +334,72 @@ branch_tip() {   # $1 = Issue-Nr
     | awk '{print $1}' | head -1
 }
 
+# --- Draft-PR-Lifecycle (#147) -----------------------------------------------
+# Der Bau-Agent endet nach dem Push und hinterlaesst hoechstens einen offenen
+# Draft-PR. Ab hier wacht der Runner-TAKT selbst ueber die CI -- ein Agent
+# startet nur noch, wenn es wirklich etwas zu TUN gibt (rote Checks).
+
+# Offener PR zu einem Ticket, gefunden ueber die Branch-Konvention
+# (feat|fix|chore/<nr>-<slug>) -- keine Textsuche im Titel noetig.
+pr_for_issue() {   # $1 = Issue-Nr -> PR-Nummer (leer, wenn keiner offen)
+  local issue="$1"
+  gh pr list --state open --limit 20 --json number,headRefName 2>/dev/null \
+    | jq -r --arg pat "^(feat|fix|chore)/${issue}-" \
+        '[.[] | select(.headRefName | test($pat))] | .[0].number // empty'
+}
+
+# CI-Gesamtzustand eines PR: pending | success | failing. 'pending' hat
+# Vorrang vor 'failing' -- ein noch laufender Shard darf einen bereits roten
+# Check nicht uebertoenen: erst wenn das Bild vollstaendig ist, wird
+# entschieden (die AC nennt "laeuft noch -> nichts tun" zuerst).
+pr_ci_state() {   # $1 = PR-Nr
+  local pr="$1" json total pending failing
+  json=$(gh pr checks "$pr" --json bucket,name,description,link 2>/dev/null)
+  total=$(printf '%s' "$json" | jq 'length' 2>/dev/null || echo 0)
+  if [ "${total:-0}" -eq 0 ]; then echo pending; return 0; fi
+  pending=$(printf '%s' "$json" | jq '[.[] | select(.bucket=="pending")] | length')
+  if [ "${pending:-0}" -gt 0 ]; then echo pending; return 0; fi
+  failing=$(printf '%s' "$json" \
+    | jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")] | length')
+  if [ "${failing:-0}" -eq 0 ]; then echo success; else echo failing; fi
+}
+
+# Sind ALLE roten Checks genau 'protected-paths'? Dann ist das kein Fund fuer
+# einen Fix-Agenten, sondern die vorgesehene Genehmigungs-Schranke (CLAUDE.md,
+# geschuetzte Pfade) -- die behebt kein Code, nur ein Mensch mit
+# 'human-approved'.
+pr_only_protected_paths_red() {   # $1 = PR-Nr -> 0 (ja, nur protected-paths) / 1 (auch anderes rot)
+  local pr="$1" json other
+  json=$(gh pr checks "$pr" --json bucket,name 2>/dev/null)
+  other=$(printf '%s' "$json" | jq \
+    '[.[] | select((.bucket=="fail" or .bucket=="cancel") and .name != "protected-paths")] | length')
+  [ "${other:-0}" -eq 0 ]
+}
+
+# Knappe Zusammenfassung der roten Checks fuer den Fix-Agenten-Auftrag: Job,
+# Kurzbeschreibung, ein begrenzter Log-Ausschnitt -- NICHT die rohe
+# Log-Ausgabe (#147 AC). Hoechstens die ersten 3 roten Checks, sonst waechst
+# der Auftrag mit jedem zusaetzlichen Shard unnoetig.
+pr_failure_summary() {   # $1 = PR-Nr
+  local pr="$1" json failing
+  json=$(gh pr checks "$pr" --json name,bucket,description,link 2>/dev/null)
+  failing=$(printf '%s' "$json" | jq -c \
+    '[.[] | select((.bucket=="fail" or .bucket=="cancel") and .name != "protected-paths")] | .[0:3]')
+  printf '%s' "$failing" | jq -c '.[]' | while IFS= read -r c; do
+    local name desc link runid log
+    name=$(printf '%s' "$c" | jq -r '.name')
+    desc=$(printf '%s' "$c" | jq -r '.description')
+    link=$(printf '%s' "$c" | jq -r '.link')
+    runid=$(printf '%s' "$link" | grep -oE 'runs/[0-9]+' | head -1 | grep -oE '[0-9]+')
+    printf -- '### %s\n%s\n' "$name" "$desc"
+    if [ -n "$runid" ]; then
+      log=$(gh run view "$runid" --log-failed 2>/dev/null \
+              | tail -n 25 | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null)
+      [ -n "$log" ] && printf '```\n%s\n```\n' "$log"
+    fi
+  done
+}
+
 # Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
 # Ausgaengen der Bau-Rolle aufgerufen (RC=0-Zweig, letzter Fehlschlag-Zweig) --
 # ausdruecklich NICHT bei Limit/429, Notbremse oder einem noch laufenden
@@ -624,6 +690,53 @@ ISSUE=$(echo "$WIP" | jq -r '[.[] | select((.labels | map(.name)
            | sort_by(.createdAt) | .[0].number // empty')
 MODE=resume
 RUN_ROLE=build
+
+# --- CI-Wache fuer ein laufendes Bau-Ticket (#147) --------------------------
+# Der Bau-Agent endet beim Push und hinterlaesst hoechstens einen offenen
+# Draft-PR. BEVOR ueberhaupt an Fortsetzung oder eine neue Ticketwahl gedacht
+# wird: hat DIESES Ticket schon einen offenen PR, entscheidet allein dessen
+# CI-Zustand den Takt -- kein Agentenlauf fuers Warten, kein Wechsel auf ein
+# anderes Ticket, solange hier noch etwas offen ist.
+CI_FIX=0
+CI_SUMMARY=""
+if [ -n "$ISSUE" ]; then
+  PR_NUM=$(pr_for_issue "$ISSUE")
+  if [ -n "$PR_NUM" ]; then
+    case "$(pr_ci_state "$PR_NUM")" in
+      pending)
+        status "CI läuft für #$ISSUE" "🟢" \
+          "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — kein laufender Prozess hier.
+
+Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen nötig.**"
+        return 0
+        ;;
+      success)
+        gh pr ready "$PR_NUM" >/dev/null 2>&1
+        gh pr merge --squash --auto --delete-branch "$PR_NUM" >/dev/null 2>&1
+        status "wartet auf Merge · #$ISSUE" "🟢" \
+          "🟢 **CI grün für #$ISSUE** (PR #$PR_NUM) — als \`ready\` markiert, Auto-Merge aktiviert.
+
+GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**"
+        return 0
+        ;;
+      failing)
+        if pr_only_protected_paths_red "$PR_NUM"; then
+          gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+          status "wartet auf dich (#$ISSUE)" "🟡" \
+            "🟡 **PR #$PR_NUM für #$ISSUE braucht deine Freigabe.**
+
+Der Check \`protected-paths\` ist rot, weil geschützte Pfade berührt sind (Begründung
+steht als Kommentar am Ticket). Setze \`human-approved\` am PR **und entferne**
+\`needs-input\` vom Issue — der Check läuft dann automatisch neu, und der nächste
+Takt beobachtet die CI weiter."
+          return 0
+        fi
+        CI_FIX=1
+        CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
+        ;;
+    esac
+  fi
+fi
 
 if [ -z "$ISSUE" ]; then
   # Sicherheitsnetz (#145): normalerweise hat die Selbstheilung oben jedes
@@ -922,7 +1035,11 @@ Ablauf:
    checke den Branch aus, lies den Fortschrittskommentar und 'git log',
    und mach beim nächsten offenen Punkt weiter. Fang NICHT von vorne an.
 4. Arbeite die Akzeptanzkriterien ab. Committe nach jedem abgeschlossenen
-   Schritt und pushe den Branch.
+   Schritt. Bevor du pushst: lass die schnellen Tore lokal laufen —
+   'pnpm lint', 'pnpm typecheck', 'pnpm test' (zusammen unter einer Minute) —
+   und behebe Rot dort selbst. Kein voller 'pnpm e2e' lokal, das kostet zu
+   viel vom Zeitfenster und die volle Suite läuft ohnehin in CI. Dann pushe
+   den Branch.
 5. Halte den Fortschrittskommentar am Issue nach JEDEM Schritt aktuell. Bevor du
    feststeckst oder der Lauf endet, ohne dass das Ticket fertig ist: ergaenze im
    Fortschrittskommentar einen Blocker-Abschnitt (nicht nur "← HIER WEITER"):
@@ -945,14 +1062,66 @@ Ablauf:
 6. Wenn du eine Entscheidung brauchst: Kommentar am Issue mit konkreten
    Optionen und deiner Empfehlung, Label 'needs-input' setzen, beenden.
    Rate niemals. Schreib die Frage NICHT nach stdout.
-7. Wenn fertig: PR öffnen, 'gh pr merge --squash --auto --delete-branch',
-   dann 'gh pr checks --watch'. GitHub merged, sobald die Checks grün sind.
-   Bei rotem Check: Ursache beheben, erneut pushen. Nach dem 3. Fehlversuch
-   aufgeben -> Kommentar + Label 'needs-input'.
-   Bei fehlgeschlagenem Check 'protected-paths': Kommentar schreiben, der die
-   Aenderung erklaert, Label 'needs-input' setzen, beenden. Das Label
-   'human-approved' setzt NUR der Mensch.
-8. 'in-progress' entfernen, wenn der PR gemerged ist.
+7. Existiert für dieses Ticket noch KEIN PR: öffne einen **Draft**-PR
+   ('gh pr create --draft --fill --title "… — Closes #$ISSUE"'), Titel
+   enthält 'Closes #$ISSUE'. Existiert bereits einer (z. B. bei einer
+   Fortsetzung): pushe nur weiter auf denselben Branch, KEIN zweiter PR.
+   Berührt dein Diff einen geschützten Pfad (src/db/, src/crypto/,
+   src/local/, src/app/api/sync/, auth, .github/, scripts/): kommentiere
+   JETZT am Issue, was du geändert hast, warum, und was schiefgehen könnte,
+   und bitte um 'human-approved' — warte NICHT auf das rote CI-Ergebnis,
+   das bekommst du ohnehin nicht mehr live mit.
+   Dein Lauf endet danach. **Kein** 'gh pr checks --watch', **kein** voller
+   'pnpm e2e' lokal — der Runner-Takt beobachtet ab hier die CI und holt
+   dich nur zurück, wenn dort etwas rot wird.
+EOF
+
+# --- Der CI-Fix-Prompt (#147) -------------------------------------------------
+# Wird statt $PROMPT verwendet, wenn die CI-Wache (siehe pr_ci_state oben)
+# rote Checks am Draft-PR gefunden hat, die NICHT ausschliesslich
+# 'protected-paths' sind. Der Agent bekommt die Ursache direkt mit statt sie
+# erst muehsam neu zu suchen -- deshalb startet er hier gezielt, nicht routinemaessig.
+read -r -d '' CI_FIX_PROMPT <<EOF
+Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
+
+Der Draft-PR zu Issue #$ISSUE hat rote CI. Der Runner-Takt hat gewartet, bis
+alle Checks durch waren, und startet dich JETZT gezielt, weil es etwas zu TUN
+gibt.
+
+**Dateizugriff bleibt im Repo.** Führe keine rekursiven oder dateisystemweiten Suchen
+außerhalb dieses Repos (des ausgecheckten Arbeitsbaums) aus — kein 'find', 'grep -r',
+'mdfind' oder 'locate' über das Home-Verzeichnis, '/' oder '/Volumes' — und betritt
+niemals '/Volumes' oder '~/Library/Mobile Documents' (iCloud). Solche Zugriffe lösen
+auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert, bis
+die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
+nur, wenn ein Ticket sie ausdrücklich verlangt.
+
+## Was rot ist
+
+$CI_SUMMARY
+
+## Ablauf
+
+1. Checke den bestehenden Branch aus, lies den Fortschrittskommentar am Issue
+   (gh issue view $ISSUE --comments) und 'git log'. Steht dort bereits ein
+   Abschnitt „## Was schon versucht wurde": lies ihn ZUERST und schlage
+   keinen dort ausgeschlossenen Weg erneut ein.
+2. Bei einem roten Playwright-Trace: erst den Trace lesen
+   ('npx playwright show-trace test-results/…/trace.zip'), dann verstehen,
+   dann fixen. Die Ursache beheben — NIE den Test aufweichen: kein
+   '.skip', kein hochgesetzter Timeout, kein gelockertes Assert, kein
+   'waitForTimeout'.
+3. Vor dem Push die schnellen Tore lokal grün: 'pnpm lint', 'pnpm typecheck',
+   'pnpm test'.
+4. Committe, pushe auf denselben Branch. Kein neuer PR — der Draft existiert
+   bereits.
+5. Aktualisiere den Fortschrittskommentar (Marker „← HIER WEITER" rückt vor;
+   bei erneutem Fehlschlag wächst „## Was schon versucht wurde", wird nie
+   überschrieben).
+6. Dein Lauf endet hier. **Kein** 'gh pr checks --watch' — das übernimmt
+   wieder der Runner-Takt.
+7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
+   deiner Empfehlung, Label 'needs-input' setzen, beenden. Rate niemals.
 EOF
 
 # --- Der Planer-Prompt (RUN_ROLE=plan, siehe ADR-0005) -----------------------
@@ -1050,7 +1219,9 @@ case "$RUN_ROLE" in
           --allowedTools "$READONLY_TOOLS,WebSearch")
     ;;
   *)
-    ARGS=(-p "$PROMPT" --output-format json
+    BUILD_PROMPT="$PROMPT"
+    [ "$CI_FIX" = "1" ] && BUILD_PROMPT="$CI_FIX_PROMPT"
+    ARGS=(-p "$BUILD_PROMPT" --output-format json
           --model "$MODEL"
           --allowedTools "Read,Edit,Write,Glob,Grep,Bash")
     ;;

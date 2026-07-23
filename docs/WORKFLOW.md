@@ -189,11 +189,40 @@ Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 nächsten Lauf (max. 20 Minuten später). In der Zwischenzeit hat der Runner an anderen
 Tickets weitergearbeitet, nicht stillgestanden.
 
-## Merge: automatisch, aber nicht ungeprüft
+## Merge: der Runner-Takt wacht, Claude endet beim Push (#147)
 
-Claude merged selbst — aber nur über `gh pr merge --auto`. Der Merge wird damit
-_beantragt_, nicht ausgeführt: GitHub führt ihn aus, sobald alle Required Checks
-grün sind. Ein roter Check bedeutet: kein Merge, egal was Claude denkt.
+Claude wartet nicht mehr selbst auf CI. Der Bau-Lauf endet, sobald der Branch
+gepusht und ein **Draft**-PR offen ist (`gh pr create --draft --fill --title
+"… — Closes #<nr>"`, nur beim ersten Push — Folgeläufe pushen auf denselben
+Branch, kein zweiter PR). Weder `gh pr checks --watch` noch ein voller
+`pnpm e2e`-Lauf kommen im Bau-Auftrag noch vor; die schnellen Tore (`pnpm lint`,
+`pnpm typecheck`, `pnpm test`) laufen weiterhin lokal vor dem Push.
+
+Ab dem Push übernimmt der **Runner-Takt** (alle ~5 Minuten) die Beobachtung —
+für ein `in-progress`-Ticket mit offenem PR prüft er dessen CI-Zustand, bevor
+er überhaupt an eine Fortsetzung oder ein anderes Ticket denkt:
+
+| CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
+| --- | --- | --- |
+| läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
+| grün | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
+| rot, **nur** `protected-paths` | Label `needs-input`, Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
+| rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
+
+Ein Draft-PR wird **nie** gemerged, egal wie grün die Checks sind — erst der
+grüne Takt hebt ihn aus dem Entwurf. Läuft die CI noch zu einem
+`in-progress`-Ticket, bleibt das Ticket `in-progress` (nicht "an dich
+zurückgegeben" wie bei einer offenen Frage) — der Bauplatz ist weiter belegt,
+weil es gleich weitergeht, nicht weil auf dich gewartet wird. Das unterscheidet
+diese CI-Wartezeit vom Warten auf einen Menschen (#145): CI braucht Minuten und
+läuft von allein, ein Mensch kann Stunden bis Tage brauchen — nur Letzteres gibt
+den Bauplatz frei.
+
+Der Wiederaufnahmefall (roter Check → Fix-Agent) liest denselben Zustand wie
+jede andere Fortsetzung: Branch, `git log`, Fortschrittskommentar samt „Was
+schon versucht wurde". Rot aus demselben Grund wie beim letzten Mal zählt
+weiterhin als Fehlversuch der bestehenden Eskalation (ADR-0007, `blocker_sig`)
+— nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`.
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
 
@@ -217,8 +246,9 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
   kein Modell beteiligt.
 - `protected-paths` — schlägt fehl, sobald `src/db/`, `src/crypto/`, `src/local/`,
   `src/app/api/sync/`, Auth, `.github/` oder `scripts/` berührt werden. Der PR bleibt
-  offen, bis **du** das Label `human-approved` setzt. Danach läuft der Check
-  automatisch neu und der Merge greift.
+  offen, bis **du** das Label `human-approved` setzt **und** `needs-input` entfernst
+  (das der Runner-Takt gesetzt hat, siehe oben). Danach läuft der Check automatisch
+  neu, und der nächste Takt sieht grün und aktiviert Auto-Merge.
 
 Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
 
@@ -233,6 +263,8 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | Titel | Bedeutung | Musst du etwas tun? |
 |---|---|---|
 | 🟠 `Runner · arbeitet an #42 (seit 18:49)` | Lauf läuft gerade, vor dem `claude`-Aufruf gesetzt | nein |
+| 🟢 `Runner · CI läuft für #42` | Draft-PR wartet auf CI-Checks — kein lokaler Prozess (#147) | nein |
+| 🟢 `Runner · wartet auf Merge · #42` | CI grün, Draft auf `ready` gesetzt, Auto-Merge aktiviert | nein |
 | 🟢 `Runner · wartet auf nächsten Lauf · als Nächstes #43` | idle (kein laufender Prozess), Queue nicht leer, nächster Takt startet automatisch | nein |
 | 🟢 `Runner · nichts offen · zuletzt #42` | idle, Queue leer | nein |
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
