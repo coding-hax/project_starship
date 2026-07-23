@@ -10,19 +10,3 @@
 .heute__title-row h1 {
   margin: 0;
 }
-
-/** A shortcut into the habits management screen (issue #102), which also has its
- *  own tab in the nav (issue #123) — this stays as a quick jump from Heute. */
-
-.heute__habits-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--touch-target);
-  margin-top: var(--space-4);
-  padding: 0 var(--space-4);
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  color: var(--area-habits);
-  font-weight: 600;
-  text-decoration: none;
-}

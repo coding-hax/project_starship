@@ -14,7 +14,7 @@ src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
     (app)/heute/            Dashboard          (Klammer — wächst ab M1 je Milestone mit)
-    (app)/heute/heute.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126) + Shortcut-Link „Gewohnheiten verwalten" (issue #102)
+    (app)/heute/heute.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
     (app)/kalender/         Termine            (leer bis M5)

@@ -14,7 +14,7 @@
 .shell__main {
   grid-row: 2;
   padding: var(--space-6) var(--space-4);
-  padding-top: calc(var(--space-6) + env(safe-area-inset-top));
+  padding-top: calc(var(--space-4) + env(safe-area-inset-top));
   padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
   max-width: 720px;
   width: 100%;
