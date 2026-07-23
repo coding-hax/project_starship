@@ -1276,12 +1276,13 @@ $CI_SUMMARY
    bei erneutem Fehlschlag wächst „## Was schon versucht wurde", wird nie
    überschrieben).
 6. Endet dein Lauf hier SAUBER (Fix gepusht) — also nicht über Schritt 7
-   (offene Frage) —: 'gh pr ready' und 'gh pr merge --squash --auto
-   --delete-branch' (ohne PR-Nummer — wirkt auf den PR des aktuellen
-   Branches). Meist ist der PR das schon (ein früherer sauberer Bau-Lauf hat
-   das erledigt) — der Aufruf ist folgenlos, wenn er es bereits ist, und das
-   Sicherheitsnetz, falls nicht. Dein Lauf endet danach. **Kein**
-   'gh pr checks --watch' — das übernimmt wieder der Runner-Takt.
+   (offene Frage) —: 'gh pr ready' und
+   'gh pr merge --squash --auto --delete-branch' (ohne PR-Nummer — wirkt
+   auf den PR des aktuellen Branches). Meist ist der PR das schon (ein
+   früherer sauberer Bau-Lauf hat das erledigt) — der Aufruf ist folgenlos,
+   wenn er es bereits ist, und das Sicherheitsnetz, falls nicht. Dein Lauf
+   endet danach. **Kein** 'gh pr checks --watch' — das übernimmt wieder
+   der Runner-Takt.
 7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
    deiner Empfehlung, Label 'needs-input' setzen, beenden. Rate niemals.
 EOF
