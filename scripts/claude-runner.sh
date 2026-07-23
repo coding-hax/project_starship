@@ -1218,9 +1218,19 @@ Ablauf:
    es in diesem Lauf NICHT wieder ab. Das parkt das Ticket (#145) sofort,
    der Runner wählt als nächstes ein anderes, statt auf das rote
    CI-Ergebnis zu warten, das du ohnehin nicht mehr live mitbekommst.
-   Dein Lauf endet danach. **Kein** 'gh pr checks --watch', **kein** voller
-   'pnpm e2e' lokal — der Runner-Takt beobachtet ab hier die CI und holt
-   dich nur zurück, wenn dort etwas rot wird.
+8. Endet dein Lauf hier SAUBER — also über diesen Schritt, nicht über
+   Schritt 6 (offene Frage) —: hebe deinen PR SELBST aus dem Entwurf und
+   aktiviere Auto-Merge, auch wenn du gerade in Schritt 7 wegen eines
+   geschützten Pfads 'needs-input' gesetzt hast:
+   'gh pr ready' und 'gh pr merge --squash --auto --delete-branch'
+   (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Du musst
+   NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
+   grünen Required Checks. Bei geschütztem Pfad hält 'protected-paths'
+   ohnehin rot, bis ein Mensch 'human-approved' setzt — der PR ist dann
+   zwar kein Entwurf mehr, wartet aber trotzdem. Dein Lauf endet danach.
+   **Kein** 'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
+   Runner-Takt beobachtet ab hier die CI und holt dich nur zurück, wenn
+   dort etwas rot wird.
 EOF
 
 # --- Der CI-Fix-Prompt (#147) -------------------------------------------------
@@ -1265,8 +1275,14 @@ $CI_SUMMARY
 5. Aktualisiere den Fortschrittskommentar (Marker „← HIER WEITER" rückt vor;
    bei erneutem Fehlschlag wächst „## Was schon versucht wurde", wird nie
    überschrieben).
-6. Dein Lauf endet hier. **Kein** 'gh pr checks --watch' — das übernimmt
-   wieder der Runner-Takt.
+6. Endet dein Lauf hier SAUBER (Fix gepusht) — also nicht über Schritt 7
+   (offene Frage) —: 'gh pr ready' und
+   'gh pr merge --squash --auto --delete-branch' (ohne PR-Nummer — wirkt
+   auf den PR des aktuellen Branches). Meist ist der PR das schon (ein
+   früherer sauberer Bau-Lauf hat das erledigt) — der Aufruf ist folgenlos,
+   wenn er es bereits ist, und das Sicherheitsnetz, falls nicht. Dein Lauf
+   endet danach. **Kein** 'gh pr checks --watch' — das übernimmt wieder
+   der Runner-Takt.
 7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
    deiner Empfehlung, Label 'needs-input' setzen, beenden. Rate niemals.
 EOF
