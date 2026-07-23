@@ -158,10 +158,10 @@ test('offline abgehakt erreicht online den Server als habit_log (issue #103 AC4)
     })
     .toBe(1);
 
-  await context.setOffline(false);
   // beforeEach cuts the sync endpoints so the list can only ever come from
   // IndexedDB — lift that here to let the queued mutations actually reach Postgres.
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);

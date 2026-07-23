@@ -261,10 +261,10 @@ test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({ p
   await page.getByRole('button', { name: 'Hinzufügen' }).click();
   await expect(page.getByText('Zug-Notiz für den Server')).toBeVisible();
 
-  await context.setOffline(false);
   // beforeEach cuts the sync endpoints so the list can only ever come from
   // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -360,8 +360,8 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
   // One entry for the seed, one for the completion — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
-  await context.setOffline(false);
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -714,8 +714,8 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
   // One entry for the seed, one for the delete — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
-  await context.setOffline(false);
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -773,8 +773,8 @@ test('offline angelegt landet unten, bleibt dort nach dem Sync (issue #88 AC1)',
   await expect(items.nth(0)).toContainText('Bestand');
   await expect(items.nth(1)).toContainText('Offline neu');
 
-  await context.setOffline(false);
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
@@ -1087,8 +1087,8 @@ test('ein Kind wird offline über den Editor zugeordnet und erreicht online die 
 
   await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
 
-  await context.setOffline(false);
   await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
