@@ -139,6 +139,7 @@ scripts/
   tests/opus-boost.test.sh Fixture-Tests (T1-T7): Label 'opus-boost' umgeht den Opus-Tagesdeckel je Ticket ohne Zähler-Reset, wird bei Nicht-Fortschritt abgezogen, no-escalation gewinnt, Erschöpfungsmeldung nur einmal/Tag (#136)
   tests/ci-watch.test.sh   Fixture-Tests (T1-T6): CI-Wache vor der Ticketauswahl -- laeuft noch/gruen/rot/nur-protected-paths-rot/noch-kein-PR/kein-Ticketwechsel waehrend CI laeuft (#147)
   tests/parked-label.test.sh Fixture-Tests: in-progress+needs-input wird zu 'parked' (Selbstheilung), ein zuvor geparktes Ticket wird vor Queue/Label-Kaskade fortgesetzt, Status nennt parkende Tickets zusätzlich (#145)
+  tests/parked-ci-watch.test.sh Fixture-Tests (T1-T6): CI-Wache für ALLE 'parked'-Tickets gleichzeitig -- gruen wird freigegeben (ready+Auto-Merge, kein Agentenlauf), pending/rot bleibt geparkt, laufendes Ticket wird nicht verzögert, Status nennt die Freigabe (#154)
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
   vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
   smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright

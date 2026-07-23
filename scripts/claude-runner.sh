@@ -122,15 +122,22 @@ reset_epoch() {
 # Hash immer verschieden und die Optimierung wirkungslos. Datei bleibt leer
 # (kein Schreiben), wenn gh fehlschlaegt -- der naechste Aufruf versucht es
 # dann erneut, egal ob inhaltlich gleich oder nicht.
+#
+# RELEASED_PARKED_NOTE (#154): wird VOR jedem status()-Aufruf einmal pro
+# Runde von der Parked-CI-Wache gesetzt (leer, wenn in dieser Runde nichts
+# freigegeben wurde) und hier an JEDEN Text angehaengt -- so ist die Freigabe
+# sichtbar, unabhaengig davon, welcher der vielen status()-Aufrufe im Rest der
+# Runde tatsaechlich greift, ohne jede einzelne Aufrufstelle anzufassen.
 STATUS_HASH_FILE="$STATE_DIR/status-hash"
 status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
-  local sig
-  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$3")
+  local sig text
+  text="$3${RELEASED_PARKED_NOTE:-}"
+  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$text")
   [ "$(cat "$STATUS_HASH_FILE" 2>/dev/null)" = "$sig" ] && return 0
   gh issue edit "$STATUS_ISSUE" \
     --title "$2 Runner · $1" \
-    --body "$3
+    --body "$text
 
 _Stand: $(ts)_" >/dev/null 2>&1 && printf '%s' "$sig" > "$STATUS_HASH_FILE"
 }
@@ -677,6 +684,44 @@ if [ -n "$TO_PARK" ]; then
                 (.labels |= (map(select(.name != "in-progress")) + [{"name":"parked"}]))
               else . end]')
   fi
+fi
+
+# --- CI-Wache fuer GEPARKTE Tickets (#154) -----------------------------------
+# Die Wache oben (#147) beobachtet nur das eine 'in-progress'-Ticket -- ein
+# 'parked'-Ticket faellt durch beide Raster: es traegt kein 'in-progress' mehr
+# (#145 gibt den Bauplatz frei) und die Ticketauswahl greift es erst wieder auf,
+# wenn 'needs-input' manuell weg ist. Wird sein PR in der Zwischenzeit
+# komplett gruen (z.B. weil ein Mensch 'human-approved' gesetzt hat und
+# 'protected-paths' nachgelaufen ist), blieb der Draft bisher fuer immer
+# Draft -- niemand hat mehr hingeschaut. Hier werden ALLE 'parked'-Tickets
+# geprueft, nicht nur eins, und zwar rein ueber gh-Aufrufe -- es startet
+# niemals ein Agent, verzoegert also das ggf. laufende 'in-progress'-Ticket
+# nicht. Noch laufende oder rote Checks aendern nichts (Ticket bleibt geparkt).
+RELEASED_PARKED_NOTE=""
+RELEASED_PARKED_NUMS='[]'
+PARKED_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
+  '[.[] | select(.labels | map(.name) | index("parked")) | .number] | .[]' 2>/dev/null)
+if [ -n "$PARKED_LIST" ]; then
+  while IFS= read -r PN; do
+    [ -z "$PN" ] && continue
+    PPR=$(pr_for_issue "$PN")
+    [ -z "$PPR" ] && continue
+    [ "$(pr_ci_state "$PPR")" = "success" ] || continue
+    gh pr ready "$PPR" >/dev/null 2>&1
+    gh pr merge --squash --auto --delete-branch "$PPR" >/dev/null 2>&1
+    gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
+    RELEASED_PARKED_NUMS=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq --argjson n "$PN" '. + [$n]')
+  done <<< "$PARKED_LIST"
+fi
+if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
+  ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
+    '[.[] | if (.number as $n | $released | index($n) != null) then
+              (.labels |= map(select(.name != "parked" and .name != "needs-input")))
+            else . end]')
+  RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
+  RELEASED_PARKED_NOTE="
+
+🔓 **Geparktes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: $RELEASED_LIST."
 fi
 
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
