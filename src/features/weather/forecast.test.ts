@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatAge, isStale, parseForecast, weekdayLabel } from './forecast';
+import {
+  formatStaleSince,
+  isStale,
+  isStaleWarning,
+  isWeekend,
+  parseForecast,
+  weekdayLabel,
+} from './forecast';
 
 describe('isStale', () => {
   const fetchedAt = '2026-07-23T09:00:00.000Z';
@@ -56,18 +63,42 @@ describe('weekdayLabel', () => {
   });
 });
 
-describe('formatAge', () => {
+describe('isWeekend', () => {
+  it('is false for weekdays', () => {
+    expect(isWeekend('2026-07-13')).toBe(false); // Mo
+    expect(isWeekend('2026-07-17')).toBe(false); // Fr
+  });
+
+  it('is true for Saturday and Sunday', () => {
+    expect(isWeekend('2026-07-18')).toBe(true); // Sa
+    expect(isWeekend('2026-07-19')).toBe(true); // So
+  });
+});
+
+describe('isStaleWarning', () => {
   const fetchedAt = '2026-07-23T09:00:00.000Z';
 
-  it('reads as just now under a minute', () => {
-    expect(formatAge(fetchedAt, new Date('2026-07-23T09:00:30.000Z'))).toBe('gerade eben');
+  it('is not a warning just under 8 hours later', () => {
+    expect(isStaleWarning(fetchedAt, new Date('2026-07-23T16:59:59.999Z'))).toBe(false);
   });
 
-  it('reads in minutes under an hour', () => {
-    expect(formatAge(fetchedAt, new Date('2026-07-23T09:05:00.000Z'))).toBe('vor 5 Min.');
+  it('is a warning at exactly 8 hours', () => {
+    expect(isStaleWarning(fetchedAt, new Date('2026-07-23T17:00:00.000Z'))).toBe(true);
   });
 
-  it('reads in hours from an hour on', () => {
-    expect(formatAge(fetchedAt, new Date('2026-07-23T12:00:00.000Z'))).toBe('vor 3 Std.');
+  it('is a warning well past 8 hours', () => {
+    expect(isStaleWarning(fetchedAt, new Date('2026-07-24T09:00:00.000Z'))).toBe(true);
+  });
+});
+
+describe('formatStaleSince', () => {
+  it('formats as 24-hour HH:MM, local time', () => {
+    const date = new Date(2026, 6, 23, 14, 32);
+    expect(formatStaleSince(date.toISOString())).toBe('14:32');
+  });
+
+  it('pads single-digit hours and minutes', () => {
+    const date = new Date(2026, 6, 23, 3, 5);
+    expect(formatStaleSince(date.toISOString())).toBe('03:05');
   });
 });

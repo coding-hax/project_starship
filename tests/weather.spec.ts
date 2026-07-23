@@ -1,9 +1,22 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock } from './helpers';
+import { freezeClock, registerPasskey, resetAppData, skewClock } from './helpers';
 
 // A Monday (issue #139) — matches the weekday labels asserted below.
 const NOW = '2026-07-20T09:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+
+// Mirrors REFRESH_INTERVAL_MS in src/features/weather/forecast.ts. Not imported —
+// that module pulls in Dexie/IndexedDB bindings that do not resolve outside a
+// browser context (same reasoning as PULL_INTERVAL_MS in sync.spec.ts).
+const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000;
+
+/** Local `HH:MM` for an ISO instant — matches formatStaleSince's own local-time read,
+ * so the assertion holds regardless of which timezone the test machine runs in. */
+function localTime(iso: string): string {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 const DAY_SET_A = {
   dates: ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'],
@@ -80,6 +93,50 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: Wochenende bekommt einen kräftigeren Rahmen, Spaltenbreite bleibt gleich */
+/* -------------------------------------------------------------------------- */
+
+test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten bleiben gleich breit (issue #155 AC1)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/heute');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const widths = await days.evaluateAll((elements) =>
+    elements.map((el) => el.getBoundingClientRect().width),
+  );
+  for (const width of widths) {
+    expect(width).toBeCloseTo(widths[0], 1);
+  }
+
+  // DAY_SET_A.weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+  const monday = days.nth(0);
+  const saturday = days.nth(5);
+  const sunday = days.nth(6);
+
+  await expect(monday).toHaveCSS('outline-style', 'none');
+  await expect(saturday).toHaveCSS('outline-style', 'solid');
+  await expect(sunday).toHaveCSS('outline-style', 'solid');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Quellenangabe verlässt /heute (zieht in die Einstellungen, #155 AC5)    */
+/* -------------------------------------------------------------------------- */
+
+test('die Open-Meteo-Nennung steht nicht mehr auf /heute (issue #155 AC5)', async ({ page }) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/heute');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  await expect(page.getByText('Open-Meteo', { exact: false })).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Live-Query aus IndexedDB, kein fetch im UI-Pfad                        */
 /* -------------------------------------------------------------------------- */
 
@@ -140,10 +197,10 @@ test('nach mehr als 3 Stunden löst der nächste Aufruf einen neuen Netzaufruf a
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: Offline zeigt die letzte bekannte Vorhersage mit Altershinweis         */
+/* AK: Offline zeigt die letzte bekannte Vorhersage; Stand-Zeile erst ab 8h    */
 /* -------------------------------------------------------------------------- */
 
-test('offline zeigt die zuletzt bekannte Vorhersage mit sichtbarem Altershinweis (issue #139 AC4)', async ({
+test('offline zeigt weiterhin die zuletzt bekannte Vorhersage; die Stand-Zeile erscheint erst ab 8 Stunden Alter (issue #155 AC2/AC3)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -159,11 +216,20 @@ test('offline zeigt die zuletzt bekannte Vorhersage mit sichtbarem Altershinweis
   // point of view: no response ever reaches it.
   await page.unroute(OPEN_METEO_PATTERN);
   await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+
+  // 5h later, offline — the cached forecast is still shown, but under the 8h
+  // threshold: no warning line yet.
   await skewClock(page, '2026-07-20T14:00:00.000Z');
   await page.reload();
-
   await expect(weatherDays(page)).toHaveCount(7);
-  await expect(page.locator('.weather-forecast__caption')).toContainText('aktualisiert vor');
+  await expect(page.locator('.weather-forecast__caption')).toHaveCount(0);
+
+  // 8h later, still offline — same cached forecast, now with the warning line,
+  // showing the last successful fetch's local time in 24h format.
+  await skewClock(page, '2026-07-20T17:00:00.000Z');
+  await page.reload();
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(page.locator('.weather-forecast__caption')).toHaveText(`Stand: ${localTime(NOW)}`);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -224,6 +290,138 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
   const loadedHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
 
   expect(loadingHeight).toBe(loadedHeight);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Das Auftauchen der Stand-Zeile verschiebt nichts darunter (issue #155)  */
+/* -------------------------------------------------------------------------- */
+
+test('das Auftauchen der Stand-Zeile verschiebt den Inhalt darunter nicht (issue #155 AC4)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/heute');
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(page.locator('.weather-forecast__caption')).toHaveCount(0);
+
+  const headingBefore = await page.locator('#heute-aufgaben-heading').boundingBox();
+
+  // The API stays unreachable so the cache genuinely goes stale instead of a
+  // background refresh quietly resetting fetchedAt back to "just now".
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await skewClock(page, '2026-07-20T17:00:00.000Z'); // exactly 8h later
+  await page.reload();
+  await expect(page.locator('.weather-forecast__caption')).toBeVisible();
+
+  const headingAfter = await page.locator('#heute-aufgaben-heading').boundingBox();
+  expect(headingAfter?.y).toBe(headingBefore?.y);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Nachholen bei Rückkehr aus dem Hintergrund, sonst nicht (issue #155)    */
+/* -------------------------------------------------------------------------- */
+
+test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand alt genug ist (issue #155 AC6/AC7)', () => {
+  test('visibilitychange auf sichtbar holt nach, wenn der Stand älter als 3 Stunden ist', async ({
+    page,
+  }) => {
+    const callCount = await mockForecast(page, DAY_SET_A);
+    await skewClock(page, NOW);
+    await page.goto('/heute');
+    await expect(weatherDays(page)).toHaveCount(7);
+    expect(callCount()).toBe(1);
+
+    await page.unroute(OPEN_METEO_PATTERN);
+    await mockForecast(page, DAY_SET_B);
+    await skewClock(page, '2026-07-20T12:30:00.000Z'); // +3h30, past the window
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText(
+      '10°',
+    );
+  });
+
+  test('visibilitychange auf sichtbar holt NICHT nach, wenn der Stand jünger als 3 Stunden ist', async ({
+    page,
+  }) => {
+    const callCount = await mockForecast(page, DAY_SET_A);
+    await skewClock(page, NOW);
+    await page.goto('/heute');
+    await expect(weatherDays(page)).toHaveCount(7);
+    expect(callCount()).toBe(1);
+
+    await skewClock(page, '2026-07-20T10:00:00.000Z'); // +1h, still fresh
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // No new request ever fires for a fresh cache — polling instead of a fixed
+    // wait would just reintroduce the flake it avoids elsewhere in this suite.
+    await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText(
+      '24°',
+    );
+    expect(callCount()).toBe(1);
+  });
+
+  test('ein `focus`-Event holt sofort nach, ohne aufs Intervall zu warten', async ({ page }) => {
+    await mockForecast(page, DAY_SET_A);
+    await skewClock(page, NOW);
+    await page.goto('/heute');
+    await expect(weatherDays(page)).toHaveCount(7);
+
+    await page.unroute(OPEN_METEO_PATTERN);
+    await mockForecast(page, DAY_SET_B);
+    await skewClock(page, '2026-07-20T12:00:00.000Z'); // exactly 3h later
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+    await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText(
+      '10°',
+    );
+  });
+
+  test('solange die Seite sichtbar bleibt, prüft ein Intervall weiter — auch ohne Fokus/Sichtbarkeitswechsel', async ({
+    page,
+  }) => {
+    await page.clock.install({ time: new Date(NOW) });
+    await mockForecast(page, DAY_SET_A);
+    await page.goto('/heute');
+    await expect(weatherDays(page)).toHaveCount(7);
+
+    await page.unroute(OPEN_METEO_PATTERN);
+    await mockForecast(page, DAY_SET_B);
+    await freezeClock(page);
+    await page.clock.fastForward(REFRESH_INTERVAL_MS + 1_000);
+
+    await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText(
+      '10°',
+    );
+  });
+
+  test('im Hintergrund läuft kein Intervall-Timer', async ({ page }) => {
+    await page.clock.install({ time: new Date(NOW) });
+    const callCount = await mockForecast(page, DAY_SET_A);
+    await page.goto('/heute');
+    await expect(weatherDays(page)).toHaveCount(7);
+    expect(callCount()).toBe(1);
+
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await freezeClock(page);
+    // Several interval periods' worth of time — if the interval were still
+    // running despite the tab being hidden, this would have fired it repeatedly.
+    await page.clock.fastForward(REFRESH_INTERVAL_MS * 3);
+
+    expect(callCount()).toBe(1);
+  });
 });
 
 /* -------------------------------------------------------------------------- */

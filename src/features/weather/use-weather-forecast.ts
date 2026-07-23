@@ -1,7 +1,7 @@
 import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { db, type WeatherDay } from '@/local/dexie';
-import { fetchForecast, isStale, WEATHER_CACHE_KEY } from './forecast';
+import { fetchForecast, isStale, REFRESH_INTERVAL_MS, WEATHER_CACHE_KEY } from './forecast';
 
 export type WeatherPhase = 'loading' | 'ready' | 'empty-error';
 
@@ -45,18 +45,55 @@ export function useWeatherForecast(): WeatherForecastState {
     return () => subscription.unsubscribe();
   }, []);
 
+  // `refreshIfStale` itself decides whether a fetch actually happens — every
+  // trigger here just asks "is the cache old enough?" (issue #155). No trigger
+  // ever forces a network call on its own, so firing several at once (e.g. focus
+  // right after visibilitychange) costs at most one real fetch.
   useEffect(() => {
     let cancelled = false;
-    refreshIfStale()
-      .then(() => {
-        if (!cancelled) setRefreshFailed(false);
-      })
-      .catch((error) => {
-        console.error('[weather] refresh failed', error);
-        if (!cancelled) setRefreshFailed(true);
-      });
+    const attempt = () => {
+      refreshIfStale()
+        .then(() => {
+          if (!cancelled) setRefreshFailed(false);
+        })
+        .catch((error) => {
+          console.error('[weather] refresh failed', error);
+          if (!cancelled) setRefreshFailed(true);
+        });
+    };
+
+    // No background timer (ADR-0009, iOS has no Periodic Background Sync) — the
+    // interval only runs while the tab is actually visible.
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const startInterval = () => {
+      if (interval) return;
+      interval = setInterval(attempt, REFRESH_INTERVAL_MS);
+    };
+    const stopInterval = () => {
+      if (interval) clearInterval(interval);
+      interval = null;
+    };
+    const onFocus = () => attempt();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        attempt();
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    attempt();
+    if (document.visibilityState === 'visible') startInterval();
+
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      stopInterval();
     };
   }, []);
 
