@@ -1214,8 +1214,10 @@ Ablauf:
    Berührt dein Diff einen geschützten Pfad (src/db/, src/crypto/,
    src/local/, src/app/api/sync/, auth, .github/, scripts/): kommentiere
    JETZT am Issue, was du geändert hast, warum, und was schiefgehen könnte,
-   und bitte um 'human-approved' — warte NICHT auf das rote CI-Ergebnis,
-   das bekommst du ohnehin nicht mehr live mit.
+   und setze SELBST 'gh issue edit $ISSUE --add-label needs-input' — nimm
+   es in diesem Lauf NICHT wieder ab. Das parkt das Ticket (#145) sofort,
+   der Runner wählt als nächstes ein anderes, statt auf das rote
+   CI-Ergebnis zu warten, das du ohnehin nicht mehr live mitbekommst.
    Dein Lauf endet danach. **Kein** 'gh pr checks --watch', **kein** voller
    'pnpm e2e' lokal — der Runner-Takt beobachtet ab hier die CI und holt
    dich nur zurück, wenn dort etwas rot wird.

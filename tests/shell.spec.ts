@@ -178,6 +178,30 @@ test('every tab and the settings entry render an SVG icon at 24px — no Unicode
   await expect(page.getByRole('link', { name: 'Einstellungen' }).locator('svg')).toHaveCount(1);
 });
 
+test('das Einstellungs-Symbol zeigt zwei waagerechte Regler statt radialer Strahlen (issue #157 AC1)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const settingsSvg = page.getByRole('link', { name: 'Einstellungen' }).locator('svg');
+  // Two slider handles on two track segments — no hub-and-spokes shape left,
+  // which used to read as IconWeatherClear's sun once Wetter shared the screen.
+  await expect(settingsSvg.locator('circle')).toHaveCount(2);
+  await expect(settingsSvg.locator('path')).toHaveCount(2);
+});
+
+test('der Heute-Tab zeigt eine Sonne statt zweier ineinanderliegender Kreise (issue #157 AC2)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const todaySvg = page
+    .getByRole('navigation', { name: 'Hauptnavigation' })
+    .getByRole('link', { name: 'Heute' })
+    .locator('svg');
+  await expect(todaySvg.locator('circle')).toHaveCount(1);
+});
+
 test('nav icons are invisible to screen readers; the tab label stays the accessible name (issue #125 AC7)', async ({
   page,
 }) => {

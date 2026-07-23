@@ -39,9 +39,15 @@ export interface TaskListProps {
    * stays the same so the two lists don't drift apart.
    */
   dueTodayOnly?: boolean;
+  /**
+   * Id of a visible heading that already names this list (issue #157) — the list
+   * is labelled by it via `aria-labelledby` instead of carrying its own
+   * `aria-label`, so a screen reader doesn't announce both back to back.
+   */
+  headingId?: string;
 }
 
-export function TaskList({ dueTodayOnly = false }: TaskListProps = {}) {
+export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}) {
   const allTasks = useTasks();
   const tasks = dueTodayOnly ? allTasks?.filter((task) => isDueTodayOrOverdue(task)) : allTasks;
   const online = useOnline();
@@ -137,7 +143,9 @@ export function TaskList({ dueTodayOnly = false }: TaskListProps = {}) {
         <ul
           ref={listRef}
           className="task-list"
-          aria-label={dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben'}
+          {...(headingId
+            ? { 'aria-labelledby': headingId }
+            : { 'aria-label': dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben' })}
         >
           {dueTodayOnly
             ? tasks.map((task) => (

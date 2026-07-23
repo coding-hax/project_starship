@@ -205,7 +205,7 @@ er überhaupt an eine Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, **nur** `protected-paths` | Label `needs-input`, Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
+| rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
 | grün | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
@@ -297,10 +297,13 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
   (`.skip`, `.only`) oder mit `waitForTimeout` grün macht. Reine Textprüfung,
   kein Modell beteiligt.
 - `protected-paths` — schlägt fehl, sobald `src/db/`, `src/crypto/`, `src/local/`,
-  `src/app/api/sync/`, Auth, `.github/` oder `scripts/` berührt werden. Der PR bleibt
-  offen, bis **du** das Label `human-approved` setzt **und** `needs-input` entfernst
-  (das der Runner-Takt gesetzt hat, siehe oben). Danach läuft der Check automatisch
-  neu, und der nächste Takt sieht grün und aktiviert Auto-Merge.
+  `src/app/api/sync/`, Auth, `.github/` oder `scripts/` berührt werden. Der Bau-Agent
+  setzt beim Öffnen des Draft-PR selbst `needs-input` und nimmt es in diesem Lauf
+  nicht wieder ab (#163) — die Wache setzt es nur nach, falls es einmal fehlt (z. B.
+  nach einem abgebrochenen Lauf), folgenlos, wenn es schon dranhängt. Der PR bleibt
+  offen, bis **du** das Label `human-approved` setzt **und** `needs-input` entfernst.
+  Danach läuft der Check automatisch neu, und der nächste Takt sieht grün und
+  aktiviert Auto-Merge.
 
 Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
 

@@ -236,14 +236,20 @@ rote CI-Ergebnis, das bekommst du ohnehin nicht mehr live mit (der Runner-Takt
 beobachtet die CI ab jetzt, nicht du). Was du tust:
 
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, und was schiefgehen könnte.
-2. Label `human-approved` anfordern — nicht selbst setzen.
+2. Label `needs-input` **selbst setzen** (`gh issue edit <nr> --add-label needs-input`)
+   — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145)
+   sofort, der Runner wählt als nächstes ein anderes, statt auf das rote
+   CI-Ergebnis zu warten.
+3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
 
-Bleibt `protected-paths` als **einziger** roter Check stehen, setzt der Runner-Takt
-`needs-input` — das ist die vorgesehene Genehmigungs-Schranke, kein Fund für einen
-Fix-Lauf. Der Mensch setzt vom Handy aus `human-approved` **und entfernt**
-`needs-input` — danach läuft der Check automatisch neu, der nächste Takt sieht grün
-und aktiviert Auto-Merge. Versuche **nie**, diesen Check zu umgehen, ihn
-abzuschalten oder die Änderung so umzuschneiden, dass sie am Wächter vorbeirutscht.
+Das ist die vorgesehene Genehmigungs-Schranke, kein Fund für einen Fix-Lauf. Bleibt
+`protected-paths` als **einziger** roter Check stehen und `needs-input` fehlt trotzdem
+(z. B. nach einem abgebrochenen Lauf), setzt es der Runner-Takt selbst nach — folgenlos,
+wenn es schon dranhängt; das ist ihr Sicherheitsnetz, nicht der Regelfall. Der Mensch
+setzt vom Handy aus `human-approved` **und entfernt** `needs-input` — danach läuft der
+Check automatisch neu, der nächste Takt sieht grün und aktiviert Auto-Merge. Versuche
+**nie**, diesen Check zu umgehen, ihn abzuschalten oder die Änderung so umzuschneiden,
+dass sie am Wächter vorbeirutscht.
 Das wäre der schwerste Vertrauensbruch, der in diesem Repo möglich ist.
 
 ### Tests sind kein Hindernis, sie sind der Auftrag
