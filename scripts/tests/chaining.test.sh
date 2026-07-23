@@ -58,19 +58,23 @@ merged_snapshot() {   # $1 = Runde -> vereinigtes Array ueber alle 4 Ticketwahl-
 case "${1:-} ${2:-}" in
   "issue list")
     shift 2
-    label=""; json=""; q=""
+    label=""; json=""; limit=""; q=""
     while [ $# -gt 0 ]; do
       case "$1" in
         --label) label="$2"; shift 2 ;;
         --json) json="$2"; shift 2 ;;
+        --limit) limit="$2"; shift 2 ;;
         -q) q="$2"; shift 2 ;;
-        --state|--limit) shift 2 ;;
+        --state) shift 2 ;;
         *) shift ;;
       esac
     done
-    if [ -z "$label" ] && [ "$json" = "number,labels,createdAt" ]; then
+    if [ -z "$label" ] && [ "$limit" = "100" ]; then
       # ROUND_SNAP (#64): die neue Ein-Abfrage-Ticketwahl -- IMMER die erste
       # gh-Anfrage in run_round() -- daran haengt sich der Rundenzaehler.
+      # Unterscheidung ueber --limit (100), nicht mehr ueber --json: seit #149
+      # fragt auch queue_snapshot() 'createdAt' mit ab, das --json-Argument
+      # allein ist also fuer beide Aufrufe identisch geworden.
       round=$(( $(cat "$G/round" 2>/dev/null || echo 0) + 1 ))
       echo "$round" > "$G/round"
       data=$(merged_snapshot "$round")
@@ -78,8 +82,8 @@ case "${1:-} ${2:-}" in
       round=$(cat "$G/round" 2>/dev/null || echo 0)
       data=$(resolve_label_data "$label" "$round")
     else
-      # queue_snapshot() -- ungelabelt, aber ohne createdAt (Status-Anzeige
-      # nach einer Runde). Liest dieselbe Runde, zaehlt aber nicht hoch.
+      # queue_snapshot() -- ungelabelt, --limit 50 (Status-Anzeige nach einer
+      # Runde). Liest dieselbe Runde, zaehlt aber nicht hoch.
       round=$(cat "$G/round" 2>/dev/null || echo 0)
       data=$(merged_snapshot "$round")
     fi
@@ -232,15 +236,22 @@ assert_contains() {   # $1 = Beschreibung, $2 = Datei, $3 = erwarteter Substring
 }
 
 # ==============================================================================
-# 1. Kette bricht bei needs-input ab -- ein baubereites Ticket (#70) wird zwar
-#    sauber fertig, aber ein ANDERES Ticket (#80) wartet auf den Menschen ->
-#    genau 1 claude-Aufruf, obwohl die Queue noch Arbeit haette.
+# 1. Ein baubereites Ticket (#70) wird sauber fertig, waehrend ein ANDERES
+#    Ticket (#80) auf den Menschen wartet -> genau 1 claude-Aufruf.
+#    Seit #145 ist die needs-input-Pruefung NICHT mehr global (ein woanders
+#    wartendes Ticket darf einen unabhaengigen, sauberen Lauf nicht abbrechen,
+#    siehe SELF_WAITS in run_round) -- die Kette stoppt hier also NICHT wegen
+#    #80, sondern weil #70 nach Runde 1 nicht mehr 'ready' ist (Fixture bildet
+#    das gebaute Ticket nach) und Runde 2 ausser dem wartenden #80 nichts mehr
+#    findet (#149, Test war sonst nur zufaellig durch die alte globale Pruefung
+#    gruen).
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
 list_json needs-plan '[]'
 list_json needs-research '[]'
 list_json ready '[{"number":70,"labels":[{"name":"ready"}]}]'
+list_json_round ready 2 '[]'
 list_json needs-input '[{"number":80,"labels":[{"name":"needs-input"}]}]'
 run_main
 assert_eq "AC1: Kette bricht bei needs-input ab (genau 1 claude-Aufruf)" "1" "$(call_count)"
