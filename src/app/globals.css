@@ -19,6 +19,7 @@
 @import '../features/habits/habit-editor.css';
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';
+@import '../features/weather/weather-forecast.css';
 @import './(app)/heute/heute.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist

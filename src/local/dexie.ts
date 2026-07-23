@@ -30,16 +30,47 @@ export interface MetaEntry {
   value: unknown;
 }
 
+/** One day of `WeatherCacheEntry.days` — see there for why this store exists. */
+export interface WeatherDay {
+  /** Local calendar day, `YYYY-MM-DD`. */
+  date: string;
+  /** WMO weather code (Open-Meteo `daily.weather_code`) — see wmo-icon.ts for the icon mapping. */
+  weatherCode: number;
+  tempMax: number;
+  tempMin: number;
+  precipitationProbability: number;
+}
+
+/**
+ * The 7-day Bonn forecast (issue #139), its own store deliberately separate from
+ * `records`: it is public third-party data, not user content, so it never goes
+ * through the outbox and never reaches Postgres (ADR-0009). `key` is always
+ * `WEATHER_CACHE_KEY` (weather-forecast.ts) — one row, since the location is
+ * hard-coded.
+ */
+export interface WeatherCacheEntry {
+  key: string;
+  fetchedAt: string;
+  days: WeatherDay[];
+}
+
 const db = new Dexie('starship') as Dexie & {
   outbox: EntityTable<OutboxEntry, 'id'>;
   records: EntityTable<LocalRecord, 'id'>;
   meta: EntityTable<MetaEntry, 'key'>;
+  weather: EntityTable<WeatherCacheEntry, 'key'>;
 };
 
 db.version(1).stores({
   outbox: 'id, createdAt, table',
   records: '[table+id], table, updatedAt, syncedAt',
   meta: 'key',
+});
+
+// Additive: a new store, on its own version so existing installs migrate without
+// touching the stores above (ADR-0009).
+db.version(2).stores({
+  weather: 'key',
 });
 
 export { db };
