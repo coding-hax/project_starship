@@ -34,6 +34,7 @@ label() { gh label create "$1" --color "$2" --description "$3" --force >/dev/nul
 label "ready"          "0E8A16" "Freigegeben. Claude darf das Ticket nehmen."
 label "in-progress"    "FBCA04" "Claude arbeitet daran. Es gibt immer höchstens eins."
 label "needs-input"    "D93F0B" "Claude hat eine Frage gestellt und wartet auf dich."
+label "parked"         "C2E0C6" "Wartet auf dich (needs-input), belegt aber keinen Bauplatz mehr."
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
 label "human-approved" "5319E7" "Deine Freigabe für einen PR, der geschützte Pfade berührt."
 label "model:haiku"    "BFDADC" "Mechanisches Ticket — Runner nimmt Haiku statt Sonnet."

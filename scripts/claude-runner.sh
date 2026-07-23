@@ -162,6 +162,22 @@ waiting_issues() {
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
 
+# Liegt gerade ein 'parked'-Ticket (#145) herum, waehrend an einem anderen
+# gebaut wird? Fuer den Status-Text der 🟠-"arbeitet an"-Meldung -- vorher
+# konnte "wartet auf dich" und "arbeitet an X" nicht gleichzeitig gelten, jetzt
+# schon, und das Status-Ticket muss beides zeigen (#145 AC6).
+parked_issues() {
+  gh issue list --label parked --state open --limit 20 \
+    --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
+}
+
+# Nimmt einem Ticket 'in-progress' ab und gibt 'parked' -- die zentrale Stelle
+# fuer die Selbstheilung (#145), gebraucht sowohl fuer den Rundenanfang als
+# auch sofort nach einem Lauf, in dem Claude selbst 'needs-input' gesetzt hat.
+park_issue() {   # $1 = Issue-Nr
+  gh issue edit "$1" --remove-label in-progress --add-label parked >/dev/null 2>&1
+}
+
 # Einmaliger Schnappschuss aller offenen Issues mit Labels.
 queue_snapshot() {
   gh issue list --state open --limit 50 --json number,labels 2>/dev/null || echo '[]'
@@ -564,6 +580,38 @@ ROUND_SNAP=$(gh issue list --state open --limit 100 \
 QUEUE_BODY=$(queue_body)
 QUEUE_ORDER=$(queue_order_flat "$QUEUE_BODY")
 
+# --- Selbstheilung (#145): in-progress + needs-input darf nicht koexistieren -
+# Eine Frage waehrend eines Laufs (Skript- oder Agent-seitig per gh issue edit)
+# hinterlaesst bisher 'in-progress' UND 'needs-input' gleichzeitig -- genau das
+# blockierte frueher den ganzen Runner (Schritt 1 unten, "PARKED"), auch fuer
+# Tickets, die fachlich nichts damit zu tun haben. Hier, VOR jeder Ticketwahl,
+# wird das aufgeloest: 'in-progress' weg, dafuer 'parked' -- sichtbar wartend,
+# aber ohne Bauplatz zu belegen. 'ready' waere falsch: die Wiederaufnahme unten
+# (Schritt 1b) braucht MODE=resume, nicht "von vorn". Nur ERFOLGREICH
+# umgelabelte Tickets werden auch im Snapshot umgeschrieben -- schlaegt der
+# gh-Aufruf fehl, bleibt das Ticket in-progress+needs-input und faellt unten in
+# den alten Sicherheitszweig (blockiert alles), statt riskant ein zweites
+# Ticket parallel anzufangen.
+TO_PARK=$(printf '%s' "$ROUND_SNAP" | jq -r \
+  '[.[] | select(.labels | map(.name) | index("in-progress"))
+        | select(.labels | map(.name) | index("needs-input"))
+        | .number] | .[]' 2>/dev/null)
+if [ -n "$TO_PARK" ]; then
+  PARKED_OK='[]'
+  while IFS= read -r n; do
+    [ -z "$n" ] && continue
+    if park_issue "$n"; then
+      PARKED_OK=$(printf '%s' "$PARKED_OK" | jq --argjson n "$n" '. + [$n]')
+    fi
+  done <<< "$TO_PARK"
+  if [ "$(printf '%s' "$PARKED_OK" | jq 'length')" -gt 0 ]; then
+    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson ok "$PARKED_OK" \
+      '[.[] | if (.number as $n | $ok | index($n) != null) then
+                (.labels |= (map(select(.name != "in-progress")) + [{"name":"parked"}]))
+              else . end]')
+  fi
+fi
+
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
 #    'needs-input' schließt aus: dieses Ticket wartet auf den Menschen. Ohne den
 #    Filter nimmt der Timer es alle 5 Minuten neu auf — mit derselben offenen
@@ -578,9 +626,11 @@ MODE=resume
 RUN_ROLE=build
 
 if [ -z "$ISSUE" ]; then
-  # Steht ein Ticket in Arbeit, das auf DICH wartet? Dann ist hier Schluss.
-  # Jetzt ein neues anzufangen würde das WIP-Limit von 1 brechen — und das
-  # zweite Ticket bräuchte ohnehin den Code, der im ersten festhängt.
+  # Sicherheitsnetz (#145): normalerweise hat die Selbstheilung oben jedes
+  # in-progress+needs-input-Ticket schon zu 'parked' umgelabelt, WIP ist dann
+  # leer. Landet hier trotzdem noch etwas (der gh-Aufruf der Selbstheilung ist
+  # fehlgeschlagen), gilt weiterhin: lieber blockieren als riskant ein zweites
+  # Ticket parallel anzufangen, waehrend am ersten unklar ist, wer daran sitzt.
   PARKED=$(echo "$WIP" | jq -r '[.[].number] | map("#" + tostring) | join(", ")')
   if [ -n "$PARKED" ]; then
     status "wartet auf dich ($PARKED)" "🟡" \
@@ -593,11 +643,28 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     return 0
   fi
 
+  # 1b) Ein zuvor pausiertes Ticket (#145): die Frage ist beantwortet und
+  #     'needs-input' schon wieder weg, nur 'parked' haengt noch. Vor Queue und
+  #     Label-Kaskade fortsetzen, damit angefangene Arbeit nicht laenger liegen
+  #     bleibt als noetig, statt ein frisches Ticket vorzuziehen. MODE=resume,
+  #     nicht 'start' -- Branch und Fortschrittskommentar existieren schon.
+  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
+            '[.[] | select(.labels | map(.name) | index("parked"))
+                  | select((.labels | map(.name) | index("needs-input")) | not)]
+                | sort_by(.createdAt)
+                | .[0].number // empty')
+  if [ -n "$ISSUE" ]; then
+    gh issue edit "$ISSUE" --add-label in-progress --remove-label parked >/dev/null
+    MODE=resume
+    RUN_ROLE=build
+  fi
+
   # 2) NEU (#109): Queue zuerst — flache Reihenfolge, LABEL EGAL. Das erste
   #    gelistete, offene Ticket (ohne 'needs-input'/'no-opus') wird bearbeitet;
   #    das Eintragen in die Queue IST das Freigabesignal (ersetzt 'ready' für
   #    gelistete Tickets). Die ROLLE kommt weiter aus dem Label: 'needs-plan' ->
   #    Planlauf, 'needs-research' -> Recherche, sonst bauen.
+  if [ -z "$ISSUE" ]; then
   QPICK=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$QUEUE_ORDER" '
     [ .[] | (.labels|map(.name)) as $l | (.number) as $n
       | ($order|index($n)) as $rank
@@ -620,6 +687,7 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
       MODE=start
       [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
     fi
+  fi
   fi
 
   # 3) Sonst (Queue leer/nichts wählbar): Fallback auf die Label-Reihenfolge —
@@ -740,24 +808,37 @@ LOG="$STATE_DIR/last-run.log"
 # dieser Stelle (Start oder Resume), bevor er selbst zu arbeiten beginnt. Ein
 # irrefuehrender Zustand ueberlebt also nie mehr als bis zum naechsten Takt.
 START_HM=$(date "+%H:%M")
+
+# Seit #145 kann ein 'parked'-Ticket (wartet auf dich) neben dem aktiven
+# koexistieren -- die Busy-Meldung darf das nicht verschweigen (AC6), sonst
+# sieht man auf dem Handy nur "🟠 arbeitet an #X" und uebersieht, dass woanders
+# eine Antwort faellig ist.
+PARKED_NOW=$(parked_issues)
+PARKED_NOTE=""
+if [ -n "$PARKED_NOW" ]; then
+  PARKED_NOTE="
+
+🟡 Wartet zusätzlich auf dich: $PARKED_NOW (Antwort + \`needs-input\` entfernen setzt die Arbeit dort fort)."
+fi
+
 if [ "$RUN_ROLE" = "plan" ]; then
   status "plant #$ISSUE (seit $START_HM)" "🟠" \
     "🟠 **Plant gerade #$ISSUE** (Opus, nur lesend), seit $START_HM.
 
 Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
-hier keine anderen Status (🟡/🔴) folgen."
+hier keine anderen Status (🟡/🔴) folgen.${PARKED_NOTE}"
 elif [ "$RUN_ROLE" = "research" ]; then
   status "recherchiert #$ISSUE (seit $START_HM)" "🟠" \
     "🟠 **Recherchiert gerade #$ISSUE** (Opus, nur lesend), seit $START_HM.
 
 Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
-hier keine anderen Status (🟡/🔴) folgen."
+hier keine anderen Status (🟡/🔴) folgen.${PARKED_NOTE}"
 else
   status "arbeitet an #$ISSUE (seit $START_HM)" "🟠" \
     "🟠 **Arbeitet gerade an #$ISSUE**, seit $START_HM.
 
 Laeuft bis zu $((MAX_RUNTIME / 60)) Minuten. **Kein Eingreifen noetig**, solange
-hier keine anderen Status (🟡/🔴) folgen."
+hier keine anderen Status (🟡/🔴) folgen.${PARKED_NOTE}"
 fi
 
 # --- Modell nach Rolle/Label/Eskalationsstufe --------------------------------
@@ -1043,10 +1124,18 @@ if [ $RC -eq 0 ]; then
   # sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein Commit).
   build_escalation_eval
 
-  # Der Lauf war sauber — aber hat Claude dabei eine Frage gestellt?
-  # Dann wartet das Ticket jetzt auf dich, und Grün wäre irreführend.
-  WAITING=$(waiting_issues)
-  if [ -n "$WAITING" ]; then
+  # Der Lauf war sauber — aber hat Claude bei GENAU DIESEM Ticket eine Frage
+  # gestellt? Bewusst NICHT global geprueft (#145): ein woanders schon
+  # 'parked' wartendes Ticket darf die Chain-Fortsetzung eines unabhaengigen,
+  # sauberen Laufs nicht verhindern -- die alte Pruefung ('waiting_issues()'
+  # direkt) fragte den ganzen Bestand statt nur $ISSUE ab.
+  POST_LABELS=$(gh issue view "$ISSUE" --json labels -q '.labels[].name' 2>/dev/null | tr '\n' ' ')
+  SELF_WAITS=0
+  case " $POST_LABELS " in *" needs-input "*) SELF_WAITS=1 ;; esac
+
+  if [ "$SELF_WAITS" -eq 1 ]; then
+    park_issue "$ISSUE"
+    WAITING=$(waiting_issues)
     status "wartet auf dich ($WAITING)" "🟡" \
       "🟡 **Ich warte auf eine Antwort von dir.**
 
