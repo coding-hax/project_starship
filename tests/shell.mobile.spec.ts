@@ -59,10 +59,11 @@ test('das Einstellungen-Symbol auf /heute steht auf einer Linie mit "Heute", rec
   const heading = page.getByRole('heading', { name: 'Heute', level: 1 });
   const settings = page.getByRole('link', { name: 'Einstellungen' });
   const main = page.locator('main.shell__main');
-  const [headingBox, settingsBox, mainBox] = await Promise.all([
+  const [headingBox, settingsBox, mainBox, mainPaddingRight] = await Promise.all([
     heading.boundingBox(),
     settings.boundingBox(),
     main.boundingBox(),
+    main.evaluate((el) => parseFloat(getComputedStyle(el).paddingRight)),
   ]);
   expect(headingBox).not.toBeNull();
   expect(settingsBox).not.toBeNull();
@@ -72,7 +73,10 @@ test('das Einstellungen-Symbol auf /heute steht auf einer Linie mit "Heute", rec
   const settingsCenter = settingsBox!.y + settingsBox!.height / 2;
   expect(Math.abs(headingCenter - settingsCenter)).toBeLessThan(2);
 
-  expect(Math.abs(settingsBox!.x + settingsBox!.width - (mainBox!.x + mainBox!.width))).toBeLessThan(2);
+  // main's own box includes its padding, so the content column's right edge —
+  // where "right-aligned" content actually sits — is inset by padding-right.
+  const contentRightEdge = mainBox!.x + mainBox!.width - mainPaddingRight;
+  expect(Math.abs(settingsBox!.x + settingsBox!.width - contentRightEdge)).toBeLessThan(2);
   expect(settingsBox!.width).toBeGreaterThanOrEqual(44);
   expect(settingsBox!.height).toBeGreaterThanOrEqual(44);
 });
