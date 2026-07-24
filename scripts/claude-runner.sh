@@ -440,6 +440,54 @@ pr_only_protected_paths_red() {   # $1 = PR-Nr -> 0 (ja, nur protected-paths) / 
   [ "${other:-0}" -eq 0 ]
 }
 
+# Squash-Merge mit EIGENEM Subject/Body statt GitHub die Commit-Historie
+# sammeln zu lassen (#172): ohne --subject/--body haengt GitHub beim Squash
+# alle Commit-Nachrichten des Branches aneinander -- inklusive fremder
+# 'Closes #N' aus Merge-Commits, die beim Nachziehen von 'main' (#160)
+# mitgezogen wurden. So hat ein Squash von PR #168 einmal faelschlich #163
+# geschlossen, obwohl dessen eigentlicher PR (#166) noch offen war. Nur der
+# Titel DIESES PR zaehlt -- der traegt genau EIN 'Closes #N', naemlich sein
+# eigenes.
+pr_squash_merge() {   # $1 = PR-Nr
+  local pr="$1" title
+  title=$(gh pr view "$pr" --json title -q .title 2>/dev/null)
+  if [ -n "$title" ]; then
+    gh pr merge --squash --auto --delete-branch --subject "$title" --body "" "$pr" >/dev/null 2>&1
+  else
+    gh pr merge --squash --auto --delete-branch "$pr" >/dev/null 2>&1
+  fi
+}
+
+# Netz (#172, Plan B): trotz eigenem Subject/Body oben bleibt ein Rest-Risiko
+# (z.B. ein von Hand gemergter PR, oder GitHub liest den PR-Titel selbst als
+# schliessendes Schluesselwort noch waehrend der PR offen ist). Deshalb
+# zusaetzlich NACHTRAEGLICH geprueft: traegt ein offener PR 'Closes #N' im
+# Titel, aber Issue #N ist schon geschlossen, kann DIESER PR es nicht
+# geschlossen haben -- das Ticket wird wieder geoeffnet, der Grund als
+# Kommentar vermerkt. Reine gh-Aufrufe, kein Agentenlauf.
+reopen_falsely_closed_issues() {
+  local open_prs pairs
+  open_prs=$(gh pr list --state open --limit 100 --json number,title 2>/dev/null || echo '[]')
+  pairs=$(printf '%s' "$open_prs" | jq -c \
+    '[.[] | {pr: .number, issue: ((.title | (capture("[Cc]loses #(?<n>[0-9]+)").n)? // empty))}]
+     | map(select(.issue != null and .issue != ""))' 2>/dev/null)
+  [ -n "$pairs" ] || return 0
+  [ "$(printf '%s' "$pairs" | jq 'length' 2>/dev/null)" -gt 0 ] || return 0
+
+  printf '%s' "$pairs" | jq -c '.[]' | while IFS= read -r p; do
+    local pr issue state
+    pr=$(printf '%s' "$p" | jq -r '.pr')
+    issue=$(printf '%s' "$p" | jq -r '.issue')
+    state=$(gh issue view "$issue" --json state -q .state 2>/dev/null)
+    if [ "$state" = "CLOSED" ]; then
+      gh issue reopen "$issue" >/dev/null 2>&1
+      gh issue comment "$issue" --body \
+        "🔁 Automatisch wieder geöffnet: Dieses Ticket war geschlossen, obwohl PR #$pr (\`Closes #$issue\`) noch offen ist — kann also nicht der Schließer gewesen sein. Vermutlich hat ein Squash-Merge eines anderen PR ein fremdes \`Closes #$issue\` aus einem mitgezogenen Commit gelesen (#172). Der Bau macht hier normal weiter." \
+        >/dev/null 2>&1
+    fi
+  done
+}
+
 # Knappe Zusammenfassung der roten Checks fuer den Fix-Agenten-Auftrag: Job,
 # Kurzbeschreibung, ein begrenzter Log-Ausschnitt -- NICHT die rohe
 # Log-Ausgabe (#147 AC). Hoechstens die ersten 3 roten Checks, sonst waechst
@@ -694,6 +742,11 @@ exit "$RC"
 run_round() {
 CHAIN_STATUS=stop
 
+# --- Netz gegen faelschlich geschlossene Tickets (#172) ---------------------
+# Vor jeder Ticketauswahl, damit ein hier wieder geoeffnetes Ticket noch im
+# selben Schnappschuss (ROUND_SNAP) unten auftaucht statt erst naechste Runde.
+reopen_falsely_closed_issues
+
 # --- Welches Ticket? --------------------------------------------------------
 # EIN Schnappschuss aller offenen Issues (Nr., Labels, Erstellt-Datum) statt
 # fuenf sequenzieller 'gh issue list'-Aufrufe (needs-input, in-progress,
@@ -779,7 +832,7 @@ if [ -n "$PARKED_LIST" ]; then
     fi
     [ "$PSTATE" = "success" ] || continue
     gh pr ready "$PPR" >/dev/null 2>&1
-    gh pr merge --squash --auto --delete-branch "$PPR" >/dev/null 2>&1
+    pr_squash_merge "$PPR"
     gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
     RELEASED_PARKED_NUMS=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq --argjson n "$PN" '. + [$n]')
   done <<< "$PARKED_LIST"
@@ -829,7 +882,7 @@ Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen
         ;;
       success)
         gh pr ready "$PR_NUM" >/dev/null 2>&1
-        gh pr merge --squash --auto --delete-branch "$PR_NUM" >/dev/null 2>&1
+        pr_squash_merge "$PR_NUM"
         status "wartet auf Merge · #$ISSUE" "🟢" \
           "🟢 **CI grün für #$ISSUE** (PR #$PR_NUM) — als \`ready\` markiert, Auto-Merge aktiviert.
 
