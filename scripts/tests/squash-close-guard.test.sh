@@ -97,7 +97,19 @@ case "${1:-} ${2:-}" in
 esac
 exit 0
 STUB
-chmod +x "$FAKEBIN/gh"
+# --- Stub 'jq' ----------------------------------------------------------------
+cat > "$FAKEBIN/jq" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+# --- Stub 'claude' ------------------------------------------------------------
+cat > "$FAKEBIN/claude" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+chmod +x "$FAKEBIN/gh" "$FAKEBIN/jq" "$FAKEBIN/claude"
 
 export PATH="$FAKEBIN:$PATH"
 export REPO_DIR="$TMP/repo"
