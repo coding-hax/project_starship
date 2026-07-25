@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
-  isSyncTable,
+  malformedFields,
   type Mutation,
   type PushConflict,
   type PushRejection,
@@ -17,21 +17,6 @@ import {
  * has to be the same one on every call so that pushes serialize against each other.
  */
 const PUSH_LOCK_KEY = 5_326_004;
-
-/**
- * Which required fields a mutation is missing or has the wrong type for — empty
- * means well-formed. A poison mutation (one client bug away from wedging the whole
- * queue forever, see push() in src/local/sync.ts) must be rejected on its own,
- * never fail the batch it happened to travel with.
- */
-export function malformedFields(m: Mutation): string[] {
-  const fields: string[] = [];
-  if (!isSyncTable(m?.table)) fields.push('table');
-  if (typeof m?.rowId !== 'string') fields.push('rowId');
-  if (typeof m?.updatedAt !== 'string') fields.push('updatedAt');
-  if (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null) fields.push('baseSeq');
-  return fields;
-}
 
 /**
  * Applies the client outbox.

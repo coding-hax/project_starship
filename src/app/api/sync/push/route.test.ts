@@ -47,32 +47,6 @@ function validMutation(id: string): Mutation {
   };
 }
 
-describe('malformedFields', () => {
-  it('is empty for a well-formed mutation', async () => {
-    const { malformedFields } = await import('./route');
-    expect(malformedFields(validMutation('m1'))).toEqual([]);
-  });
-
-  it('lists every violated field', async () => {
-    const { malformedFields } = await import('./route');
-    const broken = {
-      table: 'not-a-table',
-      rowId: 123,
-      updatedAt: 456,
-      baseSeq: 'nope',
-    } as unknown as Mutation;
-
-    expect(malformedFields(broken).sort()).toEqual(
-      ['baseSeq', 'rowId', 'table', 'updatedAt'].sort(),
-    );
-  });
-
-  it('accepts a null baseSeq', async () => {
-    const { malformedFields } = await import('./route');
-    expect(malformedFields(validMutation('m2'))).toEqual([]);
-  });
-});
-
 describe('POST /api/sync/push', () => {
   beforeEach(() => {
     insertValues.mockClear();

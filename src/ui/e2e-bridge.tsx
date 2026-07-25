@@ -29,6 +29,11 @@ export function E2EBridge() {
         persistStatus: getStoragePersistenceStatus,
         debugRecords: () => db.records.toArray(),
         debugMeta: () => db.meta.toArray(),
+        // Wire-format corruption (a bad payload from an old client build, storage
+        // damage) is not something `mutate()` can produce itself — this is the only
+        // way to reproduce a poison mutation for the #182 tests.
+        debugPatchOutbox: (id: string, patch: Record<string, unknown>) =>
+          db.outbox.update(id, patch),
       },
     });
   }, []);
