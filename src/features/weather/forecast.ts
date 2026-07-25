@@ -2,18 +2,25 @@ import type { WeatherDay } from '@/local/dexie';
 
 export type { WeatherDay };
 
-/** Bonn, hard-wired (issue #139) — single-user app, no location prompt. */
-const LATITUDE = 50.7374;
-const LONGITUDE = 7.0982;
+/** The location is chosen in Einstellungen (issue #159, use-weather-location.ts) —
+ * this module only ever sees coordinates, no fixed place. */
+function buildForecastUrl(latitude: number, longitude: number): string {
+  return (
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${latitude}&longitude=${longitude}` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+    `&timezone=Europe%2FBerlin&forecast_days=7`
+  );
+}
 
-const FORECAST_URL =
-  `https://api.open-meteo.com/v1/forecast` +
-  `?latitude=${LATITUDE}&longitude=${LONGITUDE}` +
-  `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
-  `&timezone=Europe%2FBerlin&forecast_days=7`;
-
-/** One cache row per this key — the location never varies, so there is only ever one. */
-export const WEATHER_CACHE_KEY = 'bonn';
+/**
+ * One cache row per location — switching location switches the key (issue #159), so a
+ * refresh still in flight for the previous place can never land under the new one's
+ * name; it just writes to a key nothing reads anymore.
+ */
+export function weatherCacheKey(latitude: number, longitude: number): string {
+  return `${latitude},${longitude}`;
+}
 
 /** The ICON model's compute cadence (issue #139) — a refresh sooner would return the same numbers. */
 export const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000;
@@ -47,8 +54,8 @@ export function parseForecast(response: OpenMeteoForecastResponse): WeatherDay[]
 }
 
 /** Throws on a network error or a non-2xx response — the caller decides what that means for the cache. */
-export async function fetchForecast(): Promise<WeatherDay[]> {
-  const response = await fetch(FORECAST_URL);
+export async function fetchForecast(latitude: number, longitude: number): Promise<WeatherDay[]> {
+  const response = await fetch(buildForecastUrl(latitude, longitude));
   if (!response.ok) {
     throw new Error(`Open-Meteo antwortete mit Status ${response.status}`);
   }

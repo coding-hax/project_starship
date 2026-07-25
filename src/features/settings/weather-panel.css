@@ -1,0 +1,84 @@
+.weather-panel__search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.weather-panel__search-label {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.weather-panel__search-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.weather-panel__search-input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+}
+
+.weather-panel__search-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.weather-panel__search-submit {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.weather-panel__search-submit:active {
+  opacity: 0.85;
+}
+
+.weather-panel__status {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.weather-panel__results {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-panel__result {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weather-panel__results li:last-child .weather-panel__result {
+  border-bottom: none;
+}
