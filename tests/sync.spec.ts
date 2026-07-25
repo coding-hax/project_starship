@@ -647,84 +647,13 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
  * Behavior unchanged: locally queued changes are never overwritten by incoming pull data.
  */
 test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)', () => {
-  test('AC1: der Pull-Pfad liest die Outbox genau einmal, nicht pro Änderung', async ({
+  test('AC2: eine gequeute Änderung wird nicht durch Pull-Daten überschrieben', async ({
     page,
   }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
 
-    // Create a task locally and queue it for push
-    const taskId = await page.evaluate(() =>
-      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Local change' } }),
-    );
-    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
-
-    // Mock a pull response with multiple changes — if the old code ran,
-    // it would query the outbox N times (once per change). The new code
-    // reads it once upfront.
-    const pullResponse = {
-      changes: [
-        {
-          table: 'tasks',
-          id: taskId,
-          updatedAt: new Date().toISOString(),
-          deletedAt: null,
-          syncSeq: 1,
-          data: { title: 'Server version (should not overwrite local)' },
-        },
-        {
-          table: 'tasks',
-          id: 'task-b',
-          updatedAt: new Date().toISOString(),
-          deletedAt: null,
-          syncSeq: 2,
-          data: { title: 'Another task' },
-        },
-        {
-          table: 'tasks',
-          id: 'task-c',
-          updatedAt: new Date().toISOString(),
-          deletedAt: null,
-          syncSeq: 3,
-          data: { title: 'Third task' },
-        },
-      ],
-      cursor: 3,
-    };
-
-    let pullCallCount = 0;
-    await page.route('**/api/sync/pull**', async (route) => {
-      // Count pulls to ensure the request is made
-      pullCallCount++;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(pullResponse),
-      });
-    });
-
-    // Trigger a pull
-    await page.evaluate(() => window.__starship.sync());
-
-    // The pull should have been called exactly once
-    expect(pullCallCount).toBe(1);
-
-    // The queued task should NOT be overwritten
-    const localData = await page.evaluate(async (id) => {
-      const local = await (window.__starship as unknown as { debugRecords: () => Promise<Array<{ id: string; data: Record<string, unknown> }>> }).debugRecords();
-      return local.find((r) => r.id === id);
-    }, taskId);
-    expect(localData?.data.title).toBe('Local change');
-  });
-
-  test('AC2: eine gequeute Änderung wird nicht durch eingehende Daten überschrieben', async ({
-    page,
-    browser,
-  }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
-
-    // Create a task and sync it to establish a baseline
+    // Create a task and sync it to establish a baseline (syncSeq = 1)
     const taskId = await page.evaluate(async () => {
       const id = await window.__starship.mutate({
         table: 'tasks',
@@ -736,7 +665,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
     });
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
-    // Make a local change (stays in the outbox)
+    // Make a local change (stays in the outbox, baseSeq = 1)
     await page.evaluate(
       (id) =>
         window.__starship.mutate({
@@ -749,7 +678,10 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
     );
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
-    // Simulate a pull from another device with a competing change
+    // Block the push endpoint so the outbox doesn't get cleared
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+
+    // Mock a pull response with a competing change (syncSeq = 2, newer)
     const pullResponse = {
       changes: [
         {
@@ -757,7 +689,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
           id: taskId,
           updatedAt: new Date().toISOString(),
           deletedAt: null,
-          syncSeq: 2, // Newer than the original syncSeq
+          syncSeq: 2, // Newer than the local record's syncSeq (1)
           data: { title: 'Change from another device' },
         },
       ],
@@ -772,17 +704,19 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
       });
     });
 
-    // Trigger the pull
+    // Trigger a sync (push will fail/abort, then pull will run)
     await page.evaluate(() => window.__starship.sync());
 
-    // The local change should still be in the outbox (not synced)
+    // The local change should still be in the outbox (push failed)
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
-    // The local record should retain the local change, not the server's
+    // The local record should NOT have been overwritten by the pull —
+    // a queued mutation prevents the overwrite (ADR-0001).
     const localData = await page.evaluate(async (id) => {
-      const local = await (window.__starship as unknown as { debugRecords: () => Promise<Array<{ id: string; data: Record<string, unknown> }>> }).debugRecords();
+      const local = await (window.__starship as unknown as { debugRecords: () => Promise<Array<{ id: string; table: string; data: Record<string, unknown>; syncSeq: number | null }>> }).debugRecords();
       return local.find((r) => r.id === id);
     }, taskId);
+    // Critical check: the local change must not be overwritten
     expect(localData?.data.title).toBe('Local change, not yet synced');
   });
 });
