@@ -1,6 +1,4 @@
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
-import { db } from '@/local/dexie';
+import { useLiveTable } from '@/local/use-live-table';
 
 /**
  * The subset of a task a read-only list needs. Field names match what the sync
@@ -116,32 +114,7 @@ export function isDueTodayOrOverdue(task: TaskView, now: Date = new Date()): boo
   return new Date(task.dueAt) < startOfTomorrow;
 }
 
-/**
- * Reads straight from IndexedDB (CLAUDE.md rule 8) — never a `fetch`. `liveQuery`
- * re-runs the query and re-renders whenever a mutation or a pull touches `tasks`,
- * so the list stays current without any explicit refresh.
- *
- * `undefined` while the first read is in flight, then always an array — empty
- * included, so the list can tell "still reading" apart from "no tasks".
- */
+/** Thin wrapper around the shared `useLiveTable` (src/local/use-live-table.ts). */
 export function useTasks(): TaskView[] | undefined {
-  const [tasks, setTasks] = useState<TaskView[] | undefined>(undefined);
-
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.records.where('table').equals('tasks').toArray(),
-    ).subscribe({
-      next: (records) => {
-        const visible = records
-          .filter((record) => record.deletedAt === null)
-          .map((record) => toTaskView(record.id, record.data));
-        setTasks(visible.sort(compareTasks));
-      },
-      error: (error) => console.error('[tasks] live query failed', error),
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return tasks;
+  return useLiveTable('tasks', toTaskView, compareTasks);
 }
