@@ -60,6 +60,7 @@ case "${1:-} ${2:-}" in
           echo "$2" > "$G/status-title"
           shift 2 ;;
         --body)
+          printf '%s' "$2" > "$G/status-body"
           shift 2 ;;
         *) shift ;;
       esac
@@ -116,10 +117,12 @@ exit 0
 STUB
 
 # --- Stub 'git' ---------------------------------------------------------------
-# Erweitert um das, was pr_catch_up_behind() (#160) braucht: ein steuerbares
-# 'merge' (Konflikt via Marker-Datei), passende Antworten fuer status/diff/
-# rev-parse. Alles andere (fetch/checkout/push/merge --abort) bleibt ein
-# folgenloses exit 0, wie zuvor.
+# Erweitert um das, was pr_catch_up_behind() (#160, #171) braucht: ein
+# steuerbares 'merge' (Konflikt via Marker-Datei), 'status' (unsauberer
+# Arbeitsbaum via Marker-Datei, mit fester Beispieldatei), sowie je ein
+# Fehl-Marker fuer 'fetch'/'checkout -B'/'push' -- damit die drei
+# unterscheidbaren Nicht-Konflikt-Ursachen (#171 AC2) einzeln simulierbar
+# sind. Alles andere bleibt ein folgenloses exit 0, wie zuvor.
 cat > "$FAKEBIN/git" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -130,6 +133,20 @@ case "${1:-}" in
     ;;
   rev-parse)
     printf 'main\n'
+    exit 0
+    ;;
+  fetch)
+    [ -e "$G/git-fetch-fail" ] && exit 1
+    exit 0
+    ;;
+  checkout)
+    case "${2:-}" in
+      -B) [ -e "$G/git-checkout-fail" ] && exit 1; exit 0 ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  push)
+    [ -e "$G/git-push-fail" ] && exit 1
     exit 0
     ;;
   merge)
@@ -477,6 +494,105 @@ assert_contains "T14: CI-Fix-Prompt weist an, 'gh pr ready' selbst auszufuehren"
   "gh pr ready" "$PROMPT_523"
 assert_contains "T14: CI-Fix-Prompt weist an, Auto-Merge selbst zu aktivieren" \
   "gh pr merge --squash --auto --delete-branch" "$PROMPT_523"
+
+# ==============================================================================
+# T15 -- #171 AC1: Nachziehen scheitert an einem unsauberen Arbeitsbaum -> der
+#        Status nennt das als Grund UND listet die störende Datei, bleibt aber
+#        grün (nur EIN Fehlschlag, noch keine Eskalation)
+# ==============================================================================
+reset_state
+setup_wip_issue 440
+setup_pr 440 740
+setup_behind 440 740
+touch "$GHSTATE_DIR/git-dirty"
+run_round
+assert_file_absent "T15: kein Agentenlauf bei unsauberem Arbeitsbaum" "$GHSTATE_DIR/claude-called"
+assert_contains "T15: Status bleibt grün bei einem einzelnen Fehlschlag" \
+  "CI läuft" "$(cat "$GHSTATE_DIR/status-title" 2>/dev/null)"
+BODY_440=$(cat "$GHSTATE_DIR/status-body" 2>/dev/null)
+assert_contains "T15: Status nennt 'unsauberer Arbeitsbaum' als Grund" \
+  "unsauberer Arbeitsbaum" "$BODY_440"
+assert_contains "T15: Status listet die störende Datei" \
+  "some/file.ts" "$BODY_440"
+
+# ==============================================================================
+# T16 -- #171 AC3: dieselbe Ursache DREI Runden in Folge -> Status wechselt auf
+#        🟡 "wartet auf dich" statt weiter 🟢 "kein Eingreifen nötig". Kein
+#        Fix-Agent (AC6: Unterscheidung zum echten Konflikt aus T8 bleibt) --
+#        der Arbeitsbaum ist unersetzlich, also kein automatisches Aufräumen.
+# ==============================================================================
+reset_state
+setup_wip_issue 441
+setup_pr 441 741
+setup_behind 441 741
+touch "$GHSTATE_DIR/git-dirty"
+run_round
+run_round
+run_round
+assert_file_absent "T16: auch nach 3 Runden kein Agentenlauf (kein echter Konflikt)" \
+  "$GHSTATE_DIR/claude-called"
+assert_contains "T16: Status wechselt nach 3 Runden auf 'wartet auf dich'" \
+  "wartet auf dich" "$(cat "$GHSTATE_DIR/status-title" 2>/dev/null)"
+BODY_441=$(cat "$GHSTATE_DIR/status-body" 2>/dev/null)
+assert_contains "T16: Status nennt weiterhin 'unsauberer Arbeitsbaum'" \
+  "unsauberer Arbeitsbaum" "$BODY_441"
+assert_contains "T16: Status listet weiterhin die störende Datei" \
+  "some/file.ts" "$BODY_441"
+assert_not_contains "T16: Status ist NICHT mehr der 'kein Eingreifen nötig'-Text" \
+  "Kein Eingreifen nötig" "$BODY_441"
+
+# ==============================================================================
+# T17 -- #171 AC2: 'fetch' fehlgeschlagen ist von 'unsauberer Arbeitsbaum'
+#        unterscheidbar
+# ==============================================================================
+reset_state
+setup_wip_issue 442
+setup_pr 442 742
+setup_behind 442 742
+touch "$GHSTATE_DIR/git-fetch-fail"
+run_round
+BODY_442=$(cat "$GHSTATE_DIR/status-body" 2>/dev/null)
+assert_contains "T17: Status nennt 'fetch fehlgeschlagen' als Grund" \
+  "fetch fehlgeschlagen" "$BODY_442"
+assert_not_contains "T17: NICHT als unsauberer Arbeitsbaum gemeldet" \
+  "unsauberer Arbeitsbaum" "$BODY_442"
+
+# ==============================================================================
+# T18 -- #171 AC2: 'checkout' fehlgeschlagen ist unterscheidbar
+# ==============================================================================
+reset_state
+setup_wip_issue 443
+setup_pr 443 743
+setup_behind 443 743
+touch "$GHSTATE_DIR/git-checkout-fail"
+run_round
+BODY_443=$(cat "$GHSTATE_DIR/status-body" 2>/dev/null)
+assert_contains "T18: Status nennt 'checkout fehlgeschlagen' als Grund" \
+  "checkout fehlgeschlagen" "$BODY_443"
+
+# ==============================================================================
+# T19 -- #171 AC2: 'push' fehlgeschlagen ist unterscheidbar
+# ==============================================================================
+reset_state
+setup_wip_issue 444
+setup_pr 444 744
+setup_behind 444 744
+touch "$GHSTATE_DIR/git-push-fail"
+run_round
+BODY_444=$(cat "$GHSTATE_DIR/status-body" 2>/dev/null)
+assert_contains "T19: Status nennt 'push fehlgeschlagen' als Grund" \
+  "push fehlgeschlagen" "$BODY_444"
+
+# ==============================================================================
+# T20 -- #171 AC5: der Abbruch bei unsauberem Arbeitsbaum bleibt bestehen --
+#        kein 'git stash' und kein '--force' im ausführbaren Code (Kommentare
+#        ausgenommen), die ihn umgehen könnten
+# ==============================================================================
+if grep -vE '^\s*#' "$RUNNER" | grep -qE 'git stash|--force'; then
+  red "T20: keine '--force'/'git stash'-Umgehung im Runner-Skript"
+else
+  ok "T20: keine '--force'/'git stash'-Umgehung im Runner-Skript"
+fi
 
 # ==============================================================================
 echo
