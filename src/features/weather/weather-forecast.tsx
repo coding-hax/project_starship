@@ -48,9 +48,7 @@ export function WeatherForecast() {
   if (phase === 'empty-error') {
     return (
       <section className="weather-forecast" aria-label={ariaLabel}>
-        <p className="weather-forecast__empty">
-          Vorhersage für {location.name} konnte nicht geladen werden.
-        </p>
+        <p className="weather-forecast__empty">Vorhersage konnte nicht geladen werden.</p>
       </section>
     );
   }
