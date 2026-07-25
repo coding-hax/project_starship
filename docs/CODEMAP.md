@@ -41,6 +41,7 @@ src/
     outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch
     sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
+    use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code

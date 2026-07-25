@@ -1,6 +1,4 @@
-import { liveQuery } from 'dexie';
-import { useEffect, useState } from 'react';
-import { db } from '@/local/dexie';
+import { useLiveTable } from '@/local/use-live-table';
 
 /**
  * The subset of a habit a read-only list needs. Field names match what the sync
@@ -31,32 +29,7 @@ export function compareHabits(a: HabitView, b: HabitView): number {
   return a.createdAt.localeCompare(b.createdAt);
 }
 
-/**
- * Reads straight from IndexedDB (CLAUDE.md rule 8) — never a `fetch`. `liveQuery`
- * re-runs whenever a mutation or a pull touches `habits`, so the management screen
- * stays current without any explicit refresh.
- *
- * `undefined` while the first read is in flight, then always an array — empty
- * included, so the list can tell "still reading" apart from "no habits".
- */
+/** Thin wrapper around the shared `useLiveTable` (src/local/use-live-table.ts). */
 export function useHabits(): HabitView[] | undefined {
-  const [habits, setHabits] = useState<HabitView[] | undefined>(undefined);
-
-  useEffect(() => {
-    const subscription = liveQuery(() =>
-      db.records.where('table').equals('habits').toArray(),
-    ).subscribe({
-      next: (records) => {
-        const visible = records
-          .filter((record) => record.deletedAt === null)
-          .map((record) => toHabitView(record.id, record.data));
-        setHabits(visible.sort(compareHabits));
-      },
-      error: (error) => console.error('[habits] live query failed', error),
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return habits;
+  return useLiveTable('habits', toHabitView, compareHabits);
 }
