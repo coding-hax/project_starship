@@ -1,4 +1,4 @@
-/* Sits above the task list on /heute (issue #139). Smooth-Regel 3: the loading
+/* Sits above the task list on /uebersicht (issue #139). Smooth-Regel 3: the loading
  * skeleton below renders the same grid shape as the loaded state, so the first
  * paint reserves the height and nothing shifts once the cache (or the network)
  * answers. */

@@ -89,7 +89,7 @@ function MonthNav({ viewedMonth, onChange }: MonthNavProps) {
 }
 
 /**
- * The management screen from issue #102 — reachable from "Heute", not its own tab
+ * The management screen from issue #102 — reachable from "Übersicht", not its own tab
  * (docs/DESIGN_SYSTEM.md, nav.tsx). Archived habits are hidden from the active list
  * by default and live in their own collapsed section, per the AC.
  */

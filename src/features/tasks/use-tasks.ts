@@ -105,7 +105,7 @@ function startOfLocalDay(date: Date): Date {
 }
 
 /**
- * Open, dated tasks due today (local calendar day) or earlier — the /heute
+ * Open, dated tasks due today (local calendar day) or earlier — the /uebersicht
  * dashboard subset (issue #87). Undated tasks and tasks due later than today are
  * excluded, and so is anything already completed.
  */

@@ -7,9 +7,9 @@ import { IconSettings } from './icons';
 type AppHeaderProps = {
   /**
    * 'chrome' lives in the shared app shell: hidden on mobile (where Einstellungen is
-   * only reachable from /heute, issue #126) and shown from every screen from `md` up,
+   * only reachable from /uebersicht, issue #126) and shown from every screen from `md` up,
    * since the sidebar has room there. 'inline' is the mobile entry point itself,
-   * rendered by the Heute page next to its heading.
+   * rendered by the Übersicht page next to its heading.
    */
   variant?: 'chrome' | 'inline';
 };
