@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
-  isSyncTable,
+  malformedFields,
   type Mutation,
   type PushConflict,
   type PushRejection,
@@ -52,16 +52,6 @@ export async function POST(request: Request) {
   }
 
   const mutations = body.mutations as Mutation[];
-  for (const m of mutations) {
-    if (
-      !isSyncTable(m?.table) ||
-      typeof m?.rowId !== 'string' ||
-      typeof m?.updatedAt !== 'string' ||
-      (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null)
-    ) {
-      return NextResponse.json({ error: 'malformed mutation' }, { status: 400 });
-    }
-  }
 
   const applied: string[] = [];
   const conflicts: PushConflict[] = [];
@@ -74,6 +64,12 @@ export async function POST(request: Request) {
     // Receipt order, not updatedAt order: the client's outbox is already this
     // device's arrival order, and arrival — not the client clock — decides now.
     for (const mutation of mutations) {
+      const malformed = malformedFields(mutation);
+      if (malformed.length > 0) {
+        rejected.push({ mutationId: mutation?.id, reason: 'malformed', missing: malformed });
+        continue;
+      }
+
       const entry = SYNC_REGISTRY[mutation.table];
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
@@ -105,7 +101,7 @@ export async function POST(request: Request) {
         // rather than let the insert blow up as a 500 inside the transaction.
         const missing = missingRequired(mutation.table, fields);
         if (missing.length > 0) {
-          rejected.push({ mutationId: mutation.id, missing });
+          rejected.push({ mutationId: mutation.id, reason: 'missing-required', missing });
           continue;
         }
 

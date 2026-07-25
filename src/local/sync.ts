@@ -64,10 +64,12 @@ export async function push(): Promise<void> {
       body: JSON.stringify({ mutations }),
     });
   } catch {
-    // Offline. The queue survives — that is the entire point.
+    // Offline. The queue survives — that is the entire point. Does not count
+    // towards SYNC_ERROR_THRESHOLD (#182) — offline is not a server rejecting it.
     await markFailed(
       mutations.map((m) => m.id),
       'offline',
+      true,
     );
     return;
   }

@@ -5,15 +5,26 @@ export interface ToastProps {
   actionLabel: string;
   onAction: () => void;
   onDismiss: () => void;
+  /**
+   * `confirmation` (default) is a calm undo notice, `role="status"` (docs/DESIGN_SYSTEM.md
+   * "Zustände") — nothing here needs a loud colour. `error` is a genuine `Fehler` state,
+   * which the same section requires to look distinct: `role="alert"` and `--danger`.
+   */
+  variant?: 'confirmation' | 'error';
 }
 
-/**
- * A calm confirmation, not an alert (docs/DESIGN_SYSTEM.md "Zustände") — `role="status"`
- * already implies `aria-live="polite"`, so nothing here needs a loud colour.
- */
-export function Toast({ message, actionLabel, onAction, onDismiss }: ToastProps) {
+export function Toast({
+  message,
+  actionLabel,
+  onAction,
+  onDismiss,
+  variant = 'confirmation',
+}: ToastProps) {
   return (
-    <div className="toast" role="status">
+    <div
+      className={variant === 'error' ? 'toast toast--error' : 'toast'}
+      role={variant === 'error' ? 'alert' : 'status'}
+    >
       <span className="toast__message">{message}</span>
       <button type="button" className="toast__action" onClick={onAction}>
         {actionLabel}
