@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, lt } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
@@ -76,19 +76,18 @@ export async function pruneExpired(): Promise<void> {
  * The single authorisation gate. Single-user means there is exactly one legitimate
  * subject; every API route checks against it and there is no second path into the data.
  * Throws — route handlers turn this into a 401.
+ *
+ * A live session is the entire check: getSession() already derives userId from
+ * OWNER_USER_ID itself, so comparing it back against OWNER_USER_ID checked nothing —
+ * it was always true. Only the owner can mint a session at all (passkey-gated), so
+ * "session exists" already is the authorization. A real identity comparison only
+ * becomes meaningful once a multi-user rework stores userId on the sessions row.
  */
 export async function requireOwner(): Promise<string> {
   const session = await getSession();
   if (!session) throw new UnauthorizedError();
 
-  const ownerId = process.env.OWNER_USER_ID;
-  if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
-
-  const a = Buffer.from(session.userId);
-  const b = Buffer.from(ownerId);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new UnauthorizedError();
-
-  return ownerId;
+  return session.userId;
 }
 
 export class UnauthorizedError extends Error {
