@@ -394,31 +394,45 @@ pr_is_behind() {   # $1 = PR-Nr -> 0 (hinter main) / 1 (aktuell/unbekannt)
 # push -- bewusst ueber git, nicht 'gh pr update-branch' (#160). Erwartet
 # einen sauberen Arbeitsbaum (der Bau-Agent endet immer mit Push, nie mit
 # offenen Aenderungen); ein dreckiger Baum hier waere ein Bug anderswo und
-# wird konservativ als Fehler behandelt, statt riskant drueberzumergen.
+# wird konservativ als Fehler behandelt, statt riskant drueberzumergen oder
+# ihn per 'git stash'/'--force' selbst wegzuraeumen (#171) -- was dort liegt
+# kann unersetzlich sein, das Aufraeumen ist Sache eines Menschen.
 #
 # Scheitert der Merge an einem echten Konflikt: kein Commit, Merge wird
 # abgebrochen, der Arbeitsbaum kehrt sauber zum vorherigen Branch zurueck --
 # die Konfliktdateien landen als kommagetrennte Liste auf stdout, fuer den
 # Fix-Agenten-Auftrag.
 #
-# Rueckgabewert: 0 nachgezogen+gepusht | 1 Konflikt (Dateien auf stdout) | 2 Fehler
+# Rueckgabewert (#171: die alte Sammel-2 fuer JEDEN Nicht-Konflikt-Fehler ist
+# aufgeteilt, damit der Aufrufer die Ursache benennen kann):
+#   0 nachgezogen+gepusht
+#   1 Konflikt (Konfliktdateien auf stdout)
+#   2 unsauberer Arbeitsbaum (stoerende Pfade auf stdout, hoechstens 5)
+#   3 PR-Metadaten oder 'git fetch' nicht lesbar/erreichbar
+#   4 'git checkout' auf den PR-Branch fehlgeschlagen
+#   5 'git push' fehlgeschlagen
 pr_catch_up_behind() {   # $1 = PR-Nr
-  local pr="$1" branch cur rc conflicts
+  local pr="$1" branch cur rc conflicts dirty
   branch=$(pr_merge_state "$pr" | jq -r '.headRefName // empty' 2>/dev/null)
-  [ -z "$branch" ] && return 2
-  [ -n "$(git status --porcelain 2>/dev/null)" ] && return 2
+  [ -z "$branch" ] && return 3
+
+  dirty=$(git status --porcelain 2>/dev/null)
+  if [ -n "$dirty" ]; then
+    printf '%s' "$dirty" | head -5 | cut -c4- | tr '\n' ',' | sed 's/,$//'
+    return 2
+  fi
 
   cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
   if [ -z "$cur" ] || [ "$cur" = "HEAD" ]; then cur=main; fi
 
-  git fetch origin main "$branch" --quiet 2>/dev/null || return 2
-  git checkout -B "$branch" "origin/$branch" --quiet 2>/dev/null || return 2
+  git fetch origin main "$branch" --quiet 2>/dev/null || return 3
+  git checkout -B "$branch" "origin/$branch" --quiet 2>/dev/null || return 4
 
   if git merge origin/main --no-edit --quiet 2>/dev/null; then
     git push origin "HEAD:$branch" --quiet 2>/dev/null
     rc=$?
     git checkout "$cur" --quiet 2>/dev/null
-    [ "$rc" -eq 0 ] && return 0 || return 2
+    [ "$rc" -eq 0 ] && return 0 || return 5
   fi
 
   conflicts=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
@@ -426,6 +440,49 @@ pr_catch_up_behind() {   # $1 = PR-Nr
   git checkout "$cur" --quiet 2>/dev/null
   printf '%s' "$conflicts"
   return 1
+}
+
+# Klartext-Ursache je Nicht-Konflikt-Rueckgabewert von pr_catch_up_behind()
+# (#171 AC1/AC2), fuers Statusticket UND fuers Wiederholungs-Tracking unten.
+catchup_fail_reason() {   # $1 = Rueckgabewert (2-5) -> Text
+  case "$1" in
+    2) echo "unsauberer Arbeitsbaum" ;;
+    3) echo "fetch fehlgeschlagen (PR-Metadaten oder \`git fetch\`)" ;;
+    4) echo "checkout fehlgeschlagen" ;;
+    5) echo "push fehlgeschlagen" ;;
+    *) echo "unbekannter Fehler" ;;
+  esac
+}
+
+# Zaehlt aufeinanderfolgende Nachzieh-Fehlschlaege je Ticket UND Ursache
+# dateibasiert unter $STATE_DIR (#171 AC3, analog failcount-<issue>). Wechselt
+# die Ursache oder gab es zuletzt einen Erfolg/Konflikt (catchup_fail_reset),
+# beginnt die Zaehlung wieder bei 1. Ab der DRITTEN Runde in Folge mit
+# derselben Ursache: Rueckgabe 0 ("eskaliert", Status soll 🟡 zeigen).
+catchup_fail_escalated() {   # $1 = Issue-Nr, $2 = Ursache-Text -> 0 eskaliert / 1 noch nicht
+  local issue="$1" reason="$2" f prev_reason prev_count count
+  f="$STATE_DIR/catchup-fail-$issue"
+  if [ -s "$f" ]; then
+    prev_reason=$(sed -n '1p' "$f")
+    prev_count=$(sed -n '2p' "$f")
+  else
+    prev_reason=""
+    prev_count=0
+  fi
+  if [ "$prev_reason" = "$reason" ]; then
+    count=$(( ${prev_count:-0} + 1 ))
+  else
+    count=1
+  fi
+  printf '%s\n%s\n' "$reason" "$count" > "$f"
+  [ "$count" -ge 3 ] && return 0
+  return 1
+}
+
+# Nach einem erfolgreichen Nachziehen oder einem echten Konflikt (eigener,
+# schon sichtbarer Fund) faengt die Wiederholungs-Zaehlung wieder bei null an.
+catchup_fail_reset() {   # $1 = Issue-Nr
+  rm -f "$STATE_DIR/catchup-fail-$1"
 }
 
 # Sind ALLE roten Checks genau 'protected-paths'? Dann ist das kein Fund fuer
@@ -949,9 +1006,11 @@ Takt beobachtet die CI weiter."
         CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
         ;;
       behind)
-        CONFLICT_FILES=$(pr_catch_up_behind "$PR_NUM")
-        case $? in
+        CATCHUP_OUT=$(pr_catch_up_behind "$PR_NUM")
+        CATCHUP_RC=$?
+        case "$CATCHUP_RC" in
           0)
+            catchup_fail_reset "$ISSUE"
             status "CI läuft für #$ISSUE" "🟢" \
               "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
 
@@ -959,19 +1018,43 @@ Der nächste Takt prüft erneut. **Kein Eingreifen nötig.**"
             return 0
             ;;
           1)
+            catchup_fail_reset "$ISSUE"
             CI_FIX=1
             CI_SUMMARY="### Merge-Konflikt beim Nachziehen von \`main\`
 PR #$PR_NUM (#$ISSUE) liegt hinter \`main\`. Das automatische Nachziehen (\`git fetch\` +
 \`git merge origin/main\`) ist an einem echten Konflikt gescheitert.
 
-Betroffene Dateien: ${CONFLICT_FILES:-unbekannt}
+Betroffene Dateien: ${CATCHUP_OUT:-unbekannt}
 
 Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
 \`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen."
             ;;
           *)
+            # #171: die alte Sammel-2 nannte weder Ursache noch Pfade und blieb
+            # IMMER gruen, egal wie oft es hintereinander scheiterte. Jetzt:
+            # Ursache immer benennen (AC1/AC2), stoerende Pfade bei unsauberem
+            # Arbeitsbaum mitliefern (AC1), und ab der dritten Runde in Folge
+            # mit DERSELBEN Ursache auf 🟡 wechseln (AC3) -- der Abbruch selbst
+            # (kein 'git stash', kein '--force') bleibt unveraendert (AC5).
+            CATCHUP_REASON=$(catchup_fail_reason "$CATCHUP_RC")
+            CATCHUP_PATHS=""
+            if [ "$CATCHUP_RC" -eq 2 ] && [ -n "$CATCHUP_OUT" ]; then
+              CATCHUP_PATHS="
+
+Störende Pfade: \`${CATCHUP_OUT}\`"
+            fi
+            if catchup_fail_escalated "$ISSUE" "$CATCHUP_REASON"; then
+              status "wartet auf dich (#$ISSUE)" "🟡" \
+                "🟡 **Nachziehen von \`main\` für #$ISSUE (PR #$PR_NUM) hängt fest.**
+
+Ursache seit drei Runden in Folge dieselbe: $CATCHUP_REASON.${CATCHUP_PATHS}
+
+Das löst sich nicht von selbst — der Runner räumt keine fremden Dateien weg. Bitte
+im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Takt normal weiter."
+              return 0
+            fi
             status "CI läuft für #$ISSUE" "🟢" \
-              "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich. Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
+              "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich ($CATCHUP_REASON).${CATCHUP_PATHS} Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
             return 0
             ;;
         esac
