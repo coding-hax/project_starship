@@ -205,6 +205,18 @@ zweiter PR. Weder `gh pr checks --watch` noch ein voller `pnpm e2e`-Lauf
 kommen im Bau-Auftrag noch vor; die schnellen Tore (`pnpm lint`,
 `pnpm typecheck`, `pnpm test`) laufen weiterhin lokal vor dem Push.
 
+**Unmittelbar vor dem finalen Push zieht Claude `main` proaktiv nach
+(#191)**, statt das erst einen Takt später `pr_catch_up_behind()` reaktiv
+erledigen zu lassen: `git fetch origin main` + `git merge origin/main
+--no-edit` — vorausgesetzt, der Arbeitsbaum ist sauber (alles committet,
+nie in einen unsauberen Baum mergen). Klappt der Merge, wird normal
+weitergepusht; ein PR entsteht dadurch in aller Regel schon aktuell.
+Kollidiert er inhaltlich, löst Claude den Konflikt direkt auf dem eigenen
+Branch auf (voller Kontext der eigenen Änderungen) und pusht die Auflösung
+mit — kein separater, kalt einsteigender Fix-Lauf. `pr_catch_up_behind()`
+bleibt unverändert als Netz bestehen: merged ein anderer PR erst in den
+Sekunden nach diesem Push, greift der Runner-Takt wie gehabt nach.
+
 **Endet der Bau-Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
 gepusht — nicht über eine offene Frage), hebt Claude den PR **selbst** aus
 dem Entwurf und aktiviert Auto-Merge, bevor der Lauf endet:

@@ -1363,8 +1363,17 @@ Ablauf:
    Schritt. Bevor du pushst: lass die schnellen Tore lokal laufen —
    'pnpm lint', 'pnpm typecheck', 'pnpm test' (zusammen unter einer Minute) —
    und behebe Rot dort selbst. Kein voller 'pnpm e2e' lokal, das kostet zu
-   viel vom Zeitfenster und die volle Suite läuft ohnehin in CI. Dann pushe
-   den Branch.
+   viel vom Zeitfenster und die volle Suite läuft ohnehin in CI.
+   Unmittelbar vor dem finalen Push ziehst du 'main' proaktiv nach, damit
+   der PR nicht schon als „behind" entsteht: erst sicherstellen, dass der
+   Arbeitsbaum sauber ist (alles committet — niemals in einen unsauberen
+   Baum mergen), dann 'git fetch origin main' + 'git merge origin/main
+   --no-edit'. Merge sauber: normal weiterpushen. Merge-Konflikt: du löst
+   ihn direkt auf deinem Branch auf (du kennst deine eigenen Änderungen am
+   besten), committest die Auflösung, pushst — kein separater, kalt
+   einsteigender Fix-Lauf nötig. 'pr_catch_up_behind()' im Runner-Takt
+   bleibt zusätzlich als Sicherheitsnetz bestehen, falls unmittelbar nach
+   deinem Push noch ein weiterer PR merged. Dann pushe den Branch.
 5. Halte den Fortschrittskommentar am Issue nach JEDEM Schritt aktuell. Bevor du
    feststeckst oder der Lauf endet, ohne dass das Ticket fertig ist: ergaenze im
    Fortschrittskommentar einen Blocker-Abschnitt (nicht nur "← HIER WEITER"):
