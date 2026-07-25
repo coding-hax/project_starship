@@ -682,4 +682,47 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     const rows = await withDb((c) => c.query('SELECT title FROM tasks ORDER BY title'));
     expect(rows.rows.map((r) => r.title)).toEqual([...validTitles].sort());
   });
+
+  test('AC2: nach 5 Server-Fehlschlägen in Folge wird ein Sync-Fehlerhinweis sichtbar', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Bleibt hängen' } }),
+    );
+
+    await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
+
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
+
+    // Not getByRole('alert') — Next's route announcer also has role="alert" and
+    // would make this a strict-mode violation regardless of the sync outcome.
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toBeVisible();
+  });
+
+  test('AC3: ein Offline-Fehlschlag zählt nicht zum Fehler-Cap — kein Hinweis, die Queue überlebt', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Offline hängt fest' } }),
+    );
+
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+
+    // More than SYNC_ERROR_THRESHOLD attempts — if offline counted the same as a
+    // server failure this would have tripped the error hint by now.
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
+
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
+  });
 });
