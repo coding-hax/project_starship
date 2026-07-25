@@ -1,7 +1,8 @@
 import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
+import type { WeatherLocation } from '@/features/settings/use-weather-location';
 import { db, type WeatherDay } from '@/local/dexie';
-import { fetchForecast, isStale, REFRESH_INTERVAL_MS, WEATHER_CACHE_KEY } from './forecast';
+import { fetchForecast, isStale, REFRESH_INTERVAL_MS, weatherCacheKey } from './forecast';
 
 export type WeatherPhase = 'loading' | 'ready' | 'empty-error';
 
@@ -16,34 +17,47 @@ export interface WeatherForecastState {
  * (ADR-0009). A failure never touches the cache — the live query below keeps
  * showing whatever was there before.
  */
-async function refreshIfStale(): Promise<void> {
-  const cached = await db.weather.get(WEATHER_CACHE_KEY);
+async function refreshIfStale(location: WeatherLocation, cacheKey: string): Promise<void> {
+  const cached = await db.weather.get(cacheKey);
   if (cached && !isStale(cached.fetchedAt)) return;
-  const days = await fetchForecast();
-  await db.weather.put({ key: WEATHER_CACHE_KEY, fetchedAt: new Date().toISOString(), days });
+  const days = await fetchForecast(location.latitude, location.longitude);
+  await db.weather.put({ key: cacheKey, fetchedAt: new Date().toISOString(), days });
 }
 
 /**
- * Reads the Bonn forecast straight from IndexedDB (CLAUDE.md rule 8) — never a
+ * Reads the forecast for `location` straight from IndexedDB (CLAUDE.md rule 8) — never a
  * `fetch` in the render path. `phase` starts at `'loading'` while the very first
  * IndexedDB read is in flight; once it resolves to nothing cached, it stays
  * `'loading'` until the first refresh attempt settles, then becomes `'ready'`
  * (a cache row exists — refresh failures afterwards don't change that, AC5) or
  * `'empty-error'` (still nothing, and the refresh failed too).
  */
-export function useWeatherForecast(): WeatherForecastState {
+export function useWeatherForecast(location: WeatherLocation): WeatherForecastState {
+  const cacheKey = weatherCacheKey(location.latitude, location.longitude);
+
   const [entry, setEntry] = useState<{ days: WeatherDay[]; fetchedAt: string } | null | undefined>(
     undefined,
   );
   const [refreshFailed, setRefreshFailed] = useState(false);
 
+  // A location change swaps the cache key entirely (issue #159 AC3) — reset the
+  // entry synchronously during render (React's "adjusting state when a prop
+  // changes" pattern) so the previous location's forecast never paints, not even
+  // for a single frame, under the new location's name.
+  const [cacheKeyForEntry, setCacheKeyForEntry] = useState(cacheKey);
+  if (cacheKeyForEntry !== cacheKey) {
+    setCacheKeyForEntry(cacheKey);
+    setEntry(undefined);
+    setRefreshFailed(false);
+  }
+
   useEffect(() => {
-    const subscription = liveQuery(() => db.weather.get(WEATHER_CACHE_KEY)).subscribe({
+    const subscription = liveQuery(() => db.weather.get(cacheKey)).subscribe({
       next: (record) => setEntry(record ?? null),
       error: (error) => console.error('[weather] live query failed', error),
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [cacheKey]);
 
   // `refreshIfStale` itself decides whether a fetch actually happens — every
   // trigger here just asks "is the cache old enough?" (issue #155). No trigger
@@ -52,7 +66,7 @@ export function useWeatherForecast(): WeatherForecastState {
   useEffect(() => {
     let cancelled = false;
     const attempt = () => {
-      refreshIfStale()
+      refreshIfStale(location, cacheKey)
         .then(() => {
           if (!cancelled) setRefreshFailed(false);
         })
@@ -95,7 +109,7 @@ export function useWeatherForecast(): WeatherForecastState {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       stopInterval();
     };
-  }, []);
+  }, [cacheKey, location]);
 
   if (entry === undefined) return { phase: 'loading', days: null, fetchedAt: null };
   if (entry === null) {

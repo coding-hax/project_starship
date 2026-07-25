@@ -1,5 +1,6 @@
 'use client';
 
+import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import {
   IconWeatherClear,
   IconWeatherCloudy,
@@ -35,16 +36,21 @@ const LABEL_BY_CATEGORY: Record<WeatherCategory, string> = {
 };
 
 /**
- * The 7-day Bonn forecast, at the very top of /uebersicht (issue #139). Reads only
- * from the local cache via `useWeatherForecast` — no `fetch` here, ADR-0009.
+ * The 7-day forecast for the configured location, at the very top of /uebersicht
+ * (issue #139, #159). Reads only from the local cache via `useWeatherForecast` —
+ * no `fetch` here, ADR-0009.
  */
 export function WeatherForecast() {
-  const { phase, days, fetchedAt } = useWeatherForecast();
+  const { location } = useWeatherLocation();
+  const { phase, days, fetchedAt } = useWeatherForecast(location);
+  const ariaLabel = `Wettervorhersage ${location.name}, sieben Tage`;
 
   if (phase === 'empty-error') {
     return (
-      <section className="weather-forecast" aria-label="Wettervorhersage Bonn, sieben Tage">
-        <p className="weather-forecast__empty">Vorhersage konnte nicht geladen werden.</p>
+      <section className="weather-forecast" aria-label={ariaLabel}>
+        <p className="weather-forecast__empty">
+          Vorhersage für {location.name} konnte nicht geladen werden.
+        </p>
       </section>
     );
   }
@@ -54,7 +60,8 @@ export function WeatherForecast() {
   // caption below is absolutely positioned and outside this flow entirely —
   // its own appearance can't shift anything, loading or not.
   return (
-    <section className="weather-forecast" aria-label="Wettervorhersage Bonn, sieben Tage">
+    <section className="weather-forecast" aria-label={ariaLabel}>
+      <p className="weather-forecast__location">{location.name}</p>
       <ol className="weather-forecast__days" aria-hidden={phase === 'loading' || undefined}>
         {phase === 'ready' && days
           ? days.map((day) => {

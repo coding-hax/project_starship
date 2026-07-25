@@ -48,3 +48,19 @@ Dexie-Ablage — **getrennt von `records`** — und folgen immer demselben Ablau
   Muster fest, nicht die konkrete Quelle.
 - Der nächste Fall (z. B. `.ics`, ADR-0002) übernimmt diesen Ablauf, statt neu
   zu entscheiden, ob synchronisiert wird oder wo das `fetch` sitzen darf.
+
+## Ergänzung (issue #159): die Geocoding-Ortssuche ist eine bewusste Ausnahme
+
+Die Ortssuche in den Einstellungen (`src/features/weather/geocoding.ts`,
+dieselbe Fremdquelle Open-Meteo, ein zweiter Endpunkt) folgt diesem Ablauf
+**nicht**: Sie holt bei jeder Suche direkt aus einem Event-Handler, ohne
+Freshness-Fenster, und legt die Treffer nirgends ab — nicht in Dexie, nicht im
+generischen Cache. Nur der ausgewählte Ort (Name + Koordinaten) wird
+gespeichert, gerätelokal über `use-weather-location.ts`.
+
+Das ist kein Bruch der Regel, sondern der Unterschied zwischen den beiden
+Datenarten: Die Vorhersage selbst ist eine wiederholt gelesene Anzeige (Regel
+1–3 gelten), Suchtreffer sind eine einmalige, flüchtige Nutzerinteraktion ohne
+Anzeigebedarf danach — es gibt nichts, was ein Cache hier leisten würde. Der
+Cache-Zwang aus diesem ADR gilt für **angezeigte** Fremddaten, nicht für jede
+Fremdquelle, die im Projekt auftaucht.

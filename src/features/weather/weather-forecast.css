@@ -10,6 +10,12 @@
   margin-bottom: var(--space-6);
 }
 
+.weather-forecast__location {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .weather-forecast__days {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

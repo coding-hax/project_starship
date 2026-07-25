@@ -78,16 +78,18 @@ src/
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
     weather/
-      forecast.ts              Open-Meteo: fetchForecast/parseForecast, isStale (3h-Fenster), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Bonn fest verdrahtet (issue #139, ADR-0009; Feinschliff issue #155)
+      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159)
+      geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
       wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
-      use-weather-forecast.ts  Live-Query auf db.weather (eigene Tabelle, nie synchronisiert), Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
-      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155)
+      use-weather-forecast.ts  Live-Query auf db.weather, ein Cache-Key je Ort (issue #159 — Ortswechsel verwirft die alte Vorhersage statt sie zu vermischen); Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
+      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, zeigt den eingestellten Ort (issue #159); Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155)
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
       use-capture-prefs.ts    „ohne Bestätigung direkt anlegen" — gerätelokal in localStorage (issue #47 AC3)
       capture-panel.tsx       Toggle für use-capture-prefs in den Einstellungen
-      attribution-panel.tsx   Quellenangabe Open-Meteo (CC BY 4.0), aus /uebersicht hierher verschoben (issue #155)
+      use-weather-location.ts Wetter-Ort { name, latitude, longitude } — gerätelokal in localStorage, Default Bonn (issue #159)
+      weather-panel.tsx / .css Ort suchen (geocoding.ts) + auswählen, plus Open-Meteo-Quellenangabe (vormals attribution-panel.tsx, issue #155/#159 — eine Fremdquelle, eine Tafel)
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
