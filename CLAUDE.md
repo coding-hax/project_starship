@@ -137,7 +137,7 @@ und dieser Kommentar existiert, **fängst du dort an — nicht von vorne.**
   - [x] shell.spec.ts:195 Sidebar-Platzierung
   - [ ] ← HIER WEITER: habits.spec.ts:247 sync-Timeout
   - [ ] habits.spec.ts:274 sync-Timeout
-  - [ ] habits-heute.spec.ts:141 sync-Timeout
+  - [ ] habits-uebersicht.spec.ts:141 sync-Timeout
 ```
 
 ### Wenn ein Lauf abgebrochen wird

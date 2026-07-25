@@ -17,7 +17,7 @@ export interface HabitWeekGridProps {
 
 /**
  * Month grid per habit (issue #124, replaces the Mon–Sun row from #105), read
- * straight from the same `habit_logs` live query as the Heute checklist. A tap
+ * straight from the same `habit_logs` live query as the Übersicht checklist. A tap
  * re-uses `useToggleHabitLog`'s upsert-by-existing-row lookup, so a cell here
  * and a checkbox there never race `UNIQUE(habit_id, log_date)` with two inserts.
  */

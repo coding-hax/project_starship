@@ -26,11 +26,11 @@
 /*
  * Einstellungen has two entry points (issue #126):
  * - `chrome` sits in the shared shell, above `main`. On mobile it stays hidden —
- *   every screen but Heute would otherwise carry a header for one icon — and only
+ *   every screen but Übersicht would otherwise carry a header for one icon — and only
  *   reappears from `md` up, where it's reachable from every screen via the sidebar
  *   column. Because it's either always-hidden or always-shown per breakpoint
  *   regardless of route, switching tabs never changes its footprint (Smooth-Regel 3).
- * - `inline` is the mobile stand-in: rendered by the Heute page itself, next to its
+ * - `inline` is the mobile stand-in: rendered by the Übersicht page itself, next to its
  *   heading, so it never touches the shell grid at all.
  */
 .app-header--chrome {

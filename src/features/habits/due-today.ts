@@ -87,7 +87,7 @@ export function weekDays(date: Date): string[] {
 }
 
 /**
- * Which habits belong in the Heute check-off list (issue #103). Daily habits are
+ * Which habits belong in the Übersicht check-off list (issue #103). Daily habits are
  * always due — the point there is the check-off itself, not a filter. Weekly
  * habits drop out once done earlier in the current Mon–Sun week; a completion
  * *today* does not count against it, so the row that was just checked off stays

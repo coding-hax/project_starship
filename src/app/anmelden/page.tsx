@@ -17,7 +17,7 @@ export default function AnmeldenPage() {
     fetch('/api/auth/status')
       .then((r) => r.json())
       .then((s) => {
-        if (s.authenticated) router.replace('/heute');
+        if (s.authenticated) router.replace('/uebersicht');
         else setMode(s.registered ? 'login' : 'setup');
       })
       .catch(() => setError('Server nicht erreichbar.'));
@@ -42,7 +42,7 @@ export default function AnmeldenPage() {
 
       // Shown once. If it is lost, it is lost.
       if (result.recoveryCode) setRecoveryCode(result.recoveryCode);
-      else router.replace('/heute');
+      else router.replace('/uebersicht');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unbekannter Fehler.');
     } finally {
@@ -66,7 +66,7 @@ export default function AnmeldenPage() {
       const result = await verifyRes.json();
       if (!verifyRes.ok || !result.verified) throw new Error(result.error ?? 'Fehlgeschlagen.');
 
-      router.replace('/heute');
+      router.replace('/uebersicht');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unbekannter Fehler.');
     } finally {
@@ -86,7 +86,7 @@ export default function AnmeldenPage() {
         <code data-testid="recovery-code" className="auth__code">
           {recoveryCode}
         </code>
-        <button className="auth__button" onClick={() => router.replace('/heute')}>
+        <button className="auth__button" onClick={() => router.replace('/uebersicht')}>
           Habe ich gespeichert
         </button>
       </main>
