@@ -78,7 +78,9 @@ export interface PushConflict {
 
 export interface PushRejection {
   mutationId: string;
-  /** NOT NULL columns a create was missing. Retrying will not help — this is a bug. */
+  /** Why this mutation was dropped. Retrying will not help either way — this is a bug. */
+  reason?: 'missing-required' | 'malformed';
+  /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }
 

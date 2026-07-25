@@ -19,6 +19,21 @@ import {
 const PUSH_LOCK_KEY = 5_326_004;
 
 /**
+ * Which required fields a mutation is missing or has the wrong type for — empty
+ * means well-formed. A poison mutation (one client bug away from wedging the whole
+ * queue forever, see push() in src/local/sync.ts) must be rejected on its own,
+ * never fail the batch it happened to travel with.
+ */
+export function malformedFields(m: Mutation): string[] {
+  const fields: string[] = [];
+  if (!isSyncTable(m?.table)) fields.push('table');
+  if (typeof m?.rowId !== 'string') fields.push('rowId');
+  if (typeof m?.updatedAt !== 'string') fields.push('updatedAt');
+  if (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null) fields.push('baseSeq');
+  return fields;
+}
+
+/**
  * Applies the client outbox.
  *
  * Idempotent through the row id: replaying a mutation writes the same fields and
@@ -52,16 +67,6 @@ export async function POST(request: Request) {
   }
 
   const mutations = body.mutations as Mutation[];
-  for (const m of mutations) {
-    if (
-      !isSyncTable(m?.table) ||
-      typeof m?.rowId !== 'string' ||
-      typeof m?.updatedAt !== 'string' ||
-      (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null)
-    ) {
-      return NextResponse.json({ error: 'malformed mutation' }, { status: 400 });
-    }
-  }
 
   const applied: string[] = [];
   const conflicts: PushConflict[] = [];
@@ -74,6 +79,12 @@ export async function POST(request: Request) {
     // Receipt order, not updatedAt order: the client's outbox is already this
     // device's arrival order, and arrival — not the client clock — decides now.
     for (const mutation of mutations) {
+      const malformed = malformedFields(mutation);
+      if (malformed.length > 0) {
+        rejected.push({ mutationId: mutation?.id, reason: 'malformed', missing: malformed });
+        continue;
+      }
+
       const entry = SYNC_REGISTRY[mutation.table];
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
@@ -105,7 +116,7 @@ export async function POST(request: Request) {
         // rather than let the insert blow up as a 500 inside the transaction.
         const missing = missingRequired(mutation.table, fields);
         if (missing.length > 0) {
-          rejected.push({ mutationId: mutation.id, missing });
+          rejected.push({ mutationId: mutation.id, reason: 'missing-required', missing });
           continue;
         }
 
