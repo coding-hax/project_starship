@@ -795,7 +795,7 @@ if [ -n "$TO_PARK" ]; then
   fi
 fi
 
-# --- CI-Wache fuer GEPARKTE Tickets (#154) -----------------------------------
+# --- CI-Wache fuer GEPARKTE Tickets (#154, erweitert um #173) ----------------
 # Die Wache oben (#147) beobachtet nur das eine 'in-progress'-Ticket -- ein
 # 'parked'-Ticket faellt durch beide Raster: es traegt kein 'in-progress' mehr
 # (#145 gibt den Bauplatz frei) und die Ticketauswahl greift es erst wieder auf,
@@ -803,33 +803,77 @@ fi
 # komplett gruen (z.B. weil ein Mensch 'human-approved' gesetzt hat und
 # 'protected-paths' nachgelaufen ist), blieb der Draft bisher fuer immer
 # Draft -- niemand hat mehr hingeschaut. Hier werden ALLE 'parked'-Tickets
-# geprueft, nicht nur eins, und zwar rein ueber gh-/git-Aufrufe -- es startet
-# niemals ein Agent, verzoegert also das ggf. laufende 'in-progress'-Ticket
-# nicht. Noch laufende oder rote Checks aendern nichts (Ticket bleibt geparkt).
+# geprueft, nicht nur eins, aeltestes zuerst.
 #
 # 'behind' (#160): liegt ein geparkter PR hinter 'main', wird per git
 # nachgezogen -- sonst wartet ein laengst freigegebener PR ewig weiter, weil
-# ihn ausser dieser Wache niemand mehr anfasst. Scheitert das Nachziehen an
-# einem echten Konflikt, wird HIER bewusst KEIN Agent gestartet (WIP-Limit=1,
-# siehe CLAUDE.md Regel 1 -- ein evtl. laufendes 'in-progress'-Ticket darf
-# nicht durch ein zweites Ticket gestoert werden). Das Ticket bleibt geparkt
-# und wird beim naechsten Takt erneut versucht; sobald es regulaer per
-# Ticketwahl fortgesetzt wird (Schritt 1b), loest der Bau-Agent den Konflikt
-# als Teil seiner normalen Arbeit.
+# ihn ausser dieser Wache niemand mehr anfasst. Reines Nachziehen (kein
+# Konflikt) bleibt ein Git-Vorgang ohne Agent (AC1).
+#
+# 'conflict' (echtes Scheitern des Nachziehens) und 'failing' (rote Checks
+# ueber 'protected-paths' hinaus, #173): das ist inhaltliche Arbeit, kein
+# Wartezustand -- hier wird EIN Ticket entparkt (in-progress statt parked),
+# WENN gerade wirklich kein anderes in-progress ist (WIP-Limit=1, CLAUDE.md
+# Regel 1) UND keine offene Frage (needs-input) mehr aussteht -- eine
+# ungeklaerte menschliche Antwort geht vor jedem automatischen Entparken
+# (CLAUDE.md Regel 11). Hoechstens EIN Ticket wird so pro Runde entparkt;
+# alle weiteren bleiben geparkt und werden im naechsten Takt erneut geprueft.
+# Das entparkte Ticket wird NICHT hier direkt gebaut -- es landet nur mit
+# 'in-progress' zurueck in $ROUND_SNAP, die WIP-Auswahl gleich danach greift
+# es dann wie ein ganz normales laufendes Ticket auf, und die bestehende
+# CI-Wache fuer laufende Tickets (#147/#160, gleich im Anschluss) leitet
+# daraus CI_FIX/CI_SUMMARY (Konfliktdateien bzw. Fehler-Summary) ab und
+# startet den Fix-Agenten -- keine doppelte Logik noetig. Wiederholte
+# Fehlschlaege auf diesem Weg zaehlen ganz normal in die bestehende
+# Eskalation ein (build_escalation_eval, ADR-0007), weil RUN_ROLE=build
+# unveraendert bleibt.
+#
+# 'failing' NUR bei 'protected-paths' bleibt die vorgesehene Genehmigungs-
+# Schranke -- kein Fund, kein Entparken, das Ticket wartet weiter auf
+# 'human-approved'.
 RELEASED_PARKED_NOTE=""
 RELEASED_PARKED_NUMS='[]'
+PROMOTED_PARKED_ISSUE=""
+WIP_TAKEN_BEFORE=$(printf '%s' "$ROUND_SNAP" \
+  | jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' 2>/dev/null)
 PARKED_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
-  '[.[] | select(.labels | map(.name) | index("parked")) | .number] | .[]' 2>/dev/null)
+  '[.[] | select(.labels | map(.name) | index("parked"))] | sort_by(.createdAt) | .[].number' 2>/dev/null)
 if [ -n "$PARKED_LIST" ]; then
   while IFS= read -r PN; do
     [ -z "$PN" ] && continue
     PPR=$(pr_for_issue "$PN")
     [ -z "$PPR" ] && continue
     PSTATE=$(pr_ci_state "$PPR")
+    PROMOTE_REASON=""
+
     if [ "$PSTATE" = "behind" ]; then
-      pr_catch_up_behind "$PPR" >/dev/null
+      pr_catch_up_behind "$PPR" >/dev/null; PCU_RC=$?
+      # rc 0: sauber nachgezogen, kein Agent (AC1). rc 2: fetch/checkout/push
+      # gescheitert -- naechster Takt versucht es erneut, bleibt geparkt.
+      # Nur rc 1 (echter Konflikt) ist der neue Fall aus #173.
+      [ "$PCU_RC" -eq 1 ] && PROMOTE_REASON="ein Merge-Konflikt beim Nachziehen von \`main\`"
+    elif [ "$PSTATE" = "failing" ] && ! pr_only_protected_paths_red "$PPR"; then
+      PROMOTE_REASON="rote Checks (mehr als nur \`protected-paths\`)"
+    fi
+
+    if [ -n "$PROMOTE_REASON" ]; then
+      PHAS_INPUT=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson n "$PN" \
+        '[.[] | select(.number == $n) | .labels | map(.name) | index("needs-input")] | .[0] // empty')
+      if [ -z "$PHAS_INPUT" ] && [ -z "$PROMOTED_PARKED_ISSUE" ] \
+           && [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ]; then
+        gh issue edit "$PN" --remove-label parked --add-label in-progress >/dev/null 2>&1
+        ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson n "$PN" \
+          '[.[] | if .number == $n then
+                    (.labels |= (map(select(.name != "parked")) + [{"name":"in-progress"}]))
+                  else . end]')
+        PROMOTED_PARKED_ISSUE="$PN"
+        RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
+
+🔓 **Geparktes Ticket entparkt:** #$PN hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
+      fi
       continue
     fi
+
     [ "$PSTATE" = "success" ] || continue
     gh pr ready "$PPR" >/dev/null 2>&1
     pr_squash_merge "$PPR"
@@ -843,7 +887,7 @@ if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
               (.labels |= map(select(.name != "parked" and .name != "needs-input")))
             else . end]')
   RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
-  RELEASED_PARKED_NOTE="
+  RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
 
 🔓 **Geparktes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: $RELEASED_LIST."
 fi

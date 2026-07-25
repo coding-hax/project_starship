@@ -267,32 +267,41 @@ kehrt sauber zum vorherigen Branch zurück, und ein Bau-Agent startet gezielt
 mit den Konfliktdateien im Auftrag (derselbe Mechanismus wie bei einem roten
 Check).
 
-**Die Wache gilt auch für `parked`-Tickets (#154), inklusive `behind`.** Die
-Tabelle oben beobachtet nur das eine `in-progress`-Ticket — ein
-`parked`-Ticket (z. B. eins, das an `protected-paths` hing und auf
-`human-approved` wartete) fiel bisher aus der Wache heraus: kein
-`in-progress` mehr (der Bauplatz ist frei, #145), aber die Ticketauswahl
-greift es erst wieder auf, sobald `needs-input` manuell weg ist. Seit #167
-ist so ein PR beim Parken meist schon `ready` (Claude setzt das selbst, auch
-im geschützten-Pfad-Fall) — trotzdem bleibt die Wache das Sicherheitsnetz für
-den Rest: ein Lauf, der noch vor dem Ready-Schritt abgebrochen ist, oder ein
-Draft, der nur hinter `main` liegt. Deshalb prüft der Takt **zusätzlich** —
-vor jeder Ticketauswahl, ohne den Bauplatz des laufenden Tickets zu berühren —
-**alle** offenen `parked`-Tickets: Ist der PR eines davon komplett grün und
-noch Entwurf, fallen `parked` **und** `needs-input` weg, der Draft wird
-`ready`, Auto-Merge aktiviert — genau wie beim laufenden Ticket, nur ohne
-dass vorher ein Mensch `needs-input` hätte entfernen müssen. Liegt er nur
-hinter `main`, wird er per `git` nachgezogen, bleibt aber geparkt (die
-nächste Runde sieht dann wieder laufende Checks). Ein Konflikt beim
-Nachziehen eines geparkten Tickets startet
-hier bewusst **keinen** Agenten — das würde das WIP-Limit=1 verletzen, falls
-gerade ein anderes Ticket `in-progress` ist. Das geparkte Ticket bleibt dann
-liegen und bekommt seinen Fix-Agenten regulär, sobald es selbst wieder an die
-Reihe kommt (Schritt 1b) und der Bau-Agent den Konflikt als Teil seiner
-normalen Arbeit löst. Läuft die CI noch oder ist sie rot, bleibt das Ticket
-unverändert geparkt. Das kostet außer im Konfliktfall nie einen Agentenlauf,
-nur gh-/git-Aufrufe — das Statusticket nennt freigegebene Tickets im nächsten
-Update.
+**Die Wache gilt auch für `parked`-Tickets (#154), mit denselben vier
+Zuständen wie das laufende Ticket (#173).** Die Tabelle oben beobachtet nur
+das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins, das an
+`protected-paths` hing und auf `human-approved` wartete) fiel bisher aus der
+Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145), aber die
+Ticketauswahl greift es erst wieder auf, sobald `needs-input` manuell weg
+ist. Deshalb prüft der Takt **zusätzlich** — vor jeder Ticketauswahl, aeltestes
+zuerst — **alle** offenen `parked`-Tickets:
+
+- **grün, noch Entwurf:** wie beim laufenden Ticket — `parked` **und**
+  `needs-input` fallen weg, Draft wird `ready`, Auto-Merge aktiviert. Kein
+  Agentenlauf.
+- **nur hinter `main`, kein Konflikt:** per `git` nachgezogen, bleibt aber
+  geparkt (die nächste Runde sieht dann wieder laufende Checks). Kein
+  Agentenlauf.
+- **echter Konflikt beim Nachziehen, oder rote Checks über
+  `protected-paths` hinaus:** das ist inhaltliche Arbeit, kein Wartezustand.
+  Trägt das Ticket noch `needs-input` (eine ungeklärte Frage), bleibt es
+  unangetastet — eine offene menschliche Antwort geht vor. Ist die Frage
+  beantwortet (kein `needs-input` mehr) **und** ist gerade wirklich kein
+  anderes Ticket `in-progress`, wird **genau eins** pro Runde entparkt
+  (`parked` weg, `in-progress` dazu) und landet dadurch sofort in derselben
+  WIP-Auswahl wie ein regulär laufendes Ticket — die Wache oben leitet daraus
+  CI_FIX/CI_SUMMARY ab und startet den Fix-Agenten, ohne eigene Prompt-Logik.
+  Läuft schon ein anderes Ticket, oder ist in derselben Runde bereits ein
+  anderes parked-Ticket entparkt worden, bleibt dieses hier unangetastet und
+  wird im nächsten Takt erneut geprüft (WIP-Limit=1, CLAUDE.md Regel 1).
+  Wiederholte Fehlschläge zählen ganz normal in die bestehende Eskalation ein
+  (ADR-0007), weil es derselbe Bau-Lauf-Mechanismus ist.
+- **rot, nur `protected-paths`, oder CI läuft noch:** unverändert geparkt —
+  die Genehmigungs-Schranke bzw. laufende Checks sind kein Fund.
+
+Das kostet außer im Konflikt-/Failing-Fall nie einen Agentenlauf, nur
+gh-/git-Aufrufe — das Statusticket nennt freigegebene **und** entparkte
+Tickets im nächsten Update.
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
 
