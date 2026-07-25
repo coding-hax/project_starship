@@ -37,17 +37,12 @@ Vor jeder Arbeit lesen:
 - Commits: Conventional Commits (`feat(tasks): add swipe to complete`)
 - PR-Titel enthält `Closes #<issue-nr>`.
 - Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
-  Sync) werden **vor** `ready` von Opus geplant (Label `needs-plan`, siehe
-  `docs/WORKFLOW.md`). Der Runner baut niemals ohne Plan; Opus bleibt im Runner tabu,
-  außer in den eng begrenzten Denk-Rollen aus `docs/adr/0005-opus-im-runner.md`
-  (Planung, Feature-Recherche — nie Bauen) und der Eskalations-Rolle aus
-  `docs/adr/0007-opus-eskalation-baut.md` (Opus baut als letzte Stufe, wenn
-  Sonnet/Haiku dreimal ohne Fortschritt bleiben; Deckel max. 2 Läufe/Ticket/Tag,
-  Kill-Switch `no-escalation`, Deckel-Bypass fürs laufende Ticket per Label
-  `opus-boost` — hebt nur die Zwei-Grenze auf, ohne den Tageszähler zu nullen,
-  und wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen;
-  `no-escalation` gewinnt gegen `opus-boost`). Einfache/mechanische Tickets
-  dürfen `needs-plan` überspringen.
+  Sync) werden **vor** `ready` von Opus geplant (Label `needs-plan`); der Runner baut
+  niemals ohne Plan. Einfache/mechanische Tickets dürfen `needs-plan` überspringen.
+  Opus bleibt im Runner sonst tabu (nur Planung/Recherche, nie Bauen — außer der
+  Eskalations-Rolle nach drei erfolglosen Sonnet/Haiku-Läufen). Details, Labels,
+  Deckel: `docs/WORKFLOW.md`, `docs/adr/0005-opus-im-runner.md`,
+  `docs/adr/0007-opus-eskalation-baut.md`.
 
 ## Befehle
 
@@ -76,12 +71,11 @@ So fragst du:
 2. Label `needs-input` setzen.
 3. Lauf beenden.
 
-Mehr brauchst du hier nicht zu tun: der Runner nimmt dir danach `in-progress` ab
-und trägt stattdessen `parked` ein (#145) — dein Ticket wartet dann sichtbar,
-belegt aber keinen Bauplatz mehr, und der nächste Takt kann ein anderes Ticket
-wählen. Antwortet der Mensch und entfernt `needs-input`, wird genau dieses
-Ticket vor Queue und Label-Kaskade fortgesetzt (Branch, `git log` und
-Fortschrittskommentar wie gewohnt) — nicht neu gestartet.
+Mehr brauchst du hier nicht zu tun: der Runner parkt dein Ticket automatisch
+(`parked` statt `in-progress`, #145) — es wartet sichtbar, belegt aber keinen
+Bauplatz mehr, und wird fortgesetzt (nicht neu gestartet), sobald der Mensch
+antwortet und `needs-input` entfernt. Details: `docs/WORKFLOW.md`, „Wartend
+ist nicht in Arbeit".
 
 Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich vorgehen?"
 ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach links
@@ -209,36 +203,21 @@ gh pr merge --squash --auto --delete-branch
 ```
 
 Du musst dafür **nicht** wissen, ob CI schon grün ist — das ist der Punkt:
-Auto-Merge greift ohnehin erst, wenn alle Required Checks grün sind. Kippt
-ein Shard, passiert schlicht nichts, bis du (oder ein Fix-Lauf) es behebst.
-Ein Entwurf bedeutet jetzt: **der Lauf ist nicht sauber zu Ende gekommen** —
-nicht mehr „der Runner hat noch nicht hingeschaut".
+Auto-Merge greift ohnehin erst, wenn alle Required Checks grün sind. Ein
+Entwurf bedeutet jetzt: **der Lauf ist nicht sauber zu Ende gekommen** — nicht
+mehr „der Runner hat noch nicht hingeschaut".
 
-**Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das war früher
-dein Job; die CI-Wache im Runner-Takt (alle ~5 Minuten, kostet ohne
-Agentenlauf nichts) bleibt trotzdem bestehen — sie wird seltener gebraucht,
-nicht überflüssig:
-
-- **CI läuft noch** → nichts tun. `in-progress` bleibt stehen, kein anderes
-  Ticket wird angefasst — der Bauplatz ist weiter belegt, auch wenn gerade
-  kein Agent läuft.
-- **CI grün** → GitHub merged von selbst, sobald du (oder ein früherer Lauf)
-  den PR bereits auf `ready` gesetzt und Auto-Merge aktiviert hat — **ohne**
-  weiteren Runner-Takt. War der PR aus einem abgebrochenen Lauf noch Entwurf,
-  hebt ihn die Wache als Sicherheitsnetz selbst an (nur bei bereits grüner CI).
-- **CI rot** (außer `protected-paths`, siehe unten) → der Takt startet dich
-  gezielt neu, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag —
-  nicht der rohen Log-Ausgabe. Lies den bestehenden Branch, `git log` und den
-  Fortschrittskommentar (inkl. „Was schon versucht wurde") zuerst, behebe die
-  Ursache (Playwright-Trace zuerst lesen, dann fixen — kein `.skip`, kein
-  hochgesetzter Timeout, kein gelockertes Assert), lass die schnellen Tore
-  (`pnpm lint`, `pnpm typecheck`, `pnpm test`) lokal grün werden, push wieder
-  auf denselben Branch. Kein neuer PR.
-- Nach dem **dritten** vergeblichen Versuch mit derselben Fehlerursache
-  (bestehende Eskalation, siehe ADR-0007/`blocker_sig`): aufhören, Kommentar
-  ans Issue mit dem, was du versucht hast, Label `needs-input`. Drei rote
-  Runden bedeuten, dass das Ticket falsch geschnitten ist — das ist eine
-  menschliche Entscheidung, keine technische.
+**Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das ist Aufgabe
+der CI-Wache im Runner-Takt danach, nicht deine. Kurz zusammengefasst: läuft
+CI noch, passiert nichts; wird sie grün, merged GitHub von selbst; wird sie
+rot (außer bei `protected-paths`, siehe unten), startet dich der nächste Takt
+gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
+Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
+wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
+vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-input`
+— drei rote Runden heißen, das Ticket ist falsch geschnitten, eine
+menschliche Entscheidung. Vollständige Zustandstabelle:
+`docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
 Stellst du stattdessen eine Frage (`needs-input`, siehe „Autonomer Betrieb"
 oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
@@ -247,49 +226,34 @@ ready` erreichst.
 ### Geschützte Pfade — hier merged niemand automatisch
 
 `src/db/`, `src/crypto/`, `src/local/`, `src/app/api/sync/`, alles mit `auth` im Namen,
-`.github/` und `scripts/`.
+`.github/` und `scripts/`. Ein Fehler ist dort kein Bug, sondern **Datenverlust**
+— der CI-Check `protected-paths` schlägt fehl, sobald ein PR sie berührt
+(Mechanik/Begründung: `docs/WORKFLOW.md`, „Zwei Wächter").
 
-Ein Fehler ist dort kein Bug, sondern **Datenverlust**. Der CI-Check `protected-paths`
-schlägt fehl, sobald ein PR sie berührt. Berührt dein Diff einen dieser Pfade:
-schreib den Kommentar **sofort beim Öffnen des Draft-PR** — warte nicht auf das
-rote CI-Ergebnis, das bekommst du ohnehin nicht mehr live mit (der Runner-Takt
-beobachtet die CI ab jetzt, nicht du). Was du tust:
+Berührt dein Diff einen dieser Pfade, **sofort beim Öffnen des Draft-PR** (du
+bekommst das rote CI-Ergebnis später nicht mehr live mit):
 
-1. Kommentar ans Issue: **was** du geändert hast, **warum**, und was schiefgehen könnte.
+1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen könnte.
 2. Label `needs-input` **selbst setzen** (`gh issue edit <nr> --add-label needs-input`)
-   — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145)
-   sofort, der Runner wählt als nächstes ein anderes, statt auf das rote
-   CI-Ergebnis zu warten.
+   — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145) sofort.
 3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
-4. Trotzdem `gh pr ready` und `gh pr merge --squash --auto --delete-branch`
-   ausführen, bevor du beendest: der PR ist damit kein Entwurf mehr, aber
-   `protected-paths` hält ihn rot, bis der Mensch freigibt — das ist die
-   eigentliche Schranke, nicht der Entwurfsstatus.
+4. Trotzdem `gh pr ready` + `gh pr merge --squash --auto --delete-branch`
+   ausführen: `protected-paths` hält den PR rot, bis der Mensch freigibt —
+   das ist die eigentliche Schranke, nicht der Entwurfsstatus.
 
-Das ist die vorgesehene Genehmigungs-Schranke, kein Fund für einen Fix-Lauf. Bleibt
-`protected-paths` als **einziger** roter Check stehen und `needs-input` fehlt trotzdem
-(z. B. nach einem abgebrochenen Lauf), setzt es der Runner-Takt selbst nach — folgenlos,
-wenn es schon dranhängt; das ist ihr Sicherheitsnetz, nicht der Regelfall. Der Mensch
-setzt vom Handy aus `human-approved` **und entfernt** `needs-input` — danach läuft der
-Check automatisch neu, der nächste Takt sieht grün und aktiviert Auto-Merge. Versuche
-**nie**, diesen Check zu umgehen, ihn abzuschalten oder die Änderung so umzuschneiden,
-dass sie am Wächter vorbeirutscht.
-Das wäre der schwerste Vertrauensbruch, der in diesem Repo möglich ist.
+Versuche **nie**, `protected-paths` zu umgehen, abzuschalten oder die Änderung
+so umzuschneiden, dass sie am Wächter vorbeirutscht. Das wäre der schwerste
+Vertrauensbruch, der in diesem Repo möglich ist.
 
 ### Tests sind kein Hindernis, sie sind der Auftrag
 
-Du schreibst den Code **und** die Tests. Das ist ein Interessenkonflikt, und du
-weißt das. Deshalb:
-
-- Tests bilden die Akzeptanzkriterien des Tickets ab — nicht das, was dein Code
-  zufällig kann.
-- Kein `.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert.
-  Der CI-Wächter `test-integrity` findet das und lehnt den PR ab.
-- Testanzahl darf nie sinken. Wenn ein Test wirklich obsolet ist: begründen,
-  `human-approved` anfordern.
-- Code ohne begleitenden Test ist ein rotes Anwesenheits-Gate in `test-integrity`.
-  Einzige Entrinnung ist das vom Menschen gesetzte Label `tests-exempt` für
-  nachweislich testlose Änderungen (reines Refactor, Typ-Only) — nie selbst setzen.
+Du schreibst Code **und** Tests — Interessenkonflikt, du weißt das. Kein
+`.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert (Regel 5,
+mechanisch erzwungen durch `test-integrity`). Testanzahl darf nie sinken; ist
+ein Test wirklich obsolet, begründen und `human-approved` anfordern statt
+selbst zu entscheiden. Code ohne begleitenden Test ist ein rotes
+Anwesenheits-Gate — einzige Entrinnung ist das vom Menschen gesetzte Label
+`tests-exempt`, nie selbst setzen.
 
 ## Definition of Done
 

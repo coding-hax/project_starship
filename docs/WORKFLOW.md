@@ -109,9 +109,12 @@ Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
 `needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
 Tokens kosten, ohne die Ausführung konkreter zu machen.
 
-**Kein Code-Änderungsbedarf am Runner:** Er nimmt ohnehin nur Tickets mit `ready`.
-Ein Ticket mit `needs-plan` oder `needs-research` und ohne `ready` liegt
-automatisch still, auch ohne eigene Guard-Logik im Runner-Skript.
+**Kein extra Code-Änderungsbedarf am Runner für den Fallback:** Ohne
+Queue-Eintrag gilt weiterhin die Label-Kaskade — ein Ticket mit `needs-plan`
+oder `needs-research` und ohne `ready` liegt dort automatisch still, auch ohne
+eigene Guard-Logik. Ist das Ticket dagegen gelistet, entscheidet allein die
+Reihenfolge in der Queue (siehe oben); das Label ist dann nur noch für die
+**Rolle** relevant (Plan/Recherche/Bau), nicht mehr für die Auswahl.
 
 ## Labels — sie steuern den Runner
 
@@ -137,10 +140,13 @@ Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
 testlos gerechtfertigt ist, du setzt das Label.
 
-Der Runner nimmt nur Tickets mit `ready`, die **nicht** `needs-input` tragen.
-Ein Ticket ohne `ready` fasst er nicht an — so entscheidest **du**, was gebaut wird,
-auch wenn zwanzig Tickets im Backlog liegen. Ein `needs-plan`-Ticket trägt per
-Definition kein `ready`, solange der Plan fehlt — es bleibt also automatisch liegen.
+**Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
+der Runner nur Tickets mit `ready`, die **nicht** `needs-input` tragen — ein
+`needs-plan`-Ticket trägt per Definition kein `ready`, solange der Plan fehlt,
+und bleibt automatisch liegen. **Ist das Ticket gelistet**, ersetzt das die
+`ready`-Freigabe (siehe „Die Prioritäts-Queue" oben). So entscheidest **du** in
+jedem Fall, was gebaut wird, auch wenn zwanzig Tickets im Backlog liegen —
+per Queue-Editor oder per Label.
 
 **Zwei Arten des Wartens (#145).** Nicht jedes „warten" ist gleich:
 
@@ -183,11 +189,12 @@ das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
 
 Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 
-**Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt dich)
-→ du antwortest als Kommentar → du entfernst `needs-input` → das Ticket wechselt von
-`parked` zurück auf `in-progress` und wird vor Queue/Label-Kaskade fortgesetzt, beim
-nächsten Lauf (max. 20 Minuten später). In der Zwischenzeit hat der Runner an anderen
-Tickets weitergearbeitet, nicht stillgestanden.
+**Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt
+dich) → du antwortest als Kommentar → du entfernst `needs-input` → das Ticket
+wird beim nächsten Lauf (max. 20 Minuten später) fortgesetzt, nicht neu
+gestartet (Mechanik siehe oben, „Wartend ist nicht in Arbeit"). In der
+Zwischenzeit hat der Runner an anderen Tickets weitergearbeitet, nicht
+stillgestanden.
 
 ## Merge: Claude hebt seinen PR selbst aus dem Entwurf (#147, #167)
 
@@ -323,8 +330,8 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
 - `test-integrity` — lehnt jeden PR ab, der Tests entfernt, abschaltet
   (`.skip`, `.only`) oder mit `waitForTimeout` grün macht. Reine Textprüfung,
   kein Modell beteiligt.
-- `protected-paths` — schlägt fehl, sobald `src/db/`, `src/crypto/`, `src/local/`,
-  `src/app/api/sync/`, Auth, `.github/` oder `scripts/` berührt werden. Der Bau-Agent
+- `protected-paths` — schlägt fehl, sobald einer der geschützten Pfade berührt
+  wird (Liste: `CLAUDE.md`, „Geschützte Pfade"). Der Bau-Agent
   setzt beim Öffnen des Draft-PR selbst `needs-input` und nimmt es in diesem Lauf
   nicht wieder ab (#163) — die Wache setzt es nur nach, falls es einmal fehlt (z. B.
   nach einem abgebrochenen Lauf), folgenlos, wenn es schon dranhängt. Seit #167 hebt
