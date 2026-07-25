@@ -61,3 +61,23 @@ test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Krei
   );
   expect(row.rows).toHaveLength(1);
 });
+
+test('ein bereits installiertes /heute (start_url, offener Tab) leitet auch offline aus dem Service Worker auf /uebersicht um (issue #161)', async ({
+  page,
+  context,
+}) => {
+  // /uebersicht muss vor dem Offline-Gehen einmal geladen sein, damit Serwists
+  // Laufzeit-Cache eine Antwort für die Weiterleitung bereithält — die Weiterleitung
+  // selbst kommt aus sw.ts, nicht vom (offline nicht erreichbaren) Server.
+  await page.goto('/uebersicht');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  await context.setOffline(true);
+
+  const response = await page.goto('/heute');
+  expect(response?.fromServiceWorker()).toBe(true);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+});

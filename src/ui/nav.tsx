@@ -11,7 +11,7 @@ import { IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from './i
  * Einstellungen is not a tab here — its entry point lives in AppHeader instead.
  */
 const TABS = [
-  { href: '/heute', label: 'Heute', accent: 'var(--accent)', Icon: IconToday },
+  { href: '/uebersicht', label: 'Übersicht', accent: 'var(--accent)', Icon: IconToday },
   { href: '/aufgaben', label: 'Aufgaben', accent: 'var(--area-tasks)', Icon: IconTasks },
   { href: '/gewohnheiten', label: 'Gewohnheiten', accent: 'var(--area-habits)', Icon: IconHabits },
   { href: '/kalender', label: 'Kalender', accent: 'var(--area-events)', Icon: IconCalendar },

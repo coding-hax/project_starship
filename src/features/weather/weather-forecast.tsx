@@ -35,7 +35,7 @@ const LABEL_BY_CATEGORY: Record<WeatherCategory, string> = {
 };
 
 /**
- * The 7-day Bonn forecast, at the very top of /heute (issue #139). Reads only
+ * The 7-day Bonn forecast, at the very top of /uebersicht (issue #139). Reads only
  * from the local cache via `useWeatherForecast` — no `fetch` here, ADR-0009.
  */
 export function WeatherForecast() {

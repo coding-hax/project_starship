@@ -11,6 +11,16 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+// An already-installed PWA may still hold `/heute` as its start_url or in a cached
+// tab. This must win over Serwist's own routing/precache — including fully offline,
+// where there is no server to run the next.config.ts redirect (issue #161).
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.mode === 'navigate' && url.pathname === '/heute') {
+    event.respondWith(Response.redirect('/uebersicht', 308));
+  }
+});
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,

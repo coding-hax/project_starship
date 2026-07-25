@@ -8,7 +8,7 @@ import { useHabits } from './use-habits';
 import { useToggleHabitLog } from './use-toggle-habit-log';
 
 /**
- * The daily check-off list (issue #103), on /heute next to the shortcut into the
+ * The daily check-off list (issue #103), on /uebersicht next to the shortcut into the
  * management screen (issue #102) — the /gewohnheiten tab (issue #123) is the
  * other entry point.
  *

@@ -40,7 +40,7 @@ export interface TaskItemProps {
   /**
    * Drag-to-nest drop (issue #89). `targetId` is the task dropped onto, `null`
    * for a drop outside any row (un-nest). Omitting this prop disables the
-   * long-press lift entirely — used for the /heute view, which does not nest.
+   * long-press lift entirely — used for the /uebersicht view, which does not nest.
    */
   onDropOnTask?: (targetId: string | null) => void;
 }

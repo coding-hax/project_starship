@@ -47,8 +47,14 @@ const nextConfig: NextConfig = {
   // Habits moved to their own tab at /gewohnheiten (issue #123). Permanent so
   // bookmarks, an already-open tab, and the service worker's cached shell all
   // still land in the right place.
+  //
+  // "Heute" was renamed to "Übersicht" (issue #161), same reasoning: an
+  // installed PWA's start_url, old bookmarks, and open tabs must keep working.
   async redirects() {
-    return [{ source: '/heute/gewohnheiten', destination: '/gewohnheiten', permanent: true }];
+    return [
+      { source: '/heute/gewohnheiten', destination: '/gewohnheiten', permanent: true },
+      { source: '/heute', destination: '/uebersicht', permanent: true },
+    ];
   },
 };
 

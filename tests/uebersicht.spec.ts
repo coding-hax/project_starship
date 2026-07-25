@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   // Default: abort, like weather.spec.ts (the real API is never reachable from a
-  // spec). registerPasskey below already lands on /heute, which fires the first
+  // spec). registerPasskey below already lands on /uebersicht, which fires the first
   // forecast fetch — without this, that request would hit the real network and
   // cache real data before a per-test mock ever gets a chance to register.
   await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
@@ -34,10 +34,10 @@ test.beforeEach(async ({ page }) => {
   await skewClock(page, NOW);
 });
 
-test('/heute listet offene Aufgaben, fällig heute oder überfällig (issue #87 AC1)', async ({
+test('/uebersicht listet offene Aufgaben, fällig heute oder überfällig (issue #87 AC1)', async ({
   page,
 }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   await seedTask(page, { title: 'Überfällig', dueAt: YESTERDAY_MORNING });
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
@@ -64,16 +64,16 @@ test('/heute listet offene Aufgaben, fällig heute oder überfällig (issue #87 
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await seedTask(page, { title: 'Erst morgen', dueAt: TOMORROW_MORNING });
 
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
 });
 
-test('die Heute-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen erledigt sofort und lässt die Aufgabe verschwinden (issue #87 AC3)', async ({
+test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen erledigt sofort und lässt die Aufgabe verschwinden (issue #87 AC3)', async ({
   page,
 }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await seedTask(page, { title: 'Wird erledigt', dueAt: YESTERDAY_MORNING, priority: 2 });
 
   await expect(dueTaskItems(page).locator('.task-list__priority-dot')).toHaveClass(
@@ -88,10 +88,10 @@ test('die Heute-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen e
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
 });
 
-test('kein "Gewohnheiten verwalten"-Link mehr auf /heute — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
+test('kein "Gewohnheiten verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
   page,
 }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   await expect(page.getByRole('link', { name: 'Gewohnheiten verwalten' })).toHaveCount(0);
 
@@ -106,7 +106,7 @@ test('kein "Gewohnheiten verwalten"-Link mehr auf /heute — der Nav-Tab bleibt 
 test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Gewohnheiten" (issue #157 AC5)', async ({
   page,
 }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const aufgabenHeading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
   const gewohnheitenHeading = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
@@ -129,12 +129,12 @@ test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet 
 test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
   page,
 }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
   const list = page.getByRole('list', { name: 'Aufgaben' });
   await expect(list).toBeVisible();
-  await expect(list).toHaveAttribute('aria-labelledby', 'heute-aufgaben-heading');
+  await expect(list).toHaveAttribute('aria-labelledby', 'uebersicht-aufgaben-heading');
   expect(await list.getAttribute('aria-label')).toBeNull();
 });
 
@@ -155,11 +155,11 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
       },
     }),
   );
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const todaySunSvg = page
     .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Heute' })
+    .getByRole('link', { name: 'Übersicht' })
     .locator('svg');
   const weatherSunSvg = page.getByRole('img', { name: 'Klar' }).first().locator('svg');
   await expect(weatherSunSvg).toBeVisible();

@@ -20,7 +20,7 @@
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';
 @import '../features/weather/weather-forecast.css';
-@import './(app)/heute/heute.css';
+@import './(app)/uebersicht/uebersicht.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist
    and nobody has to reach for a raw colour to get their work done. */

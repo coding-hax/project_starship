@@ -264,7 +264,7 @@ test('nachträgliches Abhaken schlägt sich sofort in der Streak-Anzeige nieder 
 
   // A client-side navigation, not a reload — the same liveQuery both screens
   // read from must already reflect the write (due-today.ts's "no fetch needed").
-  await page.getByRole('link', { name: 'Heute' }).click();
+  await page.getByRole('link', { name: 'Übersicht' }).click();
   await expect(
     page.getByRole('list', { name: 'Gewohnheiten heute' }).getByLabel('Streak: 4'),
   ).toBeVisible();
