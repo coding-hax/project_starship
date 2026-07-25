@@ -133,7 +133,13 @@ tests/
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
-  claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172)
+  claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172); ts_run() ist die Naht zu scripts/runner/cli.ts, RUNNER_TS=0 als Kill-Switch (#198 S1)
+  runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); bisher nur `version` als Ende-zu-Ende-Beweis, ab S2 wandert echte Logik ein
+  runner/gh.ts, git.ts      Adapter um `gh`/`git`, injizierbare exec-Funktion für Vitest-Doubles (#198 S1)
+  runner/state.ts           Adapter für Dateien unter $STATE_DIR, baseDir injizierbar -- Vitest zeigt nie auf das echte .runner/ (#198 S1)
+  runner/clock.ts           Zeitquelle, injizierbar (createClock/createFixedClock) (#198 S1)
+  runner/*.test.ts          Vitest-Suiten der TS-Adapter/des Dispatchers, laufen über `pnpm test` mit (#198 S1)
+  tests/runner-ts.test.sh   Fixture-Tests für ts_run(): RUNNER_TS-Vorgabe ruft cli.ts auf, RUNNER_TS=0 startet tsx gar nicht, fehlendes tsx meldet sich hörbar über status() (#198 S1)
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests

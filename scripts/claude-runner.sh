@@ -15,6 +15,7 @@ QUEUE_ISSUE="${QUEUE_ISSUE:-0}"         # Nr. des Prioritäts-Queue-Issues (0 = 
 MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
 MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
 TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
+RUNNER_TS="${RUNNER_TS:-1}"             # Kill-Switch (#198): 0 erzwingt den Bash-Pfad, siehe ts_run()
 STATE_DIR="$REPO_DIR/.runner"
 LIMIT_UNTIL="$STATE_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 
@@ -704,6 +705,36 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   kill "$watchdog" 2>/dev/null
   wait "$watchdog" 2>/dev/null
   return $rc
+}
+
+# --- Naht zu TypeScript (S1, #198) -------------------------------------------
+# Ab hier wandern Bash-Funktionen schrittweise nach `scripts/runner/cli.ts`
+# (TS-Kern) um -- `ts_run()` ist die einzige Bruecke dorthin. Vertrag: stdout
+# und Exit-Code kommen exakt von cli.ts durch, nichts wird hier ausgewertet
+# oder umgedeutet.
+#
+# `RUNNER_TS=0` ist der Kill-Switch: erzwingt sofort den Bash-Pfad, `tsx` wird
+# gar nicht erst gestartet. Der Aufrufer erkennt das am Rueckgabewert 127 und
+# faellt selbst auf seine eigene Bash-Logik zurueck -- exakt derselbe
+# Rueckgabewert wie im "tsx fehlt/kaputt"-Fall unten, bewusst nicht
+# unterschieden: fuer den Aufrufer zaehlt nur "kein TS-Pfad diesmal".
+# Ein fehlendes/kaputtes `tsx` (ENOENT -> Exit 127, bash meldet das bei einem
+# nicht existierenden Pfad von selbst so) meldet sich zusaetzlich HOERBAR
+# ueber status() -- ein unbeaufsichtigter Lauf darf das nicht still schlucken.
+ts_run() {   # $1 = Kommando, Rest = Argumente -> stdout/Exit-Code wie cli.ts
+  local cmd="$1"
+  [ "$RUNNER_TS" = "0" ] && return 127
+
+  local out rc
+  out=$("$REPO_DIR/node_modules/.bin/tsx" "$REPO_DIR/scripts/runner/cli.ts" "$@")
+  rc=$?
+  if [ "$rc" -eq 127 ]; then
+    status "TS-Naht ausgefallen" "🔴" \
+      "🔴 \`tsx\` fehlt oder \`node_modules\` ist kaputt -- Kommando \`$cmd\` läuft weiter über den Bash-Pfad."
+    return 127
+  fi
+  printf '%s' "$out"
+  return "$rc"
 }
 
 # --- .runner/ räumt sich auf (#64) -------------------------------------------
