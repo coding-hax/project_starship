@@ -643,6 +643,85 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
 });
 
 /**
+ * #183 — N+1 query optimization: the outbox is read once per pull, not N times.
+ * Behavior unchanged: locally queued changes are never overwritten by incoming pull data.
+ */
+test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)', () => {
+  test('AC2: eine gequeute Änderung wird nicht durch Pull-Daten überschrieben', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    // Create a task and sync it to establish a baseline (syncSeq = 1)
+    const taskId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Initial version' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Make a local change (stays in the outbox, baseSeq = 1)
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'Local change, not yet synced' },
+        }),
+      taskId,
+    );
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+    // Block the push endpoint so the outbox doesn't get cleared
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+
+    // Mock a pull response with a competing change (syncSeq = 2, newer)
+    const pullResponse = {
+      changes: [
+        {
+          table: 'tasks',
+          id: taskId,
+          updatedAt: new Date().toISOString(),
+          deletedAt: null,
+          syncSeq: 2, // Newer than the local record's syncSeq (1)
+          data: { title: 'Change from another device' },
+        },
+      ],
+      cursor: 2,
+    };
+
+    await page.route('**/api/sync/pull**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(pullResponse),
+      });
+    });
+
+    // Trigger a sync (push will fail/abort, then pull will run)
+    await page.evaluate(() => window.__starship.sync());
+
+    // The local change should still be in the outbox (push failed)
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+    // The local record should NOT have been overwritten by the pull —
+    // a queued mutation prevents the overwrite (ADR-0001).
+    const localData = await page.evaluate(async (id) => {
+      const local = await (window.__starship as unknown as { debugRecords: () => Promise<Array<{ id: string; table: string; data: Record<string, unknown>; syncSeq: number | null }>> }).debugRecords();
+      return local.find((r) => r.id === id);
+    }, taskId);
+    // Critical check: the local change must not be overwritten
+    expect(localData?.data.title).toBe('Local change, not yet synced');
+  });
+});
+
+/**
  * #182 — a single poison mutation used to fail the whole batch with a 400,
  * wedging every valid mutation behind it in the outbox forever.
  */
