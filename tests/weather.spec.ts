@@ -305,7 +305,7 @@ test('das Auftauchen der Stand-Zeile verschiebt den Inhalt darunter nicht (issue
   await expect(weatherDays(page)).toHaveCount(7);
   await expect(page.locator('.weather-forecast__caption')).toHaveCount(0);
 
-  const headingBefore = await page.locator('#heute-aufgaben-heading').boundingBox();
+  const headingBefore = await page.locator('#uebersicht-aufgaben-heading').boundingBox();
 
   // The API stays unreachable so the cache genuinely goes stale instead of a
   // background refresh quietly resetting fetchedAt back to "just now".
@@ -315,7 +315,7 @@ test('das Auftauchen der Stand-Zeile verschiebt den Inhalt darunter nicht (issue
   await page.reload();
   await expect(page.locator('.weather-forecast__caption')).toBeVisible();
 
-  const headingAfter = await page.locator('#heute-aufgaben-heading').boundingBox();
+  const headingAfter = await page.locator('#uebersicht-aufgaben-heading').boundingBox();
   expect(headingAfter?.y).toBe(headingBefore?.y);
 });
 
