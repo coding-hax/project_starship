@@ -115,13 +115,15 @@ export async function pull(): Promise<void> {
   const { changes, cursor }: PullResponse = await response.json();
 
   await db.transaction('rw', db.records, db.outbox, async () => {
+    const queued = await db.outbox.toArray();
+    const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
+
     for (const change of changes) {
       const local = await db.records.get([change.table, change.id] as never);
 
       // A local row that is still queued for push is newer by definition — do not
       // overwrite it with what the server currently holds.
-      const queued = await db.outbox.where('table').equals(change.table).toArray();
-      if (queued.some((m) => m.rowId === change.id)) continue;
+      if (queuedSet.has(`${change.table}:${change.id}`)) continue;
 
       // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
       // legitimate incoming change, nor let a stale one through.
