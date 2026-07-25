@@ -46,9 +46,9 @@ export async function registerPasskey(page: Page) {
     .then((r) => r.ok() && r.json().then((s: { authenticated?: boolean }) => !!s.authenticated))
     .catch(() => false);
   if (authenticated) {
-    // Same postcondition as the full ceremony: signed in AND sitting on a loaded /heute.
+    // Same postcondition as the full ceremony: signed in AND sitting on a loaded /uebersicht.
     // Callers rely on it — they reach straight for `window.__starship` afterwards.
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     return;
   }
 
@@ -61,7 +61,7 @@ export async function registerPasskey(page: Page) {
   await page.getByTestId('recovery-code').waitFor();
   await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
 
-  await page.waitForURL('**/heute');
+  await page.waitForURL('**/uebersicht');
 
   await page.context().storageState({ path: AUTH_STATE });
 }
@@ -76,7 +76,7 @@ export async function openSecondDevice(browser: Browser, page: Page) {
   const storageState = await page.context().storageState();
   const context = await browser.newContext({ storageState });
   const devicePage = await context.newPage();
-  await devicePage.goto('/heute');
+  await devicePage.goto('/uebersicht');
   return devicePage;
 }
 

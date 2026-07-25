@@ -48,7 +48,7 @@ test('a denied request does not crash the app', async ({ page }) => {
   await stubStorage(page, { persisted: false, persist: false });
   await registerPasskey(page);
 
-  await expect(page.getByRole('heading', { name: 'Heute', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.persistStatus())).toBe('denied');
 });
 
@@ -56,7 +56,7 @@ test('a missing storage API does not crash the app', async ({ page }) => {
   await stubStorage(page, 'unsupported');
   await registerPasskey(page);
 
-  await expect(page.getByRole('heading', { name: 'Heute', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => window.__starship.persistStatus()))
     .toBe('unsupported');

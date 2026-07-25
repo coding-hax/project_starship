@@ -19,7 +19,7 @@ test('Einstellungen is reachable from the header and keeps its active state (iss
 }) => {
   // Desktop-only since #126: the sidebar carries the link across navigation, so it is
   // still there to assert against after landing on /einstellungen. On mobile the entry
-  // point is scoped to /heute and disappears — covered by the #126 AC1+AC2 test instead.
+  // point is scoped to /uebersicht and disappears — covered by the #126 AC1+AC2 test instead.
   await registerPasskey(page);
 
   const settings = page.getByRole('link', { name: 'Einstellungen' });
@@ -34,7 +34,7 @@ test('the settings entry point stays reachable from every screen via the sidebar
 }) => {
   await registerPasskey(page);
 
-  for (const path of ['/heute', '/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+  for (const path of ['/uebersicht', '/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
     await page.goto(path);
     await expect(page.getByRole('link', { name: 'Einstellungen' })).toBeVisible();
   }
@@ -45,11 +45,11 @@ test('the settings entry point stays reachable from every screen via the sidebar
   await expect(settings).toHaveAttribute('aria-current', 'page');
 });
 
-test('auf /heute rutscht der Inhalt bei 1280px nicht unter die Kopfzeile der Shell (issue #137 AC6)', async ({
+test('auf /uebersicht rutscht der Inhalt bei 1280px nicht unter die Kopfzeile der Shell (issue #137 AC6)', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const header = page.locator('.app-header--chrome');
   const main = page.locator('main.shell__main');

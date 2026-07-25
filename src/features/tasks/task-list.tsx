@@ -34,7 +34,7 @@ function useOnline(): boolean {
 
 export interface TaskListProps {
   /**
-   * Restricts the list to open tasks due today or overdue — the /heute dashboard
+   * Restricts the list to open tasks due today or overdue — the /uebersicht dashboard
    * subset (issue #87). Everything else (editor, undo toasts, offline notice)
    * stays the same so the two lists don't drift apart.
    */
@@ -71,7 +71,7 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   const anchoredRef = useRef(false);
 
   const editingTask = allTasks?.find((task) => task.id === editingTaskId) ?? null;
-  // Grouped from the full list, not the /heute-filtered `tasks` — nesting still
+  // Grouped from the full list, not the /uebersicht-filtered `tasks` — nesting still
   // needs the whole task graph even when the view itself renders flat (issue #89).
   const nodes = groupTasks(allTasks ?? []);
   const editingNode = nodes.find((node) => node.task.id === editingTaskId);

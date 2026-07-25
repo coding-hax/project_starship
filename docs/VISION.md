@@ -17,7 +17,7 @@ kein Zwischenstand — sie darf die Architektur radikal vereinfachen.
 
 1. **Sofort, immer.** Jede Interaktion antwortet in unter 100 ms, weil sie lokal passiert.
    Es gibt keine Ladespinner für eigene Daten. Netz ist ein Hintergrundthema, kein Blocker.
-2. **Ein Ort für den Tag.** Das „Heute"-Dashboard ist die Startseite und führt Termine,
+2. **Ein Ort für den Tag.** Das „Übersicht"-Dashboard ist die Startseite und führt Termine,
    fällige Aufgaben, Habits und den Journal-Impuls zusammen.
 3. **Lebensfroh, nicht laut.** Warme, klare Farben. Bewegung, die Zusammenhänge erklärt,
    nicht Bewegung, die beeindrucken will.
@@ -45,15 +45,15 @@ Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgele
 **Termine** — Tages-/Wochenansicht, eigenständiger Kalender. **Kein Sync mit iCloud oder Google.**
 **Journal** — täglicher Eintrag, freier Text, Stimmung, Tags, lokale Volltextsuche. Ende-zu-Ende-verschlüsselt.
 **Gewohnheiten** — tägliche/wöchentliche Habits, Abhaken, Streaks, Wochenübersicht.
-**Heute** — das Dashboard, das alles zusammenführt.
+**Übersicht** — das Dashboard, das alles zusammenführt.
 
 ## Roadmap (strikt sequenziell)
 
-**„Heute" ist keine eigene Phase, sondern eine Klammer.** Jeder Milestone ergänzt seine
-eigene Heute-Sektion — so ist das Kernversprechen „ein Ort für den Tag" ab M1 nutzbar und
+**„Übersicht" ist keine eigene Phase, sondern eine Klammer.** Jeder Milestone ergänzt seine
+eigene Übersicht-Sektion — so ist das Kernversprechen „ein Ort für den Tag" ab M1 nutzbar und
 wächst mit, statt am Ende in einem großen Dashboard-Milestone zusammengeklebt zu werden.
 
-| Milestone                      | Inhalt                                                                                                                                                                 | Heute-Sektion                | Fertig, wenn                                                                  |
+| Milestone                      | Inhalt                                                                                                                                                                 | Übersicht-Sektion            | Fertig, wenn                                                                  |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------- |
 | **M0** Fundament ✅            | Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA-Installierbarkeit, Sync-Grundgerüst (Outbox)                                                                   | —                            | Installierbar auf dem iPhone, Login per Face ID, leere Tabs                   |
 | **M1** Sync-Härtung + Aufgaben | `storage.persist()`, Delete-gewinnt-Regel + Server-Sequenz **jetzt, solange die DB leer ist (Migration gratis)**; Aufgaben-CRUD, Fälligkeit, Priorität, Swipe, offline | zeigt (nur) Aufgaben         | Aufgabe offline anlegen/wiederfinden; Konflikt- und Delete-Semantik getestet |
@@ -92,8 +92,8 @@ Sie werden nicht in jedem Ticket neu diskutiert.
 Roadmap nach externem Review neu sortiert. Zwei Umbauten und drei Verschiebungen — die
 Produktprinzipien bleiben unberührt, nur Reihenfolge und Zuschnitt ändern sich.
 
-- **„Heute" wird Klammer statt Phase.** Der frühere M5-Dashboard-Milestone ist aufgelöst;
-  jeder Milestone liefert seine eigene Heute-Sektion (siehe Spalte oben). Das Kernversprechen
+- **„Übersicht" wird Klammer statt Phase.** Der frühere M5-Dashboard-Milestone ist aufgelöst;
+  jeder Milestone liefert seine eigene Übersicht-Sektion (siehe Spalte oben). Das Kernversprechen
   ist ab M1 nutzbar, nicht erst am Ende.
 - **Sync-Härtung zieht nach M1 vor — jetzt, solange die DB leer ist.** `storage.persist()`,
   die Delete-gewinnt-Regel und die server-monotone Sequenz (statt Konfliktauflösung über

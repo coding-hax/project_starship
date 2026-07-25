@@ -1,0 +1,12 @@
+/* Einstellungen sits inline with the heading on mobile — Übersicht is the only
+ * screen that carries it there (issue #126). */
+.uebersicht__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.uebersicht__title-row h1 {
+  margin: 0;
+}
