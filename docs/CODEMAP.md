@@ -129,7 +129,7 @@ tests/
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
 scripts/
-  claude-runner.sh          der autonome Runner (portabel: macOS + Linux)
+  claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172)
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
@@ -141,6 +141,7 @@ scripts/
   tests/ci-watch.test.sh   Fixture-Tests (T1-T9): CI-Wache vor der Ticketauswahl -- laeuft noch/gruen/rot/nur-protected-paths-rot/noch-kein-PR/kein-Ticketwechsel waehrend CI laeuft (#147); Zustand 'behind' zieht main per git nach, Konflikt startet Fix-Agenten, geparkte Tickets ohne Agentenlauf (#160)
   tests/parked-label.test.sh Fixture-Tests: in-progress+needs-input wird zu 'parked' (Selbstheilung), ein zuvor geparktes Ticket wird vor Queue/Label-Kaskade fortgesetzt, Status nennt parkende Tickets zusätzlich (#145)
   tests/parked-ci-watch.test.sh Fixture-Tests (T1-T6): CI-Wache für ALLE 'parked'-Tickets gleichzeitig -- gruen wird freigegeben (ready+Auto-Merge, kein Agentenlauf), pending/rot bleibt geparkt, laufendes Ticket wird nicht verzögert, Status nennt die Freigabe (#154)
+  tests/squash-close-guard.test.sh Fixture-Tests (T1-T5): pr_squash_merge() traegt eigenen PR-Titel als Subject, leeres Body statt Commit-Historie; fremde 'Closes #N' aus mitgezogenen Merge-Commits (nachgestellter Fall #163/#168) bleiben aussen vor; reopen_falsely_closed_issues() als Netz oeffnet faelschlich geschlossene Tickets mit offenem eigenen PR wieder (#172)
   bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
   vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
   smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright

@@ -328,6 +328,35 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
 
 Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
 
+**Wie ein Ticket geschlossen wird — und wie nicht (#172).** Ein Squash-Merge
+schließt in GitHub automatisch jedes Ticket, dessen `Closes #N` irgendwo in
+der zusammengefassten Commit-Nachricht auftaucht. Ohne eigene Angabe sammelt
+GitHub dafür **alle** Commit-Nachrichten des Branches ein — nicht nur den
+PR-Titel. Zieht ein Branch beim Nachziehen von `main` (#160) fremde
+Merge-Commits mit (z. B. von PR #165/#166), landen deren `Closes #N` mit im
+Squash und schließen ein Ticket, dessen eigener PR noch gar nicht gemergt
+ist — beobachtet an #163, fälschlich geschlossen durch den Squash von PR
+#168, während #163s eigentlicher PR #166 noch offen war. Weil die
+Ticketauswahl nur offene Issues kennt, wäre so ein Ticket sonst für immer
+verloren.
+
+Zwei Mechanismen verhindern das:
+
+- **Eigenes Subject/Body** (`pr_squash_merge()` in `scripts/claude-runner.sh`):
+  Jeder Squash-Merge, den der Runner auslöst, übergibt `--subject` (den
+  PR-Titel) und ein leeres `--body` explizit — GitHub sammelt dann nichts
+  mehr selbst ein. Ein Ticket schließt **nur**, wenn sein eigener PR-Titel
+  `Closes #N` trägt.
+- **Netz** (`reopen_falsely_closed_issues()`): Vor jeder Ticketauswahl prüft
+  der Runner alle offenen PRs mit `Closes #N` im Titel. Ist das referenzierte
+  Ticket trotzdem `CLOSED`, kann dieser (noch offene) PR es nicht gewesen
+  sein — der Runner öffnet das Ticket wieder und kommentiert den Grund samt
+  PR-Nummer.
+
+Der bestehende Merge-Weg (`--squash --auto --delete-branch`) bleibt dabei
+unverändert; Auto-Merge wird nicht durch einen manuellen Merge ersetzt.
+Abgedeckt in `scripts/tests/squash-close-guard.test.sh`.
+
 ## Der Status auf einen Blick
 
 Ein angepinntes Status-Issue wird vom Runner per _Edit_ aktualisiert
