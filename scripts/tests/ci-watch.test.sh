@@ -315,6 +315,32 @@ PROMPT_305=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
 assert_contains "T5: es ist der generische Bau-Prompt" \
   "Pflichtlektüre ist NUR CLAUDE.md" "$PROMPT_305"
 assert_not_contains "T5: NICHT der CI-Fix-Prompt" "Was rot ist" "$PROMPT_305"
+assert_contains "T5 (#191): Bau-Prompt zieht main proaktiv vor dem finalen Push nach" \
+  "Unmittelbar vor dem finalen Push ziehst du 'main' proaktiv nach" "$PROMPT_305"
+assert_contains "T5 (#191): Anweisung nennt fetch+merge --no-edit" \
+  "git merge origin/main" "$PROMPT_305"
+assert_contains "T5 (#191): Konflikt wird vom Agenten selbst auf dem Branch gelöst" \
+  "Merge-Konflikt: du löst" "$PROMPT_305"
+assert_contains "T5 (#191): Arbeitsbaum muss vor dem Merge sauber sein" \
+  "niemals in einen unsauberen" "$PROMPT_305"
+assert_contains "T5 (#191): pr_catch_up_behind bleibt als Netz erwähnt" \
+  "pr_catch_up_behind()" "$PROMPT_305"
+
+# ==============================================================================
+# T5b (#191) -- pr_catch_up_behind() bleibt im Runner als Netz bestehen,
+# unveraendert aufrufbar -- der Pre-Push-Merge im Bau-Prompt ist eine
+# Ergaenzung, kein Ersatz.
+# ==============================================================================
+if grep -q "^pr_catch_up_behind() {" "$RUNNER"; then
+  ok "T5b (#191): pr_catch_up_behind() ist weiterhin im Runner definiert"
+else
+  red "T5b (#191): pr_catch_up_behind() fehlt im Runner"
+fi
+if grep -q 'pr_catch_up_behind "\$PR_NUM"' "$RUNNER"; then
+  ok "T5b (#191): pr_catch_up_behind() wird weiterhin fuer das laufende Ticket aufgerufen"
+else
+  red "T5b (#191): Aufruf von pr_catch_up_behind() fuer PR_NUM fehlt"
+fi
 
 # ==============================================================================
 # T6 -- Läuft CI zu #306, wählt der Takt KEIN anderes ready-Ticket (#310)
