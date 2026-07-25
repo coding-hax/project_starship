@@ -20,6 +20,14 @@
   box-shadow: var(--shadow-raised);
 }
 
+.toast--error {
+  border: 1px solid var(--danger);
+}
+
+.toast--error .toast__message {
+  color: var(--danger);
+}
+
 .toast__message {
   flex: 1;
   font-size: 14px;

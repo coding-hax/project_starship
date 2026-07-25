@@ -641,3 +641,88 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
     ).rejects.toThrow(/duplicate key value violates unique constraint/);
   });
 });
+
+/**
+ * #182 — a single poison mutation used to fail the whole batch with a 400,
+ * wedging every valid mutation behind it in the outbox forever.
+ */
+test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', () => {
+  test('AC1: 1 malformed + 3 gültige Mutationen — die gültigen landen in Postgres, die malformed wird verworfen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const validTitles = ['Gültig 1', 'Gültig 2', 'Gültig 3'];
+    for (const title of validTitles) {
+      await page.evaluate(
+        (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
+        title,
+      );
+    }
+
+    const malformedRowId = await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Kaputt' } }),
+    );
+    // A wire-format bug or storage damage, not something `mutate()` can produce
+    // itself — corrupt the entry after the fact to reproduce a poison mutation.
+    await page.evaluate(async (rowId) => {
+      const entries = await window.__starship.pending();
+      const entry = entries.find((e) => e.rowId === rowId);
+      if (!entry) throw new Error('outbox entry not found');
+      await window.__starship.debugPatchOutbox(entry.id, { rowId: 42 });
+    }, malformedRowId);
+
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(4);
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // The malformed mutation is gone from the queue too — discardStale ran.
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const rows = await withDb((c) => c.query('SELECT title FROM tasks ORDER BY title'));
+    expect(rows.rows.map((r) => r.title)).toEqual([...validTitles].sort());
+  });
+
+  test('AC2: nach 5 Server-Fehlschlägen in Folge wird ein Sync-Fehlerhinweis sichtbar', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Bleibt hängen' } }),
+    );
+
+    await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
+
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
+
+    // Not getByRole('alert') — Next's route announcer also has role="alert" and
+    // would make this a strict-mode violation regardless of the sync outcome.
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toBeVisible();
+  });
+
+  test('AC3: ein Offline-Fehlschlag zählt nicht zum Fehler-Cap — kein Hinweis, die Queue überlebt', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Offline hängt fest' } }),
+    );
+
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+
+    // More than SYNC_ERROR_THRESHOLD attempts — if offline counted the same as a
+    // server failure this would have tripped the error hint by now.
+    for (let i = 0; i < 8; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
+
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
+  });
+});

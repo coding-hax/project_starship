@@ -163,10 +163,11 @@ declare global {
       sync: () => Promise<void>;
       size: () => Promise<number>;
       pending: () => Promise<
-        Array<{ table: string; rowId: string; op: string; payload: Record<string, unknown> }>
+        Array<{ id: string; table: string; rowId: string; op: string; payload: Record<string, unknown> }>
       >;
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
+      debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
     };
   }
 }

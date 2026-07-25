@@ -98,8 +98,8 @@ src/
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
     fab.css                 Position + Größe des FAB
-    toast.tsx               Wiederverwendbares Undo-Toast (role="status")
-    toast.css                Position über der Bottom-Nav, wie der FAB
+    toast.tsx               Wiederverwendbares Toast: `variant` confirmation (role="status", Undo) oder error (role="alert", --danger) (issue #182)
+    toast.css                Position über der Bottom-Nav, wie der FAB; toast--error für die Fehler-Variante
     row.tsx / row.css       Label-links-Control-rechts-Zeile, Basis jeder Einstellungszeile
     section-card.tsx / .css Karte mit optionaler Überschrift/Aufklappen, gruppiert Rows
     toggle.tsx / .css       Switch (role="switch"), Federknopf
@@ -107,7 +107,8 @@ src/
     slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
     sync-boot.tsx           startet den Sync beim Mount + fragt persistenten Storage an (issue #52)
     persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
-    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1)
+    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182)
+    sync-status.tsx         liveQuery über db.outbox, zeigt Toast(variant=error) sobald overSyncErrorThreshold (issue #182)
 tests/
   global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
   global-teardown.ts        gibt das Lock wieder frei (nur das eigene)

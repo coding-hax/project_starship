@@ -106,16 +106,32 @@ export async function markApplied(mutations: Mutation[]): Promise<void> {
 /**
  * The push failed. The entry stays queued and is retried on the next sync —
  * that is the whole point of the outbox surviving a reload.
+ *
+ * `offline` does not count towards `SYNC_ERROR_THRESHOLD` (#182) — being offline
+ * says nothing about whether the mutation itself is ever going to succeed, unlike
+ * a server rejecting it N times in a row.
  */
-export async function markFailed(ids: string[], error: string): Promise<void> {
+export async function markFailed(ids: string[], error: string, offline = false): Promise<void> {
   await db.transaction('rw', db.outbox, async () => {
     for (const id of ids) {
       const entry = await db.outbox.get(id);
       if (entry) {
-        await db.outbox.put({ ...entry, attempts: entry.attempts + 1, lastError: error });
+        await db.outbox.put({
+          ...entry,
+          attempts: offline ? entry.attempts : entry.attempts + 1,
+          lastError: error,
+        });
       }
     }
   });
+}
+
+/** Above this many non-offline failures in a row, the sync error is worth surfacing. */
+export const SYNC_ERROR_THRESHOLD = 5;
+
+/** True once any queued mutation has failed at least `SYNC_ERROR_THRESHOLD` times. */
+export function overSyncErrorThreshold(entries: OutboxEntry[]): boolean {
+  return entries.some((entry) => entry.attempts >= SYNC_ERROR_THRESHOLD);
 }
 
 /**

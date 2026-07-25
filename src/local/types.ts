@@ -12,6 +12,21 @@ export function isSyncTable(value: unknown): value is SyncTable {
 }
 
 /**
+ * Which fields a mutation is missing or has the wrong type for — empty means
+ * well-formed. A poison mutation (one client bug away from wedging the whole
+ * outbox forever, see push() in src/local/sync.ts) must be rejected on its own
+ * server-side, never fail the batch it happened to travel with.
+ */
+export function malformedFields(m: Mutation): string[] {
+  const fields: string[] = [];
+  if (!isSyncTable(m?.table)) fields.push('table');
+  if (typeof m?.rowId !== 'string') fields.push('rowId');
+  if (typeof m?.updatedAt !== 'string') fields.push('updatedAt');
+  if (typeof m?.baseSeq !== 'number' && m?.baseSeq !== null) fields.push('baseSeq');
+  return fields;
+}
+
+/**
  * The client-side view of a `habits` row's `data` field (`LocalRecord.data` /
  * `Mutation.payload`, see below) — the wire shape, not the Drizzle-inferred server
  * type (`Habit` in `src/db/schema.ts`), so timestamps are ISO strings here.
@@ -78,7 +93,9 @@ export interface PushConflict {
 
 export interface PushRejection {
   mutationId: string;
-  /** NOT NULL columns a create was missing. Retrying will not help — this is a bug. */
+  /** Why this mutation was dropped. Retrying will not help either way — this is a bug. */
+  reason?: 'missing-required' | 'malformed';
+  /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }
 
