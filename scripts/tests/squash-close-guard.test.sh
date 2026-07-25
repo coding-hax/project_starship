@@ -97,11 +97,10 @@ case "${1:-} ${2:-}" in
 esac
 exit 0
 STUB
-# --- Stub 'jq' ----------------------------------------------------------------
-cat > "$FAKEBIN/jq" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
+# Kein jq-Stub: reopen_falsely_closed_issues() parst die PR-Liste mit echtem
+# jq (regex-capture auf 'Closes #N'). Ein No-op-Stub liesse `pairs` leer und
+# die Funktion still aussteigen -- der eigentliche Netz-Fall (T4) wuerde nie
+# geprueft. jq ist lokal und auf den GitHub-Runnern ohnehin vorhanden.
 
 # --- Stub 'claude' ------------------------------------------------------------
 cat > "$FAKEBIN/claude" <<'STUB'
@@ -109,7 +108,7 @@ cat > "$FAKEBIN/claude" <<'STUB'
 exit 0
 STUB
 
-chmod +x "$FAKEBIN/gh" "$FAKEBIN/jq" "$FAKEBIN/claude"
+chmod +x "$FAKEBIN/gh" "$FAKEBIN/claude"
 
 export PATH="$FAKEBIN:$PATH"
 export REPO_DIR="$TMP/repo"
