@@ -103,6 +103,30 @@ test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404i
   expect(await redirected!.response().then((r) => r?.status())).toBe(308);
 });
 
+test('/heute permanently redirects to /uebersicht instead of 404ing (issue #161)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const response = await page.goto('/heute');
+  expect(response?.status()).toBeLessThan(400);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+
+  const redirected = response!.request().redirectedFrom();
+  expect(redirected).not.toBeNull();
+  expect(await redirected!.response().then((r) => r?.status())).toBe(308);
+});
+
+test('the manifest start_url points at /uebersicht, not the old /heute (issue #161)', async ({
+  page,
+  baseURL,
+}) => {
+  const response = await page.request.get(`${baseURL}/manifest.webmanifest`);
+  const manifest = await response.json();
+  expect(manifest.start_url).toBe('/uebersicht');
+});
+
 test('the bottom nav still reserves space for the home indicator (issue #123 AC6)', async ({
   page,
 }) => {
