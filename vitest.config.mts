@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     // Playwright owns tests/. Vitest owns the logic specs next to the code.
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/runner/**/*.test.ts'],
   },
   resolve: {
     alias: {
