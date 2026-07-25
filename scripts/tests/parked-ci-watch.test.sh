@@ -93,6 +93,11 @@ case "${1:-} ${2:-}" in
     pr="$3"
     cat "$G/checks-$pr.json" 2>/dev/null || echo "[]"
     ;;
+  "pr view")
+    pr="$3"
+    cat "$G/mergestate-$pr.json" 2>/dev/null \
+      || printf '{"headRefName":"unknown","mergeStateStatus":"CLEAN"}'
+    ;;
   "pr ready")
     pr="$3"
     touch "$G/ready-$pr"
@@ -117,9 +122,32 @@ exit 0
 STUB
 
 # --- Stub 'git' ---------------------------------------------------------------
+# Wie ci-watch.test.sh: steuerbarer Merge-Konflikt via Marker-Datei
+# 'git-merge-conflict', sonst folgenloses exit 0.
 cat > "$FAKEBIN/git" <<'STUB'
 #!/usr/bin/env bash
-exit 0
+G="$GHSTATE_DIR"
+case "${1:-}" in
+  status)
+    [ -e "$G/git-dirty" ] && printf ' M some/file.ts\n'
+    exit 0
+    ;;
+  rev-parse)
+    printf 'main\n'
+    exit 0
+    ;;
+  merge)
+    case "${2:-}" in
+      --abort) exit 0 ;;
+      *) [ -e "$G/git-merge-conflict" ] && exit 1; exit 0 ;;
+    esac
+    ;;
+  diff)
+    [ -e "$G/git-merge-conflict" ] && printf 'src/a.ts\nsrc/b.ts\n'
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
 STUB
 
 # --- Stub 'claude' -------------------------------------------------------------
@@ -204,6 +232,21 @@ assert_contains() {
   local file="$3"
   if [ -f "$file" ] && grep -qF -- "$2" "$file"; then ok "$1"
   else red "$1 (nicht enthalten: '$2')"; fi
+}
+assert_not_contains() {
+  local file="$3"
+  if [ -f "$file" ] && grep -qF -- "$2" "$file"; then red "$1 (unerwartet enthalten: '$2')"
+  else ok "$1"; fi
+}
+
+# $1 = Issue-Nr, $2 = PR-Nr -> markiert den geparkten PR als hinter 'main'
+# (#160/#173), Checks grün -- wie ci-watch.test.sh's setup_behind.
+seed_behind() {
+  local issue="$1" pr="$2"
+  printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+    > "$GHSTATE_DIR/checks-$pr.json"
+  printf '{"headRefName":"fix/%s-parked-ci-watch","mergeStateStatus":"BEHIND"}' \
+    "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
 }
 
 # ==============================================================================
@@ -292,6 +335,115 @@ assert_contains "T6: Status nennt die Freigabe" "Geparktes Ticket freigegeben" \
   "$GHSTATE_DIR/status-body-log"
 assert_contains "T6: Status nennt das freigegebene Ticket #600" "#600" \
   "$GHSTATE_DIR/status-body-log"
+
+# ==============================================================================
+# T7 -- #173 AC2: geparkter PR liegt hinter main UND hat einen echten
+#       Merge-Konflikt -> wird entparkt (in-progress statt parked), derselbe
+#       freie Bauplatz startet sofort einen Fix-Agenten mit den Konfliktdateien
+#       im Auftrag (wiederverwendet die bestehende CI-Wache aus #147/#160).
+# ==============================================================================
+reset_state
+seed_issue 420 "parked"
+seed_pr 420 720
+seed_behind 420 720
+touch "$GHSTATE_DIR/git-merge-conflict"
+run_round
+assert_labels "T7: #420 wird entparkt (in-progress statt parked)" 420 "in-progress"
+assert_file_present "T7: ein Fix-Agent läuft für den Konflikt" "$GHSTATE_DIR/claude-called"
+assert_contains "T7: Auftrag nennt den Merge-Konflikt" "Merge-Konflikt" \
+  "$GHSTATE_DIR/last-prompt"
+assert_contains "T7: Auftrag nennt die Konfliktdatei a.ts" "src/a.ts" \
+  "$GHSTATE_DIR/last-prompt"
+assert_file_absent "T7: kein Auto-Merge bei einem Merge-Konflikt" "$GHSTATE_DIR/merged-720"
+assert_contains "T7: Status nennt den Grund fürs Entparken" "Merge-Konflikt" \
+  "$GHSTATE_DIR/status-body-log"
+
+# ==============================================================================
+# T8 -- #173 AC3: geparkter PR hat rote Checks über 'protected-paths' hinaus
+#       -> wird entparkt, bekommt einen Fix-Lauf mit der Fehler-Summary.
+# ==============================================================================
+reset_state
+seed_issue 421 "parked"
+seed_pr 421 721
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
+  > "$GHSTATE_DIR/checks-721.json"
+run_round
+assert_labels "T8: #421 wird entparkt (in-progress statt parked)" 421 "in-progress"
+assert_file_present "T8: ein Fix-Agent läuft für die roten Checks" "$GHSTATE_DIR/claude-called"
+assert_contains "T8: Auftrag nennt den fehlgeschlagenen Job" "e2e" "$GHSTATE_DIR/last-prompt"
+assert_file_absent "T8: kein Auto-Merge bei roten Checks" "$GHSTATE_DIR/merged-721"
+assert_file_present "T8 (AC6): Fehlversuch zählt in die bestehende Eskalation ein" \
+  "$STATE_DIR/failcount-421"
+
+# ==============================================================================
+# T9 -- rote Checks NUR bei 'protected-paths' bleiben die vorgesehene
+#       Genehmigungs-Schranke -- kein Fund, kein Entparken, auch wenn sonst
+#       kein anderes Ticket in-progress ist.
+# ==============================================================================
+reset_state
+seed_issue 422 "needs-input,parked"
+seed_pr 422 722
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
+  > "$GHSTATE_DIR/checks-722.json"
+run_round
+assert_labels "T9: #422 bleibt vollständig geparkt (Genehmigungs-Schranke)" 422 "needs-input,parked"
+assert_file_absent "T9: kein Agentenlauf, solange nur protected-paths rot ist" \
+  "$GHSTATE_DIR/claude-called"
+
+# ==============================================================================
+# T10 -- eine noch offene Frage (needs-input) geht vor: ein Konflikt/rote
+#       Checks lösen KEIN automatisches Entparken über eine ungeklärte
+#       menschliche Antwort hinweg aus (CLAUDE.md Regel 11).
+# ==============================================================================
+reset_state
+seed_issue 423 "needs-input,parked"
+seed_pr 423 723
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
+  > "$GHSTATE_DIR/checks-723.json"
+run_round
+assert_labels "T10: #423 bleibt geparkt, solange needs-input offen ist" 423 "needs-input,parked"
+assert_file_absent "T10: kein Agentenlauf, solange die Frage offen ist" \
+  "$GHSTATE_DIR/claude-called"
+
+# ==============================================================================
+# T11 -- WIP-Limit=1 (#173 "Achtung: Reihenfolge und WIP"): läuft bereits ein
+#       anderes Ticket, wird ein entparkbares (rote Checks) Ticket NICHT
+#       zusätzlich entparkt -- nur das laufende Ticket wird gebaut.
+# ==============================================================================
+reset_state
+seed_issue 424 "in-progress"
+seed_pr 424 824
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"läuft schon"}]' \
+  > "$GHSTATE_DIR/checks-824.json"
+seed_issue 425 "parked"
+seed_pr 425 825
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
+  > "$GHSTATE_DIR/checks-825.json"
+run_round
+assert_file_present "T11: der Fix-Agent für das laufende #424 läuft trotzdem" \
+  "$GHSTATE_DIR/claude-called"
+assert_contains "T11: der Auftrag betrifft #424, nicht #425" "läuft schon" \
+  "$GHSTATE_DIR/last-prompt"
+assert_labels "T11: das entparkbare #425 bleibt geparkt (WIP schon belegt)" 425 "parked"
+assert_file_absent "T11: kein zweiter Agent für #425" "$GHSTATE_DIR/merged-825"
+
+# ==============================================================================
+# T12 -- höchstens EIN Ticket wird pro Runde entparkt: zwei gleichzeitig
+#       entparkbare Tickets -> nur das ältere (createdAt) wird gebaut, das
+#       jüngere bleibt geparkt für den nächsten Takt.
+# ==============================================================================
+reset_state
+seed_issue 426 "parked" "2024-01-01T00:00:00Z"
+seed_pr 426 826
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"älter"}]' \
+  > "$GHSTATE_DIR/checks-826.json"
+seed_issue 427 "parked" "2025-06-01T00:00:00Z"
+seed_pr 427 827
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"jünger"}]' \
+  > "$GHSTATE_DIR/checks-827.json"
+run_round
+assert_labels "T12: das ältere #426 wird entparkt" 426 "in-progress"
+assert_labels "T12: das jüngere #427 bleibt geparkt" 427 "parked"
 
 # ==============================================================================
 echo
