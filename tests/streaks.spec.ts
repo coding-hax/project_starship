@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -121,7 +121,7 @@ test('zwei aufeinanderfolgende Wochen zeigen Streak 2 (issue #104 AC3)', async (
   });
   await seedHabitLog(page, { habitId, logDate: MONDAY_LAST_WEEK, done: true });
   // Logged *today* rather than on Monday — a weekly habit done earlier in the
-  // current week (but not today) drops out of the Heute-Sektion entirely
+  // current week (but not today) drops out of the Übersicht-Sektion entirely
   // (issue #103), so a today-log is the only way the row — and its streak —
   // stays visible for this week's completion.
   await seedHabitLog(page, { habitId, logDate: TODAY, done: true });

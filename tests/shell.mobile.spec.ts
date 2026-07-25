@@ -23,13 +23,13 @@ test.beforeEach(async () => {
   await resetDatabase();
 });
 
-test('the settings entry point sits inline on Heute and on none of the other four screens (issue #126 AC1+AC2)', async ({
+test('the settings entry point sits inline on Übersicht and on none of the other four screens (issue #126 AC1+AC2)', async ({
   page,
 }) => {
   await registerPasskey(page);
 
-  const heuteSettings = page.getByRole('link', { name: 'Einstellungen' });
-  await expect(heuteSettings).toBeVisible();
+  const uebersichtSettings = page.getByRole('link', { name: 'Einstellungen' });
+  await expect(uebersichtSettings).toBeVisible();
 
   for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
     await page.goto(path);
@@ -37,11 +37,11 @@ test('the settings entry point sits inline on Heute and on none of the other fou
   }
 });
 
-test('/heute rückt näher an die Statusleiste heran, ohne unter sie zu rutschen (issue #137 AC3+AC4)', async ({
+test('/uebersicht rückt näher an die Statusleiste heran, ohne unter sie zu rutschen (issue #137 AC3+AC4)', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const main = page.locator('main.shell__main');
   const paddingTop = await main.evaluate((el) => getComputedStyle(el).paddingTop);
@@ -50,13 +50,13 @@ test('/heute rückt näher an die Statusleiste heran, ohne unter sie zu rutschen
   expect(paddingTop).toBe('16px');
 });
 
-test('das Einstellungen-Symbol auf /heute steht auf einer Linie mit "Heute", rechtsbündig, mit vollem Touch-Ziel (issue #137 AC5)', async ({
+test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit "Übersicht", rechtsbündig, mit vollem Touch-Ziel (issue #137 AC5)', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
-  const heading = page.getByRole('heading', { name: 'Heute', level: 1 });
+  const heading = page.getByRole('heading', { name: 'Übersicht', level: 1 });
   const settings = page.getByRole('link', { name: 'Einstellungen' });
   const main = page.locator('main.shell__main');
   const [headingBox, settingsBox, mainBox, mainPaddingRight] = await Promise.all([

@@ -78,7 +78,7 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const days = weatherDays(page);
   await expect(days).toHaveCount(7);
@@ -101,7 +101,7 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten b
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const days = weatherDays(page);
   await expect(days).toHaveCount(7);
@@ -124,13 +124,13 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten b
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: Quellenangabe verlässt /heute (zieht in die Einstellungen, #155 AC5)    */
+/* AK: Quellenangabe verlässt /uebersicht (zieht in die Einstellungen, #155 AC5) */
 /* -------------------------------------------------------------------------- */
 
-test('die Open-Meteo-Nennung steht nicht mehr auf /heute (issue #155 AC5)', async ({ page }) => {
+test('die Open-Meteo-Nennung steht nicht mehr auf /uebersicht (issue #155 AC5)', async ({ page }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   await expect(page.getByText('Open-Meteo', { exact: false })).toHaveCount(0);
@@ -145,7 +145,7 @@ test('nach dem ersten Laden rendert die Ansicht auch ohne erreichbares Netz aus 
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   // Cut the network entirely and remount the page. If the component read via
@@ -169,7 +169,7 @@ test('ein zweiter Aufruf innerhalb von 3 Stunden löst keinen neuen Netzaufruf a
 }) => {
   const callCount = await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
   expect(callCount()).toBe(1);
 
@@ -184,7 +184,7 @@ test('nach mehr als 3 Stunden löst der nächste Aufruf einen neuen Netzaufruf a
 }) => {
   const callCount = await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
   expect(callCount()).toBe(1);
 
@@ -205,7 +205,7 @@ test('offline zeigt weiterhin die zuletzt bekannte Vorhersage; die Stand-Zeile e
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   // A full `context.setOffline(true)` would also block the reload's own request
@@ -241,7 +241,7 @@ test('antwortet Open-Meteo nicht, bleibt die zuletzt bekannte Vorhersage stehen 
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   await page.unroute(OPEN_METEO_PATTERN);
@@ -258,7 +258,7 @@ test('ohne jemals erfolgreichen Abruf erscheint ein erklärender Zustand statt e
 }) => {
   await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ status: 500, body: 'boom' }));
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   await expect(page.getByText('Vorhersage konnte nicht geladen werden.')).toBeVisible();
   await expect(weatherDays(page)).toHaveCount(0);
@@ -280,7 +280,7 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
     await route.fulfill({ json: forecastResponseBody(DAY_SET_A) });
   });
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
   const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
@@ -301,7 +301,7 @@ test('das Auftauchen der Stand-Zeile verschiebt den Inhalt darunter nicht (issue
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
   await expect(page.locator('.weather-forecast__caption')).toHaveCount(0);
 
@@ -329,7 +329,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
   }) => {
     const callCount = await mockForecast(page, DAY_SET_A);
     await skewClock(page, NOW);
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     await expect(weatherDays(page)).toHaveCount(7);
     expect(callCount()).toBe(1);
 
@@ -351,7 +351,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
   }) => {
     const callCount = await mockForecast(page, DAY_SET_A);
     await skewClock(page, NOW);
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     await expect(weatherDays(page)).toHaveCount(7);
     expect(callCount()).toBe(1);
 
@@ -372,7 +372,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
   test('ein `focus`-Event holt sofort nach, ohne aufs Intervall zu warten', async ({ page }) => {
     await mockForecast(page, DAY_SET_A);
     await skewClock(page, NOW);
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     await expect(weatherDays(page)).toHaveCount(7);
 
     await page.unroute(OPEN_METEO_PATTERN);
@@ -390,7 +390,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
   }) => {
     await page.clock.install({ time: new Date(NOW) });
     await mockForecast(page, DAY_SET_A);
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     await expect(weatherDays(page)).toHaveCount(7);
 
     await page.unroute(OPEN_METEO_PATTERN);
@@ -406,7 +406,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
   test('im Hintergrund läuft kein Intervall-Timer', async ({ page }) => {
     await page.clock.install({ time: new Date(NOW) });
     const callCount = await mockForecast(page, DAY_SET_A);
-    await page.goto('/heute');
+    await page.goto('/uebersicht');
     await expect(weatherDays(page)).toHaveCount(7);
     expect(callCount()).toBe(1);
 
@@ -431,7 +431,7 @@ test.describe('holt bei Rückkehr aus dem Hintergrund nach, solange der Stand al
 test('die Wetterdaten tauchen nie in der Outbox auf (issue #139 AC7)', async ({ page }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   await skewClock(page, '2026-07-20T13:00:00.000Z');
@@ -448,7 +448,7 @@ test('die Wetterdaten tauchen nie in der Outbox auf (issue #139 AC7)', async ({ 
 test('sieben Spalten passen ohne waagerechtes Scrollen der Seite (issue #139 AC9)', async ({ page }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(weatherDays(page)).toHaveCount(7);
 
   const overflow = await page.evaluate(
@@ -466,7 +466,7 @@ test('eine Tageskarte nutzt den --surface-Token, auch im Dark Mode (issue #139 A
 }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const card = weatherDays(page).first();
   const resolveToken = () =>
@@ -499,7 +499,7 @@ test('bei reduzierter Bewegung steht der Lade-Puls still (issue #139 AC10)', asy
     await route.fulfill({ json: forecastResponseBody(DAY_SET_A) });
   });
   await skewClock(page, NOW);
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 
   const skeleton = page.locator('.weather-forecast__day--skeleton').first();
   await expect(skeleton).toBeVisible();

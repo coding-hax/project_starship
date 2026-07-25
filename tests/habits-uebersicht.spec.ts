@@ -30,18 +30,18 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  // registerPasskey already lands on /heute — navigate once more so every test
+  // registerPasskey already lands on /uebersicht — navigate once more so every test
   // starts from a clean mount, then seed. Seeding *before* this would reload the
   // page a second time and re-mount SyncBoot mid-test (issue #103, found via the
   // AC4 test racing its own automatic sync).
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
 });
 
 /* -------------------------------------------------------------------------- */
 /* AK: Heutige Habits erscheinen; Abhaken markiert sofort erledigt            */
 /* -------------------------------------------------------------------------- */
 
-test('eine tägliche Gewohnheit erscheint in der Heute-Sektion und lässt sich abhaken (issue #103 AC1)', async ({
+test('eine tägliche Gewohnheit erscheint in der Übersicht-Sektion und lässt sich abhaken (issue #103 AC1)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Wasser trinken', schedule: 'daily', color: null, archivedAt: null });
@@ -179,7 +179,7 @@ test('offline abgehakt erreicht online den Server als habit_log (issue #103 AC4)
 /* Leerzustand, wenn keine Habits existieren (Verweis auf Verwaltung, #102)   */
 /* -------------------------------------------------------------------------- */
 
-test('ohne Gewohnheiten zeigt die Heute-Sektion einen Leerzustand mit Verweis auf die Verwaltung', async ({
+test('ohne Gewohnheiten zeigt die Übersicht-Sektion einen Leerzustand mit Verweis auf die Verwaltung', async ({
   page,
 }) => {
   await expect(page.getByText('Noch keine Gewohnheiten.')).toBeVisible();

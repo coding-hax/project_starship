@@ -10,18 +10,18 @@ test.beforeEach(async () => {
 });
 
 test('an unauthenticated visitor is sent to the login', async ({ page }) => {
-  await page.goto('/heute');
+  await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/anmelden$/);
   await expect(page.getByRole('button', { name: 'Passkey einrichten' })).toBeVisible();
 });
 
 test('passkey setup issues a recovery code exactly once and opens the app', async ({ page }) => {
   await registerPasskey(page);
-  await expect(page.getByRole('heading', { name: 'Heute', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
 
   // Second visit: already authenticated, so no code and no second setup.
   await page.goto('/anmelden');
-  await expect(page).toHaveURL(/\/heute$/);
+  await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(page.getByTestId('recovery-code')).toHaveCount(0);
 });
 
@@ -35,7 +35,7 @@ test('all five tabs are reachable and mark themselves current (issue #123 AC1)',
     ['Gewohnheiten', '/gewohnheiten', 'Gewohnheiten verwalten'],
     ['Kalender', '/kalender', 'Kalender'],
     ['Journal', '/journal', 'Journal'],
-    ['Heute', '/heute', 'Heute'],
+    ['Übersicht', '/uebersicht', 'Übersicht'],
   ] as const) {
     await page.getByRole('link', { name: label }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
@@ -61,7 +61,7 @@ test('every tab label fits on one line with a ≥44×44px touch target (issue #1
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
     const link = nav.getByRole('link', { name: label });
     const box = await link.boundingBox();
     expect(box).not.toBeNull();
@@ -83,7 +83,7 @@ test('the nav carries the same five entries in both layouts (issue #123 AC3)', a
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible();
   }
 });
@@ -166,7 +166,7 @@ test('every tab and the settings entry render an SVG icon at 24px — no Unicode
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
     const svg = nav.getByRole('link', { name: label }).locator('svg');
     await expect(svg).toHaveCount(1);
     const box = await svg.boundingBox();
@@ -190,14 +190,14 @@ test('das Einstellungs-Symbol zeigt zwei waagerechte Regler statt radialer Strah
   await expect(settingsSvg.locator('path')).toHaveCount(2);
 });
 
-test('der Heute-Tab zeigt eine Sonne statt zweier ineinanderliegender Kreise (issue #157 AC2)', async ({
+test('der Übersicht-Tab zeigt eine Sonne statt zweier ineinanderliegender Kreise (issue #157 AC2)', async ({
   page,
 }) => {
   await registerPasskey(page);
 
   const todaySvg = page
     .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Heute' })
+    .getByRole('link', { name: 'Übersicht' })
     .locator('svg');
   await expect(todaySvg.locator('circle')).toHaveCount(1);
 });
@@ -208,7 +208,7 @@ test('nav icons are invisible to screen readers; the tab label stays the accessi
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Heute', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
     const link = nav.getByRole('link', { name: label });
     await expect(link).toHaveAccessibleName(label);
     await expect(link.locator('svg')).toHaveAttribute('aria-hidden', 'true');
@@ -243,13 +243,13 @@ test('switching tabs never shifts where main starts, whether or not the settings
 }) => {
   await registerPasskey(page);
   const main = page.locator('main.shell__main');
-  const heuteY = (await main.boundingBox())!.y;
+  const uebersichtY = (await main.boundingBox())!.y;
 
   for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
     await page.goto(path);
     const box = await main.boundingBox();
     expect(box).not.toBeNull();
-    expect(Math.abs(box!.y - heuteY)).toBeLessThan(1);
+    expect(Math.abs(box!.y - uebersichtY)).toBeLessThan(1);
   }
 });
 
