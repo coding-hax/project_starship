@@ -91,12 +91,15 @@ src/
       capture-panel.tsx       Toggle für use-capture-prefs in den Einstellungen
       use-weather-location.ts Wetter-Ort { name, latitude, longitude } — gerätelokal in localStorage, Default Bonn (issue #159)
       weather-panel.tsx / .css Ort suchen (geocoding.ts) + auswählen, plus Open-Meteo-Quellenangabe (vormals attribution-panel.tsx, issue #155/#159 — eine Fremdquelle, eine Tafel)
+      use-nav-order.ts        Reihenfolge der Nav-Einträge — gerätelokal in localStorage; resolveOrder(stored, items) rein: bekannte Ids in gespeicherter Reihenfolge, unbekannte raus, fehlende hinten dran (issue #205)
+      nav-order-panel.tsx / .css  SectionCard mit ↑/↓ je Eintrag, kein Drag & Drop (issue #205)
   ui/
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
-    shell.css               App-Shell: Header + Bottom-Nav (mobil) / Header + Sidebar (Desktop)
+    shell.css               App-Shell: Header + Bottom-Nav (mobil, Karussell ab mehr als fünf Einträgen) / Header + Sidebar (Desktop, kein Karussell) (issue #205)
     app-header.tsx           Einstellungen-Einstieg, zwei Varianten: `chrome` (Shell, nur ab 768px) und `inline` (nur auf /uebersicht, mobil) (issue #123, #126)
-    nav.tsx                 Die fünf Tabs (issue #123)
+    nav-items.ts            NAV_ITEMS — eine Quelle für nav.tsx und nav-order-panel.tsx (issue #205)
+    nav.tsx                 Reihenfolge aus useNavOrder, holt den aktiven Tab beim Navigieren selbst heran (scrollIntoView, reduced-motion-bewusst) (issue #123, #205)
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
@@ -117,7 +120,8 @@ tests/
   global-teardown.ts        gibt das Lock wieder frei (nur das eigene)
   run-lock.ts               Pfad des Lockfiles + Port (Dev) + PORT_PROD (Offline-Spec), gemeinsame Quelle für Setup und Config
   helpers.ts                virtueller Authenticator, DB-Zugriff, Reset, Clock-Skew (skewClock)
-  shell.spec.ts             Login, fünf Tabs, aktiver Tab, Header-Einstellungen, Redirect /heute/gewohnheiten (issue #123)
+  shell.spec.ts             Login, fünf Tabs (aus NAV_ITEMS abgeleitet), aktiver Tab, Header-Einstellungen, Redirect /heute/gewohnheiten (issue #123)
+  nav-order.spec.ts         Karussell ab mehr Einträgen als Plätzen, aktiver Tab holt sich selbst heran, Reihenfolge in den Einstellungen + Reload, unbekannte/fehlende Ids, Sidebar ab 768px, reduced-motion, Dark Mode (issue #205)
   offline-critical.spec.ts  Kritischer Pfad SW → IndexedDB → Outbox → Postgres, läuft gegen echten Prod-Build (issue #57)
   sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session, Konfliktauflösung unter Uhrversatz (#53)
   tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline

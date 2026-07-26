@@ -86,10 +86,23 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Carousel past five entries (issue #205): scrollable instead of shrinking every
+     tab to fit. `mandatory` plus each item's `scroll-snap-align` below is what turns
+     a swipe into a clean stop on a tab, never a half-visible one at the edge. */
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.nav__list::-webkit-scrollbar {
+  display: none;
 }
 
 .nav__item {
-  flex: 1;
+  /* 20% is the one place "five visible slots" lives — a sixth entry (#180) doesn't
+     shrink these, it scrolls past them. */
+  flex: 0 0 20%;
+  scroll-snap-align: start;
 }
 
 .nav__link {
@@ -163,6 +176,15 @@
     flex: 0 1 auto;
     flex-direction: column;
     gap: var(--space-1);
+    /* Same list, no carousel here (issue #205): a static vertical column, not a
+       second design — overflow-x/scroll-snap only exist for the mobile bar above. */
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .nav__item {
+    flex: 0 1 auto;
+    scroll-snap-align: none;
   }
 
   .nav__link {
