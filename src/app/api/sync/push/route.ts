@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
+  isReadOnlyTable,
   malformedFields,
   type Mutation,
   type PushConflict,
@@ -67,6 +68,14 @@ export async function POST(request: Request) {
       const malformed = malformedFields(mutation);
       if (malformed.length > 0) {
         rejected.push({ mutationId: mutation?.id, reason: 'malformed', missing: malformed });
+        continue;
+      }
+
+      // Server-origin data (ADR-0011): rejected before it ever touches the table,
+      // not via an empty `writable` list — that alone would still let an empty
+      // payload through and tombstone a row via `deletedAt`.
+      if (isReadOnlyTable(mutation.table)) {
+        rejected.push({ mutationId: mutation.id, reason: 'read-only', missing: [] });
         continue;
       }
 
