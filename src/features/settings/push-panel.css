@@ -1,0 +1,28 @@
+.push-panel__hint {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.push-panel__button {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.push-panel__button:active {
+  opacity: 0.85;
+}
+
+.push-panel__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
