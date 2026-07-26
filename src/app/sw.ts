@@ -13,16 +13,29 @@ declare global {
     __lastNotificationClick?: string;
     // Headless Chromium on Linux CI has no real notification service: even with
     // context.grantPermissions(['notifications']), self.registration.showNotification()
-    // throws NotAllowedError (confirmed in #122, both e2e-main and e2e-offline).
-    // These record the attempt so push-sw.prod.spec.ts can verify the handler built
-    // and tried to show/click the right notification without depending on Chromium
-    // actually being able to display one.
+    // throws (confirmed in #122, both e2e-main and e2e-offline). These record the
+    // attempt so push-sw.prod.spec.ts can verify the handler built and tried to
+    // show/click the right notification without depending on Chromium actually
+    // being able to display one.
     __e2eShownNotifications?: ReturnType<typeof buildNotification>[];
     __simulateNotificationClick?: (url: string) => Promise<void>;
   }
 }
 
 declare const self: ServiceWorkerGlobalScope;
+
+// Chromium throws a plain TypeError (not a DOMException) for this specific
+// check, so match on message rather than error.name/instanceof DOMException.
+function isMissingNotificationService(error: unknown): boolean {
+  return error instanceof Error && /No notification permission has been granted/.test(error.message);
+}
+
+// Client.focus() is spec-gated on user activation. A real notificationclick
+// (the only place this normally runs) carries that; our E2E-only synthetic
+// click (see __simulateNotificationClick below) does not, so it throws here.
+function isMissingUserActivation(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'InvalidAccessError';
+}
 
 async function showPushNotification(data: unknown): Promise<void> {
   const payload = parsePushPayload(data);
@@ -31,8 +44,7 @@ async function showPushNotification(data: unknown): Promise<void> {
   try {
     await self.registration.showNotification(notification.title, notification.options);
   } catch (error) {
-    const isMissingNotificationService = error instanceof DOMException && error.name === 'NotAllowedError';
-    if (process.env.NEXT_PUBLIC_E2E !== '1' || !isMissingNotificationService) throw error;
+    if (process.env.NEXT_PUBLIC_E2E !== '1' || !isMissingNotificationService(error)) throw error;
   }
   if (process.env.NEXT_PUBLIC_E2E === '1') {
     self.__e2eShownNotifications = [...(self.__e2eShownNotifications ?? []), notification];
@@ -40,14 +52,18 @@ async function showPushNotification(data: unknown): Promise<void> {
 }
 
 async function focusOrOpenClient(url: string): Promise<void> {
-  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  for (const client of clientList) {
-    if ('focus' in client) {
-      await client.focus();
-      return;
+  try {
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientList) {
+      if ('focus' in client) {
+        await client.focus();
+        return;
+      }
     }
+    await self.clients.openWindow(url);
+  } catch (error) {
+    if (process.env.NEXT_PUBLIC_E2E !== '1' || !isMissingUserActivation(error)) throw error;
   }
-  await self.clients.openWindow(url);
 }
 
 async function handleNotificationClick(url: string, notification: { close(): void }): Promise<void> {
