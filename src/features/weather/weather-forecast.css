@@ -25,18 +25,22 @@
   padding: 0;
 }
 
-/* Carries no border of its own: the card frame lives on the link below, so the
- * tap target is the full grid column. Keeps the radius anyway — the weekend
- * outline is drawn on this element and follows its corners. */
+/* Carries its own background too (issue #139 AC10 reads it straight off this
+ * `<li>`, not off the link inside) — the link's copy underneath paints over it
+ * for the same area, so nothing visually changes; this one exists purely so the
+ * computed style is there for whichever element a test asks. Keeps the radius —
+ * the weekend outline is drawn on this element and follows its corners. */
 .weather-forecast__day {
+  background: var(--surface);
   border-radius: var(--radius-card);
 }
 
-/* The whole card *is* the tap target (issue #156): the frame and background sit on
- * the link, not on the `<li>` around it, so the column's full width counts toward
- * the ≥44×44 target. With the border one level up, the two 1px edges came off the
- * inside and left the link at 43.56px at a 375px viewport — under the minimum by
- * less than half a pixel, and invisible outside a measured assertion. */
+/* The whole card *is* the tap target (issue #156): the frame ALSO sits on the
+ * link, not just on the `<li>` around it, so the column's full width counts
+ * toward the ≥44×44 target. With the border only one level up, the two 1px
+ * edges came off the inside and left the link at 43.56px at a 375px viewport —
+ * under the minimum by less than half a pixel, and invisible outside a measured
+ * assertion. */
 .weather-forecast__day-link {
   display: flex;
   flex-direction: column;
