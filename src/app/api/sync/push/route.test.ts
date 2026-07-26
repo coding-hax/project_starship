@@ -79,4 +79,26 @@ describe('POST /api/sync/push', () => {
     const response = await POST(makeRequest('not-an-array'));
     expect(response.status).toBe(400);
   });
+
+  it('rejects a mutation on a read-only table (ADR-0011) without touching the DB', async () => {
+    const { POST } = await import('./route');
+    const mutation: Mutation = {
+      id: 'garmin-1',
+      table: 'garmin_activities',
+      rowId: 'row-garmin-1',
+      op: 'upsert',
+      payload: { name: 'Fälschung' },
+      updatedAt: new Date().toISOString(),
+      baseSeq: null,
+    };
+
+    const response = await POST(makeRequest([mutation]));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.applied).toEqual([]);
+    expect(body.rejected).toEqual([{ mutationId: 'garmin-1', reason: 'read-only', missing: [] }]);
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateWhere).not.toHaveBeenCalled();
+  });
 });
