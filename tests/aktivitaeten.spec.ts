@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type Page, test } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 /**
  * Aktivitäten-Seite + Monatsstand (issue #180). Activities are server-origin,
@@ -94,18 +94,13 @@ test.beforeEach(async ({ page }) => {
   // designed to catch. Fulfilling (not aborting, unlike uebersicht.spec.ts's
   // default) matters: an aborted fetch still makes use-weather-forecast.ts log its
   // own '[weather] refresh failed' error, which would just swap an intermittent
-  // failure for a deterministic one.
+  // failure for a deterministic one. Built through openMeteoForecastBody() rather
+  // than inline for the same reason: since issue #156 parseForecast also reads
+  // `hourly`, and a body carrying only `daily` throws inside the refresh — landing
+  // as exactly the console error AC5 asserts against.
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
-      json: {
-        daily: {
-          time: ['2026-07-26'],
-          weather_code: [0],
-          temperature_2m_max: [20],
-          temperature_2m_min: [10],
-          precipitation_probability_max: [0],
-        },
-      },
+      json: openMeteoForecastBody({ dates: ['2026-07-26'], tempsMax: [20], tempsMin: [10] }),
     }),
   );
   await skewClock(page, NOW);
