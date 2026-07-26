@@ -9,6 +9,12 @@
 # Das Skript bringt portable Ersatzlösungen mit und läuft so auf beiden Systemen.
 set -uo pipefail
 
+# Wo dieses Skript samt TS-Kern liegt -- die Wurzel des Checkouts, aus dem der
+# Runner GESTARTET wurde. Bewusst getrennt von $REPO_DIR (dem Arbeitsbaum, an
+# dem gebaut wird): der Shim holt claude-runner.sh aus origin/main, und cli.ts
+# muss aus demselben Stand kommen wie das Skript, das es aufruft.
+RUNNER_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
 QUEUE_ISSUE="${QUEUE_ISSUE:-0}"         # Nr. des Prioritäts-Queue-Issues (0 = aus)
@@ -1352,12 +1358,21 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
 # Ein fehlendes/kaputtes `tsx` (ENOENT -> Exit 127, bash meldet das bei einem
 # nicht existierenden Pfad von selbst so) meldet sich zusaetzlich HOERBAR
 # ueber status() -- ein unbeaufsichtigter Lauf darf das nicht still schlucken.
+#
+# Der TS-Kern wird ueber $RUNNER_HOME aufgeloest, NICHT ueber $REPO_DIR: cli.ts
+# gehoert zu diesem Skript, nicht zum Arbeitsbaum, an dem gerade gebaut wird.
+# Beides faellt im Normalbetrieb zusammen; in den Bash-Suiten zeigt $REPO_DIR
+# dagegen auf ein leeres Wegwerf-Verzeichnis ohne node_modules, und ts_run()
+# lief dort bisher zwangslaeufig ins 127 -- die Suiten haben damit den
+# Bash-Rueckfallpfad geprueft statt den echten Kern. Mit S6 gibt es diesen
+# Rueckfallpfad nicht mehr, also muss die Naht auch aus einem fremden
+# Arbeitsbaum heraus tragen.
 ts_run() {   # $1 = Kommando, Rest = Argumente -> stdout/Exit-Code wie cli.ts
   local cmd="$1"
   [ "$RUNNER_TS" = "0" ] && return 127
 
   local out rc
-  out=$("$REPO_DIR/node_modules/.bin/tsx" "$REPO_DIR/scripts/runner/cli.ts" "$@")
+  out=$("$RUNNER_HOME/node_modules/.bin/tsx" "$RUNNER_HOME/scripts/runner/cli.ts" "$@")
   rc=$?
   if [ "$rc" -eq 127 ]; then
     status "TS-Naht ausgefallen" "🔴" \
