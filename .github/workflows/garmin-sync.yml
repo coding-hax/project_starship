@@ -1,0 +1,37 @@
+name: Garmin-Aktivitäten-Sync
+
+# #186: holt neue Garmin-Aktivitäten in Postgres, von wo sie über den normalen
+# Pull an den Client gehen (ADR-0011). Vendor-neutral mit Absicht (Regel 7,
+# Korrektur aus #185): ein gewöhnlicher HTTP-POST, kein Vercel-Cron-Primitiv --
+# auf einem eigenen Server genügt später eine Zeile crontab mit curl.
+on:
+  schedule:
+    - cron: '23 3 * * *' # nachts, versetzte Minute -- kein Gleichlauf mit anderen Crons
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/garmin-sync
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          GARMIN_SYNC_SECRET: ${{ secrets.GARMIN_SYNC_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$GARMIN_SYNC_SECRET" ]; then
+            echo "APP_URL oder GARMIN_SYNC_SECRET fehlt als Repo-Secret -- Abbruch." >&2
+            exit 1
+          fi
+
+          STATUS=$(curl -s -o /tmp/garmin-sync-response.json -w '%{http_code}' \
+            -X POST "$APP_URL/api/garmin-sync" \
+            -H "Authorization: Bearer $GARMIN_SYNC_SECRET")
+
+          echo "Status: $STATUS"
+          cat /tmp/garmin-sync-response.json
+
+          case "$STATUS" in
+            2??) echo "✓ Sync gelaufen." ;;
+            409) echo "✗ Kein gültiges OAuth1-Token -- Bootstrap nötig (scripts/garmin-bootstrap.md)." >&2; exit 1 ;;
+            *) echo "✗ Unerwarteter Status $STATUS." >&2; exit 1 ;;
+          esac
