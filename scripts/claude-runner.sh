@@ -166,7 +166,11 @@ status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
   local sig text
   text="$3${RELEASED_PARKED_NOTE:-}"
-  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$text")
+  # sha1_of_bash direkt, NICHT sha1_of(): ts_run() meldet ein fehlendes/kaputtes
+  # tsx seinerseits ueber status() -- ueber den Wrapper waere das eine
+  # Endlosrekursion (status -> sha1_of -> ts_run -> status -> ...). Dieser Zweig
+  # muss ein garantierter No-Op bleiben, wie die Bailout-Meldung in #199 S2.
+  sig=$(sha1_of_bash "$2 Runner · $1"$'\x1e'"$text")
   [ "$(cat "$STATUS_HASH_FILE" 2>/dev/null)" = "$sig" ] && return 0
   gh issue edit "$STATUS_ISSUE" \
     --title "$2 Runner · $1" \
