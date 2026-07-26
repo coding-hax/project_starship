@@ -992,7 +992,9 @@ self_heal_park_bash() {
   if [ -n "$to_park" ]; then
     while IFS= read -r n; do
       [ -z "$n" ] && continue
-      if park_issue "$n"; then
+      # park_issue_bash() direkt (nicht der Wrapper) -- Konvention aus S2/S3:
+      # eine _bash-Komposition ruft nie ueber ts_run zurueck.
+      if park_issue_bash "$n"; then
         parked_ok=$(printf '%s' "$parked_ok" | jq --argjson n "$n" '. + [$n]')
       fi
     done <<< "$to_park"
@@ -1048,7 +1050,9 @@ pick_ticket_bash() {
   fi
 
   # Prioritaets-Queue (S2) -- Label egal fuer den Rang, Rolle kommt aus dem Label.
-  order=$(queue_order_flat "$queue_body")
+  # queue_order_flat_bash() direkt (nicht der Wrapper) -- Konvention aus S2/S3:
+  # eine _bash-Komposition ruft nie ueber ts_run zurueck.
+  order=$(queue_order_flat_bash "$queue_body")
   local qpick
   qpick=$(printf '%s' "$snapshot" | jq -r --argjson order "$order" '
     [ .[] | (.labels|map(.name)) as $l | (.number) as $n
