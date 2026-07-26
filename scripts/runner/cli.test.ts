@@ -94,6 +94,15 @@ describe('dispatch', () => {
       'pr-squash-merge',
       'reopen-falsely-closed-issues',
       'pr-failure-summary',
+      'watch-running-issue',
+      'watch-parked-issues',
+      'self-heal-park',
+      'pick-ticket',
+      'waiting-issues',
+      'parked-issues',
+      'park-issue',
+      'queue-snapshot',
+      'queue-body',
     ]);
   });
 

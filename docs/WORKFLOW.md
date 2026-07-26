@@ -287,7 +287,13 @@ mit den Konfliktdateien im Auftrag (derselbe Mechanismus wie bei einem roten
 Check).
 
 **Die Wache gilt auch für `parked`-Tickets (#154), mit denselben vier
-Zuständen wie das laufende Ticket (#173).** Die Tabelle oben beobachtet nur
+Zuständen wie das laufende Ticket (#173).** Seit #202 (S5 von #184) ist das
+keine Beschreibung mehr, die zwei getrennte Bash-Blöcke zufällig einhalten,
+sondern eine einzige Übergangstabelle: `scripts/runner/watch.ts`,
+`watchReaction()` (`WatchState × parked -> Reaktion`). `watchRunningIssue()`
+und `watchParkedIssues()` lösen den PR-Zustand (S4, `PrState`) je zu einem
+`WatchState` auf und lassen danach dieselbe Tabelle entscheiden — `parked` ist
+dort ein Eingabefeld, kein eigener Zweig mehr. Die Tabelle oben beobachtet nur
 das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins, das an
 `protected-paths` hing und auf `human-approved` wartete) fiel bisher aus der
 Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145), aber die
