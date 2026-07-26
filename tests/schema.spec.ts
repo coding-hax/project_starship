@@ -3,6 +3,8 @@ import { getTableColumns, getTableName } from 'drizzle-orm';
 import {
   authChallenges,
   credentials,
+  garminActivities,
+  garminTokens,
   habitLogs,
   habits,
   pushSubscriptions,
@@ -34,6 +36,8 @@ const tables = [
   authChallenges,
   recoveryCodes,
   pushSubscriptions,
+  garminActivities,
+  garminTokens,
 ];
 
 for (const table of tables) {
