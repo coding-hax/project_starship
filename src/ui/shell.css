@@ -70,6 +70,12 @@
 
 .nav {
   grid-row: 3;
+  /* `.nav` is a grid item; like a flex item, its automatic minimum width defaults
+     to its content's min-content size, which the carousel deliberately exceeds
+     once there are more than five entries. Without this, `.shell`'s single
+     implicit column grows to fit it, and the whole page gains horizontal
+     overflow instead of `.nav__list` scrolling internally (issue #205 AC1). */
+  min-width: 0;
   position: sticky;
   bottom: 0;
   display: flex;
@@ -77,7 +83,10 @@
   background: color-mix(in oklch, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);
-  padding-bottom: env(safe-area-inset-bottom);
+  /* A bare `env()` resolves to nothing on a device without a notch, computing to
+     0px — the home-indicator gap disappears entirely instead of just not growing.
+     The baseline keeps a minimum gap everywhere; the inset only ever adds to it. */
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
 }
 
 .nav__list {
@@ -86,10 +95,28 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Carousel past five entries (issue #205): scrollable instead of shrinking every
+     tab to fit. `mandatory` plus each item's `scroll-snap-align` below is what turns
+     a swipe into a clean stop on a tab, never a half-visible one at the edge. */
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.nav__list::-webkit-scrollbar {
+  display: none;
 }
 
 .nav__item {
-  flex: 1;
+  /* 20% is the one place "five visible slots" lives — a sixth entry (#180) doesn't
+     shrink these, it scrolls past them. */
+  flex: 0 0 20%;
+  /* Flex items default to `min-width: auto` (their content's min-content size),
+     which wins over a smaller flex-basis when flex-shrink is 0 — an unbreakable
+     label ("Gewohnheiten") would otherwise force this one slot past its 20% and
+     the whole row past five visible items. `min-width: 0` makes the 20% absolute. */
+  min-width: 0;
+  scroll-snap-align: start;
 }
 
 .nav__link {
@@ -113,6 +140,18 @@
 
 .nav__icon {
   display: flex;
+}
+
+.nav__label {
+  /* `.nav__link`'s `align-items: center` sizes children to their own content, so
+     without a cap here the label would render at its full text width instead of
+     shrinking to the slot — same overflow this is meant to avoid (issue #205 AC1),
+     just moved one level down. A truncated label still reports its full text as
+     the link's accessible name; only the paint is clipped. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ------------------------------- desktop -------------------------------- */
@@ -163,6 +202,15 @@
     flex: 0 1 auto;
     flex-direction: column;
     gap: var(--space-1);
+    /* Same list, no carousel here (issue #205): a static vertical column, not a
+       second design — overflow-x/scroll-snap only exist for the mobile bar above. */
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .nav__item {
+    flex: 0 1 auto;
+    scroll-snap-align: none;
   }
 
   .nav__link {

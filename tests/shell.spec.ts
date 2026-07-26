@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { NAV_ITEMS } from '../src/ui/nav-items';
 import { registerPasskey, resetDatabase } from './helpers';
+
+const NAV_LABELS = NAV_ITEMS.map((item) => item.label);
 
 // Drives the auth UI itself and asserts the never-registered state, so it opts out of
 // the shared owner session and keeps the full reset (#115).
@@ -61,8 +64,9 @@ test('every tab label fits on one line with a ≥44×44px touch target (issue #1
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of NAV_LABELS) {
     const link = nav.getByRole('link', { name: label });
+    await link.scrollIntoViewIfNeeded();
     const box = await link.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThanOrEqual(44);
@@ -83,8 +87,10 @@ test('the nav carries the same five entries in both layouts (issue #123 AC3)', a
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
-    await expect(nav.getByRole('link', { name: label })).toBeVisible();
+  for (const label of NAV_LABELS) {
+    const link = nav.getByRole('link', { name: label });
+    await link.scrollIntoViewIfNeeded();
+    await expect(link).toBeVisible();
   }
 });
 
@@ -149,7 +155,8 @@ test('the bottom nav still reserves space for the home indicator (issue #123 AC6
         if (
           rule instanceof CSSStyleRule &&
           rule.selectorText === '.nav' &&
-          rule.cssText.includes('padding-bottom: env(safe-area-inset-bottom)')
+          rule.cssText.includes('padding-bottom:') &&
+          rule.cssText.includes('env(safe-area-inset-bottom)')
         ) {
           return true;
         }
@@ -190,8 +197,10 @@ test('every tab and the settings entry render an SVG icon at 24px — no Unicode
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
-    const svg = nav.getByRole('link', { name: label }).locator('svg');
+  for (const label of NAV_LABELS) {
+    const link = nav.getByRole('link', { name: label });
+    await link.scrollIntoViewIfNeeded();
+    const svg = link.locator('svg');
     await expect(svg).toHaveCount(1);
     const box = await svg.boundingBox();
     expect(box).not.toBeNull();
@@ -232,8 +241,9 @@ test('nav icons are invisible to screen readers; the tab label stays the accessi
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of NAV_LABELS) {
     const link = nav.getByRole('link', { name: label });
+    await link.scrollIntoViewIfNeeded();
     await expect(link).toHaveAccessibleName(label);
     await expect(link.locator('svg')).toHaveAttribute('aria-hidden', 'true');
   }
