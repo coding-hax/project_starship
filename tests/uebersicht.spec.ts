@@ -156,9 +156,13 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await expect(dueTaskItems(page)).toHaveCount(1);
     const filledGap = await gapBetween(aufgaben, gewohnheiten);
 
-    // A card is 44px tall; anything wider than a card's own gap would read as a
-    // hole in the page rather than as a section that happens to be empty.
-    expect(Math.abs(emptyGap - filledGap)).toBeLessThanOrEqual(8);
+    // The empty state occupies one card's box, so the two gaps differ by rounding
+    // at most. Anything beyond that is the hole this ticket is about — the numbers
+    // travel in the message, so a red run says how far off it is.
+    expect(
+      Math.abs(emptyGap - filledGap),
+      `leer ${emptyGap}px vs. mit Aufgabe ${filledGap}px bei ${width}px`,
+    ).toBeLessThanOrEqual(8);
 
     await page.evaluate(
       (rowId) => window.__starship.mutate({ table: 'tasks', rowId, op: 'delete' }),

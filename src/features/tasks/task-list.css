@@ -23,9 +23,12 @@
 /**
  * On /uebersicht the empty state sits between two section headings, where
  * space-12 tore a hole into the page — nothing due looked like a rendering bug
- * (issue #228). One task card's height instead, so the rhythm between the
- * sections is the same whether or not something is due. The full /aufgaben
- * screen keeps the roomy version: there the empty state is the page.
+ * (issue #228). Exactly one task card's box instead, so the rhythm between the
+ * sections is the same whether or not something is due: the same three parts a
+ * `.task-list__item` is built from — the touch-target-tall checkbox column,
+ * space-3 of padding, a 1px border — the border merely transparent, since this
+ * is a note and not a card. The full /aufgaben screen keeps the roomy version:
+ * there the empty state is the page.
  */
 .task-list__empty--compact {
   display: flex;
@@ -33,6 +36,7 @@
   justify-content: center;
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
+  border: 1px solid transparent;
 }
 
 .task-list {
