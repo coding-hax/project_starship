@@ -17,6 +17,14 @@ const e2eEnv = {
   NEXT_PUBLIC_E2E: '1',
   RP_ID: 'localhost',
   RP_NAME: 'Starship',
+  // Throwaway VAPID keypair (issue #122) generated solely for this test run — not
+  // a real secret, not tied to any device or account, never used outside the E2E
+  // suite. Real deployments generate their own via `npx web-push generate-vapid-keys`
+  // and keep VAPID_PRIVATE_KEY out of the repo (ADR-0010, .env.example).
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY:
+    'BGPrJFHUqtjjSLRI_8sRvW1AGoogzhtSCbyrSCUioJlBpBw2RIH113USwjkfN5egVnSeuqNSDUD3sCSAbhrLRCE',
+  VAPID_PRIVATE_KEY: 'izNKwr3NI2wtJth6i-nqAz0fBXNH-I0sIx90d0_bU44',
+  VAPID_SUBJECT: 'mailto:e2e@example.com',
 };
 
 // 'main' = dev server only, 'offline' = production build only, unset = both (#115).
@@ -72,8 +80,9 @@ export default defineConfig({
   },
 
   // Every feature test runs in both viewports. A layout that only works on desktop
-  // is not done. Two specs are the exception and run only against the prod-build
-  // projects below: offline-critical.spec.ts needs a real service worker, and
+  // is not done. Three specs are the exception and run only against the prod-build
+  // projects below: offline-critical.spec.ts and push-sw.prod.spec.ts need a real
+  // service worker (Serwist is disabled in dev, see next.config.ts), and
   // smoke.prod.spec.ts asserts a production artefact (`/sw.js`). The latter used to
   // run here and passed only because an earlier `pnpm build` had left `public/sw.js`
   // behind for the dev server to serve — an accident, not coverage (#115).
@@ -97,7 +106,7 @@ export default defineConfig({
     // rightly so: nothing in the file tells a scoped test apart from a disabled one.
     {
       name: 'mobile',
-      testIgnore: /(offline-critical|smoke\.prod|.*\.desktop)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|.*\.desktop)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -107,7 +116,7 @@ export default defineConfig({
     },
     {
       name: 'desktop',
-      testIgnore: /(offline-critical|smoke\.prod|.*\.mobile)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|.*\.mobile)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -117,7 +126,7 @@ export default defineConfig({
     },
     {
       name: 'offline-mobile',
-      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -128,7 +137,7 @@ export default defineConfig({
     },
     {
       name: 'offline-desktop',
-      testMatch: /(offline-critical|smoke\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

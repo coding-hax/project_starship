@@ -54,7 +54,7 @@ export async function subscribeToPush(): Promise<PushState> {
     }));
 
   const json = subscription.toJSON();
-  await fetch('/api/push/subscribe', {
+  const response = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -63,6 +63,7 @@ export async function subscribeToPush(): Promise<PushState> {
       userAgent: navigator.userAgent,
     }),
   });
+  if (!response.ok) throw new Error(`Abo konnte nicht gespeichert werden (${response.status}).`);
 
   return 'granted';
 }
@@ -76,13 +77,15 @@ export async function unsubscribeFromPush(): Promise<void> {
 
   const endpoint = subscription.endpoint;
   await subscription.unsubscribe();
-  await fetch('/api/push/unsubscribe', {
+  const response = await fetch('/api/push/unsubscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ endpoint }),
   });
+  if (!response.ok) throw new Error(`Abo konnte nicht entfernt werden (${response.status}).`);
 }
 
 export async function sendTestPush(): Promise<void> {
-  await fetch('/api/push/test', { method: 'POST' });
+  const response = await fetch('/api/push/test', { method: 'POST' });
+  if (!response.ok) throw new Error(`Testnachricht konnte nicht gesendet werden (${response.status}).`);
 }

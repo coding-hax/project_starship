@@ -30,6 +30,9 @@ export async function sendPushToAll(payload: PushPayload): Promise<void> {
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           },
           JSON.stringify(payload),
+          // A single unreachable endpoint (dead device, DNS gone) must not stall
+          // every other subscription's delivery.
+          { timeout: 10_000 },
         );
       } catch (error) {
         const statusCode = error instanceof webpush.WebPushError ? error.statusCode : undefined;
