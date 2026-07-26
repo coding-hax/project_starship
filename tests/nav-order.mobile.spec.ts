@@ -33,14 +33,40 @@ async function trackScrollIntoView(page: Page) {
   });
 }
 
-/** Appends a 6th, non-active clone to `.nav__list` — stands in for #180's Garmin tab,
- * which is what actually pushes the bottom nav past five entries. Pure DOM
- * manipulation in the test, no app code touched. */
-async function addSixthNavItem(page: Page) {
-  await page.locator('.nav__list').evaluate((list) => {
-    const clone = list.children[0].cloneNode(true) as HTMLElement;
-    clone.querySelector('[aria-current]')?.removeAttribute('aria-current');
-    list.appendChild(clone);
+/**
+ * #180 added a real 6th entry (Aktivitäten), so the bottom nav overflows five slots
+ * by default now. One test still needs the pre-#180 no-overflow baseline to prove
+ * the "nothing to do, nothing happens" case. Removing a `.nav__item` node directly
+ * does not survive it — a client-side navigation re-renders `Nav` from the same
+ * (unchanged) `NAV_ITEMS`/`useNavOrder` state and the removed node comes right
+ * back, overflow and all.
+ *
+ * Must be an init script, not `page.addStyleTag` -- the caller still needs a fresh
+ * full navigation afterwards (to arm `trackScrollIntoView`'s prototype patch for
+ * *this* document), and a style tag added to the current document does not survive
+ * that reload. An init script does: it runs before Nav's mount on the very next
+ * navigation, so the list never overflows in the first place, and Nav's own
+ * mount-time `scrollIntoView` (issue #205 AC2) never fires. Shrinking every slot
+ * below the real 20% (shell.css) is enough to fit all six without scrolling.
+ *
+ * The `requestAnimationFrame` retry matters: an init script runs the instant the new
+ * document is created, before it has parsed so much as an `<html>` tag -- neither
+ * `document.head` nor `document.documentElement` exists yet, so appending
+ * immediately silently no-ops (and the override never lands at all, for the entire
+ * document's lifetime).
+ */
+async function forceNoOverflow(page: Page) {
+  await page.addInitScript(() => {
+    const install = () => {
+      if (!document.head) {
+        requestAnimationFrame(install);
+        return;
+      }
+      const style = document.createElement('style');
+      style.textContent = '.nav__item { flex-basis: 16% !important; }';
+      document.head.appendChild(style);
+    };
+    install();
   });
 }
 
@@ -54,10 +80,6 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
   }) => {
     const list = page.locator('.nav__list');
     const clientWidth = await list.evaluate((el) => el.clientWidth);
-    expect(await list.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(clientWidth + 1);
-
-    await addSixthNavItem(page);
-
     const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
     // Five slots stay the visible amount regardless of how many entries exist — a
     // sixth entry scrolls past them instead of shrinking all six to fit.
@@ -67,7 +89,6 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
 
   test('jeder Eintrag rastet bündig ein statt am Rand abgeschnitten zu bleiben', async ({ page }) => {
     const list = page.locator('.nav__list');
-    await addSixthNavItem(page);
     const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
 
     // Scroll to a deliberately "half a tab" position...
@@ -104,7 +125,6 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
 
-    await addSixthNavItem(page);
     const list = page.locator('.nav__list');
     // Scroll the currently-active tab (Übersicht, first slot) out of view before
     // navigating away — simulates arriving on a screen after having swiped the
@@ -120,6 +140,11 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
 
   test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
     await trackScrollIntoView(page);
+    // Back to the pre-#180 no-overflow baseline -- before the navigation below, so
+    // Nav never sees an overflowing list, not even for the one mount-time
+    // scrollIntoView call the overflowing case is supposed to make (see
+    // forceNoOverflow's doc comment).
+    await forceNoOverflow(page);
     await registerPasskey(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
@@ -137,7 +162,6 @@ test.describe('reduzierte Bewegung (issue #205 AC6)', () => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
 
-    await addSixthNavItem(page);
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 

@@ -1,0 +1,46 @@
+.activity-block {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  /* 45 days of activities is easily 45 cards + charts in one go — render only what's
+     near the viewport (Smooth-Regel 4). 720px is a generous guess at a full block's
+     height (map + stats + three charts) once every part has landed. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}
+
+.activity-block__title {
+  margin: 0;
+}
+
+.activity-block__date {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.activity-block__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0 0;
+}
+
+.activity-block__stat dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.activity-block__stat dd {
+  margin: 0;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-block--skeleton {
+  height: 120px;
+  background: var(--surface-raised);
+  animation: activity-pulse 1.4s ease-in-out infinite;
+}

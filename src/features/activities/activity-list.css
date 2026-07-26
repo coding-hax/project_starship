@@ -1,0 +1,32 @@
+.activity-list__recap {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 0 var(--space-4);
+}
+
+.activity-list__recap--skeleton {
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: transparent;
+  width: 60%;
+  height: 1.2em;
+  animation: activity-pulse 1.4s ease-in-out infinite;
+}
+
+.activity-list__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Shared by every skeleton placeholder across the activities feature (this file,
+   activity-block.css, activity-month-strip.css) — one pulse, one definition. */
+@keyframes activity-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
