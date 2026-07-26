@@ -40,3 +40,12 @@ export function buildLinePath(values: (number | null)[], width: number, height: 
 
   return { d: segments.join(' '), min, max };
 }
+
+/**
+ * `track.speed` (m/s) → seconds/km for the pace chart. A near-stopped reading
+ * (≤0.5 m/s — an Ampelpause, not real pace) becomes a gap instead of a spike
+ * toward infinity, exactly the case the null-breaks-the-path rule above exists for.
+ */
+export function paceSeries(speed: (number | null)[]): (number | null)[] {
+  return speed.map((v) => (v == null || v <= 0.5 ? null : 1000 / v));
+}

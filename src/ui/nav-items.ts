@@ -1,4 +1,4 @@
-import { IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from './icons';
+import { IconActivity, IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from './icons';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -21,4 +21,5 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'gewohnheiten', href: '/gewohnheiten', label: 'Gewohnheiten', accent: 'var(--area-habits)', Icon: IconHabits },
   { id: 'kalender', href: '/kalender', label: 'Kalender', accent: 'var(--area-events)', Icon: IconCalendar },
   { id: 'journal', href: '/journal', label: 'Journal', accent: 'var(--area-journal)', Icon: IconJournal },
+  { id: 'aktivitaeten', href: '/aktivitaeten', label: 'Aktivitäten', accent: 'var(--area-activities)', Icon: IconActivity },
 ] as const;

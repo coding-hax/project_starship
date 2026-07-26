@@ -17,6 +17,7 @@ src/
     (app)/uebersicht/uebersicht.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
+    (app)/aktivitaeten/     page.tsx           Garmin-Aktivitäten — eigene Seite, kein Widget (issue #180); <h1>, keine eigene Kopfzeile (DESIGN_SYSTEM.md, „Für den nächsten Screen")
     (app)/kalender/         Termine            (leer bis M5)
     (app)/journal/          Journal            (leer bis M4)
     (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Spracherfassung (CapturePanel) + Export-Button
@@ -81,6 +82,14 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
+    activities/                Client-seitig, liest den Vertrag aus #186 (garmin_activities), rechnet nur -- kein eigener Abruf (issue #180)
+      recap.ts                 computeRecap -- rollierendes 30-Tage-Fenster für die Seite (Aktivitäten + km)
+      format.ts                formatDistance/-Duration/-Pause/-Pace/-Hr/-Elevation -- Gedankenstrich statt 0 bei null
+      track-path.ts            projectTrack -- Äquirektangulär mit cos(latMid)-Korrektur, Bounding-Box in die viewBox eingepasst; SVG-Rückfall der Karte
+      line-path.ts             buildLinePath -- Wertreihe -> SVG-Pfad, null bricht den Pfad (Lücke statt erfundener Gerade), konstante Serie -> Mittellinie
+      use-activities.ts        ActivityView + toActivityView -- Dexie-Live-Query auf `records` (table='garmin_activities') über den Hook aus #177
+      activity-list.tsx / .css Recap oben, darunter ein ActivityBlock je Aktivität, neueste zuerst; Skeleton/Leerzustand nach dem Muster aus habit-list.tsx
+      activity-block.tsx / .css ein <article> je Aktivität: Karte, Kopfzahlen als <dl>, drei Kurven
     garmin/                   Server-seitig, kein Client-Code -- keine Garmin-Spezifika außerhalb dieses Verzeichnisses (ADR-0011, issue #186)
       connect-api.ts           handgerollte OAuth1-Signatur + OAuth2-Tausch + die zwei connectapi.garmin.com-Aufrufe, keine Client-Bibliothek
       tokens.ts                liest/schreibt garmin_tokens, erneuert OAuth2 aus OAuth1, GarminBootstrapRequired statt Login-Versuch

@@ -22,6 +22,10 @@
 @import '../features/weather/weather-forecast.css';
 @import '../features/settings/weather-panel.css';
 @import '../features/settings/nav-order-panel.css';
+@import '../features/activities/activity-list.css';
+@import '../features/activities/activity-block.css';
+@import '../features/activities/activity-map.css';
+@import '../features/activities/activity-chart.css';
 @import './(app)/uebersicht/uebersicht.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist

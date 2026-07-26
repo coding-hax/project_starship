@@ -5,6 +5,7 @@ import {
   formatElevation,
   formatHr,
   formatPace,
+  formatPaceSecondsPerKm,
   formatPause,
 } from './format';
 
@@ -53,6 +54,12 @@ describe('formatPace', () => {
 
   it('is an en dash for a stopped/near-zero speed', () => {
     expect(formatPace(0)).toBe('–');
+  });
+});
+
+describe('formatPaceSecondsPerKm', () => {
+  it('renders minutes:seconds per km directly from a seconds/km value', () => {
+    expect(formatPaceSecondsPerKm(250)).toBe('4:10 min/km');
   });
 });
 

@@ -1,0 +1,19 @@
+.activity-list__recap {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 0 var(--space-4);
+}
+
+.activity-list__recap--skeleton {
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: transparent;
+  width: 60%;
+  height: 1.2em;
+}
+
+.activity-list__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}

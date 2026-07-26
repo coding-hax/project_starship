@@ -28,17 +28,26 @@ export function formatPause(seconds: number | null): string {
   return formatDuration(seconds);
 }
 
-/** `metersPerSecond` → minutes:seconds per km, e.g. `5:12 min/km`. */
-export function formatPace(metersPerSecond: number | null): string {
-  if (metersPerSecond == null || metersPerSecond <= 0) return DASH;
-  const secPerKm = 1000 / metersPerSecond;
-  let m = Math.floor(secPerKm / 60);
-  let s = Math.round(secPerKm % 60);
+function minSec(totalSeconds: number): string {
+  let m = Math.floor(totalSeconds / 60);
+  let s = Math.round(totalSeconds % 60);
   if (s === 60) {
     s = 0;
     m += 1;
   }
-  return `${m}:${String(s).padStart(2, '0')} min/km`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** `metersPerSecond` → minutes:seconds per km, e.g. `5:12 min/km`. */
+export function formatPace(metersPerSecond: number | null): string {
+  if (metersPerSecond == null || metersPerSecond <= 0) return DASH;
+  return `${minSec(1000 / metersPerSecond)} min/km`;
+}
+
+/** Same conversion as `formatPace`, already in seconds/km — the pace chart's
+ * y-axis domain (`activity-chart.tsx`), which works in that unit throughout. */
+export function formatPaceSecondsPerKm(secondsPerKm: number): string {
+  return `${minSec(secondsPerKm)} min/km`;
 }
 
 export function formatHr(bpm: number | null): string {

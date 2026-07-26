@@ -33,14 +33,16 @@ async function trackScrollIntoView(page: Page) {
   });
 }
 
-/** Appends a 6th, non-active clone to `.nav__list` — stands in for #180's Garmin tab,
- * which is what actually pushes the bottom nav past five entries. Pure DOM
- * manipulation in the test, no app code touched. */
-async function addSixthNavItem(page: Page) {
+/**
+ * #180 added a real 6th entry (Aktivitäten), so the bottom nav overflows five slots
+ * by default now — no synthetic clone needed to reach that state any more. A few
+ * tests still need the *pre-#180* five-entry baseline to prove the no-overflow case;
+ * they get there by dropping the last (non-active, since navigation starts on
+ * Übersicht) entry back off instead.
+ */
+async function removeLastNavItem(page: Page) {
   await page.locator('.nav__list').evaluate((list) => {
-    const clone = list.children[0].cloneNode(true) as HTMLElement;
-    clone.querySelector('[aria-current]')?.removeAttribute('aria-current');
-    list.appendChild(clone);
+    list.lastElementChild?.remove();
   });
 }
 
@@ -53,10 +55,14 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
     page,
   }) => {
     const list = page.locator('.nav__list');
+
+    // Baseline (pre-#180 shape): exactly five entries fit without overflow.
+    await removeLastNavItem(page);
     const clientWidth = await list.evaluate((el) => el.clientWidth);
     expect(await list.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(clientWidth + 1);
 
-    await addSixthNavItem(page);
+    // The real 6th entry (Aktivitäten, #180) back in view via a reload.
+    await page.reload();
 
     const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
     // Five slots stay the visible amount regardless of how many entries exist — a
@@ -67,7 +73,6 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
 
   test('jeder Eintrag rastet bündig ein statt am Rand abgeschnitten zu bleiben', async ({ page }) => {
     const list = page.locator('.nav__list');
-    await addSixthNavItem(page);
     const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
 
     // Scroll to a deliberately "half a tab" position...
@@ -104,7 +109,6 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
 
-    await addSixthNavItem(page);
     const list = page.locator('.nav__list');
     // Scroll the currently-active tab (Übersicht, first slot) out of view before
     // navigating away — simulates arriving on a screen after having swiped the
@@ -121,6 +125,8 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
   test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
+    // Back to the pre-#180 five-entry baseline — the only shape without overflow.
+    await removeLastNavItem(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
     await expect(page).toHaveURL(/\/journal$/);
@@ -137,7 +143,6 @@ test.describe('reduzierte Bewegung (issue #205 AC6)', () => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
 
-    await addSixthNavItem(page);
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 
