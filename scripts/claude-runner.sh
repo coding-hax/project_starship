@@ -163,8 +163,13 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   local secs="$1"; shift
   rm -f "$TIMED_OUT"
 
+  # `<&0` sieht nach einem No-Op aus, ist aber die halbe Miete: ein
+  # Hintergrundjob OHNE ausdrueckliche Eingabe-Umlenkung bekommt stdin von
+  # /dev/null verpasst -- der Prompt aus der Pipe (siehe run_round) kaeme nie
+  # bei `claude` an, und die linke Seite der Pipe stuerbe an EPIPE. Die
+  # ausdrueckliche Umlenkung schaltet genau diese Ersetzung ab.
   set -m
-  "$@" > "$LOG" 2>&1 &
+  "$@" <&0 > "$LOG" 2>&1 &
   local cmd_pid=$!
   set +m
 

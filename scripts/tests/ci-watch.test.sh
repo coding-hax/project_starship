@@ -344,15 +344,21 @@ assert_contains "T5 (#191): pr_catch_up_behind bleibt als Netz erwähnt" \
 # unveraendert aufrufbar -- der Pre-Push-Merge im Bau-Prompt ist eine
 # Ergaenzung, kein Ersatz.
 # ==============================================================================
-if grep -q "^pr_catch_up_behind() {" "$RUNNER"; then
-  ok "T5b (#191): pr_catch_up_behind() ist weiterhin im Runner definiert"
+#
+# Seit S6 (#203) liegt das Netz im TS-Kern statt in Bash -- die Aussage bleibt
+# dieselbe (es existiert, und die CI-Wache ruft es fuer das laufende Ticket),
+# nur die Fundstelle wandert von claude-runner.sh nach scripts/runner/.
+CATCHUP_TS="$TEST_DIR/../runner/catchup.ts"
+WATCH_TS="$TEST_DIR/../runner/watch.ts"
+if grep -q "^export function prCatchUpBehind" "$CATCHUP_TS"; then
+  ok "T5b (#191): prCatchUpBehind() ist weiterhin im TS-Kern definiert"
 else
-  red "T5b (#191): pr_catch_up_behind() fehlt im Runner"
+  red "T5b (#191): prCatchUpBehind() fehlt in scripts/runner/catchup.ts"
 fi
-if grep -q 'pr_catch_up_behind "\$PR_NUM"' "$RUNNER"; then
-  ok "T5b (#191): pr_catch_up_behind() wird weiterhin fuer das laufende Ticket aufgerufen"
+if grep -q 'prCatchUpBehind(' "$WATCH_TS"; then
+  ok "T5b (#191): prCatchUpBehind() wird weiterhin von der CI-Wache aufgerufen"
 else
-  red "T5b (#191): Aufruf von pr_catch_up_behind() fuer PR_NUM fehlt"
+  red "T5b (#191): Aufruf von prCatchUpBehind() in scripts/runner/watch.ts fehlt"
 fi
 
 # ==============================================================================
