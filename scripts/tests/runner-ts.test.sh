@@ -13,11 +13,16 @@ TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$TEST_DIR/../claude-runner.sh"
 
 FAIL=0
-red()  { printf '\033[31m✗ %s\033[0m\n' "$1"; FAIL=1; }
+# Jeder Testblock unten laeuft in einer SUBSHELL -- ein dort gesetztes FAIL=1
+# erreicht diese Shell nie. Deshalb zusaetzlich eine Flag-Datei, die am Ende
+# ausgewertet wird: ohne sie meldete die Suite gruen, obwohl Pruefungen rot
+# waren (gefunden in #203, S6).
+red()  { printf '\033[31m✗ %s\033[0m\n' "$1"; FAIL=1; : > "$FAIL_FLAG"; }
 ok()   { printf '\033[32m✓ %s\033[0m\n' "$1"; }
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+FAIL_FLAG="$TMP/failed"
 
 FAKEBIN="$TMP/bin"
 mkdir -p "$FAKEBIN"
@@ -52,56 +57,43 @@ export STATUS_ISSUE=999
 export QUEUE_ISSUE=0
 export MAX_ROUNDS=1
 
-# --- Wegwerf-REPO_DIR mit funktionierender tsx-Attrappe -----------------------
-REPO_WITH_TSX="$TMP/repo-with-tsx"
-mkdir -p "$REPO_WITH_TSX/node_modules/.bin" "$REPO_WITH_TSX/scripts/runner"
-cat > "$REPO_WITH_TSX/node_modules/.bin/tsx" <<'STUB'
+# --- Wegwerf-RUNNER_HOME mit funktionierender tsx-Attrappe --------------------
+# Seit S6 (#203) loest ts_run den Kern ueber $RUNNER_HOME auf, nicht ueber
+# $REPO_DIR -- cli.ts gehoert zum Skript, nicht zum Arbeitsbaum. Die Fixture
+# setzt deshalb RUNNER_HOME.
+HOME_WITH_TSX="$TMP/home-with-tsx"
+mkdir -p "$HOME_WITH_TSX/node_modules/.bin" "$HOME_WITH_TSX/scripts/runner"
+cat > "$HOME_WITH_TSX/node_modules/.bin/tsx" <<'STUB'
 #!/usr/bin/env bash
 touch "$TSX_CALLED_MARKER"
 echo "aus-cli-ts"
 exit 0
 STUB
-chmod +x "$REPO_WITH_TSX/node_modules/.bin/tsx"
-touch "$REPO_WITH_TSX/scripts/runner/cli.ts"   # nur ein Pfad, der als Argument existieren muss
+chmod +x "$HOME_WITH_TSX/node_modules/.bin/tsx"
+touch "$HOME_WITH_TSX/scripts/runner/cli.ts"   # nur ein Pfad, der als Argument existieren muss
 
-# --- Wegwerf-REPO_DIR OHNE tsx (kaputtes/fehlendes node_modules) -------------
-REPO_WITHOUT_TSX="$TMP/repo-without-tsx"
-mkdir -p "$REPO_WITHOUT_TSX/scripts/runner"
+# --- Wegwerf-RUNNER_HOME OHNE tsx (kaputtes/fehlendes node_modules) ----------
+HOME_WITHOUT_TSX="$TMP/home-without-tsx"
+mkdir -p "$HOME_WITHOUT_TSX/scripts/runner"
 
 # ==============================================================================
-# AC1: RUNNER_TS unbenannt (Vorgabe an) -> ts_run ruft tsx auf, stdout kommt
-# durch, Exit 0.
+# AC1: ts_run ruft tsx auf, stdout kommt durch, Exit 0.
+#
+# Der frueher hier gepruefte Kill-Switch RUNNER_TS=0 ist mit S6 (#203) entfallen
+# -- es gibt keinen Bash-Rueckfallpfad mehr, auf den er umschalten koennte.
 # ==============================================================================
 (
-  export REPO_DIR="$REPO_WITH_TSX"
+  export RUNNER_HOME="$HOME_WITH_TSX"
+  export REPO_DIR="$HOME_WITH_TSX"   # haelt cd/STATE_DIR aus dem echten Repo heraus
   export TSX_CALLED_MARKER="$TMP/marker-ac1"
-  unset RUNNER_TS
   # shellcheck source=/dev/null
   source "$RUNNER"
   OUT=$(ts_run version)
   RC=$?
   if [ "$RC" -eq 0 ] && [ "$OUT" = "aus-cli-ts" ] && [ -e "$TSX_CALLED_MARKER" ]; then
-    ok "AC1: RUNNER_TS Vorgabe an -> Ausgabe kommt aus cli.ts, Exit 0"
+    ok "AC1: ts_run -> Ausgabe kommt aus cli.ts, Exit 0"
   else
     red "AC1: erwartet Exit 0 + 'aus-cli-ts', bekommen Exit=$RC, out='$OUT', tsx aufgerufen=$([ -e "$TSX_CALLED_MARKER" ] && echo ja || echo nein)"
-  fi
-)
-
-# ==============================================================================
-# AC2: RUNNER_TS=0 -> Bash-Pfad erzwungen, tsx wird gar nicht gestartet.
-# ==============================================================================
-(
-  export REPO_DIR="$REPO_WITH_TSX"
-  export TSX_CALLED_MARKER="$TMP/marker-ac2"
-  export RUNNER_TS=0
-  # shellcheck source=/dev/null
-  source "$RUNNER"
-  ts_run version >/dev/null 2>&1
-  RC=$?
-  if [ "$RC" -eq 127 ] && [ ! -e "$TSX_CALLED_MARKER" ]; then
-    ok "AC2: RUNNER_TS=0 -> Exit 127, tsx wurde nicht gestartet"
-  else
-    red "AC2: erwartet Exit 127 ohne tsx-Aufruf, bekommen Exit=$RC, tsx aufgerufen=$([ -e "$TSX_CALLED_MARKER" ] && echo ja || echo nein)"
   fi
 )
 
@@ -110,7 +102,8 @@ mkdir -p "$REPO_WITHOUT_TSX/scripts/runner"
 # hoerbar ueber status() gemeldet (Issue-Kommentar/-Titel), nicht still verworfen.
 # ==============================================================================
 (
-  export REPO_DIR="$REPO_WITHOUT_TSX"
+  export RUNNER_HOME="$HOME_WITHOUT_TSX"
+  export REPO_DIR="$HOME_WITHOUT_TSX"   # haelt cd/STATE_DIR aus dem echten Repo heraus
   rm -rf "$GHSTATE_DIR"; mkdir -p "$GHSTATE_DIR"
   # shellcheck source=/dev/null
   source "$RUNNER"
@@ -126,6 +119,7 @@ mkdir -p "$REPO_WITHOUT_TSX/scripts/runner"
 
 # ==============================================================================
 echo
+[ -e "$FAIL_FLAG" ] && FAIL=1
 if [ "$FAIL" -eq 0 ]; then
   ok "Alle Runner-TS-Naht-Tests grün."
 else

@@ -25,7 +25,8 @@ set -uo pipefail
 # Runner GESTARTET wurde. Bewusst getrennt von $REPO_DIR (dem Arbeitsbaum, an
 # dem gebaut wird): der Shim holt claude-runner.sh aus origin/main, und cli.ts
 # muss aus demselben Stand kommen wie das Skript, das es aufruft.
-RUNNER_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Ein vorab exportierter Wert gewinnt (Testfixture), analog STATE_DIR unten.
+RUNNER_HOME="${RUNNER_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
