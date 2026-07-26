@@ -19,6 +19,7 @@ src/
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
     (app)/aktivitaeten/     page.tsx           Garmin-Aktivitäten — eigene Seite, kein Widget (issue #180); <h1>, keine eigene Kopfzeile (DESIGN_SYSTEM.md, „Für den nächsten Screen")
     (app)/kalender/         Termine            (leer bis M5)
+    (app)/wetter/[datum]/   page.tsx           Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang, rein aus der lokalen Ablage (issue #156)
     (app)/journal/          Journal            (leer bis M4)
     (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Spracherfassung (CapturePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
@@ -42,7 +43,7 @@ src/
     migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186)
   local/
     types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011
-    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139)
+    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139); WeatherDay trägt seit #156 zusätzlich sunrise/sunset/Wind + stündliche WeatherHour[] — kein neuer db.version()-Bump, da sich nur die Objektform, nicht der Store/Index ändert (Begründung im Kommentar dort)
     outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch; mutate() wirft für eine read-only-Tabelle (ADR-0011)
     sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
@@ -108,11 +109,15 @@ src/
       static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
       sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
     weather/
-      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159)
+      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail
       geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
       wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
-      use-weather-forecast.ts  Live-Query auf db.weather, ein Cache-Key je Ort (issue #159 — Ortswechsel verwirft die alte Vorhersage statt sie zu vermischen); Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
-      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, zeigt den eingestellten Ort (issue #159); Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155)
+      weather-category-labels.ts  Icon+Label je Kategorie, geteilt zwischen weather-forecast.tsx und weather-day.tsx, damit beide nicht auseinanderlaufen (issue #156)
+      use-weather-cache.ts     Reiner Lese-Hook: Live-Query auf db.weather ohne Refresh-Trigger — Basis für use-weather-forecast.ts UND use-weather-day.ts, damit das Öffnen der Tagesdetailseite nie selbst einen Netzaufruf auslöst (issue #156)
+      use-weather-forecast.ts  use-weather-cache.ts + Refresh-Trigger: Ortswechsel verwirft die alte Vorhersage statt sie zu vermischen (issue #159); Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
+      use-weather-day.ts       findWeatherDay auf use-weather-cache.ts — 'no-data' deckt sowohl „nie geladen" als auch „Datum außerhalb der 7-Tage-Vorhersage" ab (issue #156)
+      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, zeigt den eingestellten Ort (issue #159); Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155); jede Tagesspalte ist seit #156 ein Link auf /wetter/<datum>, ≥44×44
+      weather-day.tsx / .css   Tagesdetailseite: Kopf (Icon/Höchst-Tiefst), Temperaturkurve als reines <svg> (kein Chart-Paket), Niederschlags-Balken + Stundenliste, Wind, Sonnenauf-/-untergang; 'loading'/'ready'/'no-data' aus use-weather-day.ts (issue #156)
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
@@ -165,6 +170,7 @@ tests/
   habits-week-grid.spec.ts Monatsraster: Monatsanfang eingerückt, Blättern via ‹/›, Zellen über Monate hinweg, Vergangenheit nachträglich abhakbar, Zukunft gesperrt, Heute nur im laufenden Monat, Streak reagiert sofort, leerer Monat, offline, Tokens/Dark/reduced-motion (issue #105 → #124)
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
   weather.spec.ts           Wetter auf Übersicht: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
+  weather-day.spec.ts       Tagesdetailseite /wetter/<datum>: Tippen auf eine Spalte öffnet sie, Stundenverlauf/Niederschlag/Wind/Sonnenauf-und-untergang sichtbar, kein eigener Netzaufruf, offline aus der Ablage, Datum ohne Daten -> erklärender statt Fehler-Zustand, Zurück-Weg, Tap-Ziel ≥44×44, 375/1280px, Dark/reduced-motion (issue #156)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186)
   garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)

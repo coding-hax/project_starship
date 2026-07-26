@@ -158,6 +158,64 @@ export async function resetPushData() {
   });
 }
 
+interface ForecastFixture {
+  dates: string[];
+  tempsMax: number[];
+  tempsMin: number[];
+  /** Defaults to 0 = klar for every day. */
+  weatherCodes?: number[];
+  /** Defaults to 0 % for every day. */
+  precipitationProbabilityMax?: number[];
+}
+
+/**
+ * A complete Open-Meteo `/v1/forecast` body, covering every column
+ * `buildForecastUrl` asks for (src/features/weather/forecast.ts).
+ *
+ * `parseForecast` reads `hourly` as well as `daily` since issue #156, and it reads
+ * `hourly.time` unguarded. A fixture that ships `daily` alone therefore does not
+ * fail loudly — it throws inside the refresh, which `use-weather-cache.ts` catches
+ * and logs, so the spec just sees an empty forecast and a five-second timeout with
+ * no hint as to why. Build fixtures through here rather than inline, so the shape
+ * only has to be corrected in one place when the URL grows another column.
+ */
+export function openMeteoForecastBody({
+  dates,
+  tempsMax,
+  tempsMin,
+  weatherCodes = dates.map(() => 0),
+  precipitationProbabilityMax = dates.map(() => 0),
+}: ForecastFixture) {
+  const time: string[] = [];
+  const temperature_2m: number[] = [];
+  const precipitation_probability: number[] = [];
+  const precipitation: number[] = [];
+  dates.forEach((date, day) => {
+    for (let hour = 0; hour < 24; hour += 1) {
+      time.push(`${date}T${String(hour).padStart(2, '0')}:00`);
+      // A plain min-to-max ramp: the callers of this helper assert on the daily
+      // strip, so the curve only has to be present and in range, not realistic.
+      temperature_2m.push(tempsMin[day] + ((tempsMax[day] - tempsMin[day]) * hour) / 23);
+      precipitation_probability.push(precipitationProbabilityMax[day]);
+      precipitation.push(0);
+    }
+  });
+  return {
+    daily: {
+      time: dates,
+      weather_code: weatherCodes,
+      temperature_2m_max: tempsMax,
+      temperature_2m_min: tempsMin,
+      precipitation_probability_max: precipitationProbabilityMax,
+      sunrise: dates.map((date) => `${date}T05:53`),
+      sunset: dates.map((date) => `${date}T21:12`),
+      wind_speed_10m_max: dates.map(() => 12),
+      wind_gusts_10m_max: dates.map(() => 20),
+    },
+    hourly: { time, temperature_2m, precipitation_probability, precipitation },
+  };
+}
+
 /** The handle the E2E bridge puts on window. */
 declare global {
   interface Window {

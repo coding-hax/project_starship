@@ -1,39 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
-import {
-  IconWeatherClear,
-  IconWeatherCloudy,
-  IconWeatherFog,
-  IconWeatherPartlyCloudy,
-  IconWeatherRain,
-  IconWeatherSnow,
-  IconWeatherThunderstorm,
-} from '@/ui/icons';
 import { formatStaleSince, isStaleWarning, isWeekend, weekdayLabel } from './forecast';
 import { useWeatherForecast } from './use-weather-forecast';
-import type { WeatherCategory } from './wmo-icon';
+import { WEATHER_ICON_BY_CATEGORY, WEATHER_LABEL_BY_CATEGORY } from './weather-category-labels';
 import { weatherCategory } from './wmo-icon';
-
-const ICON_BY_CATEGORY = {
-  clear: IconWeatherClear,
-  'partly-cloudy': IconWeatherPartlyCloudy,
-  cloudy: IconWeatherCloudy,
-  fog: IconWeatherFog,
-  rain: IconWeatherRain,
-  snow: IconWeatherSnow,
-  thunderstorm: IconWeatherThunderstorm,
-};
-
-const LABEL_BY_CATEGORY: Record<WeatherCategory, string> = {
-  clear: 'Klar',
-  'partly-cloudy': 'Teils bewölkt',
-  cloudy: 'Bewölkt',
-  fog: 'Nebel',
-  rain: 'Regen',
-  snow: 'Schnee',
-  thunderstorm: 'Gewitter',
-};
 
 /**
  * The 7-day forecast for the configured location, at the very top of /uebersicht
@@ -64,7 +36,7 @@ export function WeatherForecast() {
         {phase === 'ready' && days
           ? days.map((day) => {
               const category = weatherCategory(day.weatherCode);
-              const Icon = ICON_BY_CATEGORY[category];
+              const Icon = WEATHER_ICON_BY_CATEGORY[category];
               const weekend = isWeekend(day.date);
               return (
                 <li
@@ -75,18 +47,22 @@ export function WeatherForecast() {
                       : 'weather-forecast__day'
                   }
                 >
-                  <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
-                  <span
-                    className="weather-forecast__icon"
-                    role="img"
-                    aria-label={LABEL_BY_CATEGORY[category]}
-                  >
-                    <Icon />
-                  </span>
-                  <span className="weather-forecast__temps">
-                    <span className="weather-forecast__temp-max">{Math.round(day.tempMax)}°</span>
-                    <span className="weather-forecast__temp-min">{Math.round(day.tempMin)}°</span>
-                  </span>
+                  {/* Own page with the hourly breakdown (issue #156) — the whole
+                      card is the tap target (≥44×44, DESIGN_SYSTEM Mobile-Patterns). */}
+                  <Link href={`/wetter/${day.date}`} className="weather-forecast__day-link">
+                    <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
+                    <span
+                      className="weather-forecast__icon"
+                      role="img"
+                      aria-label={WEATHER_LABEL_BY_CATEGORY[category]}
+                    >
+                      <Icon />
+                    </span>
+                    <span className="weather-forecast__temps">
+                      <span className="weather-forecast__temp-max">{Math.round(day.tempMax)}°</span>
+                      <span className="weather-forecast__temp-min">{Math.round(day.tempMin)}°</span>
+                    </span>
+                  </Link>
                 </li>
               );
             })
@@ -95,11 +71,13 @@ export function WeatherForecast() {
               // placeholders — that, not a guessed pixel height, is what keeps this
               // row exactly as tall as the loaded one (Smooth-Regel 3).
               <li key={i} className="weather-forecast__day weather-forecast__day--skeleton">
-                <span className="weather-forecast__weekday">&nbsp;</span>
-                <span className="weather-forecast__icon weather-forecast__icon--placeholder" />
-                <span className="weather-forecast__temps">
-                  <span className="weather-forecast__temp-max">&nbsp;</span>
-                  <span className="weather-forecast__temp-min">&nbsp;</span>
+                <span className="weather-forecast__day-link">
+                  <span className="weather-forecast__weekday">&nbsp;</span>
+                  <span className="weather-forecast__icon weather-forecast__icon--placeholder" />
+                  <span className="weather-forecast__temps">
+                    <span className="weather-forecast__temp-max">&nbsp;</span>
+                    <span className="weather-forecast__temp-min">&nbsp;</span>
+                  </span>
                 </span>
               </li>
             ))}

@@ -25,20 +25,49 @@
   padding: 0;
 }
 
+/* Carries its own background too (issue #139 AC10 reads it straight off this
+ * `<li>`, not off the link inside) — the link's copy underneath paints over it
+ * for the same area, so nothing visually changes; this one exists purely so the
+ * computed style is there for whichever element a test asks. Keeps the radius —
+ * the weekend outline is drawn on this element and follows its corners. */
 .weather-forecast__day {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+}
+
+/* The whole card *is* the tap target (issue #156): the frame ALSO sits on the
+ * link, not just on the `<li>` around it, so the column's full width counts
+ * toward the ≥44×44 target. With the border only one level up, the two 1px
+ * edges came off the inside and left the link at 43.56px at a 375px viewport —
+ * under the minimum by less than half a pixel, and invisible outside a measured
+ * assertion. */
+.weather-forecast__day-link {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+  min-height: 44px;
   padding: var(--space-2) 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.weather-forecast__day-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .weather-forecast__day--skeleton {
-  background: var(--surface-raised);
   animation: weather-forecast-pulse 1.4s ease-in-out infinite;
+}
+
+/* The skeleton's own tone has to go on the same element that carries the loaded
+ * card's background, or `--surface` would simply paint over it. */
+.weather-forecast__day--skeleton .weather-forecast__day-link {
+  background: var(--surface-raised);
 }
 
 /* Weekend columns get a visibly heavier frame than the 1px border every column

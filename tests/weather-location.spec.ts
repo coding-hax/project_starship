@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { openMeteoForecastBody, registerPasskey, resetAppData } from './helpers';
 
 const GEOCODING_PATTERN = 'https://geocoding-api.open-meteo.com/**';
 const FORECAST_PATTERN = 'https://api.open-meteo.com/**';
@@ -11,15 +11,7 @@ const DATES = ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-
 const CODES = [0, 0, 0, 0, 0, 0, 0];
 
 function forecastBody(tempsMax: number[], tempsMin: number[]) {
-  return {
-    daily: {
-      time: DATES,
-      weather_code: CODES,
-      temperature_2m_max: tempsMax,
-      temperature_2m_min: tempsMin,
-      precipitation_probability_max: DATES.map(() => 0),
-    },
-  };
+  return openMeteoForecastBody({ dates: DATES, weatherCodes: CODES, tempsMax, tempsMin });
 }
 
 const BONN_FORECAST = forecastBody([24, 22, 19, 15, 26, 6, 31], [14, 12, 9, 5, 16, -2, 21]);
