@@ -12,6 +12,7 @@ function fakeContext(): RunnerContext {
       read: vi.fn().mockReturnValue(null),
       write: vi.fn(),
       exists: vi.fn().mockReturnValue(false),
+      remove: vi.fn(),
     },
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
   };
@@ -72,6 +73,15 @@ describe('dispatch', () => {
       'queue-order-flat',
       'queue-pending',
       'queue-next',
+      'sha1-of',
+      'tier-current',
+      'tier-bump',
+      'tier-reset',
+      'resume-allowed',
+      'blocker-sig',
+      'build-escalation-eval',
+      'opus-cap-reached',
+      'opus-cap-reserve',
     ]);
   });
 
