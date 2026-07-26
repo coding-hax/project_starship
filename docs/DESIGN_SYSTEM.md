@@ -15,6 +15,7 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 | Termine      | Teal            | ruhig, strukturiert      |
 | Journal      | Warmes Violett  | persönlich, introspektiv |
 | Gewohnheiten | Sattes Grün     | Wachstum, Streaks        |
+| Aktivitäten  | Blau            | Garmin, Strecke/Puls (issue #180) |
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
@@ -82,7 +83,8 @@ Ein neues Icon hält sich an dieselbe Form:
 
 - **Bottom-Navigation**: fünf sichtbare Plätze, horizontal schiebbar (Karussell) sobald
   mehr Einträge existieren, Reihenfolge in den Einstellungen einstellbar (issue #205).
-  Heutige Einträge: Übersicht · Aufgaben · Gewohnheiten · Kalender · Journal.
+  Heutige Einträge: Übersicht · Aufgaben · Gewohnheiten · Kalender · Journal ·
+  Aktivitäten (sechster Eintrag, issue #180 — löst das Karussell standardmäßig aus).
   Einstellungen ist kein Tab. Ab 768px bleibt es eine vertikale Sidebar-Liste ohne
   Karussell — dieselbe Reihenfolge, kein zweites Design.
 - Touch-Ziele mindestens **44 × 44 px**.

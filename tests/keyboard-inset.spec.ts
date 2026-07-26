@@ -87,6 +87,15 @@ test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => 
     const nameField = page.getByRole('textbox', { name: 'Name' });
     await expect(nameField).toBeFocused();
 
+    // Scope to the open sheet: a closed <dialog> keeps its .sheet__content in the
+    // DOM but is out of the a11y tree, so getByRole('dialog') matches only this one.
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+    // The sheet slides up over `--duration-base` (sheet.css's opening transition) --
+    // reading a position before it settles races that transition instead of testing
+    // the actual regression, and the race is exactly what's flaky about CI machine
+    // speed. `getAnimations()` covers CSS transitions too, not just `@keyframes`.
+    await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+
     await page.evaluate(() => {
       const vv = window.visualViewport!;
       const shrunk = window.innerHeight - 300;
@@ -102,9 +111,6 @@ test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => 
       )
       .toBe('300px');
 
-    // Scope to the open sheet: a closed <dialog> keeps its .sheet__content in the
-    // DOM but is out of the a11y tree, so getByRole('dialog') matches only this one.
-    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
     const before = await sheetContent.boundingBox();
 
     await page.getByRole('radio', { name: 'Wöchentlich' }).click();
