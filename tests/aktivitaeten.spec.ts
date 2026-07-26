@@ -9,6 +9,7 @@ import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
  */
 
 const NOW = '2026-07-26T12:00:00.000Z';
+const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 const DEFAULT_TRACK = {
   n: 5,
@@ -86,6 +87,27 @@ async function goToAktivitaeten(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
+  // registerPasskey() below lands on /uebersicht for an already-authenticated
+  // session, which mounts WeatherForecast and fires a real fetch to the open-meteo
+  // API (issue #159) -- on a page this spec never otherwise touches. Unmocked,
+  // that call is flaky in exactly the way AC5's console-error assertion below is
+  // designed to catch. Fulfilling (not aborting, unlike uebersicht.spec.ts's
+  // default) matters: an aborted fetch still makes use-weather-forecast.ts log its
+  // own '[weather] refresh failed' error, which would just swap an intermittent
+  // failure for a deterministic one.
+  await page.route(OPEN_METEO_PATTERN, (route) =>
+    route.fulfill({
+      json: {
+        daily: {
+          time: ['2026-07-26'],
+          weather_code: [0],
+          temperature_2m_max: [20],
+          temperature_2m_min: [10],
+          precipitation_probability_max: [0],
+        },
+      },
+    }),
+  );
   await skewClock(page, NOW);
   await registerPasskey(page);
 });
