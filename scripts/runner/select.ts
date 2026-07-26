@@ -32,12 +32,6 @@ export interface SelfHealResult {
 // umgelabelte Tickets werden auch im Snapshot umgeschrieben; schlaegt der
 // gh-Aufruf fehl, bleibt das Ticket in-progress+needs-input (faellt dann in
 // den Sicherheitsnetz-Zweig von `pickTicket()`, siehe unten).
-//
-// #196, Schritt 3a: derselbe Block raeumt zusaetzlich verwaiste
-// 'needs-answer'-Marker ab. Der Mensch nimmt beim Antworten nur 'needs-input'
-// von Hand ab -- 'needs-answer' bleibt sonst dauerhaft haengen, obwohl die
-// Frage laengst beantwortet ist. Rein anzeigend, schliesst nichts aus (AC8):
-// kein Einfluss auf park/select, nur Aufraeumen desselben Snapshots.
 export function selfHealPark(snapshot: QueueIssue[], gh: GhAdapter): SelfHealResult {
   const candidates = snapshot.filter((issue) => hasLabel(issue, 'in-progress') && hasLabel(issue, 'needs-input'));
   const parked: number[] = [];
@@ -50,24 +44,7 @@ export function selfHealPark(snapshot: QueueIssue[], gh: GhAdapter): SelfHealRes
     if (!parked.includes(issue.number)) return issue;
     return { ...issue, labels: [...issue.labels.filter((l) => l.name !== 'in-progress'), { name: 'parked' }] };
   });
-
-  const orphanedAnswer = updated.filter((issue) => hasLabel(issue, 'needs-answer') && !hasLabel(issue, 'needs-input'));
-  const swept: number[] = [];
-  for (const issue of orphanedAnswer) {
-    try {
-      gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'needs-answer']);
-      swept.push(issue.number);
-    } catch {
-      // best effort -- bleibt haengen, naechste Runde versucht es erneut.
-    }
-  }
-
-  const final = updated.map((issue) => {
-    if (!swept.includes(issue.number)) return issue;
-    return { ...issue, labels: issue.labels.filter((l) => l.name !== 'needs-answer') };
-  });
-
-  return { snapshot: final, parked };
+  return { snapshot: updated, parked };
 }
 
 export interface SelectedTicket {

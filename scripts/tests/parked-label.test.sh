@@ -39,21 +39,17 @@ DB="$G/issues.json"
 case "${1:-} ${2:-}" in
   "issue list")
     shift 2
-    labels=(); q=""
+    label=""; q=""
     while [ $# -gt 0 ]; do
       case "$1" in
-        --label) labels+=("$2"); shift 2 ;;
+        --label) label="$2"; shift 2 ;;
         -q) q="$2"; shift 2 ;;
         --json|--state|--limit) shift 2 ;;
         *) shift ;;
       esac
     done
-    if [ "${#labels[@]}" -gt 0 ]; then
-      # Mehrfaches --label ist ein UND, wie beim echten gh (#196: needs-input
-      # UND needs-answer gemeinsam abgefragt).
-      labels_json=$(printf '%s\n' "${labels[@]}" | jq -R . | jq -sc .)
-      data=$(jq -c --argjson ls "$labels_json" \
-        '[.[] | select(.labels | map(.name) as $names | $ls | all(. as $l | $names | index($l)))]' "$DB")
+    if [ -n "$label" ]; then
+      data=$(jq -c --arg l "$label" '[.[] | select(.labels | map(.name) | index($l))]' "$DB")
     else
       data=$(cat "$DB")
     fi
@@ -296,31 +292,6 @@ run_main
 WIP_COUNT=$(jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' \
               "$GHSTATE_DIR/issues.json")
 assert_eq "AC5: nach der Runde traegt genau ein Ticket in-progress" "1" "$WIP_COUNT"
-
-# ==============================================================================
-# 7. #196 Sweep: 'needs-answer' ohne 'needs-input' ist ein verwaister Marker
-#    (der Mensch hat nur needs-input abgenommen) -- die Selbstheilung raeumt
-#    ihn VOR der Ticketwahl ab, unabhaengig von jeder Auswahl-Entscheidung.
-# ==============================================================================
-reset_state
-seed_issue 80 "needs-answer"
-seed_issue 70 "ready"
-run_main
-assert_labels "#196: verwaistes needs-answer verschwindet (Sweep)" 80 ""
-assert_labels "#196: die Ticketwahl bleibt davon unberuehrt -- #70 wird ganz normal gebaut" 70 "in-progress"
-
-# ==============================================================================
-# 8. #196 Regression: der realistische Fall -- ein geparktes Ticket, dessen
-#    Frage beantwortet wurde (needs-input weg), traegt aber noch needs-answer
-#    (der Mensch nimmt beim Antworten nur needs-input ab). Der Marker allein
-#    darf die Wiederaufnahme NICHT verhindern (AC8, rein anzeigend) UND
-#    verschwindet im selben Zug (AC6).
-# ==============================================================================
-reset_state
-seed_issue 90 "parked,needs-answer"
-printf 'sid-90' > "$STATE_DIR/session-90"
-run_main
-assert_labels "#196: geparktes #90 wird trotz haengendem needs-answer fortgesetzt" 90 "in-progress"
 
 # ==============================================================================
 echo

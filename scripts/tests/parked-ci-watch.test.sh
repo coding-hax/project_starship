@@ -265,18 +265,6 @@ assert_file_present "T1: Auto-Merge für #601 wird aktiviert" "$GHSTATE_DIR/merg
 assert_file_absent "T1: kein Agentenlauf ausgelöst" "$GHSTATE_DIR/claude-called"
 
 # ==============================================================================
-# T1b (#196) -- dasselbe, aber mit haengendem needs-answer-Marker: muss beim
-#       Freigeben mitverschwinden, kein verwaister Marker (AC6).
-# ==============================================================================
-reset_state
-seed_issue 411 "needs-input,needs-answer,parked"
-seed_pr 411 611
-printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
-  > "$GHSTATE_DIR/checks-611.json"
-run_round
-assert_labels "T1b (#196): #411 verliert parked, needs-input UND needs-answer" 411 ""
-
-# ==============================================================================
 # T2 -- geparktes Ticket, PR läuft noch (pending) -> unverändert geparkt
 # ==============================================================================
 reset_state

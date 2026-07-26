@@ -50,32 +50,6 @@ describe('selfHealPark (#145)', () => {
     expect(result.parked).toEqual([]);
     expect(result.snapshot).toEqual(snapshot);
   });
-
-  it('#196: raeumt ein verwaistes needs-answer ab (needs-input schon weg)', () => {
-    const gh = ghDouble();
-    const snapshot = [issue(80, ['needs-answer']), issue(70, ['ready'])];
-    const result = selfHealPark(snapshot, gh);
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '80', '--remove-label', 'needs-answer']);
-    const updated80 = result.snapshot.find((i) => i.number === 80)!;
-    expect(updated80.labels).toEqual([]);
-  });
-
-  it('#196: needs-answer bleibt, solange needs-input noch offen ist', () => {
-    const gh = ghDouble();
-    const snapshot = [issue(81, ['needs-input', 'needs-answer'])];
-    const result = selfHealPark(snapshot, gh);
-    expect(gh.run).not.toHaveBeenCalled();
-    expect(result.snapshot).toEqual(snapshot);
-  });
-
-  it('#196: ein frisch geparktes Ticket behaelt sein needs-answer in DERSELBEN Runde (erst geparkt, dann noch needs-input)', () => {
-    const gh = ghDouble();
-    const snapshot = [issue(51, ['in-progress', 'needs-input', 'needs-answer'])];
-    const result = selfHealPark(snapshot, gh);
-    expect(result.parked).toEqual([51]);
-    const updated51 = result.snapshot.find((i) => i.number === 51)!;
-    expect(updated51.labels.map((l) => l.name).sort()).toEqual(['needs-answer', 'needs-input', 'parked']);
-  });
 });
 
 describe('selectTicket (reine Auswahl-Kaskade)', () => {
