@@ -149,13 +149,16 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  await expect(page.locator('.weather-day__precipitation-bars').getByRole('listitem')).toHaveCount(24);
+  await expect(page.locator('.weather-day__precipitation-bar')).toHaveCount(24);
   await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
-  await expect(page.getByText('14:00 · 2.5 mm (80%)')).toBeVisible();
+  await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
+    'aria-label',
+    'Regenwahrscheinlichkeit je Stunde, höchstens 80 %',
+  );
 
-  await expect(page.getByText('Geschwindigkeit')).toBeVisible();
+  await expect(page.getByText('Wind', { exact: true })).toBeVisible();
   await expect(page.getByText('14 km/h')).toBeVisible();
-  await expect(page.getByText('Böen bis')).toBeVisible();
+  await expect(page.getByText('Böen', { exact: true })).toBeVisible();
   await expect(page.getByText('27 km/h')).toBeVisible();
 
   await expect(page.getByText('Aufgang')).toBeVisible();
@@ -164,7 +167,7 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
   await expect(page.getByText(SUNSET)).toBeVisible();
 });
 
-test('ein trockener Tag zeigt "Kein Niederschlag erwartet." statt einer leeren Stundenliste (issue #156 AC3)', async ({
+test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balkenfeld (issue #156 AC3)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -173,7 +176,61 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." statt einer leeren S
   await page.goto('/wetter/2026-07-20');
 
   await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Kein Niederschlag erwartet.');
-  await expect(page.locator('.weather-day__precipitation-hours')).toHaveCount(0);
+  await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
+    'aria-label',
+    'Regenwahrscheinlichkeit je Stunde, höchstens 0 %',
+  );
+  // Die Achse steht weiterhin da, nur ohne Ausschlag — kein Balken hat Höhe.
+  const heights = await page
+    .locator('.weather-day__precipitation-bar')
+    .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('height'))));
+  expect(heights).toHaveLength(24);
+  expect(heights.every((height) => height === 0)).toBe(true);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Achsenbeschriftung beider Diagramme                                        */
+/* -------------------------------------------------------------------------- */
+
+test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 23:00', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // 5°/15° sind Tiefst-/Höchstwert dieses Tages, dazwischen der Mittelwert.
+  await expect(page.locator('.weather-day__chart .weather-day__chart-tick')).toHaveText([
+    '5°',
+    '10°',
+    '15°',
+    '00:00',
+    '06:00',
+    '12:00',
+    '18:00',
+    '23:00',
+  ]);
+  await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-tick')).toHaveText([
+    '0 %',
+    '50 %',
+    '100 %',
+    '00:00',
+    '06:00',
+    '12:00',
+    '18:00',
+    '23:00',
+  ]);
+
+  // Der eigentliche Fehler war die Ausrichtung: „18:00" saß am rechten Rand, weil
+  // die Beschriftungen gleichmäßig über die volle Breite verteilt wurden statt
+  // über der Stunde zu stehen, zu der sie gehören.
+  const chart = await page.locator('.weather-day__chart').boundingBox();
+  const eighteen = await page.locator('.weather-day__chart .weather-day__chart-tick', { hasText: '18:00' }).boundingBox();
+  const lastHour = await page.locator('.weather-day__chart .weather-day__chart-tick', { hasText: '23:00' }).boundingBox();
+  const fraction = (box: { x: number; width: number }) => (box.x + box.width / 2 - chart!.x) / chart!.width;
+  expect(fraction(eighteen!)).toBeLessThan(0.85);
+  expect(fraction(lastHour!)).toBeGreaterThan(fraction(eighteen!));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -221,7 +278,7 @@ test('offline zeigt die Detailseite weiterhin mit dem zuletzt bekannten Stand (i
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
-  await expect(page.getByText('14:00 · 2.5 mm (80%)')).toBeVisible();
+  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -266,6 +323,38 @@ test('ein Zurück-Weg führt zur Übersicht, die Bottom-Navigation bleibt bedien
 
   await page.locator('.weather-day__back').click();
   await expect(page).toHaveURL('/uebersicht');
+});
+
+test('nach dem Öffnen aus der Übersicht liegt kein Fokusring auf dem Zurück-Link', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  await weatherDays(page).nth(3).getByRole('link').click();
+  await expect(page.locator('.weather-day__back')).toBeVisible();
+
+  // Der App-Router fokussiert nach der Navigation das erste Element des neuen
+  // Segments. Solange das der Zurück-Link war, blieb dessen Akzent-Fokusring
+  // stehen, bis irgendwo anders hin geklickt wurde.
+  await expect(page.locator('.weather-day__back')).not.toBeFocused();
+  const focusRing = await page
+    .locator('.weather-day__back')
+    .evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(focusRing).toBe('none');
+});
+
+test('das Datum steht oben rechts auf Höhe des Zurück-Links (issue #156 AC7)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const back = await page.locator('.weather-day__back').boundingBox();
+  const date = await page.getByRole('heading', { level: 1 }).boundingBox();
+  expect(date!.x).toBeGreaterThan(back!.x + back!.width);
+  // „auf gleicher Höhe" heißt: die Mitten liegen übereinander, nicht untereinander.
+  expect(Math.abs(date!.y + date!.height / 2 - (back!.y + back!.height / 2))).toBeLessThan(8);
 });
 
 /* -------------------------------------------------------------------------- */

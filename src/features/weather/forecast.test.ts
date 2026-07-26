@@ -8,6 +8,7 @@ import {
   isStaleWarning,
   isWeekend,
   parseForecast,
+  temperatureAxis,
   temperatureLinePoints,
   weekdayLabel,
 } from './forecast';
@@ -133,6 +134,41 @@ describe('temperatureLinePoints', () => {
       { time: '2026-07-23T01:00', temperature: 15, precipitationProbability: 0, precipitation: 0 },
     ];
     expect(temperatureLinePoints(hours, 100, 50)).toBe('0.0,50.0 100.0,50.0');
+  });
+
+  it('scales into a given domain instead of the raw min/max', () => {
+    const hours = [
+      { time: '2026-07-23T00:00', temperature: 10, precipitationProbability: 0, precipitation: 0 },
+      { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
+    ];
+    // Domain twice the data's span: the curve uses the middle half of the box.
+    expect(temperatureLinePoints(hours, 100, 40, { min: 0, max: 40 })).toBe('0.0,30.0 100.0,20.0');
+  });
+});
+
+describe('temperatureAxis', () => {
+  const hoursAt = (...temps: number[]) =>
+    temps.map((temperature, i) => ({
+      time: `2026-07-23T${String(i).padStart(2, '0')}:00`,
+      temperature,
+      precipitationProbability: 0,
+      precipitation: 0,
+    }));
+
+  it('snaps the range outwards to whole degrees so every tick is an integer', () => {
+    expect(temperatureAxis(hoursAt(4.2, 14.7))).toEqual({ min: 4, max: 15, ticks: [4, 10, 15] });
+  });
+
+  it('keeps a degree of range when every hour has the same temperature', () => {
+    expect(temperatureAxis(hoursAt(15, 15))).toEqual({ min: 15, max: 16, ticks: [15, 16] });
+  });
+
+  it('handles a range below zero', () => {
+    expect(temperatureAxis(hoursAt(-6.5, -1.2))).toEqual({ min: -7, max: -1, ticks: [-7, -4, -1] });
+  });
+
+  it('has no ticks without hours', () => {
+    expect(temperatureAxis([]).ticks).toEqual([]);
   });
 });
 
