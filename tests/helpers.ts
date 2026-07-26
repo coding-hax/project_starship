@@ -151,6 +151,13 @@ export async function resetDatabase() {
   });
 }
 
+/** push_subscriptions is server-/device-infra (src/db/schema.ts), not app data — its own reset. */
+export async function resetPushData() {
+  await withDb(async (client) => {
+    await client.query('DELETE FROM push_subscriptions;');
+  });
+}
+
 /** The handle the E2E bridge puts on window. */
 declare global {
   interface Window {
