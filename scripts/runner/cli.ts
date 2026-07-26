@@ -23,6 +23,17 @@ import { createStateAdapter, type StateAdapter } from './state.js';
 import { tierBump, tierCurrent, tierReset } from './tier.js';
 import { blockerSig, buildEscalationEval, resumeAllowed, sha1Of } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
+import {
+  prCiState,
+  prFailureSummary,
+  prForIssue,
+  prIsBehind,
+  prMergeState,
+  prOnlyProtectedPathsRed,
+  prSquashMerge,
+  reopenFalselyClosedIssues,
+} from './pr.js';
+import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -31,7 +42,13 @@ export interface RunnerContext {
   clock: Clock;
 }
 
-export type CommandResult = string | null;
+// Die meisten Kommandos folgen dem S1-Vertrag: String = Erfolg (stdout + \n,
+// Exit 0), `null` = Bash-seitiges `return 1` (Exit 1, kein stdout). Nur
+// `pr_catch_up_behind` (#201) braucht die vollen Zahlen-Exitcodes 0-5 seiner
+// Bash-Vorlage -- dafuer der dritte Fall mit explizitem exitCode/stdout,
+// stdout OHNE angehaengtes '\n' (Konfliktdateien/stoerende Pfade kommagetrennt,
+// wie `printf '%s'` auf der Bash-Seite).
+export type CommandResult = string | null | { exitCode: number; stdout: string };
 export type CommandHandler = (ctx: RunnerContext, args: string[]) => CommandResult;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -85,6 +102,34 @@ export const commands: Record<string, CommandHandler> = {
     opusBuildCapReserve(Number(args[0]), ctx.state, ctx.clock);
     return '';
   },
+  'pr-for-issue': (ctx, args) => prForIssue(Number(args[0]), ctx.gh),
+  'pr-ci-state': (ctx, args) => prCiState(args[0] ?? '', ctx.gh),
+  'pr-is-behind': (ctx, args) => (prIsBehind(args[0] ?? '', ctx.gh) ? '' : null),
+  'pr-merge-state': (ctx, args) => {
+    const result = prMergeState(args[0] ?? '', ctx.gh);
+    return result === null ? null : JSON.stringify(result);
+  },
+  'pr-catch-up-behind': (ctx, args) => {
+    const result = prCatchUpBehind(args[0] ?? '', ctx.git, ctx.gh);
+    return { exitCode: catchupExitCode(result), stdout: catchupStdout(result) };
+  },
+  'catchup-fail-reason': (_ctx, args) => catchupFailReason(Number(args[0])),
+  'catchup-fail-escalated': (ctx, args) =>
+    catchupFailEscalated(Number(args[0]), args[1] ?? '', ctx.state) ? '' : null,
+  'catchup-fail-reset': (ctx, args) => {
+    catchupFailReset(Number(args[0]), ctx.state);
+    return '';
+  },
+  'pr-only-protected-paths-red': (ctx, args) => (prOnlyProtectedPathsRed(args[0] ?? '', ctx.gh) ? '' : null),
+  'pr-squash-merge': (ctx, args) => {
+    prSquashMerge(args[0] ?? '', ctx.gh);
+    return '';
+  },
+  'reopen-falsely-closed-issues': (ctx) => {
+    reopenFalselyClosedIssues(ctx.gh);
+    return '';
+  },
+  'pr-failure-summary': (ctx, args) => prFailureSummary(args[0] ?? '', ctx.gh),
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {
@@ -96,6 +141,10 @@ export function dispatch(ctx: RunnerContext, argv: string[]): number {
   }
   const result = handler(ctx, rest);
   if (result === null) return 1;
+  if (typeof result === 'object') {
+    if (result.stdout) process.stdout.write(result.stdout);
+    return result.exitCode;
+  }
   process.stdout.write(`${result}\n`);
   return 0;
 }

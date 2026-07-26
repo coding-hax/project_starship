@@ -464,7 +464,16 @@ branch_tip() {   # $1 = Issue-Nr
 
 # Offener PR zu einem Ticket, gefunden ueber die Branch-Konvention
 # (feat|fix|chore/<nr>-<slug>) -- keine Textsuche im Titel noetig.
+# TS-Kern: scripts/runner/pr.ts, `prForIssue()` (#201).
 pr_for_issue() {   # $1 = Issue-Nr -> PR-Nummer (leer, wenn keiner offen)
+  local out rc
+  out=$(ts_run pr-for-issue "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { pr_for_issue_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pr_for_issue_bash() {
   local issue="$1"
   gh pr list --state open --limit 20 --json number,headRefName 2>/dev/null \
     | jq -r --arg pat "^(feat|fix|chore)/${issue}-" \
@@ -477,7 +486,16 @@ pr_for_issue() {   # $1 = Issue-Nr -> PR-Nummer (leer, wenn keiner offen)
 # wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft und nichts
 # rot ist -- ein zurueckgefallener Branch mit rotem Check wird also erst
 # repariert, nicht vorschnell nachgezogen.
+# TS-Kern: scripts/runner/pr.ts, `prCiState()` (#201).
 pr_ci_state() {   # $1 = PR-Nr
+  local out rc
+  out=$(ts_run pr-ci-state "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { pr_ci_state_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pr_ci_state_bash() {
   local pr="$1" json total pending failing
   json=$(gh pr checks "$pr" --json bucket,name,description,link 2>/dev/null)
   total=$(printf '%s' "$json" | jq 'length' 2>/dev/null || echo 0)
@@ -487,7 +505,7 @@ pr_ci_state() {   # $1 = PR-Nr
   failing=$(printf '%s' "$json" \
     | jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")] | length')
   if [ "${failing:-0}" -gt 0 ]; then echo failing; return 0; fi
-  if pr_is_behind "$pr"; then echo behind; return 0; fi
+  if pr_is_behind_bash "$pr"; then echo behind; return 0; fi
   echo success
 }
 
@@ -495,13 +513,31 @@ pr_ci_state() {   # $1 = PR-Nr
 # PR-Branch hat Commits von 'main' noch nicht. Kein eigener git-Vergleich
 # noetig, kein 'gh pr update-branch' (#160: scheitert an Workflow-Dateien
 # ohne 'workflow'-Scope).
+# TS-Kern: scripts/runner/pr.ts, `prMergeState()` (#201) -- ts_run liefert
+# das JSON unveraendert durch (oder gar nichts + Exit 1, wenn `gh` scheitert).
 pr_merge_state() {   # $1 = PR-Nr -> JSON {headRefName, mergeStateStatus}
+  local out rc
+  out=$(ts_run pr-merge-state "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { pr_merge_state_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pr_merge_state_bash() {
   gh pr view "$1" --json headRefName,mergeStateStatus 2>/dev/null
 }
 
+# TS-Kern: scripts/runner/pr.ts, `prIsBehind()` (#201).
 pr_is_behind() {   # $1 = PR-Nr -> 0 (hinter main) / 1 (aktuell/unbekannt)
+  local rc
+  ts_run pr-is-behind "$1" >/dev/null; rc=$?
+  [ "$rc" -eq 127 ] && { pr_is_behind_bash "$1"; return; }
+  return "$rc"
+}
+
+pr_is_behind_bash() {
   local pr="$1" state
-  state=$(pr_merge_state "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
+  state=$(pr_merge_state_bash "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
   [ "$state" = "BEHIND" ]
 }
 
@@ -526,9 +562,20 @@ pr_is_behind() {   # $1 = PR-Nr -> 0 (hinter main) / 1 (aktuell/unbekannt)
 #   3 PR-Metadaten oder 'git fetch' nicht lesbar/erreichbar
 #   4 'git checkout' auf den PR-Branch fehlgeschlagen
 #   5 'git push' fehlgeschlagen
+# TS-Kern: scripts/runner/catchup.ts, `prCatchUpBehind()` (#201) -- als
+# discriminated union statt Zahlen-Exitcode; cli.ts bildet an der CLI-Kante
+# wieder auf 0-5 ab, ts_run() reicht das transparent durch.
 pr_catch_up_behind() {   # $1 = PR-Nr
+  local out rc
+  out=$(ts_run pr-catch-up-behind "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { pr_catch_up_behind_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pr_catch_up_behind_bash() {
   local pr="$1" branch cur rc conflicts dirty
-  branch=$(pr_merge_state "$pr" | jq -r '.headRefName // empty' 2>/dev/null)
+  branch=$(pr_merge_state_bash "$pr" | jq -r '.headRefName // empty' 2>/dev/null)
   [ -z "$branch" ] && return 3
 
   dirty=$(git status --porcelain 2>/dev/null)
@@ -559,7 +606,16 @@ pr_catch_up_behind() {   # $1 = PR-Nr
 
 # Klartext-Ursache je Nicht-Konflikt-Rueckgabewert von pr_catch_up_behind()
 # (#171 AC1/AC2), fuers Statusticket UND fuers Wiederholungs-Tracking unten.
+# TS-Kern: scripts/runner/catchup.ts, `catchupFailReason()` (#201).
 catchup_fail_reason() {   # $1 = Rueckgabewert (2-5) -> Text
+  local out rc
+  out=$(ts_run catchup-fail-reason "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { catchup_fail_reason_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+catchup_fail_reason_bash() {
   case "$1" in
     2) echo "unsauberer Arbeitsbaum" ;;
     3) echo "fetch fehlgeschlagen (PR-Metadaten oder \`git fetch\`)" ;;
@@ -574,7 +630,15 @@ catchup_fail_reason() {   # $1 = Rueckgabewert (2-5) -> Text
 # die Ursache oder gab es zuletzt einen Erfolg/Konflikt (catchup_fail_reset),
 # beginnt die Zaehlung wieder bei 1. Ab der DRITTEN Runde in Folge mit
 # derselben Ursache: Rueckgabe 0 ("eskaliert", Status soll 🟡 zeigen).
+# TS-Kern: scripts/runner/catchup.ts, `catchupFailEscalated()` (#201).
 catchup_fail_escalated() {   # $1 = Issue-Nr, $2 = Ursache-Text -> 0 eskaliert / 1 noch nicht
+  local rc
+  ts_run catchup-fail-escalated "$1" "$2" >/dev/null; rc=$?
+  [ "$rc" -eq 127 ] && { catchup_fail_escalated_bash "$1" "$2"; return; }
+  return "$rc"
+}
+
+catchup_fail_escalated_bash() {
   local issue="$1" reason="$2" f prev_reason prev_count count
   f="$STATE_DIR/catchup-fail-$issue"
   if [ -s "$f" ]; then
@@ -596,7 +660,15 @@ catchup_fail_escalated() {   # $1 = Issue-Nr, $2 = Ursache-Text -> 0 eskaliert /
 
 # Nach einem erfolgreichen Nachziehen oder einem echten Konflikt (eigener,
 # schon sichtbarer Fund) faengt die Wiederholungs-Zaehlung wieder bei null an.
+# TS-Kern: scripts/runner/catchup.ts, `catchupFailReset()` (#201).
 catchup_fail_reset() {   # $1 = Issue-Nr
+  ts_run catchup-fail-reset "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { catchup_fail_reset_bash "$1"; return; }
+  return "$rc"
+}
+
+catchup_fail_reset_bash() {
   rm -f "$STATE_DIR/catchup-fail-$1"
 }
 
@@ -604,7 +676,15 @@ catchup_fail_reset() {   # $1 = Issue-Nr
 # einen Fix-Agenten, sondern die vorgesehene Genehmigungs-Schranke (CLAUDE.md,
 # geschuetzte Pfade) -- die behebt kein Code, nur ein Mensch mit
 # 'human-approved'.
+# TS-Kern: scripts/runner/pr.ts, `prOnlyProtectedPathsRed()` (#201).
 pr_only_protected_paths_red() {   # $1 = PR-Nr -> 0 (ja, nur protected-paths) / 1 (auch anderes rot)
+  local rc
+  ts_run pr-only-protected-paths-red "$1" >/dev/null; rc=$?
+  [ "$rc" -eq 127 ] && { pr_only_protected_paths_red_bash "$1"; return; }
+  return "$rc"
+}
+
+pr_only_protected_paths_red_bash() {
   local pr="$1" json other
   json=$(gh pr checks "$pr" --json bucket,name 2>/dev/null)
   other=$(printf '%s' "$json" | jq \
@@ -620,7 +700,15 @@ pr_only_protected_paths_red() {   # $1 = PR-Nr -> 0 (ja, nur protected-paths) / 
 # geschlossen, obwohl dessen eigentlicher PR (#166) noch offen war. Nur der
 # Titel DIESES PR zaehlt -- der traegt genau EIN 'Closes #N', naemlich sein
 # eigenes.
+# TS-Kern: scripts/runner/pr.ts, `prSquashMerge()` (#201).
 pr_squash_merge() {   # $1 = PR-Nr
+  ts_run pr-squash-merge "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { pr_squash_merge_bash "$1"; return; }
+  return "$rc"
+}
+
+pr_squash_merge_bash() {
   local pr="$1" title
   title=$(gh pr view "$pr" --json title -q .title 2>/dev/null)
   if [ -n "$title" ]; then
@@ -637,7 +725,15 @@ pr_squash_merge() {   # $1 = PR-Nr
 # Titel, aber Issue #N ist schon geschlossen, kann DIESER PR es nicht
 # geschlossen haben -- das Ticket wird wieder geoeffnet, der Grund als
 # Kommentar vermerkt. Reine gh-Aufrufe, kein Agentenlauf.
+# TS-Kern: scripts/runner/pr.ts, `reopenFalselyClosedIssues()` (#201).
 reopen_falsely_closed_issues() {
+  ts_run reopen-falsely-closed-issues >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { reopen_falsely_closed_issues_bash; return; }
+  return "$rc"
+}
+
+reopen_falsely_closed_issues_bash() {
   local open_prs pairs
   open_prs=$(gh pr list --state open --limit 100 --json number,title 2>/dev/null || echo '[]')
   pairs=$(printf '%s' "$open_prs" | jq -c \
@@ -664,7 +760,16 @@ reopen_falsely_closed_issues() {
 # Kurzbeschreibung, ein begrenzter Log-Ausschnitt -- NICHT die rohe
 # Log-Ausgabe (#147 AC). Hoechstens die ersten 3 roten Checks, sonst waechst
 # der Auftrag mit jedem zusaetzlichen Shard unnoetig.
+# TS-Kern: scripts/runner/pr.ts, `prFailureSummary()` (#201).
 pr_failure_summary() {   # $1 = PR-Nr
+  local out rc
+  out=$(ts_run pr-failure-summary "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { pr_failure_summary_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pr_failure_summary_bash() {
   local pr="$1" json failing
   json=$(gh pr checks "$pr" --json name,bucket,description,link 2>/dev/null)
   failing=$(printf '%s' "$json" | jq -c \
