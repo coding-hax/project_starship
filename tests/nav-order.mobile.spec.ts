@@ -39,13 +39,35 @@ async function trackScrollIntoView(page: Page) {
  * the "nothing to do, nothing happens" case. Removing a `.nav__item` node directly
  * does not survive it — a client-side navigation re-renders `Nav` from the same
  * (unchanged) `NAV_ITEMS`/`useNavOrder` state and the removed node comes right
- * back, overflow and all. A stylesheet override does survive: it is a plain
- * `<style>` tag outside React's tree, so it stays in the document across the SPA
- * route change this test triggers. Shrinking every slot below the real 20%
- * (shell.css) is enough to fit all six without scrolling.
+ * back, overflow and all.
+ *
+ * Must be an init script, not `page.addStyleTag` -- the caller still needs a fresh
+ * full navigation afterwards (to arm `trackScrollIntoView`'s prototype patch for
+ * *this* document), and a style tag added to the current document does not survive
+ * that reload. An init script does: it runs before Nav's mount on the very next
+ * navigation, so the list never overflows in the first place, and Nav's own
+ * mount-time `scrollIntoView` (issue #205 AC2) never fires. Shrinking every slot
+ * below the real 20% (shell.css) is enough to fit all six without scrolling.
+ *
+ * The `requestAnimationFrame` retry matters: an init script runs the instant the new
+ * document is created, before it has parsed so much as an `<html>` tag -- neither
+ * `document.head` nor `document.documentElement` exists yet, so appending
+ * immediately silently no-ops (and the override never lands at all, for the entire
+ * document's lifetime).
  */
 async function forceNoOverflow(page: Page) {
-  await page.addStyleTag({ content: '.nav__item { flex-basis: 16% !important; }' });
+  await page.addInitScript(() => {
+    const install = () => {
+      if (!document.head) {
+        requestAnimationFrame(install);
+        return;
+      }
+      const style = document.createElement('style');
+      style.textContent = '.nav__item { flex-basis: 16% !important; }';
+      document.head.appendChild(style);
+    };
+    install();
+  });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -118,9 +140,12 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
 
   test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
     await trackScrollIntoView(page);
-    await registerPasskey(page);
-    // Back to the pre-#180 no-overflow baseline.
+    // Back to the pre-#180 no-overflow baseline -- before the navigation below, so
+    // Nav never sees an overflowing list, not even for the one mount-time
+    // scrollIntoView call the overflowing case is supposed to make (see
+    // forceNoOverflow's doc comment).
     await forceNoOverflow(page);
+    await registerPasskey(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
     await expect(page).toHaveURL(/\/journal$/);
