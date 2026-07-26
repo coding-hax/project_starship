@@ -19,7 +19,7 @@ src/
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
     (app)/aktivitaeten/     page.tsx           Garmin-Aktivitäten — eigene Seite, kein Widget (issue #180); <h1>, keine eigene Kopfzeile (DESIGN_SYSTEM.md, „Für den nächsten Screen")
     (app)/kalender/         Termine            (leer bis M5)
-    (app)/wetter/[datum]/   page.tsx           Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang, rein aus der lokalen Ablage (issue #156)
+    (app)/wetter/[datum]/   page.tsx           Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang, rein aus der lokalen Ablage (issue #156); Kopfzeile = Zurück-Link links, Datum rechts — das <header> ist zugleich der Fokus-Fix, weil der App-Router nach der Navigation das erste Segment-Element fokussiert (issue #233)
     (app)/journal/          Journal            (leer bis M4)
     (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Spracherfassung (CapturePanel) + Export-Button
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
@@ -109,7 +109,7 @@ src/
       static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
       sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
     weather/
-      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail
+      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail; temperatureAxis liefert die auf ganze Grad gerundete y-Spanne + Tick-Werte, temperatureLinePoints skaliert optional in genau diese Spanne, damit Kurve und Achsenbeschriftung übereinstimmen (issue #233)
       geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
       wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
       weather-category-labels.ts  Icon+Label je Kategorie, geteilt zwischen weather-forecast.tsx und weather-day.tsx, damit beide nicht auseinanderlaufen (issue #156)
@@ -117,7 +117,7 @@ src/
       use-weather-forecast.ts  use-weather-cache.ts + Refresh-Trigger: Ortswechsel verwirft die alte Vorhersage statt sie zu vermischen (issue #159); Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
       use-weather-day.ts       findWeatherDay auf use-weather-cache.ts — 'no-data' deckt sowohl „nie geladen" als auch „Datum außerhalb der 7-Tage-Vorhersage" ab (issue #156)
       weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, zeigt den eingestellten Ort (issue #159); Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155); jede Tagesspalte ist seit #156 ein Link auf /wetter/<datum>, ≥44×44
-      weather-day.tsx / .css   Tagesdetailseite: Kopf (Icon/Höchst-Tiefst), Temperaturkurve als reines <svg> (kein Chart-Paket), Niederschlags-Balken + Stundenliste, Wind, Sonnenauf-/-untergang; 'loading'/'ready'/'no-data' aus use-weather-day.ts (issue #156)
+      weather-day.tsx / .css   Tagesdetailseite: Kopf (Icon/Höchst-Tiefst) samt kompaktem Vierer-Streifen Wind/Böen/Aufgang/Untergang, Temperaturkurve und Niederschlagsbalken als reines <svg> (kein Chart-Paket); beide teilen sich ChartFrame — eine Geometrie, beschriftete x-/y-Achse im selben SVG, damit jede Beschriftung an der x-Position ihres Datenpunkts sitzt (issue #233); 'loading'/'ready'/'no-data' aus use-weather-day.ts (issue #156)
     settings/
       use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
       appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)

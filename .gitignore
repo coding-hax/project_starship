@@ -52,3 +52,8 @@ public/swe-worker-*.js
 
 # Owner session produced by the e2e setup project (#115) — never commit a session.
 playwright/.auth/
+
+# agent worktrees — created per session under .claude/worktrees/, never committed.
+# Without this the main checkout counts as dirty and the runner refuses to fast-
+# forward a PR branch (see pr_catch_up_behind, #171).
+.claude/worktrees/
