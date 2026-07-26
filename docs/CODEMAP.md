@@ -87,9 +87,13 @@ src/
       format.ts                formatDistance/-Duration/-Pause/-Pace/-Hr/-Elevation -- Gedankenstrich statt 0 bei null
       track-path.ts            projectTrack -- Äquirektangulär mit cos(latMid)-Korrektur, Bounding-Box in die viewBox eingepasst; SVG-Rückfall der Karte
       line-path.ts             buildLinePath -- Wertreihe -> SVG-Pfad, null bricht den Pfad (Lücke statt erfundener Gerade), konstante Serie -> Mittellinie
+      monthly-summary.ts       computeMonthlySummary + activityTypeLabel -- laufender Kalendermonat, Aufschlüsselung je Aktivitätsart für den Monatsstand
       use-activities.ts        ActivityView + toActivityView -- Dexie-Live-Query auf `records` (table='garmin_activities') über den Hook aus #177
       activity-list.tsx / .css Recap oben, darunter ein ActivityBlock je Aktivität, neueste zuerst; Skeleton/Leerzustand nach dem Muster aus habit-list.tsx
       activity-block.tsx / .css ein <article> je Aktivität: Karte, Kopfzahlen als <dl>, drei Kurven
+      activity-map.tsx / .css  Kartenbild (mapImage) oder SVG-Spur-Rückfall aus projectTrack, feste aspect-ratio -- kein Layout-Sprung beim Wechsel
+      activity-chart.tsx / .css eine der drei Kurven (HF/Pace/Höhe) aus buildLinePath, entfällt samt Überschrift bei komplett null
+      activity-month-strip.tsx / .css Monatsstand auf der Übersicht -- Zeile je Aktivitätsart, ganze Fläche verlinkt auf /aktivitaeten, erscheint nicht ohne jede Aktivität
     garmin/                   Server-seitig, kein Client-Code -- keine Garmin-Spezifika außerhalb dieses Verzeichnisses (ADR-0011, issue #186)
       connect-api.ts           handgerollte OAuth1-Signatur + OAuth2-Tausch + die zwei connectapi.garmin.com-Aufrufe, keine Client-Bibliothek
       tokens.ts                liest/schreibt garmin_tokens, erneuert OAuth2 aus OAuth1, GarminBootstrapRequired statt Login-Versuch
