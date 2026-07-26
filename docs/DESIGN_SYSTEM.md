@@ -80,7 +80,11 @@ Ein neues Icon hält sich an dieselbe Form:
 
 ## Mobile-Patterns
 
-- **Bottom-Navigation**, 5 Tabs: Übersicht · Aufgaben · Gewohnheiten · Kalender · Journal. Einstellungen ist kein Tab.
+- **Bottom-Navigation**: fünf sichtbare Plätze, horizontal schiebbar (Karussell) sobald
+  mehr Einträge existieren, Reihenfolge in den Einstellungen einstellbar (issue #205).
+  Heutige Einträge: Übersicht · Aufgaben · Gewohnheiten · Kalender · Journal.
+  Einstellungen ist kein Tab. Ab 768px bleibt es eine vertikale Sidebar-Liste ohne
+  Karussell — dieselbe Reihenfolge, kein zweites Design.
 - Touch-Ziele mindestens **44 × 44 px**.
 - `env(safe-area-inset-*)` überall — die Navigation darf nicht unter dem Home-Indicator kleben.
 - **Swipe-Gesten:** nach rechts = erledigen, nach links = verschieben/löschen. Immer mit Undo-Toast.
