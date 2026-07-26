@@ -18,14 +18,37 @@ klappt.
 
 ## Schritte
 
-1. **Neues Inkognito-Fenster**, DevTools öffnen, Netzwerk-Tab, „Preserve log"
-   aktivieren, bevor irgendetwas geladen wird.
-2. `https://sso.garmin.com/sso/embed?service=https%3A%2F%2Fconnect.garmin.com%2Fmodern`
-   aufrufen und normal einloggen (inkl. 2FA, falls aktiv).
-3. Im Netzwerk-Tab die Weiterleitung nach `connect.garmin.com/modern?ticket=ST-…`
-   suchen und den kompletten `ticket`-Wert (`ST-…`) kopieren — das Service-Ticket,
-   gültig nur wenige Minuten.
-4. Das Ticket sofort gegen ein OAuth1-Token tauschen:
+1. **Neues Inkognito-Fenster**, DevTools öffnen — **Konsole** (dort erscheint das
+   Ticket, Schritt 3) und Netzwerk-Tab mit aktiviertem „Preserve log", beides
+   bevor irgendetwas geladen wird.
+2. Diese URL aufrufen und normal einloggen (inkl. 2FA, falls aktiv):
+
+   ```
+   https://sso.garmin.com/sso/embed?id=gauth-widget&embedWidget=true&clientId=GarminConnect&locale=de&service=https%3A%2F%2Fconnect.garmin.com%2Fmodern&gauthHost=https%3A%2F%2Fsso.garmin.com%2Fsso%2Fembed&consumeServiceTicket=false
+   ```
+
+   Keinen Parameter weglassen. `clientId` und `locale` sind Pflicht — fehlen sie,
+   antwortet der Endpunkt mit HTTP 200 und einer Fehlerseite
+   („ERROR: clientId parameter must be specified!!!"), die im Browser wie eine
+   kaputte Seite aussieht. `consumeServiceTicket=false` ist der entscheidende
+   Schalter: per Default löst das Login-Widget das Service-Ticket selbst ein, und
+   Schritt 4 bekäme dann ein bereits verbrauchtes Ticket.
+
+3. Das Service-Ticket steht **nicht** in einer Weiterleitung — mit
+   `consumeServiceTicket=false` gibt es keine. Das Widget feuert stattdessen ein
+   SUCCESS-Event mit einem Objekt aus `serviceUrl` und `serviceTicket`:
+
+   ```
+   serviceUrl: https://sso.garmin.com/sso/embed
+   serviceTicket: ST-… (dieser Wert wird gebraucht)
+   ```
+
+   Den kompletten `ST-…`-Wert kopieren — gültig nur wenige Minuten, und nur
+   einmal einlösbar.
+
+4. Das Ticket sofort gegen ein OAuth1-Token tauschen. Der `login-url`-Parameter
+   muss **exakt** dem `serviceUrl` aus Schritt 3 entsprechen, sonst weist Garmin
+   den Tausch ab — wer die URL in Schritt 2 anpasst, muss ihn hier mitziehen:
 
    ```bash
    curl -s "https://connectapi.garmin.com/oauth-service/oauth/preauthorized?ticket=<ST-…>&login-url=https://sso.garmin.com/sso/embed&accepts-mfa-tokens=true" \
