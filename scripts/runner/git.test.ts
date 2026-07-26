@@ -11,4 +11,11 @@ describe('createGitAdapter', () => {
     expect(exec).toHaveBeenCalledWith('git', ['status', '--porcelain']);
     expect(result).toBe('stub-output');
   });
+
+  it('strips trailing newlines, like bash `$(...)` command substitution (#201)', () => {
+    const exec = vi.fn().mockReturnValue('main\n');
+    const git = createGitAdapter(exec);
+
+    expect(git.run(['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('main');
+  });
 });
