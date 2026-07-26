@@ -297,7 +297,17 @@ export function watchParkedIssues(parkedIssues: ParkedIssueInput[], wipSlotFree:
       // unbeobachtet liegen bleibt. Schlaegt es fehl, bleibt das Ticket
       // geparkt, der naechste Takt versucht es erneut.
       if (!prSquashMerge(pr, deps.gh)) continue;
-      deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'parked', '--remove-label', 'needs-input']);
+      deps.gh.run([
+        'issue',
+        'edit',
+        String(issue.number),
+        '--remove-label',
+        'parked',
+        '--remove-label',
+        'needs-input',
+        '--remove-label',
+        'needs-answer',
+      ]);
       outcome.released.push(issue.number);
       continue;
     }

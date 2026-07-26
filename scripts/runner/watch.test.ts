@@ -373,7 +373,26 @@ describe('watchParkedIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)'
     const outcome = watchParkedIssues([issue(401, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
     expect(outcome.released).toEqual([401]);
     expect(outcome.promoted).toBeNull();
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '401', '--remove-label', 'parked', '--remove-label', 'needs-input']);
+    expect(gh.run).toHaveBeenCalledWith([
+      'issue',
+      'edit',
+      '401',
+      '--remove-label',
+      'parked',
+      '--remove-label',
+      'needs-input',
+      '--remove-label',
+      'needs-answer',
+    ]);
+  });
+
+  it('#196: entfernt needs-answer beim Freigeben mit, kein verwaister Marker', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+    });
+    watchParkedIssues([issue(401, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
+    expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
   it('T2/T3: PR pending/rot (nicht entparkbar) -> bleibt unverändert geparkt', () => {

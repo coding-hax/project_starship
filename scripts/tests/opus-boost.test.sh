@@ -288,6 +288,10 @@ case "$T6_LABELS" in
   *needs-input*) ok "T6: needs-input wird bei jedem Treffer gesetzt (idempotent)" ;;
   *) red "T6: needs-input wird bei jedem Treffer gesetzt (Labels: $T6_LABELS)" ;;
 esac
+case "$T6_LABELS" in
+  *needs-answer*) red "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info (Labels: $T6_LABELS)" ;;
+  *) ok "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info" ;;
+esac
 
 # ==============================================================================
 # T7 -- Meldung nennt opus-boost als Ausweg

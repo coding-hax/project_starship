@@ -68,7 +68,9 @@ So fragst du:
 
 1. `gh issue comment <nr>` mit: was du wissen musst, **konkrete Optionen (A/B/C)**,
    deine Empfehlung, und was passiert, wenn nicht geantwortet wird.
-2. Label `needs-input` setzen.
+2. Label `needs-input` **und** `needs-answer` setzen — es steht eine Frage im
+   Ticket, die eine geschriebene Antwort braucht (anders als eine reine Freigabe,
+   siehe „Geschützte Pfade" unten: dort **nur** `needs-input`).
 3. Lauf beenden.
 
 Mehr brauchst du hier nicht zu tun: der Runner parkt dein Ticket automatisch
@@ -215,8 +217,9 @@ gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
 Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
 wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
 vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-input`
-— drei rote Runden heißen, das Ticket ist falsch geschnitten, eine
-menschliche Entscheidung. Vollständige Zustandstabelle:
+**und** `needs-answer` (dieselbe erschöpfte Eskalation wie in „So fragst du"
+oben, ADR-0007) — drei rote Runden heißen, das Ticket ist falsch geschnitten,
+eine menschliche Entscheidung. Vollständige Zustandstabelle:
 `docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
 Stellst du stattdessen eine Frage (`needs-input`, siehe „Autonomer Betrieb"
@@ -236,6 +239,8 @@ bekommst das rote CI-Ergebnis später nicht mehr live mit):
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen könnte.
 2. Label `needs-input` **selbst setzen** (`gh issue edit <nr> --add-label needs-input`)
    — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145) sofort.
+   **Kein** `needs-answer` dabei — hier wird nur freigegeben, es gibt nichts zu
+   beantworten.
 3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
 4. Trotzdem `gh pr ready` + `gh pr merge --squash --auto --delete-branch`
    ausführen: `protected-paths` hält den PR rot, bis der Mensch freigibt —
@@ -251,9 +256,10 @@ Du schreibst Code **und** Tests — Interessenkonflikt, du weißt das. Kein
 `.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert (Regel 5,
 mechanisch erzwungen durch `test-integrity`). Testanzahl darf nie sinken; ist
 ein Test wirklich obsolet, begründen und `human-approved` anfordern statt
-selbst zu entscheiden. Code ohne begleitenden Test ist ein rotes
-Anwesenheits-Gate — einzige Entrinnung ist das vom Menschen gesetzte Label
-`tests-exempt`, nie selbst setzen.
+selbst zu entscheiden — wie bei geschützten Pfaden **nur** `needs-input`,
+**kein** `needs-answer`: auch das ist eine reine Freigabe, keine Frage. Code
+ohne begleitenden Test ist ein rotes Anwesenheits-Gate — einzige Entrinnung
+ist das vom Menschen gesetzte Label `tests-exempt`, nie selbst setzen.
 
 ## Definition of Done
 

@@ -233,6 +233,67 @@ parked_issues_bash() {
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
 
+# #196: Teilmengen von waiting_issues()/parked_issues() nach 'needs-answer'
+# gesplittet -- fuer den 🟡-Text "wartet auf deine Antwort" vs. "wartet auf
+# deine Freigabe" (rein anzeigend, keine Auswahl-Wirkung).
+# TS-Kern: scripts/runner/status.ts, `answerIssues()`/`approveIssues()`.
+answer_issues() {
+  local out rc
+  out=$(ts_run answer-issues); rc=$?
+  [ "$rc" -eq 127 ] && { answer_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+answer_issues_bash() {
+  gh issue list --label needs-input --label needs-answer --state open --limit 20 \
+    --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
+}
+
+approve_issues() {
+  local out rc
+  out=$(ts_run approve-issues); rc=$?
+  [ "$rc" -eq 127 ] && { approve_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+approve_issues_bash() {
+  gh issue list --label needs-input --state open --limit 20 \
+    --json number,labels \
+    -q '[.[] | select((.labels | map(.name) | index("needs-answer")) | not) | .number] | map("#" + tostring) | join(", ")' \
+    2>/dev/null
+}
+
+# TS-Kern: scripts/runner/status.ts, `parkedAnswerIssues()`/`parkedApproveIssues()`.
+parked_answer_issues() {
+  local out rc
+  out=$(ts_run parked-answer-issues); rc=$?
+  [ "$rc" -eq 127 ] && { parked_answer_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+parked_answer_issues_bash() {
+  gh issue list --label parked --label needs-answer --state open --limit 20 \
+    --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
+}
+
+parked_approve_issues() {
+  local out rc
+  out=$(ts_run parked-approve-issues); rc=$?
+  [ "$rc" -eq 127 ] && { parked_approve_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+parked_approve_issues_bash() {
+  gh issue list --label parked --state open --limit 20 \
+    --json number,labels \
+    -q '[.[] | select((.labels | map(.name) | index("needs-answer")) | not) | .number] | map("#" + tostring) | join(", ")' \
+    2>/dev/null
+}
+
 # Nimmt einem Ticket 'in-progress' ab und gibt 'parked' -- die zentrale Stelle
 # fuer die Selbstheilung (#145), gebraucht sowohl fuer den Rundenanfang als
 # auch sofort nach einem Lauf, in dem Claude selbst 'needs-input' gesetzt hat.
@@ -1013,7 +1074,7 @@ watch_parked_issues_bash() {
     # Ticket aus jeder Wache heraus, waehrend der PR offen und unbeobachtet
     # liegen bleibt. Schlaegt es fehl, bleibt es geparkt, naechster Takt erneut.
     pr_squash_merge "$pr" || continue
-    gh issue edit "$n" --remove-label parked --remove-label needs-input >/dev/null 2>&1
+    gh issue edit "$n" --remove-label parked --remove-label needs-input --remove-label needs-answer >/dev/null 2>&1
     echo "$n" >> "$STATE_DIR/watch-parked-released"
   done
 
@@ -1059,6 +1120,28 @@ self_heal_park_bash() {
     '[.[] | if (.number as $n | $ok | index($n) != null) then
               (.labels |= (map(select(.name != "in-progress")) + [{"name":"parked"}]))
             else . end]')
+
+  # #196, Schritt 3a: verwaiste 'needs-answer'-Marker abraeumen -- der Mensch
+  # nimmt beim Antworten nur 'needs-input' von Hand ab. Rein anzeigend (AC8),
+  # kein Einfluss auf die Auswahl darunter.
+  local to_sweep swept_ok='[]'
+  to_sweep=$(printf '%s' "$updated" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("needs-answer"))
+          | select(.labels | map(.name) | index("needs-input") | not)
+          | .number] | .[]' 2>/dev/null)
+  if [ -n "$to_sweep" ]; then
+    while IFS= read -r n; do
+      [ -z "$n" ] && continue
+      if gh issue edit "$n" --remove-label needs-answer >/dev/null 2>&1; then
+        swept_ok=$(printf '%s' "$swept_ok" | jq --argjson n "$n" '. + [$n]')
+      fi
+    done <<< "$to_sweep"
+  fi
+  updated=$(printf '%s' "$updated" | jq --argjson ok "$swept_ok" \
+    '[.[] | if (.number as $n | $ok | index($n) != null) then
+              (.labels |= map(select(.name != "needs-answer")))
+            else . end]')
+
   jq -nc --argjson snapshot "$updated" --argjson parked "$parked_ok" '{snapshot:$snapshot, parked:$parked}'
 }
 
@@ -1237,7 +1320,7 @@ build_escalation_eval_bash() {
     gh issue comment "$ISSUE" --body \
       "🤖 Auch Opus ist dreimal in Folge ohne Fortschritt stecken geblieben. Die Eskalation ist erschöpft." \
       >/dev/null 2>&1
-    gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
+    gh issue edit "$ISSUE" --add-label needs-input --add-label needs-answer >/dev/null 2>&1
   fi
 }
 
@@ -1571,7 +1654,7 @@ if [ "$(printf '%s' "${PARKED_SNAP:-[]}" | jq 'length' 2>/dev/null)" -gt 0 ]; th
   if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
     ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
       '[.[] | if (.number as $n | $released | index($n) != null) then
-                (.labels |= map(select(.name != "parked" and .name != "needs-input")))
+                (.labels |= map(select(.name != "parked" and .name != "needs-input" and .name != "needs-answer")))
               else . end]')
     RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
     RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
@@ -1702,17 +1785,33 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
     none)
       # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
       # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-      WAITING=$(printf '%s' "$ROUND_SNAP" | jq -r \
-                  '[.[] | select(.labels | map(.name) | index("needs-input"))]
+      # #196: zwei Listen statt einer -- ANSWER_LIST braucht eine geschriebene
+      # Antwort, APPROVE_LIST nur einen Label-Tap. Beide aus dem schon
+      # vorhandenen ROUND_SNAP, kein zusaetzlicher gh-Aufruf.
+      ANSWER_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                  '[.[] | select(.labels | map(.name) | index("needs-input"))
+                        | select(.labels | map(.name) | index("needs-answer"))]
                     | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
-      if [ -n "$WAITING" ]; then
-        status "wartet auf dich ($WAITING)" "🟡" \
-          "🟡 **Ich warte auf eine Antwort von dir.**
+      APPROVE_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                  '[.[] | select(.labels | map(.name) | index("needs-input"))
+                        | select(.labels | map(.name) | index("needs-answer") | not)]
+                    | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
+      if [ -n "$ANSWER_LIST" ] || [ -n "$APPROVE_LIST" ]; then
+        WAITING="$ANSWER_LIST"
+        [ -n "$ANSWER_LIST" ] && [ -n "$APPROVE_LIST" ] && WAITING="$WAITING, "
+        WAITING="$WAITING$APPROVE_LIST"
+        BODY="🟡 **Ich warte auf dich.**"
+        [ -n "$ANSWER_LIST" ] && BODY="$BODY
 
-Offene Fragen an: $WAITING
+**Ich warte auf eine Antwort von dir.** Offene Fragen an: $ANSWER_LIST"
+        [ -n "$APPROVE_LIST" ] && BODY="$BODY
+
+**Ich warte auf eine Freigabe.** Nur ein Label-Tap, nichts zu schreiben: $APPROVE_LIST"
+        BODY="$BODY
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 sonst starte ich in 5 Minuten mit derselben offenen Frage neu."
+        status "wartet auf dich ($WAITING)" "🟡" "$BODY"
       else
         # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
         # pick_ticket()) -- einzig needs-research kaeme hier noch als
@@ -1771,13 +1870,19 @@ START_HM=$(date "+%H:%M")
 # Seit #145 kann ein 'parked'-Ticket (wartet auf dich) neben dem aktiven
 # koexistieren -- die Busy-Meldung darf das nicht verschweigen (AC6), sonst
 # sieht man auf dem Handy nur "🟠 arbeitet an #X" und uebersieht, dass woanders
-# eine Antwort faellig ist.
-PARKED_NOW=$(parked_issues)
+# eine Antwort faellig ist. #196: auch hier Antwort- und Freigabefall trennen.
+PARKED_ANSWER=$(parked_answer_issues)
+PARKED_APPROVE=$(parked_approve_issues)
 PARKED_NOTE=""
-if [ -n "$PARKED_NOW" ]; then
-  PARKED_NOTE="
+if [ -n "$PARKED_ANSWER" ]; then
+  PARKED_NOTE="$PARKED_NOTE
 
-🟡 Wartet zusätzlich auf dich: $PARKED_NOW (Antwort + \`needs-input\` entfernen setzt die Arbeit dort fort)."
+🟡 Wartet zusätzlich auf deine Antwort: $PARKED_ANSWER (Antwort + \`needs-input\` entfernen setzt die Arbeit dort fort)."
+fi
+if [ -n "$PARKED_APPROVE" ]; then
+  PARKED_NOTE="$PARKED_NOTE
+
+🟡 Wartet zusätzlich auf deine Freigabe: $PARKED_APPROVE (nur ein Label-Tap setzt die Arbeit dort fort)."
 fi
 
 if [ "$RUN_ROLE" = "plan" ]; then
@@ -2179,14 +2284,27 @@ if [ $RC -eq 0 ]; then
 
   if [ "$SELF_WAITS" -eq 1 ]; then
     park_issue "$ISSUE"
-    WAITING=$(waiting_issues)
-    status "wartet auf dich ($WAITING)" "🟡" \
-      "🟡 **Ich warte auf eine Antwort von dir.**
+    # #196: dieselbe Zweiteilung wie im "none"-Zweig oben -- hier per frischem
+    # gh-Aufruf statt ROUND_SNAP, weil der Rundenstart-Schnappschuss zu diesem
+    # spaeten Zeitpunkt schon veraltet ist (genau der Grund, warum diese
+    # Stelle ueberhaupt neu abfragt statt ROUND_SNAP wiederzuverwenden).
+    ANSWER_LIST=$(answer_issues)
+    APPROVE_LIST=$(approve_issues)
+    WAITING="$ANSWER_LIST"
+    [ -n "$ANSWER_LIST" ] && [ -n "$APPROVE_LIST" ] && WAITING="$WAITING, "
+    WAITING="$WAITING$APPROVE_LIST"
+    BODY="🟡 **Ich warte auf dich.**"
+    [ -n "$ANSWER_LIST" ] && BODY="$BODY
 
-Offene Fragen an: $WAITING
+**Ich warte auf eine Antwort von dir.** Offene Fragen an: $ANSWER_LIST"
+    [ -n "$APPROVE_LIST" ] && BODY="$BODY
+
+**Ich warte auf eine Freigabe.** Nur ein Label-Tap, nichts zu schreiben: $APPROVE_LIST"
+    BODY="$BODY
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
 Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`."
+    status "wartet auf dich ($WAITING)" "🟡" "$BODY"
   else
     # Einzige Stelle, die die Chain-Schleife in main() fortsetzt (#61) --
     # sauberer Lauf, keine offene Frage. Jeder andere Zweig in run_round()
