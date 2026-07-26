@@ -106,6 +106,7 @@ case "${1:-} ${2:-}" in
         *) pr="$a" ;;
       esac
     done
+    [ -e "$G/gh-merge-fail" ] && exit 1
     touch "$G/merged-$pr"
     ;;
   "run view")
@@ -216,6 +217,17 @@ setup_behind() {
   printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
     > "$GHSTATE_DIR/checks-$pr.json"
   printf '{"headRefName":"fix/%s-runner-ci-watch","mergeStateStatus":"BEHIND"}' \
+    "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
+}
+
+# $1 = Issue-Nr, $2 = PR-Nr -> markiert den PR als konfliktbehaftet (DIRTY,
+# #217), alle Checks gruen -- genau die Konstellation, in der GitHub NIE
+# wieder 'BEHIND' meldet und der alte Code fuer immer bei 'success' landete.
+setup_conflict() {
+  local issue="$1" pr="$2"
+  printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+    > "$GHSTATE_DIR/checks-$pr.json"
+  printf '{"headRefName":"fix/%s-runner-ci-watch","mergeStateStatus":"DIRTY"}' \
     "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
 }
 
@@ -619,6 +631,116 @@ if grep -vE '^\s*#' "$RUNNER" | grep -qE 'git stash|--force'; then
 else
   ok "T20: keine '--force'/'git stash'-Umgehung im Runner-Skript"
 fi
+
+# ==============================================================================
+# T21 -- #217 AC1/AC6: DIRTY-PR, ALLE Checks gruen -> genau der bisher stille
+#        Dauerzustand aus dem Ticket. pr_ci_state() darf hier NICHT 'success'
+#        liefern -- kein 'ready', kein Auto-Merge, solange der Konflikt steht.
+# ==============================================================================
+reset_state
+setup_wip_issue 450
+setup_pr 450 750
+setup_conflict 450 750
+run_round
+assert_file_absent "T21 (#217 AC1/AC6): kein Auto-Merge bei DIRTY, auch wenn alle Checks gruen sind" \
+  "$GHSTATE_DIR/merged-750"
+assert_file_absent "T21: 'ready' wird nicht gesetzt, solange DIRTY den PR haelt" \
+  "$GHSTATE_DIR/ready-750"
+
+# ==============================================================================
+# T22 -- #217 AC1/AC2: DIRTY-PR mit echtem Merge-Konflikt beim lokalen
+#        Nachvollzug -> Fix-Agent mit den Konfliktdateien im Auftrag, genau
+#        wie T8 fuer 'behind' -- nur jetzt ueber den 'conflict'-Zustand
+#        erreicht, den ein DIRTY-PR ueberhaupt erst zugaenglich macht.
+# ==============================================================================
+reset_state
+setup_wip_issue 451
+setup_pr 451 751
+setup_conflict 451 751
+touch "$GHSTATE_DIR/git-merge-conflict"
+run_round
+assert_file_present "T22 (#217 AC1/AC2): Fix-Agent läuft bei einem DIRTY-PR mit echtem Merge-Konflikt" \
+  "$GHSTATE_DIR/claude-called"
+assert_file_absent "T22: kein Auto-Merge bei einem DIRTY-Konflikt" "$GHSTATE_DIR/merged-751"
+PROMPT_751=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T22: Auftrag nennt den Merge-Konflikt (DIRTY)" "Merge-Konflikt" "$PROMPT_751"
+assert_contains "T22: Auftrag nennt die Konfliktdatei a.ts" "src/a.ts" "$PROMPT_751"
+assert_contains "T22: Auftrag nennt die Konfliktdatei b.ts" "src/b.ts" "$PROMPT_751"
+
+# ==============================================================================
+# T23 -- #217 AC2: DIRTY-PR, die lokale Ermittlung der Konfliktdateien
+#        scheitert an Infrastruktur (fetch). Anders als bei 'behind' (T17,
+#        bleibt gruen und wartet) startet der Fix-Agent trotzdem -- ein
+#        DIRTY-PR loest sich nie von selbst durch Abwarten -- mit 'unbekannt'
+#        als Dateiliste.
+# ==============================================================================
+reset_state
+setup_wip_issue 452
+setup_pr 452 752
+setup_conflict 452 752
+touch "$GHSTATE_DIR/git-fetch-fail"
+run_round
+assert_file_present "T23 (#217 AC2): Fix-Agent läuft bei DIRTY auch wenn die Konfliktdatei-Ermittlung scheitert" \
+  "$GHSTATE_DIR/claude-called"
+PROMPT_752=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T23: Auftrag nennt 'unbekannt' als Dateiliste" "unbekannt" "$PROMPT_752"
+
+# ==============================================================================
+# T24 -- #217 AC3: ein GEPARKTES Ticket im conflict-Zustand wird entparkt
+#        (in-progress statt parked) -- ohne dass gerade ein anderes Ticket
+#        in-progress ist und ohne offene needs-input-Frage.
+# ==============================================================================
+reset_state
+: > "$GHSTATE_DIR/labels-453"
+echo "parked" >> "$GHSTATE_DIR/labels-453"
+printf '[{"number":453,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}]' \
+  > "$GHSTATE_DIR/wip.json"
+printf '[{"number":753,"headRefName":"fix/453-runner-ci-watch"}]' > "$GHSTATE_DIR/prlist.json"
+setup_conflict 453 753
+run_round
+LABELS_453=$(cat "$GHSTATE_DIR/labels-453" 2>/dev/null | tr '\n' ' ')
+case "$LABELS_453" in
+  *in-progress*) ok "T24 (#217 AC3): geparktes Ticket im conflict-Zustand wird entparkt" ;;
+  *) red "T24: geparktes Ticket im conflict-Zustand wird entparkt (Labels: $LABELS_453)" ;;
+esac
+case "$LABELS_453" in
+  *parked*) red "T24: 'parked' sollte entfernt sein (Labels: $LABELS_453)" ;;
+  *) ok "T24: 'parked' wurde beim Entparken entfernt" ;;
+esac
+
+# ==============================================================================
+# T25 -- #217 AC4: ein geparktes Ticket mit gruener CI (success), aber
+#        'gh pr merge' schlaegt fehl -> 'parked' bleibt stehen, kein
+#        Agentenlauf, statt das Ticket faelschlich als erledigt zu behandeln.
+#        Ein anderes Ticket besetzt den einzigen Bauplatz (wie T9), damit das
+#        geparkte Ticket nicht ueber den Resume-Pfad aufgegriffen wird.
+# ==============================================================================
+reset_state
+: > "$GHSTATE_DIR/labels-461"
+echo "in-progress" >> "$GHSTATE_DIR/labels-461"
+: > "$GHSTATE_DIR/labels-454"
+echo "parked" >> "$GHSTATE_DIR/labels-454"
+printf '[
+  {"number":461,"labels":[{"name":"in-progress"}],"createdAt":"2026-01-01T00:00:00Z"},
+  {"number":454,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}
+]' > "$GHSTATE_DIR/wip.json"
+printf '[{"number":861,"headRefName":"fix/461-runner-ci-watch"},{"number":754,"headRefName":"fix/454-runner-ci-watch"}]' \
+  > "$GHSTATE_DIR/prlist.json"
+printf '[{"bucket":"pending","name":"e2e"}]' > "$GHSTATE_DIR/checks-861.json"
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+  > "$GHSTATE_DIR/checks-754.json"
+printf '{"headRefName":"fix/454-runner-ci-watch","mergeStateStatus":"CLEAN"}' \
+  > "$GHSTATE_DIR/mergestate-754.json"
+touch "$GHSTATE_DIR/gh-merge-fail"
+run_round
+assert_file_absent "T25 (#217 AC4): kein Auto-Merge, wenn 'gh pr merge' für ein geparktes Ticket scheitert" \
+  "$GHSTATE_DIR/merged-754"
+assert_file_absent "T25: kein Agentenlauf, obwohl der Merge scheitert" "$GHSTATE_DIR/claude-called"
+LABELS_454=$(cat "$GHSTATE_DIR/labels-454" 2>/dev/null | tr '\n' ' ')
+case "$LABELS_454" in
+  *parked*) ok "T25: Ticket bleibt geparkt, wenn der Merge fehlschlägt" ;;
+  *) red "T25: Ticket bleibt geparkt, wenn der Merge fehlschlägt (Labels: $LABELS_454)" ;;
+esac
 
 # ==============================================================================
 echo

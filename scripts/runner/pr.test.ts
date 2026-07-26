@@ -5,6 +5,7 @@ import {
   prFailureSummary,
   prForIssue,
   prIsBehind,
+  prIsDirty,
   prMergeState,
   prOnlyProtectedPathsRed,
   prSquashMerge,
@@ -113,6 +114,55 @@ describe('prCiState', () => {
     });
     expect(prCiState('55', gh)).toBe('success');
   });
+
+  // #217 AC1: der eigentliche Fund des Tickets -- ein DIRTY-PR mit gruenen
+  // Checks fiel vorher auf 'success' durch, weil GitHub fuer ihn nie mehr
+  // 'BEHIND' meldet. Der Runner hat ihn dann Takt fuer Takt vergeblich zu
+  // mergen versucht.
+  it('conflict statt success, wenn der PR DIRTY ist und alle Checks gruen sind (#217)', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([{ bucket: 'pass', name: 'quality' }]),
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY' }),
+    });
+    expect(prCiState('55', gh)).toBe('conflict');
+  });
+
+  it('pending und failing haben weiterhin Vorrang vor conflict (#217)', () => {
+    const pending = ghRouter({
+      'pr checks': JSON.stringify([{ bucket: 'pending', name: 'e2e' }]),
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY' }),
+    });
+    expect(prCiState('55', pending)).toBe('pending');
+
+    const failing = ghRouter({
+      'pr checks': JSON.stringify([{ bucket: 'fail', name: 'e2e' }]),
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY' }),
+    });
+    expect(prCiState('55', failing)).toBe('failing');
+  });
+});
+
+describe('prIsDirty', () => {
+  it('DIRTY ist ein Konflikt', () => {
+    const gh = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY' }) });
+    expect(prIsDirty('55', gh)).toBe(true);
+  });
+
+  it('BEHIND und CLEAN sind kein Konflikt', () => {
+    const behind = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'BEHIND' }) });
+    expect(prIsDirty('55', behind)).toBe(false);
+    const clean = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN' }) });
+    expect(prIsDirty('55', clean)).toBe(false);
+  });
+
+  it('kein Konflikt, wenn gh scheitert', () => {
+    const gh: GhAdapter = {
+      run: vi.fn(() => {
+        throw new Error('gh failed');
+      }),
+    };
+    expect(prIsDirty('55', gh)).toBe(false);
+  });
 });
 
 describe('prOnlyProtectedPathsRed', () => {
@@ -166,14 +216,25 @@ describe('prSquashMerge', () => {
     expect(gh.run).toHaveBeenCalledWith(['pr', 'merge', '--squash', '--auto', '--delete-branch', '56']);
   });
 
-  it('wirft nicht weiter, wenn der Merge-Aufruf selbst scheitert', () => {
+  // #217 AC4: der Rueckgabewert ist die Grundlage dafuer, ob 'parked' bzw.
+  // 'needs-input' ueberhaupt entfernt werden duerfen.
+  it('wirft nicht weiter, aber meldet false, wenn der Merge-Aufruf selbst scheitert (#217)', () => {
     const gh: GhAdapter = {
       run: vi.fn((args: string[]) => {
         if (args[0] === 'pr' && args[1] === 'view') return 'title';
         throw new Error('merge failed');
       }),
     };
-    expect(() => prSquashMerge('57', gh)).not.toThrow();
+    let result: boolean | undefined;
+    expect(() => {
+      result = prSquashMerge('57', gh);
+    }).not.toThrow();
+    expect(result).toBe(false);
+  });
+
+  it('meldet true, wenn der Merge-Aufruf durchgeht (#217)', () => {
+    const gh = ghRouter({ 'pr view': 'fix(runner): x — Closes #1', 'pr merge': '' });
+    expect(prSquashMerge('58', gh)).toBe(true);
   });
 });
 

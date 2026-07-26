@@ -239,15 +239,22 @@ Fortsetzung oder ein anderes Ticket denkt:
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
 | rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
+| konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
 | grün, aber noch Entwurf (Sicherheitsnetz — z. B. nach einem abgebrochenen Lauf) | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
 | grün, schon `ready` | nichts zu tun — GitHub mergt von selbst, sobald die Required Checks final durch sind | nein |
 
 Die Reihenfolge der Zeilen ist die Prüfreihenfolge: `pending` → `failing` →
-`behind` → `success`. Ein noch laufender Shard darf nicht durch ein Nachziehen
-abgewürgt werden, und ein roter Check wird erst behoben, bevor überhaupt an
-ein Nachziehen gedacht wird — `behind` wird also nur geprüft, wenn feststeht,
-dass nichts mehr läuft und nichts rot ist.
+`conflict` → `behind` → `success`. Ein noch laufender Shard darf nicht durch
+ein Nachziehen abgewürgt werden, und ein roter Check wird erst behoben, bevor
+überhaupt an ein Nachziehen gedacht wird. `conflict` steht bewusst **vor**
+`behind`: GitHub berechnet `mergeStateStatus` serverseitig, und ein PR mit
+einem echten Merge-Konflikt meldet **dauerhaft** `DIRTY`, nie wieder `BEHIND`
+— stünde `behind` zuerst in der Prüfreihenfolge, wäre es für einen
+konfliktbehafteten PR für immer unerreichbar, und CI würde bei jedem grünen
+Check-Lauf fälschlich `success` melden, obwohl GitHub selbst gar nicht mergen
+kann (#217). `behind` wird also nur geprüft, wenn feststeht, dass nichts
+mehr läuft, nichts rot ist und kein echter Konflikt vorliegt.
 
 In aller Regel ist der PR beim ersten grünen Blick des Takts schon `ready`
 (Claude hat das selbst am Lauf-Ende erledigt) — der Merge passiert dann durch
@@ -286,14 +293,35 @@ kehrt sauber zum vorherigen Branch zurück, und ein Bau-Agent startet gezielt
 mit den Konfliktdateien im Auftrag (derselbe Mechanismus wie bei einem roten
 Check).
 
-**Die Wache gilt auch für `parked`-Tickets (#154), mit denselben vier
-Zuständen wie das laufende Ticket (#173).** Seit #202 (S5 von #184) ist das
-keine Beschreibung mehr, die zwei getrennte Bash-Blöcke zufällig einhalten,
-sondern eine einzige Übergangstabelle: `scripts/runner/watch.ts`,
-`watchReaction()` (`WatchState × parked -> Reaktion`). `watchRunningIssue()`
-und `watchParkedIssues()` lösen den PR-Zustand (S4, `PrState`) je zu einem
-`WatchState` auf und lassen danach dieselbe Tabelle entscheiden — `parked` ist
-dort ein Eingabefeld, kein eigener Zweig mehr. Die Tabelle oben beobachtet nur
+**`conflict`: ein `DIRTY`-PR bekommt einen eigenen Zustand (#217).** Weil
+GitHub bei einem echten Merge-Konflikt nie wieder `BEHIND` meldet (s. o.),
+reicht der `behind`-Pfad allein nicht — ohne eigene Prüfung blieb ein
+konfliktbehafteter PR für immer bei `success` hängen, sobald seine Checks
+zufällig grün waren: `gh pr ready` + Auto-Merge liefen ins Leere, GitHub
+mergt nie, und der Takt meldete jede Runde erneut „kein Eingreifen nötig".
+Der Takt probiert deshalb bei `DIRTY` denselben lokalen Trockenlauf-Merge wie
+bei `behind` (`git fetch` + `git merge origin/main`, kein Commit): klappt er
+doch (GitHubs Berechnung war beim Abruf veraltet), wird normal nachgezogen,
+kein Agentenlauf. Scheitert er — der Normalfall bei `DIRTY` — startet ein
+Bau-Agent gezielt mit den Konfliktdateien im Auftrag. Anders als bei
+`behind` gibt es hier **keine** stille Wiederholung bei einem
+Infrastruktur-Fehlschlag (`git fetch`/`checkout`/`push`): ein `DIRTY`-PR löst
+sich nie durch bloßes Abwarten, also startet der Bau-Agent auch dann, mit
+`unbekannt` als Dateiliste im Auftrag. Wiederholte Fehlschläge zählen wie
+gewohnt in die bestehende Eskalation ein (ADR-0007) — nach dem dritten
+vergeblichen Versuch: Kommentar, `needs-input`.
+
+**Die Wache gilt auch für `parked`-Tickets (#154), mit denselben Zuständen wie
+das laufende Ticket (#173, erweitert um `conflict` in #217).** Seit #202 (S5
+von #184) ist das keine Beschreibung mehr, die zwei getrennte Bash-Blöcke
+zufällig einhalten, sondern eine einzige Übergangstabelle:
+`scripts/runner/watch.ts`, `watchReaction()` (`WatchState × parked ->
+Reaktion`). `watchRunningIssue()` und `watchParkedIssues()` lösen den
+PR-Zustand (S4, `PrState`) je zu einem `WatchState` auf und lassen danach
+dieselbe Tabelle entscheiden — `parked` ist dort ein Eingabefeld, kein eigener
+Zweig mehr. Der DIRTY-Fall aus #217 ist in dieser Tabelle der Zustand
+`dirty-conflict` und reagiert wie `behind-conflict`: geparkt → entparken,
+laufend → Fix-Agent. Die Tabelle oben beobachtet nur
 das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins, das an
 `protected-paths` hing und auf `human-approved` wartete) fiel bisher aus der
 Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145), aber die
@@ -307,7 +335,13 @@ zuerst — **alle** offenen `parked`-Tickets:
 - **nur hinter `main`, kein Konflikt:** per `git` nachgezogen, bleibt aber
   geparkt (die nächste Runde sieht dann wieder laufende Checks). Kein
   Agentenlauf.
-- **echter Konflikt beim Nachziehen, oder rote Checks über
+- **konfliktbehaftet (`DIRTY`, #217):** GitHub hat hier bereits selbst
+  entschieden — anders als bei `behind` braucht es keinen lokalen
+  Probe-Merge, um zu wissen, dass Konfliktarbeit ansteht. Dieselben Regeln
+  wie im nächsten Punkt (needs-input/WIP-Limit); nach dem Entparken führt die
+  Wache oben den Trockenlauf-Merge aus und leitet daraus CI_FIX/CI_SUMMARY
+  ab, genau wie beim laufenden Ticket.
+- **echter Konflikt beim Nachziehen eines `behind`-PR, oder rote Checks über
   `protected-paths` hinaus:** das ist inhaltliche Arbeit, kein Wartezustand.
   Trägt das Ticket noch `needs-input` (eine ungeklärte Frage), bleibt es
   unangetastet — eine offene menschliche Antwort geht vor. Ist die Frage
