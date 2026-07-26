@@ -23,6 +23,7 @@
   --area-events: oklch(66% 0.11 195); /* teal — calm, structured */
   --area-journal: oklch(63% 0.14 305); /* warm violet — personal */
   --area-habits: oklch(66% 0.15 148); /* green — growth, streaks */
+  --area-activities: oklch(62% 0.16 260); /* blue — Garmin activities (issue #180) */
 
   /* The default accent is the primary area colour. */
   --accent: var(--area-tasks);
@@ -89,6 +90,7 @@
     --area-events: oklch(72% 0.1 195);
     --area-journal: oklch(70% 0.13 305);
     --area-habits: oklch(72% 0.13 148);
+    --area-activities: oklch(70% 0.14 260);
 
     --accent-fg: oklch(18% 0.012 60);
 
@@ -112,6 +114,7 @@
   --area-events: oklch(72% 0.1 195);
   --area-journal: oklch(70% 0.13 305);
   --area-habits: oklch(72% 0.13 148);
+  --area-activities: oklch(70% 0.14 260);
 
   --accent-fg: oklch(18% 0.012 60);
 

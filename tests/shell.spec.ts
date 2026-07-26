@@ -28,7 +28,7 @@ test('passkey setup issues a recovery code exactly once and opens the app', asyn
   await expect(page.getByTestId('recovery-code')).toHaveCount(0);
 });
 
-test('all five tabs are reachable and mark themselves current (issue #123 AC1)', async ({
+test('all six tabs are reachable and mark themselves current (issue #123 AC1, #180)', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -38,6 +38,7 @@ test('all five tabs are reachable and mark themselves current (issue #123 AC1)',
     ['Gewohnheiten', '/gewohnheiten', 'Gewohnheiten verwalten'],
     ['Kalender', '/kalender', 'Kalender'],
     ['Journal', '/journal', 'Journal'],
+    ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
     ['Übersicht', '/uebersicht', 'Übersicht'],
   ] as const) {
     await page.getByRole('link', { name: label }).click();
@@ -81,7 +82,7 @@ test('every tab label fits on one line with a ≥44×44px touch target (issue #1
   }
 });
 
-test('the nav carries the same five entries in both layouts (issue #123 AC3)', async ({
+test('the nav carries the same six entries in both layouts (issue #123 AC3, #180)', async ({
   page,
 }) => {
   await registerPasskey(page);

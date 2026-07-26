@@ -152,6 +152,15 @@ export function IconWeatherThunderstorm({ className }: IconProps) {
   );
 }
 
+export function IconActivity({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Heart-rate trace (issue #180) — distinct from IconHabits' streak-arrow. */}
+      <path d="M3 13h4l2 5 4-11 2 6h6" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
