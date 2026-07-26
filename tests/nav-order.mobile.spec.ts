@@ -35,15 +35,17 @@ async function trackScrollIntoView(page: Page) {
 
 /**
  * #180 added a real 6th entry (Aktivitäten), so the bottom nav overflows five slots
- * by default now — no synthetic clone needed to reach that state any more. A few
- * tests still need the *pre-#180* five-entry baseline to prove the no-overflow case;
- * they get there by dropping the last (non-active, since navigation starts on
- * Übersicht) entry back off instead.
+ * by default now. One test still needs the pre-#180 no-overflow baseline to prove
+ * the "nothing to do, nothing happens" case. Removing a `.nav__item` node directly
+ * does not survive it — a client-side navigation re-renders `Nav` from the same
+ * (unchanged) `NAV_ITEMS`/`useNavOrder` state and the removed node comes right
+ * back, overflow and all. A stylesheet override does survive: it is a plain
+ * `<style>` tag outside React's tree, so it stays in the document across the SPA
+ * route change this test triggers. Shrinking every slot below the real 20%
+ * (shell.css) is enough to fit all six without scrolling.
  */
-async function removeLastNavItem(page: Page) {
-  await page.locator('.nav__list').evaluate((list) => {
-    list.lastElementChild?.remove();
-  });
+async function forceNoOverflow(page: Page) {
+  await page.addStyleTag({ content: '.nav__item { flex-basis: 16% !important; }' });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -55,15 +57,7 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
     page,
   }) => {
     const list = page.locator('.nav__list');
-
-    // Baseline (pre-#180 shape): exactly five entries fit without overflow.
-    await removeLastNavItem(page);
     const clientWidth = await list.evaluate((el) => el.clientWidth);
-    expect(await list.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(clientWidth + 1);
-
-    // The real 6th entry (Aktivitäten, #180) back in view via a reload.
-    await page.reload();
-
     const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
     // Five slots stay the visible amount regardless of how many entries exist — a
     // sixth entry scrolls past them instead of shrinking all six to fit.
@@ -125,8 +119,8 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
   test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
     await trackScrollIntoView(page);
     await registerPasskey(page);
-    // Back to the pre-#180 five-entry baseline — the only shape without overflow.
-    await removeLastNavItem(page);
+    // Back to the pre-#180 no-overflow baseline.
+    await forceNoOverflow(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
     await expect(page).toHaveURL(/\/journal$/);
