@@ -96,6 +96,13 @@ describe('dispatch', () => {
       'pr-failure-summary',
       'watch-running-issue',
       'watch-parked-issues',
+      'self-heal-park',
+      'pick-ticket',
+      'waiting-issues',
+      'parked-issues',
+      'park-issue',
+      'queue-snapshot',
+      'queue-body',
     ]);
   });
 
