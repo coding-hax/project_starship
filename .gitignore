@@ -1,5 +1,9 @@
 # dependencies
-node_modules/
+# Ohne Schraegstrich mit Absicht: 'node_modules/' greift nur fuer
+# Verzeichnisse. Ein gleichnamiger SYMLINK (Modus 120000) rutscht daran vorbei
+# und laesst in der CI 'pnpm install' mit ENOTDIR sterben -- und zwar in jedem
+# Job, lange vor dem ersten Test.
+node_modules
 .pnp
 .pnp.*
 

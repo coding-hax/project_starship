@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
 import type { GitAdapter } from './git';
 import { createStateAdapter, type StateAdapter } from './state';
-import { conflictSummary, watchParkedIssues, watchReaction, watchRunningIssue, type WatchState } from './watch';
+import {
+  conflictSummary,
+  dirtySummary,
+  watchParkedIssues,
+  watchReaction,
+  watchRunningIssue,
+  type WatchState,
+} from './watch';
 
 const ALL_STATES: WatchState[] = [
   'pending',
@@ -15,6 +22,7 @@ const ALL_STATES: WatchState[] = [
   'behind-caught-up',
   'behind-conflict',
   'behind-retry',
+  'dirty-conflict',
 ];
 
 describe('watchReaction (AC1/AC2: eine Übergangstabelle, keine Lücke)', () => {
@@ -58,6 +66,11 @@ describe('watchReaction (AC1/AC2: eine Übergangstabelle, keine Lücke)', () => 
     expect(watchReaction({ state: 'behind-conflict', parked: true })).toEqual({ kind: 'promote-candidate' });
   });
 
+  it('dirty-conflict: laufend Fix-Agent, geparkt Entparken-Kandidat (#217 AC2/AC3)', () => {
+    expect(watchReaction({ state: 'dirty-conflict', parked: false })).toEqual({ kind: 'build-fix' });
+    expect(watchReaction({ state: 'dirty-conflict', parked: true })).toEqual({ kind: 'promote-candidate' });
+  });
+
   it('behind-retry: geparkt IMMER still, laufend abhängig von retryEscalated', () => {
     expect(watchReaction({ state: 'behind-retry', parked: true })).toEqual({ kind: 'noop' });
     expect(watchReaction({ state: 'behind-retry', parked: true, retryEscalated: true })).toEqual({ kind: 'noop' });
@@ -83,6 +96,29 @@ describe('conflictSummary', () => {
 
   it('fällt ohne Dateien auf "unbekannt" zurück', () => {
     expect(conflictSummary(1, '2', [])).toContain('unbekannt');
+  });
+});
+
+describe('dirtySummary (#217)', () => {
+  it('nennt DIRTY als Ursache, PR, Ticket und die Konfliktdateien', () => {
+    const text = dirtySummary(450, '750', ['src/a.ts', 'src/b.ts']);
+    expect(text).toContain('Merge-Konflikt');
+    expect(text).toContain('DIRTY');
+    expect(text).toContain('#450');
+    expect(text).toContain('src/a.ts');
+    expect(text).toContain('src/b.ts');
+  });
+
+  // AC2: eine leere Dateiliste darf nicht als "keine Konfliktdateien"
+  // durchgehen -- der Auftrag muss sagen, WARUM sie fehlt.
+  it('nennt den Grund, wenn die lokale Ermittlung an Infrastruktur scheitert', () => {
+    const text = dirtySummary(452, '752', [], 'git fetch ist fehlgeschlagen');
+    expect(text).toContain('unbekannt');
+    expect(text).toContain('git fetch ist fehlgeschlagen');
+  });
+
+  it('fällt ohne Dateien und ohne Grund auf "unbekannt" zurück', () => {
+    expect(dirtySummary(1, '2', [])).toContain('unbekannt');
   });
 });
 
@@ -250,6 +286,56 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     expect(r3).toEqual({ kind: 'retry', reason: 'unsauberer Arbeitsbaum', paths: ['some/file.ts'], escalated: true });
   });
 
+  // --- #217: DIRTY-PR (mergeStateStatus), laufendes Ticket ------------------
+  it('T21 (#217 AC1/AC6): DIRTY + alle Checks grün -> KEIN ready, kein Merge', () => {
+    const gh = ghFake({
+      checks: { '750': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '750': { headRefName: 'fix/450-x', mergeStateStatus: 'DIRTY' } },
+    });
+    const result = watchRunningIssue(450, '750', { gh, git: gitFake(), state });
+    expect(result.kind).not.toBe('merged');
+    expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '750']);
+  });
+
+  it('T22 (#217 AC1/AC2): DIRTY + echter Konflikt -> Fix-Agent mit Konfliktdateien', () => {
+    const gh = ghFake({
+      checks: { '751': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '751': { headRefName: 'fix/451-x', mergeStateStatus: 'DIRTY' } },
+    });
+    const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts', 'src/b.ts'] });
+    const result = watchRunningIssue(451, '751', { gh, git, state });
+    expect(result.kind).toBe('build-fix');
+    if (result.kind === 'build-fix') {
+      expect(result.summary).toContain('DIRTY');
+      expect(result.summary).toContain('src/a.ts');
+      expect(result.summary).toContain('src/b.ts');
+    }
+    expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '751']);
+  });
+
+  // AC2: der entscheidende Unterschied zu 'behind' (T17) -- dort wartet der
+  // Takt bei einem fetch-Fehlschlag still weiter, hier NICHT.
+  it('T23 (#217 AC2): DIRTY + gescheiterte Dateiermittlung -> Fix-Agent trotzdem, Liste "unbekannt"', () => {
+    const gh = ghFake({
+      checks: { '752': [{ bucket: 'pass', name: 'quality' }] },
+      mergeState: { '752': { headRefName: 'fix/452-x', mergeStateStatus: 'DIRTY' } },
+    });
+    const result = watchRunningIssue(452, '752', { gh, git: gitFake({ failFetch: true }), state });
+    expect(result.kind).toBe('build-fix');
+    if (result.kind === 'build-fix') expect(result.summary).toContain('unbekannt');
+  });
+
+  // Gegenprobe: meldet GitHub DIRTY, geht der lokale Merge aber doch durch
+  // (GitHubs Berechnung war veraltet), wird ganz normal nachgezogen.
+  it('#217: DIRTY, aber lokaler Merge klappt -> nachgezogen statt Fix-Agent', () => {
+    const gh = ghFake({
+      checks: { '753': [{ bucket: 'pass', name: 'quality' }] },
+      mergeState: { '753': { headRefName: 'fix/453-x', mergeStateStatus: 'DIRTY' } },
+    });
+    const result = watchRunningIssue(453, '753', { gh, git: gitFake(), state });
+    expect(result).toEqual({ kind: 'caught-up' });
+  });
+
   it('T17/T18/T19: fetch/checkout/push-Fehlschlag sind unterscheidbare Gründe', () => {
     const gh = (pr: string) =>
       ghFake({
@@ -329,6 +415,45 @@ describe('watchParkedIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)'
     const outcome = watchParkedIssues([issue(420)], true, { gh, git, state });
     expect(outcome.promoted).toEqual({ issue: 420, reason: 'ein Merge-Konflikt beim Nachziehen von `main`' });
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '420', '--remove-label', 'parked', '--add-label', 'in-progress']);
+  });
+
+  it('T24 (#217 AC3): DIRTY-PR -> entparkt (Kandidat), Grund nennt DIRTY', () => {
+    const gh = ghFake({
+      prList: [{ number: 753, headRefName: 'fix/453-x' }],
+      checks: { '753': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '753': { headRefName: 'fix/453-x', mergeStateStatus: 'DIRTY' } },
+    });
+    const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts'] });
+    const outcome = watchParkedIssues([issue(453)], true, { gh, git, state });
+    expect(outcome.promoted).toEqual({ issue: 453, reason: 'ein Merge-Konflikt (`DIRTY`) mit `main`' });
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '453', '--remove-label', 'parked', '--add-label', 'in-progress']);
+  });
+
+  // #217 AC4: ohne dieses Gate faellt das Ticket aus jeder Wache heraus --
+  // 'parked' weg, PR aber weiterhin offen und unbeobachtet.
+  it('T25 (#217 AC4): scheitert "gh pr merge", bleibt das Ticket geparkt', () => {
+    const base = ghFake({
+      prList: [{ number: 754, headRefName: 'fix/454-x' }],
+      checks: { '754': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '754': { headRefName: 'fix/454-x', mergeStateStatus: 'CLEAN' } },
+    });
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        if (args[0] === 'pr' && args[1] === 'merge') throw new Error('merge failed');
+        return base.run(args);
+      }),
+    };
+    const outcome = watchParkedIssues([issue(454)], true, { gh, git: gitFake(), state });
+    expect(outcome.released).toEqual([]);
+    expect(gh.run).not.toHaveBeenCalledWith([
+      'issue',
+      'edit',
+      '454',
+      '--remove-label',
+      'parked',
+      '--remove-label',
+      'needs-input',
+    ]);
   });
 
   it('T8: rote Checks über protected-paths hinaus -> entparkt (Kandidat)', () => {
