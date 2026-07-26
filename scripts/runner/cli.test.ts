@@ -85,6 +85,7 @@ describe('dispatch', () => {
       'pr-for-issue',
       'pr-ci-state',
       'pr-is-behind',
+      'pr-is-dirty',
       'pr-merge-state',
       'pr-catch-up-behind',
       'catchup-fail-reason',

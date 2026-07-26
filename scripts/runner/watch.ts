@@ -39,7 +39,8 @@ export type WatchState =
   | 'failing-fix'
   | 'behind-caught-up'
   | 'behind-conflict'
-  | 'behind-retry';
+  | 'behind-retry'
+  | 'dirty-conflict';
 
 export interface WatchReactionInput {
   state: WatchState;
@@ -74,6 +75,11 @@ export function watchReaction(input: WatchReactionInput): WatchReaction {
       return parked ? { kind: 'noop' } : { kind: 'wait', severity: 'green' };
     case 'behind-conflict':
       return parked ? { kind: 'promote-candidate' } : { kind: 'build-fix' };
+    // #217: identische Reaktion wie 'behind-conflict' -- der Unterschied liegt
+    // allein darin, WIE der Konflikt festgestellt wurde (GitHubs DIRTY statt
+    // eines gescheiterten lokalen Merges) und im Wortlaut der Begruendung.
+    case 'dirty-conflict':
+      return parked ? { kind: 'promote-candidate' } : { kind: 'build-fix' };
     case 'behind-retry':
       if (parked) return { kind: 'noop' };
       return { kind: 'wait', severity: input.retryEscalated ? 'yellow' : 'green' };
@@ -101,6 +107,25 @@ Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
 \`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen.`;
 }
 
+// Textbaustein fuer den Fix-Auftrag bei einem von GitHub gemeldeten Konflikt
+// (mergeStateStatus DIRTY, #217). Eigener Wortlaut statt conflictSummary():
+// hier ist der Konflikt nicht beim Nachziehen ENTSTANDEN, er stand schon
+// vorher fest -- der lokale Merge diente nur dazu, die Dateien zu benennen.
+export function dirtySummary(issue: number, pr: string, files: string[], probeFailReason?: string): string {
+  const fileList = probeFailReason
+    ? `unbekannt (lokale Ermittlung ist an \`${probeFailReason}\` gescheitert)`
+    : files.length > 0
+      ? files.join(',')
+      : 'unbekannt';
+  return `### Merge-Konflikt (DIRTY) mit \`main\`
+PR #${pr} (#${issue}) ist laut GitHub konfliktbehaftet (\`mergeStateStatus: DIRTY\`).
+
+Betroffene Dateien: ${fileList}
+
+Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
+\`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen.`;
+}
+
 interface WatchDeps {
   gh: GhAdapter;
   git: GitAdapter;
@@ -110,6 +135,10 @@ interface WatchDeps {
 interface ResolvedWatchState {
   state: WatchState;
   conflictFiles?: string[];
+  // Nur fuer 'dirty-conflict': die lokale Ermittlung der Konfliktdateien ist
+  // an Infrastruktur gescheitert (nicht am Konflikt selbst) -- der Grund wird
+  // im Auftrag genannt, statt eine leere Dateiliste zu behaupten (#217 AC2).
+  conflictProbeFailReason?: string;
   retryReason?: string;
   retryPaths?: string[];
   retryEscalated?: boolean;
@@ -130,6 +159,22 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   if (ciState === 'failing') {
     if (prOnlyProtectedPathsRed(pr, deps.gh)) return { state: 'failing-protected' };
     return { state: 'failing-fix', failSummary: prFailureSummary(pr, deps.gh) };
+  }
+
+  // ciState === 'conflict' (#217): DIRTY ist bereits GitHubs eigene,
+  // authoritative Aussage -- anders als bei 'behind' braucht es keinen lokalen
+  // Merge-Versuch, um zu WISSEN, dass hier Konfliktarbeit ansteht. Der lokale
+  // Versuch dient nur dazu, die betroffenen Dateien fuer den Auftrag zu
+  // benennen. Deshalb wird bei Infrastruktur-Fehlschlaegen NICHT stillschweigend
+  // gewartet wie bei 'behind' -- ein DIRTY-PR loest sich nie von selbst durch
+  // Zeitablauf, der Fix-Agent startet trotzdem (AC2).
+  if (ciState === 'conflict') {
+    const probe = prCatchUpBehind(pr, deps.git, deps.gh);
+    catchupFailReset(issue, deps.state);
+    if (probe.kind === 'ok') return { state: 'behind-caught-up' };
+    if (probe.kind === 'conflict') return { state: 'dirty-conflict', conflictFiles: probe.files };
+    const probeCode = { dirty: 2, fetchFailed: 3, checkoutFailed: 4, pushFailed: 5 } as const;
+    return { state: 'dirty-conflict', conflictProbeFailReason: catchupFailReason(probeCode[probe.kind]) };
   }
 
   // ciState === 'behind'
@@ -193,6 +238,12 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
       if (resolved.state === 'behind-conflict') {
         return { kind: 'build-fix', summary: conflictSummary(issue, pr, resolved.conflictFiles ?? []) };
       }
+      if (resolved.state === 'dirty-conflict') {
+        return {
+          kind: 'build-fix',
+          summary: dirtySummary(issue, pr, resolved.conflictFiles ?? [], resolved.conflictProbeFailReason),
+        };
+      }
       return { kind: 'build-fix', summary: resolved.failSummary ?? '' };
     case 'noop':
       /* istanbul ignore next -- 'noop' kommt fuer parked:false nie zurueck */
@@ -215,8 +266,9 @@ export interface ParkedWatchOutcome {
   released: number[];
 }
 
-const PROMOTE_REASON: Record<'behind-conflict' | 'failing-fix', string> = {
+const PROMOTE_REASON: Record<'behind-conflict' | 'dirty-conflict' | 'failing-fix', string> = {
   'behind-conflict': 'ein Merge-Konflikt beim Nachziehen von `main`',
+  'dirty-conflict': 'ein Merge-Konflikt (`DIRTY`) mit `main`',
   'failing-fix': 'rote Checks (mehr als nur `protected-paths`)',
 };
 
@@ -239,7 +291,12 @@ export function watchParkedIssues(parkedIssues: ParkedIssueInput[], wipSlotFree:
 
     if (reaction.kind === 'merge') {
       deps.gh.run(['pr', 'ready', pr]);
-      prSquashMerge(pr, deps.gh);
+      // #217 AC4: 'parked'/'needs-input' duerfen nur weg, wenn der Merge bzw.
+      // das Aktivieren von Auto-Merge tatsaechlich geklappt hat -- sonst faellt
+      // das Ticket aus jeder Wache heraus, waehrend der PR offen und
+      // unbeobachtet liegen bleibt. Schlaegt es fehl, bleibt das Ticket
+      // geparkt, der naechste Takt versucht es erneut.
+      if (!prSquashMerge(pr, deps.gh)) continue;
       deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'parked', '--remove-label', 'needs-input']);
       outcome.released.push(issue.number);
       continue;
@@ -249,7 +306,8 @@ export function watchParkedIssues(parkedIssues: ParkedIssueInput[], wipSlotFree:
       const canPromote = !issue.hasNeedsInput && outcome.promoted === null && wipSlotFree;
       if (canPromote) {
         deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'parked', '--add-label', 'in-progress']);
-        const reasonKey = resolved.state === 'behind-conflict' ? 'behind-conflict' : 'failing-fix';
+        const reasonKey =
+          resolved.state === 'behind-conflict' || resolved.state === 'dirty-conflict' ? resolved.state : 'failing-fix';
         outcome.promoted = { issue: issue.number, reason: PROMOTE_REASON[reasonKey] };
       }
       // Nicht promotable (Slot belegt/schon eins entparkt/needs-input haengt
