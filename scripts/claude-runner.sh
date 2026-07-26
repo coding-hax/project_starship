@@ -471,12 +471,15 @@ pr_for_issue() {   # $1 = Issue-Nr -> PR-Nummer (leer, wenn keiner offen)
         '[.[] | select(.headRefName | test($pat))] | .[0].number // empty'
 }
 
-# CI-Gesamtzustand eines PR: pending | failing | behind | success. Reihenfolge
-# ist Absicht (#160): 'pending' hat Vorrang vor 'failing' -- ein noch
-# laufender Shard darf einen bereits roten Check nicht uebertoenen. 'behind'
-# wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft und nichts
-# rot ist -- ein zurueckgefallener Branch mit rotem Check wird also erst
-# repariert, nicht vorschnell nachgezogen.
+# CI-Gesamtzustand eines PR: pending | failing | conflict | behind | success.
+# Reihenfolge ist Absicht (#160, erweitert um #217): 'pending' hat Vorrang vor
+# 'failing' -- ein noch laufender Shard darf einen bereits roten Check nicht
+# uebertoenen. 'conflict' (mergeStateStatus DIRTY) wird VOR 'behind' geprueft,
+# weil GitHub bei einem echten Merge-Konflikt niemals mehr 'BEHIND' meldet --
+# ohne diese Reihenfolge waere 'behind' fuer einen solchen PR fuer immer
+# unerreichbar und der vorhandene Konfliktpfad toter Code (#217). 'behind'
+# wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft, nichts rot
+# ist und kein echter Konflikt vorliegt.
 pr_ci_state() {   # $1 = PR-Nr
   local pr="$1" json total pending failing
   json=$(gh pr checks "$pr" --json bucket,name,description,link 2>/dev/null)
@@ -487,6 +490,7 @@ pr_ci_state() {   # $1 = PR-Nr
   failing=$(printf '%s' "$json" \
     | jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")] | length')
   if [ "${failing:-0}" -gt 0 ]; then echo failing; return 0; fi
+  if pr_is_dirty "$pr"; then echo conflict; return 0; fi
   if pr_is_behind "$pr"; then echo behind; return 0; fi
   echo success
 }
@@ -503,6 +507,15 @@ pr_is_behind() {   # $1 = PR-Nr -> 0 (hinter main) / 1 (aktuell/unbekannt)
   local pr="$1" state
   state=$(pr_merge_state "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
   [ "$state" = "BEHIND" ]
+}
+
+# DIRTY heisst: GitHub kann den PR nicht mehr automatisch mit 'main' mergen,
+# ein echter Konflikt liegt vor. Anders als BEHIND gewinnt DIRTY dauerhaft --
+# ein konfliktbehafteter PR meldet nie wieder BEHIND (#217).
+pr_is_dirty() {   # $1 = PR-Nr -> 0 (Merge-Konflikt) / 1 (kein Konflikt/unbekannt)
+  local pr="$1" state
+  state=$(pr_merge_state "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
+  [ "$state" = "DIRTY" ]
 }
 
 # Zieht 'main' per git in einen zurueckgefallenen PR-Branch: fetch + merge +
@@ -620,6 +633,9 @@ pr_only_protected_paths_red() {   # $1 = PR-Nr -> 0 (ja, nur protected-paths) / 
 # geschlossen, obwohl dessen eigentlicher PR (#166) noch offen war. Nur der
 # Titel DIESES PR zaehlt -- der traegt genau EIN 'Closes #N', naemlich sein
 # eigenes.
+# Rueckgabewert (#217): 0 (Merge bzw. Auto-Merge tatsaechlich aktiviert) /
+# 1 ('gh pr merge' ist gescheitert) -- der Aufrufer entscheidet damit, ob
+# 'parked'/'needs-input' ueberhaupt entfernt werden duerfen.
 pr_squash_merge() {   # $1 = PR-Nr
   local pr="$1" title
   title=$(gh pr view "$pr" --json title -q .title 2>/dev/null)
@@ -1082,6 +1098,14 @@ if [ -n "$PARKED_LIST" ]; then
       # gescheitert -- naechster Takt versucht es erneut, bleibt geparkt.
       # Nur rc 1 (echter Konflikt) ist der neue Fall aus #173.
       [ "$PCU_RC" -eq 1 ] && PROMOTE_REASON="ein Merge-Konflikt beim Nachziehen von \`main\`"
+    elif [ "$PSTATE" = "conflict" ]; then
+      # #217: DIRTY ist bereits GitHubs eigene, authoritative Aussage -- anders
+      # als bei 'behind' braucht es keinen lokalen Merge-Versuch, um zu
+      # wissen, dass hier echte Konfliktarbeit ansteht (kein "vielleicht loest
+      # es sich beim Nachziehen von selbst"). Die Konfliktdateien ermittelt
+      # die CI-Wache fuer laufende Tickets gleich danach selbst (neuer
+      # 'conflict'-Zweig, AC2), sobald dieses Ticket unten in-progress ist.
+      PROMOTE_REASON="ein Merge-Konflikt (\`DIRTY\`) mit \`main\`"
     elif [ "$PSTATE" = "failing" ] && ! pr_only_protected_paths_red "$PPR"; then
       PROMOTE_REASON="rote Checks (mehr als nur \`protected-paths\`)"
     fi
@@ -1106,7 +1130,12 @@ if [ -n "$PARKED_LIST" ]; then
 
     [ "$PSTATE" = "success" ] || continue
     gh pr ready "$PPR" >/dev/null 2>&1
-    pr_squash_merge "$PPR"
+    # #217 AC4: 'parked'/'needs-input' duerfen nur weg, wenn der Merge bzw.
+    # das Aktivieren von Auto-Merge tatsaechlich geklappt hat -- sonst faellt
+    # das Ticket aus jeder Wache heraus, waehrend der PR offen und
+    # unbeobachtet liegen bleibt. Schlaegt es fehl, bleibt das Ticket geparkt,
+    # der naechste Takt versucht es erneut.
+    pr_squash_merge "$PPR" || continue
     gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
     RELEASED_PARKED_NUMS=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq --argjson n "$PN" '. + [$n]')
   done <<< "$PARKED_LIST"
@@ -1177,6 +1206,38 @@ Takt beobachtet die CI weiter."
         fi
         CI_FIX=1
         CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
+        ;;
+      conflict)
+        # #217: GitHub meldet DIRTY dauerhaft (nie mehr BEHIND), sobald ein
+        # echter Merge-Konflikt vorliegt -- der alte Pfad ueber 'behind' war
+        # dafuer unerreichbar. Lokal denselben Merge probieren wie
+        # pr_catch_up_behind() es fuer 'behind' schon tut, um die
+        # Konfliktdateien fuer den Fix-Agenten-Auftrag zu ermitteln. Anders als
+        # bei 'behind' wird bei Infrastruktur-Fehlschlaegen (rc 2-5) NICHT
+        # stillschweigend erneut versucht -- ein DIRTY-PR loest sich nie von
+        # selbst durch Zeitablauf, also startet der Fix-Agent trotzdem, mit
+        # 'unbekannt' als Dateiliste (AC2).
+        CATCHUP_OUT=$(pr_catch_up_behind "$PR_NUM")
+        CATCHUP_RC=$?
+        if [ "$CATCHUP_RC" -eq 0 ]; then
+          catchup_fail_reset "$ISSUE"
+          status "CI läuft für #$ISSUE" "🟢" \
+            "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM war als Konflikt (\`DIRTY\`) markiert) — der lokale Merge ging sauber durch und wurde gepusht, kein Agentenlauf. CI läuft jetzt neu.
+
+Der nächste Takt prüft erneut. **Kein Eingreifen nötig.**"
+          return 0
+        fi
+        catchup_fail_reset "$ISSUE"
+        CI_FIX=1
+        CONFLICT_FILES="${CATCHUP_OUT:-unbekannt}"
+        [ "$CATCHUP_RC" -eq 1 ] || CONFLICT_FILES="unbekannt (lokale Ermittlung ist an \`$(catchup_fail_reason "$CATCHUP_RC")\` gescheitert)"
+        CI_SUMMARY="### Merge-Konflikt (DIRTY) mit \`main\`
+PR #$PR_NUM (#$ISSUE) ist laut GitHub konfliktbehaftet (\`mergeStateStatus: DIRTY\`).
+
+Betroffene Dateien: ${CONFLICT_FILES}
+
+Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
+\`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen."
         ;;
       behind)
         CATCHUP_OUT=$(pr_catch_up_behind "$PR_NUM")
