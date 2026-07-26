@@ -56,6 +56,13 @@ ein Feld-Update immer, in beiden Ankunftsreihenfolgen (`src/local/conflict.ts`).
 | `synced_at`   | lokal: wurde erfolgreich übertragen                                                        |
 | `sync_seq`    | server-monotone Ankunftsreihenfolge, die Konflikt-Autorität (ADR-0008)                     |
 
+### Down-Migrationen
+
+`pnpm db:generate` erzeugt nur den Up-Pfad; `drizzle-kit` kennt keine Downs. Ab
+Migration `0008` (issue #186) liegt zu jeder Migration mit Rückweg eine Datei unter
+`src/db/migrations/down/`, die **von Hand** angewendet wird — nichts führt sie
+automatisch aus.
+
 ### Sync-Ablauf
 
 - **Push:** Outbox der Reihe nach an `POST /api/sync/push`. Idempotent über die Client-`id`.
@@ -74,9 +81,14 @@ journal_entries id, entry_date, ciphertext, nonce, ...   ← Text, Stimmung UND 
 habits          id, name, schedule (daily|weekly|custom), color, archived_at, ...
 habit_logs      id, habit_id, log_date, done, ...
 sync_state      key, value            ← letzter Pull-Cursor (sync_seq) etc.
+garmin_activities  id, garmin_activity_id, activity_type, started_at, distance_meters,
+                   duration_seconds, elevation_gain/loss, average_hr, max_hr,
+                   average_speed, calories, track, map_image, ...  ← read-only (ADR-0011)
+garmin_tokens      id, kind, token, expires_at, ...  ← nie synchronisiert (ADR-0011)
 ```
 
-Alle Tabellen tragen die fünf Pflicht-Spalten oben.
+Alle Tabellen tragen die fünf Pflicht-Spalten oben, außer `garmin_tokens` — wie die
+Auth-Tabellen unten synchronisiert es nie und trägt deshalb keine.
 Es gibt **keine** Felder für externe Kalender (`external_uid`, `etag`, `calendar_links`) —
 die App ist die alleinige Wahrheit für ihre Termine (siehe ADR-0002).
 
@@ -111,6 +123,18 @@ oder Google (ADR-0002). Konsequenzen für die Architektur:
   nicht als Sync.
 
 Der GitHub-Actions-Cron bleibt trotzdem nötig: für Backups und für terminierte Web-Push-Erinnerungen.
+
+## Garmin: read-only Server-Origin-Daten
+
+Aktivitäten (ADR-0011) sind die erste Tabelle, die der Sync **liest, aber nie
+schreibt**: `GET /api/garmin-sync` (GitHub-Actions-Cron, Shared Secret) holt sie von
+`connectapi.garmin.com`, legt sie in Postgres ab, von dort laufen sie über den
+normalen Pull wie jede andere Tabelle. Der `SYNC_REGISTRY`-Eintrag trägt
+`readOnly: true` und eine eigene `readable`-Feldliste (statt `writable`); `pull`
+projiziert über `readable ?? writable`, `push` weist jede Mutation auf eine
+read-only-Tabelle vor jedem DB-Zugriff ab (`src/local/types.ts`:
+`isReadOnlyTable`). `garmin_tokens` läuft nie durch den Sync — wie die Auth-Tabellen
+kein Registry-Eintrag, kein `syncColumns`.
 
 ## Security
 

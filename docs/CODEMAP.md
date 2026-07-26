@@ -24,21 +24,24 @@ src/
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
     api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
+    api/garmin-sync/        POST, Bearer-Secret + Owner-Session als Zweitpfad — holt Aktivitäten, schreibt nie ohne Netzwerk-Vorlauf in die Transaktion (ADR-0011, issue #186)
     api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
     layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest)
     manifest.ts             Web-App-Manifest (Next-Metadata-Route)
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js
     globals.css             Tailwind-Import + @theme-Mapping der Tokens
   db/
-    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell
-    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist
+    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011
+    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186)
+    sync-lock.ts            gemeinsamer pg_advisory_xact_lock für jede Sync-Schreib-Transaktion (push, garmin-sync) — verhindert sync_seq außer Reihenfolge (ADR-0008)
     index.ts                DB-Verbindung (pg-Pool, Standard-Connection-String)
     migrate.ts              wendet Migrationen an (pnpm db:migrate)
     migrations/             generierte Migrationen, nie von Hand ändern
+    migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186)
   local/
-    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten)
+    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011
     dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139)
-    outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch
+    outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch; mutate() wirft für eine read-only-Tabelle (ADR-0011)
     sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
     use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
@@ -78,6 +81,13 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
+    garmin/                   Server-seitig, kein Client-Code -- keine Garmin-Spezifika außerhalb dieses Verzeichnisses (ADR-0011, issue #186)
+      connect-api.ts           handgerollte OAuth1-Signatur + OAuth2-Tausch + die zwei connectapi.garmin.com-Aufrufe, keine Client-Bibliothek
+      tokens.ts                liest/schreibt garmin_tokens, erneuert OAuth2 aus OAuth1, GarminBootstrapRequired statt Login-Versuch
+      activity-mapper.ts       reine Zuordnung Garmin-Rohform -> Kopfzahlen (mapActivityListEntry) + spaltenweiser Track (buildTrack), robust gegen wechselnde metricDescriptors-Reihenfolge
+      activity-diff.ts         reine Änderungserkennung (activityChanged) -- Grund, warum sync_seq nur bei echter Änderung bumpt, ohne SQL-WHERE-Klausel
+      static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
+      sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
     weather/
       forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159)
       geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
@@ -131,8 +141,10 @@ tests/
   persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
   weather.spec.ts           Wetter auf Übersicht: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
-  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
+  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186)
+  garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
 scripts/
+  garmin-bootstrap.md       einmaliger Handgriff im Browser fürs Garmin-OAuth1-Token, ~jährlich fällig, führt nie automatisch (ADR-0011, issue #186)
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172); ts_run() ist die Naht zu scripts/runner/cli.ts, RUNNER_TS=0 als Kill-Switch (#198 S1); fmt_hm/d_plus/reset_epoch/queue_order_flat/queue_pending/queue_next sind Einzeiler über ts_run mit `*_bash`-Fallback (#199 S2) -- Ausnahme: die Kontingent-erschöpft-Bailout-Meldung ruft bewusst `fmt_hm_bash` direkt, damit dieser Zweig ein garantierter No-Op bleibt (kein tsx-Start, kein gh-Aufruf); sha1_of/tier_current/tier_bump/tier_reset/resume_allowed/blocker_sig/build_escalation_eval/opus_build_cap_reached/opus_build_cap_reserve ebenso Einzeiler über ts_run mit `*_bash`-Fallback (#200 S3), `*_bash`-Kompositionen rufen einander direkt (nie über den Wrapper), um im Fallback-Fall keine zusätzlichen ts_run-Versuche zu verschwenden; STATE_DIR respektiert seit #200 einen vorab exportierten Wert (Default weiterhin `$REPO_DIR/.runner`) und wird selbst exportiert, damit der tsx-Kindprozess dasselbe Verzeichnis sieht; status() ruft `sha1_of_bash` direkt statt `sha1_of` -- über den ts_run-Wrapper würde ein fehlendes/kaputtes `tsx` sonst endlos rekursieren (status -> sha1_of -> ts_run -> status -> ...), live beobachtet als gekillter CI-Job auf #208 (#201 S4); pr_for_issue/pr_ci_state/pr_is_behind/pr_merge_state/pr_catch_up_behind/catchup_fail_reason/catchup_fail_escalated/catchup_fail_reset/pr_only_protected_paths_red/pr_squash_merge/reopen_falsely_closed_issues/pr_failure_summary ebenso Einzeiler über ts_run mit `*_bash`-Fallback, `*_bash`-Kompositionen wieder direkt verdrahtet (#201 S4); watch_running_issue/watch_parked_issues ersetzen die beiden getrennten CI-Wachen-Blöcke in run_round() durch EINEN Aufruf je Fall (JSON-Ergebnis, `kind`-diskriminiert) -- die menschenlesbaren `status()`-Texte bleiben unverändert in run_round() selbst, nur die Fallunterscheidung wandert nach scripts/runner/watch.ts; `watch_parked_issues_bash()` trägt Zwischenergebnisse über zwei Scratch-Dateien unter $STATE_DIR aus der Pipe-Subshell der `while read`-Schleife nach außen (#202 S5)
   runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); Handler geben `string | null` zurück (`null` = Exit 1, kein stdout -- Pendant zu `return 1` in Bash); ab S2 (#199) Kommandos `fmt-hm`/`d-plus`/`reset-epoch`/`queue-order-flat`/`queue-pending`/`queue-next`; ab S3 (#200) zusätzlich `sha1-of`/`tier-current`/`tier-bump`/`tier-reset`/`resume-allowed`/`blocker-sig`/`build-escalation-eval`/`opus-cap-reached`/`opus-cap-reserve`; ab S4 (#201) zusätzlich `pr-for-issue`/`pr-ci-state`/`pr-is-behind`/`pr-merge-state`/`pr-catch-up-behind`/`catchup-fail-reason`/`catchup-fail-escalated`/`catchup-fail-reset`/`pr-only-protected-paths-red`/`pr-squash-merge`/`reopen-falsely-closed-issues`/`pr-failure-summary`; `CommandResult` bekommt dafür einen dritten Fall `{exitCode, stdout}` neben `string | null`, weil `pr-catch-up-behind` die vollen Zahlen-Exitcodes 0-5 seiner Bash-Vorlage braucht statt nur 0/1; ab S5 (#202) zusätzlich `watch-running-issue`/`watch-parked-issues`, beide als JSON-String (`kind`-diskriminiert)
   runner/gh.ts, git.ts      Adapter um `gh`/`git`, injizierbare exec-Funktion für Vitest-Doubles (#198 S1)
@@ -173,6 +185,7 @@ scripts/
   guards.yml                Test-Integrity- und Protected-Paths-Gate; hören zusätzlich auf labeled/unlabeled, damit ein Label-Tap (human-approved/tests-exempt) nur diese beiden neu prüft statt der ganzen CI (issue #164)
   smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
   interaction-limit-reminder.yml  monatlicher Cron, erinnert 30 Tage vor Ablauf des Interaction Limit per Issue (#70)
+  garmin-sync.yml           nächtlicher Cron, POST /api/garmin-sync mit Bearer-Secret, vendor-neutral statt Vercel-Cron (Regel 7, issue #186)
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
 ```
 
