@@ -1,0 +1,46 @@
+.activity-month-strip {
+  display: block;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.activity-month-strip__heading {
+  margin: 0 0 var(--space-2);
+  color: var(--area-activities);
+  font-weight: 650;
+}
+
+.activity-month-strip__empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.activity-month-strip__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.activity-month-strip__row {
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-month-strip--skeleton {
+  color: transparent;
+}
+
+.activity-month-strip__row--skeleton {
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  width: 60%;
+  height: 1.2em;
+  animation: activity-pulse 1.4s ease-in-out infinite;
+}

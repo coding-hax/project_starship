@@ -41,4 +41,6 @@
 
 .activity-block--skeleton {
   height: 120px;
+  background: var(--surface-raised);
+  animation: activity-pulse 1.4s ease-in-out infinite;
 }
