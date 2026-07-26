@@ -33,6 +33,25 @@ const DAY_SET_B = {
   tempsMin: [1, 1, 1, 1, 1, 1, 1],
 };
 
+// issue #156: parseForecast also reads `hourly` and a few more `daily` columns
+// (sunrise/sunset/wind) — present here so the fixture matches the real response
+// shape, even though this suite's own assertions stay on the 7-day strip.
+function hourlyBlock(set: typeof DAY_SET_A) {
+  const time: string[] = [];
+  const temperature_2m: number[] = [];
+  const precipitation_probability: number[] = [];
+  const precipitation: number[] = [];
+  set.dates.forEach((date, i) => {
+    for (let h = 0; h < 24; h += 1) {
+      time.push(`${date}T${String(h).padStart(2, '0')}:00`);
+      temperature_2m.push(set.tempsMin[i] + ((set.tempsMax[i] - set.tempsMin[i]) * h) / 23);
+      precipitation_probability.push(0);
+      precipitation.push(0);
+    }
+  });
+  return { time, temperature_2m, precipitation_probability, precipitation };
+}
+
 function forecastResponseBody(set: typeof DAY_SET_A) {
   return {
     daily: {
@@ -41,7 +60,12 @@ function forecastResponseBody(set: typeof DAY_SET_A) {
       temperature_2m_max: set.tempsMax,
       temperature_2m_min: set.tempsMin,
       precipitation_probability_max: set.dates.map(() => 0),
+      sunrise: set.dates.map((date) => `${date}T05:53`),
+      sunset: set.dates.map((date) => `${date}T21:12`),
+      wind_speed_10m_max: set.dates.map(() => 12),
+      wind_gusts_10m_max: set.dates.map(() => 20),
     },
+    hourly: hourlyBlock(set),
   };
 }
 

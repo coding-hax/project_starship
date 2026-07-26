@@ -1,8 +1,8 @@
-import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import type { WeatherLocation } from '@/features/settings/use-weather-location';
 import { db, type WeatherDay } from '@/local/dexie';
 import { fetchForecast, isStale, REFRESH_INTERVAL_MS, weatherCacheKey } from './forecast';
+import { useWeatherCache } from './use-weather-cache';
 
 export type WeatherPhase = 'loading' | 'ready' | 'empty-error';
 
@@ -34,30 +34,17 @@ async function refreshIfStale(location: WeatherLocation, cacheKey: string): Prom
  */
 export function useWeatherForecast(location: WeatherLocation): WeatherForecastState {
   const cacheKey = weatherCacheKey(location.latitude, location.longitude);
-
-  const [entry, setEntry] = useState<{ days: WeatherDay[]; fetchedAt: string } | null | undefined>(
-    undefined,
-  );
+  const cache = useWeatherCache(location);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
-  // A location change swaps the cache key entirely (issue #159 AC3) — reset the
-  // entry synchronously during render (React's "adjusting state when a prop
-  // changes" pattern) so the previous location's forecast never paints, not even
-  // for a single frame, under the new location's name.
-  const [cacheKeyForEntry, setCacheKeyForEntry] = useState(cacheKey);
-  if (cacheKeyForEntry !== cacheKey) {
-    setCacheKeyForEntry(cacheKey);
-    setEntry(undefined);
+  // A location change swaps the cache key entirely (issue #159 AC3) — reset
+  // synchronously during render (React's "adjusting state when a prop changes"
+  // pattern), same reasoning `useWeatherCache` applies to its own `entry` state.
+  const [cacheKeyForRefreshFailed, setCacheKeyForRefreshFailed] = useState(cacheKey);
+  if (cacheKeyForRefreshFailed !== cacheKey) {
+    setCacheKeyForRefreshFailed(cacheKey);
     setRefreshFailed(false);
   }
-
-  useEffect(() => {
-    const subscription = liveQuery(() => db.weather.get(cacheKey)).subscribe({
-      next: (record) => setEntry(record ?? null),
-      error: (error) => console.error('[weather] live query failed', error),
-    });
-    return () => subscription.unsubscribe();
-  }, [cacheKey]);
 
   // `refreshIfStale` itself decides whether a fetch actually happens — every
   // trigger here just asks "is the cache old enough?" (issue #155). No trigger
@@ -111,11 +98,11 @@ export function useWeatherForecast(location: WeatherLocation): WeatherForecastSt
     };
   }, [cacheKey, location]);
 
-  if (entry === undefined) return { phase: 'loading', days: null, fetchedAt: null };
-  if (entry === null) {
+  if (cache.phase === 'loading') return { phase: 'loading', days: null, fetchedAt: null };
+  if (cache.phase === 'empty') {
     return refreshFailed
       ? { phase: 'empty-error', days: null, fetchedAt: null }
       : { phase: 'loading', days: null, fetchedAt: null };
   }
-  return { phase: 'ready', days: entry.days, fetchedAt: entry.fetchedAt };
+  return { phase: 'ready', days: cache.days, fetchedAt: cache.fetchedAt };
 }

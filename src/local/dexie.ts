@@ -30,6 +30,17 @@ export interface MetaEntry {
   value: unknown;
 }
 
+/** One hour of a `WeatherDay.hours` array (issue #156) — Open-Meteo's hourly block,
+ * filtered down to the local calendar day it belongs to. */
+export interface WeatherHour {
+  /** Local ISO instant without offset, `YYYY-MM-DDTHH:mm`. */
+  time: string;
+  temperature: number;
+  precipitationProbability: number;
+  /** Millimeters. */
+  precipitation: number;
+}
+
 /** One day of `WeatherCacheEntry.days` — see there for why this store exists. */
 export interface WeatherDay {
   /** Local calendar day, `YYYY-MM-DD`. */
@@ -39,6 +50,15 @@ export interface WeatherDay {
   tempMax: number;
   tempMin: number;
   precipitationProbability: number;
+  /** Local ISO instants, same "no offset" shape as `WeatherHour.time` (issue #156). */
+  sunrise: string;
+  sunset: string;
+  windSpeedMax: number;
+  windGustsMax: number;
+  /** 24 entries, one per hour of this day (issue #156) — the day detail page's
+   * temperature curve/precipitation. Same Open-Meteo call as the daily block, no
+   * second endpoint (ADR-0009, CLAUDE.md Regel 8). */
+  hours: WeatherHour[];
 }
 
 /**
@@ -72,6 +92,13 @@ db.version(1).stores({
 db.version(2).stores({
   weather: 'key',
 });
+
+// issue #156 grows `WeatherDay` (sunrise/sunset/wind/hours) but touches neither the
+// store list nor its `key` index — Dexie versions the *index* schema, not the shape
+// of what's stored under it, so no new db.version() is warranted here. An install
+// still on the old shape simply has no `hours` until the next refresh; `refreshIfStale`
+// replaces the whole cached row wholesale (never merges), so that self-heals within
+// one REFRESH_INTERVAL_MS window without any migration step.
 
 export { db };
 

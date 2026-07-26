@@ -20,6 +20,7 @@
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';
 @import '../features/weather/weather-forecast.css';
+@import '../features/weather/weather-day.css';
 @import '../features/settings/weather-panel.css';
 @import './(app)/uebersicht/uebersicht.css';
 

@@ -26,14 +26,27 @@
 }
 
 .weather-forecast__day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+/* The whole card is the tap target (issue #156) — link fills the `<li>` so its
+ * padding counts toward the ≥44×44 touch target, not just the text inside. */
+.weather-forecast__day-link {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
+  min-height: 44px;
   padding: var(--space-2) 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.weather-forecast__day-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .weather-forecast__day--skeleton {
