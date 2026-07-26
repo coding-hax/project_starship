@@ -524,13 +524,17 @@ pr_for_issue_bash() {
         '[.[] | select(.headRefName | test($pat))] | .[0].number // empty'
 }
 
-# CI-Gesamtzustand eines PR: pending | failing | behind | success. Reihenfolge
-# ist Absicht (#160): 'pending' hat Vorrang vor 'failing' -- ein noch
-# laufender Shard darf einen bereits roten Check nicht uebertoenen. 'behind'
-# wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft und nichts
-# rot ist -- ein zurueckgefallener Branch mit rotem Check wird also erst
-# repariert, nicht vorschnell nachgezogen.
-# TS-Kern: scripts/runner/pr.ts, `prCiState()` (#201).
+# CI-Gesamtzustand eines PR: pending | failing | conflict | behind | success.
+# Reihenfolge ist Absicht (#160, erweitert um #217): 'pending' hat Vorrang vor
+# 'failing' -- ein noch laufender Shard darf einen bereits roten Check nicht
+# uebertoenen. 'conflict' (mergeStateStatus DIRTY) wird VOR 'behind' geprueft,
+# weil GitHub bei einem echten Merge-Konflikt niemals mehr 'BEHIND' meldet --
+# ohne diese Reihenfolge waere 'behind' fuer einen solchen PR fuer immer
+# unerreichbar und der vorhandene Konfliktpfad toter Code (#217). 'behind'
+# wird erst geprueft, NACHDEM feststeht, dass nichts mehr laeuft, nichts rot
+# ist und kein echter Konflikt vorliegt -- ein zurueckgefallener Branch mit
+# rotem Check wird also erst repariert, nicht vorschnell nachgezogen.
+# TS-Kern: scripts/runner/pr.ts, `prCiState()` (#201/#217).
 pr_ci_state() {   # $1 = PR-Nr
   local out rc
   out=$(ts_run pr-ci-state "$1"); rc=$?
@@ -549,6 +553,7 @@ pr_ci_state_bash() {
   failing=$(printf '%s' "$json" \
     | jq '[.[] | select(.bucket=="fail" or .bucket=="cancel")] | length')
   if [ "${failing:-0}" -gt 0 ]; then echo failing; return 0; fi
+  if pr_is_dirty_bash "$pr"; then echo conflict; return 0; fi
   if pr_is_behind_bash "$pr"; then echo behind; return 0; fi
   echo success
 }
@@ -583,6 +588,23 @@ pr_is_behind_bash() {
   local pr="$1" state
   state=$(pr_merge_state_bash "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
   [ "$state" = "BEHIND" ]
+}
+
+# DIRTY heisst: GitHub kann den PR nicht mehr automatisch mit 'main' mergen,
+# ein echter Konflikt liegt vor. Anders als BEHIND gewinnt DIRTY dauerhaft --
+# ein konfliktbehafteter PR meldet nie wieder BEHIND (#217).
+# TS-Kern: scripts/runner/pr.ts, `prIsDirty()` (#217).
+pr_is_dirty() {   # $1 = PR-Nr -> 0 (Merge-Konflikt) / 1 (kein Konflikt/unbekannt)
+  local rc
+  ts_run pr-is-dirty "$1" >/dev/null; rc=$?
+  [ "$rc" -eq 127 ] && { pr_is_dirty_bash "$1"; return; }
+  return "$rc"
+}
+
+pr_is_dirty_bash() {
+  local pr="$1" state
+  state=$(pr_merge_state_bash "$pr" | jq -r '.mergeStateStatus // empty' 2>/dev/null)
+  [ "$state" = "DIRTY" ]
 }
 
 # Zieht 'main' per git in einen zurueckgefallenen PR-Branch: fetch + merge +
@@ -744,7 +766,10 @@ pr_only_protected_paths_red_bash() {
 # geschlossen, obwohl dessen eigentlicher PR (#166) noch offen war. Nur der
 # Titel DIESES PR zaehlt -- der traegt genau EIN 'Closes #N', naemlich sein
 # eigenes.
-# TS-Kern: scripts/runner/pr.ts, `prSquashMerge()` (#201).
+# Rueckgabewert (#217): 0 (Merge bzw. Auto-Merge tatsaechlich aktiviert) /
+# 1 ('gh pr merge' ist gescheitert) -- der Aufrufer entscheidet damit, ob
+# 'parked'/'needs-input' ueberhaupt entfernt werden duerfen.
+# TS-Kern: scripts/runner/pr.ts, `prSquashMerge()` (#201/#217).
 pr_squash_merge() {   # $1 = PR-Nr
   ts_run pr-squash-merge "$1" >/dev/null
   local rc=$?
@@ -871,6 +896,28 @@ watch_running_issue_bash() {
         jq -nc --arg s "$summary" '{kind:"build-fix", summary:$s}'
       fi
       ;;
+    # #217: GitHub meldet DIRTY dauerhaft (nie mehr BEHIND), sobald ein echter
+    # Merge-Konflikt vorliegt. Der lokale Merge dient hier NUR dazu, die
+    # Konfliktdateien fuer den Auftrag zu benennen -- anders als bei 'behind'
+    # wird bei Infrastruktur-Fehlschlaegen nicht still gewartet, ein DIRTY-PR
+    # loest sich nie von selbst (AC2). Spiegelt watch.ts, 'dirty-conflict'.
+    conflict)
+      local dirty_out dirty_rc dirty_files
+      dirty_out=$(pr_catch_up_behind "$PR_NUM"); dirty_rc=$?
+      catchup_fail_reset "$issue"
+      if [ "$dirty_rc" -eq 0 ]; then
+        jq -nc '{kind:"caught-up"}'
+      else
+        if [ "$dirty_rc" -eq 1 ]; then
+          dirty_files="${dirty_out:-unbekannt}"
+        else
+          dirty_files="unbekannt (lokale Ermittlung ist an \`$(catchup_fail_reason "$dirty_rc")\` gescheitert)"
+        fi
+        jq -nc --arg issue "$issue" --arg pr "$PR_NUM" --arg files "$dirty_files" '
+          {kind:"build-fix",
+           summary: ("### Merge-Konflikt (DIRTY) mit `main`\nPR #" + $pr + " (#" + $issue + ") ist laut GitHub konfliktbehaftet (`mergeStateStatus: DIRTY`).\n\nBetroffene Dateien: " + $files + "\n\nLöse den Konflikt auf dem bestehenden Branch: `git fetch origin main`,\n`git merge origin/main`, die genannten Dateien bereinigen, committen, pushen.")}'
+      fi
+      ;;
     behind)
       local catchup_out catchup_rc
       catchup_out=$(pr_catch_up_behind "$PR_NUM"); catchup_rc=$?
@@ -940,6 +987,12 @@ watch_parked_issues_bash() {
       local catchup_out catchup_rc
       catchup_out=$(pr_catch_up_behind "$pr"); catchup_rc=$?
       [ "$catchup_rc" -eq 1 ] && reason='ein Merge-Konflikt beim Nachziehen von `main`'
+    elif [ "$ci" = "conflict" ]; then
+      # #217 AC3: DIRTY ist GitHubs eigene, authoritative Aussage -- kein
+      # lokaler Merge-Versuch noetig, um zu wissen, dass Konfliktarbeit ansteht.
+      # Die Konfliktdateien ermittelt die Wache fuer laufende Tickets selbst,
+      # sobald dieses Ticket entparkt und damit in-progress ist.
+      reason='ein Merge-Konflikt (`DIRTY`) mit `main`'
     elif [ "$ci" = "failing" ] && ! pr_only_protected_paths_red "$pr"; then
       reason='rote Checks (mehr als nur `protected-paths`)'
     fi
@@ -955,7 +1008,11 @@ watch_parked_issues_bash() {
 
     [ "$ci" = "success" ] || continue
     gh pr ready "$pr" >/dev/null 2>&1
-    pr_squash_merge "$pr"
+    # #217 AC4: 'parked'/'needs-input' duerfen nur weg, wenn der Merge bzw. das
+    # Aktivieren von Auto-Merge tatsaechlich geklappt hat -- sonst faellt das
+    # Ticket aus jeder Wache heraus, waehrend der PR offen und unbeobachtet
+    # liegen bleibt. Schlaegt es fehl, bleibt es geparkt, naechster Takt erneut.
+    pr_squash_merge "$pr" || continue
     gh issue edit "$n" --remove-label parked --remove-label needs-input >/dev/null 2>&1
     echo "$n" >> "$STATE_DIR/watch-parked-released"
   done
@@ -1493,6 +1550,8 @@ if [ "$(printf '%s' "${PARKED_SNAP:-[]}" | jq 'length' 2>/dev/null)" -gt 0 ]; th
   [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ] && WIP_SLOT_FREE=1
   WATCH_PARKED_OUT=$(watch_parked_issues "$PARKED_SNAP" "$WIP_SLOT_FREE")
 
+  # Die Begruendung (auch der 'conflict'/DIRTY-Fall aus #217) kommt fertig aus
+  # dem TS-Kern -- watch.ts, PROMOTE_REASON.
   PROMOTED_PARKED_ISSUE=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.issue // empty')
   if [ -n "$PROMOTED_PARKED_ISSUE" ]; then
     PROMOTE_REASON=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.reason')
@@ -1505,6 +1564,9 @@ if [ "$(printf '%s' "${PARKED_SNAP:-[]}" | jq 'length' 2>/dev/null)" -gt 0 ]; th
 🔓 **Geparktes Ticket entparkt:** #$PROMOTED_PARKED_ISSUE hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
   fi
 
+  # #217 AC4 sitzt jetzt im TS-Kern (watch.ts): ein Ticket landet nur dann in
+  # '.released', wenn 'gh pr merge' tatsaechlich geklappt hat -- sonst bleibt
+  # es geparkt und der naechste Takt versucht es erneut.
   RELEASED_PARKED_NUMS=$(printf '%s' "$WATCH_PARKED_OUT" | jq -c '.released')
   if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
     ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
@@ -1568,6 +1630,10 @@ steht als Kommentar am Ticket). Setze \`human-approved\` am PR **und entferne**
 Takt beobachtet die CI weiter."
         return 0
         ;;
+      # Deckt beide Konflikt-Wege ab: den beim Nachziehen entstandenen
+      # ('behind-conflict') UND den von GitHub gemeldeten DIRTY-PR
+      # ('dirty-conflict', #217). Welcher Wortlaut in CI_SUMMARY steht,
+      # entscheidet der TS-Kern (watch.ts, conflictSummary/dirtySummary).
       build-fix)
         CI_FIX=1
         CI_SUMMARY=$(printf '%s' "$WATCH_OUT" | jq -r '.summary')

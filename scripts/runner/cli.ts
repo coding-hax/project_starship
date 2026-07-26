@@ -28,6 +28,7 @@ import {
   prFailureSummary,
   prForIssue,
   prIsBehind,
+  prIsDirty,
   prMergeState,
   prOnlyProtectedPathsRed,
   prSquashMerge,
@@ -108,6 +109,7 @@ export const commands: Record<string, CommandHandler> = {
   'pr-for-issue': (ctx, args) => prForIssue(Number(args[0]), ctx.gh),
   'pr-ci-state': (ctx, args) => prCiState(args[0] ?? '', ctx.gh),
   'pr-is-behind': (ctx, args) => (prIsBehind(args[0] ?? '', ctx.gh) ? '' : null),
+  'pr-is-dirty': (ctx, args) => (prIsDirty(args[0] ?? '', ctx.gh) ? '' : null),
   'pr-merge-state': (ctx, args) => {
     const result = prMergeState(args[0] ?? '', ctx.gh);
     return result === null ? null : JSON.stringify(result);
@@ -124,10 +126,8 @@ export const commands: Record<string, CommandHandler> = {
     return '';
   },
   'pr-only-protected-paths-red': (ctx, args) => (prOnlyProtectedPathsRed(args[0] ?? '', ctx.gh) ? '' : null),
-  'pr-squash-merge': (ctx, args) => {
-    prSquashMerge(args[0] ?? '', ctx.gh);
-    return '';
-  },
+  // Exit 0 = gemergt bzw. Auto-Merge aktiviert, Exit 1 = gescheitert (#217 AC4).
+  'pr-squash-merge': (ctx, args) => (prSquashMerge(args[0] ?? '', ctx.gh) ? '' : null),
   'reopen-falsely-closed-issues': (ctx) => {
     reopenFalselyClosedIssues(ctx.gh);
     return '';
