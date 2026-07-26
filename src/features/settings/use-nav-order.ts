@@ -43,8 +43,14 @@ function getSnapshot(): string[] {
   return cache;
 }
 
+// A stable reference, not a fresh `[]` each call — same reason as
+// use-appearance.ts's SERVER_SNAPSHOT: useSyncExternalStore compares by reference,
+// and a new array every render trips React's "getServerSnapshot should be cached"
+// warning (and the busy-loop behind it) even though nothing actually changed.
+const EMPTY_ORDER: string[] = [];
+
 function getServerSnapshot(): string[] {
-  return [];
+  return EMPTY_ORDER;
 }
 
 function subscribe(onStoreChange: () => void) {

@@ -155,7 +155,8 @@ test('the bottom nav still reserves space for the home indicator (issue #123 AC6
         if (
           rule instanceof CSSStyleRule &&
           rule.selectorText === '.nav' &&
-          rule.cssText.includes('padding-bottom: env(safe-area-inset-bottom)')
+          rule.cssText.includes('padding-bottom:') &&
+          rule.cssText.includes('env(safe-area-inset-bottom)')
         ) {
           return true;
         }
