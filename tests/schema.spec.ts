@@ -5,6 +5,7 @@ import {
   credentials,
   habitLogs,
   habits,
+  pushSubscriptions,
   recoveryCodes,
   sessions,
   syncState,
@@ -32,6 +33,7 @@ const tables = [
   sessions,
   authChallenges,
   recoveryCodes,
+  pushSubscriptions,
 ];
 
 for (const table of tables) {

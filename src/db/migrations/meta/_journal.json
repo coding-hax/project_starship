@@ -57,6 +57,13 @@
       "when": 1784534843422,
       "tag": "0007_chunky_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785033590694,
+      "tag": "0008_nosy_scorpion",
+      "breakpoints": true
     }
   ]
 }
