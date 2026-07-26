@@ -149,13 +149,16 @@ tests/
   garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
 scripts/
   garmin-bootstrap.md       einmaliger Handgriff im Browser fürs Garmin-OAuth1-Token, ~jährlich fällig, führt nie automatisch (ADR-0011, issue #186)
-  claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172); ts_run() ist die Naht zu scripts/runner/cli.ts, RUNNER_TS=0 als Kill-Switch (#198 S1)
-  runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); bisher nur `version` als Ende-zu-Ende-Beweis, ab S2 wandert echte Logik ein
+  claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172); ts_run() ist die Naht zu scripts/runner/cli.ts, RUNNER_TS=0 als Kill-Switch (#198 S1); fmt_hm/d_plus/reset_epoch/queue_order_flat/queue_pending/queue_next sind Einzeiler über ts_run mit `*_bash`-Fallback (#199 S2) -- Ausnahme: die Kontingent-erschöpft-Bailout-Meldung ruft bewusst `fmt_hm_bash` direkt, damit dieser Zweig ein garantierter No-Op bleibt (kein tsx-Start, kein gh-Aufruf)
+  runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); Handler geben `string | null` zurück (`null` = Exit 1, kein stdout -- Pendant zu `return 1` in Bash); ab S2 (#199) Kommandos `fmt-hm`/`d-plus`/`reset-epoch`/`queue-order-flat`/`queue-pending`/`queue-next`
   runner/gh.ts, git.ts      Adapter um `gh`/`git`, injizierbare exec-Funktion für Vitest-Doubles (#198 S1)
   runner/state.ts           Adapter für Dateien unter $STATE_DIR, baseDir injizierbar -- Vitest zeigt nie auf das echte .runner/ (#198 S1)
   runner/clock.ts           Zeitquelle, injizierbar (createClock/createFixedClock) (#198 S1)
-  runner/*.test.ts          Vitest-Suiten der TS-Adapter/des Dispatchers, laufen über `pnpm test` mit (#198 S1)
+  runner/time.ts            fmtHm/dPlus/resetEpoch -- TS-Portierung von fmt_hm/d_plus/reset_epoch, Zeit ausschließlich über den Clock-Adapter (#199 S2)
+  runner/queue.ts           queueOrderFlat/queuePending/queueNext -- TS-Portierung der Prioritäts-Queue, Leseregel (jede '#NN' zählt) unverändert (#199 S2)
+  runner/*.test.ts          Vitest-Suiten der TS-Adapter/des Dispatchers/Zeit/Queue, laufen über `pnpm test` mit (#198 S1, #199 S2)
   tests/runner-ts.test.sh   Fixture-Tests für ts_run(): RUNNER_TS-Vorgabe ruft cli.ts auf, RUNNER_TS=0 startet tsx gar nicht, fehlendes tsx meldet sich hörbar über status() (#198 S1)
+  tests/runner-ts-s2-parity.test.sh  Fixture-Tests (#199 S2): stdout/Exit-Code der sechs portierten Funktionen sind über ts_run (echtes tsx/cli.ts, REPO_DIR zeigt aufs echte Repo) und über RUNNER_TS=0 (Bash-Pfad) identisch
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests

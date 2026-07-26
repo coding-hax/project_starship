@@ -64,6 +64,62 @@ describe('dispatch', () => {
   });
 
   it('registers exactly the commands this stage promises', () => {
-    expect(Object.keys(commands)).toEqual(['version']);
+    expect(Object.keys(commands)).toEqual([
+      'version',
+      'fmt-hm',
+      'd-plus',
+      'reset-epoch',
+      'queue-order-flat',
+      'queue-pending',
+      'queue-next',
+    ]);
+  });
+
+  it('exits 1 with no stdout when a command signals failure (null), like a failed bash function', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    // nicht-numerische Eingabe -> fmtHm() gibt null zurueck, wie ein
+    // fehlgeschlagener `date`-Aufruf auf der Bash-Seite.
+    const rc = dispatch(fakeContext(), ['fmt-hm', 'nicht-numerisch']);
+
+    expect(rc).toBe(1);
+    expect(stdout).not.toHaveBeenCalled();
+
+    stdout.mockRestore();
+  });
+
+  it('runs `queue-next`, writing an empty line + exit 0 when nothing is buildable', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const rc = dispatch(fakeContext(), ['queue-next', '[]']);
+
+    expect(rc).toBe(0);
+    expect(stdout).toHaveBeenCalledWith('\n');
+
+    stdout.mockRestore();
+  });
+
+  it('runs `queue-pending`, reflecting the clock-independent pure queue logic', () => {
+    const snapshot = JSON.stringify([{ number: 60, labels: [{ name: 'needs-research' }] }]);
+
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const rc = dispatch(fakeContext(), ['queue-pending', snapshot]);
+
+    expect(rc).toBe(0);
+    expect(stdout).toHaveBeenCalledWith('#60\n');
+
+    stdout.mockRestore();
+  });
+
+  it('runs `reset-epoch` using the injected clock, not the real one', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const ctx = fakeContext(); // Uhr fix auf 2026-07-26T12:00:00Z
+
+    const rc = dispatch(ctx, ['reset-epoch', 'session limit · resets 2:50pm (Europe/Berlin)']);
+
+    expect(rc).toBe(0);
+    expect(stdout).toHaveBeenCalledWith(expect.stringMatching(/^\d+\n$/));
+
+    stdout.mockRestore();
   });
 });

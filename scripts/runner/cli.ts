@@ -1,19 +1,24 @@
 #!/usr/bin/env node
-// Dispatcher der Bash<->TS-Naht (#198, Stufe 1 von 6 aus #184). Vertrag je
-// Kommando: stdout + Exit-Code exakt wie die Bash-Funktion, die es ersetzt.
-// `ts_run()` in scripts/claude-runner.sh ruft genau diese Datei auf.
+// Dispatcher der Bash<->TS-Naht (#198/#199). Vertrag je Kommando: stdout +
+// Exit-Code exakt wie die Bash-Funktion, die es ersetzt. `ts_run()` in
+// scripts/claude-runner.sh ruft genau diese Datei auf.
 //
 // Adapter (gh/git/state/clock) werden hier zu einem RunnerContext verdrahtet
 // und NIE global importiert -- Kommandos bekommen sie als Parameter, damit
 // Vitest sie durch Doubles ersetzen kann, ohne Netz oder echtes .runner/
-// anzufassen. `version` ist die einzige Handler-Implementierung dieser
-// Stufe; ab S2 wandert echte Bash-Logik hier ein, ein Eintrag je Kommando.
+// anzufassen.
+//
+// Ein Handler gibt entweder einen String zurueck (Erfolg, Exit 0 -- '' ist
+// ein gueltiger LEERER Erfolg, z. B. "keine Queue-Arbeit offen") oder `null`
+// (die Bash-Seite haette `return 1` gemacht: Exit 1, GAR KEIN stdout).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClock, type Clock } from './clock.js';
 import { createGhAdapter, type GhAdapter } from './gh.js';
 import { createGitAdapter, type GitAdapter } from './git.js';
+import { dPlus, fmtHm, resetEpoch } from './time.js';
+import { queueNext, queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
 import { createStateAdapter, type StateAdapter } from './state.js';
 
 export interface RunnerContext {
@@ -23,7 +28,8 @@ export interface RunnerContext {
   clock: Clock;
 }
 
-export type CommandHandler = (ctx: RunnerContext, args: string[]) => string;
+export type CommandResult = string | null;
+export type CommandHandler = (ctx: RunnerContext, args: string[]) => CommandResult;
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +40,18 @@ function readPackageVersion(): string {
 
 export const commands: Record<string, CommandHandler> = {
   version: () => readPackageVersion(),
+  'fmt-hm': (_ctx, args) => fmtHm(Number(args[0])),
+  'd-plus': (ctx, args) => dPlus(Number(args[0]), args[1] ?? '', ctx.clock),
+  'reset-epoch': (ctx, args) => {
+    const epoch = resetEpoch(args[0] ?? '', ctx.clock);
+    return epoch === null ? null : String(epoch);
+  },
+  'queue-order-flat': (_ctx, args) => JSON.stringify(queueOrderFlat(args[0] ?? '')),
+  'queue-pending': (_ctx, args) => queuePending(JSON.parse(args[0] ?? '[]') as QueueIssue[]),
+  'queue-next': (_ctx, args) => {
+    const next = queueNext(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '');
+    return next === null ? '' : String(next);
+  },
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {
@@ -43,7 +61,9 @@ export function dispatch(ctx: RunnerContext, argv: string[]): number {
     process.stderr.write(`unbekanntes Kommando: ${cmd ?? '(keins)'}\n`);
     return 2;
   }
-  process.stdout.write(`${handler(ctx, rest)}\n`);
+  const result = handler(ctx, rest);
+  if (result === null) return 1;
+  process.stdout.write(`${result}\n`);
   return 0;
 }
 
