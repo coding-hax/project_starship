@@ -16,7 +16,12 @@ MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende L�
 MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
 TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
 RUNNER_TS="${RUNNER_TS:-1}"             # Kill-Switch (#198): 0 erzwingt den Bash-Pfad, siehe ts_run()
-STATE_DIR="$REPO_DIR/.runner"
+# Default wie bisher $REPO_DIR/.runner; ein vorab exportiertes STATE_DIR
+# (Parity-Fixture #200) gewinnt -- UND wird seinerseits exportiert, damit der
+# per ts_run() gestartete tsx-Kindprozess (scripts/runner/state.ts liest
+# process.env.STATE_DIR) exakt dasselbe Verzeichnis sieht wie dieser Bash-Pfad.
+STATE_DIR="${STATE_DIR:-$REPO_DIR/.runner}"
+export STATE_DIR
 LIMIT_UNTIL="$STATE_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 
 cd "$REPO_DIR" || { echo "REPO_DIR nicht gefunden: $REPO_DIR" >&2; exit 1; }
@@ -161,7 +166,11 @@ status() {   # $1 = Titelzeile (ohne Emoji), $2 = Emoji, $3 = Text
   [ "$STATUS_ISSUE" -gt 0 ] 2>/dev/null || return 0
   local sig text
   text="$3${RELEASED_PARKED_NOTE:-}"
-  sig=$(sha1_of "$2 Runner · $1"$'\x1e'"$text")
+  # sha1_of_bash direkt, NICHT sha1_of(): ts_run() meldet ein fehlendes/kaputtes
+  # tsx seinerseits ueber status() -- ueber den Wrapper waere das eine
+  # Endlosrekursion (status -> sha1_of -> ts_run -> status -> ...). Dieser Zweig
+  # muss ein garantierter No-Op bleiben, wie die Bailout-Meldung in #199 S2.
+  sig=$(sha1_of_bash "$2 Runner · $1"$'\x1e'"$text")
   [ "$(cat "$STATUS_HASH_FILE" 2>/dev/null)" = "$sig" ] && return 0
   gh issue edit "$STATUS_ISSUE" \
     --title "$2 Runner · $1" \
@@ -317,14 +326,32 @@ queue_next_bash() {
 # (Planung, Feature-Recherche) laufen unveraendert immer mit Opus, ohne Stufen.
 
 # Portable sha1: macOS bringt 'shasum', Linux ueblicherweise 'sha1sum'.
-sha1_of() {
+# TS-Kern: scripts/runner/escalation.ts, `sha1Of()` (#200).
+sha1_of() {   # $1 = Text -> Hex-Hash
+  local out rc
+  out=$(ts_run sha1-of "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { sha1_of_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+sha1_of_bash() {
   printf '%s' "$1" | shasum -a 1 2>/dev/null | cut -d' ' -f1 \
     || printf '%s' "$1" | sha1sum 2>/dev/null | cut -d' ' -f1
 }
 
-# Aktuelle Bau-Modellstufe fuer ein Ticket. Kein tier-<nr> (noch) niemals
+# Aktuelle Bau-Modellstufe fuer ein Ticket. Kein tier-<nr> (noch nie
 # eskaliert) -> Default aus dem Label 'model:haiku', sonst 'sonnet'.
+# TS-Kern: scripts/runner/tier.ts, `tierCurrent()` (#200).
 tier_current() {   # $1 = Issue-Nr -> sonnet|opus|haiku
+  local out rc
+  out=$(ts_run tier-current "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { tier_current_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+tier_current_bash() {
   local issue="$1"
   local f="$STATE_DIR/tier-$issue"
   if [ -s "$f" ]; then
@@ -342,16 +369,32 @@ tier_current() {   # $1 = Issue-Nr -> sonnet|opus|haiku
 # Schaltet eine Stufe hoch. Die Leiter hat nur einen Sprung: sonnet/haiku -> opus.
 # Auf opus (Spitze) angekommen: kein weiterer Bump, Rueckgabe 1 signalisiert
 # "erschoepft" an den Aufrufer.
+# TS-Kern: scripts/runner/tier.ts, `tierBump()` (#200).
 tier_bump() {   # $1 = Issue-Nr
+  ts_run tier-bump "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { tier_bump_bash "$1"; return; }
+  return "$rc"
+}
+
+tier_bump_bash() {
   local issue="$1"
-  [ "$(tier_current "$issue")" = "opus" ] && return 1
+  [ "$(tier_current_bash "$issue")" = "opus" ] && return 1
   echo opus > "$STATE_DIR/tier-$issue"
   echo 0 > "$STATE_DIR/failcount-$issue"
   return 0
 }
 
 # Zurueck auf die Default-Stufe -- nach Fortschritt (siehe build_escalation_eval).
+# TS-Kern: scripts/runner/tier.ts, `tierReset()` (#200).
 tier_reset() {   # $1 = Issue-Nr
+  ts_run tier-reset "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { tier_reset_bash "$1"; return; }
+  return "$rc"
+}
+
+tier_reset_bash() {
   local issue="$1"
   rm -f "$STATE_DIR/tier-$issue" "$STATE_DIR/failcount-$issue" \
         "$STATE_DIR/blocker-sig-$issue" "$STATE_DIR/branch-head-$issue"
@@ -362,7 +405,15 @@ tier_reset() {   # $1 = Issue-Nr
 # Der Bau-Stand liegt ohnehin in Git + Fortschrittskommentar -- ein frischer
 # Start ist also sicher. Deshalb: nach 2 Fortsetzungen einer Session frisch
 # starten. Zaehler dateibasiert je Ticket unter $STATE_DIR (analog failcount).
+# TS-Kern: scripts/runner/escalation.ts, `resumeAllowed()` (#200).
 resume_allowed() {   # $1 = Issue-Nr -> 0 (resume ok, zaehlt hoch) / 1 (kappen, Reset)
+  ts_run resume-allowed "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { resume_allowed_bash "$1"; return; }
+  return "$rc"
+}
+
+resume_allowed_bash() {
   local issue="$1" f cnt
   f="$STATE_DIR/resume-count-$issue"
   cnt=$(cat "$f" 2>/dev/null || echo 0)
@@ -377,7 +428,16 @@ resume_allowed() {   # $1 = Issue-Nr -> 0 (resume ok, zaehlt hoch) / 1 (kappen, 
 # sha1 der Blocker-Kennzeilen (Endgrund + Wiederaufnahmestelle) aus dem
 # LETZTEN Kommentar -- aber nur, wenn das ueberhaupt der Fortschrittskommentar
 # ist (#33). Kein Fortschrittskommentar (Lauf brach ganz frueh ab) -> leer.
+# TS-Kern: scripts/runner/escalation.ts, `blockerSig()` (#200).
 blocker_sig() {   # $1 = Issue-Nr
+  local out rc
+  out=$(ts_run blocker-sig "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { blocker_sig_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+blocker_sig_bash() {
   local issue="$1" last body
   last=$(gh issue view "$issue" --json comments -q '.comments[-1].body // empty' 2>/dev/null)
   case "$last" in
@@ -386,7 +446,7 @@ blocker_sig() {   # $1 = Issue-Nr
   esac
   body=$(printf '%s' "$last" | grep -E "Lauf-Ende|← HIER WEITER|Endgrund" 2>/dev/null)
   [ -z "$body" ] && return 0
-  sha1_of "$body"
+  sha1_of_bash "$body"
 }
 
 # SHA der Feature-Branch-Spitze auf origin (leer, wenn (noch) kein Branch existiert).
@@ -629,14 +689,22 @@ pr_failure_summary() {   # $1 = PR-Nr
 # ausdruecklich NICHT bei Limit/429, Notbremse oder einem noch laufenden
 # Transient-Retry: dort ist gar nicht zu Ende gearbeitet worden (Infrastruktur,
 # nicht Inhalt), das darf kein Fehlversuch sein.
+# TS-Kern: scripts/runner/escalation.ts, `buildEscalationEval()` (#200).
 build_escalation_eval() {
+  local out rc
+  out=$(ts_run build-escalation-eval "$ISSUE" "$RUN_ROLE" "${LABELS:-}" "${BEFORE_TIP:-}" "${MODEL:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { build_escalation_eval_bash; return; }
+  return "$rc"
+}
+
+build_escalation_eval_bash() {
   [ "$RUN_ROLE" = "build" ] || return 0
   case "$LABELS" in *no-escalation*) return 0 ;; esac
 
   local after
   after=$(branch_tip "$ISSUE")
   if [ -n "$after" ] && [ "$after" != "${BEFORE_TIP:-}" ]; then
-    tier_reset "$ISSUE"     # Fortschritt -- zurueck auf die Default-Stufe.
+    tier_reset_bash "$ISSUE"     # Fortschritt -- zurueck auf die Default-Stufe.
     return 0
   fi
 
@@ -651,7 +719,7 @@ build_escalation_eval() {
   fi
 
   local sig prev fc
-  sig=$(blocker_sig "$ISSUE")
+  sig=$(blocker_sig_bash "$ISSUE")
   prev=$(cat "$STATE_DIR/blocker-sig-$ISSUE" 2>/dev/null || echo "")
   [ -n "$sig" ] && printf '%s' "$sig" > "$STATE_DIR/blocker-sig-$ISSUE"
 
@@ -668,7 +736,7 @@ build_escalation_eval() {
   echo "$fc" > "$STATE_DIR/failcount-$ISSUE"
   [ "$fc" -ge 3 ] || return 0
 
-  if tier_bump "$ISSUE"; then
+  if tier_bump_bash "$ISSUE"; then
     gh issue comment "$ISSUE" --body \
       "🤖 Drei Läufe ohne Fortschritt auf der aktuellen Modellstufe — der nächste Bau-Versuch eskaliert auf Opus (siehe ADR-0007, Deckel 2 Opus-Bau-Läufe/Tag)." \
       >/dev/null 2>&1
@@ -684,14 +752,30 @@ build_escalation_eval() {
 # und Kalendertag. Eigener, tagesgestempelter Zaehler -- unabhaengig vom
 # (inzwischen abgeschafften, PR #46) Deckel der nur-lesenden Denk-Rollen, weil
 # Opus hier tatsaechlich schreibt statt nur zu lesen.
+# TS-Kern: scripts/runner/cap.ts, `opusBuildCapReached()` (#200).
 opus_build_cap_reached() {   # $1 = Issue-Nr, $2 = LABELS (optional) -> 0 (Deckel erreicht) / 1 (noch Luft)
+  ts_run opus-cap-reached "$1" "${2:-}" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { opus_build_cap_reached_bash "$1" "${2:-}"; return; }
+  return "$rc"
+}
+
+opus_build_cap_reached_bash() {
   local issue="$1" labels="${2:-}" count
   case "$labels" in *opus-boost*) return 1 ;; esac
   count=$(cat "$STATE_DIR/opus-build-$(date +%Y%m%d)-$issue" 2>/dev/null || echo 0)
   [ "${count:-0}" -ge 2 ] 2>/dev/null
 }
 
+# TS-Kern: scripts/runner/cap.ts, `opusBuildCapReserve()` (#200).
 opus_build_cap_reserve() {   # $1 = Issue-Nr -- verbraucht einen der 2 Slots fuer heute
+  ts_run opus-cap-reserve "$1" >/dev/null
+  local rc=$?
+  [ "$rc" -eq 127 ] && { opus_build_cap_reserve_bash "$1"; return; }
+  return "$rc"
+}
+
+opus_build_cap_reserve_bash() {
   local issue="$1"
   local f="$STATE_DIR/opus-build-$(date +%Y%m%d)-$issue"
   local count
