@@ -155,17 +155,49 @@ export function formatDayHeading(dateKey: string): string {
   return DAY_HEADING_FORMATTER.format(new Date(year, month - 1, day));
 }
 
+export interface TemperatureAxis {
+  min: number;
+  max: number;
+  /** Whole degrees, bottom to top — one label and one gridline each. */
+  ticks: number[];
+}
+
+/**
+ * The y-range of the temperature chart, snapped to whole degrees, plus the tick
+ * values to label it with. Split out from `temperatureLinePoints` so both can be
+ * fed the *same* range: a "15°" label has to sit exactly on the gridline the curve
+ * touches, which it does not if the curve scales to the raw min/max while the
+ * labels show rounded numbers.
+ */
+export function temperatureAxis(hours: WeatherHour[], tickCount = 3): TemperatureAxis {
+  if (hours.length === 0) return { min: 0, max: 1, ticks: [] };
+  const temps = hours.map((hour) => hour.temperature);
+  const min = Math.floor(Math.min(...temps));
+  // A day at a constant temperature would collapse the range to zero; one degree
+  // of headroom keeps the flat curve on a readable line instead of on the frame.
+  const max = Math.max(Math.ceil(Math.max(...temps)), min + 1);
+  const step = (max - min) / Math.max(tickCount - 1, 1);
+  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round(min + i * step));
+  return { min, max, ticks: [...new Set(ticks)] };
+}
+
 /**
  * SVG `points` for a 24-hour temperature curve (issue #156), scaled into a
- * `width`×`height` box with the day's own min/max as the y-range — kept out of
- * the component so the scaling math is unit-testable without rendering, same
- * reasoning as `weekdayLabel`/`isWeekend` (issue #139).
+ * `width`×`height` box — kept out of the component so the scaling math is
+ * unit-testable without rendering, same reasoning as `weekdayLabel`/`isWeekend`
+ * (issue #139). Without `domain` the day's own min/max span the box; the chart
+ * passes `temperatureAxis`'s whole-degree range so curve and labels agree.
  */
-export function temperatureLinePoints(hours: WeatherHour[], width: number, height: number): string {
+export function temperatureLinePoints(
+  hours: WeatherHour[],
+  width: number,
+  height: number,
+  domain?: { min: number; max: number },
+): string {
   if (hours.length === 0) return '';
   const temps = hours.map((hour) => hour.temperature);
-  const min = Math.min(...temps);
-  const max = Math.max(...temps);
+  const min = domain ? domain.min : Math.min(...temps);
+  const max = domain ? domain.max : Math.max(...temps);
   const range = max - min || 1;
   const stepX = width / (hours.length - 1 || 1);
   return hours
