@@ -2,11 +2,10 @@
 # Tests für ts_run(), die Bruecke zu scripts/runner/cli.ts (issue #198, S1).
 #
 # Reine Bash-Assertions, kein bats. Sourct claude-runner.sh (Source-Guard haelt
-# main() an) -- analog limit-until.test.sh. REPO_DIR zeigt auf ein
+# main() an) -- analog limit-until.test.sh. RUNNER_HOME zeigt auf ein
 # Wegwerf-Verzeichnis mit einer STUB-`tsx` unter node_modules/.bin, nicht auf
-# das echte cli.ts: hier wird nur die Bash-seitige Verdrahtung geprueft (AC1-3),
-# das Verhalten von cli.ts selbst deckt die Vitest-Suite unter scripts/runner/
-# ab (AC4-6).
+# das echte cli.ts: hier wird nur die Bash-seitige Verdrahtung geprueft, das
+# Verhalten von cli.ts selbst decken die Vitest-Suiten unter scripts/runner/ ab.
 set -uo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,7 +78,7 @@ mkdir -p "$HOME_WITHOUT_TSX/scripts/runner"
 # ==============================================================================
 # AC1: ts_run ruft tsx auf, stdout kommt durch, Exit 0.
 #
-# Der frueher hier gepruefte Kill-Switch RUNNER_TS=0 ist mit S6 (#203) entfallen
+# Der frueher hier gepruefte Kill-Switch aus S1 ist mit S6 (#203) entfallen
 # -- es gibt keinen Bash-Rueckfallpfad mehr, auf den er umschalten koennte.
 # ==============================================================================
 (

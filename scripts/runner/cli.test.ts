@@ -102,8 +102,14 @@ describe('dispatch', () => {
       'waiting-issues',
       'parked-issues',
       'park-issue',
+      'cleanup-state',
       'queue-snapshot',
       'queue-body',
+      // S6 (#203): das Rundenprotokoll -- drei Kommandos statt der bisherigen
+      // ~40 Einzelaufrufe pro Takt, aufgeteilt am `claude`-Aufruf.
+      'round-plan',
+      'round-prompt',
+      'round-eval',
     ]);
   });
 
