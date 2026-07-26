@@ -20,6 +20,21 @@
   color: var(--text-muted);
 }
 
+/**
+ * On /uebersicht the empty state sits between two section headings, where
+ * space-12 tore a hole into the page — nothing due looked like a rendering bug
+ * (issue #228). One task card's height instead, so the rhythm between the
+ * sections is the same whether or not something is due. The full /aufgaben
+ * screen keeps the roomy version: there the empty state is the page.
+ */
+.task-list__empty--compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+}
+
 .task-list {
   display: flex;
   flex-direction: column;

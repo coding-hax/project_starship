@@ -1,17 +1,28 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock } from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
 const NOW = '2026-07-18T12:00:00.000Z';
 const YESTERDAY_MORNING = '2026-07-17T09:00:00.000Z';
+const YESTERDAY_EVENING = '2026-07-17T18:00:00.000Z';
 const TODAY_EVENING = '2026-07-18T18:00:00.000Z';
 const TOMORROW_MORNING = '2026-07-19T09:00:00.000Z';
+/** Same wall-clock moment as NOW, one day later — for the day-change assertions. */
+const TOMORROW_NOON = '2026-07-19T12:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
   // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
   // (issue #157 AC: no double announcement).
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
+}
+
+/** Vertical distance between the bottom of `above` and the top of `below`. */
+async function gapBetween(above: Locator, below: Locator): Promise<number> {
+  const top = await above.boundingBox();
+  const bottom = await below.boundingBox();
+  if (!top || !bottom) throw new Error('Beide Überschriften müssen sichtbar sein');
+  return bottom.y - (top.y + top.height);
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -43,24 +54,33 @@ test('/uebersicht listet offene Aufgaben, fällig heute oder überfällig (issue
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
   await seedTask(page, { title: 'Erst morgen', dueAt: TOMORROW_MORNING });
   await seedTask(page, { title: 'Ohne Fälligkeit' });
-  const doneId = await seedTask(page, { title: 'Erledigt, war überfällig', dueAt: YESTERDAY_MORNING });
-  await page.evaluate(
-    (rowId) =>
-      window.__starship.mutate({
-        table: 'tasks',
-        rowId,
-        op: 'upsert',
-        payload: { completedAt: new Date().toISOString() },
-      }),
-    doneId,
-  );
+  await seedTask(page, {
+    title: 'Heute erledigt',
+    dueAt: YESTERDAY_MORNING,
+    completedAt: NOW,
+  });
+  await seedTask(page, {
+    title: 'Gestern erledigt',
+    dueAt: YESTERDAY_MORNING,
+    completedAt: YESTERDAY_EVENING,
+  });
+  // Never listed while open, so being checked off today does not pull it in
+  // (issue #228 AC4).
+  await seedTask(page, {
+    title: 'Morgen fällig, heute erledigt',
+    dueAt: TOMORROW_MORNING,
+    completedAt: NOW,
+  });
 
   await expect(page.getByText('Überfällig')).toBeVisible();
   await expect(page.getByText('Heute fällig')).toBeVisible();
-  await expect(dueTaskItems(page)).toHaveCount(2);
+  // Checked off today, so it stays for the rest of the day (issue #228 AC1).
+  await expect(page.getByText('Heute erledigt')).toBeVisible();
+  await expect(dueTaskItems(page)).toHaveCount(3);
   await expect(page.getByText('Erst morgen')).toHaveCount(0);
   await expect(page.getByText('Ohne Fälligkeit')).toHaveCount(0);
-  await expect(page.getByText('Erledigt, war überfällig')).toHaveCount(0);
+  await expect(page.getByText('Gestern erledigt')).toHaveCount(0);
+  await expect(page.getByText('Morgen fällig, heute erledigt')).toHaveCount(0);
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
@@ -70,7 +90,7 @@ test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', a
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
 });
 
-test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkchen erledigt sofort und lässt die Aufgabe verschwinden (issue #87 AC3)', async ({
+test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das Häkchen erledigt sofort, die Zeile bleibt den Tag über stehen (issue #87 AC3, issue #228 AC1+AC5)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -79,13 +99,73 @@ test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — Häkc
   await expect(dueTaskItems(page).locator('.task-list__priority-dot')).toHaveClass(
     /task-list__priority-dot--dringend/,
   );
+  // Overdue while open — red. After the check-off it must not shout any more.
+  await expect(dueTaskItems(page).locator('.task-list__due')).toHaveClass(
+    /task-list__due--overdue/,
+  );
 
-  await page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }).click();
+  const checkbox = page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' });
+  await checkbox.click();
 
   // Not `page.getByText('Wird erledigt')` — the undo toast's own text ("„Wird
   // erledigt" erledigt") contains that same substring, scoped to the list instead.
+  await expect(dueTaskItems(page)).toHaveCount(1);
+  await expect(dueTaskItems(page).first()).toHaveClass(/task-list__item--done/);
+  await expect(checkbox).toBeChecked();
+  await expect(dueTaskItems(page).locator('.task-list__due')).not.toHaveClass(
+    /task-list__due--overdue/,
+  );
+  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toHaveCount(0);
+
+  // The row stays reachable, so the same tap takes it back (issue #228 AC5).
+  await checkbox.click();
+  await expect(dueTaskItems(page)).toHaveCount(1);
+  await expect(checkbox).not.toBeChecked();
+  await expect(dueTaskItems(page).first()).not.toHaveClass(/task-list__item--done/);
+});
+
+test('am Folgetag ist die gestern abgehakte Aufgabe aus der Übersicht verschwunden (issue #228 AC2+AC3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Wird erledigt', dueAt: YESTERDAY_MORNING });
+
+  await page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }).click();
+  await expect(dueTaskItems(page)).toHaveCount(1);
+
+  await skewClock(page, TOMORROW_NOON);
+  await page.reload();
+
   await expect(dueTaskItems(page)).toHaveCount(0);
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+});
+
+test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abstand zwischen den Abschnitten bleibt wie mit einer Aufgabe (issue #228 AC6)', async ({
+  page,
+}) => {
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+
+    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+    const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+    await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+    const emptyGap = await gapBetween(aufgaben, gewohnheiten);
+
+    const id = await seedTask(page, { title: 'Eine Aufgabe', dueAt: YESTERDAY_MORNING });
+    await expect(dueTaskItems(page)).toHaveCount(1);
+    const filledGap = await gapBetween(aufgaben, gewohnheiten);
+
+    // A card is 44px tall; anything wider than a card's own gap would read as a
+    // hole in the page rather than as a section that happens to be empty.
+    expect(Math.abs(emptyGap - filledGap)).toBeLessThanOrEqual(8);
+
+    await page.evaluate(
+      (rowId) => window.__starship.mutate({ table: 'tasks', rowId, op: 'delete' }),
+      id,
+    );
+    await expect(dueTaskItems(page)).toHaveCount(0);
+  }
 });
 
 test('kein "Gewohnheiten verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
@@ -100,7 +180,9 @@ test('kein "Gewohnheiten verwalten"-Link mehr auf /uebersicht — der Nav-Tab bl
     .getByRole('link', { name: 'Gewohnheiten' })
     .click();
   await expect(page).toHaveURL(/\/gewohnheiten$/);
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 }),
+  ).toBeVisible();
 });
 
 test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Gewohnheiten" (issue #157 AC5)', async ({
@@ -141,7 +223,15 @@ test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt
 test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig unterscheidbar (issue #157 AC3)', async ({
   page,
 }) => {
-  const dates = ['2026-07-18', '2026-07-19', '2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24'];
+  const dates = [
+    '2026-07-18',
+    '2026-07-19',
+    '2026-07-20',
+    '2026-07-21',
+    '2026-07-22',
+    '2026-07-23',
+    '2026-07-24',
+  ];
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({
