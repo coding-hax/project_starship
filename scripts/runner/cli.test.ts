@@ -94,6 +94,8 @@ describe('dispatch', () => {
       'pr-squash-merge',
       'reopen-falsely-closed-issues',
       'pr-failure-summary',
+      'watch-running-issue',
+      'watch-parked-issues',
     ]);
   });
 

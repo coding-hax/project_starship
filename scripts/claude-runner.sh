@@ -790,6 +790,141 @@ pr_failure_summary_bash() {
   done
 }
 
+# --- Eine Wache statt zwei (#202, S5 von #184) --------------------------------
+# Bisher standen die CI-Wache fuer EIN laufendes Bau-Ticket (#147/#160/#171)
+# und die CI-Wache fuer ALLE geparkten Tickets (#154/#173) als zwei getrennte
+# Bloecke in run_round() -- zwei Automaten, die denselben PR-Zustand je fuer
+# sich auswerteten. Jetzt entscheidet EINE Uebergangstabelle
+# (scripts/runner/watch.ts, `watchReaction()`), `parked` ist ein Eingabefeld.
+# Die menschenlesbaren Statustexte bleiben bewusst HIER (nicht im TS-Kern) --
+# ci-watch.test.sh/parked-ci-watch.test.sh pruefen sie 1:1 auf Wortlaut.
+# TS-Kern: scripts/runner/watch.ts, `watchRunningIssue()` (#202).
+watch_running_issue() {   # $1 = Issue-Nr, $2 = PR-Nr -> JSON {kind, ...}
+  local out rc
+  out=$(ts_run watch-running-issue "$1" "$2"); rc=$?
+  [ "$rc" -eq 127 ] && { watch_running_issue_bash "$1" "$2"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+watch_running_issue_bash() {
+  local issue="$1" PR_NUM="$2"
+  case "$(pr_ci_state "$PR_NUM")" in
+    pending)
+      jq -nc '{kind:"pending"}'
+      ;;
+    success)
+      gh pr ready "$PR_NUM" >/dev/null 2>&1
+      pr_squash_merge "$PR_NUM"
+      jq -nc '{kind:"merged"}'
+      ;;
+    failing)
+      if pr_only_protected_paths_red "$PR_NUM"; then
+        gh issue edit "$issue" --add-label needs-input >/dev/null 2>&1
+        jq -nc '{kind:"needs-input-protected"}'
+      else
+        local summary
+        summary=$(pr_failure_summary "$PR_NUM")
+        jq -nc --arg s "$summary" '{kind:"build-fix", summary:$s}'
+      fi
+      ;;
+    behind)
+      local catchup_out catchup_rc
+      catchup_out=$(pr_catch_up_behind "$PR_NUM"); catchup_rc=$?
+      case "$catchup_rc" in
+        0)
+          catchup_fail_reset "$issue"
+          jq -nc '{kind:"caught-up"}'
+          ;;
+        1)
+          catchup_fail_reset "$issue"
+          jq -nc --arg issue "$issue" --arg pr "$PR_NUM" --arg files "$catchup_out" '
+            (if ($files|length) == 0 then "unbekannt" else $files end) as $filelist
+            | {kind:"build-fix",
+               summary: ("### Merge-Konflikt beim Nachziehen von `main`\nPR #" + $pr + " (#" + $issue + ") liegt hinter `main`. Das automatische Nachziehen (`git fetch` +\n`git merge origin/main`) ist an einem echten Konflikt gescheitert.\n\nBetroffene Dateien: " + $filelist + "\n\nLöse den Konflikt auf dem bestehenden Branch: `git fetch origin main`,\n`git merge origin/main`, die genannten Dateien bereinigen, committen, pushen.")}'
+          ;;
+        *)
+          local reason paths_json escalated_bool
+          reason=$(catchup_fail_reason "$catchup_rc")
+          if [ "$catchup_rc" -eq 2 ] && [ -n "$catchup_out" ]; then
+            paths_json=$(printf '%s' "$catchup_out" | jq -R 'split(",")')
+          else
+            paths_json='[]'
+          fi
+          if catchup_fail_escalated "$issue" "$reason"; then escalated_bool=true; else escalated_bool=false; fi
+          jq -nc --arg reason "$reason" --argjson paths "$paths_json" --argjson escalated "$escalated_bool" \
+            '{kind:"retry", reason:$reason, paths:$paths, escalated:$escalated}'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+# CI-Wache fuer ALLE geparkten Tickets (#154, erweitert um #173), ueber
+# dieselbe Uebergangstabelle. $1 = JSON-Array [{number,createdAt,hasNeedsInput}],
+# $2 = "1" (WIP-Slot frei) oder "" -- fix fuer die ganze Runde, wie in der
+# bisherigen Bash-Implementierung (hoechstens EIN Ticket wird pro Runde
+# entparkt, unabhaengig davon, wie viele Kandidaten es gibt).
+# TS-Kern: scripts/runner/watch.ts, `watchParkedIssues()` (#202).
+watch_parked_issues() {   # -> JSON {promoted:{issue,reason}|null, released:[...]}
+  local out rc
+  out=$(ts_run watch-parked-issues "$1" "${2:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { watch_parked_issues_bash "$1" "${2:-}"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+watch_parked_issues_bash() {
+  local snapshot="$1" wip_slot_free="${2:-}" promoted='null' released='[]'
+  local sorted
+  sorted=$(printf '%s' "$snapshot" | jq -c 'sort_by(.createdAt)')
+  # Scratch-Dateien, um Ergebnisse aus der Pipe-Subshell unten (while-read
+  # ueber eine Pipe laeuft in einer eigenen Subshell, Variablen darin gehen
+  # beim Verlassen verloren) nach aussen zu tragen -- IMMER vorab geraeumt,
+  # falls ein frueherer Aufruf hart abgebrochen ist.
+  rm -f "$STATE_DIR/watch-parked-promoted" "$STATE_DIR/watch-parked-released"
+
+  printf '%s' "$sorted" | jq -c '.[]' | while IFS= read -r item; do
+    local n created has_input pr ci
+    n=$(printf '%s' "$item" | jq -r '.number')
+    has_input=$(printf '%s' "$item" | jq -r '.hasNeedsInput')
+    pr=$(pr_for_issue "$n")
+    [ -z "$pr" ] && continue
+    ci=$(pr_ci_state "$pr")
+    local reason=""
+
+    if [ "$ci" = "behind" ]; then
+      local catchup_out catchup_rc
+      catchup_out=$(pr_catch_up_behind "$pr"); catchup_rc=$?
+      [ "$catchup_rc" -eq 1 ] && reason='ein Merge-Konflikt beim Nachziehen von `main`'
+    elif [ "$ci" = "failing" ] && ! pr_only_protected_paths_red "$pr"; then
+      reason='rote Checks (mehr als nur `protected-paths`)'
+    fi
+
+    if [ -n "$reason" ]; then
+      if [ "$has_input" != "true" ] && [ -z "$(cat "$STATE_DIR/watch-parked-promoted" 2>/dev/null)" ] \
+           && [ "$wip_slot_free" = "1" ]; then
+        gh issue edit "$n" --remove-label parked --add-label in-progress >/dev/null 2>&1
+        jq -nc --argjson n "$n" --arg reason "$reason" '{issue:$n, reason:$reason}' > "$STATE_DIR/watch-parked-promoted"
+      fi
+      continue
+    fi
+
+    [ "$ci" = "success" ] || continue
+    gh pr ready "$pr" >/dev/null 2>&1
+    pr_squash_merge "$pr"
+    gh issue edit "$n" --remove-label parked --remove-label needs-input >/dev/null 2>&1
+    echo "$n" >> "$STATE_DIR/watch-parked-released"
+  done
+
+  [ -f "$STATE_DIR/watch-parked-promoted" ] && promoted=$(cat "$STATE_DIR/watch-parked-promoted")
+  if [ -f "$STATE_DIR/watch-parked-released" ]; then
+    released=$(jq -Rsc 'split("\n") | map(select(length>0) | tonumber)' "$STATE_DIR/watch-parked-released")
+  fi
+  rm -f "$STATE_DIR/watch-parked-promoted" "$STATE_DIR/watch-parked-released"
+  jq -nc --argjson promoted "$promoted" --argjson released "$released" '{promoted:$promoted, released:$released}'
+}
+
 # Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
 # Ausgaengen der Bau-Rolle aufgerufen (RC=0-Zweig, letzter Fehlschlag-Zweig) --
 # ausdruecklich NICHT bei Limit/429, Notbremse oder einem noch laufenden
@@ -1168,64 +1303,40 @@ fi
 # Schranke -- kein Fund, kein Entparken, das Ticket wartet weiter auf
 # 'human-approved'.
 RELEASED_PARKED_NOTE=""
-RELEASED_PARKED_NUMS='[]'
-PROMOTED_PARKED_ISSUE=""
-WIP_TAKEN_BEFORE=$(printf '%s' "$ROUND_SNAP" \
-  | jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' 2>/dev/null)
-PARKED_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
-  '[.[] | select(.labels | map(.name) | index("parked"))] | sort_by(.createdAt) | .[].number' 2>/dev/null)
-if [ -n "$PARKED_LIST" ]; then
-  while IFS= read -r PN; do
-    [ -z "$PN" ] && continue
-    PPR=$(pr_for_issue "$PN")
-    [ -z "$PPR" ] && continue
-    PSTATE=$(pr_ci_state "$PPR")
-    PROMOTE_REASON=""
+PARKED_SNAP=$(printf '%s' "$ROUND_SNAP" | jq -c \
+  '[.[] | select(.labels | map(.name) | index("parked"))
+        | {number:.number, createdAt:.createdAt,
+           hasNeedsInput:((.labels|map(.name)|index("needs-input")) != null)}]' 2>/dev/null)
+if [ "$(printf '%s' "${PARKED_SNAP:-[]}" | jq 'length' 2>/dev/null)" -gt 0 ]; then
+  WIP_TAKEN_BEFORE=$(printf '%s' "$ROUND_SNAP" \
+    | jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' 2>/dev/null)
+  WIP_SLOT_FREE=""
+  [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ] && WIP_SLOT_FREE=1
+  WATCH_PARKED_OUT=$(watch_parked_issues "$PARKED_SNAP" "$WIP_SLOT_FREE")
 
-    if [ "$PSTATE" = "behind" ]; then
-      pr_catch_up_behind "$PPR" >/dev/null; PCU_RC=$?
-      # rc 0: sauber nachgezogen, kein Agent (AC1). rc 2: fetch/checkout/push
-      # gescheitert -- naechster Takt versucht es erneut, bleibt geparkt.
-      # Nur rc 1 (echter Konflikt) ist der neue Fall aus #173.
-      [ "$PCU_RC" -eq 1 ] && PROMOTE_REASON="ein Merge-Konflikt beim Nachziehen von \`main\`"
-    elif [ "$PSTATE" = "failing" ] && ! pr_only_protected_paths_red "$PPR"; then
-      PROMOTE_REASON="rote Checks (mehr als nur \`protected-paths\`)"
-    fi
+  PROMOTED_PARKED_ISSUE=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.issue // empty')
+  if [ -n "$PROMOTED_PARKED_ISSUE" ]; then
+    PROMOTE_REASON=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.reason')
+    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson n "$PROMOTED_PARKED_ISSUE" \
+      '[.[] | if .number == $n then
+                (.labels |= (map(select(.name != "parked")) + [{"name":"in-progress"}]))
+              else . end]')
+    RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
 
-    if [ -n "$PROMOTE_REASON" ]; then
-      PHAS_INPUT=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson n "$PN" \
-        '[.[] | select(.number == $n) | .labels | map(.name) | index("needs-input")] | .[0] // empty')
-      if [ -z "$PHAS_INPUT" ] && [ -z "$PROMOTED_PARKED_ISSUE" ] \
-           && [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ]; then
-        gh issue edit "$PN" --remove-label parked --add-label in-progress >/dev/null 2>&1
-        ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson n "$PN" \
-          '[.[] | if .number == $n then
-                    (.labels |= (map(select(.name != "parked")) + [{"name":"in-progress"}]))
-                  else . end]')
-        PROMOTED_PARKED_ISSUE="$PN"
-        RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
+🔓 **Geparktes Ticket entparkt:** #$PROMOTED_PARKED_ISSUE hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
+  fi
 
-🔓 **Geparktes Ticket entparkt:** #$PN hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
-      fi
-      continue
-    fi
-
-    [ "$PSTATE" = "success" ] || continue
-    gh pr ready "$PPR" >/dev/null 2>&1
-    pr_squash_merge "$PPR"
-    gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
-    RELEASED_PARKED_NUMS=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq --argjson n "$PN" '. + [$n]')
-  done <<< "$PARKED_LIST"
-fi
-if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
-  ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
-    '[.[] | if (.number as $n | $released | index($n) != null) then
-              (.labels |= map(select(.name != "parked" and .name != "needs-input")))
-            else . end]')
-  RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
-  RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
+  RELEASED_PARKED_NUMS=$(printf '%s' "$WATCH_PARKED_OUT" | jq -c '.released')
+  if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
+    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
+      '[.[] | if (.number as $n | $released | index($n) != null) then
+                (.labels |= map(select(.name != "parked" and .name != "needs-input")))
+              else . end]')
+    RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
+    RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
 
 🔓 **Geparktes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: $RELEASED_LIST."
+  fi
 fi
 
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
@@ -1252,7 +1363,8 @@ CI_SUMMARY=""
 if [ -n "$ISSUE" ]; then
   PR_NUM=$(pr_for_issue "$ISSUE")
   if [ -n "$PR_NUM" ]; then
-    case "$(pr_ci_state "$PR_NUM")" in
+    WATCH_OUT=$(watch_running_issue "$ISSUE" "$PR_NUM")
+    case "$(printf '%s' "$WATCH_OUT" | jq -r '.kind')" in
       pending)
         status "CI läuft für #$ISSUE" "🟢" \
           "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — kein laufender Prozess hier.
@@ -1260,83 +1372,58 @@ if [ -n "$ISSUE" ]; then
 Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen nötig.**"
         return 0
         ;;
-      success)
-        gh pr ready "$PR_NUM" >/dev/null 2>&1
-        pr_squash_merge "$PR_NUM"
+      merged)
         status "wartet auf Merge · #$ISSUE" "🟢" \
           "🟢 **CI grün für #$ISSUE** (PR #$PR_NUM) — als \`ready\` markiert, Auto-Merge aktiviert.
 
 GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**"
         return 0
         ;;
-      failing)
-        if pr_only_protected_paths_red "$PR_NUM"; then
-          gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
-          status "wartet auf dich (#$ISSUE)" "🟡" \
-            "🟡 **PR #$PR_NUM für #$ISSUE braucht deine Freigabe.**
+      needs-input-protected)
+        status "wartet auf dich (#$ISSUE)" "🟡" \
+          "🟡 **PR #$PR_NUM für #$ISSUE braucht deine Freigabe.**
 
 Der Check \`protected-paths\` ist rot, weil geschützte Pfade berührt sind (Begründung
 steht als Kommentar am Ticket). Setze \`human-approved\` am PR **und entferne**
 \`needs-input\` vom Issue — der Check läuft dann automatisch neu, und der nächste
 Takt beobachtet die CI weiter."
-          return 0
-        fi
-        CI_FIX=1
-        CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
+        return 0
         ;;
-      behind)
-        CATCHUP_OUT=$(pr_catch_up_behind "$PR_NUM")
-        CATCHUP_RC=$?
-        case "$CATCHUP_RC" in
-          0)
-            catchup_fail_reset "$ISSUE"
-            status "CI läuft für #$ISSUE" "🟢" \
-              "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
+      build-fix)
+        CI_FIX=1
+        CI_SUMMARY=$(printf '%s' "$WATCH_OUT" | jq -r '.summary')
+        ;;
+      caught-up)
+        status "CI läuft für #$ISSUE" "🟢" \
+          "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
 
 Der nächste Takt prüft erneut. **Kein Eingreifen nötig.**"
-            return 0
-            ;;
-          1)
-            catchup_fail_reset "$ISSUE"
-            CI_FIX=1
-            CI_SUMMARY="### Merge-Konflikt beim Nachziehen von \`main\`
-PR #$PR_NUM (#$ISSUE) liegt hinter \`main\`. Das automatische Nachziehen (\`git fetch\` +
-\`git merge origin/main\`) ist an einem echten Konflikt gescheitert.
+        return 0
+        ;;
+      retry)
+        # #171: Ursache immer benennen (AC1/AC2), stoerende Pfade bei
+        # unsauberem Arbeitsbaum mitliefern (AC1), ab der dritten Runde in
+        # Folge mit DERSELBEN Ursache auf 🟡 wechseln (AC3) -- alles bereits
+        # in watch_running_issue() entschieden (watchReaction/'behind-retry').
+        CATCHUP_REASON=$(printf '%s' "$WATCH_OUT" | jq -r '.reason')
+        CATCHUP_PATHS_LIST=$(printf '%s' "$WATCH_OUT" | jq -r '.paths | join(",")')
+        CATCHUP_PATHS=""
+        [ -n "$CATCHUP_PATHS_LIST" ] && CATCHUP_PATHS="
 
-Betroffene Dateien: ${CATCHUP_OUT:-unbekannt}
-
-Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
-\`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen."
-            ;;
-          *)
-            # #171: die alte Sammel-2 nannte weder Ursache noch Pfade und blieb
-            # IMMER gruen, egal wie oft es hintereinander scheiterte. Jetzt:
-            # Ursache immer benennen (AC1/AC2), stoerende Pfade bei unsauberem
-            # Arbeitsbaum mitliefern (AC1), und ab der dritten Runde in Folge
-            # mit DERSELBEN Ursache auf 🟡 wechseln (AC3) -- der Abbruch selbst
-            # (kein 'git stash', kein '--force') bleibt unveraendert (AC5).
-            CATCHUP_REASON=$(catchup_fail_reason "$CATCHUP_RC")
-            CATCHUP_PATHS=""
-            if [ "$CATCHUP_RC" -eq 2 ] && [ -n "$CATCHUP_OUT" ]; then
-              CATCHUP_PATHS="
-
-Störende Pfade: \`${CATCHUP_OUT}\`"
-            fi
-            if catchup_fail_escalated "$ISSUE" "$CATCHUP_REASON"; then
-              status "wartet auf dich (#$ISSUE)" "🟡" \
-                "🟡 **Nachziehen von \`main\` für #$ISSUE (PR #$PR_NUM) hängt fest.**
+Störende Pfade: \`${CATCHUP_PATHS_LIST}\`"
+        if [ "$(printf '%s' "$WATCH_OUT" | jq -r '.escalated')" = "true" ]; then
+          status "wartet auf dich (#$ISSUE)" "🟡" \
+            "🟡 **Nachziehen von \`main\` für #$ISSUE (PR #$PR_NUM) hängt fest.**
 
 Ursache seit drei Runden in Folge dieselbe: $CATCHUP_REASON.${CATCHUP_PATHS}
 
 Das löst sich nicht von selbst — der Runner räumt keine fremden Dateien weg. Bitte
 im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Takt normal weiter."
-              return 0
-            fi
-            status "CI läuft für #$ISSUE" "🟢" \
-              "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich ($CATCHUP_REASON).${CATCHUP_PATHS} Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
-            return 0
-            ;;
-        esac
+          return 0
+        fi
+        status "CI läuft für #$ISSUE" "🟢" \
+          "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich ($CATCHUP_REASON).${CATCHUP_PATHS} Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
+        return 0
         ;;
     esac
   fi

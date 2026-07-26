@@ -34,6 +34,7 @@ import {
   reopenFalselyClosedIssues,
 } from './pr.js';
 import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
+import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -130,6 +131,16 @@ export const commands: Record<string, CommandHandler> = {
     return '';
   },
   'pr-failure-summary': (ctx, args) => prFailureSummary(args[0] ?? '', ctx.gh),
+  'watch-running-issue': (ctx, args) =>
+    JSON.stringify(watchRunningIssue(Number(args[0]), args[1] ?? '', { gh: ctx.gh, git: ctx.git, state: ctx.state })),
+  'watch-parked-issues': (ctx, args) =>
+    JSON.stringify(
+      watchParkedIssues(JSON.parse(args[0] ?? '[]') as ParkedIssueInput[], args[1] === '1', {
+        gh: ctx.gh,
+        git: ctx.git,
+        state: ctx.state,
+      }),
+    ),
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {
