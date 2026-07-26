@@ -39,6 +39,7 @@ import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './w
 import { pickTicket, selfHealPark } from './select.js';
 import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
+import { cleanupStateDir } from './cleanup.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -150,6 +151,10 @@ export const commands: Record<string, CommandHandler> = {
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
   'parked-issues': (ctx) => parkedIssues(ctx.gh),
   'park-issue': (ctx, args) => (parkIssue(Number(args[0]), ctx.gh) ? '' : null),
+  'cleanup-state': (ctx) => {
+    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());
+    return '';
+  },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
   'queue-body': (ctx, args) => queueBody(Number(args[0]), ctx.gh),
 
@@ -207,11 +212,17 @@ export function dispatch(ctx: RunnerContext, argv: string[]): number {
   return 0;
 }
 
+// Ein vorab exportiertes STATE_DIR gewinnt -- claude-runner.sh exportiert es,
+// damit dieser Prozess exakt dasselbe Verzeichnis sieht wie das Skript.
+function stateDir(): string {
+  return process.env.STATE_DIR ?? join(here, '..', '..', '.runner');
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
     git: createGitAdapter(),
-    state: createStateAdapter(process.env.STATE_DIR ?? join(here, '..', '..', '.runner')),
+    state: createStateAdapter(stateDir()),
     clock: createClock(),
   };
 }
