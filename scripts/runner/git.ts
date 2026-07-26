@@ -11,6 +11,8 @@ const defaultExec: ExecFn = (cmd, args) => execFileSync(cmd, args, { encoding: '
 
 export function createGitAdapter(exec: ExecFn = defaultExec): GitAdapter {
   return {
-    run: (args) => exec('git', args),
+    // Trailing Newlines abschneiden, wie bash `$(...)` es fuer jede
+    // Kommandosubstitution tut -- gleiches Muster wie gh.ts.
+    run: (args) => exec('git', args).replace(/\r?\n+$/, ''),
   };
 }
