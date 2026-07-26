@@ -89,14 +89,15 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
-    activities/                Client-seitig, liest den Vertrag aus #186 (garmin_activities), rechnet nur -- kein eigener Abruf (issue #180)
+    activities/                Client-seitig, liest den Vertrag aus #186 (garmin_activities), rechnet nur -- kein eigener Garmin-Abruf (issue #180)
       recap.ts                 computeRecap -- rollierendes 30-Tage-Fenster für die Seite (Aktivitäten + km)
       format.ts                formatDistance/-Duration/-Pause/-Pace/-Hr/-Elevation -- Gedankenstrich statt 0 bei null
       track-path.ts            projectTrack -- Äquirektangulär mit cos(latMid)-Korrektur, Bounding-Box in die viewBox eingepasst; SVG-Rückfall der Karte
       line-path.ts             buildLinePath -- Wertreihe -> SVG-Pfad, null bricht den Pfad (Lücke statt erfundener Gerade), konstante Serie -> Mittellinie
       monthly-summary.ts       computeMonthlySummary + activityTypeLabel -- laufender Kalendermonat, Aufschlüsselung je Aktivitätsart für den Monatsstand
       use-activities.ts        ActivityView + toActivityView -- Dexie-Live-Query auf `records` (table='garmin_activities') über den Hook aus #177
-      activity-list.tsx / .css Recap oben, darunter ein ActivityBlock je Aktivität, neueste zuerst; Skeleton/Leerzustand nach dem Muster aus habit-list.tsx
+      use-activity-sync.ts     stößt POST /api/garmin-sync an, wenn der letzte erfolgreiche Sync dieses Geräts >= 30 min her ist; Intervall nur bei sichtbarem Tab, Zeitstempel in localStorage ('starship:garmin-synced-at'), Fehlschlag lässt ihn stehen (issue #230, Muster aus use-weather-forecast.ts)
+      activity-list.tsx / .css Recap oben, darunter ein ActivityBlock je Aktivität, neueste zuerst; Skeleton/Leerzustand nach dem Muster aus habit-list.tsx; ruft use-activity-sync.ts und zeigt ab 8 h ohne erfolgreichen Sync die Bildunterschrift `Stand: HH:MM` (issue #230)
       activity-block.tsx / .css ein <article> je Aktivität: Karte, Kopfzahlen als <dl>, drei Kurven
       activity-map.tsx / .css  Kartenbild (mapImage) oder SVG-Spur-Rückfall aus projectTrack, feste aspect-ratio -- kein Layout-Sprung beim Wechsel
       activity-chart.tsx / .css eine der drei Kurven (HF/Pace/Höhe) aus buildLinePath, entfällt samt Überschrift bei komplett null
@@ -109,7 +110,7 @@ src/
       static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
       sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
     weather/
-      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail; temperatureAxis liefert die auf ganze Grad gerundete y-Spanne + Tick-Werte, temperatureLinePoints skaliert optional in genau diese Spanne, damit Kurve und Achsenbeschriftung übereinstimmen (issue #233)
+      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend — isStaleWarning/formatStaleSince liegen seit #230 in src/ui/stale.ts; Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail; temperatureAxis liefert die auf ganze Grad gerundete y-Spanne + Tick-Werte, temperatureLinePoints skaliert optional in genau diese Spanne, damit Kurve und Achsenbeschriftung übereinstimmen (issue #233)
       geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
       wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
       weather-category-labels.ts  Icon+Label je Kategorie, geteilt zwischen weather-forecast.tsx und weather-day.tsx, damit beide nicht auseinanderlaufen (issue #156)
@@ -151,6 +152,7 @@ src/
     persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
     e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182)
     sync-status.tsx         liveQuery über db.outbox, zeigt Toast(variant=error) sobald overSyncErrorThreshold (issue #182)
+    stale.ts                isStaleWarning (8h-Schwelle) + formatStaleSince (HH:MM, lokal) -- geteilt von Wetter (#155) und Aktivitäten (#230), lag bis #230 in weather/forecast.ts
 tests/
   global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
   global-teardown.ts        gibt das Lock wieder frei (nur das eigene)

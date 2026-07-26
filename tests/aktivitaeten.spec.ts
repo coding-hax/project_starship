@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { expect, type Page, test } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import {
+  freezeClock,
+  openMeteoForecastBody,
+  registerPasskey,
+  resetAppData,
+  skewClock,
+  withDb,
+} from './helpers';
 
 /**
  * Aktivitäten-Seite + Monatsstand (issue #180). Activities are server-origin,
@@ -10,6 +17,26 @@ import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb
 
 const NOW = '2026-07-26T12:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+
+/** issue #230 — muss zu use-activity-sync.ts passen. */
+const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
+const LAST_SYNC_KEY = 'starship:garmin-synced-at';
+const SYNC_INTERVAL_MS = 30 * 60 * 1000;
+const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
+
+/** Zählt die Sync-Anläufe und bestimmt, womit der Endpunkt antwortet. */
+async function mockGarminSync(page: Page, status = 200): Promise<() => number> {
+  let calls = 0;
+  await page.route(GARMIN_SYNC_PATTERN, (route) => {
+    calls += 1;
+    return route.fulfill({ status, json: status === 200 ? SYNC_COUNTERS : { error: 'nope' } });
+  });
+  return () => calls;
+}
+
+async function readLastSyncAt(page: Page): Promise<string | null> {
+  return page.evaluate((key) => localStorage.getItem(key), LAST_SYNC_KEY);
+}
 
 const DEFAULT_TRACK = {
   n: 5,
@@ -105,6 +132,14 @@ test.beforeEach(async ({ page }) => {
   );
   await skewClock(page, NOW);
   await registerPasskey(page);
+  // Seit issue #230 stößt die Aktivitäten-Seite beim Öffnen /api/garmin-sync an.
+  // Ohne Mock antwortet die Route im Test-Env mit 503 (kein GARMIN_SYNC_SECRET),
+  // und der Hook loggt genau den Konsolenfehler, den AC5 unten ausschließt. Die
+  // Tests weiter unten überschreiben diese Route für ihren eigenen Fall.
+  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
+  // localStorage überlebt resetAppData() — ohne das hier trüge jeder Test den
+  // Zeitstempel des vorherigen mit sich.
+  await page.evaluate((key) => localStorage.removeItem(key), LAST_SYNC_KEY);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -229,7 +264,7 @@ test('ohne Aktivitäten zeigt die Seite einen ruhigen Leerzustand, keine Fehlerm
   await goToAktivitaeten(page);
 
   await expect(page.locator('.activity-list__empty')).toHaveText(
-    'Noch keine Aktivitäten. Sobald der nächtliche Abgleich gelaufen ist, erscheinen sie hier.',
+    'Noch keine Aktivitäten. Sobald der Abgleich gelaufen ist, erscheinen sie hier.',
   );
   await expect(page.locator('.activity-block')).toHaveCount(0);
   expect(consoleErrors).toEqual([]);
@@ -441,4 +476,160 @@ test('der Monatsstand respektiert Dark Mode und prefers-reduced-motion (issue #1
   for (const d of duration.split(',')) {
     expect(parseFloat(d)).toBeLessThan(0.001);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #230: Aktualisieren alle 30 Minuten statt nur nachts                  */
+/* -------------------------------------------------------------------------- */
+
+test('das Öffnen der Seite stößt einen Sync an, ein zweiter Besuch im 30-Minuten-Fenster nicht (issue #230 AC1)', async ({
+  page,
+}) => {
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  const calls = await mockGarminSync(page);
+
+  await goToAktivitaeten(page);
+  await expect.poll(calls).toBe(1);
+  expect(await readLastSyncAt(page)).toBe(NOW);
+
+  // Dieselbe eingefrorene Uhr: der Zeitstempel ist damit 0 Minuten alt.
+  await goToAktivitaeten(page);
+  await expect(page.locator('.activity-list')).toBeVisible();
+  expect(calls()).toBe(1);
+});
+
+test('solange die Seite sichtbar bleibt, prüft ein Intervall alle 30 Minuten weiter (issue #230 AC2)', async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date(NOW) });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  const calls = await mockGarminSync(page);
+
+  await goToAktivitaeten(page);
+  await expect.poll(calls).toBe(1);
+
+  await freezeClock(page);
+  await page.clock.fastForward(SYNC_INTERVAL_MS + 1_000);
+
+  await expect.poll(calls).toBe(2);
+});
+
+test('im Hintergrund läuft kein Intervall-Timer (issue #230 AC2)', async ({ page }) => {
+  await page.clock.install({ time: new Date(NOW) });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  const calls = await mockGarminSync(page);
+
+  await goToAktivitaeten(page);
+  await expect.poll(calls).toBe(1);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await freezeClock(page);
+  // Mehrere Intervall-Perioden -- liefe der Timer im Hintergrund weiter, hätte er
+  // hier mehrfach gefeuert.
+  await page.clock.fastForward(SYNC_INTERVAL_MS * 3);
+
+  expect(calls()).toBe(1);
+});
+
+test('ein fehlgeschlagener Sync lässt Liste und Zeitstempel unangetastet und wird erneut versucht (issue #230 AC3)', async ({
+  page,
+}) => {
+  await insertGarminActivity({ name: 'Bleibt-Lauf' });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  // 409 = kein gültiges OAuth1-Token, der realistische Dauerzustand vor dem Bootstrap.
+  const calls = await mockGarminSync(page, 409);
+
+  await goToAktivitaeten(page);
+  await expect(page.locator('.activity-block', { hasText: 'Bleibt-Lauf' })).toBeVisible();
+  await expect.poll(calls).toBe(1);
+
+  // Nichts gespeichert -- und weil nichts gespeichert wurde, versucht es der
+  // nächste Besuch sofort wieder statt 30 Minuten zu warten.
+  expect(await readLastSyncAt(page)).toBeNull();
+
+  await goToAktivitaeten(page);
+  await expect(page.locator('.activity-block', { hasText: 'Bleibt-Lauf' })).toBeVisible();
+  await expect.poll(calls).toBe(2);
+});
+
+test('ab acht Stunden ohne erfolgreichen Sync nennt die Seite den Stand, darunter nicht (issue #230 AC4)', async ({
+  page,
+}) => {
+  await insertGarminActivity({ name: 'Alt-Lauf' });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  // Muss scheitern: ein erfolgreicher Sync würde den gesetzten Zeitstempel sofort
+  // wieder auf "jetzt" ziehen und es gäbe nichts zu sehen.
+  await mockGarminSync(page, 409);
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const seed = async (hoursAgo: number) => {
+    const at = new Date(new Date(NOW).getTime() - hoursAgo * 60 * 60 * 1000);
+    await page.evaluate(
+      ([key, value]) => localStorage.setItem(key, value),
+      [LAST_SYNC_KEY, at.toISOString()] as const,
+    );
+    return `${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  };
+
+  // Knapp darunter: kein Wort.
+  await seed(7);
+  await goToAktivitaeten(page);
+  await expect(page.locator('.activity-block', { hasText: 'Alt-Lauf' })).toBeVisible();
+  await expect(page.locator('.activity-list__caption')).toHaveCount(0);
+
+  // Darüber: die Uhrzeit des letzten erfolgreichen Syncs, 24-Stunden-Format.
+  const label = await seed(9);
+  await goToAktivitaeten(page);
+  await expect(page.locator('.activity-list__caption')).toHaveText(`Stand: ${label}`);
+});
+
+test('die Liste rendert weiter aus der lokalen Ablage, nicht aus der Sync-Antwort (issue #230 AC5)', async ({
+  page,
+}) => {
+  await insertGarminActivity({ name: 'Nur-in-Postgres', distanceMeters: 5000 });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  // Die Antwort trägt ausschließlich Zähler und meldet ausdrücklich 0 neue Zeilen --
+  // trotzdem steht die Aktivität da, weil sie über den normalen Pull kommt.
+  const calls = await mockGarminSync(page);
+
+  await goToAktivitaeten(page);
+  await expect.poll(calls).toBe(1);
+
+  await expect(page.locator('.activity-block', { hasText: 'Nur-in-Postgres' })).toBeVisible();
+  await expect(page.locator('.activity-list__recap')).toHaveText(
+    'Letzte 30 Tage: 1 Aktivität · 5.0 km',
+  );
+});
+
+test('der Stand-Hinweis bleibt auf 375px und 1280px in der Seite und folgt dem Dark Mode (issue #230 AC6)', async ({
+  page,
+}) => {
+  await insertGarminActivity({ name: 'Breiten-Lauf' });
+  await page.unroute(GARMIN_SYNC_PATTERN);
+  await mockGarminSync(page, 409);
+  await page.evaluate(
+    ([key, value]) => localStorage.setItem(key, value),
+    [LAST_SYNC_KEY, new Date(new Date(NOW).getTime() - 9 * 60 * 60 * 1000).toISOString()] as const,
+  );
+
+  const caption = page.locator('.activity-list__caption');
+
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await goToAktivitaeten(page);
+    await expect(caption).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  }
+
+  const lightColor = await caption.evaluate((el) => getComputedStyle(el).color);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await caption.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).not.toBe(lightColor);
 });

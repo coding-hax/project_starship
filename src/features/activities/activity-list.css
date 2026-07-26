@@ -13,6 +13,18 @@
   animation: activity-pulse 1.4s ease-in-out infinite;
 }
 
+/* Unlike the weather caption (weather-forecast.css), this one is in normal flow:
+   it sits at the very end of the page's content, so nothing exists below it that
+   its appearance could shift. Absolute positioning would only risk overlapping the
+   last activity block, which is taller than the fixed-height card the weather
+   caption hangs under (issue #230 AC4). */
+.activity-list__caption {
+  margin: var(--space-4) 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .activity-list__empty {
   padding: var(--space-12) var(--space-4);
   text-align: center;

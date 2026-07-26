@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
-import { formatStaleSince, isStaleWarning, isWeekend, weekdayLabel } from './forecast';
+import { formatStaleSince, isStaleWarning } from '@/ui/stale';
+import { isWeekend, weekdayLabel } from './forecast';
 import { useWeatherForecast } from './use-weather-forecast';
 import { WEATHER_ICON_BY_CATEGORY, WEATHER_LABEL_BY_CATEGORY } from './weather-category-labels';
 import { weatherCategory } from './wmo-icon';
