@@ -4,11 +4,28 @@
  */
 
 /** Tables the sync engine is allowed to touch. */
-export const SYNC_TABLES = ['sync_state', 'tasks', 'habits', 'habit_logs'] as const;
+export const SYNC_TABLES = [
+  'sync_state',
+  'tasks',
+  'habits',
+  'habit_logs',
+  'garmin_activities',
+] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 export function isSyncTable(value: unknown): value is SyncTable {
   return typeof value === 'string' && (SYNC_TABLES as readonly string[]).includes(value);
+}
+
+/**
+ * Tables the sync engine reads but never writes: server-origin data (ADR-0011).
+ * Both `push` (server) and `outbox.mutate()` (client) import from here, so the two
+ * sides of the wire contract cannot drift apart on which tables are writable.
+ */
+export const READ_ONLY_TABLES: readonly SyncTable[] = ['garmin_activities'];
+
+export function isReadOnlyTable(table: SyncTable): boolean {
+  return (READ_ONLY_TABLES as readonly string[]).includes(table);
 }
 
 /**
@@ -94,7 +111,7 @@ export interface PushConflict {
 export interface PushRejection {
   mutationId: string;
   /** Why this mutation was dropped. Retrying will not help either way — this is a bug. */
-  reason?: 'missing-required' | 'malformed';
+  reason?: 'missing-required' | 'malformed' | 'read-only';
   /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }
