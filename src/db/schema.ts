@@ -212,6 +212,7 @@ export const garminActivities = pgTable(
     averageSpeed: real('average_speed'),
     calories: integer('calories'),
     track: jsonb('track'),
+    /** Static map image as a data URL, fetched once (src/features/garmin/static-map.ts). */
     mapImage: text('map_image'),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
   },
