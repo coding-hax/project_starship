@@ -12,6 +12,10 @@ const defaultExec: ExecFn = (cmd, args) => execFileSync(cmd, args, { encoding: '
 
 export function createGhAdapter(exec: ExecFn = defaultExec): GhAdapter {
   return {
-    run: (args) => exec('gh', args),
+    // Trailing Newlines abschneiden, wie bash `$(...)` es fuer jede
+    // Kommandosubstitution tut -- ohne das haengt z.B. ein mehrzeiliger
+    // Log-Ausschnitt eine zusaetzliche Leerzeile an, die die Bash-Vorlage nie
+    // hatte (siehe scripts/runner/pr.ts, `prFailureSummary()`).
+    run: (args) => exec('gh', args).replace(/\r?\n+$/, ''),
   };
 }

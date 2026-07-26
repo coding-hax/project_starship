@@ -1,0 +1,28 @@
+.nav-order-panel__buttons {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.nav-order-panel__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.nav-order-panel__button:hover {
+  background: var(--surface-raised);
+}
+
+.nav-order-panel__button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

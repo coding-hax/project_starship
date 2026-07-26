@@ -46,6 +46,9 @@ jobs:
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh
       - run: bash scripts/tests/runner-ts.test.sh
+      - run: bash scripts/tests/runner-ts-s3-parity.test.sh
+      - run: bash scripts/tests/runner-ts-s4-parity.test.sh
+      - run: bash scripts/tests/runner-ts-s5-parity.test.sh
 
   # --- e2e, split in two halves that run in parallel (#115) -------------------
   # The production build is only needed by offline-critical.spec.ts (it wants a real
