@@ -128,7 +128,7 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
 export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
-      'DELETE FROM sync_state; DELETE FROM tasks; ' +
+      'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
         // habit_logs first — it references habits via a foreign key.
         'DELETE FROM habit_logs; DELETE FROM habits;',
     );
@@ -145,7 +145,8 @@ export async function resetDatabase() {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
-        'DELETE FROM habit_logs; DELETE FROM habits;',
+        'DELETE FROM habit_logs; DELETE FROM habits; DELETE FROM garmin_activities; ' +
+        'DELETE FROM garmin_tokens;',
     );
   });
 }
@@ -155,7 +156,7 @@ declare global {
   interface Window {
     __starship: {
       mutate: (input: {
-        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs';
+        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs' | 'garmin_activities';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;
@@ -168,6 +169,18 @@ declare global {
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugRecords: () => Promise<
+        Array<{
+          table: string;
+          id: string;
+          updatedAt: string;
+          deletedAt: string | null;
+          syncedAt: string | null;
+          syncSeq: number | null;
+          data: Record<string, unknown>;
+        }>
+      >;
+      debugMeta: () => Promise<Array<{ key: string; value: unknown }>>;
     };
   }
 }
