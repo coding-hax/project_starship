@@ -67,6 +67,26 @@ function weatherDays(page: Page) {
   return page.locator('.weather-forecast').getByRole('listitem');
 }
 
+/**
+ * Loads /uebersicht once so the overview strip's refresh fills the cache.
+ *
+ * Every test that navigates straight to `/wetter/<datum>` needs this first: the
+ * detail page deliberately has no refresh trigger of its own (AC4), so the strip
+ * is the only thing that ever writes the cache. `registerPasskey` in `beforeEach`
+ * does land on /uebersicht, but that happens while the default `abort('failed')`
+ * route is still in place — that visit only ever produces a failed refresh.
+ * Without warming, those pages are legitimately in their no-data state, which is
+ * its own assertion further down ("ohne jemals gecachte Vorhersage").
+ *
+ * Call after `skewClock`, never before: `refreshIfStale` stamps `fetchedAt` from
+ * the page clock, and the staleness assertions downstream count on that being the
+ * pinned time rather than the wall clock.
+ */
+async function warmForecastCache(page: Page) {
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // Default: abort, same reasoning as weather.spec.ts — the real API is never
@@ -106,6 +126,7 @@ test('die Seite zeigt einen stündlichen Temperaturverlauf über 24 Stunden (iss
 }) => {
   await mockForecast(page);
   await skewClock(page, NOW);
+  await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
   const points = await page.locator('.weather-day__chart-line').getAttribute('points');
@@ -125,6 +146,7 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
 }) => {
   await mockForecast(page);
   await skewClock(page, NOW);
+  await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__precipitation-bars').getByRole('listitem')).toHaveCount(24);
@@ -147,6 +169,7 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." statt einer leeren S
 }) => {
   await mockForecast(page);
   await skewClock(page, NOW);
+  await warmForecastCache(page);
   await page.goto('/wetter/2026-07-20');
 
   await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Kein Niederschlag erwartet.');
@@ -267,6 +290,7 @@ test('die Tagesspalte ist mindestens 44×44 px groß (issue #156 AC8)', async ({
 test('die Detailseite passt ohne waagerechtes Scrollen (issue #156 AC10)', async ({ page }) => {
   await mockForecast(page);
   await skewClock(page, NOW);
+  await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
 
@@ -283,6 +307,7 @@ test('die Detailseite passt ohne waagerechtes Scrollen (issue #156 AC10)', async
 test('die Kopfzeile nutzt den --surface-Token, auch im Dark Mode (issue #156 AC10)', async ({ page }) => {
   await mockForecast(page);
   await skewClock(page, NOW);
+  await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
 
