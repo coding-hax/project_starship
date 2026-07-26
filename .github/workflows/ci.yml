@@ -122,6 +122,24 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install-deps chromium
       - run: pnpm exec playwright install chromium
+      # VAPID for the push specs (#122). Generated fresh per run and discarded with
+      # the runner, exactly like the throwaway DATABASE_URL above: the keypair only
+      # has to be well-formed, never reachable — push.spec.ts posts to 127.0.0.1:9
+      # (the discard port), push-sw.prod.spec.ts never leaves the browser. So no
+      # repository secret is needed and nothing is committed (rule 10, ADR-0010 E2:
+      # the private key never lands in the repo).
+      - name: Generate a throwaway VAPID keypair
+        run: |
+          node -e "
+            const { generateVAPIDKeys } = require('web-push');
+            const { publicKey, privateKey } = generateVAPIDKeys();
+            require('fs').appendFileSync(process.env.GITHUB_ENV, [
+              'NEXT_PUBLIC_VAPID_PUBLIC_KEY=' + publicKey,
+              'VAPID_PRIVATE_KEY=' + privateKey,
+              'VAPID_SUBJECT=mailto:ci@starship.invalid',
+              '',
+            ].join('\n'));
+          "
       - run: pnpm db:migrate
       - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/10 --reporter=blob
         env:
@@ -196,6 +214,24 @@ jobs:
           key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**', 'next.config.ts') }}
           restore-keys: |
             nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # VAPID for the push specs (#122). Generated fresh per run and discarded with
+      # the runner, exactly like the throwaway DATABASE_URL above: the keypair only
+      # has to be well-formed, never reachable — push.spec.ts posts to 127.0.0.1:9
+      # (the discard port), push-sw.prod.spec.ts never leaves the browser. So no
+      # repository secret is needed and nothing is committed (rule 10, ADR-0010 E2:
+      # the private key never lands in the repo).
+      - name: Generate a throwaway VAPID keypair
+        run: |
+          node -e "
+            const { generateVAPIDKeys } = require('web-push');
+            const { publicKey, privateKey } = generateVAPIDKeys();
+            require('fs').appendFileSync(process.env.GITHUB_ENV, [
+              'NEXT_PUBLIC_VAPID_PUBLIC_KEY=' + publicKey,
+              'VAPID_PRIVATE_KEY=' + privateKey,
+              'VAPID_SUBJECT=mailto:ci@starship.invalid',
+              '',
+            ].join('\n'));
+          "
       - run: pnpm db:migrate
       - run: pnpm exec playwright test --project=offline-mobile --project=offline-desktop
         env:

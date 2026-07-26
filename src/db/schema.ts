@@ -285,3 +285,20 @@ export const recoveryCodes = pgTable('recovery_codes', {
 
 export type Credential = typeof credentials.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+
+/**
+ * Push-Abo je Gerät (issue #122). Server-/Geräte-Infrastruktur wie `sessions` —
+ * kein `syncColumns`, keine Sync-Registrierung, kein Dexie-Gegenstück: das Abo
+ * gehört zum Browser-Endpunkt, nicht zu synchronisierten Nutzerdaten.
+ */
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey(),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;

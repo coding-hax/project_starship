@@ -1,0 +1,169 @@
+.weather-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Zurück-Link links, Datum rechts auf derselben Höhe. */
+.weather-day__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-end: var(--space-4);
+}
+
+.weather-day__date {
+  /* Ohne das griffe die globale h1-Regel (margin-block-end: var(--space-6)) und
+     schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem Zurück-Link. */
+  margin: 0;
+  font-size: 17px;
+  text-align: right;
+}
+
+.weather-day__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.weather-day__back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.weather-day__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.weather-day__headline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Vier Zahlen in einer Zeile — bei 375px bleiben ~78px je Spalte, genug für
+   „27 km/h" unter „Untergang". */
+.weather-day__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.weather-day__stat dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.weather-day__stat dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-day__icon {
+  color: var(--text);
+}
+
+.weather-day__temps {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-day__temp-max {
+  font-size: 32px;
+  color: var(--text);
+}
+
+.weather-day__temp-min {
+  font-size: 20px;
+  color: var(--text-muted);
+}
+
+/* Beide Diagramme teilen sich Rahmen und Achsen (viewBox 320×132, siehe
+   weather-day.tsx) — height: auto hält das Seitenverhältnis, egal wie breit
+   die Karte gerade ist. */
+.weather-day__chart,
+.weather-day__precipitation-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Auf dem Desktop würden die Achsenbeschriftungen sonst mit der Karte
+     mitwachsen und größer wirken als der Fließtext daneben. */
+  max-width: 420px;
+  overflow: visible;
+}
+
+.weather-day__chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.weather-day__chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.weather-day__chart-axis {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.weather-day__chart-tick {
+  fill: var(--text-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-day__precipitation-summary {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.weather-day__precipitation-bar {
+  fill: var(--accent);
+  opacity: 0.6;
+}
+
+.weather-day__skeleton {
+  /* Read-only IndexedDB, no network wait (issue #156) — this state clears within
+   * a tick, so unlike weather-forecast.css's skeleton it gets no pulse animation:
+   * nothing would ever actually see it play. */
+  height: 88px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.weather-day__empty {
+  display: flex;
+  align-items: center;
+  min-height: 88px;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  color: var(--text-muted);
+  font-size: 14px;
+}

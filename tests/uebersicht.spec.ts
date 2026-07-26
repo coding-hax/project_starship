@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock } from './helpers';
+import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock } from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
 const NOW = '2026-07-18T12:00:00.000Z';
@@ -144,15 +144,12 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
   const dates = ['2026-07-18', '2026-07-19', '2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24'];
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
-      json: {
-        daily: {
-          time: dates,
-          weather_code: dates.map(() => 0), // 0 = klar -> IconWeatherClear
-          temperature_2m_max: dates.map(() => 20),
-          temperature_2m_min: dates.map(() => 10),
-          precipitation_probability_max: dates.map(() => 0),
-        },
-      },
+      json: openMeteoForecastBody({
+        dates,
+        weatherCodes: dates.map(() => 0), // 0 = klar -> IconWeatherClear
+        tempsMax: dates.map(() => 20),
+        tempsMin: dates.map(() => 10),
+      }),
     }),
   );
   await page.goto('/uebersicht');

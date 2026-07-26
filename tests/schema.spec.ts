@@ -7,6 +7,7 @@ import {
   garminTokens,
   habitLogs,
   habits,
+  pushSubscriptions,
   recoveryCodes,
   sessions,
   syncState,
@@ -34,6 +35,7 @@ const tables = [
   sessions,
   authChallenges,
   recoveryCodes,
+  pushSubscriptions,
   garminActivities,
   garminTokens,
 ];
