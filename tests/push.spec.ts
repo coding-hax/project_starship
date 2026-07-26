@@ -60,6 +60,28 @@ async function stubNotificationDenied(page: Page) {
   });
 }
 
+/**
+ * Headless Chromium on Linux CI has no real notification service, so
+ * `Notification.permission` reads 'denied' there even after
+ * `context.grantPermissions(['notifications'])` — confirmed in #122 across
+ * both e2e-main and e2e-offline. Stubbed here the same way `stubPushManager`
+ * above stubs Chromium's push stack: this suite verifies our own
+ * Subscribe→Persist→Status logic, not whether Chromium's permission prompt
+ * actually works headless.
+ */
+async function stubNotificationGranted(page: Page) {
+  await page.addInitScript(() => {
+    class FakeNotification {
+      static permission: NotificationPermission = 'default';
+      static async requestPermission() {
+        FakeNotification.permission = 'granted';
+        return 'granted' as const;
+      }
+    }
+    Object.defineProperty(window, 'Notification', { configurable: true, value: FakeNotification });
+  });
+}
+
 async function pushRowCount(): Promise<number> {
   const result = await withDb((client) => client.query('SELECT endpoint FROM push_subscriptions'));
   return result.rows.length;
@@ -67,10 +89,8 @@ async function pushRowCount(): Promise<number> {
 
 test('Aktivieren legt ein Abo an und eine Testnachricht zeigt eine Bestätigung (AC1)', async ({
   page,
-  context,
-  baseURL,
 }) => {
-  await context.grantPermissions(['notifications'], { origin: baseURL! });
+  await stubNotificationGranted(page);
   await stubPushManager(page);
   await registerPasskey(page);
 
@@ -84,8 +104,8 @@ test('Aktivieren legt ein Abo an und eine Testnachricht zeigt eine Bestätigung 
   await expect(page.getByText('Testnachricht gesendet.')).toBeVisible();
 });
 
-test('Abmelden entfernt das Abo serverseitig (AC2)', async ({ page, context, baseURL }) => {
-  await context.grantPermissions(['notifications'], { origin: baseURL! });
+test('Abmelden entfernt das Abo serverseitig (AC2)', async ({ page }) => {
+  await stubNotificationGranted(page);
   await stubPushManager(page);
   await registerPasskey(page);
 

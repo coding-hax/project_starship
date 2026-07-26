@@ -11,6 +11,14 @@ declare global {
     // see the NEXT_PUBLIC_E2E check below.
     __pushTest?: (data: unknown) => Promise<void>;
     __lastNotificationClick?: string;
+    // Headless Chromium on Linux CI has no real notification service: even with
+    // context.grantPermissions(['notifications']), self.registration.showNotification()
+    // throws NotAllowedError (confirmed in #122, both e2e-main and e2e-offline).
+    // These record the attempt so push-sw.prod.spec.ts can verify the handler built
+    // and tried to show/click the right notification without depending on Chromium
+    // actually being able to display one.
+    __e2eShownNotifications?: ReturnType<typeof buildNotification>[];
+    __simulateNotificationClick?: (url: string) => Promise<void>;
   }
 }
 
@@ -20,7 +28,15 @@ async function showPushNotification(data: unknown): Promise<void> {
   const payload = parsePushPayload(data);
   if (!payload) return;
   const notification = buildNotification(payload);
-  await self.registration.showNotification(notification.title, notification.options);
+  try {
+    await self.registration.showNotification(notification.title, notification.options);
+  } catch (error) {
+    const isMissingNotificationService = error instanceof DOMException && error.name === 'NotAllowedError';
+    if (process.env.NEXT_PUBLIC_E2E !== '1' || !isMissingNotificationService) throw error;
+  }
+  if (process.env.NEXT_PUBLIC_E2E === '1') {
+    self.__e2eShownNotifications = [...(self.__e2eShownNotifications ?? []), notification];
+  }
 }
 
 async function focusOrOpenClient(url: string): Promise<void> {
@@ -34,21 +50,30 @@ async function focusOrOpenClient(url: string): Promise<void> {
   await self.clients.openWindow(url);
 }
 
+async function handleNotificationClick(url: string, notification: { close(): void }): Promise<void> {
+  notification.close();
+  if (process.env.NEXT_PUBLIC_E2E === '1') {
+    self.__lastNotificationClick = url;
+  }
+  await focusOrOpenClient(url);
+}
+
 self.addEventListener('push', (event) => {
   event.waitUntil(showPushNotification(event.data?.json()));
 });
 
 self.addEventListener('notificationclick', (event) => {
   const url = (event.notification.data?.url as string | undefined) ?? '/';
-  event.notification.close();
-  if (process.env.NEXT_PUBLIC_E2E === '1') {
-    self.__lastNotificationClick = url;
-  }
-  event.waitUntil(focusOrOpenClient(url));
+  event.waitUntil(handleNotificationClick(url, event.notification));
 });
 
 if (process.env.NEXT_PUBLIC_E2E === '1') {
   self.__pushTest = showPushNotification;
+  // Constructing a real NotificationEvent needs a real Notification instance,
+  // which registration.getNotifications() never has here (see above) — this
+  // drives the same handler the real listener above calls, just with a
+  // synthetic notification, since only Chromium's display step is unavailable.
+  self.__simulateNotificationClick = (url: string) => handleNotificationClick(url, { close: () => {} });
 }
 
 // An already-installed PWA may still hold `/heute` as its start_url or in a cached
