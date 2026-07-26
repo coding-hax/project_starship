@@ -153,7 +153,10 @@ export function reopenFalselyClosedIssues(gh: GhAdapter): void {
   const closesRe = /[Cc]loses #(\d+)/;
 
   for (const item of list) {
-    const match = item.title.match(closesRe);
+    // Defensiv: ein PR ohne Titel im Ergebnis darf diesen Wächter nicht
+    // werfen lassen. Seit S6 (#203) gibt es keinen Bash-Rückfallpfad mehr --
+    // eine Ausnahme hier beendet den tsx-Prozess und damit die ganze Runde.
+    const match = item.title?.match(closesRe);
     if (!match) continue;
     const issue = match[1];
 
