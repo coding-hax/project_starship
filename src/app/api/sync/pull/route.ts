@@ -35,8 +35,15 @@ export async function GET(request: Request) {
   const changes: ChangeRow[] = [];
 
   for (const name of SYNC_TABLES) {
-    const table = SYNC_REGISTRY[name].table;
-    const writable = SYNC_REGISTRY[name].writable as readonly string[];
+    const entry = SYNC_REGISTRY[name] as {
+      table: typeof SYNC_REGISTRY.tasks.table;
+      writable: readonly string[];
+      readable?: readonly string[];
+    };
+    const table = entry.table;
+    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
+    // projects its own `readable` list instead.
+    const projection = entry.readable ?? entry.writable;
 
     const rows = await db
       .select()
@@ -46,7 +53,7 @@ export async function GET(request: Request) {
 
     for (const row of rows) {
       const data: Record<string, unknown> = {};
-      for (const field of writable) {
+      for (const field of projection) {
         data[field] = (row as Record<string, unknown>)[field];
       }
 

@@ -213,6 +213,24 @@ describe('missingRequired for habit_logs', () => {
   });
 });
 
+describe('garmin_activities is read-only', () => {
+  it('has no writable or required fields — a mutation can never create/update it', () => {
+    expect(SYNC_REGISTRY.garmin_activities.writable).toEqual([]);
+    expect(SYNC_REGISTRY.garmin_activities.required).toEqual([]);
+  });
+
+  it('writableFields strips every field, even ones a client might send', () => {
+    expect(
+      writableFields('garmin_activities', { name: 'Lauf', distanceMeters: 5000 }),
+    ).toEqual({});
+  });
+
+  it('is flagged readOnly with a non-empty readable projection for pull', () => {
+    expect(SYNC_REGISTRY.garmin_activities.readOnly).toBe(true);
+    expect(SYNC_REGISTRY.garmin_activities.readable.length).toBeGreaterThan(0);
+  });
+});
+
 describe('sync columns present', () => {
   // A synchronised table without these carries no way to soft-delete or resolve
   // conflicts — typecheck alone would not catch a table that forgets to spread
