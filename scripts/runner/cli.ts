@@ -38,6 +38,7 @@ import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailRe
 import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
 import { pickTicket, selfHealPark } from './select.js';
 import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
+import { roundEval, roundPlan, type RoundRun } from './round.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -151,6 +152,42 @@ export const commands: Record<string, CommandHandler> = {
   'park-issue': (ctx, args) => (parkIssue(Number(args[0]), ctx.gh) ? '' : null),
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
   'queue-body': (ctx, args) => queueBody(Number(args[0]), ctx.gh),
+
+  // --- Das Rundenprotokoll (#203, S6) --------------------------------------
+  // Drei Kommandos statt der bisherigen ~40 Einzelaufrufe pro Takt. Die Runde
+  // zerfaellt genau am `claude`-Aufruf, der in Bash bleibt (AK6/AK7).
+  'round-plan': (ctx, args) =>
+    JSON.stringify(
+      roundPlan(ctx, {
+        queueIssue: Number(args[0] ?? 0),
+        maxRuntime: Number(args[1] ?? 2700),
+        didWork: args[2] === '1',
+        lastIssue: args[3] ?? '',
+      }),
+    ),
+
+  // AK6 woertlich: TS schreibt den Prompt nach stdout, Bash pipet ihn in
+  // `claude`. Bewusst NUR ein Feld aus dem bereits gefassten Plan -- roundPlan
+  // ein zweites Mal zu rufen wuerde seine Seiteneffekte (Labels, Kommentare,
+  // Opus-Deckel) verdoppeln.
+  'round-prompt': (_ctx, args) => {
+    const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as { prompt?: string };
+    return plan.prompt ?? '';
+  },
+
+  'round-eval': (ctx, args) => {
+    const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as RoundRun;
+    const logPath = args[4] ?? '';
+    let log = '';
+    try {
+      log = readFileSync(logPath, 'utf-8');
+    } catch {
+      log = '';
+    }
+    return JSON.stringify(
+      roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out: log, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
+    );
+  },
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {

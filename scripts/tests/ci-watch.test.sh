@@ -172,7 +172,8 @@ cat > "$FAKEBIN/claude" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
 touch "$G/claude-called"
-[ "${1:-}" = "-p" ] && printf '%s' "$2" > "$G/last-prompt"
+# Der Prompt kommt seit S6 (#203) ueber stdin, nicht mehr als Argument zu -p.
+cat > "$G/last-prompt"
 printf '%s' '{"session_id":"stub","result":"ok"}'
 exit 0
 STUB
