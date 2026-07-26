@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
+import { acquireSyncWriteLock } from '@/db/sync-lock';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
@@ -12,12 +13,6 @@ import {
   type PushRejection,
   type PushResponse,
 } from '@/local/types';
-
-/**
- * A fixed, arbitrary key for `pg_advisory_xact_lock` — any bigint works, it only
- * has to be the same one on every call so that pushes serialize against each other.
- */
-const PUSH_LOCK_KEY = 5_326_004;
 
 /**
  * Applies the client outbox.
@@ -60,7 +55,7 @@ export async function POST(request: Request) {
   const now = new Date();
 
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${PUSH_LOCK_KEY})`);
+    await acquireSyncWriteLock(tx);
 
     // Receipt order, not updatedAt order: the client's outbox is already this
     // device's arrival order, and arrival — not the client clock — decides now.
