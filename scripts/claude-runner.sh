@@ -201,7 +201,16 @@ _Lauf-Ende $(ts): ${reason}, unfertig — nächster Lauf macht weiter._" >/dev/n
 
 # Wartet irgendein Ticket auf den Menschen? Dann ist Gelb die Wahrheit,
 # auch wenn der Runner selbst gerade nichts zu tun hat.
+# TS-Kern: scripts/runner/status.ts, `waitingIssues()` (#202 S5).
 waiting_issues() {
+  local out rc
+  out=$(ts_run waiting-issues); rc=$?
+  [ "$rc" -eq 127 ] && { waiting_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+waiting_issues_bash() {
   gh issue list --label needs-input --state open --limit 20 \
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
@@ -210,7 +219,16 @@ waiting_issues() {
 # gebaut wird? Fuer den Status-Text der 🟠-"arbeitet an"-Meldung -- vorher
 # konnte "wartet auf dich" und "arbeitet an X" nicht gleichzeitig gelten, jetzt
 # schon, und das Status-Ticket muss beides zeigen (#145 AC6).
+# TS-Kern: scripts/runner/status.ts, `parkedIssues()` (#202 S5).
 parked_issues() {
+  local out rc
+  out=$(ts_run parked-issues); rc=$?
+  [ "$rc" -eq 127 ] && { parked_issues_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+parked_issues_bash() {
   gh issue list --label parked --state open --limit 20 \
     --json number -q '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null
 }
@@ -218,7 +236,15 @@ parked_issues() {
 # Nimmt einem Ticket 'in-progress' ab und gibt 'parked' -- die zentrale Stelle
 # fuer die Selbstheilung (#145), gebraucht sowohl fuer den Rundenanfang als
 # auch sofort nach einem Lauf, in dem Claude selbst 'needs-input' gesetzt hat.
+# TS-Kern: scripts/runner/status.ts, `parkIssue()` (#202 S5).
 park_issue() {   # $1 = Issue-Nr
+  local rc
+  ts_run park-issue "$1" >/dev/null; rc=$?
+  [ "$rc" -eq 127 ] && { park_issue_bash "$1"; return; }
+  return "$rc"
+}
+
+park_issue_bash() {
   gh issue edit "$1" --remove-label in-progress --add-label parked >/dev/null 2>&1
 }
 
@@ -226,7 +252,16 @@ park_issue() {   # $1 = Issue-Nr
 # genau wie ROUND_SNAP (siehe run_round()) -- sonst sortiert queue_next() unten
 # gegen ein fehlendes Feld und faellt auf die API-Reihenfolge zurueck, statt
 # wirklich das aelteste Ticket zu waehlen (#149).
+# TS-Kern: scripts/runner/status.ts, `queueSnapshot()` (#202 S5).
 queue_snapshot() {
+  local out rc
+  out=$(ts_run queue-snapshot); rc=$?
+  [ "$rc" -eq 127 ] && { queue_snapshot_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+queue_snapshot_bash() {
   gh issue list --state open --limit 50 --json number,labels,createdAt 2>/dev/null || echo '[]'
 }
 
@@ -240,7 +275,16 @@ queue_snapshot() {
 # createdAt). Leeres/fehlendes Queue-Issue -> exakt Fallback-Verhalten.
 
 # Holt den Queue-Body EINMAL pro Tick (leer, wenn kein QUEUE_ISSUE gesetzt).
+# TS-Kern: scripts/runner/status.ts, `queueBody()` (#202 S5).
 queue_body() {
+  local out rc
+  out=$(ts_run queue-body "${QUEUE_ISSUE:-0}"); rc=$?
+  [ "$rc" -eq 127 ] && { queue_body_bash; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+queue_body_bash() {
   [ "${QUEUE_ISSUE:-0}" -gt 0 ] 2>/dev/null || { printf ''; return 0; }
   gh issue view "$QUEUE_ISSUE" --json body -q '.body // ""' 2>/dev/null || printf ''
 }
@@ -789,6 +833,293 @@ pr_failure_summary_bash() {
   done
 }
 
+# --- Eine Wache statt zwei (#202, S5 von #184) --------------------------------
+# Bisher standen die CI-Wache fuer EIN laufendes Bau-Ticket (#147/#160/#171)
+# und die CI-Wache fuer ALLE geparkten Tickets (#154/#173) als zwei getrennte
+# Bloecke in run_round() -- zwei Automaten, die denselben PR-Zustand je fuer
+# sich auswerteten. Jetzt entscheidet EINE Uebergangstabelle
+# (scripts/runner/watch.ts, `watchReaction()`), `parked` ist ein Eingabefeld.
+# Die menschenlesbaren Statustexte bleiben bewusst HIER (nicht im TS-Kern) --
+# ci-watch.test.sh/parked-ci-watch.test.sh pruefen sie 1:1 auf Wortlaut.
+# TS-Kern: scripts/runner/watch.ts, `watchRunningIssue()` (#202).
+watch_running_issue() {   # $1 = Issue-Nr, $2 = PR-Nr -> JSON {kind, ...}
+  local out rc
+  out=$(ts_run watch-running-issue "$1" "$2"); rc=$?
+  [ "$rc" -eq 127 ] && { watch_running_issue_bash "$1" "$2"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+watch_running_issue_bash() {
+  local issue="$1" PR_NUM="$2"
+  case "$(pr_ci_state "$PR_NUM")" in
+    pending)
+      jq -nc '{kind:"pending"}'
+      ;;
+    success)
+      gh pr ready "$PR_NUM" >/dev/null 2>&1
+      pr_squash_merge "$PR_NUM"
+      jq -nc '{kind:"merged"}'
+      ;;
+    failing)
+      if pr_only_protected_paths_red "$PR_NUM"; then
+        gh issue edit "$issue" --add-label needs-input >/dev/null 2>&1
+        jq -nc '{kind:"needs-input-protected"}'
+      else
+        local summary
+        summary=$(pr_failure_summary "$PR_NUM")
+        jq -nc --arg s "$summary" '{kind:"build-fix", summary:$s}'
+      fi
+      ;;
+    behind)
+      local catchup_out catchup_rc
+      catchup_out=$(pr_catch_up_behind "$PR_NUM"); catchup_rc=$?
+      case "$catchup_rc" in
+        0)
+          catchup_fail_reset "$issue"
+          jq -nc '{kind:"caught-up"}'
+          ;;
+        1)
+          catchup_fail_reset "$issue"
+          jq -nc --arg issue "$issue" --arg pr "$PR_NUM" --arg files "$catchup_out" '
+            (if ($files|length) == 0 then "unbekannt" else $files end) as $filelist
+            | {kind:"build-fix",
+               summary: ("### Merge-Konflikt beim Nachziehen von `main`\nPR #" + $pr + " (#" + $issue + ") liegt hinter `main`. Das automatische Nachziehen (`git fetch` +\n`git merge origin/main`) ist an einem echten Konflikt gescheitert.\n\nBetroffene Dateien: " + $filelist + "\n\nLöse den Konflikt auf dem bestehenden Branch: `git fetch origin main`,\n`git merge origin/main`, die genannten Dateien bereinigen, committen, pushen.")}'
+          ;;
+        *)
+          local reason paths_json escalated_bool
+          reason=$(catchup_fail_reason "$catchup_rc")
+          if [ "$catchup_rc" -eq 2 ] && [ -n "$catchup_out" ]; then
+            paths_json=$(printf '%s' "$catchup_out" | jq -R 'split(",")')
+          else
+            paths_json='[]'
+          fi
+          if catchup_fail_escalated "$issue" "$reason"; then escalated_bool=true; else escalated_bool=false; fi
+          jq -nc --arg reason "$reason" --argjson paths "$paths_json" --argjson escalated "$escalated_bool" \
+            '{kind:"retry", reason:$reason, paths:$paths, escalated:$escalated}'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+# CI-Wache fuer ALLE geparkten Tickets (#154, erweitert um #173), ueber
+# dieselbe Uebergangstabelle. $1 = JSON-Array [{number,createdAt,hasNeedsInput}],
+# $2 = "1" (WIP-Slot frei) oder "" -- fix fuer die ganze Runde, wie in der
+# bisherigen Bash-Implementierung (hoechstens EIN Ticket wird pro Runde
+# entparkt, unabhaengig davon, wie viele Kandidaten es gibt).
+# TS-Kern: scripts/runner/watch.ts, `watchParkedIssues()` (#202).
+watch_parked_issues() {   # -> JSON {promoted:{issue,reason}|null, released:[...]}
+  local out rc
+  out=$(ts_run watch-parked-issues "$1" "${2:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { watch_parked_issues_bash "$1" "${2:-}"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+watch_parked_issues_bash() {
+  local snapshot="$1" wip_slot_free="${2:-}" promoted='null' released='[]'
+  local sorted
+  sorted=$(printf '%s' "$snapshot" | jq -c 'sort_by(.createdAt)')
+  # Scratch-Dateien, um Ergebnisse aus der Pipe-Subshell unten (while-read
+  # ueber eine Pipe laeuft in einer eigenen Subshell, Variablen darin gehen
+  # beim Verlassen verloren) nach aussen zu tragen -- IMMER vorab geraeumt,
+  # falls ein frueherer Aufruf hart abgebrochen ist.
+  rm -f "$STATE_DIR/watch-parked-promoted" "$STATE_DIR/watch-parked-released"
+
+  printf '%s' "$sorted" | jq -c '.[]' | while IFS= read -r item; do
+    local n created has_input pr ci
+    n=$(printf '%s' "$item" | jq -r '.number')
+    has_input=$(printf '%s' "$item" | jq -r '.hasNeedsInput')
+    pr=$(pr_for_issue "$n")
+    [ -z "$pr" ] && continue
+    ci=$(pr_ci_state "$pr")
+    local reason=""
+
+    if [ "$ci" = "behind" ]; then
+      local catchup_out catchup_rc
+      catchup_out=$(pr_catch_up_behind "$pr"); catchup_rc=$?
+      [ "$catchup_rc" -eq 1 ] && reason='ein Merge-Konflikt beim Nachziehen von `main`'
+    elif [ "$ci" = "failing" ] && ! pr_only_protected_paths_red "$pr"; then
+      reason='rote Checks (mehr als nur `protected-paths`)'
+    fi
+
+    if [ -n "$reason" ]; then
+      if [ "$has_input" != "true" ] && [ -z "$(cat "$STATE_DIR/watch-parked-promoted" 2>/dev/null)" ] \
+           && [ "$wip_slot_free" = "1" ]; then
+        gh issue edit "$n" --remove-label parked --add-label in-progress >/dev/null 2>&1
+        jq -nc --argjson n "$n" --arg reason "$reason" '{issue:$n, reason:$reason}' > "$STATE_DIR/watch-parked-promoted"
+      fi
+      continue
+    fi
+
+    [ "$ci" = "success" ] || continue
+    gh pr ready "$pr" >/dev/null 2>&1
+    pr_squash_merge "$pr"
+    gh issue edit "$n" --remove-label parked --remove-label needs-input >/dev/null 2>&1
+    echo "$n" >> "$STATE_DIR/watch-parked-released"
+  done
+
+  [ -f "$STATE_DIR/watch-parked-promoted" ] && promoted=$(cat "$STATE_DIR/watch-parked-promoted")
+  if [ -f "$STATE_DIR/watch-parked-released" ]; then
+    released=$(jq -Rsc 'split("\n") | map(select(length>0) | tonumber)' "$STATE_DIR/watch-parked-released")
+  fi
+  rm -f "$STATE_DIR/watch-parked-promoted" "$STATE_DIR/watch-parked-released"
+  jq -nc --argjson promoted "$promoted" --argjson released "$released" '{promoted:$promoted, released:$released}'
+}
+
+# --- Ticketauswahl aus run_round (#202, S5 von #184) -------------------------
+# TS-Kern: scripts/runner/select.ts, `selfHealPark()`/`pickTicket()`. Zwei
+# Schritte, wie in der bisherigen Bash-Implementierung: erst die Selbstheilung
+# (#145), dann die eigentliche Auswahl-Kaskade (laufend > Resume eines
+# geparkten Tickets > Prioritaets-Queue > needs-plan > needs-research > ready).
+# Der Bau-Prompt/`claude`-Aufruf selbst bleibt Bash (S6, siehe Nicht-Ziele).
+self_heal_park() {   # $1 = Snapshot-JSON -> JSON {snapshot, parked:[...]}
+  local out rc
+  out=$(ts_run self-heal-park "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { self_heal_park_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+self_heal_park_bash() {
+  local snapshot="$1" to_park parked_ok='[]' updated
+  to_park=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("in-progress"))
+          | select(.labels | map(.name) | index("needs-input"))
+          | .number] | .[]' 2>/dev/null)
+  if [ -n "$to_park" ]; then
+    while IFS= read -r n; do
+      [ -z "$n" ] && continue
+      # park_issue_bash() direkt (nicht der Wrapper) -- Konvention aus S2/S3:
+      # eine _bash-Komposition ruft nie ueber ts_run zurueck.
+      if park_issue_bash "$n"; then
+        parked_ok=$(printf '%s' "$parked_ok" | jq --argjson n "$n" '. + [$n]')
+      fi
+    done <<< "$to_park"
+  fi
+  updated=$(printf '%s' "$snapshot" | jq --argjson ok "$parked_ok" \
+    '[.[] | if (.number as $n | $ok | index($n) != null) then
+              (.labels |= (map(select(.name != "in-progress")) + [{"name":"parked"}]))
+            else . end]')
+  jq -nc --argjson snapshot "$updated" --argjson parked "$parked_ok" '{snapshot:$snapshot, parked:$parked}'
+}
+
+# $1 = Snapshot-JSON (NACH self_heal_park), $2 = Queue-Body -> JSON
+# {kind:"blocked", issues:[...]} | {kind:"ticket", issue, role, mode} | {kind:"none"}
+pick_ticket() {
+  local out rc
+  out=$(ts_run pick-ticket "$1" "${2:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { pick_ticket_bash "$1" "${2:-}"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+pick_ticket_bash() {
+  local snapshot="$1" queue_body="${2:-}" order still_blocked
+
+  still_blocked=$(printf '%s' "$snapshot" | jq -c \
+    '[.[] | select(.labels | map(.name) | index("in-progress"))
+          | select(.labels | map(.name) | index("needs-input")) | .number]')
+  if [ "$(printf '%s' "$still_blocked" | jq 'length')" -gt 0 ]; then
+    jq -nc --argjson issues "$still_blocked" '{kind:"blocked", issues:$issues}'
+    return 0
+  fi
+
+  # laufendes in-progress (ohne needs-input)
+  local pick
+  pick=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("in-progress"))
+          | select((.labels | map(.name) | index("needs-input"))|not)]
+        | sort_by(.createdAt) | .[0].number // empty')
+  if [ -n "$pick" ]; then
+    jq -nc --argjson issue "$pick" '{kind:"ticket", issue:$issue, role:"build", mode:"resume"}'
+    return 0
+  fi
+
+  # Resume eines geparkten Tickets (#145) -- geht vor Queue/Fallback.
+  pick=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("parked"))
+          | select((.labels | map(.name) | index("needs-input"))|not)]
+        | sort_by(.createdAt) | .[0].number // empty')
+  if [ -n "$pick" ]; then
+    gh issue edit "$pick" --add-label in-progress --remove-label parked >/dev/null 2>&1
+    jq -nc --argjson issue "$pick" '{kind:"ticket", issue:$issue, role:"build", mode:"resume"}'
+    return 0
+  fi
+
+  # Prioritaets-Queue (S2) -- Label egal fuer den Rang, Rolle kommt aus dem Label.
+  # queue_order_flat_bash() direkt (nicht der Wrapper) -- Konvention aus S2/S3:
+  # eine _bash-Komposition ruft nie ueber ts_run zurueck.
+  order=$(queue_order_flat_bash "$queue_body")
+  local qpick
+  qpick=$(printf '%s' "$snapshot" | jq -r --argjson order "$order" '
+    [ .[] | (.labels|map(.name)) as $l | (.number) as $n
+      | ($order|index($n)) as $rank
+      | select($rank != null)
+      | select( ($l|index("needs-input"))|not )
+      | select( ($l|index("no-opus"))|not )
+      | { n:$n, rank:$rank,
+          role: (if ($l|index("needs-plan")) then "plan"
+                 elif ($l|index("needs-research")) then "research"
+                 else "build" end) } ]
+    | sort_by(.rank) | .[0] // {}
+    | if .n then "\(.n) \(.role)" else "" end')
+  if [ -n "$qpick" ]; then
+    local qissue qrole
+    qissue=${qpick%% *}
+    qrole=${qpick##* }
+    if [ "$qrole" = build ]; then
+      gh issue edit "$qissue" --add-label in-progress --remove-label ready >/dev/null 2>&1
+      jq -nc --argjson issue "$qissue" --arg role "$qrole" '{kind:"ticket", issue:$issue, role:$role, mode:"start"}'
+    else
+      local mode=start
+      [ -s "$STATE_DIR/session-$qissue" ] && mode=resume
+      jq -nc --argjson issue "$qissue" --arg role "$qrole" --arg mode "$mode" '{kind:"ticket", issue:$issue, role:$role, mode:$mode}'
+    fi
+    return 0
+  fi
+
+  # Label-Fallback: needs-plan -> needs-research -> ready, je aeltestes createdAt.
+  pick=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("needs-plan"))
+          | select((.labels | map(.name) | index("needs-input")) | not)
+          | select((.labels | map(.name) | index("no-opus")) | not)]
+        | sort_by(.createdAt) | .[0].number // empty')
+  if [ -n "$pick" ]; then
+    local mode=start
+    [ -s "$STATE_DIR/session-$pick" ] && mode=resume
+    jq -nc --argjson issue "$pick" --arg mode "$mode" '{kind:"ticket", issue:$issue, role:"plan", mode:$mode}'
+    return 0
+  fi
+
+  pick=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("needs-research"))
+          | select((.labels | map(.name) | index("needs-input")) | not)
+          | select((.labels | map(.name) | index("no-opus")) | not)]
+        | sort_by(.createdAt) | .[0].number // empty')
+  if [ -n "$pick" ]; then
+    local mode=start
+    [ -s "$STATE_DIR/session-$pick" ] && mode=resume
+    jq -nc --argjson issue "$pick" --arg mode "$mode" '{kind:"ticket", issue:$issue, role:"research", mode:$mode}'
+    return 0
+  fi
+
+  pick=$(printf '%s' "$snapshot" | jq -r \
+    '[.[] | select(.labels | map(.name) | index("ready"))
+          | select((.labels | map(.name) | index("needs-input")) | not)
+          | select((.labels | map(.name) | index("needs-plan")) | not)
+          | select((.labels | map(.name) | index("needs-research")) | not)]
+        | sort_by(.createdAt) | .[0].number // empty')
+  if [ -n "$pick" ]; then
+    gh issue edit "$pick" --add-label in-progress --remove-label ready >/dev/null 2>&1
+    jq -nc --argjson issue "$pick" '{kind:"ticket", issue:$issue, role:"build", mode:"start"}'
+    return 0
+  fi
+
+  jq -nc '{kind:"none"}'
+}
+
 # Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
 # Ausgaengen der Bau-Rolle aufgerufen (RC=0-Zweig, letzter Fehlschlag-Zweig) --
 # ausdruecklich NICHT bei Limit/429, Notbremse oder einem noch laufenden
@@ -1092,11 +1423,12 @@ reopen_falsely_closed_issues
 ROUND_SNAP=$(gh issue list --state open --limit 100 \
                --json number,labels,createdAt 2>/dev/null || echo '[]')
 
-# Prioritäts-Queue (#109) EINMAL einlesen (ein gh-Aufruf): flache Reihenfolge
-# aller gelisteten '#NN'. Leer, solange kein QUEUE_ISSUE gesetzt/leer ist -> die
-# Queue-Auswahl unten greift dann nicht und es bleibt bei der Label-Reihenfolge.
+# Prioritäts-Queue (#109) EINMAL einlesen (ein gh-Aufruf): der Body wird
+# unten an pick_ticket() durchgereicht, das seine flache Reihenfolge selbst
+# ableitet (queue_order_flat, S2). Leer, solange kein QUEUE_ISSUE gesetzt/leer
+# ist -> die Queue-Auswahl greift dann nicht und es bleibt bei der
+# Label-Reihenfolge.
 QUEUE_BODY=$(queue_body)
-QUEUE_ORDER=$(queue_order_flat "$QUEUE_BODY")
 
 # --- Selbstheilung (#145): in-progress + needs-input darf nicht koexistieren -
 # Eine Frage waehrend eines Laufs (Skript- oder Agent-seitig per gh issue edit)
@@ -1110,25 +1442,8 @@ QUEUE_ORDER=$(queue_order_flat "$QUEUE_BODY")
 # gh-Aufruf fehl, bleibt das Ticket in-progress+needs-input und faellt unten in
 # den alten Sicherheitszweig (blockiert alles), statt riskant ein zweites
 # Ticket parallel anzufangen.
-TO_PARK=$(printf '%s' "$ROUND_SNAP" | jq -r \
-  '[.[] | select(.labels | map(.name) | index("in-progress"))
-        | select(.labels | map(.name) | index("needs-input"))
-        | .number] | .[]' 2>/dev/null)
-if [ -n "$TO_PARK" ]; then
-  PARKED_OK='[]'
-  while IFS= read -r n; do
-    [ -z "$n" ] && continue
-    if park_issue "$n"; then
-      PARKED_OK=$(printf '%s' "$PARKED_OK" | jq --argjson n "$n" '. + [$n]')
-    fi
-  done <<< "$TO_PARK"
-  if [ "$(printf '%s' "$PARKED_OK" | jq 'length')" -gt 0 ]; then
-    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson ok "$PARKED_OK" \
-      '[.[] | if (.number as $n | $ok | index($n) != null) then
-                (.labels |= (map(select(.name != "in-progress")) + [{"name":"parked"}]))
-              else . end]')
-  fi
-fi
+SELF_HEAL_OUT=$(self_heal_park "$ROUND_SNAP")
+ROUND_SNAP=$(printf '%s' "$SELF_HEAL_OUT" | jq -c '.snapshot')
 
 # --- CI-Wache fuer GEPARKTE Tickets (#154, erweitert um #173) ----------------
 # Die Wache oben (#147) beobachtet nur das eine 'in-progress'-Ticket -- ein
@@ -1167,64 +1482,40 @@ fi
 # Schranke -- kein Fund, kein Entparken, das Ticket wartet weiter auf
 # 'human-approved'.
 RELEASED_PARKED_NOTE=""
-RELEASED_PARKED_NUMS='[]'
-PROMOTED_PARKED_ISSUE=""
-WIP_TAKEN_BEFORE=$(printf '%s' "$ROUND_SNAP" \
-  | jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' 2>/dev/null)
-PARKED_LIST=$(printf '%s' "$ROUND_SNAP" | jq -r \
-  '[.[] | select(.labels | map(.name) | index("parked"))] | sort_by(.createdAt) | .[].number' 2>/dev/null)
-if [ -n "$PARKED_LIST" ]; then
-  while IFS= read -r PN; do
-    [ -z "$PN" ] && continue
-    PPR=$(pr_for_issue "$PN")
-    [ -z "$PPR" ] && continue
-    PSTATE=$(pr_ci_state "$PPR")
-    PROMOTE_REASON=""
+PARKED_SNAP=$(printf '%s' "$ROUND_SNAP" | jq -c \
+  '[.[] | select(.labels | map(.name) | index("parked"))
+        | {number:.number, createdAt:.createdAt,
+           hasNeedsInput:((.labels|map(.name)|index("needs-input")) != null)}]' 2>/dev/null)
+if [ "$(printf '%s' "${PARKED_SNAP:-[]}" | jq 'length' 2>/dev/null)" -gt 0 ]; then
+  WIP_TAKEN_BEFORE=$(printf '%s' "$ROUND_SNAP" \
+    | jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' 2>/dev/null)
+  WIP_SLOT_FREE=""
+  [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ] && WIP_SLOT_FREE=1
+  WATCH_PARKED_OUT=$(watch_parked_issues "$PARKED_SNAP" "$WIP_SLOT_FREE")
 
-    if [ "$PSTATE" = "behind" ]; then
-      pr_catch_up_behind "$PPR" >/dev/null; PCU_RC=$?
-      # rc 0: sauber nachgezogen, kein Agent (AC1). rc 2: fetch/checkout/push
-      # gescheitert -- naechster Takt versucht es erneut, bleibt geparkt.
-      # Nur rc 1 (echter Konflikt) ist der neue Fall aus #173.
-      [ "$PCU_RC" -eq 1 ] && PROMOTE_REASON="ein Merge-Konflikt beim Nachziehen von \`main\`"
-    elif [ "$PSTATE" = "failing" ] && ! pr_only_protected_paths_red "$PPR"; then
-      PROMOTE_REASON="rote Checks (mehr als nur \`protected-paths\`)"
-    fi
+  PROMOTED_PARKED_ISSUE=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.issue // empty')
+  if [ -n "$PROMOTED_PARKED_ISSUE" ]; then
+    PROMOTE_REASON=$(printf '%s' "$WATCH_PARKED_OUT" | jq -r '.promoted.reason')
+    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson n "$PROMOTED_PARKED_ISSUE" \
+      '[.[] | if .number == $n then
+                (.labels |= (map(select(.name != "parked")) + [{"name":"in-progress"}]))
+              else . end]')
+    RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
 
-    if [ -n "$PROMOTE_REASON" ]; then
-      PHAS_INPUT=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson n "$PN" \
-        '[.[] | select(.number == $n) | .labels | map(.name) | index("needs-input")] | .[0] // empty')
-      if [ -z "$PHAS_INPUT" ] && [ -z "$PROMOTED_PARKED_ISSUE" ] \
-           && [ "${WIP_TAKEN_BEFORE:-0}" -eq 0 ]; then
-        gh issue edit "$PN" --remove-label parked --add-label in-progress >/dev/null 2>&1
-        ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson n "$PN" \
-          '[.[] | if .number == $n then
-                    (.labels |= (map(select(.name != "parked")) + [{"name":"in-progress"}]))
-                  else . end]')
-        PROMOTED_PARKED_ISSUE="$PN"
-        RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
+🔓 **Geparktes Ticket entparkt:** #$PROMOTED_PARKED_ISSUE hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
+  fi
 
-🔓 **Geparktes Ticket entparkt:** #$PN hing an $PROMOTE_REASON fest — der nächste freie Bauplatz startet einen Fix-Lauf."
-      fi
-      continue
-    fi
-
-    [ "$PSTATE" = "success" ] || continue
-    gh pr ready "$PPR" >/dev/null 2>&1
-    pr_squash_merge "$PPR"
-    gh issue edit "$PN" --remove-label parked --remove-label needs-input >/dev/null 2>&1
-    RELEASED_PARKED_NUMS=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq --argjson n "$PN" '. + [$n]')
-  done <<< "$PARKED_LIST"
-fi
-if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
-  ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
-    '[.[] | if (.number as $n | $released | index($n) != null) then
-              (.labels |= map(select(.name != "parked" and .name != "needs-input")))
-            else . end]')
-  RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
-  RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
+  RELEASED_PARKED_NUMS=$(printf '%s' "$WATCH_PARKED_OUT" | jq -c '.released')
+  if [ "$(printf '%s' "$RELEASED_PARKED_NUMS" | jq 'length')" -gt 0 ]; then
+    ROUND_SNAP=$(printf '%s' "$ROUND_SNAP" | jq --argjson released "$RELEASED_PARKED_NUMS" \
+      '[.[] | if (.number as $n | $released | index($n) != null) then
+                (.labels |= map(select(.name != "parked" and .name != "needs-input")))
+              else . end]')
+    RELEASED_LIST=$(printf '%s' "$RELEASED_PARKED_NUMS" | jq -r 'map("#" + (.|tostring)) | join(", ")')
+    RELEASED_PARKED_NOTE="$RELEASED_PARKED_NOTE
 
 🔓 **Geparktes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: $RELEASED_LIST."
+  fi
 fi
 
 # 1) Läuft schon eins? -> fortsetzen (WIP-Limit = 1)
@@ -1251,7 +1542,8 @@ CI_SUMMARY=""
 if [ -n "$ISSUE" ]; then
   PR_NUM=$(pr_for_issue "$ISSUE")
   if [ -n "$PR_NUM" ]; then
-    case "$(pr_ci_state "$PR_NUM")" in
+    WATCH_OUT=$(watch_running_issue "$ISSUE" "$PR_NUM")
+    case "$(printf '%s' "$WATCH_OUT" | jq -r '.kind')" in
       pending)
         status "CI läuft für #$ISSUE" "🟢" \
           "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — kein laufender Prozess hier.
@@ -1259,247 +1551,132 @@ if [ -n "$ISSUE" ]; then
 Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen nötig.**"
         return 0
         ;;
-      success)
-        gh pr ready "$PR_NUM" >/dev/null 2>&1
-        pr_squash_merge "$PR_NUM"
+      merged)
         status "wartet auf Merge · #$ISSUE" "🟢" \
           "🟢 **CI grün für #$ISSUE** (PR #$PR_NUM) — als \`ready\` markiert, Auto-Merge aktiviert.
 
 GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**"
         return 0
         ;;
-      failing)
-        if pr_only_protected_paths_red "$PR_NUM"; then
-          gh issue edit "$ISSUE" --add-label needs-input >/dev/null 2>&1
-          status "wartet auf dich (#$ISSUE)" "🟡" \
-            "🟡 **PR #$PR_NUM für #$ISSUE braucht deine Freigabe.**
+      needs-input-protected)
+        status "wartet auf dich (#$ISSUE)" "🟡" \
+          "🟡 **PR #$PR_NUM für #$ISSUE braucht deine Freigabe.**
 
 Der Check \`protected-paths\` ist rot, weil geschützte Pfade berührt sind (Begründung
 steht als Kommentar am Ticket). Setze \`human-approved\` am PR **und entferne**
 \`needs-input\` vom Issue — der Check läuft dann automatisch neu, und der nächste
 Takt beobachtet die CI weiter."
-          return 0
-        fi
-        CI_FIX=1
-        CI_SUMMARY=$(pr_failure_summary "$PR_NUM")
+        return 0
         ;;
-      behind)
-        CATCHUP_OUT=$(pr_catch_up_behind "$PR_NUM")
-        CATCHUP_RC=$?
-        case "$CATCHUP_RC" in
-          0)
-            catchup_fail_reset "$ISSUE"
-            status "CI läuft für #$ISSUE" "🟢" \
-              "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
+      build-fix)
+        CI_FIX=1
+        CI_SUMMARY=$(printf '%s' "$WATCH_OUT" | jq -r '.summary')
+        ;;
+      caught-up)
+        status "CI läuft für #$ISSUE" "🟢" \
+          "🟢 **Branch für #$ISSUE nachgezogen** (PR #$PR_NUM lag hinter \`main\`) — per \`git\` gemergt und gepusht, kein Agentenlauf. CI läuft jetzt neu.
 
 Der nächste Takt prüft erneut. **Kein Eingreifen nötig.**"
-            return 0
-            ;;
-          1)
-            catchup_fail_reset "$ISSUE"
-            CI_FIX=1
-            CI_SUMMARY="### Merge-Konflikt beim Nachziehen von \`main\`
-PR #$PR_NUM (#$ISSUE) liegt hinter \`main\`. Das automatische Nachziehen (\`git fetch\` +
-\`git merge origin/main\`) ist an einem echten Konflikt gescheitert.
+        return 0
+        ;;
+      retry)
+        # #171: Ursache immer benennen (AC1/AC2), stoerende Pfade bei
+        # unsauberem Arbeitsbaum mitliefern (AC1), ab der dritten Runde in
+        # Folge mit DERSELBEN Ursache auf 🟡 wechseln (AC3) -- alles bereits
+        # in watch_running_issue() entschieden (watchReaction/'behind-retry').
+        CATCHUP_REASON=$(printf '%s' "$WATCH_OUT" | jq -r '.reason')
+        CATCHUP_PATHS_LIST=$(printf '%s' "$WATCH_OUT" | jq -r '.paths | join(",")')
+        CATCHUP_PATHS=""
+        [ -n "$CATCHUP_PATHS_LIST" ] && CATCHUP_PATHS="
 
-Betroffene Dateien: ${CATCHUP_OUT:-unbekannt}
-
-Löse den Konflikt auf dem bestehenden Branch: \`git fetch origin main\`,
-\`git merge origin/main\`, die genannten Dateien bereinigen, committen, pushen."
-            ;;
-          *)
-            # #171: die alte Sammel-2 nannte weder Ursache noch Pfade und blieb
-            # IMMER gruen, egal wie oft es hintereinander scheiterte. Jetzt:
-            # Ursache immer benennen (AC1/AC2), stoerende Pfade bei unsauberem
-            # Arbeitsbaum mitliefern (AC1), und ab der dritten Runde in Folge
-            # mit DERSELBEN Ursache auf 🟡 wechseln (AC3) -- der Abbruch selbst
-            # (kein 'git stash', kein '--force') bleibt unveraendert (AC5).
-            CATCHUP_REASON=$(catchup_fail_reason "$CATCHUP_RC")
-            CATCHUP_PATHS=""
-            if [ "$CATCHUP_RC" -eq 2 ] && [ -n "$CATCHUP_OUT" ]; then
-              CATCHUP_PATHS="
-
-Störende Pfade: \`${CATCHUP_OUT}\`"
-            fi
-            if catchup_fail_escalated "$ISSUE" "$CATCHUP_REASON"; then
-              status "wartet auf dich (#$ISSUE)" "🟡" \
-                "🟡 **Nachziehen von \`main\` für #$ISSUE (PR #$PR_NUM) hängt fest.**
+Störende Pfade: \`${CATCHUP_PATHS_LIST}\`"
+        if [ "$(printf '%s' "$WATCH_OUT" | jq -r '.escalated')" = "true" ]; then
+          status "wartet auf dich (#$ISSUE)" "🟡" \
+            "🟡 **Nachziehen von \`main\` für #$ISSUE (PR #$PR_NUM) hängt fest.**
 
 Ursache seit drei Runden in Folge dieselbe: $CATCHUP_REASON.${CATCHUP_PATHS}
 
 Das löst sich nicht von selbst — der Runner räumt keine fremden Dateien weg. Bitte
 im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Takt normal weiter."
-              return 0
-            fi
-            status "CI läuft für #$ISSUE" "🟢" \
-              "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich ($CATCHUP_REASON).${CATCHUP_PATHS} Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
-            return 0
-            ;;
-        esac
+          return 0
+        fi
+        status "CI läuft für #$ISSUE" "🟢" \
+          "🟢 **CI läuft für #$ISSUE** (PR #$PR_NUM) — Branch liegt hinter \`main\`, das Nachziehen ist gerade nicht möglich ($CATCHUP_REASON).${CATCHUP_PATHS} Nächster Takt versucht es erneut. **Kein Eingreifen nötig.**"
+        return 0
         ;;
     esac
   fi
 fi
 
 if [ -z "$ISSUE" ]; then
-  # Sicherheitsnetz (#145): normalerweise hat die Selbstheilung oben jedes
-  # in-progress+needs-input-Ticket schon zu 'parked' umgelabelt, WIP ist dann
-  # leer. Landet hier trotzdem noch etwas (der gh-Aufruf der Selbstheilung ist
-  # fehlgeschlagen), gilt weiterhin: lieber blockieren als riskant ein zweites
-  # Ticket parallel anzufangen, waehrend am ersten unklar ist, wer daran sitzt.
-  PARKED=$(echo "$WIP" | jq -r '[.[].number] | map("#" + tostring) | join(", ")')
-  if [ -n "$PARKED" ]; then
-    status "wartet auf dich ($PARKED)" "🟡" \
-      "🟡 **Ich warte auf eine Antwort von dir.**
+  PICK_OUT=$(pick_ticket "$ROUND_SNAP" "$QUEUE_BODY")
+  case "$(printf '%s' "$PICK_OUT" | jq -r '.kind')" in
+    blocked)
+      # Sicherheitsnetz (#145): normalerweise hat die Selbstheilung oben jedes
+      # in-progress+needs-input-Ticket schon zu 'parked' umgelabelt. Landet
+      # hier trotzdem noch etwas (der gh-Aufruf der Selbstheilung ist
+      # fehlgeschlagen), gilt weiterhin: lieber blockieren als riskant ein
+      # zweites Ticket parallel anzufangen, waehrend am ersten unklar ist,
+      # wer daran sitzt.
+      PARKED=$(printf '%s' "$PICK_OUT" | jq -r '.issues | map("#" + (.|tostring)) | join(", ")')
+      status "wartet auf dich ($PARKED)" "🟡" \
+        "🟡 **Ich warte auf eine Antwort von dir.**
 
 Ticket $PARKED ist in Arbeit, hängt aber an einer offenen Frage.
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an."
-    return 0
-  fi
-
-  # 1b) Ein zuvor pausiertes Ticket (#145): die Frage ist beantwortet und
-  #     'needs-input' schon wieder weg, nur 'parked' haengt noch. Vor Queue und
-  #     Label-Kaskade fortsetzen, damit angefangene Arbeit nicht laenger liegen
-  #     bleibt als noetig, statt ein frisches Ticket vorzuziehen. MODE=resume,
-  #     nicht 'start' -- Branch und Fortschrittskommentar existieren schon.
-  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
-            '[.[] | select(.labels | map(.name) | index("parked"))
-                  | select((.labels | map(.name) | index("needs-input")) | not)]
-                | sort_by(.createdAt)
-                | .[0].number // empty')
-  if [ -n "$ISSUE" ]; then
-    gh issue edit "$ISSUE" --add-label in-progress --remove-label parked >/dev/null
-    MODE=resume
-    RUN_ROLE=build
-  fi
-
-  # 2) NEU (#109): Queue zuerst — flache Reihenfolge, LABEL EGAL. Das erste
-  #    gelistete, offene Ticket (ohne 'needs-input'/'no-opus') wird bearbeitet;
-  #    das Eintragen in die Queue IST das Freigabesignal (ersetzt 'ready' für
-  #    gelistete Tickets). Die ROLLE kommt weiter aus dem Label: 'needs-plan' ->
-  #    Planlauf, 'needs-research' -> Recherche, sonst bauen.
-  if [ -z "$ISSUE" ]; then
-  QPICK=$(printf '%s' "$ROUND_SNAP" | jq -r --argjson order "$QUEUE_ORDER" '
-    [ .[] | (.labels|map(.name)) as $l | (.number) as $n
-      | ($order|index($n)) as $rank
-      | select($rank != null)
-      | select( ($l|index("needs-input"))|not )
-      | select( ($l|index("no-opus"))|not )
-      | { n:$n, rank:$rank,
-          role: (if ($l|index("needs-plan")) then "plan"
-                 elif ($l|index("needs-research")) then "research"
-                 else "build" end) } ]
-    | sort_by(.rank) | .[0] // {}
-    | if .n then "\(.n) \(.role)" else "" end')
-  if [ -n "$QPICK" ]; then
-    ISSUE=${QPICK%% *}
-    RUN_ROLE=${QPICK##* }
-    if [ "$RUN_ROLE" = build ]; then
-      gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
-      MODE=start
-    else
-      MODE=start
-      [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
-    fi
-  fi
-  fi
-
-  # 3) Sonst (Queue leer/nichts wählbar): Fallback auf die Label-Reihenfolge —
-  #    needs-plan -> needs-research -> ready, je ältestes createdAt. Unverändert,
-  #    außer dass die Queue hier nicht mehr mitordnet (das erledigt (2)).
-  if [ -z "$ISSUE" ]; then
-  # 2) Sonst: ältestes Ticket mit Label "needs-plan" -> Planer-Lauf (Opus, nur
-  #    lesend, siehe ADR-0005). Geht vor "ready", damit die Queue gespeist bleibt.
-  #    'no-opus' ist der Kill-Switch: ein solches Ticket wird von der Automatik
-  #    komplett übersprungen, weder geplant noch gebaut.
-  ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
-            '[.[] | select(.labels | map(.name) | index("needs-plan"))
-                  | select((.labels | map(.name) | index("needs-input")) | not)
-                  | select((.labels | map(.name) | index("no-opus")) | not)]
-                | sort_by(.createdAt)
-                | .[0].number // empty')
-  if [ -n "$ISSUE" ]; then
-    RUN_ROLE=plan
-    MODE=start
-    [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
-  else
-    # 2b) Sonst: ältestes Ticket mit Label "needs-research" -> Recherche-Lauf
-    #     (Opus, nur lesend, siehe ADR-0005 + #43). Idee-/Feature-Ebene, kein
-    #     dateiweiser Plan. Gleicher Kill-Switch 'no-opus', kein Tages-Deckel.
-    ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
-              '[.[] | select(.labels | map(.name) | index("needs-research"))
-                    | select((.labels | map(.name) | index("needs-input")) | not)
-                    | select((.labels | map(.name) | index("no-opus")) | not)]
-                  | sort_by(.createdAt)
-                  | .[0].number // empty')
-    if [ -n "$ISSUE" ]; then
-      RUN_ROLE=research
-      MODE=start
-      [ -s "$STATE_DIR/session-$ISSUE" ] && MODE=resume
-    else
-      # 3) Sonst: ältestes Ticket mit Label "ready", das nicht auf mich wartet.
-      #    Both-Label-Wächter: ein Ticket mit "needs-plan"/"needs-research" UND
-      #    "ready" gleichzeitig gilt als inkonsistent und wurde oben bereits
-      #    dort gefangen — hier zusätzlich explizit ausgeschlossen, falls die
-      #    Denk-Abfragen leer blieben (z. B. wegen needs-input/no-opus) aber
-      #    "ready" trotzdem noch dran hängt.
-      ISSUE=$(printf '%s' "$ROUND_SNAP" | jq -r \
-                '[.[] | select(.labels | map(.name) | index("ready"))
-                      | select((.labels | map(.name) | index("needs-input")) | not)
-                      | select((.labels | map(.name) | index("needs-plan")) | not)
-                      | select((.labels | map(.name) | index("needs-research")) | not)]
-                    | sort_by(.createdAt)
-                    | .[0].number // empty')
-      if [ -z "$ISSUE" ]; then
-        # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
-        # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
-        # (aus dem gleichen ROUND_SNAP -- kein sechster Aufruf.)
-        WAITING=$(printf '%s' "$ROUND_SNAP" | jq -r \
-                    '[.[] | select(.labels | map(.name) | index("needs-input"))]
-                      | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
-        if [ -n "$WAITING" ]; then
-          status "wartet auf dich ($WAITING)" "🟡" \
-            "🟡 **Ich warte auf eine Antwort von dir.**
+      return 0
+      ;;
+    ticket)
+      ISSUE=$(printf '%s' "$PICK_OUT" | jq -r '.issue')
+      RUN_ROLE=$(printf '%s' "$PICK_OUT" | jq -r '.role')
+      MODE=$(printf '%s' "$PICK_OUT" | jq -r '.mode')
+      ;;
+    none)
+      # Nichts zu holen. Aber liegt etwas bei DIR? Dann ist Gelb die Wahrheit —
+      # "nichts zu tun" wäre hier eine Lüge, die dich das Ticket übersehen lässt.
+      WAITING=$(printf '%s' "$ROUND_SNAP" | jq -r \
+                  '[.[] | select(.labels | map(.name) | index("needs-input"))]
+                    | sort_by(.number) | map("#" + (.number|tostring)) | join(", ")')
+      if [ -n "$WAITING" ]; then
+        status "wartet auf dich ($WAITING)" "🟡" \
+          "🟡 **Ich warte auf eine Antwort von dir.**
 
 Offene Fragen an: $WAITING
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
 sonst starte ich in 5 Minuten mit derselben offenen Frage neu."
-        else
-          # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
-          # oben) -- einzig needs-research kaeme hier noch als Queue-Arbeit in
-          # Frage, ist aber (mangels Runner-Zweig, siehe #43) nicht baubereit.
-          SNAP=$(queue_snapshot)
-          PENDING=$(queue_pending "$SNAP")
-          if [ -n "$PENDING" ]; then
-            status "wartet auf nächsten Lauf · Queue: $PENDING" "🟢" \
-              "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
+      else
+        # ready/needs-plan sind an dieser Stelle schon ausgeschlossen (siehe
+        # pick_ticket()) -- einzig needs-research kaeme hier noch als
+        # Queue-Arbeit in Frage, ist aber (mangels Runner-Zweig, siehe #43)
+        # nicht baubereit.
+        SNAP=$(queue_snapshot)
+        PENDING=$(queue_pending "$SNAP")
+        if [ -n "$PENDING" ]; then
+          status "wartet auf nächsten Lauf · Queue: $PENDING" "🟢" \
+            "🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
 In der Queue liegt noch Arbeit ($PENDING), aber derzeit kein baubereites Ticket
 (z. B. nur Recherche). **Kein Eingreifen nötig.**"
-          elif [ "${DID_WORK:-0}" = 1 ]; then
-            # Chaining (#61): eine frühere Runde in diesem Tick hat produktiv
-            # gearbeitet, jetzt ist die Queue leer -- ⚪️ "nichts zu tun" wäre
-            # hier eine Lüge (klingt nach "nie etwas getan"), 🟢 ist korrekt.
-            status "läuft · zuletzt #$LAST_ISSUE" "🟢" \
-              "🟢 **Nichts offen.** Zuletzt an #$LAST_ISSUE gearbeitet, die Queue ist leer.
+        elif [ "${DID_WORK:-0}" = 1 ]; then
+          # Chaining (#61): eine frühere Runde in diesem Tick hat produktiv
+          # gearbeitet, jetzt ist die Queue leer -- ⚪️ "nichts zu tun" wäre
+          # hier eine Lüge (klingt nach "nie etwas getan"), 🟢 ist korrekt.
+          status "läuft · zuletzt #$LAST_ISSUE" "🟢" \
+            "🟢 **Nichts offen.** Zuletzt an #$LAST_ISSUE gearbeitet, die Queue ist leer.
 Kein Eingreifen nötig."
-          else
-            status "nichts zu tun" "⚪️" \
-              "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
+        else
+          status "nichts zu tun" "⚪️" \
+            "⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
 
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst."
-          fi
         fi
-        return 0
       fi
-      gh issue edit "$ISSUE" --add-label in-progress --remove-label ready >/dev/null
-      MODE=start
-    fi
-  fi
-  fi
+      return 0
+      ;;
+  esac
 fi
 
 # Kein Tages-Deckel fürs Denken (Planung/Recherche): ein komplexer Plan darf so

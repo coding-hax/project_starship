@@ -187,5 +187,10 @@ export function prFailureSummary(pr: string, gh: GhAdapter): string {
     const tail = log.split('\n').slice(-25).join('\n');
     parts.push(`\`\`\`\n${tail}\n\`\`\`\n`);
   }
-  return parts.join('');
+  // Bash faengt jeden Aufruf ueber `$(...)` ab (summary=$(pr_failure_summary
+  // ...) in watch_running_issue_bash) -- das entfernt trailing Newlines
+  // unvermeidlich. Hier explizit angleichen, sonst weicht das direkt in
+  // watchRunningIssue() eingebettete Ergebnis (kein Subshell-Grenze in TS) von
+  // der Bash-Parität ab, siehe runner-ts-s5-parity.test.sh.
+  return parts.join('').replace(/\n+$/, '');
 }

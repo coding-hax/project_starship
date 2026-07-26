@@ -11,11 +11,13 @@ export interface QueueIssue {
   createdAt?: string;
 }
 
-function hasLabel(issue: QueueIssue, name: string): boolean {
+// Exportiert fuer select.ts (#202 S5) -- dieselbe Label-/Sortierlogik wird
+// dort fuer die volle Ticketauswahl-Kaskade (inkl. needs-research) gebraucht.
+export function hasLabel(issue: QueueIssue, name: string): boolean {
   return issue.labels.some((label) => label.name === name);
 }
 
-function byCreatedAt(a: QueueIssue, b: QueueIssue): number {
+export function byCreatedAt(a: QueueIssue, b: QueueIssue): number {
   return (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
 }
 
