@@ -29,9 +29,26 @@ done
 ts() { date "+%d.%m. %H:%M"; }
 
 # Unix-Zeit -> "Mo 14:51". BSD (macOS) und GNU (Linux) sprechen hier verschiedene
-# Dialekte, deshalb jeweils beide Varianten.
-fmt_hm()  { date -r "$1" "+%a %H:%M" 2>/dev/null || date -d "@$1" "+%a %H:%M" 2>/dev/null; }
-d_plus()  { date -v+"$1"d "+$2" 2>/dev/null || date -d "+$1 day" "+$2" 2>/dev/null; }
+# Dialekte, deshalb jeweils beide Varianten. TS-Kern: scripts/runner/time.ts,
+# `fmtHm()`/`dPlus()` (#199) -- ts_run() ist erst weiter unten definiert, das
+# ist ok: Bash loest Funktionsnamen erst beim AUFRUF auf, nicht beim Sourcen.
+fmt_hm_bash()  { date -r "$1" "+%a %H:%M" 2>/dev/null || date -d "@$1" "+%a %H:%M" 2>/dev/null; }
+d_plus_bash()  { date -v+"$1"d "+$2" 2>/dev/null || date -d "+$1 day" "+$2" 2>/dev/null; }
+
+fmt_hm() {   # $1 = Unix-Zeit -> "Mo 14:51"
+  local out rc
+  out=$(ts_run fmt-hm "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { fmt_hm_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+d_plus() {   # $1 = Tage, $2 = date-Format -> "heute + $1 Tage" formatiert
+  local out rc
+  out=$(ts_run d-plus "$1" "$2"); rc=$?
+  [ "$rc" -eq 127 ] && { d_plus_bash "$1" "$2"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
 
 # Wann kommt das Kontingent zurueck? Liest die Reset-Angabe aus der Claude-Meldung
 # und gibt eine Unix-Zeit aus (oder nichts, wenn sie sich nicht deuten laesst).
@@ -48,7 +65,17 @@ d_plus()  { date -v+"$1"d "+$2" 2>/dev/null || date -d "+$1 day" "+$2" 2>/dev/nu
 #
 # Ueberall ERE (grep -E / sed -E), nirgends BRE-Alternation (\|) — die ist eine
 # GNU-Erweiterung und tut auf macOS still gar nichts.
-reset_epoch() {
+#
+# TS-Kern: scripts/runner/time.ts, `resetEpoch()` (#199).
+reset_epoch() {   # $1 = Claude-CLI-Meldungstext -> Unix-Zeit (Exit 1 = kein Treffer)
+  local out rc
+  out=$(ts_run reset-epoch "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { reset_epoch_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+reset_epoch_bash() {
   local txt now rest mon dnum yr tm fmt ts_out cap
   txt=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
   case "$txt" in *resets*) ;; *) return 1 ;; esac
@@ -213,7 +240,18 @@ queue_body() {
 # (dublettenbereinigt). Überschriften/Text drumherum sind egal; es zählt nur die
 # Reihenfolge der Nummern. Bogus-Nummern (kein offenes Ticket) sind harmlos — die
 # Auswahl unten iteriert reale Tickets und ignoriert Ränge ohne Treffer.
-queue_order_flat() {
+#
+# TS-Kern: scripts/runner/queue.ts, `queueOrderFlat()`/`queuePending()`/
+# `queueNext()` (#199).
+queue_order_flat() {   # $1 = Body-Text -> JSON-Array
+  local out rc
+  out=$(ts_run queue-order-flat "${1:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { queue_order_flat_bash "${1:-}"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+queue_order_flat_bash() {
   local body="${1:-}"
   [ -n "$body" ] || { printf '[]'; return 0; }
   printf '%s\n' "$body" \
@@ -227,6 +265,14 @@ queue_order_flat() {
 # ready|needs-plan|needs-research, jeweils OHNE needs-input. (#1/Status-Issue
 # trägt keins dieser Labels und fällt automatisch raus.)
 queue_pending() {   # $1 = snapshot-json
+  local out rc
+  out=$(ts_run queue-pending "$1"); rc=$?
+  [ "$rc" -eq 127 ] && { queue_pending_bash "$1"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+queue_pending_bash() {
   printf '%s' "$1" | jq -r '
     [ .[] | (.labels|map(.name)) as $l
       | select( ($l|index("ready")) or ($l|index("needs-plan")) or ($l|index("needs-research")) )
@@ -239,7 +285,15 @@ queue_pending() {   # $1 = snapshot-json
 # Präzedenz wie main(): in-progress -> needs-plan -> ready. Leer, wenn nichts
 # baubereit ist (z. B. nur needs-research offen).
 queue_next() {   # $1 = snapshot-json, $2 = queue-body (optional)
-  printf '%s' "$1" | jq -r --argjson order "$(queue_order_flat "${2:-}")" '
+  local out rc
+  out=$(ts_run queue-next "$1" "${2:-}"); rc=$?
+  [ "$rc" -eq 127 ] && { queue_next_bash "$1" "${2:-}"; return; }
+  printf '%s' "$out"
+  return "$rc"
+}
+
+queue_next_bash() {
+  printf '%s' "$1" | jq -r --argjson order "$(queue_order_flat_bash "${2:-}")" '
     def has($l): .labels | map(.name) | index($l);
     # Dieselbe Präzedenz wie die Auswahl in run_round: laufendes in-progress,
     # dann die flache Queue (Label egal), dann die Label-Reihenfolge als Fallback.
@@ -798,7 +852,11 @@ if [ -s "$LIMIT_UNTIL" ]; then
   UNTIL=$(cat "$LIMIT_UNTIL" 2>/dev/null)
   NOW=$(date +%s)
   if [ -n "$UNTIL" ] && [ "$UNTIL" -gt "$NOW" ] 2>/dev/null; then
-    echo "Kontingent erschöpft bis $(fmt_hm "$UNTIL") — Lauf übersprungen."
+    # fmt_hm_bash direkt, NICHT die ts_run-Variante (#199): dieser Zweig muss
+    # ein garantierter No-Op nach aussen bleiben (kein tsx-Start, kein gh-Aufruf,
+    # selbst wenn tsx fehlt und ts_run das laut ueber status() melden wuerde) --
+    # genau das prueft limit-until.test.sh AC3.
+    echo "Kontingent erschöpft bis $(fmt_hm_bash "$UNTIL") — Lauf übersprungen."
     exit 0
   fi
   rm -f "$LIMIT_UNTIL"
