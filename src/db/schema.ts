@@ -8,6 +8,7 @@ import {
   jsonb,
   pgSequence,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -157,6 +158,74 @@ export const habitLogs = pgTable(
 
 export type HabitLog = typeof habitLogs.$inferSelect;
 export type NewHabitLog = typeof habitLogs.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* Garmin (ADR-0011). Server-origin data: read-only in the sync engine.       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * OAuth1/OAuth2 token pair for `connectapi.garmin.com`. Never synchronised — like
+ * the auth tables below, it carries no `syncColumns` and never appears in
+ * `SYNC_TABLES` (src/local/types.ts). `token` is opaque and is never logged, not
+ * even truncated.
+ */
+export const garminTokens = pgTable('garmin_tokens', {
+  id: uuid('id').primaryKey(),
+  kind: text('kind').$type<'oauth1' | 'oauth2'>().notNull().unique(),
+  token: jsonb('token').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type GarminToken = typeof garminTokens.$inferSelect;
+export type NewGarminToken = typeof garminTokens.$inferInsert;
+
+/**
+ * Read-only in the sync engine (src/db/sync-tables.ts: `readOnly: true`) — written
+ * only by `/api/garmin-sync`, never by a client push.
+ *
+ * `garminActivityId` is Garmin's own id, the natural key for the upsert; `id` stays
+ * a server-generated UUIDv7 like every other synced row. `elapsedSeconds -
+ * durationSeconds` is the pause length — computed in the UI, not stored.
+ *
+ * `track` is the downsampled time series stored column-wise
+ * (`{ n, distance, lat, lon, hr, speed, elevation }`, each an array of length `n`)
+ * instead of as a list of point objects — at 500 points this roughly halves the
+ * JSON size, since the keys are not repeated 500 times. Nullable: filled in by a
+ * later sync run if the details fetch failed the first time.
+ */
+export const garminActivities = pgTable(
+  'garmin_activities',
+  {
+    ...syncColumns,
+    garminActivityId: bigint('garmin_activity_id', { mode: 'number' }).notNull().unique(),
+    activityType: text('activity_type').notNull(),
+    name: text('name'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    distanceMeters: integer('distance_meters'),
+    durationSeconds: integer('duration_seconds'),
+    elapsedSeconds: integer('elapsed_seconds'),
+    elevationGain: integer('elevation_gain'),
+    elevationLoss: integer('elevation_loss'),
+    averageHr: integer('average_hr'),
+    maxHr: integer('max_hr'),
+    averageSpeed: real('average_speed'),
+    calories: integer('calories'),
+    track: jsonb('track'),
+    /** Static map image as a data URL, fetched once (src/features/garmin/static-map.ts). */
+    mapImage: text('map_image'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('garmin_activities_updated_at_idx').on(table.updatedAt),
+    index('garmin_activities_sync_seq_idx').on(table.syncSeq),
+    index('garmin_activities_started_at_idx').on(table.startedAt),
+    uniqueIndex('garmin_activities_garmin_activity_id_idx').on(table.garminActivityId),
+  ],
+);
+
+export type GarminActivity = typeof garminActivities.$inferSelect;
+export type NewGarminActivity = typeof garminActivities.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
 /* Auth. None of this is ever synchronised, so none of it carries syncColumns. */

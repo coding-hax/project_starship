@@ -25,21 +25,24 @@ src/
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
     api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
+    api/garmin-sync/        POST, Bearer-Secret + Owner-Session als Zweitpfad — holt Aktivitäten, schreibt nie ohne Netzwerk-Vorlauf in die Transaktion (ADR-0011, issue #186)
     api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
     layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest)
     manifest.ts             Web-App-Manifest (Next-Metadata-Route)
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js
     globals.css             Tailwind-Import + @theme-Mapping der Tokens
   db/
-    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell
-    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist
+    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011
+    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186)
+    sync-lock.ts            gemeinsamer pg_advisory_xact_lock für jede Sync-Schreib-Transaktion (push, garmin-sync) — verhindert sync_seq außer Reihenfolge (ADR-0008)
     index.ts                DB-Verbindung (pg-Pool, Standard-Connection-String)
     migrate.ts              wendet Migrationen an (pnpm db:migrate)
     migrations/             generierte Migrationen, nie von Hand ändern
+    migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186)
   local/
-    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten)
+    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011
     dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139); WeatherDay trägt seit #156 zusätzlich sunrise/sunset/Wind + stündliche WeatherHour[] — kein neuer db.version()-Bump, da sich nur die Objektform, nicht der Store/Index ändert (Begründung im Kommentar dort)
-    outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch
+    outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch; mutate() wirft für eine read-only-Tabelle (ADR-0011)
     sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
     use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
@@ -79,6 +82,13 @@ src/
       export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
       export-panel.tsx         Button + Status in Einstellungen
       export.css               Styles für das Export-Panel
+    garmin/                   Server-seitig, kein Client-Code -- keine Garmin-Spezifika außerhalb dieses Verzeichnisses (ADR-0011, issue #186)
+      connect-api.ts           handgerollte OAuth1-Signatur + OAuth2-Tausch + die zwei connectapi.garmin.com-Aufrufe, keine Client-Bibliothek
+      tokens.ts                liest/schreibt garmin_tokens, erneuert OAuth2 aus OAuth1, GarminBootstrapRequired statt Login-Versuch
+      activity-mapper.ts       reine Zuordnung Garmin-Rohform -> Kopfzahlen (mapActivityListEntry) + spaltenweiser Track (buildTrack), robust gegen wechselnde metricDescriptors-Reihenfolge
+      activity-diff.ts         reine Änderungserkennung (activityChanged) -- Grund, warum sync_seq nur bei echter Änderung bumpt, ohne SQL-WHERE-Klausel
+      static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
+      sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
     weather/
       forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend, isStaleWarning (8h) + formatStaleSince — Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail
       geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
@@ -137,8 +147,10 @@ tests/
   weather.spec.ts           Wetter auf Übersicht: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
   weather-day.spec.ts       Tagesdetailseite /wetter/<datum>: Tippen auf eine Spalte öffnet sie, Stundenverlauf/Niederschlag/Wind/Sonnenauf-und-untergang sichtbar, kein eigener Netzaufruf, offline aus der Ablage, Datum ohne Daten -> erklärender statt Fehler-Zustand, Zurück-Weg, Tap-Ziel ≥44×44, 375/1280px, Dark/reduced-motion (issue #156)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
-  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts
+  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186)
+  garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
 scripts/
+  garmin-bootstrap.md       einmaliger Handgriff im Browser fürs Garmin-OAuth1-Token, ~jährlich fällig, führt nie automatisch (ADR-0011, issue #186)
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux); pr_squash_merge() übergibt Subject/Body selbst statt GitHub Commits sammeln zu lassen, reopen_falsely_closed_issues() als Netz dagegen (#172); ts_run() ist die Naht zu scripts/runner/cli.ts, RUNNER_TS=0 als Kill-Switch (#198 S1)
   runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); bisher nur `version` als Ende-zu-Ende-Beweis, ab S2 wandert echte Logik ein
   runner/gh.ts, git.ts      Adapter um `gh`/`git`, injizierbare exec-Funktion für Vitest-Doubles (#198 S1)
@@ -168,6 +180,7 @@ scripts/
   guards.yml                Test-Integrity- und Protected-Paths-Gate; hören zusätzlich auf labeled/unlabeled, damit ein Label-Tap (human-approved/tests-exempt) nur diese beiden neu prüft statt der ganzen CI (issue #164)
   smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
   interaction-limit-reminder.yml  monatlicher Cron, erinnert 30 Tage vor Ablauf des Interaction Limit per Issue (#70)
+  garmin-sync.yml           nächtlicher Cron, POST /api/garmin-sync mit Bearer-Secret, vendor-neutral statt Vercel-Cron (Regel 7, issue #186)
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
 ```
 
