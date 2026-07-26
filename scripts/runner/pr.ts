@@ -6,7 +6,7 @@
 // Ergebnis, nie ein geworfener Fehler.
 import type { GhAdapter } from './gh.js';
 
-export type PrState = 'pending' | 'failing' | 'behind' | 'success';
+export type PrState = 'pending' | 'failing' | 'conflict' | 'behind' | 'success';
 
 interface PrListItem {
   number: number;
@@ -64,6 +64,14 @@ export function prIsBehind(pr: string, gh: GhAdapter): boolean {
   return prMergeState(pr, gh)?.mergeStateStatus === 'BEHIND';
 }
 
+// DIRTY heisst: GitHub kann den PR nicht mehr automatisch mit 'main' mergen,
+// ein echter Konflikt liegt vor. Anders als BEHIND gewinnt DIRTY dauerhaft --
+// sobald ein Konflikt besteht, meldet GitHub NIE mehr BEHIND fuer diesen PR
+// (#217).
+export function prIsDirty(pr: string, gh: GhAdapter): boolean {
+  return prMergeState(pr, gh)?.mergeStateStatus === 'DIRTY';
+}
+
 function prChecks(pr: string, gh: GhAdapter): PrCheck[] {
   let raw = '';
   try {
@@ -74,15 +82,23 @@ function prChecks(pr: string, gh: GhAdapter): PrCheck[] {
   return tryParseJson<PrCheck[]>(raw) ?? [];
 }
 
-// CI-Gesamtzustand eines PR. Reihenfolge ist Absicht (#160): 'pending' hat
-// Vorrang vor 'failing' -- ein noch laufender Shard darf einen bereits roten
-// Check nicht uebertoenen. 'behind' wird erst geprueft, NACHDEM feststeht,
-// dass nichts mehr laeuft und nichts rot ist.
+// CI-Gesamtzustand eines PR. Reihenfolge ist Absicht (#160, erweitert um
+// #217): 'pending' hat Vorrang vor 'failing' -- ein noch laufender Shard darf
+// einen bereits roten Check nicht uebertoenen. 'conflict' (mergeStateStatus
+// DIRTY) wird VOR 'behind' geprueft, weil GitHub bei einem echten
+// Merge-Konflikt niemals mehr 'BEHIND' meldet -- ohne diese Reihenfolge waere
+// 'behind' fuer einen solchen PR fuer immer unerreichbar und der
+// Konfliktpfad toter Code. Ohne 'conflict' fiele ein DIRTY-PR mit gruenen
+// Checks sogar auf 'success' durch, und der Runner wuerde ihn Takt fuer Takt
+// vergeblich zu mergen versuchen. 'behind' wird erst geprueft, NACHDEM
+// feststeht, dass nichts mehr laeuft, nichts rot ist und kein echter Konflikt
+// vorliegt.
 export function prCiState(pr: string, gh: GhAdapter): PrState {
   const checks = prChecks(pr, gh);
   if (checks.length === 0) return 'pending';
   if (checks.some((c) => c.bucket === 'pending')) return 'pending';
   if (checks.some((c) => c.bucket === 'fail' || c.bucket === 'cancel')) return 'failing';
+  if (prIsDirty(pr, gh)) return 'conflict';
   if (prIsBehind(pr, gh)) return 'behind';
   return 'success';
 }
@@ -99,7 +115,12 @@ export function prOnlyProtectedPathsRed(pr: string, gh: GhAdapter): boolean {
 // alle Commit-Nachrichten des Branches aneinander -- inklusive fremder
 // 'Closes #N' aus Merge-Commits, die beim Nachziehen von 'main' mitgezogen
 // wurden.
-export function prSquashMerge(pr: string, gh: GhAdapter): void {
+// Rueckgabewert (#217 AC4): true = Merge bzw. Auto-Merge tatsaechlich
+// aktiviert, false = 'gh pr merge' ist gescheitert. Der Aufrufer entscheidet
+// damit, ob 'parked'/'needs-input' ueberhaupt entfernt werden duerfen -- sonst
+// faellt das Ticket aus jeder Wache heraus, waehrend der PR offen und
+// unbeobachtet liegen bleibt.
+export function prSquashMerge(pr: string, gh: GhAdapter): boolean {
   let title = '';
   try {
     title = gh.run(['pr', 'view', pr, '--json', 'title', '-q', '.title']).trim();
@@ -112,8 +133,9 @@ export function prSquashMerge(pr: string, gh: GhAdapter): void {
     } else {
       gh.run(['pr', 'merge', '--squash', '--auto', '--delete-branch', pr]);
     }
+    return true;
   } catch {
-    // best effort, wie >/dev/null 2>&1 auf der Bash-Seite.
+    return false;
   }
 }
 

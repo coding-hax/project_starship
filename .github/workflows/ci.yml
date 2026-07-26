@@ -4,6 +4,17 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# A new push to the same PR makes the previous run's answer worthless — it tested a
+# commit nobody will merge. That matters more since the shard matrix grew (#220): a
+# superseded run holds 10 of the account's 20 concurrent job slots (a per-account
+# limit, with no exemption for public repositories), which is exactly the budget the
+# run that replaced it now needs. Grouping by ref is safe here because this workflow
+# only triggers on pull_request — github.ref is always refs/pull/<n>/merge, never a
+# branch, so a push to main can never cancel anything.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Not a secret: a throwaway database that lives for the length of one CI run.
   DATABASE_URL: postgresql://starship:starship@localhost:5432/starship
@@ -61,18 +72,26 @@ jobs:
   # rename these two without updating branch protection, or a failing half would stop
   # blocking the merge.
   #
-  # e2e-main is further split into a 3-way shard matrix (#118): the ~4.6s/test that's
-  # left after #115 is real work (page boot, sync, expect.poll), nothing left to
-  # optimize away, only to distribute. Each shard is its own job with its own
-  # Postgres — sharding only splits which tests run where, never a database, so
+  # e2e-main is further split into a shard matrix (#118, widened to 10 in #220): the
+  # ~4.6s/test that's left after #115 is real work (page boot, sync, expect.poll),
+  # nothing left to optimize away, only to distribute. Each shard is its own job with
+  # its own Postgres — sharding only splits which tests run where, never a database, so
   # nothing here shares state across shards. fail-fast is off so a red shard doesn't
   # cancel the others: we want the full picture (and the full merged report) every run.
+  #
+  # Why 10 and not more: every shard re-pays ~100s of fixed cost (job setup, dev-server
+  # boot, and the `setup` project's real WebAuthn ceremony, which is per-run and cannot
+  # be shared). Past ~10 the added shards mostly buy warm-up, and 10 shards plus the
+  # five other jobs in this workflow already sit at 15 of the 20 concurrent jobs the
+  # account gets — leaving room for one other workflow, not for a second full CI run.
+  # Playwright splits by test count, not by duration, so the slowest shard still sets
+  # the wall clock; expect ~5 min, not the ~3 min a naive division suggests.
   e2e-main:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     services:
       postgres:
         image: postgres:17-alpine
@@ -120,7 +139,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
-      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/3 --reporter=blob
+      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/10 --reporter=blob
         env:
           E2E_SCOPE: main
       # Blob keeps every shard's attachments (traces, screenshots, video) so the
