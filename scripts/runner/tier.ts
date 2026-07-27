@@ -8,24 +8,45 @@ import type { StateAdapter } from './state.js';
 
 export type Tier = 'haiku' | 'sonnet' | 'opus';
 
-function hasHaikuLabel(issue: number, gh: GhAdapter): boolean {
+// Die drei Startstufen-Labels in Praezedenzreihenfolge (ADR-0013). Traegt ein
+// Ticket versehentlich mehrere, gewinnt die teuerste: lieber ein Lauf zu teuer
+// als einer, der die absichtlich gesetzte Stufe stillschweigend unterbietet.
+const TIER_LABELS: [string, Tier][] = [
+  ['model:opus', 'opus'],
+  ['model:sonnet', 'sonnet'],
+  ['model:haiku', 'haiku'],
+];
+
+// Die am Ticket gesetzte STARTSTUFE, oder null (kein model:*-Label).
+// Getrennt von tierCurrent() exportiert, weil round.ts sie an zwei Stellen
+// OHNE den Eskalationszustand braucht: fuer die Denk-Rollen (Label schlaegt
+// Rolle) und fuer 'no-escalation' (einfrieren auf der Startstufe).
+export function tierFromLabels(issue: number, gh: GhAdapter): Tier | null {
   let output = '';
   try {
     output = gh.run(['issue', 'view', String(issue), '--json', 'labels', '-q', '.labels[].name']);
   } catch {
-    return false;
+    return null;
   }
-  return output.split('\n').some((line) => line.trim() === 'model:haiku');
+  const names = new Set(output.split('\n').map((line) => line.trim()));
+  for (const [label, tier] of TIER_LABELS) {
+    if (names.has(label)) return tier;
+  }
+  return null;
 }
 
-// Aktuelle Bau-Modellstufe fuer ein Ticket. Kein tier-<nr> (noch nie
-// eskaliert) -> Default aus dem Label 'model:haiku', sonst 'sonnet'.
+// Aktuelle Bau-Modellstufe fuer ein Ticket.
+//
+// ADR-0013: das Label ist die STARTSTUFE, nicht die Fessel. Eine bereits
+// eingetretene Eskalation (tier-<nr>) schlaegt es deshalb -- sonst waere ein
+// Ticket mit 'model:sonnet' fuer immer auf Sonnet festgenagelt und ADR-0007
+// liefe ins Leere. Ohne Datei und ohne Label bleibt 'sonnet' der Default.
 export function tierCurrent(issue: number, state: StateAdapter, gh: GhAdapter): Tier {
   const stored = state.read(`tier-${issue}`);
   if (stored !== null && stored.length > 0) {
     return stored.trim() as Tier;
   }
-  return hasHaikuLabel(issue, gh) ? 'haiku' : 'sonnet';
+  return tierFromLabels(issue, gh) ?? 'sonnet';
 }
 
 // Schaltet eine Stufe hoch. Die Leiter hat nur einen Sprung: sonnet/haiku ->
