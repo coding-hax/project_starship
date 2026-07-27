@@ -120,7 +120,7 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
 /* AK: Wochenende bekommt einen kräftigeren Rahmen, Spaltenbreite bleibt gleich */
 /* -------------------------------------------------------------------------- */
 
-test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten bleiben gleich breit (issue #155 AC1)', async ({
+test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten bleiben gleich breit (issue #223 AC1–AC2)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -137,14 +137,76 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten b
     expect(width).toBeCloseTo(widths[0], 1);
   }
 
+  // AC1: Rahmenbreite ist überall 1px
+  // AC2: Rahmenfarbe unterscheidet sich für Sa/So
   // DAY_SET_A.weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
   const monday = days.nth(0);
   const saturday = days.nth(5);
   const sunday = days.nth(6);
 
-  await expect(monday).toHaveCSS('outline-style', 'none');
-  await expect(saturday).toHaveCSS('outline-style', 'solid');
-  await expect(sunday).toHaveCSS('outline-style', 'solid');
+  const mondayLink = monday.locator('.weather-forecast__day-link');
+  const saturdayLink = saturday.locator('.weather-forecast__day-link');
+  const sundayLink = sunday.locator('.weather-forecast__day-link');
+
+  // Alle haben 1px Rahmen
+  await expect(mondayLink).toHaveCSS('border-width', '1px');
+  await expect(saturdayLink).toHaveCSS('border-width', '1px');
+  await expect(sundayLink).toHaveCSS('border-width', '1px');
+
+  // Sa/So haben stärkere Rahmenfarbe
+  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
+
+  expect(saturdayColor).not.toBe(mondayColor);
+  expect(sundayColor).not.toBe(mondayColor);
+  expect(saturdayColor).toBe(sundayColor);
+});
+
+test('Wochenend-Rahmen ist auch im Dark Mode vom Normal-Rahmen unterscheidbar (issue #223 AC3)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+
+  // Dark Mode aktivieren
+  await page.addInitScript(() => {
+    document.documentElement.setAttribute('data-theme', 'dunkel');
+  });
+
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const monday = days.nth(0);
+  const saturday = days.nth(5);
+
+  const mondayLink = monday.locator('.weather-forecast__day-link');
+  const saturdayLink = saturday.locator('.weather-forecast__day-link');
+
+  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
+
+  expect(saturdayColor).not.toBe(mondayColor);
+});
+
+test('focus-visible auf Karten-Link zeigt Accent-Outline, Wochenend-Rahmen beeinträchtigt das nicht (issue #223 AC4)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  const saturday = days.nth(5);
+  const saturdayLink = saturday.locator('.weather-forecast__day-link');
+
+  await saturdayLink.focus();
+
+  await expect(saturdayLink).toHaveCSS('outline-offset', '-2px');
+  const outlineColor = await saturdayLink.evaluate((el) => getComputedStyle(el).outlineColor);
+  expect(outlineColor).toBeTruthy();
 });
 
 /* -------------------------------------------------------------------------- */
