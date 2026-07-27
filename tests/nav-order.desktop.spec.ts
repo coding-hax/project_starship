@@ -33,9 +33,9 @@ test.describe('Karussell-Fix wirkt sich nicht auf die Sidebar aus (issue #229 AC
     await page.addInitScript(() => {
       (window as unknown as { __scrollToCalls: unknown[] }).__scrollToCalls = [];
       const original = Element.prototype.scrollTo;
-      Element.prototype.scrollTo = function (this: Element, ...args: Parameters<typeof original>) {
-        (window as unknown as { __scrollToCalls: unknown[] }).__scrollToCalls.push(args);
-        return original.apply(this, args);
+      Element.prototype.scrollTo = function (this: Element, arg?: ScrollToOptions | number, arg2?: number) {
+        (window as unknown as { __scrollToCalls: unknown[] }).__scrollToCalls.push(arg);
+        return original.call(this, arg as number, arg2 as number);
       };
     });
     await registerPasskey(page);
