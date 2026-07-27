@@ -231,6 +231,41 @@ test('Tap-Ziel weather-forecast__day-link bleibt bei 375px ≥ 44×44px (issue #
   }
 });
 
+test('Wochenendspalten-Rahmen ist auch bei 1280px (Desktop) sichtbar dunkel und 2px (issue #268 AC6)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  // 1280px is a standard desktop width
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const monday = days.nth(0);
+  const saturday = days.nth(5);
+  const sunday = days.nth(6);
+
+  const mondayLink = monday.locator('.weather-forecast__day-link');
+  const saturdayLink = saturday.locator('.weather-forecast__day-link');
+  const sundayLink = sunday.locator('.weather-forecast__day-link');
+
+  // All have 2px border
+  await expect(mondayLink).toHaveCSS('border-width', '2px');
+  await expect(saturdayLink).toHaveCSS('border-width', '2px');
+  await expect(sundayLink).toHaveCSS('border-width', '2px');
+
+  // Sa/So have darker border color
+  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
+
+  expect(saturdayColor).not.toBe(mondayColor);
+  expect(sundayColor).not.toBe(mondayColor);
+  expect(saturdayColor).toBe(sundayColor);
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: Quellenangabe verlässt /uebersicht (zieht in die Einstellungen, #155 AC5) */
 /* -------------------------------------------------------------------------- */
