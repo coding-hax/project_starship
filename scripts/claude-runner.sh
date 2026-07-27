@@ -221,6 +221,33 @@ if [ -s "$LIMIT_UNTIL" ]; then
   rm -f "$LIMIT_UNTIL"
 fi
 
+# --- Weicht die laufende Shim-Datei von der reviewten Fassung ab? -------------
+# Geprüft wird hier und NICHT im Shim: der Shim ist die eine Datei, die läuft,
+# ohne im Repo zu liegen -- trüge er die Prüfung selbst, könnte eine zu alte
+# Fassung nicht melden, dass sie zu alt ist. Diese Datei hier wird bei jedem Tick
+# frisch aus origin/main materialisiert, also greift die Meldung auch gegen einen
+# uralten installierten Shim. Entschieden wird in scripts/runner/shim.ts, hier
+# steht nur die Meldung -- status() bleibt bash-only (#252).
+#
+# Bewusst NACH dem Limit-Gate: das muss ein garantierter No-Op ohne gh und ohne
+# tsx bleiben.
+#
+# Ein Drift hält den Lauf NICHT an. 🟡 heisst 'wartet auf dich', nicht 'kaputt'
+# -- nach elf Stunden Totalausfall (#249) ist ein stehender Runner teurer als
+# ein abweichender.
+SHIM_PATH="${SHIM_PATH:-$HOME/.local/bin/starship-runner}"
+SHIM_DRIFT=$(ts_run shim-drift-reason "$SHIM_PATH" "${RUNNER_REF:-origin/main}")
+if [ -n "$SHIM_DRIFT" ]; then
+  status "Shim weicht ab" "🟡" "🟡 $SHIM_DRIFT
+
+Ausgeführt wird die installierte Kopie, nicht die reviewte Fassung aus dem Repo.
+Angleichen mit:
+
+    install -m 0755 scripts/starship-runner ~/.local/bin/starship-runner
+
+Der Lauf geht normal weiter."
+fi
+
 # --- Chain-Schleife: mehrere Runden pro Tick (#61) ----------------------------
 # Weiter nur nach einem SAUBER grünen run_round(): CHAIN_STATUS steht dort ganz
 # oben auf 'stop', nur der grüne Zweig in round-eval schaltet auf 'continue'.

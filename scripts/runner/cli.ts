@@ -40,6 +40,7 @@ import { pickTicket, selfHealPark } from './select.js';
 import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
+import { shimDriftReason } from './shim.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -66,6 +67,8 @@ function readPackageVersion(): string {
 
 export const commands: Record<string, CommandHandler> = {
   version: () => readPackageVersion(),
+  // $1 = installierter Pfad, $2 = Ref. '' = kein Drift (#252).
+  'shim-drift-reason': (ctx, args) => shimDriftReason(args[0] ?? '', args[1] ?? 'origin/main', ctx.git),
   'fmt-hm': (_ctx, args) => fmtHm(Number(args[0])),
   'd-plus': (ctx, args) => dPlus(Number(args[0]), args[1] ?? '', ctx.clock),
   'reset-epoch': (ctx, args) => {
