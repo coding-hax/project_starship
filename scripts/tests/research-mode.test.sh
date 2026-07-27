@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tests für die Ticket-Auswahl der Recherche-Rolle (needs-research, ADR-0005,
+# Tests für die Ticket-Auswahl der Recherche-Rolle (research, ADR-0005,
 # Issue #43). Reine Bash-Assertions, kein bats (keine neue Dependency).
 # Sourct claude-runner.sh (Source-Guard verhindert, dass main() dabei
 # losläuft) und stubbt gh/git/claude per PATH-Shim in einem
 # Wegwerf-Zustandsverzeichnis — analog zu scripts/tests/escalation.test.sh,
 # aber mit einem allgemeineren 'gh issue list -q ...'-Stub, weil hier die
-# echte Auswahlkaskade (needs-plan > needs-research > ready) durchlaufen wird,
+# echte Auswahlkaskade (plan > research > ready) durchlaufen wird,
 # nicht nur einzelne Funktionen.
 set -uo pipefail
 
@@ -29,8 +29,8 @@ mkdir -p "$GHSTATE_DIR"
 # 'issue list --label <L> [--json J] [-q Q]' liest die Antwort aus
 # $G/list-<L>.json. Die neue Ein-Abfrage-Ticketwahl (#64, ROUND_SNAP) fragt
 # OHNE --label alle offenen Issues auf einmal ab -- der Stub baut das aus
-# denselben vier list-<L>.json-Fixtures zusammen (in-progress, needs-plan,
-# needs-research, ready); needs-input bleibt aussen vor, das fragt weiterhin
+# denselben vier list-<L>.json-Fixtures zusammen (in-progress, plan,
+# research, ready); needs-input bleibt aussen vor, das fragt weiterhin
 # waiting_issues() gezielt gelabelt ab. Wendet -- falls -q gesetzt ist --
 # echtes jq darauf an, genau wie das echte 'gh'. 'issue view --json labels
 # -q ...' und 'issue edit'/'issue comment' analog zu escalation.test.sh.
@@ -58,8 +58,8 @@ case "${1:-} ${2:-}" in
       # ROUND_SNAP (#64) bzw. queue_snapshot() -- beide fragen ungelabelt
       # alle offenen Issues ab. Aus den vier Ticketwahl-Fixtures zusammenbauen.
       data=$({ cat "$G/list-in-progress.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-plan.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-research.json" 2>/dev/null || echo '[]'
+               cat "$G/list-plan.json" 2>/dev/null || echo '[]'
+               cat "$G/list-research.json" 2>/dev/null || echo '[]'
                cat "$G/list-ready.json" 2>/dev/null || echo '[]'; } | jq -s 'add // []')
     fi
     if [ -n "$q" ]; then
@@ -210,33 +210,33 @@ assert_no_bare_bash() {   # $1 = Beschreibung, $2 = Datei
 }
 
 # ==============================================================================
-# 1. needs-plan hat Vorrang vor needs-research (auch bei niedrigerer Nummer)
+# 1. plan hat Vorrang vor research (auch bei niedrigerer Nummer)
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan     '[{"number":60,"labels":[{"name":"needs-plan"}]}]'
-list_json needs-research '[{"number":10,"labels":[{"name":"needs-research"}]}]'
+list_json plan     '[{"number":60,"labels":[{"name":"plan"}]}]'
+list_json research '[{"number":10,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session "AC1: needs-plan (#60) wird vor needs-research (#10) gewählt" 60
-assert_absent  "AC1: needs-research-Ticket #10 bleibt unangetastet" "$STATE_DIR/session-10"
+assert_session "AC1: plan (#60) wird vor research (#10) gewählt" 60
+assert_absent  "AC1: research-Ticket #10 bleibt unangetastet" "$STATE_DIR/session-10"
 assert_contains "AC1: Planer-Prompt läuft mit Opus" "$GHSTATE_DIR/claude-lastargs" "--model"
 assert_no_bare_bash "AC1/#63: Planer startet nicht mit pauschalem Bash" "$GHSTATE_DIR/claude-lastargs"
 assert_contains "AC1/#63: Planer darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
 
 # ==============================================================================
-# 2. needs-research wird gewählt, wenn kein needs-plan ansteht -- Opus,
+# 2. research wird gewählt, wenn kein plan ansteht -- Opus,
 #    WebSearch erlaubt, Recherche-Prompt (nicht der Planer-Prompt)
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[{"number":47,"labels":[{"name":"needs-research"}]}]'
+list_json plan '[]'
+list_json research '[{"number":47,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session "AC2: needs-research-Ticket #47 wird verarbeitet" 47
+assert_session "AC2: research-Ticket #47 wird verarbeitet" 47
 assert_contains "AC2: Modell ist Opus" "$GHSTATE_DIR/claude-lastargs" "opus"
 assert_contains "AC2: WebSearch ist erlaubt (bounded Web-Recherche)" "$GHSTATE_DIR/claude-lastargs" "WebSearch"
 assert_contains "AC2: Recherche-Prompt (Feature-Rechercheur) wird benutzt" "$GHSTATE_DIR/claude-lastargs" "Feature-Rechercheur"
@@ -246,33 +246,33 @@ assert_contains "AC2/#63: Rechercheur darf 'gh' (Allowlist)" "$GHSTATE_DIR/claud
 assert_contains "AC2/#63: Rechercheur darf lesende git-Inspektion" "$GHSTATE_DIR/claude-lastargs" "Bash(git log:*)"
 
 # ==============================================================================
-# 3. Kill-Switch no-opus überspringt das needs-research-Ticket komplett --
+# 3. Kill-Switch hands-off überspringt das research-Ticket komplett --
 #    fällt durch auf ein wartendes "ready"-Ticket (Bau-Rolle)
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[{"number":47,"labels":[{"name":"needs-research"},{"name":"no-opus"}]}]'
+list_json plan '[]'
+list_json research '[{"number":47,"labels":[{"name":"research"},{"name":"hands-off"}]}]'
 list_json ready '[{"number":48,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 run_main
-assert_session "AC3: no-opus überspringt #47, #48 (ready) wird gebaut" 48
+assert_session "AC3: hands-off überspringt #47, #48 (ready) wird gebaut" 48
 assert_absent  "AC3: #47 bleibt unangetastet" "$STATE_DIR/session-47"
 assert_contains "AC3: #48 bekommt in-progress" "$GHSTATE_DIR/applied-48" "ADD:in-progress"
 assert_contains "AC3/#63: RUN_ROLE=build behält vollen Bash-Zugriff (unverändert)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write,Glob,Grep,Bash"
 
 # ==============================================================================
-# 4. Inkonsistentes Ticket (needs-research UND ready gleichzeitig) wird über
+# 4. Inkonsistentes Ticket (research UND ready gleichzeitig) wird über
 #    den Recherche-Zweig gefangen, nicht als Bau-Ticket behandelt
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[{"number":50,"labels":[{"name":"needs-research"},{"name":"ready"}]}]'
-list_json ready '[{"number":50,"labels":[{"name":"needs-research"},{"name":"ready"}]}]'
+list_json plan '[]'
+list_json research '[{"number":50,"labels":[{"name":"research"},{"name":"ready"}]}]'
+list_json ready '[{"number":50,"labels":[{"name":"research"},{"name":"ready"}]}]'
 list_json needs-input '[]'
 run_main
-assert_session "AC4: #50 wird über needs-research verarbeitet" 50
+assert_session "AC4: #50 wird über research verarbeitet" 50
 assert_not_contains "AC4: #50 bekommt KEIN in-progress (kein Bau-Zweig)" "$GHSTATE_DIR/applied-50" "ADD:in-progress"
 
 # ==============================================================================
@@ -280,8 +280,8 @@ assert_not_contains "AC4: #50 bekommt KEIN in-progress (kein Bau-Zweig)" "$GHSTA
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[{"number":47,"labels":[{"name":"needs-research"}]}]'
+list_json plan '[]'
+list_json research '[{"number":47,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
 echo "sess-abc123" > "$STATE_DIR/session-47"

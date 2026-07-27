@@ -118,13 +118,13 @@ describe('prompts', () => {
 
     // Das Label flippt ERST am Ende -- ein abgebrochener Denk-Lauf darf ein
     // Ticket nie als baubereit zuruecklassen.
-    it('flippt needs-plan erst am Ende auf ready', () => {
-      expect(planPrompt(7)).toContain('gh issue edit 7 --remove-label needs-plan --add-label\n   ready');
+    it('flippt plan erst am Ende auf ready', () => {
+      expect(planPrompt(7)).toContain('gh issue edit 7 --remove-label plan --add-label\n   ready');
       expect(planPrompt(7)).toContain('Erst dieser abschließende Schritt flippt das Label');
     });
 
-    it('flippt needs-research auf needs-input, nicht auf ready', () => {
-      expect(researchPrompt(7)).toContain('--remove-label needs-research --add-label needs-input');
+    it('flippt research auf needs-input, nicht auf ready', () => {
+      expect(researchPrompt(7)).toContain('--remove-label research --add-label needs-input');
       expect(researchPrompt(7)).toContain('der Mensch entscheidet');
     });
 

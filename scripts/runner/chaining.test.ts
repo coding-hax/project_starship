@@ -70,7 +70,7 @@ describe('Chaining-Entscheidung (#61)', () => {
   const clean = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
 
   // AC1/AC3a in chaining.test.sh: nur dieser Ausgang laesst den Tick eine
-  // weitere Runde starten -- so kommt dort der teure needs-plan -> ready-Wechsel
+  // weitere Runde starten -- so kommt dort der teure plan -> ready-Wechsel
   // im SELBEN Tick zustande.
   it('erlaubt eine weitere Runde nach einem sauberen Lauf', () => {
     const { gh } = ghDouble();

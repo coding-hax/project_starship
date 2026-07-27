@@ -19,8 +19,8 @@ Architektur-Entscheidungen an geschützten Pfaden (`src/db/`, `src/crypto/`,
 
 Opus ist im Runner ausschließlich in **drei nur-lesenden Denk-Rollen** erlaubt:
 
-1. **Planung** (`needs-plan` → `ready`, dieses Ticket, #42).
-2. **Feature-Recherche** (`needs-research`, Folge-Ticket #43).
+1. **Planung** (`plan` → `ready`, dieses Ticket, #42).
+2. **Feature-Recherche** (`research`, Folge-Ticket #43).
 3. **Eskalation** nach drei erfolglosen Bau-Versuchen (#34) — **teilweise
    ersetzt durch ADR-0007**: dort baut Opus als letzte Eskalationsstufe
    tatsächlich, mit eigenem Deckel und eigenen Grenzen. Die Details stehen in
@@ -37,7 +37,7 @@ Produktionscode.
   einer festen Zahl für einen Tag zu parken widerspräche dem Ziel unbeaufsichtigten
   Fortschritts. Die Obergrenze ist das echte Nutzungs-/Session-Limit des Plans
   (429 → `blocked-limit`, automatische Fortsetzung), nicht ein fester Zähler.
-- **Kill-Switch:** Label `no-opus` am Ticket unterbindet jede Opus-Nutzung —
+- **Kill-Switch:** Label `hands-off` am Ticket unterbindet jede Opus-Nutzung —
   der Planer überspringt das Ticket vollständig, weder Planung noch Bau durch Opus.
 - **Strikt nur-lesend, präventiv erzwungen (#63):** Opus läuft mit
   `--allowedTools "Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"`
@@ -59,7 +59,7 @@ Produktionscode.
 - `CLAUDE.md` (Abschnitt „Autonomer Betrieb") und `docs/TOKEN-BUDGET.md` verweisen
   auf diese ADR. Die harte Regel „Opus tabu im Runner" wird zu „Opus tabu im Runner
   **außer** in den drei hier genannten Denk-Rollen, siehe ADR-0005".
-- `docs/WORKFLOW.md` beschreibt die Automatik: ein `needs-plan`-Ticket wird vom
+- `docs/WORKFLOW.md` beschreibt die Automatik: ein `plan`-Ticket wird vom
   Runner mit Opus (nur lesend) geplant und danach auf `ready` geflippt; bricht der
   Planer-Lauf ab, bleiben Label, Teilplan und Wiederaufnahme-Marker stehen — der
   nächste Lauf setzt am Marker fort, nie von vorne.
@@ -68,3 +68,19 @@ Produktionscode.
   Budget-Zähler gibt es bewusst nicht (siehe „Grenzen").
 - `scripts/tests/` prüft, dass `RUN_ROLE=plan`/`RUN_ROLE=research` nicht mit
   einem pauschalen `Bash` starten (#63).
+
+---
+
+## Nachtrag 27.07.2026 — nur Bezeichner, keine Entscheidung
+
+Im Zuge von #225 (S2a von #264) wurden drei Labels umbenannt. Die
+Entscheidungen dieses ADR bleiben unverändert; es ändert sich ausschließlich,
+wie die Schalter heißen:
+
+| bis 27.07.2026 | ab jetzt | warum |
+| --- | --- | --- |
+| `no-opus` | `hands-off` | der Name klang nach Modellwahl, ist aber der Finger-weg-Schalter: der Runner fasst das Ticket auf keinem Zweig an |
+| `needs-plan` | `plan` | eine Rolle für den Runner, keine Bitte an den Menschen. `needs-` trägt ab jetzt nur noch ein Label, das etwas von einem Menschen will |
+| `needs-research` | `research` | dito |
+
+Ältere Kommentare, Tickets und Läufe nennen weiterhin die alten Namen.

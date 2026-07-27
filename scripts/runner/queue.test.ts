@@ -30,9 +30,9 @@ describe('queuePending', () => {
     expect(queuePending(snap)).toBe('#41');
   });
 
-  it('counts a no-opus needs-plan ticket as pending', () => {
+  it('counts a hands-off plan ticket as pending', () => {
     const snap: QueueIssue[] = [
-      { number: 50, labels: [label('needs-plan'), label('no-opus')] },
+      { number: 50, labels: [label('plan'), label('hands-off')] },
       { number: 51, labels: [label('ready')] },
     ];
     expect(queuePending(snap)).toBe('#50, #51');
@@ -44,10 +44,10 @@ describe('queuePending', () => {
 });
 
 describe('queueNext', () => {
-  it('picks a running in-progress ticket over needs-plan and ready', () => {
+  it('picks a running in-progress ticket over plan and ready', () => {
     const snap: QueueIssue[] = [
       { number: 10, labels: [label('ready')] },
-      { number: 20, labels: [label('needs-plan')] },
+      { number: 20, labels: [label('plan')] },
       { number: 30, labels: [label('in-progress')] },
     ];
     expect(queueNext(snap)).toBe(30);
@@ -61,16 +61,44 @@ describe('queueNext', () => {
     expect(queueNext(snap)).toBe(41);
   });
 
-  it('skips a no-opus needs-plan ticket, falling back to ready', () => {
+  it('skips a hands-off plan ticket, falling back to ready', () => {
     const snap: QueueIssue[] = [
-      { number: 50, labels: [label('needs-plan'), label('no-opus')] },
+      { number: 50, labels: [label('plan'), label('hands-off')] },
       { number: 51, labels: [label('ready')] },
     ];
     expect(queueNext(snap)).toBe(51);
   });
 
-  it('returns null when only needs-research is open', () => {
-    expect(queueNext([{ number: 60, labels: [label('needs-research')] }])).toBeNull();
+  // #271 Punkt 1: der running-Zweig prueft hands-off bisher nicht -- die
+  // Anzeige nannte ein laufendes Ticket, das die Auswahl laengst ueberspringt.
+  it('skips a hands-off in-progress ticket, falling back to ready', () => {
+    const snap: QueueIssue[] = [
+      { number: 52, labels: [label('in-progress'), label('hands-off')] },
+      { number: 53, labels: [label('ready')] },
+    ];
+    expect(queueNext(snap)).toBe(53);
+  });
+
+  // #271 Punkt 2: dasselbe im ready-Zweig.
+  it('skips a hands-off ready ticket, falling back to the next ready one', () => {
+    const snap: QueueIssue[] = [
+      { number: 54, labels: [label('ready'), label('hands-off')], createdAt: '2024-01-01T00:00:00Z' },
+      { number: 55, labels: [label('ready')], createdAt: '2024-01-02T00:00:00Z' },
+    ];
+    expect(queueNext(snap)).toBe(55);
+  });
+
+  it('returns null when every ticket carries hands-off', () => {
+    const snap: QueueIssue[] = [
+      { number: 56, labels: [label('in-progress'), label('hands-off')] },
+      { number: 57, labels: [label('plan'), label('hands-off')] },
+      { number: 58, labels: [label('ready'), label('hands-off')] },
+    ];
+    expect(queueNext(snap)).toBeNull();
+  });
+
+  it('returns null when only research is open', () => {
+    expect(queueNext([{ number: 60, labels: [label('research')] }])).toBeNull();
   });
 
   it('returns null for an empty queue', () => {
@@ -114,9 +142,9 @@ describe('queueNext', () => {
     expect(queueNext(snap, '#77')).toBe(88);
   });
 
-  it('no-opus excludes a listed ticket, falling back to the plain queue/label logic', () => {
+  it('hands-off excludes a listed ticket, falling back to the plain queue/label logic', () => {
     const snap: QueueIssue[] = [
-      { number: 77, labels: [label('no-opus')], createdAt: '2024-01-01T00:00:00Z' },
+      { number: 77, labels: [label('hands-off')], createdAt: '2024-01-01T00:00:00Z' },
       { number: 88, labels: [label('ready')], createdAt: '2024-02-01T00:00:00Z' },
     ];
     expect(queueNext(snap, '#77')).toBe(88);

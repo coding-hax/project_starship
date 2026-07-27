@@ -27,7 +27,7 @@ es gibt. Sie ist für Architektur, Ticketschrieb und Bugs, an denen Sonnet zweim
 gescheitert ist. **Niemals** für Implementierung, niemals für Suchen, niemals im Runner
 — außer in den zwei eng begrenzten, nur-lesenden Denk-Rollen (Planung, Feature-
 Recherche) aus `docs/adr/0005-opus-im-runner.md` (kein Tages-Deckel, Kill-Switch
-`no-opus`, nie Bauen) und der **Eskalations-Rolle** aus
+`hands-off`, nie Bauen) und der **Eskalations-Rolle** aus
 `docs/adr/0007-opus-eskalation-baut.md`: Bleibt ein Ticket auf Sonnet/Haiku
 dreimal ohne Fortschritt, baut Opus als letzte Stufe selbst — mit hartem Deckel
 **max. 2 Opus-Bau-Läufe pro Ticket/Tag** und Kill-Switch `no-escalation`. Das ist

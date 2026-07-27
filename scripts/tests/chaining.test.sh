@@ -9,7 +9,7 @@
 # Der 'gh'-Stub liest 'issue list --label X' normalerweise aus einer
 # ungebundenen Datei list-X.json (wie in den Schwesterdateien). Für die
 # Chaining-Tests muss sich der Zustand aber ZWISCHEN Runden ändern können
-# (z. B. needs-plan -> ready, so wie es der echte Planer-Lauf am Ende tut).
+# (z. B. plan -> ready, so wie es der echte Planer-Lauf am Ende tut).
 # Dafür zaehlt der Stub Runden an ROUND_SNAP hoch -- der EINEN, ungelabelten
 # 'issue list --json number,labels,createdAt'-Abfrage (#64), die IMMER die
 # erste gh-Anfrage in run_round() ist -- und bevorzugt je Label eine
@@ -50,8 +50,8 @@ resolve_label_data() {   # $1 = Label, $2 = Runde -> JSON-Array auf stdout
 merged_snapshot() {   # $1 = Runde -> vereinigtes Array ueber alle 4 Ticketwahl-Labels
   local round="$1"
   { resolve_label_data in-progress "$round"
-    resolve_label_data needs-plan "$round"
-    resolve_label_data needs-research "$round"
+    resolve_label_data plan "$round"
+    resolve_label_data research "$round"
     resolve_label_data ready "$round"; } | jq -s 'add // []'
 }
 
@@ -248,8 +248,8 @@ assert_contains() {   # $1 = Beschreibung, $2 = Datei, $3 = erwarteter Substring
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":70,"labels":[{"name":"ready"}]}]'
 list_json_round ready 2 '[]'
 list_json needs-input '[{"number":80,"labels":[{"name":"needs-input"}]}]'
@@ -262,8 +262,8 @@ assert_eq "AC1: Kette bricht bei needs-input ab (genau 1 claude-Aufruf)" "1" "$(
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":90,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 run_main
@@ -271,8 +271,8 @@ assert_eq "AC2a: MAX_ROUNDS-Default (3) wird eingehalten" "3" "$(call_count)"
 
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":90,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 MAX_ROUNDS=2
@@ -281,20 +281,20 @@ MAX_ROUNDS=3
 assert_eq "AC2b: MAX_ROUNDS=2 wird als Override respektiert" "2" "$(call_count)"
 
 # ==============================================================================
-# 3. Chaining nach sauberem Lauf -- der teure needs-plan -> ready-Uebergang
-#    (#61 Kernidee): Runde 1 plant #61 (needs-plan), Runde 2 findet es als
+# 3. Chaining nach sauberem Lauf -- der teure plan -> ready-Uebergang
+#    (#61 Kernidee): Runde 1 plant #61 (plan), Runde 2 findet es als
 #    'ready' und baut es SOFORT im selben Tick.
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
 list_json needs-input '[]'
-list_json_round needs-plan     1 '[{"number":61,"labels":[{"name":"needs-plan"}]}]'
-list_json_round needs-research 1 '[]'
-list_json_round needs-plan     2 '[]'
-list_json_round needs-research 2 '[]'
+list_json_round plan     1 '[{"number":61,"labels":[{"name":"plan"}]}]'
+list_json_round research 1 '[]'
+list_json_round plan     2 '[]'
+list_json_round research 2 '[]'
 list_json_round ready          2 '[{"number":61,"labels":[{"name":"ready"}]}]'
 run_main
-assert_eq "AC3a: needs-plan -> ready lief in genau zwei Runden im selben Tick" "2" "$(call_count)"
+assert_eq "AC3a: plan -> ready lief in genau zwei Runden im selben Tick" "2" "$(call_count)"
 assert_contains "AC3b: die zweite Runde hat #61 tatsaechlich gebaut (in-progress gesetzt)" \
   "$GHSTATE_DIR/applied-61" "ADD:in-progress"
 
@@ -304,8 +304,8 @@ assert_contains "AC3b: die zweite Runde hat #61 tatsaechlich gebaut (in-progress
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":95,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 MAX_RUNTIME=1
@@ -322,8 +322,8 @@ assert_eq "AC4: Notbremse beendet die Kette nach der ersten Runde" "1" "$(call_c
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":96,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 CLAUDE_STUB_MODE=hardfail

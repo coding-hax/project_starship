@@ -419,7 +419,7 @@ Kein Eingreifen nötig.`,
           status: status(
             'nichts zu tun',
             '⚪️',
-            `⚪️ Kein Ticket mit Label \`ready\`, \`needs-plan\` oder \`needs-research\`. Ich habe nichts zu arbeiten.
+            `⚪️ Kein Ticket mit Label \`ready\`, \`plan\` oder \`research\`. Ich habe nichts zu arbeiten.
 
 Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
           ),

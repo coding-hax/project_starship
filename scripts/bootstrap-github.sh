@@ -40,6 +40,9 @@ label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgese
 label "human-approved" "5319E7" "Deine Freigabe für einen PR, der geschützte Pfade berührt."
 label "model:haiku"    "BFDADC" "Mechanisches Ticket — Runner nimmt Haiku statt Sonnet."
 label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Menschen freigegeben."
+label "hands-off"      "0B0B0B" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."
+label "plan"           "1D76DB" "Rolle: Opus plant das Ticket, statt es zu bauen."
+label "research"       "0052CC" "Rolle: Opus recherchiert den Fit und schlägt vor."
 
 # --- 3. Milestones ---------------------------------------------------------
 echo "==> Milestones"
