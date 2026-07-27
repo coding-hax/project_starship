@@ -64,10 +64,27 @@ describe('prompts', () => {
 
     // Geschuetzte Pfade: das Ticket wird SOFORT geparkt (#145), weil der Agent
     // das rote CI-Ergebnis nicht mehr live mitbekommt.
-    it('laesst geschuetzte Pfade selbst needs-answer setzen', () => {
+    // #283: Bis heute stand hier das Gegenteil -- der Prompt liess den Agenten
+    // bei jedem sensiblen Pfad SELBST 'needs-answer' setzen und damit das
+    // Ticket anhalten. Das war die Begleitmusik zum Waechter 'protected-paths':
+    // der PR waere ohnehin rot geblieben, bis ein Mensch freigibt. Ohne
+    // Waechter halt es nur noch ein Ticket an, ueber das niemand zu
+    // entscheiden hat.
+    it('verlangt bei sensiblen Pfaden einen Kommentar am Ticket', () => {
       expect(prompt).toContain('src/db/, src/crypto/');
-      expect(prompt).toContain("gh issue edit 7 --add-label needs-answer");
-      expect(prompt).toContain('NICHT wieder ab');
+      expect(prompt).toContain('kommentiere JETZT am Issue');
+      expect(prompt).toContain('Datenverlust');
+    });
+
+    it('laesst den Agenten dafuer KEIN Wartelabel mehr setzen', () => {
+      expect(prompt).not.toContain('--add-label needs-answer');
+      expect(prompt).not.toContain('NICHT wieder ab');
+    });
+
+    // Die Ausnahme bleibt: inhaltliche Unsicherheit ist weiterhin ein Fall
+    // zum Fragen -- nur eben nicht der blosse Dateipfad.
+    it('haelt am Fragen bei inhaltlicher Unsicherheit fest', () => {
+      expect(prompt).toContain('fragen statt raten');
     });
 
     // #167: der Agent hebt seinen PR selbst aus dem Entwurf.
@@ -99,6 +116,13 @@ describe('prompts', () => {
       expect(prompt).toContain('kein gelockertes Assert');
       expect(prompt).toContain("'waitForTimeout'");
       expect(prompt).toContain('erst den Trace lesen');
+    });
+
+    // #283: der Prompt darf keinen Waechter mehr versprechen, den es nicht
+    // gibt -- ein roter Check ist ab jetzt ausnahmslos ein Fund.
+    it('behauptet nicht mehr, ein geschuetzter Pfad halte den PR auf', () => {
+      expect(buildPrompt(7)).not.toContain('protected-paths');
+      expect(ciFixPrompt(7, 'egal')).not.toContain('protected-paths');
     });
 
     it('oeffnet keinen zweiten PR', () => {

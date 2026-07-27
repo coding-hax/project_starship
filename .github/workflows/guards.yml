@@ -9,6 +9,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+# What used to live here besides test-integrity: a 'protected-paths' job that
+# listed which sensitive paths a PR touched. It blocked until a human set
+# 'human-approved' (removed in #276), then it only reported, then it was
+# removed entirely (#283) -- a check that never fails teaches nobody anything,
+# and it was still a required check occupying a runner on every PR. The nets
+# that remain are schema-drift, quality (sync invariants), test-integrity,
+# e2e-offline and the db-migration review role.
+
 jobs:
   # --- Guard: no weakened tests --------------------------------------------
   test-integrity:
@@ -24,37 +32,3 @@ jobs:
             EXEMPT=1
           fi
           bash scripts/check-test-integrity.sh origin/main "$EXEMPT"
-
-  # --- Advisory: which sensitive paths does this PR touch? ------------------
-  # This used to BLOCK until a human set 'human-approved'. It no longer does
-  # (#276): the PRs are approved directly anyway, so the label bought no extra
-  # pair of eyes -- only an extra handle that regularly became the actual
-  # bottleneck (label on the PR instead of the issue, two check suites racing,
-  # tickets idle for a day).
-  #
-  # The accepted price, stated plainly: an unattended runner can now merge a
-  # migration, a crypto change or a sync fix on its own. The remaining nets are
-  # schema-drift, quality (sync invariants), test-integrity, e2e-offline and
-  # the db-migration review role.
-  protected-paths:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Report which sensitive paths are touched
-        run: |
-          git fetch origin main
-          TOUCHED=$(git diff --name-only origin/main...HEAD \
-            -- 'src/db/**' 'src/crypto/**' 'src/local/**' 'src/app/api/sync/**' \
-               'src/auth/**' 'src/app/api/auth/**' 'src/**/auth*' \
-               '.github/**' 'scripts/**')
-
-          if [ -z "$TOUCHED" ]; then
-            echo "✓ No sensitive paths touched."
-            exit 0
-          fi
-
-          echo "ℹ This PR touches sensitive paths:"
-          echo "$TOUCHED"
-          echo ""
-          echo "  Advisory only — this check never blocks the merge (#276)."

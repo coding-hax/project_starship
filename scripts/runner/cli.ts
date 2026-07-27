@@ -30,7 +30,6 @@ import {
   prIsBehind,
   prIsDirty,
   prMergeState,
-  prOnlyProtectedPathsRed,
   prSquashMerge,
   reopenFalselyClosedIssues,
 } from './pr.js';
@@ -130,7 +129,6 @@ export const commands: Record<string, CommandHandler> = {
     catchupFailReset(Number(args[0]), ctx.state);
     return '';
   },
-  'pr-only-protected-paths-red': (ctx, args) => (prOnlyProtectedPathsRed(args[0] ?? '', ctx.gh) ? '' : null),
   // Exit 0 = gemergt bzw. Auto-Merge aktiviert, Exit 1 = gescheitert (#217 AC4).
   'pr-squash-merge': (ctx, args) => (prSquashMerge(args[0] ?? '', ctx.gh) ? '' : null),
   'reopen-falsely-closed-issues': (ctx) => {

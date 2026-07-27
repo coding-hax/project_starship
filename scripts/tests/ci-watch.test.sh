@@ -297,9 +297,9 @@ assert_not_contains "T3: NICHT der generische Bau-Prompt" \
   "Pflichtlektüre ist NUR CLAUDE.md" "$PROMPT_503"
 
 # ==============================================================================
-# T4 -- CI rot NUR bei protected-paths -> needs-answer, kein Fix-Agent.
-#       #276 hat den Waechter entschaerft, der Fall kann im Betrieb nicht mehr
-#       eintreten; der Test beschreibt, was der Runner taete, wenn er zurueckkaeme.
+# T4 -- #283: Es gibt keinen Sonderfall 'protected-paths' mehr. Ein roter
+#       Check dieses Namens ist ab jetzt ein Fund wie jeder andere: Fix-Agent
+#       statt Wartelabel. Bis heute stand hier das Gegenteil.
 # ==============================================================================
 reset_state
 setup_wip_issue 304
@@ -307,22 +307,18 @@ setup_pr 304 504
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
   > "$GHSTATE_DIR/checks-504.json"
 run_round
-assert_file_absent "T4: kein Agentenlauf bei rotem protected-paths allein" \
+assert_file_present "T4: der Fix-Agent laeuft -- kein Sonderfall mehr" \
   "$GHSTATE_DIR/claude-called"
 LABELS_304=$(cat "$GHSTATE_DIR/labels-304" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_304" in
-  *needs-answer*) ok "T4: needs-answer wird gesetzt -- ein Mensch muss draufsehen" ;;
-  *) red "T4: needs-answer wird gesetzt (Labels: $LABELS_304)" ;;
+  *needs-answer*) red "T4: KEIN Wartelabel -- niemand muss hier etwas freigeben (Labels: $LABELS_304)" ;;
+  *) ok "T4: kein Wartelabel -- niemand muss hier etwas freigeben" ;;
 esac
-# #272: es gibt nur noch EIN Wartelabel -- die frueher hier gepruefte
-# Unterscheidung "Freigabe (needs-answer allein) vs. Frage (+ needs-answer)"
-# existiert nicht mehr. Geprueft wird stattdessen, dass das abgeschaffte
-# 'needs-answer' wirklich nirgends mehr auftaucht.
 case "$LABELS_304" in
-  *needs-input*) red "T4 (#272): 'needs-input' ist abgeschafft, darf nicht gesetzt werden (Labels: $LABELS_304)" ;;
-  *) ok "T4 (#272): 'needs-input' wird nicht mehr gesetzt -- ein Wartelabel genuegt" ;;
+  *needs-input*) red "T4 (#272): 'needs-input' ist abgeschafft (Labels: $LABELS_304)" ;;
+  *) ok "T4 (#272): 'needs-input' wird nicht mehr gesetzt" ;;
 esac
-assert_file_absent "T4: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-504"
+assert_file_absent "T4: kein Auto-Merge, solange ein Check rot ist" "$GHSTATE_DIR/merged-504"
 
 # ==============================================================================
 # T5 -- Noch kein PR (Agent mitten in der Arbeit) -> normaler Bau-Pfad läuft
@@ -465,41 +461,40 @@ case "$LABELS_403" in
 esac
 
 # ==============================================================================
-# T10 -- Bau-Prompt weist an: geschuetzten Pfad beim Oeffnen des Draft-PR
-#        SELBST als needs-answer markieren und in diesem Lauf nicht wieder
-#        abnehmen (#163) -- die Wache bleibt nur das Sicherheitsnetz
+# T10 -- #283: Der Bau-Prompt verlangt bei sensiblen Pfaden weiterhin einen
+#        Kommentar am Ticket ("ein Fehler ist dort Datenverlust"), aber KEIN
+#        selbstgesetztes Wartelabel mehr -- es gaebe niemanden, der etwas
+#        freizugeben haette. Bis #283 stand hier das Gegenteil (#163).
 # ==============================================================================
 reset_state
 setup_wip_issue 320
 printf '[]' > "$GHSTATE_DIR/prlist.json"   # noch kein PR -> generischer Bau-Prompt
 run_round
 PROMPT_320=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
-assert_contains "T10: Bau-Prompt weist an, needs-answer bei geschuetzten Pfaden selbst zu setzen" \
+assert_contains "T10: Bau-Prompt nennt die sensiblen Pfade weiterhin" \
+  "src/crypto/" "$PROMPT_320"
+assert_not_contains "T10: Bau-Prompt setzt dafuer KEIN needs-answer mehr" \
   "add-label needs-answer" "$PROMPT_320"
-assert_contains "T10: Bau-Prompt untersagt, es im selben Lauf wieder abzunehmen" \
-  "NICHT wieder ab" "$PROMPT_320"
 
 # ==============================================================================
-# T11 -- protected-paths allein rot, needs-answer haengt bereits dran (z. B.
-#        vom Bau-Agent selbst gesetzt, #163) -> erneutes Setzen durch die
-#        Wache bleibt folgenlos, kein Fehler, kein Fix-Agent, kein Auto-Merge
+# T11 -- #283: Die CI-Wache setzt bei einem roten Check NIE ein Wartelabel.
+#        Bis heute gab es dafuer genau einen Fall ('protected-paths' allein
+#        rot). Den gibt es nicht mehr -- rot heisst jetzt ausnahmslos: Fund
+#        fuer den Fix-Agenten, niemand wird gefragt.
 # ==============================================================================
 reset_state
 setup_wip_issue 306
 setup_pr 306 506
-: > "$GHSTATE_DIR/labels-306"
-printf 'in-progress\nneeds-answer\n' >> "$GHSTATE_DIR/labels-306"
-printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 rot"}]' \
   > "$GHSTATE_DIR/checks-506.json"
 run_round
-assert_file_absent "T11: kein Agentenlauf, needs-answer haengt schon vom Bau-Agent" \
-  "$GHSTATE_DIR/claude-called"
+assert_file_present "T11: der Fix-Agent laeuft" "$GHSTATE_DIR/claude-called"
 LABELS_306=$(cat "$GHSTATE_DIR/labels-306" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_306" in
-  *needs-answer*) ok "T11: needs-answer bleibt stehen, erneutes Setzen ist folgenlos" ;;
-  *) red "T11: needs-answer bleibt stehen (Labels: $LABELS_306)" ;;
+  *needs-answer*) red "T11: die Wache setzt KEIN Wartelabel (Labels: $LABELS_306)" ;;
+  *) ok "T11: die Wache setzt kein Wartelabel" ;;
 esac
-assert_file_absent "T11: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-506"
+assert_file_absent "T11: kein Auto-Merge, solange ein Check rot ist" "$GHSTATE_DIR/merged-506"
 
 # ==============================================================================
 # T12 -- Bau-Prompt (#167): weist an, den PR am sauberen Ende SELBST aus dem
@@ -517,20 +512,19 @@ assert_contains "T12: Bau-Prompt weist an, Auto-Merge selbst zu aktivieren" \
   "gh pr merge --squash --auto --delete-branch" "$PROMPT_321"
 
 # ==============================================================================
-# T13 -- Bau-Prompt (#167): auch im Zweig fuer geschuetzte Pfade bleibt die
-#        Anweisung stehen -- needs-answer haelt das Ticket geparkt, aber der
-#        PR soll trotzdem kein Entwurf mehr sein ('protected-paths' haelt ihn
-#        ohnehin rot, bis ein Mensch freigibt)
+# T13 -- Bau-Prompt (#283): sensible Pfade verlangen einen KOMMENTAR am
+#        Ticket, aber kein selbstgesetztes Wartelabel mehr -- es gibt keinen
+#        Waechter mehr, auf dessen Freigabe man warten koennte.
 # ==============================================================================
 reset_state
 setup_wip_issue 322
 printf '[]' > "$GHSTATE_DIR/prlist.json"
 run_round
 PROMPT_322=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
-assert_contains "T13: Bau-Prompt haelt an 'gh pr ready' fest, auch bei needs-answer aus Schritt 7" \
-  "wegen eines" "$PROMPT_322"
-assert_contains "T13: Bau-Prompt erwaehnt, dass protected-paths trotzdem rot haelt" \
-  "protected-paths" "$PROMPT_322"
+assert_contains "T13: Bau-Prompt verlangt den Kommentar bei sensiblen Pfaden" \
+  "kommentiere JETZT am Issue" "$PROMPT_322"
+assert_not_contains "T13: Bau-Prompt verlangt KEIN selbstgesetztes needs-answer mehr" \
+  "setze SELBST" "$PROMPT_322"
 
 # ==============================================================================
 # T14 -- CI-Fix-Prompt (#167): erhaelt dieselbe Anweisung -- der Fix-Agent

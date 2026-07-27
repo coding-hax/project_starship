@@ -246,13 +246,13 @@ mehr „der Runner hat noch nicht hingeschaut".
 **Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das ist Aufgabe
 der CI-Wache im Runner-Takt danach, nicht deine. Kurz zusammengefasst: läuft
 CI noch, passiert nichts; wird sie grün, merged GitHub von selbst; wird sie
-rot (außer bei `protected-paths`, siehe unten), startet dich der nächste Takt
+rot, startet dich der nächste Takt
 gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
 Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
 wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
 vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-answer`
-**und** `needs-answer` (dieselbe erschöpfte Eskalation wie in „So fragst du"
-oben, ADR-0007) — drei rote Runden heißen, das Ticket ist falsch geschnitten,
+(dieselbe erschöpfte Eskalation wie in „So fragst du" oben, ADR-0007) — drei
+rote Runden heißen, das Ticket ist falsch geschnitten,
 eine menschliche Entscheidung. Vollständige Zustandstabelle:
 `docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
@@ -260,21 +260,18 @@ Stellst du stattdessen eine Frage (`needs-answer`, siehe „Autonomer Betrieb"
 oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
 ready` erreichst.
 
-### Geschützte Pfade — hier merged niemand automatisch
+### Sensible Pfade — hier fängt dich niemand mehr auf
 
 `src/db/`, `src/crypto/`, `src/local/`, `src/app/api/sync/`, alles mit `auth` im Namen,
 `.github/` und `scripts/`. Ein Fehler ist dort kein Bug, sondern **Datenverlust**.
 
-**Seit #276 blockiert der Merge dort nicht mehr.** `protected-paths` läuft
-weiter und nennt im Log, welche dieser Dateien du berührt hast — aber es hält
-nichts an, und das Label `human-approved` gibt es nicht mehr. Der Mensch gibt
-die PRs ohnehin direkt frei; die Freigabe hat keinen zweiten Blick erzeugt,
-nur einen zusätzlichen Handgriff (Begründung und der bewusst akzeptierte
-Preis: `docs/WORKFLOW.md`, „Ein Wächter").
+**Es gibt dort keinen Wächter mehr.** `protected-paths` blockierte seit #276
+nicht mehr und ist seit #283 ganz weg — ein Check, der nie fehlschlägt, bringt
+niemandem etwas bei. Der Mensch gibt die PRs ohnehin direkt frei (Begründung
+und der bewusst akzeptierte Preis: `docs/WORKFLOW.md`, „Ein Wächter").
 
-Das macht deine Sorgfalt **wichtiger**, nicht unwichtiger — es fängt dich dort
-niemand mehr auf. Berührt dein Diff einen dieser Pfade, **sofort beim Öffnen
-des PR**:
+Das macht deine Sorgfalt **wichtiger**, nicht unwichtiger. Berührt dein Diff
+einen dieser Pfade, **sofort beim Öffnen des PR**:
 
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen
    könnte, und wie der Rückweg aussieht. Das ist jetzt die einzige Spur, die
@@ -285,10 +282,14 @@ des PR**:
    sicher**, ist das ein Fall für `needs-answer` und Nachfragen, nicht für
    „läuft ja durch".
 
+Was du **nicht** tust: `needs-answer` setzen, nur weil ein Pfad in dieser Liste
+steht. Das hielte das Ticket an, ohne dass jemand etwas zu entscheiden hätte —
+und genau das war bis #283 die Vorschrift. Der Kommentar ersetzt sie.
+
 Versuche nie, einen Wächter abzuschalten oder eine Änderung so umzuschneiden,
-dass sie an einer Prüfung vorbeirutscht. Dass `protected-paths` nicht mehr
-blockiert, ist eine **Entscheidung des Menschen** — keine Einladung, es bei
-den übrigen Toren genauso zu halten.
+dass sie an einer Prüfung vorbeirutscht. Dass es hier keinen mehr gibt, ist
+eine **Entscheidung des Menschen** — keine Einladung, es bei den übrigen Toren
+genauso zu halten.
 
 ### Tests sind kein Hindernis, sie sind der Auftrag
 
