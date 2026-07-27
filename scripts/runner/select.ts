@@ -76,6 +76,19 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
   return null;
 }
 
+// Das Ticket, das der Runner beim naechsten Takt naehme -- fuer die Anzeige im
+// Status-Issue. Bis #271 war das eine zweite, von Hand gepflegte Kaskade in
+// queue.ts, die regelmaessig abdriftete. Jetzt ist es dieselbe Funktion: eine
+// Anzeige, die ein anderes Ticket nennt als das, was der Runner dann baut, ist
+// schlimmer als gar keine -- man trifft Label-Entscheidungen auf ihrer
+// Grundlage, und zwar vom Handy aus, wo sich nichts nachpruefen laesst.
+//
+// Nur die Nummer, keine Rolle: die Anzeige braucht nicht mehr. Wer die Rolle
+// braucht, ruft `selectTicket()` selbst.
+export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null {
+  return selectTicket(snapshot, queueBody)?.issue ?? null;
+}
+
 export type SelectOutcome =
   | { kind: 'ticket'; issue: number; role: RunRole; mode: 'start' | 'resume' }
   | { kind: 'none' };

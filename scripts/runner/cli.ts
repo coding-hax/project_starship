@@ -18,7 +18,7 @@ import { createClock, type Clock } from './clock.js';
 import { createGhAdapter, type GhAdapter } from './gh.js';
 import { createGitAdapter, type GitAdapter } from './git.js';
 import { dPlus, fmtHm, resetEpoch } from './time.js';
-import { queueNext, queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
+import { queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
 import { createStateAdapter, type StateAdapter } from './state.js';
 import { tierBump, tierCurrent, tierReset } from './tier.js';
 import { blockerSig, buildEscalationEval, resumeAllowed, sha1Of } from './escalation.js';
@@ -36,7 +36,7 @@ import {
 } from './pr.js';
 import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
-import { pickTicket } from './select.js';
+import { pickTicket, queueNext } from './select.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';

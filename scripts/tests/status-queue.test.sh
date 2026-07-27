@@ -63,14 +63,16 @@ SNAP='[
 assert_eq "AC: in-progress schlägt plan und ready" "30" "$(queue_next "$SNAP")"
 
 # ==============================================================================
-# 2. needs-input schließt aus (weder queue_next noch queue_pending)
+# 2. Das Wartelabel schließt aus (weder queue_next noch queue_pending)
+#    (#272: hieß bis S2b 'needs-input' -- gemeint war immer "wartet auf den
+#    Menschen", nur der Name hat sich geändert.)
 # ==============================================================================
 SNAP='[
-  {"number":40,"labels":['"$(label ready)"','"$(label needs-input)"']},
+  {"number":40,"labels":['"$(label ready)"','"$(label needs-answer)"']},
   {"number":41,"labels":['"$(label ready)"']}
 ]'
-assert_eq "AC: needs-input-Ticket ist nicht 'als Nächstes'" "41" "$(queue_next "$SNAP")"
-assert_eq "AC: needs-input-Ticket zählt nicht zur Pending-Liste" "#41" "$(queue_pending "$SNAP")"
+assert_eq "AC: wartendes Ticket ist nicht 'als Nächstes'" "41" "$(queue_next "$SNAP")"
+assert_eq "AC: wartendes Ticket zählt nicht zur Pending-Liste" "#41" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
 # 3. hands-off-plan zählt in queue_pending, aber NICHT in queue_next
@@ -83,10 +85,18 @@ assert_eq "AC: hands-off-plan wird bei queue_next übersprungen" "51" "$(queue_n
 assert_eq "AC: hands-off-plan zählt trotzdem als Pending-Arbeit" "#50, #51" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
-# 4. Nur research offen -> queue_next leer, queue_pending = "#N"
+# 4. Nur research offen -> queue_next nennt es, queue_pending = "#N"
+#
+# ACHTUNG, hier stand bis #271 das Gegenteil ("queue_next leer"), und das war
+# schlicht falsch: die Anzeige meldete "nichts steht an", während der Runner im
+# nächsten Takt genau dieses Ticket nahm -- der research-Zweig fehlte in der
+# zweiten Kaskade, die queue_next damals war. Seit #271 delegiert queue_next an
+# dieselbe Auswahl wie der Runner, deshalb ist die Antwort jetzt '60'.
+# Kein aufgeweichtes Assert: die Zusicherung ist schärfer geworden, sie hält
+# jetzt Anzeige und Auswahl aneinander fest.
 # ==============================================================================
 SNAP='[{"number":60,"labels":['"$(label research)"']}]'
-assert_eq "AC: nur research -> queue_next leer" "" "$(queue_next "$SNAP")"
+assert_eq "AC: nur research -> queue_next nennt das Ticket (#271)" "60" "$(queue_next "$SNAP")"
 assert_eq "AC: nur research -> queue_pending zeigt Ticket" "#60" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
