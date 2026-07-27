@@ -416,12 +416,12 @@ verloren.
 
 Zwei Mechanismen verhindern das:
 
-- **Eigenes Subject/Body** (`pr_squash_merge()` in `scripts/claude-runner.sh`):
+- **Eigenes Subject/Body** (`prSquashMerge()` in `scripts/runner/pr.ts`):
   Jeder Squash-Merge, den der Runner auslöst, übergibt `--subject` (den
   PR-Titel) und ein leeres `--body` explizit — GitHub sammelt dann nichts
   mehr selbst ein. Ein Ticket schließt **nur**, wenn sein eigener PR-Titel
   `Closes #N` trägt.
-- **Netz** (`reopen_falsely_closed_issues()`): Vor jeder Ticketauswahl prüft
+- **Netz** (`reopenFalselyClosedIssues()`): Vor jeder Ticketauswahl prüft
   der Runner alle offenen PRs mit `Closes #N` im Titel. Ist das referenzierte
   Ticket trotzdem `CLOSED`, kann dieser (noch offene) PR es nicht gewesen
   sein — der Runner öffnet das Ticket wieder und kommentiert den Grund samt

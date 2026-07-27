@@ -23,3 +23,90 @@ test.describe('Design-System: Heading↔Content-Abstand', () => {
     expect(marginBottom).toBe('24px');
   });
 });
+
+test.describe('Design-System: FAB-Glyphengröße', () => {
+  test('FAB-Icon hat 34px font-size (AC1)', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    const fabIcon = page.locator('.fab__icon');
+    const fontSize = await fabIcon.evaluate((el) => getComputedStyle(el).fontSize);
+    expect(fontSize).toBe('34px');
+  });
+
+  test('FAB-Button ist exakt 56×56px (AC2)', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    const fab = page.locator('.fab');
+    const bbox = await fab.boundingBox();
+    expect(bbox?.width).toBe(56);
+    expect(bbox?.height).toBe(56);
+  });
+
+  test('FAB-Icon liegt innerhalb des FAB-Buttons (AC4) — 375px', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    const fab = page.locator('.fab');
+    const fabIcon = page.locator('.fab__icon');
+
+    const fabBbox = await fab.boundingBox();
+    const iconBbox = await fabIcon.boundingBox();
+
+    expect(fabBbox).not.toBeNull();
+    expect(iconBbox).not.toBeNull();
+
+    if (fabBbox && iconBbox) {
+      expect(iconBbox.x).toBeGreaterThanOrEqual(fabBbox.x);
+      expect(iconBbox.y).toBeGreaterThanOrEqual(fabBbox.y);
+      expect(iconBbox.x + iconBbox.width).toBeLessThanOrEqual(fabBbox.x + fabBbox.width);
+      expect(iconBbox.y + iconBbox.height).toBeLessThanOrEqual(fabBbox.y + fabBbox.height);
+    }
+  });
+
+  test('FAB-Icon liegt innerhalb des FAB-Buttons (AC4) — 1280px', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1024 });
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    const fab = page.locator('.fab');
+    const fabIcon = page.locator('.fab__icon');
+
+    const fabBbox = await fab.boundingBox();
+    const iconBbox = await fabIcon.boundingBox();
+
+    expect(fabBbox).not.toBeNull();
+    expect(iconBbox).not.toBeNull();
+
+    if (fabBbox && iconBbox) {
+      expect(iconBbox.x).toBeGreaterThanOrEqual(fabBbox.x);
+      expect(iconBbox.y).toBeGreaterThanOrEqual(fabBbox.y);
+      expect(iconBbox.x + iconBbox.width).toBeLessThanOrEqual(fabBbox.x + fabBbox.width);
+      expect(iconBbox.y + iconBbox.height).toBeLessThanOrEqual(fabBbox.y + fabBbox.height);
+    }
+  });
+
+  test('FAB-Icon liegt innerhalb des FAB-Buttons auch auf /gewohnheiten (geteilt)', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+
+    const fab = page.locator('.fab');
+    const fabIcon = page.locator('.fab__icon');
+
+    const fabBbox = await fab.boundingBox();
+    const iconBbox = await fabIcon.boundingBox();
+
+    expect(fabBbox).not.toBeNull();
+    expect(iconBbox).not.toBeNull();
+
+    if (fabBbox && iconBbox) {
+      expect(iconBbox.x).toBeGreaterThanOrEqual(fabBbox.x);
+      expect(iconBbox.y).toBeGreaterThanOrEqual(fabBbox.y);
+      expect(iconBbox.x + iconBbox.width).toBeLessThanOrEqual(fabBbox.x + fabBbox.width);
+      expect(iconBbox.y + iconBbox.height).toBeLessThanOrEqual(fabBbox.y + fabBbox.height);
+    }
+  });
+});
