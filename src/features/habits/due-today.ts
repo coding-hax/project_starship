@@ -1,3 +1,4 @@
+import { isDoneInWeek } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -101,14 +102,8 @@ export function doneEarlierThisWeek(
   if (habit.schedule !== 'weekly') return false;
 
   const today = toDateKey(now);
-  const { start, end } = currentWeekRange(now);
+  const range = currentWeekRange(now);
+  const earlierLogs = logs.filter((log) => log.logDate !== today);
 
-  return logs.some(
-    (log) =>
-      log.habitId === habit.id &&
-      log.done &&
-      log.logDate !== today &&
-      log.logDate >= start &&
-      log.logDate <= end,
-  );
+  return isDoneInWeek(earlierLogs, habit.id, range);
 }

@@ -16,6 +16,41 @@ async function reminderSendRows(kind: string): Promise<unknown[]> {
   return result.rows;
 }
 
+async function insertHabit(overrides: {
+  name?: string;
+  schedule?: 'daily' | 'weekly' | 'custom';
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+} = {}): Promise<string> {
+  const id = randomUUID();
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO habits
+        (id, updated_at, deleted_at, synced_at, sync_seq, name, schedule, color, archived_at, created_at)
+       VALUES
+        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, NULL, $5, now())`,
+      [
+        id,
+        overrides.deletedAt ?? null,
+        overrides.name ?? 'Laufen',
+        overrides.schedule ?? 'daily',
+        overrides.archivedAt ?? null,
+      ],
+    ),
+  );
+  return id;
+}
+
+async function insertHabitLog(habitId: string, logDate: string, done = true): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO habit_logs (id, updated_at, deleted_at, synced_at, sync_seq, habit_id, log_date, done)
+       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)`,
+      [randomUUID(), habitId, logDate, done],
+    ),
+  );
+}
+
 async function insertTask(overrides: {
   title?: string;
   dueAt?: string | null;
@@ -137,5 +172,64 @@ test.describe('tasks-due', () => {
     const body = await response.json();
 
     expect(body.sent).toContain('tasks-due');
+  });
+});
+
+/**
+ * `habits-open` (issue #243, "M3-T4"). Pinned past the 20:00 Berlin slot the same
+ * way `tasks-due` above pins past 07:00 — `2026-07-15` is a Wednesday, so its
+ * Mon–Sun week (07-13..07-19) has days on both sides for the weekly case.
+ *
+ * As with `tasks-due`, the exact notification text (name, "und N weitere", the
+ * streak suffix) is Vitest territory (src/push/reminders/habits-open.test.ts) —
+ * no push_subscriptions row is seeded here, so this suite only proves whether
+ * `habits-open` fires, not what it says. "Tippen öffnet /gewohnheiten" (AC6) is
+ * the generic SW notificationclick behaviour already proven for any payload's
+ * `url` in tests/push-sw.prod.spec.ts (#122); habits-open.test.ts already asserts
+ * it hands that handler `url: '/gewohnheiten'`.
+ */
+test.describe('habits-open', () => {
+  const AT_2005_BERLIN = { 'x-e2e-now': '2026-07-15T18:05:00.000Z' }; // 20:05 CEST, a Wednesday
+
+  test('eine offene Gewohnheit löst eine Erinnerung aus (AC1)', async ({ request }) => {
+    await insertHabit({ name: 'Laufen' });
+
+    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
+    const body = await response.json();
+
+    expect(body.sent).toContain('habits-open');
+    expect(await reminderSendRows('habits-open')).toHaveLength(1);
+  });
+
+  test('ist alles abgehakt, kommt keine Benachrichtigung (AC2)', async ({ request }) => {
+    const habitId = await insertHabit({ name: 'Laufen' });
+    await insertHabitLog(habitId, '2026-07-15');
+
+    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('habits-open');
+    expect(body.skipped).toContain('habits-open');
+  });
+
+  test('eine wöchentliche Gewohnheit, diese Woche schon erledigt, gilt nicht als offen (AC3)', async ({
+    request,
+  }) => {
+    const habitId = await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
+    await insertHabitLog(habitId, '2026-07-13'); // Monday — same Mon–Sun week, not today
+
+    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('habits-open');
+  });
+
+  test('archivierte Gewohnheiten erscheinen nie (AC4)', async ({ request }) => {
+    await insertHabit({ name: 'Alte Gewohnheit', archivedAt: '2026-06-01T00:00:00.000Z' });
+
+    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('habits-open');
   });
 });
