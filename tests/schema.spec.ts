@@ -9,6 +9,7 @@ import {
   habits,
   pushSubscriptions,
   recoveryCodes,
+  reminderSends,
   sessions,
   syncState,
   tasks,
@@ -38,6 +39,7 @@ const tables = [
   pushSubscriptions,
   garminActivities,
   garminTokens,
+  reminderSends,
 ];
 
 for (const table of tables) {
