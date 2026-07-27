@@ -126,6 +126,11 @@ export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
+# S6 (#203): claude-runner.sh hat keine Bash-Wrapper mehr -- diese Bruecke
+# stellt die Funktionsnamen als direkten Ruf in den TS-Kern wieder her.
+# shellcheck source=/dev/null
+source "$TEST_DIR/lib/ts-core-shims.sh"
+
 reset_state() {
   rm -rf "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
@@ -287,6 +292,10 @@ T6_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$T6_LABELS" in
   *needs-input*) ok "T6: needs-input wird bei jedem Treffer gesetzt (idempotent)" ;;
   *) red "T6: needs-input wird bei jedem Treffer gesetzt (Labels: $T6_LABELS)" ;;
+esac
+case "$T6_LABELS" in
+  *needs-answer*) red "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info (Labels: $T6_LABELS)" ;;
+  *) ok "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info" ;;
 esac
 
 # ==============================================================================

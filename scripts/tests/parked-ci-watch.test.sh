@@ -155,7 +155,8 @@ cat > "$FAKEBIN/claude" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
 touch "$G/claude-called"
-[ "${1:-}" = "-p" ] && printf '%s' "$2" > "$G/last-prompt"
+# Der Prompt kommt seit S6 (#203) ueber stdin, nicht mehr als Argument zu -p.
+cat > "$G/last-prompt"
 printf '%s' '{"session_id":"stub","result":"ok"}'
 exit 0
 STUB
@@ -263,6 +264,18 @@ assert_labels "T1: #401 verliert parked UND needs-input" 401 ""
 assert_file_present "T1: Draft #601 wird auf 'ready' gesetzt" "$GHSTATE_DIR/ready-601"
 assert_file_present "T1: Auto-Merge für #601 wird aktiviert" "$GHSTATE_DIR/merged-601"
 assert_file_absent "T1: kein Agentenlauf ausgelöst" "$GHSTATE_DIR/claude-called"
+
+# ==============================================================================
+# T1b (#196) -- dasselbe, aber mit haengendem needs-answer-Marker: muss beim
+#       Freigeben mitverschwinden, kein verwaister Marker (AC6).
+# ==============================================================================
+reset_state
+seed_issue 411 "needs-input,needs-answer,parked"
+seed_pr 411 611
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+  > "$GHSTATE_DIR/checks-611.json"
+run_round
+assert_labels "T1b (#196): #411 verliert parked, needs-input UND needs-answer" 411 ""
 
 # ==============================================================================
 # T2 -- geparktes Ticket, PR läuft noch (pending) -> unverändert geparkt

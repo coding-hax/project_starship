@@ -220,6 +220,27 @@ describe('buildEscalationEval', () => {
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '205', '--remove-label', 'opus-boost']);
   });
 
+  it('#196: sets needs-input AND needs-answer when opus itself is exhausted', () => {
+    state.write('tier-206', 'opus\n');
+    const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
+    const git = gitTip('');
+    const input = { issue: 206, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' };
+
+    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git);
+
+    expect(gh.run).toHaveBeenCalledWith([
+      'issue',
+      'edit',
+      '206',
+      '--add-label',
+      'needs-input',
+      '--add-label',
+      'needs-answer',
+    ]);
+  });
+
   it('does nothing outside of the build role', () => {
     const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
     buildEscalationEval(

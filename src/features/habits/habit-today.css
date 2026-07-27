@@ -44,14 +44,25 @@
   flex-shrink: 0;
 }
 
-.habit-today__name {
+.habit-today__name-group {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
+}
+
+.habit-today__name {
   color: var(--text);
 }
 
 .habit-today__item--done .habit-today__name {
   color: var(--text-muted);
   text-decoration: line-through;
+}
+
+.habit-today__week-hint {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .habit-today__streak {

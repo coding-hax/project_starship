@@ -29,6 +29,7 @@ Vor jeder Arbeit lesen:
 9. **Journal-Inhalte verlassen das Gerät nur verschlüsselt.** Niemals Klartext an den Server, niemals Klartext loggen.
 10. **Niemals Secrets committen.** Keine echten Tokens in Tests, Fixtures oder Beispielen.
 11. **Bei Unklarheit: fragen, nicht raten.** Widerspricht ein Ticket der Vision, wird nicht implementiert, sondern nachgefragt.
+12. **Jeder Lauf arbeitet in einem eigenen Worktree.** Egal ob Runner oder Terminal-Sitzung: Der Haupt-Checkout `/Users/max/dev/project_starship` ist zum Lesen da, nicht zum Bauen. **Niemals** darin einen Branch wechseln, committen oder pushen — es arbeiten mehrere Läufe gleichzeitig im selben Repo. Details unten: „Ein Worktree je Lauf".
 
 ## Konventionen
 
@@ -68,7 +69,9 @@ So fragst du:
 
 1. `gh issue comment <nr>` mit: was du wissen musst, **konkrete Optionen (A/B/C)**,
    deine Empfehlung, und was passiert, wenn nicht geantwortet wird.
-2. Label `needs-input` setzen.
+2. Label `needs-input` **und** `needs-answer` setzen — es steht eine Frage im
+   Ticket, die eine geschriebene Antwort braucht (anders als eine reine Freigabe,
+   siehe „Geschützte Pfade" unten: dort **nur** `needs-input`).
 3. Lauf beenden.
 
 Mehr brauchst du hier nicht zu tun: der Runner parkt dein Ticket automatisch
@@ -83,6 +86,35 @@ ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach
 
 **Rate nie.** Lieber ein Ticket steht 12 Stunden still, als dass es in die falsche
 Richtung läuft.
+
+### Ein Worktree je Lauf — vor der ersten Zeile Code
+
+Es arbeiten **mehrere Läufe gleichzeitig im selben Repo**: der Runner, parallele
+Terminal-Sitzungen, du. Ein geteilter Checkout hat genau einen `HEAD` — wer darin
+den Branch wechselt, zieht ihn allen anderen unter den Füßen weg.
+
+Das ist kein theoretisches Risiko. Am 26.07.26 baute der Runner das Ticket #196 im
+Haupt-Checkout, der auf `fix/232-fab-icon-size` stand. Die komplette Runner-Arbeit
+landete in einem Commit mit der Nachricht „increase FAB icon font-size" und wäre über
+den Icon-PR halbfertig nach `main` gemerged worden.
+
+Deshalb, **bevor du irgendetwas änderst**:
+
+```bash
+git -C /Users/max/dev/project_starship fetch origin
+git -C /Users/max/dev/project_starship worktree add -b feat/42-quick-add \
+  /Users/max/dev/project_starship/.claude/worktrees/issue-42 origin/main
+```
+
+- **Absolute Pfade, immer.** Ein relativer Pfad legt den Worktree mitten ins Repo und
+  blockiert dort stumm jedes weitere `git`-Kommando.
+- `.claude/worktrees/` ist in `.gitignore` — der Worktree taucht nirgends im Diff auf.
+- Ein Worktree je Ticket, Name = Ticketnummer. Nach dem Merge:
+  `git worktree remove <pfad>`.
+- Nimmst du einen abgebrochenen Lauf wieder auf, benutzt du **denselben** Worktree
+  weiter, statt einen zweiten anzulegen.
+- Der Haupt-Checkout bleibt auf `main` und sauber. Findest du ihn auf einem
+  Feature-Branch vor: **nicht** darin weiterarbeiten, eigenen Worktree anlegen.
 
 ### Fortschritt sichern — nach JEDEM Schritt
 
@@ -148,6 +180,8 @@ und Fortschrittskommentar und macht weiter. **Kein Neuanfang, kein Rollback.**
 
 ### Was du niemals tust
 
+- Im Haupt-Checkout bauen: den Branch dort wechseln, dort committen oder pushen
+  (siehe „Ein Worktree je Lauf")
 - Nach `main` pushen (Branch-Schutz verhindert es ohnehin)
 - Force-Push, History umschreiben, einen Check überspringen
 - Ein zweites Ticket beginnen, während eines auf `in-progress` steht
@@ -215,8 +249,9 @@ gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
 Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
 wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
 vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-input`
-— drei rote Runden heißen, das Ticket ist falsch geschnitten, eine
-menschliche Entscheidung. Vollständige Zustandstabelle:
+**und** `needs-answer` (dieselbe erschöpfte Eskalation wie in „So fragst du"
+oben, ADR-0007) — drei rote Runden heißen, das Ticket ist falsch geschnitten,
+eine menschliche Entscheidung. Vollständige Zustandstabelle:
 `docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
 Stellst du stattdessen eine Frage (`needs-input`, siehe „Autonomer Betrieb"
@@ -236,6 +271,8 @@ bekommst das rote CI-Ergebnis später nicht mehr live mit):
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen könnte.
 2. Label `needs-input` **selbst setzen** (`gh issue edit <nr> --add-label needs-input`)
    — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145) sofort.
+   **Kein** `needs-answer` dabei — hier wird nur freigegeben, es gibt nichts zu
+   beantworten.
 3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
 4. Trotzdem `gh pr ready` + `gh pr merge --squash --auto --delete-branch`
    ausführen: `protected-paths` hält den PR rot, bis der Mensch freigibt —
@@ -251,9 +288,10 @@ Du schreibst Code **und** Tests — Interessenkonflikt, du weißt das. Kein
 `.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert (Regel 5,
 mechanisch erzwungen durch `test-integrity`). Testanzahl darf nie sinken; ist
 ein Test wirklich obsolet, begründen und `human-approved` anfordern statt
-selbst zu entscheiden. Code ohne begleitenden Test ist ein rotes
-Anwesenheits-Gate — einzige Entrinnung ist das vom Menschen gesetzte Label
-`tests-exempt`, nie selbst setzen.
+selbst zu entscheiden — wie bei geschützten Pfaden **nur** `needs-input`,
+**kein** `needs-answer`: auch das ist eine reine Freigabe, keine Frage. Code
+ohne begleitenden Test ist ein rotes Anwesenheits-Gate — einzige Entrinnung
+ist das vom Menschen gesetzte Label `tests-exempt`, nie selbst setzen.
 
 ## Definition of Done
 

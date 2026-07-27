@@ -37,7 +37,20 @@ import {
 import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
 import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
 import { pickTicket, selfHealPark } from './select.js';
-import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
+import {
+  answerIssues,
+  approveIssues,
+  parkIssue,
+  parkedAnswerIssues,
+  parkedApproveIssues,
+  parkedIssues,
+  queueBody,
+  queueSnapshot,
+  waitingIssues,
+} from './status.js';
+import { roundEval, roundPlan, type RoundRun } from './round.js';
+import { cleanupStateDir } from './cleanup.js';
+import { shimDriftReason } from './shim.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -64,6 +77,8 @@ function readPackageVersion(): string {
 
 export const commands: Record<string, CommandHandler> = {
   version: () => readPackageVersion(),
+  // $1 = installierter Pfad, $2 = Ref. '' = kein Drift (#252).
+  'shim-drift-reason': (ctx, args) => shimDriftReason(args[0] ?? '', args[1] ?? 'origin/main', ctx.git),
   'fmt-hm': (_ctx, args) => fmtHm(Number(args[0])),
   'd-plus': (ctx, args) => dPlus(Number(args[0]), args[1] ?? '', ctx.clock),
   'reset-epoch': (ctx, args) => {
@@ -147,10 +162,54 @@ export const commands: Record<string, CommandHandler> = {
   'pick-ticket': (ctx, args) =>
     JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
+  'answer-issues': (ctx) => answerIssues(ctx.gh),
+  'approve-issues': (ctx) => approveIssues(ctx.gh),
   'parked-issues': (ctx) => parkedIssues(ctx.gh),
+  'parked-answer-issues': (ctx) => parkedAnswerIssues(ctx.gh),
+  'parked-approve-issues': (ctx) => parkedApproveIssues(ctx.gh),
   'park-issue': (ctx, args) => (parkIssue(Number(args[0]), ctx.gh) ? '' : null),
+  'cleanup-state': (ctx) => {
+    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());
+    return '';
+  },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
   'queue-body': (ctx, args) => queueBody(Number(args[0]), ctx.gh),
+
+  // --- Das Rundenprotokoll (#203, S6) --------------------------------------
+  // Drei Kommandos statt der bisherigen ~40 Einzelaufrufe pro Takt. Die Runde
+  // zerfaellt genau am `claude`-Aufruf, der in Bash bleibt (AK6/AK7).
+  'round-plan': (ctx, args) =>
+    JSON.stringify(
+      roundPlan(ctx, {
+        queueIssue: Number(args[0] ?? 0),
+        maxRuntime: Number(args[1] ?? 2700),
+        didWork: args[2] === '1',
+        lastIssue: args[3] ?? '',
+      }),
+    ),
+
+  // AK6 woertlich: TS schreibt den Prompt nach stdout, Bash pipet ihn in
+  // `claude`. Bewusst NUR ein Feld aus dem bereits gefassten Plan -- roundPlan
+  // ein zweites Mal zu rufen wuerde seine Seiteneffekte (Labels, Kommentare,
+  // Opus-Deckel) verdoppeln.
+  'round-prompt': (_ctx, args) => {
+    const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as { prompt?: string };
+    return plan.prompt ?? '';
+  },
+
+  'round-eval': (ctx, args) => {
+    const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as RoundRun;
+    const logPath = args[4] ?? '';
+    let log = '';
+    try {
+      log = readFileSync(logPath, 'utf-8');
+    } catch {
+      log = '';
+    }
+    return JSON.stringify(
+      roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out: log, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
+    );
+  },
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {
@@ -170,11 +229,17 @@ export function dispatch(ctx: RunnerContext, argv: string[]): number {
   return 0;
 }
 
+// Ein vorab exportiertes STATE_DIR gewinnt -- claude-runner.sh exportiert es,
+// damit dieser Prozess exakt dasselbe Verzeichnis sieht wie das Skript.
+function stateDir(): string {
+  return process.env.STATE_DIR ?? join(here, '..', '..', '.runner');
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
     git: createGitAdapter(),
-    state: createStateAdapter(process.env.STATE_DIR ?? join(here, '..', '..', '.runner')),
+    state: createStateAdapter(stateDir()),
     clock: createClock(),
   };
 }

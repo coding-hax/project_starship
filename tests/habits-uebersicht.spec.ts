@@ -24,6 +24,16 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
   );
 }
 
+// beforeEach aborts every /api/sync/** call, so a checked-off log never reaches
+// Postgres in this suite (issue #224) — assert against the IndexedDB record the
+// E2E bridge exposes instead, sorted so multi-row assertions stay deterministic.
+async function habitLogRecords(page: Page, habitId: string) {
+  const records = await page.evaluate(() => window.__starship.debugRecords());
+  return records
+    .filter((r) => r.table === 'habit_logs' && r.data.habitId === habitId)
+    .sort((a, b) => String(a.data.logDate).localeCompare(String(b.data.logDate)));
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -64,7 +74,7 @@ test('eine wöchentliche Gewohnheit ohne Log in dieser Woche erscheint ebenfalls
   await expect(habitTodayItems(page).filter({ hasText: 'Joggen' })).toBeVisible();
 });
 
-test('eine wöchentliche Gewohnheit, die diese Woche schon erledigt wurde, erscheint heute nicht mehr', async ({
+test('eine wöchentliche Gewohnheit, die früher diese Woche erledigt wurde, bleibt sichtbar mit dem Hinweis "Diese Woche schon erledigt" (issue #224 AC1/AC2)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -75,12 +85,78 @@ test('eine wöchentliche Gewohnheit, die diese Woche schon erledigt wurde, ersch
   });
   await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
 
-  await expect(habitTodayItems(page).filter({ hasText: 'Großeinkauf' })).toHaveCount(0);
+  const item = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
+  await expect(item).toBeVisible();
+  await expect(item.getByText('Diese Woche schon erledigt')).toBeVisible();
+  await expect(item.getByRole('checkbox')).not.toBeChecked();
+  await expect(item).not.toHaveClass(/habit-today__item--done/);
 });
 
-test('eine wöchentliche Gewohnheit, die letzte Woche erledigt wurde, ist diese Woche wieder fällig', async ({
+test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinweis verschwindet, und der Zustand übersteht einen Reload (issue #224 AC3)', async ({
   page,
 }) => {
+  const habitId = await seedHabit(page, {
+    name: 'Großeinkauf',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  const item = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
+
+  await item.getByRole('checkbox').click();
+
+  await expect(item.getByRole('checkbox')).toBeChecked();
+  await expect(item).toHaveClass(/habit-today__item--done/);
+  await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+
+  await skewClock(page, NOW);
+  await page.reload();
+
+  const reloadedItem = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
+  await expect(reloadedItem.getByRole('checkbox')).toBeChecked();
+  await expect(reloadedItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+
+  // Both this week's earlier day and today are their own log rows (AC3). The
+  // suite-wide route abort in beforeEach keeps this local — read IndexedDB via
+  // the E2E bridge, not Postgres (nothing here was ever pushed).
+  const logs = await habitLogRecords(page, habitId);
+  expect(logs.map((r) => r.data.logDate)).toEqual([MONDAY_THIS_WEEK, '2026-07-15']);
+  expect(logs.every((r) => r.data.done === true)).toBe(true);
+});
+
+test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Gewohnheit zurück, der Wochen-Hinweis kommt zurück (issue #224 AC4)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Großeinkauf',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  const item = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
+  const checkbox = item.getByRole('checkbox');
+
+  await checkbox.click();
+  await expect(checkbox).toBeChecked();
+  await checkbox.click();
+
+  await expect(checkbox).not.toBeChecked();
+  await expect(item).not.toHaveClass(/habit-today__item--done/);
+  await expect(item.getByText('Diese Woche schon erledigt')).toBeVisible();
+
+  const logs = await habitLogRecords(page, habitId);
+  expect(logs).toEqual([
+    expect.objectContaining({ data: expect.objectContaining({ logDate: MONDAY_THIS_WEEK, done: true }) }),
+    expect.objectContaining({ data: expect.objectContaining({ logDate: '2026-07-15', done: false }) }),
+  ]);
+});
+
+test('eine wöchentliche Gewohnheit ohne Log oder nur mit letzter Woche erledigt zeigt keinen Wochen-Hinweis (issue #224 AC5)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
   const habitId = await seedHabit(page, {
     name: 'Wohnung putzen',
     schedule: 'weekly',
@@ -89,7 +165,46 @@ test('eine wöchentliche Gewohnheit, die letzte Woche erledigt wurde, ist diese 
   });
   await seedHabitLog(page, { habitId, logDate: LAST_MONDAY, done: true });
 
-  await expect(habitTodayItems(page).filter({ hasText: 'Wohnung putzen' })).toBeVisible();
+  const joggenItem = habitTodayItems(page).filter({ hasText: 'Joggen' });
+  const putzenItem = habitTodayItems(page).filter({ hasText: 'Wohnung putzen' });
+  await expect(joggenItem).toBeVisible();
+  await expect(putzenItem).toBeVisible();
+  await expect(joggenItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+  await expect(putzenItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+});
+
+test('eine wöchentliche Gewohnheit mit Wochen-Hinweis lässt sich offline für heute abhaken, der Log erreicht online den Server (issue #224 AC6)', async ({
+  page,
+  context,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Großeinkauf',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  const item = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
+
+  await context.setOffline(true);
+  await item.getByRole('checkbox').click();
+
+  await expect(item.getByRole('checkbox')).toBeChecked();
+  await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const rows = await withDb((client) =>
+    client.query(
+      'SELECT done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1 AND log_date = $2',
+      ['Großeinkauf', '2026-07-15'],
+    ),
+  );
+  expect(rows.rowCount).toBe(1);
+  expect(rows.rows[0].done).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -249,4 +364,31 @@ test('die Abhak-Animation bewegt ausschließlich Opacity/Scale, keine Layout-Eig
     .getByRole('checkbox')
     .evaluate((el) => getComputedStyle(el).transitionProperty);
   expect(checkboxTransitionProperty).toBe('transform');
+});
+
+test('der Wochen-Hinweis nutzt den gedämpften Text-Token, auch im Dark Mode, ohne eigene Layout-Animation (issue #224 AC7)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Großeinkauf',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+
+  const hint = habitTodayItems(page).filter({ hasText: 'Großeinkauf' }).getByText(
+    'Diese Woche schon erledigt',
+  );
+  await expect(hint).toBeVisible();
+  const lightColor = await hint.evaluate((el) => getComputedStyle(el).color);
+  expect(lightColor).toBe(await resolveColorToken(page, '--text-muted'));
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await hint.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).toBe(await resolveColorToken(page, '--text-muted'));
+  expect(darkColor).not.toBe(lightColor);
+
+  const transitionProperty = await hint.evaluate((el) => getComputedStyle(el).transitionProperty);
+  expect(transitionProperty).toBe('all');
 });
