@@ -84,3 +84,14 @@ wie die Schalter heißen:
 | `needs-research` | `research` | dito |
 
 Ältere Kommentare, Tickets und Läufe nennen weiterhin die alten Namen.
+
+## Nachtrag 27.07.2026 — die Stufe ist am Ticket wählbar
+
+[ADR-0013](0013-modellstufe-am-ticket.md) ergänzt die Labels `model:haiku`,
+`model:sonnet` und `model:opus` als **Startstufe**. Damit kann ein Mensch ein
+Ticket bewusst auf Opus setzen, ohne die drei erfolglosen Läufe aus ADR-0007
+abzuwarten — und eine Denk-Rolle umgekehrt auf Sonnet herunterziehen.
+
+Der Kern dieses ADR bleibt: der **Runner** schaltet nie von sich aus auf Opus
+hoch, außer über die Eskalation. Was sich ändert, ist nur, dass der Mensch die
+Stufe vorgeben darf.

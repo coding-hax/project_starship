@@ -40,10 +40,13 @@ Vor jeder Arbeit lesen:
 - Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
   Sync) werden **vor** `ready` von Opus geplant (Label `plan`); der Runner baut
   niemals ohne Plan. Einfache/mechanische Tickets dürfen `plan` überspringen.
-  Opus bleibt im Runner sonst tabu (nur Planung/Recherche, nie Bauen — außer der
-  Eskalations-Rolle nach drei erfolglosen Sonnet/Haiku-Läufen). Details, Labels,
-  Deckel: `docs/WORKFLOW.md`, `docs/adr/0005-opus-im-runner.md`,
-  `docs/adr/0007-opus-eskalation-baut.md`.
+  Der Runner schaltet **von sich aus** nie auf Opus hoch — außer über die
+  Eskalation nach drei erfolglosen Läufen. Der Mensch darf die Startstufe am
+  Ticket vorgeben (`model:haiku|sonnet|opus`); `model:opus` baut dann sofort
+  auf Opus, unter denselben Deckeln. Details, Labels, Deckel:
+  `docs/WORKFLOW.md`, `docs/adr/0005-opus-im-runner.md`,
+  `docs/adr/0007-opus-eskalation-baut.md`,
+  `docs/adr/0013-modellstufe-am-ticket.md`.
 
 ## Befehle
 

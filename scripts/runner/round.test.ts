@@ -121,7 +121,10 @@ describe('roundPlan', () => {
     expect(run.prompt).toContain('Arbeite an Issue #77');
     expect(run.tools).toContain('Write');
     expect(run.status.emoji).toBe('🟠');
-    expect(run.status.title).toBe('arbeitet an #77 (seit 09:22)');
+    // #273 AC5: die Stufe steht im Titel, weil nur der in der Issue-Liste
+    // sichtbar ist -- sonst ist vom Handy aus nicht erkennbar, dass der
+    // naechste Lauf Opus verbrennt.
+    expect(run.status.title).toBe('arbeitet an #77 (sonnet, seit 09:22)');
   });
 
   it('gibt der Planer-Rolle Opus und eine nur lesende Allowlist (ADR-0005)', () => {
@@ -132,6 +135,77 @@ describe('roundPlan', () => {
     expect(run.tools).not.toContain('Write');
     expect(run.prompt).toContain('als **Planer**');
     expect(run.status.title).toContain('plant #80');
+  });
+
+  // --- Startstufe am Ticket (ADR-0013, #273) --------------------------------
+  describe('Modellstufe per Label', () => {
+    it('AC1: model:opus baut sofort auf Opus, ohne vorherige Eskalation', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(90, ['ready', 'model:opus'])),
+        noOpenPrs,
+        labelsAre('ready', 'model:opus'),
+      ]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.model).toBe('opus');
+      expect(run.role).toBe('build');
+      // Kein Eskalationszustand noetig -- die Stufe kommt allein aus dem Label.
+      expect(state.exists('tier-90')).toBe(false);
+    });
+
+    it('AC2: bei der Planer-Rolle schlaegt model:sonnet die Rolle', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(91, ['plan', 'model:sonnet'])),
+        noOpenPrs,
+        labelsAre('plan', 'model:sonnet'),
+      ]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('plan');
+      expect(run.model).toBe('sonnet');
+      // Der Statustext darf dann nicht weiter "Opus" behaupten.
+      expect(run.status.text).toContain('(sonnet, nur lesend)');
+    });
+
+    it('AC3: ohne model:*-Label bleibt die Denk-Rolle bei Opus (ADR-0005)', () => {
+      const { gh } = ghDouble([openIssues(issueJson(92, ['research'])), noOpenPrs, labelsAre('research')]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.model).toBe('opus');
+    });
+
+    it('AC5: der Titel nennt die eskalierte Stufe, nicht die Startstufe', () => {
+      state.write('tier-93', 'opus');
+      const { gh } = ghDouble([
+        openIssues(issueJson(93, ['ready', 'model:sonnet'])),
+        noOpenPrs,
+        labelsAre('ready', 'model:sonnet'),
+      ]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.model).toBe('opus');
+      expect(run.status.title).toBe('arbeitet an #93 (opus, seit 09:22)');
+    });
+
+    it('AC6: der Opus-Tagesdeckel greift auch bei hand-gesetztem model:opus', () => {
+      state.write('opus-build-20260726-94', '2');
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(94, ['ready', 'model:opus'])),
+        noOpenPrs,
+        labelsAre('ready', 'model:opus'),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.text).toContain('Opus-Tagesbudget');
+      expect(called(calls, 'edit', '94', '--add-label', 'blocked-limit')).toBe(true);
+    });
+
+    it('no-escalation friert auf der gesetzten Startstufe ein, nicht pauschal auf Sonnet', () => {
+      state.write('tier-95', 'opus');
+      const { gh } = ghDouble([
+        openIssues(issueJson(95, ['ready', 'no-escalation', 'model:haiku'])),
+        noOpenPrs,
+        labelsAre('ready', 'no-escalation', 'model:haiku'),
+      ]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.model).toBe('haiku');
+    });
   });
 
   it('gibt der Recherche-Rolle zusaetzlich WebSearch', () => {

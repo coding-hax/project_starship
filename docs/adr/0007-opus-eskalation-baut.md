@@ -87,3 +87,17 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
   lesen, ausgeschlossene Wege nicht wiederholen) sowie eine ab dann je
   Fehlereinheit statt je Phase geschnittene Checkliste, mit Einzel-Commit pro
   gelöster Einheit (#136).
+
+## Nachtrag 27.07.2026 — Startstufe per Label
+
+[ADR-0013](0013-modellstufe-am-ticket.md) macht die Startstufe am Ticket
+wählbar (`model:haiku|sonnet|opus`). Für dieses ADR ändert sich nichts an den
+Deckeln: Der Opus-Tagesdeckel (2 Bau-Läufe je Ticket und Tag) greift auch bei
+einem hand-gesetzten `model:opus`, `opus-boost` hebt ihn weiterhin einmalig,
+und `no-escalation` friert weiterhin ein — dann allerdings auf der im Label
+gesetzten Startstufe statt pauschal auf Sonnet.
+
+Eine Folge, die man kennen muss: Ein Ticket, das mit `model:opus` startet, hat
+die Leiter schon oben betreten. `tierBump()` hat von dort keinen Sprung mehr,
+drei erfolglose Läufe führen also direkt zu „Eskalation erschöpft" +
+`needs-answer`.

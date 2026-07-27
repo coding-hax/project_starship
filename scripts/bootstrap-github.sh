@@ -35,11 +35,16 @@ label "ready"          "0E8A16" "Freigegeben. Claude darf das Ticket nehmen."
 label "in-progress"    "FBCA04" "Claude arbeitet daran. Es gibt immer höchstens eins."
 label "needs-answer"   "B60205" "Es steht eine Frage im Ticket. Ohne deine geschriebene Antwort geht es nicht weiter."
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
-label "model:haiku"    "BFDADC" "Mechanisches Ticket — Runner nimmt Haiku statt Sonnet."
+# Startstufe für dieses Ticket (ADR-0013). Höchstens eins davon setzen; eine
+# schon eingetretene Eskalation schlägt das Label — es ist der Start, nicht die
+# Fessel.
+label "model:haiku"    "BFDADC" "Startstufe Haiku — mechanisches Ticket."
+label "model:sonnet"   "9CC3C7" "Startstufe Sonnet — der Normalfall, muss man selten setzen."
+label "model:opus"     "8B5CF6" "Startstufe Opus — baut sofort, ohne die drei erfolglosen Läufe."
 label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Menschen freigegeben."
 label "hands-off"      "0B0B0B" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."
-label "plan"           "1D76DB" "Rolle: Opus plant das Ticket, statt es zu bauen."
-label "research"       "0052CC" "Rolle: Opus recherchiert den Fit und schlägt vor."
+label "plan"           "1D76DB" "Rolle: plant das Ticket, statt es zu bauen (Opus, außer ein model:*-Label sagt etwas anderes)."
+label "research"       "0052CC" "Rolle: recherchiert den Fit und schlägt vor (Opus, außer ein model:*-Label sagt etwas anderes)."
 
 # --- 3. Milestones ---------------------------------------------------------
 echo "==> Milestones"

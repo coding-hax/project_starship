@@ -26,7 +26,7 @@ import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, type RunRole } from './select.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
-import { tierCurrent } from './tier.js';
+import { tierCurrent, tierFromLabels } from './tier.js';
 import { buildEscalationEval, resumeAllowed } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
@@ -404,47 +404,64 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
       ? ''
       : `\n\n🟡 Wartet zusätzlich auf dich: ${waitingNow} (Antwort + \`needs-answer\` entfernen setzt die Arbeit dort fort).`;
 
+  // --- Modell nach Eskalationsstufe/Label/Rolle (ADR-0013) -------------------
+  // Praezedenz, von stark nach schwach:
+  //
+  //   tier-<nr> gesetzt (eskaliert)  -> diese Stufe   (ADR-0007)
+  //   model:*-Label am Ticket        -> dessen Stufe  (ADR-0013, auch fuer
+  //                                                    die Denk-Rollen)
+  //   Rolle plan/research            -> opus          (ADR-0005, unveraendert)
+  //   sonst                          -> sonnet
+  //
+  // Das Label ist die STARTSTUFE, nicht die Fessel: eine schon eingetretene
+  // Eskalation schlaegt es, sonst haenge ein 'model:sonnet'-Ticket fuer immer
+  // auf Sonnet fest. Fuer die Bau-Rolle steckt genau diese Reihenfolge bereits
+  // in tierCurrent(); hier oben bleibt nur, was die Denk-Rollen und
+  // 'no-escalation' davon abweichend brauchen.
+  //
+  // Steht die Stufe vor dem Status-Block, damit die Ampel sie nennen kann --
+  // vom Handy aus ist sonst nicht sichtbar, dass der naechste Lauf Opus
+  // verbrennt (#273).
+  const labels = labelsOf(issue, gh);
+  const labelTier = tierFromLabels(issue, gh);
+  let model: string;
+  if (labels.includes('no-escalation')) {
+    // Einfrieren heisst: keine Eskalation, nicht "keine Wahl" -- die am Ticket
+    // gesetzte Startstufe gilt trotzdem.
+    model = labelTier ?? 'sonnet';
+  } else if (role === 'plan' || role === 'research') {
+    model = labelTier ?? 'opus';
+  } else {
+    model = tierCurrent(issue, state, gh);
+  }
+
   const busy =
     role === 'plan'
       ? status(
-          `plant #${issue} (seit ${startHm})`,
+          `plant #${issue} (${model}, seit ${startHm})`,
           '🟠',
-          `🟠 **Plant gerade #${issue}** (Opus, nur lesend), seit ${startHm}.
+          `🟠 **Plant gerade #${issue}** (${model}, nur lesend), seit ${startHm}.
 
 Laeuft bis zu ${minutes} Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
         )
       : role === 'research'
         ? status(
-            `recherchiert #${issue} (seit ${startHm})`,
+            `recherchiert #${issue} (${model}, seit ${startHm})`,
             '🟠',
-            `🟠 **Recherchiert gerade #${issue}** (Opus, nur lesend), seit ${startHm}.
+            `🟠 **Recherchiert gerade #${issue}** (${model}, nur lesend), seit ${startHm}.
 
 Laeuft bis zu ${minutes} Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
           )
         : status(
-            `arbeitet an #${issue} (seit ${startHm})`,
+            `arbeitet an #${issue} (${model}, seit ${startHm})`,
             '🟠',
-            `🟠 **Arbeitet gerade an #${issue}**, seit ${startHm}.
+            `🟠 **Arbeitet gerade an #${issue}** (Stufe: ${model}), seit ${startHm}.
 
 Laeuft bis zu ${minutes} Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
           );
-
-  // --- Modell nach Rolle/Label/Eskalationsstufe -----------------------------
-  // Denk-Rollen laufen immer mit Opus (ADR-0005). Bau-Rolle: tierCurrent
-  // liefert die Eskalationsstufe (ADR-0007); 'no-escalation' friert auf der
-  // Default-Stufe ein, unabhaengig von einer schon gesetzten Stufe.
-  const labels = labelsOf(issue, gh);
-  let model: string;
-  if (role === 'plan' || role === 'research') {
-    model = 'opus';
-  } else if (labels.includes('no-escalation')) {
-    model = labels.includes('model:haiku') ? 'haiku' : 'sonnet';
-  } else {
-    model = tierCurrent(issue, state, gh);
-  }
 
   // --- Opus-Bau-Deckel (ADR-0007) -------------------------------------------
   // Greift VOR dem Aufruf, damit ein erschoepftes Tagesbudget nicht noch einen

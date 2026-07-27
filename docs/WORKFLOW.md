@@ -152,8 +152,8 @@ Zustandsmaschine des ganzen Setups:
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
-| `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
-| `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
+| `model:haiku` `model:sonnet` `model:opus` | **Startstufe** für dieses Ticket (ADR-0013). Höchstens eins setzen. `model:opus` baut sofort auf Opus, ohne die drei erfolglosen Läufe. Bei `plan`/`research` schlägt das Label die Rolle. | **Du**       |
+| `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
 | `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
 
@@ -188,9 +188,31 @@ Bauplatz belegt ist, sondern die Frage, ob jemand auf einen Menschen wartet.
 ## Modell-Eskalation beim Bauen (ADR-0007)
 
 Bleibt ein Ticket in der Bau-Rolle dreimal in Folge ohne Fortschritt stecken,
-schaltet der Runner eine Modellstufe hoch: `sonnet` (bzw. `haiku` bei
-`model:haiku`) → `opus`. Auf `opus` baut der letzte Versuch tatsächlich Code —
-das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
+schaltet der Runner eine Modellstufe hoch: von der Startstufe (`sonnet`, oder
+was `model:*` sagt) → `opus`. Auf `opus` baut der Versuch tatsächlich Code.
+
+Seit ADR-0013 ist das nicht mehr der einzige Weg dorthin: Du kannst die
+**Startstufe** am Ticket setzen (`model:opus`), wenn vorher klar ist, dass es
+schwer wird — dann entfallen die drei Läufe, die absehbar nichts liefern. Die
+Präzedenz von stark nach schwach:
+
+```
+tier-<nr> gesetzt (schon eskaliert)  ->  diese Stufe
+model:*-Label am Ticket              ->  dessen Stufe   (auch bei plan/research)
+Rolle plan/research                  ->  opus
+sonst                                ->  sonnet
+```
+
+Das Label ist der **Start**, nicht die Fessel: Eine schon eingetretene
+Eskalation schlägt es, sonst hinge ein `model:sonnet`-Ticket für immer auf
+Sonnet fest. Welche Stufe **gerade** läuft, steht im Titel des Status-Issues
+(„arbeitet an #266 (opus, seit 18:49)") — die laufende Stufe selbst bleibt in
+`.runner/tier-<nr>` und wird bewusst nicht als Label geführt: Sie gehört dem
+Runner, nicht dir.
+
+Ein Ticket, das mit `model:opus` startet, hat die Leiter schon oben betreten —
+`tierBump()` hat von dort keinen Sprung mehr, drei erfolglose Läufe führen
+also direkt zu „Eskalation erschöpft" + `needs-answer`.
 
 - **Fortschritt** = neuer Commit auf dem Feature-Branch (Vergleich der
   Branch-Spitze auf `origin` vor/nach dem Lauf). Fortschritt setzt Stufe und
