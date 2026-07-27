@@ -1,7 +1,7 @@
 name: Guards
 
-# Split out of ci.yml (#164): these two jobs read PR labels (`human-approved`,
-# `tests-exempt`) and must re-run on labeled/unlabeled so a label tap re-checks
+# Split out of ci.yml (#164): these jobs read the PR label `tests-exempt` and
+# must re-run on labeled/unlabeled so a label tap re-checks
 # them — but that trigger used to drag the whole CI file along with it, costing
 # ~11 minutes of e2e/quality for a label change that touched no code. Job names
 # stay unchanged; branch protection matches on job name, not workflow file.
@@ -25,15 +25,23 @@ jobs:
           fi
           bash scripts/check-test-integrity.sh origin/main "$EXEMPT"
 
-  # --- Guard: protected paths need a human ---------------------------------
-  # Migrations, crypto, sync and auth are NOT merged automatically.
-  # A mistake there is not a bug, it is data loss.
+  # --- Advisory: which sensitive paths does this PR touch? ------------------
+  # This used to BLOCK until a human set 'human-approved'. It no longer does
+  # (#276): the PRs are approved directly anyway, so the label bought no extra
+  # pair of eyes -- only an extra handle that regularly became the actual
+  # bottleneck (label on the PR instead of the issue, two check suites racing,
+  # tickets idle for a day).
+  #
+  # The accepted price, stated plainly: an unattended runner can now merge a
+  # migration, a crypto change or a sync fix on its own. The remaining nets are
+  # schema-drift, quality (sync invariants), test-integrity, e2e-offline and
+  # the db-migration review role.
   protected-paths:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
-      - name: Check whether protected paths are touched
+      - name: Report which sensitive paths are touched
         run: |
           git fetch origin main
           TOUCHED=$(git diff --name-only origin/main...HEAD \
@@ -42,19 +50,11 @@ jobs:
                '.github/**' 'scripts/**')
 
           if [ -z "$TOUCHED" ]; then
-            echo "✓ No protected paths touched — auto-merge allowed."
+            echo "✓ No sensitive paths touched."
             exit 0
           fi
 
-          echo "This PR touches protected paths:"
+          echo "ℹ This PR touches sensitive paths:"
           echo "$TOUCHED"
-
-          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'human-approved'; then
-            echo "✓ Human approval present (label 'human-approved')."
-            exit 0
-          fi
-
           echo ""
-          echo "✗ Approval missing. The PR stays open until a human sets the label"
-          echo "  'human-approved'. The check then re-runs automatically."
-          exit 1
+          echo "  Advisory only — this check never blocks the merge (#276)."

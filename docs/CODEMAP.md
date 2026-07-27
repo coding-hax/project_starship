@@ -228,7 +228,7 @@ scripts/
   systemd-setup.md          Runner als Dienst auf Linux
 .github/workflows/
   ci.yml                    Lint, Typecheck, Vitest, Playwright, Schema-Drift-Gate; läuft nur bei echten Code-Änderungen (opened/synchronize/reopened), nicht bei Label-Events (issue #164)
-  guards.yml                Test-Integrity- und Protected-Paths-Gate; hören zusätzlich auf labeled/unlabeled, damit ein Label-Tap (human-approved/tests-exempt) nur diese beiden neu prüft statt der ganzen CI (issue #164)
+  guards.yml                Test-Integrity- und Protected-Paths-Gate; hören zusätzlich auf labeled/unlabeled, damit ein Label-Tap (tests-exempt) nur diese beiden neu prüft statt der ganzen CI (issue #164)
   smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
   interaction-limit-reminder.yml  monatlicher Cron, erinnert 30 Tage vor Ablauf des Interaction Limit per Issue (#70)
   garmin-sync.yml           nächtlicher Cron, POST /api/garmin-sync mit Bearer-Secret, vendor-neutral statt Vercel-Cron (Regel 7, issue #186)

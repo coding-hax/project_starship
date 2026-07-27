@@ -96,9 +96,9 @@ Ablauf:
    'gh pr ready' und 'gh pr merge --squash --auto --delete-branch'
    (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Du musst
    NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
-   grünen Required Checks. Bei geschütztem Pfad hält 'protected-paths'
-   ohnehin rot, bis ein Mensch 'human-approved' setzt — der PR ist dann
-   zwar kein Entwurf mehr, wartet aber trotzdem. Dein Lauf endet danach.
+   grünen Required Checks. Ein geschützter Pfad hält den PR seit #276 NICHT
+   mehr auf — 'protected-paths' meldet nur noch, was berührt wurde. Dein
+   Lauf endet danach.
    **Kein** 'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
    Runner-Takt beobachtet ab hier die CI und holt dich nur zurück, wenn
    dort etwas rot wird.`;

@@ -261,35 +261,40 @@ ready` erreichst.
 ### Geschützte Pfade — hier merged niemand automatisch
 
 `src/db/`, `src/crypto/`, `src/local/`, `src/app/api/sync/`, alles mit `auth` im Namen,
-`.github/` und `scripts/`. Ein Fehler ist dort kein Bug, sondern **Datenverlust**
-— der CI-Check `protected-paths` schlägt fehl, sobald ein PR sie berührt
-(Mechanik/Begründung: `docs/WORKFLOW.md`, „Zwei Wächter").
+`.github/` und `scripts/`. Ein Fehler ist dort kein Bug, sondern **Datenverlust**.
 
-Berührt dein Diff einen dieser Pfade, **sofort beim Öffnen des Draft-PR** (du
-bekommst das rote CI-Ergebnis später nicht mehr live mit):
+**Seit #276 blockiert der Merge dort nicht mehr.** `protected-paths` läuft
+weiter und nennt im Log, welche dieser Dateien du berührt hast — aber es hält
+nichts an, und das Label `human-approved` gibt es nicht mehr. Der Mensch gibt
+die PRs ohnehin direkt frei; die Freigabe hat keinen zweiten Blick erzeugt,
+nur einen zusätzlichen Handgriff (Begründung und der bewusst akzeptierte
+Preis: `docs/WORKFLOW.md`, „Ein Wächter").
 
-1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen könnte.
-2. Label `needs-input` **selbst setzen** (`gh issue edit <nr> --add-label needs-input`)
-   — und in diesem Lauf **nicht wieder abnehmen**. Das parkt das Ticket (#145) sofort.
-   **Kein** `needs-answer` dabei — hier wird nur freigegeben, es gibt nichts zu
-   beantworten.
-3. Im selben Kommentar `human-approved` anfordern — das Label selbst setzt nur der Mensch.
-4. Trotzdem `gh pr ready` + `gh pr merge --squash --auto --delete-branch`
-   ausführen: `protected-paths` hält den PR rot, bis der Mensch freigibt —
-   das ist die eigentliche Schranke, nicht der Entwurfsstatus.
+Das macht deine Sorgfalt **wichtiger**, nicht unwichtiger — es fängt dich dort
+niemand mehr auf. Berührt dein Diff einen dieser Pfade, **sofort beim Öffnen
+des PR**:
 
-Versuche **nie**, `protected-paths` zu umgehen, abzuschalten oder die Änderung
-so umzuschneiden, dass sie am Wächter vorbeirutscht. Das wäre der schwerste
-Vertrauensbruch, der in diesem Repo möglich ist.
+1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen
+   könnte, und wie der Rückweg aussieht. Das ist jetzt die einzige Spur, die
+   ein Mensch später findet.
+2. Rührt die Änderung ein Schema an, gehört die Migration in denselben PR
+   (Regel 4) — up **und** down.
+3. Bist du dir bei einer Änderung an Krypto, Sync oder Migration **nicht
+   sicher**, ist das ein Fall für `needs-answer` und Nachfragen, nicht für
+   „läuft ja durch".
+
+Versuche nie, einen Wächter abzuschalten oder eine Änderung so umzuschneiden,
+dass sie an einer Prüfung vorbeirutscht. Dass `protected-paths` nicht mehr
+blockiert, ist eine **Entscheidung des Menschen** — keine Einladung, es bei
+den übrigen Toren genauso zu halten.
 
 ### Tests sind kein Hindernis, sie sind der Auftrag
 
 Du schreibst Code **und** Tests — Interessenkonflikt, du weißt das. Kein
 `.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert (Regel 5,
 mechanisch erzwungen durch `test-integrity`). Testanzahl darf nie sinken; ist
-ein Test wirklich obsolet, begründen und `human-approved` anfordern statt
-selbst zu entscheiden — wie bei geschützten Pfaden **nur** `needs-input`,
-**kein** `needs-answer`: auch das ist eine reine Freigabe, keine Frage. Code
+ein Test wirklich obsolet, begründest du das am Ticket und fragst nach
+(`needs-answer`), statt selbst zu entscheiden. Code
 ohne begleitenden Test ist ein rotes Anwesenheits-Gate — einzige Entrinnung
 ist das vom Menschen gesetzte Label `tests-exempt`, nie selbst setzen.
 

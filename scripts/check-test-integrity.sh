@@ -36,7 +36,7 @@ echo "Tests: $BEFORE (main) → $AFTER (dieser Branch)"
 if [ "$AFTER" -lt "$BEFORE" ]; then
   red "Die Testanzahl ist gesunken ($BEFORE → $AFTER)."
   echo "  Wenn ein Test wirklich obsolet ist, gehört das ins Ticket und braucht"
-  echo "  eine menschliche Freigabe (Label 'human-approved')."
+  echo "  eine Begründung am Ticket — der Check bleibt rot, bis die Zahl stimmt."
 else
   ok "Testanzahl gehalten oder gestiegen."
 fi
