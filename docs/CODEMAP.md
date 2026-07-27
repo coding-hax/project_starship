@@ -26,7 +26,7 @@ src/
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
     api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
-    api/push/               subscribe/unsubscribe/test — Push-Grundgerüst (issue #122), kein geschützter Pfad (kein Sync, keine Auth)
+    api/push/               subscribe/unsubscribe/test — Push-Grundgerüst (issue #122), kein geschützter Pfad (kein Sync, keine Auth); reminders/ — POST, Bearer-Secret (REMINDER_SECRET) + Owner-Session als Zweitpfad wie garmin-sync, ruft sendDueReminders() (issue #239)
     api/garmin-sync/        POST, Bearer-Secret + Owner-Session als Zweitpfad — holt Aktivitäten, schreibt nie ohne Netzwerk-Vorlauf in die Transaktion (ADR-0011, issue #186)
     api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
     layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest)
@@ -34,7 +34,7 @@ src/
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js; push/notificationclick-Handler + E2E-Hooks (__pushTest/__lastNotificationClick unter NEXT_PUBLIC_E2E) seit issue #122
     globals.css             Tailwind-Import + @theme-Mapping der Tokens
   db/
-    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; `pushSubscriptions` seit issue #122, ohne syncColumns (Geräte-Infrastruktur wie sessions); garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011
+    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; `pushSubscriptions` seit issue #122, ohne syncColumns (Geräte-Infrastruktur wie sessions); garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011; `reminder_sends` (Doppelversand-Sperre, uniqueIndex kind+send_date+slot, ohne syncColumns) seit issue #239
     sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186)
     sync-lock.ts            gemeinsamer pg_advisory_xact_lock für jede Sync-Schreib-Transaktion (push, garmin-sync) — verhindert sync_seq außer Reihenfolge (ADR-0008)
     index.ts                DB-Verbindung (pg-Pool, Standard-Connection-String)
@@ -58,6 +58,8 @@ src/
     vapid.ts                setzt VAPID-Details aus Env-Vars, lazy wie src/db/index.ts (Build braucht die Vars noch nicht)
     send.ts                 sendPushToAll(payload) — 410/404 vom Push-Dienst löscht das Abo, sonst nur Log ohne endpoint/keys
     notification.ts         reine buildNotification/parsePushPayload-Logik, von src/app/sw.ts benutzt (Vitest-testbar ohne SW-Scope)
+    schedule.ts             reine Logik, kein DB/Netz: berlinNow/dueSlots — Berliner Kalendertag+Uhrzeit über Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }), DST-sicher (issue #239)
+    reminders/index.ts      ReminderKind-Registry ({ kind, times, build }) + sendDueReminders() — build() vor der ON-CONFLICT-Sperre (reminder_sends), damit build()->null nie einen Sperr-Eintrag schreibt; `e2e-smoke` nur unter NEXT_PUBLIC_E2E (issue #239)
   features/
     tasks/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88); gruppiert via groupTasks (issue #89), löst Drag-Drop über resolveNestTarget auf
@@ -177,6 +179,7 @@ tests/
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
   schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186)
   garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
+  push-reminders.spec.ts    POST /api/push/reminders über die `e2e-smoke`-Art (kein echter Push-Dienst nötig — kein Abo hinterlegt, sendPushToAll läuft trotzdem real): Owner-Session-Auslöser ohne offene App sendet und sperrt reminder_sends, zweiter Auslöser am selben Tag sendet nicht erneut, ohne Session 401 (issue #239)
 scripts/
   garmin-bootstrap.md       einmaliger Handgriff im Browser fürs Garmin-OAuth1-Token, ~jährlich fällig, führt nie automatisch (ADR-0011, issue #186)
   claude-runner.sh          der autonome Runner (portabel: macOS + Linux), seit #203 (S6) nur noch EINSTIEGSPUNKT unter 250 Zeilen: die Entscheidungslogik liegt vollständig in scripts/runner/*.ts und wird über ts_run() gerufen. In Bash bleibt genau vier Dinge, jedes aus einem eigenen Grund -- (1) der Lauf-Lock über `mkdir`, atomar auf POSIX und damit Ersatz für das auf macOS fehlende flock; (2) das 'limit-until'-Gate, ein garantierter No-Op ohne tsx-Start und ohne gh-Aufruf, deshalb ruft es `fmt_hm` direkt statt über den Kern; (3) die Chain-Schleife (#61) samt MAX_ROUNDS/TICK_BUDGET; (4) `run_limited` als Ersatz für das auf macOS fehlende `timeout` -- es hängt an Signalen und Prozessgruppen, in Node wäre das ein Rückschritt -- plus der `claude`-Aufruf selbst: TS baut den Prompt und schreibt ihn nach stdout, Bash pipet ihn in `claude` (dessen Hintergrundjob braucht `<&0`, sonst ersetzt bash stdin durch /dev/null und der Prompt kommt nie an). `status()` bleibt ebenfalls bash-only, weil es den Ausfall des TS-Kerns melden muss -- die Ampel steht im TITEL des Status-Issues, damit sie in der Issue-Liste ohne Reinklicken sichtbar ist: 🟠 arbeitet an #N (vor dem `claude`-Aufruf gesetzt), 🟢 wartet/nichts offen (kein Eingreifen), 🟡 wartet auf dich (Frage offen oder Freigabe nötig), 🔴 Fehler (Eingreifen), 🔵 Limit erreicht (läuft von selbst weiter), ⚪️ nichts zu tun (kein Ticket auf `ready`); geschrieben wird nur bei inhaltlicher Änderung (#64, sha1 ohne den Zeitstempel). der Kill-Switch aus S1 und alle `*_bash`-Zweige sind mit S6 entfallen -- ein fehlendes `tsx` ist jetzt ein harter Fehler (Exit 127) und meldet sich über status(); seit #242 bekommt ein Bau-Lauf (role=build) einen eigenen Worktree als cwd statt im geteilten Haupt-Checkout zu bauen -- `worktrees_enabled()`/`branch_for_issue()`/`bootstrap_worktree()`/`ensure_worktree()` legen ihn unter `WORKTREE_BASE` (Default `.claude/worktrees/issue-<nr>`) an oder nutzen einen vorhandenen wieder, ein belegter/unregistrierter Pfad bricht den Lauf ab statt in den Haupt-Checkout auszuweichen; `run_limited()` bekommt dafür einen cwd-Parameter (Subshell `cd && exec`); `main()` prunt und entfernt Worktrees geschlossener Tickets je Tick. Aktiv nur, wenn REPO_DIR ein echter git-Arbeitsbaum ist -- in den Bash-Suiten (git gestubbt) bleibt das Feature unsichtbar inaktiv
@@ -229,6 +232,7 @@ scripts/
   smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
   interaction-limit-reminder.yml  monatlicher Cron, erinnert 30 Tage vor Ablauf des Interaction Limit per Issue (#70)
   garmin-sync.yml           nächtlicher Cron, POST /api/garmin-sync mit Bearer-Secret, vendor-neutral statt Vercel-Cron (Regel 7, issue #186)
+  reminders.yml             alle 30 min (Minute 7/37, versetzt zu garmin-sync.yml), POST /api/push/reminders mit Bearer-Secret (REMINDER_SECRET) — die Route entscheidet über src/push/schedule.ts, welche Berliner Zeit fällig ist (issue #239)
 docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
 ```
 

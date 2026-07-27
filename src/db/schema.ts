@@ -302,3 +302,28 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 });
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+
+/**
+ * Double-send lock for the reminder cron (issue #239). Server-/cron-infrastructure
+ * like `pushSubscriptions` — no `syncColumns`, no Dexie counterpart, the client never
+ * reads this table.
+ *
+ * `slot` is `'HH:MM'`, not just the reminder kind, because a kind can have more than
+ * one time of day (T5): the unique index on `(kind, send_date, slot)` must let a
+ * 07:00 and a 20:00 reminder of the same kind each claim their own row on the same
+ * day, instead of the second one finding the first's row and silently skipping.
+ */
+export const reminderSends = pgTable(
+  'reminder_sends',
+  {
+    id: uuid('id').primaryKey(),
+    kind: text('kind').notNull(),
+    sendDate: date('send_date').notNull(),
+    slot: text('slot').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('reminder_sends_kind_send_date_slot_idx').on(table.kind, table.sendDate, table.slot)],
+);
+
+export type ReminderSend = typeof reminderSends.$inferSelect;
+export type NewReminderSend = typeof reminderSends.$inferInsert;

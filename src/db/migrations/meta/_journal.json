@@ -71,6 +71,13 @@
       "when": 1785051289690,
       "tag": "0009_nosy_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785144941183,
+      "tag": "0010_careless_killraven",
+      "breakpoints": true
     }
   ]
 }
