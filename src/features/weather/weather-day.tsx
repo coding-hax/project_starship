@@ -1,11 +1,27 @@
 'use client';
 
+import Link from 'next/link';
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { SectionCard } from '@/ui/section-card';
-import { hourLabel, temperatureAxis, temperatureLinePoints } from './forecast';
+import { IconChevronLeft } from '@/ui/icons';
+import {
+  formatDayHeading,
+  hourLabel,
+  nextWeatherDate,
+  previousWeatherDate,
+  temperatureAxis,
+  temperatureLinePoints,
+} from './forecast';
+import { useWeatherCache } from './use-weather-cache';
 import { useWeatherDay } from './use-weather-day';
 import { WEATHER_ICON_BY_CATEGORY, WEATHER_LABEL_BY_CATEGORY } from './weather-category-labels';
 import { weatherCategory } from './wmo-icon';
+
+/** Mirrors task-item.tsx's own swipe threshold (issue #267 AC4: "Schwelle analog
+ * task-item.tsx") — below this, or when the vertical delta dominates, releasing
+ * is a cancelled gesture and the page springs back instead of changing the day. */
+const SWIPE_THRESHOLD_PX = 80;
 
 /*
  * One geometry for both charts: same plot box, same hour grid, so the temperature
@@ -239,6 +255,153 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
           })}
         </ChartFrame>
       </SectionCard>
+    </div>
+  );
+}
+
+export interface WeatherDayScreenProps {
+  /** The date the server rendered this route for. Only read once, on mount —
+   * every later day change stays entirely on the client (issue #267). */
+  initialDate: string;
+}
+
+/**
+ * The topbar (issue #233's focus fix) plus `WeatherDayDetail`, wrapped in the
+ * swipe/keyboard day-switcher (issue #267). The current day lives in plain
+ * React state, never a Next.js route param after the first paint: switching
+ * days only ever calls `history.pushState` directly (kept in sync with
+ * `usePathname` by Next's own patched pushState) rather than `router.push`,
+ * which would ask the server to re-render the segment — exactly the "eigener
+ * Netzaufruf" AC8 rules out, and the one thing that would break offline.
+ */
+export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
+  const { location } = useWeatherLocation();
+  const cache = useWeatherCache(location);
+  const [currentDate, setCurrentDate] = useState(initialDate);
+  const [startX, setStartX] = useState<number | null>(null);
+  const [startY, setStartY] = useState<number | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [bouncing, setBouncing] = useState(false);
+
+  const nextDate = cache.days ? nextWeatherDate(cache.days, currentDate) : null;
+  const previousDate = cache.days ? previousWeatherDate(cache.days, currentDate) : null;
+
+  function switchTo(date: string) {
+    window.history.pushState(null, '', `/wetter/${date}`);
+    setCurrentDate(date);
+  }
+
+  // The browser back/forward buttons move the URL without going through
+  // `switchTo` — this is what actually reacts to that (AC2).
+  useEffect(() => {
+    function onPopState() {
+      const match = /^\/wetter\/([^/]+)$/.exec(window.location.pathname);
+      if (match) setCurrentDate(match[1]);
+    }
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Keyboard equivalent (AC6) — a pure gesture would leave desktop/keyboard use
+  // with no way to switch days at all. Mirrors the gesture's own left/right
+  // mapping: swipe left / ArrowLeft both advance to the next day.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      const target = event.key === 'ArrowLeft' ? nextDate : previousDate;
+      if (!target) return;
+      event.preventDefault();
+      switchTo(target);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [nextDate, previousDate]);
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // The back link is its own control — capturing the pointer here would steal
+    // the click the browser is about to synthesize for it (same reasoning as
+    // task-item.tsx's own guard for its checkbox/button).
+    if ((event.target as HTMLElement).closest('a')) return;
+    setStartX(event.clientX);
+    setStartY(event.clientY);
+    setDragging(true);
+    setBouncing(false);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging || startX === null) return;
+    setDragX(event.clientX - startX);
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const deltaX = startX === null ? 0 : event.clientX - startX;
+    const deltaY = startY === null ? 0 : event.clientY - startY;
+    setDragging(false);
+    setStartX(null);
+    setStartY(null);
+    setDragX(0);
+
+    // Too short, or mostly vertical (AC4) — both leave the day unchanged.
+    const isSwipe = Math.abs(deltaX) > SWIPE_THRESHOLD_PX && Math.abs(deltaX) > Math.abs(deltaY);
+    const target = isSwipe ? (deltaX < 0 ? nextDate : previousDate) : null;
+
+    if (target) {
+      // A real day change is instant, never a glide (AC7) — `dragX` above already
+      // reset to 0 without ever turning `bouncing` on, so no transition plays.
+      switchTo(target);
+    } else {
+      // Invalid swipe or the edge of the 7-day window (AC3) — spring back instead.
+      setBouncing(true);
+    }
+  }
+
+  /** The browser took the gesture over (e.g. a real vertical scroll) — nothing to
+   * undo visually, same reasoning as task-item.tsx's own `cancelDrag`. */
+  function cancelDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragging(false);
+    setStartX(null);
+    setStartY(null);
+    setDragX(0);
+  }
+
+  return (
+    <div
+      className="weather-day-screen"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={cancelDrag}
+    >
+      {/* Siehe page.tsx/issue #233: das <header> selbst ist der Fokus-Fix, ein
+          <header> ist nicht fokussierbar, der App-Router-Aufruf verpufft. */}
+      <header className="weather-day__topbar">
+        <Link href="/uebersicht" className="weather-day__back">
+          <IconChevronLeft />
+          Heute
+        </Link>
+        <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
+      </header>
+      <div
+        className={
+          'weather-day-screen__content' +
+          (bouncing ? ' weather-day-screen__content--bouncing' : '')
+        }
+        style={dragX ? { transform: `translateX(${dragX}px)` } : undefined}
+        onTransitionEnd={() => setBouncing(false)}
+      >
+        <WeatherDayDetail date={currentDate} />
+      </div>
     </div>
   );
 }

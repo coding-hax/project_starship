@@ -4,6 +4,27 @@
   gap: var(--space-4);
 }
 
+/* pan-y statt none: senkrechtes Scrollen bleibt uneingeschränkt möglich, auch mit
+   dem Finger über der Temperaturkurve (issue #267 AC5) — die horizontale Geste
+   wertet ausschließlich der Pointer-Handler in weather-day.tsx aus. */
+.weather-day-screen {
+  touch-action: pan-y;
+}
+
+.weather-day-screen__content {
+  transition: none;
+}
+
+/* Nur beim federnden Zurückschnappen an einer Wisch-Grenze (Schwelle
+   unterschritten, überwiegend senkrecht, oder Rand der 7-Tage-Vorhersage,
+   issue #267 AC3/AC4) — ein echter Tageswechsel setzt den Transform ohne
+   Übergang zurück (AC7: kein gleitender Übergang beim Tageswechsel selbst).
+   prefers-reduced-motion braucht keine Sonderbehandlung: die globale Regel in
+   tokens.css nullt transition-duration ohnehin überall (wie in task-item.tsx). */
+.weather-day-screen__content--bouncing {
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
 /* Zurück-Link links, Datum rechts auf derselben Höhe. */
 .weather-day__topbar {
   display: flex;

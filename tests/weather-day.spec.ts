@@ -68,6 +68,67 @@ function weatherDays(page: Page) {
 }
 
 /**
+ * Drives the same Pointer Events the swipe container listens to (issue #267) —
+ * same reasoning as tasks.spec.ts's own swipeLeft/swipeRight, just against the
+ * whole day-detail screen instead of a single list row. `verticalDriftPx` lets
+ * a test dial in a mostly-vertical gesture (AC4) without a second helper.
+ */
+async function swipeLeft(page: Page, distancePx: number, verticalDriftPx = 0) {
+  const container = page.locator('.weather-day-screen');
+  const box = (await container.boundingBox())!;
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + box.width - 20;
+
+  await container.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await container.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX - distancePx,
+    clientY: clientY + verticalDriftPx,
+    bubbles: true,
+  });
+  await container.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX - distancePx,
+    clientY: clientY + verticalDriftPx,
+    bubbles: true,
+  });
+}
+
+/** Same as `swipeLeft`, other direction. */
+async function swipeRight(page: Page, distancePx: number, verticalDriftPx = 0) {
+  const container = page.locator('.weather-day-screen');
+  const box = (await container.boundingBox())!;
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + 20;
+
+  await container.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await container.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX + distancePx,
+    clientY: clientY + verticalDriftPx,
+    bubbles: true,
+  });
+  await container.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX + distancePx,
+    clientY: clientY + verticalDriftPx,
+    bubbles: true,
+  });
+}
+
+/**
  * Loads /uebersicht once so the overview strip's refresh fills the cache.
  *
  * Every test that navigates straight to `/wetter/<datum>` needs this first: the
@@ -420,8 +481,242 @@ test('die Kopfzeile nutzt den --surface-Token, auch im Dark Mode (issue #156 AC1
   expect(darkBg).not.toBe(lightBg);
 });
 
-// No dedicated reduced-motion test: this page's `loading` state clears within a
-// tick (pure IndexedDB read, issue #156) and nothing else here animates, so
-// there is nothing a `prefers-reduced-motion: reduce` emulation could observe —
-// unlike weather-forecast.css's skeleton, which stays open for as long as its
-// gated network mock does.
+/* -------------------------------------------------------------------------- */
+/* AK: Wisch nach links/rechts wechselt den Tag (issue #267)                  */
+/* -------------------------------------------------------------------------- */
+
+test('Wisch nach links zeigt den nächsten Tag, Inhalt und Datumskopfzeile wechseln mit (issue #267 AC1)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+
+  await swipeLeft(page, 120);
+
+  await expect(page).toHaveURL('/wetter/2026-07-24');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Freitag, 24. Juli');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('16°');
+});
+
+test('Wisch nach rechts zeigt den vorherigen Tag (issue #267 AC1)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+
+  await swipeRight(page, 120);
+
+  await expect(page).toHaveURL('/wetter/2026-07-22');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mittwoch, 22. Juli');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('19°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: die URL wechselt mit, Browser-Zurück führt zum vorher gezeigten Tag     */
+/* -------------------------------------------------------------------------- */
+
+test('der Browser-Zurück-Schritt führt zurück auf den vorher gezeigten Tag (issue #267 AC2)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await swipeLeft(page, 120);
+  await expect(page).toHaveURL('/wetter/2026-07-24');
+
+  await page.goBack();
+
+  await expect(page).toHaveURL('/wetter/2026-07-23');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Donnerstag, 23. Juli');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: am Rand der Vorhersage passiert nichts, die Seite federt zurück        */
+/* -------------------------------------------------------------------------- */
+
+test('auf dem letzten verfügbaren Tag erzeugt ein Weiterwischen keinen no-data-Zustand (issue #267 AC3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-26'); // letzter Tag der 7-Tage-Vorhersage
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('31°');
+
+  await swipeLeft(page, 120);
+
+  await expect(page).toHaveURL('/wetter/2026-07-26');
+  await expect(page.locator('.weather-day__empty')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('31°');
+
+  // "federt zurück": der Transform der Inhaltsspalte landet wieder bei 0, statt
+  // dauerhaft verschoben stehen zu bleiben.
+  await expect
+    .poll(() =>
+      page
+        .locator('.weather-day-screen__content')
+        .evaluate((el) => getComputedStyle(el).transform),
+    )
+    .toBe('none');
+});
+
+test('auf dem ersten verfügbaren Tag erzeugt ein Zurückwischen ebenfalls keine Änderung (issue #267 AC3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20'); // erster Tag der 7-Tage-Vorhersage
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('24°');
+
+  await swipeRight(page, 120);
+
+  await expect(page).toHaveURL('/wetter/2026-07-20');
+  await expect(page.locator('.weather-day__empty')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('24°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: zu kurze oder überwiegend senkrechte Gesten wechseln den Tag nicht     */
+/* -------------------------------------------------------------------------- */
+
+test('eine zu kurze Wischgeste wechselt den Tag nicht (issue #267 AC4)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await swipeLeft(page, 20); // unterhalb der 80px-Schwelle
+
+  await expect(page).toHaveURL('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+});
+
+test('eine überwiegend senkrechte Geste wechselt den Tag nicht, auch nicht über der Temperaturkurve (issue #267 AC4/AC5)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const chart = page.locator('.weather-day__chart');
+  const box = (await chart.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  // Weiter senkrecht als waagerecht — trotz 120px horizontalem Anteil, der für
+  // sich genommen die Schwelle überschritten hätte.
+  await chart.dispatchEvent('pointerdown', { pointerId: 1, clientX: startX, clientY: startY, button: 0, bubbles: true });
+  await chart.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX - 120,
+    clientY: startY - 200,
+    bubbles: true,
+  });
+  await chart.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX - 120,
+    clientY: startY - 200,
+    bubbles: true,
+  });
+
+  await expect(page).toHaveURL('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: senkrechtes Scrollen bleibt uneingeschränkt möglich                    */
+/* -------------------------------------------------------------------------- */
+
+test('die Seite erlaubt weiterhin senkrechtes Scrollen (touch-action: pan-y, issue #267 AC5)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const touchAction = await page
+    .locator('.weather-day-screen')
+    .evaluate((el) => getComputedStyle(el).touchAction);
+  expect(touchAction).toBe('pan-y');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Tastatur-Äquivalent Pfeil links/rechts                                 */
+/* -------------------------------------------------------------------------- */
+
+test('Pfeil links/rechts wechselt denselben Tag wie die Geste (issue #267 AC6)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(page).toHaveURL('/wetter/2026-07-24');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
+
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: prefers-reduced-motion — kein gleitender Übergang beim Tageswechsel,   */
+/* der Rückstoß am Rand bleibt ohne Sprung-Animation                          */
+/* -------------------------------------------------------------------------- */
+
+test('bei reduzierter Bewegung wechselt der Tag ohne Übergang, der Rückstoß hat keine Sprung-Animation (issue #267 AC7)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-26'); // letzter Tag — der Rückstoß-Pfad
+
+  await swipeLeft(page, 120);
+
+  const transitionDuration = await page
+    .locator('.weather-day-screen__content')
+    .evaluate((el) => getComputedStyle(el).transitionDuration);
+  // Chromium serialisiert sehr kleine Werte in Exponentialschreibweise (z. B. "1e-05s").
+  expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: kein eigener Netzaufruf durch den Tageswechsel, auch offline           */
+/* -------------------------------------------------------------------------- */
+
+test('ein Tageswechsel per Wisch löst keinen eigenen Netzaufruf aus und funktioniert offline (issue #267 AC8)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+
+  // Netz komplett kappen, sobald die Ablage warm ist — derselbe Aufbau wie beim
+  // bestehenden Offline-Test oben: der Wechsel muss rein aus der Ablage kommen.
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await page.goto('/wetter/2026-07-23');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+
+  const requestUrls: string[] = [];
+  page.on('request', (request) => requestUrls.push(request.url()));
+
+  await swipeLeft(page, 120);
+
+  await expect(page).toHaveURL('/wetter/2026-07-24');
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
+  expect(requestUrls).toEqual([]);
+});

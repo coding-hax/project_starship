@@ -87,6 +87,22 @@ export function findWeatherDay(days: WeatherDay[], date: string): WeatherDay | u
   return days.find((day) => day.date === date);
 }
 
+/** The day right after `date` in the cached forecast, or `null` at the last day
+ * (or if `date` itself isn't in `days`) — a plain index lookup works because
+ * `daily.time` always comes back date-ascending (issue #267 swipe navigation). */
+export function nextWeatherDate(days: WeatherDay[], date: string): string | null {
+  const index = days.findIndex((day) => day.date === date);
+  if (index === -1) return null;
+  return days[index + 1]?.date ?? null;
+}
+
+/** Same as `nextWeatherDate`, the other direction (issue #267). */
+export function previousWeatherDate(days: WeatherDay[], date: string): string | null {
+  const index = days.findIndex((day) => day.date === date);
+  if (index === -1) return null;
+  return days[index - 1]?.date ?? null;
+}
+
 /** Throws on a network error or a non-2xx response — the caller decides what that means for the cache. */
 export async function fetchForecast(latitude: number, longitude: number): Promise<WeatherDay[]> {
   const response = await fetch(buildForecastUrl(latitude, longitude));
