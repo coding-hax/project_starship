@@ -45,9 +45,16 @@ label "model:haiku"    "BFDADC" "Startstufe Haiku — mechanisches Ticket."
 label "model:sonnet"   "9CC3C7" "Startstufe Sonnet — der Normalfall, muss man selten setzen."
 label "model:opus"     "8B5CF6" "Startstufe Opus — baut sofort, ohne die drei erfolglosen Läufe."
 label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Menschen freigegeben."
-label "hands-off"      "0B0B0B" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."
+label "hands-off"      "44546A" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."
 label "plan"           "1D76DB" "Rolle: plant das Ticket, statt es zu bauen (Opus, außer ein model:*-Label sagt etwas anderes)."
 label "research"       "0052CC" "Rolle: recherchiert den Fit und schlägt vor (Opus, außer ein model:*-Label sagt etwas anderes)."
+# Eskalations-Schalter (ADR-0007). Fehlten hier bis #266 -- ein frisch
+# aufgesetztes Repo hatte den Kill-Switch gegen den Opus-Bau also gar nicht.
+label "no-escalation"  "5319E7" "Friert das Ticket auf der Startstufe ein — der Runner schaltet nie selbst hoch."
+label "opus-boost"     "B197FC" "Hebt den Opus-Tagesdeckel für dieses Ticket einmalig auf."
+# Reine Sortier-Labels: sie steuern nichts, sie beschriften nur.
+label "bug"            "D73A4A" "Etwas funktioniert nicht."
+label "epic"           "006B75" "Sammelticket — wird nie selbst gebaut, nur die Stufen darunter."
 
 # --- 3. Milestones ---------------------------------------------------------
 echo "==> Milestones"
