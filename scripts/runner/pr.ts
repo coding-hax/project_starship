@@ -103,13 +103,6 @@ export function prCiState(pr: string, gh: GhAdapter): PrState {
   return 'success';
 }
 
-// Sind ALLE roten Checks genau 'protected-paths'? Dann ist das kein Fund fuer
-// einen Fix-Agenten, sondern die vorgesehene Genehmigungs-Schranke.
-export function prOnlyProtectedPathsRed(pr: string, gh: GhAdapter): boolean {
-  const checks = prChecks(pr, gh);
-  return !checks.some((c) => (c.bucket === 'fail' || c.bucket === 'cancel') && c.name !== 'protected-paths');
-}
-
 // Squash-Merge mit EIGENEM Subject/Body statt GitHub die Commit-Historie
 // sammeln zu lassen (#172): ohne --subject/--body haengt GitHub beim Squash
 // alle Commit-Nachrichten des Branches aneinander -- inklusive fremder
@@ -194,7 +187,10 @@ export function reopenFalselyClosedIssues(gh: GhAdapter): void {
 export function prFailureSummary(pr: string, gh: GhAdapter): string {
   const checks = prChecks(pr, gh);
   const failing = checks
-    .filter((c) => (c.bucket === 'fail' || c.bucket === 'cancel') && c.name !== 'protected-paths')
+    // #283: Hier stand eine Ausnahme fuer 'protected-paths' -- der Check war
+    // eine Genehmigungs-Schranke, kein Fund, den ein Agent haette beheben
+    // koennen. Den Job gibt es nicht mehr, also auch die Ausnahme nicht.
+    .filter((c) => c.bucket === 'fail' || c.bucket === 'cancel')
     .slice(0, 3);
 
   const parts: string[] = [];

@@ -140,7 +140,7 @@ Zahlen oben = zuerst. Wichtig:
   (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
   gelistet ist.
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
-  gelistetes, unfertiges Ticket gebaut. Ein Merge-Schutz für geschützte Pfade besteht seit #276 nicht mehr (`protected-paths` ist nur noch ein Hinweis).
+  gelistetes, unfertiges Ticket gebaut. Einen Merge-Schutz für geschützte Pfade gibt es nicht mehr (#276, #283).
 - **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
   (`plan` → `research` → `ready`, je ältestes `createdAt`). Solange die Liste
   etwas Baubares enthält, kommt davon allerdings nichts dran — deshalb **nennt
@@ -307,7 +307,6 @@ Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, **nur** `protected-paths` | Kann seit #276 nicht mehr eintreten — der Wächter blockiert nicht mehr. | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
@@ -425,7 +424,6 @@ gh api -X PUT repos/:owner/:repo/branches/main/protection \
   -f 'required_status_checks.contexts[]=quality' \
   -f 'required_status_checks.contexts[]=e2e' \
   -f 'required_status_checks.contexts[]=test-integrity' \
-  -f 'required_status_checks.contexts[]=protected-paths' \
   -F enforce_admins=false \
   -F required_pull_request_reviews=null \
   -F restrictions=null
@@ -438,15 +436,24 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
   (`.skip`, `.only`) oder mit `waitForTimeout` grün macht. Reine Textprüfung,
   kein Modell beteiligt.
 
-`protected-paths` **blockiert seit #276 nicht mehr.** Der Check läuft weiter
-und nennt im Log, welche empfindlichen Dateien ein PR berührt — aber er ist
-immer grün, und das Label `human-approved` gibt es nicht mehr.
+**`protected-paths` gibt es nicht mehr** (#283). Der Weg dorthin in zwei
+Schritten: Mit #276 hörte der Check auf zu blockieren — die PRs werden ohnehin
+direkt freigegeben, das Label `human-approved` erzeugte keinen zusätzlichen
+Blick auf den Diff, sondern nur einen zusätzlichen Handgriff, der regelmäßig
+zur eigentlichen Bremse wurde (Label am PR statt am Issue, zwei gleichzeitige
+Check-Suites, Tickets tagelang still). Übrig blieb ein Job, der auflistete, was
+ein PR anfasst, und danach immer grün war. Ein Check, der nie fehlschlägt,
+bringt niemandem etwas bei — und war trotzdem ein Required Check, der bei jedem
+PR einen Runner belegte. Also weg, samt dem toten Zweig im Runner-Kern.
 
-Der Grund: die PRs werden ohnehin direkt freigegeben. Das Label hat keinen
-zusätzlichen Blick auf den Diff erzeugt, sondern nur einen zusätzlichen
-Handgriff — und einen, der regelmäßig zur eigentlichen Bremse wurde (Label am
-PR statt am Issue, zwei gleichzeitige Check-Suites, von denen eine die Payload
-ohne Label sah, Tickets tagelang still).
+**Der ausgesprochene Preis:** Ein unbeaufsichtigter Lauf kann eine Migration,
+eine Krypto-Änderung oder einen Sync-Fix allein mergen. Was bleibt, ist kein
+Tor, sondern eine Pflicht — der Bau-Prompt verlangt bei `src/db/`,
+`src/crypto/`, `src/local/`, `src/app/api/sync/`, allem mit `auth` im Namen,
+`.github/` und `scripts/` einen **Kommentar am Ticket**: was geändert wurde,
+warum, was schiefgehen könnte. Die übrigen Netze sind `schema-drift`, `quality`
+(Sync-Invarianten), `test-integrity`, `e2e-offline` und die Review-Rolle
+`db-migration`.
 
 **Der bewusst in Kauf genommene Preis:** ein unbeaufsichtigter Runner-Lauf
 kann eine Migration, eine Krypto-Änderung oder einen Sync-Eingriff selbst
