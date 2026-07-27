@@ -38,13 +38,21 @@ export function queueOrderFlat(body: string): number[] {
 }
 
 // Offene Queue-Arbeit als "#a, #b" (leer = nichts offen): ready|plan|
-// research, jeweils OHNE needs-input.
+// research, jeweils OHNE das Wartelabel.
+//
+// Das ist bewusst NICHT dieselbe Frage wie `queueNext()`: hier zaehlt, was
+// offen ist, dort, was der Runner als naechstes naehme. Ein 'hands-off'-Ticket
+// bleibt deshalb hier sichtbar -- es ist offene Arbeit, nur eben keine fuer
+// den Runner (#271 AC3).
+//
+// #272: das Wartelabel hiess bis S2b 'needs-input'. Der Filter meinte immer
+// schon "wartet auf den Menschen"; nur der Name hat sich geaendert.
 export function queuePending(snapshot: QueueIssue[]): string {
   return snapshot
     .filter((issue) => {
       const eligible =
         hasLabel(issue, 'ready') || hasLabel(issue, 'plan') || hasLabel(issue, 'research');
-      return eligible && !hasLabel(issue, 'needs-input');
+      return eligible && !hasLabel(issue, 'needs-answer');
     })
     .map((issue) => issue.number)
     .sort((a, b) => a - b)
@@ -52,46 +60,11 @@ export function queuePending(snapshot: QueueIssue[]): string {
     .join(', ');
 }
 
-// Das Ticket, das der Runner beim naechsten Takt naehme -- Praezedenz:
-// laufendes in-progress -> flache Queue (Label egal) -> plan ->
-// ready. `null`, wenn nichts baubereit ist.
+// #271: Hier stand bis heute eine zweite, von Hand gepflegte Kopie der
+// Auswahl-Kaskade. Sie ist nach select.ts gewandert und dort ein Dreizeiler
+// ueber `selectTicket()` -- die Anzeige im Status-Issue kann strukturell nicht
+// mehr etwas anderes sagen als das, was der Runner dann baut.
 //
-// `hands-off` (frueher 'no-opus') wird EINMAL zentral vom Snapshot gefiltert,
-// nicht je Zweig -- dieselbe Form wie `selectTicket()` seit #227. Sonst
-// vergisst der naechste Zweig den Ausschluss wieder, und die Anzeige nennt ein
-// Ticket, das der Runner gar nicht baut (#271).
-export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null {
-  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'hands-off'));
-
-  const runningInProgress = selectable
-    .filter((issue) => hasLabel(issue, 'in-progress') && !hasLabel(issue, 'needs-input'))
-    .sort(byCreatedAt)[0];
-  if (runningInProgress) return runningInProgress.number;
-
-  const order = queueOrderFlat(queueBody);
-  if (order.length > 0) {
-    const ranked = selectable
-      .filter((issue) => order.includes(issue.number))
-      .filter((issue) => !hasLabel(issue, 'needs-input'))
-      .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
-    if (ranked.length > 0) return ranked[0].number;
-  }
-
-  const nextPlan = selectable
-    .filter((issue) => hasLabel(issue, 'plan') && !hasLabel(issue, 'needs-input'))
-    .sort(byCreatedAt)[0];
-  if (nextPlan) return nextPlan.number;
-
-  const nextReady = selectable
-    .filter(
-      (issue) =>
-        hasLabel(issue, 'ready') &&
-        !hasLabel(issue, 'needs-input') &&
-        !hasLabel(issue, 'plan') &&
-        !hasLabel(issue, 'research'),
-    )
-    .sort(byCreatedAt)[0];
-  if (nextReady) return nextReady.number;
-
-  return null;
-}
+// Der Beweis, dass die Kopie driftet, steht in der Ticket-Historie: 'hands-off'
+// fehlte hier in zwei Zweigen, 'resume-parked' fehlte ganz, und zuletzt filterte
+// sie noch 'needs-input' -- ein Label, das es seit S2b nicht mehr gibt.

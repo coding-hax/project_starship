@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
 import { createStateAdapter, type StateAdapter } from './state';
-import { pickTicket, selectTicket } from './select';
+import { pickTicket, queueNext, selectTicket } from './select';
 import type { QueueIssue } from './queue';
 
 function label(...names: string[]) {
@@ -252,5 +252,138 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
     const gh = ghDouble();
     expect(pickTicket([], '', gh, state)).toEqual({ kind: 'none' });
     expect(gh.run).not.toHaveBeenCalled();
+  });
+});
+
+// --- #271: die Anzeige IST die Auswahl -------------------------------------
+// `queueNext()` beantwortet fuers Status-Issue "welches Ticket naehme der
+// Runner als naechstes". Bis #271 war das eine zweite Kaskade in queue.ts, die
+// dreimal nachweislich abdriftete (hands-off fehlte in zwei Zweigen,
+// resume-parked fehlte ganz, zuletzt filterte sie das abgeschaffte
+// 'needs-input'). Die folgenden Faelle standen bis heute in queue.test.ts --
+// sie gelten unveraendert weiter, pruefen jetzt aber dieselbe Kaskade.
+describe('queueNext (Anzeige im Status-Issue)', () => {
+  const q = (number: number, labels: string[], createdAt?: string): QueueIssue => issue(number, labels, createdAt ?? '2024-01-01T00:00:00Z');
+
+  it('picks a running in-progress ticket over plan and ready', () => {
+    expect(queueNext([q(10, ['ready']), q(20, ['plan']), q(30, ['in-progress'])])).toBe(30);
+  });
+
+  it('skips a ticket that waits on the human, falling back to the next ready one', () => {
+    expect(queueNext([q(40, ['ready', 'needs-answer']), q(41, ['ready'])])).toBe(41);
+  });
+
+  it('skips a hands-off plan ticket, falling back to ready', () => {
+    expect(queueNext([q(50, ['plan', 'hands-off']), q(51, ['ready'])])).toBe(51);
+  });
+
+  it('skips a hands-off in-progress ticket, falling back to ready', () => {
+    expect(queueNext([q(52, ['in-progress', 'hands-off']), q(53, ['ready'])])).toBe(53);
+  });
+
+  it('skips a hands-off ready ticket, falling back to the next ready one', () => {
+    expect(queueNext([q(54, ['ready', 'hands-off']), q(55, ['ready'], '2024-01-02T00:00:00Z')])).toBe(55);
+  });
+
+  it('returns null when every ticket carries hands-off', () => {
+    expect(
+      queueNext([q(56, ['in-progress', 'hands-off']), q(57, ['plan', 'hands-off']), q(58, ['ready', 'hands-off'])]),
+    ).toBeNull();
+  });
+
+  // Der einzige Fall, in dem sich die Antwort mit #271 AENDERT -- und zwar zur
+  // richtigen hin: die alte Kopie kannte den research-Zweig ueberhaupt nicht
+  // und meldete "nichts steht an", waehrend der Runner im naechsten Takt genau
+  // dieses Ticket nahm. Genau diese Sorte Luege soll das Ticket abstellen.
+  it('names an open research ticket -- the runner takes it next', () => {
+    expect(queueNext([q(60, ['research'])])).toBe(60);
+  });
+
+  it('returns null for an empty queue', () => {
+    expect(queueNext([q(70, [])])).toBeNull();
+  });
+
+  it('picks the oldest ticket within a stage by createdAt, not array order', () => {
+    expect(queueNext([q(82, ['ready'], '2024-06-01T00:00:00Z'), q(81, ['ready'])])).toBe(81);
+  });
+
+  it('listed ticket without any label still wins (label is irrelevant for the flat queue)', () => {
+    expect(queueNext([q(77, [])], '#77')).toBe(77);
+  });
+
+  it('queue order beats createdAt', () => {
+    expect(queueNext([q(10, []), q(99, [], '2024-06-01T00:00:00Z')], '#99\n#10')).toBe(99);
+  });
+
+  it('a listed ticket beats an unlisted ready one', () => {
+    expect(queueNext([q(10, ['ready']), q(99, [], '2024-06-01T00:00:00Z')], '#99')).toBe(99);
+  });
+
+  it('a waiting listed ticket falls back to the plain queue/label logic', () => {
+    expect(queueNext([q(77, ['needs-answer']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '#77')).toBe(88);
+  });
+
+  it('hands-off excludes a listed ticket, falling back to the plain queue/label logic', () => {
+    expect(queueNext([q(77, ['hands-off']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '#77')).toBe(88);
+  });
+
+  it('empty queue body falls back to ready by oldest createdAt', () => {
+    expect(queueNext([q(10, ['ready']), q(99, ['ready'], '2024-06-01T00:00:00Z')], '')).toBe(10);
+  });
+});
+
+// #271 AC1/AC2: der eigentliche Zwang. Solange `queueNext()` an
+// `selectTicket()` delegiert, kann das hier gar nicht scheitern -- das ist der
+// Punkt. Wuerde jemand die Kaskade dort wieder auseinanderziehen (oder eine
+// zweite Kopie anlegen), faellt genau dieser Test um, und zwar in dem Fall, in
+// dem die beiden auseinanderlaufen.
+describe('Paritaet queueNext <-> selectTicket (#271)', () => {
+  const faelle: { name: string; snapshot: QueueIssue[]; body?: string }[] = [
+    { name: 'leerer Snapshot', snapshot: [] },
+    { name: 'nur ein ready-Ticket', snapshot: [issue(10, ['ready'])] },
+    {
+      name: 'laufendes Ticket schlaegt ready',
+      snapshot: [issue(10, ['ready']), issue(20, ['in-progress'])],
+    },
+    {
+      name: 'laufendes Ticket wartet auf eine Antwort',
+      snapshot: [issue(20, ['in-progress', 'needs-answer']), issue(10, ['ready'])],
+    },
+    {
+      name: 'hands-off auf jedem Zweig',
+      snapshot: [
+        issue(20, ['in-progress', 'hands-off']),
+        issue(30, ['plan', 'hands-off']),
+        issue(40, ['ready', 'hands-off']),
+      ],
+    },
+    {
+      name: 'Queue-Reihenfolge schlaegt die Label-Kaskade',
+      snapshot: [issue(10, ['ready']), issue(99, [], '2024-06-01T00:00:00Z')],
+      body: '#99\n#10',
+    },
+    {
+      name: 'gelistetes Ticket wartet -- Rueckfall auf die Label-Kaskade',
+      snapshot: [issue(77, ['needs-answer']), issue(88, ['ready'], '2024-02-01T00:00:00Z')],
+      body: '#77',
+    },
+    { name: 'plan vor research', snapshot: [issue(30, ['research']), issue(40, ['plan'])] },
+    { name: 'nur research offen', snapshot: [issue(60, ['research'])] },
+    {
+      name: 'research UND ready am selben Ticket',
+      snapshot: [issue(60, ['research', 'ready'])],
+    },
+    { name: 'alles wartet', snapshot: [issue(50, ['in-progress', 'needs-answer']), issue(60, ['ready', 'needs-answer'])] },
+  ];
+
+  it.each(faelle)('$name', ({ snapshot, body }) => {
+    expect(queueNext(snapshot, body ?? '')).toBe(selectTicket(snapshot, body ?? '')?.issue ?? null);
+  });
+
+  it('gilt auch fuer die Rolle -- die Anzeige nennt das Ticket, das gebaut ODER gedacht wird', () => {
+    const snapshot = [issue(30, ['research']), issue(40, ['plan'])];
+    const selected = selectTicket(snapshot);
+    expect(selected?.role).toBe('plan');
+    expect(queueNext(snapshot)).toBe(selected?.issue);
   });
 });
