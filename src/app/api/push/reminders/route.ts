@@ -27,6 +27,18 @@ async function hasValidOwnerSession(): Promise<boolean> {
 }
 
 /**
+ * `tasks-due` (issue #241) only fires from 07:00 Berlin time onward — a real cron
+ * run always lands after that, but a Playwright suite can start at any wall-clock
+ * hour. `X-E2E-Now` lets it pin "now" the same way `e2e-smoke` (src/push/reminders/
+ * index.ts) sidesteps the same problem for the pipeline itself, gated the same way
+ * as the NEXT_PUBLIC_E2E hooks in src/app/sw.ts.
+ */
+function resolveNow(request: Request): Date {
+  const override = process.env.NEXT_PUBLIC_E2E === '1' ? request.headers.get('x-e2e-now') : null;
+  return override ? new Date(override) : new Date();
+}
+
+/**
  * Triggered by the GitHub-Actions cron (`Authorization: Bearer <REMINDER_SECRET>`)
  * and, for a manual kick, by a signed-in owner — same auth shape as
  * `/api/garmin-sync` (ADR-0011): a cron run carries no session, so `requireOwner()`
@@ -49,7 +61,7 @@ export async function POST(request: Request) {
   }
 
   // The kinds and their outcome, never an endpoint or a key (AC9).
-  const result = await sendDueReminders(new Date());
+  const result = await sendDueReminders(resolveNow(request));
   console.log('[push/reminders]', result);
   return NextResponse.json(result);
 }
