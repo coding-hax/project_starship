@@ -139,7 +139,7 @@ src/
     shell.css               App-Shell: Header + Bottom-Nav (mobil, Karussell ab mehr als fünf Einträgen) / Header + Sidebar (Desktop, kein Karussell) (issue #205)
     app-header.tsx           Einstellungen-Einstieg, zwei Varianten: `chrome` (Shell, nur ab 768px) und `inline` (nur auf /uebersicht, mobil) (issue #123, #126)
     nav-items.ts            NAV_ITEMS — eine Quelle für nav.tsx und nav-order-panel.tsx (issue #205)
-    nav.tsx                 Reihenfolge aus useNavOrder, holt den aktiven Tab beim Navigieren selbst heran (scrollIntoView, reduced-motion-bewusst) (issue #123, #205)
+    nav.tsx                 Reihenfolge aus useNavOrder, holt den aktiven Tab beim Navigieren selbst heran über `list.scrollTo()` mit selbst berechnetem, auf den gültigen Scroll-Bereich geklemmtem Ziel statt `scrollIntoView()` — bleibt dadurch auf `.nav__list` beschränkt (rührt nie den Dokument-Scroll an) und überschießt am ersten/letzten Eintrag nicht (issue #123, #205, #229), reduced-motion-bewusst
     sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
