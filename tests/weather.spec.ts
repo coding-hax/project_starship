@@ -120,7 +120,7 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
 /* AK: Wochenende bekommt einen kräftigeren Rahmen, Spaltenbreite bleibt gleich */
 /* -------------------------------------------------------------------------- */
 
-test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten bleiben gleich breit (issue #223 AC1–AC2)', async ({
+test('Samstag und Sonntag haben einen kräftigeren Rahmen (2px, dunklere Farbe), alle sieben Spalten bleiben gleich breit (issue #223 AC1–AC2, issue #268 AC1–AC3)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -137,8 +137,8 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten b
     expect(width).toBeCloseTo(widths[0], 1);
   }
 
-  // AC1: Rahmenbreite ist überall 1px
-  // AC2: Rahmenfarbe unterscheidet sich für Sa/So
+  // AC1 (issue #268): Alle haben 2px Rahmen
+  // AC2 (issue #223): Rahmenfarbe unterscheidet sich für Sa/So
   // DAY_SET_A.weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
   const monday = days.nth(0);
   const saturday = days.nth(5);
@@ -148,12 +148,12 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen, alle sieben Spalten b
   const saturdayLink = saturday.locator('.weather-forecast__day-link');
   const sundayLink = sunday.locator('.weather-forecast__day-link');
 
-  // Alle haben 1px Rahmen
-  await expect(mondayLink).toHaveCSS('border-width', '1px');
-  await expect(saturdayLink).toHaveCSS('border-width', '1px');
-  await expect(sundayLink).toHaveCSS('border-width', '1px');
+  // Alle haben 2px Rahmen (issue #268)
+  await expect(mondayLink).toHaveCSS('border-width', '2px');
+  await expect(saturdayLink).toHaveCSS('border-width', '2px');
+  await expect(sundayLink).toHaveCSS('border-width', '2px');
 
-  // Sa/So haben stärkere Rahmenfarbe
+  // Sa/So haben stärkere Rahmenfarbe (dunklere Farbe mit --border-strong)
   const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
   const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
   const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
@@ -207,6 +207,63 @@ test('focus-visible auf Karten-Link zeigt Accent-Outline, Wochenend-Rahmen beein
   await expect(saturdayLink).toHaveCSS('outline-offset', '-2px');
   const outlineColor = await saturdayLink.evaluate((el) => getComputedStyle(el).outlineColor);
   expect(outlineColor).toBeTruthy();
+});
+
+test('Tap-Ziel weather-forecast__day-link bleibt bei 375px ≥ 44×44px (issue #268 AC4)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  // 375px is the minimum mobile width
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const dayLinks = await days.locator('.weather-forecast__day-link').all();
+  for (const link of dayLinks) {
+    const box = await link.boundingBox();
+    expect(box).toBeTruthy();
+    // Check both width and height are at least 44px
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('Wochenendspalten-Rahmen ist auch bei 1280px (Desktop) sichtbar dunkel und 2px (issue #268 AC6)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  // 1280px is a standard desktop width
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const monday = days.nth(0);
+  const saturday = days.nth(5);
+  const sunday = days.nth(6);
+
+  const mondayLink = monday.locator('.weather-forecast__day-link');
+  const saturdayLink = saturday.locator('.weather-forecast__day-link');
+  const sundayLink = sunday.locator('.weather-forecast__day-link');
+
+  // All have 2px border
+  await expect(mondayLink).toHaveCSS('border-width', '2px');
+  await expect(saturdayLink).toHaveCSS('border-width', '2px');
+  await expect(sundayLink).toHaveCSS('border-width', '2px');
+
+  // Sa/So have darker border color
+  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
+
+  expect(saturdayColor).not.toBe(mondayColor);
+  expect(sundayColor).not.toBe(mondayColor);
+  expect(saturdayColor).toBe(sundayColor);
 });
 
 /* -------------------------------------------------------------------------- */
