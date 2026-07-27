@@ -141,6 +141,10 @@ in ein Wegwerf-Verzeichnis materialisiert, `node_modules` wird aus dem Repo
 verlinkt. Würde nur die `.sh` kopiert, käme der TS-Kern — also die eigentliche
 Entscheidungslogik — wieder aus dem Arbeitsbaum.
 
+`REPO_DIR` und `STATE_DIR` bleiben dabei unangetastet: gebaut wird weiter im echten
+Arbeitsbaum, der Zustand liegt weiter in `$REPO/.runner`. Wegwerf ist nur der Runner
+selbst.
+
 ## `~/Library/LaunchAgents/de.starship.runner.plist`
 
 `STATUS_ISSUE` ist die Nummer des angepinnten Runner-Status-Issues.
