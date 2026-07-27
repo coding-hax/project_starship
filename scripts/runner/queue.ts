@@ -55,27 +55,34 @@ export function queuePending(snapshot: QueueIssue[]): string {
 // Das Ticket, das der Runner beim naechsten Takt naehme -- Praezedenz:
 // laufendes in-progress -> flache Queue (Label egal) -> plan ->
 // ready. `null`, wenn nichts baubereit ist.
+//
+// `hands-off` (frueher 'no-opus') wird EINMAL zentral vom Snapshot gefiltert,
+// nicht je Zweig -- dieselbe Form wie `selectTicket()` seit #227. Sonst
+// vergisst der naechste Zweig den Ausschluss wieder, und die Anzeige nennt ein
+// Ticket, das der Runner gar nicht baut (#271).
 export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null {
-  const runningInProgress = snapshot
+  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'hands-off'));
+
+  const runningInProgress = selectable
     .filter((issue) => hasLabel(issue, 'in-progress') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
   if (runningInProgress) return runningInProgress.number;
 
   const order = queueOrderFlat(queueBody);
   if (order.length > 0) {
-    const ranked = snapshot
+    const ranked = selectable
       .filter((issue) => order.includes(issue.number))
-      .filter((issue) => !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'hands-off'))
+      .filter((issue) => !hasLabel(issue, 'needs-input'))
       .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
     if (ranked.length > 0) return ranked[0].number;
   }
 
-  const nextNeedsPlan = snapshot
-    .filter((issue) => hasLabel(issue, 'plan') && !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'hands-off'))
+  const nextPlan = selectable
+    .filter((issue) => hasLabel(issue, 'plan') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
-  if (nextNeedsPlan) return nextNeedsPlan.number;
+  if (nextPlan) return nextPlan.number;
 
-  const nextReady = snapshot
+  const nextReady = selectable
     .filter(
       (issue) =>
         hasLabel(issue, 'ready') &&

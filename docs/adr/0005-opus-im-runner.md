@@ -68,3 +68,19 @@ Produktionscode.
   Budget-Zähler gibt es bewusst nicht (siehe „Grenzen").
 - `scripts/tests/` prüft, dass `RUN_ROLE=plan`/`RUN_ROLE=research` nicht mit
   einem pauschalen `Bash` starten (#63).
+
+---
+
+## Nachtrag 27.07.2026 — nur Bezeichner, keine Entscheidung
+
+Im Zuge von #225 (S2a von #264) wurden drei Labels umbenannt. Die
+Entscheidungen dieses ADR bleiben unverändert; es ändert sich ausschließlich,
+wie die Schalter heißen:
+
+| bis 27.07.2026 | ab jetzt | warum |
+| --- | --- | --- |
+| `no-opus` | `hands-off` | der Name klang nach Modellwahl, ist aber der Finger-weg-Schalter: der Runner fasst das Ticket auf keinem Zweig an |
+| `needs-plan` | `plan` | eine Rolle für den Runner, keine Bitte an den Menschen. `needs-` trägt ab jetzt nur noch ein Label, das etwas von einem Menschen will |
+| `needs-research` | `research` | dito |
+
+Ältere Kommentare, Tickets und Läufe nennen weiterhin die alten Namen.

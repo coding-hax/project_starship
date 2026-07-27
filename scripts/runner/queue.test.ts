@@ -69,6 +69,34 @@ describe('queueNext', () => {
     expect(queueNext(snap)).toBe(51);
   });
 
+  // #271 Punkt 1: der running-Zweig prueft hands-off bisher nicht -- die
+  // Anzeige nannte ein laufendes Ticket, das die Auswahl laengst ueberspringt.
+  it('skips a hands-off in-progress ticket, falling back to ready', () => {
+    const snap: QueueIssue[] = [
+      { number: 52, labels: [label('in-progress'), label('hands-off')] },
+      { number: 53, labels: [label('ready')] },
+    ];
+    expect(queueNext(snap)).toBe(53);
+  });
+
+  // #271 Punkt 2: dasselbe im ready-Zweig.
+  it('skips a hands-off ready ticket, falling back to the next ready one', () => {
+    const snap: QueueIssue[] = [
+      { number: 54, labels: [label('ready'), label('hands-off')], createdAt: '2024-01-01T00:00:00Z' },
+      { number: 55, labels: [label('ready')], createdAt: '2024-01-02T00:00:00Z' },
+    ];
+    expect(queueNext(snap)).toBe(55);
+  });
+
+  it('returns null when every ticket carries hands-off', () => {
+    const snap: QueueIssue[] = [
+      { number: 56, labels: [label('in-progress'), label('hands-off')] },
+      { number: 57, labels: [label('plan'), label('hands-off')] },
+      { number: 58, labels: [label('ready'), label('hands-off')] },
+    ];
+    expect(queueNext(snap)).toBeNull();
+  });
+
   it('returns null when only research is open', () => {
     expect(queueNext([{ number: 60, labels: [label('research')] }])).toBeNull();
   });
