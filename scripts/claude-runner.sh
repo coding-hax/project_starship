@@ -222,14 +222,22 @@ if [ -s "$LIMIT_UNTIL" ]; then
 fi
 
 # --- Weicht die laufende Shim-Datei von der reviewten Fassung ab? -------------
-# Erkannt hat das der Shim (er kennt Repo und Ref), gemeldet wird es hier: hier
-# sitzt status(), und der Shim soll bewusst kein `gh` anfassen. Bewusst NACH dem
-# Limit-Gate, damit das ein garantierter No-Op ohne gh bleibt.
+# Geprüft wird hier und NICHT im Shim: der Shim ist die eine Datei, die läuft,
+# ohne im Repo zu liegen -- trüge er die Prüfung selbst, könnte eine zu alte
+# Fassung nicht melden, dass sie zu alt ist. Diese Datei hier wird bei jedem Tick
+# frisch aus origin/main materialisiert, also greift die Meldung auch gegen einen
+# uralten installierten Shim. Entschieden wird in scripts/runner/shim.ts, hier
+# steht nur die Meldung -- status() bleibt bash-only (#252).
+#
+# Bewusst NACH dem Limit-Gate: das muss ein garantierter No-Op ohne gh und ohne
+# tsx bleiben.
 #
 # Ein Drift hält den Lauf NICHT an. 🟡 heisst 'wartet auf dich', nicht 'kaputt'
 # -- nach elf Stunden Totalausfall (#249) ist ein stehender Runner teurer als
-# ein abweichender (#252).
-if [ -n "${SHIM_DRIFT:-}" ]; then
+# ein abweichender.
+SHIM_PATH="${SHIM_PATH:-$HOME/.local/bin/starship-runner}"
+SHIM_DRIFT=$(ts_run shim-drift-reason "$SHIM_PATH" "${RUNNER_REF:-origin/main}")
+if [ -n "$SHIM_DRIFT" ]; then
   status "Shim weicht ab" "🟡" "🟡 $SHIM_DRIFT
 
 Ausgeführt wird die installierte Kopie, nicht die reviewte Fassung aus dem Repo.

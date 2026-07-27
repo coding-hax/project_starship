@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Tests für die Drift-Erkennung des Shims (issue #252).
+# Test für die Shim-Drift-MELDUNG (issue #252).
 #
-# Der Shim ist die einzige Komponente, die AUSGEFÜHRT wird, ohne im Repo zu
-# liegen -- ausgeführt wird ~/.local/bin/starship-runner, reviewt wird
-# scripts/starship-runner. Genau diese Doppelung hat #249 ermöglicht.
+# Die Entscheidung selbst liegt im TS-Kern (scripts/runner/shim.ts, dort die
+# Vitest-Suite). Hier wird nur die Bash-Seite geprüft, die es nicht in TypeScript
+# gibt: dass claude-runner.sh den Kern fragt, aus einer Antwort eine 🟡-Meldung
+# macht -- und den Lauf trotzdem NICHT anhält.
 #
-# Erkannt wird im Shim (shim_drift_reason), gemeldet in claude-runner.sh über
-# status(). Beide Hälften werden hier geprüft, inklusive der Zusage, dass ein
-# Drift den Lauf NICHT anhält.
+# Das läuft bewusst gegen den echten Kern, nicht gegen eine ts_run-Attrappe:
+# genau die Verdrahtung war bei #249 kaputt, und eine Attrappe hätte das nicht
+# gezeigt.
 set -uo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SHIM="$TEST_DIR/../starship-runner"
 RUNNER="$TEST_DIR/../claude-runner.sh"
+REPO_ROOT="$(cd "$TEST_DIR/../.." && pwd -P)"
 
 FAIL=0
 # Jeder Testblock läuft in einer SUBSHELL -- ein dort gesetztes FAIL=1 erreicht
@@ -24,26 +25,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 FAIL_FLAG="$TMP/failed"
 
-# --- Fixture-Repo mit kanonischem Shim ---------------------------------------
-FIX="$TMP/repo"
-mkdir -p "$FIX/scripts"
-(
-  cd "$FIX" || exit 1
-  git init -q .
-  git config user.email test@example.com
-  git config user.name Test
-  cp "$SHIM" scripts/starship-runner
-  git add scripts/starship-runner
-  git commit -qm "shim"
-) >/dev/null 2>&1
-
 # --- Werkzeug-Attrappen ------------------------------------------------------
 FAKEBIN="$TMP/bin"
 mkdir -p "$FAKEBIN"
 export GHSTATE_DIR="$TMP/ghstate"
 mkdir -p "$GHSTATE_DIR"
 
-# gh-Stub: protokolliert 'issue edit', damit A4 den Status-Titel prüfen kann.
+# gh-Stub: protokolliert 'issue edit', damit der Status-Titel prüfbar ist.
 cat > "$FAKEBIN/gh" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -71,90 +59,29 @@ done
 export PATH="$FAKEBIN:$PATH"
 
 # ==============================================================================
-# A1: Installierte Datei identisch zur kanonischen -> kein Drift.
+# T1: Abweichende installierte Datei -> 🟡 mit Installationsbefehl,
+#     UND der Lauf endet trotzdem sauber (Exit 0).
+#
+#     Der zweite Teil ist der eigentliche Punkt: nach #249 ist ein stehender
+#     Runner teurer als ein abweichender.
 # ==============================================================================
 (
-  cd "$FIX" || exit 1
-  export REPO_DIR="$FIX"
+  cd "$REPO_ROOT" || exit 1
+  export REPO_DIR="$REPO_ROOT"
+  export RUNNER_HOME="$REPO_ROOT"
   export RUNNER_REF="HEAD"
-  export SHIM_SELF="$FIX/scripts/starship-runner"
-  # shellcheck source=/dev/null
-  source "$SHIM"
-  set +e   # der Shim setzt `set -e`, das gilt gesourct hier weiter
-
-  REASON=$(shim_drift_reason); RC=$?
-  if [ -n "$REASON" ]; then
-    red "A1: identische Dateien wurden als Drift gemeldet: '$REASON'"
-  elif [ "$RC" -ne 0 ]; then
-    red "A1: Exit $RC statt 0"
-  else
-    ok "A1: identische Dateien -> kein Drift"
-  fi
-)
-
-# ==============================================================================
-# A2: Installierte Datei verändert -> Drift mit Grund.
-# ==============================================================================
-(
-  cd "$FIX" || exit 1
-  export REPO_DIR="$FIX"
-  export RUNNER_REF="HEAD"
-  cp "$SHIM" "$TMP/installed-changed"
-  echo "# von Hand geaendert" >> "$TMP/installed-changed"
-  export SHIM_SELF="$TMP/installed-changed"
-  # shellcheck source=/dev/null
-  source "$SHIM"
-  set +e
-
-  REASON=$(shim_drift_reason)
-  if [ -z "$REASON" ]; then
-    red "A2: veränderte Datei wurde NICHT als Drift gemeldet"
-  else
-    ok "A2: veränderte Datei -> Drift gemeldet"
-  fi
-)
-
-# ==============================================================================
-# A3: Datei fehlt im Ref (älterer main) -> kein Drift, keine Meldung.
-#     Sonst schlüge jeder Lauf gegen einen alten Stand Alarm.
-# ==============================================================================
-(
-  EMPTY="$TMP/empty-repo"
-  mkdir -p "$EMPTY"
-  ( cd "$EMPTY" && git init -q . && git config user.email t@e.de && git config user.name T \
-      && echo x > f && git add f && git commit -qm init ) >/dev/null 2>&1
-
-  cd "$EMPTY" || exit 1
-  export REPO_DIR="$EMPTY"
-  export RUNNER_REF="HEAD"
-  export SHIM_SELF="$SHIM"
-  # shellcheck source=/dev/null
-  source "$SHIM"
-  set +e
-
-  REASON=$(shim_drift_reason); RC=$?
-  if [ -n "$REASON" ]; then
-    red "A3: fehlende Datei im Ref wurde als Drift gemeldet: '$REASON'"
-  elif [ "$RC" -ne 0 ]; then
-    red "A3: Exit $RC statt 0"
-  else
-    ok "A3: Datei fehlt im Ref -> kein Fehlalarm"
-  fi
-)
-
-# ==============================================================================
-# A4: Gesetztes SHIM_DRIFT -> status() meldet 🟡 UND der Lauf geht weiter.
-#     Der zweite Teil ist der eigentliche Punkt: ein stehender Runner ist
-#     teurer als ein abweichender (#249).
-# ==============================================================================
-(
-  export REPO_DIR="$TMP/rundir"
-  mkdir -p "$REPO_DIR"
-  export STATE_DIR="$TMP/state-a4"
+  export STATE_DIR="$TMP/state-t1"
   export STATUS_ISSUE=999
   export QUEUE_ISSUE=0
   export MAX_ROUNDS=0        # Chain-Schleife läuft nicht an, main() endet sauber
-  export SHIM_DRIFT="Die laufende Datei weicht ab."
+
+  # Installierte Fassung: die kanonische aus dem REF plus eine Zeile.
+  # Bewusst aus `git show` und nicht aus dem Arbeitsbaum -- sonst haengt der Test
+  # daran, ob die Datei gerade uncommittete Aenderungen hat.
+  git show "HEAD:scripts/starship-runner" > "$TMP/installed-changed"
+  echo "# von Hand geaendert" >> "$TMP/installed-changed"
+  export SHIM_PATH="$TMP/installed-changed"
+
   # shellcheck source=/dev/null
   source "$RUNNER"
   set +e
@@ -167,13 +94,46 @@ export PATH="$FAKEBIN:$PATH"
   BODY=$(cat "$GHSTATE_DIR/status-body-999" 2>/dev/null || echo "")
 
   if ! printf '%s' "$TITLE" | grep -q "🟡"; then
-    red "A4: Status-Titel trägt kein 🟡: '$TITLE'"
+    red "T1: Status-Titel trägt kein 🟡: '$TITLE'"
   elif ! printf '%s' "$BODY" | grep -q "install -m 0755"; then
-    red "A4: Meldung nennt den Installationsbefehl nicht"
+    red "T1: Meldung nennt den Installationsbefehl nicht"
   elif [ "$RC" -ne 0 ]; then
-    red "A4: Drift hat den Lauf angehalten (Exit $RC) -- er muss weiterlaufen"
+    red "T1: Drift hat den Lauf angehalten (Exit $RC) -- er muss weiterlaufen"
   else
-    ok "A4: Drift meldet 🟡 mit Installationsbefehl und hält den Lauf nicht an"
+    ok "T1: Drift meldet 🟡 mit Installationsbefehl und hält den Lauf nicht an"
+  fi
+)
+
+# ==============================================================================
+# T2: Identische installierte Datei -> keine Meldung.
+#     Ein Daueralarm wäre schlimmer als keiner -- er wird weggeschaut.
+# ==============================================================================
+(
+  cd "$REPO_ROOT" || exit 1
+  export REPO_DIR="$REPO_ROOT"
+  export RUNNER_HOME="$REPO_ROOT"
+  export RUNNER_REF="HEAD"
+  export STATE_DIR="$TMP/state-t2"
+  export STATUS_ISSUE=888
+  export QUEUE_ISSUE=0
+  export MAX_ROUNDS=0
+  # Exakt der Ref-Stand -- unabhaengig vom Arbeitsbaum. Nebenbei deckt das die
+  # Newline-Normalisierung ab: `git show` haengt ein \n an, der git-Adapter
+  # schneidet es ab.
+  git show "HEAD:scripts/starship-runner" > "$TMP/installed-clean"
+  export SHIM_PATH="$TMP/installed-clean"
+
+  # shellcheck source=/dev/null
+  source "$RUNNER"
+  set +e
+
+  ( main ) >/dev/null 2>&1
+  TITLE=$(cat "$GHSTATE_DIR/status-title-888" 2>/dev/null || echo "")
+
+  if printf '%s' "$TITLE" | grep -q "weicht ab"; then
+    red "T2: identische Datei wurde als Drift gemeldet: '$TITLE'"
+  else
+    ok "T2: identische Datei -> keine Drift-Meldung"
   fi
 )
 
@@ -181,8 +141,8 @@ export PATH="$FAKEBIN:$PATH"
 echo
 [ -e "$FAIL_FLAG" ] && FAIL=1
 if [ "$FAIL" -eq 0 ]; then
-  ok "Alle Shim-Drift-Tests grün."
+  ok "Alle Shim-Drift-Meldungstests grün."
 else
-  red "Mindestens ein Shim-Drift-Test ist rot (siehe oben)."
+  red "Mindestens ein Shim-Drift-Meldungstest ist rot (siehe oben)."
 fi
 exit $FAIL

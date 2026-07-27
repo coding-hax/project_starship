@@ -67,6 +67,7 @@ describe('dispatch', () => {
   it('registers exactly the commands this stage promises', () => {
     expect(Object.keys(commands)).toEqual([
       'version',
+      'shim-drift-reason',
       'fmt-hm',
       'd-plus',
       'reset-epoch',
