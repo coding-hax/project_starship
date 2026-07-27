@@ -11,7 +11,7 @@
 // Ein Handler gibt entweder einen String zurueck (Erfolg, Exit 0 -- '' ist
 // ein gueltiger LEERER Erfolg, z. B. "keine Queue-Arbeit offen") oder `null`
 // (die Bash-Seite haette `return 1` gemacht: Exit 1, GAR KEIN stdout).
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClock, type Clock } from './clock.js';
@@ -230,7 +230,12 @@ function defaultContext(): RunnerContext {
   };
 }
 
-const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+// realpathSync auf beiden Seiten normalisiert Symlink-Komponenten (mktemp
+// /var -> /private), sonst haelt sich cli.ts ueber einen Symlink-Pfad
+// faelschlich fuer ein importiertes Modul (#251). Der undefined-Guard
+// schuetzt gegen realpathSync(undefined) (REPL/eingebettet).
+const entry = process.argv[1];
+const isMain = entry !== undefined && realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
 if (isMain) {
   process.exitCode = dispatch(defaultContext(), process.argv.slice(2));
 }
