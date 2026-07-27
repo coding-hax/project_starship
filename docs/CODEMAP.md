@@ -201,6 +201,7 @@ scripts/
   tests/worktree.test.sh    Fixture-Tests für den Ticket-Worktree (#242): anders als die übrigen Suiten wird `git` NICHT gestubbt -- ein echtes bare Repo als `origin` + ein echter Klon als REPO_DIR, `gh`/`claude` bleiben Attrappen. Deckt ab: cwd des Agenten ist der Worktree (AK1/AK2), Fortsetzung nutzt ihn wieder statt einen zweiten anzulegen (AK3), ein belegter/unregistrierter Pfad bricht den Lauf ab statt in den Haupt-Checkout auszuweichen (AK4), der Haupt-Checkout bleibt dabei unverändert (AK6), ein geschlossenes Ticket verliert seinen Worktree im nächsten Tick (AK5)
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
+  tests/round-plan-guard.test.sh  Fixture-Tests: run_round() meldet jeden round-plan-Fehlschlag (Exit ≠ 0 oder Exit 0 mit kaputtem JSON) über status() mit definiertem Exit 1, statt still auf einem kaputten `return ""` abzubrechen; Exit 127 bleibt ohne Doppelmeldung (#257)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   check-sync-invariants.sh  Wächter gegen direkten fetch(/api/) außerhalb der Outbox (#58); Trenner-Slash Pflicht, sonst false-positiv auf Fremdquellen wie https://api.open-meteo.com (#139)
   check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)

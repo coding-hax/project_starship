@@ -37,7 +37,17 @@ import {
 import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
 import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
 import { pickTicket, selfHealPark } from './select.js';
-import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
+import {
+  answerIssues,
+  approveIssues,
+  parkIssue,
+  parkedAnswerIssues,
+  parkedApproveIssues,
+  parkedIssues,
+  queueBody,
+  queueSnapshot,
+  waitingIssues,
+} from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
@@ -152,7 +162,11 @@ export const commands: Record<string, CommandHandler> = {
   'pick-ticket': (ctx, args) =>
     JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
+  'answer-issues': (ctx) => answerIssues(ctx.gh),
+  'approve-issues': (ctx) => approveIssues(ctx.gh),
   'parked-issues': (ctx) => parkedIssues(ctx.gh),
+  'parked-answer-issues': (ctx) => parkedAnswerIssues(ctx.gh),
+  'parked-approve-issues': (ctx) => parkedApproveIssues(ctx.gh),
   'park-issue': (ctx, args) => (parkIssue(Number(args[0]), ctx.gh) ? '' : null),
   'cleanup-state': (ctx) => {
     cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());

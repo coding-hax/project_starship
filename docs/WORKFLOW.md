@@ -133,7 +133,8 @@ Zustandsmaschine des ganzen Setups:
 | `needs-plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
-| `needs-input`    | **Claude hat eine Frage gestellt und wartet auf dich.**        | Claude       |
+| `needs-input`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
+| `needs-answer`   | Marker neben `needs-input`: es steht eine **Frage** im Ticket, die eine geschriebene Antwort braucht (A/B/C, Vision-Konflikt, dritter erfolgloser Lauf). Fehlt der Marker, genügt ein Label-Tap (`human-approved`/`tests-exempt`). Rein anzeigend, schließt nichts von der Auswahl aus; verschwindet automatisch mit `needs-input` (#196). | Claude       |
 | `parked`         | Wartet auf dich (`needs-input`), belegt aber **keinen Bauplatz** mehr — löst `in-progress` ab, siehe #145. | Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
@@ -159,7 +160,11 @@ per Queue-Editor oder per Label.
 - **Wartet auf einen Menschen** (`needs-input`/`parked`): kann Minuten bis Tage
   dauern. Das Ticket gibt `in-progress` ab, der Runner wählt in der Zwischenzeit
   ein anderes. Betrifft es einen PR mit geschützten Pfaden, setzt du
-  `human-approved` statt `needs-input` zu entfernen.
+  `human-approved` statt `needs-input` zu entfernen. Trägt es zusätzlich
+  `needs-answer` (#196), steht eine echte Frage offen, die eine geschriebene
+  Antwort braucht — ohne den Marker genügt ein Label-Tap. `needs-answer` ist
+  rein anzeigend: es beeinflusst weder Auswahl noch Parken, sondern verschwindet
+  automatisch, sobald `needs-input` weg ist.
 - **Wartet auf die Zeit** (`blocked-limit`, und — sobald gebaut — CI-Wartezeit):
   löst sich von selbst in Minuten. Das Ticket **bleibt** `in-progress`, der
   Runner fängt nichts Neues an, weil es ohnehin gleich weitergeht.
@@ -243,7 +248,7 @@ Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten) | nein |
+| rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten). **Kein** `needs-answer` — hier wird nur freigegeben, es gibt nichts zu beantworten (#196). | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
@@ -276,7 +281,8 @@ Der Wiederaufnahmefall (roter Check → Fix-Agent) liest denselben Zustand wie
 jede andere Fortsetzung: Branch, `git log`, Fortschrittskommentar samt „Was
 schon versucht wurde". Rot aus demselben Grund wie beim letzten Mal zählt
 weiterhin als Fehlversuch der bestehenden Eskalation (ADR-0007, `blocker_sig`)
-— nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`.
+— nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`
+**und** `needs-answer` (#196) — eine echte Frage, keine Freigabe.
 
 **`behind`: ein zurückgefallener PR-Branch wird selbst nachgezogen (#160).**
 `required_status_checks.strict=true` (siehe Branch-Schutz unten) verlangt den
@@ -315,7 +321,7 @@ Infrastruktur-Fehlschlag (`git fetch`/`checkout`/`push`): ein `DIRTY`-PR löst
 sich nie durch bloßes Abwarten, also startet der Bau-Agent auch dann, mit
 `unbekannt` als Dateiliste im Auftrag. Wiederholte Fehlschläge zählen wie
 gewohnt in die bestehende Eskalation ein (ADR-0007) — nach dem dritten
-vergeblichen Versuch: Kommentar, `needs-input`.
+vergeblichen Versuch: Kommentar, `needs-input` **und** `needs-answer` (#196).
 
 **Die Wache gilt auch für `parked`-Tickets (#154), mit denselben Zuständen wie
 das laufende Ticket (#173, erweitert um `conflict` in #217).** Seit #202 (S5
@@ -446,7 +452,7 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | 🟢 `Runner · wartet auf Merge · #42` | CI gerade grün geworden, Wache hat einen noch offenen Draft auf `ready` gesetzt, Auto-Merge aktiviert (Sicherheitsnetz, #167) | nein |
 | 🟢 `Runner · wartet auf nächsten Lauf · als Nächstes #43` | idle (kein laufender Prozess), Queue nicht leer, nächster Takt startet automatisch | nein |
 | 🟢 `Runner · nichts offen · zuletzt #42` | idle, Queue leer | nein |
-| 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig | **ja** |
+| 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig — der Text im Ticket trennt beides: „wartet auf deine Antwort" (`needs-answer`) vs. „wartet auf eine Freigabe" (#196) | **ja** |
 | 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
 | 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
 | ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready`, `needs-plan` oder `needs-research` | nein (außer du willst was) |
