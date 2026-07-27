@@ -49,6 +49,7 @@ src/
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
     use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
     push.ts                 einzige Stelle, die gegen /api/push spricht (Guard-Ausnahme wie sync.ts): getPushState (Abo statt bloßer Browser-Erlaubnis), subscribeToPush/unsubscribeFromPush/sendTestPush (issue #122); Push-Abo bewusst nicht Outbox-geführt (Geräte-Infrastruktur, kein Domänendatum)
+    garmin-sync.ts           einzige Stelle, die gegen /api/garmin-sync spricht (Guard-Ausnahme wie push.ts): triggerGarminSync() für den manuellen Kick von der Aktivitäten-Seite; kein Domänendatum, deshalb nicht Outbox-geführt (issue #230)
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code

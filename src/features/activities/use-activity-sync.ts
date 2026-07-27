@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
+import { triggerGarminSync } from '@/local/garmin-sync';
 
 /**
  * Keeps the activities page fresh without waiting for the nightly Actions cron
@@ -9,7 +10,9 @@ import { useEffect, useSyncExternalStore } from 'react';
  * talks to Garmin itself. It cannot (the OAuth1 token has a ~1 year lifetime and
  * belongs in Postgres, `connectapi.garmin.com` is not a browser origin, and the
  * map key is a server env). It only asks our own `/api/garmin-sync`, which already
- * accepts an owner session besides the cron secret (ADR-0011).
+ * accepts an owner session besides the cron secret (ADR-0011) — through
+ * `src/local/garmin-sync.ts`, the one place allowed to speak to it directly
+ * (CODEMAP-Invariante, Regel 8), the same pattern as `src/local/push.ts`.
  *
  * The data path is unchanged: the endpoint writes Postgres, the normal pull carries
  * it into IndexedDB, and the list renders from there (CLAUDE.md rule 8). The
@@ -73,10 +76,7 @@ function isFresh(lastSyncAt: string | null, now: number): boolean {
 async function refreshIfStale(): Promise<void> {
   if (isFresh(getSnapshot(), Date.now())) return;
 
-  const response = await fetch('/api/garmin-sync', { method: 'POST' });
-  if (!response.ok) {
-    throw new Error(`garmin-sync antwortete mit Status ${response.status}`);
-  }
+  await triggerGarminSync();
   writeLastSyncAt(new Date().toISOString());
 }
 
