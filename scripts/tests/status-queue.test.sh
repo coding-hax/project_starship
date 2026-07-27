@@ -37,6 +37,11 @@ export STATUS_ISSUE=0
 # shellcheck source=/dev/null
 source "$RUNNER"
 
+# S6 (#203): claude-runner.sh hat keine Bash-Wrapper mehr -- diese Bruecke
+# stellt die Funktionsnamen als direkten Ruf in den TS-Kern wieder her.
+# shellcheck source=/dev/null
+source "$TEST_DIR/lib/ts-core-shims.sh"
+
 assert_eq() {   # $1 = beschreibung, $2 = erwartet, $3 = tatsaechlich
   if [ "$2" = "$3" ]; then
     ok "$1"

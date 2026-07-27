@@ -140,6 +140,11 @@ export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
+# S6 (#203): claude-runner.sh hat keine Bash-Wrapper mehr -- diese Bruecke
+# stellt die Funktionsnamen als direkten Ruf in den TS-Kern wieder her.
+# shellcheck source=/dev/null
+source "$TEST_DIR/lib/ts-core-shims.sh"
+
 reset_state() {   # frisches Zustandsverzeichnis + GH-Zustand für jeden Testfall
   rm -rf "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
