@@ -477,7 +477,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
         status: status(
           `wartet auf dich (#${issue})`,
           '🟡',
-          `🟡 **Opus-Tagesbudget für #${issue} erschöpft.** Ich warte auf dich.`,
+          `🟡 **Opus-Tagesbudget für #${issue} erschöpft.** Morgen läuft es von selbst weiter; \`opus-boost\` gibt heute noch einen Versuch frei.`,
         ),
       };
     }

@@ -392,6 +392,38 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
     expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
+  // #272: die Wache nimmt GENAU das Wartelabel ab. 'in-progress' bleibt stehen
+  // -- das Ticket schliesst der Squash-Commit über 'Closes #N', nicht die
+  // Wache. Bis S2b stand hier das Gegenteil: ein freigegebenes Ticket musste
+  // von 'parked' auf 'in-progress' zurückbefördert werden.
+  it('#272: der Merge fasst nur needs-answer an, nicht in-progress', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+    });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
+    const edits = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
+      .map((c) => c[0])
+      .filter((args) => args[0] === 'issue' && args[1] === 'edit');
+    expect(edits).toEqual([['issue', 'edit', '401', '--remove-label', 'needs-answer']]);
+  });
+
+  // #167: der Entwurfsstatus heißt "der Lauf ist nicht sauber zu Ende
+  // gekommen". Auto-Merge auf einem Draft greift nicht -- die Reihenfolge
+  // ready -> merge -> Label ist deshalb Bedingung, keine Kosmetik.
+  it('#167: erst aus dem Entwurf heben, dann mergen, dann das Wartelabel abnehmen', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }] },
+    });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
+    const sequence = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
+      .map((c) => c[0])
+      .filter((args) => (args[0] === 'pr' && (args[1] === 'ready' || args[1] === 'merge')) || args[1] === 'edit')
+      .map((args) => `${args[0]} ${args[1]}`);
+    expect(sequence).toEqual(['pr ready', 'pr merge', 'issue edit']);
+  });
+
   it('T2/T3: PR pending -> bleibt unverändert wartend', () => {
     const ghPending = ghFake({
       prList: [{ number: 602, headRefName: 'fix/402-x' }],

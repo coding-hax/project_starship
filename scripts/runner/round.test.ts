@@ -52,7 +52,7 @@ function gitDouble(replies: Record<string, string> = {}): GitAdapter {
 
 // Der Rundenschnappschuss: `issue list` OHNE --label. Die Abgrenzung ist
 // noetig, weil im selben Lauf auch `pr list --limit 100` (reopen-Netz) und
-// `issue list --label parked` (Busy-Meldung) laufen -- ein zu grober Matcher
+// `issue list --label needs-answer` (Busy-Meldung) laufen -- ein zu grober Matcher
 // beantwortet die mit dem Schnappschuss und laesst Tests aus dem falschen
 // Grund scheitern.
 const openIssues = (...issues: ReturnType<typeof issueJson>[]) => ({
@@ -188,6 +188,104 @@ describe('roundPlan', () => {
     expect(run.status.text).toContain('Wartet zusätzlich auf dich: #90');
   });
 
+  // #272: Bis S2b lief die Wache ueber 'parked' und promotete ein freigegebenes
+  // Ticket zurueck auf 'in-progress'. Jetzt bleibt 'in-progress' die ganze Zeit
+  // stehen und nur 'needs-answer' faellt weg. Auf Bausteinebene prueft das
+  // watch.test.ts -- hier geht es um die VERDRAHTUNG in der Runde: welcher
+  // Snapshot in die Wache geht und was ihr Ergebnis fuer den Rest des Takts
+  // bedeutet.
+  describe('CI-Wache fuer wartende Tickets (#154, #272)', () => {
+    // Beantwortet alles, was prForIssue/prCiState/prSquashMerge fuer EIN
+    // wartendes Ticket brauchen. `pr view` muss nach Feld unterscheiden:
+    // Merge-Zustand ist JSON, der Titel ist eine nackte Zeile.
+    const waitingPr = (issue: number, pr: number, checks: { bucket: string; name: string }[]) => [
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'list',
+        reply: JSON.stringify([{ number: pr, title: `feat: x — Closes #${issue}`, headRefName: `feat/${issue}-x` }]),
+      },
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'checks' && a[2] === String(pr),
+        reply: JSON.stringify(checks),
+      },
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+      },
+      { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
+    ];
+
+    const green = [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }];
+
+    it('gruener PR eines wartenden Tickets: Merge, needs-answer weg, Hinweis im Status', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(90, ['in-progress', 'needs-answer'])),
+        ...waitingPr(90, 690, green),
+        labelsAre('in-progress'),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(called(calls, 'edit', '90', '--remove-label', 'needs-answer')).toBe(true);
+      expect(result.status?.text).toContain('#90');
+      expect(result.status?.text).toContain('freigegeben');
+    });
+
+    // Der Snapshot wird nach der Freigabe umgeschrieben (statt neu geladen),
+    // damit derselbe Takt das Ticket nicht noch als wartend behandelt: es
+    // faellt in den running-Zweig und damit unter die CI-Wache fuer laufende
+    // Tickets. Ohne das Umschreiben stuende bis zum naechsten Takt "wartet auf
+    // dich" im Status-Issue, obwohl gerade nichts mehr bei dir liegt.
+    it('das freigegebene Ticket gilt im SELBEN Takt nicht mehr als wartend', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(90, ['in-progress', 'needs-answer'])),
+        ...waitingPr(90, 690, green),
+        labelsAre('in-progress'),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.status?.emoji).not.toBe('🟡');
+      expect(result.status?.title).not.toContain('wartet auf dich');
+    });
+
+    it('pendender PR: keine Freigabe, kein Hinweis, das Ticket bleibt wartend', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(91, ['in-progress', 'needs-answer'])),
+        ...waitingPr(91, 691, [{ bucket: 'pass', name: 'quality' }, { bucket: 'pending', name: 'e2e' }]),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(called(calls, 'edit', '91', '--remove-label', 'needs-answer')).toBe(false);
+      expect(result.status?.text).not.toContain('freigegeben');
+      expect(result.status?.emoji).toBe('🟡');
+    });
+
+    // #272 hat den Bauplatz-Vorbehalt gestrichen: frueher gab die Wache
+    // hoechstens EIN Ticket frei, weil ein entparktes Ticket sofort einen
+    // Bauplatz belegt haette. Ohne Parken ist das gegenstandslos.
+    it('zwei gruene wartende Tickets werden beide freigegeben und beide genannt', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(
+          issueJson(92, ['in-progress', 'needs-answer']),
+          issueJson(93, ['ready', 'needs-answer'], '2024-02-01T00:00:00Z'),
+        ),
+        {
+          match: (a: string[]) => a[0] === 'pr' && a[1] === 'list',
+          reply: JSON.stringify([
+            { number: 692, title: 'feat: a', headRefName: 'feat/92-a' },
+            { number: 693, title: 'feat: b', headRefName: 'feat/93-b' },
+          ]),
+        },
+        { match: (a: string[]) => a[0] === 'pr' && a[1] === 'checks', reply: JSON.stringify(green) },
+        {
+          match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
+          reply: JSON.stringify({ headRefName: 'feat/92-a', mergeStateStatus: 'CLEAN' }),
+        },
+        { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: a' },
+        labelsAre('in-progress'),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(called(calls, 'edit', '92', '--remove-label', 'needs-answer')).toBe(true);
+      expect(called(calls, 'edit', '93', '--remove-label', 'needs-answer')).toBe(true);
+      expect(result.status?.text).toContain('#92, #93');
+    });
+  });
+
   describe('CI-Wache fuer ein laufendes Ticket (#147)', () => {
     const withPr = (issue: number, labels: string[], checks: string) => [
       openIssues(issueJson(issue, labels)),
@@ -219,7 +317,20 @@ describe('roundPlan', () => {
       expect(result.kind).toBe('done');
       expect(result.status?.emoji).toBe('🟡');
       expect(result.status?.text).toContain('Opus-Tagesbudget');
-      expect(called(calls, 'edit', '77', '--add-label', 'needs-answer')).toBe(true);
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+    });
+
+    // #272: der Deckel wartet auf ZEIT, nicht auf eine geschriebene Antwort --
+    // morgen laeuft er von selbst weiter. Mit nur noch einem Wartelabel waere
+    // 'needs-answer' hier eine Luege im Status-Issue: es wuerde den Menschen
+    // zu einer Antwort auffordern, die niemand braucht.
+    it('setzt dabei KEIN Wartelabel -- niemand ist gefragt', () => {
+      state.write('tier-77', 'opus');
+      state.write('opus-build-20260726-77', '2');
+      const { gh, calls } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(called(calls, 'edit', '77', '--add-label', 'needs-answer')).toBe(false);
+      expect(result.status?.text).toContain('von selbst weiter');
     });
 
     // #136: die Meldung darf hoechstens einmal je Ticket und Tag erscheinen.
@@ -279,6 +390,16 @@ describe('roundEval', () => {
     const { gh } = ghDouble();
     roundEval(ctx(gh), plan, { ...ok, rc: 1, out: 'kaputt' }, '');
     expect(state.read('session-77')).toBe('sid-alt');
+  });
+
+  // Gegenstueck zum Deckel oben: 'blocked-limit' ist ein Zeit-Label, das kein
+  // Mensch abnimmt. Kommt ueberhaupt ein Lauf zustande, ist die Sperre vorbei
+  // -- bliebe das Label haengen, stuende das Ticket dauerhaft als blockiert im
+  // Status-Issue, obwohl gerade daran gebaut wird.
+  it('nimmt ein stehengebliebenes blocked-limit wieder ab', () => {
+    const { gh, calls } = ghDouble();
+    roundEval(ctx(gh), plan, ok, '');
+    expect(called(calls, 'edit', '77', '--remove-label', 'blocked-limit')).toBe(true);
   });
 
   it('setzt die Chain nur nach einem sauberen Lauf ohne offene Frage fort (#61)', () => {
