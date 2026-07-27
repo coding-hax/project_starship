@@ -82,23 +82,22 @@ Ablauf:
    ('gh pr create --draft --fill --title "… — Closes #${issue}"'), Titel
    enthält 'Closes #${issue}'. Existiert bereits einer (z. B. bei einer
    Fortsetzung): pushe nur weiter auf denselben Branch, KEIN zweiter PR.
-   Berührt dein Diff einen geschützten Pfad (src/db/, src/crypto/,
-   src/local/, src/app/api/sync/, auth, .github/, scripts/): kommentiere
-   JETZT am Issue, was du geändert hast, warum, und was schiefgehen könnte,
-   und setze SELBST 'gh issue edit ${issue} --add-label needs-answer' — nimm
-   es in diesem Lauf NICHT wieder ab. Das parkt das Ticket (#145) sofort,
-   der Runner wählt als nächstes ein anderes, statt auf das rote
-   CI-Ergebnis zu warten, das du ohnehin nicht mehr live mitbekommst.
+   Berührt dein Diff einen sensiblen Pfad (src/db/, src/crypto/, src/local/,
+   src/app/api/sync/, auth, .github/, scripts/): kommentiere JETZT am Issue,
+   was du geändert hast, warum, und was schiefgehen könnte. Ein Fehler ist
+   dort kein Bug, sondern Datenverlust — und seit #283 hält dich niemand
+   mehr auf, der Kommentar ist die ganze Bremse. Setze deswegen KEIN
+   'needs-answer': das würde das Ticket anhalten, ohne dass jemand etwas zu
+   entscheiden hätte. Bist du dir inhaltlich unsicher, gilt Schritt 6 —
+   fragen statt raten.
 8. Endet dein Lauf hier SAUBER — also über diesen Schritt, nicht über
    Schritt 6 (offene Frage) —: hebe deinen PR SELBST aus dem Entwurf und
-   aktiviere Auto-Merge, auch wenn du gerade in Schritt 7 wegen eines
-   geschützten Pfads 'needs-answer' gesetzt hast:
+   aktiviere Auto-Merge:
    'gh pr ready' und 'gh pr merge --squash --auto --delete-branch'
    (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Du musst
    NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
-   grünen Required Checks. Ein geschützter Pfad hält den PR seit #276 NICHT
-   mehr auf — 'protected-paths' meldet nur noch, was berührt wurde. Dein
-   Lauf endet danach.
+   grünen Required Checks. Ein geschützter Pfad hält den PR nicht mehr auf —
+   den Wächter dafür gibt es seit #283 nicht mehr. Dein Lauf endet danach.
    **Kein** 'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
    Runner-Takt beobachtet ab hier die CI und holt dich nur zurück, wenn
    dort etwas rot wird.`;
@@ -106,9 +105,11 @@ Ablauf:
 
 /**
  * Ersetzt den Bau-Prompt, wenn die CI-Wache rote Checks am Draft-PR gefunden
- * hat, die NICHT ausschliesslich 'protected-paths' sind. Der Agent bekommt die
- * Ursache direkt mit, statt sie muehsam neu zu suchen -- deshalb startet er
- * hier gezielt, nicht routinemaessig.
+ * hat. Der Agent bekommt die Ursache direkt mit, statt sie muehsam neu zu
+ * suchen -- deshalb startet er hier gezielt, nicht routinemaessig.
+ *
+ * #283: Bis hierher gab es eine Ausnahme fuer 'protected-paths' -- der Check
+ * war eine Genehmigungs-Schranke, kein Fund. Den Job gibt es nicht mehr.
  */
 export function ciFixPrompt(issue: number, ciSummary: string): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.

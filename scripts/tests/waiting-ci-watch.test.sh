@@ -384,9 +384,9 @@ assert_file_absent "T8 (#272): kein Fehlversuch in der Eskalation, es lief ja ni
   "$STATE_DIR/failcount-421"
 
 # ==============================================================================
-# T9 -- rote Checks NUR bei 'protected-paths' bleiben die vorgesehene
-#       Genehmigungs-Schranke -- kein Fund, kein Entparken, auch wenn sonst
-#       kein anderes Ticket in-progress ist.
+# T9 -- #283: 'protected-paths' ist kein Sonderfall mehr. Fuer ein WARTENDES
+#       Ticket aendert das nichts -- rot bleibt rot bleibt still: kein
+#       Agentenlauf, kein Entlabeln, auch ohne anderes Ticket in-progress.
 # ==============================================================================
 reset_state
 seed_issue 422 "in-progress,needs-answer"
@@ -394,8 +394,8 @@ seed_pr 422 722
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
   > "$GHSTATE_DIR/checks-722.json"
 run_round
-assert_labels "T9: #422 bleibt vollständig geparkt (Genehmigungs-Schranke)" 422 "in-progress,needs-answer"
-assert_file_absent "T9: kein Agentenlauf, solange nur protected-paths rot ist" \
+assert_labels "T9: #422 bleibt unveraendert wartend" 422 "in-progress,needs-answer"
+assert_file_absent "T9: kein Agentenlauf fuer ein wartendes Ticket mit rotem PR" \
   "$GHSTATE_DIR/claude-called"
 
 # ==============================================================================

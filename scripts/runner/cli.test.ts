@@ -95,7 +95,6 @@ describe('dispatch', () => {
       'catchup-fail-reason',
       'catchup-fail-escalated',
       'catchup-fail-reset',
-      'pr-only-protected-paths-red',
       'pr-squash-merge',
       'reopen-falsely-closed-issues',
       'pr-failure-summary',

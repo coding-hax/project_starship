@@ -314,20 +314,6 @@ Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen
 GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**`,
             ),
           };
-        case 'protected-red':
-          return {
-            kind: 'done',
-            rc: 0,
-            status: status(
-              `wartet auf dich (#${issue})`,
-              '🟡',
-              `🟡 **PR #${prNum} für #${issue} braucht deine Freigabe.**
-
-Der Check \`protected-paths\` ist rot. Seit #276 blockiert er eigentlich nicht mehr —
-tritt das trotzdem auf, sieh ins Check-Log: es ist dann eine echte Störung, keine
-fehlende Freigabe.`,
-            ),
-          };
         case 'caught-up':
           return {
             kind: 'done',
@@ -561,7 +547,12 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
         kind: 'done',
         rc: 0,
         status: status(
-          `wartet auf dich (#${issue})`,
+          // #283: hiess bis heute "wartet auf dich (#N)". Der Deckel setzt
+          // 'blocked-limit' und laeuft morgen von selbst weiter -- niemand
+          // schuldet eine Antwort. 🟡 bleibt trotzdem richtig: die Eskalation
+          // klemmt auf der hoechsten Stufe, und dagegen hilft nur ein Mensch
+          // ('opus-boost' oder 'no-escalation').
+          `Opus-Deckel (#${issue})`,
           '🟡',
           `🟡 **Opus-Tagesbudget für #${issue} erschöpft.** Morgen läuft es von selbst weiter; \`opus-boost\` gibt heute noch einen Versuch frei.`,
         ),

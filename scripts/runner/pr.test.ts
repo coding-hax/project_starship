@@ -7,7 +7,6 @@ import {
   prIsBehind,
   prIsDirty,
   prMergeState,
-  prOnlyProtectedPathsRed,
   prSquashMerge,
   reopenFalselyClosedIssues,
 } from './pr';
@@ -165,28 +164,6 @@ describe('prIsDirty', () => {
   });
 });
 
-describe('prOnlyProtectedPathsRed', () => {
-  it('true, wenn ausschliesslich protected-paths rot ist', () => {
-    const gh = ghRouter({
-      'pr checks': JSON.stringify([
-        { bucket: 'pass', name: 'quality' },
-        { bucket: 'fail', name: 'protected-paths' },
-      ]),
-    });
-    expect(prOnlyProtectedPathsRed('55', gh)).toBe(true);
-  });
-
-  it('false, wenn zusaetzlich etwas anderes rot ist', () => {
-    const gh = ghRouter({
-      'pr checks': JSON.stringify([
-        { bucket: 'fail', name: 'protected-paths' },
-        { bucket: 'fail', name: 'e2e' },
-      ]),
-    });
-    expect(prOnlyProtectedPathsRed('55', gh)).toBe(false);
-  });
-});
-
 describe('prSquashMerge', () => {
   it('uebergibt den PR-Titel als --subject und leeres --body', () => {
     const gh = ghRouter({ 'pr view': 'fix(runner): needs-input — Closes #163' });
@@ -290,10 +267,13 @@ describe('reopenFalselyClosedIssues', () => {
 });
 
 describe('prFailureSummary', () => {
+  // #283: Bis heute nahm diese Zusammenfassung 'protected-paths' bewusst aus --
+  // der Check war eine Genehmigungs-Schranke, kein Fund, den ein Agent haette
+  // beheben koennen. Den Job gibt es nicht mehr, also gilt wieder die einfache
+  // Regel: jeder rote Check ist ein Fund, gedeckelt auf die ersten drei.
   it('nennt Job, Kurzbeschreibung und Log-Ausschnitt, hoechstens die ersten drei roten Checks', () => {
     const checks = [
       { bucket: 'fail', name: 'e2e', description: '2 tests failed in shard 2', link: 'https://x/actions/runs/999999/job/111' },
-      { bucket: 'fail', name: 'protected-paths', description: 'Approval missing' },
       { bucket: 'fail', name: 'lint', description: 'eslint rot' },
       { bucket: 'fail', name: 'typecheck', description: 'tsc rot' },
       { bucket: 'cancel', name: 'e2e-2', description: 'abgebrochen' },
@@ -311,14 +291,21 @@ describe('prFailureSummary', () => {
 
     expect(summary).toContain('### e2e');
     expect(summary).toContain('2 tests failed in shard 2');
-    expect(summary).not.toContain('protected-paths');
     expect(summary).toContain('log line 1');
-    // hoechstens 3 der verbleibenden (nicht-protected-paths) Checks:
-    // e2e, lint, typecheck -- e2e-2 faellt raus.
+    expect(summary).toContain('### lint');
+    expect(summary).toContain('### typecheck');
+    // Der vierte faellt raus -- sonst waechst der Auftrag mit jedem Shard.
     expect(summary).not.toContain('e2e-2');
   });
 
-  it('leer, wenn nichts (Nicht-protected-paths) rot ist', () => {
+  it('nimmt keinen Check mehr aus -- auch ein Check namens protected-paths zaehlt', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([{ bucket: 'fail', name: 'protected-paths', description: 'irgendwas' }]),
+    });
+    expect(prFailureSummary('55', gh)).toContain('### protected-paths');
+  });
+
+  it('leer, wenn nichts rot ist', () => {
     const gh = ghRouter({ 'pr checks': JSON.stringify([{ bucket: 'pass', name: 'quality' }]) });
     expect(prFailureSummary('55', gh)).toBe('');
   });

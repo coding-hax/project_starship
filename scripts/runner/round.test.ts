@@ -498,6 +498,19 @@ describe('roundPlan', () => {
       expect(result.status?.text).toContain('von selbst weiter');
     });
 
+    // #283 (Entscheidung aus #278): Der Titel hiess "wartet auf dich (#N)" --
+    // das behauptete eine Bringschuld, die es nicht gibt: der Deckel setzt
+    // 'blocked-limit' und laeuft morgen von selbst weiter. 🟡 bleibt, weil die
+    // Eskalation oben klemmt und nur ein Mensch das aufloest.
+    it('nennt sich im Titel Opus-Deckel, nicht "wartet auf dich"', () => {
+      state.write('tier-77', 'opus');
+      state.write('opus-build-20260726-77', '2');
+      const { gh } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.status?.title).toBe('Opus-Deckel (#77)');
+      expect(result.status?.emoji).toBe('🟡');
+    });
+
     // #136: die Meldung darf hoechstens einmal je Ticket und Tag erscheinen.
     it('kommentiert den Deckel nur einmal pro Ticket und Tag', () => {
       state.write('tier-77', 'opus');
