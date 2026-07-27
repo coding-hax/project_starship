@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { reminderSends } from '@/db/schema';
 import { dueSlots } from '@/push/schedule';
 import { sendPushToAll, type PushPayload } from '@/push/send';
+import { tasksDue } from './tasks-due';
 
 /**
  * One reminder kind. `times` is a list, not a single `'HH:MM'`, because T5 will let
@@ -16,7 +17,7 @@ export interface ReminderKind {
   build(now: Date): Promise<PushPayload | null>;
 }
 
-const reminderKinds: ReminderKind[] = [];
+const reminderKinds: ReminderKind[] = [tasksDue];
 
 if (process.env.NEXT_PUBLIC_E2E === '1') {
   reminderKinds.push({

@@ -71,4 +71,23 @@ describe('POST /api/push/reminders', () => {
 
     expect(response.status).toBe(200);
   });
+
+  it('honors X-E2E-Now under NEXT_PUBLIC_E2E — lets a test pin the 07:00 slot', async () => {
+    vi.stubEnv('NEXT_PUBLIC_E2E', '1');
+    sendDueRemindersMock.mockResolvedValue({ sent: [], skipped: [] });
+    const { POST } = await import('./route');
+
+    await POST(makeRequest({ authorization: `Bearer ${SECRET}`, 'x-e2e-now': '2026-07-20T05:05:00.000Z' }));
+
+    expect(sendDueRemindersMock).toHaveBeenCalledWith(new Date('2026-07-20T05:05:00.000Z'));
+  });
+
+  it('ignores X-E2E-Now outside NEXT_PUBLIC_E2E — never lets a client fake the clock in prod', async () => {
+    sendDueRemindersMock.mockResolvedValue({ sent: [], skipped: [] });
+    const { POST } = await import('./route');
+
+    await POST(makeRequest({ authorization: `Bearer ${SECRET}`, 'x-e2e-now': '2026-07-20T05:05:00.000Z' }));
+
+    expect(sendDueRemindersMock).not.toHaveBeenCalledWith(new Date('2026-07-20T05:05:00.000Z'));
+  });
 });
