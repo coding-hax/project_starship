@@ -107,13 +107,32 @@ Das angepinnte **Queue-Issue** (`QUEUE_ISSUE`) ist eine schlichte, geordnete Lis
 `ready` zu setzen. Das Eintragen in die Queue **ersetzt** die `ready`-Freigabe.
 
 ```
-#101
-#98
-#104
+- #101
+- #98 nach #101
+- #104
 ```
 
 Zahlen oben = zuerst. Wichtig:
 
+- **Nur Zeilen, die mit `- #` beginnen, zählen** (seit #265) — und zwar ohne
+  Einrückung, direkt am Zeilenanfang. Alles andere ist Notiz: Überschriften,
+  Fließtext, Tabellen und **eingerückte** Beispiele dürfen wieder ganz normal
+  Ticketnummern mit Raute enthalten. Vorher zählte **jede** `#NN` im Body, auch
+  die in Notizen; dagegen half nur eine Warnung im Issue, an die jemand denken
+  musste. Der Irrtum geht jetzt in die sichere Richtung: ein versehentlich
+  eingerückter Eintrag wird **nicht** gebaut, und das fällt im Status auf.
+- **Die erste Nummer der Zeile ist der Eintrag, jede weitere eine
+  Voraussetzung.** `- #98 nach #101` heißt: #98 kommt erst dran, wenn #101
+  **geschlossen** ist (beim Merge passiert das über `Closes #` von selbst).
+  Bewertet wird bei **jeder** Auswahl neu — nach einem Merge ist also nichts
+  nachzulabeln. Das Wort zwischen den Nummern (`nach`, `braucht`, …) ist reine
+  Lesbarkeit und wird nicht ausgewertet.
+- **`blocked-by` zeigt es am Ticket an** — gesetzt und wieder entfernt vom
+  Runner, nicht von dir. Eine Voraussetzung, die es gar nicht gibt (Tippfehler),
+  zählt als erfüllt: ein Zahlendreher soll ein Ticket nicht still für immer
+  begraben.
+- **Zirkel** (`- #1 nach #2` und `- #2 nach #1`) meldet der Runner im
+  Status-Issue; keins der beteiligten Tickets wird gebaut.
 - **Das Label ist für die Auswahl egal.** Ein gelistetes Ticket wird bearbeitet, auch
   ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `plan` → Planlauf,
   `research` → Recherche, **sonst bauen**.
@@ -123,7 +142,12 @@ Zahlen oben = zuerst. Wichtig:
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
   gelistetes, unfertiges Ticket gebaut. Ein Merge-Schutz für geschützte Pfade besteht seit #276 nicht mehr (`protected-paths` ist nur noch ein Hinweis).
 - **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
-  (`plan` → `research` → `ready`, je ältestes `createdAt`).
+  (`plan` → `research` → `ready`, je ältestes `createdAt`). Solange die Liste
+  etwas Baubares enthält, kommt davon allerdings nichts dran — deshalb **nennt
+  das Status-Issue jedes nicht gelistete `ready`-Ticket**, damit dir das nicht
+  wochenlang entgeht (#265).
+- **Erledigte Einträge** bleiben stehen, bis **du** sie streichst. Der Runner
+  schreibt das Queue-Issue nicht um; er weist im Status aus, was weg kann.
 - **Leeres/fehlendes Queue-Issue → reiner Fallback**, also das bisherige Verhalten.
 
 Vom Handy aus editierst du dafür nur den Issue-Body — kein Commit, kein Branch.
@@ -152,6 +176,7 @@ Zustandsmaschine des ganzen Setups:
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
+| `blocked-by`     | Wartet auf ein anderes Ticket — die Abhängigkeit steht in der Queue (`- #266 nach #227`). Setzt und entfernt der **Runner** selbst; von Hand angefasst richtest du nur Schaden an. | Runner       |
 | `model:haiku` `model:sonnet` `model:opus` | **Startstufe** für dieses Ticket (ADR-0013). Höchstens eins setzen. `model:opus` baut sofort auf Opus, ohne die drei erfolglosen Läufe. Bei `plan`/`research` schlägt das Label die Rolle. | **Du**       |
 | `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |

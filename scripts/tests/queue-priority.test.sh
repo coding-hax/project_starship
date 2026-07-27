@@ -155,7 +155,7 @@ export QUEUE_ISSUE=1000
 # ==============================================================================
 reset_state
 snapshot '[{"number":77,"labels":[],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '#77'
+queue_body_fixture 1000 '- #77'
 run_main
 assert_session_exists "AC1: gelistetes #77 ohne Label wird gebaut" 77
 assert_label_added    "AC1: #77 bekommt in-progress (Bau-Rolle)" 77 in-progress
@@ -168,8 +168,8 @@ snapshot '[
   {"number":10,"labels":[],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":99,"labels":[],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '#99
-#10'
+queue_body_fixture 1000 '- #99
+- #10'
 run_main
 assert_session_exists "AC2: Queue zieht #99 vor (schlägt älteres createdAt #10)" 99
 assert_session_absent "AC2: #10 bleibt unangetastet" 10
@@ -182,7 +182,7 @@ snapshot '[
   {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":99,"labels":[],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '#99'
+queue_body_fixture 1000 '- #99'
 run_main
 assert_session_exists "AC3: gelistetes #99 schlägt ungelistetes ready #10" 99
 assert_session_absent "AC3: ungelistetes ready #10 wartet" 10
@@ -193,14 +193,14 @@ assert_session_absent "AC3: ungelistetes ready #10 wartet" 10
 # ==============================================================================
 reset_state
 snapshot '[{"number":55,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '#55'
+queue_body_fixture 1000 '- #55'
 run_main
 assert_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
 assert_label_not_added "AC4: #55 bekommt KEIN in-progress (Denk-Rolle, kein Bau)" 55 in-progress
 
 reset_state
 snapshot '[{"number":66,"labels":[{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '#66'
+queue_body_fixture 1000 '- #66'
 run_main
 assert_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
 assert_label_not_added "AC4: #66 bekommt KEIN in-progress" 66 in-progress
@@ -213,7 +213,7 @@ snapshot '[
   {"number":77,"labels":[{"name":"needs-answer"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '#77'
+queue_body_fixture 1000 '- #77'
 run_main
 assert_session_absent "AC5: gelistetes, aber needs-answer #77 wird NICHT gewählt" 77
 assert_session_exists "AC5: Fallback wählt das ready #88" 88
@@ -226,7 +226,7 @@ snapshot '[
   {"number":77,"labels":[{"name":"hands-off"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '#77'
+queue_body_fixture 1000 '- #77'
 run_main
 assert_session_absent "AC6: gelistetes, aber hands-off #77 wird NICHT gewählt" 77
 assert_session_exists "AC6: Fallback wählt das ready #88" 88

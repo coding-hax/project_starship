@@ -22,7 +22,7 @@
 // claude-runner.sh (S6, siehe Nicht-Ziele von #202).
 import type { GhAdapter } from './gh.js';
 import type { StateAdapter } from './state.js';
-import { byCreatedAt, hasLabel, queueOrderFlat, type QueueIssue } from './queue.js';
+import { byCreatedAt, hasLabel, queueBlocked, queueEntries, type QueueIssue } from './queue.js';
 
 export type RunRole = 'build' | 'plan' | 'research';
 
@@ -45,12 +45,24 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
   // #272: 'needs-answer' wird aus demselben Grund gleich mitgefiltert. Es war
   // vorher je Zweig wiederholt -- und ausgerechnet im Zweig, der zuerst greift,
   // stand es einmal nicht.
-  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'hands-off') && !hasLabel(issue, 'needs-answer'));
+  //
+  // #265: Abhaengigkeiten aus der Queue ('- #266 nach #227') gehoeren aus
+  // demselben Grund hierher und nicht in den Queue-Zweig: ein wartendes Ticket
+  // darf auch nicht ueber den ready- oder plan-Zweig hereinrutschen. Die
+  // Voraussetzung gilt als erfuellt, sobald ihr Ticket nicht mehr im Snapshot
+  // offener Tickets steht -- ausgewertet bei JEDER Auswahl, damit nichts
+  // veraltet.
+  const entries = queueEntries(queueBody);
+  const openIssues = new Set(snapshot.map((issue) => issue.number));
+  const blocked = queueBlocked(entries, openIssues);
+  const selectable = snapshot.filter(
+    (issue) => !hasLabel(issue, 'hands-off') && !hasLabel(issue, 'needs-answer') && !blocked.has(issue.number),
+  );
 
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];
   if (running) return { issue: running.number, role: 'build', source: 'running' };
 
-  const order = queueOrderFlat(queueBody);
+  const order = entries.map((entry) => entry.issue);
   if (order.length > 0) {
     const ranked = selectable
       .filter((issue) => order.includes(issue.number))
