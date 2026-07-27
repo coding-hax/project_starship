@@ -24,6 +24,16 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
   );
 }
 
+// beforeEach aborts every /api/sync/** call, so a checked-off log never reaches
+// Postgres in this suite (issue #224) — assert against the IndexedDB record the
+// E2E bridge exposes instead, sorted so multi-row assertions stay deterministic.
+async function habitLogRecords(page: Page, habitId: string) {
+  const records = await page.evaluate(() => window.__starship.debugRecords());
+  return records
+    .filter((r) => r.table === 'habit_logs' && r.data.habitId === habitId)
+    .sort((a, b) => String(a.data.logDate).localeCompare(String(b.data.logDate)));
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -107,18 +117,12 @@ test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinw
   await expect(reloadedItem.getByRole('checkbox')).toBeChecked();
   await expect(reloadedItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
 
-  // Both this week's earlier day and today are their own log rows (AC3).
-  const rows = await withDb((client) =>
-    client.query(
-      'SELECT log_date, done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1 ORDER BY log_date',
-      ['Großeinkauf'],
-    ),
-  );
-  expect(rows.rows.map((r) => r.log_date.toISOString().slice(0, 10))).toEqual([
-    MONDAY_THIS_WEEK,
-    '2026-07-15',
-  ]);
-  expect(rows.rows.every((r) => r.done)).toBe(true);
+  // Both this week's earlier day and today are their own log rows (AC3). The
+  // suite-wide route abort in beforeEach keeps this local — read IndexedDB via
+  // the E2E bridge, not Postgres (nothing here was ever pushed).
+  const logs = await habitLogRecords(page, habitId);
+  expect(logs.map((r) => r.data.logDate)).toEqual([MONDAY_THIS_WEEK, '2026-07-15']);
+  expect(logs.every((r) => r.data.done === true)).toBe(true);
 });
 
 test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Gewohnheit zurück, der Wochen-Hinweis kommt zurück (issue #224 AC4)', async ({
@@ -142,15 +146,10 @@ test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Gewohnheit zu
   await expect(item).not.toHaveClass(/habit-today__item--done/);
   await expect(item.getByText('Diese Woche schon erledigt')).toBeVisible();
 
-  const rows = await withDb((client) =>
-    client.query(
-      'SELECT log_date, done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1 ORDER BY log_date',
-      ['Großeinkauf'],
-    ),
-  );
-  expect(rows.rows).toEqual([
-    expect.objectContaining({ done: true }),
-    expect.objectContaining({ done: false }),
+  const logs = await habitLogRecords(page, habitId);
+  expect(logs).toEqual([
+    expect.objectContaining({ data: expect.objectContaining({ logDate: MONDAY_THIS_WEEK, done: true }) }),
+    expect.objectContaining({ data: expect.objectContaining({ logDate: '2026-07-15', done: false }) }),
   ]);
 });
 
