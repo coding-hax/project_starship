@@ -37,16 +37,14 @@ function buildBody(open: OpenHabit[]): string {
 
 /**
  * Pure so "which habits are open" is Vitest-testable without a database — same
- * belt-and-braces split as `selectDueTasks` (tasks-due.ts).
+ * belt-and-braces split as `selectDueTasks` (tasks-due.ts): the query below
+ * already excludes archived/deleted habits, this is the belt to its braces.
  */
-export function selectOpenHabits(
-  activeHabits: Habit[],
-  logs: HabitLog[],
-  dateKey: string,
-): OpenHabit[] {
+export function selectOpenHabits(candidates: Habit[], logs: HabitLog[], dateKey: string): OpenHabit[] {
   const weekRange = weekRangeForDay(dateKey);
 
-  return activeHabits
+  return candidates
+    .filter((habit) => habit.archivedAt === null && habit.deletedAt === null)
     .filter((habit) => {
       if (!isDueOnDay(habit, dateKey, weekRange)) return false;
       return habit.schedule === 'weekly'
