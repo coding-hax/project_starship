@@ -114,22 +114,6 @@ export function isWeekend(dateKey: string): boolean {
   return day === 0 || day === 6;
 }
 
-/**
- * Two failed refresh attempts' worth of the 3h `REFRESH_INTERVAL_MS` — past this,
- * the caption becomes a real warning instead of routine housekeeping (issue #155).
- */
-const STALE_WARNING_THRESHOLD_MS = 8 * 60 * 60 * 1000;
-
-export function isStaleWarning(fetchedAt: string, now: Date = new Date()): boolean {
-  return now.getTime() - new Date(fetchedAt).getTime() >= STALE_WARNING_THRESHOLD_MS;
-}
-
-/** `HH:MM`, 24-hour, local time (VISION) — the last successful fetch (issue #155). */
-export function formatStaleSince(fetchedAt: string): string {
-  const date = new Date(fetchedAt);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 /**
  * `HH:MM` straight out of a local ISO instant (`WeatherHour.time`, `sunrise`,
