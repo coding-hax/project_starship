@@ -25,6 +25,10 @@ const e2eEnv = {
     'BGPrJFHUqtjjSLRI_8sRvW1AGoogzhtSCbyrSCUioJlBpBw2RIH113USwjkfN5egVnSeuqNSDUD3sCSAbhrLRCE',
   VAPID_PRIVATE_KEY: 'izNKwr3NI2wtJth6i-nqAz0fBXNH-I0sIx90d0_bU44',
   VAPID_SUBJECT: 'mailto:e2e@example.com',
+  // Throwaway bearer value for the reminders cron route (#239) — same idea as the
+  // VAPID keypair above: without it the route's "never fall open" guard answers
+  // every request with 503 before the owner-session check ever runs.
+  REMINDER_SECRET: 'e2e-throwaway-reminder-secret',
 };
 
 // 'main' = dev server only, 'offline' = production build only, unset = both (#115).
