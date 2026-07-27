@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Startet den Runner — aber NIEMALS aus dem Arbeitsbaum.
+#
+# Warum es diesen Shim gibt:
+# launchd hat bisher direkt $REPO/scripts/claude-runner.sh ausgeführt. Das ist die
+# Datei, die im gerade ausgecheckten Branch liegt — und welcher Branch das ist,
+# entscheidet der Agent selbst. Der CI-Wächter `protected-paths` bewacht zwar den
+# MERGE von scripts/, aber nicht die AUSFÜHRUNG: eine geänderte Runner-Datei, die
+# nur im Arbeitsbaum liegt, wäre beim nächsten Tick trotzdem gelaufen — ohne CI,
+# ohne Review, ohne `human-approved`. Der Wächter stand an der falschen Tür.
+#
+# Hier wird deshalb immer die Fassung aus origin/main geholt und die läuft. Damit
+# kann nur Runner-Code ausgeführt werden, der durch CI und durch eine menschliche
+# Freigabe gegangen ist — unabhängig davon, worauf das Repo gerade steht.
+#
+# Seit der Kern in TypeScript liegt (#184/S6) reicht die .sh allein nicht mehr:
+# claude-runner.sh ist nur noch der Einstiegspunkt, entschieden wird in
+# scripts/runner/*.ts. Würde der Shim weiterhin nur die .sh kopieren, käme der
+# TS-Kern aus dem Arbeitsbaum — die Zusage oben gälte dann für den kleineren Teil
+# des Runners. Deshalb wandert der ganze Satz mit (#249).
+#
+# AUSGEFÜHRT wird die installierte Kopie unter ~/.local/bin/, nicht diese Datei
+# hier — sonst wäre der Vertrauensanker wieder aus dem Arbeitsbaum ersetzbar.
+# Diese Fassung ist die kanonische: reviewt, von `protected-paths` bewacht.
+# Weicht die installierte Kopie ab, meldet der Runner das über status() (#252).
+set -euo pipefail
+
+REPO="${REPO_DIR:-$HOME/dev/project_starship}"
+REF="${RUNNER_REF:-origin/main}"
+SHIM_CANONICAL="scripts/starship-runner"
+
+# shasum (macOS) bzw. sha1sum (Linux) — dieselbe Doppelung wie in status().
+shim_sha1() { { shasum -a 1 2>/dev/null || sha1sum 2>/dev/null; } | cut -d' ' -f1; }
+
+# Weicht die LAUFENDE Datei von der kanonischen Fassung im Ref ab?
+# stdout leer = kein Drift, sonst der Grund im Klartext.
+#
+# Fehlt die Datei im Ref (älterer main), ist das ausdrücklich KEIN Drift —
+# sonst schlüge jeder Lauf gegen einen älteren Stand Alarm.
+shim_drift_reason() {
+  local self want have
+  self="${SHIM_SELF:-${BASH_SOURCE[0]}}"
+  want=$(git show "$REF:$SHIM_CANONICAL" 2>/dev/null | shim_sha1) || return 0
+  [ -n "$want" ] || return 0
+  have=$(shim_sha1 < "$self") || return 0
+  [ "$want" = "$have" ] && return 0
+  printf '%s' "Die laufende Datei \`$self\` weicht von \`$REF:$SHIM_CANONICAL\` ab."
+}
+
+# Wegwerf-Checkout des Runners aus $REF nach $1. Gibt den Pfad auf stdout zurück.
+#
+# Bewusst `git archive` statt `git --work-tree=… checkout`: letzteres fasst den
+# Index des echten Repos an, in dem womöglich gerade ein Agent arbeitet.
+#
+# `pwd -P` ist Pflicht, nicht Kosmetik: mktemp liefert auf macOS /var/folders/… ,
+# den Symlink auf /private/var/folders/… . cli.ts entscheidet per
+# `process.argv[1] === fileURLToPath(import.meta.url)`, ob es das Hauptmodul ist
+# — argv[1] bleibt der /var-Pfad, import.meta.url wird aufgelöst. Über den
+# Symlink-Pfad hält cli.ts sich für ein importiertes Modul, tut nichts und endet
+# mit Exit 0 und leerer Ausgabe. Der Runner entschiede stumm auf leeren
+# Antworten weiter (#249).
+shim_materialise() {   # $1 = Zielverzeichnis -> stdout: aufgelöster Pfad
+  local dest
+  dest=$(cd "$1" && pwd -P) || return 1
+
+  git archive "$REF" scripts/runner scripts/claude-runner.sh package.json \
+    | tar -x -C "$dest" || {
+    echo "Konnte den Runner aus $REF nicht materialisieren." >&2; return 1; }
+
+  # node_modules ist Abhängigkeits-Cache, kein reviewter Code — der darf aus dem
+  # Repo kommen. tsx und cli.ts liegen damit unter derselben Wurzel, genau wie
+  # ts_run() in claude-runner.sh es erwartet.
+  #
+  # Die Existenzprüfung ist nötig, weil `ln -s` auch auf ein nicht vorhandenes
+  # Ziel klaglos zeigt — der Fehler fiele sonst erst beim ersten ts_run auf.
+  [ -d "$REPO/node_modules" ] || {
+    echo "node_modules fehlt in $REPO — ist dort pnpm install gelaufen?" >&2; return 1; }
+  ln -s "$REPO/node_modules" "$dest/node_modules" || {
+    echo "node_modules nicht verlinkbar." >&2; return 1; }
+
+  printf '%s' "$dest"
+}
+
+shim_main() {
+  cd "$REPO" || { echo "REPO_DIR nicht gefunden: $REPO" >&2; exit 1; }
+
+  # Nur den Ref aktualisieren, nichts auschecken — der Agent arbeitet hier
+  # womöglich gerade auf einem Feature-Branch, den wir nicht anfassen dürfen.
+  git fetch -q origin main || { echo "git fetch fehlgeschlagen — Lauf übersprungen." >&2; exit 0; }
+
+  # Gemeldet wird nicht hier, sondern in claude-runner.sh: dort sitzt status(),
+  # und der Shim soll bewusst kein `gh` anfassen. Ein Drift hält den Lauf NICHT
+  # an — nach elf Stunden Totalausfall (#249) ist ein stehender Runner teurer
+  # als ein abweichender.
+  SHIM_DRIFT=$(shim_drift_reason)
+  export SHIM_DRIFT
+
+  SHIM_TMPHOME=$(mktemp -d -t starship-runner-home) || exit 1
+  trap 'rm -rf "$SHIM_TMPHOME"' EXIT INT TERM
+
+  RUNNER_HOME=$(shim_materialise "$SHIM_TMPHOME") || exit 1
+
+  # Kaputtes Skript gar nicht erst starten.
+  bash -n "$RUNNER_HOME/scripts/claude-runner.sh" || {
+    echo "Runner aus $REF ist syntaktisch kaputt — Lauf übersprungen." >&2; exit 1; }
+
+  # Explizit, statt sich auf die BASH_SOURCE-Herleitung im Skript zu verlassen:
+  # genau die ist über den Shim schon einmal auf $TMPDIR gelandet und hat den
+  # Runner elf Stunden lahmgelegt (#249). REPO_DIR bleibt unangetastet — gebaut
+  # wird weiter im echten Arbeitsbaum, der Zustand bleibt in $REPO/.runner.
+  export RUNNER_HOME
+
+  # Kein `exec`: das würde diese Shell ersetzen und damit den EXIT-Trap oben
+  # verschlucken — der alte Shim hat auf genau diesem Weg pro Tick eine
+  # Temp-Datei liegen gelassen (624 Stück allein in der Nacht auf den 27.07.).
+  # Als Kind gestartet, aufgeräumt, Exit-Code durchgereicht.
+  local rc=0
+  bash "$RUNNER_HOME/scripts/claude-runner.sh" || rc=$?
+  exit "$rc"
+}
+
+# Source-Guard wie in claude-runner.sh: beim Sourcen werden nur die Funktionen
+# definiert, damit die Suiten unter scripts/tests/ sie einzeln prüfen können.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  shim_main "$@"
+fi
