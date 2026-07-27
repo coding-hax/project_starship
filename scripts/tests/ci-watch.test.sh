@@ -312,6 +312,10 @@ case "$LABELS_304" in
   *needs-input*) ok "T4: needs-input wird gesetzt -- das ist die Genehmigungs-Schranke" ;;
   *) red "T4: needs-input wird gesetzt (Labels: $LABELS_304)" ;;
 esac
+case "$LABELS_304" in
+  *needs-answer*) red "T4 (#196): needs-answer wird NICHT gesetzt -- das ist reine Freigabe, keine Frage (Labels: $LABELS_304)" ;;
+  *) ok "T4 (#196): needs-answer wird NICHT gesetzt -- das ist reine Freigabe, keine Frage" ;;
+esac
 assert_file_absent "T4: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-504"
 
 # ==============================================================================
