@@ -27,25 +27,6 @@ set -euo pipefail
 
 REPO="${REPO_DIR:-$HOME/dev/project_starship}"
 REF="${RUNNER_REF:-origin/main}"
-SHIM_CANONICAL="scripts/starship-runner"
-
-# shasum (macOS) bzw. sha1sum (Linux) — dieselbe Doppelung wie in status().
-shim_sha1() { { shasum -a 1 2>/dev/null || sha1sum 2>/dev/null; } | cut -d' ' -f1; }
-
-# Weicht die LAUFENDE Datei von der kanonischen Fassung im Ref ab?
-# stdout leer = kein Drift, sonst der Grund im Klartext.
-#
-# Fehlt die Datei im Ref (älterer main), ist das ausdrücklich KEIN Drift —
-# sonst schlüge jeder Lauf gegen einen älteren Stand Alarm.
-shim_drift_reason() {
-  local self want have
-  self="${SHIM_SELF:-${BASH_SOURCE[0]}}"
-  want=$(git show "$REF:$SHIM_CANONICAL" 2>/dev/null | shim_sha1) || return 0
-  [ -n "$want" ] || return 0
-  have=$(shim_sha1 < "$self") || return 0
-  [ "$want" = "$have" ] && return 0
-  printf '%s' "Die laufende Datei \`$self\` weicht von \`$REF:$SHIM_CANONICAL\` ab."
-}
 
 # Wegwerf-Checkout des Runners aus $REF nach $1. Gibt den Pfad auf stdout zurück.
 #
@@ -87,13 +68,6 @@ shim_main() {
   # Nur den Ref aktualisieren, nichts auschecken — der Agent arbeitet hier
   # womöglich gerade auf einem Feature-Branch, den wir nicht anfassen dürfen.
   git fetch -q origin main || { echo "git fetch fehlgeschlagen — Lauf übersprungen." >&2; exit 0; }
-
-  # Gemeldet wird nicht hier, sondern in claude-runner.sh: dort sitzt status(),
-  # und der Shim soll bewusst kein `gh` anfassen. Ein Drift hält den Lauf NICHT
-  # an — nach elf Stunden Totalausfall (#249) ist ein stehender Runner teurer
-  # als ein abweichender.
-  SHIM_DRIFT=$(shim_drift_reason)
-  export SHIM_DRIFT
 
   SHIM_TMPHOME=$(mktemp -d -t starship-runner-home) || exit 1
   trap 'rm -rf "$SHIM_TMPHOME"' EXIT INT TERM
