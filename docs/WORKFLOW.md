@@ -112,8 +112,7 @@ Zahlen oben = zuerst. Wichtig:
   (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
   gelistet ist.
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
-  gelistetes, unfertiges Ticket gebaut. Der Merge-Schutz für geschützte Pfade
-  (`human-approved`) bleibt davon unberührt — er sitzt in CI, nicht in der Auswahl.
+  gelistetes, unfertiges Ticket gebaut. Ein Merge-Schutz für geschützte Pfade besteht seit #276 nicht mehr (`protected-paths` ist nur noch ein Hinweis).
 - **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
   (`plan` → `research` → `ready`, je ältestes `createdAt`).
 - **Leeres/fehlendes Queue-Issue → reiner Fallback**, also das bisherige Verhalten.
@@ -143,10 +142,9 @@ Zustandsmaschine des ganzen Setups:
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-input`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
-| `needs-answer`   | Marker neben `needs-input`: es steht eine **Frage** im Ticket, die eine geschriebene Antwort braucht (A/B/C, Vision-Konflikt, dritter erfolgloser Lauf). Fehlt der Marker, genügt ein Label-Tap (`human-approved`/`tests-exempt`). Rein anzeigend, schließt nichts von der Auswahl aus; verschwindet automatisch mit `needs-input` (#196). | Claude       |
+| `needs-answer`   | Marker neben `needs-input`: es steht eine **Frage** im Ticket, die eine geschriebene Antwort braucht (A/B/C, Vision-Konflikt, dritter erfolgloser Lauf). Fehlt der Marker, genügt ein Label-Tap (`tests-exempt`). Rein anzeigend, schließt nichts von der Auswahl aus; verschwindet automatisch mit `needs-input` (#196). | Claude       |
 | `parked`         | Wartet auf dich (`needs-input`), belegt aber **keinen Bauplatz** mehr — löst `in-progress` ab, siehe #145. | Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
-| `human-approved` | **Deine Freigabe** für einen PR, der geschützte Pfade berührt. | **Du**       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 | `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
@@ -168,8 +166,7 @@ per Queue-Editor oder per Label.
 
 - **Wartet auf einen Menschen** (`needs-input`/`parked`): kann Minuten bis Tage
   dauern. Das Ticket gibt `in-progress` ab, der Runner wählt in der Zwischenzeit
-  ein anderes. Betrifft es einen PR mit geschützten Pfaden, setzt du
-  `human-approved` statt `needs-input` zu entfernen. Trägt es zusätzlich
+  ein anderes. Trägt es zusätzlich
   `needs-answer` (#196), steht eine echte Frage offen, die eine geschriebene
   Antwort braucht — ohne den Marker genügt ein Label-Tap. `needs-answer` ist
   rein anzeigend: es beeinflusst weder Auswahl noch Parken, sondern verschwindet
@@ -344,7 +341,7 @@ Zweig mehr. Der DIRTY-Fall aus #217 ist in dieser Tabelle der Zustand
 `dirty-conflict` und reagiert wie `behind-conflict`: geparkt → entparken,
 laufend → Fix-Agent. Die Tabelle oben beobachtet nur
 das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins, das an
-`protected-paths` hing und auf `human-approved` wartete) fiel bisher aus der
+`protected-paths` hing, als der noch blockierte) fiel bisher aus der
 Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145), aber die
 Ticketauswahl greift es erst wieder auf, sobald `needs-input` manuell weg
 ist. Deshalb prüft der Takt **zusätzlich** — vor jeder Ticketauswahl, aeltestes
@@ -398,24 +395,30 @@ gh api -X PUT repos/:owner/:repo/branches/main/protection \
 gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
 ```
 
-**Zwei Wächter machen den Auto-Merge erst vertretbar:**
+**Ein Wächter macht den Auto-Merge erst vertretbar:**
 
 - `test-integrity` — lehnt jeden PR ab, der Tests entfernt, abschaltet
   (`.skip`, `.only`) oder mit `waitForTimeout` grün macht. Reine Textprüfung,
   kein Modell beteiligt.
-- `protected-paths` — schlägt fehl, sobald einer der geschützten Pfade berührt
-  wird (Liste: `CLAUDE.md`, „Geschützte Pfade"). Der Bau-Agent
-  setzt beim Öffnen des Draft-PR selbst `needs-input` und nimmt es in diesem Lauf
-  nicht wieder ab (#163) — die Wache setzt es nur nach, falls es einmal fehlt (z. B.
-  nach einem abgebrochenen Lauf), folgenlos, wenn es schon dranhängt. Seit #167 hebt
-  der Bau-Agent den PR trotz `needs-input` selbst aus dem Entwurf und aktiviert
-  Auto-Merge — `protected-paths` hält ihn dennoch rot, das ist die eigentliche
-  Schranke, nicht der Entwurfsstatus. Der PR bleibt offen, bis **du** das Label
-  `human-approved` setzt **und** `needs-input` entfernst.
-  Danach läuft der Check automatisch neu, und der nächste Takt sieht grün und
-  aktiviert Auto-Merge.
 
-Alles andere — UI, Features, Styling, Doku — merged Claude ohne dich.
+`protected-paths` **blockiert seit #276 nicht mehr.** Der Check läuft weiter
+und nennt im Log, welche empfindlichen Dateien ein PR berührt — aber er ist
+immer grün, und das Label `human-approved` gibt es nicht mehr.
+
+Der Grund: die PRs werden ohnehin direkt freigegeben. Das Label hat keinen
+zusätzlichen Blick auf den Diff erzeugt, sondern nur einen zusätzlichen
+Handgriff — und einen, der regelmäßig zur eigentlichen Bremse wurde (Label am
+PR statt am Issue, zwei gleichzeitige Check-Suites, von denen eine die Payload
+ohne Label sah, Tickets tagelang still).
+
+**Der bewusst in Kauf genommene Preis:** ein unbeaufsichtigter Runner-Lauf
+kann eine Migration, eine Krypto-Änderung oder einen Sync-Eingriff selbst
+mergen, ohne dass ein Mensch draufgesehen hat. Die verbleibenden Netze sind
+`schema-drift`, `quality` (Sync-Invarianten), `test-integrity`, `e2e-offline`
+und die `db-migration`-Review-Rolle. Wer das zurückdrehen will, ändert
+`.github/workflows/guards.yml` — die Pfadliste steht dort unverändert.
+
+Damit merged Claude alles ohne dich.
 
 **Wie ein Ticket geschlossen wird — und wie nicht (#172).** Ein Squash-Merge
 schließt in GitHub automatisch jedes Ticket, dessen `Closes #N` irgendwo in
@@ -567,8 +570,8 @@ nur-lesend) und arbeitet dessen vier Schritte ab:
 3. Dexie-Versions-Bump (`db.version(N)` in `src/local/dexie.ts`) im selben PR, wenn
    sich das Client-Schema mitbewegt — nicht nötig bei server-only-Tabellen oder einer
    additiven Spalte im generischen `records`-Store.
-4. `src/db/**` und `src/local/**` sind protected paths — kein Auto-Merge, Kommentar
-   + `human-approved` anfordern (siehe unten).
+4. `src/db/**` und `src/local/**` sind empfindliche Pfade. Seit #276 blockiert das
+   den Merge nicht mehr — der Kommentar am Ticket bleibt trotzdem Pflicht (siehe unten).
 
 Ein optionaler Hinweis-Check (`scripts/check-dexie-bump.sh`) läuft im `quality`-Job:
 Server-Migration berührt, aber kein Dexie-Bump → `::warning::`-Annotation. Das ist

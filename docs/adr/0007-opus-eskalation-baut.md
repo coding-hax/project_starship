@@ -63,7 +63,7 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
 - Damit ein unbeaufsichtigt schreibender Opus-Lauf trotzdem nie ungeprüft in
   `main` landet, bleiben die bestehenden Wächter unverändert scharf:
   `protected-paths` (hält jeden PR an `scripts/`, `.github/`, `src/db/` etc.
-  offen, bis der Mensch `human-approved` setzt) und `test-integrity`
+  offen, bis ein Mensch eingreift; seit #276 blockiert er nicht mehr) und `test-integrity`
   (verhindert abgeschwächte Tests). Opus-Code entsteht ungeprüft, wird aber
   nie ungeprüft gemerged.
 - Der Opus-Deckel ist eine reine Kostenbremse, keine Sicherheitsgrenze — die

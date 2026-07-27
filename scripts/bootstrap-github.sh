@@ -37,7 +37,6 @@ label "needs-input"    "D93F0B" "Wartet auf dich: Antwort oder Freigabe. Blockie
 label "needs-answer"   "B60205" "Es steht eine Frage im Ticket. Ohne deine geschriebene Antwort geht es nicht weiter."
 label "parked"         "C2E0C6" "Wartet auf dich (needs-input), belegt aber keinen Bauplatz mehr."
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
-label "human-approved" "5319E7" "Deine Freigabe für einen PR, der geschützte Pfade berührt."
 label "model:haiku"    "BFDADC" "Mechanisches Ticket — Runner nimmt Haiku statt Sonnet."
 label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Menschen freigegeben."
 label "hands-off"      "0B0B0B" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."

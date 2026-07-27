@@ -107,7 +107,7 @@ und welcher das ist, entscheidet der Agent.
 Damit stünde der Wächter an der falschen Tür: `protected-paths` verhindert den **Merge**
 von `scripts/`-Änderungen, nicht deren **Ausführung**. Ein Agent, der seinen eigenen
 Runner auf seinem Feature-Branch umschreibt, bekäme diesen Code beim nächsten Tick
-ausgeführt — ohne CI, ohne Review, ohne `human-approved`. Er müsste dafür nichts
+ausgeführt — ohne CI, ohne Review. Er müsste dafür nichts
 umgehen; es genügt, die geänderte Datei im Arbeitsbaum liegen zu lassen.
 
 Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt. Er

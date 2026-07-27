@@ -272,10 +272,9 @@ GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen n�
               '🟡',
               `🟡 **PR #${prNum} für #${issue} braucht deine Freigabe.**
 
-Der Check \`protected-paths\` ist rot, weil geschützte Pfade berührt sind (Begründung
-steht als Kommentar am Ticket). Setze \`human-approved\` am PR **und entferne**
-\`needs-input\` vom Issue — der Check läuft dann automatisch neu, und der nächste
-Takt beobachtet die CI weiter.`,
+Der Check \`protected-paths\` ist rot. Seit #276 blockiert er eigentlich nicht mehr —
+tritt das trotzdem auf, sieh ins Check-Log: es ist dann eine echte Störung, keine
+fehlende Freigabe.`,
             ),
           };
         case 'caught-up':
@@ -716,8 +715,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
 
 Offene Fragen an: ${waiting}
 
-Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.
-Betrifft es einen PR mit geschützten Pfaden, setzt du stattdessen \`human-approved\`.`,
+Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.`,
         },
         0,
       );

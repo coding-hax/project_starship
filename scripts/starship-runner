@@ -7,7 +7,7 @@
 # entscheidet der Agent selbst. Der CI-Wächter `protected-paths` bewacht zwar den
 # MERGE von scripts/, aber nicht die AUSFÜHRUNG: eine geänderte Runner-Datei, die
 # nur im Arbeitsbaum liegt, wäre beim nächsten Tick trotzdem gelaufen — ohne CI,
-# ohne Review, ohne `human-approved`. Der Wächter stand an der falschen Tür.
+# ohne Review. Der Wächter stand an der falschen Tür.
 #
 # Hier wird deshalb immer die Fassung aus origin/main geholt und die läuft. Damit
 # kann nur Runner-Code ausgeführt werden, der durch CI und durch eine menschliche
