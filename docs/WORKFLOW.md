@@ -21,6 +21,12 @@ Issue (mit Akzeptanzkriterien)
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
+**Gebaut wird nur im eigenen Worktree.** Das WIP-Limit gilt für Tickets, nicht für
+Prozesse: Runner, Chat-Sitzungen und CI greifen gleichzeitig auf denselben Checkout
+zu. Wer im Haupt-Checkout den Branch wechselt oder committet, schreibt seine Arbeit
+in den Branch eines fremden Tickets — genau so landete #196 im Icon-PR von #232.
+Rezept und Pfadkonvention: `CLAUDE.md`, „Ein Worktree je Lauf".
+
 **„Wartend" ist nicht „in Arbeit" (#145).** Ein Ticket, an dem *niemand* sitzt,
 weil eine Frage an dich offen ist, belegt keinen Bauplatz — nur ein Ticket, an
 dem der Runner gerade tatsächlich baut, tut das. Stellt Claude eine Frage
