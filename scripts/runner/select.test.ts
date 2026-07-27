@@ -145,6 +145,39 @@ describe('selectTicket (reine Auswahl-Kaskade)', () => {
   });
 });
 
+// #227: der Kill-Switch wirkte auf jedem Weg AUSSER dem, der vor allen anderen
+// greift. Deshalb je Zweig ein eigener Nachweis, nicht nur fuer den Vorfall.
+describe('selectTicket: no-opus gilt fuer jeden Zweig (#227)', () => {
+  it('in-progress + no-opus wird nicht fortgesetzt -- faellt auf ready durch', () => {
+    const snapshot = [issue(50, ['in-progress', 'no-opus']), issue(70, ['ready'])];
+    expect(selectTicket(snapshot)).toEqual({ issue: 70, role: 'build', source: 'ready' });
+  });
+
+  it('parked + no-opus wird bei freiem Bauplatz nicht gewaehlt (der Vorfall vom 26.07.26)', () => {
+    const snapshot = [issue(156, ['parked', 'no-opus'], '2024-01-01T00:00:00Z'), issue(70, ['ready'], '2024-06-01T00:00:00Z')];
+    expect(selectTicket(snapshot)).toEqual({ issue: 70, role: 'build', source: 'ready' });
+  });
+
+  it('ready + no-opus wird nicht gebaut', () => {
+    expect(selectTicket([issue(48, ['ready', 'no-opus'])])).toBeNull();
+  });
+
+  it('no-opus schlaegt die Queue -- der naechste gelistete Eintrag kommt dran', () => {
+    const snapshot = [issue(10, ['ready', 'no-opus']), issue(99, ['ready'])];
+    expect(selectTicket(snapshot, '#10, #99')).toEqual({ issue: 99, role: 'build', source: 'queue' });
+  });
+
+  it('no-opus ueberspringt ein needs-plan-Ticket komplett -- faellt auf ready durch', () => {
+    const snapshot = [issue(60, ['needs-plan', 'no-opus']), issue(48, ['ready'])];
+    expect(selectTicket(snapshot)).toEqual({ issue: 48, role: 'build', source: 'ready' });
+  });
+
+  it('traegt jedes Ticket no-opus, waehlt der Runner gar nichts', () => {
+    const snapshot = [issue(50, ['in-progress', 'no-opus']), issue(51, ['parked', 'no-opus']), issue(52, ['ready', 'no-opus'])];
+    expect(selectTicket(snapshot, '#52')).toBeNull();
+  });
+});
+
 describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
   let dir: string;
   let state: StateAdapter;
@@ -203,6 +236,12 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
     const outcome = pickTicket([issue(48, ['ready'])], '', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 48, role: 'build', mode: 'start' });
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '48', '--add-label', 'in-progress', '--remove-label', 'ready']);
+  });
+
+  it('#227: ein geparktes no-opus-Ticket wird nicht auf in-progress befoerdert', () => {
+    const gh = ghDouble();
+    expect(pickTicket([issue(156, ['parked', 'no-opus'])], '', gh, state)).toEqual({ kind: 'none' });
+    expect(gh.run).not.toHaveBeenCalled();
   });
 
   it('nichts waehlbar -> none, keine Mutation', () => {

@@ -13,6 +13,8 @@
 //
 // `RUN_ROLE` kommt weiter aus dem Label ('needs-plan' -> plan,
 // 'needs-research' -> research, sonst build) -- unveraendert aus ADR-0005.
+// Quer ueber ALLE Zweige gilt der Kill-Switch `no-opus` (#227): so markierte
+// Tickets sind fuer `selectTicket()` nicht vorhanden.
 // Der eigentliche `claude`-Aufruf (Prompt/Modell/Tools je Rolle) bleibt
 // bewusst in claude-runner.sh (S6, siehe Nicht-Ziele von #202).
 import type { GhAdapter } from './gh.js';
@@ -83,21 +85,32 @@ export interface SelectedTicket {
 // geparkten Tickets > Prioritaets-Queue (Label egal) > needs-plan >
 // needs-research > ready, je aeltestes createdAt.
 export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTicket | null {
-  const running = snapshot
+  // #227: 'no-opus' ist ein Kill-Switch fuer das ganze Ticket, kein Detail
+  // einzelner Zweige. Der Ausschluss stand vorher nur in queue/needs-plan/
+  // needs-research -- ausgerechnet 'running', 'resume-parked' (greift VOR
+  // allen anderen) und 'ready' pruefen ihn nicht. Am 26.07.26 hat
+  // resume-parked deshalb einen Opus-Bau-Lauf auf Nummer 156 gestartet,
+  // waehrend dasselbe Ticket lokal gebaut wurde. Einmal zentral gefiltert,
+  // bevor irgendein Zweig den Snapshot sieht: ein no-opus-Ticket ist fuer die
+  // Auswahl schlicht nicht vorhanden, und der naechste neue Zweig erbt das,
+  // statt die Bedingung zu vergessen.
+  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'no-opus'));
+
+  const running = selectable
     .filter((issue) => hasLabel(issue, 'in-progress') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
   if (running) return { issue: running.number, role: 'build', source: 'running' };
 
-  const resumeParked = snapshot
+  const resumeParked = selectable
     .filter((issue) => hasLabel(issue, 'parked') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
   if (resumeParked) return { issue: resumeParked.number, role: 'build', source: 'resume-parked' };
 
   const order = queueOrderFlat(queueBody);
   if (order.length > 0) {
-    const ranked = snapshot
+    const ranked = selectable
       .filter((issue) => order.includes(issue.number))
-      .filter((issue) => !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'no-opus'))
+      .filter((issue) => !hasLabel(issue, 'needs-input'))
       .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
     if (ranked.length > 0) {
       const picked = ranked[0];
@@ -106,17 +119,17 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
     }
   }
 
-  const nextNeedsPlan = snapshot
-    .filter((issue) => hasLabel(issue, 'needs-plan') && !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'no-opus'))
+  const nextNeedsPlan = selectable
+    .filter((issue) => hasLabel(issue, 'needs-plan') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
   if (nextNeedsPlan) return { issue: nextNeedsPlan.number, role: 'plan', source: 'needs-plan' };
 
-  const nextNeedsResearch = snapshot
-    .filter((issue) => hasLabel(issue, 'needs-research') && !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'no-opus'))
+  const nextNeedsResearch = selectable
+    .filter((issue) => hasLabel(issue, 'needs-research') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
   if (nextNeedsResearch) return { issue: nextNeedsResearch.number, role: 'research', source: 'needs-research' };
 
-  const nextReady = snapshot
+  const nextReady = selectable
     .filter(
       (issue) =>
         hasLabel(issue, 'ready') &&
