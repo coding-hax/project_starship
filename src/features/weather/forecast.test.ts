@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { WeatherDay, WeatherHour } from '@/local/dexie';
 import {
   findWeatherDay,
   formatDayHeading,
@@ -6,6 +7,7 @@ import {
   isStale,
   isWeekend,
   nextWeatherDate,
+  nightTemperature,
   parseForecast,
   previousWeatherDate,
   temperatureAxis,
@@ -124,6 +126,114 @@ describe('nextWeatherDate / previousWeatherDate', () => {
   it('both are null for a date outside the cached window', () => {
     expect(nextWeatherDate(days, '2026-08-01')).toBeNull();
     expect(previousWeatherDate(days, '2026-08-01')).toBeNull();
+  });
+});
+
+describe('nightTemperature', () => {
+  const hour = (time: string, temperature: number): WeatherHour => ({
+    time,
+    temperature,
+    precipitationProbability: 0,
+    precipitation: 0,
+  });
+
+  const buildDay = (
+    overrides: Pick<WeatherDay, 'date' | 'sunset' | 'hours'> & Partial<Pick<WeatherDay, 'sunrise'>>,
+  ): WeatherDay => ({
+    weatherCode: 0,
+    tempMax: 20,
+    tempMin: 10,
+    precipitationProbability: 0,
+    sunrise: `${overrides.date}T06:00`,
+    windSpeedMax: 0,
+    windGustsMax: 0,
+    ...overrides,
+  });
+
+  it('is the minimum across both days inside the sunset-to-sunrise window', () => {
+    const day = buildDay({
+      date: '2026-07-23',
+      sunset: '2026-07-23T21:00',
+      hours: [hour('2026-07-23T20:00', 12), hour('2026-07-23T21:00', 11), hour('2026-07-23T22:00', 9), hour('2026-07-23T23:00', 8)],
+    });
+    const nextDay = buildDay({
+      date: '2026-07-24',
+      sunset: '2026-07-24T21:00',
+      hours: [
+        hour('2026-07-24T00:00', 7),
+        hour('2026-07-24T01:00', 6),
+        hour('2026-07-24T02:00', 5),
+        hour('2026-07-24T03:00', 6),
+        hour('2026-07-24T04:00', 7),
+        hour('2026-07-24T05:00', 8),
+        hour('2026-07-24T06:00', 9),
+      ],
+    });
+    // 20:00 (12°) liegt vor dem Fenster, bleibt außen vor.
+    expect(nightTemperature(day, nextDay)).toEqual({
+      value: 5,
+      windowStart: '2026-07-23T21:00',
+      windowEnd: '2026-07-24T06:00',
+    });
+  });
+
+  it('is null without a next day (last day of the 7-day window, AC3)', () => {
+    const day = buildDay({
+      date: '2026-07-26',
+      sunset: '2026-07-26T21:00',
+      hours: [hour('2026-07-26T21:00', 11)],
+    });
+    expect(nightTemperature(day, null)).toBeNull();
+  });
+
+  it('spans midnight: hours from both calendar days count, the boundary hours filter correctly', () => {
+    const day = buildDay({
+      date: '2026-07-23',
+      sunset: '2026-07-23T22:00',
+      hours: [hour('2026-07-23T21:00', 10), hour('2026-07-23T22:00', 9), hour('2026-07-23T23:00', 8)],
+    });
+    const nextDay = buildDay({
+      date: '2026-07-24',
+      sunset: '2026-07-24T21:00',
+      sunrise: '2026-07-24T01:00',
+      hours: [hour('2026-07-24T00:00', 7), hour('2026-07-24T01:00', 6), hour('2026-07-24T02:00', 5)],
+    });
+    // 21:00 (10°, vor Sonnenuntergang) und 02:00 (5°, nach Sonnenaufgang) fallen raus.
+    expect(nightTemperature(day, nextDay)).toEqual({
+      value: 6,
+      windowStart: '2026-07-23T22:00',
+      windowEnd: '2026-07-24T01:00',
+    });
+  });
+
+  it('finds the minimum over a sparse hourly series that only partially covers the window', () => {
+    const day = buildDay({
+      date: '2026-07-23',
+      sunset: '2026-07-23T22:00',
+      hours: [hour('2026-07-23T23:00', 12)],
+    });
+    const nextDay = buildDay({
+      date: '2026-07-24',
+      sunset: '2026-07-24T21:00',
+      sunrise: '2026-07-24T05:00',
+      hours: [hour('2026-07-24T00:00', 4)],
+    });
+    expect(nightTemperature(day, nextDay)?.value).toBe(4);
+  });
+
+  it('is null when no hour of either day falls inside the window', () => {
+    const day = buildDay({
+      date: '2026-07-23',
+      sunset: '2026-07-23T22:00',
+      hours: [hour('2026-07-23T10:00', 10)],
+    });
+    const nextDay = buildDay({
+      date: '2026-07-24',
+      sunset: '2026-07-24T21:00',
+      sunrise: '2026-07-24T05:00',
+      hours: [hour('2026-07-24T10:00', 10)],
+    });
+    expect(nightTemperature(day, nextDay)).toBeNull();
   });
 });
 

@@ -161,6 +161,26 @@ export function IconActivity({ className }: IconProps) {
   );
 }
 
+// --- Wetterdetails-Kopf (issue #269): Höchst-/Nachtwert, klein neben der Zahl ---
+
+export function IconSunSimple({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Schlichter als IconWeatherClear (das große Kategorie-Icon direkt daneben) —
+          nur der Kern, keine Strahlen, sonst stünde zweimal dieselbe Sonne nebeneinander. */}
+      <circle cx="12" cy="12" r="5" />
+    </svg>
+  );
+}
+
+export function IconMoon({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M15.5 4.5a8 8 0 1 0 4 12.5 6.5 6.5 0 0 1-4-12.5z" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>

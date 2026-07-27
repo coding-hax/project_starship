@@ -103,6 +103,36 @@ export function previousWeatherDate(days: WeatherDay[], date: string): string | 
   return days[index - 1]?.date ?? null;
 }
 
+export interface NightTemperature {
+  value: number;
+  /** Local ISO instant the window opens at — `day.sunset` (issue #269). */
+  windowStart: string;
+  /** Local ISO instant the window closes at — `nextDay.sunrise`. */
+  windowEnd: string;
+}
+
+/**
+ * The minimum hourly temperature between `day`'s sunset and `nextDay`'s sunrise
+ * (issue #269) — the *coming* night, not Open-Meteo's `temperature_2m_min`, which
+ * is a midnight-to-midnight calendar-day minimum and so mostly falls in the night
+ * that just ended rather than the one ahead. `null` when there is no next day
+ * (last day of the 7-day window) or its hours don't reach far enough to cover any
+ * part of the window — the caller falls back to the calendar-day minimum then
+ * (AC3). String comparison on the `HH:MM`-suffixed local ISO instants is safe
+ * here: both `day.hours` and `nextDay.hours` already carry no UTC offset (same
+ * `Europe/Berlin` request timezone as everywhere else in this module).
+ */
+export function nightTemperature(day: WeatherDay, nextDay: WeatherDay | null): NightTemperature | null {
+  if (!nextDay) return null;
+  const windowStart = day.sunset;
+  const windowEnd = nextDay.sunrise;
+  const hours = [...day.hours, ...nextDay.hours].filter(
+    (hour) => hour.time >= windowStart && hour.time <= windowEnd,
+  );
+  if (hours.length === 0) return null;
+  return { value: Math.min(...hours.map((hour) => hour.temperature)), windowStart, windowEnd };
+}
+
 /** Throws on a network error or a non-2xx response — the caller decides what that means for the cache. */
 export async function fetchForecast(latitude: number, longitude: number): Promise<WeatherDay[]> {
   const response = await fetch(buildForecastUrl(latitude, longitude));
