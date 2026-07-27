@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  belongsOnUebersicht,
   compareTasks,
   groupTasks,
-  isDueTodayOrOverdue,
   resolveNestTarget,
   toTaskView,
   type TaskView,
@@ -96,7 +96,7 @@ describe('compareTasks', () => {
   });
 });
 
-describe('isDueTodayOrOverdue', () => {
+describe('belongsOnUebersicht', () => {
   const task = (overrides: Partial<TaskView>): TaskView => ({
     id: 'id',
     title: 'x',
@@ -112,28 +112,52 @@ describe('isDueTodayOrOverdue', () => {
   const now = new Date('2026-07-18T12:00:00.000Z');
 
   it('is true for an open task overdue from an earlier day', () => {
-    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-17T09:00:00.000Z' }), now)).toBe(true);
+    expect(belongsOnUebersicht(task({ dueAt: '2026-07-17T09:00:00.000Z' }), now)).toBe(true);
   });
 
   it('is true for an open task due later today, even though the time has not passed yet', () => {
-    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-18T18:00:00.000Z' }), now)).toBe(true);
+    expect(belongsOnUebersicht(task({ dueAt: '2026-07-18T18:00:00.000Z' }), now)).toBe(true);
   });
 
   it('is false for an open task due on a future day', () => {
-    expect(isDueTodayOrOverdue(task({ dueAt: '2026-07-19T09:00:00.000Z' }), now)).toBe(false);
+    expect(belongsOnUebersicht(task({ dueAt: '2026-07-19T09:00:00.000Z' }), now)).toBe(false);
   });
 
   it('is false for an undated task', () => {
-    expect(isDueTodayOrOverdue(task({ dueAt: null }), now)).toBe(false);
+    expect(belongsOnUebersicht(task({ dueAt: null }), now)).toBe(false);
   });
 
-  it('is false for a completed task, even if its due date was today or earlier', () => {
+  // Checked off today, the row stays for the rest of the day (issue #228) — it is
+  // the day's work, and the undo tap has to stay reachable.
+  it('is true for a task completed today whose due date was today or earlier', () => {
     expect(
-      isDueTodayOrOverdue(
+      belongsOnUebersicht(
+        task({ dueAt: '2026-07-17T09:00:00.000Z', completedAt: '2026-07-18T08:00:00.000Z' }),
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it('is false for a task completed on an earlier day', () => {
+    expect(
+      belongsOnUebersicht(
         task({ dueAt: '2026-07-17T09:00:00.000Z', completedAt: '2026-07-17T10:00:00.000Z' }),
         now,
       ),
     ).toBe(false);
+  });
+
+  it('is false for a task completed today but due on a future day — it was never listed', () => {
+    expect(
+      belongsOnUebersicht(
+        task({ dueAt: '2026-07-19T09:00:00.000Z', completedAt: '2026-07-18T08:00:00.000Z' }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('is false for an undated task completed today', () => {
+    expect(belongsOnUebersicht(task({ completedAt: '2026-07-18T08:00:00.000Z' }), now)).toBe(false);
   });
 });
 
@@ -172,7 +196,11 @@ describe('groupTasks', () => {
 
   it('counts done vs. total from the children, not the parent', () => {
     const parent = task({ id: 'parent', completedAt: null });
-    const doneChild = task({ id: 'a', parentId: 'parent', completedAt: '2026-07-10T00:00:00.000Z' });
+    const doneChild = task({
+      id: 'a',
+      parentId: 'parent',
+      completedAt: '2026-07-10T00:00:00.000Z',
+    });
     const openChild = task({ id: 'b', parentId: 'parent', completedAt: null });
 
     const [node] = groupTasks([parent, doneChild, openChild]);
@@ -205,7 +233,7 @@ describe('resolveNestTarget', () => {
     expect(resolveNestTarget('dragged', 'target', [target])).toBe('target');
   });
 
-  it('attaches to the target child\'s own parent, not the child itself (AK2)', () => {
+  it("attaches to the target child's own parent, not the child itself (AK2)", () => {
     const parent = task({ id: 'parent' });
     const child = task({ id: 'child', parentId: 'parent' });
     expect(resolveNestTarget('dragged', 'child', [parent, child])).toBe('parent');

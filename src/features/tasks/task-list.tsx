@@ -7,7 +7,7 @@ import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
-import { groupTasks, isDueTodayOrOverdue, resolveNestTarget, useTasks } from './use-tasks';
+import { belongsOnUebersicht, groupTasks, resolveNestTarget, useTasks } from './use-tasks';
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
   window.addEventListener('online', callback);
@@ -34,9 +34,10 @@ function useOnline(): boolean {
 
 export interface TaskListProps {
   /**
-   * Restricts the list to open tasks due today or overdue — the /uebersicht dashboard
-   * subset (issue #87). Everything else (editor, undo toasts, offline notice)
-   * stays the same so the two lists don't drift apart.
+   * Restricts the list to tasks due today or overdue, still open or checked off
+   * today — the /uebersicht dashboard subset (issue #87, issue #228). Everything
+   * else (editor, undo toasts, offline notice) stays the same so the two lists
+   * don't drift apart.
    */
   dueTodayOnly?: boolean;
   /**
@@ -49,7 +50,7 @@ export interface TaskListProps {
 
 export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}) {
   const allTasks = useTasks();
-  const tasks = dueTodayOnly ? allTasks?.filter((task) => isDueTodayOrOverdue(task)) : allTasks;
+  const tasks = dueTodayOnly ? allTasks?.filter((task) => belongsOnUebersicht(task)) : allTasks;
   const online = useOnline();
   const {
     toggleComplete,
@@ -136,7 +137,11 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
       )}
 
       {tasks === undefined ? null : tasks.length === 0 ? (
-        <p className="task-list__empty">
+        <p
+          className={
+            dueTodayOnly ? 'task-list__empty task-list__empty--compact' : 'task-list__empty'
+          }
+        >
           {dueTodayOnly ? 'Nichts fällig. Genieß den Tag.' : 'Keine Aufgaben. Genieß die Ruhe.'}
         </p>
       ) : (
