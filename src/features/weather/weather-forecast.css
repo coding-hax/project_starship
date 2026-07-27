@@ -38,9 +38,9 @@
 /* The whole card *is* the tap target (issue #156): the frame ALSO sits on the
  * link, not just on the `<li>` around it, so the column's full width counts
  * toward the ≥44×44 target. With the border only one level up, the two 1px
- * edges came off the inside and left the link at 43.56px at a 375px viewport —
- * under the minimum by less than half a pixel, and invisible outside a measured
- * assertion. */
+ * edges came off the inside and left the link at 43.56px at a 375px viewport.
+ * Issue #268: border increased to 2px for weekend distinction. All columns get
+ * 2px (no layout difference per AC3); only color differs. Tap target verified ≥44px. */
 .weather-forecast__day-link {
   display: flex;
   flex-direction: column;
@@ -49,7 +49,7 @@
   min-height: 44px;
   padding: var(--space-2) 0;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius-card);
   color: inherit;
   text-decoration: none;
