@@ -26,6 +26,28 @@ import { byCreatedAt, hasLabel, queueBlocked, queueEntries, type QueueIssue } fr
 
 export type RunRole = 'build' | 'plan' | 'research';
 
+// Labels, die ein Ticket VOLLSTAENDIG aus der Auswahl nehmen -- auf jedem
+// Zweig, nicht nur auf dem, an den gerade jemand gedacht hat (#266).
+//
+// Diese Liste ist die einzige Quelle dafuer. Sie steht hier oben und nicht
+// inline im Filter, weil label-contract.test.ts sie liest: die Suite fuehrt
+// jedes Label aus dieser Liste durch JEDEN Auswahlzweig und besteht darauf,
+// dass keiner es durchlaesst. Ein neuer Zweig, der die zentrale Filterung
+// umgeht, faellt damit auf, statt jahrelang unbemerkt zu bleiben.
+//
+// Der Anlass, in einem Satz: 'no-opus' (heute 'hands-off') beschrieb sich als
+// "der Runner fasst das Ticket gar nicht an", wurde aber in drei von sechs
+// Zweigen nicht geprueft. Gemerkt hat das niemand, bis am 26.07.26 ein
+// ungewollter Opus-Bau-Lauf auf einem lokal bearbeiteten Ticket startete.
+// Eine Beschreibung, die luegt, ist schlimmer als keine -- man verlaesst sich
+// darauf.
+// NICHT dabei: 'blocked-by'. Es ist die ANZEIGE einer Queue-Abhaengigkeit,
+// nicht ihre Ursache -- die steht als Zeile in der Queue und wird bei jeder
+// Auswahl frisch ausgewertet (#265). Als Blocker gefuehrt wuerde das Label die
+// Freigabe um einen ganzen Takt verzoegern: der Runner nimmt es zwar ab, sobald
+// die Voraussetzung faellt, sieht es aber im selben Schnappschuss noch.
+export const BLOCKING_LABELS = ['hands-off', 'needs-answer'] as const;
+
 export interface SelectedTicket {
   issue: number;
   role: RunRole;
@@ -56,7 +78,7 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
   const openIssues = new Set(snapshot.map((issue) => issue.number));
   const blocked = queueBlocked(entries, openIssues);
   const selectable = snapshot.filter(
-    (issue) => !hasLabel(issue, 'hands-off') && !hasLabel(issue, 'needs-answer') && !blocked.has(issue.number),
+    (issue) => !BLOCKING_LABELS.some((label) => hasLabel(issue, label)) && !blocked.has(issue.number),
   );
 
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];

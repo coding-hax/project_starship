@@ -17,7 +17,6 @@ import {
 const ALL_STATES: WatchState[] = [
   'pending',
   'success',
-  'failing-protected',
   'failing-fix',
   'behind-caught-up',
   'behind-conflict',
@@ -44,11 +43,6 @@ describe('watchReaction (AC1/AC2: eine Übergangstabelle, keine Lücke)', () => 
   it('success: merge, unabhängig vom Warten', () => {
     expect(watchReaction({ state: 'success', waiting: false })).toEqual({ kind: 'merge' });
     expect(watchReaction({ state: 'success', waiting: true })).toEqual({ kind: 'merge' });
-  });
-
-  it('failing-protected: laufend setzt needs-answer, wartend bleibt still', () => {
-    expect(watchReaction({ state: 'failing-protected', waiting: false })).toEqual({ kind: 'add-needs-answer' });
-    expect(watchReaction({ state: 'failing-protected', waiting: true })).toEqual({ kind: 'noop' });
   });
 
   it('failing-fix: laufend startet Fix-Agent, wartend bleibt still (#272: kein Entparken mehr)', () => {
@@ -238,16 +232,22 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '503']);
   });
 
-  // #276 hat `protected-paths` entschaerft -- dieser Zustand kann im Betrieb
-  // nicht mehr entstehen. Der Test bleibt trotzdem: er beschreibt, was der
-  // Runner taete, wenn der Waechter je zurueckkaeme (siehe #278).
-  it('T4: CI rot NUR bei protected-paths -> needs-answer, kein Fix-Agent', () => {
+  // #283: Hier stand T4 -- "CI rot NUR bei protected-paths -> needs-answer,
+  // kein Fix-Agent". Den Check gibt es nicht mehr, also auch den Zustand
+  // nicht; ein roter Check ist ab jetzt IMMER ein Fund fuer den Fix-Agenten.
+  // Genau das prueft der Fall daneben (T3).
+
+  // #283: 'protected-paths' war der einzige Check-Name, den die Wache
+  // gesondert behandelte. Der Job ist weg -- ein Check dieses Namens ist ab
+  // jetzt ein Fund wie jeder andere. Das prueft der Ersatz fuer das
+  // entfallene T4.
+  it('#283: ein roter Check namens protected-paths ist ein Fund wie jeder andere', () => {
     const gh = ghFake({
-      checks: { '504': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'Approval missing' }] },
+      checks: { '504': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'irgendwas' }] },
     });
     const result = watchRunningIssue(304, '504', { gh, git: gitFake(), state });
-    expect(result).toEqual({ kind: 'protected-red' });
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '304', '--add-label', 'needs-answer']);
+    expect(result.kind).toBe('build-fix');
+    expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '304', '--add-label', 'needs-answer']);
   });
 
   it('T7: hinter main, Checks grün, kein Konflikt -> nachgezogen, kein Merge', () => {

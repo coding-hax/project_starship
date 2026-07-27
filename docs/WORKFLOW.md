@@ -140,7 +140,7 @@ Zahlen oben = zuerst. Wichtig:
   (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
   gelistet ist.
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
-  gelistetes, unfertiges Ticket gebaut. Ein Merge-Schutz für geschützte Pfade besteht seit #276 nicht mehr (`protected-paths` ist nur noch ein Hinweis).
+  gelistetes, unfertiges Ticket gebaut. Einen Merge-Schutz für geschützte Pfade gibt es nicht mehr (#276, #283).
 - **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
   (`plan` → `research` → `ready`, je ältestes `createdAt`). Solange die Liste
   etwas Baubares enthält, kommt davon allerdings nichts dran — deshalb **nennt
@@ -175,12 +175,14 @@ Zustandsmaschine des ganzen Setups:
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
+| `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es in der Queue steht oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `blocked-by`     | Wartet auf ein anderes Ticket — die Abhängigkeit steht in der Queue (`- #266 nach #227`). Setzt und entfernt der **Runner** selbst; von Hand angefasst richtest du nur Schaden an. | Runner       |
 | `model:haiku` `model:sonnet` `model:opus` | **Startstufe** für dieses Ticket (ADR-0013). Höchstens eins setzen. `model:opus` baut sofort auf Opus, ohne die drei erfolglosen Läufe. Bei `plan`/`research` schlägt das Label die Rolle. | **Du**       |
 | `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
 | `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
+| `bug` `epic`     | Reine Sortier-Labels — sie steuern den Runner nicht. `epic` heißt: Sammelticket, wird nie selbst gebaut; damit das auch mechanisch gilt, trägt ein Sammelticket zusätzlich `hands-off`. | **Du**       |
 
 Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
@@ -307,7 +309,6 @@ Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, **nur** `protected-paths` | Kann seit #276 nicht mehr eintreten — der Wächter blockiert nicht mehr. | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
@@ -425,7 +426,6 @@ gh api -X PUT repos/:owner/:repo/branches/main/protection \
   -f 'required_status_checks.contexts[]=quality' \
   -f 'required_status_checks.contexts[]=e2e' \
   -f 'required_status_checks.contexts[]=test-integrity' \
-  -f 'required_status_checks.contexts[]=protected-paths' \
   -F enforce_admins=false \
   -F required_pull_request_reviews=null \
   -F restrictions=null
@@ -438,15 +438,24 @@ gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge
   (`.skip`, `.only`) oder mit `waitForTimeout` grün macht. Reine Textprüfung,
   kein Modell beteiligt.
 
-`protected-paths` **blockiert seit #276 nicht mehr.** Der Check läuft weiter
-und nennt im Log, welche empfindlichen Dateien ein PR berührt — aber er ist
-immer grün, und das Label `human-approved` gibt es nicht mehr.
+**`protected-paths` gibt es nicht mehr** (#283). Der Weg dorthin in zwei
+Schritten: Mit #276 hörte der Check auf zu blockieren — die PRs werden ohnehin
+direkt freigegeben, das Label `human-approved` erzeugte keinen zusätzlichen
+Blick auf den Diff, sondern nur einen zusätzlichen Handgriff, der regelmäßig
+zur eigentlichen Bremse wurde (Label am PR statt am Issue, zwei gleichzeitige
+Check-Suites, Tickets tagelang still). Übrig blieb ein Job, der auflistete, was
+ein PR anfasst, und danach immer grün war. Ein Check, der nie fehlschlägt,
+bringt niemandem etwas bei — und war trotzdem ein Required Check, der bei jedem
+PR einen Runner belegte. Also weg, samt dem toten Zweig im Runner-Kern.
 
-Der Grund: die PRs werden ohnehin direkt freigegeben. Das Label hat keinen
-zusätzlichen Blick auf den Diff erzeugt, sondern nur einen zusätzlichen
-Handgriff — und einen, der regelmäßig zur eigentlichen Bremse wurde (Label am
-PR statt am Issue, zwei gleichzeitige Check-Suites, von denen eine die Payload
-ohne Label sah, Tickets tagelang still).
+**Der ausgesprochene Preis:** Ein unbeaufsichtigter Lauf kann eine Migration,
+eine Krypto-Änderung oder einen Sync-Fix allein mergen. Was bleibt, ist kein
+Tor, sondern eine Pflicht — der Bau-Prompt verlangt bei `src/db/`,
+`src/crypto/`, `src/local/`, `src/app/api/sync/`, allem mit `auth` im Namen,
+`.github/` und `scripts/` einen **Kommentar am Ticket**: was geändert wurde,
+warum, was schiefgehen könnte. Die übrigen Netze sind `schema-drift`, `quality`
+(Sync-Invarianten), `test-integrity`, `e2e-offline` und die Review-Rolle
+`db-migration`.
 
 **Der bewusst in Kauf genommene Preis:** ein unbeaufsichtigter Runner-Lauf
 kann eine Migration, eine Krypto-Änderung oder einen Sync-Eingriff selbst

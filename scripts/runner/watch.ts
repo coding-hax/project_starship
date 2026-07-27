@@ -16,10 +16,11 @@
 //     Runden auf Gelb (`catchupFailEscalated`, S4) -- ein wartendes Ticket
 //     bleibt dabei still, ohne eigene Eskalationszaehlung. Das ist
 //     keine neue Einschraenkung dieser Stufe, sondern der Status quo aus #173.
-//   - 'failing-protected' (nur `protected-paths` rot) bleibt fuer BEIDE eine
-//     stille Genehmigungs-Schranke -- laufend setzt zusaetzlich `needs-answer`
-//     (die Schranke selbst), geparkt hat das idR schon gesetzt, bleibt also
-//     unangetastet.
+//
+// #283: Der Zustand 'failing-protected' (nur `protected-paths` rot) ist
+// ersatzlos entfallen. Mit #276 blockierte der Waechter nicht mehr, mit #283
+// ist der Job selbst weg -- einen Check, den es nicht gibt, kann kein PR
+// reissen. Bis dahin stand hier ein Zweig, der nur noch Lesezeit kostete.
 //
 // Die menschenlesbaren Statustexte (status()-Aufrufe) bleiben bewusst in
 // claude-runner.sh -- dort werden sie von den bestehenden Bash-Fixtures
@@ -29,13 +30,12 @@
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
-import { prCiState, prFailureSummary, prForIssue, prOnlyProtectedPathsRed, prSquashMerge } from './pr.js';
+import { prCiState, prFailureSummary, prForIssue, prSquashMerge } from './pr.js';
 import { catchupFailEscalated, catchupFailReason, catchupFailReset, prCatchUpBehind } from './catchup.js';
 
 export type WatchState =
   | 'pending'
   | 'success'
-  | 'failing-protected'
   | 'failing-fix'
   | 'behind-caught-up'
   | 'behind-conflict'
@@ -55,7 +55,6 @@ export interface WatchReactionInput {
 export type WatchReaction =
   | { kind: 'noop' }
   | { kind: 'wait'; severity: 'green' | 'yellow' }
-  | { kind: 'add-needs-answer' }
   | { kind: 'merge' }
   | { kind: 'build-fix' };
 
@@ -81,8 +80,6 @@ export function watchReaction(input: WatchReactionInput): WatchReaction {
       return { kind: 'wait', severity: 'green' };
     case 'success':
       return { kind: 'merge' };
-    case 'failing-protected':
-      return { kind: 'add-needs-answer' };
     case 'failing-fix':
       return { kind: 'build-fix' };
     case 'behind-caught-up':
@@ -169,10 +166,7 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   if (ciState === 'pending') return { state: 'pending' };
   if (ciState === 'success') return { state: 'success' };
 
-  if (ciState === 'failing') {
-    if (prOnlyProtectedPathsRed(pr, deps.gh)) return { state: 'failing-protected' };
-    return { state: 'failing-fix', failSummary: prFailureSummary(pr, deps.gh) };
-  }
+  if (ciState === 'failing') return { state: 'failing-fix', failSummary: prFailureSummary(pr, deps.gh) };
 
   // ciState === 'conflict' (#217): DIRTY ist bereits GitHubs eigene,
   // authoritative Aussage -- anders als bei 'behind' braucht es keinen lokalen
@@ -216,10 +210,6 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
 export type RunningWatchResult =
   | { kind: 'pending' }
   | { kind: 'merged' }
-  // #276: kann seit dem Entschaerfen von `protected-paths` nicht mehr
-  // eintreten. Bewusst stehengelassen, falls der Waechter je zurueckkommt --
-  // notiert in #278.
-  | { kind: 'protected-red' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
   | { kind: 'retry'; reason: string; paths: string[]; escalated: boolean };
@@ -243,9 +233,6 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
         };
       }
       return { kind: 'pending' };
-    case 'add-needs-answer':
-      deps.gh.run(['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
-      return { kind: 'protected-red' };
     case 'merge':
       deps.gh.run(['pr', 'ready', pr]);
       prSquashMerge(pr, deps.gh);
