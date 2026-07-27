@@ -39,7 +39,7 @@ describe('Wartezustand ohne Parken (#272)', () => {
 
   it('needs-answer schlaegt die Queue -- der naechste gelistete Eintrag kommt dran', () => {
     const snapshot = [issue(50, ['needs-answer']), issue(60, [])];
-    expect(selectTicket(snapshot, '#50\n#60')).toEqual({ issue: 60, role: 'build', source: 'queue' });
+    expect(selectTicket(snapshot, '- #50\n- #60')).toEqual({ issue: 60, role: 'build', source: 'queue' });
   });
 
   it('ein plan-Ticket mit needs-answer wird nicht geplant', () => {
@@ -72,7 +72,7 @@ describe('selectTicket (reine Auswahl-Kaskade)', () => {
 
   it('die Prioritaets-Queue schlaegt die Label-Kaskade, Label ist fuer den Rang egal', () => {
     const snapshot = [issue(10, ['ready']), issue(99, [])];
-    expect(selectTicket(snapshot, '#99')).toEqual({ issue: 99, role: 'build', source: 'queue' });
+    expect(selectTicket(snapshot, '- #99')).toEqual({ issue: 99, role: 'build', source: 'queue' });
   });
 
   it('plan hat Vorrang vor research, auch bei niedrigerer Nummer (Fallback ohne Queue)', () => {
@@ -147,7 +147,7 @@ describe('selectTicket: hands-off gilt fuer jeden Zweig (#227)', () => {
 
   it('hands-off schlaegt die Queue -- der naechste gelistete Eintrag kommt dran', () => {
     const snapshot = [issue(50, ['hands-off']), issue(60, [])];
-    expect(selectTicket(snapshot, '#50\n#60')?.issue).toBe(60);
+    expect(selectTicket(snapshot, '- #50\n- #60')?.issue).toBe(60);
   });
 
   it('hands-off ueberspringt ein plan-Ticket komplett -- faellt auf ready durch', () => {
@@ -202,14 +202,14 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
 
   it('Queue-Pick mit role=build: ready->in-progress, MODE=start', () => {
     const gh = ghDouble();
-    const outcome = pickTicket([issue(70, ['ready'])], '#70', gh, state);
+    const outcome = pickTicket([issue(70, ['ready'])], '- #70', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 70, role: 'build', mode: 'start' });
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '70', '--add-label', 'in-progress', '--remove-label', 'ready']);
   });
 
   it('Queue-Pick mit role=plan: keine Label-Mutation, MODE=start ohne Session', () => {
     const gh = ghDouble();
-    const outcome = pickTicket([issue(60, ['plan'])], '#60', gh, state);
+    const outcome = pickTicket([issue(60, ['plan'])], '- #60', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 60, role: 'plan', mode: 'start' });
     expect(gh.run).not.toHaveBeenCalled();
   });
@@ -308,23 +308,23 @@ describe('queueNext (Anzeige im Status-Issue)', () => {
   });
 
   it('listed ticket without any label still wins (label is irrelevant for the flat queue)', () => {
-    expect(queueNext([q(77, [])], '#77')).toBe(77);
+    expect(queueNext([q(77, [])], '- #77')).toBe(77);
   });
 
   it('queue order beats createdAt', () => {
-    expect(queueNext([q(10, []), q(99, [], '2024-06-01T00:00:00Z')], '#99\n#10')).toBe(99);
+    expect(queueNext([q(10, []), q(99, [], '2024-06-01T00:00:00Z')], '- #99\n- #10')).toBe(99);
   });
 
   it('a listed ticket beats an unlisted ready one', () => {
-    expect(queueNext([q(10, ['ready']), q(99, [], '2024-06-01T00:00:00Z')], '#99')).toBe(99);
+    expect(queueNext([q(10, ['ready']), q(99, [], '2024-06-01T00:00:00Z')], '- #99')).toBe(99);
   });
 
   it('a waiting listed ticket falls back to the plain queue/label logic', () => {
-    expect(queueNext([q(77, ['needs-answer']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '#77')).toBe(88);
+    expect(queueNext([q(77, ['needs-answer']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '- #77')).toBe(88);
   });
 
   it('hands-off excludes a listed ticket, falling back to the plain queue/label logic', () => {
-    expect(queueNext([q(77, ['hands-off']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '#77')).toBe(88);
+    expect(queueNext([q(77, ['hands-off']), q(88, ['ready'], '2024-02-01T00:00:00Z')], '- #77')).toBe(88);
   });
 
   it('empty queue body falls back to ready by oldest createdAt', () => {
@@ -360,12 +360,12 @@ describe('Paritaet queueNext <-> selectTicket (#271)', () => {
     {
       name: 'Queue-Reihenfolge schlaegt die Label-Kaskade',
       snapshot: [issue(10, ['ready']), issue(99, [], '2024-06-01T00:00:00Z')],
-      body: '#99\n#10',
+      body: '- #99\n- #10',
     },
     {
       name: 'gelistetes Ticket wartet -- Rueckfall auf die Label-Kaskade',
       snapshot: [issue(77, ['needs-answer']), issue(88, ['ready'], '2024-02-01T00:00:00Z')],
-      body: '#77',
+      body: '- #77',
     },
     { name: 'plan vor research', snapshot: [issue(30, ['research']), issue(40, ['plan'])] },
     { name: 'nur research offen', snapshot: [issue(60, ['research'])] },
@@ -385,5 +385,64 @@ describe('Paritaet queueNext <-> selectTicket (#271)', () => {
     const selected = selectTicket(snapshot);
     expect(selected?.role).toBe('plan');
     expect(queueNext(snapshot)).toBe(selected?.issue);
+  });
+});
+
+// --- #265: Abhaengigkeiten aus der Queue ------------------------------------
+// "ready, sobald #239 gemerged ist" stand bisher als Prosa im Ticket und
+// verlangte nach jedem Merge eine Handlung vom Menschen. Das hat nachweislich
+// nicht funktioniert (#241, #243, #266 warteten genau darauf, nach dem Merge
+// von #97 stand die Queue leer, obwohl Arbeit dalag). Jetzt ist es eine
+// Angabe in der Queue-Zeile, die bei JEDER Auswahl neu bewertet wird.
+describe('Abhaengigkeiten in der Queue (#265)', () => {
+  it('AC4: eine offene Voraussetzung haelt das Ticket aus der Auswahl', () => {
+    const snapshot = [issue(266, ['ready']), issue(227, ['ready'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #266 nach #227')).toEqual({
+      issue: 227,
+      role: 'build',
+      source: 'ready',
+    });
+  });
+
+  it('AC5: ist die Voraussetzung geschlossen, ist das Ticket sofort waehlbar -- ohne Label-Handgriff', () => {
+    // #227 ist geschlossen und steht deshalb nicht mehr im Snapshot.
+    expect(selectTicket([issue(266, ['ready'])], '- #266 nach #227')).toEqual({
+      issue: 266,
+      role: 'build',
+      source: 'queue',
+    });
+  });
+
+  // Die Sperre gehoert zentral vor die Kaskade, nicht in den Queue-Zweig:
+  // sonst rutscht dasselbe Ticket ueber den ready- oder plan-Zweig herein.
+  it('ein blockiertes Ticket kommt auch nicht ueber den ready-Zweig herein', () => {
+    const snapshot = [issue(266, ['ready']), issue(227, ['hands-off'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #266 nach #227')).toBeNull();
+  });
+
+  it('ein blockiertes plan-Ticket wird auch nicht geplant', () => {
+    const snapshot = [issue(266, ['plan']), issue(227, ['needs-answer'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #266 nach #227')).toBeNull();
+  });
+
+  it('AC6: bei einem Zirkel wird keins der beteiligten Tickets gebaut', () => {
+    const snapshot = [issue(1, ['ready']), issue(2, ['ready'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #1 nach #2\n- #2 nach #1')).toBeNull();
+  });
+
+  it('AC3: eine Notizzeile mit einer Raute reiht kein Ticket ein', () => {
+    const snapshot = [issue(156, []), issue(266, ['ready'], '2024-02-01T00:00:00Z')];
+    // #156 taucht nur in der Notiz auf -- ohne die Regel waere es Rang 2 und
+    // haette als gelistetes Ticket Vorrang vor jedem ready-Ticket.
+    expect(selectTicket(snapshot, '- #266\n\n> Notiz: siehe #156')).toEqual({
+      issue: 266,
+      role: 'build',
+      source: 'queue',
+    });
+  });
+
+  it('mehrere Voraussetzungen: eine offene genuegt zum Blockieren', () => {
+    const snapshot = [issue(266, ['ready']), issue(225, ['ready'], '2024-03-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #266 nach #227 #225')?.issue).toBe(225);
   });
 });

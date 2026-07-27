@@ -268,6 +268,97 @@ describe('roundPlan', () => {
   // watch.test.ts -- hier geht es um die VERDRAHTUNG in der Runde: welcher
   // Snapshot in die Wache geht und was ihr Ergebnis fuer den Rest des Takts
   // bedeutet.
+  // --- Queue-Bericht + blocked-by (#265) -----------------------------------
+  // Der Runner schreibt Issue 92 NICHT um -- die Liste bleibt die des
+  // Menschen. Er meldet nur, was daran erledigt ist, was auf Vorarbeit wartet
+  // und was gar nicht gelistet ist. 'blocked-by' setzt und entfernt er selbst.
+  describe('Queue-Bericht (#265)', () => {
+    const queueOpts = { ...opts, queueIssue: 92 };
+    const queueIs = (body: string) => ({
+      match: (a: string[]) => a[0] === 'issue' && a[1] === 'view' && a.includes('body'),
+      reply: body,
+    });
+
+    it('AC1: erledigte Eintraege werden ausgewiesen -- ohne Issue 92 anzufassen', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(300, ['ready'])),
+        noOpenPrs,
+        queueIs('- #232\n- #252\n- #300'),
+        labelsAre('ready'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).toContain('kannst du streichen: #232, #252');
+      // Kein Schreibzugriff auf das Queue-Issue.
+      expect(calls.some((args) => args[0] === 'issue' && args[1] === 'edit' && args[2] === '92')).toBe(false);
+      expect(calls.some((args) => args[0] === 'issue' && args[1] === 'comment' && args[2] === '92')).toBe(false);
+    });
+
+    it('AC2: ein nicht gelistetes ready-Ticket wird immer genannt', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(300, ['ready']), issueJson(400, ['ready'], '2024-02-01T00:00:00Z')),
+        noOpenPrs,
+        queueIs('- #300'),
+        labelsAre('ready'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).toContain('Nicht gelistet, wartet auf einen Platz: #400');
+    });
+
+    it('AC4: ein blockiertes Ticket bekommt blocked-by und wird nicht gebaut', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(266, ['ready']), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')),
+        noOpenPrs,
+        queueIs('- #266 nach #227'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(called(calls, 'edit', '266', '--add-label', 'blocked-by')).toBe(true);
+      expect(result.kind).toBe('done');
+      expect(result.status?.text).toContain('Wartet auf Vorarbeit: #266 (nach #227)');
+    });
+
+    it('AC5: faellt die Voraussetzung weg, nimmt der Runner blocked-by von selbst ab', () => {
+      // #227 ist geschlossen -> nicht mehr im Snapshot.
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(266, ['ready', 'blocked-by'])),
+        noOpenPrs,
+        queueIs('- #266 nach #227'),
+        labelsAre('ready'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(called(calls, 'edit', '266', '--remove-label', 'blocked-by')).toBe(true);
+      expect(result.kind).toBe('run');
+      expect((result as RoundRun).issue).toBe(266);
+    });
+
+    it('setzt blocked-by nicht doppelt, wenn es schon haengt', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(266, ['ready', 'blocked-by']), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')),
+        noOpenPrs,
+        queueIs('- #266 nach #227'),
+      ]);
+      roundPlan(ctx(gh), queueOpts);
+      expect(called(calls, 'edit', '266', '--add-label', 'blocked-by')).toBe(false);
+    });
+
+    it('AC6: ein Zirkel wird gemeldet und keins der Tickets gebaut', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(1, ['ready']), issueJson(2, ['ready'], '2024-02-01T00:00:00Z')),
+        noOpenPrs,
+        queueIs('- #1 nach #2\n- #2 nach #1'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.text).toContain('Zirkel in der Queue:** #1, #2');
+    });
+
+    it('ohne Queue-Eintraege bleibt der Statustext unveraendert', () => {
+      const { gh } = ghDouble([openIssues(issueJson(300, ['ready'])), noOpenPrs, queueIs(''), labelsAre('ready')]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).not.toContain('Nicht gelistet');
+      expect(result.status?.text).not.toContain('Wartet auf Vorarbeit');
+    });
+  });
+
   describe('CI-Wache fuer wartende Tickets (#154, #272)', () => {
     // Beantwortet alles, was prForIssue/prCiState/prSquashMerge fuer EIN
     // wartendes Ticket brauchen. `pr view` muss nach Feld unterscheiden:

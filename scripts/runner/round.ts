@@ -21,7 +21,7 @@ import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
 import type { QueueIssue } from './queue.js';
-import { queuePending } from './queue.js';
+import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, type RunRole } from './select.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
@@ -166,11 +166,14 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
 
   // Die Freigabe-Notiz haengt an JEDEM Statustext dieser Runde, unabhaengig
   // davon, welcher der vielen Status-Schreibvorgaenge am Ende greift (#154).
+  // Dasselbe gilt fuer den Queue-Bericht (#265): er beschreibt den Zustand der
+  // Liste, nicht den Ausgang dieses Takts.
   let releasedNote = '';
+  let queueNote = '';
   const status = (title: string, emoji: string, text: string): StatusUpdate => ({
     title,
     emoji,
-    text: text + releasedNote,
+    text: text + releasedNote + queueNote,
   });
 
   // --- CI-Wache fuer WARTENDE Tickets (#154, erweitert um #173, seit #272
@@ -194,6 +197,72 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
       const list = watched.released.map((n) => `#${n}`).join(', ');
       releasedNote += `\n\n🔓 **Wartendes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: ${list}.`;
     }
+  }
+
+  // --- Queue-Bericht + 'blocked-by' nachfuehren (#265) -----------------------
+  // Der Runner schreibt Issue 92 NICHT um (Entscheidung vom 27.07.26) -- die
+  // Liste bleibt die des Menschen. Was er tut: melden, was daran erledigt ist,
+  // was auf Vorarbeit wartet, was gar nicht gelistet ist, und ob sich zwei
+  // Eintraege gegenseitig blockieren.
+  //
+  // 'blocked-by' setzt und entfernt er dagegen selbst (wie 'in-progress'). Von
+  // Hand gepflegt wuerde es genauso verrotten wie die Prosa bisher -- nur
+  // schlimmer: dann wuerde das Ticket nie wieder gebaut, und zwar still.
+  {
+    const entries = queueEntries(body);
+    const openIssues = new Set(snapshot.map((issue) => issue.number));
+    const blocked = queueBlocked(entries, openIssues);
+    const parts: string[] = [];
+
+    for (const issue of snapshot) {
+      const hasLabel = issue.labels.some((label) => label.name === 'blocked-by');
+      const shouldHave = blocked.has(issue.number);
+      if (shouldHave && !hasLabel) {
+        tryGh(gh, ['issue', 'edit', String(issue.number), '--add-label', 'blocked-by']);
+      } else if (!shouldHave && hasLabel) {
+        tryGh(gh, ['issue', 'edit', String(issue.number), '--remove-label', 'blocked-by']);
+      }
+    }
+
+    const cycles = queueCycles(entries);
+    if (cycles.length > 0) {
+      parts.push(
+        `🔴 **Zirkel in der Queue:** ${cycles.map((n) => `#${n}`).join(', ')} warten aufeinander — keins davon wird gebaut, bis du eine der Abhängigkeiten streichst.`,
+      );
+    }
+
+    if (blocked.size > 0) {
+      const list = [...blocked.entries()]
+        .map(([number, blockers]) => `#${number} (nach ${blockers.map((b) => `#${b}`).join(' ')})`)
+        .join(', ');
+      parts.push(`⛔ Wartet auf Vorarbeit: ${list}.`);
+    }
+
+    const done = queueDone(entries, openIssues);
+    if (done.length > 0) {
+      parts.push(`✅ In der Queue erledigt, kannst du streichen: ${done.map((n) => `#${n}`).join(', ')}.`);
+    }
+
+    // Die Queue schlaegt die Label-Kaskade vollstaendig: steht ueberhaupt etwas
+    // Baubares in der Liste, kommt kein Ticket ausserhalb dran. Ohne diese
+    // Zeile wartet ein frisch auf 'ready' gesetztes Ticket beliebig lange,
+    // ohne dass es irgendwo sichtbar wird (#265, Entscheidung: immer melden,
+    // keine Schwelle).
+    const listed = new Set(entries.map((entry) => entry.issue));
+    const starving = snapshot
+      .filter(
+        (issue) =>
+          !listed.has(issue.number) &&
+          issue.labels.some((label) => label.name === 'ready') &&
+          !issue.labels.some((label) => ['hands-off', 'needs-answer', 'in-progress'].includes(label.name)),
+      )
+      .map((issue) => issue.number)
+      .sort((a, b) => a - b);
+    if (listed.size > 0 && starving.length > 0) {
+      parts.push(`🟢 Nicht gelistet, wartet auf einen Platz: ${starving.map((n) => `#${n}`).join(', ')}.`);
+    }
+
+    if (parts.length > 0) queueNote = `\n\n${parts.join('\n')}`;
   }
 
   // 1) Laeuft schon eins? -> fortsetzen (WIP-Limit = 1). 'needs-answer'

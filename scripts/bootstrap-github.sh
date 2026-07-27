@@ -35,6 +35,9 @@ label "ready"          "0E8A16" "Freigegeben. Claude darf das Ticket nehmen."
 label "in-progress"    "FBCA04" "Claude arbeitet daran. Es gibt immer höchstens eins."
 label "needs-answer"   "B60205" "Es steht eine Frage im Ticket. Ohne deine geschriebene Antwort geht es nicht weiter."
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
+# Setzt und entfernt der Runner selbst, aus der Queue heraus ('- #266 nach #227').
+# Von Hand gepflegt würde es verrotten — und dann nie wieder gebaut, still.
+label "blocked-by"     "D4C5F9" "Wartet auf ein anderes Ticket (siehe Queue). Der Runner pflegt es selbst."
 # Startstufe für dieses Ticket (ADR-0013). Höchstens eins davon setzen; eine
 # schon eingetretene Eskalation schlägt das Label — es ist der Start, nicht die
 # Fessel.
