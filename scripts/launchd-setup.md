@@ -110,34 +110,36 @@ Runner auf seinem Feature-Branch umschreibt, bekäme diesen Code beim nächsten 
 ausgeführt — ohne CI, ohne Review, ohne `human-approved`. Er müsste dafür nichts
 umgehen; es genügt, die geänderte Datei im Arbeitsbaum liegen zu lassen.
 
-Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt:
+Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt. Er
+liegt als [`scripts/starship-runner`](starship-runner) im Repo — reviewt, von
+`protected-paths` bewacht.
+
+Der Quelltext stand hier früher als Codeblock. Das war die Ursache von #249: die
+Datei, die tatsächlich lief, war für das Repo unsichtbar, und als #203 den
+Startpfad umbaute, konnte das keine CI und kein Test bemerken. Elf Stunden
+Stillstand, aufgefallen ist es einem Menschen am nächsten Morgen.
+
+Installiert wird von Hand:
 
 ```bash
-# ~/.local/bin/starship-runner
-#!/usr/bin/env bash
-set -euo pipefail
-REPO="${REPO_DIR:-$HOME/dev/project_starship}"
-REF="${RUNNER_REF:-origin/main}"
-cd "$REPO" || { echo "REPO_DIR nicht gefunden: $REPO" >&2; exit 1; }
-
-# Nur den Ref aktualisieren, nichts auschecken — der Agent arbeitet hier
-# womöglich gerade auf einem Feature-Branch, den wir nicht anfassen dürfen.
-git fetch -q origin main || { echo "git fetch fehlgeschlagen — Lauf übersprungen." >&2; exit 0; }
-
-TMP=$(mktemp -t starship-runner) || exit 1
-trap 'rm -f "$TMP"' EXIT
-git show "$REF:scripts/claude-runner.sh" > "$TMP" || {
-  echo "Konnte scripts/claude-runner.sh aus $REF nicht lesen." >&2; exit 1; }
-bash -n "$TMP" || { echo "Runner aus $REF ist syntaktisch kaputt — Lauf übersprungen." >&2; exit 1; }
-exec bash "$TMP"
+install -m 0755 scripts/starship-runner ~/.local/bin/starship-runner
 ```
 
-```bash
-chmod +x ~/.local/bin/starship-runner
-```
+**Von Hand ist Absicht.** Ein Runner, der seinen eigenen Starter ersetzen darf,
+hat keinen Vertrauensanker mehr — er könnte sich den Wächter selbst abnehmen.
+Deshalb kopiert ein Mensch, und der Runner darf nur *melden*, dass kopiert werden
+muss: weicht die laufende Datei von `origin/main:scripts/starship-runner` ab,
+setzt er das Status-Issue auf 🟡 mit genau diesem Befehl. Der Lauf geht dabei
+weiter — ein stehender Runner ist teurer als ein abweichender.
 
 So läuft nur Runner-Code, der durch CI **und** durch deine Freigabe gegangen ist —
 egal, worauf das Repo gerade steht.
+
+Seit der Kern in TypeScript liegt (#184/S6), wandert der **ganze** Runner mit:
+`scripts/runner/`, `claude-runner.sh` und `package.json` werden aus `origin/main`
+in ein Wegwerf-Verzeichnis materialisiert, `node_modules` wird aus dem Repo
+verlinkt. Würde nur die `.sh` kopiert, käme der TS-Kern — also die eigentliche
+Entscheidungslogik — wieder aus dem Arbeitsbaum.
 
 ## `~/Library/LaunchAgents/de.starship.runner.plist`
 
