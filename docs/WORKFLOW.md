@@ -77,6 +77,15 @@ Für **kein** Denk-Label (`needs-plan` oder `needs-research`) gibt es einen
 Tages-Deckel — Planung und Recherche laufen so oft, wie sie brauchen (siehe
 ADR-0005, PR #46). Kill-Switch für beide: `no-opus`.
 
+**`no-opus` gilt für jeden Auswahlzweig (#227).** Der Schalter hält nicht nur
+Plan- und Recherche-Läufe an, sondern nimmt das Ticket aus der Auswahl heraus,
+bevor irgendein Zweig sie liest: laufendes `in-progress`, Resume eines
+`parked`-Tickets, Queue, `needs-plan`, `needs-research`, `ready` — überall.
+Damit ist `no-opus` die verlässliche Bremse für ein Ticket, das gerade lokal
+gebaut wird. Bis zu diesem Fix prüften ihn nur Queue, `needs-plan` und
+`needs-research`; ausgerechnet `resume-parked`, das vor allen anderen greift,
+und `ready` ignorierten ihn.
+
 Reihenfolge, wenn mehrere Labels gleichzeitig offen stehen: ein laufendes
 `in-progress`-Bau-Ticket geht vor, danach `needs-plan`, danach `needs-research`,
 erst danach `ready`. Ein Ticket mit `needs-research` **und** `ready` gleichzeitig
