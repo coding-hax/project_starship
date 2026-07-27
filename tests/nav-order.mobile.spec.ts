@@ -4,7 +4,7 @@ import { registerPasskey } from './helpers';
 
 declare global {
   interface Window {
-    __scrollIntoViewCalls: ScrollIntoViewOptions[];
+    __scrollToCalls: ScrollToOptions[];
   }
 }
 
@@ -17,18 +17,22 @@ declare global {
  */
 
 /**
- * Records every `scrollIntoView` call an `Element` receives, before the app's own
- * scripts run. Lets AC2/AC6 assert *that* the nav scrolled its active entry (and
- * *how*, `behavior: 'auto'` vs `'smooth'`) without depending on the timing of a real
+ * Records every `scrollTo` call an `Element` receives, before the app's own scripts
+ * run. Lets AC2/AC5 assert *that* the nav scrolled its active entry (and *how*,
+ * `behavior: 'auto'` vs `'smooth'`) without depending on the timing of a real
  * scroll/snap animation settling.
+ *
+ * Not `scrollIntoView` (pre-#229): the fix moved off it precisely because it walks
+ * every scrollable ancestor instead of targeting `.nav__list` alone (issue #229) —
+ * spying on it here would silently stop observing anything the moment the fix landed.
  */
-async function trackScrollIntoView(page: Page) {
+async function trackScrollTo(page: Page) {
   await page.addInitScript(() => {
-    window.__scrollIntoViewCalls = [];
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
-      window.__scrollIntoViewCalls.push(arg as ScrollIntoViewOptions);
-      return original.call(this, arg as ScrollIntoViewOptions);
+    window.__scrollToCalls = [];
+    const original = Element.prototype.scrollTo;
+    Element.prototype.scrollTo = function (this: Element, arg?: ScrollToOptions | number, arg2?: number) {
+      if (typeof arg === 'object' && arg !== null) window.__scrollToCalls.push(arg);
+      return original.call(this, arg as number, arg2 as number);
     };
   });
 }
@@ -120,9 +124,72 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
   });
 });
 
-test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
+test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () => {
+  test('AC1: den letzten Eintrag antippen füllt fünf Plätze, kein leerer Rand rechts', async ({ page }) => {
+    await registerPasskey(page);
+    const list = page.locator('.nav__list');
+
+    // Swipe the carousel to its end so the last entry is the one being tapped —
+    // the exact repro from the bug report.
+    await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Aktivitäten' })
+      .click();
+    await expect(page).toHaveURL(/\/aktivitaeten$/);
+
+    const maxScrollLeft = await list.evaluate((el) => el.scrollWidth - el.clientWidth);
+    await expect
+      .poll(async () => list.evaluate((el) => el.scrollLeft))
+      .toBeCloseTo(maxScrollLeft, 0);
+
+    const listBox = (await list.boundingBox())!;
+    const activeBox = (await page.locator('.nav__item [aria-current="page"]').boundingBox())!;
+    expect(activeBox.x + activeBox.width).toBeCloseTo(listBox.x + listBox.width, 0);
+  });
+
+  test('AC2: den ersten Eintrag von der Endposition aus antippen landet exakt bei scrollLeft 0', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    const list = page.locator('.nav__list');
+
+    await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Übersicht' })
+      .click();
+    await expect(page).toHaveURL(/\/uebersicht$/);
+
+    await expect.poll(async () => list.evaluate((el) => el.scrollLeft)).toBeCloseTo(0, 0);
+
+    const listBox = (await list.boundingBox())!;
+    const activeBox = (await page.locator('.nav__item [aria-current="page"]').boundingBox())!;
+    expect(activeBox.x).toBeCloseTo(listBox.x, 0);
+  });
+
+  test('AC3: der horizontale Dokument-Scroll bleibt unverändert, die Leiste verschiebt sich nicht', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    const list = page.locator('.nav__list');
+
+    await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Aktivitäten' })
+      .click();
+    await expect(page).toHaveURL(/\/aktivitaeten$/);
+
+    await expect
+      .poll(async () => page.evaluate(() => document.scrollingElement?.scrollLeft ?? 0))
+      .toBe(0);
+  });
+});
+
+test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229 AC4)', () => {
   test('ein überlaufendes Karussell holt den aktiven Eintrag beim Navigieren selbst heran', async ({ page }) => {
-    await trackScrollIntoView(page);
+    await trackScrollTo(page);
     await registerPasskey(page);
 
     const list = page.locator('.nav__list');
@@ -134,38 +201,44 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2)', () => {
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 
-    const calls = await page.evaluate(() => window.__scrollIntoViewCalls);
+    const calls = await page.evaluate(() => window.__scrollToCalls);
     expect(calls.length).toBeGreaterThan(0);
+
+    const active = page.locator('.nav__item [aria-current="page"]');
+    const listBox = (await list.boundingBox())!;
+    const activeBox = (await active.boundingBox())!;
+    expect(activeBox.x).toBeGreaterThanOrEqual(listBox.x - 1);
+    expect(activeBox.x + activeBox.width).toBeLessThanOrEqual(listBox.x + listBox.width + 1);
   });
 
   test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
-    await trackScrollIntoView(page);
+    await trackScrollTo(page);
     // Back to the pre-#180 no-overflow baseline -- before the navigation below, so
     // Nav never sees an overflowing list, not even for the one mount-time
-    // scrollIntoView call the overflowing case is supposed to make (see
-    // forceNoOverflow's doc comment).
+    // scroll call the overflowing case is supposed to make (see forceNoOverflow's
+    // doc comment).
     await forceNoOverflow(page);
     await registerPasskey(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
     await expect(page).toHaveURL(/\/journal$/);
 
-    const calls = await page.evaluate(() => window.__scrollIntoViewCalls);
+    const calls = await page.evaluate(() => window.__scrollToCalls);
     expect(calls.length).toBe(0);
   });
 });
 
-test.describe('reduzierte Bewegung (issue #205 AC6)', () => {
+test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
   test('ein überlaufendes Karussell springt ohne Scroll-Animation an die aktive Position', async ({ page }) => {
-    await trackScrollIntoView(page);
+    await trackScrollTo(page);
     await registerPasskey(page);
 
     await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 
-    const calls = await page.evaluate(() => window.__scrollIntoViewCalls);
+    const calls = await page.evaluate(() => window.__scrollToCalls);
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.at(-1)?.behavior).toBe('auto');
   });

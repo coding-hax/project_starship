@@ -20,6 +20,14 @@ export function Nav() {
 
   // Scrolls the current tab into view on every navigation, so a carousel with more
   // entries than fit never opens on a screen whose own tab is scrolled off (AC2).
+  //
+  // Deliberately not `active.scrollIntoView()` (issue #229): that walks every
+  // scrollable ancestor, not just this list — on a page with its own horizontal
+  // overflow it can nudge `document.scrollingElement` too, visibly shifting the
+  // sticky bar (AC3). It also has no concept of "clamp to this list's own scroll
+  // range", so centering the last/first entry can rest one snap point short of the
+  // edge, leaving an empty slot (AC1/AC2). Computing the target from this list's own
+  // geometry and clamping to its own scrollable range fixes both by construction.
   useEffect(() => {
     const list = listRef.current;
     if (!list || list.scrollWidth <= list.clientWidth) return;
@@ -27,15 +35,16 @@ export function Nav() {
     if (!active) return;
     // An explicit 'smooth' always animates, regardless of CSS `scroll-behavior` — so
     // reduced motion (OS preference or the in-app toggle, tokens.css) has to be read
-    // here too, not just left to CSS (AC6).
+    // here too, not just left to CSS (AC5).
     const reduceMotion =
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       document.documentElement.getAttribute('data-reduce-motion') === 'true';
-    active.scrollIntoView({
-      inline: 'center',
-      block: 'nearest',
-      behavior: reduceMotion ? 'auto' : 'smooth',
-    });
+    const listRect = list.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const delta = activeRect.left + activeRect.width / 2 - (listRect.left + listRect.width / 2);
+    const maxScrollLeft = list.scrollWidth - list.clientWidth;
+    const target = Math.max(0, Math.min(list.scrollLeft + delta, maxScrollLeft));
+    list.scrollTo({ left: target, behavior: reduceMotion ? 'auto' : 'smooth' });
   }, [pathname]);
 
   return (
