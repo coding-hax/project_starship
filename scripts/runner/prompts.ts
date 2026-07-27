@@ -76,7 +76,7 @@ Ablauf:
    Einheit einzeln committen und pushen, der Marker "← HIER WEITER" ruckt auf
    die naechste offene Einheit, geloeste bleiben abgehakt.
 6. Wenn du eine Entscheidung brauchst: Kommentar am Issue mit konkreten
-   Optionen und deiner Empfehlung, Label 'needs-input' setzen, beenden.
+   Optionen und deiner Empfehlung, Label 'needs-answer' setzen, beenden.
    Rate niemals. Schreib die Frage NICHT nach stdout.
 7. Existiert für dieses Ticket noch KEIN PR: öffne einen **Draft**-PR
    ('gh pr create --draft --fill --title "… — Closes #${issue}"'), Titel
@@ -85,14 +85,14 @@ Ablauf:
    Berührt dein Diff einen geschützten Pfad (src/db/, src/crypto/,
    src/local/, src/app/api/sync/, auth, .github/, scripts/): kommentiere
    JETZT am Issue, was du geändert hast, warum, und was schiefgehen könnte,
-   und setze SELBST 'gh issue edit ${issue} --add-label needs-input' — nimm
+   und setze SELBST 'gh issue edit ${issue} --add-label needs-answer' — nimm
    es in diesem Lauf NICHT wieder ab. Das parkt das Ticket (#145) sofort,
    der Runner wählt als nächstes ein anderes, statt auf das rote
    CI-Ergebnis zu warten, das du ohnehin nicht mehr live mitbekommst.
 8. Endet dein Lauf hier SAUBER — also über diesen Schritt, nicht über
    Schritt 6 (offene Frage) —: hebe deinen PR SELBST aus dem Entwurf und
    aktiviere Auto-Merge, auch wenn du gerade in Schritt 7 wegen eines
-   geschützten Pfads 'needs-input' gesetzt hast:
+   geschützten Pfads 'needs-answer' gesetzt hast:
    'gh pr ready' und 'gh pr merge --squash --auto --delete-branch'
    (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Du musst
    NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
@@ -150,7 +150,7 @@ ${ciSummary}
    endet danach. **Kein** 'gh pr checks --watch' — das übernimmt wieder
    der Runner-Takt.
 7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
-   deiner Empfehlung, Label 'needs-input' setzen, beenden. Rate niemals.`;
+   deiner Empfehlung, Label 'needs-answer' setzen, beenden. Rate niemals.`;
 }
 
 /**
@@ -176,7 +176,7 @@ ${FILE_ACCESS_RULE}
    Status: **in Arbeit**" + Marker „← HIER WEITER BEIM PLANEN: <Abschnitt>".
 4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
    Statuszeile auf „Status: **wartet auf Entscheidung**", Label
-   'needs-input' setzen, beenden. Rate nie.
+   'needs-answer' setzen, beenden. Rate nie.
 5. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
    entfernen, dann gh issue edit ${issue} --remove-label plan --add-label
    ready. Erst dieser abschließende Schritt flippt das Label.`;
@@ -185,7 +185,7 @@ ${FILE_ACCESS_RULE}
 /**
  * RUN_ROLE=research (ADR-0005 + #43). Idee-/Feature-Ebene (Ob & Was, grober
  * Schnitt) -- KEIN dateiweiser Plan, das ist die Planer-Rolle. Flippt
- * research -> needs-input erst, wenn die Ueberlegung fertig ist, auch
+ * research -> needs-answer erst, wenn die Ueberlegung fertig ist, auch
  * dann, wenn die Idee der Vision widerspricht: nie eigenmaechtig verwerfen,
  * das entscheidet der Mensch.
  */
@@ -211,7 +211,7 @@ ${FILE_ACCESS_RULE}
    WEITER BEI DER RECHERCHE: <Abschnitt>".
 5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
    zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
-   gh issue edit ${issue} --remove-label research --add-label needs-input.
+   gh issue edit ${issue} --remove-label research --add-label needs-answer.
    Erst dieser abschließende Schritt flippt das Label — der Mensch entscheidet
    danach, ob daraus plan wird oder die Idee verworfen wird.`;
 }

@@ -22,9 +22,9 @@ import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
 import type { QueueIssue } from './queue.js';
 import { queueNext, queuePending } from './queue.js';
-import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
-import { pickTicket, selfHealPark, type RunRole } from './select.js';
-import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
+import { queueBody, queueSnapshot, waitingIssues } from './status.js';
+import { pickTicket, type RunRole } from './select.js';
+import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent } from './tier.js';
 import { buildEscalationEval, resumeAllowed } from './escalation.js';
@@ -160,11 +160,9 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
 
   const body = queueBody(opts.queueIssue, gh);
 
-  // Selbstheilung (#145): 'in-progress' + 'needs-input' duerfen nicht
-  // koexistieren -- sonst blockiert eine waehrend eines Laufs gestellte Frage
-  // den ganzen Runner, auch fuer fachlich unbeteiligte Tickets.
-  const healed = selfHealPark(snapshot, gh);
-  snapshot = healed.snapshot;
+  // #272: Hier stand die Selbstheilung (#145), die 'in-progress' gegen
+  // 'parked' tauschte. Sie ist ersatzlos weg -- 'in-progress' + 'needs-answer'
+  // ist jetzt ein gueltiger Zustand, den die Auswahl von selbst ueberspringt.
 
   // Die Freigabe-Notiz haengt an JEDEM Statustext dieser Runde, unabhaengig
   // davon, welcher der vielen Status-Schreibvorgaenge am Ende greift (#154).
@@ -175,53 +173,37 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     text: text + releasedNote,
   });
 
-  // --- CI-Wache fuer GEPARKTE Tickets (#154, erweitert um #173) -------------
-  const parked: ParkedIssueInput[] = snapshot
-    .filter((issue) => issue.labels.some((label) => label.name === 'parked'))
-    .map((issue) => ({
-      number: issue.number,
-      createdAt: issue.createdAt ?? '',
-      hasNeedsInput: issue.labels.some((label) => label.name === 'needs-input'),
-    }));
+  // --- CI-Wache fuer WARTENDE Tickets (#154, erweitert um #173, seit #272
+  // ohne Park-Mechanik) ------------------------------------------------------
+  const waitingOnHuman: WaitingIssueInput[] = snapshot
+    .filter((issue) => issue.labels.some((label) => label.name === 'needs-answer'))
+    .map((issue) => ({ number: issue.number, createdAt: issue.createdAt ?? '' }));
 
-  if (parked.length > 0) {
-    // WIP-Limit = 1 (CLAUDE.md Regel 1): entparkt wird nur, wenn gerade
-    // wirklich kein anderes Ticket in Arbeit ist.
-    const wipFree = !snapshot.some((issue) => issue.labels.some((label) => label.name === 'in-progress'));
-    const watched = watchParkedIssues(parked, wipFree, { gh, git, state });
-
-    if (watched.promoted) {
-      const promoted = watched.promoted.issue;
-      snapshot = snapshot.map((issue) =>
-        issue.number === promoted
-          ? {
-              ...issue,
-              labels: [...issue.labels.filter((label) => label.name !== 'parked'), { name: 'in-progress' }],
-            }
-          : issue,
-      );
-      releasedNote += `\n\n🔓 **Geparktes Ticket entparkt:** #${promoted} hing an ${watched.promoted.reason} fest — der nächste freie Bauplatz startet einen Fix-Lauf.`;
-    }
+  if (waitingOnHuman.length > 0) {
+    const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state });
 
     // #217 AC4: ein Ticket landet nur dann in '.released', wenn 'gh pr merge'
-    // tatsaechlich geklappt hat -- sonst bleibt es geparkt.
+    // tatsaechlich geklappt hat -- sonst bleibt es wartend.
     if (watched.released.length > 0) {
       const releasedSet = new Set(watched.released);
       snapshot = snapshot.map((issue) =>
         releasedSet.has(issue.number)
-          ? { ...issue, labels: issue.labels.filter((l) => l.name !== 'parked' && l.name !== 'needs-input') }
+          ? { ...issue, labels: issue.labels.filter((l) => l.name !== 'needs-answer') }
           : issue,
       );
       const list = watched.released.map((n) => `#${n}`).join(', ');
-      releasedNote += `\n\n🔓 **Geparktes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: ${list}.`;
+      releasedNote += `\n\n🔓 **Wartendes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: ${list}.`;
     }
   }
 
-  // 1) Laeuft schon eins? -> fortsetzen (WIP-Limit = 1). 'needs-input'
-  //    schliesst aus: dieses Ticket wartet auf den Menschen.
+  // 1) Laeuft schon eins? -> fortsetzen (WIP-Limit = 1). 'needs-answer'
+  //    schliesst aus: dieses Ticket wartet auf den Menschen. Es behaelt dabei
+  //    'in-progress' (#272) -- der Bauplatz gilt trotzdem als frei, weil dieser
+  //    Filter greift, und derselbe Zweig nimmt die Arbeit wieder auf, sobald
+  //    das Label faellt.
   const wip = snapshot.filter((issue) => issue.labels.some((label) => label.name === 'in-progress'));
   const resumable = wip
-    .filter((issue) => !issue.labels.some((label) => label.name === 'needs-input'))
+    .filter((issue) => !issue.labels.some((label) => label.name === 'needs-answer'))
     .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
 
   let issue = resumable.length > 0 ? resumable[0]!.number : 0;
@@ -263,7 +245,7 @@ Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen
 GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**`,
             ),
           };
-        case 'needs-input-protected':
+        case 'protected-red':
           return {
             kind: 'done',
             rc: 0,
@@ -332,26 +314,6 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
   if (issue === 0) {
     const pick = pickTicket(snapshot, body, gh, state);
     switch (pick.kind) {
-      case 'blocked': {
-        // Sicherheitsnetz (#145): normalerweise hat die Selbstheilung oben
-        // schon umgelabelt. Landet hier trotzdem etwas, gilt weiterhin:
-        // lieber blockieren als ein zweites Ticket parallel anfangen.
-        const list = pick.issues.map((n) => `#${n}`).join(', ');
-        return {
-          kind: 'done',
-          rc: 0,
-          status: status(
-            `wartet auf dich (${list})`,
-            '🟡',
-            `🟡 **Ich warte auf eine Antwort von dir.**
-
-Ticket ${list} ist in Arbeit, hängt aber an einer offenen Frage.
-
-Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
-erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an.`,
-          ),
-        };
-      }
       case 'ticket':
         issue = pick.issue;
         role = pick.role;
@@ -362,7 +324,7 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an.`,
         // Wahrheit -- "nichts zu tun" waere eine Luege, die dich das Ticket
         // uebersehen laesst.
         const waiting = snapshot
-          .filter((i) => i.labels.some((label) => label.name === 'needs-input'))
+          .filter((i) => i.labels.some((label) => label.name === 'needs-answer'))
           .sort((a, b) => a.number - b.number)
           .map((i) => `#${i.number}`)
           .join(', ');
@@ -377,7 +339,7 @@ erst dann arbeite ich weiter. Bis dahin fasse ich es nicht an.`,
 
 Offene Fragen an: ${waiting}
 
-Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`** —
+Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`** —
 sonst starte ich in 5 Minuten mit derselben offenen Frage neu.`,
             ),
           };
@@ -433,14 +395,14 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
   const startHm = hhmm(clock);
   const minutes = Math.floor(opts.maxRuntime / 60);
 
-  // Seit #145 kann ein geparktes Ticket neben dem aktiven koexistieren -- die
-  // Busy-Meldung darf das nicht verschweigen, sonst uebersieht man auf dem
-  // Handy, dass woanders eine Antwort faellig ist.
-  const parkedNow = parkedIssues(gh);
+  // Ein wartendes Ticket kann neben dem aktiven koexistieren (#145, seit #272
+  // ohne Parken) -- die Busy-Meldung darf das nicht verschweigen, sonst
+  // uebersieht man auf dem Handy, dass woanders eine Antwort faellig ist.
+  const waitingNow = waitingIssues(gh);
   const parkedNote =
-    parkedNow === ''
+    waitingNow === ''
       ? ''
-      : `\n\n🟡 Wartet zusätzlich auf dich: ${parkedNow} (Antwort + \`needs-input\` entfernen setzt die Arbeit dort fort).`;
+      : `\n\n🟡 Wartet zusätzlich auf dich: ${waitingNow} (Antwort + \`needs-answer\` entfernen setzt die Arbeit dort fort).`;
 
   const busy =
     role === 'plan'
@@ -503,7 +465,12 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
         ]);
         state.write(stamp, '');
       }
-      tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-input']);
+      // #272: NICHT 'needs-answer'. Der Tagesdeckel wartet auf Zeit, nicht auf
+      // eine geschriebene Antwort -- morgen laeuft er von selbst weiter. Genau
+      // dafuer gibt es 'blocked-limit' ("Wird automatisch fortgesetzt"). Bis S2b
+      // stand hier 'needs-input' ohne den 'needs-answer'-Marker; mit nur noch
+      // einem Wartelabel waere das jetzt eine Luege im Status-Issue.
+      tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'blocked-limit']);
       return {
         kind: 'done',
         rc: 0,
@@ -671,14 +638,14 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
         '--body',
         `🤖 Der ${roleLabel} (Opus, nur lesend) hat entgegen der Regel Dateien im Arbeitsbaum verändert. Verworfen, kein Commit. Siehe ADR-0005 (Read-only-Netz).`,
       ]);
-      tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-input']);
+      tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
       return stop(
         {
           title: `Fehler bei #${issue}`,
           emoji: '🔴',
           text: `🔴 **Fehler bei #${issue}.** Der ${roleLabel} hat unerwartet Dateien geändert — verworfen, kein Commit.
 
-Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, solange \`needs-input\` hängt.`,
+Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, solange \`needs-answer\` hängt.`,
         },
         1,
       );
@@ -704,8 +671,10 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
     // global gefragt (#145): ein woanders wartendes Ticket darf die
     // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
     const postLabels = labelsOf(issue, gh);
-    if (hasLabelWord(postLabels, 'needs-input')) {
-      parkIssue(issue, gh);
+    if (hasLabelWord(postLabels, 'needs-answer')) {
+      // #272: kein Umlabeln mehr. Das Ticket behaelt 'in-progress'; die
+      // Auswahl ueberspringt es wegen 'needs-answer' und nimmt es ueber
+      // denselben Zweig wieder auf, sobald der Mensch geantwortet hat.
       const waiting = waitingIssues(gh);
       return stop(
         {
@@ -715,7 +684,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
 
 Offene Fragen an: ${waiting}
 
-Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-input\`**.`,
+Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`**.`,
         },
         0,
       );
@@ -816,7 +785,7 @@ Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**`,
   // --- Voruebergehender API-Fehler? ----------------------------------------
   // Weder Limit noch inhaltlicher Fehlschlag -- ein Haenger mitten in der
   // Antwort. Der richtige Umgang ist ein neuer Versuch beim naechsten Takt,
-  // kein needs-input. Zaehlt bewusst NICHT als Eskalations-Fehlversuch
+  // kein needs-answer. Zaehlt bewusst NICHT als Eskalations-Fehlversuch
   // (ADR-0007): Infrastruktur, kein Inhalt.
   const transient =
     ['500', '502', '503', '504', '529'].includes(apiStatus) ||
@@ -852,7 +821,7 @@ Letzte Zeilen:
 ${errorExcerpt(outcome.out, log)}
 \`\`\``,
     ]);
-    tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-input']);
+    tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
     return stop(
       {
         title: `Fehler bei #${issue}`,
@@ -861,7 +830,7 @@ ${errorExcerpt(outcome.out, log)}
 das ist kein Zufall mehr.
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an,
-solange das Label \`needs-input\` hängt.`,
+solange das Label \`needs-answer\` hängt.`,
       },
       1,
     );
@@ -886,7 +855,7 @@ Letzte Zeilen:
 ${errorExcerpt(outcome.out, log)}
 \`\`\``,
   ]);
-  tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-input']);
+  tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
   return stop(
     {
       title: `Fehler bei #${issue}`,
@@ -894,7 +863,7 @@ ${errorExcerpt(outcome.out, log)}
       text: `🔴 **Fehler bei #${issue}.** Der Runner ist abgebrochen (Exit ${outcome.rc}).
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an,
-solange das Label \`needs-input\` hängt.`,
+solange das Label \`needs-answer\` hängt.`,
     },
     1,
   );

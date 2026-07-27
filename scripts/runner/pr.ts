@@ -117,7 +117,7 @@ export function prOnlyProtectedPathsRed(pr: string, gh: GhAdapter): boolean {
 // wurden.
 // Rueckgabewert (#217 AC4): true = Merge bzw. Auto-Merge tatsaechlich
 // aktiviert, false = 'gh pr merge' ist gescheitert. Der Aufrufer entscheidet
-// damit, ob 'parked'/'needs-input' ueberhaupt entfernt werden duerfen -- sonst
+// damit, ob 'needs-answer' ueberhaupt entfernt werden duerfen -- sonst
 // faellt das Ticket aus jeder Wache heraus, waehrend der PR offen und
 // unbeobachtet liegen bleibt.
 export function prSquashMerge(pr: string, gh: GhAdapter): boolean {

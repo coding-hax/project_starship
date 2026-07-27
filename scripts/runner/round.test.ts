@@ -96,7 +96,7 @@ describe('roundPlan', () => {
   // Ein Ticket, das bei DIR liegt, darf nie als "nichts zu tun" erscheinen --
   // sonst uebersieht man es auf dem Handy.
   it('meldet 🟡 statt ⚪️, wenn eine Frage offen ist', () => {
-    const { gh } = ghDouble([openIssues(issueJson(77, ['needs-input'])), noOpenPrs]);
+    const { gh } = ghDouble([openIssues(issueJson(77, ['needs-answer'])), noOpenPrs]);
     const result = roundPlan(ctx(gh), opts);
     expect(result.status?.emoji).toBe('🟡');
     expect(result.status?.title).toContain('#77');
@@ -165,12 +165,14 @@ describe('roundPlan', () => {
     expect(run.model).toBe('haiku');
   });
 
-  // #145: ein Ticket mit in-progress UND needs-input verliert in-progress,
-  // bevor ueberhaupt gewaehlt wird -- sonst blockiert es den ganzen Runner.
-  it('heilt in-progress + needs-input zu parked, bevor gewaehlt wird', () => {
-    const { gh, calls } = ghDouble([openIssues(issueJson(50, ['in-progress', 'needs-input'])), noOpenPrs]);
-    roundPlan(ctx(gh), opts);
-    expect(called(calls, 'edit', '50', '--remove-label', 'in-progress')).toBe(true);
+  // #272: ein Ticket mit in-progress UND needs-answer wird NICHT mehr
+  // umgelabelt -- es behaelt in-progress und wird von der Auswahl schlicht
+  // uebersprungen. Genau das ersetzt die fruehere Selbstheilung aus #145.
+  it('laesst in-progress + needs-answer unangetastet und waehlt es nicht', () => {
+    const { gh, calls } = ghDouble([openIssues(issueJson(50, ['in-progress', 'needs-answer'])), noOpenPrs]);
+    const result = roundPlan(ctx(gh), opts);
+    expect(called(calls, 'edit', '50', '--remove-label', 'in-progress')).toBe(false);
+    expect(result.kind).toBe('done');
   });
 
   // #19: der Status nennt das Ticket VOR dem Lauf, sonst steht bis zu 45
@@ -179,7 +181,7 @@ describe('roundPlan', () => {
     const { gh } = ghDouble([
       openIssues(issueJson(77, ['ready'])),
       noOpenPrs,
-      { match: (a) => a.includes('--label') && a.includes('parked'), reply: '#90' },
+      { match: (a) => a.includes('--label') && a.includes('needs-answer'), reply: '#90' },
       labelsAre('ready'),
     ]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;
@@ -209,7 +211,7 @@ describe('roundPlan', () => {
   });
 
   describe('Opus-Bau-Deckel (ADR-0007)', () => {
-    it('parkt das Ticket, wenn das Tagesbudget erschoepft ist', () => {
+    it('haelt das Ticket an, wenn das Tagesbudget erschoepft ist', () => {
       state.write('tier-77', 'opus');
       state.write('opus-build-20260726-77', '2');
       const { gh, calls } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]);
@@ -217,7 +219,7 @@ describe('roundPlan', () => {
       expect(result.kind).toBe('done');
       expect(result.status?.emoji).toBe('🟡');
       expect(result.status?.text).toContain('Opus-Tagesbudget');
-      expect(called(calls, 'edit', '77', '--add-label', 'needs-input')).toBe(true);
+      expect(called(calls, 'edit', '77', '--add-label', 'needs-answer')).toBe(true);
     });
 
     // #136: die Meldung darf hoechstens einmal je Ticket und Tag erscheinen.
@@ -289,11 +291,13 @@ describe('roundEval', () => {
   });
 
   it('stoppt die Chain, wenn der Agent an DIESEM Ticket gefragt hat', () => {
-    const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'ready\nneeds-input' }]);
+    const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'ready\nneeds-answer' }]);
     const result = roundEval(ctx(gh), plan, ok, '');
     expect(result.chain).toBe('stop');
     expect(result.status?.emoji).toBe('🟡');
-    expect(called(calls, 'edit', '77', '--remove-label', 'in-progress', '--add-label', 'parked')).toBe(true);
+    // #272: kein Umlabeln mehr -- das Ticket behaelt 'in-progress' und wird
+    // allein durch 'needs-answer' aus der Auswahl gehalten.
+    expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(false);
   });
 
   describe('Limit (429)', () => {
@@ -330,13 +334,13 @@ describe('roundEval', () => {
     });
   });
 
-  it('meldet die Notbremse blau und ohne needs-input', () => {
+  it('meldet die Notbremse blau und ohne needs-answer', () => {
     const { gh, calls } = ghDouble();
     const result = roundEval(ctx(gh), plan, { ...ok, rc: 143, timedOut: true }, '');
     expect(result.status?.emoji).toBe('🔵');
     expect(result.status?.text).toContain('Notbremse');
     expect(result.rc).toBe(0);
-    expect(called(calls, '--add-label', 'needs-input')).toBe(false);
+    expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
   });
 
   describe('voruebergehender API-Fehler', () => {
@@ -348,7 +352,7 @@ describe('roundEval', () => {
       expect(result.status?.text).toContain('Versuch 1 von 3');
       expect(result.rc).toBe(0);
       expect(state.read('transient-77')).toBe('1');
-      expect(called(calls, '--add-label', 'needs-input')).toBe(false);
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
     });
 
     it('eskaliert beim dritten Mal in Folge auf rot', () => {
@@ -357,7 +361,7 @@ describe('roundEval', () => {
       const result = roundEval(ctx(gh), plan, transient, '');
       expect(result.status?.emoji).toBe('🔴');
       expect(result.rc).toBe(1);
-      expect(called(calls, '--add-label', 'needs-input')).toBe(true);
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
       expect(state.read('transient-77')).toBeNull();
     });
 
@@ -380,7 +384,7 @@ describe('roundEval', () => {
       expect(result.rc).toBe(1);
       expect(git.run).toHaveBeenCalledWith(['checkout', '--', '.']);
       expect(git.run).toHaveBeenCalledWith(['clean', '-fd']);
-      expect(called(calls, '--add-label', 'needs-input')).toBe(true);
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
     });
 
     it('laesst einen sauberen Bau-Lauf mit Aenderungen in Ruhe', () => {
@@ -392,12 +396,12 @@ describe('roundEval', () => {
     });
   });
 
-  it('meldet einen inhaltlichen Fehlschlag rot und setzt needs-input', () => {
+  it('meldet einen inhaltlichen Fehlschlag rot und setzt needs-answer', () => {
     const { gh, calls } = ghDouble();
     const result = roundEval(ctx(gh), plan, { rc: 2, out: '{}', timedOut: false, maxRuntime: 2700 }, 'letzte Zeile');
     expect(result.status?.emoji).toBe('🔴');
     expect(result.rc).toBe(1);
-    expect(called(calls, '--add-label', 'needs-input')).toBe(true);
+    expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
     expect(calls.some((args) => args.join(' ').includes('letzte Zeile'))).toBe(true);
   });
 });

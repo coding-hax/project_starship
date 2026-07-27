@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Tests für #145: ein Ticket, das auf 'needs-input' gesetzt wird, verliert im
-# selben Zug 'in-progress' (Label 'parked') -- vorher blockierte ein
-# wartendes Ticket den ganzen Runner, auch für fachlich unabhängige Tickets
+# Tests für #145, neu geschnitten in #272: ein Ticket, das auf 'needs-answer'
+# gesetzt wird, behaelt 'in-progress' und wird von der Auswahl uebersprungen --
+# vorher blockierte ein wartendes Ticket den ganzen Runner, auch für fachlich unabhängige Tickets
 # (#118/#126/#131). Reine Bash-Assertions, kein bats -- Harness wie
 # opus-boost.test.sh/chaining.test.sh, aber mit EINEM gemeinsamen
 # issues.json als Quelle der Wahrheit für alle 'issue list/edit/view'-Aufrufe,
@@ -146,7 +146,7 @@ echo x >> "$G/claude-calls"
 printf '%s\n' "$@" > "$G/claude-lastargs-$(wc -l < "$G/claude-calls" | tr -d ' ')"
 case "${CLAUDE_STUB_MODE:-success}" in
   asks_question)
-    gh issue edit "${CLAUDE_STUB_TARGET_ISSUE}" --add-label needs-input >/dev/null 2>&1
+    gh issue edit "${CLAUDE_STUB_TARGET_ISSUE}" --add-label needs-answer >/dev/null 2>&1
     ;;
 esac
 printf '%s' '{"session_id":"stub-session","result":"ok"}'
@@ -212,38 +212,39 @@ assert_not_contains() {   # $1 = Beschreibung, $2 = Datei, $3 = unerwarteter Sub
 }
 
 # ==============================================================================
-# 1. Selbstheilung: ein Ticket steht (aus einem frueheren Lauf) mit
-#    in-progress+needs-input da. Der naechste Takt loest das auf (parked statt
-#    in-progress) UND waehlt trotzdem ein neues, baubereites Ticket -- statt
-#    wie vorher alles zu blockieren.
+# 1. Ein Ticket steht (aus einem frueheren Lauf) mit in-progress+needs-answer
+#    da. #272: es wird NICHT mehr umgelabelt -- der naechste Takt ueberspringt
+#    es einfach und waehlt trotzdem ein neues, baubereites Ticket, statt wie
+#    vor #145 alles zu blockieren.
 # ==============================================================================
 reset_state
-seed_issue 50 "in-progress,needs-input"
+seed_issue 50 "in-progress,needs-answer"
 seed_issue 70 "ready"
 run_main
-assert_labels  "AC1: #50 verliert in-progress, behaelt needs-input, wird parked" 50 "needs-input,parked"
+assert_labels  "AC1: #50 behaelt in-progress UND needs-answer -- kein Umlabeln" 50 "in-progress,needs-answer"
 assert_labels  "AC2: #70 wird stattdessen gebaut (in-progress statt ready)" 70 "in-progress"
 assert_eq      "AC5: genau EIN Ticket wurde tatsaechlich gebaut" "1" "$(call_count)"
 
 # ==============================================================================
-# 2. Wiederaufnahme: die Frage an #50 ist beantwortet (needs-input weg), nur
-#    'parked' haengt noch. Das geht vor einem frischen 'ready'-Ticket -- und
-#    zwar als Resume (bestehende Session wird per --resume fortgesetzt), nicht
-#    als Neustart.
+# 2. Wiederaufnahme: die Frage an #50 ist beantwortet (needs-answer weg),
+#    'in-progress' stand nie ab. Das geht vor einem frischen 'ready'-Ticket --
+#    und zwar als Resume (bestehende Session per --resume), nicht als Neustart.
+#    #272: dafuer ist KEINE Label-Mutation mehr noetig.
 # ==============================================================================
 reset_state
-seed_issue 50 "parked" "2024-01-01T00:00:00Z"
-seed_issue 70 "ready"  "2024-01-02T00:00:00Z"
+seed_issue 50 "in-progress" "2024-01-01T00:00:00Z"
+seed_issue 70 "ready"       "2024-01-02T00:00:00Z"
 printf 'sid-50' > "$STATE_DIR/session-50"
 run_main
-assert_labels "AC3: #50 wird fortgesetzt (in-progress statt parked)" 50 "in-progress"
+assert_labels "AC3: #50 wird fortgesetzt, unveraendert in-progress" 50 "in-progress"
 assert_labels "AC3: #70 bleibt unangetastet, solange #50 laeuft" 70 "ready"
 assert_contains "AC4: die bestehende Session wird per --resume fortgesetzt" \
   "$GHSTATE_DIR/claude-lastargs-1" "sid-50"
 
 # ==============================================================================
-# 3. Der Agent selbst stellt waehrend des laufenden Baus eine Frage: 'parked'
-#    muss SOFORT stehen (nicht erst beim naechsten Takt), 'needs-input' bleibt.
+# 3. Der Agent selbst stellt waehrend des laufenden Baus eine Frage:
+#    'needs-answer' muss SOFORT stehen (nicht erst beim naechsten Takt),
+#    'in-progress' bleibt dabei unangetastet.
 # ==============================================================================
 reset_state
 seed_issue 60 "in-progress"
@@ -251,8 +252,8 @@ export CLAUDE_STUB_MODE=asks_question
 export CLAUDE_STUB_TARGET_ISSUE=60
 run_main
 unset CLAUDE_STUB_MODE CLAUDE_STUB_TARGET_ISSUE
-assert_labels "AC1: eigene Frage waehrend des Laufs parkt sofort (kein Warten auf den naechsten Takt)" \
-  60 "needs-input,parked"
+assert_labels "AC1: eigene Frage waehrend des Laufs wirkt sofort, ohne in-progress abzugeben" \
+  60 "in-progress,needs-answer"
 
 # ==============================================================================
 # 4. Ein UNABHAENGIGES, bereits wartendes Ticket darf einen sauberen,
@@ -261,21 +262,21 @@ assert_labels "AC1: eigene Frage waehrend des Laufs parkt sofort (kein Warten au
 #    kompletten Bestand statt nur das gerade gebaute Ticket).
 # ==============================================================================
 reset_state
-seed_issue 61 "needs-input,parked"
+seed_issue 61 "in-progress,needs-answer"
 seed_issue 60 "in-progress"
 seed_issue 90 "ready"
 MAX_ROUNDS=2
 run_main
 MAX_ROUNDS=1
 assert_eq "AC2: die Kette laeuft trotz eines fremden wartenden Tickets weiter (2 Runden)" "2" "$(call_count)"
-assert_labels "AC5: das fremde wartende Ticket bleibt unangetastet" 61 "needs-input,parked"
+assert_labels "AC5: das fremde wartende Ticket bleibt unangetastet" 61 "in-progress,needs-answer"
 
 # ==============================================================================
 # 5. Status-Ticket (AC6): waehrend an einem Ticket gearbeitet wird, bleibt ein
-#    ANDERES, wartendes ('parked') Ticket im Status sichtbar.
+#    ANDERES, wartendes Ticket im Status sichtbar.
 # ==============================================================================
 reset_state
-seed_issue 61 "needs-input,parked"
+seed_issue 61 "in-progress,needs-answer"
 seed_issue 70 "ready"
 export STATUS_ISSUE=999
 run_main
@@ -286,47 +287,53 @@ assert_contains "AC6: ...und nennt das wartende Ticket #61 mit" \
   "$GHSTATE_DIR/status-body-log" "#61"
 
 # ==============================================================================
-# 6. Niemals doppeltes WIP: nach der Selbstheilung + Neuwahl traegt am Ende
-#    genau EIN Ticket 'in-progress'.
+# 6. #272: zwei Tickets duerfen gleichzeitig 'in-progress' tragen, solange nur
+#    an einem gebaut wird -- das wartende zaehlt nicht als Arbeit. Das ersetzt
+#    die fruehere Zusicherung "nach der Selbstheilung traegt genau eins
+#    in-progress", die es ohne Umlabeln nicht mehr geben kann.
 # ==============================================================================
 reset_state
-seed_issue 50 "in-progress,needs-input"
+seed_issue 50 "in-progress,needs-answer"
 seed_issue 70 "ready"
 run_main
 WIP_COUNT=$(jq '[.[] | select(.labels | map(.name) | index("in-progress"))] | length' \
               "$GHSTATE_DIR/issues.json")
-assert_eq "AC5: nach der Runde traegt genau ein Ticket in-progress" "1" "$WIP_COUNT"
+assert_eq "#272: beide tragen in-progress -- das ist jetzt ein gueltiger Zustand" "2" "$WIP_COUNT"
+assert_labels "#272: gebaut wird trotzdem nur #70" 70 "in-progress"
+assert_labels "#272: das wartende Ticket blieb unberuehrt" 50 "in-progress,needs-answer"
 
 # ==============================================================================
-# 7. #196 Sweep: 'needs-answer' ohne 'needs-input' ist ein verwaister Marker
-#    (der Mensch hat nur needs-input abgenommen) -- die Selbstheilung raeumt
-#    ihn VOR der Ticketwahl ab, unabhaengig von jeder Auswahl-Entscheidung.
+# 7. #272: 'needs-answer' allein (ohne in-progress) haelt ein Ticket ebenso aus
+#    der Auswahl. Der frueher noetige Sweep verwaister Marker entfaellt --
+#    es gibt keinen zweiten Label mehr, mit dem der Marker verwaisen koennte.
 # ==============================================================================
 reset_state
-seed_issue 80 "needs-answer"
+seed_issue 80 "ready,needs-answer"
 seed_issue 70 "ready"
 run_main
-assert_labels "#196: verwaistes needs-answer verschwindet (Sweep)" 80 ""
-assert_labels "#196: die Ticketwahl bleibt davon unberuehrt -- #70 wird ganz normal gebaut" 70 "in-progress"
+assert_labels "#272: #80 bleibt unangetastet, solange die Frage offen ist" 80 "needs-answer,ready"
+assert_labels "#272: die Ticketwahl bleibt davon unberuehrt -- #70 wird gebaut" 70 "in-progress"
 
 # ==============================================================================
-# 8. #196 Regression: der realistische Fall -- ein geparktes Ticket, dessen
-#    Frage beantwortet wurde (needs-input weg), traegt aber noch needs-answer
-#    (der Mensch nimmt beim Antworten nur needs-input ab). Der Marker allein
-#    darf die Wiederaufnahme NICHT verhindern (AC8, rein anzeigend) UND
-#    verschwindet im selben Zug (AC6).
+# 8. #272 Regression: der realistische Fall -- der Mensch antwortet und nimmt
+#    'needs-answer' ab. Das Ticket wird im naechsten Takt fortgesetzt, ohne
+#    dass irgendein Label geschrieben werden muss.
 # ==============================================================================
 reset_state
-seed_issue 90 "parked,needs-answer"
+seed_issue 90 "in-progress"
 printf 'sid-90' > "$STATE_DIR/session-90"
 run_main
-assert_labels "#196: geparktes #90 wird trotz haengendem needs-answer fortgesetzt" 90 "in-progress"
+assert_labels "#272: beantwortetes #90 laeuft weiter, Labels unveraendert" 90 "in-progress"
+# Die --resume-Zusicherung steht in Block 2 (AC4). Hier nicht wiederholt: nach
+# mehreren Runden startet diese Harness keinen weiteren claude-Aufruf mehr --
+# `reset_state` raeumt STATE_DIR und GHSTATE_DIR, aber nicht die Sperre in
+# REPO_DIR. Vorbestehend, unabhaengig von #272, notiert in #278.
 
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
-  ok "Alle Parked-Label-Tests grün."
+  ok "Alle Waiting-Label-Tests grün."
 else
-  red "Mindestens ein Parked-Label-Test ist rot (siehe oben)."
+  red "Mindestens ein Waiting-Label-Test ist rot (siehe oben)."
 fi
 exit $FAIL

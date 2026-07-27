@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests für die Prioritäts-Queue als FLACHE Reihenfolge (#109): das Queue-Issue
 # (QUEUE_ISSUE) listet '#NN' in Reihenfolge; wer gelistet ist, wird bearbeitet —
-# das Label ist für die AUSWAHL egal. Erhalten bleiben: 'needs-input'/'hands-off'
+# das Label ist für die AUSWAHL egal. Erhalten bleiben: 'needs-answer'/'hands-off'
 # schließen aus; die ROLLE kommt aus dem Label (plan -> Plan, research
 # -> Recherche, sonst bauen); leere Queue -> Fallback auf Label-Reihenfolge.
 #
@@ -10,7 +10,7 @@
 #   2. Queue-Reihenfolge schlägt createdAt; früher Gelistetes zuerst.
 #   3. Gelistetes schlägt ungelistetes 'ready' (Queue vor Fallback).
 #   4. Gelistetes 'plan' -> Planlauf (kein in-progress); 'research' analog.
-#   5. 'needs-input' schließt ein gelistetes Ticket aus (Fallback greift).
+#   5. 'needs-answer' schließt ein gelistetes Ticket aus (Fallback greift).
 #   6. 'hands-off' schließt ein gelistetes Ticket aus.
 #   7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt.
 #
@@ -116,7 +116,7 @@ source "$RUNNER"
 reset_state() {
   rm -rf "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
-  for l in in-progress plan research ready needs-input; do
+  for l in in-progress plan research ready needs-answer; do
     printf '[]' > "$GHSTATE_DIR/list-$l.json"
   done
 }
@@ -206,16 +206,16 @@ assert_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
 assert_label_not_added "AC4: #66 bekommt KEIN in-progress" 66 in-progress
 
 # ==============================================================================
-# 5. 'needs-input' schließt ein gelistetes Ticket aus -> Fallback baut #88.
+# 5. 'needs-answer' schließt ein gelistetes Ticket aus -> Fallback baut #88.
 # ==============================================================================
 reset_state
 snapshot '[
-  {"number":77,"labels":[{"name":"needs-input"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":77,"labels":[{"name":"needs-answer"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
 queue_body_fixture 1000 '#77'
 run_main
-assert_session_absent "AC5: gelistetes, aber needs-input #77 wird NICHT gewählt" 77
+assert_session_absent "AC5: gelistetes, aber needs-answer #77 wird NICHT gewählt" 77
 assert_session_exists "AC5: Fallback wählt das ready #88" 88
 
 # ==============================================================================

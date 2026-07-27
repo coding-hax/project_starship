@@ -252,7 +252,7 @@ Meldung wie `You've hit your session limit · resets 2:50pm (Europe/Berlin)`.
 Der Runner erkennt das an **`api_error_status == 429`** — nicht am Wortlaut. Der Satz
 ist nicht stabil: die frühere Erkennung greppte nach `usage limit` und kannte
 `session limit` nicht, hat ein harmloses Limit als harten Fehler behandelt und dem
-Ticket `needs-input` verpasst. Der Text-Grep ist nur noch ein Netz.
+Ticket `needs-answer` verpasst. Der Text-Grep ist nur noch ein Netz.
 
 Aus der Meldung liest er den Reset-Zeitpunkt und **überspringt die Läufe bis dahin**.
 Die CLI formatiert ihn in zwei Formen:

@@ -2,7 +2,7 @@
 # Tests für #154: die CI-Wache aus #147 beobachtet nur das eine 'in-progress'-
 # Ticket -- ein 'parked'-Ticket (#145) fällt durch beide Raster (kein
 # 'in-progress' mehr, Ticketauswahl greift erst wieder bei fehlendem
-# 'needs-input'). Wird sein PR in der Zwischenzeit komplett grün, blieb der
+# 'needs-answer'). Wird sein PR in der Zwischenzeit komplett grün, blieb der
 # Draft bisher für immer Draft. Diese Tests prüfen die eigenständige
 # Parked-CI-Wache, die ALLE 'parked'-Tickets je Runde prüft -- ohne
 # Agentenlauf. Reine Bash-Assertions, Harness wie ci-watch.test.sh.
@@ -255,12 +255,12 @@ seed_behind() {
 #       (deckt AC1 "grün, aber geparkt" + AC2 "kein Agentenlauf")
 # ==============================================================================
 reset_state
-seed_issue 401 "needs-input,parked"
+seed_issue 401 "in-progress,needs-answer"
 seed_pr 401 601
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-601.json"
 run_round
-assert_labels "T1: #401 verliert parked UND needs-input" 401 ""
+assert_labels "T1: #401 verliert needs-answer, behaelt in-progress" 401 "in-progress"
 assert_file_present "T1: Draft #601 wird auf 'ready' gesetzt" "$GHSTATE_DIR/ready-601"
 assert_file_present "T1: Auto-Merge für #601 wird aktiviert" "$GHSTATE_DIR/merged-601"
 assert_file_absent "T1: kein Agentenlauf ausgelöst" "$GHSTATE_DIR/claude-called"
@@ -270,35 +270,35 @@ assert_file_absent "T1: kein Agentenlauf ausgelöst" "$GHSTATE_DIR/claude-called
 #       Freigeben mitverschwinden, kein verwaister Marker (AC6).
 # ==============================================================================
 reset_state
-seed_issue 411 "needs-input,needs-answer,parked"
+seed_issue 411 "in-progress,needs-answer"
 seed_pr 411 611
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-611.json"
 run_round
-assert_labels "T1b (#196): #411 verliert parked, needs-input UND needs-answer" 411 ""
+assert_labels "T1b (#272): #411 verliert genau ein Wartelabel" 411 "in-progress"
 
 # ==============================================================================
 # T2 -- geparktes Ticket, PR läuft noch (pending) -> unverändert geparkt
 # ==============================================================================
 reset_state
-seed_issue 402 "needs-input,parked"
+seed_issue 402 "in-progress,needs-answer"
 seed_pr 402 602
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"pending","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-602.json"
 run_round
-assert_labels "T2: #402 bleibt geparkt, solange CI noch läuft" 402 "needs-input,parked"
+assert_labels "T2: #402 bleibt geparkt, solange CI noch läuft" 402 "in-progress,needs-answer"
 assert_file_absent "T2: kein Auto-Merge, solange CI noch läuft" "$GHSTATE_DIR/merged-602"
 
 # ==============================================================================
 # T3 -- geparktes Ticket, PR rot -> unverändert geparkt
 # ==============================================================================
 reset_state
-seed_issue 403 "needs-input,parked"
+seed_issue 403 "in-progress,needs-answer"
 seed_pr 403 603
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-603.json"
 run_round
-assert_labels "T3: #403 bleibt geparkt, solange CI rot ist" 403 "needs-input,parked"
+assert_labels "T3: #403 bleibt geparkt, solange CI rot ist" 403 "in-progress,needs-answer"
 assert_file_absent "T3: kein Auto-Merge bei roter CI" "$GHSTATE_DIR/merged-603"
 
 # ==============================================================================
@@ -308,14 +308,14 @@ assert_file_absent "T3: kein Auto-Merge bei roter CI" "$GHSTATE_DIR/merged-603"
 # ==============================================================================
 reset_state
 seed_issue 404 "in-progress"
-seed_issue 410 "needs-input,parked"
+seed_issue 410 "in-progress,needs-answer"
 seed_pr 410 610
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-610.json"
 run_round
 assert_file_present "T4: der Bau-Agent für das laufende #404 läuft trotzdem" \
   "$GHSTATE_DIR/claude-called"
-assert_labels "T4: das geparkte #410 wird trotzdem freigegeben" 410 ""
+assert_labels "T4: das wartende #410 wird trotzdem freigegeben" 410 "in-progress"
 assert_file_present "T4: Auto-Merge für #610 wird aktiviert" "$GHSTATE_DIR/merged-610"
 
 # ==============================================================================
@@ -323,16 +323,16 @@ assert_file_present "T4: Auto-Merge für #610 wird aktiviert" "$GHSTATE_DIR/merg
 #       das erste: eins grün (freigegeben), eins noch pending (bleibt geparkt).
 # ==============================================================================
 reset_state
-seed_issue 501 "parked"
+seed_issue 501 "in-progress,needs-answer"
 seed_pr 501 701
 printf '[{"bucket":"pass","name":"quality"}]' > "$GHSTATE_DIR/checks-701.json"
-seed_issue 502 "needs-input,parked"
+seed_issue 502 "in-progress,needs-answer"
 seed_pr 502 702
 printf '[{"bucket":"pending","name":"e2e"}]' > "$GHSTATE_DIR/checks-702.json"
 run_round
-assert_labels "T5: #501 (grün) wird freigegeben" 501 ""
+assert_labels "T5: #501 (grün) wird freigegeben" 501 "in-progress"
 assert_file_present "T5: Auto-Merge für #701 wird aktiviert" "$GHSTATE_DIR/merged-701"
-assert_labels "T5: #502 (pending) bleibt unverändert geparkt" 502 "needs-input,parked"
+assert_labels "T5: #502 (pending) bleibt unverändert geparkt" 502 "in-progress,needs-answer"
 assert_file_absent "T5: kein Auto-Merge für #702" "$GHSTATE_DIR/merged-702"
 
 # ==============================================================================
@@ -340,52 +340,47 @@ assert_file_absent "T5: kein Auto-Merge für #702" "$GHSTATE_DIR/merged-702"
 #       wurde.
 # ==============================================================================
 reset_state
-seed_issue 600 "parked"
+seed_issue 600 "in-progress,needs-answer"
 seed_pr 600 800
 printf '[{"bucket":"pass","name":"quality"}]' > "$GHSTATE_DIR/checks-800.json"
 run_round
-assert_contains "T6: Status nennt die Freigabe" "Geparktes Ticket freigegeben" \
+assert_contains "T6: Status nennt die Freigabe" "Wartendes Ticket freigegeben" \
   "$GHSTATE_DIR/status-body-log"
 assert_contains "T6: Status nennt das freigegebene Ticket #600" "#600" \
   "$GHSTATE_DIR/status-body-log"
 
 # ==============================================================================
-# T7 -- #173 AC2: geparkter PR liegt hinter main UND hat einen echten
-#       Merge-Konflikt -> wird entparkt (in-progress statt parked), derselbe
-#       freie Bauplatz startet sofort einen Fix-Agenten mit den Konfliktdateien
-#       im Auftrag (wiederverwendet die bestehende CI-Wache aus #147/#160).
+# T7 -- #173 AC2, neu geschnitten in #272: wartender PR liegt hinter main UND
+#       hat einen echten Merge-Konflikt. Frueher wurde das Ticket dafuer
+#       entparkt und sofort ein Fix-Agent gestartet. Das setzte voraus, dass
+#       die Frage laengst beantwortet war -- ein Zustand, den es nicht mehr
+#       gibt. Jetzt gilt: solange 'needs-answer' haengt, laeuft nichts.
 # ==============================================================================
 reset_state
-seed_issue 420 "parked"
+seed_issue 420 "in-progress,needs-answer"
 seed_pr 420 720
 seed_behind 420 720
 touch "$GHSTATE_DIR/git-merge-conflict"
 run_round
-assert_labels "T7: #420 wird entparkt (in-progress statt parked)" 420 "in-progress"
-assert_file_present "T7: ein Fix-Agent läuft für den Konflikt" "$GHSTATE_DIR/claude-called"
-assert_contains "T7: Auftrag nennt den Merge-Konflikt" "Merge-Konflikt" \
-  "$GHSTATE_DIR/last-prompt"
-assert_contains "T7: Auftrag nennt die Konfliktdatei a.ts" "src/a.ts" \
-  "$GHSTATE_DIR/last-prompt"
+assert_labels "T7 (#272): #420 bleibt wartend -- kein Entparken mehr" 420 "in-progress,needs-answer"
+assert_file_absent "T7 (#272): kein Fix-Agent hinter der offenen Frage" "$GHSTATE_DIR/claude-called"
 assert_file_absent "T7: kein Auto-Merge bei einem Merge-Konflikt" "$GHSTATE_DIR/merged-720"
-assert_contains "T7: Status nennt den Grund fürs Entparken" "Merge-Konflikt" \
-  "$GHSTATE_DIR/status-body-log"
 
 # ==============================================================================
-# T8 -- #173 AC3: geparkter PR hat rote Checks über 'protected-paths' hinaus
-#       -> wird entparkt, bekommt einen Fix-Lauf mit der Fehler-Summary.
+# T8 -- #173 AC3, neu geschnitten in #272: wartender PR hat rote Checks ueber
+#       'protected-paths' hinaus -> auch das startet keinen Lauf, solange die
+#       Frage offen ist, und zaehlt folglich nicht in die Eskalation ein.
 # ==============================================================================
 reset_state
-seed_issue 421 "parked"
+seed_issue 421 "in-progress,needs-answer"
 seed_pr 421 721
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
   > "$GHSTATE_DIR/checks-721.json"
 run_round
-assert_labels "T8: #421 wird entparkt (in-progress statt parked)" 421 "in-progress"
-assert_file_present "T8: ein Fix-Agent läuft für die roten Checks" "$GHSTATE_DIR/claude-called"
-assert_contains "T8: Auftrag nennt den fehlgeschlagenen Job" "e2e" "$GHSTATE_DIR/last-prompt"
+assert_labels "T8 (#272): #421 bleibt wartend -- rote Checks starten keinen Lauf hinter der Frage" 421 "in-progress,needs-answer"
+assert_file_absent "T8 (#272): kein Fix-Agent, solange die Frage offen ist" "$GHSTATE_DIR/claude-called"
 assert_file_absent "T8: kein Auto-Merge bei roten Checks" "$GHSTATE_DIR/merged-721"
-assert_file_present "T8 (AC6): Fehlversuch zählt in die bestehende Eskalation ein" \
+assert_file_absent "T8 (#272): kein Fehlversuch in der Eskalation, es lief ja nichts" \
   "$STATE_DIR/failcount-421"
 
 # ==============================================================================
@@ -394,27 +389,27 @@ assert_file_present "T8 (AC6): Fehlversuch zählt in die bestehende Eskalation e
 #       kein anderes Ticket in-progress ist.
 # ==============================================================================
 reset_state
-seed_issue 422 "needs-input,parked"
+seed_issue 422 "in-progress,needs-answer"
 seed_pr 422 722
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
   > "$GHSTATE_DIR/checks-722.json"
 run_round
-assert_labels "T9: #422 bleibt vollständig geparkt (Genehmigungs-Schranke)" 422 "needs-input,parked"
+assert_labels "T9: #422 bleibt vollständig geparkt (Genehmigungs-Schranke)" 422 "in-progress,needs-answer"
 assert_file_absent "T9: kein Agentenlauf, solange nur protected-paths rot ist" \
   "$GHSTATE_DIR/claude-called"
 
 # ==============================================================================
-# T10 -- eine noch offene Frage (needs-input) geht vor: ein Konflikt/rote
+# T10 -- eine noch offene Frage (needs-answer) geht vor: ein Konflikt/rote
 #       Checks lösen KEIN automatisches Entparken über eine ungeklärte
 #       menschliche Antwort hinweg aus (CLAUDE.md Regel 11).
 # ==============================================================================
 reset_state
-seed_issue 423 "needs-input,parked"
+seed_issue 423 "in-progress,needs-answer"
 seed_pr 423 723
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
   > "$GHSTATE_DIR/checks-723.json"
 run_round
-assert_labels "T10: #423 bleibt geparkt, solange needs-input offen ist" 423 "needs-input,parked"
+assert_labels "T10: #423 bleibt geparkt, solange needs-answer offen ist" 423 "in-progress,needs-answer"
 assert_file_absent "T10: kein Agentenlauf, solange die Frage offen ist" \
   "$GHSTATE_DIR/claude-called"
 
@@ -428,7 +423,7 @@ seed_issue 424 "in-progress"
 seed_pr 424 824
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"läuft schon"}]' \
   > "$GHSTATE_DIR/checks-824.json"
-seed_issue 425 "parked"
+seed_issue 425 "in-progress,needs-answer"
 seed_pr 425 825
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"2 tests failed"}]' \
   > "$GHSTATE_DIR/checks-825.json"
@@ -437,7 +432,7 @@ assert_file_present "T11: der Fix-Agent für das laufende #424 läuft trotzdem" 
   "$GHSTATE_DIR/claude-called"
 assert_contains "T11: der Auftrag betrifft #424, nicht #425" "läuft schon" \
   "$GHSTATE_DIR/last-prompt"
-assert_labels "T11: das entparkbare #425 bleibt geparkt (WIP schon belegt)" 425 "parked"
+assert_labels "T11: #425 bleibt wartend" 425 "in-progress,needs-answer"
 assert_file_absent "T11: kein zweiter Agent für #425" "$GHSTATE_DIR/merged-825"
 
 # ==============================================================================
@@ -446,23 +441,23 @@ assert_file_absent "T11: kein zweiter Agent für #425" "$GHSTATE_DIR/merged-825"
 #       jüngere bleibt geparkt für den nächsten Takt.
 # ==============================================================================
 reset_state
-seed_issue 426 "parked" "2024-01-01T00:00:00Z"
+seed_issue 426 "in-progress,needs-answer" "2024-01-01T00:00:00Z"
 seed_pr 426 826
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"älter"}]' \
   > "$GHSTATE_DIR/checks-826.json"
-seed_issue 427 "parked" "2025-06-01T00:00:00Z"
+seed_issue 427 "in-progress,needs-answer" "2025-06-01T00:00:00Z"
 seed_pr 427 827
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"jünger"}]' \
   > "$GHSTATE_DIR/checks-827.json"
 run_round
-assert_labels "T12: das ältere #426 wird entparkt" 426 "in-progress"
-assert_labels "T12: das jüngere #427 bleibt geparkt" 427 "parked"
+assert_labels "T12 (#272): auch das ältere #426 bleibt wartend" 426 "in-progress,needs-answer"
+assert_labels "T12: das jüngere #427 ebenso" 427 "in-progress,needs-answer"
 
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
-  ok "Alle Parked-CI-Wache-Tests grün."
+  ok "Alle Waiting-CI-Wache-Tests grün."
 else
-  red "Mindestens ein Parked-CI-Wache-Test ist rot (siehe oben)."
+  red "Mindestens ein Waiting-CI-Wache-Test ist rot (siehe oben)."
 fi
 exit $FAIL

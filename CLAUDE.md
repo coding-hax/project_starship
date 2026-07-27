@@ -69,16 +69,15 @@ So fragst du:
 
 1. `gh issue comment <nr>` mit: was du wissen musst, **konkrete Optionen (A/B/C)**,
    deine Empfehlung, und was passiert, wenn nicht geantwortet wird.
-2. Label `needs-input` **und** `needs-answer` setzen — es steht eine Frage im
-   Ticket, die eine geschriebene Antwort braucht (anders als eine reine Freigabe,
-   siehe „Geschützte Pfade" unten: dort **nur** `needs-input`).
+2. Label `needs-answer` setzen — es steht eine Frage im Ticket, die eine
+   geschriebene Antwort braucht. Seit #272 ist das das einzige Wartelabel.
 3. Lauf beenden.
 
-Mehr brauchst du hier nicht zu tun: der Runner parkt dein Ticket automatisch
-(`parked` statt `in-progress`, #145) — es wartet sichtbar, belegt aber keinen
-Bauplatz mehr, und wird fortgesetzt (nicht neu gestartet), sobald der Mensch
-antwortet und `needs-input` entfernt. Details: `docs/WORKFLOW.md`, „Wartend
-ist nicht in Arbeit".
+Mehr brauchst du hier nicht zu tun. Das Ticket behält `in-progress` (#272) und
+wird von der Auswahl übersprungen, solange `needs-answer` hängt — es wartet
+sichtbar, belegt aber keinen Bauplatz. Sobald der Mensch antwortet und das
+Label entfernt, wird es fortgesetzt, nicht neu gestartet. Details:
+`docs/WORKFLOW.md`, „Wartend ist nicht in Arbeit".
 
 Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich vorgehen?"
 ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach links
@@ -185,7 +184,7 @@ und Fortschrittskommentar und macht weiter. **Kein Neuanfang, kein Rollback.**
 - Nach `main` pushen (Branch-Schutz verhindert es ohnehin)
 - Force-Push, History umschreiben, einen Check überspringen
 - Ein zweites Ticket beginnen, während eines auf `in-progress` steht
-- Eine Frage stellen, ohne das Label `needs-input` zu setzen (sonst startet der
+- Eine Frage stellen, ohne das Label `needs-answer` zu setzen (sonst startet der
   Runner dich in 20 Minuten erneut mit derselben offenen Frage)
 - Auf CI warten (`gh pr checks --watch`) oder lokal die volle `pnpm e2e`-Suite
   laufen lassen — dein Lauf endet beim Push, der Runner-Takt beobachtet die CI
@@ -248,13 +247,13 @@ rot (außer bei `protected-paths`, siehe unten), startet dich der nächste Takt
 gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
 Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
 wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
-vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-input`
+vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-answer`
 **und** `needs-answer` (dieselbe erschöpfte Eskalation wie in „So fragst du"
 oben, ADR-0007) — drei rote Runden heißen, das Ticket ist falsch geschnitten,
 eine menschliche Entscheidung. Vollständige Zustandstabelle:
 `docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
-Stellst du stattdessen eine Frage (`needs-input`, siehe „Autonomer Betrieb"
+Stellst du stattdessen eine Frage (`needs-answer`, siehe „Autonomer Betrieb"
 oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
 ready` erreichst.
 
