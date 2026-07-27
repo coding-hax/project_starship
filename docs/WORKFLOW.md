@@ -175,12 +175,14 @@ Zustandsmaschine des ganzen Setups:
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
+| `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es in der Queue steht oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `blocked-by`     | Wartet auf ein anderes Ticket — die Abhängigkeit steht in der Queue (`- #266 nach #227`). Setzt und entfernt der **Runner** selbst; von Hand angefasst richtest du nur Schaden an. | Runner       |
 | `model:haiku` `model:sonnet` `model:opus` | **Startstufe** für dieses Ticket (ADR-0013). Höchstens eins setzen. `model:opus` baut sofort auf Opus, ohne die drei erfolglosen Läufe. Bei `plan`/`research` schlägt das Label die Rolle. | **Du**       |
 | `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
 | `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
+| `bug` `epic`     | Reine Sortier-Labels — sie steuern den Runner nicht. `epic` heißt: Sammelticket, wird nie selbst gebaut; damit das auch mechanisch gilt, trägt ein Sammelticket zusätzlich `hands-off`. | **Du**       |
 
 Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
