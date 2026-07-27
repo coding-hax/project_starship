@@ -1,0 +1,38 @@
+name: Push-Erinnerungen
+
+# #239: feuert alle 30 Minuten, die Route (POST /api/push/reminders) entscheidet
+# selbst, welche Art gerade fällig ist (feste Zeiten 07:00/20:00 Europe/Berlin,
+# src/push/schedule.ts). Minute 7/37 statt 0/30, damit kein Gleichlauf mit
+# garmin-sync.yml entsteht. Vendor-neutral mit Absicht (Regel 7): ein gewöhnlicher
+# HTTP-POST, kein Vercel-Cron-Primitiv -- auf einem eigenen Server genügt später
+# eine Zeile crontab mit curl.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/push/reminders
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          REMINDER_SECRET: ${{ secrets.REMINDER_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$REMINDER_SECRET" ]; then
+            echo "APP_URL oder REMINDER_SECRET fehlt als Repo-Secret -- Abbruch." >&2
+            exit 1
+          fi
+
+          STATUS=$(curl -s -o /tmp/reminders-response.json -w '%{http_code}' \
+            -X POST "$APP_URL/api/push/reminders" \
+            -H "Authorization: Bearer $REMINDER_SECRET")
+
+          echo "Status: $STATUS"
+          cat /tmp/reminders-response.json
+
+          case "$STATUS" in
+            2??) echo "✓ Erinnerungslauf gelaufen." ;;
+            *) echo "✗ Unerwarteter Status $STATUS." >&2; exit 1 ;;
+          esac
