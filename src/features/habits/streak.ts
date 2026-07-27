@@ -1,27 +1,10 @@
 import { currentWeekRange, toDateKey } from './due-today';
+import { isDoneInWeek, isDoneOnDay } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
 function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-function isDoneOnDay(logs: HabitLogView[], habitId: string, dateKey: string): boolean {
-  return logs.some((log) => log.habitId === habitId && log.logDate === dateKey && log.done);
-}
-
-function isDoneInWeek(
-  logs: HabitLogView[],
-  habitId: string,
-  range: { start: string; end: string },
-): boolean {
-  return logs.some(
-    (log) =>
-      log.habitId === habitId &&
-      log.done &&
-      log.logDate >= range.start &&
-      log.logDate <= range.end,
-  );
 }
 
 /**

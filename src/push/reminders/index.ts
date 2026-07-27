@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { reminderSends } from '@/db/schema';
 import { dueSlots } from '@/push/schedule';
 import { sendPushToAll, type PushPayload } from '@/push/send';
+import { habitsOpen } from './habits-open';
 import { tasksDue } from './tasks-due';
 
 /**
@@ -17,7 +18,7 @@ export interface ReminderKind {
   build(now: Date): Promise<PushPayload | null>;
 }
 
-const reminderKinds: ReminderKind[] = [tasksDue];
+const reminderKinds: ReminderKind[] = [tasksDue, habitsOpen];
 
 if (process.env.NEXT_PUBLIC_E2E === '1') {
   reminderKinds.push({
