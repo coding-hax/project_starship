@@ -158,6 +158,13 @@ export async function resetPushData() {
   });
 }
 
+/** reminder_sends is cron infra (src/db/schema.ts, issue #239) — its own reset, same reasoning. */
+export async function resetReminderData() {
+  await withDb(async (client) => {
+    await client.query('DELETE FROM reminder_sends;');
+  });
+}
+
 interface ForecastFixture {
   dates: string[];
   tempsMax: number[];
