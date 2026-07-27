@@ -5,7 +5,9 @@ import {
   hourLabel,
   isStale,
   isWeekend,
+  nextWeatherDate,
   parseForecast,
+  previousWeatherDate,
   temperatureAxis,
   temperatureLinePoints,
   weekdayLabel,
@@ -97,6 +99,31 @@ describe('findWeatherDay', () => {
 
   it('is undefined for a date outside the window', () => {
     expect(findWeatherDay(days, '2026-08-01')).toBeUndefined();
+  });
+});
+
+describe('nextWeatherDate / previousWeatherDate', () => {
+  const days = parseForecast(TWO_DAY_RESPONSE); // ['2026-07-23', '2026-07-24']
+
+  it('nextWeatherDate returns the following day', () => {
+    expect(nextWeatherDate(days, '2026-07-23')).toBe('2026-07-24');
+  });
+
+  it('nextWeatherDate is null at the last cached day', () => {
+    expect(nextWeatherDate(days, '2026-07-24')).toBeNull();
+  });
+
+  it('previousWeatherDate returns the preceding day', () => {
+    expect(previousWeatherDate(days, '2026-07-24')).toBe('2026-07-23');
+  });
+
+  it('previousWeatherDate is null at the first cached day', () => {
+    expect(previousWeatherDate(days, '2026-07-23')).toBeNull();
+  });
+
+  it('both are null for a date outside the cached window', () => {
+    expect(nextWeatherDate(days, '2026-08-01')).toBeNull();
+    expect(previousWeatherDate(days, '2026-08-01')).toBeNull();
   });
 });
 
