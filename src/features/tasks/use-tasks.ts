@@ -103,15 +103,24 @@ function startOfLocalDay(date: Date): Date {
 }
 
 /**
- * Open, dated tasks due today (local calendar day) or earlier — the /uebersicht
+ * Dated tasks due today (local calendar day) or earlier — the /uebersicht
  * dashboard subset (issue #87). Undated tasks and tasks due later than today are
- * excluded, and so is anything already completed.
+ * excluded.
+ *
+ * A task checked off *today* stays in the list for the rest of the day instead of
+ * vanishing under the tap (issue #228, superseding issue #87 AC3): the day's work
+ * still reads as done rather than as nothing, and the row stays reachable for the
+ * undo tap — the same rule the habit section already follows. It drops out on the
+ * next local day; one completed earlier never comes back.
  */
-export function isDueTodayOrOverdue(task: TaskView, now: Date = new Date()): boolean {
-  if (task.completedAt !== null || task.dueAt === null) return false;
-  const startOfTomorrow = startOfLocalDay(now);
+export function belongsOnUebersicht(task: TaskView, now: Date = new Date()): boolean {
+  if (task.dueAt === null) return false;
+  const startOfToday = startOfLocalDay(now);
+  const startOfTomorrow = new Date(startOfToday);
   startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-  return new Date(task.dueAt) < startOfTomorrow;
+  if (new Date(task.dueAt) >= startOfTomorrow) return false;
+  if (task.completedAt === null) return true;
+  return new Date(task.completedAt) >= startOfToday;
 }
 
 /** Thin wrapper around the shared `useLiveTable` (src/local/use-live-table.ts). */

@@ -70,13 +70,11 @@
   background: var(--surface-raised);
 }
 
-/* Weekend columns get a visibly heavier frame than the 1px border every column
- * already has. An `outline` never participates in layout (unlike a wider `border`,
- * which would eat into the padding or grow the column) — column width and padding
- * stay exactly as they are for every one of the seven cells (issue #155). */
-.weather-forecast__day--weekend {
-  outline: 1px solid var(--border);
-  outline-offset: 0;
+/* Weekend columns use a stronger border colour for contrast, keeping the 1px width
+ * consistent with all other columns (issue #223). The colour difference provides
+ * visual distinction without affecting layout. */
+.weather-forecast__day--weekend .weather-forecast__day-link {
+  border-color: var(--border-strong);
 }
 
 /* The skeleton reuses the loaded column's own classes with placeholder content

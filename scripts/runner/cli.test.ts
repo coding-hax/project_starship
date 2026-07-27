@@ -67,6 +67,7 @@ describe('dispatch', () => {
   it('registers exactly the commands this stage promises', () => {
     expect(Object.keys(commands)).toEqual([
       'version',
+      'shim-drift-reason',
       'fmt-hm',
       'd-plus',
       'reset-epoch',
@@ -100,10 +101,20 @@ describe('dispatch', () => {
       'self-heal-park',
       'pick-ticket',
       'waiting-issues',
+      'answer-issues',
+      'approve-issues',
       'parked-issues',
+      'parked-answer-issues',
+      'parked-approve-issues',
       'park-issue',
+      'cleanup-state',
       'queue-snapshot',
       'queue-body',
+      // S6 (#203): das Rundenprotokoll -- drei Kommandos statt der bisherigen
+      // ~40 Einzelaufrufe pro Takt, aufgeteilt am `claude`-Aufruf.
+      'round-plan',
+      'round-prompt',
+      'round-eval',
     ]);
   });
 

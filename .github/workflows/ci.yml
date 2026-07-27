@@ -40,6 +40,7 @@ jobs:
       - run: bash scripts/tests/research-mode.test.sh
       - run: bash scripts/tests/chaining.test.sh
       - run: bash scripts/tests/round-snap.test.sh
+      - run: bash scripts/tests/round-plan-guard.test.sh
       - run: bash scripts/tests/queue-priority.test.sh
       - run: bash scripts/tests/status-queue.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
@@ -49,6 +50,8 @@ jobs:
       - run: bash scripts/tests/ci-watch.test.sh
       - run: bash scripts/tests/parked-ci-watch.test.sh
       - run: bash scripts/tests/squash-close-guard.test.sh
+      - run: bash scripts/tests/shim-start-path.test.sh
+      - run: bash scripts/tests/shim-drift.test.sh
       - run: bash scripts/tests/smoke.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
@@ -57,9 +60,12 @@ jobs:
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh
       - run: bash scripts/tests/runner-ts.test.sh
-      - run: bash scripts/tests/runner-ts-s3-parity.test.sh
-      - run: bash scripts/tests/runner-ts-s4-parity.test.sh
-      - run: bash scripts/tests/runner-ts-s5-parity.test.sh
+      - run: bash scripts/tests/worktree.test.sh
+      # Die Parity-Suiten S2-S5 sind mit #203 (S6) entfallen: sie verglichen den
+      # TS-Kern gegen den Bash-Pfad, den diese Stufe entfernt hat. Ohne
+      # Vergleichslaeufer waren beide Seiten identisch leer -- gruen, aber ohne
+      # Aussage. Die portierten Funktionen decken die Vitest-Suiten unter
+      # scripts/runner/*.test.ts direkt ab.
 
   # --- e2e, split in two halves that run in parallel (#115) -------------------
   # The production build is only needed by offline-critical.spec.ts (it wants a real

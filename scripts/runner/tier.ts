@@ -1,8 +1,8 @@
 // Modell-Stufen-Logik, portiert aus claude-runner.sh (#200, S3 von #184).
 // Zustand ausschliesslich ueber den `state`-Adapter aus S1 -- Dateinamen und
 // -inhalt unter $STATE_DIR bleiben zeichengleich zur Bash-Implementierung,
-// damit ein Rueckfall auf RUNNER_TS=0 mitten im Betrieb denselben Zustand
-// vorfindet.
+// damit ein Takt, der ueber einen Versionswechsel hinweg laeuft, denselben
+// Zustand vorfindet.
 import type { GhAdapter } from './gh.js';
 import type { StateAdapter } from './state.js';
 

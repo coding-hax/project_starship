@@ -132,7 +132,9 @@ STUB
 # sichtbar wird.
 cat > "$FAKEBIN/claude" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' "$@" > "$GHSTATE_DIR/claude-lastargs"
+# Flags aus argv, Prompt aus stdin (seit S6, #203) -- beides in eine Datei,
+# damit die Assertions unten unveraendert bleiben.
+{ printf '%s\n' "$@"; cat; } > "$GHSTATE_DIR/claude-lastargs"
 printf '%s' '{"session_id":"stub-session","result":"ok"}'
 exit 0
 STUB
