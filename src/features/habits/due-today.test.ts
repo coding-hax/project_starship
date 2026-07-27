@@ -3,7 +3,7 @@ import {
   addMonths,
   currentWeekRange,
   dayLabel,
-  isDueToday,
+  doneEarlierThisWeek,
   monthDays,
   monthLabel,
   startOfMonth,
@@ -55,49 +55,49 @@ describe('currentWeekRange', () => {
   });
 });
 
-describe('isDueToday', () => {
-  it('a daily habit is always due, done or not', () => {
-    expect(isDueToday(habit({ schedule: 'daily' }), [], WEDNESDAY)).toBe(true);
+describe('doneEarlierThisWeek', () => {
+  it('a daily habit never carries the week hint, done or not', () => {
+    expect(doneEarlierThisWeek(habit({ schedule: 'daily' }), [], WEDNESDAY)).toBe(false);
     expect(
-      isDueToday(
+      doneEarlierThisWeek(
         habit({ schedule: 'daily' }),
         [log({ logDate: '2026-07-15', done: true })],
         WEDNESDAY,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('a custom-schedule habit is due, same as daily (no due-logic exists for it yet)', () => {
-    expect(isDueToday(habit({ schedule: 'custom' }), [], WEDNESDAY)).toBe(true);
+  it('a custom-schedule habit never carries the week hint (no due-logic exists for it yet)', () => {
+    expect(doneEarlierThisWeek(habit({ schedule: 'custom' }), [], WEDNESDAY)).toBe(false);
   });
 
-  it('a weekly habit with no log this week is due', () => {
-    expect(isDueToday(habit({ schedule: 'weekly' }), [], WEDNESDAY)).toBe(true);
+  it('a weekly habit with no log this week has no hint', () => {
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), [], WEDNESDAY)).toBe(false);
   });
 
-  it('a weekly habit done earlier this week is not due', () => {
+  it('a weekly habit done earlier this week has the hint', () => {
     const logs = [log({ logDate: '2026-07-13', done: true })];
-    expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
   });
 
-  it('a weekly habit done last week is due again this week', () => {
+  it('a weekly habit done last week has no hint this week', () => {
     const logs = [log({ logDate: '2026-07-06', done: true })];
-    expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
-  it('a weekly habit checked off today stays due (undo needs it visible, AC2)', () => {
+  it('a weekly habit checked off today has no hint (it is already shown as done, AC4)', () => {
     const logs = [log({ logDate: '2026-07-15', done: true })];
-    expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
-  it('a weekly habit with only an undone log this week is due', () => {
+  it('a weekly habit with only an undone log this week has no hint', () => {
     const logs = [log({ logDate: '2026-07-13', done: false })];
-    expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
   it('ignores logs for a different habit', () => {
     const logs = [log({ habitId: 'other-habit', logDate: '2026-07-13', done: true })];
-    expect(isDueToday(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 });
 

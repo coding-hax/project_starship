@@ -28,6 +28,9 @@ TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen 
 # exportiert, damit der tsx-Kindprozess dasselbe Verzeichnis sieht.
 STATE_DIR="${STATE_DIR:-$REPO_DIR/.runner}"
 export STATE_DIR
+# Wurzel aller Ticket-Worktrees (#242) -- gitignored seit #226. Ein Bau-Lauf
+# bekommt darin sein eigenes Verzeichnis, statt im Haupt-Checkout zu bauen.
+WORKTREE_BASE="${WORKTREE_BASE:-$REPO_DIR/.claude/worktrees}"
 LIMIT_UNTIL="$STATE_DIR/limit-until"    # Unix-Zeit, bis zu der das Kontingent leer ist
 LOG="$STATE_DIR/last-run.log"           # stdout+stderr des letzten claude-Laufs
 TIMED_OUT="$STATE_DIR/timed-out"        # Marker der Notbremse, siehe run_limited()
@@ -103,15 +106,18 @@ apply_status() {   # $1 = JSON mit optionalem .status
 # --- Ersatz für `timeout` (fehlt auf macOS) ----------------------------------
 # Bleibt in Bash: hängt an Signalen und Prozessgruppen, in Node wäre das ein
 # Rückschritt. Beendet die ganze Prozessgruppe, nicht nur das Kind.
-run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
+run_limited() {   # $1 = Sekunden, $2 = cwd, Rest = Befehl. Ausgabe geht nach $LOG.
   local secs="$1"; shift
+  local cwd="$1"; shift
   rm -f "$TIMED_OUT"
 
   # `<&0` ist kein No-Op: ein Hintergrundjob OHNE ausdrueckliche Umlenkung
   # bekommt stdin von /dev/null -- der Prompt aus der Pipe (run_round) kaeme nie
-  # bei `claude` an, die linke Seite stuerbe an EPIPE.
+  # bei `claude` an, die linke Seite stuerbe an EPIPE. `exec` in der Subshell
+  # ersetzt nur den Subshell-Prozess, die Prozessgruppen-/Signal-Logik unten
+  # (Notbremse) trifft weiter den ganzen Baum.
   set -m
-  "$@" <&0 > "$LOG" 2>&1 &
+  ( cd "$cwd" && exec "$@" ) <&0 > "$LOG" 2>&1 &
   local cmd_pid=$!
   set +m
 
@@ -130,6 +136,80 @@ run_limited() {   # $1 = Sekunden, Rest = Befehl. Ausgabe geht nach $LOG.
   kill "$watchdog" 2>/dev/null
   wait "$watchdog" 2>/dev/null
   return $rc
+}
+
+# --- Worktree je Ticket (#242) ------------------------------------------------
+# Vorfall #196: der Runner baute im geteilten Haupt-Checkout, ein anderer
+# Branch stand aus, und eine ganze Ticket-Arbeit landete unter einem fremden
+# PR. Ein Bau-Lauf bekommt seither einen eigenen Worktree als cwd. Aktiv nur,
+# wenn REPO_DIR ein echter git-Arbeitsbaum ist -- die Bash-Suiten stubben git
+# als reines "exit 0" mit leerem REPO_DIR, `rev-parse` liefert dort nie
+# "true", das Feature bleibt für sie unsichtbar inaktiv.
+worktrees_enabled() {
+  [ "$(git -C "$REPO_DIR" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ]
+}
+
+# Branchname zu einer Ticketnummer -- erst lokal, dann remote. Leere Ausgabe
+# heisst: kein Branch vorhanden (frischer Start ab origin/main).
+branch_for_issue() {   # $1 = Ticketnummer -> Branchname auf stdout
+  local nr="$1" ref
+  ref=$(git -C "$REPO_DIR" for-each-ref --format='%(refname:short)' \
+          "refs/heads/feat/$nr-*" "refs/heads/fix/$nr-*" "refs/heads/chore/$nr-*" \
+          2>/dev/null | head -1)
+  if [ -n "$ref" ]; then printf '%s' "$ref"; return 0; fi
+  git -C "$REPO_DIR" ls-remote --heads origin \
+        "feat/$nr-*" "fix/$nr-*" "chore/$nr-*" 2>/dev/null \
+    | head -1 | awk '{print $2}' | sed 's#^refs/heads/##'
+}
+
+# Idempotent: verlinkt node_modules/.env.local aus dem Haupt-Checkout, damit
+# lint/typecheck/test im Worktree ohne eigenes 'pnpm install' laufen -- beide
+# sind gitignored und fehlen in einem frischen Worktree sonst ganz.
+bootstrap_worktree() {   # $1 = Worktree-Pfad
+  local wt="$1"
+  [ -e "$wt/node_modules" ] || ln -s "$REPO_DIR/node_modules" "$wt/node_modules" 2>/dev/null
+  if [ ! -e "$wt/.env.local" ] && [ -f "$REPO_DIR/.env.local" ]; then
+    ln -s "$REPO_DIR/.env.local" "$wt/.env.local" 2>/dev/null
+  fi
+  return 0
+}
+
+# Legt den Ticket-Worktree an oder nutzt einen vorhandenen wieder. Pfad auf
+# stdout, Exit ungleich 0 = Abbruch -- der Aufrufer weicht dann NICHT in den
+# Haupt-Checkout aus (AK4: belegt/unsauber bricht ab, statt auszuweichen).
+ensure_worktree() {   # $1 = Ticketnummer -> Worktree-Pfad auf stdout
+  local nr="$1"
+  local wt="$WORKTREE_BASE/issue-$nr" branch
+  mkdir -p "$WORKTREE_BASE"
+
+  if git -C "$REPO_DIR" worktree list --porcelain 2>/dev/null | grep -qF "worktree $wt"; then
+    if [ -d "$wt" ]; then
+      bootstrap_worktree "$wt"
+      printf '%s' "$wt"
+      return 0
+    fi
+    echo "Worktree-Eintrag fuer $wt existiert, Verzeichnis fehlt (siehe 'git worktree prune')." >&2
+    return 1
+  fi
+
+  if [ -e "$wt" ]; then
+    echo "Worktree-Pfad $wt ist belegt, aber kein registrierter Worktree -- Abbruch statt Ausweichen." >&2
+    return 1
+  fi
+
+  branch=$(branch_for_issue "$nr")
+  if [ -n "$branch" ]; then
+    if ! git -C "$REPO_DIR" worktree add "$wt" "$branch" >&2; then
+      git -C "$REPO_DIR" worktree add --track -b "$branch" "$wt" "origin/$branch" >&2 || return 1
+    fi
+  else
+    git -C "$REPO_DIR" fetch origin main >&2 || return 1
+    git -C "$REPO_DIR" worktree add --detach "$wt" origin/main >&2 || return 1
+  fi
+
+  [ -d "$wt" ] || { echo "Worktree-Anlage fuer $wt fehlgeschlagen." >&2; return 1; }
+  bootstrap_worktree "$wt"
+  printf '%s' "$wt"
 }
 
 # --- Eine Runde --------------------------------------------------------------
@@ -154,10 +234,26 @@ run_round() {
     return "$(printf '%s' "$plan" | jq -r '.rc // 0')"
   fi
 
-  local model tools resume
+  local model tools resume role issue run_cwd
   model=$(printf '%s' "$plan" | jq -r '.model')
   tools=$(printf '%s' "$plan" | jq -r '.tools')
   resume=$(printf '%s' "$plan" | jq -r '.resume')
+  role=$(printf '%s' "$plan" | jq -r '.role')
+  issue=$(printf '%s' "$plan" | jq -r '.issue')
+
+  # Nur ein Bau-Lauf bekommt einen Worktree (#242) -- Planer/Rechercheur
+  # laufen read-only und duerfen im Haupt-Checkout lesen. Scheitert die
+  # Anlage/Wiederverwendung, bricht die Runde ab statt in den Haupt-Checkout
+  # auszuweichen (AK4).
+  run_cwd="$REPO_DIR"
+  if [ "$role" = "build" ] && worktrees_enabled; then
+    if ! run_cwd=$(ensure_worktree "$issue"); then
+      status "Worktree-Fehler · #$issue" "🔴" \
+        "🔴 Worktree für #$issue konnte nicht angelegt oder wiederverwendet werden -- kein Bau-Lauf gestartet. Details im Runner-Log."
+      CHAIN_STATUS=stop
+      return 1
+    fi
+  fi
 
   # Welches Modell erlaubt ist, hat round-plan entschieden (ADR-0005/0007);
   # hier wird es nur durchgereicht.
@@ -168,7 +264,7 @@ run_round() {
   # als Argument übergeben. rc kommt aus PIPESTATUS, NICHT aus $?: mit
   # `pipefail` wäre es sonst der Code der linken Seite -- liest `claude` stdin
   # nicht aus, gälte ein sauberer Lauf wegen EPIPE als gescheitert.
-  ts_run round-prompt "$ROUND_FILE" | run_limited "$MAX_RUNTIME" claude "${args[@]}"
+  ts_run round-prompt "$ROUND_FILE" | run_limited "$MAX_RUNTIME" "$run_cwd" claude "${args[@]}"
   rc=${PIPESTATUS[1]}
 
   timed=0
@@ -207,6 +303,32 @@ trap 'rm -rf "$LOCK"' EXIT
 # .runner/ raeumt sich auf (#64) -- Regeln in scripts/runner/cleanup.ts.
 ts_run cleanup-state >/dev/null
 
+# --- Ticket-Worktrees aufräumen (#242) ----------------------------------------
+# Verwaiste Admin-Einträge prunen, dann je WORKTREE_BASE/issue-* prüfen: ist
+# das Ticket zu (Auto-Merge schließt via "Closes #n"), fliegt der Worktree.
+# Offene/geparkte Tickets behalten ihren. Nur wenn worktrees_enabled -- sonst
+# ein No-Op ohne gh/git-Aufrufe.
+if worktrees_enabled; then
+  git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
+  if [ -d "$WORKTREE_BASE" ]; then
+    for wt in "$WORKTREE_BASE"/issue-*; do
+      [ -d "$wt" ] || continue
+      nr="${wt##*/issue-}"
+      case "$nr" in ''|*[!0-9]*) continue ;; esac
+      wt_state=$(gh issue view "$nr" --json state -q .state 2>/dev/null || echo "")
+      if [ "$wt_state" = "CLOSED" ]; then
+        # Kein '--force': das Ticket ist zu, ein sauberer 'remove' reicht. Sperrt
+        # git wegen lokaler Reste (T20 verbietet die Bypass-Flags im Skript), räumt
+        # der manuelle Fallback + 'prune' den Admin-Eintrag trotzdem weg.
+        if ! git -C "$REPO_DIR" worktree remove "$wt" >/dev/null 2>&1; then
+          rm -rf "$wt"
+          git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
+        fi
+      fi
+    done
+  fi
+fi
+
 # --- Kontingent erschöpft? Dann gar nicht erst starten ------------------------
 # Solange das Limit nachweislich steht, lohnt kein Agentenstart. Fehlt die Datei
 # oder ist sie abgelaufen, läuft alles wie immer -- ein Fehlparsen darf den
@@ -219,6 +341,33 @@ if [ -s "$LIMIT_UNTIL" ]; then
     exit 0
   fi
   rm -f "$LIMIT_UNTIL"
+fi
+
+# --- Weicht die laufende Shim-Datei von der reviewten Fassung ab? -------------
+# Geprüft wird hier und NICHT im Shim: der Shim ist die eine Datei, die läuft,
+# ohne im Repo zu liegen -- trüge er die Prüfung selbst, könnte eine zu alte
+# Fassung nicht melden, dass sie zu alt ist. Diese Datei hier wird bei jedem Tick
+# frisch aus origin/main materialisiert, also greift die Meldung auch gegen einen
+# uralten installierten Shim. Entschieden wird in scripts/runner/shim.ts, hier
+# steht nur die Meldung -- status() bleibt bash-only (#252).
+#
+# Bewusst NACH dem Limit-Gate: das muss ein garantierter No-Op ohne gh und ohne
+# tsx bleiben.
+#
+# Ein Drift hält den Lauf NICHT an. 🟡 heisst 'wartet auf dich', nicht 'kaputt'
+# -- nach elf Stunden Totalausfall (#249) ist ein stehender Runner teurer als
+# ein abweichender.
+SHIM_PATH="${SHIM_PATH:-$HOME/.local/bin/starship-runner}"
+SHIM_DRIFT=$(ts_run shim-drift-reason "$SHIM_PATH" "${RUNNER_REF:-origin/main}")
+if [ -n "$SHIM_DRIFT" ]; then
+  status "Shim weicht ab" "🟡" "🟡 $SHIM_DRIFT
+
+Ausgeführt wird die installierte Kopie, nicht die reviewte Fassung aus dem Repo.
+Angleichen mit:
+
+    install -m 0755 scripts/starship-runner ~/.local/bin/starship-runner
+
+Der Lauf geht normal weiter."
 fi
 
 # --- Chain-Schleife: mehrere Runden pro Tick (#61) ----------------------------

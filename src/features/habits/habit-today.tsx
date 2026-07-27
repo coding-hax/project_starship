@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { isDueToday, toDateKey } from './due-today';
+import { doneEarlierThisWeek, toDateKey } from './due-today';
 import { computeStreak } from './streak';
 import { useHabitLogs } from './use-habit-logs';
 import { useHabits } from './use-habits';
@@ -14,7 +14,9 @@ import { useToggleHabitLog } from './use-toggle-habit-log';
  *
  * Unlike the task list, a checked-off row stays in place rather than
  * disappearing: the tap that checked it is also how you undo it (AC2), so the
- * row has to stay reachable.
+ * row has to stay reachable. Weekly habits never drop out of this list either
+ * (issue #224) — one already checked off earlier this week just carries a
+ * "Diese Woche schon erledigt" hint until it is also checked off today.
  */
 export function HabitToday() {
   const habits = useHabits();
@@ -36,18 +38,14 @@ export function HabitToday() {
 
   const now = new Date();
   const today = toDateKey(now);
-  const due = active.filter((habit) => isDueToday(habit, logs, now));
-
-  if (due.length === 0) {
-    return <p className="habit-today__empty">Für heute nichts offen.</p>;
-  }
 
   return (
     <ul className="habit-today" aria-label="Gewohnheiten heute">
-      {due.map((habit) => {
+      {active.map((habit) => {
         const doneToday = logs.some(
           (log) => log.habitId === habit.id && log.logDate === today && log.done,
         );
+        const showWeekHint = !doneToday && doneEarlierThisWeek(habit, logs, now);
         const streak = computeStreak(habit, logs, now);
         return (
           <li
@@ -61,7 +59,12 @@ export function HabitToday() {
               style={{ background: `var(${habit.color ?? '--area-habits'})` }}
               aria-hidden="true"
             />
-            <span className="habit-today__name">{habit.name}</span>
+            <span className="habit-today__name-group">
+              <span className="habit-today__name">{habit.name}</span>
+              {showWeekHint && (
+                <span className="habit-today__week-hint">Diese Woche schon erledigt</span>
+              )}
+            </span>
             {streak > 0 && (
               <span
                 className="habit-today__streak"

@@ -29,6 +29,7 @@ Vor jeder Arbeit lesen:
 9. **Journal-Inhalte verlassen das Gerät nur verschlüsselt.** Niemals Klartext an den Server, niemals Klartext loggen.
 10. **Niemals Secrets committen.** Keine echten Tokens in Tests, Fixtures oder Beispielen.
 11. **Bei Unklarheit: fragen, nicht raten.** Widerspricht ein Ticket der Vision, wird nicht implementiert, sondern nachgefragt.
+12. **Jeder Lauf arbeitet in einem eigenen Worktree.** Egal ob Runner oder Terminal-Sitzung: Der Haupt-Checkout `/Users/max/dev/project_starship` ist zum Lesen da, nicht zum Bauen. **Niemals** darin einen Branch wechseln, committen oder pushen — es arbeiten mehrere Läufe gleichzeitig im selben Repo. Details unten: „Ein Worktree je Lauf".
 
 ## Konventionen
 
@@ -83,6 +84,35 @@ ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach
 
 **Rate nie.** Lieber ein Ticket steht 12 Stunden still, als dass es in die falsche
 Richtung läuft.
+
+### Ein Worktree je Lauf — vor der ersten Zeile Code
+
+Es arbeiten **mehrere Läufe gleichzeitig im selben Repo**: der Runner, parallele
+Terminal-Sitzungen, du. Ein geteilter Checkout hat genau einen `HEAD` — wer darin
+den Branch wechselt, zieht ihn allen anderen unter den Füßen weg.
+
+Das ist kein theoretisches Risiko. Am 26.07.26 baute der Runner das Ticket #196 im
+Haupt-Checkout, der auf `fix/232-fab-icon-size` stand. Die komplette Runner-Arbeit
+landete in einem Commit mit der Nachricht „increase FAB icon font-size" und wäre über
+den Icon-PR halbfertig nach `main` gemerged worden.
+
+Deshalb, **bevor du irgendetwas änderst**:
+
+```bash
+git -C /Users/max/dev/project_starship fetch origin
+git -C /Users/max/dev/project_starship worktree add -b feat/42-quick-add \
+  /Users/max/dev/project_starship/.claude/worktrees/issue-42 origin/main
+```
+
+- **Absolute Pfade, immer.** Ein relativer Pfad legt den Worktree mitten ins Repo und
+  blockiert dort stumm jedes weitere `git`-Kommando.
+- `.claude/worktrees/` ist in `.gitignore` — der Worktree taucht nirgends im Diff auf.
+- Ein Worktree je Ticket, Name = Ticketnummer. Nach dem Merge:
+  `git worktree remove <pfad>`.
+- Nimmst du einen abgebrochenen Lauf wieder auf, benutzt du **denselben** Worktree
+  weiter, statt einen zweiten anzulegen.
+- Der Haupt-Checkout bleibt auf `main` und sauber. Findest du ihn auf einem
+  Feature-Branch vor: **nicht** darin weiterarbeiten, eigenen Worktree anlegen.
 
 ### Fortschritt sichern — nach JEDEM Schritt
 
@@ -148,6 +178,8 @@ und Fortschrittskommentar und macht weiter. **Kein Neuanfang, kein Rollback.**
 
 ### Was du niemals tust
 
+- Im Haupt-Checkout bauen: den Branch dort wechseln, dort committen oder pushen
+  (siehe „Ein Worktree je Lauf")
 - Nach `main` pushen (Branch-Schutz verhindert es ohnehin)
 - Force-Push, History umschreiben, einen Check überspringen
 - Ein zweites Ticket beginnen, während eines auf `in-progress` steht
