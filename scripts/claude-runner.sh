@@ -143,9 +143,19 @@ run_round() {
   # einzeln auf, wo `set -u` sonst abbräche.
   : "${DID_WORK:=0}" "${LAST_ISSUE:=}"
 
-  local plan kind rc timed eval_out
+  local plan plan_rc kind rc timed eval_out
   plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE")
-  [ $? -eq 127 ] && return 1
+  plan_rc=$?
+  # round-plan MUSS Exit 0 UND ein gültiges JSON-Objekt (mit .kind) liefern.
+  # Jeder andere Ausgang (leeres/kaputtes plan) ist fatal: 127 hat ts_run schon
+  # über status() gemeldet, alles andere meldet sich HIER -- statt jq später
+  # still auf Müll laufen zu lassen (#257).
+  if [ "$plan_rc" -ne 0 ] || ! printf '%s' "$plan" | jq -e 'has("kind")' >/dev/null 2>&1; then
+    if [ "$plan_rc" -ne 127 ]; then
+      status "Runde ohne Plan" "🔴" "🔴 round-plan scheiterte (Exit $plan_rc) oder lieferte kein gültiges JSON -- die Runde konnte nicht starten. Der nächste Tick versucht es erneut."
+    fi
+    return 1
+  fi
   printf '%s' "$plan" > "$ROUND_FILE"
   apply_status "$plan"
 

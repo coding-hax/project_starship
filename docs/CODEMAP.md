@@ -200,6 +200,7 @@ scripts/
   tests/runner-ts.test.sh   Fixture-Tests für ts_run(): der Kern wird über RUNNER_HOME aufgelöst (nicht REPO_DIR), stdout/Exit-Code kommen durch, fehlendes tsx meldet sich hörbar über status() (#198 S1, auf S6 gezogen). Jeder Fall läuft in einer Subshell -- die Suite trägt ihr Scheitern deshalb über eine Flag-Datei nach außen, sonst meldete sie grün trotz roter Prüfungen (#203)
   tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
   tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
+  tests/round-plan-guard.test.sh  Fixture-Tests: run_round() meldet jeden round-plan-Fehlschlag (Exit ≠ 0 oder Exit 0 mit kaputtem JSON) über status() mit definiertem Exit 1, statt still auf einem kaputten `return ""` abzubrechen; Exit 127 bleibt ohne Doppelmeldung (#257)
   check-test-integrity.sh   Wächter gegen abgeschwächte Tests
   check-sync-invariants.sh  Wächter gegen direkten fetch(/api/) außerhalb der Outbox (#58); Trenner-Slash Pflicht, sonst false-positiv auf Fremdquellen wie https://api.open-meteo.com (#139)
   check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)
