@@ -107,6 +107,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.weather-day__temp-max,
+.weather-day__temp-min {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .weather-day__temp-max {
   font-size: 32px;
   color: var(--text);
@@ -114,6 +121,13 @@
 
 .weather-day__temp-min {
   font-size: 20px;
+  color: var(--text-muted);
+}
+
+/* Ersetzt sichtbar den Mond, wenn der Folgetag fehlt (issue #269 AC3). */
+.weather-day__temp-fallback-label {
+  align-self: center;
+  font-size: 12px;
   color: var(--text-muted);
 }
 

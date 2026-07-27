@@ -175,7 +175,12 @@ test('Tippen auf eine Tagesspalte öffnet die Detailseite mit den Daten genau di
   await expect(page).toHaveURL('/wetter/2026-07-23');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Donnerstag, 23. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
-  await expect(page.locator('.weather-day__temp-min')).toHaveText('5°');
+  // Nachtwert (issue #269), nicht mehr der Tages-Tiefstwert (der wäre 5°) — dass er
+  // hier zufällig auf denselben Wert wie der Höchstwert rundet, ist Zufall der
+  // linearen Testkurve (00:00 = Tagesminimum, 23:00 = Tagesmaximum je Tag); die
+  // dedizierten Tests unten in "issue #269" wählen Tage, an denen sich Höchst-,
+  // Tages-Tiefst- und Nachtwert klar unterscheiden.
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('15°');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -499,7 +504,10 @@ test('Wisch nach links zeigt den nächsten Tag, Inhalt und Datumskopfzeile wechs
   await expect(page).toHaveURL('/wetter/2026-07-24');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Freitag, 24. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
-  await expect(page.locator('.weather-day__temp-min')).toHaveText('16°');
+  // Nachtwert (issue #269): das Fenster reicht bis in die Frühstunden des 25. Juli
+  // hinein, dessen Tagesminimum (-2°) weit unter dem 24.7. eigenem Tiefstwert
+  // (16°) liegt — zeigt, dass der Kopf beim Tageswechsel wirklich neu rechnet.
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('-2°');
 });
 
 test('Wisch nach rechts zeigt den vorherigen Tag (issue #267 AC1)', async ({ page }) => {
@@ -719,4 +727,93 @@ test('ein Tageswechsel per Wisch löst keinen eigenen Netzaufruf aus und funktio
   await expect(page).toHaveURL('/wetter/2026-07-24');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
   expect(requestUrls).toEqual([]);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Temperatur der kommenden Nacht statt Tages-Tiefstwert, mit Mond-Symbol */
+/* (issue #269)                                                               */
+/* -------------------------------------------------------------------------- */
+
+test('der Kopf zeigt Sonne + Höchstwert und Mond + Nachttemperatur, beide mit Beschriftung für Screenreader (issue #269 AC1/AC4/AC5/AC9)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-22: Höchstwert 19°, Tages-Tiefstwert 9°, Nachtwert (Fenster Sonnenuntergang
+  // 22.7. bis Sonnenaufgang 23.7.) 5° — alle drei Zahlen liegen bewusst auseinander.
+  await page.goto('/wetter/2026-07-22');
+
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('19°');
+  await expect(page.locator('.weather-day__temp-max')).toHaveAttribute('aria-label', 'Höchstwert: 19 Grad');
+  await expect(page.locator('.weather-day__temp-max svg')).toHaveCount(1);
+
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('5°');
+  await expect(page.locator('.weather-day__temp-min')).toHaveAttribute(
+    'aria-label',
+    'nachts, 21:12 bis 05:53: 5 Grad',
+  );
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(1);
+  await expect(page.locator('.weather-day__temp-fallback-label')).toHaveCount(0);
+});
+
+test('am letzten Vorhersagetag fällt der Nachtwert sichtbar auf den Tages-Tiefstwert zurück, ohne Mond (issue #269 AC3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-26'); // letzter Tag der 7-Tage-Vorhersage, kein Folgetag
+
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('21°'); // Tages-Tiefstwert
+  await expect(page.locator('.weather-day__temp-min')).toHaveAttribute('aria-label', 'Tiefstwert: 21 Grad');
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(0); // kein Mond ohne Nachtdaten
+  await expect(page.getByText('Tiefstwert', { exact: true })).toBeVisible();
+});
+
+test('die Temperaturkurve bleibt beim Kalendertag, auch wenn der Nachtwert stark abweicht (issue #269 AC6)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-24: Tages-Tiefstwert 16°, Nachtwert -2° (die Nacht zum 25.7. ist der
+  // kälteste Tag der Woche) — die Kurve und ihr aria-label dürfen trotzdem beim
+  // Kalendertag (16°–26°) bleiben.
+  await page.goto('/wetter/2026-07-24');
+
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('-2°');
+  await expect(page.locator('.weather-day__chart')).toHaveAttribute(
+    'aria-label',
+    'Temperaturverlauf von 16° bis 26°, stündlich',
+  );
+});
+
+test('der Nachtwert kommt ohne eigenen Netzaufruf aus der Ablage (issue #269 AC8)', async ({ page }) => {
+  const callCount = await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  expect(callCount()).toBe(1);
+
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await page.goto('/wetter/2026-07-22');
+
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('5°');
+  expect(callCount()).toBe(1);
+});
+
+test('der Kopf mit dem Tiefstwert-Rückfall passt bei 375px ohne waagerechtes Scrollen (issue #269 AC3/AC10)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-26');
+  await expect(page.getByText('Tiefstwert', { exact: true })).toBeVisible();
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
 });

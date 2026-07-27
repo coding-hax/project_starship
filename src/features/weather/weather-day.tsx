@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { SectionCard } from '@/ui/section-card';
-import { IconChevronLeft } from '@/ui/icons';
+import { IconChevronLeft, IconMoon, IconSunSimple } from '@/ui/icons';
 import {
   formatDayHeading,
   hourLabel,
   nextWeatherDate,
+  nightTemperature,
   previousWeatherDate,
   temperatureAxis,
   temperatureLinePoints,
@@ -136,7 +137,7 @@ function hourTickLabel(hour: number): string {
  */
 export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const { location } = useWeatherLocation();
-  const { phase, day } = useWeatherDay(location, date);
+  const { phase, day, nextDay } = useWeatherDay(location, date);
 
   if (phase === 'loading') {
     return (
@@ -156,6 +157,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
 
   const category = weatherCategory(day.weatherCode);
   const Icon = WEATHER_ICON_BY_CATEGORY[category];
+  const night = nightTemperature(day, nextDay);
   const rainHours = day.hours.filter((hour) => hour.precipitation > 0);
   const rainTotal = rainHours.reduce((sum, hour) => sum + hour.precipitation, 0);
   const maxProbability = Math.max(0, ...day.hours.map((hour) => hour.precipitationProbability));
@@ -186,8 +188,33 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
             <Icon />
           </span>
           <span className="weather-day__temps">
-            <span className="weather-day__temp-max">{Math.round(day.tempMax)}°</span>
-            <span className="weather-day__temp-min">{Math.round(day.tempMin)}°</span>
+            <span
+              className="weather-day__temp-max"
+              aria-label={`Höchstwert: ${Math.round(day.tempMax)} Grad`}
+            >
+              <IconSunSimple />
+              {Math.round(day.tempMax)}°
+            </span>
+            {/* Fehlt der Folgetag (letzter Tag der Vorhersage), ersetzt diese
+                sichtbare Beschriftung den Mond — eine leere Stelle sähe kaputt aus
+                (issue #269 AC3). aria-hidden, weil die Bedeutung schon im
+                aria-label des Nachbarelements steckt. */}
+            {!night && (
+              <span className="weather-day__temp-fallback-label" aria-hidden="true">
+                Tiefstwert
+              </span>
+            )}
+            <span
+              className="weather-day__temp-min"
+              aria-label={
+                night
+                  ? `nachts, ${hourLabel(night.windowStart)} bis ${hourLabel(night.windowEnd)}: ${Math.round(night.value)} Grad`
+                  : `Tiefstwert: ${Math.round(day.tempMin)} Grad`
+              }
+            >
+              {night && <IconMoon />}
+              {Math.round(night ? night.value : day.tempMin)}°
+            </span>
           </span>
         </div>
         {/* Wind and sun are four single numbers — a compact strip right under the
