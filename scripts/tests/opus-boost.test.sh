@@ -289,13 +289,20 @@ assert_eq "T6: Meldung geht genau einmal raus, trotz zweier Ticks" \
 assert_file_present "T6: Stempeldatei für den heutigen Tag existiert" \
   "$STATE_DIR/opus-cap-msg-$TODAY-$ISSUE"
 T6_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
+# #272: hier stand bis S2b 'needs-input'. Das war unter zwei Wartelabeln noch
+# stimmig -- 'needs-input' hiess "haengt", 'needs-answer' hiess "es ist eine
+# Frage gestellt", und der Deckel ist eben keine Frage (die zweite Zusicherung
+# unten, #196). Mit nur noch EINEM Wartelabel gaebe es diese Abstufung nicht
+# mehr: 'needs-answer' wuerde behaupten, jemand schulde eine Antwort. Der
+# Deckel wartet aber auf Zeit -- morgen laeuft er von selbst weiter -- und
+# genau das sagt 'blocked-limit'.
 case "$T6_LABELS" in
-  *needs-input*) ok "T6: needs-input wird bei jedem Treffer gesetzt (idempotent)" ;;
-  *) red "T6: needs-input wird bei jedem Treffer gesetzt (Labels: $T6_LABELS)" ;;
+  *blocked-limit*) ok "T6: blocked-limit wird bei jedem Treffer gesetzt (idempotent)" ;;
+  *) red "T6: blocked-limit wird bei jedem Treffer gesetzt (Labels: $T6_LABELS)" ;;
 esac
 case "$T6_LABELS" in
-  *needs-answer*) red "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info (Labels: $T6_LABELS)" ;;
-  *) ok "T6 (#196): needs-answer wird NICHT gesetzt -- Opus-Tagesdeckel ist reine Kontingent-Info" ;;
+  *needs-answer*) red "T6 (#196/#272): kein Wartelabel -- der Deckel ist reine Kontingent-Info (Labels: $T6_LABELS)" ;;
+  *) ok "T6 (#196/#272): kein Wartelabel -- der Deckel ist reine Kontingent-Info" ;;
 esac
 
 # ==============================================================================

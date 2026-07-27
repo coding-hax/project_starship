@@ -46,9 +46,9 @@ jobs:
       - run: bash scripts/tests/resume-cap.test.sh
       - run: bash scripts/tests/limit-until.test.sh
       - run: bash scripts/tests/opus-boost.test.sh
-      - run: bash scripts/tests/parked-label.test.sh
+      - run: bash scripts/tests/waiting-label.test.sh
       - run: bash scripts/tests/ci-watch.test.sh
-      - run: bash scripts/tests/parked-ci-watch.test.sh
+      - run: bash scripts/tests/waiting-ci-watch.test.sh
       - run: bash scripts/tests/squash-close-guard.test.sh
       - run: bash scripts/tests/shim-start-path.test.sh
       - run: bash scripts/tests/shim-drift.test.sh
