@@ -110,7 +110,12 @@ Runner auf seinem Feature-Branch umschreibt, bekäme diesen Code beim nächsten 
 ausgeführt — ohne CI, ohne Review, ohne `human-approved`. Er müsste dafür nichts
 umgehen; es genügt, die geänderte Datei im Arbeitsbaum liegen zu lassen.
 
-Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt:
+Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt.
+
+Seit der Kern in TypeScript liegt (#184/S6), muss dabei **der ganze Runner** mitwandern,
+nicht nur die `.sh`: `claude-runner.sh` ist nur noch der Einstiegspunkt, entschieden wird
+in `scripts/runner/*.ts`. Ein Shim, der weiterhin nur die `.sh` kopiert, holt den TS-Kern
+aus dem Arbeitsbaum — die Zusage oben gälte dann für den kleineren Teil des Runners.
 
 ```bash
 # ~/.local/bin/starship-runner
@@ -124,12 +129,39 @@ cd "$REPO" || { echo "REPO_DIR nicht gefunden: $REPO" >&2; exit 1; }
 # womöglich gerade auf einem Feature-Branch, den wir nicht anfassen dürfen.
 git fetch -q origin main || { echo "git fetch fehlgeschlagen — Lauf übersprungen." >&2; exit 0; }
 
-TMP=$(mktemp -t starship-runner) || exit 1
-trap 'rm -f "$TMP"' EXIT
-git show "$REF:scripts/claude-runner.sh" > "$TMP" || {
-  echo "Konnte scripts/claude-runner.sh aus $REF nicht lesen." >&2; exit 1; }
-bash -n "$TMP" || { echo "Runner aus $REF ist syntaktisch kaputt — Lauf übersprungen." >&2; exit 1; }
-exec bash "$TMP"
+# `pwd -P` ist Pflicht, nicht Kosmetik: mktemp liefert /var/folders/… , den Symlink
+# auf /private/var/folders/… . cli.ts entscheidet per
+# `process.argv[1] === fileURLToPath(import.meta.url)`, ob es das Hauptmodul ist —
+# argv[1] bleibt der /var-Pfad, import.meta.url wird aufgelöst. Über den Symlink-Pfad
+# hält cli.ts sich für ein importiertes Modul, tut nichts, endet mit Exit 0 und leerer
+# Ausgabe — der Runner entschiede stumm auf leeren Antworten weiter (#249).
+RUNNER_HOME=$(mktemp -d -t starship-runner-home) || exit 1
+RUNNER_HOME=$(cd "$RUNNER_HOME" && pwd -P) || exit 1
+trap 'rm -rf "$RUNNER_HOME"' EXIT INT TERM
+
+# `git archive`, nicht `git --work-tree=… checkout`: letzteres fasst den Index des
+# echten Repos an, in dem womöglich gerade ein Agent arbeitet.
+git archive "$REF" scripts/runner scripts/claude-runner.sh package.json \
+  | tar -x -C "$RUNNER_HOME" || {
+  echo "Konnte den Runner aus $REF nicht materialisieren." >&2; exit 1; }
+
+# node_modules ist Abhängigkeits-Cache, kein reviewter Code — der darf aus dem Repo
+# kommen. tsx und cli.ts liegen damit unter derselben Wurzel, wie ts_run() es erwartet.
+ln -s "$REPO/node_modules" "$RUNNER_HOME/node_modules" || {
+  echo "node_modules nicht verlinkbar — ist im Repo pnpm install gelaufen?" >&2; exit 1; }
+
+bash -n "$RUNNER_HOME/scripts/claude-runner.sh" || {
+  echo "Runner aus $REF ist syntaktisch kaputt — Lauf übersprungen." >&2; exit 1; }
+
+# Explizit, statt sich auf die BASH_SOURCE-Herleitung im Skript zu verlassen: genau
+# die ist über den Shim schon einmal auf $TMPDIR gelandet (#249).
+export RUNNER_HOME
+
+# Kein `exec`: das ersetzt diese Shell und verschluckt den EXIT-Trap oben — der alte
+# Shim hat auf genau diesem Weg pro Tick eine Temp-Datei liegen lassen.
+rc=0
+bash "$RUNNER_HOME/scripts/claude-runner.sh" || rc=$?
+exit "$rc"
 ```
 
 ```bash
@@ -138,6 +170,10 @@ chmod +x ~/.local/bin/starship-runner
 
 So läuft nur Runner-Code, der durch CI **und** durch deine Freigabe gegangen ist —
 egal, worauf das Repo gerade steht.
+
+`REPO_DIR` und `STATE_DIR` bleiben dabei unangetastet: gebaut wird weiter im echten
+Arbeitsbaum, der Zustand liegt weiter in `$REPO/.runner`. Wegwerf ist nur der Runner
+selbst.
 
 ## `~/Library/LaunchAgents/de.starship.runner.plist`
 
