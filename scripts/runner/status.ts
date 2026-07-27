@@ -14,37 +14,24 @@ import type { GhAdapter } from './gh.js';
 // wenn der Runner selbst gerade nichts zu tun hat. Der `-q`-Filter laeuft wie
 // in der Bash-Vorlage serverseitig in `gh` selbst (liefert direkt "#a, #b"),
 // kein eigenes JSON-Parsen noetig.
+//
+// #272: 'needs-answer' ist seit S2b das EINZIGE Wartelabel. Vorher gab es eine
+// Klammer ('needs-input') und einen Marker daneben ('needs-answer'), und die
+// Klammer bedeutete zweierlei: "beantworte meine Frage" und "setz mir
+// human-approved". Der zweite Fall ist mit #276 verschwunden -- damit bleibt
+// genau ein Wartezustand, und er heisst, was er ist. Entsprechend gibt es hier
+// keine answerIssues()/approveIssues()-Aufteilung mehr.
+//
+// 'parked' ist ersatzlos weg (#272): ein wartendes Ticket behaelt einfach
+// 'in-progress'. Die Auswahl ueberspringt es wegen 'needs-answer', belegt also
+// keinen Bauplatz -- und setzt die Arbeit ueber denselben 'running'-Zweig fort,
+// sobald das Label faellt. parkIssue()/parkedIssues() entfallen damit.
 export function waitingIssues(gh: GhAdapter): string {
   try {
     return gh.run([
       'issue',
       'list',
       '--label',
-      'needs-input',
-      '--state',
-      'open',
-      '--limit',
-      '20',
-      '--json',
-      'number',
-      '-q',
-      '[.[].number] | map("#" + tostring) | join(", ")',
-    ]);
-  } catch {
-    return '';
-  }
-}
-
-// #196: Teilmenge von waitingIssues() mit einer echten offenen Frage (braucht
-// eine geschriebene Antwort), fuer den 🟡-Text "wartet auf deine Antwort".
-export function answerIssues(gh: GhAdapter): string {
-  try {
-    return gh.run([
-      'issue',
-      'list',
-      '--label',
-      'needs-input',
-      '--label',
       'needs-answer',
       '--state',
       'open',
@@ -57,111 +44,6 @@ export function answerIssues(gh: GhAdapter): string {
     ]);
   } catch {
     return '';
-  }
-}
-
-// #196: Teilmenge von waitingIssues() OHNE 'needs-answer' -- reine Freigabe,
-// ein Label-Tap genuegt, nichts zu schreiben. Fuer den 🟡-Text "wartet auf
-// deine Freigabe".
-export function approveIssues(gh: GhAdapter): string {
-  try {
-    return gh.run([
-      'issue',
-      'list',
-      '--label',
-      'needs-input',
-      '--state',
-      'open',
-      '--limit',
-      '20',
-      '--json',
-      'number,labels',
-      '-q',
-      '[.[] | select((.labels | map(.name) | index("needs-answer")) | not) | .number] | map("#" + tostring) | join(", ")',
-    ]);
-  } catch {
-    return '';
-  }
-}
-
-// Liegt gerade ein 'parked'-Ticket (#145) herum, waehrend an einem anderen
-// gebaut wird? Fuer den Status-Text der 🟠-"arbeitet an"-Meldung (#145 AC6).
-export function parkedIssues(gh: GhAdapter): string {
-  try {
-    return gh.run([
-      'issue',
-      'list',
-      '--label',
-      'parked',
-      '--state',
-      'open',
-      '--limit',
-      '20',
-      '--json',
-      'number',
-      '-q',
-      '[.[].number] | map("#" + tostring) | join(", ")',
-    ]);
-  } catch {
-    return '';
-  }
-}
-
-// #196: parkedIssues()-Teilmenge mit 'needs-answer' -- fuer die PARKED_NOTE-
-// Zweiteilung "wartet auf deine Antwort" vs. "wartet auf deine Freigabe".
-export function parkedAnswerIssues(gh: GhAdapter): string {
-  try {
-    return gh.run([
-      'issue',
-      'list',
-      '--label',
-      'parked',
-      '--label',
-      'needs-answer',
-      '--state',
-      'open',
-      '--limit',
-      '20',
-      '--json',
-      'number',
-      '-q',
-      '[.[].number] | map("#" + tostring) | join(", ")',
-    ]);
-  } catch {
-    return '';
-  }
-}
-
-// #196: parkedIssues()-Teilmenge OHNE 'needs-answer' -- reine Freigabe.
-export function parkedApproveIssues(gh: GhAdapter): string {
-  try {
-    return gh.run([
-      'issue',
-      'list',
-      '--label',
-      'parked',
-      '--state',
-      'open',
-      '--limit',
-      '20',
-      '--json',
-      'number,labels',
-      '-q',
-      '[.[] | select((.labels | map(.name) | index("needs-answer")) | not) | .number] | map("#" + tostring) | join(", ")',
-    ]);
-  } catch {
-    return '';
-  }
-}
-
-// Nimmt einem Ticket 'in-progress' ab und gibt 'parked' -- die zentrale
-// Stelle fuer die Selbstheilung (#145).
-export function parkIssue(issue: number, gh: GhAdapter): boolean {
-  try {
-    gh.run(['issue', 'edit', String(issue), '--remove-label', 'in-progress', '--add-label', 'parked']);
-    return true;
-  } catch {
-    return false;
   }
 }
 

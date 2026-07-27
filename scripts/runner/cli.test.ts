@@ -100,16 +100,13 @@ describe('dispatch', () => {
       'reopen-falsely-closed-issues',
       'pr-failure-summary',
       'watch-running-issue',
-      'watch-parked-issues',
-      'self-heal-park',
+      // #272: aus 'watch-parked-issues' wurde 'watch-waiting-issues'. Die
+      // Park-Kommandos ('self-heal-park', 'park-issue', 'parked-*') und die
+      // Aufteilung 'answer-issues'/'approve-issues' sind ersatzlos weg -- es
+      // gibt nur noch ein Wartelabel und kein Parken mehr.
+      'watch-waiting-issues',
       'pick-ticket',
       'waiting-issues',
-      'answer-issues',
-      'approve-issues',
-      'parked-issues',
-      'parked-answer-issues',
-      'parked-approve-issues',
-      'park-issue',
       'cleanup-state',
       'queue-snapshot',
       'queue-body',

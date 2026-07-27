@@ -8,7 +8,7 @@ import { createStateAdapter, type StateAdapter } from './state';
 import {
   conflictSummary,
   dirtySummary,
-  watchParkedIssues,
+  watchWaitingIssues,
   watchReaction,
   watchRunningIssue,
   type WatchState,
@@ -26,59 +26,59 @@ const ALL_STATES: WatchState[] = [
 ];
 
 describe('watchReaction (AC1/AC2: eine Übergangstabelle, keine Lücke)', () => {
-  it('liefert für JEDEN WatchState UND parked:true/false eine definierte Reaktion', () => {
+  it('liefert für JEDEN WatchState UND waiting:true/false eine definierte Reaktion', () => {
     for (const state of ALL_STATES) {
-      for (const parked of [true, false]) {
-        const reaction = watchReaction({ state, parked, retryEscalated: false });
+      for (const waiting of [true, false]) {
+        const reaction = watchReaction({ state, waiting, retryEscalated: false });
         expect(reaction).toBeDefined();
         expect(reaction.kind).not.toBeUndefined();
       }
     }
   });
 
-  it('pending: laufend wartet grün, geparkt bleibt still', () => {
-    expect(watchReaction({ state: 'pending', parked: false })).toEqual({ kind: 'wait', severity: 'green' });
-    expect(watchReaction({ state: 'pending', parked: true })).toEqual({ kind: 'noop' });
+  it('pending: laufend wartet grün, wartend bleibt still', () => {
+    expect(watchReaction({ state: 'pending', waiting: false })).toEqual({ kind: 'wait', severity: 'green' });
+    expect(watchReaction({ state: 'pending', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('success: merge, unabhängig von parked', () => {
-    expect(watchReaction({ state: 'success', parked: false })).toEqual({ kind: 'merge' });
-    expect(watchReaction({ state: 'success', parked: true })).toEqual({ kind: 'merge' });
+  it('success: merge, unabhängig vom Warten', () => {
+    expect(watchReaction({ state: 'success', waiting: false })).toEqual({ kind: 'merge' });
+    expect(watchReaction({ state: 'success', waiting: true })).toEqual({ kind: 'merge' });
   });
 
-  it('failing-protected: laufend setzt needs-input, geparkt bleibt die stille Genehmigungs-Schranke', () => {
-    expect(watchReaction({ state: 'failing-protected', parked: false })).toEqual({ kind: 'add-needs-input' });
-    expect(watchReaction({ state: 'failing-protected', parked: true })).toEqual({ kind: 'noop' });
+  it('failing-protected: laufend setzt needs-answer, wartend bleibt still', () => {
+    expect(watchReaction({ state: 'failing-protected', waiting: false })).toEqual({ kind: 'add-needs-answer' });
+    expect(watchReaction({ state: 'failing-protected', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('failing-fix: laufend startet Fix-Agent, geparkt wird Entparken-Kandidat', () => {
-    expect(watchReaction({ state: 'failing-fix', parked: false })).toEqual({ kind: 'build-fix' });
-    expect(watchReaction({ state: 'failing-fix', parked: true })).toEqual({ kind: 'promote-candidate' });
+  it('failing-fix: laufend startet Fix-Agent, wartend bleibt still (#272: kein Entparken mehr)', () => {
+    expect(watchReaction({ state: 'failing-fix', waiting: false })).toEqual({ kind: 'build-fix' });
+    expect(watchReaction({ state: 'failing-fix', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('behind-caught-up: laufend grün, geparkt still', () => {
-    expect(watchReaction({ state: 'behind-caught-up', parked: false })).toEqual({ kind: 'wait', severity: 'green' });
-    expect(watchReaction({ state: 'behind-caught-up', parked: true })).toEqual({ kind: 'noop' });
+  it('behind-caught-up: laufend grün, wartend still', () => {
+    expect(watchReaction({ state: 'behind-caught-up', waiting: false })).toEqual({ kind: 'wait', severity: 'green' });
+    expect(watchReaction({ state: 'behind-caught-up', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('behind-conflict: laufend Fix-Agent, geparkt Entparken-Kandidat', () => {
-    expect(watchReaction({ state: 'behind-conflict', parked: false })).toEqual({ kind: 'build-fix' });
-    expect(watchReaction({ state: 'behind-conflict', parked: true })).toEqual({ kind: 'promote-candidate' });
+  it('behind-conflict: laufend Fix-Agent, wartend still', () => {
+    expect(watchReaction({ state: 'behind-conflict', waiting: false })).toEqual({ kind: 'build-fix' });
+    expect(watchReaction({ state: 'behind-conflict', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('dirty-conflict: laufend Fix-Agent, geparkt Entparken-Kandidat (#217 AC2/AC3)', () => {
-    expect(watchReaction({ state: 'dirty-conflict', parked: false })).toEqual({ kind: 'build-fix' });
-    expect(watchReaction({ state: 'dirty-conflict', parked: true })).toEqual({ kind: 'promote-candidate' });
+  it('dirty-conflict: laufend Fix-Agent, wartend still (#217 AC2/AC3)', () => {
+    expect(watchReaction({ state: 'dirty-conflict', waiting: false })).toEqual({ kind: 'build-fix' });
+    expect(watchReaction({ state: 'dirty-conflict', waiting: true })).toEqual({ kind: 'noop' });
   });
 
-  it('behind-retry: geparkt IMMER still, laufend abhängig von retryEscalated', () => {
-    expect(watchReaction({ state: 'behind-retry', parked: true })).toEqual({ kind: 'noop' });
-    expect(watchReaction({ state: 'behind-retry', parked: true, retryEscalated: true })).toEqual({ kind: 'noop' });
-    expect(watchReaction({ state: 'behind-retry', parked: false, retryEscalated: false })).toEqual({
+  it('behind-retry: wartend IMMER still, laufend abhängig von retryEscalated', () => {
+    expect(watchReaction({ state: 'behind-retry', waiting: true })).toEqual({ kind: 'noop' });
+    expect(watchReaction({ state: 'behind-retry', waiting: true, retryEscalated: true })).toEqual({ kind: 'noop' });
+    expect(watchReaction({ state: 'behind-retry', waiting: false, retryEscalated: false })).toEqual({
       kind: 'wait',
       severity: 'green',
     });
-    expect(watchReaction({ state: 'behind-retry', parked: false, retryEscalated: true })).toEqual({
+    expect(watchReaction({ state: 'behind-retry', waiting: false, retryEscalated: true })).toEqual({
       kind: 'wait',
       severity: 'yellow',
     });
@@ -122,7 +122,7 @@ describe('dirtySummary (#217)', () => {
   });
 });
 
-// --- Test-Doubles fuer watchRunningIssue/watchParkedIssues -------------------
+// --- Test-Doubles fuer watchRunningIssue/watchWaitingIssues -------------------
 // Mehrere PRs gleichzeitig ansprechbar (checks-$pr/mergestate-$pr), analog zu
 // den Bash-Stubs in ci-watch.test.sh/parked-ci-watch.test.sh.
 interface Check {
@@ -238,13 +238,16 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '503']);
   });
 
-  it('T4: CI rot NUR bei protected-paths -> needs-input, kein Fix-Agent', () => {
+  // #276 hat `protected-paths` entschaerft -- dieser Zustand kann im Betrieb
+  // nicht mehr entstehen. Der Test bleibt trotzdem: er beschreibt, was der
+  // Runner taete, wenn der Waechter je zurueckkaeme (siehe #278).
+  it('T4: CI rot NUR bei protected-paths -> needs-answer, kein Fix-Agent', () => {
     const gh = ghFake({
       checks: { '504': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'Approval missing' }] },
     });
     const result = watchRunningIssue(304, '504', { gh, git: gitFake(), state });
-    expect(result).toEqual({ kind: 'needs-input-protected' });
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '304', '--add-label', 'needs-input']);
+    expect(result).toEqual({ kind: 'protected-red' });
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '304', '--add-label', 'needs-answer']);
   });
 
   it('T7: hinter main, Checks grün, kein Konflikt -> nachgezogen, kein Merge', () => {
@@ -351,60 +354,85 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
   });
 });
 
-describe('watchParkedIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)', () => {
+// #272: hiess bis S2b `watchParkedIssues`. Ein wartendes Ticket wird nicht
+// mehr entparkt -- es behaelt 'in-progress' und wartet auf eine Antwort, nicht
+// auf einen freien Bauplatz. Die frueheren "wird Entparken-Kandidat"-Faelle
+// pruefen deshalb jetzt, dass GENAU NICHTS passiert; das ist die Zusicherung,
+// auf die es ankommt (kein Lauf hinter dem Ruecken des Menschen).
+describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)', () => {
   let dir: string;
   let state: StateAdapter;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'runner-watch-parked-'));
+    dir = mkdtempSync(join(tmpdir(), 'runner-watch-waiting-'));
     state = createStateAdapter(dir);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  function issue(n: number, createdAt = '2024-01-01T00:00:00Z', hasNeedsInput = false) {
-    return { number: n, createdAt, hasNeedsInput };
+  function issue(n: number, createdAt = '2024-01-01T00:00:00Z') {
+    return { number: n, createdAt };
   }
 
-  it('T1: PR komplett grün -> freigegeben (merge + Labels entfernt), kein Fix-Agent', () => {
+  it('T1: PR komplett grün -> freigegeben (merge + needs-answer entfernt), kein Fix-Agent', () => {
     const gh = ghFake({
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
     });
-    const outcome = watchParkedIssues([issue(401, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
+    const outcome = watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
     expect(outcome.released).toEqual([401]);
-    expect(outcome.promoted).toBeNull();
-    expect(gh.run).toHaveBeenCalledWith([
-      'issue',
-      'edit',
-      '401',
-      '--remove-label',
-      'parked',
-      '--remove-label',
-      'needs-input',
-      '--remove-label',
-      'needs-answer',
-    ]);
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '401', '--remove-label', 'needs-answer']);
   });
 
-  it('#196: entfernt needs-answer beim Freigeben mit, kein verwaister Marker', () => {
+  it('#196: kein verwaister Marker -- needs-answer verschwindet mit dem Merge', () => {
     const gh = ghFake({
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
     });
-    watchParkedIssues([issue(401, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
     expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
-  it('T2/T3: PR pending/rot (nicht entparkbar) -> bleibt unverändert geparkt', () => {
+  // #272: die Wache nimmt GENAU das Wartelabel ab. 'in-progress' bleibt stehen
+  // -- das Ticket schliesst der Squash-Commit über 'Closes #N', nicht die
+  // Wache. Bis S2b stand hier das Gegenteil: ein freigegebenes Ticket musste
+  // von 'parked' auf 'in-progress' zurückbefördert werden.
+  it('#272: der Merge fasst nur needs-answer an, nicht in-progress', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+    });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
+    const edits = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
+      .map((c) => c[0])
+      .filter((args) => args[0] === 'issue' && args[1] === 'edit');
+    expect(edits).toEqual([['issue', 'edit', '401', '--remove-label', 'needs-answer']]);
+  });
+
+  // #167: der Entwurfsstatus heißt "der Lauf ist nicht sauber zu Ende
+  // gekommen". Auto-Merge auf einem Draft greift nicht -- die Reihenfolge
+  // ready -> merge -> Label ist deshalb Bedingung, keine Kosmetik.
+  it('#167: erst aus dem Entwurf heben, dann mergen, dann das Wartelabel abnehmen', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }] },
+    });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state });
+    const sequence = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
+      .map((c) => c[0])
+      .filter((args) => (args[0] === 'pr' && (args[1] === 'ready' || args[1] === 'merge')) || args[1] === 'edit')
+      .map((args) => `${args[0]} ${args[1]}`);
+    expect(sequence).toEqual(['pr ready', 'pr merge', 'issue edit']);
+  });
+
+  it('T2/T3: PR pending -> bleibt unverändert wartend', () => {
     const ghPending = ghFake({
       prList: [{ number: 602, headRefName: 'fix/402-x' }],
       checks: { '602': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pending', name: 'e2e' }] },
     });
-    const outPending = watchParkedIssues([issue(402)], true, { gh: ghPending, git: gitFake(), state });
-    expect(outPending).toEqual({ promoted: null, released: [] });
+    expect(watchWaitingIssues([issue(402)], { gh: ghPending, git: gitFake(), state })).toEqual({ released: [] });
   });
 
-  it('T5: mehrere geparkte Tickets -- eins grün (freigegeben), eins pending (bleibt)', () => {
+  it('T5: mehrere wartende Tickets -- eins grün (freigegeben), eins pending (bleibt)', () => {
     const gh = ghFake({
       prList: [
         { number: 701, headRefName: 'fix/501-x' },
@@ -415,42 +443,38 @@ describe('watchParkedIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)'
         '702': [{ bucket: 'pending', name: 'e2e' }],
       },
     });
-    const outcome = watchParkedIssues([issue(501), issue(502, '2024-01-02T00:00:00Z', true)], true, {
+    const outcome = watchWaitingIssues([issue(501), issue(502, '2024-01-02T00:00:00Z')], {
       gh,
       git: gitFake(),
       state,
     });
     expect(outcome.released).toEqual([501]);
-    expect(outcome.promoted).toBeNull();
   });
 
-  it('T7: hinter main + echter Merge-Konflikt -> entparkt (Kandidat), Grund benannt', () => {
+  it('T7: hinter main + echter Merge-Konflikt -> bleibt still, kein Entparken mehr (#272)', () => {
     const gh = ghFake({
       prList: [{ number: 720, headRefName: 'fix/420-x' }],
       checks: { '720': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
       mergeState: { '720': { headRefName: 'fix/420-x', mergeStateStatus: 'BEHIND' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts'] });
-    const outcome = watchParkedIssues([issue(420)], true, { gh, git, state });
-    expect(outcome.promoted).toEqual({ issue: 420, reason: 'ein Merge-Konflikt beim Nachziehen von `main`' });
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '420', '--remove-label', 'parked', '--add-label', 'in-progress']);
+    expect(watchWaitingIssues([issue(420)], { gh, git, state })).toEqual({ released: [] });
+    expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--add-label', 'in-progress']));
   });
 
-  it('T24 (#217 AC3): DIRTY-PR -> entparkt (Kandidat), Grund nennt DIRTY', () => {
+  it('T24 (#217 AC3): DIRTY-PR -> bleibt still', () => {
     const gh = ghFake({
       prList: [{ number: 753, headRefName: 'fix/453-x' }],
       checks: { '753': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
       mergeState: { '753': { headRefName: 'fix/453-x', mergeStateStatus: 'DIRTY' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts'] });
-    const outcome = watchParkedIssues([issue(453)], true, { gh, git, state });
-    expect(outcome.promoted).toEqual({ issue: 453, reason: 'ein Merge-Konflikt (`DIRTY`) mit `main`' });
-    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '453', '--remove-label', 'parked', '--add-label', 'in-progress']);
+    expect(watchWaitingIssues([issue(453)], { gh, git, state })).toEqual({ released: [] });
   });
 
   // #217 AC4: ohne dieses Gate faellt das Ticket aus jeder Wache heraus --
-  // 'parked' weg, PR aber weiterhin offen und unbeobachtet.
-  it('T25 (#217 AC4): scheitert "gh pr merge", bleibt das Ticket geparkt', () => {
+  // Wartelabel weg, PR aber weiterhin offen und unbeobachtet.
+  it('T25 (#217 AC4): scheitert "gh pr merge", behält das Ticket sein needs-answer', () => {
     const base = ghFake({
       prList: [{ number: 754, headRefName: 'fix/454-x' }],
       checks: { '754': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
@@ -462,79 +486,76 @@ describe('watchParkedIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)'
         return base.run(args);
       }),
     };
-    const outcome = watchParkedIssues([issue(454)], true, { gh, git: gitFake(), state });
+    const outcome = watchWaitingIssues([issue(454)], { gh, git: gitFake(), state });
     expect(outcome.released).toEqual([]);
-    expect(gh.run).not.toHaveBeenCalledWith([
-      'issue',
-      'edit',
-      '454',
-      '--remove-label',
-      'parked',
-      '--remove-label',
-      'needs-input',
-    ]);
+    expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '454', '--remove-label', 'needs-answer']);
   });
 
-  it('T8: rote Checks über protected-paths hinaus -> entparkt (Kandidat)', () => {
+  it('T8: rote Checks über protected-paths hinaus -> bleibt still', () => {
     const gh = ghFake({
       prList: [{ number: 721, headRefName: 'fix/421-x' }],
       checks: { '721': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
     });
-    const outcome = watchParkedIssues([issue(421)], true, { gh, git: gitFake(), state });
-    expect(outcome.promoted).toEqual({ issue: 421, reason: 'rote Checks (mehr als nur `protected-paths`)' });
+    expect(watchWaitingIssues([issue(421)], { gh, git: gitFake(), state })).toEqual({ released: [] });
   });
 
-  it('T9: nur protected-paths rot bleibt die Genehmigungs-Schranke -- kein Entparken', () => {
+  it('T9: nur protected-paths rot -> bleibt still', () => {
     const gh = ghFake({
       prList: [{ number: 722, headRefName: 'fix/422-x' }],
       checks: { '722': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'Approval missing' }] },
     });
-    const outcome = watchParkedIssues([issue(422, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
-    expect(outcome).toEqual({ promoted: null, released: [] });
+    expect(watchWaitingIssues([issue(422)], { gh, git: gitFake(), state })).toEqual({ released: [] });
   });
 
-  it('T10: needs-input hängt schon -- kein automatisches Entparken über die offene Frage hinweg', () => {
+  // #272: die eigentliche Zusicherung dieser Stufe -- ein Ticket, das auf eine
+  // Antwort wartet, wird NIE von selbst weitergebaut, egal wie sein PR steht.
+  it('ein wartendes Ticket wird nie automatisch fortgesetzt, egal wie rot der PR ist', () => {
     const gh = ghFake({
       prList: [{ number: 723, headRefName: 'fix/423-x' }],
-      checks: { '723': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
+      checks: { '723': [{ bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
     });
-    const outcome = watchParkedIssues([issue(423, '2024-01-01T00:00:00Z', true)], true, { gh, git: gitFake(), state });
-    expect(outcome.promoted).toBeNull();
+    watchWaitingIssues([issue(423)], { gh, git: gitFake(), state });
+    expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
-  it('T11: WIP-Limit=1 -- ein entparkbares Ticket bleibt geparkt, solange der Bauplatz belegt ist', () => {
+  it('#272: es gibt keinen Bauplatz-Vorbehalt mehr -- zwei wartende Tickets ändern nichts aneinander', () => {
     const gh = ghFake({
-      prList: [{ number: 825, headRefName: 'fix/425-x' }],
-      checks: { '825': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
+      prList: [
+        { number: 825, headRefName: 'fix/425-x' },
+        { number: 828, headRefName: 'fix/428-x' },
+      ],
+      checks: {
+        '825': [{ bucket: 'fail', name: 'e2e', description: '2 tests failed' }],
+        '828': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }],
+      },
     });
-    const outcome = watchParkedIssues([issue(425)], false, { gh, git: gitFake(), state });
-    expect(outcome.promoted).toBeNull();
+    const outcome = watchWaitingIssues([issue(425), issue(428, '2024-02-01T00:00:00Z')], { gh, git: gitFake(), state });
+    expect(outcome.released).toEqual([428]);
   });
 
-  it('T12: höchstens EIN Ticket pro Runde -- das ältere (createdAt) gewinnt', () => {
+  it('T12: die Reihenfolge folgt createdAt, nicht der Übergabereihenfolge', () => {
     const gh = ghFake({
       prList: [
         { number: 826, headRefName: 'fix/426-x' },
         { number: 827, headRefName: 'fix/427-x' },
       ],
       checks: {
-        '826': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: 'älter' }],
-        '827': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: 'jünger' }],
+        '826': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }],
+        '827': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }],
       },
     });
-    // Bewusst in "falscher" Reihenfolge übergeben -- watchParkedIssues sortiert
+    // Bewusst in "falscher" Reihenfolge übergeben -- watchWaitingIssues sortiert
     // selbst nach createdAt, wie PARKED_LIST in der Bash-Vorlage.
-    const outcome = watchParkedIssues(
-      [issue(427, '2025-06-01T00:00:00Z'), issue(426, '2024-01-01T00:00:00Z')],
-      true,
-      { gh, git: gitFake(), state },
-    );
-    expect(outcome.promoted?.issue).toBe(426);
+    const outcome = watchWaitingIssues([issue(427, '2025-06-01T00:00:00Z'), issue(426, '2024-01-01T00:00:00Z')], {
+      gh,
+      git: gitFake(),
+      state,
+    });
+    expect(outcome.released).toEqual([426, 427]);
   });
 
   it('kein offener PR fürs Ticket -> wird übersprungen, kein Fehler', () => {
     const gh = ghFake({ prList: [] });
-    const outcome = watchParkedIssues([issue(999)], true, { gh, git: gitFake(), state });
-    expect(outcome).toEqual({ promoted: null, released: [] });
+    expect(watchWaitingIssues([issue(999)], { gh, git: gitFake(), state })).toEqual({ released: [] });
   });
 });

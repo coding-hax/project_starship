@@ -83,7 +83,7 @@ describe('Chaining-Entscheidung (#61)', () => {
   // AC1: fragt der Agent an SEINEM Ticket nach, ist der Tick vorbei --
   // in der Bash-Suite messbar als genau ein claude-Aufruf.
   it('bricht ab, wenn der Agent an diesem Ticket eine Frage gestellt hat', () => {
-    const { gh } = ghDouble([labelsAre('ready', 'needs-input')]);
+    const { gh } = ghDouble([labelsAre('ready', 'needs-answer')]);
     const result = roundEval(ctx(gh), plan, clean, '');
 
     expect(result.chain).toBe('stop');

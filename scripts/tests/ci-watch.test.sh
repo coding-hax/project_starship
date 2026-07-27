@@ -297,7 +297,9 @@ assert_not_contains "T3: NICHT der generische Bau-Prompt" \
   "Pflichtlektüre ist NUR CLAUDE.md" "$PROMPT_503"
 
 # ==============================================================================
-# T4 -- CI rot NUR bei protected-paths -> needs-input, kein Fix-Agent
+# T4 -- CI rot NUR bei protected-paths -> needs-answer, kein Fix-Agent.
+#       #276 hat den Waechter entschaerft, der Fall kann im Betrieb nicht mehr
+#       eintreten; der Test beschreibt, was der Runner taete, wenn er zurueckkaeme.
 # ==============================================================================
 reset_state
 setup_wip_issue 304
@@ -309,12 +311,16 @@ assert_file_absent "T4: kein Agentenlauf bei rotem protected-paths allein" \
   "$GHSTATE_DIR/claude-called"
 LABELS_304=$(cat "$GHSTATE_DIR/labels-304" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_304" in
-  *needs-input*) ok "T4: needs-input wird gesetzt -- das ist die Genehmigungs-Schranke" ;;
-  *) red "T4: needs-input wird gesetzt (Labels: $LABELS_304)" ;;
+  *needs-answer*) ok "T4: needs-answer wird gesetzt -- ein Mensch muss draufsehen" ;;
+  *) red "T4: needs-answer wird gesetzt (Labels: $LABELS_304)" ;;
 esac
+# #272: es gibt nur noch EIN Wartelabel -- die frueher hier gepruefte
+# Unterscheidung "Freigabe (needs-answer allein) vs. Frage (+ needs-answer)"
+# existiert nicht mehr. Geprueft wird stattdessen, dass das abgeschaffte
+# 'needs-answer' wirklich nirgends mehr auftaucht.
 case "$LABELS_304" in
-  *needs-answer*) red "T4 (#196): needs-answer wird NICHT gesetzt -- das ist reine Freigabe, keine Frage (Labels: $LABELS_304)" ;;
-  *) ok "T4 (#196): needs-answer wird NICHT gesetzt -- das ist reine Freigabe, keine Frage" ;;
+  *needs-input*) red "T4 (#272): 'needs-input' ist abgeschafft, darf nicht gesetzt werden (Labels: $LABELS_304)" ;;
+  *) ok "T4 (#272): 'needs-input' wird nicht mehr gesetzt -- ein Wartelabel genuegt" ;;
 esac
 assert_file_absent "T4: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-504"
 
@@ -436,10 +442,10 @@ reset_state
 : > "$GHSTATE_DIR/labels-410"
 echo "in-progress" >> "$GHSTATE_DIR/labels-410"
 : > "$GHSTATE_DIR/labels-403"
-echo "parked" >> "$GHSTATE_DIR/labels-403"
+printf "in-progress\nneeds-answer\n" >> "$GHSTATE_DIR/labels-403"
 printf '[
   {"number":410,"labels":[{"name":"in-progress"}],"createdAt":"2026-01-01T00:00:00Z"},
-  {"number":403,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}
+  {"number":403,"labels":[{"name":"in-progress"},{"name":"needs-answer"}],"createdAt":"2025-01-01T00:00:00Z"}
 ]' > "$GHSTATE_DIR/wip.json"
 printf '[{"number":810,"headRefName":"fix/410-runner-ci-watch"},{"number":703,"headRefName":"fix/403-runner-ci-watch"}]' \
   > "$GHSTATE_DIR/prlist.json"
@@ -454,13 +460,13 @@ assert_file_absent "T9: das laufende Ticket wird durchs Nachziehen nicht gestör
   "$GHSTATE_DIR/merged-810"
 LABELS_403=$(cat "$GHSTATE_DIR/labels-403" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_403" in
-  *parked*) ok "T9: Ticket bleibt geparkt, bis CI nach dem Nachziehen neu grün ist" ;;
+  *needs-answer*) ok "T9: Ticket bleibt wartend, bis CI nach dem Nachziehen neu grün ist" ;;
   *) red "T9: Ticket bleibt geparkt (Labels: $LABELS_403)" ;;
 esac
 
 # ==============================================================================
 # T10 -- Bau-Prompt weist an: geschuetzten Pfad beim Oeffnen des Draft-PR
-#        SELBST als needs-input markieren und in diesem Lauf nicht wieder
+#        SELBST als needs-answer markieren und in diesem Lauf nicht wieder
 #        abnehmen (#163) -- die Wache bleibt nur das Sicherheitsnetz
 # ==============================================================================
 reset_state
@@ -468,13 +474,13 @@ setup_wip_issue 320
 printf '[]' > "$GHSTATE_DIR/prlist.json"   # noch kein PR -> generischer Bau-Prompt
 run_round
 PROMPT_320=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
-assert_contains "T10: Bau-Prompt weist an, needs-input bei geschuetzten Pfaden selbst zu setzen" \
-  "add-label needs-input" "$PROMPT_320"
+assert_contains "T10: Bau-Prompt weist an, needs-answer bei geschuetzten Pfaden selbst zu setzen" \
+  "add-label needs-answer" "$PROMPT_320"
 assert_contains "T10: Bau-Prompt untersagt, es im selben Lauf wieder abzunehmen" \
   "NICHT wieder ab" "$PROMPT_320"
 
 # ==============================================================================
-# T11 -- protected-paths allein rot, needs-input haengt bereits dran (z. B.
+# T11 -- protected-paths allein rot, needs-answer haengt bereits dran (z. B.
 #        vom Bau-Agent selbst gesetzt, #163) -> erneutes Setzen durch die
 #        Wache bleibt folgenlos, kein Fehler, kein Fix-Agent, kein Auto-Merge
 # ==============================================================================
@@ -482,16 +488,16 @@ reset_state
 setup_wip_issue 306
 setup_pr 306 506
 : > "$GHSTATE_DIR/labels-306"
-printf 'in-progress\nneeds-input\n' >> "$GHSTATE_DIR/labels-306"
+printf 'in-progress\nneeds-answer\n' >> "$GHSTATE_DIR/labels-306"
 printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"protected-paths","description":"Approval missing"}]' \
   > "$GHSTATE_DIR/checks-506.json"
 run_round
-assert_file_absent "T11: kein Agentenlauf, needs-input haengt schon vom Bau-Agent" \
+assert_file_absent "T11: kein Agentenlauf, needs-answer haengt schon vom Bau-Agent" \
   "$GHSTATE_DIR/claude-called"
 LABELS_306=$(cat "$GHSTATE_DIR/labels-306" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_306" in
-  *needs-input*) ok "T11: needs-input bleibt stehen, erneutes Setzen ist folgenlos" ;;
-  *) red "T11: needs-input bleibt stehen (Labels: $LABELS_306)" ;;
+  *needs-answer*) ok "T11: needs-answer bleibt stehen, erneutes Setzen ist folgenlos" ;;
+  *) red "T11: needs-answer bleibt stehen (Labels: $LABELS_306)" ;;
 esac
 assert_file_absent "T11: kein Auto-Merge, solange protected-paths rot ist" "$GHSTATE_DIR/merged-506"
 
@@ -512,7 +518,7 @@ assert_contains "T12: Bau-Prompt weist an, Auto-Merge selbst zu aktivieren" \
 
 # ==============================================================================
 # T13 -- Bau-Prompt (#167): auch im Zweig fuer geschuetzte Pfade bleibt die
-#        Anweisung stehen -- needs-input haelt das Ticket geparkt, aber der
+#        Anweisung stehen -- needs-answer haelt das Ticket geparkt, aber der
 #        PR soll trotzdem kein Entwurf mehr sein ('protected-paths' haelt ihn
 #        ohnehin rot, bis ein Mensch freigibt)
 # ==============================================================================
@@ -521,7 +527,7 @@ setup_wip_issue 322
 printf '[]' > "$GHSTATE_DIR/prlist.json"
 run_round
 PROMPT_322=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
-assert_contains "T13: Bau-Prompt haelt an 'gh pr ready' fest, auch bei needs-input aus Schritt 7" \
+assert_contains "T13: Bau-Prompt haelt an 'gh pr ready' fest, auch bei needs-answer aus Schritt 7" \
   "wegen eines" "$PROMPT_322"
 assert_contains "T13: Bau-Prompt erwaehnt, dass protected-paths trotzdem rot haelt" \
   "protected-paths" "$PROMPT_322"
@@ -697,27 +703,26 @@ PROMPT_752=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
 assert_contains "T23: Auftrag nennt 'unbekannt' als Dateiliste" "unbekannt" "$PROMPT_752"
 
 # ==============================================================================
-# T24 -- #217 AC3: ein GEPARKTES Ticket im conflict-Zustand wird entparkt
-#        (in-progress statt parked) -- ohne dass gerade ein anderes Ticket
-#        in-progress ist und ohne offene needs-input-Frage.
+# T24 -- #217 AC3, neu geschnitten in #272: ein WARTENDES Ticket im
+#        conflict-Zustand bleibt wartend. Frueher wurde es hier entparkt --
+#        das setzte voraus, dass der Mensch schon geantwortet hatte. Diesen
+#        Zwischenzustand gibt es nicht mehr: wer antwortet, nimmt
+#        'needs-answer' ab, und dann greift der normale running-Zweig.
 # ==============================================================================
 reset_state
 : > "$GHSTATE_DIR/labels-453"
-echo "parked" >> "$GHSTATE_DIR/labels-453"
-printf '[{"number":453,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}]' \
+printf 'in-progress\nneeds-answer\n' >> "$GHSTATE_DIR/labels-453"
+printf '[{"number":453,"labels":[{"name":"in-progress"},{"name":"needs-answer"}],"createdAt":"2025-01-01T00:00:00Z"}]' \
   > "$GHSTATE_DIR/wip.json"
 printf '[{"number":753,"headRefName":"fix/453-runner-ci-watch"}]' > "$GHSTATE_DIR/prlist.json"
 setup_conflict 453 753
 run_round
 LABELS_453=$(cat "$GHSTATE_DIR/labels-453" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_453" in
-  *in-progress*) ok "T24 (#217 AC3): geparktes Ticket im conflict-Zustand wird entparkt" ;;
-  *) red "T24: geparktes Ticket im conflict-Zustand wird entparkt (Labels: $LABELS_453)" ;;
+  *needs-answer*) ok "T24 (#272): wartendes Ticket im conflict-Zustand bleibt wartend" ;;
+  *) red "T24 (#272): wartendes Ticket im conflict-Zustand bleibt wartend (Labels: $LABELS_453)" ;;
 esac
-case "$LABELS_453" in
-  *parked*) red "T24: 'parked' sollte entfernt sein (Labels: $LABELS_453)" ;;
-  *) ok "T24: 'parked' wurde beim Entparken entfernt" ;;
-esac
+assert_file_absent "T24 (#272): kein Fix-Agent hinter der offenen Frage" "$GHSTATE_DIR/claude-called"
 
 # ==============================================================================
 # T25 -- #217 AC4: ein geparktes Ticket mit gruener CI (success), aber
@@ -730,10 +735,10 @@ reset_state
 : > "$GHSTATE_DIR/labels-461"
 echo "in-progress" >> "$GHSTATE_DIR/labels-461"
 : > "$GHSTATE_DIR/labels-454"
-echo "parked" >> "$GHSTATE_DIR/labels-454"
+printf "in-progress\nneeds-answer\n" >> "$GHSTATE_DIR/labels-454"
 printf '[
   {"number":461,"labels":[{"name":"in-progress"}],"createdAt":"2026-01-01T00:00:00Z"},
-  {"number":454,"labels":[{"name":"parked"}],"createdAt":"2025-01-01T00:00:00Z"}
+  {"number":454,"labels":[{"name":"in-progress"},{"name":"needs-answer"}],"createdAt":"2025-01-01T00:00:00Z"}
 ]' > "$GHSTATE_DIR/wip.json"
 printf '[{"number":861,"headRefName":"fix/461-runner-ci-watch"},{"number":754,"headRefName":"fix/454-runner-ci-watch"}]' \
   > "$GHSTATE_DIR/prlist.json"
@@ -744,13 +749,13 @@ printf '{"headRefName":"fix/454-runner-ci-watch","mergeStateStatus":"CLEAN"}' \
   > "$GHSTATE_DIR/mergestate-754.json"
 touch "$GHSTATE_DIR/gh-merge-fail"
 run_round
-assert_file_absent "T25 (#217 AC4): kein Auto-Merge, wenn 'gh pr merge' für ein geparktes Ticket scheitert" \
+assert_file_absent "T25 (#217 AC4): kein Auto-Merge, wenn 'gh pr merge' für ein wartendes Ticket scheitert" \
   "$GHSTATE_DIR/merged-754"
 assert_file_absent "T25: kein Agentenlauf, obwohl der Merge scheitert" "$GHSTATE_DIR/claude-called"
 LABELS_454=$(cat "$GHSTATE_DIR/labels-454" 2>/dev/null | tr '\n' ' ')
 case "$LABELS_454" in
-  *parked*) ok "T25: Ticket bleibt geparkt, wenn der Merge fehlschlägt" ;;
-  *) red "T25: Ticket bleibt geparkt, wenn der Merge fehlschlägt (Labels: $LABELS_454)" ;;
+  *needs-answer*) ok "T25: Ticket bleibt wartend, wenn der Merge fehlschlägt" ;;
+  *) red "T25: Ticket bleibt wartend, wenn der Merge fehlschlägt (Labels: )" ;;
 esac
 
 # ==============================================================================

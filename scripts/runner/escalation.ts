@@ -159,7 +159,7 @@ export function buildEscalationEval(
       // best effort
     }
     try {
-      gh.run(['issue', 'edit', String(issue), '--add-label', 'needs-input', '--add-label', 'needs-answer']);
+      gh.run(['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
     } catch {
       // best effort
     }

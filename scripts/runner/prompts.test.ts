@@ -64,9 +64,9 @@ describe('prompts', () => {
 
     // Geschuetzte Pfade: das Ticket wird SOFORT geparkt (#145), weil der Agent
     // das rote CI-Ergebnis nicht mehr live mitbekommt.
-    it('laesst geschuetzte Pfade selbst needs-input setzen', () => {
+    it('laesst geschuetzte Pfade selbst needs-answer setzen', () => {
       expect(prompt).toContain('src/db/, src/crypto/');
-      expect(prompt).toContain("gh issue edit 7 --add-label needs-input");
+      expect(prompt).toContain("gh issue edit 7 --add-label needs-answer");
       expect(prompt).toContain('NICHT wieder ab');
     });
 
@@ -123,8 +123,8 @@ describe('prompts', () => {
       expect(planPrompt(7)).toContain('Erst dieser abschließende Schritt flippt das Label');
     });
 
-    it('flippt research auf needs-input, nicht auf ready', () => {
-      expect(researchPrompt(7)).toContain('--remove-label research --add-label needs-input');
+    it('flippt research auf needs-answer, nicht auf ready', () => {
+      expect(researchPrompt(7)).toContain('--remove-label research --add-label needs-answer');
       expect(researchPrompt(7)).toContain('der Mensch entscheidet');
     });
 

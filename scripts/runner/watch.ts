@@ -3,27 +3,27 @@
 // und die CI-Wache fuer ALLE geparkten Tickets (#154/#173) als getrennte
 // Bash-Bloecke nebeneinander -- zwei Automaten, die denselben `PrState` (S4)
 // unterschiedlich, aber je fuer sich auswerteten. `watchReaction()` ist die
-// EINE Uebergangstabelle: `parked` ist ein Eingabefeld, kein eigener Zweig.
-// Beide Wachen unten (`watchRunningIssue`/`watchParkedIssues`) loesen den
+// EINE Uebergangstabelle: `waiting` ist ein Eingabefeld, kein eigener Zweig.
+// Beide Wachen unten (`watchRunningIssue`/`watchWaitingIssues`) loesen den
 // PR-Zustand zuerst zu einem `WatchState` auf (`resolveWatchState`) und
 // lassen DANACH `watchReaction()` entscheiden -- keine der beiden hat eine
 // eigene, parallele Fallunterscheidung.
 //
-// Absichtliche Verhaltens-Unterschiede zwischen geparkt/laufend (aus der
+// Absichtliche Verhaltens-Unterschiede zwischen wartend/laufend (aus der
 // bestehenden Bash-Logik uebernommen, NICHT neu erfunden):
 //   - 'behind-retry' (transiente Nachzieh-Fehler: unsauberer Baum, fetch/
 //     checkout/push gescheitert) eskaliert NUR fuer laufende Tickets nach drei
-//     Runden auf Gelb (`catchupFailEscalated`, S4) -- ein geparktes Ticket
-//     bleibt dabei stumm geparkt, ohne eigene Eskalationszaehlung. Das ist
+//     Runden auf Gelb (`catchupFailEscalated`, S4) -- ein wartendes Ticket
+//     bleibt dabei still, ohne eigene Eskalationszaehlung. Das ist
 //     keine neue Einschraenkung dieser Stufe, sondern der Status quo aus #173.
 //   - 'failing-protected' (nur `protected-paths` rot) bleibt fuer BEIDE eine
-//     stille Genehmigungs-Schranke -- laufend setzt zusaetzlich `needs-input`
+//     stille Genehmigungs-Schranke -- laufend setzt zusaetzlich `needs-answer`
 //     (die Schranke selbst), geparkt hat das idR schon gesetzt, bleibt also
 //     unangetastet.
 //
 // Die menschenlesbaren Statustexte (status()-Aufrufe) bleiben bewusst in
 // claude-runner.sh -- dort werden sie von den bestehenden Bash-Fixtures
-// (ci-watch.test.sh, parked-ci-watch.test.sh) 1:1 auf Wortlaut geprueft.
+// (ci-watch.test.sh, waiting-ci-watch.test.sh) 1:1 auf Wortlaut geprueft.
 // Diese Funktionen liefern nur die ENTSCHEIDUNG plus die Daten, die in die
 // (unveraenderten) Textbausteine eingesetzt werden.
 import type { GhAdapter } from './gh.js';
@@ -44,44 +44,57 @@ export type WatchState =
 
 export interface WatchReactionInput {
   state: WatchState;
-  parked: boolean;
-  // Nur relevant fuer state === 'behind-retry' && !parked (S. Kommentar oben).
+  // #272: hiess bis S2b `parked`. Ein wartendes Ticket behaelt jetzt
+  // 'in-progress' und traegt zusaetzlich 'needs-answer' -- der Zustand ist
+  // derselbe, nur ohne Label-Umschreibung.
+  waiting: boolean;
+  // Nur relevant fuer state === 'behind-retry' && !waiting (S. Kommentar oben).
   retryEscalated?: boolean;
 }
 
 export type WatchReaction =
   | { kind: 'noop' }
   | { kind: 'wait'; severity: 'green' | 'yellow' }
-  | { kind: 'add-needs-input' }
+  | { kind: 'add-needs-answer' }
   | { kind: 'merge' }
-  | { kind: 'promote-candidate' }
   | { kind: 'build-fix' };
 
-// Die Uebergangstabelle (AC1/AC2): EINE Funktion fuer geparkte UND laufende
-// Tickets. Jeder `WatchState` hat fuer `parked: true` UND `parked: false`
-// eine definierte Reaktion -- keine Luecke, siehe watch.test.ts.
+// Die Uebergangstabelle (AC1/AC2): EINE Funktion fuer wartende UND laufende
+// Tickets. Jeder `WatchState` hat fuer beide Faelle eine definierte Reaktion --
+// keine Luecke, siehe watch.test.ts.
+//
+// #272: fuer ein wartendes Ticket gibt es nur noch zwei Ausgaenge. Wird sein PR
+// gruen, wird gemerged (dann ist die Frage gegenstandslos); sonst passiert
+// nichts. Die frueher hier stehende 'promote-candidate'-Reaktion ist ersatzlos
+// weg: sie bedeutete "hol das geparkte Ticket zurueck auf in-progress" und
+// setzte voraus, dass der Mensch schon geantwortet hatte (`!hasNeedsInput`).
+// Dieser Zwischenzustand kann nicht mehr entstehen -- wer antwortet, nimmt
+// 'needs-answer' ab, und damit greift der ganz normale `running`-Zweig der
+// Auswahl.
 export function watchReaction(input: WatchReactionInput): WatchReaction {
-  const { state, parked } = input;
+  const { state, waiting } = input;
+
+  if (waiting) return state === 'success' ? { kind: 'merge' } : { kind: 'noop' };
+
   switch (state) {
     case 'pending':
-      return parked ? { kind: 'noop' } : { kind: 'wait', severity: 'green' };
+      return { kind: 'wait', severity: 'green' };
     case 'success':
       return { kind: 'merge' };
     case 'failing-protected':
-      return parked ? { kind: 'noop' } : { kind: 'add-needs-input' };
+      return { kind: 'add-needs-answer' };
     case 'failing-fix':
-      return parked ? { kind: 'promote-candidate' } : { kind: 'build-fix' };
+      return { kind: 'build-fix' };
     case 'behind-caught-up':
-      return parked ? { kind: 'noop' } : { kind: 'wait', severity: 'green' };
+      return { kind: 'wait', severity: 'green' };
     case 'behind-conflict':
-      return parked ? { kind: 'promote-candidate' } : { kind: 'build-fix' };
+      return { kind: 'build-fix' };
     // #217: identische Reaktion wie 'behind-conflict' -- der Unterschied liegt
     // allein darin, WIE der Konflikt festgestellt wurde (GitHubs DIRTY statt
     // eines gescheiterten lokalen Merges) und im Wortlaut der Begruendung.
     case 'dirty-conflict':
-      return parked ? { kind: 'promote-candidate' } : { kind: 'build-fix' };
+      return { kind: 'build-fix' };
     case 'behind-retry':
-      if (parked) return { kind: 'noop' };
       return { kind: 'wait', severity: input.retryEscalated ? 'yellow' : 'green' };
     default: {
       const exhaustive: never = state;
@@ -148,8 +161,8 @@ interface ResolvedWatchState {
 // Loest den rohen `PrState` (S4) zu einem `WatchState` auf -- inklusive der
 // dafuer noetigen Seiteneffekte (Nachziehen per git, Fehlversuchs-Zaehler
 // zuruecksetzen/hochzaehlen, Zusammenfassung roter Checks holen). Identisch
-// fuer geparkt und laufend; NUR die anschliessende `watchReaction()` wertet
-// `parked` unterschiedlich.
+// fuer wartend und laufend; NUR die anschliessende `watchReaction()` wertet
+// `waiting` unterschiedlich.
 function resolveWatchState(issue: number, pr: string, parked: boolean, deps: WatchDeps): ResolvedWatchState {
   const ciState = prCiState(pr, deps.gh);
 
@@ -203,7 +216,10 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
 export type RunningWatchResult =
   | { kind: 'pending' }
   | { kind: 'merged' }
-  | { kind: 'needs-input-protected' }
+  // #276: kann seit dem Entschaerfen von `protected-paths` nicht mehr
+  // eintreten. Bewusst stehengelassen, falls der Waechter je zurueckkommt --
+  // notiert in #278.
+  | { kind: 'protected-red' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
   | { kind: 'retry'; reason: string; paths: string[]; escalated: boolean };
@@ -213,7 +229,7 @@ export type RunningWatchResult =
 // hat pr_for_issue() schon ausgewertet).
 export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): RunningWatchResult {
   const resolved = resolveWatchState(issue, pr, false, deps);
-  const reaction = watchReaction({ state: resolved.state, parked: false, retryEscalated: resolved.retryEscalated });
+  const reaction = watchReaction({ state: resolved.state, waiting: false, retryEscalated: resolved.retryEscalated });
 
   switch (reaction.kind) {
     case 'wait':
@@ -227,9 +243,9 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
         };
       }
       return { kind: 'pending' };
-    case 'add-needs-input':
-      deps.gh.run(['issue', 'edit', String(issue), '--add-label', 'needs-input']);
-      return { kind: 'needs-input-protected' };
+    case 'add-needs-answer':
+      deps.gh.run(['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
+      return { kind: 'protected-red' };
     case 'merge':
       deps.gh.run(['pr', 'ready', pr]);
       prSquashMerge(pr, deps.gh);
@@ -246,88 +262,52 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
       }
       return { kind: 'build-fix', summary: resolved.failSummary ?? '' };
     case 'noop':
-      /* istanbul ignore next -- 'noop' kommt fuer parked:false nie zurueck */
+      /* istanbul ignore next -- 'noop' kommt fuer waiting:false nie zurueck */
       return { kind: 'pending' };
-    case 'promote-candidate':
-      /* istanbul ignore next -- nur bei parked:true moeglich, siehe watchParkedIssues() */
-      throw new Error('unerwartete promote-candidate Reaktion fuer ein laufendes Ticket');
   }
 }
 
-export interface ParkedIssueInput {
+export interface WaitingIssueInput {
   number: number;
   createdAt: string;
-  hasNeedsInput: boolean;
 }
 
-export interface ParkedWatchOutcome {
-  // Hoechstens EIN Ticket wird pro Runde entparkt (#154 AC "höchstens EIN").
-  promoted: { issue: number; reason: string } | null;
+export interface WaitingWatchOutcome {
+  // Tickets, deren PR in dieser Runde gemerged wurde -- ihr 'needs-answer' ist
+  // damit gegenstandslos und wurde abgenommen.
   released: number[];
 }
 
-const PROMOTE_REASON: Record<'behind-conflict' | 'dirty-conflict' | 'failing-fix', string> = {
-  'behind-conflict': 'ein Merge-Konflikt beim Nachziehen von `main`',
-  'dirty-conflict': 'ein Merge-Konflikt (`DIRTY`) mit `main`',
-  'failing-fix': 'rote Checks (mehr als nur `protected-paths`)',
-};
-
-// CI-Wache fuer ALLE geparkten Tickets (#154, erweitert um #173) -- ueber
-// dieselbe Uebergangstabelle wie watchRunningIssue(), mit `parked: true`.
-// `wipSlotFree` = kein anderes Ticket war beim Rundenstart in-progress
-// (WIP-Limit=1, CLAUDE.md Regel 1); wird waehrend des Loops NICHT neu
-// bewertet, exakt wie in der bisherigen Bash-Implementierung (nur EIN
-// entparktes Ticket pro Runde, unabhaengig davon, wie viele Kandidaten es gibt).
-export function watchParkedIssues(parkedIssues: ParkedIssueInput[], wipSlotFree: boolean, deps: WatchDeps): ParkedWatchOutcome {
-  const sorted = [...parkedIssues].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const outcome: ParkedWatchOutcome = { promoted: null, released: [] };
+// CI-Wache fuer ALLE wartenden Tickets (#154, erweitert um #173, seit #272 ohne
+// Park-Mechanik) -- ueber dieselbe Uebergangstabelle wie watchRunningIssue(),
+// mit `waiting: true`.
+//
+// Ein wartendes Ticket kennt nur noch einen Ausgang, der etwas tut: sein PR
+// wird gruen und damit gemerged. Alles andere bleibt still, bis der Mensch
+// antwortet -- es wartet auf eine Antwort, nicht auf einen freien Bauplatz.
+// Deshalb gibt es hier kein `wipSlotFree` und kein Entparken mehr.
+export function watchWaitingIssues(waitingIssues: WaitingIssueInput[], deps: WatchDeps): WaitingWatchOutcome {
+  const sorted = [...waitingIssues].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const outcome: WaitingWatchOutcome = { released: [] };
 
   for (const issue of sorted) {
     const pr = prForIssue(issue.number, deps.gh);
     if (!pr) continue;
 
     const resolved = resolveWatchState(issue.number, pr, true, deps);
-    const reaction = watchReaction({ state: resolved.state, parked: true });
+    const reaction = watchReaction({ state: resolved.state, waiting: true });
 
-    if (reaction.kind === 'merge') {
-      deps.gh.run(['pr', 'ready', pr]);
-      // #217 AC4: 'parked'/'needs-input' duerfen nur weg, wenn der Merge bzw.
-      // das Aktivieren von Auto-Merge tatsaechlich geklappt hat -- sonst faellt
-      // das Ticket aus jeder Wache heraus, waehrend der PR offen und
-      // unbeobachtet liegen bleibt. Schlaegt es fehl, bleibt das Ticket
-      // geparkt, der naechste Takt versucht es erneut.
-      if (!prSquashMerge(pr, deps.gh)) continue;
-      deps.gh.run([
-        'issue',
-        'edit',
-        String(issue.number),
-        '--remove-label',
-        'parked',
-        '--remove-label',
-        'needs-input',
-        '--remove-label',
-        'needs-answer',
-      ]);
-      outcome.released.push(issue.number);
-      continue;
-    }
+    if (reaction.kind !== 'merge') continue;
 
-    if (reaction.kind === 'promote-candidate') {
-      const canPromote = !issue.hasNeedsInput && outcome.promoted === null && wipSlotFree;
-      if (canPromote) {
-        deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'parked', '--add-label', 'in-progress']);
-        const reasonKey =
-          resolved.state === 'behind-conflict' || resolved.state === 'dirty-conflict' ? resolved.state : 'failing-fix';
-        outcome.promoted = { issue: issue.number, reason: PROMOTE_REASON[reasonKey] };
-      }
-      // Nicht promotable (Slot belegt/schon eins entparkt/needs-input haengt
-      // noch): bleibt geparkt, still -- wie 'noop'.
-      continue;
-    }
-
-    // 'noop'/'wait'/'add-needs-input' kommen fuer geparkte Tickets nur in
-    // stillen Faellen zurueck (pending, behind-caught-up, behind-retry,
-    // failing-protected) -- nichts zu tun, naechster Takt prueft erneut.
+    deps.gh.run(['pr', 'ready', pr]);
+    // #217 AC4: 'needs-answer' darf nur weg, wenn der Merge bzw. das Aktivieren
+    // von Auto-Merge tatsaechlich geklappt hat -- sonst faellt das Ticket aus
+    // jeder Wache heraus, waehrend der PR offen und unbeobachtet liegen bleibt.
+    // Schlaegt es fehl, bleibt das Ticket wartend, der naechste Takt versucht
+    // es erneut.
+    if (!prSquashMerge(pr, deps.gh)) continue;
+    deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'needs-answer']);
+    outcome.released.push(issue.number);
   }
 
   return outcome;

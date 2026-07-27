@@ -8,7 +8,7 @@ kein zweites System, kein Kontextbruch.
 
 ```
 Issue (grobe Idee, vom Handy eingeworfen)
-   └─► [optional] research → Opus recherchiert den Fit → needs-input → du entscheidest
+   └─► [optional] research → Opus recherchiert den Fit → needs-answer → du entscheidest
 Issue (mit Akzeptanzkriterien)
    └─► [nur bei Komplexität] plan → Opus plant im Chat → ready
    └─► Branch feat/<nr>-<slug>
@@ -27,17 +27,26 @@ zu. Wer im Haupt-Checkout den Branch wechselt oder committet, schreibt seine Arb
 in den Branch eines fremden Tickets — genau so landete #196 im Icon-PR von #232.
 Rezept und Pfadkonvention: `CLAUDE.md`, „Ein Worktree je Lauf".
 
-**„Wartend" ist nicht „in Arbeit" (#145).** Ein Ticket, an dem *niemand* sitzt,
-weil eine Frage an dich offen ist, belegt keinen Bauplatz — nur ein Ticket, an
-dem der Runner gerade tatsächlich baut, tut das. Stellt Claude eine Frage
-(Label `needs-input`), gibt das Ticket im selben Zug `in-progress` ab und trägt
-stattdessen `parked`: sichtbar wartend, aber frei für die Auswahl des nächsten
-Tickets. Antwortest du und entfernst `needs-input`, wird das `parked`-Ticket vor
-Queue und Label-Kaskade fortgesetzt (Branch, `git log` und Fortschrittskommentar
-wie gewohnt — kein Neuanfang). Das gilt **nicht** für `blocked-limit`: ein
-Usage-Limit löst sich von selbst in Minuten und bleibt bewusst `in-progress`, der
-Runner fängt in der Zwischenzeit nichts Neues an (siehe Abschnitt „Zwei Arten des
-Wartens" unten).
+**„Wartend" ist nicht „in Arbeit" (#145, neu geschnitten in #272).** Ein Ticket,
+an dem *niemand* sitzt, weil eine Frage an dich offen ist, belegt keinen
+Bauplatz — nur ein Ticket, an dem der Runner gerade tatsächlich baut, tut das.
+
+Stellt Claude eine Frage, setzt es `needs-answer` und **behält `in-progress`**.
+Die Auswahl überspringt jedes Ticket mit diesem Label, es belegt also keinen
+Bauplatz; der Runner nimmt sich einfach das nächste. Antwortest du und entfernst
+`needs-answer`, wird die Arbeit über denselben „läuft schon"-Zweig fortgesetzt
+(Branch, `git log` und Fortschrittskommentar wie gewohnt — kein Neuanfang, und
+kein Label muss dafür geschrieben werden).
+
+Bis #272 gab es dafür ein eigenes Label `parked`: das Ticket gab `in-progress`
+ab und bekam `parked`. Genau deshalb brauchte es danach einen eigenen Zweig, um
+es wiederzufinden, eine eigene Wache und ein Sicherheitsnetz gegen den
+Zwischenzustand. Alle drei sind mit `parked` weggefallen.
+
+Das gilt **nicht** für `blocked-limit`: ein Usage-Limit löst sich von selbst in
+Minuten und bleibt bewusst `in-progress` ohne Wartelabel, der Runner fängt in
+der Zwischenzeit nichts Neues an (siehe Abschnitt „Zwei Arten des Wartens"
+unten).
 
 **Recherche-Schritt vor `plan` (optional, Idee-Ebene):** Wirfst du eine grobe
 Feature-Idee als Issue ein, setzt du das Label `research`. Der Runner lässt
@@ -47,8 +56,8 @@ mit Trade-offs, Empfehlung, **grober** Schnitt — **kein dateiweiser Plan, kein
 Code-Wie**, das ist eine Stufe abstrakter als `plan`. Widerspricht die Idee
 der Vision, steht das klar in der Überlegung — Opus verwirft sie nicht
 eigenmächtig, das entscheidest du. Ist die Überlegung fertig, tauscht der
-abschließende Lauf `research` gegen `needs-input`; sagst du dann „ja",
-nimmst du `needs-input` runter und setzt `plan` — erst der Planer-Lauf macht
+abschließende Lauf `research` gegen `needs-answer`; sagst du dann „ja",
+nimmst du `needs-answer` runter und setzt `plan` — erst der Planer-Lauf macht
 daraus einen dateiweisen Umsetzungsplan (die Konzept-Entscheidung aus der
 Recherche wird dabei nicht neu aufgerollt).
 
@@ -60,7 +69,7 @@ Wiederaufnahmepunkte konkret genug sind, dass Sonnet/Haiku keine
 Architektur-Entscheidungen mehr treffen müssen. Erst danach: `plan` runter,
 `ready` rauf.
 
-**Automatik im Runner:** Ein `plan`-Ticket (ohne `needs-input`, ohne
+**Automatik im Runner:** Ein `plan`-Ticket (ohne `needs-answer`, ohne
 `hands-off`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
 (`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit). Der Plan
 entsteht inkrementell in **einem** Kommentar (`--edit-last`); erst der
@@ -72,19 +81,19 @@ und wird als `plan` behandelt, nicht gebaut. `research` läuft
 genauso (eigener Recherche-Prompt statt Planungs-Prompt, `--allowedTools
 "Read,Grep,Glob,Bash,WebSearch"` — die bounded Web-Recherche aus dem
 Recherche-Prompt braucht das zusätzliche Werkzeug), flippt aber auf
-`needs-input` statt `ready`, weil danach eine Entscheidung ansteht, kein Bau.
+`needs-answer` statt `ready`, weil danach eine Entscheidung ansteht, kein Bau.
 Für **kein** Denk-Label (`plan` oder `research`) gibt es einen
 Tages-Deckel — Planung und Recherche laufen so oft, wie sie brauchen (siehe
 ADR-0005, PR #46). Kill-Switch für beide: `hands-off`.
 
 **`hands-off` gilt für jeden Auswahlzweig (#227).** Der Schalter hält nicht nur
 Plan- und Recherche-Läufe an, sondern nimmt das Ticket aus der Auswahl heraus,
-bevor irgendein Zweig sie liest: laufendes `in-progress`, Resume eines
-`parked`-Tickets, Queue, `plan`, `research`, `ready` — überall.
+bevor irgendein Zweig sie liest: laufendes `in-progress`, Queue, `plan`,
+`research`, `ready` — überall.
 Damit ist `hands-off` die verlässliche Bremse für ein Ticket, das gerade lokal
 gebaut wird. Bis zu diesem Fix prüften ihn nur Queue, `plan` und
-`research`; ausgerechnet `resume-parked`, das vor allen anderen greift,
-und `ready` ignorierten ihn.
+`research`; ausgerechnet der Zweig fuer laufende Tickets und `ready`
+ignorierten ihn.
 
 Reihenfolge, wenn mehrere Labels gleichzeitig offen stehen: ein laufendes
 `in-progress`-Bau-Ticket geht vor, danach `plan`, danach `research`,
@@ -108,7 +117,7 @@ Zahlen oben = zuerst. Wichtig:
 - **Das Label ist für die Auswahl egal.** Ein gelistetes Ticket wird bearbeitet, auch
   ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `plan` → Planlauf,
   `research` → Recherche, **sonst bauen**.
-- **Weiterhin ausgeschlossen:** `needs-input` (wartet auf dich) und `hands-off`
+- **Weiterhin ausgeschlossen:** `needs-answer` (wartet auf dich) und `hands-off`
   (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
   gelistet ist.
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
@@ -137,13 +146,11 @@ Zustandsmaschine des ganzen Setups:
 
 | Label            | Bedeutung                                                      | Wer setzt es |
 | ---------------- | -------------------------------------------------------------- | ------------ |
-| `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-input`. | **Du**       |
+| `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-answer`. | **Du**       |
 | `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
-| `needs-input`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
-| `needs-answer`   | Marker neben `needs-input`: es steht eine **Frage** im Ticket, die eine geschriebene Antwort braucht (A/B/C, Vision-Konflikt, dritter erfolgloser Lauf). Fehlt der Marker, genügt ein Label-Tap (`tests-exempt`). Rein anzeigend, schließt nichts von der Auswahl aus; verschwindet automatisch mit `needs-input` (#196). | Claude       |
-| `parked`         | Wartet auf dich (`needs-input`), belegt aber **keinen Bauplatz** mehr — löst `in-progress` ab, siehe #145. | Runner |
+| `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
 | `model:haiku`    | Mechanisches Ticket — Runner nimmt Haiku statt Sonnet.         | **Du**       |
 | `no-escalation`  | Kill-Switch: Ticket bleibt immer auf Sonnet/Haiku, nie Opus.   | **Du**       |
@@ -155,7 +162,7 @@ Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
 testlos gerechtfertigt ist, du setzt das Label.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
-der Runner nur Tickets mit `ready`, die **nicht** `needs-input` tragen — ein
+der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein
 `plan`-Ticket trägt per Definition kein `ready`, solange der Plan fehlt,
 und bleibt automatisch liegen. **Ist das Ticket gelistet**, ersetzt das die
 `ready`-Freigabe (siehe „Die Prioritäts-Queue" oben). So entscheidest **du** in
@@ -164,20 +171,19 @@ per Queue-Editor oder per Label.
 
 **Zwei Arten des Wartens (#145).** Nicht jedes „warten" ist gleich:
 
-- **Wartet auf einen Menschen** (`needs-input`/`parked`): kann Minuten bis Tage
-  dauern. Das Ticket gibt `in-progress` ab, der Runner wählt in der Zwischenzeit
-  ein anderes. Trägt es zusätzlich
-  `needs-answer` (#196), steht eine echte Frage offen, die eine geschriebene
-  Antwort braucht — ohne den Marker genügt ein Label-Tap. `needs-answer` ist
-  rein anzeigend: es beeinflusst weder Auswahl noch Parken, sondern verschwindet
-  automatisch, sobald `needs-input` weg ist.
+- **Wartet auf einen Menschen** (`needs-answer`): kann Minuten bis Tage dauern.
+  Es steht eine echte Frage im Ticket, die eine geschriebene Antwort braucht.
+  Das Ticket **behält** `in-progress`, wird von der Auswahl aber übersprungen —
+  der Runner baut in der Zwischenzeit etwas anderes. Nimmst du das Label ab,
+  läuft es weiter, ohne dass irgendetwas umgelabelt werden muss.
 - **Wartet auf die Zeit** (`blocked-limit`, und — sobald gebaut — CI-Wartezeit):
-  löst sich von selbst in Minuten. Das Ticket **bleibt** `in-progress`, der
-  Runner fängt nichts Neues an, weil es ohnehin gleich weitergeht.
+  löst sich von selbst in Minuten. Das Ticket bleibt `in-progress` **ohne**
+  Wartelabel, der Runner fängt nichts Neues an, weil es ohnehin gleich
+  weitergeht.
 
-Die Unterscheidung ist der Grund, warum `parked` ein eigenes Label ist statt
-`in-progress` einfach zu entfernen: die Auswahl-Logik muss beide Fälle
-unterschiedlich behandeln können, nicht nur den Text der Statusmeldung.
+Beide behalten `in-progress`; der Unterschied liegt allein im Wartelabel. Genau
+das ist seit #272 der Punkt: nicht ein zweites Zustandslabel entscheidet, ob ein
+Bauplatz belegt ist, sondern die Frage, ob jemand auf einen Menschen wartet.
 
 ## Modell-Eskalation beim Bauen (ADR-0007)
 
@@ -193,9 +199,9 @@ das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
   wie im Vorlauf (siehe #33). Ein Lauf, der durch Limit oder Notbremse
   unterbrochen wurde, zählt nie als Fehlversuch.
 - Bleibt Opus als höchste Stufe ebenfalls dreimal ohne Fortschritt: Stop,
-  Label `needs-input`, Blocker-Kommentar am Ticket.
+  Label `needs-answer`, Blocker-Kommentar am Ticket.
 - **Opus-Deckel:** höchstens 2 Opus-Bau-Läufe pro Ticket und Kalendertag.
-  Überschreitung → sofort `needs-input`, kein weiterer Opus-Bau-Versuch an
+  Überschreitung → sofort `needs-answer`, kein weiterer Opus-Bau-Versuch an
   diesem Tag. Die Meldung erscheint höchstens einmal je Ticket und Tag und
   nennt `opus-boost` als Ausweg vom Handy: das Label hebt die Zwei-Grenze für
   dieses Ticket auf, ohne den Zähler zu nullen, und wird von einem Opus-Lauf
@@ -207,7 +213,7 @@ das ist die einzige Stelle im Repo, an der Opus schreibt statt nur zu lesen.
 Details und Begründung: `docs/adr/0007-opus-eskalation-baut.md`.
 
 **Dein Handy-Workflow:** Frage kommt als Issue-Kommentar rein (GitHub-App pingt
-dich) → du antwortest als Kommentar → du entfernst `needs-input` → das Ticket
+dich) → du antwortest als Kommentar → du entfernst `needs-answer` → das Ticket
 wird beim nächsten Lauf (max. 20 Minuten später) fortgesetzt, nicht neu
 gestartet (Mechanik siehe oben, „Wartend ist nicht in Arbeit"). In der
 Zwischenzeit hat der Runner an anderen Tickets weitergearbeitet, nicht
@@ -243,7 +249,7 @@ voraus, dass CI schon grün ist: Auto-Merge greift ohnehin erst, wenn alle
 Required Checks durch sind, GitHub liefert diese Zusicherung, nicht Claudes
 Einschätzung. **Ein Entwurf bedeutet ab jetzt: der Lauf ist nicht sauber zu
 Ende gekommen** (Notbremse, Limit, harter Fehler) — nicht mehr „es hat noch
-niemand hingeschaut". Bei einer offenen Frage (`needs-input`) endet der Lauf
+niemand hingeschaut". Bei einer offenen Frage (`needs-answer`) endet der Lauf
 bewusst **vor** diesem Schritt, der PR bleibt Entwurf.
 
 Der **Runner-Takt** (alle ~5 Minuten) bleibt trotzdem als Beobachter aktiv —
@@ -254,7 +260,7 @@ Fortsetzung oder ein anderes Ticket denkt:
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
 | läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, **nur** `protected-paths` | Label `needs-input`, falls es fehlt (Sicherheitsnetz — der Bau-Agent hat es beim Öffnen des Draft-PR normalerweise schon selbst gesetzt), Kommentar verweist auf die schon vorhandene Erklärung am PR (siehe unten). **Kein** `needs-answer` — hier wird nur freigegeben, es gibt nichts zu beantworten (#196). | nein |
+| rot, **nur** `protected-paths` | Kann seit #276 nicht mehr eintreten — der Wächter blockiert nicht mehr. | nein |
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
@@ -287,7 +293,7 @@ Der Wiederaufnahmefall (roter Check → Fix-Agent) liest denselben Zustand wie
 jede andere Fortsetzung: Branch, `git log`, Fortschrittskommentar samt „Was
 schon versucht wurde". Rot aus demselben Grund wie beim letzten Mal zählt
 weiterhin als Fehlversuch der bestehenden Eskalation (ADR-0007, `blocker_sig`)
-— nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-input`
+— nach dem **dritten** vergeblichen Versuch: Kommentar, Label `needs-answer`
 **und** `needs-answer` (#196) — eine echte Frage, keine Freigabe.
 
 **`behind`: ein zurückgefallener PR-Branch wird selbst nachgezogen (#160).**
@@ -327,54 +333,38 @@ Infrastruktur-Fehlschlag (`git fetch`/`checkout`/`push`): ein `DIRTY`-PR löst
 sich nie durch bloßes Abwarten, also startet der Bau-Agent auch dann, mit
 `unbekannt` als Dateiliste im Auftrag. Wiederholte Fehlschläge zählen wie
 gewohnt in die bestehende Eskalation ein (ADR-0007) — nach dem dritten
-vergeblichen Versuch: Kommentar, `needs-input` **und** `needs-answer` (#196).
+vergeblichen Versuch: Kommentar und `needs-answer`.
 
-**Die Wache gilt auch für `parked`-Tickets (#154), mit denselben Zuständen wie
+**Die Wache gilt auch für wartende Tickets (#154), mit denselben Zuständen wie
 das laufende Ticket (#173, erweitert um `conflict` in #217).** Seit #202 (S5
 von #184) ist das keine Beschreibung mehr, die zwei getrennte Bash-Blöcke
 zufällig einhalten, sondern eine einzige Übergangstabelle:
-`scripts/runner/watch.ts`, `watchReaction()` (`WatchState × parked ->
-Reaktion`). `watchRunningIssue()` und `watchParkedIssues()` lösen den
+`scripts/runner/watch.ts`, `watchReaction()` (`WatchState × waiting ->
+Reaktion`). `watchRunningIssue()` und `watchWaitingIssues()` lösen den
 PR-Zustand (S4, `PrState`) je zu einem `WatchState` auf und lassen danach
-dieselbe Tabelle entscheiden — `parked` ist dort ein Eingabefeld, kein eigener
-Zweig mehr. Der DIRTY-Fall aus #217 ist in dieser Tabelle der Zustand
-`dirty-conflict` und reagiert wie `behind-conflict`: geparkt → entparken,
-laufend → Fix-Agent. Die Tabelle oben beobachtet nur
-das eine `in-progress`-Ticket — ein `parked`-Ticket (z. B. eins, das an
-`protected-paths` hing, als der noch blockierte) fiel bisher aus der
-Wache heraus: kein `in-progress` mehr (der Bauplatz ist frei, #145), aber die
-Ticketauswahl greift es erst wieder auf, sobald `needs-input` manuell weg
-ist. Deshalb prüft der Takt **zusätzlich** — vor jeder Ticketauswahl, aeltestes
-zuerst — **alle** offenen `parked`-Tickets:
+dieselbe Tabelle entscheiden — „wartet" ist dort ein Eingabefeld, kein eigener
+Zweig.
 
-- **grün, noch Entwurf:** wie beim laufenden Ticket — `parked` **und**
-  `needs-input` fallen weg, Draft wird `ready`, Auto-Merge aktiviert. Kein
+Die Tabelle oben beobachtet nur das Ticket, an dem gerade gebaut wird. Ein
+wartendes Ticket fiele sonst aus jeder Wache heraus: sein PR kann in der
+Zwischenzeit grün werden, ohne dass jemand hinsieht. Deshalb prüft der Takt
+**zusätzlich** — vor jeder Ticketauswahl, ältestes zuerst — **alle** offenen
+Tickets mit `needs-answer`. Für die gibt es seit #272 nur noch zwei Ausgänge:
+
+- **grün, noch Entwurf:** Draft wird `ready`, Auto-Merge aktiviert,
+  `needs-answer` fällt weg — die Frage ist mit dem Merge gegenstandslos. Kein
   Agentenlauf.
-- **nur hinter `main`, kein Konflikt:** per `git` nachgezogen, bleibt aber
-  geparkt (die nächste Runde sieht dann wieder laufende Checks). Kein
-  Agentenlauf.
-- **konfliktbehaftet (`DIRTY`, #217):** GitHub hat hier bereits selbst
-  entschieden — anders als bei `behind` braucht es keinen lokalen
-  Probe-Merge, um zu wissen, dass Konfliktarbeit ansteht. Dieselben Regeln
-  wie im nächsten Punkt (needs-input/WIP-Limit); nach dem Entparken führt die
-  Wache oben den Trockenlauf-Merge aus und leitet daraus CI_FIX/CI_SUMMARY
-  ab, genau wie beim laufenden Ticket.
-- **echter Konflikt beim Nachziehen eines `behind`-PR, oder rote Checks über
-  `protected-paths` hinaus:** das ist inhaltliche Arbeit, kein Wartezustand.
-  Trägt das Ticket noch `needs-input` (eine ungeklärte Frage), bleibt es
-  unangetastet — eine offene menschliche Antwort geht vor. Ist die Frage
-  beantwortet (kein `needs-input` mehr) **und** ist gerade wirklich kein
-  anderes Ticket `in-progress`, wird **genau eins** pro Runde entparkt
-  (`parked` weg, `in-progress` dazu) und landet dadurch sofort in derselben
-  WIP-Auswahl wie ein regulär laufendes Ticket — die Wache oben leitet daraus
-  CI_FIX/CI_SUMMARY ab und startet den Fix-Agenten, ohne eigene Prompt-Logik.
-  Läuft schon ein anderes Ticket, oder ist in derselben Runde bereits ein
-  anderes parked-Ticket entparkt worden, bleibt dieses hier unangetastet und
-  wird im nächsten Takt erneut geprüft (WIP-Limit=1, CLAUDE.md Regel 1).
-  Wiederholte Fehlschläge zählen ganz normal in die bestehende Eskalation ein
-  (ADR-0007), weil es derselbe Bau-Lauf-Mechanismus ist.
-- **rot, nur `protected-paths`, oder CI läuft noch:** unverändert geparkt —
-  die Genehmigungs-Schranke bzw. laufende Checks sind kein Fund.
+- **alles andere** (CI läuft noch, rote Checks, hinter `main`, Merge-Konflikt,
+  `DIRTY`): **nichts passiert.** Das Ticket wartet auf eine Antwort, nicht auf
+  einen freien Bauplatz.
+
+Bis #272 gab es hier einen dritten Ausgang: bei Konflikt oder roten Checks
+wurde ein geparktes Ticket entparkt und sofort ein Fix-Agent gestartet — sofern
+der Mensch schon geantwortet hatte und der Bauplatz frei war. Dieser
+Zwischenzustand („geparkt, aber beantwortet") kann nicht mehr entstehen: wer
+antwortet, nimmt `needs-answer` ab, und damit greift der ganz normale
+„läuft schon"-Zweig der Auswahl samt der Wache oben. Der Fix-Lauf passiert
+dadurch weiterhin — nur eine Runde später und ohne eigenen Sonderpfad.
 
 Das kostet außer im Konflikt-/Failing-Fall nie einen Agentenlauf, nur
 gh-/git-Aufrufe — das Statusticket nennt freigegebene **und** entparkte
@@ -475,7 +465,7 @@ in der Queue liegt oder nicht — das unterscheidet den Titel klar von 🟠.
 Nur **Gelb und Rot** verlangen dich. Alles andere ist Information.
 
 Gelb erscheint auch dann, wenn der Runner selbst gerade nichts zu tun hat, aber
-irgendwo ein `needs-input` hängt — „nichts zu tun" wäre in dem Fall eine Lüge,
+irgendwo ein `needs-answer` hängt — „nichts zu tun" wäre in dem Fall eine Lüge,
 die dich das Ticket übersehen ließe.
 
 ## Board-Spalten

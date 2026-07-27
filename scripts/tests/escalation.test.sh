@@ -259,7 +259,7 @@ build_escalation_eval
 assert_file_absent "AC5: no-escalation verhindert jeden tier_bump" "$STATE_DIR/tier-$ISSUE"
 
 # ==============================================================================
-# 6. Opus-Deckel: 3. Opus-Lauf ohne Fortschritt -> needs-input, kein 3. Bau
+# 6. Opus-Deckel: 3. Opus-Lauf ohne Fortschritt -> needs-answer, kein 3. Bau
 # ==============================================================================
 reset_state
 ISSUE=106
@@ -274,12 +274,12 @@ echo 2 > "$STATE_DIR/opus-build-$TODAY-$ISSUE"   # heute schon 2 Opus-Bau-Läufe
 ) >/dev/null 2>&1
 CAP_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$CAP_LABELS" in
-  *needs-input*) ok "AC6: erschöpfter Opus-Deckel setzt needs-input" ;;
-  *) red "AC6: erschöpfter Opus-Deckel setzt needs-input (Labels: $CAP_LABELS)" ;;
+  *blocked-limit*) ok "AC6 (#272): erschöpfter Opus-Deckel setzt blocked-limit" ;;
+  *) red "AC6 (#272): erschöpfter Opus-Deckel setzt blocked-limit (Labels: $CAP_LABELS)" ;;
 esac
 case "$CAP_LABELS" in
-  *needs-answer*) red "AC6 (#196): needs-answer wird NICHT gesetzt -- Tagesdeckel ist reine Kontingent-Info (Labels: $CAP_LABELS)" ;;
-  *) ok "AC6 (#196): needs-answer wird NICHT gesetzt -- Tagesdeckel ist reine Kontingent-Info" ;;
+  *needs-answer*) red "AC6 (#272): kein needs-answer -- der Tagesdeckel wartet auf Zeit, nicht auf dich (Labels: $CAP_LABELS)" ;;
+  *) ok "AC6 (#272): kein needs-answer -- der Tagesdeckel wartet auf Zeit, nicht auf dich" ;;
 esac
 assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$STATE_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
 
@@ -300,7 +300,8 @@ assert_eq "AC7: neue Blocker-Signatur setzt failcount zurück" "0" "$(cat "$STAT
 
 # ==============================================================================
 # 8. #196: Eskalation SELBST erschöpft (Opus dreimal ohne Fortschritt auf der
-#    hoechsten Stufe) -- das ist eine echte Frage, needs-input UND needs-answer.
+#    hoechsten Stufe) -- das ist eine echte Frage. Seit #272 genau EIN
+#    Wartelabel statt Klammer + Marker.
 # ==============================================================================
 reset_state
 ISSUE=108
@@ -316,10 +317,12 @@ build_escalation_eval
 build_escalation_eval
 EXHAUSTED_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$EXHAUSTED_LABELS" in
-  *needs-input*needs-answer*|*needs-answer*needs-input*)
-    ok "#196: erschöpfte Eskalation setzt needs-input UND needs-answer" ;;
+  *needs-input*)
+    red "#272: 'needs-input' ist abgeschafft, darf nicht gesetzt werden (Labels: $EXHAUSTED_LABELS)" ;;
+  *needs-answer*)
+    ok "#272: erschöpfte Eskalation setzt genau ein Wartelabel (needs-answer)" ;;
   *)
-    red "#196: erschöpfte Eskalation setzt needs-input UND needs-answer (Labels: $EXHAUSTED_LABELS)" ;;
+    red "#272: erschöpfte Eskalation setzt needs-answer (Labels: $EXHAUSTED_LABELS)" ;;
 esac
 
 # ==============================================================================
