@@ -178,7 +178,8 @@ bootstrap_worktree() {   # $1 = Worktree-Pfad
 # stdout, Exit ungleich 0 = Abbruch -- der Aufrufer weicht dann NICHT in den
 # Haupt-Checkout aus (AK4: belegt/unsauber bricht ab, statt auszuweichen).
 ensure_worktree() {   # $1 = Ticketnummer -> Worktree-Pfad auf stdout
-  local nr="$1" wt="$WORKTREE_BASE/issue-$nr" branch
+  local nr="$1"
+  local wt="$WORKTREE_BASE/issue-$nr" branch
   mkdir -p "$WORKTREE_BASE"
 
   if git -C "$REPO_DIR" worktree list --porcelain 2>/dev/null | grep -qF "worktree $wt"; then
