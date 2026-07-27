@@ -53,14 +53,14 @@ assert_eq() {   # $1 = beschreibung, $2 = erwartet, $3 = tatsaechlich
 label() { printf '{"name":"%s"}' "$1"; }   # $1 = Labelname
 
 # ==============================================================================
-# 1. Präzedenz: in-progress vor needs-plan vor ready
+# 1. Präzedenz: in-progress vor plan vor ready
 # ==============================================================================
 SNAP='[
   {"number":10,"labels":['"$(label ready)"']},
-  {"number":20,"labels":['"$(label needs-plan)"']},
+  {"number":20,"labels":['"$(label plan)"']},
   {"number":30,"labels":['"$(label in-progress)"']}
 ]'
-assert_eq "AC: in-progress schlägt needs-plan und ready" "30" "$(queue_next "$SNAP")"
+assert_eq "AC: in-progress schlägt plan und ready" "30" "$(queue_next "$SNAP")"
 
 # ==============================================================================
 # 2. needs-input schließt aus (weder queue_next noch queue_pending)
@@ -73,21 +73,21 @@ assert_eq "AC: needs-input-Ticket ist nicht 'als Nächstes'" "41" "$(queue_next 
 assert_eq "AC: needs-input-Ticket zählt nicht zur Pending-Liste" "#41" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
-# 3. no-opus-needs-plan zählt in queue_pending, aber NICHT in queue_next
+# 3. hands-off-plan zählt in queue_pending, aber NICHT in queue_next
 # ==============================================================================
 SNAP='[
-  {"number":50,"labels":['"$(label needs-plan)"','"$(label no-opus)"']},
+  {"number":50,"labels":['"$(label plan)"','"$(label hands-off)"']},
   {"number":51,"labels":['"$(label ready)"']}
 ]'
-assert_eq "AC: no-opus-needs-plan wird bei queue_next übersprungen" "51" "$(queue_next "$SNAP")"
-assert_eq "AC: no-opus-needs-plan zählt trotzdem als Pending-Arbeit" "#50, #51" "$(queue_pending "$SNAP")"
+assert_eq "AC: hands-off-plan wird bei queue_next übersprungen" "51" "$(queue_next "$SNAP")"
+assert_eq "AC: hands-off-plan zählt trotzdem als Pending-Arbeit" "#50, #51" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
-# 4. Nur needs-research offen -> queue_next leer, queue_pending = "#N"
+# 4. Nur research offen -> queue_next leer, queue_pending = "#N"
 # ==============================================================================
-SNAP='[{"number":60,"labels":['"$(label needs-research)"']}]'
-assert_eq "AC: nur needs-research -> queue_next leer" "" "$(queue_next "$SNAP")"
-assert_eq "AC: nur needs-research -> queue_pending zeigt Ticket" "#60" "$(queue_pending "$SNAP")"
+SNAP='[{"number":60,"labels":['"$(label research)"']}]'
+assert_eq "AC: nur research -> queue_next leer" "" "$(queue_next "$SNAP")"
+assert_eq "AC: nur research -> queue_pending zeigt Ticket" "#60" "$(queue_pending "$SNAP")"
 
 # ==============================================================================
 # 5. Leere Queue -> beide leer

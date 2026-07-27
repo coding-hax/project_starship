@@ -8,9 +8,9 @@ kein zweites System, kein Kontextbruch.
 
 ```
 Issue (grobe Idee, vom Handy eingeworfen)
-   └─► [optional] needs-research → Opus recherchiert den Fit → needs-input → du entscheidest
+   └─► [optional] research → Opus recherchiert den Fit → needs-input → du entscheidest
 Issue (mit Akzeptanzkriterien)
-   └─► [nur bei Komplexität] needs-plan → Opus plant im Chat → ready
+   └─► [nur bei Komplexität] plan → Opus plant im Chat → ready
    └─► Branch feat/<nr>-<slug>
          └─► Implementierung + Playwright-Tests
                └─► PR (Closes #<nr>)
@@ -39,57 +39,57 @@ Usage-Limit löst sich von selbst in Minuten und bleibt bewusst `in-progress`, d
 Runner fängt in der Zwischenzeit nichts Neues an (siehe Abschnitt „Zwei Arten des
 Wartens" unten).
 
-**Recherche-Schritt vor `needs-plan` (optional, Idee-Ebene):** Wirfst du eine grobe
-Feature-Idee als Issue ein, setzt du das Label `needs-research`. Der Runner lässt
+**Recherche-Schritt vor `plan` (optional, Idee-Ebene):** Wirfst du eine grobe
+Feature-Idee als Issue ein, setzt du das Label `research`. Der Runner lässt
 Opus dann nur-lesend prüfen, *ob* & *was*: Fit zu `docs/VISION.md`,
 `docs/ARCHITECTURE.md`, `docs/DESIGN_SYSTEM.md` und bestehendem Code, 2–3 Ansätze
 mit Trade-offs, Empfehlung, **grober** Schnitt — **kein dateiweiser Plan, kein
-Code-Wie**, das ist eine Stufe abstrakter als `needs-plan`. Widerspricht die Idee
+Code-Wie**, das ist eine Stufe abstrakter als `plan`. Widerspricht die Idee
 der Vision, steht das klar in der Überlegung — Opus verwirft sie nicht
 eigenmächtig, das entscheidest du. Ist die Überlegung fertig, tauscht der
-abschließende Lauf `needs-research` gegen `needs-input`; sagst du dann „ja",
-nimmst du `needs-input` runter und setzt `needs-plan` — erst der Planer-Lauf macht
+abschließende Lauf `research` gegen `needs-input`; sagst du dann „ja",
+nimmst du `needs-input` runter und setzt `plan` — erst der Planer-Lauf macht
 daraus einen dateiweisen Umsetzungsplan (die Konzept-Entscheidung aus der
 Recherche wird dabei nicht neu aufgerollt).
 
 **Planungsschritt vor `ready`:** Komplexe Tickets (mehrdeutig, architektonisch,
 mehrere Dateien, geschützte Pfade, Migrationen, Krypto, Sync) bekommen zuerst das
-Label `needs-plan`. Geplant wird von Opus, nie gebaut — siehe `docs/TOKEN-BUDGET.md`
+Label `plan`. Geplant wird von Opus, nie gebaut — siehe `docs/TOKEN-BUDGET.md`
 und `docs/adr/0005-opus-im-runner.md` — bis Schrittfolge, Testplan, Risiko/Rückweg und
 Wiederaufnahmepunkte konkret genug sind, dass Sonnet/Haiku keine
-Architektur-Entscheidungen mehr treffen müssen. Erst danach: `needs-plan` runter,
+Architektur-Entscheidungen mehr treffen müssen. Erst danach: `plan` runter,
 `ready` rauf.
 
-**Automatik im Runner:** Ein `needs-plan`-Ticket (ohne `needs-input`, ohne
-`no-opus`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
+**Automatik im Runner:** Ein `plan`-Ticket (ohne `needs-input`, ohne
+`hands-off`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
 (`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit). Der Plan
 entsteht inkrementell in **einem** Kommentar (`--edit-last`); erst der
-abschließende Lauf entfernt `needs-plan` und setzt `ready`. Bricht ein
+abschließende Lauf entfernt `plan` und setzt `ready`. Bricht ein
 Planer-Lauf ab (Limit, Timeout), bleiben Label, Teilplan und
 Wiederaufnahme-Marker stehen — der nächste Lauf setzt dort fort, nie von vorne.
-Ein Ticket mit **beiden** Labeln `needs-plan` und `ready` gilt als inkonsistent
-und wird als `needs-plan` behandelt, nicht gebaut. `needs-research` läuft
+Ein Ticket mit **beiden** Labeln `plan` und `ready` gilt als inkonsistent
+und wird als `plan` behandelt, nicht gebaut. `research` läuft
 genauso (eigener Recherche-Prompt statt Planungs-Prompt, `--allowedTools
 "Read,Grep,Glob,Bash,WebSearch"` — die bounded Web-Recherche aus dem
 Recherche-Prompt braucht das zusätzliche Werkzeug), flippt aber auf
 `needs-input` statt `ready`, weil danach eine Entscheidung ansteht, kein Bau.
-Für **kein** Denk-Label (`needs-plan` oder `needs-research`) gibt es einen
+Für **kein** Denk-Label (`plan` oder `research`) gibt es einen
 Tages-Deckel — Planung und Recherche laufen so oft, wie sie brauchen (siehe
-ADR-0005, PR #46). Kill-Switch für beide: `no-opus`.
+ADR-0005, PR #46). Kill-Switch für beide: `hands-off`.
 
-**`no-opus` gilt für jeden Auswahlzweig (#227).** Der Schalter hält nicht nur
+**`hands-off` gilt für jeden Auswahlzweig (#227).** Der Schalter hält nicht nur
 Plan- und Recherche-Läufe an, sondern nimmt das Ticket aus der Auswahl heraus,
 bevor irgendein Zweig sie liest: laufendes `in-progress`, Resume eines
-`parked`-Tickets, Queue, `needs-plan`, `needs-research`, `ready` — überall.
-Damit ist `no-opus` die verlässliche Bremse für ein Ticket, das gerade lokal
-gebaut wird. Bis zu diesem Fix prüften ihn nur Queue, `needs-plan` und
-`needs-research`; ausgerechnet `resume-parked`, das vor allen anderen greift,
+`parked`-Tickets, Queue, `plan`, `research`, `ready` — überall.
+Damit ist `hands-off` die verlässliche Bremse für ein Ticket, das gerade lokal
+gebaut wird. Bis zu diesem Fix prüften ihn nur Queue, `plan` und
+`research`; ausgerechnet `resume-parked`, das vor allen anderen greift,
 und `ready` ignorierten ihn.
 
 Reihenfolge, wenn mehrere Labels gleichzeitig offen stehen: ein laufendes
-`in-progress`-Bau-Ticket geht vor, danach `needs-plan`, danach `needs-research`,
-erst danach `ready`. Ein Ticket mit `needs-research` **und** `ready` gleichzeitig
-gilt ebenso als inkonsistent wie bei `needs-plan` — es wird über den
+`in-progress`-Bau-Ticket geht vor, danach `plan`, danach `research`,
+erst danach `ready`. Ein Ticket mit `research` **und** `ready` gleichzeitig
+gilt ebenso als inkonsistent wie bei `plan` — es wird über den
 Recherche-Zweig gefangen, nicht gebaut.
 
 **Die Prioritäts-Queue (#91, umgebaut #109) — eine flache Reihenfolge, Label egal:**
@@ -106,27 +106,27 @@ Das angepinnte **Queue-Issue** (`QUEUE_ISSUE`) ist eine schlichte, geordnete Lis
 Zahlen oben = zuerst. Wichtig:
 
 - **Das Label ist für die Auswahl egal.** Ein gelistetes Ticket wird bearbeitet, auch
-  ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `needs-plan` → Planlauf,
-  `needs-research` → Recherche, **sonst bauen**.
-- **Weiterhin ausgeschlossen:** `needs-input` (wartet auf dich) und `no-opus`
+  ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `plan` → Planlauf,
+  `research` → Recherche, **sonst bauen**.
+- **Weiterhin ausgeschlossen:** `needs-input` (wartet auf dich) und `hands-off`
   (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
   gelistet ist.
 - **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
   gelistetes, unfertiges Ticket gebaut. Der Merge-Schutz für geschützte Pfade
   (`human-approved`) bleibt davon unberührt — er sitzt in CI, nicht in der Auswahl.
 - **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
-  (`needs-plan` → `needs-research` → `ready`, je ältestes `createdAt`).
+  (`plan` → `research` → `ready`, je ältestes `createdAt`).
 - **Leeres/fehlendes Queue-Issue → reiner Fallback**, also das bisherige Verhalten.
 
 Vom Handy aus editierst du dafür nur den Issue-Body — kein Commit, kein Branch.
 
 Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
-`needs-plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
+`plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
 Tokens kosten, ohne die Ausführung konkreter zu machen.
 
 **Kein extra Code-Änderungsbedarf am Runner für den Fallback:** Ohne
-Queue-Eintrag gilt weiterhin die Label-Kaskade — ein Ticket mit `needs-plan`
-oder `needs-research` und ohne `ready` liegt dort automatisch still, auch ohne
+Queue-Eintrag gilt weiterhin die Label-Kaskade — ein Ticket mit `plan`
+oder `research` und ohne `ready` liegt dort automatisch still, auch ohne
 eigene Guard-Logik. Ist das Ticket dagegen gelistet, entscheidet allein die
 Reihenfolge in der Queue (siehe oben); das Label ist dann nur noch für die
 **Rolle** relevant (Plan/Recherche/Bau), nicht mehr für die Auswahl.
@@ -138,8 +138,8 @@ Zustandsmaschine des ganzen Setups:
 
 | Label            | Bedeutung                                                      | Wer setzt es |
 | ---------------- | -------------------------------------------------------------- | ------------ |
-| `needs-research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-input`. | **Du**       |
-| `needs-plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
+| `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-input`. | **Du**       |
+| `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-input`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
@@ -158,7 +158,7 @@ testlos gerechtfertigt ist, du setzt das Label.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-input` tragen — ein
-`needs-plan`-Ticket trägt per Definition kein `ready`, solange der Plan fehlt,
+`plan`-Ticket trägt per Definition kein `ready`, solange der Plan fehlt,
 und bleibt automatisch liegen. **Ist das Ticket gelistet**, ersetzt das die
 `ready`-Freigabe (siehe „Die Prioritäts-Queue" oben). So entscheidest **du** in
 jedem Fall, was gebaut wird, auch wenn zwanzig Tickets im Backlog liegen —
@@ -464,7 +464,7 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig — der Text im Ticket trennt beides: „wartet auf deine Antwort" (`needs-answer`) vs. „wartet auf eine Freigabe" (#196) | **ja** |
 | 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
 | 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
-| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready`, `needs-plan` oder `needs-research` | nein (außer du willst was) |
+| ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready`, `plan` oder `research` | nein (außer du willst was) |
 
 🟢 heißt jetzt ausdrücklich **idle**: kein laufender Prozess, egal ob noch Arbeit
 in der Queue liegt oder nicht — das unterscheidet den Titel klar von 🟠.
@@ -488,10 +488,10 @@ Ein Issue darf erst nach `Ready`, wenn es enthält:
 - **Nicht-Ziele** (was in diesem Ticket ausdrücklich nicht passiert)
 - **Betroffener Milestone**
 
-Ein Ticket mit dem Label `needs-plan` ist per Definition **nicht** ready — ihm fehlt
+Ein Ticket mit dem Label `plan` ist per Definition **nicht** ready — ihm fehlt
 der Plan aus dem vorherigen Abschnitt (Schrittfolge, Testplan, Risiko/Rückweg,
 Wiederaufnahmepunkte). Erst wenn Opus diesen Plan im Chat ergänzt hat und
-`needs-plan` gegen `ready` tauscht, darf der Runner es nehmen.
+`plan` gegen `ready` tauscht, darf der Runner es nehmen.
 
 ### Issue-Template
 

@@ -146,7 +146,7 @@ describe('dispatch', () => {
   });
 
   it('runs `queue-pending`, reflecting the clock-independent pure queue logic', () => {
-    const snapshot = JSON.stringify([{ number: 60, labels: [{ name: 'needs-research' }] }]);
+    const snapshot = JSON.stringify([{ number: 60, labels: [{ name: 'research' }] }]);
 
     const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const rc = dispatch(fakeContext(), ['queue-pending', snapshot]);

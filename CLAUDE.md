@@ -38,8 +38,8 @@ Vor jeder Arbeit lesen:
 - Commits: Conventional Commits (`feat(tasks): add swipe to complete`)
 - PR-Titel enthält `Closes #<issue-nr>`.
 - Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
-  Sync) werden **vor** `ready` von Opus geplant (Label `needs-plan`); der Runner baut
-  niemals ohne Plan. Einfache/mechanische Tickets dürfen `needs-plan` überspringen.
+  Sync) werden **vor** `ready` von Opus geplant (Label `plan`); der Runner baut
+  niemals ohne Plan. Einfache/mechanische Tickets dürfen `plan` überspringen.
   Opus bleibt im Runner sonst tabu (nur Planung/Recherche, nie Bauen — außer der
   Eskalations-Rolle nach drei erfolglosen Sonnet/Haiku-Läufen). Details, Labels,
   Deckel: `docs/WORKFLOW.md`, `docs/adr/0005-opus-im-runner.md`,

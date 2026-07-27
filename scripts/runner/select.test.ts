@@ -100,28 +100,28 @@ describe('selectTicket (reine Auswahl-Kaskade)', () => {
   });
 
   it('die Prioritaets-Queue schlaegt die Label-Kaskade, Label ist fuer den Rang egal', () => {
-    const snapshot = [issue(99, ['ready'], '2024-01-01T00:00:00Z'), issue(10, ['needs-plan'], '2024-02-01T00:00:00Z')];
+    const snapshot = [issue(99, ['ready'], '2024-01-01T00:00:00Z'), issue(10, ['plan'], '2024-02-01T00:00:00Z')];
     expect(selectTicket(snapshot, '#10, #99')).toEqual({ issue: 10, role: 'plan', source: 'queue' });
   });
 
-  it('needs-plan hat Vorrang vor needs-research, auch bei niedrigerer Nummer (Fallback ohne Queue)', () => {
-    const snapshot = [issue(10, ['needs-research']), issue(60, ['needs-plan'])];
-    expect(selectTicket(snapshot)).toEqual({ issue: 60, role: 'plan', source: 'needs-plan' });
+  it('plan hat Vorrang vor research, auch bei niedrigerer Nummer (Fallback ohne Queue)', () => {
+    const snapshot = [issue(10, ['research']), issue(60, ['plan'])];
+    expect(selectTicket(snapshot)).toEqual({ issue: 60, role: 'plan', source: 'plan' });
   });
 
-  it('needs-research wird gewaehlt, wenn kein needs-plan ansteht', () => {
-    const snapshot = [issue(47, ['needs-research'])];
-    expect(selectTicket(snapshot)).toEqual({ issue: 47, role: 'research', source: 'needs-research' });
+  it('research wird gewaehlt, wenn kein plan ansteht', () => {
+    const snapshot = [issue(47, ['research'])];
+    expect(selectTicket(snapshot)).toEqual({ issue: 47, role: 'research', source: 'research' });
   });
 
-  it('no-opus ueberspringt ein needs-research-Ticket komplett -- faellt auf ready durch', () => {
-    const snapshot = [issue(47, ['needs-research', 'no-opus']), issue(48, ['ready'])];
+  it('hands-off ueberspringt ein research-Ticket komplett -- faellt auf ready durch', () => {
+    const snapshot = [issue(47, ['research', 'hands-off']), issue(48, ['ready'])];
     expect(selectTicket(snapshot)).toEqual({ issue: 48, role: 'build', source: 'ready' });
   });
 
-  it('needs-research UND ready gleichzeitig wird ueber needs-research verarbeitet, nicht als Bau-Ticket', () => {
-    const snapshot = [issue(50, ['needs-research', 'ready'])];
-    expect(selectTicket(snapshot)).toEqual({ issue: 50, role: 'research', source: 'needs-research' });
+  it('research UND ready gleichzeitig wird ueber research verarbeitet, nicht als Bau-Ticket', () => {
+    const snapshot = [issue(50, ['research', 'ready'])];
+    expect(selectTicket(snapshot)).toEqual({ issue: 50, role: 'research', source: 'research' });
   });
 
   it('ready waehlt nach createdAt, nicht nach Issue-Nummer', () => {
@@ -129,8 +129,8 @@ describe('selectTicket (reine Auswahl-Kaskade)', () => {
     expect(selectTicket(snapshot)?.issue).toBe(99);
   });
 
-  it('needs-plan waehlt nach createdAt, nicht nach Issue-Nummer', () => {
-    const snapshot = [issue(77, ['needs-plan'], '2024-01-01T00:00:00Z'), issue(5, ['needs-plan'], '2024-06-01T00:00:00Z')];
+  it('plan waehlt nach createdAt, nicht nach Issue-Nummer', () => {
+    const snapshot = [issue(77, ['plan'], '2024-01-01T00:00:00Z'), issue(5, ['plan'], '2024-06-01T00:00:00Z')];
     expect(selectTicket(snapshot)?.issue).toBe(77);
   });
 
@@ -147,33 +147,33 @@ describe('selectTicket (reine Auswahl-Kaskade)', () => {
 
 // #227: der Kill-Switch wirkte auf jedem Weg AUSSER dem, der vor allen anderen
 // greift. Deshalb je Zweig ein eigener Nachweis, nicht nur fuer den Vorfall.
-describe('selectTicket: no-opus gilt fuer jeden Zweig (#227)', () => {
-  it('in-progress + no-opus wird nicht fortgesetzt -- faellt auf ready durch', () => {
-    const snapshot = [issue(50, ['in-progress', 'no-opus']), issue(70, ['ready'])];
+describe('selectTicket: hands-off gilt fuer jeden Zweig (#227)', () => {
+  it('in-progress + hands-off wird nicht fortgesetzt -- faellt auf ready durch', () => {
+    const snapshot = [issue(50, ['in-progress', 'hands-off']), issue(70, ['ready'])];
     expect(selectTicket(snapshot)).toEqual({ issue: 70, role: 'build', source: 'ready' });
   });
 
-  it('parked + no-opus wird bei freiem Bauplatz nicht gewaehlt (der Vorfall vom 26.07.26)', () => {
-    const snapshot = [issue(156, ['parked', 'no-opus'], '2024-01-01T00:00:00Z'), issue(70, ['ready'], '2024-06-01T00:00:00Z')];
+  it('parked + hands-off wird bei freiem Bauplatz nicht gewaehlt (der Vorfall vom 26.07.26)', () => {
+    const snapshot = [issue(156, ['parked', 'hands-off'], '2024-01-01T00:00:00Z'), issue(70, ['ready'], '2024-06-01T00:00:00Z')];
     expect(selectTicket(snapshot)).toEqual({ issue: 70, role: 'build', source: 'ready' });
   });
 
-  it('ready + no-opus wird nicht gebaut', () => {
-    expect(selectTicket([issue(48, ['ready', 'no-opus'])])).toBeNull();
+  it('ready + hands-off wird nicht gebaut', () => {
+    expect(selectTicket([issue(48, ['ready', 'hands-off'])])).toBeNull();
   });
 
-  it('no-opus schlaegt die Queue -- der naechste gelistete Eintrag kommt dran', () => {
-    const snapshot = [issue(10, ['ready', 'no-opus']), issue(99, ['ready'])];
+  it('hands-off schlaegt die Queue -- der naechste gelistete Eintrag kommt dran', () => {
+    const snapshot = [issue(10, ['ready', 'hands-off']), issue(99, ['ready'])];
     expect(selectTicket(snapshot, '#10, #99')).toEqual({ issue: 99, role: 'build', source: 'queue' });
   });
 
-  it('no-opus ueberspringt ein needs-plan-Ticket komplett -- faellt auf ready durch', () => {
-    const snapshot = [issue(60, ['needs-plan', 'no-opus']), issue(48, ['ready'])];
+  it('hands-off ueberspringt ein plan-Ticket komplett -- faellt auf ready durch', () => {
+    const snapshot = [issue(60, ['plan', 'hands-off']), issue(48, ['ready'])];
     expect(selectTicket(snapshot)).toEqual({ issue: 48, role: 'build', source: 'ready' });
   });
 
-  it('traegt jedes Ticket no-opus, waehlt der Runner gar nichts', () => {
-    const snapshot = [issue(50, ['in-progress', 'no-opus']), issue(51, ['parked', 'no-opus']), issue(52, ['ready', 'no-opus'])];
+  it('traegt jedes Ticket hands-off, waehlt der Runner gar nichts', () => {
+    const snapshot = [issue(50, ['in-progress', 'hands-off']), issue(51, ['parked', 'hands-off']), issue(52, ['ready', 'hands-off'])];
     expect(selectTicket(snapshot, '#52')).toBeNull();
   });
 });
@@ -218,15 +218,15 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
 
   it('Queue-Pick mit role=plan: keine Label-Mutation, MODE=start ohne Session', () => {
     const gh = ghDouble();
-    const outcome = pickTicket([issue(60, ['needs-plan'])], '#60', gh, state);
+    const outcome = pickTicket([issue(60, ['plan'])], '#60', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 60, role: 'plan', mode: 'start' });
     expect(gh.run).not.toHaveBeenCalled();
   });
 
-  it('needs-plan-Fallback mit vorhandener Session -> MODE=resume', () => {
+  it('plan-Fallback mit vorhandener Session -> MODE=resume', () => {
     state.write('session-47', 'sess-abc123');
     const gh = ghDouble();
-    const outcome = pickTicket([issue(47, ['needs-research'])], '', gh, state);
+    const outcome = pickTicket([issue(47, ['research'])], '', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 47, role: 'research', mode: 'resume' });
     expect(gh.run).not.toHaveBeenCalled();
   });
@@ -238,9 +238,9 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '48', '--add-label', 'in-progress', '--remove-label', 'ready']);
   });
 
-  it('#227: ein geparktes no-opus-Ticket wird nicht auf in-progress befoerdert', () => {
+  it('#227: ein geparktes hands-off-Ticket wird nicht auf in-progress befoerdert', () => {
     const gh = ghDouble();
-    expect(pickTicket([issue(156, ['parked', 'no-opus'])], '', gh, state)).toEqual({ kind: 'none' });
+    expect(pickTicket([issue(156, ['parked', 'hands-off'])], '', gh, state)).toEqual({ kind: 'none' });
     expect(gh.run).not.toHaveBeenCalled();
   });
 

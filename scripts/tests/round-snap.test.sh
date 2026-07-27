@@ -33,7 +33,7 @@ mkdir -p "$GHSTATE_DIR"
 # --- Stub 'gh' ---------------------------------------------------------------
 # 'issue list --label <L>' liest $G/list-<L>.json. Ein ungelabelter Aufruf
 # (ROUND_SNAP bzw. queue_snapshot(), beide ohne --label) baut sich aus den
-# vier Ticketwahl-Fixtures (in-progress/needs-plan/needs-research/ready)
+# vier Ticketwahl-Fixtures (in-progress/plan/research/ready)
 # zusammen -- needs-input bleibt aussen vor (fragt waiting_issues() weiterhin
 # gezielt gelabelt ab).
 cat > "$FAKEBIN/gh" <<'STUB'
@@ -57,8 +57,8 @@ case "${1:-} ${2:-}" in
       data=$(cat "$G/list-$label.json" 2>/dev/null || echo '[]')
     else
       data=$({ cat "$G/list-in-progress.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-plan.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-research.json" 2>/dev/null || echo '[]'
+               cat "$G/list-plan.json" 2>/dev/null || echo '[]'
+               cat "$G/list-research.json" 2>/dev/null || echo '[]'
                cat "$G/list-ready.json" 2>/dev/null || echo '[]'; } | jq -s 'add // []')
     fi
     if [ -n "$q" ]; then
@@ -192,8 +192,8 @@ assert_session_absent() {   # $1 = Beschreibung, $2 = Issue-Nr
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[
   {"number":99,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-06-01T00:00:00Z"}
@@ -204,20 +204,20 @@ assert_session_exists "AC7: 'ready' waehlt das aeltere createdAt (#99), nicht di
 assert_session_absent "AC7: das juenger erstellte #10 bleibt unangetastet" 10
 
 # ==============================================================================
-# 2. Gleiches Bild bei 'needs-plan': #77 juenger nummeriert, aber aelter
+# 2. Gleiches Bild bei 'plan': #77 juenger nummeriert, aber aelter
 #    erstellt als #5.
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[
-  {"number":77,"labels":[{"name":"needs-plan"}],"createdAt":"2024-01-01T00:00:00Z"},
-  {"number":5,"labels":[{"name":"needs-plan"}],"createdAt":"2024-06-01T00:00:00Z"}
+list_json plan '[
+  {"number":77,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":5,"labels":[{"name":"plan"}],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-list_json needs-research '[]'
+list_json research '[]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session_exists "AC7: 'needs-plan' waehlt das aeltere createdAt (#77), nicht die kleinere Nummer" 77
+assert_session_exists "AC7: 'plan' waehlt das aeltere createdAt (#77), nicht die kleinere Nummer" 77
 assert_session_absent "AC7: das juenger erstellte #5 bleibt unangetastet" 5
 
 # ==============================================================================
@@ -229,8 +229,8 @@ list_json in-progress '[
   {"number":50,"labels":[{"name":"in-progress"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":3,"labels":[{"name":"in-progress"}],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
@@ -243,8 +243,8 @@ assert_session_absent "AC7: das juenger erstellte #3 bleibt unangetastet" 3
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":40,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 list_json needs-input '[]'
 echo "alte-gueltige-session-id" > "$STATE_DIR/session-40"
@@ -262,8 +262,8 @@ assert_eq "AC7: kaputtes \$OUT laesst die alte Session-ID unangetastet" \
 # ==============================================================================
 reset_state
 list_json in-progress '[]'
-list_json needs-plan '[]'
-list_json needs-research '[]'
+list_json plan '[]'
+list_json research '[]'
 list_json ready '[{"number":41,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 list_json needs-input '[]'
 echo "alte-session-id" > "$STATE_DIR/session-41"

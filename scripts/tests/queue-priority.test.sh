@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Tests für die Prioritäts-Queue als FLACHE Reihenfolge (#109): das Queue-Issue
 # (QUEUE_ISSUE) listet '#NN' in Reihenfolge; wer gelistet ist, wird bearbeitet —
-# das Label ist für die AUSWAHL egal. Erhalten bleiben: 'needs-input'/'no-opus'
-# schließen aus; die ROLLE kommt aus dem Label (needs-plan -> Plan, needs-research
+# das Label ist für die AUSWAHL egal. Erhalten bleiben: 'needs-input'/'hands-off'
+# schließen aus; die ROLLE kommt aus dem Label (plan -> Plan, research
 # -> Recherche, sonst bauen); leere Queue -> Fallback auf Label-Reihenfolge.
 #
 # Bewiesen wird:
 #   1. Gelistetes Ticket OHNE 'ready' (kein/anderes Label) wird gebaut.
 #   2. Queue-Reihenfolge schlägt createdAt; früher Gelistetes zuerst.
 #   3. Gelistetes schlägt ungelistetes 'ready' (Queue vor Fallback).
-#   4. Gelistetes 'needs-plan' -> Planlauf (kein in-progress); 'needs-research' analog.
+#   4. Gelistetes 'plan' -> Planlauf (kein in-progress); 'research' analog.
 #   5. 'needs-input' schließt ein gelistetes Ticket aus (Fallback greift).
-#   6. 'no-opus' schließt ein gelistetes Ticket aus.
+#   6. 'hands-off' schließt ein gelistetes Ticket aus.
 #   7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt.
 #
 # Reine Bash-Assertions, kein bats. Sourct claude-runner.sh (Source-Guard hält
@@ -57,8 +57,8 @@ case "${1:-} ${2:-}" in
       data=$(cat "$G/list-$label.json" 2>/dev/null || echo '[]')
     else
       data=$({ cat "$G/list-in-progress.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-plan.json" 2>/dev/null || echo '[]'
-               cat "$G/list-needs-research.json" 2>/dev/null || echo '[]'
+               cat "$G/list-plan.json" 2>/dev/null || echo '[]'
+               cat "$G/list-research.json" 2>/dev/null || echo '[]'
                cat "$G/list-ready.json" 2>/dev/null || echo '[]'; } | jq -s 'add // []')
     fi
     if [ -n "$q" ]; then printf '%s' "$data" | jq -r "$q"; else printf '%s' "$data"; fi
@@ -116,7 +116,7 @@ source "$RUNNER"
 reset_state() {
   rm -rf "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
-  for l in in-progress needs-plan needs-research ready needs-input; do
+  for l in in-progress plan research ready needs-input; do
     printf '[]' > "$GHSTATE_DIR/list-$l.json"
   done
 }
@@ -188,21 +188,21 @@ assert_session_exists "AC3: gelistetes #99 schlägt ungelistetes ready #10" 99
 assert_session_absent "AC3: ungelistetes ready #10 wartet" 10
 
 # ==============================================================================
-# 4. Rolle aus Label: gelistetes 'needs-plan' -> Planlauf (KEIN in-progress);
-#    gelistetes 'needs-research' -> Recherche (KEIN in-progress).
+# 4. Rolle aus Label: gelistetes 'plan' -> Planlauf (KEIN in-progress);
+#    gelistetes 'research' -> Recherche (KEIN in-progress).
 # ==============================================================================
 reset_state
-snapshot '[{"number":55,"labels":[{"name":"needs-plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
+snapshot '[{"number":55,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '#55'
 run_main
-assert_session_exists  "AC4: gelistetes needs-plan #55 läuft (Planlauf)" 55
+assert_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
 assert_label_not_added "AC4: #55 bekommt KEIN in-progress (Denk-Rolle, kein Bau)" 55 in-progress
 
 reset_state
-snapshot '[{"number":66,"labels":[{"name":"needs-research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
+snapshot '[{"number":66,"labels":[{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '#66'
 run_main
-assert_session_exists  "AC4: gelistetes needs-research #66 läuft (Recherche)" 66
+assert_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
 assert_label_not_added "AC4: #66 bekommt KEIN in-progress" 66 in-progress
 
 # ==============================================================================
@@ -219,16 +219,16 @@ assert_session_absent "AC5: gelistetes, aber needs-input #77 wird NICHT gewählt
 assert_session_exists "AC5: Fallback wählt das ready #88" 88
 
 # ==============================================================================
-# 6. 'no-opus' schließt ein gelistetes Ticket aus -> Fallback baut #88.
+# 6. 'hands-off' schließt ein gelistetes Ticket aus -> Fallback baut #88.
 # ==============================================================================
 reset_state
 snapshot '[
-  {"number":77,"labels":[{"name":"no-opus"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":77,"labels":[{"name":"hands-off"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
 queue_body_fixture 1000 '#77'
 run_main
-assert_session_absent "AC6: gelistetes, aber no-opus #77 wird NICHT gewählt" 77
+assert_session_absent "AC6: gelistetes, aber hands-off #77 wird NICHT gewählt" 77
 assert_session_exists "AC6: Fallback wählt das ready #88" 88
 
 # ==============================================================================

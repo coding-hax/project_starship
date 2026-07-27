@@ -125,7 +125,7 @@ describe('roundPlan', () => {
   });
 
   it('gibt der Planer-Rolle Opus und eine nur lesende Allowlist (ADR-0005)', () => {
-    const { gh } = ghDouble([openIssues(issueJson(80, ['needs-plan'])), noOpenPrs]);
+    const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;
     expect(run.role).toBe('plan');
     expect(run.model).toBe('opus');
@@ -135,7 +135,7 @@ describe('roundPlan', () => {
   });
 
   it('gibt der Recherche-Rolle zusaetzlich WebSearch', () => {
-    const { gh } = ghDouble([openIssues(issueJson(81, ['needs-research'])), noOpenPrs]);
+    const { gh } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;
     expect(run.role).toBe('research');
     expect(run.tools).toContain('WebSearch');

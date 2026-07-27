@@ -9,11 +9,11 @@
 //      dieselbe Praezedenz wie bisher --
 //      laufendes in-progress > Resume eines geparkten Tickets (#145,
 //      MODE=resume statt neu anzufangen) > Prioritaets-Queue (S2, Label
-//      egal) > needs-plan > needs-research > ready, je aeltestes createdAt.
+//      egal) > plan > research > ready, je aeltestes createdAt.
 //
-// `RUN_ROLE` kommt weiter aus dem Label ('needs-plan' -> plan,
-// 'needs-research' -> research, sonst build) -- unveraendert aus ADR-0005.
-// Quer ueber ALLE Zweige gilt der Kill-Switch `no-opus` (#227): so markierte
+// `RUN_ROLE` kommt weiter aus dem Label ('plan' -> plan,
+// 'research' -> research, sonst build) -- unveraendert aus ADR-0005.
+// Quer ueber ALLE Zweige gilt der Kill-Switch `hands-off` (#227): so markierte
 // Tickets sind fuer `selectTicket()` nicht vorhanden.
 // Der eigentliche `claude`-Aufruf (Prompt/Modell/Tools je Rolle) bleibt
 // bewusst in claude-runner.sh (S6, siehe Nicht-Ziele von #202).
@@ -77,24 +77,24 @@ export interface SelectedTicket {
   role: RunRole;
   // Herkunft der Wahl -- bestimmt in pickTicket(), welche Label-Mutation und
   // welcher MODE (start/resume) noetig sind.
-  source: 'running' | 'resume-parked' | 'queue' | 'needs-plan' | 'needs-research' | 'ready';
+  source: 'running' | 'resume-parked' | 'queue' | 'plan' | 'research' | 'ready';
 }
 
 // Die reine Auswahl-Kaskade, OHNE Seiteneffekte -- Praezedenz identisch zur
 // bisherigen Bash-Implementierung: laufendes in-progress > Resume eines
-// geparkten Tickets > Prioritaets-Queue (Label egal) > needs-plan >
-// needs-research > ready, je aeltestes createdAt.
+// geparkten Tickets > Prioritaets-Queue (Label egal) > plan >
+// research > ready, je aeltestes createdAt.
 export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTicket | null {
-  // #227: 'no-opus' ist ein Kill-Switch fuer das ganze Ticket, kein Detail
-  // einzelner Zweige. Der Ausschluss stand vorher nur in queue/needs-plan/
-  // needs-research -- ausgerechnet 'running', 'resume-parked' (greift VOR
+  // #227: 'hands-off' ist ein Kill-Switch fuer das ganze Ticket, kein Detail
+  // einzelner Zweige. Der Ausschluss stand vorher nur in queue/plan/
+  // research -- ausgerechnet 'running', 'resume-parked' (greift VOR
   // allen anderen) und 'ready' pruefen ihn nicht. Am 26.07.26 hat
   // resume-parked deshalb einen Opus-Bau-Lauf auf Nummer 156 gestartet,
   // waehrend dasselbe Ticket lokal gebaut wurde. Einmal zentral gefiltert,
-  // bevor irgendein Zweig den Snapshot sieht: ein no-opus-Ticket ist fuer die
+  // bevor irgendein Zweig den Snapshot sieht: ein hands-off-Ticket ist fuer die
   // Auswahl schlicht nicht vorhanden, und der naechste neue Zweig erbt das,
   // statt die Bedingung zu vergessen.
-  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'no-opus'));
+  const selectable = snapshot.filter((issue) => !hasLabel(issue, 'hands-off'));
 
   const running = selectable
     .filter((issue) => hasLabel(issue, 'in-progress') && !hasLabel(issue, 'needs-input'))
@@ -114,28 +114,28 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
       .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
     if (ranked.length > 0) {
       const picked = ranked[0];
-      const role: RunRole = hasLabel(picked, 'needs-plan') ? 'plan' : hasLabel(picked, 'needs-research') ? 'research' : 'build';
+      const role: RunRole = hasLabel(picked, 'plan') ? 'plan' : hasLabel(picked, 'research') ? 'research' : 'build';
       return { issue: picked.number, role, source: 'queue' };
     }
   }
 
   const nextNeedsPlan = selectable
-    .filter((issue) => hasLabel(issue, 'needs-plan') && !hasLabel(issue, 'needs-input'))
+    .filter((issue) => hasLabel(issue, 'plan') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
-  if (nextNeedsPlan) return { issue: nextNeedsPlan.number, role: 'plan', source: 'needs-plan' };
+  if (nextNeedsPlan) return { issue: nextNeedsPlan.number, role: 'plan', source: 'plan' };
 
   const nextNeedsResearch = selectable
-    .filter((issue) => hasLabel(issue, 'needs-research') && !hasLabel(issue, 'needs-input'))
+    .filter((issue) => hasLabel(issue, 'research') && !hasLabel(issue, 'needs-input'))
     .sort(byCreatedAt)[0];
-  if (nextNeedsResearch) return { issue: nextNeedsResearch.number, role: 'research', source: 'needs-research' };
+  if (nextNeedsResearch) return { issue: nextNeedsResearch.number, role: 'research', source: 'research' };
 
   const nextReady = selectable
     .filter(
       (issue) =>
         hasLabel(issue, 'ready') &&
         !hasLabel(issue, 'needs-input') &&
-        !hasLabel(issue, 'needs-plan') &&
-        !hasLabel(issue, 'needs-research'),
+        !hasLabel(issue, 'plan') &&
+        !hasLabel(issue, 'research'),
     )
     .sort(byCreatedAt)[0];
   if (nextReady) return { issue: nextReady.number, role: 'build', source: 'ready' };
@@ -183,8 +183,8 @@ export function pickTicket(snapshot: QueueIssue[], queueBody: string, gh: GhAdap
         return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'start' };
       }
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue) ? 'resume' : 'start' };
-    case 'needs-plan':
-    case 'needs-research':
+    case 'plan':
+    case 'research':
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue) ? 'resume' : 'start' };
     case 'ready':
       gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);

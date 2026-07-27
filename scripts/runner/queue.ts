@@ -12,7 +12,7 @@ export interface QueueIssue {
 }
 
 // Exportiert fuer select.ts (#202 S5) -- dieselbe Label-/Sortierlogik wird
-// dort fuer die volle Ticketauswahl-Kaskade (inkl. needs-research) gebraucht.
+// dort fuer die volle Ticketauswahl-Kaskade (inkl. research) gebraucht.
 export function hasLabel(issue: QueueIssue, name: string): boolean {
   return issue.labels.some((label) => label.name === name);
 }
@@ -37,13 +37,13 @@ export function queueOrderFlat(body: string): number[] {
   return order;
 }
 
-// Offene Queue-Arbeit als "#a, #b" (leer = nichts offen): ready|needs-plan|
-// needs-research, jeweils OHNE needs-input.
+// Offene Queue-Arbeit als "#a, #b" (leer = nichts offen): ready|plan|
+// research, jeweils OHNE needs-input.
 export function queuePending(snapshot: QueueIssue[]): string {
   return snapshot
     .filter((issue) => {
       const eligible =
-        hasLabel(issue, 'ready') || hasLabel(issue, 'needs-plan') || hasLabel(issue, 'needs-research');
+        hasLabel(issue, 'ready') || hasLabel(issue, 'plan') || hasLabel(issue, 'research');
       return eligible && !hasLabel(issue, 'needs-input');
     })
     .map((issue) => issue.number)
@@ -53,7 +53,7 @@ export function queuePending(snapshot: QueueIssue[]): string {
 }
 
 // Das Ticket, das der Runner beim naechsten Takt naehme -- Praezedenz:
-// laufendes in-progress -> flache Queue (Label egal) -> needs-plan ->
+// laufendes in-progress -> flache Queue (Label egal) -> plan ->
 // ready. `null`, wenn nichts baubereit ist.
 export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null {
   const runningInProgress = snapshot
@@ -65,13 +65,13 @@ export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null
   if (order.length > 0) {
     const ranked = snapshot
       .filter((issue) => order.includes(issue.number))
-      .filter((issue) => !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'no-opus'))
+      .filter((issue) => !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'hands-off'))
       .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
     if (ranked.length > 0) return ranked[0].number;
   }
 
   const nextNeedsPlan = snapshot
-    .filter((issue) => hasLabel(issue, 'needs-plan') && !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'no-opus'))
+    .filter((issue) => hasLabel(issue, 'plan') && !hasLabel(issue, 'needs-input') && !hasLabel(issue, 'hands-off'))
     .sort(byCreatedAt)[0];
   if (nextNeedsPlan) return nextNeedsPlan.number;
 
@@ -80,8 +80,8 @@ export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null
       (issue) =>
         hasLabel(issue, 'ready') &&
         !hasLabel(issue, 'needs-input') &&
-        !hasLabel(issue, 'needs-plan') &&
-        !hasLabel(issue, 'needs-research'),
+        !hasLabel(issue, 'plan') &&
+        !hasLabel(issue, 'research'),
     )
     .sort(byCreatedAt)[0];
   if (nextReady) return nextReady.number;

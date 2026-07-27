@@ -19,8 +19,8 @@ Architektur-Entscheidungen an geschützten Pfaden (`src/db/`, `src/crypto/`,
 
 Opus ist im Runner ausschließlich in **drei nur-lesenden Denk-Rollen** erlaubt:
 
-1. **Planung** (`needs-plan` → `ready`, dieses Ticket, #42).
-2. **Feature-Recherche** (`needs-research`, Folge-Ticket #43).
+1. **Planung** (`plan` → `ready`, dieses Ticket, #42).
+2. **Feature-Recherche** (`research`, Folge-Ticket #43).
 3. **Eskalation** nach drei erfolglosen Bau-Versuchen (#34) — **teilweise
    ersetzt durch ADR-0007**: dort baut Opus als letzte Eskalationsstufe
    tatsächlich, mit eigenem Deckel und eigenen Grenzen. Die Details stehen in
@@ -37,7 +37,7 @@ Produktionscode.
   einer festen Zahl für einen Tag zu parken widerspräche dem Ziel unbeaufsichtigten
   Fortschritts. Die Obergrenze ist das echte Nutzungs-/Session-Limit des Plans
   (429 → `blocked-limit`, automatische Fortsetzung), nicht ein fester Zähler.
-- **Kill-Switch:** Label `no-opus` am Ticket unterbindet jede Opus-Nutzung —
+- **Kill-Switch:** Label `hands-off` am Ticket unterbindet jede Opus-Nutzung —
   der Planer überspringt das Ticket vollständig, weder Planung noch Bau durch Opus.
 - **Strikt nur-lesend, präventiv erzwungen (#63):** Opus läuft mit
   `--allowedTools "Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"`
@@ -59,7 +59,7 @@ Produktionscode.
 - `CLAUDE.md` (Abschnitt „Autonomer Betrieb") und `docs/TOKEN-BUDGET.md` verweisen
   auf diese ADR. Die harte Regel „Opus tabu im Runner" wird zu „Opus tabu im Runner
   **außer** in den drei hier genannten Denk-Rollen, siehe ADR-0005".
-- `docs/WORKFLOW.md` beschreibt die Automatik: ein `needs-plan`-Ticket wird vom
+- `docs/WORKFLOW.md` beschreibt die Automatik: ein `plan`-Ticket wird vom
   Runner mit Opus (nur lesend) geplant und danach auf `ready` geflippt; bricht der
   Planer-Lauf ab, bleiben Label, Teilplan und Wiederaufnahme-Marker stehen — der
   nächste Lauf setzt am Marker fort, nie von vorne.

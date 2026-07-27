@@ -156,7 +156,7 @@ ${ciSummary}
 /**
  * RUN_ROLE=plan (ADR-0005). Nur lesend: kein Edit/Write, kein Branch, kein
  * Commit. Schreibt den Plan inkrementell in EINEN Kommentar und flippt
- * needs-plan -> ready erst, wenn der Plan wirklich fertig ist.
+ * plan -> ready erst, wenn der Plan wirklich fertig ist.
  */
 export function planPrompt(issue: number): string {
   return `Du arbeitest UNBEAUFSICHTIGT als **Planer** (Opus, nur lesend). Ändere KEINEN
@@ -178,14 +178,14 @@ ${FILE_ACCESS_RULE}
    Statuszeile auf „Status: **wartet auf Entscheidung**", Label
    'needs-input' setzen, beenden. Rate nie.
 5. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
-   entfernen, dann gh issue edit ${issue} --remove-label needs-plan --add-label
+   entfernen, dann gh issue edit ${issue} --remove-label plan --add-label
    ready. Erst dieser abschließende Schritt flippt das Label.`;
 }
 
 /**
  * RUN_ROLE=research (ADR-0005 + #43). Idee-/Feature-Ebene (Ob & Was, grober
  * Schnitt) -- KEIN dateiweiser Plan, das ist die Planer-Rolle. Flippt
- * needs-research -> needs-input erst, wenn die Ueberlegung fertig ist, auch
+ * research -> needs-input erst, wenn die Ueberlegung fertig ist, auch
  * dann, wenn die Idee der Vision widerspricht: nie eigenmaechtig verwerfen,
  * das entscheidet der Mensch.
  */
@@ -206,14 +206,14 @@ ${FILE_ACCESS_RULE}
    **Überlegung** auf Idee-/Feature-Ebene: Was ist es? Passt es zur Vision
    (auch: passt es *nicht* — das klar benennen, nicht eigenmächtig verwerfen)?
    2–3 Ansätze mit Trade-offs, Empfehlung, grober Scope. **Kein Code, keine
-   dateiweise Umsetzung** — das ist der spätere Planer-Lauf (needs-plan).
+   dateiweise Umsetzung** — das ist der spätere Planer-Lauf (plan).
    Statuszeile oben: „🔎 Recherche — Status: **in Arbeit**" + Marker „← HIER
    WEITER BEI DER RECHERCHE: <Abschnitt>".
 5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
    zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
-   gh issue edit ${issue} --remove-label needs-research --add-label needs-input.
+   gh issue edit ${issue} --remove-label research --add-label needs-input.
    Erst dieser abschließende Schritt flippt das Label — der Mensch entscheidet
-   danach, ob daraus needs-plan wird oder die Idee verworfen wird.`;
+   danach, ob daraus plan wird oder die Idee verworfen wird.`;
 }
 
 // Werkzeug-Allowlist der Denk-Rollen (ADR-0005 + #63): praeventiv statt nur
