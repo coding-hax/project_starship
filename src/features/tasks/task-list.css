@@ -20,6 +20,34 @@
   color: var(--text-muted);
 }
 
+/**
+ * One task card's outer height, declared where both the cards and the empty state
+ * below can read it, so the two cannot drift apart (issue #228). Everything here
+ * is border-box, so the padding and the border sit *inside* this number: what
+ * makes a card as tall as it is, is the touch-target-tall checkbox column
+ * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px border.
+ */
+.task-list__item,
+.task-list__empty--compact {
+  --task-card-height: calc(var(--touch-target) + 2 * var(--space-3) + 2px);
+}
+
+/**
+ * On /uebersicht the empty state sits between two section headings, where
+ * space-12 tore a hole into the page — nothing due looked like a rendering bug
+ * (issue #228). Exactly one task card's height instead, so the rhythm between the
+ * sections is the same whether or not something is due. No border and no surface:
+ * this is a note, not a card. The full /aufgaben screen keeps the roomy version:
+ * there the empty state is the page.
+ */
+.task-list__empty--compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--task-card-height);
+  padding: var(--space-3) var(--space-4);
+}
+
 .task-list {
   display: flex;
   flex-direction: column;
@@ -33,7 +61,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: var(--touch-target);
+  /* Same number the empty state reserves — the checkbox column already makes a
+     card this tall, spelling it out is what keeps the two in step. */
+  min-height: var(--task-card-height);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
   border: 1px solid var(--border);

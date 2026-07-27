@@ -110,66 +110,36 @@ Runner auf seinem Feature-Branch umschreibt, bekäme diesen Code beim nächsten 
 ausgeführt — ohne CI, ohne Review, ohne `human-approved`. Er müsste dafür nichts
 umgehen; es genügt, die geänderte Datei im Arbeitsbaum liegen zu lassen.
 
-Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt.
+Deshalb startet launchd einen Shim, der immer die **gemergte** Fassung holt. Er
+liegt als [`scripts/starship-runner`](starship-runner) im Repo — reviewt, von
+`protected-paths` bewacht.
 
-Seit der Kern in TypeScript liegt (#184/S6), muss dabei **der ganze Runner** mitwandern,
-nicht nur die `.sh`: `claude-runner.sh` ist nur noch der Einstiegspunkt, entschieden wird
-in `scripts/runner/*.ts`. Ein Shim, der weiterhin nur die `.sh` kopiert, holt den TS-Kern
-aus dem Arbeitsbaum — die Zusage oben gälte dann für den kleineren Teil des Runners.
+Der Quelltext stand hier früher als Codeblock. Das war die Ursache von #249: die
+Datei, die tatsächlich lief, war für das Repo unsichtbar, und als #203 den
+Startpfad umbaute, konnte das keine CI und kein Test bemerken. Elf Stunden
+Stillstand, aufgefallen ist es einem Menschen am nächsten Morgen.
 
-```bash
-# ~/.local/bin/starship-runner
-#!/usr/bin/env bash
-set -euo pipefail
-REPO="${REPO_DIR:-$HOME/dev/project_starship}"
-REF="${RUNNER_REF:-origin/main}"
-cd "$REPO" || { echo "REPO_DIR nicht gefunden: $REPO" >&2; exit 1; }
-
-# Nur den Ref aktualisieren, nichts auschecken — der Agent arbeitet hier
-# womöglich gerade auf einem Feature-Branch, den wir nicht anfassen dürfen.
-git fetch -q origin main || { echo "git fetch fehlgeschlagen — Lauf übersprungen." >&2; exit 0; }
-
-# `pwd -P` ist Pflicht, nicht Kosmetik: mktemp liefert /var/folders/… , den Symlink
-# auf /private/var/folders/… . cli.ts entscheidet per
-# `process.argv[1] === fileURLToPath(import.meta.url)`, ob es das Hauptmodul ist —
-# argv[1] bleibt der /var-Pfad, import.meta.url wird aufgelöst. Über den Symlink-Pfad
-# hält cli.ts sich für ein importiertes Modul, tut nichts, endet mit Exit 0 und leerer
-# Ausgabe — der Runner entschiede stumm auf leeren Antworten weiter (#249).
-RUNNER_HOME=$(mktemp -d -t starship-runner-home) || exit 1
-RUNNER_HOME=$(cd "$RUNNER_HOME" && pwd -P) || exit 1
-trap 'rm -rf "$RUNNER_HOME"' EXIT INT TERM
-
-# `git archive`, nicht `git --work-tree=… checkout`: letzteres fasst den Index des
-# echten Repos an, in dem womöglich gerade ein Agent arbeitet.
-git archive "$REF" scripts/runner scripts/claude-runner.sh package.json \
-  | tar -x -C "$RUNNER_HOME" || {
-  echo "Konnte den Runner aus $REF nicht materialisieren." >&2; exit 1; }
-
-# node_modules ist Abhängigkeits-Cache, kein reviewter Code — der darf aus dem Repo
-# kommen. tsx und cli.ts liegen damit unter derselben Wurzel, wie ts_run() es erwartet.
-ln -s "$REPO/node_modules" "$RUNNER_HOME/node_modules" || {
-  echo "node_modules nicht verlinkbar — ist im Repo pnpm install gelaufen?" >&2; exit 1; }
-
-bash -n "$RUNNER_HOME/scripts/claude-runner.sh" || {
-  echo "Runner aus $REF ist syntaktisch kaputt — Lauf übersprungen." >&2; exit 1; }
-
-# Explizit, statt sich auf die BASH_SOURCE-Herleitung im Skript zu verlassen: genau
-# die ist über den Shim schon einmal auf $TMPDIR gelandet (#249).
-export RUNNER_HOME
-
-# Kein `exec`: das ersetzt diese Shell und verschluckt den EXIT-Trap oben — der alte
-# Shim hat auf genau diesem Weg pro Tick eine Temp-Datei liegen lassen.
-rc=0
-bash "$RUNNER_HOME/scripts/claude-runner.sh" || rc=$?
-exit "$rc"
-```
+Installiert wird von Hand:
 
 ```bash
-chmod +x ~/.local/bin/starship-runner
+install -m 0755 scripts/starship-runner ~/.local/bin/starship-runner
 ```
+
+**Von Hand ist Absicht.** Ein Runner, der seinen eigenen Starter ersetzen darf,
+hat keinen Vertrauensanker mehr — er könnte sich den Wächter selbst abnehmen.
+Deshalb kopiert ein Mensch, und der Runner darf nur *melden*, dass kopiert werden
+muss: weicht die laufende Datei von `origin/main:scripts/starship-runner` ab,
+setzt er das Status-Issue auf 🟡 mit genau diesem Befehl. Der Lauf geht dabei
+weiter — ein stehender Runner ist teurer als ein abweichender.
 
 So läuft nur Runner-Code, der durch CI **und** durch deine Freigabe gegangen ist —
 egal, worauf das Repo gerade steht.
+
+Seit der Kern in TypeScript liegt (#184/S6), wandert der **ganze** Runner mit:
+`scripts/runner/`, `claude-runner.sh` und `package.json` werden aus `origin/main`
+in ein Wegwerf-Verzeichnis materialisiert, `node_modules` wird aus dem Repo
+verlinkt. Würde nur die `.sh` kopiert, käme der TS-Kern — also die eigentliche
+Entscheidungslogik — wieder aus dem Arbeitsbaum.
 
 `REPO_DIR` und `STATE_DIR` bleiben dabei unangetastet: gebaut wird weiter im echten
 Arbeitsbaum, der Zustand liegt weiter in `$REPO/.runner`. Wegwerf ist nur der Runner

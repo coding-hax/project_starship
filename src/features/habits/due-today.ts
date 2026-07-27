@@ -87,24 +87,23 @@ export function weekDays(date: Date): string[] {
 }
 
 /**
- * Which habits belong in the Übersicht check-off list (issue #103). Daily habits are
- * always due — the point there is the check-off itself, not a filter. Weekly
- * habits drop out once done earlier in the current Mon–Sun week; a completion
- * *today* does not count against it, so the row that was just checked off stays
- * visible and tappable to undo (AC2). `schedule: 'custom'` has no due-logic yet
- * (schema.ts: reserved, no UI) — treated like daily so it is never silently hidden.
+ * Whether `habit` was already checked off on an earlier day of the current
+ * Mon–Sun week (issue #224) — drives the "Diese Woche schon erledigt" hint in
+ * the Übersicht check-off list. Only weekly habits can be done "earlier this
+ * week" in a way that matters; a completion *today* does not count, so the
+ * hint disappears once the row itself is checked off.
  */
-export function isDueToday(
+export function doneEarlierThisWeek(
   habit: HabitView,
   logs: HabitLogView[],
   now: Date = new Date(),
 ): boolean {
-  if (habit.schedule !== 'weekly') return true;
+  if (habit.schedule !== 'weekly') return false;
 
   const today = toDateKey(now);
   const { start, end } = currentWeekRange(now);
 
-  return !logs.some(
+  return logs.some(
     (log) =>
       log.habitId === habit.id &&
       log.done &&

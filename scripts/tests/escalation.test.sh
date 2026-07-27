@@ -277,6 +277,10 @@ case "$CAP_LABELS" in
   *needs-input*) ok "AC6: erschöpfter Opus-Deckel setzt needs-input" ;;
   *) red "AC6: erschöpfter Opus-Deckel setzt needs-input (Labels: $CAP_LABELS)" ;;
 esac
+case "$CAP_LABELS" in
+  *needs-answer*) red "AC6 (#196): needs-answer wird NICHT gesetzt -- Tagesdeckel ist reine Kontingent-Info (Labels: $CAP_LABELS)" ;;
+  *) ok "AC6 (#196): needs-answer wird NICHT gesetzt -- Tagesdeckel ist reine Kontingent-Info" ;;
+esac
 assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$STATE_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
@@ -293,6 +297,30 @@ _Lauf-Ende 16.07. 11:00: gate-rot — ein ANDERER Test schlägt jetzt fehl._" \
   > "$GHSTATE_DIR/lastcomment-$ISSUE"
 build_escalation_eval
 assert_eq "AC7: neue Blocker-Signatur setzt failcount zurück" "0" "$(cat "$STATE_DIR/failcount-$ISSUE" 2>/dev/null)"
+
+# ==============================================================================
+# 8. #196: Eskalation SELBST erschöpft (Opus dreimal ohne Fortschritt auf der
+#    hoechsten Stufe) -- das ist eine echte Frage, needs-input UND needs-answer.
+# ==============================================================================
+reset_state
+ISSUE=108
+setup_issue "$ISSUE"
+echo opus > "$STATE_DIR/tier-$ISSUE"
+RUN_ROLE=build LABELS="in-progress" MODEL=opus BEFORE_TIP="sha-alt"
+printf '%s' "## 🤖 Fortschritt (automatisch aktualisiert)
+
+_Lauf-Ende 22.07. 10:00: gate-rot, unfertig — nächster Lauf macht weiter._" \
+  > "$GHSTATE_DIR/lastcomment-$ISSUE"
+build_escalation_eval
+build_escalation_eval
+build_escalation_eval
+EXHAUSTED_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
+case "$EXHAUSTED_LABELS" in
+  *needs-input*needs-answer*|*needs-answer*needs-input*)
+    ok "#196: erschöpfte Eskalation setzt needs-input UND needs-answer" ;;
+  *)
+    red "#196: erschöpfte Eskalation setzt needs-input UND needs-answer (Labels: $EXHAUSTED_LABELS)" ;;
+esac
 
 # ==============================================================================
 echo

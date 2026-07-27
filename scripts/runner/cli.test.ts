@@ -1,4 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createFixedClock } from './clock';
@@ -67,6 +70,7 @@ describe('dispatch', () => {
   it('registers exactly the commands this stage promises', () => {
     expect(Object.keys(commands)).toEqual([
       'version',
+      'shim-drift-reason',
       'fmt-hm',
       'd-plus',
       'reset-epoch',
@@ -100,7 +104,11 @@ describe('dispatch', () => {
       'self-heal-park',
       'pick-ticket',
       'waiting-issues',
+      'answer-issues',
+      'approve-issues',
       'parked-issues',
+      'parked-answer-issues',
+      'parked-approve-issues',
       'park-issue',
       'cleanup-state',
       'queue-snapshot',
@@ -197,5 +205,47 @@ describe('dispatch', () => {
     expect(stdout).toHaveBeenCalledWith('src/a.ts,src/b.ts');
 
     stdout.mockRestore();
+  });
+
+  // Der isMain-Zweig greift nur beim Ausfuehren als Hauptmodul -- ein
+  // bloßer Import triggert ihn nicht, deshalb ueber einen echten
+  // Kindprozess statt `dispatch()` direkt (#251).
+  describe('running as main module over a symlink path (#251)', () => {
+    const tsxBin = join(__dirname, '..', '..', 'node_modules', '.bin', 'tsx');
+
+    function withSymlinkedCli(run: (cliViaLink: string) => void): void {
+      const base = mkdtempSync(join(tmpdir(), 'starship-cli-'));
+      try {
+        symlinkSync(__dirname, join(base, 'runner'), 'dir');
+        run(join(base, 'runner', 'cli.ts'));
+      } finally {
+        rmSync(base, { recursive: true, force: true });
+      }
+    }
+
+    it('runs `version` over a symlink path, same as a direct call', () => {
+      const pkgVersion = (
+        JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8')) as {
+          version: string;
+        }
+      ).version;
+
+      withSymlinkedCli((cliViaLink) => {
+        const out = execFileSync(tsxBin, [cliViaLink, 'version'], { encoding: 'utf-8' });
+        expect(out.trim()).toBe(pkgVersion);
+      });
+    }, 20000);
+
+    it('exits non-zero for an unknown command over a symlink path', () => {
+      withSymlinkedCli((cliViaLink) => {
+        let status: number | null = null;
+        try {
+          execFileSync(tsxBin, [cliViaLink, 'does-not-exist'], { encoding: 'utf-8', stdio: 'pipe' });
+        } catch (error) {
+          status = (error as { status: number | null }).status;
+        }
+        expect(status).toBe(2);
+      });
+    }, 20000);
   });
 });

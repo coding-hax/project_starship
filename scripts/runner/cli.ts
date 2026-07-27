@@ -11,7 +11,7 @@
 // Ein Handler gibt entweder einen String zurueck (Erfolg, Exit 0 -- '' ist
 // ein gueltiger LEERER Erfolg, z. B. "keine Queue-Arbeit offen") oder `null`
 // (die Bash-Seite haette `return 1` gemacht: Exit 1, GAR KEIN stdout).
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClock, type Clock } from './clock.js';
@@ -37,9 +37,20 @@ import {
 import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
 import { watchParkedIssues, watchRunningIssue, type ParkedIssueInput } from './watch.js';
 import { pickTicket, selfHealPark } from './select.js';
-import { parkIssue, parkedIssues, queueBody, queueSnapshot, waitingIssues } from './status.js';
+import {
+  answerIssues,
+  approveIssues,
+  parkIssue,
+  parkedAnswerIssues,
+  parkedApproveIssues,
+  parkedIssues,
+  queueBody,
+  queueSnapshot,
+  waitingIssues,
+} from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
+import { shimDriftReason } from './shim.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -66,6 +77,8 @@ function readPackageVersion(): string {
 
 export const commands: Record<string, CommandHandler> = {
   version: () => readPackageVersion(),
+  // $1 = installierter Pfad, $2 = Ref. '' = kein Drift (#252).
+  'shim-drift-reason': (ctx, args) => shimDriftReason(args[0] ?? '', args[1] ?? 'origin/main', ctx.git),
   'fmt-hm': (_ctx, args) => fmtHm(Number(args[0])),
   'd-plus': (ctx, args) => dPlus(Number(args[0]), args[1] ?? '', ctx.clock),
   'reset-epoch': (ctx, args) => {
@@ -149,7 +162,11 @@ export const commands: Record<string, CommandHandler> = {
   'pick-ticket': (ctx, args) =>
     JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
+  'answer-issues': (ctx) => answerIssues(ctx.gh),
+  'approve-issues': (ctx) => approveIssues(ctx.gh),
   'parked-issues': (ctx) => parkedIssues(ctx.gh),
+  'parked-answer-issues': (ctx) => parkedAnswerIssues(ctx.gh),
+  'parked-approve-issues': (ctx) => parkedApproveIssues(ctx.gh),
   'park-issue': (ctx, args) => (parkIssue(Number(args[0]), ctx.gh) ? '' : null),
   'cleanup-state': (ctx) => {
     cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());
@@ -227,7 +244,12 @@ function defaultContext(): RunnerContext {
   };
 }
 
-const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+// realpathSync auf beiden Seiten normalisiert Symlink-Komponenten (mktemp
+// /var -> /private), sonst haelt sich cli.ts ueber einen Symlink-Pfad
+// faelschlich fuer ein importiertes Modul (#251). Der undefined-Guard
+// schuetzt gegen realpathSync(undefined) (REPL/eingebettet).
+const entry = process.argv[1];
+const isMain = entry !== undefined && realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
 if (isMain) {
   process.exitCode = dispatch(defaultContext(), process.argv.slice(2));
 }
