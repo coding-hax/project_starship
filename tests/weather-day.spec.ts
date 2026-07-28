@@ -299,6 +299,26 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 23:
   expect(fraction(lastHour!)).toBeGreaterThan(fraction(eighteen!));
 });
 
+test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard (issue #288 AC2)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const expectedPadding = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--space-3').trim(),
+  );
+  const paddings = await page
+    .locator('.weather-day__card')
+    .evaluateAll((cards) => cards.map((card) => getComputedStyle(card).paddingTop));
+  expect(paddings).toHaveLength(2);
+  for (const padding of paddings) {
+    expect(padding).toBe(expectedPadding);
+  }
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: kein eigener Netzaufruf beim Öffnen der Detailseite                    */
 /* -------------------------------------------------------------------------- */
