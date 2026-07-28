@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { openMeteoForecastBody, registerPasskey, resetAppData, withDb } from './helpers';
 
 const MODULES_OFF_KEY = 'starship:modules-off';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+
+async function setModulesOff(page: Page, off: string[]): Promise<void> {
+  await page.evaluate(
+    ({ key, off }) => localStorage.setItem(key, JSON.stringify(off)),
+    { key: MODULES_OFF_KEY, off },
+  );
+}
 
 /**
  * Minimal server-origin activity row (ADR-0011, issue #186) — just enough to make
@@ -135,10 +142,7 @@ test('Dark Mode: Schalter nutzt Tokens statt Rohfarben, reduzierte Bewegung blei
 test('ein zuvor abgeschaltetes Modul bleibt über einen frischen Ausschlussschlüssel hinweg konsistent (Regression, issue #307)', async ({
   page,
 }) => {
-  await page.evaluate(
-    ({ key, off }) => localStorage.setItem(key, JSON.stringify(off)),
-    { key: MODULES_OFF_KEY, off: ['aufgaben'] },
-  );
+  await setModulesOff(page, ['aufgaben']);
   await page.goto('/uebersicht');
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
@@ -277,4 +281,72 @@ test('Dark Mode + reduzierte Bewegung: ein abgeschaltetes Modul bleibt in beiden
 
   await page.goto('/uebersicht');
   await expect(page.locator('.weather-forecast')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* T3 (issue #309): Route-Guard + Flacker-Schutz für abgeschaltete Module     */
+/* -------------------------------------------------------------------------- */
+
+test('Direktaufruf einer Aus-Route landet auf /uebersicht, kein 404 (issue #309 AC1)', async ({ page }) => {
+  await setModulesOff(page, ['journal']);
+
+  const response = await page.goto('/journal');
+
+  expect(response?.status()).toBeLessThan(400);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toHaveCount(0);
+});
+
+test('kein Aufblitzen: der Seiten-Wrapper einer Aus-Route ist schon vor der Hydration unsichtbar (issue #309 AC1)', async ({
+  page,
+}) => {
+  await setModulesOff(page, ['journal']);
+
+  // Blockiert jedes Skript — die Seite bleibt dauerhaft unhydriert, der clientseitige
+  // Guard (module-route-guard.tsx, läuft erst nach der Hydration) kann also nie feuern.
+  // Was übrig bleibt, ist einzig das, was das serverseitig gerenderte HTML plus die
+  // Bootstrap-Inline-Skript+CSS-Kombination (data-modules-off, globals.css) ohne jede
+  // weitere Ausführung liefern — genau der Mechanismus, der das Aufblitzen verhindert,
+  // isoliert von der Umleitung selbst (die deckt der Test oben ab).
+  await page.route('**/*', (route) =>
+    route.request().resourceType() === 'script' ? route.abort() : route.continue(),
+  );
+
+  await page.goto('/journal');
+
+  const wrapper = page.locator('[data-module="journal"]');
+  await expect(wrapper).toBeAttached();
+  await expect(wrapper).toBeHidden();
+});
+
+test('ein aktives Modul bleibt über seine Route direkt erreichbar (issue #309 AC3)', async ({ page }) => {
+  await page.goto('/journal');
+
+  await expect(page).toHaveURL(/\/journal$/);
+  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+});
+
+test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue #309 AC4)', async ({ page }) => {
+  await setModulesOff(page, ['journal', 'kalender', 'gewohnheiten', 'aufgaben', 'aktivitaeten']);
+
+  await page.goto('/uebersicht');
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+
+  await page.goto('/einstellungen');
+  await expect(page).toHaveURL(/\/einstellungen$/);
+  await expect(page.getByRole('heading', { name: 'Einstellungen', level: 1 })).toBeVisible();
+});
+
+test('Dark Mode + reduzierte Bewegung: die Umleitung einer Aus-Route funktioniert unverändert (issue #309 AC5)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await setModulesOff(page, ['journal']);
+
+  await page.goto('/journal');
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
 });
