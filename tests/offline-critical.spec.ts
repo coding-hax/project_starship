@@ -86,16 +86,18 @@ test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Wo
   page,
   context,
 }) => {
-  // /journal muss vor dem Offline-Gehen einmal geladen sein, damit Serwists
-  // Laufzeit-Cache eine Antwort dafür bereithält — anders als die /heute-Weiterleitung
-  // oben kommt die Umleitung hier nicht aus sw.ts, sondern rein clientseitig aus
-  // module-route-guard.tsx (ADR-0012 K1): der Service Worker kennt `starship:modules-off`
-  // gar nicht, er muss nur die Seite selbst (samt JS) bedienen können.
-  await page.goto('/journal');
   await page.goto('/uebersicht');
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  // /journal muss NACH bestätigter SW-Kontrolle einmal geladen werden, damit Serwists
+  // Laufzeit-Cache eine Antwort dafür bereithält — jede Response davor (SW kontrolliert
+  // die Seite noch nicht) landet nicht im Cache. Anders als die /heute-Weiterleitung oben
+  // kommt die Umleitung hier nicht aus sw.ts, sondern rein clientseitig aus
+  // module-route-guard.tsx (ADR-0012 K1): der Service Worker kennt `starship:modules-off`
+  // gar nicht, er muss nur die Seite selbst (samt JS) bedienen können.
+  await page.goto('/journal');
 
   await page.evaluate(() => localStorage.setItem('starship:modules-off', JSON.stringify(['journal'])));
 
