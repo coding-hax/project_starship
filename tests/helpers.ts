@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Browser, Page } from '@playwright/test';
 import { Client } from 'pg';
 import { AUTH_STATE } from './run-lock';
@@ -129,6 +130,7 @@ export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
+        'DELETE FROM reminder_prefs; ' +
         // habit_logs first — it references habits via a foreign key.
         'DELETE FROM habit_logs; DELETE FROM habits;',
     );
@@ -146,7 +148,7 @@ export async function resetDatabase() {
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habits; DELETE FROM garmin_activities; ' +
-        'DELETE FROM garmin_tokens;',
+        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs;',
     );
   });
 }
@@ -161,8 +163,24 @@ export async function resetPushData() {
 /** reminder_sends is cron infra (src/db/schema.ts, issue #239) — its own reset, same reasoning. */
 export async function resetReminderData() {
   await withDb(async (client) => {
-    await client.query('DELETE FROM reminder_sends;');
+    await client.query('DELETE FROM reminder_sends; DELETE FROM reminder_prefs;');
   });
+}
+
+/**
+ * Seeds a `reminder_prefs` row the way a real push (not this helper) would leave
+ * it — same columns a client upsert writes (src/db/sync-tables.ts), so the cron
+ * reads a row indistinguishable from one the settings panel produced (issue #244).
+ */
+export async function seedReminderPref(kind: string, enabled: boolean, times: string[]): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO reminder_prefs (id, updated_at, deleted_at, synced_at, sync_seq, kind, enabled, times)
+       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)
+       ON CONFLICT (kind) DO UPDATE SET enabled = $3, times = $4`,
+      [randomUUID(), kind, enabled, JSON.stringify(times)],
+    ),
+  );
 }
 
 interface ForecastFixture {
@@ -228,7 +246,7 @@ declare global {
   interface Window {
     __starship: {
       mutate: (input: {
-        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs' | 'garmin_activities';
+        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs' | 'garmin_activities' | 'reminder_prefs';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;

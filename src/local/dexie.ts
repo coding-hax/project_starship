@@ -93,6 +93,12 @@ db.version(2).stores({
   weather: 'key',
 });
 
+// issue #244 adds `reminder_prefs` as a new `SyncTable` (src/local/types.ts), same as
+// `garmin_activities` did in #186 — it lives in the generic `records` store above like
+// every other synced table, discriminated by `table` alone. No new store, no new index,
+// so no db.version() bump: Dexie versions the *index* schema, not which `table` values
+// happen to show up in it.
+
 // issue #156 grows `WeatherDay` (sunrise/sunset/wind/hours) but touches neither the
 // store list nor its `key` index — Dexie versions the *index* schema, not the shape
 // of what's stored under it, so no new db.version() is warranted here. An install
