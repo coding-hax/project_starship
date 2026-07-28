@@ -28,16 +28,53 @@ TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen 
 # exportiert, damit der tsx-Kindprozess dasselbe Verzeichnis sieht.
 STATE_DIR="${STATE_DIR:-$REPO_DIR/.runner}"
 export STATE_DIR
+
+# --- Mehrere Slots (#204) -----------------------------------------------------
+# Ein Slot = eine launchd-Instanz + ein eigener Arbeitsbaum (eigener Clone,
+# siehe scripts/launchd-setup.md) + ein eigenes .runner/ -- Letzteres ist durch
+# STATE_DIR unter REPO_DIR schon erledigt, zwei Arbeitsbäume heißt automatisch
+# zwei .runner/. SLOT_ID ist die einzige slotspezifische Variable hier;
+# REPO_DIR/STATUS_ISSUE kommen bewusst aus der jeweiligen plist, NICHT aus
+# SLOT_ID abgeleitet -- nur so bleibt SLOT_ID=1 verhaltensgleich zu vor #204
+# (AK9). SHARED_DIR liegt AUSSERHALB jedes Arbeitsbaums: was dort liegt
+# (Claims, Herzschlag, limit-until) muss slotübergreifend gelten.
+SLOT_ID="${SLOT_ID:-1}"
+SLOT_COUNT="${SLOT_COUNT:-1}"
+LEAD_SLOT="${LEAD_SLOT:-1}"
+SHARED_DIR="${SHARED_DIR:-$HOME/.starship-runner}"
+export SLOT_ID SLOT_COUNT LEAD_SLOT SHARED_DIR
+IS_LEAD=0; [ "$SLOT_ID" = "$LEAD_SLOT" ] && IS_LEAD=1
+export IS_LEAD
+
+# Deckel gegen Vertipper (AK8): keine Zahl oder außerhalb 1-10 bricht sofort
+# ab, bevor auch nur ein gh/tsx-Aufruf passiert.
+case "$SLOT_COUNT" in
+  ''|*[!0-9]*)
+    echo "SLOT_COUNT muss eine positive Zahl sein, ist aber '$SLOT_COUNT'." >&2
+    exit 1
+    ;;
+esac
+if [ "$SLOT_COUNT" -lt 1 ] || [ "$SLOT_COUNT" -gt 10 ]; then
+  echo "SLOT_COUNT=$SLOT_COUNT außerhalb des erlaubten Bereichs 1-10 (Deckel gegen Vertipper)." >&2
+  exit 1
+fi
+
 # Wurzel aller Ticket-Worktrees (#242) -- gitignored seit #226. Ein Bau-Lauf
 # bekommt darin sein eigenes Verzeichnis, statt im Haupt-Checkout zu bauen.
 WORKTREE_BASE="${WORKTREE_BASE:-$REPO_DIR/.claude/worktrees}"
-LIMIT_UNTIL="$STATE_DIR/limit-until"    # Unix-Zeit, bis zu der das Kontingent leer ist
+# Liegt bewusst unter SHARED_DIR, nicht STATE_DIR: sonst rennt Slot 2 weiter in
+# 429er, während Slot 1 schon korrekt pausiert hat (das Kontingent ist EINS,
+# nicht pro Slot). Geschrieben wird sie vom TS-Kern über ctx.sharedState
+# (roundEval, einzige Schreibstelle: der 429-Zweig) -- beide Seiten müssen
+# gemeinsam auf SHARED_DIR zeigen, sonst liest das Gate hier eine Datei, die
+# nie jemand schreibt, und kein Slot pausiert mehr.
+LIMIT_UNTIL="$SHARED_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 LOG="$STATE_DIR/last-run.log"           # stdout+stderr des letzten claude-Laufs
 TIMED_OUT="$STATE_DIR/timed-out"        # Marker der Notbremse, siehe run_limited()
 ROUND_FILE="$STATE_DIR/round.json"      # Plan der laufenden Runde, Übergabe an round-eval
 
 cd "$REPO_DIR" || { echo "REPO_DIR nicht gefunden: $REPO_DIR" >&2; exit 1; }
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "$SHARED_DIR/claims" "$SHARED_DIR/slots"
 
 for tool in gh jq claude; do
   command -v "$tool" >/dev/null 2>&1 || { echo "'$tool' fehlt im PATH." >&2; exit 1; }

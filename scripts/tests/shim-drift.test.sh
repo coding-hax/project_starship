@@ -68,6 +68,7 @@ export PATH="$FAKEBIN:$PATH"
 (
   cd "$REPO_ROOT" || exit 1
   export REPO_DIR="$REPO_ROOT"
+  export SHARED_DIR="$TMP/shared"
   export RUNNER_HOME="$REPO_ROOT"
   export RUNNER_REF="HEAD"
   export STATE_DIR="$TMP/state-t1"
@@ -111,6 +112,7 @@ export PATH="$FAKEBIN:$PATH"
 (
   cd "$REPO_ROOT" || exit 1
   export REPO_DIR="$REPO_ROOT"
+  export SHARED_DIR="$TMP/shared"
   export RUNNER_HOME="$REPO_ROOT"
   export RUNNER_REF="HEAD"
   export STATE_DIR="$TMP/state-t2"

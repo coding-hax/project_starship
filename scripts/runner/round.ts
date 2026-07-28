@@ -36,6 +36,8 @@ export interface RoundContext {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
+  /** Slotübergreifend (#204) -- ausschließlich 'limit-until' lebt hier, siehe roundEval. */
+  sharedState: StateAdapter;
   clock: Clock;
 }
 
@@ -664,7 +666,7 @@ function appendEndReason(issue: number, reason: string, gh: GhAdapter, clock: Cl
 }
 
 export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutcome, log: string): RoundEvalResult {
-  const { gh, git, state, clock } = ctx;
+  const { gh, git, state, sharedState, clock } = ctx;
   const { issue, role } = plan;
   const stop = (status: StatusUpdate | null, rc: number): RoundEvalResult => ({
     status,
@@ -820,7 +822,10 @@ Kein Eingreifen nötig.`,
     const epoch = resetEpoch(resultTxt, clock);
     let when: string;
     if (epoch !== null) {
-      state.write('limit-until', String(epoch));
+      // Slotübergreifend (#204): das Kontingent ist EINS, nicht pro Slot --
+      // schriebe das hier in 'state' (slot-lokal), rennte jeder andere Slot
+      // weiter in 429er, waehrend dieser korrekt pausiert.
+      sharedState.write('limit-until', String(epoch));
       when = ` Nächster Versuch: ${fmtHm(epoch)} Uhr.`;
     } else {
       // Nicht deutbar -> 5-Minuten-Takt wie bisher (Retries kosten im Limit

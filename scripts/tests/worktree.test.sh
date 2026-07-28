@@ -162,6 +162,7 @@ ORIGIN="$TMP/origin.git"
 git init --bare -q "$ORIGIN"
 
 export REPO_DIR="$TMP/repo"
+export SHARED_DIR="$TMP/shared"
 git clone -q "$ORIGIN" "$REPO_DIR"
 git -C "$REPO_DIR" symbolic-ref HEAD refs/heads/main
 git -C "$REPO_DIR" config user.email "test@example.com"

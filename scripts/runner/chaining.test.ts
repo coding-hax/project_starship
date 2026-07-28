@@ -66,7 +66,7 @@ describe('Chaining-Entscheidung (#61)', () => {
     prompt: '',
   };
 
-  const ctx = (gh: GhAdapter): RoundContext => ({ gh, git: gitDouble(), state, clock: CLOCK });
+  const ctx = (gh: GhAdapter): RoundContext => ({ gh, git: gitDouble(), state, sharedState: state, clock: CLOCK });
   const clean = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
 
   // AC1/AC3a in chaining.test.sh: nur dieser Ausgang laesst den Tick eine

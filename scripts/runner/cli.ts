@@ -45,6 +45,8 @@ export interface RunnerContext {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
+  /** Slotübergreifend unter SHARED_DIR (#204) -- siehe round.ts, roundEval. */
+  sharedState: StateAdapter;
   clock: Clock;
 }
 
@@ -216,11 +218,18 @@ function stateDir(): string {
   return process.env.STATE_DIR ?? join(here, '..', '..', '.runner');
 }
 
+// Slotübergreifend (#204), außerhalb jedes Arbeitsbaums -- claude-runner.sh
+// exportiert SHARED_DIR genauso wie STATE_DIR oben.
+function sharedDir(): string {
+  return process.env.SHARED_DIR ?? join(here, '..', '..', '.shared-runner');
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
     git: createGitAdapter(),
     state: createStateAdapter(stateDir()),
+    sharedState: createStateAdapter(sharedDir()),
     clock: createClock(),
   };
 }

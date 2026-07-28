@@ -17,6 +17,12 @@ function fakeContext(): RunnerContext {
       exists: vi.fn().mockReturnValue(false),
       remove: vi.fn(),
     },
+    sharedState: {
+      read: vi.fn().mockReturnValue(null),
+      write: vi.fn(),
+      exists: vi.fn().mockReturnValue(false),
+      remove: vi.fn(),
+    },
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
   };
 }
