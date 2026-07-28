@@ -81,3 +81,30 @@ test('ein bereits installiertes /heute (start_url, offener Tab) leitet auch offl
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
 });
+
+test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Worker-Cache um, weil der Guard clientseitig ist (issue #309 AC2)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/uebersicht');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  // /journal muss NACH bestätigter SW-Kontrolle einmal geladen werden, damit Serwists
+  // Laufzeit-Cache eine Antwort dafür bereithält — jede Response davor (SW kontrolliert
+  // die Seite noch nicht) landet nicht im Cache. Anders als die /heute-Weiterleitung oben
+  // kommt die Umleitung hier nicht aus sw.ts, sondern rein clientseitig aus
+  // module-route-guard.tsx (ADR-0012 K1): der Service Worker kennt `starship:modules-off`
+  // gar nicht, er muss nur die Seite selbst (samt JS) bedienen können.
+  await page.goto('/journal');
+
+  await page.evaluate(() => localStorage.setItem('starship:modules-off', JSON.stringify(['journal'])));
+
+  await context.setOffline(true);
+
+  const response = await page.goto('/journal');
+  expect(response?.fromServiceWorker()).toBe(true);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+});
