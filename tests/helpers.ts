@@ -294,6 +294,15 @@ declare global {
           capturedAt: string;
         }>
       >;
+      createEnvelope: (
+        passphrase: string,
+        kdfParamsOverride?: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number },
+      ) => Promise<unknown>;
+      openEnvelope: (envelope: unknown, passphrase: string) => Promise<unknown>;
+      encryptJournal: (
+        dek: unknown,
+        content: { text: string; mood?: string; tags?: string[] },
+      ) => Promise<{ ciphertext: number[]; nonce: number[] }>;
     };
   }
 }
