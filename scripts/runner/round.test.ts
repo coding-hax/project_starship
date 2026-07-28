@@ -112,6 +112,8 @@ describe('roundPlan', () => {
     const result = roundPlan(ctx(gh), opts);
     expect(result.status?.emoji).toBe('🟡');
     expect(result.status?.title).toContain('#77');
+    // #296: der Takt ist seit dem 26.07.26 60 Sekunden, nicht 5 Minuten.
+    expect(result.status?.text).toContain('60 Sekunden');
   });
 
   // #61: eine fruehere Runde hat gearbeitet -> "nichts zu tun" waere gelogen.
@@ -368,6 +370,52 @@ describe('roundPlan', () => {
       const result = roundPlan(ctx(gh), queueOpts);
       expect(result.status?.text).not.toContain('Nicht gelistet');
       expect(result.status?.text).not.toContain('Wartet auf Vorarbeit');
+    });
+  });
+
+  // #296: "Queue" faellt nur noch, wenn #92 tatsaechlich Eintraege hat --
+  // vorher hiess selbst ein rein per Label offenes hands-off-Ticket "Queue",
+  // obwohl #92 leer war.
+  describe('Wortlaut Queue vs. Offen im Status (#296)', () => {
+    const queueOpts = { ...opts, queueIssue: 92 };
+    const queueIs = (body: string) => ({
+      match: (a: string[]) => a[0] === 'issue' && a[1] === 'view' && a.includes('body'),
+      reply: body,
+    });
+    // queuePending() holt sich ueber queueSnapshot() einen EIGENEN Schnappschuss
+    // (--limit 50, nicht 100 wie der Runden-Schnappschuss) -- ohne diese
+    // zusaetzliche Route bleibt die Antwort leer und `pending` faelschlich ''.
+    const openIssues50 = (...issues: ReturnType<typeof issueJson>[]) => ({
+      match: (a: string[]) => a[0] === 'issue' && a[1] === 'list' && a.includes('--limit') && a.includes('50'),
+      reply: JSON.stringify(issues),
+    });
+
+    it('#92 leer + hands-off-Ticket: "Offen", nicht "Queue"', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(204, ['plan', 'hands-off'])),
+        openIssues50(issueJson(204, ['plan', 'hands-off'])),
+        noOpenPrs,
+        queueIs(''),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.title).toBe('wartet auf nächsten Lauf · Offen: #204');
+      expect(result.status?.title).not.toContain('Queue');
+      expect(result.status?.text).toContain('Offen ist noch Arbeit (#204)');
+    });
+
+    it('#92 mit echtem Eintrag: das Wort "Queue" darf fallen', () => {
+      const issues = [issueJson(266, ['ready']), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')];
+      const { gh } = ghDouble([
+        openIssues(...issues),
+        openIssues50(...issues),
+        noOpenPrs,
+        queueIs('- #266 nach #227'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.title).toBe('wartet auf nächsten Lauf · Queue: #266');
+      expect(result.status?.text).toContain('In der Queue liegt noch Arbeit (#266)');
     });
   });
 

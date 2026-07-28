@@ -151,6 +151,18 @@ function yyyymmdd(clock: Clock): string {
   return `${now.getFullYear()}${twoDigits(now.getMonth() + 1)}${twoDigits(now.getDate())}`;
 }
 
+// #296: "Queue" ist die Prioritaets-Liste aus #92, kein Synonym fuer jedes
+// offene ready/plan/research-Ticket. `queuePending()` zaehlt bewusst auch
+// hands-off-Tickets mit (#271 AC3) -- die standen deshalb als "Queue"-Inhalt
+// im Status, obwohl #92 leer war. Das Wort faellt nur noch, wenn #92
+// tatsaechlich Eintraege hat; die Auswahl selbst bleibt unveraendert.
+function pendingWording(pending: string, queueBodyText: string): { title: string; lead: string } {
+  if (queueEntries(queueBodyText).length > 0) {
+    return { title: `Queue: ${pending}`, lead: `In der Queue liegt noch Arbeit (${pending})` };
+  }
+  return { title: `Offen: ${pending}`, lead: `Offen ist noch Arbeit (${pending})` };
+}
+
 // ---------------------------------------------------------------------------
 // Phase 1 -- alles vor dem `claude`-Aufruf
 // ---------------------------------------------------------------------------
@@ -439,22 +451,22 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
 Offene Fragen an: ${waiting}
 
 Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`** —
-sonst starte ich in 5 Minuten mit derselben offenen Frage neu.`,
+sonst starte ich in 60 Sekunden mit derselben offenen Frage neu.`,
             ),
           };
         }
         const pending = queuePending(queueSnapshot(gh));
         if (pending !== '') {
+          const { title, lead } = pendingWording(pending, body);
           return {
             kind: 'done',
             rc: 0,
             status: status(
-              `wartet auf nächsten Lauf · Queue: ${pending}`,
+              `wartet auf nächsten Lauf · ${title}`,
               '🟢',
               `🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
-In der Queue liegt noch Arbeit (${pending}), aber derzeit kein baubereites Ticket
-(z. B. nur Recherche). **Kein Eingreifen nötig.**`,
+${lead}, aber derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**`,
             ),
           };
         }
@@ -844,6 +856,7 @@ Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`*
     });
 
     if (pending !== '') {
+      const { title, lead } = pendingWording(pending, plan.queueBody);
       if (next !== null) {
         return done({
           title: `wartet auf nächsten Lauf · als Nächstes #${next}`,
@@ -853,15 +866,15 @@ Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`*
 Zuletzt an #${issue} gearbeitet. Als Nächstes ist **#${next}** dran. Der nächste Takt
 startet automatisch (~5 Min) — **kein Eingreifen nötig.**
 
-Offene Queue: ${pending}`,
+${title}`,
         });
       }
       return done({
-        title: `wartet auf nächsten Lauf · Queue: ${pending}`,
+        title: `wartet auf nächsten Lauf · ${title}`,
         emoji: '🟢',
         text: `🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
-Zuletzt an #${issue} gearbeitet. In der Queue liegt noch Arbeit (${pending}), aber
+Zuletzt an #${issue} gearbeitet. ${lead}, aber
 derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**`,
       });
     }
