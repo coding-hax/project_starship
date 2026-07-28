@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { Envelope } from '@/crypto/envelope';
 
 /**
  * Global, strictly increasing arrival order across every synchronised table
@@ -360,3 +361,58 @@ export const reminderPrefs = pgTable(
 
 export type ReminderPref = typeof reminderPrefs.$inferSelect;
 export type NewReminderPref = typeof reminderPrefs.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* Journal (M4, ADR-0004/-0015/-0017). Ciphertext-only — only `entryDate`     */
+/* stays plaintext (CLAUDE.md Regel 9).                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Text, Stimmung und Tags reisen zusammen in einem AES-GCM-Chiffrat (ADR-0004) —
+ * kein feldweiser Merge, eine upsert-Mutation ersetzt `ciphertext`/`nonce` gemeinsam
+ * (ADR-0017). `ciphertext`/`nonce` sind `text` (Base64), nicht `bytea` — das Wire-
+ * Format ist JSON, und src/crypto/base64.ts liefert ohnehin Base64-Strings.
+ *
+ * `id` ist client-deterministisch aus `entryDate` (UUIDv5, src/local/uuid5.ts) statt
+ * zufällig — „ein Eintrag je Tag" wird damit eine echte Schlüssel-Invariante statt
+ * einer App-Konvention, und der bestehende ADR-0008-Konfliktpfad (baseSeq/syncSeq)
+ * greift normal, ohne Sonderfall im Sync-Motor (ADR-0017).
+ */
+export const journalEntries = pgTable(
+  'journal_entries',
+  {
+    ...syncColumns,
+    entryDate: date('entry_date').notNull(),
+    ciphertext: text('ciphertext').notNull(),
+    nonce: text('nonce').notNull(),
+  },
+  (table) => [
+    index('journal_entries_updated_at_idx').on(table.updatedAt),
+    index('journal_entries_sync_seq_idx').on(table.syncSeq),
+    uniqueIndex('journal_entries_entry_date_idx').on(table.entryDate),
+  ],
+);
+
+export type JournalEntry = typeof journalEntries.$inferSelect;
+export type NewJournalEntry = typeof journalEntries.$inferInsert;
+
+/**
+ * Die gewickelte DEK-Hülle (ADR-0015) — reines Chiffrat (kdfParams/wrappedDek/nonce),
+ * darf synchronisiert werden: ohne Passphrase ist sie wertlos. `envelope` trägt den
+ * `Envelope`-Typ aus src/crypto/envelope.ts nur als **Typ** — DB-Code importiert nie
+ * Krypto-Laufzeitcode (CLAUDE.md Regel 9).
+ */
+export const journalKeys = pgTable(
+  'journal_keys',
+  {
+    ...syncColumns,
+    envelope: jsonb('envelope').$type<Envelope>().notNull(),
+  },
+  (table) => [
+    index('journal_keys_updated_at_idx').on(table.updatedAt),
+    index('journal_keys_sync_seq_idx').on(table.syncSeq),
+  ],
+);
+
+export type JournalKeys = typeof journalKeys.$inferSelect;
+export type NewJournalKeys = typeof journalKeys.$inferInsert;
