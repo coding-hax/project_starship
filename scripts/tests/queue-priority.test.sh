@@ -115,7 +115,7 @@ export MAX_ROUNDS=1
 source "$RUNNER"
 
 reset_state() {
-  rm -rf "$STATE_DIR" "$GHSTATE_DIR"
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
   for l in in-progress plan research ready needs-answer; do
     printf '[]' > "$GHSTATE_DIR/list-$l.json"

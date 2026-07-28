@@ -133,7 +133,7 @@ source "$RUNNER"
 source "$TEST_DIR/lib/ts-core-shims.sh"
 
 reset_state() {
-  rm -rf "$STATE_DIR" "$GHSTATE_DIR"
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
 }
 
