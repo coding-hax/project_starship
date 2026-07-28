@@ -54,7 +54,7 @@ label "no-escalation"  "5319E7" "Friert das Ticket auf der Startstufe ein — de
 label "opus-boost"     "B197FC" "Hebt den Opus-Tagesdeckel für dieses Ticket einmalig auf."
 # Reine Sortier-Labels: sie steuern nichts, sie beschriften nur.
 label "bug"            "D73A4A" "Etwas funktioniert nicht."
-label "epic"           "006B75" "Sammelticket — wird nie selbst gebaut, nur die Stufen darunter."
+label "epic"           "006B75" "Rein zum Sortieren — steuert nichts im Runner. Markiert zusammenhängende Tickets."
 
 # --- 3. Milestones ---------------------------------------------------------
 echo "==> Milestones"
