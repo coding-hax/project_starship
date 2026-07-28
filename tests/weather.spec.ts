@@ -18,6 +18,17 @@ function localTime(iso: string): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+async function resolveColorToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
 const DAY_SET_A = {
   dates: ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'],
   weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
@@ -161,6 +172,9 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen (2px, dunklere Farbe),
   expect(saturdayColor).not.toBe(mondayColor);
   expect(sundayColor).not.toBe(mondayColor);
   expect(saturdayColor).toBe(sundayColor);
+
+  // Die Rahmenfarbe ist tatsächlich an --border-strong gebunden (issue #288 AC3).
+  expect(saturdayColor).toBe(await resolveColorToken(page, '--border-strong'));
 });
 
 test('Wochenend-Rahmen ist auch im Dark Mode vom Normal-Rahmen unterscheidbar (issue #223 AC3)', async ({

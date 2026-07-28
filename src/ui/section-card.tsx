@@ -8,6 +8,10 @@ export interface SectionCardProps {
   /** Renders the title as a toggle that expands/collapses the body. */
   collapsible?: boolean;
   defaultOpen?: boolean;
+  /** Extra class on the root `.section-card`, for callers that need to override
+   * spacing (e.g. denser padding) without reaching into this component's own
+   * class from the outside (issue #288). */
+  className?: string;
 }
 
 /**
@@ -21,12 +25,13 @@ export function SectionCard({
   children,
   collapsible = false,
   defaultOpen = true,
+  className,
 }: SectionCardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const contentId = useId();
 
   return (
-    <section className="section-card">
+    <section className={className ? `section-card ${className}` : 'section-card'}>
       {title &&
         (collapsible ? (
           <button

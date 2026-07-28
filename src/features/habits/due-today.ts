@@ -91,8 +91,9 @@ export function weekDays(date: Date): string[] {
  * Whether `habit` was already checked off on an earlier day of the current
  * Mon–Sun week (issue #224) — drives the "Diese Woche schon erledigt" hint in
  * the Übersicht check-off list. Only weekly habits can be done "earlier this
- * week" in a way that matters; a completion *today* does not count, so the
- * hint disappears once the row itself is checked off.
+ * week" in a way that matters; a completion *today* does not count towards
+ * this, so the hint stays even after today's own row is checked off
+ * (issue #288) — it reports on the week, not on today's checkbox.
  */
 export function doneEarlierThisWeek(
   habit: HabitView,

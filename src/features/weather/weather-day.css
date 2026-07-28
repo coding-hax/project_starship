@@ -57,6 +57,12 @@
   outline-offset: 2px;
 }
 
+/* Kompakter als die SectionCard-Default (issue #288 AC2): Überschrift und Inhalt
+   rücken näher zusammen, weniger Luft um die Box. */
+.weather-day__card {
+  padding: var(--space-3);
+}
+
 .weather-day__summary {
   display: flex;
   flex-direction: column;

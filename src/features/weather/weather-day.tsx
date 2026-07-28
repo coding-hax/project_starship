@@ -35,11 +35,11 @@ const SWIPE_THRESHOLD_PX = 80;
  * full width, so "18:00" ended up at the right edge, where hour 23 actually is.
  */
 const VIEW_W = 320;
-const VIEW_H = 132;
+const VIEW_H = 112;
 const PLOT_X = 38;
 const PLOT_Y = 6;
 const PLOT_W = VIEW_W - PLOT_X - 8;
-const PLOT_H = 100;
+const PLOT_H = 80;
 const PLOT_BOTTOM = PLOT_Y + PLOT_H;
 const HOUR_LABEL_Y = PLOT_BOTTOM + 16;
 const HOURS_PER_DAY = 24;
@@ -239,7 +239,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         </dl>
       </section>
 
-      <SectionCard title="Tagesverlauf">
+      <SectionCard title="Tagesverlauf" className="weather-day__card">
         <ChartFrame
           className="weather-day__chart"
           ariaLabel={`Temperaturverlauf von ${Math.round(day.tempMin)}° bis ${Math.round(day.tempMax)}°, stündlich`}
@@ -254,7 +254,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         </ChartFrame>
       </SectionCard>
 
-      <SectionCard title="Niederschlag">
+      <SectionCard title="Niederschlag" className="weather-day__card">
         <p className="weather-day__precipitation-summary">
           {rainHours.length === 0 ? 'Kein Niederschlag erwartet.' : `Insgesamt ${rainTotal.toFixed(1)} mm`}
         </p>
@@ -415,7 +415,7 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
       <header className="weather-day__topbar">
         <Link href="/uebersicht" className="weather-day__back">
           <IconChevronLeft />
-          Heute
+          Übersicht
         </Link>
         <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
       </header>

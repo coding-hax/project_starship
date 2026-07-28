@@ -92,7 +92,7 @@ test('eine wöchentliche Gewohnheit, die früher diese Woche erledigt wurde, ble
   await expect(item).not.toHaveClass(/habit-today__item--done/);
 });
 
-test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinweis verschwindet, und der Zustand übersteht einen Reload (issue #224 AC3)', async ({
+test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinweis bleibt (nicht durchgestrichen), und der Zustand übersteht einen Reload (issue #224 AC3, issue #288 AC5)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -108,14 +108,21 @@ test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinw
 
   await expect(item.getByRole('checkbox')).toBeChecked();
   await expect(item).toHaveClass(/habit-today__item--done/);
-  await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+  const hint = item.getByText('Diese Woche schon erledigt');
+  await expect(hint).toBeVisible();
+  const nameDecoration = await item
+    .locator('.habit-today__name')
+    .evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(nameDecoration).toContain('line-through');
+  const hintDecoration = await hint.evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(hintDecoration).toBe('none');
 
   await skewClock(page, NOW);
   await page.reload();
 
   const reloadedItem = habitTodayItems(page).filter({ hasText: 'Großeinkauf' });
   await expect(reloadedItem.getByRole('checkbox')).toBeChecked();
-  await expect(reloadedItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+  await expect(reloadedItem.getByText('Diese Woche schon erledigt')).toBeVisible();
 
   // Both this week's earlier day and today are their own log rows (AC3). The
   // suite-wide route abort in beforeEach keeps this local — read IndexedDB via
@@ -190,7 +197,7 @@ test('eine wöchentliche Gewohnheit mit Wochen-Hinweis lässt sich offline für 
   await item.getByRole('checkbox').click();
 
   await expect(item.getByRole('checkbox')).toBeChecked();
-  await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+  await expect(item.getByText('Diese Woche schon erledigt')).toBeVisible();
 
   await page.unroute('**/api/sync/**');
   await context.setOffline(false);
