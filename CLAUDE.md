@@ -35,6 +35,18 @@ Vor jeder Arbeit lesen:
 
 - Code, Bezeichner, Kommentare, Commits: **Englisch**. UI-Texte: **Deutsch**.
 - Branch: `feat/<issue-nr>-<slug>`, `fix/<issue-nr>-<slug>`, `chore/…`
+- Arbeitest du aus einer Chat-Sitzung, baust du in einem eigenen Worktree unter
+  `~/dev/starship-worktrees/<branch-slug>` — nie im Haupt-Checkout, in dem
+  parallel der Runner arbeitet. **Nach dem Push räumst du ihn wieder weg**
+  (`git worktree remove`, nie `rm -rf` — sonst bleibt Gits Verwaltungseintrag
+  liegen). Der Runner räumt nur seine eigenen Worktrees ab; für deinen ist
+  sonst niemand zuständig.
+- **Nie einen Worktree mit gestagten Änderungen zurücklassen.** Ein liegen
+  gebliebener Index ist keine Unordnung, sondern eine geladene Waffe: `git
+  checkout -- .` und `git clean -fd` fassen ihn nicht an, er überlebt jedes
+  Aufräumen und macht beim nächsten Commit stillschweigend gemergte Arbeit
+  rückgängig. Vor dem Verlassen: `git status --short` — steht das `M` in der
+  **vorderen** Spalte, ist der Index dreckig.
 - Commits: Conventional Commits (`feat(tasks): add swipe to complete`)
 - PR-Titel enthält `Closes #<issue-nr>`.
 - Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
