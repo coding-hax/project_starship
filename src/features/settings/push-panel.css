@@ -26,3 +26,82 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.push-panel__kind {
+  padding: var(--space-2) 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.push-panel__kind:last-child {
+  border-bottom: none;
+}
+
+.push-panel__times {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.push-panel__time-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.push-panel__time-input {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+}
+
+.push-panel__time-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.push-panel__remove-time {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.push-panel__remove-time:active {
+  opacity: 0.7;
+}
+
+.push-panel__add-time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.push-panel__add-time-button {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.push-panel__add-time-button:active {
+  opacity: 0.7;
+}
