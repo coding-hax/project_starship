@@ -88,6 +88,21 @@ git -C "$REPO4" commit -q -m "delete vitest file"
 assert_exit "AC4: gelöschte Vitest-Datei (eingerückter it()) macht den Wächter rot" 1 \
   bash -c "cd '$REPO4' && bash '$GUARD' '$BASE4'"
 
+# --- 5. Abschnitt 2 (Testanzahl): 'tests-exempt' gilt jetzt auch hier ---------
+# Issue #303: Regel 2 kannte das Label bisher nicht -- ein PR, der bewusst
+# einen toten Zweig samt Tests entfernt, blieb ohne Ausweg rot. Jetzt zählt
+# 'tests-exempt' hier genauso wie in Abschnitt 3.
+REPO5="$TMP/case5"
+new_repo "$REPO5"
+BASE5=$(git -C "$REPO5" rev-parse HEAD)
+rm "$REPO5/tests/base.test.ts"
+git -C "$REPO5" add -A
+git -C "$REPO5" commit -q -m "remove obsolete test, code unchanged"
+assert_exit "AC5a: gesunkene Testanzahl ohne Exempt-Flag schlägt an" 1 \
+  bash -c "cd '$REPO5' && bash '$GUARD' '$BASE5'"
+assert_exit "AC5b: dieselbe Änderung mit TESTS_EXEMPT ist grün" 0 \
+  bash -c "cd '$REPO5' && bash '$GUARD' '$BASE5' 1"
+
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
