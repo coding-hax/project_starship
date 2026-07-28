@@ -386,6 +386,7 @@ test('ein Zurück-Weg führt zur Übersicht, die Bottom-Navigation bleibt bedien
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('nav[aria-label="Hauptnavigation"]')).toBeVisible();
+  await expect(page.locator('.weather-day__back')).toHaveText('Übersicht');
 
   await page.locator('.weather-day__back').click();
   await expect(page).toHaveURL('/uebersicht');

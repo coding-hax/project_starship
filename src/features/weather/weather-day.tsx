@@ -415,7 +415,7 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
       <header className="weather-day__topbar">
         <Link href="/uebersicht" className="weather-day__back">
           <IconChevronLeft />
-          Heute
+          Übersicht
         </Link>
         <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
       </header>
