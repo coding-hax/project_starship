@@ -43,9 +43,12 @@ export async function deriveKek(passphrase: string, kdfParams: KdfParams): Promi
   );
 }
 
-export async function createEnvelope(passphrase: string): Promise<Envelope> {
+export async function createEnvelope(
+  passphrase: string,
+  kdfParamsOverride: Omit<KdfParams, 'salt'> = DEFAULT_KDF_PARAMS,
+): Promise<Envelope> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const kdfParams: KdfParams = { ...DEFAULT_KDF_PARAMS, salt: bytesToBase64(salt) };
+  const kdfParams: KdfParams = { ...kdfParamsOverride, salt: bytesToBase64(salt) };
   const kek = await deriveKek(passphrase, kdfParams);
 
   // wrapKey requires an extractable key to wrap. The handle is discarded right

@@ -9,8 +9,8 @@ export interface JournalContent {
 }
 
 export interface EncryptedJournal {
-  ciphertext: Uint8Array;
-  nonce: Uint8Array;
+  ciphertext: Uint8Array<ArrayBuffer>;
+  nonce: Uint8Array<ArrayBuffer>;
 }
 
 export async function encryptJournal(
@@ -25,8 +25,8 @@ export async function encryptJournal(
 
 export async function decryptJournal(
   dek: CryptoKey,
-  ciphertext: Uint8Array,
-  nonce: Uint8Array,
+  ciphertext: Uint8Array<ArrayBuffer>,
+  nonce: Uint8Array<ArrayBuffer>,
 ): Promise<JournalContent> {
   try {
     const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, dek, ciphertext);
