@@ -179,6 +179,20 @@ describe('prompts', () => {
       expect(planPrompt(7)).toContain('**dateiweisen** Umsetzungsplan');
       expect(researchPrompt(7)).toContain('**Kein Code, keine\n   dateiweise Umsetzung**');
     });
+
+    // #326: #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an -- der
+    // Planer-Lauf prüfte vor 'gh issue create' nicht, ob sie schon existieren.
+    it('verlangt eine Duplikat-Pruefung, bevor der Planer Folge-Tickets anlegt', () => {
+      const prompt = planPrompt(7);
+      expect(prompt).toContain('Folge-/Kind-Tickets');
+      expect(prompt).toContain('gh issue list --search "#7" --state open');
+      expect(prompt).toContain('lege **nichts neu an**');
+      expect(prompt).toContain('nenne die gefundenen');
+    });
+
+    it('gilt die Duplikat-Pruefung ausdruecklich auch bei einer fortgesetzten Session', () => {
+      expect(planPrompt(7)).toContain('nicht nur beim ersten\n   Anlauf');
+    });
   });
 
   describe('Werkzeug-Allowlisten (ADR-0005 + #63)', () => {

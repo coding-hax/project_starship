@@ -151,6 +151,54 @@ describe('roundPlan', () => {
     expect(run.status.title).toContain('plant #80');
   });
 
+  // #326: Anlass war #216 am 28.07.26 -- zwei Plan-Laeufe waren gleichzeitig
+  // unterwegs und legten dieselben drei Bau-Tickets doppelt an. Der Claim
+  // (#204) schuetzte bis dahin nachweislich nur die Bau-Rolle; fuer plan/
+  // research gab es hier noch keine Deckung. Beide Slots teilen sich dieselbe
+  // `claims`-Instanz (wie SHARED_DIR im echten Lauf), nur `slotId` unterscheidet
+  // sie.
+  describe('Claim-Schutz fuer Denk-Rollen (#204, #326)', () => {
+    it('beansprucht das Ticket fuer den eigenen Slot, wenn die Planer-Rolle startet', () => {
+      const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      roundPlan(ctx(gh), opts);
+      expect(claims.readSlot(80)).toBe('1');
+    });
+
+    // Slot 2 sieht #80 gar nicht erst als waehlbar -- `claimedElsewhere()`
+    // wirft es schon vor der Auswahl-Kaskade raus (wie bei der Bau-Rolle seit
+    // #204). Kein zweiter `claude`-Lauf startet, der Claim von Slot 1 bleibt
+    // unangetastet.
+    it('laesst einen zweiten Slot denselben Plan-Lauf nicht gleichzeitig beginnen', () => {
+      const { gh: ghSlot1 } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      roundPlan(ctx(ghSlot1), opts);
+      expect(claims.readSlot(80)).toBe('1');
+
+      const { gh: ghSlot2 } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK };
+      const result = roundPlan(ctxSlot2, opts);
+
+      // 'done' ohne 🟠 heisst: kein zweiter `claude`-Aufruf fuer #80 -- waere
+      // Slot 2 fuendig geworden, stuende hier der Busy-Status ("Plant gerade").
+      expect(result.kind).toBe('done');
+      expect(result.status?.emoji).not.toBe('🟠');
+      // Der Claim bleibt beim ersten Slot -- der zweite hat ihn nicht ueberschrieben.
+      expect(claims.readSlot(80)).toBe('1');
+    });
+
+    it('laesst einen zweiten Slot denselben Recherche-Lauf nicht gleichzeitig beginnen', () => {
+      const { gh: ghSlot1 } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+      roundPlan(ctx(ghSlot1), opts);
+      expect(claims.readSlot(81)).toBe('1');
+
+      const { gh: ghSlot2 } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK };
+      const result = roundPlan(ctxSlot2, opts);
+
+      expect(result.kind).toBe('done');
+      expect(claims.readSlot(81)).toBe('1');
+    });
+  });
+
   // --- Startstufe am Ticket (ADR-0013, #273) --------------------------------
   describe('Modellstufe per Label', () => {
     it('AC1: model:opus baut sofort auf Opus, ohne vorherige Eskalation', () => {

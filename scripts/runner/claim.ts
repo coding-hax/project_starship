@@ -141,6 +141,16 @@ export function claimedElsewhere(claims: ClaimAdapter, slotId: string): Set<numb
   return result;
 }
 
+// #326: 'in-progress' allein reicht nicht -- pickTicket() setzt es nur fuer
+// die Bau-Rolle. Ein Plan- oder Recherche-Lauf traegt stattdessen weiterhin
+// 'plan'/'research', bis er selbst fertig ist und das Label wegflippt. Ohne
+// diese beiden zusaetzlich als "noch aktiv" zu werten, hielt der Claim eines
+// laufenden Plan-Laufs nur die Schonfrist (SWEEP_GRACE_MS) durch -- danach
+// riss der Sweep ihn weg, obwohl der Lauf noch arbeitete, und ein zweiter Slot
+// konnte dieselbe Rolle fuer dasselbe Ticket ein zweites Mal starten (Anlass:
+// #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an).
+const ACTIVE_ROLE_LABELS = ['in-progress', 'plan', 'research'];
+
 function isStillClaimable(issue: number, gh: GhAdapter): boolean {
   try {
     const out = gh.run([
@@ -154,8 +164,8 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
     ]);
     const spaceIdx = out.indexOf(' ');
     const state = spaceIdx === -1 ? out : out.slice(0, spaceIdx);
-    const labels = spaceIdx === -1 ? '' : out.slice(spaceIdx + 1).split(',');
-    return state === 'OPEN' && labels.includes('in-progress');
+    const labels = spaceIdx === -1 ? [] : out.slice(spaceIdx + 1).split(',');
+    return state === 'OPEN' && labels.some((label) => ACTIVE_ROLE_LABELS.includes(label));
   } catch {
     // gh scheitert (Netz, geloeschtes Ticket) -- best effort wie ueberall
     // sonst im Runner: lieber ein zu frueh freigegebener Claim (der naechste
