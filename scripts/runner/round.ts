@@ -32,7 +32,15 @@ import { tierCurrent, tierFromLabels } from './tier.js';
 import { buildEscalationEval, resumeAllowed } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
-import { BUILD_TOOLS, READONLY_TOOLS, buildPrompt, ciFixPrompt, planPrompt, researchPrompt } from './prompts.js';
+import {
+  BUILD_TOOLS,
+  READONLY_DENY,
+  READONLY_TOOLS,
+  buildPrompt,
+  ciFixPrompt,
+  planPrompt,
+  researchPrompt,
+} from './prompts.js';
 
 export interface RoundContext {
   gh: GhAdapter;
@@ -93,6 +101,16 @@ export interface RoundRun {
   lastIssue: string;
   /** Der fertige Prompt -- Bash pipet ihn in `claude` (AK6). */
   prompt: string;
+  /**
+   * Porcelain-Schnappschuss des Haupt-Checkouts VOR dem Lauf (#325) -- nur
+   * fuer plan/research befuellt, '' beim Bauen. roundEval() vergleicht
+   * danach nur die DIFFERENZ, nicht gegen leer -- ein schon vorher
+   * schmutziger/gestagter Baum (Index zaehlt zum Zustand, Porcelain zeigt
+   * ihn in Spalte 1) darf keinen Lese-Lauf mehr faelschlich anklagen.
+   */
+  beforeDirty: string;
+  /** O3 (#325): --disallowedTools fuer den `claude`-Aufruf, '' beim Bauen. */
+  denyTools: string;
 }
 
 export type RoundPlanResult = RoundDone | RoundRun;
@@ -676,6 +694,23 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   const tools =
     role === 'plan' ? READONLY_TOOLS : role === 'research' ? `${READONLY_TOOLS},WebSearch` : BUILD_TOOLS;
 
+  // O2/O3 (#325): nur die Denk-Rollen laufen in einem Wegwerf-Worktree UND
+  // bekommen die harte Werkzeug-Verweigerung -- die Bau-Rolle hat ihren
+  // eigenen Worktree bereits (#242) und braucht Edit/Write.
+  const denyTools = role === 'plan' || role === 'research' ? READONLY_DENY : '';
+
+  // Baseline VOR dem Lauf, ausschliesslich fuer das Read-only-Netz unten in
+  // roundEval() -- der Wegwerf-Worktree macht das eigentlich ueberfluessig,
+  // bleibt aber als zweite Absicherung (Guertel und Hosentraeger, #325).
+  let beforeDirty = '';
+  if (role === 'plan' || role === 'research') {
+    try {
+      beforeDirty = git.run(['status', '--porcelain']);
+    } catch {
+      beforeDirty = '';
+    }
+  }
+
   return {
     kind: 'run',
     status: busy,
@@ -690,6 +725,8 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     didWork: opts.didWork,
     lastIssue: opts.lastIssue,
     prompt,
+    beforeDirty,
+    denyTools,
   };
 }
 
@@ -776,49 +813,60 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
   // an, ist das Limit vorbei -- das Label ist in JEDEM Ausgang unten stale.
   tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'blocked-limit']);
 
-  // --- Read-only-Netz fuer Planer & Rechercheur (ADR-0005 + #63) -----------
-  // Zweite Absicherung neben der Werkzeug-Allowlist: selbst mit enger Liste
-  // koennte ein Fehlverhalten den Baum beschmutzen. Das darf nie unbemerkt
-  // durchrutschen -- verwerfen und als Fehler behandeln, unabhaengig vom
-  // Exit-Code (auch ein "erfolgreicher" Lauf zaehlt hier nicht).
+  // --- Read-only-Netz fuer Planer & Rechercheur (ADR-0005 + #63, ueberholt
+  // durch #325) -----------------------------------------------------------
+  // Seit #325 laufen Denk-Rollen in einem Wegwerf-Worktree (O2) -- dieses
+  // Netz ist die zweite Absicherung (Guertel und Hosentraeger), kein
+  // Primaerschutz mehr. Es ist ausserdem ein reiner TRIPWIRE: es raeumt
+  // NIE mehr auf (kein `checkout -- .` + `clean -fd`). Der Grund ist
+  // Index-Zustand: `git status --porcelain` zeigt gestagte Aenderungen in
+  // Spalte 1, und `checkout`/`clean` fassen den Index nie an -- ein schon
+  // vorher gestagt-schmutziger Baum konnte das alte Netz also NIE aufloesen
+  // und hat jeden Lese-Lauf dort faelschlich angeklagt (#301/#322,
+  // Live-Beleg in #325). Deshalb vergleicht dieser Code die vor dem Lauf
+  // (roundPlan) genommene Baseline `plan.beforeDirty` gegen den Stand
+  // JETZT und beanstandet nur die DIFFERENZ. Fremd-Dirt (vor dem Lauf schon
+  // da, danach unveraendert) bleibt unangetastet liegen und wird nicht
+  // gemeldet -- nur echte NEUE Zeilen loesen die Anklage aus.
   if (role === 'plan' || role === 'research') {
-    let dirty = '';
+    let after = '';
     try {
-      dirty = git.run(['status', '--porcelain']);
+      after = git.run(['status', '--porcelain']);
     } catch {
-      dirty = '';
+      after = '';
     }
-    if (dirty !== '') {
-      try {
-        git.run(['checkout', '--', '.']);
-      } catch {
-        /* best effort, wie `2>/dev/null` */
-      }
-      try {
-        git.run(['clean', '-fd']);
-      } catch {
-        /* best effort */
-      }
+    const before = new Set(plan.beforeDirty.split('\n').filter((l) => l !== ''));
+    const newLines = after.split('\n').filter((l) => l !== '' && !before.has(l));
+
+    if (newLines.length > 0) {
       const roleLabel = role === 'research' ? 'Recherche-Lauf' : 'Planer-Lauf';
+      const paths = newLines.join('\n');
       tryGh(gh, [
         'issue',
         'comment',
         String(issue),
         '--body',
-        `🤖 Der ${roleLabel} (Opus, nur lesend) hat entgegen der Regel Dateien im Arbeitsbaum verändert. Verworfen, kein Commit. Siehe ADR-0005 (Read-only-Netz).`,
+        `🤖 Der ${roleLabel} (Opus, nur lesend) hat entgegen der Regel den Haupt-Checkout verändert. Nicht aufgeräumt (der Index zählt zum Zustand — \`checkout\`/\`clean\` könnten fremde gestagte Arbeit zerstören). Betroffene Zeilen:
+\`\`\`
+${paths}
+\`\`\`
+Siehe ADR-0005 (Read-only-Netz).`,
       ]);
       tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
       return stop(
         {
           title: `Fehler bei #${issue}`,
           emoji: '🔴',
-          text: `🔴 **Fehler bei #${issue}.** Der ${roleLabel} hat unerwartet Dateien geändert — verworfen, kein Commit.
+          text: `🔴 **Fehler bei #${issue}.** Der ${roleLabel} hat unerwartet den Haupt-Checkout geändert — nicht aufgeräumt, siehe Kommentar.
 
 Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, solange \`needs-answer\` hängt.`,
         },
         1,
       );
     }
+    // beforeDirty !== '', aber keine neuen Zeilen -> Fremd-Dirt lag schon
+    // vorher da und ist unveraendert: keine Anklage, kein Aufraeumen, Chain
+    // laeuft normal weiter.
   }
 
   const transientFile = `transient-${issue}`;
