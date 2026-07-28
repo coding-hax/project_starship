@@ -511,6 +511,8 @@ assert_contains "T12: Bau-Prompt weist an, 'gh pr ready' selbst auszufuehren" \
   "gh pr ready" "$PROMPT_321"
 assert_contains "T12: Bau-Prompt weist an, Auto-Merge selbst zu aktivieren" \
   "gh pr merge --squash --auto --delete-branch" "$PROMPT_321"
+assert_contains "T12: Bau-Prompt haengt --subject an den Merge-Aufruf (#292)" \
+  '--subject "$(gh pr view --json title -q .title)"' "$PROMPT_321"
 
 # ==============================================================================
 # T13 -- Bau-Prompt (#283): sensible Pfade verlangen einen KOMMENTAR am
@@ -544,6 +546,8 @@ assert_contains "T14: CI-Fix-Prompt weist an, 'gh pr ready' selbst auszufuehren"
   "gh pr ready" "$PROMPT_523"
 assert_contains "T14: CI-Fix-Prompt weist an, Auto-Merge selbst zu aktivieren" \
   "gh pr merge --squash --auto --delete-branch" "$PROMPT_523"
+assert_contains "T14: CI-Fix-Prompt haengt --subject an den Merge-Aufruf (#292)" \
+  '--subject "$(gh pr view --json title -q .title)"' "$PROMPT_523"
 
 # ==============================================================================
 # T15 -- #171 AC1: Nachziehen scheitert an einem unsauberen Arbeitsbaum -> der
