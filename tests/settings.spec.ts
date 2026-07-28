@@ -148,3 +148,31 @@ test('die Einstellungen-Primitive tragen keine teuren Filter (60-fps-Versprechen
     }
   }
 });
+
+for (const viewport of [
+  { width: 375, height: 667 },
+  { width: 1280, height: 800 },
+]) {
+  test(`Zurück-Link führt zur Übersicht, Titel steht auf gleicher Höhe rechts (${viewport.width}px, issue #288 AC1)`, async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.setViewportSize(viewport);
+    await page.goto('/einstellungen');
+
+    const back = page.locator('.einstellungen__back');
+    await expect(back).toBeVisible();
+    await expect(back).toHaveText('Übersicht');
+
+    const backBox = await back.boundingBox();
+    const titleBox = await page.getByRole('heading', { level: 1 }).boundingBox();
+    expect(titleBox!.x).toBeGreaterThan(backBox!.x + backBox!.width);
+    // „auf gleicher Höhe" heißt: die Mitten liegen übereinander, nicht untereinander.
+    expect(
+      Math.abs(titleBox!.y + titleBox!.height / 2 - (backBox!.y + backBox!.height / 2)),
+    ).toBeLessThan(8);
+
+    await back.click();
+    await expect(page).toHaveURL('/uebersicht');
+  });
+}

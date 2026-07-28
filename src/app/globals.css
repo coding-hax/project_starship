@@ -29,6 +29,7 @@
 @import '../features/activities/activity-chart.css';
 @import '../features/activities/activity-month-strip.css';
 @import './(app)/uebersicht/uebersicht.css';
+@import './(app)/einstellungen/einstellungen.css';
 
 /* Expose the tokens as Tailwind utilities, so `bg-surface` and `text-muted` exist
    and nobody has to reach for a raw colour to get their work done. */
