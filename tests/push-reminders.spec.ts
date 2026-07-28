@@ -235,6 +235,39 @@ test.describe('habits-open', () => {
 });
 
 /**
+ * `interaction-limit` (issue #245, "M3-T6"). Its `build()` compares `now` against
+ * the fixed expiry constant (src/push/reminders/interaction-limit.ts) instead of
+ * reading anything from the database, so — unlike tasks-due/habits-open above —
+ * there is nothing to seed here, only `X-E2E-Now` to place `now` at a chosen
+ * distance from that expiry. Both dates below sit past the 09:00 Berlin slot so
+ * the only variable under test is the day-distance, not slot timing.
+ */
+test.describe('interaction-limit', () => {
+  test('weniger als 30 Tage bis zum Ablauf lösen eine Erinnerung aus (AC1)', async ({ request }) => {
+    // 12 Tage vor Ablauf (2027-01-17T11:36:24Z), 09:05 CET
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2027-01-05T08:05:00.000Z' },
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('interaction-limit');
+    expect(await reminderSendRows('interaction-limit')).toHaveLength(1);
+  });
+
+  test('mehr als 30 Tage bis zum Ablauf lösen keine Erinnerung aus (AC2)', async ({ request }) => {
+    // ~180 Tage vor Ablauf, 09:05 CEST
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T07:05:00.000Z' },
+    });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('interaction-limit');
+    expect(body.skipped).toContain('interaction-limit');
+    expect(await reminderSendRows('interaction-limit')).toHaveLength(0);
+  });
+});
+
+/**
  * `reminder_prefs` (issue #244, "M3-T5"), exercised through `e2e-smoke` — its
  * always-due `00:00` registry default means any override observed here is
  * unambiguously the pref's doing, not a coincidence of the wall-clock hour the
