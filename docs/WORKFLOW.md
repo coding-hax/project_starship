@@ -190,7 +190,7 @@ Zustandsmaschine des ganzen Setups:
 | `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
 | `opus-boost`     | Hebt den Opus-Tagesdeckel für dieses eine Ticket auf (Zähler läuft weiter), Kill-Switch `no-escalation` gewinnt. Wird von einem Opus-Bau-Lauf ohne Fortschritt wieder abgezogen. | **Du**       |
 | `tests-exempt`   | Testlose Änderung (Refactor/Typen) nachweislich gerechtfertigt — hebt das Anwesenheits-Gate in `check-test-integrity.sh` für diesen PR auf. | **Du**       |
-| `bug` `epic`     | Reine Sortier-Labels — sie steuern den Runner nicht. `epic` heißt: Sammelticket, wird nie selbst gebaut; damit das auch mechanisch gilt, trägt ein Sammelticket zusätzlich `hands-off`. | **Du**       |
+| `bug` `epic`     | Reine Sortier-Labels — sie steuern den Runner nicht. `epic` markiert zusammenhängende Tickets und hat **keine** Wirkung auf die Auswahl. | **Du**       |
 
 Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
