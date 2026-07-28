@@ -231,7 +231,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     : [];
 
   if (waitingOnHuman.length > 0) {
-    const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state });
+    const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state, clock });
 
     // #217 AC4: ein Ticket landet nur dann in '.released', wenn 'gh pr merge'
     // tatsaechlich geklappt hat -- sonst bleibt es wartend.
@@ -344,9 +344,25 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   if (issue > 0) {
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
-      const watch = watchRunningIssue(issue, prNum, { gh, git, state });
+      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
       switch (watch.kind) {
         case 'pending':
+          // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist
+          // "kein Eingreifen nötig" nicht mehr wahr -- ein Drittel der Flotte
+          // stand deshalb schon einmal zwei Stunden lang gruen und still.
+          if (watch.escalated) {
+            return {
+              kind: 'done',
+              rc: 0,
+              status: status(
+                `wartet auf dich (#${issue}): CI hängt seit ${watch.minutes} Minuten`,
+                '🟡',
+                `🟡 **CI hängt seit ${watch.minutes} Minuten für #${issue}** (PR #${prNum}), ohne durchzulaufen.
+
+Bitte auf GitHub nachsehen, ob der Check wirklich noch arbeitet oder festhängt.`,
+              ),
+            };
+          }
           return {
             kind: 'done',
             rc: 0,
