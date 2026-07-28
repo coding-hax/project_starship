@@ -1,9 +1,9 @@
 # Runner als Dienst einrichten (Linux / macOS via WSL o. ä.)
 
-Der Runner ist zustandslos: er schaut alle 5 Minuten nach, ob es Arbeit gibt,
+Der Runner ist zustandslos: er schaut alle 60 Sekunden nach, ob es Arbeit gibt,
 und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft. Innerhalb
 eines Takts kettet er bis zu 3 Tickets hintereinander (Ticket-Chaining, #61) --
-der 5-Minuten-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
+der 60-Sekunden-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
 eine offene Frage bemerkt wird.
 
 ## Voraussetzung: die eigenständige CLI
@@ -62,11 +62,11 @@ ExecStart=%h/projects/meine-app/scripts/claude-runner.sh
 
 ```ini
 [Unit]
-Description=Claude Runner alle 5 Minuten
+Description=Claude Runner alle 60 Sekunden
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
+OnUnitActiveSec=60s
 Persistent=true
 
 [Install]
@@ -84,10 +84,34 @@ systemctl --user list-timers       # wann läuft er das nächste Mal?
 journalctl --user -u claude-runner -f   # Live-Log (brauchst du im Alltag nicht)
 ```
 
+## gh CLI API-Limit und Skalierung
+
+Der Runner benutzt die GitHub CLI (`gh`) für API-Aufrufe. Das gh-Limit liegt bei
+**5000 Calls pro Stunde**. Ein typischer Lauf kostet ~10–20 API-Calls:
+
+| Takt | Slots | Calls/h |
+| --- | --- | --- |
+| 300 s (5 min) | 1 | ~120–240 |
+| 60 s | 1 | ~600–1200 |
+| 60 s | 3 (#204) | ~1800–3600 |
+
+Für einen Slot (Standard) ist 60 Sekunden unbedenklich. **Sobald #204 mit mehreren
+Slots läuft** (parallele Läufe), **muss der Takt auf 120–300 Sekunden zurück**,
+sonst rückt das Limit in Reichweite.
+
+Prüf dein aktuelles Limit mit:
+
+```bash
+gh api rate_limit | jq '.rate'
+```
+
+Der zweite Nebeneffekt: der Shim macht bei jedem Tick ein `git fetch origin main` —
+das sind jetzt 60 statt 12 Fetches pro Stunde.
+
 ## Auf Windows
 
 Entweder in WSL2 wie oben, oder über die Aufgabenplanung
-(Trigger: alle 5 Minuten, Aktion: `wsl.exe bash /pfad/claude-runner.sh`).
+(Trigger: alle 60 Sekunden, Aktion: `wsl.exe bash /pfad/claude-runner.sh`).
 WSL2 ist der deutlich weniger schmerzhafte Weg.
 
 ## Was du davon auf dem Handy siehst
