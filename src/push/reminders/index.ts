@@ -5,6 +5,7 @@ import { reminderPrefs, reminderSends } from '@/db/schema';
 import { dueSlots } from '@/push/schedule';
 import { sendPushToAll, type PushPayload } from '@/push/send';
 import { habitsOpen } from './habits-open';
+import { interactionLimit } from './interaction-limit';
 import { tasksDue } from './tasks-due';
 
 /**
@@ -19,7 +20,7 @@ export interface ReminderKind {
   build(now: Date): Promise<PushPayload | null>;
 }
 
-const reminderKinds: ReminderKind[] = [tasksDue, habitsOpen];
+const reminderKinds: ReminderKind[] = [tasksDue, habitsOpen, interactionLimit];
 
 if (process.env.NEXT_PUBLIC_E2E === '1') {
   reminderKinds.push({
