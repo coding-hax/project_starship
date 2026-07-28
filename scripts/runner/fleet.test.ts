@@ -137,4 +137,34 @@ describe('aggregateStatus (#204 AK4/AK9)', () => {
     const states = [{ slotId: '1', emoji: '🟢', title: 'x', text: '', updatedAtMs: NOW }];
     expect(aggregateStatus(states, 2, '1', '1', NOW)?.text).not.toContain('Leitslot übernommen');
   });
+
+  // #331 AK3/AK5: 🔴 darf im Kopf nie von 🟡 verdeckt werden -- genau das
+  // Muster aus dem Vorfall vom 28.07.26 (23:26 Uhr), wo die Anzeige "wartet
+  // auf dich" zeigte, obwohl ein Slot tatsaechlich auf Fehler stand.
+  it('AK3/AK5: 🔴 schlaegt 🟡 im Titel-Emoji', () => {
+    const states = [
+      { slotId: '1', emoji: '🟡', title: 'wartet auf dich (#325)', text: '', updatedAtMs: NOW },
+      { slotId: '2', emoji: '🔴', title: 'Fehler bei #325', text: '', updatedAtMs: NOW },
+    ];
+    expect(aggregateStatus(states, 2, '1', '1', NOW)?.emoji).toBe('🔴');
+  });
+
+  // #331 AK2: eine zehn Minuten alte Zeile muss sichtbar aelter aussehen als
+  // eine gerade erst geschriebene -- das reine 💤-Symbol greift erst ab
+  // STALE_MS (90 Min.) und waere hier blind.
+  it('AK2: jede Zeile traegt ihr eigenes Alter, unabhaengig vom 💤-Schnitt', () => {
+    const states = [
+      { slotId: '1', emoji: '🟢', title: 'arbeitet an #70', text: '', updatedAtMs: NOW },
+      { slotId: '2', emoji: '🟠', title: 'arbeitet an #12', text: '', updatedAtMs: NOW - 10 * 60_000 },
+    ];
+    const result = aggregateStatus(states, 2, '1', '1', NOW);
+    expect(result?.text).toContain('Slot 1:** arbeitet an #70 _(gerade eben)_');
+    expect(result?.text).toContain('Slot 2:** arbeitet an #12 _(vor 10 Min.)_');
+  });
+
+  it('AK2: das Alter waechst auch ueber Stunden hinweg lesbar', () => {
+    const states = [{ slotId: '1', emoji: '🟢', title: 'x', text: '', updatedAtMs: NOW - 125 * 60_000 }];
+    const result = aggregateStatus(states, 2, '1', '1', NOW);
+    expect(result?.text).toContain('_(vor 2 Std. 5 Min.)_');
+  });
 });

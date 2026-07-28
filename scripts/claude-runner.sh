@@ -24,6 +24,10 @@ QUEUE_ISSUE="${QUEUE_ISSUE:-0}"         # Nr. des Prioritäts-Queue-Issues (0 = 
 MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
 MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
 TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
+# #331: solange der `claude`-Aufruf laeuft (bis zu MAX_RUNTIME), veroeffentlicht
+# der Leitslot die Flottenanzeige trotzdem im Hintergrund weiter, statt erst
+# nach Rundenende -- siehe start_fleet_publisher() unten.
+FLEET_PUBLISH_INTERVAL="${FLEET_PUBLISH_INTERVAL:-300}"
 # Ein vorab exportiertes STATE_DIR (Testfixture) gewinnt -- und wird selbst
 # exportiert, damit der tsx-Kindprozess dasselbe Verzeichnis sieht.
 STATE_DIR="${STATE_DIR:-$REPO_DIR/.runner}"
@@ -162,6 +166,37 @@ apply_status() {   # $1 = JSON mit optionalem .status
   status "$(printf '%s' "$agg" | jq -r '.title')" \
          "$(printf '%s' "$agg" | jq -r '.emoji')" \
          "$(printf '%s' "$agg" | jq -r '.text')"
+}
+
+# #331: Die Ampel oben friert ein, solange der Leitslot in einem langen
+# `claude`-Aufruf (bis zu MAX_RUNTIME, planend gern deutlich laenger als ein
+# Bau-Lauf) steckt -- apply_status() liefe erst nach dessen Rueckkehr wieder.
+# Waehrenddessen schreiben andere Slots ihren Zustand trotzdem unbeirrt
+# weiter (siehe apply_status()); nur ihn zu veroeffentlichen fehlte. Deshalb
+# laesst NUR der Leitslot (IS_LEAD) waehrend des `claude`-Aufrufs einen
+# Hintergrund-Takt mitlaufen, der denselben apply_status() periodisch erneut
+# aufruft -- EIN Schreiber bleibt es trotzdem (AK4 aus #331): der
+# Vordergrund-Prozess ruft apply_status() erst nach dem Beenden dieses Takts
+# wieder selbst auf (stop_fleet_publisher() toetet und wartet ihn ab, siehe
+# unten), nie gleichzeitig. FLEET_PUB_PID ist bewusst eine globale Variable
+# statt eines Rueckgabewerts per `$(...)`: Letzteres forkt eine eigene
+# Subshell fuers Erfassen von `$!`, und der darin gestartete Hintergrundjob
+# waere ausserhalb dieser Funktion nicht mehr sauber greifbar -- derselbe
+# Grund, warum run_limited() sein `cmd_pid` direkt (ohne Command-Substitution)
+# erfasst.
+FLEET_PUB_PID=""
+start_fleet_publisher() {
+  FLEET_PUB_PID=""
+  [ "$IS_LEAD" -eq 1 ] || return 0
+  ( while sleep "$FLEET_PUBLISH_INTERVAL"; do apply_status '{}'; done ) &
+  FLEET_PUB_PID=$!
+}
+
+stop_fleet_publisher() {
+  [ -n "$FLEET_PUB_PID" ] || return 0
+  kill "$FLEET_PUB_PID" 2>/dev/null
+  wait "$FLEET_PUB_PID" 2>/dev/null
+  FLEET_PUB_PID=""
 }
 
 # --- Ersatz für `timeout` (fehlt auf macOS) ----------------------------------
@@ -345,8 +380,12 @@ run_round() {
   # als Argument übergeben. rc kommt aus PIPESTATUS, NICHT aus $?: mit
   # `pipefail` wäre es sonst der Code der linken Seite -- liest `claude` stdin
   # nicht aus, gälte ein sauberer Lauf wegen EPIPE als gescheitert.
+  start_fleet_publisher
+
   ts_run round-prompt "$ROUND_FILE" | run_limited "$MAX_RUNTIME" "$run_cwd" claude "${args[@]}"
   rc=${PIPESTATUS[1]}
+
+  stop_fleet_publisher
 
   timed=0
   if [ -f "$TIMED_OUT" ]; then timed=1; rm -f "$TIMED_OUT"; fi
