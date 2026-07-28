@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
+import { useModules } from '@/features/settings/use-modules';
 import { useNavOrder } from '@/features/settings/use-nav-order';
 
 /**
@@ -16,6 +17,8 @@ import { useNavOrder } from '@/features/settings/use-nav-order';
 export function Nav() {
   const pathname = usePathname();
   const { items } = useNavOrder();
+  const { isActive } = useModules();
+  const visibleItems = items.filter((item) => isActive(item.id));
   const listRef = useRef<HTMLUListElement>(null);
 
   // Scrolls the current tab into view on every navigation, so a carousel with more
@@ -50,7 +53,7 @@ export function Nav() {
   return (
     <nav aria-label="Hauptnavigation" className="nav">
       <ul className="nav__list" ref={listRef}>
-        {items.map((tab) => {
+        {visibleItems.map((tab) => {
           const active = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (
             <li key={tab.href} className="nav__item">
