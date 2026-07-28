@@ -42,7 +42,7 @@ source "$RUNNER"
 source "$TEST_DIR/lib/ts-core-shims.sh"
 
 reset_state() {   # frisches Zustandsverzeichnis für jeden Testfall
-  rm -rf "$STATE_DIR"
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR"
   mkdir -p "$STATE_DIR"
 }
 
