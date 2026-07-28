@@ -541,6 +541,7 @@ describe('roundPlan', () => {
       const result = roundPlan(ctx(gh), opts);
       expect(result.kind).toBe('done');
       expect(result.status?.emoji).toBe('🟡');
+      expect(result.status?.title).toBe('Opus-Deckel (#77)');
       expect(result.status?.text).toContain('Opus-Tagesbudget');
       expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
     });

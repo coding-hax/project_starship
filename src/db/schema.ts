@@ -327,3 +327,36 @@ export const reminderSends = pgTable(
 
 export type ReminderSend = typeof reminderSends.$inferSelect;
 export type NewReminderSend = typeof reminderSends.$inferInsert;
+
+/**
+ * Per-kind reminder preferences (issue #244, "M3-T5"). Synchronised like any domain
+ * table (`syncColumns`) — Regel 8 forbids the UI writing straight to the cron's
+ * read path, so a preference has to travel through the same outbox/push/pull
+ * plumbing as tasks/habits and land in Postgres for `sendDueReminders()` to read.
+ *
+ * One row per `kind` (`uniqueIndex`), not one row per time: an empty `times` array
+ * means "deliberately no time" and must not fall back to the registry defaults —
+ * a row-per-time design would lose that distinction the moment the last time is
+ * removed. No row at all means "never configured" and does fall back to the
+ * registry defaults (src/push/reminders/reminder-kinds.ts).
+ *
+ * Never tombstoned — a row always names one of the fixed kinds, so there is
+ * nothing to delete, only to change.
+ */
+export const reminderPrefs = pgTable(
+  'reminder_prefs',
+  {
+    ...syncColumns,
+    kind: text('kind').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    times: jsonb('times').$type<string[]>().notNull().default([]),
+  },
+  (table) => [
+    index('reminder_prefs_updated_at_idx').on(table.updatedAt),
+    index('reminder_prefs_sync_seq_idx').on(table.syncSeq),
+    uniqueIndex('reminder_prefs_kind_idx').on(table.kind),
+  ],
+);
+
+export type ReminderPref = typeof reminderPrefs.$inferSelect;
+export type NewReminderPref = typeof reminderPrefs.$inferInsert;

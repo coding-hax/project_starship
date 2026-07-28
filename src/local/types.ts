@@ -10,6 +10,7 @@ export const SYNC_TABLES = [
   'habits',
   'habit_logs',
   'garmin_activities',
+  'reminder_prefs',
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
@@ -61,6 +62,17 @@ export interface HabitLogData {
   habitId: string;
   logDate: string;
   done: boolean;
+}
+
+/**
+ * Same as `HabitData`, for `reminder_prefs` (issue #244). One row per reminder
+ * `kind` — see the doc comment on `reminderPrefs` in src/db/schema.ts for why an
+ * empty `times` array must not be conflated with "no row at all".
+ */
+export interface ReminderPrefData {
+  kind: string;
+  enabled: boolean;
+  times: string[];
 }
 
 export interface Mutation {

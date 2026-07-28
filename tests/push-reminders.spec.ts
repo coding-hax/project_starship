@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { resetAppData, resetPushData, resetReminderData, withDb } from './helpers';
+import { resetAppData, resetPushData, resetReminderData, seedReminderPref, withDb } from './helpers';
 
 /**
  * `e2e-smoke` (src/push/reminders/index.ts, gated behind NEXT_PUBLIC_E2E like the
@@ -231,5 +231,98 @@ test.describe('habits-open', () => {
     const body = await response.json();
 
     expect(body.sent).not.toContain('habits-open');
+  });
+});
+
+/**
+ * `interaction-limit` (issue #245, "M3-T6"). Its `build()` compares `now` against
+ * the fixed expiry constant (src/push/reminders/interaction-limit.ts) instead of
+ * reading anything from the database, so — unlike tasks-due/habits-open above —
+ * there is nothing to seed here, only `X-E2E-Now` to place `now` at a chosen
+ * distance from that expiry. Both dates below sit past the 09:00 Berlin slot so
+ * the only variable under test is the day-distance, not slot timing.
+ */
+test.describe('interaction-limit', () => {
+  test('weniger als 30 Tage bis zum Ablauf lösen eine Erinnerung aus (AC1)', async ({ request }) => {
+    // 12 Tage vor Ablauf (2027-01-17T11:36:24Z), 09:05 CET
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2027-01-05T08:05:00.000Z' },
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('interaction-limit');
+    expect(await reminderSendRows('interaction-limit')).toHaveLength(1);
+  });
+
+  test('mehr als 30 Tage bis zum Ablauf lösen keine Erinnerung aus (AC2)', async ({ request }) => {
+    // ~180 Tage vor Ablauf, 09:05 CEST
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T07:05:00.000Z' },
+    });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('interaction-limit');
+    expect(body.skipped).toContain('interaction-limit');
+    expect(await reminderSendRows('interaction-limit')).toHaveLength(0);
+  });
+});
+
+/**
+ * `reminder_prefs` (issue #244, "M3-T5"), exercised through `e2e-smoke` — its
+ * always-due `00:00` registry default means any override observed here is
+ * unambiguously the pref's doing, not a coincidence of the wall-clock hour the
+ * suite happens to run at. The panel/outbox path that produces these rows is
+ * `tests/reminder-prefs.spec.ts`; this suite only proves the cron reads them.
+ */
+test.describe('reminder_prefs (e2e-smoke)', () => {
+  test('abgeschaltete Art bleibt still, auch wenn ihre Zeit vergangen ist (AC1)', async ({ request }) => {
+    await seedReminderPref('e2e-smoke', false, ['00:00']);
+
+    const response = await request.post('/api/push/reminders');
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('e2e-smoke');
+    expect(await reminderSendRows('e2e-smoke')).toHaveLength(0);
+  });
+
+  test('eine geänderte Uhrzeit wirkt auf den Versand (AC2)', async ({ request }) => {
+    await seedReminderPref('e2e-smoke', true, ['23:00']);
+
+    const before = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T20:30:00.000Z' }, // 22:30 CEST — before 23:00
+    });
+    expect((await before.json()).sent).not.toContain('e2e-smoke');
+
+    const after = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T21:30:00.000Z' }, // 23:30 CEST — past 23:00
+    });
+    expect((await after.json()).sent).toContain('e2e-smoke');
+    expect(await reminderSendRows('e2e-smoke')).toHaveLength(1);
+  });
+
+  test('eine zweite Zeit liefert einen zweiten, eigenen Slot — keine verschluckt die andere (AC3)', async ({
+    request,
+  }) => {
+    await seedReminderPref('e2e-smoke', true, ['06:00', '07:00']);
+
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T06:30:00.000Z' }, // 08:30 CEST — past both
+    });
+    const body = await response.json();
+
+    expect((body.sent as string[]).filter((kind) => kind === 'e2e-smoke')).toHaveLength(2);
+    expect(await reminderSendRows('e2e-smoke')).toHaveLength(2);
+  });
+
+  test('werden alle Zeiten entfernt, kommt nichts — die Standardzeit kehrt nicht zurück (AC4)', async ({
+    request,
+  }) => {
+    await seedReminderPref('e2e-smoke', true, []);
+
+    const response = await request.post('/api/push/reminders');
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('e2e-smoke');
+    expect(await reminderSendRows('e2e-smoke')).toHaveLength(0);
   });
 });
