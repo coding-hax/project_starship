@@ -45,16 +45,24 @@ export const viewport: Viewport = {
 
 // Runs before the first paint so the chosen theme/text-scale apply immediately —
 // without it, the page would flash light before this script's own React tree mounts
-// and reads the same localStorage keys (`use-appearance.ts`, ADR-0006).
+// and reads the same localStorage keys (`use-appearance.ts`, ADR-0006). `data-modules-off`
+// follows the same idea for an off module's route (issue #309): globals.css hides its
+// `[data-module]` wrapper the instant this attribute lands, before the route guard
+// (`module-route-guard.tsx`) even mounts.
 const THEME_BOOTSTRAP_SCRIPT = `(function () {
   try {
     var html = document.documentElement;
     var theme = localStorage.getItem('starship:theme');
     var reduceMotion = localStorage.getItem('starship:reduce-motion');
     var textScale = localStorage.getItem('starship:text-scale');
+    var modulesOff = localStorage.getItem('starship:modules-off');
     if (theme === 'hell' || theme === 'dunkel') html.setAttribute('data-theme', theme);
     if (reduceMotion === 'true') html.setAttribute('data-reduce-motion', 'true');
     if (textScale) html.style.setProperty('--font-scale', textScale);
+    if (modulesOff) {
+      var off = JSON.parse(modulesOff);
+      if (Array.isArray(off) && off.length) html.setAttribute('data-modules-off', off.join(' '));
+    }
   } catch (e) {}
 })();`;
 
