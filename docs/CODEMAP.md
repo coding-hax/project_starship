@@ -55,7 +55,12 @@ src/
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code
-  crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
+  crypto/                   Journal-Verschlüsselung (M4, S1 von #302, issue #337) — reine Logik, keine UI/Tabelle/Sync
+    errors.ts               WrongPassphraseError/JournalDecryptError — nie Schlüsselmaterial oder Klartext in der Message
+    base64.ts                bytesToBase64/base64ToBytes über btoa/atob, damit die Hülle JSON-serialisierbar bleibt
+    envelope.ts              KEK+Hülle (ADR-0015/-0016): deriveKek (PBKDF2 via WebCrypto) + createEnvelope/openEnvelope (DEK als AES-GCM, gewickelt vom KEK); DEK extractable nur kurz in createEnvelope zum Wickeln, openEnvelope liefert ihn stets non-extractable; DEFAULT_KDF_PARAMS 600k Iterationen SHA-256, optionaler zweiter Parameter an createEnvelope für abweichende (z. B. günstigere Test-)Parameter
+    journal.ts                encryptJournal/decryptJournal — Text+Stimmung+Tags in einem Chiffrat (ADR-0004), frisches Nonce je Aufruf; Re-Export der envelope-API, bleibt der eine Einstieg laut CODEMAP
+    __fixtures__/journal-vector.json  eingecheckter Testvektor (AC5) gegen unbemerkte Formatänderungen
   modules/
     registry.ts              MODULES + NavItem — einzige Quelle je Modul (stabile id, label, core, optional navItem/OverviewSection/SettingsPanel/routes); nav-items.ts leitet NAV_ITEMS daraus ab, use-modules.ts das Ein/Aus (ADR-0012, issue #307). `OverviewSection` (wetter/aufgaben/aktivitaeten/gewohnheiten) + `SettingsPanel` (aufgaben/wetter/export) seit issue #308 befüllt; `routes` (aufgaben/gewohnheiten/kalender/journal/aktivitaeten, je ein Pfad-Präfix) seit issue #309 befüllt, treibt `module-route-guard.tsx`
     module-sections.ts       `useActiveSections(order, pick)` — löst eine seitenfest vorgegebene `order` von Modul-Ids gegen `isActive` + das per `pick` gewählte Registry-Feld auf (issue #308); `order` bewusst nicht `MODULES`-Reihenfolge selbst, weil Übersicht (Wetter zuerst) und Einstellungen (Registry-Reihenfolge) sich unterscheiden
@@ -268,7 +273,7 @@ docs/                       Vision, Architektur, Design, Workflow, Token-Budget,
 | den Vertrag zwischen Client und Sync-API | `src/local/types.ts`                            |
 | wer reindarf                             | `src/auth/session.ts` (`requireOwner`)          |
 | Farben, Abstände, Motion                 | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
-| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (ab M4)                 |
+| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (+ `envelope.ts`, S1 von #302) |
 | warum etwas so entschieden wurde         | `docs/adr/`                                     |
 
 ## Wichtige Invarianten
