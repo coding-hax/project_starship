@@ -25,7 +25,9 @@ fi
 
 # --- 2. Testanzahl darf nicht sinken ----------------------------------------
 count_tests() {   # $1 = git-ref
-  git grep -hE "^\s*(test|it)\(" "$1" -- '*.spec.ts' '*.test.ts' 2>/dev/null | wc -l
+  # POSIX-ERE (git grep -E) kennt \s nicht -- das matcht dort ein literales
+  # "s", kein Whitespace. [[:space:]] ist die portable POSIX-Klasse.
+  git grep -hE "^[[:space:]]*(test|it)\(" "$1" -- '*.spec.ts' '*.test.ts' 2>/dev/null | wc -l
 }
 
 BEFORE=$(count_tests "$BASE")

@@ -63,6 +63,31 @@ git -C "$REPO3" commit -q -m "type-only change"
 assert_exit "AC3: .d.ts-only-Änderung braucht keinen Test" 0 \
   bash -c "cd '$REPO3' && bash '$GUARD' '$BASE3'"
 
+# --- 4. Abschnitt 2 (count_tests): eingerückter Vitest-Test verschwindet ------
+# git grep -E kennt \s nicht (POSIX-ERE) -- ohne [[:space:]] zählt der Wächter
+# eingerückte it()/test()-Zeilen (Vitest, immer in describe()-Blöcken) gar
+# nicht mit. Dieser Fall belegt, dass das Löschen einer ganzen Vitest-Datei
+# den Wächter rot werden lässt -- vor dem Fix blieb er hier grün (0 -> 0),
+# weil die einzige Testzeile nie mitgezählt wurde (Issue #274).
+REPO4="$TMP/case4"
+mkdir -p "$REPO4/src/features" "$REPO4/tests"
+git -C "$REPO4" init -q -b main
+git -C "$REPO4" config user.email test@example.invalid
+git -C "$REPO4" config user.name test
+cat > "$REPO4/tests/base.test.ts" <<'EOF'
+describe('feature', () => {
+  it('does the thing', () => {});
+});
+EOF
+git -C "$REPO4" add -A
+git -C "$REPO4" commit -q -m base
+BASE4=$(git -C "$REPO4" rev-parse HEAD)
+rm "$REPO4/tests/base.test.ts"
+git -C "$REPO4" add -A
+git -C "$REPO4" commit -q -m "delete vitest file"
+assert_exit "AC4: gelöschte Vitest-Datei (eingerückter it()) macht den Wächter rot" 1 \
+  bash -c "cd '$REPO4' && bash '$GUARD' '$BASE4'"
+
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
