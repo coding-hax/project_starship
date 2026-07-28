@@ -15,8 +15,9 @@ import { useToggleHabitLog } from './use-toggle-habit-log';
  * Unlike the task list, a checked-off row stays in place rather than
  * disappearing: the tap that checked it is also how you undo it (AC2), so the
  * row has to stay reachable. Weekly habits never drop out of this list either
- * (issue #224) — one already checked off earlier this week just carries a
- * "Diese Woche schon erledigt" hint until it is also checked off today.
+ * (issue #224) — one already checked off earlier this week carries a
+ * "Diese Woche schon erledigt" hint regardless of today's own checkbox state
+ * (issue #288): it says something about the week, not about today.
  */
 export function HabitToday() {
   const habits = useHabits();
@@ -45,7 +46,7 @@ export function HabitToday() {
         const doneToday = logs.some(
           (log) => log.habitId === habit.id && log.logDate === today && log.done,
         );
-        const showWeekHint = !doneToday && doneEarlierThisWeek(habit, logs, now);
+        const showWeekHint = doneEarlierThisWeek(habit, logs, now);
         const streak = computeStreak(habit, logs, now);
         return (
           <li
