@@ -74,11 +74,32 @@ export interface WeatherCacheEntry {
   days: WeatherDay[];
 }
 
+/**
+ * A journal-entry version a pull displaced (ADR-0017 point 3, issue #338 AC6) — the
+ * server applied a later write on top of one this device never saw. Content-blind,
+ * like everything else in the sync/conflict layer: `ciphertext`/`nonce` are opaque
+ * Base64, never decrypted here. Surfacing/resolving this in the journal UI is S3b.
+ */
+export interface JournalConflict {
+  /** uuidv7, generated when the conflict is captured — independent of the row id. */
+  id: string;
+  entryDate: string;
+  ciphertext: string;
+  nonce: string;
+  /** `syncSeq` of the displaced version, for display/ordering. */
+  displacedSyncSeq: number | null;
+  /** `updatedAt` of the displaced version. */
+  updatedAt: string;
+  /** When this device captured the conflict — distinct from `updatedAt` above. */
+  capturedAt: string;
+}
+
 const db = new Dexie('starship') as Dexie & {
   outbox: EntityTable<OutboxEntry, 'id'>;
   records: EntityTable<LocalRecord, 'id'>;
   meta: EntityTable<MetaEntry, 'key'>;
   weather: EntityTable<WeatherCacheEntry, 'key'>;
+  journalConflicts: EntityTable<JournalConflict, 'id'>;
 };
 
 db.version(1).stores({
@@ -105,6 +126,15 @@ db.version(2).stores({
 // still on the old shape simply has no `hours` until the next refresh; `refreshIfStale`
 // replaces the whole cached row wholesale (never merges), so that self-heals within
 // one REFRESH_INTERVAL_MS window without any migration step.
+
+// issue #338 adds `journal_entries`/`journal_keys` as new `SyncTable`s (src/local/types.ts)
+// living in the generic `records` store above, same reasoning as `reminder_prefs` — no
+// version bump for those two. `journalConflicts` (ADR-0017 point 3) is a genuinely new
+// store though, so it needs its own version: additive, existing stores/rows are
+// untouched, an upgrading install just gains an empty conflicts table.
+db.version(3).stores({
+  journalConflicts: 'id, entryDate',
+});
 
 export { db };
 
