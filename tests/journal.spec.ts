@@ -156,6 +156,20 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
     data: { title: 'Vor dem Bump' },
   };
 
+  // The shared browser storage this suite runs against is not necessarily empty —
+  // a prior test/session may already have opened 'starship' at whatever version the
+  // app is currently on. Delete it first so opening at version 2 below is
+  // deterministic regardless of what this browser context saw before this test.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('starship');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => resolve();
+      }),
+  );
+
   await page.evaluate(
     (record) =>
       new Promise<void>((resolve, reject) => {
