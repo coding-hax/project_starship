@@ -531,6 +531,32 @@ describe('roundPlan', () => {
       expect(result.status?.emoji).toBe('🟢');
       expect(result.status?.text).toContain('CI läuft für #77');
     });
+
+    // #324: der Anlass des Tickets -- ein Check haengt seit Stunden auf
+    // 'pending', der Status meldet trotzdem gruen "kein Eingreifen noetig".
+    // Ab PENDING_STALL_MINUTES kippt derselbe Zustand auf gelb, mit
+    // Ticketnummer und Dauer im Text (AC2/AC5).
+    it('#324: haengt der Check laenger als die Schwelle, kippt der Status von gruen auf gelb', () => {
+      state.write('pending-since-77', String(CLOCK.now().getTime() - 46 * 60_000));
+      const { gh } = ghDouble(withPr(77, ['in-progress'], JSON.stringify([{ bucket: 'pending', name: 'e2e' }])));
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.emoji).toBe('🟡');
+      expect(result.status?.title).toContain('#77');
+      expect(result.status?.title).toContain('46 Minuten');
+      expect(result.status?.text).toContain('#77');
+      expect(result.status?.text).toContain('46 Minuten');
+    });
+
+    // #324 AC3: unterhalb der Schwelle bleibt alles wie bisher, auch wenn
+    // schon eine Weile gewartet wird -- keine neue Unruhe fuer normale Laeufe.
+    it('#324 AC3: unterhalb der Schwelle bleibt es beim bisherigen gruen', () => {
+      state.write('pending-since-77', String(CLOCK.now().getTime() - 10 * 60_000));
+      const { gh } = ghDouble(withPr(77, ['in-progress'], JSON.stringify([{ bucket: 'pending', name: 'e2e' }])));
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.status?.emoji).toBe('🟢');
+      expect(result.status?.text).toContain('CI läuft für #77');
+    });
   });
 
   describe('Opus-Bau-Deckel (ADR-0007)', () => {
