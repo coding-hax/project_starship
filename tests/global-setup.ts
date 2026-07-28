@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { LOCK_FILE } from './run-lock';
 
 type Lock = { pid: number; startedAt: string };
@@ -51,5 +52,10 @@ export default function globalSetup() {
   if (lock && !isAlive(lock.pid)) unlinkSync(LOCK_FILE);
 
   const own: Lock = { pid: process.pid, startedAt: new Date().toISOString() };
+  // #204: LOCK_FILE now lives under a shared directory outside every clone
+  // (~/.starship-runner by default), which doesn't exist yet on a fresh
+  // machine — the old process.cwd() location was always there. Without this,
+  // the very first E2E run anywhere would fail with ENOENT.
+  mkdirSync(dirname(LOCK_FILE), { recursive: true });
   writeFileSync(LOCK_FILE, JSON.stringify(own));
 }

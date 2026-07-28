@@ -21,6 +21,14 @@ Issue (mit Akzeptanzkriterien)
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
+**Bei mehreren Runner-Slots (#204) gilt WIP-Limit = 1 pro Slot, nicht global.**
+Jeder Slot ist ein eigener Arbeitsbaum mit eigenem `.runner/` und arbeitet an
+genau einem Ticket gleichzeitig; mit `SLOT_COUNT=3` können also bis zu drei
+Tickets parallel `in-progress` sein — je eins pro Slot, nie zwei im selben.
+Welcher Slot welches Ticket beansprucht, entscheidet ein atomarer `mkdir`-Claim
+unter `SHARED_DIR/claims/<issue>`, nicht das Label. Details: ADR-0014
+(0012/0013 sind vergeben/reserviert, siehe `docs/adr/`).
+
 **Gebaut wird nur im eigenen Worktree.** Das WIP-Limit gilt für Tickets, nicht für
 Prozesse: Runner, Chat-Sitzungen und CI greifen gleichzeitig auf denselben Checkout
 zu. Wer im Haupt-Checkout den Branch wechselt oder committet, schreibt seine Arbeit
