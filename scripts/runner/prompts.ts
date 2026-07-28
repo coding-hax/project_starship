@@ -188,7 +188,18 @@ ${FILE_ACCESS_RULE}
 4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
    Statuszeile auf „Status: **wartet auf Entscheidung**", Label
    'needs-answer' setzen, beenden. Rate nie.
-5. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
+5. Legst du als Teil dieses Plans **Folge-/Kind-Tickets** an (z. B. weil das
+   Ticket in T1/T2/T3 aufgeteilt wird): prüfe VORHER mit
+   'gh issue list --search "#${issue}" --state open --json number,title,body',
+   ob für dieses Elternticket #${issue} bereits gleichnamige offene Tickets
+   existieren (Titel-Übereinstimmung oder ein Verweis auf #${issue} im Body).
+   Das gilt genauso bei einer fortgesetzten Session, nicht nur beim ersten
+   Anlauf — ein zweiter, zeitgleicher Plan-Lauf auf demselben Ticket kann
+   dieselbe Antwort unabhängig gelesen und ebenfalls umgesetzt haben.
+   Findest du welche: lege **nichts neu an**, sondern nenne die gefundenen
+   Ticket-Nummern im Plan-Kommentar statt sie still zu ignorieren. Nur wenn
+   keine existieren, legst du sie an.
+6. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
    entfernen, dann gh issue edit ${issue} --remove-label plan --add-label
    ready. Erst dieser abschließende Schritt flippt das Label.`;
 }

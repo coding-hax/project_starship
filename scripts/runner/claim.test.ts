@@ -112,6 +112,33 @@ describe('claim.ts (#204)', () => {
       claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
       expect(claims.readSlot(203)).toBe('1');
     });
+
+    // #326: pickTicket() setzt 'in-progress' nur fuer die Bau-Rolle -- ein
+    // Plan- oder Recherche-Lauf traegt stattdessen weiterhin 'plan'/'research'.
+    // Ohne diese beiden ebenfalls als "noch aktiv" zu werten, raeumte der Sweep
+    // den Claim eines laengeren Planer-Laufs nach der Schonfrist weg, obwohl
+    // die Rolle noch nicht fertig war -- ein zweiter Slot konnte dieselbe
+    // Rolle fuer dasselbe Ticket danach ein zweites Mal beginnen (#216, 28.07.26).
+    it('behält einen alten Claim, dessen Ticket weiterhin einen Plan-Lauf traegt', () => {
+      claimTake(claims, 210, '1');
+      const gh = ghDouble([issueView('OPEN', 'plan')]);
+      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      expect(claims.readSlot(210)).toBe('1');
+    });
+
+    it('behält einen alten Claim, dessen Ticket weiterhin einen Recherche-Lauf traegt', () => {
+      claimTake(claims, 211, '1');
+      const gh = ghDouble([issueView('OPEN', 'research')]);
+      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      expect(claims.readSlot(211)).toBe('1');
+    });
+
+    it('räumt einen alten Plan-Claim weg, sobald das Label auf ready geflippt ist', () => {
+      claimTake(claims, 212, '1');
+      const gh = ghDouble([issueView('OPEN', 'ready')]); // 'plan' abgenommen, Planung fertig
+      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      expect(claims.readSlot(212)).toBeNull();
+    });
   });
 
   it('claimRelease entfernt einen Claim vollständig (rm -rf)', () => {
