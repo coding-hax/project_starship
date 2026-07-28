@@ -140,7 +140,17 @@ test('AC6: konkurrierende Anlage am selben Tag verdrängt lokal, statt zu verlie
 /* AC3: bestehende lokale Daten überleben den Dexie-Versions-Bump auf 3       */
 /* -------------------------------------------------------------------------- */
 
-test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async ({ page }) => {
+test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async ({ browser }) => {
+  // Ein eigener, storageState-loser Kontext statt der geteilten `page`: die
+  // gemeinsame AUTH_STATE-Sitzung hält selbst schon eine offene Verbindung zu
+  // 'starship' (aus vorherigen Läufen dieses Kontexts) — ein deleteDatabase()
+  // darauf blockiert (`onblocked`) statt zu completen, und wer trotzdem sofort
+  // weitermacht, öffnet danach eine `2 < bestehend`-Version (VersionError). Ein
+  // frischer Kontext hat garantiert noch nie von 'starship' gehört; der Preis ist
+  // die volle Passkey-Zeremonie statt der kurzgeschlossenen Session.
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
   // /anmelden mountet weder SyncBoot noch E2EBridge (src/app/(app)/layout.tsx) —
   // die Seite öffnet Dexie nicht selbst, also lässt sich hier unbeobachtet eine
   // Version-2-Datenbank seeden, bevor die echte App sie je zu Gesicht bekommt.
@@ -155,20 +165,6 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
     syncSeq: null,
     data: { title: 'Vor dem Bump' },
   };
-
-  // The shared browser storage this suite runs against is not necessarily empty —
-  // a prior test/session may already have opened 'starship' at whatever version the
-  // app is currently on. Delete it first so opening at version 2 below is
-  // deterministic regardless of what this browser context saw before this test.
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('starship');
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-        request.onblocked = () => resolve();
-      }),
-  );
 
   await page.evaluate(
     (record) =>
