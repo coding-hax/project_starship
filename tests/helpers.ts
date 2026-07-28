@@ -130,7 +130,7 @@ export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
-        'DELETE FROM reminder_prefs; ' +
+        'DELETE FROM reminder_prefs; DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs first — it references habits via a foreign key.
         'DELETE FROM habit_logs; DELETE FROM habits;',
     );
@@ -148,7 +148,8 @@ export async function resetDatabase() {
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habits; DELETE FROM garmin_activities; ' +
-        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs;',
+        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM journal_entries; ' +
+        'DELETE FROM journal_keys;',
     );
   });
 }
@@ -246,7 +247,15 @@ declare global {
   interface Window {
     __starship: {
       mutate: (input: {
-        table: 'sync_state' | 'tasks' | 'habits' | 'habit_logs' | 'garmin_activities' | 'reminder_prefs';
+        table:
+          | 'sync_state'
+          | 'tasks'
+          | 'habits'
+          | 'habit_logs'
+          | 'garmin_activities'
+          | 'reminder_prefs'
+          | 'journal_entries'
+          | 'journal_keys';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;
@@ -271,6 +280,20 @@ declare global {
         }>
       >;
       debugMeta: () => Promise<Array<{ key: string; value: unknown }>>;
+      journalEntryId: (entryDate: string) => Promise<string>;
+      writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) => Promise<string>;
+      bytesToBase64: (bytes: number[]) => string;
+      debugJournalConflicts: () => Promise<
+        Array<{
+          id: string;
+          entryDate: string;
+          ciphertext: string;
+          nonce: string;
+          displacedSyncSeq: number | null;
+          updatedAt: string;
+          capturedAt: string;
+        }>
+      >;
     };
   }
 }
