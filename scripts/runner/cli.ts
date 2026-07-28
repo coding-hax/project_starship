@@ -41,6 +41,7 @@ import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
+import { aggregateStatus, createFleetAdapter, effectiveLead, type FleetAdapter } from './fleet.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -50,6 +51,8 @@ export interface RunnerContext {
   sharedState: StateAdapter;
   /** Slotübergreifend unter SHARED_DIR/claims (#204), siehe claim.ts. */
   claims: ClaimAdapter;
+  /** Slotübergreifend unter SHARED_DIR/slots (#204), siehe fleet.ts. */
+  fleet: FleetAdapter;
   /** Dieser Slot -- '1' in der Ein-Slot-Welt (AK9). */
   slotId: string;
   clock: Clock;
@@ -200,6 +203,35 @@ export const commands: Record<string, CommandHandler> = {
       roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out: log, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
     );
   },
+
+  // --- Aggregierter Status bei mehreren Slots (#204, E5) -------------------
+  // Drei Kommandos, je Runde EINMAL gerufen (siehe claude-runner.sh):
+  //   fleet-effective-lead -> wer faehrt GERADE die globalen Waechter?
+  //   fleet-write-state    -> JEDER Slot traegt seinen Zustand ein (Herzschlag)
+  //   fleet-status         -> NUR der effektive Leitslot baut daraus das eine
+  //                           StatusUpdate fuers Status-Issue
+  'fleet-effective-lead': (ctx, args) => {
+    const slotCount = Math.max(1, Number(args[0] ?? 1));
+    const leadSlot = args[1] ?? '1';
+    const slotIds = Array.from({ length: slotCount }, (_, i) => String(i + 1));
+    return effectiveLead(ctx.fleet.readAll(), slotIds, leadSlot, ctx.clock.now().getTime());
+  },
+  'fleet-write-state': (ctx, args) => {
+    const slotId = args[0] ?? ctx.slotId;
+    const emoji = args[1] ?? '';
+    const title = args[2] ?? '';
+    const text = args[3] ?? '';
+    const content = emoji === '' && title === '' && text === '' ? null : { emoji, title, text };
+    ctx.fleet.write(slotId, content, ctx.clock.now().getTime());
+    return '';
+  },
+  'fleet-status': (ctx, args) => {
+    const slotCount = Math.max(1, Number(args[0] ?? 1));
+    const leadSlot = args[1] ?? '1';
+    const effectiveLeadSlot = args[2] ?? leadSlot;
+    const result = aggregateStatus(ctx.fleet.readAll(), slotCount, leadSlot, effectiveLeadSlot, ctx.clock.now().getTime());
+    return JSON.stringify(result);
+  },
 };
 
 export function dispatch(ctx: RunnerContext, argv: string[]): number {
@@ -244,6 +276,7 @@ function defaultContext(): RunnerContext {
     state: createStateAdapter(stateDir()),
     sharedState: createStateAdapter(sharedDir()),
     claims: createClaimAdapter(join(sharedDir(), 'claims')),
+    fleet: createFleetAdapter(sharedDir()),
     slotId: slotId(),
     clock: createClock(),
   };

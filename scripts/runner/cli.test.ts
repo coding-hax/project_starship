@@ -31,6 +31,10 @@ function fakeContext(): RunnerContext {
       list: vi.fn().mockReturnValue([]),
       release: vi.fn(),
     },
+    fleet: {
+      write: vi.fn(),
+      readAll: vi.fn().mockReturnValue([]),
+    },
     slotId: '1',
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
   };
@@ -129,6 +133,10 @@ describe('dispatch', () => {
       'round-plan',
       'round-prompt',
       'round-eval',
+      // #204 (E5): aggregierter Status bei mehreren Slots.
+      'fleet-effective-lead',
+      'fleet-write-state',
+      'fleet-status',
     ]);
   });
 
