@@ -84,6 +84,51 @@ systemctl --user list-timers       # wann läuft er das nächste Mal?
 journalctl --user -u claude-runner -f   # Live-Log (brauchst du im Alltag nicht)
 ```
 
+## Mehrere Slots (#204)
+
+Der Plist-Generator (`scripts/gen-slot-plists.sh`) ist macOS-spezifisch — unter
+systemd legst du je Slot ein eigenes Unit-Paar von Hand an, nach demselben
+Muster wie oben, nur mit vier zusätzlichen `Environment=`-Zeilen. Architektur
+und Begründung: `docs/adr/0014-mehrere-runner-slots.md`.
+
+Slot 1 bleibt der vorhandene Checkout. Slot 2..N: eigener Clone + eigene
+`.env.local` + eigene Postgres-DB (`createdb -O starship starship_slot_2`,
+`pnpm db:migrate`), wie im macOS-Abschnitt beschrieben.
+
+`~/.config/systemd/user/claude-runner-slot-2.service`:
+
+```ini
+[Unit]
+Description=Claude Runner Slot 2 – arbeitet GitHub-Tickets ab
+
+[Service]
+Type=oneshot
+Environment=REPO_DIR=%h/projects/starship-slot-2
+Environment=STATUS_ISSUE=1
+# #204: die einzigen vier slotspezifischen Werte. SLOT_ID unterscheidet
+# diesen Slot von den anderen, Ports/STATE_DIR leiten sich rechnerisch
+# daraus ab -- hier nichts weiter eintragen.
+Environment=SLOT_ID=2
+Environment=SLOT_COUNT=3
+Environment=LEAD_SLOT=1
+Environment=SHARED_DIR=%h/.starship-runner
+ExecStart=%h/projects/starship-slot-2/scripts/claude-runner.sh
+```
+
+`STATUS_ISSUE` ist bei mehreren Slots **ein einziges** Issue für die ganze
+Flotte (Frage 4/6) — dieselbe Nummer in jedem Slot-Service, nicht mehr eins je
+Slot. Das zugehörige Timer-Unit (`claude-runner-slot-2.timer`) ist eine Kopie
+von `claude-runner.timer` mit angepasstem `Unit=`-Verweis; `OnUnitActiveSec`
+ab mehr als einem Slot auf `300s` statt `60s` (siehe "gh CLI API-Limit" unten).
+
+```bash
+systemctl --user enable --now claude-runner-slot-2.timer
+```
+
+**Rückweg:** `systemctl --user disable --now` je Slot-Timer, dann `rm -rf
+~/projects/starship-slot-2 ~/.starship-runner`. `SLOT_ID=1` allein verhält
+sich exakt wie vor #204 (AK9).
+
 ## gh CLI API-Limit und Skalierung
 
 Der Runner benutzt die GitHub CLI (`gh`) für API-Aufrufe. Das gh-Limit liegt bei

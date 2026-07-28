@@ -84,6 +84,7 @@ mkdir -p "$HOME_WITHOUT_TSX/scripts/runner"
 (
   export RUNNER_HOME="$HOME_WITH_TSX"
   export REPO_DIR="$HOME_WITH_TSX"   # haelt cd/STATE_DIR aus dem echten Repo heraus
+  export SHARED_DIR="$TMP/shared"
   export TSX_CALLED_MARKER="$TMP/marker-ac1"
   # shellcheck source=/dev/null
   source "$RUNNER"
@@ -103,6 +104,7 @@ mkdir -p "$HOME_WITHOUT_TSX/scripts/runner"
 (
   export RUNNER_HOME="$HOME_WITHOUT_TSX"
   export REPO_DIR="$HOME_WITHOUT_TSX"   # haelt cd/STATE_DIR aus dem echten Repo heraus
+  export SHARED_DIR="$TMP/shared"
   rm -rf "$GHSTATE_DIR"; mkdir -p "$GHSTATE_DIR"
   # shellcheck source=/dev/null
   source "$RUNNER"

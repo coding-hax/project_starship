@@ -10,6 +10,7 @@ import type { GhAdapter } from './gh';
 import type { GitAdapter } from './git';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
+import { createClaimAdapter, type ClaimAdapter } from './claim';
 import { roundEval, roundPlan, type RoundContext, type RoundRun } from './round';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
@@ -71,19 +72,30 @@ const labelsAre = (...names: string[]) => ({
 
 describe('roundPlan', () => {
   let dir: string;
+  let claimsDir: string;
   let state: StateAdapter;
+  let claims: ClaimAdapter;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'round-'));
+    claimsDir = mkdtempSync(join(tmpdir(), 'round-claims-'));
     state = createStateAdapter(dir);
+    claims = createClaimAdapter(claimsDir);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(claimsDir, { recursive: true, force: true });
+  });
 
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
-    return { gh, git, state, clock: CLOCK };
+    // roundPlan schreibt/liest 'sharedState' nirgends -- derselbe Adapter reicht.
+    return { gh, git, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
   }
 
-  const opts = { queueIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '' };
+  // isLead: true -- die meisten bestehenden Faelle testen das Verhalten VOR
+  // #204 (ein Slot, das war immer der Leitslot). Die eigene Slot/Lead-Logik
+  // hat ihre eigene Gruppe weiter unten.
+  const opts = { queueIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
 
   it('meldet ⚪️ nichts zu tun, wenn kein Ticket wartet', () => {
     const { gh } = ghDouble([openIssues(), noOpenPrs]);
@@ -525,13 +537,20 @@ describe('roundPlan', () => {
 
 describe('roundEval', () => {
   let dir: string;
+  let sharedDir: string;
   let state: StateAdapter;
+  let sharedState: StateAdapter;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'round-eval-'));
+    sharedDir = mkdtempSync(join(tmpdir(), 'round-eval-shared-'));
     state = createStateAdapter(dir);
+    sharedState = createStateAdapter(sharedDir);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(sharedDir, { recursive: true, force: true });
+  });
 
   const plan: RoundRun = {
     kind: 'run',
@@ -549,8 +568,11 @@ describe('roundEval', () => {
     prompt: '',
   };
 
+  // roundEval liest/schreibt weder 'claims' noch 'slotId' -- Platzhalter reicht.
+  const claims = createClaimAdapter(mkdtempSync(join(tmpdir(), 'round-eval-claims-')));
+
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
-    return { gh, git, state, clock: CLOCK };
+    return { gh, git, state, sharedState, claims, slotId: '1', clock: CLOCK };
   }
 
   const ok = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
@@ -607,14 +629,31 @@ describe('roundEval', () => {
       maxRuntime: 2700,
     };
 
-    it('pausiert blau, setzt blocked-limit und schreibt limit-until', () => {
+    it('pausiert blau, setzt blocked-limit und schreibt limit-until ins sharedState, NICHT ins slot-lokale state', () => {
       const { gh, calls } = ghDouble();
       const result = roundEval(ctx(gh), plan, limited, '');
       expect(result.status?.emoji).toBe('🔵');
       expect(result.rc).toBe(0); // kein Fehler -- der Timer probiert es wieder
       expect(result.chain).toBe('stop');
       expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
-      expect(state.read('limit-until')).not.toBeNull();
+      expect(sharedState.read('limit-until')).not.toBeNull();
+      expect(state.read('limit-until')).toBeNull();
+    });
+
+    // #204: das Kontingent ist EINS, nicht pro Slot. Schriebe roundEval hier
+    // in ein slot-lokales 'state', rennte ein zweiter Slot mit eigenem
+    // STATE_DIR weiter in 429er, waehrend dieser korrekt pausiert -- und zwar
+    // schweigend, weil das Bash-Gate '$SHARED_DIR/limit-until' liest, eine
+    // Datei, die dann nie jemand geschrieben haette.
+    it('macht limit-until für einen zweiten Slot mit eigenem STATE_DIR sichtbar (#204)', () => {
+      const slotA = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-a-')));
+      const slotB = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-b-')));
+      const { gh } = ghDouble();
+      roundEval({ gh, git: gitDouble(), state: slotA, sharedState, claims, slotId: '1', clock: CLOCK }, plan, limited, '');
+      expect(slotA.read('limit-until')).toBeNull();
+      expect(slotB.read('limit-until')).toBeNull();
+      // Slot B liest denselben SHARED_DIR wie Slot A -- und sieht die Pause.
+      expect(sharedState.read('limit-until')).not.toBeNull();
     });
 
     // Ein unbekannter Limit-Wortlaut darf den Runner nie stilllegen -- er
@@ -627,7 +666,7 @@ describe('roundEval', () => {
         { ...limited, out: '{"api_error_status":429,"result":"nicht deutbar"}' },
         '',
       );
-      expect(state.read('limit-until')).toBeNull();
+      expect(sharedState.read('limit-until')).toBeNull();
       expect(state.read('unparsed-limits.log')).toContain('nicht deutbar');
       expect(result.status?.text).toContain('in ~5 Minuten');
     });

@@ -56,8 +56,17 @@ export interface SelectedTicket {
   source: 'running' | 'queue' | 'plan' | 'research' | 'ready';
 }
 
-// Die reine Auswahl-Kaskade, OHNE Seiteneffekte.
-export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTicket | null {
+// Die reine Auswahl-Kaskade, OHNE Seiteneffekte. `claimedElsewhere` (#204):
+// Issues, die ein ANDERER Slot beansprucht -- zusaetzlich zu BLOCKING_LABELS
+// aus `selectable` ausgeschlossen. Bewusst NICHT aus `snapshot` selbst entfernt:
+// `openIssues`/`queueBlocked` unten braucht den vollen Bestand, sonst saehe ein
+// abhaengiges Ticket seinen von einem anderen Slot bearbeiteten Blocker
+// faelschlich als erledigt an (siehe claimedElsewhere() in claim.ts).
+export function selectTicket(
+  snapshot: QueueIssue[],
+  queueBody = '',
+  claimedElsewhere: ReadonlySet<number> = new Set(),
+): SelectedTicket | null {
   // #227: 'hands-off' ist ein Kill-Switch fuer das ganze Ticket, kein Detail
   // einzelner Zweige. Einmal zentral gefiltert, bevor irgendein Zweig den
   // Snapshot sieht: ein hands-off-Ticket ist fuer die Auswahl schlicht nicht
@@ -78,7 +87,10 @@ export function selectTicket(snapshot: QueueIssue[], queueBody = ''): SelectedTi
   const openIssues = new Set(snapshot.map((issue) => issue.number));
   const blocked = queueBlocked(entries, openIssues);
   const selectable = snapshot.filter(
-    (issue) => !BLOCKING_LABELS.some((label) => hasLabel(issue, label)) && !blocked.has(issue.number),
+    (issue) =>
+      !BLOCKING_LABELS.some((label) => hasLabel(issue, label)) &&
+      !blocked.has(issue.number) &&
+      !claimedElsewhere.has(issue.number),
   );
 
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];
@@ -129,8 +141,14 @@ export type SelectOutcome =
 
 // Orchestrierung: `selectTicket()` waehlt, `pickTicket()` fuehrt die dafuer
 // noetige Label-Mutation aus und bestimmt MODE (start/resume).
-export function pickTicket(snapshot: QueueIssue[], queueBody: string, gh: GhAdapter, state: StateAdapter): SelectOutcome {
-  const selected = selectTicket(snapshot, queueBody);
+export function pickTicket(
+  snapshot: QueueIssue[],
+  queueBody: string,
+  gh: GhAdapter,
+  state: StateAdapter,
+  claimedElsewhere: ReadonlySet<number> = new Set(),
+): SelectOutcome {
+  const selected = selectTicket(snapshot, queueBody, claimedElsewhere);
   if (!selected) return { kind: 'none' };
 
   // `-s` in der Bash-Vorlage prueft Existenz UND Groesse > 0, nicht nur

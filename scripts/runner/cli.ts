@@ -20,6 +20,7 @@ import { createGitAdapter, type GitAdapter } from './git.js';
 import { dPlus, fmtHm, resetEpoch } from './time.js';
 import { queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
 import { createStateAdapter, type StateAdapter } from './state.js';
+import { createClaimAdapter, type ClaimAdapter } from './claim.js';
 import { tierBump, tierCurrent, tierReset } from './tier.js';
 import { blockerSig, buildEscalationEval, resumeAllowed, sha1Of } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
@@ -40,11 +41,20 @@ import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
+import { aggregateStatus, createFleetAdapter, effectiveLead, type FleetAdapter } from './fleet.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
+  /** Slotübergreifend unter SHARED_DIR (#204) -- siehe round.ts, roundEval. */
+  sharedState: StateAdapter;
+  /** Slotübergreifend unter SHARED_DIR/claims (#204), siehe claim.ts. */
+  claims: ClaimAdapter;
+  /** Slotübergreifend unter SHARED_DIR/slots (#204), siehe fleet.ts. */
+  fleet: FleetAdapter;
+  /** Dieser Slot -- '1' in der Ein-Slot-Welt (AK9). */
+  slotId: string;
   clock: Clock;
 }
 
@@ -150,7 +160,7 @@ export const commands: Record<string, CommandHandler> = {
     JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
   'cleanup-state': (ctx) => {
-    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());
+    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime(), ctx.claims, ctx.slotId);
     return '';
   },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
@@ -166,6 +176,8 @@ export const commands: Record<string, CommandHandler> = {
         maxRuntime: Number(args[1] ?? 2700),
         didWork: args[2] === '1',
         lastIssue: args[3] ?? '',
+        // $IS_LEAD aus claude-runner.sh (#204) -- '1' in der Ein-Slot-Welt.
+        isLead: args[4] === '1',
       }),
     ),
 
@@ -190,6 +202,35 @@ export const commands: Record<string, CommandHandler> = {
     return JSON.stringify(
       roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out: log, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
     );
+  },
+
+  // --- Aggregierter Status bei mehreren Slots (#204, E5) -------------------
+  // Drei Kommandos, je Runde EINMAL gerufen (siehe claude-runner.sh):
+  //   fleet-effective-lead -> wer faehrt GERADE die globalen Waechter?
+  //   fleet-write-state    -> JEDER Slot traegt seinen Zustand ein (Herzschlag)
+  //   fleet-status         -> NUR der effektive Leitslot baut daraus das eine
+  //                           StatusUpdate fuers Status-Issue
+  'fleet-effective-lead': (ctx, args) => {
+    const slotCount = Math.max(1, Number(args[0] ?? 1));
+    const leadSlot = args[1] ?? '1';
+    const slotIds = Array.from({ length: slotCount }, (_, i) => String(i + 1));
+    return effectiveLead(ctx.fleet.readAll(), slotIds, leadSlot, ctx.clock.now().getTime());
+  },
+  'fleet-write-state': (ctx, args) => {
+    const slotId = args[0] ?? ctx.slotId;
+    const emoji = args[1] ?? '';
+    const title = args[2] ?? '';
+    const text = args[3] ?? '';
+    const content = emoji === '' && title === '' && text === '' ? null : { emoji, title, text };
+    ctx.fleet.write(slotId, content, ctx.clock.now().getTime());
+    return '';
+  },
+  'fleet-status': (ctx, args) => {
+    const slotCount = Math.max(1, Number(args[0] ?? 1));
+    const leadSlot = args[1] ?? '1';
+    const effectiveLeadSlot = args[2] ?? leadSlot;
+    const result = aggregateStatus(ctx.fleet.readAll(), slotCount, leadSlot, effectiveLeadSlot, ctx.clock.now().getTime());
+    return JSON.stringify(result);
   },
 };
 
@@ -216,11 +257,27 @@ function stateDir(): string {
   return process.env.STATE_DIR ?? join(here, '..', '..', '.runner');
 }
 
+// Slotübergreifend (#204), außerhalb jedes Arbeitsbaums -- claude-runner.sh
+// exportiert SHARED_DIR genauso wie STATE_DIR oben.
+function sharedDir(): string {
+  return process.env.SHARED_DIR ?? join(here, '..', '..', '.shared-runner');
+}
+
+// claude-runner.sh exportiert SLOT_ID genauso wie STATE_DIR/SHARED_DIR (#204).
+// '1' ist der Default der Ein-Slot-Welt (AK9).
+function slotId(): string {
+  return process.env.SLOT_ID ?? '1';
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
     git: createGitAdapter(),
     state: createStateAdapter(stateDir()),
+    sharedState: createStateAdapter(sharedDir()),
+    claims: createClaimAdapter(join(sharedDir(), 'claims')),
+    fleet: createFleetAdapter(sharedDir()),
+    slotId: slotId(),
     clock: createClock(),
   };
 }

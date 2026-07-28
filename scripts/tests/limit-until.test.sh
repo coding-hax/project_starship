@@ -84,6 +84,7 @@ chmod +x "$FAKEBIN/gh" "$FAKEBIN/git" "$FAKEBIN/claude"
 export PATH="$FAKEBIN:$PATH"
 
 export REPO_DIR="$TMP/repo"
+export SHARED_DIR="$TMP/shared"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=999
 export QUEUE_ISSUE=0

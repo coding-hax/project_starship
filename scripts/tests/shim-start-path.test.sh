@@ -51,6 +51,7 @@ export MAX_ROUNDS=1
 (
   cd "$REPO_ROOT" || exit 1
   export REPO_DIR="$REPO_ROOT"
+  export SHARED_DIR="$TMP/shared"
   export RUNNER_REF="HEAD"
   export STATE_DIR="$TMP/state-b1"
   # shellcheck source=/dev/null
@@ -64,6 +65,7 @@ export MAX_ROUNDS=1
 
   export RUNNER_HOME="$HOME_PATH"
   export REPO_DIR="$REPO_ROOT"
+  export SHARED_DIR="$TMP/shared"
   # shellcheck source=/dev/null
   source "$HOME_PATH/scripts/claude-runner.sh"
 
@@ -88,6 +90,7 @@ export MAX_ROUNDS=1
 (
   cd "$REPO_ROOT" || exit 1
   export REPO_DIR="$REPO_ROOT"
+  export SHARED_DIR="$TMP/shared"
   export RUNNER_REF="HEAD"
   # shellcheck source=/dev/null
   source "$SHIM"

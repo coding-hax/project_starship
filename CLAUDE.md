@@ -18,7 +18,7 @@ Vor jeder Arbeit lesen:
 
 ## Harte Regeln
 
-1. **Ein Ticket zur Zeit.** WIP-Limit = 1. Kein neues Issue anfassen, solange ein PR offen ist. Keine "kleinen Nebenverbesserungen" im selben Branch.
+1. **Ein Ticket zur Zeit.** WIP-Limit = 1. Kein neues Issue anfassen, solange ein PR offen ist. Keine "kleinen Nebenverbesserungen" im selben Branch. Laufen mehrere Runner-Slots (#204), gilt das WIP-Limit **pro Slot** — jeder Slot ist ein eigener Arbeitsbaum und baut für sich genommen an genau einem Ticket. Details: `docs/adr/0014-mehrere-runner-slots.md`.
 2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird als neues Issue angelegt, nicht implementiert.
 3. **Keine neue Dependency ohne ADR.** Wenn ein Paket nötig scheint: ADR-Entwurf in den PR, Begründung, Alternativen. Warten auf Freigabe.
 4. **Keine Schema-Änderung ohne Migration.** Drizzle-Migration im selben PR, Up- und Down-Pfad.

@@ -28,16 +28,59 @@ TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen 
 # exportiert, damit der tsx-Kindprozess dasselbe Verzeichnis sieht.
 STATE_DIR="${STATE_DIR:-$REPO_DIR/.runner}"
 export STATE_DIR
+
+# --- Mehrere Slots (#204) -----------------------------------------------------
+# Ein Slot = eine launchd-Instanz + ein eigener Arbeitsbaum (eigener Clone,
+# siehe scripts/launchd-setup.md) + ein eigenes .runner/ -- Letzteres ist durch
+# STATE_DIR unter REPO_DIR schon erledigt, zwei Arbeitsbäume heißt automatisch
+# zwei .runner/. SLOT_ID ist die einzige slotspezifische Variable hier;
+# REPO_DIR/STATUS_ISSUE kommen bewusst aus der jeweiligen plist, NICHT aus
+# SLOT_ID abgeleitet -- nur so bleibt SLOT_ID=1 verhaltensgleich zu vor #204
+# (AK9). SHARED_DIR liegt AUSSERHALB jedes Arbeitsbaums: was dort liegt
+# (Claims, Herzschlag, limit-until) muss slotübergreifend gelten.
+SLOT_ID="${SLOT_ID:-1}"
+SLOT_COUNT="${SLOT_COUNT:-1}"
+LEAD_SLOT="${LEAD_SLOT:-1}"
+SHARED_DIR="${SHARED_DIR:-$HOME/.starship-runner}"
+export SLOT_ID SLOT_COUNT LEAD_SLOT SHARED_DIR
+# Nur ein Startwert (z. B. fuer Bash-Suiten, die run_round() ueberspringen).
+# run_round() bestimmt IS_LEAD/EFF_LEAD ab E5 JEDE Runde neu ueber
+# fleet-effective-lead -- faellt der konfigurierte LEAD_SLOT aus (kein
+# frischer Herzschlag mehr), uebernimmt automatisch der niedrigste lebende
+# Slot (AK5).
+IS_LEAD=0; [ "$SLOT_ID" = "$LEAD_SLOT" ] && IS_LEAD=1
+EFF_LEAD="$LEAD_SLOT"
+export IS_LEAD EFF_LEAD
+
+# Deckel gegen Vertipper (AK8): keine Zahl oder außerhalb 1-10 bricht sofort
+# ab, bevor auch nur ein gh/tsx-Aufruf passiert.
+case "$SLOT_COUNT" in
+  ''|*[!0-9]*)
+    echo "SLOT_COUNT muss eine positive Zahl sein, ist aber '$SLOT_COUNT'." >&2
+    exit 1
+    ;;
+esac
+if [ "$SLOT_COUNT" -lt 1 ] || [ "$SLOT_COUNT" -gt 10 ]; then
+  echo "SLOT_COUNT=$SLOT_COUNT außerhalb des erlaubten Bereichs 1-10 (Deckel gegen Vertipper)." >&2
+  exit 1
+fi
+
 # Wurzel aller Ticket-Worktrees (#242) -- gitignored seit #226. Ein Bau-Lauf
 # bekommt darin sein eigenes Verzeichnis, statt im Haupt-Checkout zu bauen.
 WORKTREE_BASE="${WORKTREE_BASE:-$REPO_DIR/.claude/worktrees}"
-LIMIT_UNTIL="$STATE_DIR/limit-until"    # Unix-Zeit, bis zu der das Kontingent leer ist
+# Liegt bewusst unter SHARED_DIR, nicht STATE_DIR: sonst rennt Slot 2 weiter in
+# 429er, während Slot 1 schon korrekt pausiert hat (das Kontingent ist EINS,
+# nicht pro Slot). Geschrieben wird sie vom TS-Kern über ctx.sharedState
+# (roundEval, einzige Schreibstelle: der 429-Zweig) -- beide Seiten müssen
+# gemeinsam auf SHARED_DIR zeigen, sonst liest das Gate hier eine Datei, die
+# nie jemand schreibt, und kein Slot pausiert mehr.
+LIMIT_UNTIL="$SHARED_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
 LOG="$STATE_DIR/last-run.log"           # stdout+stderr des letzten claude-Laufs
 TIMED_OUT="$STATE_DIR/timed-out"        # Marker der Notbremse, siehe run_limited()
 ROUND_FILE="$STATE_DIR/round.json"      # Plan der laufenden Runde, Übergabe an round-eval
 
 cd "$REPO_DIR" || { echo "REPO_DIR nicht gefunden: $REPO_DIR" >&2; exit 1; }
-mkdir -p "$STATE_DIR"
+mkdir -p "$STATE_DIR" "$SHARED_DIR/claims" "$SHARED_DIR/slots"
 
 for tool in gh jq claude; do
   command -v "$tool" >/dev/null 2>&1 || { echo "'$tool' fehlt im PATH." >&2; exit 1; }
@@ -93,14 +136,32 @@ Runners \`pnpm install\` ausführen."
   return "$rc"
 }
 
-# Schreibt den von round.ts gebauten Status, falls die Runde einen liefert.
+# Traegt den von round.ts gebauten Status in den EIGENEN Slot-Zustand ein
+# (#204, E5) -- IMMER, auch ohne inhaltliche Aenderung: sonst haelt fleet.ts
+# diesen Slot faelschlich fuer ausgefallen, sobald er lange genug nichts
+# Neues zu melden hat (z. B. "CI laeuft noch" ueber mehrere Runden). NUR der
+# EFFEKTIVE Leitslot ($EFF_LEAD, von run_round() vor dieser Runde bestimmt)
+# aggregiert danach ALLE Slot-Zustaende zu EINEM StatusUpdate und schreibt es
+# ans Status-Issue -- alles andere ueberschriebe sich zwischen den Slots
+# abwechselnd.
 apply_status() {   # $1 = JSON mit optionalem .status
-  local s
+  local s agg
   s=$(printf '%s' "$1" | jq -c '.status // empty' 2>/dev/null)
-  [ -z "$s" ] || [ "$s" = "null" ] && return 0
-  status "$(printf '%s' "$s" | jq -r '.title')" \
-         "$(printf '%s' "$s" | jq -r '.emoji')" \
-         "$(printf '%s' "$s" | jq -r '.text')"
+  if [ -z "$s" ] || [ "$s" = "null" ]; then
+    ts_run fleet-write-state "$SLOT_ID" >/dev/null
+  else
+    ts_run fleet-write-state "$SLOT_ID" \
+      "$(printf '%s' "$s" | jq -r '.emoji')" \
+      "$(printf '%s' "$s" | jq -r '.title')" \
+      "$(printf '%s' "$s" | jq -r '.text')" >/dev/null
+  fi
+
+  [ "$IS_LEAD" -eq 1 ] || return 0
+  agg=$(ts_run fleet-status "$SLOT_COUNT" "$LEAD_SLOT" "$EFF_LEAD")
+  [ -z "$agg" ] || [ "$agg" = "null" ] && return 0
+  status "$(printf '%s' "$agg" | jq -r '.title')" \
+         "$(printf '%s' "$agg" | jq -r '.emoji')" \
+         "$(printf '%s' "$agg" | jq -r '.text')"
 }
 
 # --- Ersatz für `timeout` (fehlt auf macOS) ----------------------------------
@@ -223,8 +284,18 @@ run_round() {
   # einzeln auf, wo `set -u` sonst abbräche.
   : "${DID_WORK:=0}" "${LAST_ISSUE:=}"
 
+  # #204 (E5): WER faehrt diese Runde die globalen Waechter? Vor round-plan
+  # bestimmt, nicht danach -- die Waechter darin (reopenFalselyClosedIssues,
+  # CI-Wache fuer wartende Tickets, claimSweep) muessen wissen, ob sie laufen
+  # duerfen, BEVOR sie liefen. EFF_LEAD bleibt fuer die ganze Runde fest (auch
+  # fuer apply_status() nach round-eval) -- kein Flackern zwischen den beiden
+  # ts_run-Aufrufen derselben Runde.
+  EFF_LEAD=$(ts_run fleet-effective-lead "$SLOT_COUNT" "$LEAD_SLOT")
+  IS_LEAD=0; [ "$SLOT_ID" = "$EFF_LEAD" ] && IS_LEAD=1
+  export EFF_LEAD IS_LEAD
+
   local plan plan_rc kind rc timed eval_out
-  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE")
+  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD")
   plan_rc=$?
   # round-plan MUSS Exit 0 UND ein gültiges JSON-Objekt (mit .kind) liefern.
   # Jeder andere Ausgang (leeres/kaputtes plan) ist fatal: 127 hat ts_run schon

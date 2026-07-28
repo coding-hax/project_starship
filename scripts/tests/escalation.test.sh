@@ -130,6 +130,7 @@ export PATH="$FAKEBIN:$PATH"
 
 # --- claude-runner.sh sourcen (main() läuft dank Source-Guard nicht an) -------
 export REPO_DIR="$TMP/repo"
+export SHARED_DIR="$TMP/shared"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=0
 # AC2/AC6 rufen main() auf und treffen dabei jeweils einen Stop-Zweig in der
