@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { Client } from 'pg';
 import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
@@ -203,11 +203,11 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
 
 test('AC2: Down-Pfad räumt sauber ab, Up-Pfad stellt wieder her, andere Tabellen bleiben unberührt', async () => {
   const downSql = readFileSync(
-    fileURLToPath(new URL('../src/db/migrations/down/0012_journal.down.sql', import.meta.url)),
+    path.join(__dirname, '../src/db/migrations/down/0012_journal.down.sql'),
     'utf8',
   );
   const upSql = readFileSync(
-    fileURLToPath(new URL('../src/db/migrations/0012_sweet_impossible_man.sql', import.meta.url)),
+    path.join(__dirname, '../src/db/migrations/0012_sweet_impossible_man.sql'),
     'utf8',
   );
 
