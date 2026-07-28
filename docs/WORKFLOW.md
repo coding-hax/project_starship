@@ -300,8 +300,13 @@ Sekunden nach diesem Push, greift der Runner-Takt wie gehabt nach.
 **Endet der Bau-Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
 gepusht — nicht über eine offene Frage), hebt Claude den PR **selbst** aus
 dem Entwurf und aktiviert Auto-Merge, bevor der Lauf endet:
-`gh pr ready` + `gh pr merge --squash --auto --delete-branch` (ohne
-PR-Nummer — wirkt auf den PR des aktuellen Branches). Das setzt nicht
+`gh pr ready` + `gh pr merge --squash --auto --delete-branch --subject
+"$(gh pr view --json title -q .title)" --body ""` (ohne PR-Nummer — wirkt
+auf den PR des aktuellen Branches). Das `--subject` ist Pflicht: bei genau
+einem Commit auf dem Branch nimmt GitHub sonst dessen Commit-Nachricht statt
+des PR-Titels als Squash-Betreff — ein nur im Titel stehendes `Closes #N`
+ginge verloren und das Issue bliebe trotz sauber gemergtem PR offen (#292).
+Das setzt nicht
 voraus, dass CI schon grün ist: Auto-Merge greift ohnehin erst, wenn alle
 Required Checks durch sind, GitHub liefert diese Zusicherung, nicht Claudes
 Einschätzung. **Ein Entwurf bedeutet ab jetzt: der Lauf ist nicht sauber zu
@@ -320,7 +325,7 @@ Fortsetzung oder ein anderes Ticket denkt:
 | rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
-| grün, aber noch Entwurf (Sicherheitsnetz — z. B. nach einem abgebrochenen Lauf) | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch`) | nein |
+| grün, aber noch Entwurf (Sicherheitsnetz — z. B. nach einem abgebrochenen Lauf) | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch --subject <PR-Titel> --body ''`, s. `prSquashMerge()`) | nein |
 | grün, schon `ready` | nichts zu tun — GitHub mergt von selbst, sobald die Required Checks final durch sind | nein |
 
 Die Reihenfolge der Zeilen ist die Prüfreihenfolge: `pending` → `failing` →

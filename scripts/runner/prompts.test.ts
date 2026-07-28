@@ -93,6 +93,14 @@ describe('prompts', () => {
       expect(prompt).toContain("'gh pr merge --squash --auto --delete-branch'");
     });
 
+    // #292: ohne --subject nimmt GitHub bei genau einem Commit auf dem
+    // Branch dessen Commit-Nachricht statt des PR-Titels als Squash-Betreff
+    // -- ein nur im Titel stehendes 'Closes #N' geht dann verloren.
+    it('haengt --subject/--body an den Merge-Aufruf, damit Closes #N nicht verloren geht', () => {
+      expect(prompt).toContain('--subject "$(gh pr view --json title -q .title)"');
+      expect(prompt).toContain('--body ""');
+    });
+
     it('verlangt den wachsenden Abschnitt "Was schon versucht wurde"', () => {
       expect(prompt).toContain('## Was schon versucht');
       expect(prompt).toContain('nie ueberschrieben');
@@ -127,6 +135,15 @@ describe('prompts', () => {
 
     it('oeffnet keinen zweiten PR', () => {
       expect(ciFixPrompt(7, 'egal')).toContain('Kein neuer PR');
+    });
+
+    // #292: derselbe Schutz wie im Bau-Prompt -- der CI-Fix-Lauf mergt
+    // ebenfalls selbst und darf das Closes #N nicht verlieren.
+    it('haengt --subject/--body an den Merge-Aufruf, damit Closes #N nicht verloren geht', () => {
+      const prompt = ciFixPrompt(7, 'egal');
+      expect(prompt).toContain("'gh pr merge --squash --auto --delete-branch'");
+      expect(prompt).toContain('--subject "$(gh pr view --json title -q .title)"');
+      expect(prompt).toContain('--body ""');
     });
   });
 

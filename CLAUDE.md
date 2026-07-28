@@ -235,8 +235,13 @@ gepusht — also nicht über eine offene Frage, siehe unten), hebst du den PR
 
 ```bash
 gh pr ready                                     # ohne Nummer -> PR des aktuellen Branches
-gh pr merge --squash --auto --delete-branch
+gh pr merge --squash --auto --delete-branch --subject "$(gh pr view --json title -q .title)" --body ""
 ```
+
+Das `--subject` ist Pflicht, kein Stil: bei genau einem Commit auf dem Branch
+nimmt GitHub sonst dessen Commit-Nachricht statt des PR-Titels als
+Squash-Betreff — ein nur im Titel stehendes `Closes #N` ginge verloren und
+das Issue bliebe trotz sauber gemergtem PR offen (#292).
 
 Du musst dafür **nicht** wissen, ob CI schon grün ist — das ist der Punkt:
 Auto-Merge greift ohnehin erst, wenn alle Required Checks grün sind. Ein

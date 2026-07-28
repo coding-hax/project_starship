@@ -93,9 +93,14 @@ Ablauf:
 8. Endet dein Lauf hier SAUBER — also über diesen Schritt, nicht über
    Schritt 6 (offene Frage) —: hebe deinen PR SELBST aus dem Entwurf und
    aktiviere Auto-Merge:
-   'gh pr ready' und 'gh pr merge --squash --auto --delete-branch'
-   (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Du musst
-   NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
+   'gh pr ready' und 'gh pr merge --squash --auto --delete-branch' — ergänzt
+   um die Pflicht-Flags '--subject "$(gh pr view --json title -q .title)"'
+   und '--body ""' im selben Aufruf
+   (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Das
+   --subject ist Pflicht: bei einem Ein-Commit-Branch nimmt GitHub sonst die
+   Commit-Nachricht als Squash-Betreff statt des PR-Titels, ein nur im Titel
+   stehendes 'Closes #N' ginge verloren und das Issue bliebe offen (#292).
+   Du musst NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
    grünen Required Checks. Ein geschützter Pfad hält den PR nicht mehr auf —
    den Wächter dafür gibt es seit #283 nicht mehr. Dein Lauf endet danach.
    **Kein** 'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
@@ -144,12 +149,17 @@ ${ciSummary}
    überschrieben).
 6. Endet dein Lauf hier SAUBER (Fix gepusht) — also nicht über Schritt 7
    (offene Frage) —: 'gh pr ready' und
-   'gh pr merge --squash --auto --delete-branch' (ohne PR-Nummer — wirkt
-   auf den PR des aktuellen Branches). Meist ist der PR das schon (ein
-   früherer sauberer Bau-Lauf hat das erledigt) — der Aufruf ist folgenlos,
-   wenn er es bereits ist, und das Sicherheitsnetz, falls nicht. Dein Lauf
-   endet danach. **Kein** 'gh pr checks --watch' — das übernimmt wieder
-   der Runner-Takt.
+   'gh pr merge --squash --auto --delete-branch' — ergänzt um die
+   Pflicht-Flags '--subject "$(gh pr view --json title -q .title)"' und
+   '--body ""' im selben Aufruf (ohne PR-Nummer — wirkt auf den PR des
+   aktuellen Branches). Das --subject ist Pflicht: bei einem
+   Ein-Commit-Branch nimmt GitHub sonst die Commit-Nachricht als
+   Squash-Betreff statt des PR-Titels, ein nur im Titel stehendes
+   'Closes #N' ginge verloren und das Issue bliebe offen (#292). Meist ist
+   der PR das schon (ein früherer sauberer Bau-Lauf hat das erledigt) — der
+   Aufruf ist folgenlos, wenn er es bereits ist, und das Sicherheitsnetz,
+   falls nicht. Dein Lauf endet danach. **Kein** 'gh pr checks --watch' —
+   das übernimmt wieder der Runner-Takt.
 7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
    deiner Empfehlung, Label 'needs-answer' setzen, beenden. Rate niemals.`;
 }
