@@ -13,7 +13,8 @@ im selben PR. Eine veraltete Karte ist schlimmer als keine.
 src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell. Ohne Session -> /anmelden
-    (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); Wetter (WeatherForecast) ganz oben, vor der Aufgabenliste (issue #139); vormals „Heute"/`/heute` (issue #161)
+    (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); h1+AppHeader fix, darunter `<UebersichtSections/>` (issue #308); vormals „Heute"/`/heute` (issue #161)
+    (app)/uebersicht/uebersicht-sections.tsx   Client: iteriert die feste Reihenfolge Wetter→Aufgaben→Aktivitäten→Gewohnheiten, rendert je aktivem Modul dessen `OverviewSection` aus der Registry über `useActiveSections` (issue #308)
     (app)/uebersicht/uebersicht.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
@@ -21,7 +22,8 @@ src/
     (app)/kalender/         Termine            (leer bis M5)
     (app)/wetter/[datum]/   page.tsx           Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang, rein aus der lokalen Ablage (issue #156); Kopfzeile = Zurück-Link links, Datum rechts — das <header> ist zugleich der Fokus-Fix, weil der App-Router nach der Navigation das erste Segment-Element fokussiert (issue #233)
     (app)/journal/          Journal            (leer bis M4)
-    (app)/einstellungen/    Einstellungen — Darstellung (AppearancePanel) + Reihenfolge (NavOrderPanel) + Module (ModulePanel) + Spracherfassung (CapturePanel) + Export-Button; Kopfzeile mit Zurück-Link (/uebersicht) + Titel wie die Wetter-Tagesseite, in einstellungen.css (issue #288)
+    (app)/einstellungen/    Einstellungen — core/fix: Darstellung (AppearancePanel) + Reihenfolge (NavOrderPanel) + Module (ModulePanel) + Push (PushPanel); modulgebunden über `<EinstellungenSections/>` (issue #308); Kopfzeile mit Zurück-Link (/uebersicht) + Titel wie die Wetter-Tagesseite, in einstellungen.css (issue #288)
+    (app)/einstellungen/einstellungen-sections.tsx   Client: feste Reihenfolge Aufgaben→Wetter→Export, rendert je aktivem Modul dessen `SettingsPanel` aus der Registry über `useActiveSections` (issue #308)
     anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
     offline/                Service-Worker-Fallback ohne Netz
     api/auth/               WebAuthn: register/login (options + verify), logout, status
@@ -55,7 +57,8 @@ src/
     webauthn.ts             Challenges, Credentials, Recovery-Code
   crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
   modules/
-    registry.ts              MODULES + NavItem — einzige Quelle je Modul (stabile id, label, core, optional navItem/OverviewSection/SettingsPanel/routes); nav-items.ts leitet NAV_ITEMS daraus ab, use-modules.ts das Ein/Aus (ADR-0012, issue #307). OverviewSection/SettingsPanel/routes erst ab T2/T3 (#216) befüllt
+    registry.ts              MODULES + NavItem — einzige Quelle je Modul (stabile id, label, core, optional navItem/OverviewSection/SettingsPanel/routes); nav-items.ts leitet NAV_ITEMS daraus ab, use-modules.ts das Ein/Aus (ADR-0012, issue #307). `OverviewSection` (wetter/aufgaben/aktivitaeten/gewohnheiten) + `SettingsPanel` (aufgaben/wetter/export) seit issue #308 befüllt; `routes` erst ab T3 (#216)
+    module-sections.ts       `useActiveSections(order, pick)` — löst eine seitenfest vorgegebene `order` von Modul-Ids gegen `isActive` + das per `pick` gewählte Registry-Feld auf (issue #308); `order` bewusst nicht `MODULES`-Reihenfolge selbst, weil Übersicht (Wetter zuerst) und Einstellungen (Registry-Reihenfolge) sich unterscheiden
   push/                     Server-seitiger Versand (issue #122, ADR-0010)
     vapid.ts                setzt VAPID-Details aus Env-Vars, lazy wie src/db/index.ts (Build braucht die Vars noch nicht)
     send.ts                 sendPushToAll(payload) — 410/404 vom Push-Dienst löscht das Abo, sonst nur Log ohne endpoint/keys
@@ -69,6 +72,7 @@ src/
   features/
     tasks/
       task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88); gruppiert via groupTasks (issue #89), löst Drag-Drop über resolveNestTarget auf
+      tasks-overview-section.tsx  `<h2>Aufgaben</h2>` + `<TaskList dueTodayOnly/>` als eine Einheit — Registry-`OverviewSection` für `aufgaben`, damit die Überschrift mit dem Modul verschwindet statt als Leiche auf /uebersicht stehen zu bleiben (issue #308)
       task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen); Eltern-Zeile mit Disclosure + Fortschritt, Long-Press hebt ein Blatt fürs Drag-to-Nest an (issue #89)
       use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung strikt nach createdAt (issue #88); groupTasks (eine Ebene Eltern/Kind) + resolveNestTarget (issue #89)
       use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
@@ -90,6 +94,7 @@ src/
       schedule-rules.ts        reine Fälligkeits-/Erledigt-Regeln über Datums-Schlüssel (`YYYY-MM-DD`), keine `Date`-Methoden mit impliziter Zeitzone — isDueOnDay/isDoneOnDay/isDoneInWeek/weekRangeForDay, gemeinsam von due-today.ts + streak.ts (Browser-`Date`) UND src/push/reminders/habits-open.ts (Berlin-`Date` via berlinNow()) benutzt, damit „heute fällig" nicht zweimal (und potenziell abweichend) implementiert ist (issue #243)
       streak.ts                reine Logik: computeStreak — aufeinanderfolgende Tage (daily/custom) bzw. Mo–So-Wochen (weekly) bis heute/laufende Woche; offener heutiger Tag/laufende Woche bricht nicht, ausgelassener schon (issue #104); Ist-erledigt-Prüfung kommt aus schedule-rules.ts (issue #243)
       habit-today.tsx / .css   Übersicht-Sektion: Abhak-Liste, Zeile bleibt nach dem Abhaken sichtbar (Undo per erneutem Tippen) (issue #103); Streak-Badge (🔥) je Zeile, nur wenn > 0 (issue #104); alle Gewohnheiten immer in der Liste, wöchentliche mit „Diese Woche schon erledigt"-Hinweis via doneEarlierThisWeek, solange heute noch offen (issue #224)
+      habits-overview-section.tsx  `<h2>Gewohnheiten</h2>` + `<HabitToday/>` als eine Einheit — Registry-`OverviewSection` für `gewohnheiten` (issue #308)
       habit-week-grid.tsx / .css  Monatsraster Mo–So je Habit-Zeile (issue #105 → #124), heutiger Tag nur im laufenden Monat markiert, Zukunft gesperrt, Zelle direkt abhakbar über useToggleHabitLog
       use-archive-habit.ts     Archivieren/Reaktivieren (setzt/löscht archivedAt, nie deletedAt) mit Undo-Toast (issue #102)
       habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard); Monatsleiste (‹/›) steuert den Monat aller Raster gemeinsam (issue #124); jede Zeile zeigt zusätzlich das Monatsraster
