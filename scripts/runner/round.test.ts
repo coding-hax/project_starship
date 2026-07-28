@@ -10,6 +10,7 @@ import type { GhAdapter } from './gh';
 import type { GitAdapter } from './git';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
+import { createClaimAdapter, type ClaimAdapter } from './claim';
 import { roundEval, roundPlan, type RoundContext, type RoundRun } from './round';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
@@ -71,20 +72,30 @@ const labelsAre = (...names: string[]) => ({
 
 describe('roundPlan', () => {
   let dir: string;
+  let claimsDir: string;
   let state: StateAdapter;
+  let claims: ClaimAdapter;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'round-'));
+    claimsDir = mkdtempSync(join(tmpdir(), 'round-claims-'));
     state = createStateAdapter(dir);
+    claims = createClaimAdapter(claimsDir);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(claimsDir, { recursive: true, force: true });
+  });
 
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
     // roundPlan schreibt/liest 'sharedState' nirgends -- derselbe Adapter reicht.
-    return { gh, git, state, sharedState: state, clock: CLOCK };
+    return { gh, git, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
   }
 
-  const opts = { queueIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '' };
+  // isLead: true -- die meisten bestehenden Faelle testen das Verhalten VOR
+  // #204 (ein Slot, das war immer der Leitslot). Die eigene Slot/Lead-Logik
+  // hat ihre eigene Gruppe weiter unten.
+  const opts = { queueIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
 
   it('meldet ⚪️ nichts zu tun, wenn kein Ticket wartet', () => {
     const { gh } = ghDouble([openIssues(), noOpenPrs]);
@@ -557,8 +568,11 @@ describe('roundEval', () => {
     prompt: '',
   };
 
+  // roundEval liest/schreibt weder 'claims' noch 'slotId' -- Platzhalter reicht.
+  const claims = createClaimAdapter(mkdtempSync(join(tmpdir(), 'round-eval-claims-')));
+
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
-    return { gh, git, state, sharedState, clock: CLOCK };
+    return { gh, git, state, sharedState, claims, slotId: '1', clock: CLOCK };
   }
 
   const ok = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
@@ -635,7 +649,7 @@ describe('roundEval', () => {
       const slotA = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-a-')));
       const slotB = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-b-')));
       const { gh } = ghDouble();
-      roundEval({ gh, git: gitDouble(), state: slotA, sharedState, clock: CLOCK }, plan, limited, '');
+      roundEval({ gh, git: gitDouble(), state: slotA, sharedState, claims, slotId: '1', clock: CLOCK }, plan, limited, '');
       expect(slotA.read('limit-until')).toBeNull();
       expect(slotB.read('limit-until')).toBeNull();
       // Slot B liest denselben SHARED_DIR wie Slot A -- und sieht die Pause.

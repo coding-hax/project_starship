@@ -121,6 +121,26 @@ export function claimRelease(claims: ClaimAdapter, issue: number): void {
   claims.release(issue);
 }
 
+/**
+ * Issue-Nummern, die ein ANDERER Slot beansprucht -- fuer die Auswahl-Kaskade
+ * in select.ts, die den vollen Snapshot fuer die Abhaengigkeits-Aufloesung
+ * braucht (queueBlocked prueft, ob ein Blocker noch offen ist). `claimFilter()`
+ * allein wuerde ein von einem anderen Slot beanspruchtes Ticket komplett aus
+ * dem Snapshot werfen -- ein davon abhaengiges Ticket saehe seinen Blocker
+ * dann faelschlich als "nicht mehr offen" und wuerde verfrueht freigegeben,
+ * waehrend der andere Slot noch daran baut. Diese Funktion liefert nur die
+ * Menge zum ZUSAETZLICHEN Ausschluss aus der Auswahl, laesst den Snapshot
+ * selbst (und damit die Abhaengigkeitspruefung) unangetastet.
+ */
+export function claimedElsewhere(claims: ClaimAdapter, slotId: string): Set<number> {
+  const result = new Set<number>();
+  for (const issue of claims.list()) {
+    const owner = claims.readSlot(issue);
+    if (owner !== null && owner !== '' && owner !== slotId) result.add(issue);
+  }
+  return result;
+}
+
 function isStillClaimable(issue: number, gh: GhAdapter): boolean {
   try {
     const out = gh.run([

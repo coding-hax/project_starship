@@ -16,6 +16,7 @@ import type { GhAdapter } from './gh';
 import type { GitAdapter } from './git';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
+import { createClaimAdapter } from './claim';
 import { roundEval, type RoundContext, type RoundRun } from './round';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
@@ -66,7 +67,18 @@ describe('Chaining-Entscheidung (#61)', () => {
     prompt: '',
   };
 
-  const ctx = (gh: GhAdapter): RoundContext => ({ gh, git: gitDouble(), state, sharedState: state, clock: CLOCK });
+  // roundEval liest/schreibt weder 'claims' noch 'slotId' -- Platzhalter reicht.
+  const claims = createClaimAdapter(mkdtempSync(join(tmpdir(), 'chaining-claims-')));
+
+  const ctx = (gh: GhAdapter): RoundContext => ({
+    gh,
+    git: gitDouble(),
+    state,
+    sharedState: state,
+    claims,
+    slotId: '1',
+    clock: CLOCK,
+  });
   const clean = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
 
   // AC1/AC3a in chaining.test.sh: nur dieser Ausgang laesst den Tick eine

@@ -20,6 +20,8 @@ import type { Clock } from './clock.js';
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
+import type { ClaimAdapter } from './claim.js';
+import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
 import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
@@ -38,6 +40,10 @@ export interface RoundContext {
   state: StateAdapter;
   /** Slotübergreifend (#204) -- ausschließlich 'limit-until' lebt hier, siehe roundEval. */
   sharedState: StateAdapter;
+  /** Ticket-Anspruch bei mehreren Slots (#204), siehe claim.ts. */
+  claims: ClaimAdapter;
+  /** Dieser Slot -- 1 in der Ein-Slot-Welt (AK9). */
+  slotId: string;
   clock: Clock;
 }
 
@@ -53,6 +59,14 @@ export interface RoundPlanOptions {
   /** Hat eine fruehere Runde in DIESEM Tick produktiv gearbeitet? (#61) */
   didWork: boolean;
   lastIssue: string;
+  /**
+   * Faehrt DIESER Slot gerade die globalen Waechter (#204, Frage 5 = A)?
+   * reopenFalselyClosedIssues, die CI-Wache fuer wartende Tickets und
+   * claimSweep laufen NUR hier -- sonst kaemen bei mehreren Slots dieselben
+   * Issue-Kommentare/Label-Mutationen mehrfach. NICHT betroffen: die CI-Wache
+   * fuers eigene laufende Ticket (weiter unten) -- die gehoert in jeden Slot.
+   */
+  isLead: boolean;
 }
 
 /** Die Runde endet ohne Agentenlauf -- Bash schreibt nur noch den Status. */
@@ -142,12 +156,20 @@ function yyyymmdd(clock: Clock): string {
 // ---------------------------------------------------------------------------
 
 export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanResult {
-  const { gh, git, state, clock } = ctx;
+  const { gh, git, state, claims, slotId, clock } = ctx;
+  const { isLead } = opts;
 
-  // Netz gegen faelschlich geschlossene Tickets (#172) -- VOR jeder
+  // #204, Frage 5 = A: nur der Leitslot faehrt die globalen Waechter -- sonst
+  // schreiben mehrere Slots denselben Issue-Kommentar/dieselbe Label-Mutation
+  // mehrfach. Netz gegen faelschlich geschlossene Tickets (#172) -- VOR jeder
   // Ticketauswahl, damit ein hier wieder geoeffnetes Ticket noch im selben
-  // Schnappschuss auftaucht statt erst in der naechsten Runde.
-  reopenFalselyClosedIssues(gh);
+  // Schnappschuss auftaucht statt erst in der naechsten Runde. claimSweep
+  // raeumt verwaiste Anspruch VOR der Auswahl weg, damit ein in diesem Tick
+  // freigewordenes Ticket noch im selben Schnappschuss waehlbar ist (AK7).
+  if (isLead) {
+    reopenFalselyClosedIssues(gh);
+    claimSweep(claims, gh, clock.now().getTime());
+  }
 
   // EIN Schnappschuss aller offenen Issues statt fuenf sequenzieller
   // gh-Aufrufe. Die Praezedenz der Auswahl bleibt davon unberuehrt.
@@ -159,6 +181,15 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   } catch {
     snapshot = [];
   }
+
+  // #204: welche Issues gehoeren gerade einem ANDEREN Slot? Bewusst NICHT aus
+  // `snapshot` entfernt (das braeuchte queueBlocked() unten fuer die
+  // Abhaengigkeitspruefung vollstaendig -- sonst saehe ein wartendes Ticket
+  // seinen von einem anderen Slot bearbeiteten Blocker faelschlich als
+  // erledigt an). Stattdessen reicht diese Menge bis zur Auswahl durch
+  // (`wip` unten, `pickTicket()`/`selectTicket()` in select.ts) und schliesst
+  // dort zusaetzlich zu BLOCKING_LABELS aus.
+  const elsewhere = claimedElsewhere(claims, slotId);
 
   const body = queueBody(opts.queueIssue, gh);
 
@@ -179,10 +210,13 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   });
 
   // --- CI-Wache fuer WARTENDE Tickets (#154, erweitert um #173, seit #272
-  // ohne Park-Mechanik) ------------------------------------------------------
-  const waitingOnHuman: WaitingIssueInput[] = snapshot
-    .filter((issue) => issue.labels.some((label) => label.name === 'needs-answer'))
-    .map((issue) => ({ number: issue.number, createdAt: issue.createdAt ?? '' }));
+  // ohne Park-Mechanik) -- #204: NUR der Leitslot, sonst rufen mehrere Slots
+  // 'gh pr merge' fuer dasselbe wartende Ticket und posten doppelte Notizen. --
+  const waitingOnHuman: WaitingIssueInput[] = isLead
+    ? snapshot
+        .filter((issue) => issue.labels.some((label) => label.name === 'needs-answer'))
+        .map((issue) => ({ number: issue.number, createdAt: issue.createdAt ?? '' }))
+    : [];
 
   if (waitingOnHuman.length > 0) {
     const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state });
@@ -210,7 +244,9 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // 'blocked-by' setzt und entfernt er dagegen selbst (wie 'in-progress'). Von
   // Hand gepflegt wuerde es genauso verrotten wie die Prosa bisher -- nur
   // schlimmer: dann wuerde das Ticket nie wieder gebaut, und zwar still.
-  {
+  // #204: ebenfalls nur der Leitslot -- sonst schreiben mehrere Slots
+  // denselben 'blocked-by'-Zustand jeden Takt neu.
+  if (isLead) {
     const entries = queueEntries(body);
     const openIssues = new Set(snapshot.map((issue) => issue.number));
     const blocked = queueBlocked(entries, openIssues);
@@ -272,7 +308,13 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   //    'in-progress' (#272) -- der Bauplatz gilt trotzdem als frei, weil dieser
   //    Filter greift, und derselbe Zweig nimmt die Arbeit wieder auf, sobald
   //    das Label faellt.
-  const wip = snapshot.filter((issue) => issue.labels.some((label) => label.name === 'in-progress'));
+  // #204: ein 'in-progress'-Ticket, dessen Claim einem ANDEREN Slot gehoert
+  // (z. B. von Hand gelabelt, bevor es hier je beansprucht wurde), ist fuer
+  // diesen Slot kein eigenes WIP -- sonst wuerden zwei Slots dasselbe Ticket
+  // "fortsetzen".
+  const wip = snapshot.filter(
+    (issue) => issue.labels.some((label) => label.name === 'in-progress') && !elsewhere.has(issue.number),
+  );
   const resumable = wip
     .filter((issue) => !issue.labels.some((label) => label.name === 'needs-answer'))
     .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
@@ -369,7 +411,7 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
   }
 
   if (issue === 0) {
-    const pick = pickTicket(snapshot, body, gh, state);
+    const pick = pickTicket(snapshot, body, gh, state, elsewhere);
     switch (pick.kind) {
       case 'ticket':
         issue = pick.issue;
@@ -444,6 +486,26 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
         };
       }
     }
+  }
+
+  // #204: der eine Punkt, an dem sich DIESER Slot fuer 'issue' festlegt. Der
+  // Filter oben hat fremd beanspruchte Tickets schon aus dem Schnappschuss
+  // geworfen -- trotzdem kann ein anderer Slot im selben Wimpernschlag
+  // zugegriffen haben (mkdir ist atomar, das Fenster dazwischen nicht null).
+  // Scheitert der Claim, endet die Runde ergebnislos: kein Agentenlauf, der
+  // naechste Takt waehlt neu. Deckt beide Wege ab, die hierher fuehren --
+  // fortgesetztes 'in-progress' oben UND ein frisch von pickTicket()
+  // gewaehltes Ticket.
+  if (!claimTake(claims, issue, slotId)) {
+    return {
+      kind: 'done',
+      rc: 0,
+      status: status(
+        `#${issue} an anderen Slot verloren`,
+        '🟢',
+        `🟢 **#${issue}** wurde im selben Moment von einem anderen Slot beansprucht — kein Agentenlauf hier. Der nächste Takt wählt neu. **Kein Eingreifen nötig.**`,
+      ),
+    };
   }
 
   // Ab hier ist das Ticket fest und der `claude`-Aufruf steht kurz bevor.

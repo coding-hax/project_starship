@@ -20,6 +20,7 @@ import { createGitAdapter, type GitAdapter } from './git.js';
 import { dPlus, fmtHm, resetEpoch } from './time.js';
 import { queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
 import { createStateAdapter, type StateAdapter } from './state.js';
+import { createClaimAdapter, type ClaimAdapter } from './claim.js';
 import { tierBump, tierCurrent, tierReset } from './tier.js';
 import { blockerSig, buildEscalationEval, resumeAllowed, sha1Of } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
@@ -47,6 +48,10 @@ export interface RunnerContext {
   state: StateAdapter;
   /** Slotübergreifend unter SHARED_DIR (#204) -- siehe round.ts, roundEval. */
   sharedState: StateAdapter;
+  /** Slotübergreifend unter SHARED_DIR/claims (#204), siehe claim.ts. */
+  claims: ClaimAdapter;
+  /** Dieser Slot -- '1' in der Ein-Slot-Welt (AK9). */
+  slotId: string;
   clock: Clock;
 }
 
@@ -152,7 +157,7 @@ export const commands: Record<string, CommandHandler> = {
     JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
   'cleanup-state': (ctx) => {
-    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime());
+    cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime(), ctx.claims, ctx.slotId);
     return '';
   },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
@@ -168,6 +173,8 @@ export const commands: Record<string, CommandHandler> = {
         maxRuntime: Number(args[1] ?? 2700),
         didWork: args[2] === '1',
         lastIssue: args[3] ?? '',
+        // $IS_LEAD aus claude-runner.sh (#204) -- '1' in der Ein-Slot-Welt.
+        isLead: args[4] === '1',
       }),
     ),
 
@@ -224,12 +231,20 @@ function sharedDir(): string {
   return process.env.SHARED_DIR ?? join(here, '..', '..', '.shared-runner');
 }
 
+// claude-runner.sh exportiert SLOT_ID genauso wie STATE_DIR/SHARED_DIR (#204).
+// '1' ist der Default der Ein-Slot-Welt (AK9).
+function slotId(): string {
+  return process.env.SLOT_ID ?? '1';
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
     git: createGitAdapter(),
     state: createStateAdapter(stateDir()),
     sharedState: createStateAdapter(sharedDir()),
+    claims: createClaimAdapter(join(sharedDir(), 'claims')),
+    slotId: slotId(),
     clock: createClock(),
   };
 }

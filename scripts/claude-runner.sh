@@ -261,7 +261,7 @@ run_round() {
   : "${DID_WORK:=0}" "${LAST_ISSUE:=}"
 
   local plan plan_rc kind rc timed eval_out
-  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE")
+  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD")
   plan_rc=$?
   # round-plan MUSS Exit 0 UND ein gültiges JSON-Objekt (mit .kind) liefern.
   # Jeder andere Ausgang (leeres/kaputtes plan) ist fatal: 127 hat ts_run schon

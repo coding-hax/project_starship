@@ -446,3 +446,36 @@ describe('Abhaengigkeiten in der Queue (#265)', () => {
     expect(selectTicket(snapshot, '- #266 nach #227 #225')?.issue).toBe(225);
   });
 });
+
+// #204: mehrere Slots duerfen sich nicht gegenseitig Tickets wegnehmen.
+describe('claimedElsewhere (#204) -- ohne den Snapshot fuer Abhaengigkeiten zu verfaelschen', () => {
+  it('ein von einem anderen Slot beanspruchtes Ticket wird uebersprungen, das naechste gewaehlt', () => {
+    const snapshot = [issue(70, ['ready']), issue(80, ['ready'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '', new Set([70]))).toEqual({ issue: 80, role: 'build', source: 'ready' });
+  });
+
+  it('sind alle Tickets anderswo beansprucht, waehlt der Slot nichts', () => {
+    const snapshot = [issue(70, ['ready'])];
+    expect(selectTicket(snapshot, '', new Set([70]))).toBeNull();
+  });
+
+  // Der eigentliche Grund, warum claimedElsewhere NICHT aus dem Snapshot
+  // entfernt werden darf, bevor queueBlocked ihn sieht: #227 ist noch offen
+  // und wird von einem anderen Slot gebaut. Ein einfacher claimFilter() auf
+  // dem ganzen Snapshot haette #227 verschwinden lassen -- die Abhaengigkeit
+  // von #266 waere faelschlich als erledigt gegolten.
+  it('ein von einem anderen Slot beanspruchter BLOCKER haelt das abhaengige Ticket weiterhin zurueck', () => {
+    const snapshot = [issue(266, ['ready']), issue(227, ['in-progress'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #266 nach #227', new Set([227]))).toBeNull();
+  });
+
+  it('pickTicket reicht claimedElsewhere durch', () => {
+    const gh: GhAdapter = { run: vi.fn().mockReturnValue('') };
+    const dir = mkdtempSync(join(tmpdir(), 'pick-claim-'));
+    const state = createStateAdapter(dir);
+    const snapshot = [issue(70, ['ready']), issue(80, ['ready'], '2024-02-01T00:00:00Z')];
+    const result = pickTicket(snapshot, '', gh, state, new Set([70]));
+    expect(result).toEqual({ kind: 'ticket', issue: 80, role: 'build', mode: 'start' });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

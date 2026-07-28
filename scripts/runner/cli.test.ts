@@ -23,6 +23,15 @@ function fakeContext(): RunnerContext {
       exists: vi.fn().mockReturnValue(false),
       remove: vi.fn(),
     },
+    claims: {
+      take: vi.fn().mockReturnValue(true),
+      readSlot: vi.fn().mockReturnValue(null),
+      writeSlot: vi.fn(),
+      ageMs: vi.fn().mockReturnValue(null),
+      list: vi.fn().mockReturnValue([]),
+      release: vi.fn(),
+    },
+    slotId: '1',
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
   };
 }
