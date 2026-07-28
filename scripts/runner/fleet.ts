@@ -108,6 +108,19 @@ export function effectiveLead(states: SlotState[], slotIds: string[], leadSlot: 
   return live[0] ?? leadSlot;
 }
 
+// #331 AK2: eine zehn Minuten alte Zeile darf nicht wie eine frische aussehen
+// -- das reine 💤-Symbol ab STALE_MS (90 Min., fuers Leitslot-Failover
+// gedacht) greift dafuer viel zu spaet. Jede Zeile traegt deshalb ihr
+// eigenes Alter, unabhaengig vom Frisch/Verfallen-Schnitt.
+function formatAge(ageMs: number): string {
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 1) return 'gerade eben';
+  if (minutes < 60) return `vor ${minutes} Min.`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes === 0 ? `vor ${hours} Std.` : `vor ${hours} Std. ${restMinutes} Min.`;
+}
+
 const EMOJI_SEVERITY: Record<string, number> = { '🔴': 5, '🟡': 4, '🟠': 3, '🔵': 2, '🟢': 1, '⚪️': 0 };
 
 function worstEmoji(states: SlotState[]): string {
@@ -150,7 +163,8 @@ export function aggregateStatus(
   const lines = states.map((s) => {
     const fresh = isFresh(s, nowMs, staleMs);
     const marker = fresh ? s.emoji : '💤';
-    return `${marker} **Slot ${s.slotId}:** ${s.title}`;
+    const age = formatAge(nowMs - s.updatedAtMs);
+    return `${marker} **Slot ${s.slotId}:** ${s.title} _(${age})_`;
   });
 
   const takeoverNote =
