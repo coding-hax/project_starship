@@ -102,6 +102,12 @@ test('eine Erinnerungsart lässt sich einzeln abschalten, unabgeschaltete bleibe
   await expect(tasksToggle).toHaveAttribute('aria-checked', 'false');
   await expect(habitsToggle).toHaveAttribute('aria-checked', 'true');
 
+  // beforeEach cuts the sync endpoints so the panel can only ever read from
+  // IndexedDB — lift that to let the queued mutation actually reach Postgres,
+  // same convention as the equivalent points in habits.spec.ts/tasks.spec.ts.
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
   await expect.poll(async () => (await reminderPrefRow('tasks-due'))?.enabled).toBe(false);
   expect(await reminderPrefRow('habits-open')).toBeNull();
 });
@@ -111,6 +117,9 @@ test('eine geänderte Uhrzeit wird gespeichert, die alte kommt nicht wieder (AC2
 
   await page.getByLabel('Fällige Aufgaben: Uhrzeit 1').fill('16:00');
 
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
   await expect.poll(async () => (await reminderPrefRow('tasks-due'))?.times).toEqual(['16:00']);
 });
 
@@ -119,8 +128,11 @@ test('eine zweite Zeit lässt sich hinzufügen (AC3)', async ({ page }) => {
 
   await page.getByLabel('Fällige Aufgaben: neue Uhrzeit').fill('16:00');
   await page.getByRole('button', { name: 'Fällige Aufgaben: Zeit hinzufügen' }).click();
-
   await expect(page.getByLabel('Fällige Aufgaben: Uhrzeit 2')).toHaveValue('16:00');
+
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
   await expect.poll(async () => (await reminderPrefRow('tasks-due'))?.times).toEqual(['07:00', '16:00']);
 });
 
@@ -128,6 +140,7 @@ test('eine hinzugefügte Zeit lässt sich wieder entfernen; entfernt man alle, b
   page,
 }) => {
   await openPanelGranted(page);
+  await page.unroute('**/api/sync/**');
 
   await page.getByLabel('Fällige Aufgaben: neue Uhrzeit').fill('16:00');
   await page.getByRole('button', { name: 'Fällige Aufgaben: Zeit hinzufügen' }).click();
@@ -135,10 +148,12 @@ test('eine hinzugefügte Zeit lässt sich wieder entfernen; entfernt man alle, b
 
   await page.getByRole('button', { name: 'Fällige Aufgaben: Uhrzeit 16:00 entfernen' }).click();
   await expect(page.getByLabel('Fällige Aufgaben: Uhrzeit 2')).toHaveCount(0);
+  await page.evaluate(() => window.__starship.sync());
   await expect.poll(async () => (await reminderPrefRow('tasks-due'))?.times).toEqual(['07:00']);
 
   await page.getByRole('button', { name: 'Fällige Aufgaben: Uhrzeit 07:00 entfernen' }).click();
   await expect(page.getByLabel('Fällige Aufgaben: Uhrzeit 1')).toHaveCount(0);
+  await page.evaluate(() => window.__starship.sync());
   await expect.poll(async () => (await reminderPrefRow('tasks-due'))?.times).toEqual([]);
 });
 
