@@ -147,13 +147,16 @@ export const commands: Record<string, CommandHandler> = {
   },
   'pr-failure-summary': (ctx, args) => prFailureSummary(args[0] ?? '', ctx.gh),
   'watch-running-issue': (ctx, args) =>
-    JSON.stringify(watchRunningIssue(Number(args[0]), args[1] ?? '', { gh: ctx.gh, git: ctx.git, state: ctx.state })),
+    JSON.stringify(
+      watchRunningIssue(Number(args[0]), args[1] ?? '', { gh: ctx.gh, git: ctx.git, state: ctx.state, clock: ctx.clock }),
+    ),
   'watch-waiting-issues': (ctx, args) =>
     JSON.stringify(
       watchWaitingIssues(JSON.parse(args[0] ?? '[]') as WaitingIssueInput[], {
         gh: ctx.gh,
         git: ctx.git,
         state: ctx.state,
+        clock: ctx.clock,
       }),
     ),
   'pick-ticket': (ctx, args) =>

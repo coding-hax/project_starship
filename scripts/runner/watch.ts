@@ -27,11 +27,17 @@
 // (ci-watch.test.sh, waiting-ci-watch.test.sh) 1:1 auf Wortlaut geprueft.
 // Diese Funktionen liefern nur die ENTSCHEIDUNG plus die Daten, die in die
 // (unveraenderten) Textbausteine eingesetzt werden.
+import type { Clock } from './clock.js';
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
 import { prCiState, prFailureSummary, prForIssue, prSquashMerge } from './pr.js';
 import { catchupFailEscalated, catchupFailReason, catchupFailReset, prCatchUpBehind } from './catchup.js';
+
+// #324: ab dieser Schwelle (Minuten) gilt ein 'pending' als haengen geblieben
+// statt als normal laufende CI -- Startwert lt. Ticket, benannte Konstante
+// statt Magic Number im Vergleich unten.
+export const PENDING_STALL_MINUTES = 45;
 
 export type WatchState =
   | 'pending'
@@ -50,6 +56,9 @@ export interface WatchReactionInput {
   waiting: boolean;
   // Nur relevant fuer state === 'behind-retry' && !waiting (S. Kommentar oben).
   retryEscalated?: boolean;
+  // #324: nur relevant fuer state === 'pending' && !waiting -- ein wartendes
+  // Ticket bleibt bei 'pending' ohnehin still (siehe watchReaction unten).
+  pendingEscalated?: boolean;
 }
 
 export type WatchReaction =
@@ -77,7 +86,10 @@ export function watchReaction(input: WatchReactionInput): WatchReaction {
 
   switch (state) {
     case 'pending':
-      return { kind: 'wait', severity: 'green' };
+      // #324: haengt der Check laenger als PENDING_STALL_MINUTES, kippt auch
+      // ein laufendes Ticket auf Gelb -- unterhalb der Schwelle bleibt es beim
+      // bisherigen Gruen (AC3).
+      return { kind: 'wait', severity: input.pendingEscalated ? 'yellow' : 'green' };
     case 'success':
       return { kind: 'merge' };
     case 'failing-fix':
@@ -140,6 +152,7 @@ interface WatchDeps {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
+  clock: Clock;
 }
 
 interface ResolvedWatchState {
@@ -153,6 +166,36 @@ interface ResolvedWatchState {
   retryPaths?: string[];
   retryEscalated?: boolean;
   failSummary?: string;
+  // Nur fuer 'pending', nur bei laufenden Tickets berechnet (#324).
+  pendingMinutes?: number;
+  pendingEscalated?: boolean;
+}
+
+// #324: Zeitpunkt, seit dem ein Ticket UNUNTERBROCHEN auf 'pending' steht --
+// dateibasiert unter $STATE_DIR, analog zum Fehlversuchs-Zaehler in
+// catchup.ts. Erster Aufruf schreibt den Zeitstempel und meldet 0 Minuten,
+// jeder weitere Aufruf rechnet gegen DENSELBEN Zeitstempel weiter.
+function pendingKey(issue: number): string {
+  return `pending-since-${issue}`;
+}
+
+function pendingMinutesSince(issue: number, state: StateAdapter, clock: Clock): number {
+  const key = pendingKey(issue);
+  const now = clock.now().getTime();
+  const raw = state.read(key);
+  if (!raw) {
+    state.write(key, String(now));
+    return 0;
+  }
+  const since = Number(raw) || now;
+  return Math.floor((now - since) / 60_000);
+}
+
+// AC4: sobald der PR NICHT mehr auf 'pending' steht (gemerged oder rot),
+// verschwindet der Zeitstempel wieder -- ein spaeterer 'pending'-Lauf beginnt
+// neu zu zaehlen statt die alte Uhrzeit fortzuschreiben.
+function pendingReset(issue: number, state: StateAdapter): void {
+  state.remove(pendingKey(issue));
 }
 
 // Loest den rohen `PrState` (S4) zu einem `WatchState` auf -- inklusive der
@@ -163,7 +206,19 @@ interface ResolvedWatchState {
 function resolveWatchState(issue: number, pr: string, parked: boolean, deps: WatchDeps): ResolvedWatchState {
   const ciState = prCiState(pr, deps.gh);
 
-  if (ciState === 'pending') return { state: 'pending' };
+  if (ciState === 'pending') {
+    // #324: die Zeitmessung ist nur fuer laufende Tickets relevant (siehe
+    // Modulkommentar zur behind-retry-Eskalation) -- ein wartendes Ticket
+    // bleibt bei 'pending' ohnehin still (watchReaction), der Zeitstempel
+    // wuerde nie gelesen.
+    if (parked) return { state: 'pending' };
+    const pendingMinutes = pendingMinutesSince(issue, deps.state, deps.clock);
+    return { state: 'pending', pendingMinutes, pendingEscalated: pendingMinutes >= PENDING_STALL_MINUTES };
+  }
+  // Jeder andere Zustand beendet eine laufende 'pending'-Phase (AC4) -- fuer
+  // wartende Tickets wurde ohnehin nie ein Zeitstempel angelegt.
+  if (!parked) pendingReset(issue, deps.state);
+
   if (ciState === 'success') return { state: 'success' };
 
   if (ciState === 'failing') return { state: 'failing-fix', failSummary: prFailureSummary(pr, deps.gh) };
@@ -208,7 +263,7 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
 }
 
 export type RunningWatchResult =
-  | { kind: 'pending' }
+  | { kind: 'pending'; escalated: boolean; minutes: number }
   | { kind: 'merged' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
@@ -219,10 +274,18 @@ export type RunningWatchResult =
 // hat pr_for_issue() schon ausgewertet).
 export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): RunningWatchResult {
   const resolved = resolveWatchState(issue, pr, false, deps);
-  const reaction = watchReaction({ state: resolved.state, waiting: false, retryEscalated: resolved.retryEscalated });
+  const reaction = watchReaction({
+    state: resolved.state,
+    waiting: false,
+    retryEscalated: resolved.retryEscalated,
+    pendingEscalated: resolved.pendingEscalated,
+  });
 
   switch (reaction.kind) {
     case 'wait':
+      if (resolved.state === 'pending') {
+        return { kind: 'pending', escalated: reaction.severity === 'yellow', minutes: resolved.pendingMinutes ?? 0 };
+      }
       if (resolved.state === 'behind-caught-up') return { kind: 'caught-up' };
       if (resolved.state === 'behind-retry') {
         return {
@@ -232,7 +295,8 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
           escalated: reaction.severity === 'yellow',
         };
       }
-      return { kind: 'pending' };
+      /* istanbul ignore next -- pending/behind-caught-up/behind-retry sind die einzigen 'wait'-Zustaende */
+      return { kind: 'pending', escalated: false, minutes: 0 };
     case 'merge':
       deps.gh.run(['pr', 'ready', pr]);
       prSquashMerge(pr, deps.gh);
@@ -250,7 +314,7 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
       return { kind: 'build-fix', summary: resolved.failSummary ?? '' };
     case 'noop':
       /* istanbul ignore next -- 'noop' kommt fuer waiting:false nie zurueck */
-      return { kind: 'pending' };
+      return { kind: 'pending', escalated: false, minutes: 0 };
   }
 }
 
