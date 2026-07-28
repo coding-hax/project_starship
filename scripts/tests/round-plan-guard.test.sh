@@ -45,7 +45,7 @@ status() {   # $1 = Titel, $2 = Emoji, $3 = Text
 }
 
 reset_state() {
-  rm -rf "$STATE_DIR"
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR"
   mkdir -p "$STATE_DIR"
   : > "$STATUS_LOG"
 }

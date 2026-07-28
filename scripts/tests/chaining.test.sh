@@ -202,7 +202,7 @@ export STATUS_ISSUE=0
 source "$RUNNER"
 
 reset_state() {
-  rm -rf "$STATE_DIR" "$GHSTATE_DIR"
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR" "$GHSTATE_DIR"
   mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
 }
 
@@ -332,6 +332,36 @@ export CLAUDE_STUB_MODE
 run_main
 unset CLAUDE_STUB_MODE
 assert_eq "AC5: harter Fehlschlag (Exit != 0) beendet die Kette nach der ersten Runde" "1" "$(call_count)"
+
+# ==============================================================================
+# 6. Lock-Aufräumen: zwei aufeinanderfolgende Runden in derselben Suite (#306)
+#    - erste run_main() baut #100 und lässt dabei einen Lock-Dir entstehen
+#    - reset_state() räumt den Lock (und claude-calls) auf
+#    - zweite run_main() kann wieder starten (Lock blockiert nicht)
+# ==============================================================================
+reset_state
+MAX_ROUNDS=1
+list_json in-progress '[]'
+list_json plan '[]'
+list_json research '[]'
+list_json ready '[{"number":100,"labels":[{"name":"ready"}]}]'
+list_json needs-input '[]'
+run_main
+ROUND1_CALLS=$(call_count)
+# Wichtig: reset_state aufrufen, um den Zustand zurückzusetzen (clear claude-calls)
+reset_state
+list_json in-progress '[]'
+list_json plan '[]'
+list_json research '[]'
+list_json ready '[{"number":101,"labels":[{"name":"ready"}]}]'
+list_json needs-input '[]'
+run_main
+ROUND2_CALLS=$(call_count)
+MAX_ROUNDS=3
+# Beide run_main-Aufrufe sollten jeweils 1 claude-Aufruf gemacht haben
+# (reset_state() zwischen ihnen sollte die claude-calls-Datei leeren)
+assert_eq "AC6: erste run_main() startet einen Lauf" "1" "$ROUND1_CALLS"
+assert_eq "AC6: zweite run_main() (nach reset_state) startet auch einen Lauf" "1" "$ROUND2_CALLS"
 
 # ==============================================================================
 echo

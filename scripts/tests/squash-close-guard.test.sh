@@ -124,7 +124,7 @@ source "$RUNNER"
 # shellcheck source=/dev/null
 source "$TEST_DIR/lib/ts-core-shims.sh"
 
-reset_state() { rm -rf "$STATE_DIR" "$GHSTATE_DIR"; mkdir -p "$STATE_DIR" "$GHSTATE_DIR"; }
+reset_state() { rm -rf "$STATE_DIR/lock.d" "$STATE_DIR" "$GHSTATE_DIR"; mkdir -p "$STATE_DIR" "$GHSTATE_DIR"; }
 
 assert_eq() {
   if [ "$2" = "$3" ]; then ok "$1"; else red "$1 (erwartet '$2', bekommen '$3')"; fi
