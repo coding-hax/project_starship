@@ -308,6 +308,40 @@ ensure_worktree() {   # $1 = Ticketnummer -> Worktree-Pfad auf stdout
   printf '%s' "$wt"
 }
 
+# #325: Read-only-Laeufe (plan/research) bekommen wie Bau-Laeufe einen
+# eigenen Worktree als cwd -- statt im geteilten Haupt-Checkout zu lesen.
+# Anders als ensure_worktree() ist das hier ein WEGWERF-Worktree: immer
+# frisch ab origin/main, nie wiederverwendet. Das loest nebenbei einen
+# veralteten oder auf der falschen Branch stehenden Haupt-Checkout (siehe
+# Ticket-Diskussion #325) und macht den Haupt-Checkout fuer JEDE Rolle
+# unveraendert -- das alte Read-only-Netz in round.ts wird damit zum reinen
+# Zusatz-Tripwire statt Primaerschutz. Pfad bleibt stabil je Ticket
+# (readonly-<nr>), damit --resume dieselbe Session wiederfindet, auch wenn
+# der Worktree zwischen zwei Laeufen jedes Mal neu angelegt wird.
+readonly_worktree() {   # $1 = Ticketnummer -> Wegwerf-Worktree-Pfad auf stdout
+  local nr="$1"
+  local wt="$WORKTREE_BASE/readonly-$nr"
+  mkdir -p "$WORKTREE_BASE"
+
+  # Rest eines abgebrochenen Laufs zuerst wegwerfen -- ein Wegwerf-Worktree
+  # ist nie eine Wiederverwendung, sondern startet jedes Mal frisch.
+  if git -C "$REPO_DIR" worktree list --porcelain 2>/dev/null | grep -qF "worktree $wt"; then
+    git -C "$REPO_DIR" worktree remove --force "$wt" >/dev/null 2>&1
+  fi
+  if [ -e "$wt" ]; then
+    rm -rf "$wt"
+    git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
+  fi
+
+  git -C "$REPO_DIR" fetch origin main >&2 || return 1
+  git -C "$REPO_DIR" worktree add --detach "$wt" origin/main >&2 || return 1
+
+  # Kein bootstrap_worktree(): Lese-Rollen lint/typecheck/bauen nicht, nur
+  # Read/Grep/Glob/`gh`/`git log|diff|show` -- kein node_modules noetig.
+  [ -d "$wt" ] || { echo "Wegwerf-Worktree-Anlage fuer $wt fehlgeschlagen." >&2; return 1; }
+  printf '%s' "$wt"
+}
+
 # --- Eine Runde --------------------------------------------------------------
 # Drei Aufrufe in den TS-Kern, dazwischen genau ein `claude`-Lauf:
 #   round-plan   -> Wächter, Ticketwahl, CI-Wache, Modell, Deckel, Prompt
@@ -350,30 +384,43 @@ run_round() {
     return "$(printf '%s' "$plan" | jq -r '.rc // 0')"
   fi
 
-  local model tools resume role issue run_cwd
+  local model tools resume role issue run_cwd denyTools
   model=$(printf '%s' "$plan" | jq -r '.model')
   tools=$(printf '%s' "$plan" | jq -r '.tools')
   resume=$(printf '%s' "$plan" | jq -r '.resume')
   role=$(printf '%s' "$plan" | jq -r '.role')
   issue=$(printf '%s' "$plan" | jq -r '.issue')
+  denyTools=$(printf '%s' "$plan" | jq -r '.denyTools')
 
-  # Nur ein Bau-Lauf bekommt einen Worktree (#242) -- Planer/Rechercheur
-  # laufen read-only und duerfen im Haupt-Checkout lesen. Scheitert die
-  # Anlage/Wiederverwendung, bricht die Runde ab statt in den Haupt-Checkout
+  # Jede Rolle bekommt einen eigenen Worktree als cwd, nie den geteilten
+  # Haupt-Checkout: Bau (#242) einen wiederverwendeten je Ticket, Lese-Rollen
+  # (#325) einen Wegwerf-Worktree frisch ab origin/main. Scheitert Anlage/
+  # Wiederverwendung, bricht die Runde ab statt in den Haupt-Checkout
   # auszuweichen (AK4).
   run_cwd="$REPO_DIR"
-  if [ "$role" = "build" ] && worktrees_enabled; then
-    if ! run_cwd=$(ensure_worktree "$issue"); then
-      status "Worktree-Fehler · #$issue" "🔴" \
-        "🔴 Worktree für #$issue konnte nicht angelegt oder wiederverwendet werden -- kein Bau-Lauf gestartet. Details im Runner-Log."
-      CHAIN_STATUS=stop
-      return 1
+  if worktrees_enabled; then
+    if [ "$role" = "build" ]; then
+      if ! run_cwd=$(ensure_worktree "$issue"); then
+        status "Worktree-Fehler · #$issue" "🔴" \
+          "🔴 Worktree für #$issue konnte nicht angelegt oder wiederverwendet werden -- kein Bau-Lauf gestartet. Details im Runner-Log."
+        CHAIN_STATUS=stop
+        return 1
+      fi
+    else
+      if ! run_cwd=$(readonly_worktree "$issue"); then
+        status "Worktree-Fehler · #$issue" "🔴" \
+          "🔴 Wegwerf-Worktree für #$issue konnte nicht angelegt werden -- kein Lese-Lauf gestartet. Details im Runner-Log."
+        CHAIN_STATUS=stop
+        return 1
+      fi
     fi
   fi
 
   # Welches Modell erlaubt ist, hat round-plan entschieden (ADR-0005/0007);
-  # hier wird es nur durchgereicht.
+  # hier wird es nur durchgereicht. O3 (#325): denyTools ist die harte
+  # Zusatzgrenze neben der Allowlist, nur fuer Lese-Rollen gesetzt.
   local -a args=(-p --output-format json --model "$model" --allowedTools "$tools")
+  [ -n "$denyTools" ] && [ "$denyTools" != "null" ] && args+=(--disallowedTools "$denyTools")
   [ -n "$resume" ] && [ "$resume" != "null" ] && args+=(--resume "$resume")
 
   # Der Prompt kommt aus dem TS-Kern über stdout und wird hier gepipet, nicht
@@ -386,6 +433,15 @@ run_round() {
   rc=${PIPESTATUS[1]}
 
   stop_fleet_publisher
+
+  # Wegwerf-Worktree (#325) sofort nach dem Lauf entfernen -- ersetzt das
+  # alte pauschale Aufraeumen im Read-only-Netz. round-eval prueft danach den
+  # HAUPT-Checkout ($REPO_DIR), nicht diesen Worktree -- Reihenfolge zur
+  # Notbremse unten unkritisch.
+  if [ "$role" != "build" ] && [ "$run_cwd" != "$REPO_DIR" ]; then
+    git -C "$REPO_DIR" worktree remove --force "$run_cwd" >/dev/null 2>&1 \
+      || { rm -rf "$run_cwd"; git -C "$REPO_DIR" worktree prune >/dev/null 2>&1; }
+  fi
 
   timed=0
   if [ -f "$TIMED_OUT" ]; then timed=1; rm -f "$TIMED_OUT"; fi
@@ -444,6 +500,21 @@ if worktrees_enabled; then
           rm -rf "$wt"
           git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
         fi
+      fi
+    done
+  fi
+
+  # #325: ein noch liegender Wegwerf-Worktree (readonly-*) ist IMMER ein
+  # Absturz-Rest, nie ein aktiver Lauf -- run_round() entfernt ihn direkt nach
+  # jedem Lese-Lauf, ein noch existierender kann also nur von einem
+  # abgebrochenen Tick stammen. Deshalb bedingungslos weg, anders als bei
+  # issue-* oben (kein Zustand zu pruefen).
+  if [ -d "$WORKTREE_BASE" ]; then
+    for wt in "$WORKTREE_BASE"/readonly-*; do
+      [ -d "$wt" ] || continue
+      if ! git -C "$REPO_DIR" worktree remove --force "$wt" >/dev/null 2>&1; then
+        rm -rf "$wt"
+        git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
       fi
     done
   fi

@@ -95,3 +95,42 @@ abzuwarten — und eine Denk-Rolle umgekehrt auf Sonnet herunterziehen.
 Der Kern dieses ADR bleibt: der **Runner** schaltet nie von sich aus auf Opus
 hoch, außer über die Eskalation. Was sich ändert, ist nur, dass der Mensch die
 Stufe vorgeben darf.
+
+## Nachtrag 29.07.2026 — Read-only-Netz wird Tripwire, Isolation über Wegwerf-Worktree (#325)
+
+Der Abschnitt „Read-only-Netz als zweite Absicherung" oben beschrieb ein
+detektivisches Netz, das den Arbeitsbaum nach dem Lauf gegen *leer* verglich
+und bei jedem Fund den gesamten Haupt-Checkout mit `git checkout -- .` +
+`git clean -fd` zurücksetzte. Zwei Mängel zeigten sich in der Praxis
+(#301, #322, #326-Umfeld):
+
+- **Der Vergleich gegen leer trifft auch fremden, schon vorher vorhandenen
+  Dirt** (z. B. gestagte Arbeit eines parallelen Bau-Laufs im selben Slot-
+  Checkout) — jeder Lese-Lauf in einem ohnehin schmutzigen Slot war verurteilt,
+  fälschlich als Regelverstoß zu enden.
+- **Der Index wurde vom Aufräumen nie erreicht:** `checkout -- .` stellt den
+  Arbeitsbaum aus dem Index wieder her, `clean -fd` fasst nur unversionierte
+  Dateien an — gestagte Änderungen (`git status --porcelain`, Spalte 1)
+  überleben beide unangetastet. Ein Slot mit schmutzigem Index konnte das Netz
+  damit *nie* auflösen, ein selbsterhaltender Fehlalarm-Kreislauf.
+
+**Entscheidung:** Lese-Rollen (`plan`/`research`) laufen jetzt wie Bau-Läufe
+in einem eigenen Worktree — einem **Wegwerf**-Worktree (`readonly_worktree()`
+in `scripts/claude-runner.sh`), frisch ab `origin/main` angelegt und direkt
+nach dem Lauf wieder entfernt, nie wiederverwendet. Das löst nebenbei auch
+einen veralteten oder auf der falschen Branch stehenden Haupt-Checkout, den
+ein Lese-Lauf sonst gelesen hätte. Der geteilte Haupt-Checkout wird damit von
+**keiner** Rolle mehr verändert — AK1 gilt *by construction*, nicht mehr nur
+über ein Aufräum-Netz danach.
+
+Das alte pauschale `checkout -- .` + `clean -fd` entfällt. An seine Stelle
+tritt ein reiner **Tripwire**: `roundPlan()` merkt sich vor dem Lauf einen
+`git status --porcelain`-Schnappschuss (`beforeDirty`, enthält den Index),
+`roundEval()` vergleicht danach nur die **neuen** Zeilen gegen diesen
+Schnappschuss. Nur bei neuen Zeilen wird der Lauf angeklagt (Kommentar,
+`needs-answer`) — **ohne** etwas zurückzusetzen, weder Arbeitsbaum noch Index.
+Das Wegwerfen des Worktrees ist die Bereinigung; das Netz meldet nur noch.
+
+Zusätzlich (O3): Lese-Rollen bekommen `--disallowedTools "Edit,Write"` als
+harte Zusatzgrenze neben der bestehenden Allowlist (`READONLY_DENY` in
+`scripts/runner/prompts.ts`).
