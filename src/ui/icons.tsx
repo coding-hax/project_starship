@@ -144,9 +144,12 @@ export function IconWeatherSnow({ className }: IconProps) {
 }
 
 export function IconWeatherThunderstorm({ className }: IconProps) {
+  // Wolken-Unterkante bei 13 (wie IconWeatherRain), nicht höher: die Schablone ist
+  // ~11,9 Einheiten hoch, bei 11 ragt die Oberkante über die viewBox hinaus und
+  // wird abgeschnitten (issue #330).
   return (
     <svg {...svgProps} className={className}>
-      <path d="M6.5 11h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 11z" />
+      <path d="M6.5 13h11a4 4 0 0 0 .4-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 6.5 13z" />
       <path d="M13 14l-3 4.5h3L11 22" />
     </svg>
   );
