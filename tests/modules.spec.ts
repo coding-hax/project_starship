@@ -54,6 +54,12 @@ test('core-Module (Übersicht, Einstellungen) haben keinen Schalter, Einstellung
   await expect(
     page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }),
   ).toBeVisible();
+
+  // Der Einstellungen-Einstieg selbst lebt in AppHeader, nicht in der Nav (issue #126):
+  // `chrome` ist ab 768px in der Shell sichtbar, `inline` nur auf /uebersicht mobil.
+  // Auf /einstellungen ist auf Mobile design-bedingt keiner der beiden sichtbar — die
+  // Erreichbarkeit prüft sich von dort, wo der Einstieg tatsächlich lebt.
+  await page.goto('/uebersicht');
   await expect(page.getByRole('link', { name: 'Einstellungen' })).toBeVisible();
 });
 
