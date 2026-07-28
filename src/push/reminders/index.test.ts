@@ -12,9 +12,12 @@ const insertValuesMock = vi.fn((row: { kind: string; sendDate: string; slot: str
   };
 });
 
+let prefRows: Array<{ kind: string; enabled: boolean; times: string[] }> = [];
+
 vi.mock('@/db', () => ({
   db: {
     insert: () => ({ values: (row: { kind: string; sendDate: string; slot: string }) => insertValuesMock(row) }),
+    select: () => ({ from: () => ({ where: () => Promise.resolve(prefRows) }) }),
   },
 }));
 
@@ -43,6 +46,7 @@ describe('sendDueReminders', () => {
     claimedSlots.clear();
     insertValuesMock.mockClear();
     sendPushToAllMock.mockClear();
+    prefRows = [];
   });
 
   it('sends a due reminder and claims its slot', async () => {
@@ -73,5 +77,45 @@ describe('sendDueReminders', () => {
     // proof that the null build never claimed the slot for good.
     const second = await sendDueReminders(AT_0800_BERLIN, [kind()]);
     expect(second).toEqual({ sent: ['test-kind'], skipped: [] });
+  });
+
+  // 09:00 Berlin (CEST, UTC+2) — one hour past AT_0800_BERLIN, used for the
+  // times-override case below.
+  const AT_0900_BERLIN = new Date(Date.UTC(2026, 6, 15, 7, 0));
+
+  describe('reminder_prefs overrides (issue #244)', () => {
+    it('no pref for the kind: sends at the registry default time', async () => {
+      const result = await sendDueReminders(AT_0800_BERLIN, [kind()]);
+
+      expect(result).toEqual({ sent: ['test-kind'], skipped: [] });
+    });
+
+    it('enabled: false — no slot at all, even past the registry default time', async () => {
+      prefRows = [{ kind: 'test-kind', enabled: false, times: ['07:00'] }];
+
+      const result = await sendDueReminders(AT_0800_BERLIN, [kind()]);
+
+      expect(result).toEqual({ sent: [], skipped: [] });
+      expect(sendPushToAllMock).not.toHaveBeenCalled();
+    });
+
+    it('times override: fires at the overridden time, not the registry default', async () => {
+      prefRows = [{ kind: 'test-kind', enabled: true, times: ['09:00'] }];
+
+      const before = await sendDueReminders(AT_0800_BERLIN, [kind()]);
+      expect(before).toEqual({ sent: [], skipped: [] });
+
+      const after = await sendDueReminders(AT_0900_BERLIN, [kind()]);
+      expect(after).toEqual({ sent: ['test-kind'], skipped: [] });
+    });
+
+    it('empty times override: nothing sends, the registry default does not come back', async () => {
+      prefRows = [{ kind: 'test-kind', enabled: true, times: [] }];
+
+      const result = await sendDueReminders(AT_0800_BERLIN, [kind()]);
+
+      expect(result).toEqual({ sent: [], skipped: [] });
+      expect(sendPushToAllMock).not.toHaveBeenCalled();
+    });
   });
 });
