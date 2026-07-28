@@ -61,6 +61,7 @@ jobs:
       - run: bash scripts/tests/dexie-bump.test.sh
       - run: bash scripts/tests/runner-ts.test.sh
       - run: bash scripts/tests/worktree.test.sh
+      - run: bash scripts/tests/gen-slot-plists.test.sh
       # Die Parity-Suiten S2-S5 sind mit #203 (S6) entfallen: sie verglichen den
       # TS-Kern gegen den Bash-Pfad, den diese Stufe entfernt hat. Ohne
       # Vergleichslaeufer waren beide Seiten identisch leer -- gruen, aber ohne

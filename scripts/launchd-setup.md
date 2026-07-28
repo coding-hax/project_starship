@@ -248,6 +248,63 @@ gh api rate_limit | jq '.rate'
 Der zweite Nebeneffekt: der Shim macht bei jedem Tick ein `git fetch origin main` —
 das sind jetzt 60 statt 12 Fetches pro Stunde.
 
+## Mehrere Slots (#204)
+
+Ein Slot ist eine eigene launchd-Instanz + ein eigener Arbeitsbaum + ein eigenes
+`.runner/`. `SLOT_ID` ist die einzige Variable, die einen Slot vom nächsten
+unterscheidet — Ports und der Zustandsordner leiten sich rechnerisch daraus ab
+(`scripts/claude-runner.sh`, `tests/run-lock.ts`). Betriebswert ist **3**,
+harter Deckel im Code ist **10** (Vertipper-Schutz, AK8). Architektur und
+Begründung: `docs/adr/0014-mehrere-runner-slots.md`.
+
+**1. Slot 2..N klonen.** Slot 1 bleibt der vorhandene Checkout (`$REPO_DIR`),
+kein neuer Clone nötig.
+
+```bash
+git clone https://github.com/coding-hax/project_starship.git ~/dev/starship-slot-2
+cd ~/dev/starship-slot-2 && pnpm install
+cp ~/dev/project_starship/.env.local .env.local   # danach DATABASE_URL unten anpassen
+createdb -O starship starship_slot_2              # -O ist Pflicht, sonst Rechtefehler in der Migration
+pnpm db:migrate
+```
+
+Wiederholen für jeden weiteren Slot (`starship-slot-3`, `starship_slot_3`, …).
+
+**2. Plists erzeugen.** `scripts/gen-slot-plists.sh` schreibt nur Dateien —
+er lädt oder installiert nichts von selbst, genau wie der Shim-Install oben
+von Hand bleibt:
+
+```bash
+SLOT_COUNT=3 STATUS_ISSUE=1 scripts/gen-slot-plists.sh /tmp/starship-plists
+cp /tmp/starship-plists/de.starship.runner.slot-*.plist ~/Library/LaunchAgents/
+```
+
+`STATUS_ISSUE` ist bei mehreren Slots **ein einziges** Issue für die ganze
+Flotte (Frage 4/6, aggregierter Status vom jeweils effektiven Leitslot) — nicht
+mehr eins je Slot. Vorhandene Env-Variablen aus dem alten Ein-Slot-Setup
+(`SLOT_ID` etc.) überschreibt der Generator nicht von selbst; lädst du eine
+alte `de.starship.runner.plist` (ohne Slot-Suffix) parallel, laufen zwei
+Instanzen gegen denselben Arbeitsbaum — die vorher entladen (`launchctl
+unload ~/Library/LaunchAgents/de.starship.runner.plist`).
+
+**3. Laden.**
+
+```bash
+for f in ~/Library/LaunchAgents/de.starship.runner.slot-*.plist; do
+  launchctl load "$f"
+done
+launchctl list | grep starship          # laufen alle drei?
+```
+
+**Rückweg:** `launchctl unload` jeder Slot-plist, dann `rm -rf
+~/dev/starship-slot-2 ~/dev/starship-slot-3 ~/.starship-runner`. `SLOT_ID=1`
+allein verhält sich exakt wie vor #204 (AK9) — der Rückweg braucht keinen
+Code-Änderung, nur weniger geladene plists.
+
+**Platte im Blick behalten:** jeder zusätzliche Clone bringt `node_modules`
+(~570 MB) und `.next` (~275 MB) mit. Bei knappem Rest zuerst den `.next`-Cache
+ruhender Slots löschen, nicht gleich einen Slot abschalten.
+
 ## Aktivieren
 
 ```bash
