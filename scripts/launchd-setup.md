@@ -1,9 +1,9 @@
 # Runner als Dienst einrichten (macOS / launchd)
 
-Der Runner ist zustandslos: er schaut alle 5 Minuten nach, ob es Arbeit gibt,
+Der Runner ist zustandslos: er schaut alle 60 Sekunden nach, ob es Arbeit gibt,
 und beendet sich sofort wieder. Nichts hängt, nichts läuft dauerhaft. Innerhalb
 eines Takts kettet er bis zu 3 Tickets hintereinander (Ticket-Chaining, #61) --
-der 5-Minuten-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
+der 60-Sekunden-Takt bestimmt nur, wie lange es dauert, bis eine leere Queue oder
 eine offene Frage bemerkt wird.
 
 > **Linux?** Dann gilt `systemd-setup.md`. Diese Datei ist das macOS-Gegenstück —
@@ -185,9 +185,9 @@ Ohne sie schreibt der Runner keinen Status — er läuft trotzdem.
     <string>/Users/max</string>
   </dict>
 
-  <!-- Alle 5 Minuten (#61). -->
+  <!-- Alle 60 Sekunden (#61). -->
   <key>StartInterval</key>
-  <integer>300</integer>
+  <integer>60</integer>
 
   <!-- Nicht sofort beim Laden loslaufen — sonst startet ein Agent in dem Moment,
        in dem du den Timer aktivierst. -->
@@ -206,14 +206,14 @@ Ohne sie schreibt der Runner keinen Status — er läuft trotzdem.
 Ohne ihn findet das Skript weder `gh` noch `claude` und bricht bei jedem Lauf ab.
 Prüf den echten Pfad mit `which claude gh jq node` und trag die Verzeichnisse ein.
 
-**#61 (Ticket-Chaining + 5-Minuten-Takt):** Diese Datei liegt im Repo, die echte
+**#61 (Ticket-Chaining + 60-Sekunden-Takt):** Diese Datei liegt im Repo, die echte
 `~/Library/LaunchAgents/de.starship.runner.plist` **nicht** — ein PR kann sie nicht
-ändern. Trag `StartInterval` dort von Hand auf `300` ein (siehe oben) und lade neu
-(nächster Absatz). Ohne diesen Handgriff bleibt der Takt bei 20 Minuten; das
-Chaining selbst (`MAX_ROUNDS`/`TICK_BUDGET` in `scripts/claude-runner.sh`, Default
-3 Runden bzw. `MAX_RUNTIME`) wirkt dagegen sofort mit dem nächsten Lauf, unabhängig
-von der plist. Beide Werte lassen sich optional unter `EnvironmentVariables`
-überschreiben — der Default reicht normalerweise.
+ändern. Trag `StartInterval` dort von Hand auf `60` ein (siehe oben) und lade neu
+(nächster Absatz). Der 60-Sekunden-Takt bestimmt, wie schnell der Runner auf neue
+Arbeit oder beantwortete Fragen reagiert. Das Chaining selbst (`MAX_ROUNDS`/`TICK_BUDGET`
+in `scripts/claude-runner.sh`, Default 3 Runden bzw. `MAX_RUNTIME`) wirkt sofort mit
+dem nächsten Lauf, unabhängig von der plist. Beide Werte lassen sich optional unter
+`EnvironmentVariables` überschreiben — der Default reicht normalerweise.
 
 **Nach jeder Änderung an der plist neu laden.** launchd hält die alte Fassung im
 Speicher; ein bloßes Speichern der Datei ändert nichts:
@@ -223,6 +223,30 @@ launchctl unload ~/Library/LaunchAgents/de.starship.runner.plist
 launchctl load   ~/Library/LaunchAgents/de.starship.runner.plist
 launchctl list de.starship.runner | grep -A3 ProgramArguments   # zeigt, was WIRKLICH läuft
 ```
+
+## gh CLI API-Limit und Skalierung
+
+Der Runner benutzt die GitHub CLI (`gh`) für API-Aufrufe. Das gh-Limit liegt bei
+**5000 Calls pro Stunde**. Ein typischer Lauf kostet ~10–20 API-Calls:
+
+| Takt | Slots | Calls/h |
+| --- | --- | --- |
+| 300 s (5 min) | 1 | ~120–240 |
+| 60 s | 1 | ~600–1200 |
+| 60 s | 3 (#204) | ~1800–3600 |
+
+Für einen Slot (Standard) ist 60 Sekunden unbedenklich. **Sobald #204 mit mehreren
+Slots läuft** (parallele Läufe), **muss der Takt auf 120–300 Sekunden zurück**,
+sonst rückt das Limit in Reichweite.
+
+Prüf dein aktuelles Limit mit:
+
+```bash
+gh api rate_limit | jq '.rate'
+```
+
+Der zweite Nebeneffekt: der Shim macht bei jedem Tick ein `git fetch origin main` —
+das sind jetzt 60 statt 12 Fetches pro Stunde.
 
 ## Aktivieren
 
@@ -260,8 +284,8 @@ Die CLI formatiert ihn in zwei Formen:
 | Reset | Meldung | Verhalten |
 |---|---|---|
 | ≤ 24 h (Session-Limit) | `resets 9pm` | pausiert bis 21:01 |
-| > 24 h (Wochenlimit) | `resets Jul 17, 5:09pm` | schläft bis Freitag — **kein** 5-Minuten-Takt |
-| nicht lesbar | — | fällt auf den 5-Minuten-Takt zurück |
+| > 24 h (Wochenlimit) | `resets Jul 17, 5:09pm` | schläft bis Freitag — **kein** 60-Sekunden-Takt |
+| nicht lesbar | — | fällt auf den 60-Sekunden-Takt zurück |
 
 Der Zeitpunkt steht in `.runner/limit-until` (Unix-Zeit). **Ein Fehlparsen darf den
 Runner nie stilllegen**, deshalb wird eine unplausible Zeit verworfen statt geglaubt —
