@@ -98,3 +98,18 @@ h2 {
 h3 {
   margin-block: var(--space-4) var(--space-2);
 }
+
+/*
+ * Flash-free route guard (issue #309): the root layout's inline bootstrap script sets
+ * `data-modules-off` on <html> before first paint, from the same `starship:modules-off`
+ * localStorage key `use-modules.ts` reads. Hiding the matching `[data-module]` page
+ * wrapper here means an off module's route is already invisible in the very first
+ * frame — well before `module-route-guard.tsx` mounts and redirects.
+ */
+html[data-modules-off~='aufgaben'] [data-module='aufgaben'],
+html[data-modules-off~='gewohnheiten'] [data-module='gewohnheiten'],
+html[data-modules-off~='kalender'] [data-module='kalender'],
+html[data-modules-off~='journal'] [data-module='journal'],
+html[data-modules-off~='aktivitaeten'] [data-module='aktivitaeten'] {
+  display: none;
+}

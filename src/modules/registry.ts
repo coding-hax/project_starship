@@ -32,14 +32,18 @@ export interface ModuleDefinition {
   OverviewSection?: ComponentType;
   /** Rendered on /einstellungen when the module is active (issue #308). */
   SettingsPanel?: ComponentType;
+  /** Path prefixes owned by this module — `module-route-guard.tsx` redirects a direct
+   * call to any of these to /uebersicht while the module is off (issue #309, T3). Only
+   * set for modules with a dedicated top-level route. */
+  routes?: string[];
 }
 
 /**
  * Single source per module (ADR-0012, issue #307): `nav-items.ts` derives `NAV_ITEMS`
  * from this, `use-modules.ts` drives the on/off state, `module-panel.tsx` renders one
  * row per non-core entry, `OverviewSection`/`SettingsPanel` gate the matching section
- * on /uebersicht resp. /einstellungen (issue #308). `routes` for entries not yet part
- * of the nav follows in T3 (#216).
+ * on /uebersicht resp. /einstellungen (issue #308). `routes` gates direct navigation
+ * to an off module's dedicated page via `module-route-guard.tsx` (issue #309).
  */
 export const MODULES: readonly ModuleDefinition[] = [
   {
@@ -55,6 +59,7 @@ export const MODULES: readonly ModuleDefinition[] = [
     navItem: { id: 'aufgaben', href: '/aufgaben', label: 'Aufgaben', accent: 'var(--area-tasks)', Icon: IconTasks },
     OverviewSection: TasksOverviewSection,
     SettingsPanel: CapturePanel,
+    routes: ['/aufgaben'],
   },
   {
     id: 'gewohnheiten',
@@ -68,6 +73,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       Icon: IconHabits,
     },
     OverviewSection: HabitsOverviewSection,
+    routes: ['/gewohnheiten'],
   },
   {
     id: 'kalender',
@@ -80,6 +86,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       accent: 'var(--area-events)',
       Icon: IconCalendar,
     },
+    routes: ['/kalender'],
   },
   {
     id: 'journal',
@@ -92,6 +99,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       accent: 'var(--area-journal)',
       Icon: IconJournal,
     },
+    routes: ['/journal'],
   },
   {
     id: 'aktivitaeten',
@@ -105,6 +113,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       Icon: IconActivity,
     },
     OverviewSection: ActivityMonthStrip,
+    routes: ['/aktivitaeten'],
   },
   { id: 'wetter', label: 'Wetter', core: false, OverviewSection: WeatherForecast, SettingsPanel: WeatherPanel },
   { id: 'export', label: 'Export', core: false, SettingsPanel: ExportPanel },

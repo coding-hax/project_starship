@@ -5,10 +5,10 @@ export const metadata = { title: 'Gewohnheiten verwalten · Starship' };
 
 export default function GewohnheitenPage() {
   return (
-    <>
+    <div data-module="gewohnheiten">
       <h1>Gewohnheiten verwalten</h1>
       <HabitList />
       <AddHabitFab />
-    </>
+    </div>
   );
 }

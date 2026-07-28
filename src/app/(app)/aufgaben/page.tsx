@@ -5,10 +5,10 @@ export const metadata = { title: 'Aufgaben · Starship' };
 
 export default function AufgabenPage() {
   return (
-    <>
+    <div data-module="aufgaben">
       <h1>Aufgaben</h1>
       <TaskList />
       <QuickAddTask />
-    </>
+    </div>
   );
 }
