@@ -1,0 +1,22 @@
+{
+  "_note": "Fester Testvektor fuer AC5 (issue #337). Erzeugt einmalig per kleinem Node-Snippet gegen src/crypto/envelope.ts + journal.ts, dann hier eingecheckt -- der Test liest nur, generiert nie neu. Passphrase ist kein echtes Secret (Regel 10), nur fuer diesen Testvektor bestimmt.",
+  "envelope": {
+    "v": 1,
+    "kdfParams": {
+      "name": "PBKDF2",
+      "hash": "SHA-256",
+      "iterations": 600000,
+      "salt": "1Jc48KzkSpf8TbNXy/rXtQ=="
+    },
+    "wrappedDek": "PfI1Zszs2ixxaDwyOjROl5jaAfxYG308hBxde2COdtZwJLC6/lCwazX5f4nwg0c1",
+    "nonce": "8dC3XJZv4LFwKvX8"
+  },
+  "passphrase": "test-passphrase-fixture-only-337",
+  "ciphertext": "AQ4FbxLoYYRUuA8T9LDZ/T7QzUDuH8COZ6b60m3LZ8dUUcW5HKvgJ1dYI6ACgMVzpFiG6BCQyAxc+jkZc5fAG2onSdLxA1UbPZgeyfddG7QibUUgtuZwu8UliCRR9LS5AhPqnxLsXncaBNYAqeuyjZzb5JjTSyxgRX5qOUYVNRxaE0pfsgnekPoUBQ3x",
+  "nonce": "0VCW0vL5UbMSmFk7",
+  "plaintext": {
+    "text": "Fester Testvektor fuer AC5 -- niemals aendern, sonst brechen alte Huellen.",
+    "mood": "ruhig",
+    "tags": ["fixture", "ac5"]
+  }
+}
