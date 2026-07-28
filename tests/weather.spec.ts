@@ -128,6 +128,30 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: Gewitter-Icon wird oben nicht abgeschnitten (issue #330)               */
+/* -------------------------------------------------------------------------- */
+
+test('Gewitter-Wolke wird oben nicht abgeschnitten (issue #330)', async ({ page }) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const gewitterCloud = weatherDays(page)
+    .filter({ has: page.locator('[aria-label="Gewitter"]') })
+    .locator('.weather-forecast__icon svg path')
+    .first();
+  await expect(gewitterCloud).toBeVisible();
+
+  const box = await gewitterCloud.evaluate((el) => {
+    const b = (el as SVGGraphicsElement).getBBox();
+    return { y: b.y, bottom: b.y + b.height };
+  });
+  // Oberkante innerhalb der viewBox (vorher ca. -0,9 -> abgeschnitten), Unterkante drin.
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.bottom).toBeLessThanOrEqual(24);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Wochenende bekommt einen kräftigeren Rahmen, Spaltenbreite bleibt gleich */
 /* -------------------------------------------------------------------------- */
 
