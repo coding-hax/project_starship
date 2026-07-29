@@ -259,7 +259,7 @@ async function setUpEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<
 async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<void> {
   await page.locator('.journal-gate[data-state="locked"]').waitFor();
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
-  await page.getByRole('button', { name: 'Entsperren' }).click();
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 

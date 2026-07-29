@@ -67,14 +67,14 @@ test('richtige Passphrase entsperrt, falsche zeigt eine ruhige Meldung ohne Abst
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 
   await page.getByLabel('Passphrase', { exact: true }).fill(WRONG_PASSPHRASE);
-  await page.getByRole('button', { name: 'Entsperren' }).click();
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
 
   const message = page.getByRole('status');
   await expect(message).toBeVisible();
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
-  await page.getByRole('button', { name: 'Entsperren' }).click();
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
 
