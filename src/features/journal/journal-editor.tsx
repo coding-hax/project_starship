@@ -76,18 +76,24 @@ export function JournalEditor() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmedText = text.trim();
     const tags = parseTags(tagsInput);
-    if (!text.trim() && mood === null && tags.length === 0) return;
+    const submittedMood = mood;
+    if (!trimmedText && submittedMood === null && tags.length === 0) return;
 
-    await appendJournalEntry(entryDate, {
-      text: text.trim(),
-      mood: mood === null ? undefined : String(mood),
-      tags,
-    });
-
+    // Clear synchronously, before awaiting the write (AC2: "Nach dem Absenden
+    // ist das Feld leer"). Clearing only after the await resolved raced any
+    // typing that happened in the meantime — a fast second submit could get
+    // its just-typed text wiped by this submit's delayed clear.
     setMood(null);
     setText('');
     setTagsInput('');
+
+    await appendJournalEntry(entryDate, {
+      text: trimmedText,
+      mood: submittedMood === null ? undefined : String(submittedMood),
+      tags,
+    });
   }
 
   async function handleDelete(id: string) {

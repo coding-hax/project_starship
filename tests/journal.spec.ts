@@ -299,15 +299,16 @@ test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Abse
   page,
 }) => {
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
 
   await page.getByRole('button', { name: '8', exact: true }).click();
   // Kein Debounce mehr (ADR-0018) — ein Mood-Tap ruft nur setMood(), kein async
-  // Schreibpfad, die DB-Prüfung braucht also keine Wartezeit.
-  expect(await entryCountInDb(entryDate)).toBe(0);
+  // Schreibpfad, die Prüfung braucht also keine Wartezeit. Lokal statt gegen
+  // Postgres geprüft (AC8 deckt den Server-Sync-Pfad separat ab) — kein
+  // window.__starship.sync() nötig, der ohnehin erst alle 30s automatisch liefe.
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
 
   await submit(page);
-  await expect.poll(() => entryCountInDb(entryDate)).toBe(1);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
 });
 
 test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mindestens 44px hoch, ohne horizontalen Scroll', async ({
@@ -399,6 +400,9 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
   await expect(entries.nth(1)).toContainText('Stimmung 5/10');
   await expect(entries.nth(1)).toContainText('arbeit, sport');
 
+  // Server-Sync ist sonst passiv (alle 30s) — explizit anstoßen, statt auf das
+  // Intervall zu warten (Muster wie jede andere withDb()-Prüfung in dieser Datei).
+  await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => entryCountInDb(entryDate)).toBe(2);
 });
 
