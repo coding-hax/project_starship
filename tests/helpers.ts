@@ -280,12 +280,20 @@ declare global {
         }>
       >;
       debugMeta: () => Promise<Array<{ key: string; value: unknown }>>;
-      journalEntryId: (entryDate: string) => Promise<string>;
       writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) => Promise<string>;
-      saveJournalEntry: (
+      appendJournalEntry: (
         entryDate: string,
         content: { text: string; mood?: string; tags?: string[] },
       ) => Promise<void>;
+      listJournalEntries: (entryDate: string) => Promise<
+        Array<{
+          id: string;
+          entryDate: string;
+          createdAt: string;
+          content: { text: string; mood?: string; tags?: string[] };
+        }>
+      >;
+      deleteJournalEntry: (id: string) => Promise<void>;
       bytesToBase64: (bytes: number[]) => string;
       debugJournalConflicts: () => Promise<
         Array<{

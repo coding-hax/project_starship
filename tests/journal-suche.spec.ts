@@ -5,6 +5,9 @@ import { registerPasskey, resetAppData } from './helpers';
  * S4 of #302 (issue #341): local full-text search over already-decrypted journal
  * entries. Owner decision "3a" in #301 — decrypt on load, scan in memory, no
  * on-disk index — drives AC2 below. Builds on the real editor (S3b, #340).
+ *
+ * issue #376/ADR-0018: a day can carry any number of entries — a result is one
+ * entry, not a day, sorted and shown with date AND time (AC6 below).
  */
 
 test.beforeEach(async () => {
@@ -31,15 +34,15 @@ async function unlockEditor(page: Page, passphrase = SEARCH_PASSPHRASE): Promise
 }
 
 /** Seeds a real, decryptable entry via the actual unlocked session's DEK (the
- * same call the editor itself makes on autosave) — several days of real content
- * for the search to find, without driving the UI for each one. */
+ * same call the editor's submit makes) — several days of real content for the
+ * search to find, without driving the UI for each one. */
 async function seedEntry(
   page: Page,
   entryDate: string,
   content: { text: string; mood?: string; tags?: string[] },
 ): Promise<void> {
   await page.evaluate(
-    ({ entryDate, content }) => window.__starship.saveJournalEntry(entryDate, content),
+    ({ entryDate, content }) => window.__starship.appendJournalEntry(entryDate, content),
     { entryDate, content },
   );
 }
@@ -55,7 +58,8 @@ test('AC1: Suchfeld findet Treffer sowohl im Text als auch in Tags', async ({ pa
 
   const results = page.locator('.journal-search__result');
   await expect(results).toHaveCount(2);
-  // Neuester Tag zuerst (search.ts) — 2026-07-11 vor 2026-07-10.
+  // Neuester Eintrag zuerst (search.ts, sortiert nach createdAt seit issue #376) —
+  // die drei Einträge wurden in dieser Reihenfolge angelegt, unabhängig von entryDate.
   await expect(results).toContainText(['Nichts Besonderes', 'Ein ruhiger Lauf am Fluss']);
 });
 
@@ -111,19 +115,37 @@ test('AC5: kein Treffer zeigt einen ruhigen Leerzustand statt einer Fehlermeldun
   await expect(page.locator('.toast--error')).toHaveCount(0);
 });
 
-test('AC6: ein Treffer führt zum Eintrag des jeweiligen Tages', async ({ page }) => {
+test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des jeweiligen Tages', async ({
+  page,
+}) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Alter Eintrag mit Stichwort', mood: '6', tags: [] });
 
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('stichwort');
-  await page.locator('.journal-search__result').first().click();
-
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('Alter Eintrag mit Stichwort');
-  await expect(page.getByRole('button', { name: '6', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
+  const result = page.locator('.journal-search__result').first();
+  // Datum UND Uhrzeit (issue #376 AC6) — ein Treffer ist ein Eintrag, kein Tag.
+  await expect(result.locator('.journal-search__result-date')).toHaveText(
+    /^01\.07\.2026, \d{2}:\d{2}$/,
   );
+  await result.click();
+
+  // Kein Autosave-Entwurffeld mehr, das befüllt würde (ADR-0018) — der Treffer
+  // wechselt den sichtbaren Tag, dessen Einträge darunter erscheinen.
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-editor__entry')).toContainText('Alter Eintrag mit Stichwort');
+  await expect(page.locator('.journal-editor__entry')).toContainText('Stimmung 6/10');
+});
+
+test('AC6: mehrere Einträge desselben Tages sind eigenständige Treffer', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-05', { text: 'Morgens ein ruhiger Lauf', tags: [] });
+  await seedEntry(page, '2026-07-05', { text: 'Abends noch ein Lauf', tags: [] });
+
+  const search = page.getByLabel('Journal durchsuchen');
+  await search.fill('lauf');
+
+  await expect(page.locator('.journal-search__result')).toHaveCount(2);
 });
 
 for (const viewport of [
