@@ -319,6 +319,23 @@ test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard
   }
 });
 
+test('die Kopfzeile sitzt dicht über der ersten Box, nicht mit großem Spalt (issue #344)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const maxMarginPx = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-2')),
+  );
+  const marginBottom = await page
+    .locator('.weather-day__topbar')
+    .evaluate((el) => parseFloat(getComputedStyle(el).marginBottom));
+  expect(marginBottom).toBeLessThanOrEqual(maxMarginPx);
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: kein eigener Netzaufruf beim Öffnen der Detailseite                    */
 /* -------------------------------------------------------------------------- */

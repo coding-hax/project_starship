@@ -31,7 +31,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-block-end: var(--space-4);
+  margin-block-end: var(--space-2);
 }
 
 .weather-day__date {

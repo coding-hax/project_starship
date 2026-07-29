@@ -36,18 +36,19 @@ src/
     sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js; push/notificationclick-Handler + E2E-Hooks (__pushTest/__lastNotificationClick unter NEXT_PUBLIC_E2E) seit issue #122; bleibt module-ahnungslos (kein localStorage im SW, ADR-0012 K1/issue #309)
     globals.css             Tailwind-Import + @theme-Mapping der Tokens; blendet seit issue #309 den `[data-module]`-Seiten-Wrapper einer Aus-Route vor der Hydration aus (`html[data-modules-off~='…']`)
   db/
-    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; `pushSubscriptions` seit issue #122, ohne syncColumns (Geräte-Infrastruktur wie sessions); garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011; `reminder_sends` (Doppelversand-Sperre, uniqueIndex kind+send_date+slot, ohne syncColumns) seit issue #239; `reminder_prefs` (synchronisiert, uniqueIndex kind, enabled/times je Erinnerungsart, leeres times ≠ keine Zeile) seit issue #244
-    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186); `reminder_prefs` schreibbar mit kind/enabled/times, required kind (issue #244)
+    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; `pushSubscriptions` seit issue #122, ohne syncColumns (Geräte-Infrastruktur wie sessions); garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011; `reminder_sends` (Doppelversand-Sperre, uniqueIndex kind+send_date+slot, ohne syncColumns) seit issue #239; `reminder_prefs` (synchronisiert, uniqueIndex kind, enabled/times je Erinnerungsart, leeres times ≠ keine Zeile) seit issue #244; `journal_entries` (entryDate Klartext + uniqueIndex, ciphertext/nonce als Base64-`text` — ADR-0004/-0017) + `journal_keys` (envelope-jsonb, `Envelope`-Typ aus src/crypto/envelope.ts nur als Typ importiert, Regel 9 — ADR-0015) seit issue #338
+    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186); `reminder_prefs` schreibbar mit kind/enabled/times, required kind (issue #244); `journal_entries` schreibbar mit entryDate/ciphertext/nonce (alle required), `journal_keys` schreibbar mit envelope (required) — kein Journal-Sonderfall, der Motor bleibt inhaltsblind (issue #338)
     sync-lock.ts            gemeinsamer pg_advisory_xact_lock für jede Sync-Schreib-Transaktion (push, garmin-sync) — verhindert sync_seq außer Reihenfolge (ADR-0008)
     index.ts                DB-Verbindung (pg-Pool, Standard-Connection-String)
     migrate.ts              wendet Migrationen an (pnpm db:migrate)
     migrations/             generierte Migrationen, nie von Hand ändern
-    migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186)
+    migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186); `0012_journal.down.sql` droppt journal_entries/journal_keys, FK-frei (issue #338)
   local/
-    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011; `reminder_prefs` + ReminderPrefData seit issue #244
-    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139); WeatherDay trägt seit #156 zusätzlich sunrise/sunset/Wind + stündliche WeatherHour[] — kein neuer db.version()-Bump, da sich nur die Objektform, nicht der Store/Index ändert (Begründung im Kommentar dort); `reminder_prefs` (issue #244) lebt wie jede Synctabelle im generischen records-Store, ebenfalls ohne Versions-Bump (Begründung im Kommentar dort)
+    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011; `reminder_prefs` + ReminderPrefData seit issue #244; `journal_entries`/`journal_keys` + JournalEntryData/JournalKeysData seit issue #338
+    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139); WeatherDay trägt seit #156 zusätzlich sunrise/sunset/Wind + stündliche WeatherHour[] — kein neuer db.version()-Bump, da sich nur die Objektform, nicht der Store/Index ändert (Begründung im Kommentar dort); `reminder_prefs` (issue #244) lebt wie jede Synctabelle im generischen records-Store, ebenfalls ohne Versions-Bump (Begründung im Kommentar dort); `journal_entries`/`journal_keys` (issue #338) ebenso im generischen records-Store, ohne Bump; `journalConflicts`-Store (issue #338, ADR-0017 Punkt 3) ist dagegen neu -> db.version(3), additiv wie der weather-Store in v2
+    uuid5.ts                journalEntryId(entryDate) — deterministische UUIDv5 (SHA-1 über festen Namespace + entryDate, WebCrypto, keine neue Dependency) fürs „ein Eintrag je Tag"-Invariante (ADR-0017, issue #338)
     outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch; mutate() wirft für eine read-only-Tabelle (ADR-0011)
-    sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq
+    sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq; pull() legt für `journal_entries` (PRESERVE_DISPLACED-Menge) die verdrängte Chiffrat-Fassung vor dem Überschreiben in `journalConflicts` ab, sobald sie sich vom ankommenden ciphertext unterscheidet — inhaltsblinder Vergleich, fängt den baseSeq-null-Concurrent-Create, den push-seitiges detectOverwrite verfehlt (ADR-0017 Punkt 3, issue #338)
     conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
     use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
     push.ts                 einzige Stelle, die gegen /api/push spricht (Guard-Ausnahme wie sync.ts): getPushState (Abo statt bloßer Browser-Erlaubnis), subscribeToPush/unsubscribeFromPush/sendTestPush (issue #122); Push-Abo bewusst nicht Outbox-geführt (Geräte-Infrastruktur, kein Domänendatum)
@@ -55,7 +56,12 @@ src/
   auth/
     session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
     webauthn.ts             Challenges, Credentials, Recovery-Code
-  crypto/                   (leer — Journal-Verschlüsselung kommt in M4)
+  crypto/                   Journal-Verschlüsselung (M4, S1 von #302, issue #337) — reine Logik, keine UI/Tabelle/Sync
+    errors.ts               WrongPassphraseError/JournalDecryptError — nie Schlüsselmaterial oder Klartext in der Message
+    base64.ts                bytesToBase64/base64ToBytes über btoa/atob, damit die Hülle JSON-serialisierbar bleibt
+    envelope.ts              KEK+Hülle (ADR-0015/-0016): deriveKek (PBKDF2 via WebCrypto) + createEnvelope/openEnvelope (DEK als AES-GCM, gewickelt vom KEK); DEK extractable nur kurz in createEnvelope zum Wickeln, openEnvelope liefert ihn stets non-extractable; DEFAULT_KDF_PARAMS 600k Iterationen SHA-256, optionaler zweiter Parameter an createEnvelope für abweichende (z. B. günstigere Test-)Parameter
+    journal.ts                encryptJournal/decryptJournal — Text+Stimmung+Tags in einem Chiffrat (ADR-0004), frisches Nonce je Aufruf; Re-Export der envelope-API, bleibt der eine Einstieg laut CODEMAP
+    __fixtures__/journal-vector.json  eingecheckter Testvektor (AC5) gegen unbemerkte Formatänderungen
   modules/
     registry.ts              MODULES + NavItem — einzige Quelle je Modul (stabile id, label, core, optional navItem/OverviewSection/SettingsPanel/routes); nav-items.ts leitet NAV_ITEMS daraus ab, use-modules.ts das Ein/Aus (ADR-0012, issue #307). `OverviewSection` (wetter/aufgaben/aktivitaeten/gewohnheiten) + `SettingsPanel` (aufgaben/wetter/export) seit issue #308 befüllt; `routes` (aufgaben/gewohnheiten/kalender/journal/aktivitaeten, je ein Pfad-Präfix) seit issue #309 befüllt, treibt `module-route-guard.tsx`
     module-sections.ts       `useActiveSections(order, pick)` — löst eine seitenfest vorgegebene `order` von Modul-Ids gegen `isActive` + das per `pick` gewählte Registry-Feld auf (issue #308); `order` bewusst nicht `MODULES`-Reihenfolge selbst, weil Übersicht (Wetter zuerst) und Einstellungen (Registry-Reihenfolge) sich unterscheiden
@@ -85,7 +91,9 @@ src/
       parse-task-input.ts     reiner Parser: Freitext -> { title, dueAt } (relative Tage, Wochentage, Datum, Uhrzeit)
       capture-confirm.tsx     Bestätigungs-Sheet für eine per Freitext erkannte Fälligkeit (issue #47 AC1)
       capture-confirm.css     Styles fürs Bestätigungs-Sheet, Summary mit tabular-nums
-    events/ journal/          (leer, ab M3/M4)
+    events/                   (leer, ab M5)
+    journal/
+      write.ts                writeJournalEntry(entryDate, encrypted) — der eine Schreibpfad (issue #338 AC5): rowId aus journalEntryId(entryDate), ciphertext/nonce via bytesToBase64, mutate() upsert; zweimal derselbe Tag trifft dieselbe Zeile. Kein Editor/UI/Decrypt (S3a)
     habits/
       use-habits.ts            Dexie-Live-Query auf `records` (table='habits'); HabitView + toHabitView (issue #102)
       use-habit-logs.ts        Dexie-Live-Query auf `records` (table='habit_logs'); HabitLogView + toHabitLogView (issue #103)
@@ -169,7 +177,7 @@ src/
     slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
     sync-boot.tsx           startet den Sync beim Mount + fragt persistenten Storage an (issue #52)
     persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
-    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182)
+    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182); journalEntryId/writeJournalEntry/bytesToBase64/debugJournalConflicts + createEnvelope/openEnvelope/encryptJournal für den echten Journal-Schreibpfad + Konflikt-Ablage, CryptoKey verlässt nie den page.evaluate-Aufruf (issue #338)
     sync-status.tsx         liveQuery über db.outbox, zeigt Toast(variant=error) sobald overSyncErrorThreshold (issue #182)
     stale.ts                isStaleWarning (8h-Schwelle) + formatStaleSince (HH:MM, lokal) -- geteilt von Wetter (#155) und Aktivitäten (#230), lag bis #230 in weather/forecast.ts
 tests/
@@ -193,7 +201,8 @@ tests/
   weather.spec.ts           Wetter auf Übersicht: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
   weather-day.spec.ts       Tagesdetailseite /wetter/<datum>: Tippen auf eine Spalte öffnet sie, Stundenverlauf/Niederschlag/Wind/Sonnenauf-und-untergang sichtbar, kein eigener Netzaufruf, offline aus der Ablage, Datum ohne Daten -> erklärender statt Fehler-Zustand, Zurück-Weg, Tap-Ziel ≥44×44, 375/1280px, Dark/reduced-motion (issue #156)
   settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
-  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186)
+  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186; journal_entries/journal_keys seit issue #338)
+  journal.spec.ts           journal_entries/journal_keys (S2 von #302, issue #338): deterministische id trifft zweimal denselben Tag (AC5); offline geschrieben -> online -> DB ohne Klartext-Fragment (AC7); zwei Geräte legen den gleichen Tag konkurrierend an -> arrival wins, verdrängte Fassung landet in journalConflicts statt verloren zu gehen (AC6, ADR-0017); ein geschriebener Record übersteht einen Dexie-Reopen (Reload), der neue journalConflicts-Store existiert danach (AC3); Migration-Down/Up in einer rückgerollten Transaktion, andere Tabellen bleiben unberührt (AC2)
   garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
   push-reminders.spec.ts    POST /api/push/reminders über die `e2e-smoke`-Art (kein echter Push-Dienst nötig — kein Abo hinterlegt, sendPushToAll läuft trotzdem real): Owner-Session-Auslöser ohne offene App sendet und sperrt reminder_sends, zweiter Auslöser am selben Tag sendet nicht erneut, ohne Session 401 (issue #239); `tasks-due` per `X-E2E-Now` auf den 07:00-Slot gepinnt: fällige Aufgabe löst aus, nichts fällig/erledigt/gelöscht löst nicht aus, überfällige zählt mit — Text/Pluralisierung bleibt Vitest-Sache (issue #241); `habits-open` per `X-E2E-Now` auf den 20:00-Slot gepinnt: offene Gewohnheit löst aus, alles abgehakt/wöchentlich diese Woche schon erledigt/archiviert lösen nicht aus — Text/Streak-Zahl bleibt Vitest-Sache (src/push/reminders/habits-open.test.ts, issue #243); `reminder_prefs` per seedReminderPref über `e2e-smoke`: enabled:false bleibt still trotz vergangener Zeit, geänderte Zeit wirkt, zwei Zeiten liefern zwei Slots/Zeilen, leere Zeiten senden nichts und lassen den Default nicht wiederkehren (issue #244); `interaction-limit` per `X-E2E-Now` auf verschiedene Abstände zum festen Ablaufdatum gepinnt: unter 30 Tagen löst aus, darüber nicht (issue #245)
   reminder-prefs.spec.ts    Panel „Benachrichtigungen" je Erinnerungsart: Öffnen schreibt keine Zeile (AC5), Ab-/Anschalten, Uhrzeit ändern, zweite Zeit hinzufügen, Zeit(en) entfernen ohne Rückkehr der Defaults (AC1-4), offline geänderte Zeit erreicht online die Datenbank (AC6), 375/1280px, Dark Mode, reduced-motion (issue #244)
@@ -268,7 +277,7 @@ docs/                       Vision, Architektur, Design, Workflow, Token-Budget,
 | den Vertrag zwischen Client und Sync-API | `src/local/types.ts`                            |
 | wer reindarf                             | `src/auth/session.ts` (`requireOwner`)          |
 | Farben, Abstände, Motion                 | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
-| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (ab M4)                 |
+| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (+ `envelope.ts`, S1 von #302) |
 | warum etwas so entschieden wurde         | `docs/adr/`                                     |
 
 ## Wichtige Invarianten
