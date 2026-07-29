@@ -44,10 +44,10 @@ if SLOT_COUNT=3 STATUS_ISSUE=42 LEAD_SLOT=1 REPO_DIR="$TMP/existing-repo" \
       || red "AC5: Slot $n zeigt nicht auf Status-Issue 42"
   done
 
-  # Ab mehr als einem Slot rueckt das gh-API-Limit in Reichweite -- 300s statt 60s.
-  grep -A1 "StartInterval" "$OUT/de.starship.runner.slot-1.plist" | grep -q "<integer>300</integer>" \
-    && ok "AC6: StartInterval steht bei SLOT_COUNT=3 auf 300s" \
-    || red "AC6: StartInterval ist nicht auf 300s hochgesetzt"
+  # Ab mehr als einem Slot rueckt das gh-API-Limit in Reichweite -- 120s statt 60s (#360).
+  grep -A1 "StartInterval" "$OUT/de.starship.runner.slot-1.plist" | grep -q "<integer>120</integer>" \
+    && ok "AC6: StartInterval steht bei SLOT_COUNT=3 auf 120s" \
+    || red "AC6: StartInterval ist nicht auf 120s hochgesetzt"
 else
   red "Generator ist mit SLOT_COUNT=3 fehlgeschlagen"
 fi
@@ -59,6 +59,21 @@ SLOT_COUNT=1 STATUS_ISSUE=1 REPO_DIR="$TMP/existing-repo" SHARED_DIR="$TMP/share
 grep -A1 "StartInterval" "$OUT1/de.starship.runner.slot-1.plist" | grep -q "<integer>60</integer>" \
   && ok "AC7: SLOT_COUNT=1 behaelt den 60s-Takt" \
   || red "AC7: SLOT_COUNT=1 aendert faelschlich den Takt"
+
+# --- AK1: START_INTERVAL ueberschreibt den Default (#360) ---
+OUT_ENV="$TMP/env-override"
+SLOT_COUNT=3 STATUS_ISSUE=1 START_INTERVAL=200 REPO_DIR="$TMP/existing-repo" SHARED_DIR="$TMP/shared" \
+  bash "$GEN" "$OUT_ENV" >/dev/null 2>&1
+grep -A1 "StartInterval" "$OUT_ENV/de.starship.runner.slot-1.plist" | grep -q "<integer>200</integer>" \
+  && ok "AK1: START_INTERVAL=200 ueberschreibt den Default" \
+  || red "AK1: START_INTERVAL-Override greift nicht"
+
+# --- AK3: Deckel gegen das gh-API-Limit -- unter 60s wird abgelehnt (#360) ---
+if SLOT_COUNT=3 STATUS_ISSUE=1 START_INTERVAL=30 bash "$GEN" "$TMP/too-fast" >/dev/null 2>&1; then
+  red "AK3: START_INTERVAL=30 haette abbrechen muessen"
+else
+  ok "AK3: START_INTERVAL=30 bricht mit Fehler ab (Deckel 60s)"
+fi
 
 # --- AK8 (wie im Runner selbst): Deckel gegen Vertipper ---
 if SLOT_COUNT=11 STATUS_ISSUE=1 bash "$GEN" "$TMP/eleven" >/dev/null 2>&1; then
