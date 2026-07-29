@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+import { bytesToBase64 } from '@/crypto/base64';
+import { createEnvelope, openEnvelope, type Envelope, type KdfParams } from '@/crypto/envelope';
+import { encryptJournal, type JournalContent } from '@/crypto/journal';
+import { writeJournalEntry } from '@/features/journal/write';
 import { db } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
+import { journalEntryId } from '@/local/uuid5';
 import { getStoragePersistenceStatus } from './persist-storage';
 
 /**
@@ -29,6 +34,28 @@ export function E2EBridge() {
         persistStatus: getStoragePersistenceStatus,
         debugRecords: () => db.records.toArray(),
         debugMeta: () => db.meta.toArray(),
+        // The real write path (AC5) plus the real conflict-copy store (AC6) — the
+        // suite drives writeJournalEntry itself rather than re-deriving row ids in
+        // the test, and reads what pull() actually stashed instead of duplicating
+        // its logic. createEnvelope/openEnvelope/encryptJournal let AC7 prove the
+        // offline row that reaches Postgres is real ciphertext, not a stand-in —
+        // the CryptoKey a call returns only ever travels to the next call inside the
+        // same page.evaluate, never back across the Node/browser boundary.
+        journalEntryId,
+        writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) =>
+          writeJournalEntry(entryDate, {
+            ciphertext: new Uint8Array(ciphertext),
+            nonce: new Uint8Array(nonce),
+          }),
+        bytesToBase64: (bytes: number[]) => bytesToBase64(new Uint8Array(bytes)),
+        debugJournalConflicts: () => db.journalConflicts.toArray(),
+        createEnvelope: (passphrase: string, kdfParamsOverride?: Omit<KdfParams, 'salt'>) =>
+          createEnvelope(passphrase, kdfParamsOverride),
+        openEnvelope: (envelope: Envelope, passphrase: string) => openEnvelope(envelope, passphrase),
+        encryptJournal: async (dek: CryptoKey, content: JournalContent) => {
+          const { ciphertext, nonce } = await encryptJournal(dek, content);
+          return { ciphertext: Array.from(ciphertext), nonce: Array.from(nonce) };
+        },
         // Wire-format corruption (a bad payload from an old client build, storage
         // damage) is not something `mutate()` can produce itself — this is the only
         // way to reproduce a poison mutation for the #182 tests.

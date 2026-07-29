@@ -11,6 +11,8 @@ export const SYNC_TABLES = [
   'habit_logs',
   'garmin_activities',
   'reminder_prefs',
+  'journal_entries',
+  'journal_keys',
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
@@ -73,6 +75,27 @@ export interface ReminderPrefData {
   kind: string;
   enabled: boolean;
   times: string[];
+}
+
+/**
+ * Same as `HabitData`, for `journal_entries` (issue #338). `ciphertext`/`nonce` are
+ * Base64 (src/crypto/base64.ts) — the wire format is JSON, this is opaque text to
+ * the sync engine either way. `entryDate` is `YYYY-MM-DD`, like `HabitLogData.logDate`.
+ */
+export interface JournalEntryData {
+  entryDate: string;
+  ciphertext: string;
+  nonce: string;
+}
+
+/**
+ * Same as `HabitData`, for `journal_keys` (issue #338, ADR-0015). `envelope` carries
+ * the `Envelope` shape from src/crypto/envelope.ts (kdfParams/wrappedDek/nonce) —
+ * reused as `unknown` here so this file, like the sync engine itself, stays
+ * content-blind and never imports crypto runtime code.
+ */
+export interface JournalKeysData {
+  envelope: unknown;
 }
 
 export interface Mutation {

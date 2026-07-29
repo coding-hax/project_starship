@@ -1,5 +1,14 @@
 import type { SyncTable } from '@/local/types';
-import { garminActivities, habitLogs, habits, reminderPrefs, syncState, tasks } from './schema';
+import {
+  garminActivities,
+  habitLogs,
+  habits,
+  journalEntries,
+  journalKeys,
+  reminderPrefs,
+  syncState,
+  tasks,
+} from './schema';
 
 /**
  * The only tables the sync engine may touch, and the only fields a client may write.
@@ -52,6 +61,16 @@ export const SYNC_REGISTRY = {
     table: reminderPrefs,
     writable: ['kind', 'enabled', 'times'],
     required: ['kind'],
+  },
+  journal_entries: {
+    table: journalEntries,
+    writable: ['entryDate', 'ciphertext', 'nonce'],
+    required: ['entryDate', 'ciphertext', 'nonce'],
+  },
+  journal_keys: {
+    table: journalKeys,
+    writable: ['envelope'],
+    required: ['envelope'],
   },
   garmin_activities: {
     table: garminActivities,
