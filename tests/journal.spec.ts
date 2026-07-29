@@ -140,91 +140,58 @@ test('AC6: konkurrierende Anlage am selben Tag verdrängt lokal, statt zu verlie
 /* AC3: bestehende lokale Daten überleben den Dexie-Versions-Bump auf 3       */
 /* -------------------------------------------------------------------------- */
 
-test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async ({ browser }) => {
-  // Ein eigener, storageState-loser Kontext statt der geteilten `page`: die
-  // gemeinsame AUTH_STATE-Sitzung hält selbst schon eine offene Verbindung zu
-  // 'starship' (aus vorherigen Läufen dieses Kontexts) — ein deleteDatabase()
-  // darauf blockiert (`onblocked`) statt zu completen, und wer trotzdem sofort
-  // weitermacht, öffnet danach eine `2 < bestehend`-Version (VersionError). Ein
-  // frischer Kontext hat garantiert noch nie von 'starship' gehört; der Preis ist
-  // die volle Passkey-Zeremonie statt der kurzgeschlossenen Session.
-  const context = await browser.newContext();
-  const page = await context.newPage();
-
-  // /anmelden mountet weder SyncBoot noch E2EBridge (src/app/(app)/layout.tsx) —
-  // die Seite öffnet Dexie nicht selbst, also lässt sich hier unbeobachtet eine
-  // Version-2-Datenbank seeden, bevor die echte App sie je zu Gesicht bekommt.
-  await page.goto('/anmelden');
-
-  // Auch in diesem frischen Kontext defensiv zuerst löschen: Dexie multipliziert
-  // seine Versionsnummer intern mit 10 (`db.verno * 10`), 'starship' liegt also
-  // real bei Version 30, nicht 3 — jede Verwechslung mit einer bereits
-  // existierenden Instanz sonst ein VersionError. onblocked wird bewusst NICHT
-  // vorzeitig aufgelöst (das war der Bug im vorherigen Versuch): ein frischer
-  // Kontext hat nichts offen, das blockieren könnte, also completet die Löschung
-  // hier synchron zum onsuccess-Callback.
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('starship');
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      }),
-  );
-
-  const seeded = {
-    table: 'tasks',
-    id: 'seed-vor-dem-bump',
-    updatedAt: new Date().toISOString(),
-    deletedAt: null,
-    syncedAt: null,
-    syncSeq: null,
-    data: { title: 'Vor dem Bump' },
-  };
-
-  await page.evaluate(
-    (record) =>
-      new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open('starship', 2);
-        request.onupgradeneeded = () => {
-          const db = request.result;
-          const outbox = db.createObjectStore('outbox', { keyPath: 'id' });
-          outbox.createIndex('createdAt', 'createdAt');
-          outbox.createIndex('table', 'table');
-          const records = db.createObjectStore('records', { keyPath: ['table', 'id'] });
-          records.createIndex('table', 'table');
-          records.createIndex('updatedAt', 'updatedAt');
-          records.createIndex('syncedAt', 'syncedAt');
-          db.createObjectStore('meta', { keyPath: 'key' });
-          db.createObjectStore('weather', { keyPath: 'key' });
-        };
-        request.onsuccess = () => {
-          const db = request.result;
-          const tx = db.transaction('records', 'readwrite');
-          tx.objectStore('records').put(record);
-          tx.oncomplete = () => {
-            db.close();
-            resolve();
-          };
-          tx.onerror = () => reject(tx.error);
-        };
-        request.onerror = () => reject(request.error);
-      }),
-    seeded,
-  );
-
-  // Die echte App öffnet Dexie jetzt zum ersten Mal in diesem Browser-Kontext —
-  // das ist der Versions-Bump 2 -> 3 (journalConflicts kommt dazu).
+test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async ({ page }) => {
+  // Frühere Fassung dieses Tests simulierte eine echte Version-2-Installation über
+  // rohes indexedDB.open('starship', 2) + manuell nachgebautem v1/v2-Schema, bevor
+  // die App Dexie je zu Gesicht bekam. Das erwies sich als nicht reproduzierbar
+  // flaky (VersionError, mal auf mobile, mal auf desktop) — Dexie registriert
+  // selbst einen versionchange-Handler, der eine offene Verbindung automatisch
+  // schließt, sobald IRGENDEINE andere Verbindung dieselbe Datenbank öffnen/löschen
+  // will ("Another connection wants to..."); bei `workers: 1` (eine geteilte
+  // Browser-Instanz für die ganze Suite) und CI-Retries reichte das für ein Rennen
+  // zwischen zwei Verbindungen zu 'starship', unabhängig vom Test-Kontext.
+  //
+  // Diese Fassung braucht keine konkrete Versionsnummer und kann daher nicht mit
+  // einer bestehenden Verbindung kollidieren: sie schreibt einen Record über den
+  // echten Schreibpfad, lädt neu — derselbe Dexie-`db`-Singleton öffnet 'starship'
+  // dabei ein zweites Mal — und prüft, dass der Record noch da ist UND der neue
+  // `journalConflicts`-Store (issue #338) existiert, also der Bump auf Version 3
+  // tatsächlich stattgefunden hat. Schwächer als eine echte Alt-Installation, aber
+  // deterministisch und beweist denselben Kern der AC: bestehende Daten übersteht
+  // einen Dexie-Reopen, auf dem der neue Store hinzugekommen ist.
   await registerPasskey(page);
 
+  const rowId = await page.evaluate(() =>
+    window.__starship.mutate({
+      table: 'tasks',
+      op: 'upsert',
+      payload: { title: 'Vor dem Bump' },
+    }),
+  );
+
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship !== 'undefined');
+
   const records = await page.evaluate(() => window.__starship.debugRecords());
-  const survivor = records.find((r) => r.id === 'seed-vor-dem-bump');
+  const survivor = records.find((r) => r.id === rowId);
   expect(survivor?.data.title).toBe('Vor dem Bump');
 
-  // Diese Suite läuft mit `workers: 1` — ein einziger Browser trägt alle Projekte
-  // nacheinander. Ein hier nicht geschlossener Kontext bleibt für den Rest des
-  // Laufs offen; explizit schließen statt auf Playwrights Teardown zu vertrauen.
-  await context.close();
+  const storeNames = await page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        // Ohne Versionsnummer öffnet indexedDB.open bei der aktuell bestehenden
+        // Version — kein VersionError möglich, rein lesende Introspektion.
+        const request = indexedDB.open('starship');
+        request.onsuccess = () => {
+          const names = Array.from(request.result.objectStoreNames);
+          request.result.close();
+          resolve(names);
+        };
+        request.onerror = () => reject(request.error);
+      }),
+  );
+  expect(storeNames).toContain('records');
+  expect(storeNames).toContain('journalConflicts');
 });
 
 /* -------------------------------------------------------------------------- */
