@@ -1,7 +1,7 @@
 import { base64ToBytes } from '@/crypto/base64';
 import { decryptJournal, encryptJournal, type JournalContent } from '@/crypto/journal';
-import { db } from '@/local/dexie';
-import { journalEntryId } from '@/local/uuid5';
+import { db, type LocalRecord } from '@/local/dexie';
+import { mutate } from '@/local/outbox';
 import { journalDek } from './lock-store';
 import { writeJournalEntry } from './write';
 
@@ -14,42 +14,69 @@ export function todayKey(): string {
   return new Date().toLocaleDateString('en-CA');
 }
 
-/** No mood, no text, no tags — writing this for a day that has no row yet would
- * plant a ghost entry S5's "written today?" flag would then wrongly report. */
+/** No mood, no text, no tags — submitting this would create an entry with
+ * nothing in it (issue #376 AC2: submit is explicit, but an empty submission
+ * still has nothing worth storing). */
 function isEmptyContent(content: JournalContent): boolean {
   return !content.mood && content.text === '' && (content.tags ?? []).length === 0;
 }
 
-/** `null` while the journal is locked, or once there is nothing to show yet. */
-export async function loadJournalEntry(entryDate: string): Promise<JournalContent | null> {
-  const dek = journalDek();
-  if (!dek) return null;
+export interface JournalEntryView {
+  id: string;
+  entryDate: string;
+  /** ISO. Client-set at write time (write.ts) — falls back to the record's
+   * `updatedAt` for entries written before issue #376, which never got a
+   * `createdAt` payload field. */
+  createdAt: string;
+  content: JournalContent;
+}
 
-  const rowId = await journalEntryId(entryDate);
-  const row = await db.records.get(['journal_entries', rowId] as never);
-  if (!row || row.deletedAt !== null) return null;
-
+async function decryptRow(dek: CryptoKey, row: LocalRecord): Promise<JournalEntryView> {
   const ciphertext = base64ToBytes(row.data.ciphertext as string);
   const nonce = base64ToBytes(row.data.nonce as string);
-  return decryptJournal(dek, ciphertext, nonce);
+  const content = await decryptJournal(dek, ciphertext, nonce);
+  return {
+    id: row.id,
+    entryDate: row.data.entryDate as string,
+    createdAt: (row.data.createdAt as string | undefined) ?? row.updatedAt,
+    content,
+  };
 }
 
 /**
- * Encrypts mood/text/tags into the one ciphertext (ADR-0004) and upserts through
- * the existing write path (issue #338 AC5) — same deterministic row id, so a
- * second call for the same day always lands on the same row. A no-op while
- * locked, since there is no key to encrypt with.
+ * Every entry for one day, newest first (AC3). `[]` while locked — there is no
+ * key to open anything with.
  */
-export async function saveJournalEntry(entryDate: string, content: JournalContent): Promise<void> {
+export async function listJournalEntries(entryDate: string): Promise<JournalEntryView[]> {
   const dek = journalDek();
-  if (!dek) return;
+  if (!dek) return [];
 
-  if (isEmptyContent(content)) {
-    const rowId = await journalEntryId(entryDate);
-    const existing = await db.records.get(['journal_entries', rowId] as never);
-    if (!existing || existing.deletedAt !== null) return;
-  }
+  const rows = await db.records
+    .where('table')
+    .equals('journal_entries')
+    .and((row) => row.deletedAt === null && row.data.entryDate === entryDate)
+    .toArray();
+
+  const entries = await Promise.all(rows.map((row) => decryptRow(dek, row)));
+  return entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Encrypts mood/text/tags into one ciphertext (ADR-0004) and appends a new row
+ * through the write path (write.ts) — every submission is its own entry (issue
+ * #376), never an edit of a previous one. A no-op while locked or for an empty
+ * submission.
+ */
+export async function appendJournalEntry(entryDate: string, content: JournalContent): Promise<void> {
+  const dek = journalDek();
+  if (!dek || isEmptyContent(content)) return;
 
   const encrypted = await encryptJournal(dek, content);
   await writeJournalEntry(entryDate, encrypted);
+}
+
+/** Soft-delete over the existing sync path (AC5) — same tombstone mechanism as
+ * every other table, no journal-specific delete route. */
+export async function deleteJournalEntry(id: string): Promise<void> {
+  await mutate({ table: 'journal_entries', rowId: id, op: 'delete' });
 }

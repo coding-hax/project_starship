@@ -104,7 +104,7 @@ test('AC4: nach Recovery-Unlock kann eine neue Passphrase gesetzt werden, der DE
   const entryText = 'ac4 text vor dem sperren';
 
   await page.evaluate(
-    ({ entryDate, content }) => window.__starship.saveJournalEntry(entryDate, content),
+    ({ entryDate, content }) => window.__starship.appendJournalEntry(entryDate, content),
     { entryDate, content: { text: entryText } },
   );
   await expect
@@ -128,8 +128,10 @@ test('AC4: nach Recovery-Unlock kann eine neue Passphrase gesetzt werden, der DE
   await page.getByRole('button', { name: 'Festlegen' }).click();
 
   // (a) Derselbe DEK -- der vor dem Sperren geschriebene Eintrag bleibt lesbar.
+  // Kein Autosave-Entwurffeld mehr, das den Text zeigen würde (issue #376,
+  // ADR-0018) -- der Eintrag steht stattdessen in der Liste darunter.
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-  await expect(page.getByLabel('Journal-Text')).toHaveValue(entryText);
+  await expect(page.locator('.journal-editor__entry')).toContainText(entryText);
 
   // (b) Reload: die neue Passphrase entsperrt, die alte gibt nur die ruhige Meldung.
   await page.reload();

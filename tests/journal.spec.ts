@@ -6,9 +6,16 @@ import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpe
 
 /**
  * S2 of #302 (issue #338): journal_entries + journal_keys, the Dexie bump, the
- * SYNC_REGISTRY entries and the pull-side conflict copy. No editor/UI yet (S3a) —
- * every test drives the real write path (src/features/journal/write.ts) via the
- * E2E bridge (src/ui/e2e-bridge.tsx), never a duplicated stand-in.
+ * SYNC_REGISTRY entries and the pull-side conflict copy. Every test drives the
+ * real write path (src/features/journal/write.ts) via the E2E bridge
+ * (src/ui/e2e-bridge.tsx), never a duplicated stand-in.
+ *
+ * issue #376/ADR-0018 replaced "one entry per day, deterministic id" with
+ * "any number of entries per day, random uuidv7 id" — the old AC5 (same day ->
+ * same row) and AC6 (same-day concurrent create -> deterministic-id collision
+ * -> conflict copy) tests tested exactly the invariant that is now gone; they
+ * are replaced below by the AC8 test proving the opposite (two devices, same
+ * day, two independent rows, no overwrite).
  */
 
 test.beforeEach(async () => {
@@ -16,32 +23,11 @@ test.beforeEach(async () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC5: deterministische id -- zweimal derselbe Tag trifft dieselbe Zeile     */
-/* -------------------------------------------------------------------------- */
-
-test('AC5: zweimal derselbe Tag schreibt dieselbe Zeile, nie eine zweite', async ({ page }) => {
-  await registerPasskey(page);
-  const entryDate = '2026-07-29';
-
-  const expectedId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
-
-  await page.evaluate((d) => window.__starship.writeJournalEntry(d, [1, 2, 3], [4, 5, 6]), entryDate);
-  await page.evaluate((d) => window.__starship.writeJournalEntry(d, [7, 8, 9], [10, 11, 12]), entryDate);
-  await page.evaluate(() => window.__starship.sync());
-
-  const rows = await withDb((client) =>
-    client.query('SELECT id FROM journal_entries WHERE entry_date = $1', [entryDate]),
-  );
-  expect(rows.rowCount).toBe(1);
-  expect(rows.rows[0].id).toBe(expectedId);
-});
-
-/* -------------------------------------------------------------------------- */
-/* AC7: offline geschrieben -> online -> serverseitig angekommen, kein         */
+/* issue #338: offline geschrieben -> online -> serverseitig angekommen, kein */
 /* Klartext-Fragment (CLAUDE.md Regel 9)                                      */
 /* -------------------------------------------------------------------------- */
 
-test('AC7: offline geschriebener Eintrag erreicht online die Datenbank ohne Klartext-Fragment', async ({
+test('offline geschriebener Eintrag erreicht online die Datenbank ohne Klartext-Fragment', async ({
   page,
   context,
 }) => {
@@ -49,7 +35,7 @@ test('AC7: offline geschriebener Eintrag erreicht online die Datenbank ohne Klar
   await context.setOffline(true);
 
   const entryDate = '2026-07-29';
-  const passphrase = 'ac7 offline passphrase';
+  const passphrase = 'offline passphrase';
   const secretText = 'GEHEIMESTAGEBUCH';
   const secretMood = 'geheime-stimmung';
   const secretTag = 'geheimer-tag';
@@ -90,54 +76,7 @@ test('AC7: offline geschriebener Eintrag erreicht online die Datenbank ohne Klar
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC6: Verdrängung bleibt lokal erhalten (Konflikt-Kopie, ADR-0017)          */
-/* -------------------------------------------------------------------------- */
-
-test('AC6: konkurrierende Anlage am selben Tag verdrängt lokal, statt zu verlieren', async ({
-  page,
-  browser,
-}) => {
-  const entryDate = '2026-07-29';
-
-  await registerPasskey(page);
-  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
-
-  // Device A legt zuerst an und synct — die Zeile inkl. syncSeq landet lokal.
-  await page.evaluate((d) => window.__starship.writeJournalEntry(d, [1, 1, 1], [9, 9, 9]), entryDate);
-  await page.evaluate(() => window.__starship.sync());
-
-  // Device B kennt A's Zeile nie (kein Pull) — baseSeq bleibt null auf beiden
-  // Seiten, der Concurrent-Create, den push-seitiges detectOverwrite verfehlt
-  // (ADR-0017). Gleiche entryDate -> gleiche deterministische id.
-  const deviceB = await openSecondDevice(browser, page);
-  await deviceB.evaluate((d) => window.__starship.writeJournalEntry(d, [2, 2, 2], [8, 8, 8]), entryDate);
-  await deviceB.evaluate(() => window.__starship.sync());
-
-  // A pullt: B's Ankunft gewinnt (arrival wins, ADR-0008) — A's eigene Fassung
-  // wird dabei verdrängt und landet in journalConflicts statt verloren zu gehen.
-  await page.evaluate(() => window.__starship.sync());
-
-  const expectedWinningCiphertext = await page.evaluate(
-    (bytes) => window.__starship.bytesToBase64(bytes),
-    [2, 2, 2],
-  );
-  const expectedDisplacedCiphertext = await page.evaluate(
-    (bytes) => window.__starship.bytesToBase64(bytes),
-    [1, 1, 1],
-  );
-
-  const records = await page.evaluate(() => window.__starship.debugRecords());
-  const journalRecord = records.find((r) => r.table === 'journal_entries' && r.id === rowId);
-  expect(journalRecord?.data.ciphertext).toBe(expectedWinningCiphertext);
-
-  const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
-  expect(conflicts).toHaveLength(1);
-  expect(conflicts[0].entryDate).toBe(entryDate);
-  expect(conflicts[0].ciphertext).toBe(expectedDisplacedCiphertext);
-});
-
-/* -------------------------------------------------------------------------- */
-/* AC3: bestehende lokale Daten überleben den Dexie-Versions-Bump auf 3       */
+/* issue #338 AC3: bestehende lokale Daten überleben den Dexie-Versions-Bump  */
 /* -------------------------------------------------------------------------- */
 
 test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async ({ page }) => {
@@ -195,11 +134,16 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC2: Down-Pfad entfernt journal_entries/journal_keys, Up-Pfad stellt sie   */
-/* wieder her — in einer rückgerollten Transaktion, nie gegen die geteilte DB */
+/* issue #338 AC2: Down-Pfad entfernt journal_entries/journal_keys, Up-Pfad   */
+/* stellt sie wieder her — in einer rückgerollten Transaktion                */
 /* -------------------------------------------------------------------------- */
 
-test('AC2: Down-Pfad räumt sauber ab, Up-Pfad stellt wieder her, andere Tabellen bleiben unberührt', async () => {
+async function tableExists(client: Client, name: string): Promise<boolean> {
+  const { rows } = await client.query('SELECT to_regclass($1) AS reg', [name]);
+  return rows[0].reg !== null;
+}
+
+test('AC2 (#338): Down-Pfad von 0012 räumt sauber ab, Up-Pfad stellt wieder her, andere Tabellen bleiben unberührt', async () => {
   const downSql = readFileSync(
     path.join(__dirname, '../src/db/migrations/down/0012_journal.down.sql'),
     'utf8',
@@ -208,11 +152,6 @@ test('AC2: Down-Pfad räumt sauber ab, Up-Pfad stellt wieder her, andere Tabelle
     path.join(__dirname, '../src/db/migrations/0012_sweet_impossible_man.sql'),
     'utf8',
   );
-
-  async function tableExists(client: Client, name: string): Promise<boolean> {
-    const { rows } = await client.query('SELECT to_regclass($1) AS reg', [name]);
-    return rows[0].reg !== null;
-  }
 
   await withDb(async (client) => {
     await client.query('BEGIN');
@@ -237,11 +176,79 @@ test('AC2: Down-Pfad räumt sauber ab, Up-Pfad stellt wieder her, andere Tabelle
 });
 
 /* -------------------------------------------------------------------------- */
-/* S3b (issue #340): der Editor selbst — Stimmungs-Skala, Text, Tags,         */
-/* Konflikt-Banner. Baut auf S3a (#339, journal-lock.spec.ts) auf.            */
+/* issue #376: Migration 0014 (created_at, entry_date nicht mehr eindeutig)   */
 /* -------------------------------------------------------------------------- */
 
-const EDITOR_PASSPHRASE = 's3b editor passphrase';
+test('Down-Pfad von 0014 entfernt created_at und macht entry_date wieder eindeutig, Up-Pfad stellt beides wieder her', async () => {
+  const downSql = readFileSync(
+    path.join(__dirname, '../src/db/migrations/down/0014_journal_multiple_entries.down.sql'),
+    'utf8',
+  );
+  const upSql = readFileSync(path.join(__dirname, '../src/db/migrations/0014_steep_james_howlett.sql'), 'utf8');
+
+  async function columns(client: Client): Promise<string[]> {
+    const { rows } = await client.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'journal_entries'`,
+    );
+    return rows.map((r) => r.column_name as string);
+  }
+
+  async function entryDateIsUnique(client: Client): Promise<boolean> {
+    const { rows } = await client.query(
+      `SELECT indexdef FROM pg_indexes WHERE tablename = 'journal_entries' AND indexname = 'journal_entries_entry_date_idx'`,
+    );
+    return (rows[0]?.indexdef as string | undefined)?.includes('UNIQUE') ?? false;
+  }
+
+  await withDb(async (client) => {
+    await client.query('BEGIN');
+    try {
+      await client.query(downSql);
+      expect(await columns(client)).not.toContain('created_at');
+      expect(await entryDateIsUnique(client)).toBe(true);
+
+      await client.query(upSql);
+      expect(await columns(client)).toContain('created_at');
+      expect(await entryDateIsUnique(client)).toBe(false);
+    } finally {
+      await client.query('ROLLBACK');
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #342 AC3: journal_entries trägt kein neues Klartext-*Inhalts*-Feld — */
+/* created_at ist Metadaten (Zeitpunkt), kein Journal-Inhalt (ADR-0004/-0018) */
+/* -------------------------------------------------------------------------- */
+
+test('AC3 (#342): journal_entries trägt kein neues Klartext-Inhaltsfeld — nur die bekannten Spalten plus created_at', async () => {
+  const columns = await withDb((client) =>
+    client.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'journal_entries'`,
+    ),
+  );
+
+  expect(new Set(columns.rows.map((r) => r.column_name as string))).toEqual(
+    new Set([
+      'id',
+      'updated_at',
+      'deleted_at',
+      'synced_at',
+      'sync_seq',
+      'entry_date',
+      'ciphertext',
+      'nonce',
+      'created_at',
+    ]),
+  );
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #376: der Editor — Absenden statt Autosave, mehrere Einträge pro Tag */
+/* Baut auf S3a (#339, journal-lock.spec.ts) auf.                            */
+/* -------------------------------------------------------------------------- */
+
+const EDITOR_PASSPHRASE = '376 editor passphrase';
 
 /** Same wait-for-settled-state reasoning as journal-lock.spec.ts's setUpJournal:
  * journalSetup() derives a key and writes before the button resolves. */
@@ -263,35 +270,23 @@ async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
-async function todayKey(page: Page): Promise<string> {
-  return page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+async function submit(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Absenden' }).click();
 }
 
-async function currentCiphertext(page: Page, rowId: string): Promise<string | undefined> {
-  const records = await page.evaluate(() => window.__starship.debugRecords());
-  return records.find((r) => r.table === 'journal_entries' && r.id === rowId)?.data.ciphertext as
-    | string
-    | undefined;
+async function entryCountInDb(entryDate: string): Promise<number> {
+  const rows = await withDb((client) =>
+    client.query('SELECT count(*)::int AS n FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  return rows.rows[0].n as number;
 }
 
-/** Waits for the debounced/immediate autosave to actually land, regardless of
- * the exact timing of `SAVE_DEBOUNCE_MS` — polls the real row instead of a
- * fixed sleep. Returns the new ciphertext so the caller can chain further waits. */
-async function waitForCiphertextChange(
-  page: Page,
-  rowId: string,
-  previous: string | undefined,
-): Promise<string> {
-  await expect.poll(() => currentCiphertext(page, rowId)).not.toBe(previous);
-  return (await currentCiphertext(page, rowId))!;
-}
-
-test('AC1: Skala ist das erste Element, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+test('AC1: die Stimmungs-Skala ist das erste Element im Formular, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
   page,
 }) => {
   await setUpEditor(page);
 
-  const firstChild = page.locator('.journal-editor > *').first();
+  const firstChild = page.locator('.journal-editor__form > *').first();
   await expect(firstChild).toHaveClass(/mood-scale/);
 
   const point = page.getByRole('button', { name: '7', exact: true });
@@ -302,7 +297,23 @@ test('AC1: Skala ist das erste Element, ein Tipp setzt den Wert, ein erneuter ni
   await expect(point).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('AC2: bei 375px sind alle zehn Punkte mindestens 44px hoch, in einer Reihe, ohne horizontalen Scroll', async ({
+test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Absenden-Knopf legt einen Eintrag an', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await page.getByRole('button', { name: '8', exact: true }).click();
+  // Kein Debounce mehr (ADR-0018) — ein Mood-Tap ruft nur setMood(), kein async
+  // Schreibpfad, die Prüfung braucht also keine Wartezeit. Lokal statt gegen
+  // Postgres geprüft (AC8 deckt den Server-Sync-Pfad separat ab) — kein
+  // window.__starship.sync() nötig, der ohnehin erst alle 30s automatisch liefe.
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+});
+
+test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mindestens 44px hoch, ohne horizontalen Scroll', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 });
@@ -316,9 +327,7 @@ test('AC2: bei 375px sind alle zehn Punkte mindestens 44px hoch, in einer Reihe,
   const points = page.locator('.mood-scale__point');
   await expect(points).toHaveCount(10);
 
-  const boxes = await Promise.all(
-    Array.from({ length: 10 }, (_, i) => points.nth(i).boundingBox()),
-  );
+  const boxes = await Promise.all(Array.from({ length: 10 }, (_, i) => points.nth(i).boundingBox()));
   for (const box of boxes) {
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -327,122 +336,159 @@ test('AC2: bei 375px sind alle zehn Punkte mindestens 44px hoch, in einer Reihe,
   for (const box of boxes) expect(box!.y).toBe(rowY);
 });
 
-test('AC3: gesetzter Wert und Text stehen nach dem Neuladen noch da — aus dem Chiffrat, nicht aus einem Klartextfeld', async ({
+test('AC2/AC3: nach dem Absenden ist das Feld leer, mehrere Einträge stehen darunter, neueste zuerst, mit Uhrzeit', async ({
   page,
 }) => {
   await setUpEditor(page);
-  const entryDate = await todayKey(page);
-  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
 
-  await page.getByRole('button', { name: '8', exact: true }).click();
-  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
 
-  await page.getByLabel('Journal-Text').fill('Guter Tag');
-  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
-  expect(ciphertext).toBeTruthy();
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('');
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await submit(page);
+
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('');
+  const entries = page.locator('.journal-editor__entry');
+  await expect(entries).toHaveCount(2);
+  // Neuester zuerst.
+  await expect(entries.nth(0)).toContainText('Zweiter Eintrag');
+  await expect(entries.nth(1)).toContainText('Erster Eintrag');
+  await expect(entries.nth(0).locator('.journal-editor__entry-time')).toHaveText(/^\d{2}:\d{2}$/);
+});
+
+test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin da — aus dem Chiffrat, nicht aus einem Klartextfeld', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(2);
 
   await page.reload();
   await unlockEditor(page);
 
-  await expect(page.getByRole('button', { name: '8', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('Guter Tag');
+  const entries = page.locator('.journal-editor__entry');
+  await expect(entries).toHaveCount(2);
+  await expect(entries.nth(0)).toContainText('Zweiter Eintrag');
+  await expect(entries.nth(1)).toContainText('Erster Eintrag');
 });
 
-test('AC4/AC6: Stimmung, Text und Tags landen als EIN Chiffrat über die Outbox, serverseitig genau eine Zeile', async ({
+test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — zwei Einträge tragen unterschiedliche Werte', async ({
   page,
 }) => {
   await setUpEditor(page);
-  const entryDate = await todayKey(page);
-  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
+  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
 
   await page.getByRole('button', { name: '5', exact: true }).click();
-  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
-
-  await page.getByLabel('Journal-Text').fill('Ruhiger Tag');
-  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
-
+  await page.getByLabel('Journal-Text').fill('Ruhiger Moment');
   await page.getByLabel('Tags').fill('arbeit, sport');
-  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
-
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-
-  const rows = await withDb((client) =>
-    client.query('SELECT ciphertext FROM journal_entries WHERE entry_date = $1', [entryDate]),
-  );
-  expect(rows.rowCount).toBe(1);
-  expect(rows.rows[0].ciphertext).toBe(ciphertext);
-});
-
-test('AC5: ein zweiter Aufruf desselben Tages bearbeitet denselben Eintrag, nie einen zweiten', async ({
-  page,
-}) => {
-  await setUpEditor(page);
-  const entryDate = await todayKey(page);
-  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
-
-  await page.getByLabel('Journal-Text').fill('Erster Absatz');
-  const ciphertext = await waitForCiphertextChange(page, rowId, undefined);
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-
-  await page.reload();
-  await unlockEditor(page);
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('Erster Absatz');
-
-  await page.getByLabel('Journal-Text').fill('Erster Absatz, zweiter Zusatz');
-  await waitForCiphertextChange(page, rowId, ciphertext);
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-
-  const rows = await withDb((client) =>
-    client.query('SELECT count(*)::int AS n, array_agg(id) AS ids FROM journal_entries WHERE entry_date = $1', [
-      entryDate,
-    ]),
-  );
-  expect(rows.rows[0].n).toBe(1);
-  expect(rows.rows[0].ids).toEqual([rowId]);
-});
-
-test('AC7: offline gesetzte Stimmung und Text erreichen online die Datenbank, aber nicht lesbar', async ({
-  page,
-  context,
-}) => {
-  await setUpEditor(page);
-  const entryDate = await todayKey(page);
-  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
-  const secretText = 'GEHEIMER OFFLINE TEXT';
-
-  await context.setOffline(true);
+  await submit(page);
 
   await page.getByRole('button', { name: '9', exact: true }).click();
-  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
-  await page.getByLabel('Journal-Text').fill(secretText);
-  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
+  await page.getByLabel('Journal-Text').fill('Anderer Moment, andere Stimmung');
+  await page.getByLabel('Tags').fill('familie');
+  await submit(page);
 
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
+  const entries = page.locator('.journal-editor__entry');
+  await expect(entries).toHaveCount(2);
+  await expect(entries.nth(0)).toContainText('Stimmung 9/10');
+  await expect(entries.nth(0)).toContainText('familie');
+  await expect(entries.nth(1)).toContainText('Stimmung 5/10');
+  await expect(entries.nth(1)).toContainText('arbeit, sport');
 
-  await context.setOffline(false);
+  // Server-Sync ist sonst passiv (alle 30s) — explizit anstoßen, statt auf das
+  // Intervall zu warten (Muster wie jede andere withDb()-Prüfung in dieser Datei).
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => entryCountInDb(entryDate)).toBe(2);
+});
+
+test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über den bestehenden Sync-Pfad, kein Hard-Delete', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+
+  await page.getByLabel('Journal-Text').fill('Wird gelöscht');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Eintrag löschen' }).click();
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
   const row = await withDb((client) =>
-    client.query('SELECT ciphertext, nonce FROM journal_entries WHERE entry_date = $1', [entryDate]),
+    client.query('SELECT deleted_at FROM journal_entries WHERE entry_date = $1', [entryDate]),
   );
-  expect(row.rowCount).toBe(1);
-  expect(row.rows[0].ciphertext).toBe(ciphertext);
-  expect(row.rows[0].ciphertext as string).not.toContain(secretText);
-  expect(row.rows[0].nonce as string).not.toContain(secretText);
+  expect(row.rowCount).toBe(1); // Soft-Delete: die Zeile existiert weiterhin.
+  expect(row.rows[0].deleted_at).not.toBeNull();
 });
 
-test('AC8: eine Konflikt-Kopie ist im Editor sichtbar und wiederherstellbar, statt still verschluckt zu werden', async ({
+/* -------------------------------------------------------------------------- */
+/* issue #376 AC8: das Kernszenario — zwei Geräte legen offline unabhängig    */
+/* je einen Eintrag für denselben Tag an. Vor #376 kollidierten deren ids     */
+/* (deterministisch aus entry_date, ADR-0017) und einer verdrängte den        */
+/* anderen; seit #376 ist die id zufällig (uuidv7) — beide Einträge landen    */
+/* nebeneinander, keiner überschreibt den anderen, kein Konflikt entsteht.    */
+/* -------------------------------------------------------------------------- */
+
+test('AC8: zwei Geräte legen offline unabhängig je einen Eintrag für denselben Tag an — keiner überschreibt den anderen', async ({
+  page,
+  browser,
+}) => {
+  const entryDate = '2026-07-29';
+  await registerPasskey(page);
+  const deviceB = await openSecondDevice(browser, page);
+
+  // writeJournalEntry braucht keinen DEK (roher Ciphertext, wie AC7 oben) — der
+  // Fokus dieses Tests ist der Sync-/id-Pfad, nicht die Verschlüsselung selbst.
+  await page.evaluate((d) => window.__starship.writeJournalEntry(d, [1, 2, 3], [9, 9, 9]), entryDate);
+  await deviceB.evaluate((d) => window.__starship.writeJournalEntry(d, [4, 5, 6], [8, 8, 8]), entryDate);
+
+  await page.evaluate(() => window.__starship.sync());
+  await deviceB.evaluate(() => window.__starship.sync());
+  // Zweite Runde, damit beide Geräte auch die Zeile des jeweils anderen pullen.
+  await page.evaluate(() => window.__starship.sync());
+  await deviceB.evaluate(() => window.__starship.sync());
+
+  expect(await entryCountInDb(entryDate)).toBe(2);
+
+  const rows = await withDb((client) =>
+    client.query('SELECT ciphertext FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  const distinctCiphertexts = new Set(rows.rows.map((r) => r.ciphertext as string));
+  expect(distinctCiphertexts.size).toBe(2); // zwei verschiedene Zeilen, kein Überschreiben.
+
+  // Kein falsch-positiver Konflikt (ADR-0017 Punkt 3 greift nur bei einer echten
+  // id-Kollision, die es hier nicht mehr geben kann, ADR-0018).
+  const conflictsA = await page.evaluate(() => window.__starship.debugJournalConflicts());
+  const conflictsB = await deviceB.evaluate(() => window.__starship.debugJournalConflicts());
+  expect(conflictsA).toHaveLength(0);
+  expect(conflictsB).toHaveLength(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #340 AC8, angepasst an #376: eine Konflikt-Kopie bleibt sichtbar und */
+/* wiederherstellbar — Wiederherstellen hängt sie jetzt als neuen Eintrag an  */
+/* (es gibt keinen "aktuellen Eintrag" pro Tag mehr, den man überschreiben    */
+/* könnte). Der Trigger-Weg (echte id-Kollision) ist seit ADR-0018 praktisch  */
+/* tot, aber das UI selbst (journalConflicts, die Banner-Komponente) bleibt   */
+/* bewusst im Code (CLAUDE.md „Fallen" im Plan-Kommentar) — dieser Test seedet*/
+/* die Konflikt-Kopie deshalb direkt statt über einen Zwei-Geräte-Pull.       */
+/* -------------------------------------------------------------------------- */
+
+test('eine Konflikt-Kopie ist im Editor sichtbar und wiederherstellbar — Wiederherstellen hängt sie als neuen Eintrag an', async ({
   page,
 }) => {
   await setUpEditor(page);
-  const entryDate = await todayKey(page);
+  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
 
   await page.evaluate(
     (d) =>
@@ -461,17 +507,16 @@ test('AC8: eine Konflikt-Kopie ist im Editor sichtbar und wiederherstellbar, sta
   await banner.getByRole('button', { name: 'Wiederherstellen' }).click();
   await expect(banner).toHaveCount(0);
 
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('Verdrängter Text');
-  await expect(page.getByRole('button', { name: '3', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  const entries = page.locator('.journal-editor__entry');
+  await expect(entries).toHaveCount(1);
+  await expect(entries.first()).toContainText('Verdrängter Text');
+  await expect(entries.first()).toContainText('Stimmung 3/10');
 
   const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
   expect(conflicts).toHaveLength(0);
 });
 
-test('AC9: bei gesperrtem Journal ist der Editor nicht erreichbar, sondern der Entsperr-Zustand', async ({
+test('bei gesperrtem Journal ist der Editor nicht erreichbar, sondern der Entsperr-Zustand', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -485,7 +530,7 @@ for (const viewport of [
   { width: 375, height: 667 },
   { width: 1280, height: 800 },
 ]) {
-  test(`AC10: Editor bei ${viewport.width}px ohne horizontalen Seiten-Scroll`, async ({ page }) => {
+  test(`AC9: Editor bei ${viewport.width}px ohne horizontalen Seiten-Scroll`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await setUpEditor(page);
 
@@ -495,7 +540,7 @@ for (const viewport of [
   });
 }
 
-test('AC10: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({
+test('AC9: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -507,22 +552,4 @@ test('AC10: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const darkBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).not.toBe(lightBg);
-});
-
-/* -------------------------------------------------------------------------- */
-/* issue #342 AC3: die Übersicht-Sektion "heute schon geschrieben?" braucht   */
-/* kein neues Klartext-Feld — `journal_entries` bleibt exakt so geschnitten   */
-/* wie in #338 (ADR-0004: der Server erfährt nur *dass*, nie *was*).          */
-/* -------------------------------------------------------------------------- */
-
-test('AC3: journal_entries trägt kein neues Klartext-Feld — nur die seit #338 bekannten Spalten', async () => {
-  const columns = await withDb((client) =>
-    client.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'journal_entries'`,
-    ),
-  );
-
-  expect(new Set(columns.rows.map((r) => r.column_name as string))).toEqual(
-    new Set(['id', 'updated_at', 'deleted_at', 'synced_at', 'sync_seq', 'entry_date', 'ciphertext', 'nonce']),
-  );
 });
