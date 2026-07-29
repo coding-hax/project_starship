@@ -326,9 +326,13 @@ test('gesperrtes Journal zeigt weiterhin den korrekten (binären) Zustand, die �
   await expect(journalSection(page)).toContainText('Heute geschrieben');
   await expect(journalSection(page)).not.toContainText('Stimmung');
 
+  // "Kalender", not "Aufgaben": Next 16's dev-only "Issues" indicator (unrelated to
+  // this app, not gated by `devIndicators: false` — every /uebersicht visit here logs
+  // the mocked weather-fetch failure as one such "issue") renders bottom-left on
+  // mobile and covers the two leftmost tabs, "Übersicht" and "Aufgaben".
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await nav.getByRole('link', { name: 'Aufgaben' }).click();
-  await expect(page).toHaveURL(/\/aufgaben$/);
+  await nav.getByRole('link', { name: 'Kalender' }).click();
+  await expect(page).toHaveURL(/\/kalender$/);
 });
 
 test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmung des Tages (issue #342 AC4)', async ({
