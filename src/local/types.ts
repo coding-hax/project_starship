@@ -81,11 +81,14 @@ export interface ReminderPrefData {
  * Same as `HabitData`, for `journal_entries` (issue #338). `ciphertext`/`nonce` are
  * Base64 (src/crypto/base64.ts) — the wire format is JSON, this is opaque text to
  * the sync engine either way. `entryDate` is `YYYY-MM-DD`, like `HabitLogData.logDate`.
+ * `entryDate` is no longer unique per row (issue #376) — a day can carry several
+ * entries, ordered by `createdAt`.
  */
 export interface JournalEntryData {
   entryDate: string;
   ciphertext: string;
   nonce: string;
+  createdAt: string;
 }
 
 /**
