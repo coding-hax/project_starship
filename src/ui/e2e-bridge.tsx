@@ -1,11 +1,19 @@
 'use client';
 
 import { useEffect } from 'react';
+import { uuidv7 } from 'uuidv7';
 import { bytesToBase64 } from '@/crypto/base64';
 import { createEnvelope, openEnvelope, type Envelope, type KdfParams } from '@/crypto/envelope';
 import { encryptJournal, type JournalContent } from '@/crypto/journal';
 import { getPersistedDek } from '@/features/journal/dek-session';
-import { journalLock, journalLockSnapshot, journalSetup, journalUnlock } from '@/features/journal/lock-store';
+import {
+  journalDek,
+  journalLock,
+  journalLockSnapshot,
+  journalSetup,
+  journalUnlock,
+} from '@/features/journal/lock-store';
+import { saveJournalEntry } from '@/features/journal/entry';
 import { writeJournalEntry } from '@/features/journal/write';
 import { db } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
@@ -36,6 +44,20 @@ export function E2EBridge() {
         persistStatus: getStoragePersistenceStatus,
         debugRecords: () => db.records.toArray(),
         debugMeta: () => db.meta.toArray(),
+        // Every JSON-serializable store in one string (issue #341 AC2) — the search
+        // session cache lives only in React state, so a plaintext leak into any
+        // store, not just `records`, would show up here as a substring match.
+        // `journalSession` holds a CryptoKey, not text, and is left out on purpose.
+        debugDumpStores: async () => {
+          const [outbox, records, meta, weather, journalConflicts] = await Promise.all([
+            db.outbox.toArray(),
+            db.records.toArray(),
+            db.meta.toArray(),
+            db.weather.toArray(),
+            db.journalConflicts.toArray(),
+          ]);
+          return JSON.stringify({ outbox, records, meta, weather, journalConflicts });
+        },
         // The real write path (AC5) plus the real conflict-copy store (AC6) — the
         // suite drives writeJournalEntry itself rather than re-deriving row ids in
         // the test, and reads what pull() actually stashed instead of duplicating
@@ -49,8 +71,31 @@ export function E2EBridge() {
             ciphertext: new Uint8Array(ciphertext),
             nonce: new Uint8Array(nonce),
           }),
+        // Seeds a real, decryptable entry for a given day under the actual unlocked
+        // session's DEK — the same call the editor itself makes (issue #341's
+        // search suite needs several days of real content, not raw filler bytes).
+        saveJournalEntry: (entryDate: string, content: JournalContent) =>
+          saveJournalEntry(entryDate, content),
         bytesToBase64: (bytes: number[]) => bytesToBase64(new Uint8Array(bytes)),
         debugJournalConflicts: () => db.journalConflicts.toArray(),
+        // Seeds a conflict copy for AC8 without the two-device pull dance from
+        // journal.spec.ts's AC6 — encrypts under the real in-page DEK (never
+        // exported back to Node) in exactly the shape pull() writes.
+        debugSeedJournalConflict: async (entryDate: string, content: JournalContent) => {
+          const dek = journalDek();
+          if (!dek) throw new Error('journal is locked');
+          const { ciphertext, nonce } = await encryptJournal(dek, content);
+          const now = new Date().toISOString();
+          await db.journalConflicts.add({
+            id: uuidv7(),
+            entryDate,
+            ciphertext: bytesToBase64(ciphertext),
+            nonce: bytesToBase64(nonce),
+            displacedSyncSeq: null,
+            updatedAt: now,
+            capturedAt: now,
+          });
+        },
         createEnvelope: (passphrase: string, kdfParamsOverride?: Omit<KdfParams, 'salt'>) =>
           createEnvelope(passphrase, kdfParamsOverride),
         openEnvelope: (envelope: Envelope, passphrase: string) => openEnvelope(envelope, passphrase),
