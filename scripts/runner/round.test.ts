@@ -11,7 +11,7 @@ import type { GitAdapter } from './git';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
 import { createClaimAdapter, type ClaimAdapter } from './claim';
-import { roundEval, roundPlan, type RoundContext, type RoundRun } from './round';
+import { roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } from './round';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
 
@@ -942,5 +942,61 @@ describe('roundEval', () => {
     expect(result.rc).toBe(1);
     expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
     expect(calls.some((args) => args.join(' ').includes('letzte Zeile'))).toBe(true);
+  });
+
+  // #356 (B): erkennt VOR roundEval eine nicht-fortsetzbare Session, damit ein
+  // vergifteter Erst-Crash nie als Eskalations-Fehlversuch zaehlt.
+  describe('roundRecover', () => {
+    const notFound = 'Fehler: No conversation found with session ID: 25b04165-abcd\n';
+
+    it('(a) rc != 0 + resume gesetzt + Marker im Log -> retry, Session entfernt, Kommentar gepostet', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundRecover(ctx(gh), { ...plan, resume: 'sid-alt' }, 1, notFound);
+      expect(result).toEqual({ retry: true });
+      expect(state.read('session-77')).toBeNull();
+      expect(called(calls, 'comment', '77')).toBe(true);
+    });
+
+    it('(b) rc = 0 -> kein Retry, keine Seiteneffekte', () => {
+      state.write('session-77', 'sid-alt');
+      const { gh, calls } = ghDouble();
+      const result = roundRecover(ctx(gh), { ...plan, resume: 'sid-alt' }, 0, notFound);
+      expect(result).toEqual({ retry: false });
+      expect(state.read('session-77')).toBe('sid-alt');
+      expect(calls.length).toBe(0);
+    });
+
+    it('(c) rc != 0, aber ein anderer Fehler im Log -> kein Retry', () => {
+      state.write('session-77', 'sid-alt');
+      const { gh, calls } = ghDouble();
+      const result = roundRecover(ctx(gh), { ...plan, resume: 'sid-alt' }, 1, 'irgendein anderer Fehler');
+      expect(result).toEqual({ retry: false });
+      expect(state.read('session-77')).toBe('sid-alt');
+      expect(calls.length).toBe(0);
+    });
+
+    it("(d) resume = '' (frischer Start) -> kein Retry, selbst mit passendem Log", () => {
+      state.write('session-77', 'sid-alt');
+      const { gh, calls } = ghDouble();
+      const result = roundRecover(ctx(gh), { ...plan, resume: '' }, 1, notFound);
+      expect(result).toEqual({ retry: false });
+      expect(state.read('session-77')).toBe('sid-alt');
+      expect(calls.length).toBe(0);
+    });
+
+    it('(e) loest in KEINEM Fall buildEscalationEval/needs-answer aus', () => {
+      const { gh, calls } = ghDouble();
+      roundRecover(ctx(gh), { ...plan, resume: 'sid-alt' }, 1, notFound);
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
+      expect(called(calls, 'in-progress')).toBe(false);
+    });
+
+    it('entfernt die Denk-Session (session-think-<nr>) fuer eine plan/research-Rolle', () => {
+      state.write('session-think-77', 'sid-alt');
+      const { gh } = ghDouble();
+      const result = roundRecover(ctx(gh), { ...plan, role: 'plan', resume: 'sid-alt' }, 1, notFound);
+      expect(result).toEqual({ retry: true });
+      expect(state.read('session-think-77')).toBeNull();
+    });
   });
 });

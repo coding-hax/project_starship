@@ -793,6 +793,51 @@ function appendEndReason(issue: number, reason: string, gh: GhAdapter, clock: Cl
   ]);
 }
 
+export interface RoundRecoverResult {
+  /** Genau EIN Frischversuch ohne --resume, dann weiter zu roundEval (#356, B). */
+  retry: boolean;
+}
+
+// Der stabile Teilstring der Claude-CLI-Meldung, wenn eine per --resume
+// uebergebene Session-ID im aktuellen Arbeitsverzeichnis nicht existiert
+// (#353): eine Bau-Rolle, die (z. B. wegen des vor #356/A geteilten
+// Schluessels) die Session eines anderen cwd erbt, oder eine tatsaechlich
+// verfallene/geprunte Session derselben Rolle. Der Wortlaut kann sich mit
+// einer kuenftigen CLI-Version aendern -- dann faellt die Erkennung auf den
+// heutigen Crash+Eskalation-Stand zurueck, nicht schlimmer als vorher.
+const NO_CONVERSATION_MARKER = 'No conversation found with session ID';
+
+// Zwischen dem `claude`-Aufruf und roundEval (#356, B): erkennt eine
+// nicht-fortsetzbare Session VOR der Eskalationsauswertung, damit ein
+// vergifteter Erst-Crash roundEval NIE erreicht und nicht als
+// Eskalations-Fehlversuch zaehlt (buildEscalationEval laeuft erst dort).
+// Bash fuehrt bei retry=true GENAU EINEN Frischversuch ohne --resume aus und
+// speist erst dessen Ausgang in round-eval -- keine Schleife, siehe
+// claude-runner.sh.
+export function roundRecover(ctx: RoundContext, plan: RoundRun, rc: number, log: string): RoundRecoverResult {
+  const { state, gh } = ctx;
+  if (rc === 0 || plan.resume === '' || !log.includes(NO_CONVERSATION_MARKER)) {
+    return { retry: false };
+  }
+
+  // Die Gift-ID weg -- selbst wenn der Frischversuch gleich wieder scheitert,
+  // startet der naechste Takt ohnehin sauber (#353 wiederholte sich sonst
+  // endlos, weil roundEval eine leere neue Session-ID nie schreibt).
+  state.remove(sessionKey(plan.issue, plan.role));
+
+  // Sichtbarkeit (Owner-Entscheidung 29.07.26): ein selbstheilender Runner,
+  // der Fehler verschweigt, ist schlimmer als einer, der abstuerzt.
+  tryGh(gh, [
+    'issue',
+    'comment',
+    String(plan.issue),
+    '--body',
+    '🤖 Gespeicherte Session nicht fortsetzbar ("No conversation found") — verworfen, genau ein Frischversuch ohne --resume.',
+  ]);
+
+  return { retry: true };
+}
+
 export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutcome, log: string): RoundEvalResult {
   const { gh, git, state, sharedState, clock } = ctx;
   const { issue, role } = plan;
