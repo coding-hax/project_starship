@@ -11,6 +11,10 @@ export interface QueueIssue {
   number: number;
   labels: { name: string }[];
   createdAt?: string;
+  /** Fuer den Fundschluessel (#366) -- optional, damit kein bestehender Aufrufer bricht. */
+  body?: string;
+  state?: string;
+  stateReason?: string;
 }
 
 // Exportiert fuer select.ts (#202 S5) -- dieselbe Label-/Sortierlogik wird
@@ -205,4 +209,39 @@ export function untriaged(
     )
     .map((issue) => issue.number)
     .sort((a, b) => a - b);
+}
+
+// #366: der Fundschluessel macht ein Fund-Ticket ueber den Testort statt der
+// Hypothese wiederfindbar -- Titel wechseln je Lauf ("flaky(nav): ...",
+// "e2e: aktivitaeten.spec.ts AC6 ..."), der Schluessel im Body nicht.
+//
+// Zeilenanker (multiline 'm'), damit Fliesstext ("... siehe Fund: irgendwo")
+// nicht triggert -- dieselbe Vorsicht wie bei ENTRY_LINE oben. Nur die ERSTE
+// passende Zeile zaehlt; mehr als eine waere ohnehin ein widerspruechliches
+// Ticket.
+const FIND_KEY_LINE = /^\s*Fund:\s*(.+?)\s*$/m;
+
+export function parseFindKey(body: string | undefined | null): string | null {
+  if (!body) return null;
+  const match = FIND_KEY_LINE.exec(body);
+  return match ? match[1] : null;
+}
+
+// Alle Fund-Tickets eines Schnappschusses, aeltestes zuerst (Tie-Break:
+// Ticketnummer) -- treibt sowohl die Prompt-Zeile (AC3) als auch
+// findFoundTicket() unten.
+export function foundTickets(snapshot: QueueIssue[]): { number: number; key: string }[] {
+  return snapshot
+    .filter((issue) => parseFindKey(issue.body) !== null)
+    .sort((a, b) => byCreatedAt(a, b) || a.number - b.number)
+    .map((issue) => ({ number: issue.number, key: parseFindKey(issue.body) as string }));
+}
+
+// AC2: zu einem Fundschluessel das bestehende Ticket finden -- zustandsagnostisch
+// (offen wie geschlossen; der Aufrufer liefert das ueber einen Schnappschuss mit
+// '--state all'). Mehrere Treffer: das AELTESTE gewinnt, denn das ist das
+// urspruengliche Ticket -- alles danach war bereits ein vermeidbares Duplikat.
+export function findFoundTicket(key: string, snapshot: QueueIssue[]): number | null {
+  const matches = foundTickets(snapshot).filter((entry) => entry.key === key);
+  return matches.length > 0 ? matches[0]!.number : null;
 }
