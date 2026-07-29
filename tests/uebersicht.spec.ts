@@ -390,3 +390,53 @@ test('Journal-Sektion auf Mobile und Desktop, Dark Mode und reduzierte Bewegung 
 
   expect(darkColor).not.toBe(lightColor);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #363: zwei Links mit dem zugänglichen Namen "Journal" (Fund aus #342) */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Alle zugänglichen Namen von role=link auf der Seite, per echter
+ * Accessibility-Tree-Berechnung (`ariaSnapshot`, YAML-artig: jede Zeile mit
+ * einer Link-Rolle trägt den Namen in Anführungszeichen, z. B. `- link "Journal"`).
+ */
+async function linkAccessibleNames(page: Page): Promise<string[]> {
+  const snapshot = await page.locator('body').ariaSnapshot();
+  return [...snapshot.matchAll(/-\s*link "([^"]*)"/g)].map((match) => match[1]);
+}
+
+test('die Journal-Sektion hat einen eigenen zugänglichen Namen statt des nackten "Journal" wie der Nav-Eintrag (issue #363 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  await expect(
+    page.getByRole('link', { name: 'Journal — heute noch nicht geschrieben', exact: true }),
+  ).toBeVisible();
+
+  await setUpJournal(page, '363 passphrase');
+  await page.getByRole('button', { name: '7' }).click(); // Stimmungspunkt in der MoodScale
+  await waitForJournalEntryWritten(page);
+  // Client-seitige Navigation statt page.goto: der DEK lebt nur in-memory
+  // (ADR-0016), ein harter Reload würde wieder sperren (issue #339 AC5).
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }).click();
+
+  await expect(
+    page.getByRole('link', {
+      name: 'Journal — heute geschrieben, Stimmung 7 von 10',
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test('kein zugänglicher Name hängt auf /uebersicht doppelt an zwei Links (issue #363 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await expect(journalSection(page)).toBeVisible();
+
+  const names = await linkAccessibleNames(page);
+  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+
+  expect(duplicates, `doppelte Linknamen: ${duplicates.join(', ')}`).toEqual([]);
+});
