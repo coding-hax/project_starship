@@ -43,7 +43,7 @@ Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgele
 
 **Aufgaben** — schnelles Erfassen, Fälligkeitsdatum, Priorität, Erledigen per Swipe.
 **Termine** — Tages-/Wochenansicht, eigenständiger Kalender. **Kein Sync mit iCloud oder Google.**
-**Journal** — täglicher Eintrag, freier Text, Stimmung, Tags, lokale Volltextsuche. Ende-zu-Ende-verschlüsselt.
+**Journal** — beliebig viele Einträge pro Tag, freier Text, Stimmung, Tags, lokale Volltextsuche. Ende-zu-Ende-verschlüsselt.
 **Gewohnheiten** — tägliche/wöchentliche Habits, Abhaken, Streaks, Wochenübersicht.
 **Übersicht** — das Dashboard, das alles zusammenführt.
 
@@ -59,7 +59,7 @@ wächst mit, statt am Ende in einem großen Dashboard-Milestone zusammengeklebt 
 | **M1** Sync-Härtung + Aufgaben | `storage.persist()`, Delete-gewinnt-Regel + Server-Sequenz **jetzt, solange die DB leer ist (Migration gratis)**; Aufgaben-CRUD, Fälligkeit, Priorität, Swipe, offline | zeigt (nur) Aufgaben         | Aufgabe offline anlegen/wiederfinden; Konflikt- und Delete-Semantik getestet |
 | **M2** Gewohnheiten            | Habits binär, Abhaken, Streaks, Wochenraster — kleinstes Datenmodell, schneller Win, tägliche Nutzung                                                                 | + Streaks                    | Streak über Tageswechsel korrekt                                             |
 | **M3** Push & Erinnerungen     | Web Push; fällige Aufgaben morgens, Streak-Erinnerung abends — Aufgaben + Habits **sind** die Use-Cases; **Ersatz für den GitHub-Actions-Cron**                        | —                            | Erinnerung kommt zuverlässig, ohne dass die App offen ist                    |
-| **M4** Journal (E2EE)          | Editor, Stimmung, Tags, lokale Suche, Ende-zu-Ende-Verschlüsselung — Sync ist jetzt 2× bewiesen, Verschlüsselung sicher obendrauf                                      | + „heute schon geschrieben?" | Server kennt keinen Klartext                                                  |
+| **M4** Journal (E2EE)          | Editor mit Absenden statt Autosave, beliebig viele Einträge pro Tag, Stimmung, Tags, lokale Suche, Ende-zu-Ende-Verschlüsselung — Sync ist jetzt 2× bewiesen, Verschlüsselung sicher obendrauf | + „heute schon geschrieben?" | Server kennt keinen Klartext                                                  |
 | **M5** Termine (lokal)         | Tages-/Wochenansicht, CRUD, Serientermine **inkl. verschobener/ausgefallener Einzeltermine (Ausnahmen) von Anfang an** — härteste Domäne, kommt zuletzt                | + Termine des Tages          | Termine vollständig ohne externen Kalender, Serien-Ausnahmen korrekt         |
 | **M6** Sprachmemo              | Aufnahme → Transkript → strukturierter Vorschlag mit Bestätigung — nach der #47-Recherche, wenn die Privacy-Frage geklärt ist                                          | —                            | „Termin am 4.8. bei Dr. XY" wird korrekt zum Termin                          |
 
@@ -82,6 +82,9 @@ Sie werden nicht in jedem Ticket neu diskutiert.
   Nur `entry_date` bleibt im Klartext. Siehe **ADR-0004** — das ersetzt den
   Metadaten-Absatz aus ADR-0001 §4. Folge: keine serverseitige Filterung über
   Journalinhalte. Kein Verlust, weil in einer Local-first-App ohnehin lokal gefiltert wird.
+- **Journal (29.07.26, aus echtem Gebrauch):** kein täglicher Auto-Save-Eintrag mehr,
+  sondern ein Textfeld mit Absenden-Knopf; ein Tag trägt beliebig viele Einträge.
+  Siehe **ADR-0018** — löst ADR-0017 Punkt 1 (deterministische id je Tag) ab.
 - **Wiederkehrende Aufgaben** kommen **nicht** in M1. M1 macht Aufgaben richtig gut
   (erfassen, Fälligkeit, Priorität, Swipe, offline) — plus die Sync-Härtung. Wiederholung
   wird ein eigenes Ticket, sobald sie fehlt. Die Spalte `recurrence_rule` bleibt reserviert.
