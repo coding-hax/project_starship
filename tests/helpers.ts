@@ -303,6 +303,11 @@ declare global {
         dek: unknown,
         content: { text: string; mood?: string; tags?: string[] },
       ) => Promise<{ ciphertext: number[]; nonce: number[] }>;
+      journalSetup: (passphrase: string) => Promise<void>;
+      journalUnlock: (passphrase: string) => Promise<'ok' | 'wrong'>;
+      journalLock: () => Promise<void>;
+      journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
+      journalHasPersistedDek: () => Promise<boolean>;
     };
   }
 }

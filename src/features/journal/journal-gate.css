@@ -1,0 +1,65 @@
+/**
+ * Setup/locked/unlocked share one layout — same field styling as
+ * task-editor.css/habit-editor.css so this reads as one system. The locked
+ * state is deliberately calm (ADR-0016): no --danger anywhere in this file.
+ */
+
+.journal-gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 320px;
+  margin-top: var(--space-6);
+}
+
+.journal-gate__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.journal-gate__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.journal-gate__input {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+}
+
+.journal-gate__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.journal-gate__message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.journal-gate__submit {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-gate__submit:active {
+  opacity: 0.85;
+}
