@@ -19,7 +19,7 @@ Vor jeder Arbeit lesen:
 ## Harte Regeln
 
 1. **Ein Ticket zur Zeit.** WIP-Limit = 1. Kein neues Issue anfassen, solange ein PR offen ist. Keine "kleinen Nebenverbesserungen" im selben Branch. Laufen mehrere Runner-Slots (#204), gilt das WIP-Limit **pro Slot** — jeder Slot ist ein eigener Arbeitsbaum und baut für sich genommen an genau einem Ticket. Details: `docs/adr/0014-mehrere-runner-slots.md`.
-2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird als neues Issue angelegt, nicht implementiert.
+2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird als neues Issue angelegt, nicht implementiert. Vor dem Anlegen eines Fund-/Test-Tickets erst nach dem Fundschlüssel suchen (offen **und** geschlossen) — Titelform, Pflichtsuche und Trefferpolitik: `docs/WORKFLOW.md`, „Fundschlüssel & Pflichtsuche".
 3. **Keine neue Dependency ohne ADR.** Wenn ein Paket nötig scheint: ADR-Entwurf in den PR, Begründung, Alternativen. Warten auf Freigabe.
 4. **Keine Schema-Änderung ohne Migration.** Drizzle-Migration im selben PR, Up- und Down-Pfad.
 5. **Tests werden niemals abgeschwächt, um grün zu werden.** Ein roter Test ist ein Fund, kein Hindernis. Kein `test.skip`, kein aufgeweichtes Assert, kein erhöhter Timeout als Fix. Ein Flake-Nachweis läuft über `--repeat-each`, eingegrenzt auf die betroffenen Tests (siehe `docs/WORKFLOW.md`, „Wie ein Flake-Fix belegt wird") — **niemals** als N ganze Suiten hintereinander. Jedes Akzeptanzkriterium muss innerhalb eines Lauf-Fensters (45 Minuten) prüfbar sein — sonst ist es keine Anforderung, sondern eine Sackgasse.

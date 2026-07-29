@@ -218,6 +218,8 @@ testlos gerechtfertigt ist, du setzt das Label.
 priorisiert, verletzte das. Es wartet auf deine Triage und ist seit #357 nicht
 mehr unsichtbar: es taucht im aggregierten Status-Issue unter „🏷️ Untriagiert"
 auf, bis du `ready`/`plan`/`research` setzt oder es in die Queue #92 aufnimmst.
+Titelform und Pflichtsuche vor dem Anlegen: „Fundschlüssel & Pflichtsuche"
+unten.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein
@@ -242,6 +244,59 @@ per Queue-Editor oder per Label.
 Beide behalten `in-progress`; der Unterschied liegt allein im Wartelabel. Genau
 das ist seit #272 der Punkt: nicht ein zweites Zustandslabel entscheidet, ob ein
 Bauplatz belegt ist, sondern die Frage, ob jemand auf einen Menschen wartet.
+
+## Fundschlüssel & Pflichtsuche (#366)
+
+Am 29.07.26 lagen drei offene Tickets für denselben roten Test
+(`tests/aktivitaeten.spec.ts:608`, AC6 Stand-Hinweis): #349, #351 und #364 —
+drei verschiedene Hypothesen-Titel, keiner fand die anderen beiden. Deshalb
+gilt für jedes Fund-Ticket eine feste Form.
+
+**Titel- und Body-Form.** Ein Fund-Ticket wird nach dem *Testort* benannt,
+nicht nach der Vermutung, und trägt den Schlüssel maschinenlesbar im Body:
+
+```
+Titel: fund(<pfad>:<zeile>): kurze Beschreibung des Fehlschlags
+Body:  Fund: <pfad>:<zeile>
+```
+
+Die `Fund:`-Zeile muss am Zeilenanfang stehen (Fließtext, das „Fund:“ nur
+erwähnt, zählt nicht) — `parseFindKey()` in `scripts/runner/queue.ts` liest
+genau das.
+
+**Pflichtsuche vor `gh issue create`.** Bevor ein neues Fund-Ticket entsteht,
+wird gegen den Schlüssel gesucht, **mit `--state all`**:
+
+```
+gh issue list --state all --search '"Fund: <pfad>:<zeile>"'
+```
+
+`--state all` ist wesentlich: ein geschlossener Flake, der wiederkommt,
+gehört ans alte Ticket, nicht in ein neues.
+
+**Trefferpolitik.** Ein Treffer bekommt einen Kommentar statt eines neuen
+Tickets — welcher Treffer, hängt vom Zustand ab:
+
+- **Offen:** Kommentar am bestehenden Ticket.
+- **Geschlossen als `not planned`/Duplikat:** Kommentar am alten Ticket
+  **und wieder öffnen** — ein als unerheblich abgetaner Fund ist damit nie
+  wirklich erledigt gewesen.
+- **Geschlossen als erledigt (der Fix ist gemerged):** ein **neues** Ticket,
+  das das alte verlinkt — ein Rückfall nach einem gemergten Fix ist eine neue
+  Tatsache, kein Fortsetzen des alten.
+
+Mehrere Treffer auf denselben Schlüssel: das **älteste** Ticket gewinnt
+(`findFoundTicket()`), denn das ist das ursprüngliche — alles danach war
+bereits ein vermeidbares Duplikat.
+
+**Der Runner hilft mit, verlässt sich aber nicht allein auf die Suche.** Der
+Auftragstext eines Baulaufs listet die bekannten, untriagierten Fund-Tickets
+mit Schlüssel bereits mit („## Bekannte Fund-Tickets“), sofern welche
+existieren — mechanisch, nicht nur vorgeschrieben. Das fängt vor allem den
+Fall, dass ein *offenes* Geschwister-Ticket in einem anderen Slot lief, als
+der Fund entstand (genau der teure Fall bei #364). Die Pflichtsuche bleibt
+trotzdem nötig: sie fängt die **geschlossenen** Geschwister, die im
+Auftragstext naturgemäß nicht auftauchen.
 
 ## Modell-Eskalation beim Bauen (ADR-0007)
 
