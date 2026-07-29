@@ -1,0 +1,78 @@
+/**
+ * Same field/card styling as journal-editor.css so search reads as part of the
+ * same surface, not a bolted-on widget.
+ */
+
+.journal-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  margin-bottom: var(--space-4);
+}
+
+.journal-search__input {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+}
+
+.journal-search__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.journal-search__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.journal-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-search__result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-search__result:active {
+  opacity: 0.85;
+}
+
+.journal-search__result-date {
+  font-weight: 600;
+}
+
+.journal-search__result-snippet {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

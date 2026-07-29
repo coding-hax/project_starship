@@ -7,6 +7,7 @@ import { MoodScale } from '@/ui/mood-scale';
 import { decryptJournalConflict, restoreJournalConflict } from './conflicts';
 import { loadJournalEntry, saveJournalEntry, todayKey } from './entry';
 import './journal-editor.css';
+import { JournalSearch } from './journal-search';
 import { useJournalConflicts } from './use-journal-conflicts';
 
 /** Text/tags autosave debounce — mood saves immediately (a tap is the whole
@@ -18,6 +19,19 @@ function parseTags(raw: string): string[] {
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+const ENTRY_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+/** Shown only once a search result (AC6) switched the visible day away from
+ * today — the day itself is otherwise implicit, like every other page here. */
+function formatEntryDate(entryDate: string): string {
+  const [year, month, day] = entryDate.split('-').map(Number);
+  return ENTRY_DATE_FORMATTER.format(new Date(year, month - 1, day));
 }
 
 function contentToFields(content: JournalContent | null) {
@@ -35,7 +49,7 @@ function contentToFields(content: JournalContent | null) {
  * never a direct API call (CLAUDE.md rule 8).
  */
 export function JournalEditor() {
-  const [entryDate] = useState(todayKey);
+  const [entryDate, setEntryDate] = useState(todayKey);
   const [mood, setMood] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -103,27 +117,33 @@ export function JournalEditor() {
   }
 
   return (
-    <div className="journal-editor">
-      <MoodScale value={mood} onChange={handleMoodChange} />
-      <textarea
-        className="journal-editor__text"
-        value={text}
-        onChange={(event) => handleTextChange(event.target.value)}
-        placeholder="Was ist heute passiert?"
-        aria-label="Journal-Text"
-      />
-      <input
-        type="text"
-        className="journal-editor__tags"
-        value={tagsInput}
-        onChange={(event) => handleTagsChange(event.target.value)}
-        placeholder="Tags, mit Komma getrennt"
-        aria-label="Tags"
-      />
-      {conflicts?.map((conflict) => (
-        <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={handleRestore} />
-      ))}
-    </div>
+    <>
+      <JournalSearch onSelect={setEntryDate} />
+      <div className="journal-editor">
+        {entryDate !== todayKey() && (
+          <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
+        )}
+        <MoodScale value={mood} onChange={handleMoodChange} />
+        <textarea
+          className="journal-editor__text"
+          value={text}
+          onChange={(event) => handleTextChange(event.target.value)}
+          placeholder="Was ist heute passiert?"
+          aria-label="Journal-Text"
+        />
+        <input
+          type="text"
+          className="journal-editor__tags"
+          value={tagsInput}
+          onChange={(event) => handleTagsChange(event.target.value)}
+          placeholder="Tags, mit Komma getrennt"
+          aria-label="Tags"
+        />
+        {conflicts?.map((conflict) => (
+          <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={handleRestore} />
+        ))}
+      </div>
+    </>
   );
 }
 
