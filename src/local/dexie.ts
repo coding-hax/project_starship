@@ -94,12 +94,24 @@ export interface JournalConflict {
   capturedAt: string;
 }
 
+/**
+ * The opt-in persisted DEK (issue #339, ADR-0016 AC5) — its own store, not `meta`,
+ * so it can be wiped in isolation (`clearPersistedDek`) without touching the sync
+ * cursor. `dek` is a non-extractable `CryptoKey`; IndexedDB's structured-clone
+ * algorithm stores it directly, the raw key bytes never pass through JS.
+ */
+export interface JournalSessionEntry {
+  id: string;
+  dek: CryptoKey;
+}
+
 const db = new Dexie('starship') as Dexie & {
   outbox: EntityTable<OutboxEntry, 'id'>;
   records: EntityTable<LocalRecord, 'id'>;
   meta: EntityTable<MetaEntry, 'key'>;
   weather: EntityTable<WeatherCacheEntry, 'key'>;
   journalConflicts: EntityTable<JournalConflict, 'id'>;
+  journalSession: EntityTable<JournalSessionEntry, 'id'>;
 };
 
 db.version(1).stores({
@@ -134,6 +146,12 @@ db.version(2).stores({
 // untouched, an upgrading install just gains an empty conflicts table.
 db.version(3).stores({
   journalConflicts: 'id, entryDate',
+});
+
+// Additive: a new store for the opt-in persisted DEK (issue #339). Existing
+// stores/rows are untouched, an upgrading install just gains an empty session store.
+db.version(4).stores({
+  journalSession: 'id',
 });
 
 export { db };

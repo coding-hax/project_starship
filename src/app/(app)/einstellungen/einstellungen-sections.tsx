@@ -2,8 +2,8 @@
 
 import { useActiveSections } from '@/modules/module-sections';
 
-/** Panel order after the core ones: Aufgaben → Wetter → Export (issue #308). */
-const ORDER = ['aufgaben', 'wetter', 'export'];
+/** Panel order after the core ones: Aufgaben → Wetter → Journal → Export (issue #308, #339). */
+const ORDER = ['aufgaben', 'wetter', 'journal', 'export'];
 
 export function EinstellungenSections() {
   const sections = useActiveSections(ORDER, (m) => m.SettingsPanel);
