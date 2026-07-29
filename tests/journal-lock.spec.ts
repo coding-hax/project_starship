@@ -245,17 +245,16 @@ test('ohne Verbindung bietet der Gate kein Einrichten an, Wiederholen loest es a
   await pushEverything(page);
 
   const second = await openSecondDevice(browser, page);
-  await second.context().setOffline(true);
-  // Client-seitige Navigation: das Dokument ist schon geladen, nur der Pull faellt aus.
-  await second
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Journal' })
-    .click();
+  // Nur der Pull faellt aus, nicht das ganze Netz: `setOffline` wuerde im App
+  // Router schon die RSC-Payload der Navigation verschlucken, und die Seite kaeme
+  // nie so weit, den Gate ueberhaupt zu rendern.
+  await second.route('**/api/sync/pull**', (route) => route.abort('failed'));
+  await second.goto('/journal');
 
   await expect(second.locator('.journal-gate[data-state="unavailable"]')).toBeVisible();
   await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
 
-  await second.context().setOffline(false);
+  await second.unroute('**/api/sync/pull**');
   await second.getByRole('button', { name: 'Erneut versuchen' }).click();
   await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
