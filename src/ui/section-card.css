@@ -10,6 +10,13 @@
 }
 
 .section-card__title {
+  /* The global `h2 { margin-block-start: var(--space-6) }` (globals.css) sets the
+     rhythm between a heading and whatever precedes it in the page flow. Inside a
+     card there is nothing before it — the card's own padding is the top spacing,
+     and since `.section-card` is a flex container the margin does not collapse
+     into it. Leaving it in pushed the title ~24px below the card's top edge
+     (issues #288, #344, #353, all three of which fixed the page topbar instead). */
+  margin-block-start: 0;
   font-size: 16px;
   font-weight: 650;
 }
