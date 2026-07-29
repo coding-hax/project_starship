@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { createEnvelope, deriveKek, openEnvelope, type Envelope } from './envelope';
-import { decryptJournal, encryptJournal, type JournalContent } from './journal';
+import {
+  createEnvelopesWithRecovery,
+  decryptJournal,
+  encryptJournal,
+  generateRecoveryKey,
+  normalizeRecoveryKey,
+  openEnvelopeWithRecovery,
+  rewrapPassphrase,
+  type JournalContent,
+} from './journal';
 import { WrongPassphraseError, JournalDecryptError } from './errors';
 import { base64ToBytes, bytesToBase64 } from './base64';
 import fixture from './__fixtures__/journal-vector.json';
@@ -178,6 +187,116 @@ describe('encryptJournal / decryptJournal', () => {
   });
 });
 
+describe('generateRecoveryKey / normalizeRecoveryKey', () => {
+  it('AC1: 256 bits of entropy formatted as 13 grouped base32 blocks, two calls differ', () => {
+    const a = generateRecoveryKey();
+    const b = generateRecoveryKey();
+
+    expect(a).toMatch(/^[A-Z2-7]{4}(-[A-Z2-7]{4}){12}$/);
+    expect(a).not.toEqual(b);
+  });
+
+  it('AC3: tolerates different spacing/case so retyped or pasted input still matches', () => {
+    const key = generateRecoveryKey();
+    const messy = ` ${key.toLowerCase().replace(/-/g, '  ')} `;
+
+    expect(normalizeRecoveryKey(messy)).toEqual(normalizeRecoveryKey(key));
+  });
+});
+
+describe('createEnvelopesWithRecovery / openEnvelopeWithRecovery', () => {
+  it('AC1/AC3: passphrase and recovery envelopes both open to the same DEK', async () => {
+    const passphrase = 'a recovery test passphrase';
+    const { passphraseEnvelope, recoveryEnvelope, recoveryKey, dek } =
+      await createEnvelopesWithRecovery(passphrase, FAST_KDF_PARAMS);
+
+    const content: JournalContent = { text: 'Über den Recovery-Pfad lesbar.' };
+    const { ciphertext, nonce } = await encryptJournal(dek, content);
+
+    const dekFromPassphrase = await openEnvelope(passphraseEnvelope, passphrase);
+    const dekFromRecovery = await openEnvelopeWithRecovery(recoveryEnvelope, recoveryKey);
+
+    await expect(decryptJournal(dekFromPassphrase, ciphertext, nonce)).resolves.toEqual(content);
+    await expect(decryptJournal(dekFromRecovery, ciphertext, nonce)).resolves.toEqual(content);
+  });
+
+  it('AC3: recovery key with stray spacing/case still unlocks (normalizeRecoveryKey applied)', async () => {
+    const { recoveryEnvelope, recoveryKey, dek } = await createEnvelopesWithRecovery(
+      'another passphrase',
+      FAST_KDF_PARAMS,
+    );
+    const content: JournalContent = { text: 'noch lesbar' };
+    const { ciphertext, nonce } = await encryptJournal(dek, content);
+
+    const messyKey = ` ${recoveryKey.toLowerCase().replace(/-/g, '  ')} `;
+    const opened = await openEnvelopeWithRecovery(recoveryEnvelope, messyKey);
+
+    await expect(decryptJournal(opened, ciphertext, nonce)).resolves.toEqual(content);
+  });
+
+  it('AC5: wrong recovery key throws the exact same WrongPassphraseError as a wrong passphrase', async () => {
+    const { recoveryEnvelope } = await createEnvelopesWithRecovery('yet another passphrase', FAST_KDF_PARAMS);
+
+    let caught: unknown;
+    try {
+      await openEnvelopeWithRecovery(recoveryEnvelope, generateRecoveryKey());
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(WrongPassphraseError);
+    expect((caught as Error).message).toEqual(new WrongPassphraseError().message);
+  });
+});
+
+describe('rewrapPassphrase', () => {
+  it('AC4: new passphrase envelope opens to the same DEK, existing ciphertext stays readable', async () => {
+    const oldPassphrase = 'old passphrase';
+    const newPassphrase = 'brand new passphrase';
+    const { recoveryEnvelope, recoveryKey, dek } = await createEnvelopesWithRecovery(
+      oldPassphrase,
+      FAST_KDF_PARAMS,
+    );
+    const content: JournalContent = { text: 'entstand vor dem Passphrase-Wechsel' };
+    const { ciphertext, nonce } = await encryptJournal(dek, content);
+
+    const newPassphraseEnvelope = await rewrapPassphrase(
+      recoveryEnvelope,
+      recoveryKey,
+      newPassphrase,
+      FAST_KDF_PARAMS,
+    );
+    const dekAfterRewrap = await openEnvelope(newPassphraseEnvelope, newPassphrase);
+
+    await expect(decryptJournal(dekAfterRewrap, ciphertext, nonce)).resolves.toEqual(content);
+  });
+
+  it('AC4: the old passphrase no longer opens the new envelope', async () => {
+    const { recoveryEnvelope, recoveryKey } = await createEnvelopesWithRecovery(
+      'old passphrase',
+      FAST_KDF_PARAMS,
+    );
+    const newPassphraseEnvelope = await rewrapPassphrase(
+      recoveryEnvelope,
+      recoveryKey,
+      'brand new passphrase',
+      FAST_KDF_PARAMS,
+    );
+
+    await expect(openEnvelope(newPassphraseEnvelope, 'old passphrase')).rejects.toBeInstanceOf(
+      WrongPassphraseError,
+    );
+  });
+
+  it('AC5: wrong recovery key throws WrongPassphraseError instead of rewrapping', async () => {
+    const { recoveryEnvelope } = await createEnvelopesWithRecovery('old passphrase', FAST_KDF_PARAMS);
+
+    await expect(
+      rewrapPassphrase(recoveryEnvelope, generateRecoveryKey(), 'new passphrase', FAST_KDF_PARAMS),
+    ).rejects.toBeInstanceOf(WrongPassphraseError);
+  });
+});
+
 describe('fester Testvektor (AC5/AC6)', () => {
   it('AC5: fixture envelope + known passphrase decrypts to the expected plaintext', async () => {
     const dek = await openEnvelope(fixture.envelope as Envelope, fixture.passphrase);
@@ -225,11 +344,21 @@ describe('AC7: kein Klartext/Schluesselmaterial im Log', () => {
     tampered[0] ^= 0xff;
     await decryptJournal(dek, tampered, nonce).catch(() => {});
 
+    // Recovery-Pfad (AC6, issue #343): Erzeugung, Entsperren, Neu-Wickeln, falscher Key.
+    const { recoveryEnvelope, recoveryKey } = await createEnvelopesWithRecovery(
+      passphrase,
+      FAST_KDF_PARAMS,
+    );
+    await openEnvelopeWithRecovery(recoveryEnvelope, recoveryKey);
+    await openEnvelopeWithRecovery(recoveryEnvelope, generateRecoveryKey()).catch(() => {});
+    await rewrapPassphrase(recoveryEnvelope, recoveryKey, 'a new passphrase', FAST_KDF_PARAMS);
+
     for (const spy of spies) {
       for (const call of spy.mock.calls) {
         const serialized = JSON.stringify(call);
         expect(serialized).not.toContain(passphrase);
         expect(serialized).not.toContain(content.text);
+        expect(serialized).not.toContain(recoveryKey);
       }
       spy.mockRestore();
     }
