@@ -11,6 +11,13 @@
   max-width: 480px;
 }
 
+.journal-editor__date {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .journal-editor__text,
 .journal-editor__tags {
   min-height: var(--touch-target);
