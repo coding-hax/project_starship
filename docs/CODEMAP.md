@@ -183,7 +183,7 @@ src/
     slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
     sync-boot.tsx           startet den Sync beim Mount + fragt persistenten Storage an (issue #52)
     persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
-    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182); journalEntryId/writeJournalEntry/bytesToBase64/debugJournalConflicts + createEnvelope/openEnvelope/encryptJournal für den echten Journal-Schreibpfad + Konflikt-Ablage, CryptoKey verlässt nie den page.evaluate-Aufruf (issue #338); journalSetup/journalUnlock/journalLock/journalLockState/journalHasPersistedDek treiben den echten lock-store.ts-Automaten (issue #339)
+    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182); journalEntryId/writeJournalEntry/bytesToBase64/debugJournalConflicts + createEnvelope/openEnvelope/encryptJournal für den echten Journal-Schreibpfad + Konflikt-Ablage, CryptoKey verlässt nie den page.evaluate-Aufruf (issue #338); journalSetup/journalUnlock/journalLock/journalLockState/journalHasPersistedDek/journalPersistedDekExtractable treiben den echten lock-store.ts-Automaten (issue #339)
     sync-status.tsx         liveQuery über db.outbox, zeigt Toast(variant=error) sobald overSyncErrorThreshold (issue #182)
     stale.ts                isStaleWarning (8h-Schwelle) + formatStaleSince (HH:MM, lokal) -- geteilt von Wetter (#155) und Aktivitäten (#230), lag bis #230 in weather/forecast.ts
 tests/
