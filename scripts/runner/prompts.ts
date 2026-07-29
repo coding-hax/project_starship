@@ -244,3 +244,8 @@ ${FILE_ACCESS_RULE}
 // doppelter Boden) und faengt nur noch ab, was trotz Allowlist durchrutscht.
 export const READONLY_TOOLS = 'Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)';
 export const BUILD_TOOLS = 'Read,Edit,Write,Glob,Grep,Bash';
+
+// O3 (#325): harte Zusatzgrenze neben der Allowlist -- verbietet den
+// Denk-Rollen Edit/Write explizit, statt sich allein auf die Abwesenheit in
+// READONLY_TOOLS zu verlassen.
+export const READONLY_DENY = 'Edit,Write';

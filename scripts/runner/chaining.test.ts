@@ -61,6 +61,8 @@ describe('Chaining-Entscheidung (#61)', () => {
     resume: '',
     labels: 'ready ',
     beforeTip: 'abc',
+    beforeDirty: '',
+    denyTools: '',
     queueBody: '',
     didWork: false,
     lastIssue: '',

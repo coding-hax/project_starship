@@ -149,6 +149,10 @@ G="$GHSTATE_DIR"
 echo x >> "$G/claude-calls"
 n=$(wc -l < "$G/claude-calls" | tr -d ' ')
 pwd -P > "$G/claude-cwd-$n"
+# Verzeichnisinhalt WAEHREND des Laufs -- fuer #325 der einzige Zeitpunkt, an
+# dem ein Wegwerf-Worktree ueberhaupt noch existiert (run_round entfernt ihn
+# sofort danach).
+ls -1 > "$G/claude-listing-$n" 2>/dev/null
 printf '%s' '{"session_id":"stub-session","result":"ok"}'
 exit 0
 STUB
@@ -160,6 +164,11 @@ export PATH="$FAKEBIN:$PATH"
 # --- Echtes Repo: bare 'origin' + Klon als REPO_DIR ---------------------------
 ORIGIN="$TMP/origin.git"
 git init --bare -q "$ORIGIN"
+# HEAD des bare-Repos explizit auf 'main' -- unabhaengig von init.defaultBranch
+# der Laufumgebung. Ohne das zeigt HEAD auf CI-Runnern teils auf 'master'
+# (nie erzeugt), und ein SPAETERER Klon (AK7, Zeile ~300) bricht mit "remote
+# HEAD refers to nonexistent ref" ab -- kein lokaler Branch, Push scheitert.
+git -C "$ORIGIN" symbolic-ref HEAD refs/heads/main
 
 export REPO_DIR="$TMP/repo"
 export SHARED_DIR="$TMP/shared"
@@ -282,6 +291,37 @@ run_main
 assert_eq "AK5: der Worktree von #999 ist nach dem Schließen entfernt" "0" "$(worktree_count "$WT999")"
 if [ -d "$WT999" ]; then red "AK5: das Verzeichnis von #999 existiert noch"
 else ok "AK5: das Verzeichnis von #999 wurde entfernt"; fi
+
+# ==============================================================================
+# 6. #325 (O2): Lese-Rollen (plan/research) bekommen ebenfalls einen eigenen
+#    Worktree -- aber einen WEGWERF-Worktree, IMMER frisch ab origin/main statt
+#    wiederverwendet wie bei der Bau-Rolle. Nachweis der Frische: origin bekommt
+#    ausserhalb von REPO_DIR (per Zweitklon) einen neuen Commit, den REPO_DIR
+#    selbst nie zieht -- der Lese-Lauf sieht ihn trotzdem, weil sein Worktree
+#    selbst fetcht + auf origin/main auscheckt. Danach ist der Worktree wieder
+#    weg (kein Wiederverwendungs-Pfad wie bei ensure_worktree).
+# ==============================================================================
+OTHER="$TMP/other-clone"
+git clone -q "$ORIGIN" "$OTHER"
+echo marker > "$OTHER/fresh-marker.txt"
+git -C "$OTHER" add fresh-marker.txt
+git -C "$OTHER" -c user.email=test@example.com -c user.name=Test commit -q -m "fresh marker"
+git -C "$OTHER" push -q origin main
+
+reset_gh
+seed_issue 700 "plan"
+run_main
+N=$(call_count)
+WT700="$REPO_DIR/.claude/worktrees/readonly-700"
+
+assert_contains "AK7/#325: Lese-Lauf sieht einen frischen origin/main-Commit, den REPO_DIR nie gezogen hat" \
+  "$GHSTATE_DIR/claude-listing-$N" "fresh-marker.txt"
+assert_eq "AK7/#325: REPO_DIR (Haupt-Checkout) hat den frischen Commit NICHT" \
+  "0" "$([ -f "$REPO_DIR/fresh-marker.txt" ] && echo 1 || echo 0)"
+assert_eq "AK7/#325: der Wegwerf-Worktree ist nach dem Lauf entfernt" "0" "$(worktree_count "$WT700")"
+if [ -d "$WT700" ]; then red "AK7/#325: das Verzeichnis readonly-700 existiert noch"
+else ok "AK7/#325: das Verzeichnis readonly-700 wurde entfernt"; fi
+assert_eq "AK7/#325: Haupt-Checkout bleibt unveraendert (Lese-Rolle liest nie dort)" "" "$(git -C "$REPO_DIR" status --porcelain)"
 
 # ==============================================================================
 echo
