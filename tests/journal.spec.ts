@@ -506,3 +506,21 @@ test('AC10: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich
   const darkBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).not.toBe(lightBg);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #342 AC3: die Übersicht-Sektion "heute schon geschrieben?" braucht   */
+/* kein neues Klartext-Feld — `journal_entries` bleibt exakt so geschnitten   */
+/* wie in #338 (ADR-0004: der Server erfährt nur *dass*, nie *was*).          */
+/* -------------------------------------------------------------------------- */
+
+test('AC3: journal_entries trägt kein neues Klartext-Feld — nur die seit #338 bekannten Spalten', async () => {
+  const columns = await withDb((client) =>
+    client.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'journal_entries'`,
+    ),
+  );
+
+  expect(new Set(columns.rows.map((r) => r.column_name as string))).toEqual(
+    new Set(['id', 'updated_at', 'deleted_at', 'synced_at', 'sync_seq', 'entry_date', 'ciphertext', 'nonce']),
+  );
+});
