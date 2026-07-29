@@ -169,3 +169,40 @@ export function queuePending(snapshot: QueueIssue[]): string {
 // Der Beweis, dass die Kopie driftet, steht in der Ticket-Historie: 'hands-off'
 // fehlte hier in zwei Zweigen, 'resume-parked' fehlte ganz, und zuletzt filterte
 // sie noch 'needs-input' -- ein Label, das es seit S2b nicht mehr gibt.
+
+// #357: die Steuerlabel, die ein offenes Issue aus dem "untriagiert"-Bericht
+// nehmen. Exportiert, damit ein Test die Menge 1:1 gegen die Owner-Entscheidung
+// (29.07.26, "C") festnageln kann -- bewusst eine eigene Liste, NICHT dieselbe
+// wie BLOCKING_LABELS in select.ts (das ist die Auswahl-Sperre, dies die
+// Triage-Sichtbarkeit; ein Zusammenlegen beschaedigte beide Fragen).
+export const TRIAGE_LABELS = [
+  'in-progress',
+  'plan',
+  'research',
+  'ready',
+  'needs-answer',
+  'hands-off',
+] as const;
+
+// Offene Issues ohne jedes Steuerlabel, die auch nicht in der Queue stehen --
+// der untriagierte Eingang aus der Owner-Entscheidung zu #357. `metaIssues`
+// schliesst Status- und Queue-Issue selbst aus: beide sind offen und tragen
+// kein Steuerlabel, waeren also ohne den Ausschluss jeden Takt faelschlich
+// als "untriagiert" gemeldet. Gebaut wird davon nichts -- nur sichtbar
+// gemacht, damit ein ausgelagertes Fund-Ticket nicht mehr still verrottet.
+export function untriaged(
+  snapshot: QueueIssue[],
+  entries: QueueEntry[],
+  metaIssues: ReadonlySet<number>,
+): number[] {
+  const listed = new Set(entries.map((entry) => entry.issue));
+  return snapshot
+    .filter(
+      (issue) =>
+        !metaIssues.has(issue.number) &&
+        !listed.has(issue.number) &&
+        !TRIAGE_LABELS.some((label) => hasLabel(issue, label)),
+    )
+    .map((issue) => issue.number)
+    .sort((a, b) => a - b);
+}
