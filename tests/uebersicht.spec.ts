@@ -337,7 +337,10 @@ test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmun
   await setUpJournal(page, 'ac4 passphrase');
   await page.getByRole('button', { name: '9' }).click();
   await waitForJournalEntryWritten(page);
-  await page.goto('/uebersicht');
+  // A client-side nav click (not page.goto, a hard navigation) — the DEK lives
+  // only in an in-memory module variable (ADR-0016), so a real reload would
+  // re-lock by default (issue #339 AC5) and this AC would be untestable.
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }).click();
 
   await expect(journalSection(page)).toContainText('Stimmung 9/10');
 });

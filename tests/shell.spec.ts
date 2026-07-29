@@ -50,10 +50,14 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
 
 test('the navigation marks the current tab', async ({ page }) => {
   await registerPasskey(page);
-  await page.getByRole('link', { name: 'Journal' }).click();
+  // Scoped to the nav (issue #342): unscoped, this collides with the "Journal
+  // heute noch nicht geschrieben" link the new overview section renders on
+  // this same page, since that link's accessible name also starts with "Journal".
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Journal' }).click();
 
-  await expect(page.getByRole('link', { name: 'Journal' })).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByRole('link', { name: 'Aufgaben' })).not.toHaveAttribute(
+  await expect(nav.getByRole('link', { name: 'Journal' })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('link', { name: 'Aufgaben' })).not.toHaveAttribute(
     'aria-current',
     'page',
   );
