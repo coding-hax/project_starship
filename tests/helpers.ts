@@ -309,6 +309,10 @@ declare global {
       journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
       journalHasPersistedDek: () => Promise<boolean>;
       journalPersistedDekExtractable: () => Promise<boolean | null>;
+      debugSeedJournalConflict: (
+        entryDate: string,
+        content: { text: string; mood?: string; tags?: string[] },
+      ) => Promise<void>;
     };
   }
 }

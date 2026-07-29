@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { JournalEditor } from './journal-editor';
 import { useJournalLock } from './lock-store';
 import './journal-gate.css';
 
 /**
- * The state machine's UI (issue #339). `unlocked` is a placeholder — the editor
- * itself is S3b (#340). Gesperrt heißt nur: das Journal ist zu, nie die App
- * (ADR-0016) — this component only ever renders inside /journal.
+ * The state machine's UI (issue #339). Gesperrt heißt nur: das Journal ist zu,
+ * nie die App (ADR-0016) — this component only ever renders inside /journal.
+ * `unlocked` renders the actual editor (S3b, #340); `loading`/`setup`/`locked`
+ * are unchanged, which is what keeps AC9 (no editor while locked) true for free.
  */
 export function JournalGate() {
   const { state, error, setup, unlock } = useJournalLock();
@@ -30,9 +32,7 @@ export function JournalGate() {
 
   return (
     <div className="journal-gate" data-state="unlocked">
-      <p className="journal-gate__hint">
-        Journal ist entsperrt. Der Editor kommt in einem weiteren Schritt.
-      </p>
+      <JournalEditor />
     </div>
   );
 }

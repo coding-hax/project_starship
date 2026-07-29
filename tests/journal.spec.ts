@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { Client } from 'pg';
 import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
 
@@ -234,4 +234,275 @@ test('AC2: Down-Pfad räumt sauber ab, Up-Pfad stellt wieder her, andere Tabelle
       await client.query('ROLLBACK');
     }
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/* S3b (issue #340): der Editor selbst — Stimmungs-Skala, Text, Tags,         */
+/* Konflikt-Banner. Baut auf S3a (#339, journal-lock.spec.ts) auf.            */
+/* -------------------------------------------------------------------------- */
+
+const EDITOR_PASSPHRASE = 's3b editor passphrase';
+
+/** Same wait-for-settled-state reasoning as journal-lock.spec.ts's setUpJournal:
+ * journalSetup() derives a key and writes before the button resolves. */
+async function setUpEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<void> {
+  await registerPasskey(page);
+  await page.goto('/journal');
+  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+  await page.getByLabel('Passphrase wiederholen').fill(passphrase);
+  await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+}
+
+async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<void> {
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
+  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+  await page.getByRole('button', { name: 'Entsperren' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+}
+
+async function todayKey(page: Page): Promise<string> {
+  return page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+}
+
+async function currentCiphertext(page: Page, rowId: string): Promise<string | undefined> {
+  const records = await page.evaluate(() => window.__starship.debugRecords());
+  return records.find((r) => r.table === 'journal_entries' && r.id === rowId)?.data.ciphertext as
+    | string
+    | undefined;
+}
+
+/** Waits for the debounced/immediate autosave to actually land, regardless of
+ * the exact timing of `SAVE_DEBOUNCE_MS` — polls the real row instead of a
+ * fixed sleep. Returns the new ciphertext so the caller can chain further waits. */
+async function waitForCiphertextChange(
+  page: Page,
+  rowId: string,
+  previous: string | undefined,
+): Promise<string> {
+  await expect.poll(() => currentCiphertext(page, rowId)).not.toBe(previous);
+  return (await currentCiphertext(page, rowId))!;
+}
+
+test('AC1: Skala ist das erste Element, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const firstChild = page.locator('.journal-editor > *').first();
+  await expect(firstChild).toHaveClass(/mood-scale/);
+
+  const point = page.getByRole('button', { name: '7', exact: true });
+  await expect(point).toHaveAttribute('aria-pressed', 'false');
+  await point.click();
+  await expect(point).toHaveAttribute('aria-pressed', 'true');
+  await point.click();
+  await expect(point).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('AC2: bei 375px sind alle zehn Punkte mindestens 44px hoch, in einer Reihe, ohne horizontalen Scroll', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await setUpEditor(page);
+
+  const scale = page.locator('.mood-scale');
+  const scrollWidth = await scale.evaluate((el) => el.scrollWidth);
+  const clientWidth = await scale.evaluate((el) => el.clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+
+  const points = page.locator('.mood-scale__point');
+  await expect(points).toHaveCount(10);
+
+  const boxes = await Promise.all(
+    Array.from({ length: 10 }, (_, i) => points.nth(i).boundingBox()),
+  );
+  for (const box of boxes) {
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  const rowY = boxes[0]!.y;
+  for (const box of boxes) expect(box!.y).toBe(rowY);
+});
+
+test('AC3: gesetzter Wert und Text stehen nach dem Neuladen noch da — aus dem Chiffrat, nicht aus einem Klartextfeld', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await todayKey(page);
+  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
+
+  await page.getByRole('button', { name: '8', exact: true }).click();
+  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
+
+  await page.getByLabel('Journal-Text').fill('Guter Tag');
+  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
+  expect(ciphertext).toBeTruthy();
+
+  await page.reload();
+  await unlockEditor(page);
+
+  await expect(page.getByRole('button', { name: '8', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('Guter Tag');
+});
+
+test('AC4/AC6: Stimmung, Text und Tags landen als EIN Chiffrat über die Outbox, serverseitig genau eine Zeile', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await todayKey(page);
+  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
+
+  await page.getByRole('button', { name: '5', exact: true }).click();
+  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
+
+  await page.getByLabel('Journal-Text').fill('Ruhiger Tag');
+  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
+
+  await page.getByLabel('Tags').fill('arbeit, sport');
+  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
+
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const rows = await withDb((client) =>
+    client.query('SELECT ciphertext FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  expect(rows.rowCount).toBe(1);
+  expect(rows.rows[0].ciphertext).toBe(ciphertext);
+});
+
+test('AC5: ein zweiter Aufruf desselben Tages bearbeitet denselben Eintrag, nie einen zweiten', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await todayKey(page);
+  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
+
+  await page.getByLabel('Journal-Text').fill('Erster Absatz');
+  const ciphertext = await waitForCiphertextChange(page, rowId, undefined);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  await page.reload();
+  await unlockEditor(page);
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('Erster Absatz');
+
+  await page.getByLabel('Journal-Text').fill('Erster Absatz, zweiter Zusatz');
+  await waitForCiphertextChange(page, rowId, ciphertext);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const rows = await withDb((client) =>
+    client.query('SELECT count(*)::int AS n, array_agg(id) AS ids FROM journal_entries WHERE entry_date = $1', [
+      entryDate,
+    ]),
+  );
+  expect(rows.rows[0].n).toBe(1);
+  expect(rows.rows[0].ids).toEqual([rowId]);
+});
+
+test('AC7: offline gesetzte Stimmung und Text erreichen online die Datenbank, aber nicht lesbar', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await todayKey(page);
+  const rowId = await page.evaluate((d) => window.__starship.journalEntryId(d), entryDate);
+  const secretText = 'GEHEIMER OFFLINE TEXT';
+
+  await context.setOffline(true);
+
+  await page.getByRole('button', { name: '9', exact: true }).click();
+  let ciphertext = await waitForCiphertextChange(page, rowId, undefined);
+  await page.getByLabel('Journal-Text').fill(secretText);
+  ciphertext = await waitForCiphertextChange(page, rowId, ciphertext);
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT ciphertext, nonce FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0].ciphertext).toBe(ciphertext);
+  expect(row.rows[0].ciphertext as string).not.toContain(secretText);
+  expect(row.rows[0].nonce as string).not.toContain(secretText);
+});
+
+test('AC8: eine Konflikt-Kopie ist im Editor sichtbar und wiederherstellbar, statt still verschluckt zu werden', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const entryDate = await todayKey(page);
+
+  await page.evaluate(
+    (d) =>
+      window.__starship.debugSeedJournalConflict(d, {
+        text: 'Verdrängter Text',
+        mood: '3',
+        tags: ['alt'],
+      }),
+    entryDate,
+  );
+
+  const banner = page.locator('.journal-editor__conflict');
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('Verdrängter Text');
+
+  await banner.getByRole('button', { name: 'Wiederherstellen' }).click();
+  await expect(banner).toHaveCount(0);
+
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('Verdrängter Text');
+  await expect(page.getByRole('button', { name: '3', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
+  expect(conflicts).toHaveLength(0);
+});
+
+test('AC9: bei gesperrtem Journal ist der Editor nicht erreichbar, sondern der Entsperr-Zustand', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await page.reload();
+
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  await expect(page.locator('.journal-editor')).toHaveCount(0);
+});
+
+for (const viewport of [
+  { width: 375, height: 667 },
+  { width: 1280, height: 800 },
+]) {
+  test(`AC10: Editor bei ${viewport.width}px ohne horizontalen Seiten-Scroll`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setUpEditor(page);
+
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
+}
+
+test('AC10: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const point = page.getByRole('button', { name: '4', exact: true });
+  await point.click();
+
+  const lightBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  const darkBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkBg).not.toBe(lightBg);
 });

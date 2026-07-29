@@ -222,6 +222,13 @@ export function journalLockSnapshot(): Snapshot {
   return current;
 }
 
+/** The unpacked DEK for callers that need to en-/decrypt an entry (S3b, #340) —
+ * still never touches React state or the server, only the in-memory module
+ * variable above. `null` whenever the journal is not `unlocked`. */
+export function journalDek(): CryptoKey | null {
+  return dek;
+}
+
 function subscribe(onStoreChange: () => void) {
   listeners.add(onStoreChange);
   return () => listeners.delete(onStoreChange);

@@ -12,6 +12,12 @@
   margin-top: var(--space-6);
 }
 
+/* The editor is a content view, not a narrow auth form — it gets the full
+   width the mood scale needs (AC2), capped by journal-editor.css itself. */
+.journal-gate[data-state='unlocked'] {
+  max-width: none;
+}
+
 .journal-gate__title {
   margin: 0;
   font-size: 18px;
