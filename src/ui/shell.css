@@ -9,6 +9,14 @@
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Without an explicit column track, the grid falls back to `auto` sizing, which
+     grows to fit a child's max-content width (e.g. `.nav__list`'s carousel content,
+     issue #205) instead of staying clamped to the viewport. That only shows up as a
+     transient overflow right after a viewport shrink, before descendants' own
+     `min-width: 0` has been recalculated — `minmax(0, 1fr)` here removes the race by
+     never letting the column exceed the available inline space in the first place
+     (issue #364). */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .shell__main {
