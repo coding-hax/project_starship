@@ -12,7 +12,7 @@ import './journal-gate.css';
  * are unchanged, which is what keeps AC9 (no editor while locked) true for free.
  */
 export function JournalGate() {
-  const { state, error, setup, unlock } = useJournalLock();
+  const { state, error, setup, unlock, retry } = useJournalLock();
 
   if (state === 'loading') {
     return (
@@ -28,6 +28,20 @@ export function JournalGate() {
 
   if (state === 'locked') {
     return <JournalUnlockForm onUnlock={unlock} error={error} />;
+  }
+
+  // Kein `setup`, solange unbekannt ist, ob es schon eine Hülle gibt (issue #371):
+  // einrichten würde den vorhandenen Schlüssel überschreiben.
+  if (state === 'unavailable') {
+    return (
+      <div className="journal-gate" data-state="unavailable">
+        <h2 className="journal-gate__title">Journal nicht erreichbar</h2>
+        <p className="journal-gate__hint">{error}</p>
+        <button type="button" className="journal-gate__submit" onClick={() => void retry()}>
+          Erneut versuchen
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -61,8 +75,8 @@ function JournalSetupForm({ onSetup }: { onSetup: (passphrase: string) => Promis
     <form className="journal-gate" data-state="setup" onSubmit={handleSubmit}>
       <h2 className="journal-gate__title">Journal einrichten</h2>
       <p className="journal-gate__hint">
-        Lege eine Passphrase fest. Sie verschlüsselt das Journal auf diesem Gerät — es gibt
-        noch keine Wiederherstellung, wenn du sie vergisst.
+        Lege eine Passphrase fest. Sie verschlüsselt das Journal auf diesem Gerät — es gibt noch
+        keine Wiederherstellung, wenn du sie vergisst.
       </p>
       <input
         ref={passphraseRef}
