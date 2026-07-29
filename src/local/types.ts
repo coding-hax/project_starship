@@ -92,10 +92,13 @@ export interface JournalEntryData {
  * Same as `HabitData`, for `journal_keys` (issue #338, ADR-0015). `envelope` carries
  * the `Envelope` shape from src/crypto/envelope.ts (kdfParams/wrappedDek/nonce) —
  * reused as `unknown` here so this file, like the sync engine itself, stays
- * content-blind and never imports crypto runtime code.
+ * content-blind and never imports crypto runtime code. `recoveryEnvelope` is the
+ * second KEK wrap under the recovery key (issue #372) — optional: a rewrap under a
+ * new passphrase pushes only `envelope`, never overwriting the recovery wrap.
  */
 export interface JournalKeysData {
   envelope: unknown;
+  recoveryEnvelope?: unknown;
 }
 
 export interface Mutation {
