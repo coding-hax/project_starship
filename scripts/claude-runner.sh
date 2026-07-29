@@ -386,7 +386,7 @@ run_round() {
     return "$(printf '%s' "$plan" | jq -r '.rc // 0')"
   fi
 
-  local model tools resume role issue run_cwd denyTools
+  local model tools resume role issue run_cwd denyTools used_resume
   model=$(printf '%s' "$plan" | jq -r '.model')
   tools=$(printf '%s' "$plan" | jq -r '.tools')
   resume=$(printf '%s' "$plan" | jq -r '.resume')
@@ -421,9 +421,19 @@ run_round() {
   # Welches Modell erlaubt ist, hat round-plan entschieden (ADR-0005/0007);
   # hier wird es nur durchgereicht. O3 (#325): denyTools ist die harte
   # Zusatzgrenze neben der Allowlist, nur fuer Lese-Rollen gesetzt.
-  local -a args=(-p --output-format json --model "$model" --allowedTools "$tools")
-  [ -n "$denyTools" ] && [ "$denyTools" != "null" ] && args+=(--disallowedTools "$denyTools")
-  [ -n "$resume" ] && [ "$resume" != "null" ] && args+=(--resume "$resume")
+  #
+  # base_args OHNE --resume (#356, B): der Frischversuch weiter unten braucht
+  # exakt dieselben Argumente minus --resume -- getrennt halten statt aus
+  # 'args' herauszufiltern.
+  local -a base_args=(-p --output-format json --model "$model" --allowedTools "$tools")
+  [ -n "$denyTools" ] && [ "$denyTools" != "null" ] && base_args+=(--disallowedTools "$denyTools")
+
+  local -a args=("${base_args[@]}")
+  used_resume=0
+  if [ -n "$resume" ] && [ "$resume" != "null" ]; then
+    args+=(--resume "$resume")
+    used_resume=1
+  fi
 
   # Der Prompt kommt aus dem TS-Kern über stdout und wird hier gepipet, nicht
   # als Argument übergeben. rc kommt aus PIPESTATUS, NICHT aus $?: mit
@@ -436,6 +446,29 @@ run_round() {
 
   stop_fleet_publisher
 
+  timed=0
+  if [ -f "$TIMED_OUT" ]; then timed=1; rm -f "$TIMED_OUT"; fi
+
+  # --- Selbstheilung bei nicht-fortsetzbarer Session (#356, B) --------------
+  # Ein per --resume uebergebenes Session-ID, die die CLI im aktuellen
+  # Arbeitsverzeichnis nicht kennt ("No conversation found", #353), ist kein
+  # Fachfehler am Ticket. round-recover erkennt genau diesen Fall UND raeumt
+  # die Gift-Session weg; hier folgt GENAU EIN Frischversuch ohne --resume,
+  # keine Schleife -- der Ausgang DIESES Versuchs, nicht der erste Crash,
+  # fliesst in round-eval ein, damit ein vergifteter Erstversuch nie als
+  # Eskalations-Fehlversuch zaehlt (buildEscalationEval laeuft erst dort).
+  # Vor der Worktree-Entfernung: der Frischversuch braucht denselben run_cwd.
+  # Nicht bei einem Notbremse-Timeout -- der ist eindeutig, kein Session-Fehler.
+  if [ "$used_resume" -eq 1 ] && [ "$timed" -ne 1 ]; then
+    if ts_run round-recover "$ROUND_FILE" "$rc" "$LOG" | jq -e '.retry == true' >/dev/null 2>&1; then
+      start_fleet_publisher
+      ts_run round-prompt "$ROUND_FILE" | run_limited "$MAX_RUNTIME" "$run_cwd" claude "${base_args[@]}"
+      rc=${PIPESTATUS[1]}
+      stop_fleet_publisher
+      if [ -f "$TIMED_OUT" ]; then timed=1; rm -f "$TIMED_OUT"; fi
+    fi
+  fi
+
   # Wegwerf-Worktree (#325) sofort nach dem Lauf entfernen -- ersetzt das
   # alte pauschale Aufraeumen im Read-only-Netz. round-eval prueft danach den
   # HAUPT-Checkout ($REPO_DIR), nicht diesen Worktree -- Reihenfolge zur
@@ -445,9 +478,6 @@ run_round() {
     git -C "$REPO_DIR" worktree remove "$run_cwd" >/dev/null 2>&1 \
       || { rm -rf "$run_cwd"; git -C "$REPO_DIR" worktree prune >/dev/null 2>&1; }
   fi
-
-  timed=0
-  if [ -f "$TIMED_OUT" ]; then timed=1; rm -f "$TIMED_OUT"; fi
 
   eval_out=$(ts_run round-eval "$ROUND_FILE" "$rc" "$timed" "$MAX_RUNTIME" "$LOG")
   [ $? -eq 127 ] && return 1

@@ -215,7 +215,7 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
   });
 
   it('plan-Fallback mit vorhandener Session -> MODE=resume', () => {
-    state.write('session-47', 'sess-abc123');
+    state.write('session-think-47', 'sess-abc123');
     const gh = ghDouble();
     const outcome = pickTicket([issue(47, ['research'])], '', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 47, role: 'research', mode: 'resume' });
@@ -223,7 +223,7 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
   });
 
   it('leere Session-Datei zaehlt als keine Session -> MODE=start', () => {
-    state.write('session-47', '');
+    state.write('session-think-47', '');
     const gh = ghDouble();
     expect(pickTicket([issue(47, ['research'])], '', gh, state)).toEqual({
       kind: 'ticket',

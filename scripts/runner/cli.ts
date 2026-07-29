@@ -38,7 +38,7 @@ import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailRe
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { pickTicket, queueNext } from './select.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
-import { roundEval, roundPlan, type RoundRun } from './round.js';
+import { roundEval, roundPlan, roundRecover, type RoundRun } from './round.js';
 import { cleanupStateDir } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
 import { aggregateStatus, createFleetAdapter, effectiveLead, type FleetAdapter } from './fleet.js';
@@ -191,6 +191,21 @@ export const commands: Record<string, CommandHandler> = {
   'round-prompt': (_ctx, args) => {
     const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as { prompt?: string };
     return plan.prompt ?? '';
+  },
+
+  // #356 (B): zwischen dem `claude`-Aufruf und round-eval -- erkennt eine
+  // nicht-fortsetzbare Session (--resume ins Leere), bevor round-eval den
+  // Absturz als Eskalations-Fehlversuch werten kann. Muster wie round-eval:
+  // ROUND_FILE -> RoundRun, LOG per readFileSync wie dort.
+  'round-recover': (ctx, args) => {
+    const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as RoundRun;
+    let log = '';
+    try {
+      log = readFileSync(args[2] ?? '', 'utf-8');
+    } catch {
+      log = '';
+    }
+    return JSON.stringify(roundRecover(ctx, plan, Number(args[1] ?? 0), log));
   },
 
   'round-eval': (ctx, args) => {

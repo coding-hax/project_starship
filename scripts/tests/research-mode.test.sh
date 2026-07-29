@@ -174,6 +174,16 @@ assert_session() {   # $1 = Beschreibung, $2 = erwartete Issue-Nr (welche verarb
   fi
 }
 
+# Denk-Rollen (plan/research) schreiben seit #356 (A) unter session-think-<nr>
+# statt session-<nr> -- eigener Schluessel je Familie, siehe session.ts.
+assert_think_session() {   # $1 = Beschreibung, $2 = erwartete Issue-Nr
+  if [ -s "$STATE_DIR/session-think-$2" ]; then
+    ok "$1"
+  else
+    red "$1 (kein session-think-$2 angelegt — falsches Ticket gewählt?)"
+  fi
+}
+
 assert_absent() {
   if [ ! -e "$2" ]; then
     ok "$1"
@@ -220,8 +230,8 @@ list_json research '[{"number":10,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session "AC1: plan (#60) wird vor research (#10) gewählt" 60
-assert_absent  "AC1: research-Ticket #10 bleibt unangetastet" "$STATE_DIR/session-10"
+assert_think_session "AC1: plan (#60) wird vor research (#10) gewählt" 60
+assert_absent  "AC1: research-Ticket #10 bleibt unangetastet" "$STATE_DIR/session-think-10"
 assert_contains "AC1: Planer-Prompt läuft mit Opus" "$GHSTATE_DIR/claude-lastargs" "--model"
 assert_no_bare_bash "AC1/#63: Planer startet nicht mit pauschalem Bash" "$GHSTATE_DIR/claude-lastargs"
 assert_contains "AC1/#63: Planer darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
@@ -239,7 +249,7 @@ list_json research '[{"number":47,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session "AC2: research-Ticket #47 wird verarbeitet" 47
+assert_think_session "AC2: research-Ticket #47 wird verarbeitet" 47
 assert_contains "AC2: Modell ist Opus" "$GHSTATE_DIR/claude-lastargs" "opus"
 assert_contains "AC2: WebSearch ist erlaubt (bounded Web-Recherche)" "$GHSTATE_DIR/claude-lastargs" "WebSearch"
 assert_contains "AC2: Recherche-Prompt (Feature-Rechercheur) wird benutzt" "$GHSTATE_DIR/claude-lastargs" "Feature-Rechercheur"
@@ -265,7 +275,7 @@ list_json ready '[{"number":48,"labels":[{"name":"ready"}]}]'
 list_json needs-input '[]'
 run_main
 assert_session "AC3: hands-off überspringt #47, #48 (ready) wird gebaut" 48
-assert_absent  "AC3: #47 bleibt unangetastet" "$STATE_DIR/session-47"
+assert_absent  "AC3: #47 bleibt unangetastet" "$STATE_DIR/session-think-47"
 assert_contains "AC3: #48 bekommt in-progress" "$GHSTATE_DIR/applied-48" "ADD:in-progress"
 assert_contains "AC3/#63: RUN_ROLE=build behält vollen Bash-Zugriff (unverändert)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write,Glob,Grep,Bash"
 assert_not_contains "AC3/#325 (O3): Bau-Rolle bekommt KEIN --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
@@ -281,7 +291,7 @@ list_json research '[{"number":50,"labels":[{"name":"research"},{"name":"ready"}
 list_json ready '[{"number":50,"labels":[{"name":"research"},{"name":"ready"}]}]'
 list_json needs-input '[]'
 run_main
-assert_session "AC4: #50 wird über research verarbeitet" 50
+assert_think_session "AC4: #50 wird über research verarbeitet" 50
 assert_not_contains "AC4: #50 bekommt KEIN in-progress (kein Bau-Zweig)" "$GHSTATE_DIR/applied-50" "ADD:in-progress"
 
 # ==============================================================================
@@ -293,7 +303,7 @@ list_json plan '[]'
 list_json research '[{"number":47,"labels":[{"name":"research"}]}]'
 list_json ready '[]'
 list_json needs-input '[]'
-echo "sess-abc123" > "$STATE_DIR/session-47"
+echo "sess-abc123" > "$STATE_DIR/session-think-47"
 run_main
 assert_contains "AC5: Lauf mit vorhandener Session nutzt --resume" "$GHSTATE_DIR/claude-lastargs" "sess-abc123"
 

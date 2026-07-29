@@ -187,6 +187,23 @@ assert_session_absent() {   # $1 = Beschreibung, $2 = Issue-Nr
   fi
 }
 
+# Denk-Rollen (plan/research) schreiben seit #356 (A) unter session-think-<nr>.
+assert_think_session_exists() {   # $1 = Beschreibung, $2 = Issue-Nr
+  if [ -s "$STATE_DIR/session-think-$2" ]; then
+    ok "$1"
+  else
+    red "$1 (kein session-think-$2 angelegt — falsches Ticket gewählt?)"
+  fi
+}
+
+assert_think_session_absent() {   # $1 = Beschreibung, $2 = Issue-Nr
+  if [ ! -e "$STATE_DIR/session-think-$2" ]; then
+    ok "$1"
+  else
+    red "$1 (session-think-$2 existiert unerwartet)"
+  fi
+}
+
 # ==============================================================================
 # 1. ROUND_SNAP waehlt bei 'ready' nach createdAt, nicht nach Issue-Nummer --
 #    #99 ist juenger nummeriert, aber AELTER erstellt als #10.
@@ -218,8 +235,8 @@ list_json research '[]'
 list_json ready '[]'
 list_json needs-input '[]'
 run_main
-assert_session_exists "AC7: 'plan' waehlt das aeltere createdAt (#77), nicht die kleinere Nummer" 77
-assert_session_absent "AC7: das juenger erstellte #5 bleibt unangetastet" 5
+assert_think_session_exists "AC7: 'plan' waehlt das aeltere createdAt (#77), nicht die kleinere Nummer" 77
+assert_think_session_absent "AC7: das juenger erstellte #5 bleibt unangetastet" 5
 
 # ==============================================================================
 # 3. Laufendes Ticket (WIP): zwei in-progress-Tickets ohne needs-input --

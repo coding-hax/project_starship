@@ -140,6 +140,11 @@ assert_session_absent() {   # $1 = Beschreibung, $2 = Issue-Nr
   if [ ! -e "$STATE_DIR/session-$2" ]; then ok "$1"
   else red "$1 (session-$2 existiert unerwartet)"; fi
 }
+# Denk-Rollen (plan/research) schreiben seit #356 (A) unter session-think-<nr>.
+assert_think_session_exists() {   # $1 = Beschreibung, $2 = Issue-Nr
+  if [ -s "$STATE_DIR/session-think-$2" ]; then ok "$1"
+  else red "$1 (kein session-think-$2 — falsches Ticket gewählt?)"; fi
+}
 assert_label_added() {   # $1 = Beschreibung, $2 = Issue-Nr, $3 = Label
   if grep -q "ADD:$3" "$GHSTATE_DIR/applied-$2" 2>/dev/null; then ok "$1"
   else red "$1 (ADD:$3 nicht angewandt — falsche Rolle?)"; fi
@@ -196,14 +201,14 @@ reset_state
 snapshot '[{"number":55,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '- #55'
 run_main
-assert_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
+assert_think_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
 assert_label_not_added "AC4: #55 bekommt KEIN in-progress (Denk-Rolle, kein Bau)" 55 in-progress
 
 reset_state
 snapshot '[{"number":66,"labels":[{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '- #66'
 run_main
-assert_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
+assert_think_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
 assert_label_not_added "AC4: #66 bekommt KEIN in-progress" 66 in-progress
 
 # ==============================================================================
