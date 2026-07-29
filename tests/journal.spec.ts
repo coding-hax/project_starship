@@ -156,6 +156,22 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
   // Version-2-Datenbank seeden, bevor die echte App sie je zu Gesicht bekommt.
   await page.goto('/anmelden');
 
+  // Auch in diesem frischen Kontext defensiv zuerst löschen: Dexie multipliziert
+  // seine Versionsnummer intern mit 10 (`db.verno * 10`), 'starship' liegt also
+  // real bei Version 30, nicht 3 — jede Verwechslung mit einer bereits
+  // existierenden Instanz sonst ein VersionError. onblocked wird bewusst NICHT
+  // vorzeitig aufgelöst (das war der Bug im vorherigen Versuch): ein frischer
+  // Kontext hat nichts offen, das blockieren könnte, also completet die Löschung
+  // hier synchron zum onsuccess-Callback.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('starship');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      }),
+  );
+
   const seeded = {
     table: 'tasks',
     id: 'seed-vor-dem-bump',
@@ -204,6 +220,11 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
   const records = await page.evaluate(() => window.__starship.debugRecords());
   const survivor = records.find((r) => r.id === 'seed-vor-dem-bump');
   expect(survivor?.data.title).toBe('Vor dem Bump');
+
+  // Diese Suite läuft mit `workers: 1` — ein einziger Browser trägt alle Projekte
+  // nacheinander. Ein hier nicht geschlossener Kontext bleibt für den Rest des
+  // Laufs offen; explizit schließen statt auf Playwrights Teardown zu vertrauen.
+  await context.close();
 });
 
 /* -------------------------------------------------------------------------- */
