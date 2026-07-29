@@ -181,6 +181,11 @@ export const commands: Record<string, CommandHandler> = {
         lastIssue: args[3] ?? '',
         // $IS_LEAD aus claude-runner.sh (#204) -- '1' in der Ein-Slot-Welt.
         isLead: args[4] === '1',
+        // #357: '?? 0' haelt eine altere claude-runner.sh kompatibel -- ruft
+        // sie round-plan ohne das 6. Argument, faellt statusIssue auf 0 und
+        // das Status-Issue erschiene einmalig (kosmetisch) im eigenen
+        // "untriagiert"-Bericht.
+        statusIssue: Number(args[5] ?? 0),
       }),
     ),
 

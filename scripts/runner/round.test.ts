@@ -95,7 +95,7 @@ describe('roundPlan', () => {
   // isLead: true -- die meisten bestehenden Faelle testen das Verhalten VOR
   // #204 (ein Slot, das war immer der Leitslot). Die eigene Slot/Lead-Logik
   // hat ihre eigene Gruppe weiter unten.
-  const opts = { queueIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
+  const opts = { queueIssue: 0, statusIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
 
   it('meldet ⚪️ nichts zu tun, wenn kein Ticket wartet', () => {
     const { gh } = ghDouble([openIssues(), noOpenPrs]);
@@ -444,6 +444,56 @@ describe('roundPlan', () => {
       const result = roundPlan(ctx(gh), queueOpts);
       expect(result.status?.text).not.toContain('Nicht gelistet');
       expect(result.status?.text).not.toContain('Wartet auf Vorarbeit');
+    });
+  });
+
+  // #357, Owner-Entscheidung "C" (29.07.26): untriagierte Fund-Tickets
+  // sichtbar machen. Gebaut wird davon nichts -- reine Anzeige im ohnehin
+  // geschriebenen Queue-Bericht.
+  describe('Untriagiert-Bericht (#357)', () => {
+    const queueOpts = { ...opts, queueIssue: 92, statusIssue: 1 };
+    const queueIs = (body: string) => ({
+      match: (a: string[]) => a[0] === 'issue' && a[1] === 'view' && a.includes('body'),
+      reply: body,
+    });
+
+    it('ein labelloses, nicht gelistetes Ticket erscheint als untriagiert', () => {
+      const { gh } = ghDouble([openIssues(issueJson(349, [])), noOpenPrs, queueIs('')]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).toContain('**Untriagiert** (kein Steuerlabel, nicht in der Queue): #349');
+    });
+
+    it('erscheint auch bei leerer Queue -- anders als "Nicht gelistet"', () => {
+      const { gh } = ghDouble([openIssues(issueJson(349, [])), noOpenPrs, queueIs('')]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).toContain('Untriagiert');
+    });
+
+    it('Status-Issue und Queue-Issue selbst erscheinen nie, obwohl offen und labellos', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(1, []), issueJson(92, []), issueJson(349, [])),
+        noOpenPrs,
+        queueIs(''),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      // Nur die Ticketliste selbst pruefen, nicht die ganze Zeile -- der
+      // Hinweistext nennt "die Queue #92" ohnehin als Wegweiser.
+      const match = (result.status?.text ?? '').match(/nicht in der Queue\): ([^—]+)/);
+      expect(match?.[1].trim()).toBe('#349');
+    });
+
+    it('ein ready-Ticket zaehlt nicht als untriagiert', () => {
+      const { gh } = ghDouble([openIssues(issueJson(300, ['ready'])), noOpenPrs, queueIs(''), labelsAre('ready')]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      expect(result.status?.text).not.toContain('Untriagiert');
+    });
+
+    it('loest keinen Schreibzugriff aus -- reine Anzeige', () => {
+      const { gh, calls } = ghDouble([openIssues(issueJson(349, [])), noOpenPrs, queueIs('')]);
+      roundPlan(ctx(gh), queueOpts);
+      expect(calls.some((args) => args[0] === 'issue' && (args[1] === 'edit' || args[1] === 'comment') && args[2] === '349')).toBe(
+        false,
+      );
     });
   });
 

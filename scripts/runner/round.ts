@@ -23,7 +23,7 @@ import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
 import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
-import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending } from './queue.js';
+import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
@@ -64,6 +64,8 @@ export interface StatusUpdate {
 
 export interface RoundPlanOptions {
   queueIssue: number;
+  /** Nr. des angepinnten Status-Issues (#357) -- schliesst sich selbst aus dem "untriagiert"-Bericht aus. */
+  statusIssue: number;
   maxRuntime: number;
   /** Hat eine fruehere Runde in DIESEM Tick produktiv gearbeitet? (#61) */
   didWork: boolean;
@@ -329,6 +331,22 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
       .sort((a, b) => a - b);
     if (listed.size > 0 && starving.length > 0) {
       parts.push(`🟢 Nicht gelistet, wartet auf einen Platz: ${starving.map((n) => `#${n}`).join(', ')}.`);
+    }
+
+    // #357, Owner-Entscheidung "C" (29.07.26): untriagierte Fund-Tickets
+    // sichtbar machen -- gebaut wird davon nichts, die Auswahl-Kaskade bleibt
+    // unberuehrt. Bewusst NICHT an `entries.length > 0` gekoppelt (anders als
+    // "Nicht gelistet" oben): der ganze Zweck ist, dass Untriagiertes auch bei
+    // leerer Queue auffaellt -- #349/#351/#363 lagen unsichtbar, obwohl #92
+    // sie nie erwaehnte.
+    const meta = new Set([opts.queueIssue, opts.statusIssue].filter((n) => n > 0));
+    const loose = untriaged(snapshot, entries, meta);
+    if (loose.length > 0) {
+      parts.push(
+        `🏷️ **Untriagiert** (kein Steuerlabel, nicht in der Queue): ${loose
+          .map((n) => `#${n}`)
+          .join(', ')} — gib \`ready\`/\`plan\`/\`research\` oder nimm sie in die Queue #92 auf. Gebaut wird davon nichts.`,
+      );
     }
 
     if (parts.length > 0) queueNote = `\n\n${parts.join('\n')}`;
