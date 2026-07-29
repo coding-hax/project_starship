@@ -6,6 +6,8 @@ import {
   queueEntries,
   queueOrderFlat,
   queuePending,
+  TRIAGE_LABELS,
+  untriaged,
   type QueueIssue,
 } from './queue';
 
@@ -133,5 +135,47 @@ describe('queuePending', () => {
 
   it('returns "" for an empty queue', () => {
     expect(queuePending([{ number: 70, labels: [] }])).toBe('');
+  });
+});
+
+// #357, Owner-Entscheidung "C" (29.07.26): untriagierte Fund-Tickets sichtbar
+// machen, statt sie still verrotten zu lassen -- ohne die Auswahl selbst zu
+// aendern.
+describe('untriaged (#357)', () => {
+  const noMeta = new Set<number>();
+
+  it('lists an open issue with no label at all, not in the queue', () => {
+    const snap: QueueIssue[] = [{ number: 349, labels: [] }];
+    expect(untriaged(snap, [], noMeta)).toEqual([349]);
+  });
+
+  it.each(TRIAGE_LABELS)('excludes an issue carrying the control label "%s"', (name) => {
+    const snap: QueueIssue[] = [{ number: 1, labels: [label(name)] }];
+    expect(untriaged(snap, [], noMeta)).toEqual([]);
+  });
+
+  it('excludes a labelless issue that is a queue entry', () => {
+    const snap: QueueIssue[] = [{ number: 300, labels: [] }];
+    expect(untriaged(snap, queueEntries('- #300'), noMeta)).toEqual([]);
+  });
+
+  it('excludes the meta issues (status + queue) even though they are open and labelless', () => {
+    const snap: QueueIssue[] = [
+      { number: 1, labels: [] },
+      { number: 92, labels: [] },
+      { number: 349, labels: [] },
+    ];
+    expect(untriaged(snap, [], new Set([1, 92]))).toEqual([349]);
+  });
+
+  it('lists an issue carrying only a modifier label (e.g. model:sonnet)', () => {
+    const snap: QueueIssue[] = [{ number: 349, labels: [label('model:sonnet')] }];
+    expect(untriaged(snap, [], noMeta)).toEqual([349]);
+  });
+
+  it('sorts ascending, [] for an empty snapshot', () => {
+    const snap: QueueIssue[] = [{ number: 400, labels: [] }, { number: 349, labels: [] }];
+    expect(untriaged(snap, [], noMeta)).toEqual([349, 400]);
+    expect(untriaged([], [], noMeta)).toEqual([]);
   });
 });

@@ -366,7 +366,12 @@ run_round() {
   export EFF_LEAD IS_LEAD
 
   local plan plan_rc kind rc timed eval_out
-  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD")
+  # "${STATUS_ISSUE:-0}" statt "$STATUS_ISSUE": die Variable wird oben (Z. 22)
+  # nur EINMAL beim Skriptstart defaultet -- unter `set -u` crasht jede Runde
+  # fatal, sollte STATUS_ISSUE danach je unbound werden (beobachtet in
+  # waiting-label.test.sh, dessen Testblock 5 die Variable bewusst wieder
+  # `unset`, um ein Slot-Setup ohne Status-Issue zu simulieren).
+  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD" "${STATUS_ISSUE:-0}")
   plan_rc=$?
   # round-plan MUSS Exit 0 UND ein gültiges JSON-Objekt (mit .kind) liefern.
   # Jeder andere Ausgang (leeres/kaputtes plan) ist fatal: 127 hat ts_run schon
