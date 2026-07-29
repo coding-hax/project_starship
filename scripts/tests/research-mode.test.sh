@@ -225,6 +225,8 @@ assert_absent  "AC1: research-Ticket #10 bleibt unangetastet" "$STATE_DIR/sessio
 assert_contains "AC1: Planer-Prompt läuft mit Opus" "$GHSTATE_DIR/claude-lastargs" "--model"
 assert_no_bare_bash "AC1/#63: Planer startet nicht mit pauschalem Bash" "$GHSTATE_DIR/claude-lastargs"
 assert_contains "AC1/#63: Planer darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
+assert_contains "AC1/#325 (O3): Planer bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
+assert_contains "AC1/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
 
 # ==============================================================================
 # 2. research wird gewählt, wenn kein plan ansteht -- Opus,
@@ -241,10 +243,15 @@ assert_session "AC2: research-Ticket #47 wird verarbeitet" 47
 assert_contains "AC2: Modell ist Opus" "$GHSTATE_DIR/claude-lastargs" "opus"
 assert_contains "AC2: WebSearch ist erlaubt (bounded Web-Recherche)" "$GHSTATE_DIR/claude-lastargs" "WebSearch"
 assert_contains "AC2: Recherche-Prompt (Feature-Rechercheur) wird benutzt" "$GHSTATE_DIR/claude-lastargs" "Feature-Rechercheur"
-assert_not_contains "AC2: Kein Edit/Write-Zugriff (nur lesend)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
 assert_no_bare_bash "AC2/#63: Rechercheur startet nicht mit pauschalem Bash" "$GHSTATE_DIR/claude-lastargs"
 assert_contains "AC2/#63: Rechercheur darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
 assert_contains "AC2/#63: Rechercheur darf lesende git-Inspektion" "$GHSTATE_DIR/claude-lastargs" "Bash(git log:*)"
+# #325 (O3): --disallowedTools ist die harte Zusatzgrenze neben der
+# Allowlist -- ersetzt die alte (jetzt irrefuehrende) Prüfung "kein
+# Edit,Write im Aufruf", die durch genau dieses Flag zwangsläufig verletzt
+# würde.
+assert_contains "AC2/#325 (O3): Rechercheur bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
+assert_contains "AC2/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
 
 # ==============================================================================
 # 3. Kill-Switch hands-off überspringt das research-Ticket komplett --
@@ -261,6 +268,7 @@ assert_session "AC3: hands-off überspringt #47, #48 (ready) wird gebaut" 48
 assert_absent  "AC3: #47 bleibt unangetastet" "$STATE_DIR/session-47"
 assert_contains "AC3: #48 bekommt in-progress" "$GHSTATE_DIR/applied-48" "ADD:in-progress"
 assert_contains "AC3/#63: RUN_ROLE=build behält vollen Bash-Zugriff (unverändert)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write,Glob,Grep,Bash"
+assert_not_contains "AC3/#325 (O3): Bau-Rolle bekommt KEIN --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
 
 # ==============================================================================
 # 4. Inkonsistentes Ticket (research UND ready gleichzeitig) wird über

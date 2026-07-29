@@ -278,6 +278,32 @@ describe('roundPlan', () => {
     expect(run.tools).not.toContain('Edit');
   });
 
+  // O3 (#325): harte Werkzeug-Verweigerung zusaetzlich zur Allowlist, nur
+  // fuer die Denk-Rollen.
+  describe('denyTools + beforeDirty (#325)', () => {
+    it('liefert denyTools=Edit,Write und die Baseline fuer die Planer-Rolle', () => {
+      const git = gitDouble({ 'status --porcelain': ' M docs/WORKFLOW.md' });
+      const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      const run = roundPlan(ctx(gh, git), opts) as RoundRun;
+      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.beforeDirty).toBe(' M docs/WORKFLOW.md');
+    });
+
+    it('liefert denyTools=Edit,Write auch fuer die Recherche-Rolle', () => {
+      const { gh } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.denyTools).toBe('Edit,Write');
+    });
+
+    it('laesst denyTools und beforeDirty bei der Bau-Rolle leer', () => {
+      const git = gitDouble({ 'status --porcelain': ' M docs/WORKFLOW.md' });
+      const { gh } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      const run = roundPlan(ctx(gh, git), opts) as RoundRun;
+      expect(run.denyTools).toBe('');
+      expect(run.beforeDirty).toBe('');
+    });
+  });
+
   // ADR-0007: 'no-escalation' friert auf der Default-Stufe ein, auch wenn
   // bereits eine hoehere Stufe gestempelt ist.
   it('friert das Modell bei no-escalation ein', () => {
@@ -689,6 +715,8 @@ describe('roundEval', () => {
     didWork: false,
     lastIssue: '',
     prompt: '',
+    beforeDirty: '',
+    denyTools: '',
   };
 
   // roundEval liest/schreibt weder 'claims' noch 'slotId' -- Platzhalter reicht.
@@ -836,16 +864,49 @@ describe('roundEval', () => {
 
   // ADR-0005: das Netz greift unabhaengig vom Exit-Code -- auch ein
   // "erfolgreicher" Denk-Lauf darf den Arbeitsbaum nicht beschmutzen.
-  describe('Read-only-Netz fuer Denk-Rollen (ADR-0005 + #63)', () => {
-    it('verwirft Aenderungen eines Planer-Laufs und meldet rot', () => {
+  describe('Read-only-Netz fuer Denk-Rollen (ADR-0005 + #63, indexbewusster Tripwire seit #325)', () => {
+    it('meldet einen sauber vorher / schmutzig nachher gewordenen Planer-Lauf rot, OHNE aufzuraeumen', () => {
       const git = gitDouble({ 'status --porcelain': ' M src/ui/shell.css' });
       const { gh, calls } = ghDouble();
-      const result = roundEval(ctx(gh, git), { ...plan, role: 'plan' }, ok, '');
+      const result = roundEval(ctx(gh, git), { ...plan, role: 'plan', beforeDirty: '' }, ok, '');
       expect(result.status?.emoji).toBe('🔴');
       expect(result.rc).toBe(1);
-      expect(git.run).toHaveBeenCalledWith(['checkout', '--', '.']);
-      expect(git.run).toHaveBeenCalledWith(['clean', '-fd']);
+      // #325: das alte Netz raeumte pauschal auf -- das kann Index-Zustand nie
+      // aufloesen (checkout/clean fassen den Index nicht an) und hat deshalb
+      // in Slot 2 jeden Lese-Lauf faelschlich angeklagt. Der neue Tripwire
+      // meldet nur noch, er raeumt nie mehr weg.
+      expect(git.run).not.toHaveBeenCalledWith(['checkout', '--', '.']);
+      expect(git.run).not.toHaveBeenCalledWith(['clean', '-fd']);
       expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+    });
+
+    it('klagt NICHT an, wenn schmutzig vorher = unveraendert nachher (Fremd-Dirt bleibt liegen)', () => {
+      const git = gitDouble({ 'status --porcelain': ' M docs/WORKFLOW.md' });
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh, git),
+        { ...plan, role: 'plan', beforeDirty: ' M docs/WORKFLOW.md' },
+        ok,
+        '',
+      );
+      expect(result.chain).toBe('continue');
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
+      expect(git.run).not.toHaveBeenCalledWith(['checkout', '--', '.']);
+      expect(git.run).not.toHaveBeenCalledWith(['clean', '-fd']);
+    });
+
+    // Index-Fall (#325): eine gestagte Fremd-Zeile ('M ' in Spalte 1) stand
+    // schon vor dem Lauf da und bleibt unangetastet -- nur die ECHT neue
+    // Zeile loest die Anklage aus. Das ist genau der Zustand, den das alte
+    // Netz nie auflösen konnte.
+    it('klagt im Index-Fall nur die neue Zeile an, die gestagte Fremd-Zeile bleibt unerwaehnt', () => {
+      const git = gitDouble({ 'status --porcelain': 'M  scripts/x\n M src/y' });
+      const { gh, calls } = ghDouble();
+      const result = roundEval(ctx(gh, git), { ...plan, role: 'plan', beforeDirty: 'M  scripts/x' }, ok, '');
+      expect(result.status?.emoji).toBe('🔴');
+      const commentBody = calls.find((args) => args[0] === 'issue' && args[1] === 'comment')?.join(' ') ?? '';
+      expect(commentBody).toContain('src/y');
+      expect(commentBody).not.toContain('scripts/x');
     });
 
     it('laesst einen sauberen Bau-Lauf mit Aenderungen in Ruhe', () => {
