@@ -164,6 +164,11 @@ export PATH="$FAKEBIN:$PATH"
 # --- Echtes Repo: bare 'origin' + Klon als REPO_DIR ---------------------------
 ORIGIN="$TMP/origin.git"
 git init --bare -q "$ORIGIN"
+# HEAD des bare-Repos explizit auf 'main' -- unabhaengig von init.defaultBranch
+# der Laufumgebung. Ohne das zeigt HEAD auf CI-Runnern teils auf 'master'
+# (nie erzeugt), und ein SPAETERER Klon (AK7, Zeile ~300) bricht mit "remote
+# HEAD refers to nonexistent ref" ab -- kein lokaler Branch, Push scheitert.
+git -C "$ORIGIN" symbolic-ref HEAD refs/heads/main
 
 export REPO_DIR="$TMP/repo"
 export SHARED_DIR="$TMP/shared"
