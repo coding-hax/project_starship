@@ -5,6 +5,15 @@ import { journalEntryId } from '@/local/uuid5';
 import { journalDek } from './lock-store';
 import { writeJournalEntry } from './write';
 
+/** Local calendar day, `YYYY-MM-DD` — device-local, not UTC (`toISOString`
+ * would drift a day near midnight for anyone west of Greenwich). Playwright's
+ * `page.clock` pins `Date` itself, so this stays deterministic in tests. Shared
+ * between the editor and the "written today?" overview section (issue #342) —
+ * one definition, so the two can never disagree on what day "today" is. */
+export function todayKey(): string {
+  return new Date().toLocaleDateString('en-CA');
+}
+
 /** No mood, no text, no tags — writing this for a day that has no row yet would
  * plant a ghost entry S5's "written today?" flag would then wrongly report. */
 function isEmptyContent(content: JournalContent): boolean {

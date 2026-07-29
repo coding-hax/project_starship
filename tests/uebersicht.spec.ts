@@ -264,3 +264,129 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
   expect(todayCircleR).not.toBe(weatherCircleR);
   expect(todayPathD).not.toBe(weatherPathD);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #342 (S5 von #302): Journal-Sektion "heute schon geschrieben?"       */
+/* -------------------------------------------------------------------------- */
+
+function journalSection(page: Page) {
+  return page.locator('.journal-today-section');
+}
+
+async function setUpJournal(page: Page, passphrase: string) {
+  await page.goto('/journal');
+  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+  await page.getByLabel('Passphrase wiederholen').fill(passphrase);
+  await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+}
+
+/**
+ * The mood tap saves via a fire-and-forget `saveJournalEntry` (issue #340) — a
+ * `page.reload()`/navigation right after `.click()` would race that write. Polls
+ * the real IndexedDB record instead of a fixed wait.
+ */
+async function waitForJournalEntryWritten(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page
+        .evaluate(() => window.__starship.debugRecords())
+        .then((records) => records.some((r) => r.table === 'journal_entries')),
+    )
+    .toBe(true);
+}
+
+test('Journal-Sektion zeigt "noch nicht geschrieben", bis heute ein Eintrag existiert (issue #342 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  await expect(journalSection(page)).toContainText('Heute noch nicht geschrieben');
+
+  await setUpJournal(page, 'ac1 passphrase');
+  await page.getByRole('button', { name: '7' }).click(); // Stimmungspunkt in der MoodScale
+  await waitForJournalEntryWritten(page);
+  await page.goto('/uebersicht');
+
+  await expect(journalSection(page)).toContainText('Heute geschrieben');
+});
+
+test('gesperrtes Journal zeigt weiterhin den korrekten (binären) Zustand, die Übersicht bleibt bedienbar (issue #342 AC2)', async ({
+  page,
+}) => {
+  await setUpJournal(page, 'ac2 passphrase');
+  await page.getByRole('button', { name: '3' }).click();
+  await waitForJournalEntryWritten(page);
+
+  await page.reload(); // Default: nicht speicherresident (issue #339 AC4) -> sperrt wieder
+  await page.goto('/uebersicht');
+
+  // Gesperrt: die reichere Stimmungsangabe (AC4) fällt auf die binäre Form zurück,
+  // statt eine veraltete oder falsche Stimmung zu zeigen.
+  await expect(journalSection(page)).toContainText('Heute geschrieben');
+  await expect(journalSection(page)).not.toContainText('Stimmung');
+
+  // "Kalender", not "Aufgaben": Next 16's dev-only "Issues" indicator (unrelated to
+  // this app, not gated by `devIndicators: false` — every /uebersicht visit here logs
+  // the mocked weather-fetch failure as one such "issue") renders bottom-left on
+  // mobile and covers the two leftmost tabs, "Übersicht" and "Aufgaben".
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Kalender' }).click();
+  await expect(page).toHaveURL(/\/kalender$/);
+});
+
+test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmung des Tages (issue #342 AC4)', async ({
+  page,
+}) => {
+  await setUpJournal(page, 'ac4 passphrase');
+  await page.getByRole('button', { name: '9' }).click();
+  await waitForJournalEntryWritten(page);
+  // A client-side nav click (not page.goto, a hard navigation) — the DEK lives
+  // only in an in-memory module variable (ADR-0016), so a real reload would
+  // re-lock by default (issue #339 AC5) and this AC would be untestable.
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }).click();
+
+  await expect(journalSection(page)).toContainText('Stimmung 9/10');
+});
+
+test('Tippen auf die Sektion führt zum heutigen Eintrag (issue #342 AC5)', async ({ page }) => {
+  await page.goto('/uebersicht');
+
+  await journalSection(page).click();
+  await expect(page).toHaveURL(/\/journal$/);
+  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+});
+
+test('Journal-Modul aus blendet die Sektion auf der Übersicht aus (issue #342 AC6)', async ({ page }) => {
+  await page.goto('/uebersicht');
+  await expect(journalSection(page)).toBeVisible();
+
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+
+  await page.goto('/uebersicht');
+  await expect(journalSection(page)).toHaveCount(0);
+});
+
+test('Journal-Sektion auf Mobile und Desktop, Dark Mode und reduzierte Bewegung (issue #342 AC7)', async ({
+  page,
+}) => {
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+    await expect(journalSection(page)).toBeVisible();
+  }
+
+  const lightColor = await journalSection(page).evaluate(
+    (el) => getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
+  );
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(journalSection(page)).toBeVisible();
+  const darkColor = await journalSection(page).evaluate(
+    (el) => getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
+  );
+
+  expect(darkColor).not.toBe(lightColor);
+});

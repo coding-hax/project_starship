@@ -5,7 +5,7 @@ import type { JournalContent } from '@/crypto/journal';
 import type { JournalConflict } from '@/local/dexie';
 import { MoodScale } from '@/ui/mood-scale';
 import { decryptJournalConflict, restoreJournalConflict } from './conflicts';
-import { loadJournalEntry, saveJournalEntry } from './entry';
+import { loadJournalEntry, saveJournalEntry, todayKey } from './entry';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
 import { useJournalConflicts } from './use-journal-conflicts';
@@ -13,13 +13,6 @@ import { useJournalConflicts } from './use-journal-conflicts';
 /** Text/tags autosave debounce — mood saves immediately (a tap is the whole
  * interaction, there is nothing left to batch). */
 const SAVE_DEBOUNCE_MS = 500;
-
-/** Local calendar day, `YYYY-MM-DD` — device-local, not UTC (`toISOString`
- * would drift a day near midnight for anyone west of Greenwich). Playwright's
- * `page.clock` pins `Date` itself, so this stays deterministic in tests. */
-function todayKey(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
 
 function parseTags(raw: string): string[] {
   return raw
