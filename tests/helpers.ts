@@ -308,6 +308,7 @@ declare global {
       journalLock: () => Promise<void>;
       journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
       journalHasPersistedDek: () => Promise<boolean>;
+      journalPersistedDekExtractable: () => Promise<boolean | null>;
     };
   }
 }

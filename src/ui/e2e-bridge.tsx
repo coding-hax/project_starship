@@ -74,6 +74,18 @@ export function E2EBridge() {
         journalLock: () => journalLock(),
         journalLockState: () => journalLockSnapshot().state,
         journalHasPersistedDek: () => getPersistedDek().then((dek) => dek !== null),
+        // Proves AC5's "non-extractable" half: exportKey on the persisted DEK
+        // must throw, never that it merely wasn't asked to export.
+        journalPersistedDekExtractable: async () => {
+          const key = await getPersistedDek();
+          if (!key) return null;
+          try {
+            await crypto.subtle.exportKey('raw', key);
+            return true;
+          } catch {
+            return false;
+          }
+        },
       },
     });
   }, []);

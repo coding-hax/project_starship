@@ -17,13 +17,21 @@ export const AUTO_LOCK_MS = 15 * 60 * 1000;
 
 const BROADCAST_CHANNEL_NAME = 'starship:journal-lock';
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown'] as const;
+/** How long a freshly opened tab waits for an already-unlocked tab to answer
+ * its `request` before falling back to `locked` (AC7). Same-process
+ * `BroadcastChannel` round trips in well under this. */
+const SHARE_REQUEST_TIMEOUT_MS = 150;
 
 interface Snapshot {
   state: JournalLockState;
   error: string | null;
 }
 
-type BroadcastMessage = { type: 'unlocked'; dek: CryptoKey } | { type: 'locked' };
+type BroadcastMessage =
+  | { type: 'unlocked'; dek: CryptoKey }
+  | { type: 'locked' }
+  /** A tab that just opened, asking whether anyone is already unlocked. */
+  | { type: 'request' };
 
 const SERVER_SNAPSHOT: Snapshot = { state: 'loading', error: null };
 
@@ -48,18 +56,48 @@ function getChannel(): BroadcastChannel {
   if (!channel) {
     channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
     channel.onmessage = (event: MessageEvent<BroadcastMessage>) => {
-      if (event.data.type === 'unlocked') {
-        dek = event.data.dek;
+      const message = event.data;
+      if (message.type === 'unlocked') {
+        dek = message.dek;
         setSnapshot({ state: 'unlocked', error: null });
         armAutoLock();
-      } else {
+      } else if (message.type === 'locked') {
         dek = null;
         disarmAutoLock();
         setSnapshot({ state: 'locked', error: null });
+      } else if (dek) {
+        // Another tab just opened and is asking — only an unlocked tab replies.
+        channel?.postMessage({ type: 'unlocked', dek } satisfies BroadcastMessage);
       }
     };
   }
   return channel;
+}
+
+/**
+ * Asks any already-unlocked tab for its DEK (AC7) — a tab that opens after
+ * another is already unlocked must not ask for the passphrase again. Resolves
+ * `null` if nothing answers in time, i.e. no other tab is currently unlocked.
+ */
+function requestSharedDek(ch: BroadcastChannel): Promise<CryptoKey | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const onMessage = (event: MessageEvent<BroadcastMessage>) => {
+      if (event.data.type === 'unlocked' && !settled) {
+        settled = true;
+        ch.removeEventListener('message', onMessage);
+        resolve(event.data.dek);
+      }
+    };
+    ch.addEventListener('message', onMessage);
+    ch.postMessage({ type: 'request' } satisfies BroadcastMessage);
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      ch.removeEventListener('message', onMessage);
+      resolve(null);
+    }, SHARE_REQUEST_TIMEOUT_MS);
+  });
 }
 
 function onActivity() {
@@ -104,7 +142,7 @@ function onPersistPrefChange() {
 }
 
 async function initialize(): Promise<void> {
-  getChannel();
+  const ch = getChannel();
   subscribeJournalPersistPref(onPersistPrefChange);
 
   const persisted = await getPersistedDek();
@@ -120,7 +158,21 @@ async function initialize(): Promise<void> {
 
   const envelope = await readEnvelope();
   if (current.state !== 'loading') return;
-  setSnapshot({ state: envelope ? 'locked' : 'setup', error: null });
+  if (!envelope) {
+    setSnapshot({ state: 'setup', error: null });
+    return;
+  }
+
+  const shared = await requestSharedDek(ch);
+  if (current.state !== 'loading') return;
+  if (shared) {
+    dek = shared;
+    setSnapshot({ state: 'unlocked', error: null });
+    armAutoLock();
+    return;
+  }
+
+  setSnapshot({ state: 'locked', error: null });
 }
 
 function ensureInitialized(): Promise<void> {
