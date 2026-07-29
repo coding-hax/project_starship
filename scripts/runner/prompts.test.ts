@@ -5,6 +5,7 @@
 // festgenagelt.
 import { describe, expect, it } from 'vitest';
 import { BUILD_TOOLS, READONLY_TOOLS, buildPrompt, ciFixPrompt, planPrompt, researchPrompt } from './prompts.js';
+import type { FoundTicket } from './prompts.js';
 
 const ALL = [
   ['build', buildPrompt(42)],
@@ -104,6 +105,42 @@ describe('prompts', () => {
     it('verlangt den wachsenden Abschnitt "Was schon versucht wurde"', () => {
       expect(prompt).toContain('## Was schon versucht');
       expect(prompt).toContain('nie ueberschrieben');
+    });
+  });
+
+  // #366 AC3: die bekannten Fund-Tickets im Auftragstext, Positiv+Negativ.
+  describe('Bekannte Fund-Tickets (#366)', () => {
+    const found: FoundTicket[] = [{ number: 349, key: 'tests/aktivitaeten.spec.ts:608' }];
+
+    it('build-Prompt enthaelt Schluessel und Nummer, sofern welche existieren', () => {
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('## Bekannte Fund-Tickets');
+      expect(prompt).toContain('#349');
+      expect(prompt).toContain('tests/aktivitaeten.spec.ts:608');
+      expect(prompt).toContain('docs/WORKFLOW.md');
+    });
+
+    it('build-Prompt ohne Fund-Tickets enthaelt den Abschnitt gar nicht', () => {
+      expect(buildPrompt(42)).not.toContain('Bekannte Fund-Tickets');
+      expect(buildPrompt(42, [])).not.toContain('Bekannte Fund-Tickets');
+    });
+
+    it('ci-fix-Prompt traegt dieselbe Sektion', () => {
+      const prompt = ciFixPrompt(42, 'egal', found);
+      expect(prompt).toContain('## Bekannte Fund-Tickets');
+      expect(prompt).toContain('#349');
+    });
+
+    it('ci-fix-Prompt ohne Fund-Tickets enthaelt den Abschnitt gar nicht', () => {
+      expect(ciFixPrompt(42, 'egal')).not.toContain('Bekannte Fund-Tickets');
+    });
+
+    // Default-Param: bestehende Aufrufer ohne drittes Argument bleiben
+    // wortgleich gruen (der Rest der Suite ruft buildPrompt/ciFixPrompt
+    // durchgehend ohne found auf).
+    it('Default-Parameter aendert den bestehenden Wortlaut nicht', () => {
+      expect(buildPrompt(42)).toBe(buildPrompt(42, []));
+      expect(ciFixPrompt(42, 'egal')).toBe(ciFixPrompt(42, 'egal', []));
     });
   });
 

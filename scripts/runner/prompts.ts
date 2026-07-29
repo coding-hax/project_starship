@@ -20,12 +20,41 @@ auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert
 die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
 nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 
-export function buildPrompt(issue: number): string {
+// #366: Konstante Titel-/Body-Form, damit WORKFLOW.md und der Prompt nie
+// auseinanderlaufen -- ein Fund-Ticket wird nach dem Testort benannt, nicht
+// nach der Hypothese, und traegt den Schluessel maschinenlesbar im Body.
+export const FIND_TITLE_FORM = 'fund(<pfad>:<zeile>): …';
+export const FIND_BODY_FORM = 'Fund: <pfad>:<zeile>';
+
+export interface FoundTicket {
+  number: number;
+  key: string;
+}
+
+// AC3: die bekannten Fund-Tickets im Auftragstext -- macht Dedupe mechanisch
+// statt nur vorgeschrieben (Teil 3 aus #366, im Gegensatz zur Pflichtsuche
+// aus Teil 2, auf die sich der Lauf nur verlassen kann, wenn er daran denkt).
+// Leere Liste rendert NICHTS -- bestehende Prompt-Assertions bleiben
+// wortgleich gültig.
+function foundTicketsSection(found: FoundTicket[]): string {
+  if (found.length === 0) return '';
+  const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
+  return `
+
+## Bekannte Fund-Tickets
+
+Vor \`gh issue create\` für einen roten Test erst suchen (Dedupe): ${list}.
+Treffer auf denselben Fundschlüssel → Kommentar am bestehenden Ticket statt
+eines neuen, sonst \`gh issue list --state all --search '"Fund: <pfad>:<zeile>"'\`.
+Siehe docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".`;
+}
+
+export function buildPrompt(issue: number, found: FoundTicket[] = []): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Arbeite an Issue #${issue} in diesem Repo.
 
-${FILE_ACCESS_RULE}
+${FILE_ACCESS_RULE}${foundTicketsSection(found)}
 
 Ablauf:
 1. Pflichtlektüre ist NUR CLAUDE.md und docs/CODEMAP.md. Nichts sonst liest du
@@ -116,14 +145,14 @@ Ablauf:
  * #283: Bis hierher gab es eine Ausnahme fuer 'protected-paths' -- der Check
  * war eine Genehmigungs-Schranke, kein Fund. Den Job gibt es nicht mehr.
  */
-export function ciFixPrompt(issue: number, ciSummary: string): string {
+export function ciFixPrompt(issue: number, ciSummary: string, found: FoundTicket[] = []): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Der Draft-PR zu Issue #${issue} hat rote CI. Der Runner-Takt hat gewartet, bis
 alle Checks durch waren, und startet dich JETZT gezielt, weil es etwas zu TUN
 gibt.
 
-${FILE_ACCESS_RULE}
+${FILE_ACCESS_RULE}${foundTicketsSection(found)}
 
 ## Was rot ist
 

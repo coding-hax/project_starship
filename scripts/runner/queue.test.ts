@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  findFoundTicket,
+  foundTickets,
+  parseFindKey,
   queueBlocked,
   queueCycles,
   queueDone,
@@ -177,5 +180,93 @@ describe('untriaged (#357)', () => {
     const snap: QueueIssue[] = [{ number: 400, labels: [] }, { number: 349, labels: [] }];
     expect(untriaged(snap, [], noMeta)).toEqual([349, 400]);
     expect(untriaged([], [], noMeta)).toEqual([]);
+  });
+});
+
+// #366: der Fundschluessel macht ein Fund-Ticket ueber den Testort statt der
+// Titel-Hypothese wiederfindbar -- #349/#351/#364 waren drei Tickets fuer
+// denselben roten Test (tests/aktivitaeten.spec.ts:608), weil keine der drei
+// Titel-Varianten die anderen gefunden haette.
+describe('parseFindKey (#366 AC1)', () => {
+  it('reads the key from a "Fund: <pfad>:<zeile>" line', () => {
+    expect(parseFindKey('Fund: tests/aktivitaeten.spec.ts:608')).toBe('tests/aktivitaeten.spec.ts:608');
+  });
+
+  it('reads the key from anywhere in a longer body, trimmed', () => {
+    const body = '## Warum\n\nFehlschlag im CI.\n\nFund: tests/nav.spec.ts:42  \n\nWeitere Details.';
+    expect(parseFindKey(body)).toBe('tests/nav.spec.ts:42');
+  });
+
+  it('returns null when the body has no key', () => {
+    expect(parseFindKey('Ganz normales Ticket ohne Fundschluessel.')).toBeNull();
+  });
+
+  it('returns null for undefined/empty body', () => {
+    expect(parseFindKey(undefined)).toBeNull();
+    expect(parseFindKey('')).toBeNull();
+  });
+
+  // Zeilenanker wie bei ENTRY_LINE: Fliesstext, das "Fund:" nicht am
+  // Zeilenanfang enthaelt, triggert nicht.
+  it('prose mentioning "Fund:" mid-line does not trigger', () => {
+    expect(parseFindKey('Siehe den Fund: er steht weiter unten.')).toBeNull();
+  });
+
+  it('takes only the first matching line', () => {
+    expect(parseFindKey('Fund: a.spec.ts:1\nFund: b.spec.ts:2')).toBe('a.spec.ts:1');
+  });
+});
+
+function found(number: number, key: string, createdAt: string): QueueIssue {
+  return { number, labels: [], createdAt, body: `Fund: ${key}` };
+}
+
+describe('foundTickets (#366)', () => {
+  it('returns [] for a snapshot with no key at all', () => {
+    expect(foundTickets([{ number: 1, labels: [], body: 'kein Schluessel hier' }])).toEqual([]);
+  });
+
+  it('lists tickets with a key, oldest first', () => {
+    const snap = [
+      found(351, 'tests/a.spec.ts:1', '2026-07-29T10:00:00Z'),
+      found(349, 'tests/a.spec.ts:1', '2026-07-29T09:36:00Z'),
+    ];
+    expect(foundTickets(snap)).toEqual([
+      { number: 349, key: 'tests/a.spec.ts:1' },
+      { number: 351, key: 'tests/a.spec.ts:1' },
+    ]);
+  });
+});
+
+describe('findFoundTicket (#366 AC2)', () => {
+  it('returns null when no ticket carries the key', () => {
+    expect(findFoundTicket('tests/a.spec.ts:1', [{ number: 1, labels: [], body: '' }])).toBeNull();
+  });
+
+  it('finds the single ticket carrying the key', () => {
+    const snap = [found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z')];
+    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
+  });
+
+  // #366: genau der Fall, der #349/#351/#364 verhindert haette -- drei
+  // Tickets fuer denselben Testort, das AELTESTE gewinnt.
+  it('multiple matches: the oldest wins', () => {
+    const snap = [
+      found(364, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T18:00:00Z'),
+      found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z'),
+      found(351, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T10:00:00Z'),
+    ];
+    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
+  });
+
+  // Zustandsagnostisch: ein offenes und ein geschlossenes Ticket mit
+  // demselben Schluessel -- welches gewinnt, entscheidet allein das Alter,
+  // nicht der Zustand. '--state all' zu fragen ist Sache des Aufrufers.
+  it('is state-agnostic -- mixed open/closed, oldest still wins', () => {
+    const snap: QueueIssue[] = [
+      { ...found(364, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T18:00:00Z'), state: 'OPEN' },
+      { ...found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z'), state: 'CLOSED' },
+    ];
+    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
   });
 });

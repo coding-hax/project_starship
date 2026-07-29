@@ -15,8 +15,8 @@ import { roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } 
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
 
-function issueJson(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z') {
-  return { number, labels: labels.map((name) => ({ name })), createdAt };
+function issueJson(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z', body = '') {
+  return { number, labels: labels.map((name) => ({ name })), createdAt, body };
 }
 
 /**
@@ -139,6 +139,30 @@ describe('roundPlan', () => {
     // sichtbar ist -- sonst ist vom Handy aus nicht erkennbar, dass der
     // naechste Lauf Opus verbrennt.
     expect(run.status.title).toBe('arbeitet an #77 (sonnet, seit 09:22)');
+  });
+
+  // #366 AC3: bekannte Fund-Tickets landen im Auftragstext, damit ein Lauf
+  // die Geschwister eines Fund-Tickets nicht mehr uebersehen kann -- egal
+  // welcher Slot ihn faehrt (nicht an isLead gekoppelt).
+  it('nimmt ein untriagiertes Fund-Ticket mit Schluessel in den Bau-Prompt auf', () => {
+    const { gh } = ghDouble([
+      openIssues(
+        issueJson(77, ['ready']),
+        issueJson(349, [], '2026-07-29T09:36:00Z', 'Fund: tests/aktivitaeten.spec.ts:608'),
+      ),
+      noOpenPrs,
+    ]);
+    const run = roundPlan(ctx(gh), opts) as RoundRun;
+    expect(run.kind).toBe('run');
+    expect(run.prompt).toContain('Bekannte Fund-Tickets');
+    expect(run.prompt).toContain('#349');
+    expect(run.prompt).toContain('tests/aktivitaeten.spec.ts:608');
+  });
+
+  it('laesst die Sektion "Bekannte Fund-Tickets" weg, wenn keins existiert', () => {
+    const { gh } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs]);
+    const run = roundPlan(ctx(gh), opts) as RoundRun;
+    expect(run.prompt).not.toContain('Bekannte Fund-Tickets');
   });
 
   it('gibt der Planer-Rolle Opus und eine nur lesende Allowlist (ADR-0005)', () => {
