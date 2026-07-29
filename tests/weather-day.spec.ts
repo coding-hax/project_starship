@@ -336,6 +336,23 @@ test('die Kopfzeile sitzt dicht über der ersten Box, nicht mit großem Spalt (i
   expect(marginBottom).toBeLessThanOrEqual(maxMarginPx);
 });
 
+test('der Spalt zwischen Kopfzeile und Box ist nach #353 noch kleiner als nach #344', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const maxGapPx = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-1')),
+  );
+  const back = await page.locator('.weather-day__back').boundingBox();
+  const summary = await page.locator('.weather-day__summary').boundingBox();
+  const gap = summary!.y - back!.y - back!.height;
+  expect(gap).toBeLessThanOrEqual(maxGapPx);
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: kein eigener Netzaufruf beim Öffnen der Detailseite                    */
 /* -------------------------------------------------------------------------- */
