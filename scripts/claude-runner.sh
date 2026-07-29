@@ -324,9 +324,11 @@ readonly_worktree() {   # $1 = Ticketnummer -> Wegwerf-Worktree-Pfad auf stdout
   mkdir -p "$WORKTREE_BASE"
 
   # Rest eines abgebrochenen Laufs zuerst wegwerfen -- ein Wegwerf-Worktree
-  # ist nie eine Wiederverwendung, sondern startet jedes Mal frisch.
+  # ist nie eine Wiederverwendung, sondern startet jedes Mal frisch. Kein
+  # '--force' (T20 verbietet die Bypass-Flags im Skript): ein sauberer
+  # 'remove' reicht im Normalfall, der rm -rf-Fallback unten faengt den Rest.
   if git -C "$REPO_DIR" worktree list --porcelain 2>/dev/null | grep -qF "worktree $wt"; then
-    git -C "$REPO_DIR" worktree remove --force "$wt" >/dev/null 2>&1
+    git -C "$REPO_DIR" worktree remove "$wt" >/dev/null 2>&1
   fi
   if [ -e "$wt" ]; then
     rm -rf "$wt"
@@ -437,9 +439,10 @@ run_round() {
   # Wegwerf-Worktree (#325) sofort nach dem Lauf entfernen -- ersetzt das
   # alte pauschale Aufraeumen im Read-only-Netz. round-eval prueft danach den
   # HAUPT-Checkout ($REPO_DIR), nicht diesen Worktree -- Reihenfolge zur
-  # Notbremse unten unkritisch.
+  # Notbremse unten unkritisch. Kein '--force' (T20): sauberer 'remove'
+  # reicht, rm -rf faengt den Rest.
   if [ "$role" != "build" ] && [ "$run_cwd" != "$REPO_DIR" ]; then
-    git -C "$REPO_DIR" worktree remove --force "$run_cwd" >/dev/null 2>&1 \
+    git -C "$REPO_DIR" worktree remove "$run_cwd" >/dev/null 2>&1 \
       || { rm -rf "$run_cwd"; git -C "$REPO_DIR" worktree prune >/dev/null 2>&1; }
   fi
 
@@ -512,7 +515,8 @@ if worktrees_enabled; then
   if [ -d "$WORKTREE_BASE" ]; then
     for wt in "$WORKTREE_BASE"/readonly-*; do
       [ -d "$wt" ] || continue
-      if ! git -C "$REPO_DIR" worktree remove --force "$wt" >/dev/null 2>&1; then
+      # Kein '--force' (T20): sauberer 'remove' reicht, rm -rf faengt den Rest.
+      if ! git -C "$REPO_DIR" worktree remove "$wt" >/dev/null 2>&1; then
         rm -rf "$wt"
         git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
       fi
