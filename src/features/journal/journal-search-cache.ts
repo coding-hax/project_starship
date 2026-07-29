@@ -24,7 +24,9 @@ export async function loadSearchableJournalEntries(): Promise<JournalSearchEntry
       const nonce = base64ToBytes(row.data.nonce as string);
       const content = await decryptJournal(dek, ciphertext, nonce);
       return {
+        id: row.id,
         entryDate: row.data.entryDate as string,
+        createdAt: (row.data.createdAt as string | undefined) ?? row.updatedAt,
         text: content.text,
         tags: content.tags ?? [],
       };

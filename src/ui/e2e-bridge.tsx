@@ -13,12 +13,11 @@ import {
   journalSetup,
   journalUnlock,
 } from '@/features/journal/lock-store';
-import { appendJournalEntry } from '@/features/journal/entry';
+import { appendJournalEntry, deleteJournalEntry, listJournalEntries } from '@/features/journal/entry';
 import { writeJournalEntry } from '@/features/journal/write';
 import { db } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
-import { journalEntryId } from '@/local/uuid5';
 import { getStoragePersistenceStatus } from './persist-storage';
 
 /**
@@ -65,7 +64,6 @@ export function E2EBridge() {
         // offline row that reaches Postgres is real ciphertext, not a stand-in —
         // the CryptoKey a call returns only ever travels to the next call inside the
         // same page.evaluate, never back across the Node/browser boundary.
-        journalEntryId,
         writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) =>
           writeJournalEntry(entryDate, {
             ciphertext: new Uint8Array(ciphertext),
@@ -76,6 +74,8 @@ export function E2EBridge() {
         // search suite needs several days of real content, not raw filler bytes).
         appendJournalEntry: (entryDate: string, content: JournalContent) =>
           appendJournalEntry(entryDate, content),
+        listJournalEntries: (entryDate: string) => listJournalEntries(entryDate),
+        deleteJournalEntry: (id: string) => deleteJournalEntry(id),
         bytesToBase64: (bytes: number[]) => bytesToBase64(new Uint8Array(bytes)),
         debugJournalConflicts: () => db.journalConflicts.toArray(),
         // Seeds a conflict copy for AC8 without the two-device pull dance from
