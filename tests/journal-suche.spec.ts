@@ -106,7 +106,9 @@ test('AC5: kein Treffer zeigt einen ruhigen Leerzustand statt einer Fehlermeldun
 
   await expect(page.locator('.journal-search__empty')).toBeVisible();
   await expect(page.locator('.journal-search__empty')).toHaveText('Keine Treffer.');
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  // Not getByRole('alert') — Next's route announcer also has role="alert" (see
+  // sync.spec.ts AC2) — the error toast is the only thing carrying this class.
+  await expect(page.locator('.toast--error')).toHaveCount(0);
 });
 
 test('AC6: ein Treffer führt zum Eintrag des jeweiligen Tages', async ({ page }) => {
