@@ -23,6 +23,7 @@
 import type { GhAdapter } from './gh.js';
 import type { StateAdapter } from './state.js';
 import { byCreatedAt, hasLabel, queueBlocked, queueEntries, type QueueIssue } from './queue.js';
+import { sessionKey } from './session.js';
 
 export type RunRole = 'build' | 'plan' | 'research';
 
@@ -154,8 +155,8 @@ export function pickTicket(
   // `-s` in der Bash-Vorlage prueft Existenz UND Groesse > 0, nicht nur
   // Existenz -- eine leere Session-Datei (kaputter/leerer Claude-Output,
   // siehe scripts/tests/round-snap.test.sh AC7) zaehlt als "keine Session".
-  const hasSession = (issue: number) => {
-    const content = state.read(`session-${issue}`);
+  const hasSession = (issue: number, role: RunRole) => {
+    const content = state.read(sessionKey(issue, role));
     return content !== null && content.length > 0;
   };
 
@@ -169,10 +170,10 @@ export function pickTicket(
         gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);
         return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'start' };
       }
-      return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue) ? 'resume' : 'start' };
+      return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
     case 'plan':
     case 'research':
-      return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue) ? 'resume' : 'start' };
+      return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
     case 'ready':
       gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);
       return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'start' };

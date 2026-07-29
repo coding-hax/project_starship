@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -132,6 +132,10 @@ describe('dispatch', () => {
       // ~40 Einzelaufrufe pro Takt, aufgeteilt am `claude`-Aufruf.
       'round-plan',
       'round-prompt',
+      // #356 (B): zwischen dem `claude`-Aufruf und round-eval -- erkennt eine
+      // nicht-fortsetzbare Session, bevor round-eval den Absturz als
+      // Eskalations-Fehlversuch werten kann.
+      'round-recover',
       'round-eval',
       // #204 (E5): aggregierter Status bei mehreren Slots.
       'fleet-effective-lead',
@@ -224,6 +228,55 @@ describe('dispatch', () => {
     expect(stdout).toHaveBeenCalledWith('src/a.ts,src/b.ts');
 
     stdout.mockRestore();
+  });
+
+  // #356 (B): round-recover liest ROUND_FILE + Log wie round-eval und reicht
+  // an roundRecover() durch -- die eigentliche Entscheidungslogik hat ihre
+  // eigenen Faelle in round.test.ts, hier zaehlt nur die Dispatcher-Naht.
+  describe('round-recover dispatch (#356 B)', () => {
+    function withRoundFixture(run: (roundFile: string, logFile: string) => void): void {
+      const dir = mkdtempSync(join(tmpdir(), 'starship-cli-round-recover-'));
+      try {
+        const roundFile = join(dir, 'round.json');
+        const logFile = join(dir, 'claude.log');
+        writeFileSync(roundFile, JSON.stringify({ issue: 42, role: 'build', resume: 'sid-old' }));
+        run(roundFile, logFile);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    it('retry=true + Session entfernt, wenn der Log "No conversation found" enthaelt', () => {
+      withRoundFixture((roundFile, logFile) => {
+        writeFileSync(logFile, 'irgendwas\nNo conversation found with session ID: sid-old\n');
+        const ctx = fakeContext();
+        const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+        const rc = dispatch(ctx, ['round-recover', roundFile, '1', logFile]);
+
+        expect(rc).toBe(0);
+        expect(stdout).toHaveBeenCalledWith('{"retry":true}\n');
+        expect(ctx.state.remove).toHaveBeenCalledWith('session-42');
+
+        stdout.mockRestore();
+      });
+    });
+
+    it('retry=false ohne den Marker im Log, keine Seiteneffekte', () => {
+      withRoundFixture((roundFile, logFile) => {
+        writeFileSync(logFile, 'ein anderer Fehler\n');
+        const ctx = fakeContext();
+        const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+        const rc = dispatch(ctx, ['round-recover', roundFile, '1', logFile]);
+
+        expect(rc).toBe(0);
+        expect(stdout).toHaveBeenCalledWith('{"retry":false}\n');
+        expect(ctx.state.remove).not.toHaveBeenCalled();
+
+        stdout.mockRestore();
+      });
+    });
   });
 
   // Der isMain-Zweig greift nur beim Ausfuehren als Hauptmodul -- ein
