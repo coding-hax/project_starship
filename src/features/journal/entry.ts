@@ -14,6 +14,17 @@ export function todayKey(): string {
   return new Date().toLocaleDateString('en-CA');
 }
 
+/** Milliseconds until the next device-local midnight — the exact point at
+ * which the editor's visible "today" (issue #374 AC2) needs to roll onto the
+ * new day, same local basis as `todayKey`. Scheduling a single timeout for
+ * this instant, instead of polling, means there's no window where a
+ * submission just after midnight could still land on the old day (AC3). */
+export function msUntilNextMidnight(): number {
+  const now = new Date();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return nextMidnight.getTime() - now.getTime();
+}
+
 /** No mood, no text, no tags — submitting this would create an entry with
  * nothing in it (issue #376 AC2: submit is explicit, but an empty submission
  * still has nothing worth storing). */

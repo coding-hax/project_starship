@@ -7,7 +7,13 @@ import { mutate } from '@/local/outbox';
 import { MoodScale } from '@/ui/mood-scale';
 import { Toast } from '@/ui/toast';
 import { decryptJournalConflict, restoreJournalConflict } from './conflicts';
-import { appendJournalEntry, deleteJournalEntry, todayKey, type JournalEntryView } from './entry';
+import {
+  appendJournalEntry,
+  deleteJournalEntry,
+  msUntilNextMidnight,
+  todayKey,
+  type JournalEntryView,
+} from './entry';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
 import { useJournalConflicts } from './use-journal-conflicts';
@@ -31,8 +37,8 @@ const ENTRY_TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   minute: '2-digit',
 });
 
-/** Shown only once a search result (AC6) switched the visible day away from
- * today — the day itself is otherwise implicit, like every other page here. */
+/** Above the entry list (issue #374 AC1) — the day whose entries are shown,
+ * spelled out in German like every other date on this page. */
 function formatEntryDate(entryDate: string): string {
   const [year, month, day] = entryDate.split('-').map(Number);
   return ENTRY_DATE_FORMATTER.format(new Date(year, month - 1, day));
@@ -65,6 +71,28 @@ export function JournalEditor() {
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entries = useJournalEntries(entryDate);
   const conflicts = useJournalConflicts(entryDate);
+
+  // AC2: staying open across midnight rolls the visible day forward on its
+  // own, no reload. A single timeout scheduled for the exact next midnight
+  // (not a poll) also closes the AC3 gap it used to be seeded from: a
+  // submission right after midnight always sees the day already rolled over.
+  // `trackedToday` guards against clobbering a day picked via search (AC6,
+  // #341) — the roll only applies while `entryDate` is still following
+  // "today" itself.
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    let trackedToday = todayKey();
+    function scheduleNext() {
+      timeout = setTimeout(() => {
+        const previousToday = trackedToday;
+        trackedToday = todayKey();
+        setEntryDate((current) => (current === previousToday ? trackedToday : current));
+        scheduleNext();
+      }, msUntilNextMidnight());
+    }
+    scheduleNext();
+    return () => clearTimeout(timeout);
+  }, []);
 
   function dismissUndo() {
     if (undoTimeoutRef.current !== null) {
@@ -114,9 +142,6 @@ export function JournalEditor() {
     <>
       <JournalSearch onSelect={setEntryDate} />
       <div className="journal-editor">
-        {entryDate !== todayKey() && (
-          <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
-        )}
         <form className="journal-editor__form" onSubmit={handleSubmit}>
           <MoodScale value={mood} onChange={setMood} />
           <textarea
@@ -141,6 +166,7 @@ export function JournalEditor() {
         {conflicts?.map((conflict) => (
           <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
         ))}
+        <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
         {entries && entries.length > 0 && (
           <ul className="journal-editor__entries">
             {entries.map((entry) => (
