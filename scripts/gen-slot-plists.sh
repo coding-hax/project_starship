@@ -13,13 +13,15 @@
 #   SLOT_COUNT=3 STATUS_ISSUE=1 scripts/gen-slot-plists.sh [zielverzeichnis]
 #
 # Umgebungsvariablen (alle optional, mit Default):
-#   SLOT_COUNT    wie viele Slots (Default 1, Deckel 10 -- siehe AK8 in claude-runner.sh)
-#   STATUS_ISSUE  EIN aggregiertes Status-Issue für die ganze Flotte (Frage 4/6)
-#   LEAD_SLOT     welcher Slot faehrt die globalen Waechter, solange er lebt (Default 1)
-#   REPO_DIR      Pfad des Slot-1-Checkouts (Default ~/dev/project_starship)
-#   SLOT_BASE     wo Slot 2..N liegen (Default ~/dev, Clones heissen starship-slot-<n>)
-#   SHARED_DIR    slotübergreifender Zustand (Default ~/.starship-runner)
-#   PLIST_PREFIX  Label-Präfix (Default de.starship.runner)
+#   SLOT_COUNT      wie viele Slots (Default 1, Deckel 10 -- siehe AK8 in claude-runner.sh)
+#   STATUS_ISSUE    EIN aggregiertes Status-Issue für die ganze Flotte (Frage 4/6)
+#   LEAD_SLOT       welcher Slot faehrt die globalen Waechter, solange er lebt (Default 1)
+#   REPO_DIR        Pfad des Slot-1-Checkouts (Default ~/dev/project_starship)
+#   SLOT_BASE       wo Slot 2..N liegen (Default ~/dev, Clones heissen starship-slot-<n>)
+#   SHARED_DIR      slotübergreifender Zustand (Default ~/.starship-runner)
+#   PLIST_PREFIX    Label-Präfix (Default de.starship.runner)
+#   START_INTERVAL  Taktsekunden, überschreibt den Default (60s bei einem Slot,
+#                   120s ab zwei) -- Deckel: unter 60s wird abgelehnt (gh-Limit)
 set -euo pipefail
 
 SLOT_COUNT="${SLOT_COUNT:-1}"
@@ -44,13 +46,28 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Ab mehr als einem Slot rueckt das gh-API-Limit in Reichweite (siehe
-# "gh CLI API-Limit und Skalierung" in launchd-setup.md) -- 60s bei N=1,
-# 300s ab N>1.
+# Default-Takt: 60s bei einem Slot, 120s ab zwei. Gemessen 29.07.26 im
+# 3-Slot-Betrieb: 0/5000 core-Calls, GraphQL 206/5000 -- die alten 300s waren
+# vorsichtig geschaetzt, nicht gemessen. 120s halbiert die Reaktionszeit und
+# laesst zum gh-Limit (5000/h) reichlich Luft. Per START_INTERVAL ueberschreibbar,
+# damit es beim naechsten Lauf keine Handaenderung an der geladenen Plist braucht.
 if [ "$SLOT_COUNT" -gt 1 ]; then
-  START_INTERVAL=300
+  default_interval=120
 else
-  START_INTERVAL=60
+  default_interval=60
+fi
+START_INTERVAL="${START_INTERVAL:-$default_interval}"
+
+# Deckel gegen das gh-API-Limit: unter 60s wird abgelehnt (AK3).
+case "$START_INTERVAL" in
+  ''|*[!0-9]*)
+    echo "START_INTERVAL muss eine positive Zahl (Sekunden) sein, ist aber '$START_INTERVAL'." >&2
+    exit 1
+    ;;
+esac
+if [ "$START_INTERVAL" -lt 60 ]; then
+  echo "START_INTERVAL=$START_INTERVAL unter 60s abgelehnt -- das gh-API-Limit (5000 Calls/h) rueckt sonst in Reichweite (siehe launchd-setup.md)." >&2
+  exit 1
 fi
 
 # Bestbemuehte PATH-Ermittlung zur Generierzeit -- launchd erbt keine

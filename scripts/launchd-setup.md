@@ -232,12 +232,16 @@ Der Runner benutzt die GitHub CLI (`gh`) für API-Aufrufe. Das gh-Limit liegt be
 | Takt | Slots | Calls/h |
 | --- | --- | --- |
 | 300 s (5 min) | 1 | ~120–240 |
+| 120 s | 3 (#204) | ~900–1800 |
 | 60 s | 1 | ~600–1200 |
 | 60 s | 3 (#204) | ~1800–3600 |
 
-Für einen Slot (Standard) ist 60 Sekunden unbedenklich. **Sobald #204 mit mehreren
-Slots läuft** (parallele Läufe), **muss der Takt auf 120–300 Sekunden zurück**,
-sonst rückt das Limit in Reichweite.
+Für einen Slot (Standard) ist 60 Sekunden unbedenklich. Sobald #204 mit mehreren
+Slots läuft, **fährt der Takt auf 120 Sekunden** — der Default in
+`gen-slot-plists.sh`, per `START_INTERVAL` überschreibbar. Gemessen am 29.07.26 im
+laufenden 3-Slot-Betrieb: `gh api rate_limit` meldet **0/5000** core-Calls, GraphQL
+206/5000 — zum Limit reichlich Luft; die früheren 300 s waren geschätzt, nicht
+gemessen (#360).
 
 Prüf dein aktuelles Limit mit:
 
