@@ -21,6 +21,8 @@ async function setUpJournal(page: Page, passphrase: string) {
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.getByTestId('journal-recovery-key').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
