@@ -1,6 +1,6 @@
 {
-  "id": "e5e6b029-0283-4179-9ec9-ba763a3bdf5e",
-  "prevId": "5501a775-3913-4e4e-bed5-e049cee20967",
+  "id": "112d945c-905a-45fa-aee7-d9faf57f80a0",
+  "prevId": "e5e6b029-0283-4179-9ec9-ba763a3bdf5e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -714,6 +714,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {
@@ -757,7 +764,22 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "journal_entries_created_at_idx": {
+          "name": "journal_entries_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -176,15 +176,15 @@ test('AC2 (#338): Down-Pfad von 0012 räumt sauber ab, Up-Pfad stellt wieder her
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #376: Migration 0013 (created_at, entry_date nicht mehr eindeutig)   */
+/* issue #376: Migration 0014 (created_at, entry_date nicht mehr eindeutig)   */
 /* -------------------------------------------------------------------------- */
 
-test('Down-Pfad von 0013 entfernt created_at und macht entry_date wieder eindeutig, Up-Pfad stellt beides wieder her', async () => {
+test('Down-Pfad von 0014 entfernt created_at und macht entry_date wieder eindeutig, Up-Pfad stellt beides wieder her', async () => {
   const downSql = readFileSync(
-    path.join(__dirname, '../src/db/migrations/down/0013_journal_multiple_entries.down.sql'),
+    path.join(__dirname, '../src/db/migrations/down/0014_journal_multiple_entries.down.sql'),
     'utf8',
   );
-  const upSql = readFileSync(path.join(__dirname, '../src/db/migrations/0013_gray_black_bird.sql'), 'utf8');
+  const upSql = readFileSync(path.join(__dirname, '../src/db/migrations/0014_steep_james_howlett.sql'), 'utf8');
 
   async function columns(client: Client): Promise<string[]> {
     const { rows } = await client.query(
@@ -258,13 +258,15 @@ async function setUpEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.getByTestId('journal-recovery-key').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
 async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<void> {
   await page.locator('.journal-gate[data-state="locked"]').waitFor();
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
-  await page.getByRole('button', { name: 'Entsperren' }).click();
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 

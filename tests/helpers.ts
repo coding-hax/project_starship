@@ -315,7 +315,7 @@ declare global {
         dek: unknown,
         content: { text: string; mood?: string; tags?: string[] },
       ) => Promise<{ ciphertext: number[]; nonce: number[] }>;
-      journalSetup: (passphrase: string) => Promise<void>;
+      journalSetup: (passphrase: string) => Promise<string>;
       journalUnlock: (passphrase: string) => Promise<'ok' | 'wrong'>;
       journalLock: () => Promise<void>;
       journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
