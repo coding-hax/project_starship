@@ -26,6 +26,7 @@ import type { QueueIssue } from './queue.js';
 import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, type RunRole } from './select.js';
+import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
@@ -676,7 +677,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   // Resume-Deckel nur fuers Bauen (#62): die Denk-Rollen tragen ihren Kontext
   // bewusst in der Session, dort ist die breite Lektuere der Auftrag. Fuers
   // Bauen liegt der Stand in Git + Fortschrittskommentar.
-  const sid = state.read(`session-${issue}`) ?? '';
+  const sid = state.read(sessionKey(issue, role)) ?? '';
   let resume = '';
   if (mode === 'resume' && sid !== '' && (role !== 'build' || resumeAllowed(issue, state).allowed)) {
     resume = sid;
@@ -807,7 +808,7 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
   // eine leere Zeile wuerde die noch gueltige alte ID ueberschreiben, und der
   // naechste Lauf koennte nicht mehr fortsetzen (#64).
   const sid = parseField(outcome.out, 'session_id');
-  if (sid !== '') state.write(`session-${issue}`, sid);
+  if (sid !== '') state.write(sessionKey(issue, role), sid);
 
   // Ein frueherer Lauf koennte 'blocked-limit' gesetzt haben. Kommen wir hier
   // an, ist das Limit vorbei -- das Label ist in JEDEM Ausgang unten stale.

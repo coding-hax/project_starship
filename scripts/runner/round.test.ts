@@ -743,6 +743,23 @@ describe('roundEval', () => {
     expect(state.read('session-77')).toBe('sid-alt');
   });
 
+  // #356 (A): Bau- und Denk-Rollen teilen sich die Session-Datei nicht mehr --
+  // ein Bau-Lauf las sonst die Session eines vorangegangenen Plan-Laufs und
+  // reichte sie per --resume in einem cwd durch, das die CLI nie sah (#353).
+  it('schreibt die Session einer Denk-Rolle unter session-think-<nr>, nicht session-<nr>', () => {
+    const { gh } = ghDouble();
+    roundEval(ctx(gh), { ...plan, role: 'plan' }, ok, '');
+    expect(state.read('session-think-77')).toBe('sid-1');
+    expect(state.read('session-77')).toBeNull();
+  });
+
+  it('schreibt die Session einer Bau-Rolle weiterhin unter session-<nr>', () => {
+    const { gh } = ghDouble();
+    roundEval(ctx(gh), plan, ok, '');
+    expect(state.read('session-77')).toBe('sid-1');
+    expect(state.read('session-think-77')).toBeNull();
+  });
+
   // Gegenstueck zum Deckel oben: 'blocked-limit' ist ein Zeit-Label, das kein
   // Mensch abnimmt. Kommt ueberhaupt ein Lauf zustande, ist die Sperre vorbei
   // -- bliebe das Label haengen, stuende das Ticket dauerhaft als blockiert im
