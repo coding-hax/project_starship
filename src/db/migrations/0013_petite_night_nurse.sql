@@ -1,0 +1,1 @@
+ALTER TABLE "journal_keys" ADD COLUMN "recovery_envelope" jsonb;

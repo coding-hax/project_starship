@@ -69,7 +69,7 @@ export const SYNC_REGISTRY = {
   },
   journal_keys: {
     table: journalKeys,
-    writable: ['envelope'],
+    writable: ['envelope', 'recoveryEnvelope'],
     required: ['envelope'],
   },
   garmin_activities: {

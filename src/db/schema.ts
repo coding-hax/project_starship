@@ -407,6 +407,7 @@ export const journalKeys = pgTable(
   {
     ...syncColumns,
     envelope: jsonb('envelope').$type<Envelope>().notNull(),
+    recoveryEnvelope: jsonb('recovery_envelope').$type<Envelope>(),
   },
   (table) => [
     index('journal_keys_updated_at_idx').on(table.updatedAt),
