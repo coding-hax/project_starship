@@ -10,16 +10,28 @@ import { useJournalToday } from './use-journal-today';
  * only once unlocked and a mood was recorded (AC4); no schema change and no new
  * plaintext field back it (AC3, see `use-journal-today.ts`). The whole card is
  * one `<Link>` to `/journal`, same pattern as `activity-month-strip.tsx` (AC5).
+ *
+ * `aria-label` carries the state so the link's accessible name differs from the
+ * nav's plain "Journal" — two links with the same accessible name on one page is
+ * an a11y bug (issue #363, found via #342's `shell.spec.ts` strict-mode violation).
  */
 export function JournalTodaySection() {
   const today = useJournalToday();
 
   if (!today) return null;
 
+  const status = today.written
+    ? today.mood
+      ? `heute geschrieben, Stimmung ${today.mood} von 10`
+      : 'heute geschrieben'
+    : 'heute noch nicht geschrieben';
+
   return (
-    <Link href="/journal" className="journal-today-section">
-      <h2 className="journal-today-section__heading">Journal</h2>
-      <p className="journal-today-section__status">
+    <Link href="/journal" className="journal-today-section" aria-label={`Journal — ${status}`}>
+      <h2 className="journal-today-section__heading" aria-hidden="true">
+        Journal
+      </h2>
+      <p className="journal-today-section__status" aria-hidden="true">
         {today.written
           ? today.mood
             ? `Heute geschrieben — Stimmung ${today.mood}/10`

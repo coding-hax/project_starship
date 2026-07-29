@@ -23,7 +23,7 @@ import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
 import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
-import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
+import { foundTickets, queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
@@ -209,7 +209,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   let snapshot: QueueIssue[] = [];
   try {
     snapshot = JSON.parse(
-      gh.run(['issue', 'list', '--state', 'open', '--limit', '100', '--json', 'number,labels,createdAt']),
+      gh.run(['issue', 'list', '--state', 'open', '--limit', '100', '--json', 'number,labels,createdAt,body']),
     ) as QueueIssue[];
   } catch {
     snapshot = [];
@@ -701,14 +701,19 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     resume = sid;
   }
 
+  // #366 AC3: die bekannten Fund-Tickets in den Auftragstext -- fuer JEDEN
+  // Slot (nicht nur den Leitslot, siehe isLead oben): #364 zeigte genau den
+  // teuren Fall, ein anderer Slot als der urspruengliche Fund-Ticket-Autor.
+  const found = foundTickets(snapshot);
+
   const prompt =
     role === 'plan'
       ? planPrompt(issue)
       : role === 'research'
         ? researchPrompt(issue)
         : ciFix
-          ? ciFixPrompt(issue, ciSummary)
-          : buildPrompt(issue);
+          ? ciFixPrompt(issue, ciSummary, found)
+          : buildPrompt(issue, found);
 
   const tools =
     role === 'plan' ? READONLY_TOOLS : role === 'research' ? `${READONLY_TOOLS},WebSearch` : BUILD_TOOLS;
