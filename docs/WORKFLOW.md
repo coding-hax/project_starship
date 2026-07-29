@@ -18,6 +18,22 @@ Issue (mit Akzeptanzkriterien)
                            └─► nächstes Issue
 ```
 
+**Ein offenes Issue ohne jedes Steuerlabel und nicht in der Queue #92 ist der
+untriagierte Eingang** — der Zustand ganz links im Diagramm, bevor du
+`research`/`plan`/`ready` gesetzt oder es in die Queue eingetragen hast. Der
+Runner baut es **nie**: die Auswahl-Kaskade (`scripts/runner/select.ts`)
+matcht ausschließlich Tickets mit einem Steuerlabel oder einem Queue-Eintrag,
+alles andere trifft keinen Zweig. Das ist Absicht, keine Lücke — `ready` ist
+bewusst dein Gate.
+
+Bis #357 war genau das aber unsichtbar: ein untriagiertes Ticket lag da, ohne
+dass irgendwo stand, dass es überhaupt existiert (#349/#351 sind so tagelang
+liegen geblieben). Seit #357 (Owner-Entscheidung „C", 29.07.26) listet das
+aggregierte Status-Issue offene, untriagierte Issues in einem eigenen
+Abschnitt „🏷️ Untriagiert" — **nur Anzeige**, keine Auswahl-Änderung, keine
+Label-Mutation. Du siehst sie jetzt, statt dass sie still verrotten; ob und
+wann sie eine Bahn bekommen, entscheidest weiterhin du.
+
 **WIP-Limit = 1.** Es gibt zu keinem Zeitpunkt zwei offene Feature-Branches.
 Nichts läuft parallel. Das ist die wichtigste Regel im Repo.
 
@@ -195,6 +211,13 @@ Zustandsmaschine des ganzen Setups:
 Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
 testlos gerechtfertigt ist, du setzt das Label.
+
+**Ein beim Auslagern eines Fund-Tickets absichtlich labelloses Ticket** (z. B.
+#349/#351, während #325 gefunden) trägt bewusst **kein** `plan`/`ready` —
+`ready` heißt „von dir freigegeben", ein Agent, der sein eigenes Fund-Ticket
+priorisiert, verletzte das. Es wartet auf deine Triage und ist seit #357 nicht
+mehr unsichtbar: es taucht im aggregierten Status-Issue unter „🏷️ Untriagiert"
+auf, bis du `ready`/`plan`/`research` setzt oder es in die Queue #92 aufnimmst.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein
