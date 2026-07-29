@@ -89,7 +89,15 @@ test('Opt-in Default AUS, eingeschaltet ueberlebt den Neustart, Schluessel bleib
 }) => {
   await setUpJournal(page, PASSPHRASE);
 
-  await page.goto('/einstellungen');
+  // A real client-side navigation (not page.goto, which is a hard reload that
+  // would drop the in-memory DEK before the toggle ever gets a chance to
+  // persist it) -- Übersicht first, then the settings entry point, exactly
+  // like a tap through the app.
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Übersicht' }).click();
+  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+
   const toggle = page.getByRole('switch', { name: 'Auf diesem Gerät entsperrt lassen' });
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
 
