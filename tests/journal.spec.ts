@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { Client } from 'pg';
-import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import { freezeClock, openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
  * S2 of #302 (issue #338): journal_entries + journal_keys, the Dexie bump, the
@@ -429,6 +429,60 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
   );
   expect(row.rowCount).toBe(1); // Soft-Delete: die Zeile existiert weiterhin.
   expect(row.rows[0].deleted_at).not.toBeNull();
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #374: Datum im Journal-Kopf, Eintrag trägt den Tag des Absendens     */
+/* -------------------------------------------------------------------------- */
+
+const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+test('AC1: über der Eintragsliste steht der aktuell sichtbare Tag, ausgeschrieben auf Deutsch', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  const today = new Date();
+
+  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(today));
+
+  await page.getByLabel('Journal-Text').fill('Eintrag für heute');
+  await submit(page);
+
+  const dateBox = await page.locator('.journal-editor__date').boundingBox();
+  const listBox = await page.locator('.journal-editor__entries').boundingBox();
+  expect(dateBox).not.toBeNull();
+  expect(listBox).not.toBeNull();
+  expect(dateBox!.y).toBeLessThan(listBox!.y);
+});
+
+test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne Neuladen auf den neuen Tag, und ein danach abgesendeter Eintrag trägt diesen neuen Kalendertag', async ({
+  page,
+}) => {
+  const now = new Date();
+  const beforeMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 58, 0, 0);
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowKey = tomorrow.toLocaleDateString('en-CA');
+
+  await page.clock.install({ time: beforeMidnight });
+  await setUpEditor(page);
+
+  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(now));
+
+  await freezeClock(page);
+  await page.clock.fastForward(5 * 60 * 1000); // über Mitternacht, ohne Neuladen
+
+  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(tomorrow));
+
+  await page.getByLabel('Journal-Text').fill('Nach Mitternacht geschrieben');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => entryCountInDb(tomorrowKey)).toBe(1);
 });
 
 /* -------------------------------------------------------------------------- */
