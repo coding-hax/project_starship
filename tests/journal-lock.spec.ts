@@ -10,12 +10,18 @@ test.beforeEach(async () => {
   await resetAppData();
 });
 
+/**
+ * Waits for the resulting `unlocked` state, not just the click — `journalSetup()`
+ * runs a PBKDF2 derivation plus an IndexedDB write after the button resolves.
+ * A caller that reloads right after the click would race that in-flight write.
+ */
 async function setUpJournal(page: Page, passphrase: string) {
   await registerPasskey(page);
   await page.goto('/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
 async function journalKeyRowCount(): Promise<number> {
@@ -25,9 +31,11 @@ async function journalKeyRowCount(): Promise<number> {
 
 test('Ersteinrichtung erzeugt die Huelle und entsperrt sofort (AC1)', async ({ page }) => {
   await setUpJournal(page, PASSPHRASE);
-
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-  await expect.poll(journalKeyRowCount).toBe(1);
+
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  expect(await journalKeyRowCount()).toBe(1);
 });
 
 test('gesperrt bleibt Uebersicht/Aufgaben/Gewohnheiten voll bedienbar (AC2)', async ({ page }) => {
