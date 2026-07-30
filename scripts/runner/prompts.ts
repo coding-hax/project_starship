@@ -28,7 +28,8 @@ export const FIND_BODY_FORM = 'Fund: <pfad>:<zeile>';
 
 export interface FoundTicket {
   number: number;
-  key: string;
+  keys: string[];
+  inProgress: boolean;
 }
 
 // AC3: die bekannten Fund-Tickets im Auftragstext -- macht Dedupe mechanisch
@@ -49,10 +50,44 @@ denselben Fundschlüssel → Kommentar am bestehenden Ticket statt eines neuen.
 Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
 \`plan\` (\`gh issue create --label plan\` oder folgendes \`gh issue edit
 --add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
-docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".`;
+docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".
+
+**Ein Root-Cause, ein Ticket.** Mehrere rote Tests mit derselben vermuteten
+Ursache ergeben **ein** Ticket mit mehreren \`Fund:\`-Zeilen (je eine pro
+Testort), nicht N Tickets. Getrennte Tickets nur bei getrennten Ursachen.
+
+**Kein Fund ohne Reproduktion.** Vor dem Anlegen die zwei bekannten
+Umgebungsfallen ausschließen: 'pnpm install' ist im benutzten Arbeitsbaum
+gelaufen (fehlendes 'tsx' färbt **alle** Bash-Suiten unter
+'scripts/tests/' rot und tarnt sich als Fachfehler) und der Lauf benutzt
+'env -u STATE_DIR -u REPO_DIR' (sonst greifen die Suiten auf das echte
+'.runner/' zu statt auf ihr eigenes Testverzeichnis). Alternativ genügt ein
+CI-Beleg, dass derselbe Check dort rot ist. Ist keins von beidem erfüllt,
+entsteht **kein Ticket** — stattdessen eine Zeile im Fortschrittskommentar
+des laufenden Tickets. Das Fund-Ticket nennt im Body, wie reproduziert wurde
+(Arbeitsbaum + Kommandozeile, oder ein Link auf den roten CI-Job) — ohne
+diesen Nachweis ist es kein Fund, sondern ein Verdacht.
+
+**Ein Fund-Ticket in Arbeit wird nicht ergänzt.** Trägt das Ticket zu einem
+Fundschlüssel bereits das Label \`in-progress\`: ist es *nichts Neues*
+(derselbe Test, derselbe Fehler) — gar nichts tun, kein Kommentar,
+weitergehen. Ist es *neue Information* (ein anderer Fehler, eine zweite
+Ursache) — ein eigenes Ticket mit demselben \`Fund:\`-Schlüssel plus
+\`Nachtrag zu #X\` im Body. Ausgenommen bleiben der bauende Lauf selbst (der
+Fortschritts-, Blocker- und der Pflichtkommentar bei sensiblen Pfaden
+bleiben unverändert Pflicht) und der Mensch.
+
+**Geschwister-Vermerk.** Legt dieser Lauf mehrere Fund-Tickets an, trägt
+jedes im Body \`Geschwister: #a #b #c\` (die jeweils anderen).
+Vor dem eigentlichen Bauen die im Body des aktuellen Tickets genannten Geschwister lesen — berühren zwei davon dieselbe Datei oder denselben Test, wird das im Fortschrittskommentar benannt statt blind gebaut.`;
 
   if (found.length > 0) {
-    const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
+    const list = found
+      .map((f) => {
+        const keys = f.keys.join(', ');
+        return f.inProgress ? `#${f.number} \`${keys}\` (in Arbeit — nicht ergänzen)` : `#${f.number} \`${keys}\``;
+      })
+      .join(', ');
     section += `
 
 ## Bekannte Fund-Tickets

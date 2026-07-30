@@ -110,7 +110,7 @@ describe('prompts', () => {
 
   // #366 AC3: die bekannten Fund-Tickets im Auftragstext, Positiv+Negativ.
   describe('Bekannte Fund-Tickets (#366)', () => {
-    const found: FoundTicket[] = [{ number: 349, key: 'tests/aktivitaeten.spec.ts:608' }];
+    const found: FoundTicket[] = [{ number: 349, keys: ['tests/aktivitaeten.spec.ts:608'], inProgress: false }];
 
     it('build-Prompt enthaelt Schluessel und Nummer, sofern welche existieren', () => {
       const prompt = buildPrompt(42, found);
@@ -155,6 +155,116 @@ describe('prompts', () => {
       expect(prompt).toContain('--label plan');
       expect(prompt).toContain('im selben Schritt');
       expect(prompt).toContain('nur selbst angelegte');
+    });
+  });
+
+  // #410 R1 (AK2): mehrere rote Tests mit derselben Ursache -> ein Ticket,
+  // mehrere 'Fund:'-Zeilen, keine N Tickets.
+  describe('Ein Root-Cause, ein Ticket (#410 R1/AK2)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt ein Ticket mit mehreren Fund:-Zeilen statt N Tickets', (_name, prompt) => {
+      expect(prompt).toContain('**ein** Ticket mit mehreren');
+      expect(prompt).toContain('Getrennte Tickets nur bei getrennten Ursachen');
+    });
+  });
+
+  // #410 R2 (AK4-AK6): kein Fund-Ticket ohne ausgeschlossene Umgebungsfallen
+  // bzw. CI-Beleg -- Vorfall am 30.07.26, vier Tickets (#404-#407) fuer einen
+  // Fehler, der nur im Extra-Worktree ohne 'pnpm install'/mit geerbtem
+  // STATE_DIR/REPO_DIR auftrat.
+  describe('Kein Fund ohne Reproduktion (#410 R2)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt den Ausschluss der zwei Umgebungsfallen vor dem Anlegen', (_name, prompt) => {
+      expect(prompt).toContain("'pnpm install'");
+      expect(prompt).toContain("'env -u STATE_DIR -u REPO_DIR'");
+      expect(prompt).toContain('CI-Beleg');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt bei fehlendem Nachweis eine Zeile im Fortschrittskommentar statt eines Tickets', (_name, prompt) => {
+      expect(prompt).toContain('entsteht **kein Ticket**');
+      expect(prompt).toContain('Zeile im Fortschrittskommentar');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt den Reproduktions-Nachweis im Body des Fund-Tickets', (_name, prompt) => {
+      expect(prompt).toContain('Arbeitsbaum + Kommandozeile');
+      expect(prompt).toContain('kein Fund, sondern ein Verdacht');
+    });
+  });
+
+  // #410 R4 (AK9-AK11): ein Fund-Ticket in Arbeit wird nicht ergaenzt --
+  // Verhaltensregel im Prompt plus sichtbarer Marker in der Liste bekannter
+  // Fund-Tickets.
+  describe('Ein Fund-Ticket in Arbeit wird nicht ergaenzt (#410 R4)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt beschreibt den Nichts-Neues- und den Neue-Information-Fall', (_name, prompt) => {
+      expect(prompt).toContain('in-progress');
+      expect(prompt).toContain('gar nichts tun, kein Kommentar');
+      expect(prompt).toContain('Nachtrag zu #X');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt nennt die Ausnahme fuer den bauenden Lauf selbst und den Menschen', (_name, prompt) => {
+      expect(prompt).toContain('Ausgenommen bleiben der bauende Lauf selbst');
+      expect(prompt).toContain('und der Mensch');
+    });
+
+    it('rendert den in-Arbeit-Marker fuer ein inProgress-Fund-Ticket', () => {
+      const found: FoundTicket[] = [{ number: 404, keys: ['scripts/tests/ci-watch.test.sh'], inProgress: true }];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#404 `scripts/tests/ci-watch.test.sh` (in Arbeit — nicht ergänzen)');
+    });
+
+    it('rendert keinen Marker fuer ein nicht-inProgress-Fund-Ticket', () => {
+      const found: FoundTicket[] = [{ number: 349, keys: ['tests/aktivitaeten.spec.ts:608'], inProgress: false }];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#349 `tests/aktivitaeten.spec.ts:608`.');
+      expect(prompt).not.toContain('in Arbeit — nicht ergänzen');
+    });
+  });
+
+  // #410 R3 (AK7-AK8): Geschwister-Vermerk -- Vorfall 1 (#394/#395 haben sich
+  // gegenseitig rot gemacht, weil kein Ticket vom anderen wusste).
+  describe('Geschwister-Vermerk (#410 R3)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt "Geschwister: #a #b #c" im Body mehrerer eigener Fund-Tickets', (_name, prompt) => {
+      expect(prompt).toContain('Geschwister: #a #b #c');
+      expect(prompt).toContain('die jeweils anderen');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt, Geschwister vor dem Bauen zu lesen und Ueberschneidungen zu benennen', (_name, prompt) => {
+      expect(prompt).toContain('Vor dem eigentlichen Bauen');
+      expect(prompt).toContain('im Fortschrittskommentar benannt statt blind gebaut');
+    });
+  });
+
+  // #410 R1/AK1: ein Ticket mit mehreren 'Fund:'-Zeilen rendert alle
+  // Schluessel gejoint in der Liste bekannter Fund-Tickets.
+  describe('Mehrfachschluessel in der Liste bekannter Fund-Tickets (#410 R1)', () => {
+    it('rendert alle Schluessel eines Tickets gejoint', () => {
+      const found: FoundTicket[] = [
+        { number: 405, keys: ['a.spec.ts:1', 'b.spec.ts:2'], inProgress: false },
+      ];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#405 `a.spec.ts:1, b.spec.ts:2`');
     });
   });
 
