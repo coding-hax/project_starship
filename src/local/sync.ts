@@ -112,16 +112,21 @@ export async function push(): Promise<void> {
   }
 }
 
-export async function pull(): Promise<void> {
+/**
+ * Resolves `true` only if the server's changes were actually applied. Callers that
+ * merely trigger a sync can ignore it; a caller that has to tell "the server has
+ * nothing" apart from "we never asked" cannot (issue #371).
+ */
+export async function pull(): Promise<boolean> {
   const since = (await getMeta<number>(META_LAST_PULLED_SEQ)) ?? 0;
 
   let response: Response;
   try {
     response = await fetch(`/api/sync/pull?since=${since}`);
   } catch {
-    return; // Offline. Try again on the next trigger.
+    return false; // Offline. Try again on the next trigger.
   }
-  if (!response.ok) return;
+  if (!response.ok) return false;
 
   const { changes, cursor }: PullResponse = await response.json();
 
@@ -176,6 +181,7 @@ export async function pull(): Promise<void> {
   });
 
   await setMeta(META_LAST_PULLED_SEQ, cursor);
+  return true;
 }
 
 /** Debounced trigger — call after a mutation without hammering the endpoint. */

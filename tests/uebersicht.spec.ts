@@ -274,6 +274,15 @@ function journalSection(page: Page) {
 }
 
 async function setUpJournal(page: Page, passphrase: string) {
+  // Der Gate darf die Einrichtung erst anbieten, wenn er beim Server nachgefragt
+  // hat, ob dieses Konto schon eine Hülle besitzt (issue #371) — sonst überschreibt
+  // ein Gerät ohne lokale Kopie den DEK und macht alle Einträge unlesbar. Die Hülle
+  // ist Server-Zustand, nicht die eigene Anzeige-Datenhaltung: Regel 8 ("die UI liest
+  // aus IndexedDB") bleibt für Aufgaben, Termine und Habits vom `abort` im
+  // beforeEach vollständig abgedeckt. Eine spätere Route gewinnt in Playwright über
+  // die frühere, also bleibt `push` weiterhin blockiert.
+  await page.route('**/api/sync/pull**', (route) => route.continue());
+
   await page.goto('/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
@@ -354,7 +363,10 @@ test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmun
   // A client-side nav click (not page.goto, a hard navigation) — the DEK lives
   // only in an in-memory module variable (ADR-0016), so a real reload would
   // re-lock by default (issue #339 AC5) and this AC would be untestable.
-  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }).click();
+  await page
+    .getByRole('navigation', { name: 'Hauptnavigation' })
+    .getByRole('link', { name: 'Übersicht' })
+    .click();
 
   await expect(journalSection(page)).toContainText('Stimmung 9/10');
 });
@@ -367,7 +379,9 @@ test('Tippen auf die Sektion führt zum heutigen Eintrag (issue #342 AC5)', asyn
   await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
 });
 
-test('Journal-Modul aus blendet die Sektion auf der Übersicht aus (issue #342 AC6)', async ({ page }) => {
+test('Journal-Modul aus blendet die Sektion auf der Übersicht aus (issue #342 AC6)', async ({
+  page,
+}) => {
   await page.goto('/uebersicht');
   await expect(journalSection(page)).toBeVisible();
 
@@ -453,7 +467,10 @@ test('die Journal-Sektion hat einen eigenen zugänglichen Namen statt des nackte
   await waitForJournalEntryWritten(page);
   // Client-seitige Navigation statt page.goto: der DEK lebt nur in-memory
   // (ADR-0016), ein harter Reload würde wieder sperren (issue #339 AC5).
-  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Übersicht' }).click();
+  await page
+    .getByRole('navigation', { name: 'Hauptnavigation' })
+    .getByRole('link', { name: 'Übersicht' })
+    .click();
 
   await expect(
     page.getByRole('link', {

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { freezeClock, registerPasskey, resetAppData, withDb } from './helpers';
+import { freezeClock, openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
 
 const PASSPHRASE = 'correct horse battery staple';
 const WRONG_PASSPHRASE = 'falsches passwort';
@@ -27,7 +27,9 @@ async function setUpJournal(page: Page, passphrase: string) {
 }
 
 async function journalKeyRowCount(): Promise<number> {
-  const result = await withDb((client) => client.query('SELECT count(*)::int AS n FROM journal_keys'));
+  const result = await withDb((client) =>
+    client.query('SELECT count(*)::int AS n FROM journal_keys'),
+  );
   return result.rows[0].n as number;
 }
 
@@ -105,7 +107,9 @@ test('Opt-in Default AUS, eingeschaltet ueberlebt den Neustart, Schluessel bleib
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
-  await expect.poll(() => page.evaluate(() => window.__starship.journalHasPersistedDek())).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.__starship.journalHasPersistedDek()))
+    .toBe(true);
   await expect(
     page.evaluate(() => window.__starship.journalPersistedDekExtractable()),
   ).resolves.toBe(false);
@@ -175,4 +179,93 @@ test('Tokens/Dark Mode/reduced-motion fuer den Entsperr-Zustand (AC8)', async ({
 
   const message = page.locator('.journal-gate__message');
   await expect(message).toHaveCount(0);
+});
+
+/** The stored envelope as the server holds it — unchanged bytes prove no re-wrap. */
+async function serverEnvelope(): Promise<string> {
+  const result = await withDb((client) => client.query('SELECT envelope FROM journal_keys'));
+  return JSON.stringify(result.rows[0]?.envelope ?? null);
+}
+
+async function pushEverything(page: Page) {
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+}
+
+test('Geraet ohne lokale Huelle wartet auf den Sync und landet gesperrt, nie auf einrichten (#371 AC1+AC2)', async ({
+  page,
+  browser,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+  await pushEverything(page);
+
+  // Eigener Speichercontainer, dieselbe Sitzung — genau der Fall, der die Huelle
+  // ueberschrieben hat: frische Installation, geraeumter PWA-Speicher, Safari
+  // neben der Homescreen-App.
+  const second = await openSecondDevice(browser, page);
+  await second.goto('/journal');
+
+  await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
+
+  await second.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+  await second.getByRole('button', { name: 'Entsperren', exact: true }).click();
+  await expect(second.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+});
+
+test('journalSetup verweigert das Ueberschreiben einer vorhandenen Huelle (#371 AC3)', async ({
+  page,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+  await pushEverything(page);
+  const before = await serverEnvelope();
+
+  // Neu geladen, also gesperrt — der Zustand, aus dem heraus ein zweites
+  // Einrichten die Huelle ueberschreiben wuerde.
+  await page.reload();
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+
+  await page.evaluate((passphrase) => window.__starship.journalSetup(passphrase), WRONG_PASSPHRASE);
+  expect(await page.evaluate(() => window.__starship.journalLockState())).toBe('locked');
+  await expect(page.locator('.journal-gate__message')).toContainText('bereits eine Passphrase');
+
+  await pushEverything(page);
+  expect(await serverEnvelope()).toBe(before);
+  expect(await journalKeyRowCount()).toBe(1);
+
+  // Die urspruengliche Passphrase oeffnet weiterhin — der DEK wurde nicht ersetzt.
+  expect(
+    await page.evaluate((passphrase) => window.__starship.journalUnlock(passphrase), PASSPHRASE),
+  ).toBe('ok');
+});
+
+test('ohne Verbindung bietet der Gate kein Einrichten an, Wiederholen loest es auf (#371 AC4)', async ({
+  page,
+  browser,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+  await pushEverything(page);
+
+  // Zweites Geraet, dieselbe Sitzung, eigener leerer Speichercontainer. Der
+  // Sync-Pull wird von der ersten Zeile an abgebrochen (Server weg) — vor jeder
+  // Navigation, damit der App-Start-Pull die Huelle nicht doch noch lokal
+  // ablegt. So bleibt es der reine Offline-Erststart, den der Gate ohne
+  // „einrichten" ueberstehen muss. (`setOffline` scheidet aus: es verschluckt im
+  // App Router schon die RSC-Payload der Navigation, die Seite kaeme nie so weit,
+  // den Gate ueberhaupt zu rendern. `openSecondDevice` mit spaeterem Abbruch
+  // waere ein Rennen: sein Pull auf /uebersicht holt die Huelle sonst schon,
+  // bevor wir abbrechen, und der Gate landete zu Recht auf `locked`.)
+  const context = await browser.newContext({ storageState: await page.context().storageState() });
+  const second = await context.newPage();
+  await second.route('**/api/sync/pull**', (route) => route.abort('failed'));
+  await second.goto('/journal');
+
+  await expect(second.locator('.journal-gate[data-state="unavailable"]')).toBeVisible();
+  await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
+
+  // Server wieder erreichbar: „Erneut versuchen" pullt die Huelle und sperrt,
+  // statt einzurichten.
+  await second.unroute('**/api/sync/pull**');
+  await second.getByRole('button', { name: 'Erneut versuchen' }).click();
+  await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
