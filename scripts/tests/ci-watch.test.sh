@@ -186,6 +186,14 @@ export SHARED_DIR="$TMP/shared"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=999
 export MAX_ROUNDS=1
+# Diese Suite prueft Einzel-Slot-Statustexte (#204 aggregateStatus() reicht
+# Titel/Text nur bei slotCount<=1 unveraendert durch). Ohne diese Pins erbt
+# der Test SLOT_ID/SLOT_COUNT/LEAD_SLOT aus der aufrufenden Shell -- im
+# Runner-Prozessbaum ist SLOT_COUNT>1 exportiert, dann greift der
+# Flotten-Aggregationspfad und die hier geprueften Texte verschwinden (#404).
+export SLOT_ID=1 SLOT_COUNT=1 LEAD_SLOT=1
+export STATE_DIR="$REPO_DIR/.runner"
+export QUEUE_ISSUE=0
 # shellcheck source=/dev/null
 source "$RUNNER"
 
