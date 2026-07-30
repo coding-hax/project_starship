@@ -28,9 +28,9 @@ export function JournalTodaySection() {
 
   return (
     <Link href="/journal" className="journal-today-section" aria-label={`Journal — ${status}`}>
-      <h2 className="journal-today-section__heading" aria-hidden="true">
+      <p className="journal-today-section__heading" aria-hidden="true">
         Journal
-      </h2>
+      </p>
       <p className="journal-today-section__status" aria-hidden="true">
         {today.written
           ? today.mood
