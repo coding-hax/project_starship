@@ -43,9 +43,16 @@ async function goToSettings(page: Page) {
   await expect(page).toHaveURL(/\/einstellungen$/);
 }
 
-/** Drives the settings panel's reissue flow end to end, returns the new key. */
-async function reissueRecovery(page: Page, passphrase: string): Promise<string> {
-  await goToSettings(page);
+/**
+ * Drives just the reissue form, assuming the settings panel is already open —
+ * split out from `reissueRecovery` so the offline DoD test can navigate there
+ * while still online and only perform the reissue itself offline (mobile/desktop
+ * projects run the dev server, which has no service worker at all, see
+ * playwright.config.ts — client-side navigation to an unvisited route cannot
+ * work offline there, same reason journal-recovery.spec.ts's offline setup test
+ * already goes offline only after `page.goto('/journal')`).
+ */
+async function performReissue(page: Page, passphrase: string): Promise<string> {
   await page.getByRole('button', { name: 'Neu ausstellen' }).click();
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByRole('button', { name: 'Neu ausstellen' }).click();
@@ -56,10 +63,27 @@ async function reissueRecovery(page: Page, passphrase: string): Promise<string> 
   return key;
 }
 
+/** Drives the settings panel's reissue flow end to end, returns the new key. */
+async function reissueRecovery(page: Page, passphrase: string): Promise<string> {
+  await goToSettings(page);
+  return performReissue(page, passphrase);
+}
+
 async function unlockWithRecovery(page: Page, recoveryKey: string) {
   await page.getByRole('button', { name: 'Mit Wiederherstellungsschlüssel entsperren' }).click();
   await page.getByLabel('Wiederherstellungsschlüssel').fill(recoveryKey);
   await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
+}
+
+/**
+ * A *successful* recovery unlock always lands on the optional rewrap screen
+ * first (issue #372 AC4, journal-gate.tsx) — this skips it so the gate
+ * reaches `unlocked`, same pattern as journal-recovery.spec.ts AC4. Only call
+ * this after an unlock that is expected to succeed; a rejected key never
+ * reaches the rewrap screen.
+ */
+async function skipRewrap(page: Page) {
+  await page.getByRole('button', { name: 'Überspringen' }).click();
 }
 
 async function journalKeysRow() {
@@ -84,6 +108,7 @@ test('entsperrt stellt einen neuen Recovery-Key aus, der vom Setup-Key abweicht'
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 
   await unlockWithRecovery(page, newKey);
+  await skipRewrap(page);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
 
@@ -145,8 +170,15 @@ test('Offline (DoD): offline neu ausgestellt geht in die Outbox, online synct es
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
+  // Navigation zu den Einstellungen passiert noch online, nur das Neu-Ausstellen
+  // selbst offline (Muster: journal-recovery.spec.ts's Offline-DoD-Test geht ebenso
+  // erst nach `page.goto('/journal')` offline) -- mobile/desktop fahren den
+  // dev-Server ohne Service Worker (playwright.config.ts), clientseitige Navigation
+  // zu einer noch unbesuchten Route kann dort offline nicht funktionieren.
+  await goToSettings(page);
+
   await context.setOffline(true);
-  const newKey = await reissueRecovery(page, PASSPHRASE);
+  const newKey = await performReissue(page, PASSPHRASE);
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await context.setOffline(false);
@@ -158,6 +190,7 @@ test('Offline (DoD): offline neu ausgestellt geht in die Outbox, online synct es
   await page.reload();
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
   await unlockWithRecovery(page, newKey);
+  await skipRewrap(page);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
 
