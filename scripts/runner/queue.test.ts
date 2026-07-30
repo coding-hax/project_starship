@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findFoundTicket,
   foundTickets,
-  parseFindKey,
+  parseFindKeys,
   queueBlocked,
   queueCycles,
   queueDone,
@@ -197,33 +197,39 @@ describe('untriaged (#357)', () => {
 // Titel-Hypothese wiederfindbar -- #349/#351/#364 waren drei Tickets fuer
 // denselben roten Test (tests/aktivitaeten.spec.ts:608), weil keine der drei
 // Titel-Varianten die anderen gefunden haette.
-describe('parseFindKey (#366 AC1)', () => {
+describe('parseFindKeys (#366 AC1, #410 R1/AK1)', () => {
   it('reads the key from a "Fund: <pfad>:<zeile>" line', () => {
-    expect(parseFindKey('Fund: tests/aktivitaeten.spec.ts:608')).toBe('tests/aktivitaeten.spec.ts:608');
+    expect(parseFindKeys('Fund: tests/aktivitaeten.spec.ts:608')).toEqual(['tests/aktivitaeten.spec.ts:608']);
   });
 
   it('reads the key from anywhere in a longer body, trimmed', () => {
     const body = '## Warum\n\nFehlschlag im CI.\n\nFund: tests/nav.spec.ts:42  \n\nWeitere Details.';
-    expect(parseFindKey(body)).toBe('tests/nav.spec.ts:42');
+    expect(parseFindKeys(body)).toEqual(['tests/nav.spec.ts:42']);
   });
 
-  it('returns null when the body has no key', () => {
-    expect(parseFindKey('Ganz normales Ticket ohne Fundschluessel.')).toBeNull();
+  it('returns [] when the body has no key', () => {
+    expect(parseFindKeys('Ganz normales Ticket ohne Fundschluessel.')).toEqual([]);
   });
 
-  it('returns null for undefined/empty body', () => {
-    expect(parseFindKey(undefined)).toBeNull();
-    expect(parseFindKey('')).toBeNull();
+  it('returns [] for undefined/empty body', () => {
+    expect(parseFindKeys(undefined)).toEqual([]);
+    expect(parseFindKeys('')).toEqual([]);
   });
 
   // Zeilenanker wie bei ENTRY_LINE: Fliesstext, das "Fund:" nicht am
   // Zeilenanfang enthaelt, triggert nicht.
   it('prose mentioning "Fund:" mid-line does not trigger', () => {
-    expect(parseFindKey('Siehe den Fund: er steht weiter unten.')).toBeNull();
+    expect(parseFindKeys('Siehe den Fund: er steht weiter unten.')).toEqual([]);
   });
 
-  it('takes only the first matching line', () => {
-    expect(parseFindKey('Fund: a.spec.ts:1\nFund: b.spec.ts:2')).toBe('a.spec.ts:1');
+  // #410 R1/AK1: mehrere rote Tests mit derselben vermuteten Ursache tragen
+  // mehrere 'Fund:'-Zeilen in einem Ticket statt N Tickets (AK2).
+  it('reads all matching lines, in document order', () => {
+    expect(parseFindKeys('Fund: a.spec.ts:1\nFund: b.spec.ts:2')).toEqual(['a.spec.ts:1', 'b.spec.ts:2']);
+  });
+
+  it('dedupliziert wiederholte Schluessel', () => {
+    expect(parseFindKeys('Fund: a.spec.ts:1\nFund: a.spec.ts:1')).toEqual(['a.spec.ts:1']);
   });
 });
 
@@ -286,5 +292,15 @@ describe('findFoundTicket (#366 AC2)', () => {
       { ...found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z'), state: 'CLOSED' },
     ];
     expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
+  });
+
+  // #410 R1/AK1: ein Ticket, das dieselbe Ursache in mehreren roten Tests
+  // belegt, traegt mehrere 'Fund:'-Zeilen -- getroffen wird ueber JEDEN
+  // seiner Schluessel, nicht nur den ersten.
+  it('matches a ticket with multiple keys via its second key', () => {
+    const snap: QueueIssue[] = [
+      { number: 404, labels: [], createdAt: '2026-07-30T12:17:00Z', body: 'Fund: a.spec.ts:1\nFund: b.spec.ts:2' },
+    ];
+    expect(findFoundTicket('b.spec.ts:2', snap)).toBe(404);
   });
 });

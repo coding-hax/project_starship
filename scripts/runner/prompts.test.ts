@@ -158,6 +158,18 @@ describe('prompts', () => {
     });
   });
 
+  // #410 R1 (AK2): mehrere rote Tests mit derselben Ursache -> ein Ticket,
+  // mehrere 'Fund:'-Zeilen, keine N Tickets.
+  describe('Ein Root-Cause, ein Ticket (#410 R1/AK2)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt ein Ticket mit mehreren Fund:-Zeilen statt N Tickets', (_name, prompt) => {
+      expect(prompt).toContain('**ein** Ticket mit mehreren');
+      expect(prompt).toContain('Getrennte Tickets nur bei getrennten Ursachen');
+    });
+  });
+
   // #410 R2 (AK4-AK6): kein Fund-Ticket ohne ausgeschlossene Umgebungsfallen
   // bzw. CI-Beleg -- Vorfall am 30.07.26, vier Tickets (#404-#407) fuer einen
   // Fehler, der nur im Extra-Worktree ohne 'pnpm install'/mit geerbtem
@@ -221,6 +233,18 @@ describe('prompts', () => {
       const prompt = buildPrompt(42, found);
       expect(prompt).toContain('#349 `tests/aktivitaeten.spec.ts:608`.');
       expect(prompt).not.toContain('in Arbeit — nicht ergänzen');
+    });
+  });
+
+  // #410 R1/AK1: ein Ticket mit mehreren 'Fund:'-Zeilen rendert alle
+  // Schluessel gejoint in der Liste bekannter Fund-Tickets.
+  describe('Mehrfachschluessel in der Liste bekannter Fund-Tickets (#410 R1)', () => {
+    it('rendert alle Schluessel eines Tickets gejoint', () => {
+      const found: FoundTicket[] = [
+        { number: 405, keys: ['a.spec.ts:1', 'b.spec.ts:2'], inProgress: false },
+      ];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#405 `a.spec.ts:1, b.spec.ts:2`');
     });
   });
 

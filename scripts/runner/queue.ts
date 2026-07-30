@@ -216,15 +216,16 @@ export function untriaged(
 // "e2e: aktivitaeten.spec.ts AC6 ..."), der Schluessel im Body nicht.
 //
 // Zeilenanker (multiline 'm'), damit Fliesstext ("... siehe Fund: irgendwo")
-// nicht triggert -- dieselbe Vorsicht wie bei ENTRY_LINE oben. Nur die ERSTE
-// passende Zeile zaehlt; mehr als eine waere ohnehin ein widerspruechliches
-// Ticket.
-const FIND_KEY_LINE = /^\s*Fund:\s*(.+?)\s*$/m;
+// nicht triggert -- dieselbe Vorsicht wie bei ENTRY_LINE oben. #410 R1/AK1:
+// globales Flag statt nur der ersten Zeile -- ein Ticket, das dieselbe
+// Ursache in mehreren roten Tests belegt, traegt mehrere 'Fund:'-Zeilen.
+const FIND_KEY_LINE = /^\s*Fund:\s*(.+?)\s*$/gm;
 
-export function parseFindKey(body: string | undefined | null): string | null {
-  if (!body) return null;
-  const match = FIND_KEY_LINE.exec(body);
-  return match ? match[1] : null;
+// Alle Schluessel eines Bodys, in Dokumentreihenfolge, dedupliziert.
+export function parseFindKeys(body: string | undefined | null): string[] {
+  if (!body) return [];
+  const keys = [...body.matchAll(FIND_KEY_LINE)].map((match) => match[1]!);
+  return [...new Set(keys)];
 }
 
 // Alle Fund-Tickets eines Schnappschusses, aeltestes zuerst (Tie-Break:
@@ -234,11 +235,11 @@ export function parseFindKey(body: string | undefined | null): string | null {
 // zusaetzlicher gh-Aufruf noetig.
 export function foundTickets(snapshot: QueueIssue[]): { number: number; keys: string[]; inProgress: boolean }[] {
   return snapshot
-    .filter((issue) => parseFindKey(issue.body) !== null)
+    .filter((issue) => parseFindKeys(issue.body).length > 0)
     .sort((a, b) => byCreatedAt(a, b) || a.number - b.number)
     .map((issue) => ({
       number: issue.number,
-      keys: [parseFindKey(issue.body) as string],
+      keys: parseFindKeys(issue.body),
       inProgress: hasLabel(issue, 'in-progress'),
     }));
 }

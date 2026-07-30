@@ -52,6 +52,10 @@ Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
 --add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
 docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".
 
+**Ein Root-Cause, ein Ticket.** Mehrere rote Tests mit derselben vermuteten
+Ursache ergeben **ein** Ticket mit mehreren \`Fund:\`-Zeilen (je eine pro
+Testort), nicht N Tickets. Getrennte Tickets nur bei getrennten Ursachen.
+
 **Kein Fund ohne Reproduktion.** Vor dem Anlegen die zwei bekannten
 Umgebungsfallen ausschließen: 'pnpm install' ist im benutzten Arbeitsbaum
 gelaufen (fehlendes 'tsx' färbt **alle** Bash-Suiten unter
