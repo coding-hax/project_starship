@@ -533,9 +533,16 @@ test('AC8: zwei Geräte legen offline unabhängig je einen Eintrag für denselbe
 /* -------------------------------------------------------------------------- */
 /* issue #394 (Fund aus #377 Punkt 3): debugDumpStores (e2e-bridge.tsx)       */
 /* serialisiert seit #338/#341 auch journalConflicts. Diese zwei Tests        */
-/* beweisen aktiv, dass eine Konflikt-Kopie reines Chiffrat bleibt UND dass   */
-/* die Tagesliste (mehrere Einträge an einem Tag, #376) nie als Klartext in   */
-/* einem JSON-serialisierbaren Store landet (Regel 9).                       */
+/* beweisen aktiv, dass die Verdrängung eines Eintrags KEINEN Klartext in     */
+/* einem JSON-serialisierbaren Store hinterlässt und dass die Tagesliste      */
+/* (mehrere Einträge an einem Tag, #376) es ebenso wenig tut (Regel 9).       */
+/*                                                                            */
+/* #395 (Owner-Entscheidung „B", 30.07.): AC1 hat ursprünglich zusätzlich     */
+/* behauptet, die Verdrängung LEGE eine Konflikt-Kopie an. Mit dem Entfernen  */
+/* des toten Producers in pull() gilt das nicht mehr — der Eintrag wird still */
+/* überschrieben. Der Klartext-Beweis, der Zweck von #394, bleibt unverändert */
+/* und ist hier sogar schärfer: er deckt jetzt auch den Fall ab, dass gar     */
+/* keine Kopie mehr existiert, in der etwas lecken könnte.                    */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -571,7 +578,7 @@ async function writeRawEntry(devicePage: Page, rowId: string, entryDate: string,
   );
 }
 
-test('AC1 (#394): ein per pull() verdrängter Eintrag landet als reines Chiffrat in journalConflicts, nie als Klartext', async ({
+test('AC1 (#394, nach #395): ein per pull() verdrängter Eintrag hinterlässt keine Konflikt-Kopie und keinen Klartext in irgendeinem Store', async ({
   page,
   browser,
   context,
@@ -601,12 +608,14 @@ test('AC1 (#394): ein per pull() verdrängter Eintrag landet als reines Chiffrat
   await deviceB.evaluate(() => window.__starship.sync());
 
   // Gerät A pullt erneut: sein lokaler Stand (secretA) weicht jetzt vom Server
-  // (secretB) ab — genau der PRESERVE_DISPLACED-Zweig in src/local/sync.ts.
+  // (secretB) ab — vor #395 lief das in den PRESERVE_DISPLACED-Zweig in
+  // src/local/sync.ts, seitdem überschreibt der pull() die Zeile schlicht.
   await page.evaluate(() => window.__starship.sync());
 
+  // #395: kein Producer mehr, also keine Kopie. Der Verlust von secretA ist der
+  // bewusst akzeptierte Preis der Entscheidung, nicht ein Fehlschlag dieses Tests.
   const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
-  expect(conflicts).toHaveLength(1);
-  expect(conflicts[0].entryDate).toBe(entryDate);
+  expect(conflicts).toHaveLength(0);
 
   const dump = await page.evaluate(() => window.__starship.debugDumpStores());
   expect(dump).not.toContain(secretA);
