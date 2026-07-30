@@ -196,7 +196,7 @@ Zustandsmaschine des ganzen Setups:
 | ---------------- | -------------------------------------------------------------- | ------------ |
 | `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-answer`. | **Du**       |
 | `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
-| `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**       |
+| `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**; der Planer-Lauf am Ende eines Fund-Ticket-Durchlaufs (#397) |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es in der Queue steht oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
@@ -212,14 +212,17 @@ Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
 testlos gerechtfertigt ist, du setzt das Label.
 
-**Ein beim Auslagern eines Fund-Tickets absichtlich labelloses Ticket** (z. B.
-#349/#351, während #325 gefunden) trägt bewusst **kein** `plan`/`ready` —
-`ready` heißt „von dir freigegeben", ein Agent, der sein eigenes Fund-Ticket
-priorisiert, verletzte das. Es wartet auf deine Triage und ist seit #357 nicht
-mehr unsichtbar: es taucht im aggregierten Status-Issue unter „🏷️ Untriagiert"
-auf, bis du `ready`/`plan`/`research` setzt oder es in die Queue #92 aufnimmst.
-Titelform und Pflichtsuche vor dem Anlegen: „Fundschlüssel & Pflichtsuche"
-unten.
+**Ein beim Auslagern eines Fund-Tickets angelegtes Ticket** (z. B. #349/#351,
+während #325 gefunden) trägt seit #397 im selben Schritt **`plan`** — nie
+`ready`. Das Fund-Ticket läuft damit ohne menschliches Zutun durch: Fund →
+`plan` → Opus plant → `ready` (gesetzt vom Planer-Lauf am Ende) → gebaut. Das
+`ready`-Gate greift für diesen Weg nicht mehr — Selbstheilung bei roten Tests
+schlägt hier bewusst die Freigabekontrolle (Owner-Entscheidung, 30.07.26).
+Weil `plan` ein Steuerlabel ist, taucht das Ticket **nicht** im aggregierten
+Status-Issue unter „🏷️ Untriagiert" (#357) auf. Weiterhin gesperrt: fremde
+Tickets labeln, die Queue #92 umschreiben (#265) oder untriagierte
+Fremdtickets automatisch labeln. Titelform und Pflichtsuche vor dem Anlegen:
+„Fundschlüssel & Pflichtsuche" unten.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein

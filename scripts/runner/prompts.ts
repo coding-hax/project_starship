@@ -34,19 +34,33 @@ export interface FoundTicket {
 // AC3: die bekannten Fund-Tickets im Auftragstext -- macht Dedupe mechanisch
 // statt nur vorgeschrieben (Teil 3 aus #366, im Gegensatz zur Pflichtsuche
 // aus Teil 2, auf die sich der Lauf nur verlassen kann, wenn er daran denkt).
-// Leere Liste rendert NICHTS -- bestehende Prompt-Assertions bleiben
-// wortgleich gültig.
+// #397: der Pflichtsuche-/Label-Absatz wird IMMER gerendert -- auch beim
+// allerersten Fund, wenn der Snapshot null offene Fund-Tickets kennt. Nur die
+// Liste bekannter Tickets ("## Bekannte Fund-Tickets") bleibt bedingt, damit
+// found-key.test.sh und die #366-Assertions fuer den leeren Fall gruen bleiben.
 function foundTicketsSection(found: FoundTicket[]): string {
-  if (found.length === 0) return '';
-  const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
-  return `
+  let section = `
+
+## Fund-Tickets anlegen
+
+Vor \`gh issue create\` für einen roten Test erst suchen (Dedupe):
+\`gh issue list --state all --search '"Fund: <pfad>:<zeile>"'\`. Treffer auf
+denselben Fundschlüssel → Kommentar am bestehenden Ticket statt eines neuen.
+Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
+\`plan\` (\`gh issue create --label plan\` oder folgendes \`gh issue edit
+--add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
+docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".`;
+
+  if (found.length > 0) {
+    const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
+    section += `
 
 ## Bekannte Fund-Tickets
 
-Vor \`gh issue create\` für einen roten Test erst suchen (Dedupe): ${list}.
-Treffer auf denselben Fundschlüssel → Kommentar am bestehenden Ticket statt
-eines neuen, sonst \`gh issue list --state all --search '"Fund: <pfad>:<zeile>"'\`.
-Siehe docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".`;
+Bereits bekannt (gegen diese zusätzlich prüfen): ${list}.`;
+  }
+
+  return section;
 }
 
 export function buildPrompt(issue: number, found: FoundTicket[] = []): string {
