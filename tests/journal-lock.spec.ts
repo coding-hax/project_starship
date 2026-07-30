@@ -244,18 +244,23 @@ test('ohne Verbindung bietet der Gate kein Einrichten an, Wiederholen loest es a
   await setUpJournal(page, PASSPHRASE);
   await pushEverything(page);
 
-  const second = await openSecondDevice(browser, page);
-  await second.context().setOffline(true);
-  // Client-seitige Navigation: das Dokument ist schon geladen, nur der Pull faellt aus.
-  await second
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Journal' })
-    .click();
+  // Zweites Geraet, dieselbe Sitzung, eigener leerer Speichercontainer. Sein
+  // Sync-Pull ist von der ersten Zeile an nicht erreichbar (Server weg), die
+  // Huelle landet also nie lokal — genau der Offline-Erststart, den der Gate
+  // ohne „einrichten" ueberstehen muss. (setOffline erst nach openSecondDevice
+  // waere ein Rennen: der App-Start-Pull auf /uebersicht holt die Huelle sonst
+  // schon, bevor wir offline gehen, und der Gate landete zu Recht auf `locked`.)
+  const context = await browser.newContext({ storageState: await page.context().storageState() });
+  const second = await context.newPage();
+  await second.route('**/api/sync/pull**', (route) => route.abort());
+  await second.goto('/journal');
 
   await expect(second.locator('.journal-gate[data-state="unavailable"]')).toBeVisible();
   await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
 
-  await second.context().setOffline(false);
+  // Server wieder erreichbar: „Erneut versuchen" pullt die Huelle und sperrt,
+  // statt einzurichten.
+  await second.unroute('**/api/sync/pull**');
   await second.getByRole('button', { name: 'Erneut versuchen' }).click();
   await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
