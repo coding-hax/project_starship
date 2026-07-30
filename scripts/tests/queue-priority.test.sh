@@ -9,7 +9,7 @@
 #   1. Gelistetes Ticket OHNE 'ready' (kein/anderes Label) wird gebaut.
 #   2. Queue-Reihenfolge schlägt createdAt; früher Gelistetes zuerst.
 #   3. Gelistetes schlägt ungelistetes 'ready' (Queue vor Fallback).
-#   4. Gelistetes 'plan' -> Planlauf (kein in-progress); 'research' analog.
+#   4. Gelistetes 'plan' -> Planlauf (traegt seit #387 in-progress); 'research' analog.
 #   5. 'needs-answer' schließt ein gelistetes Ticket aus (Fallback greift).
 #   6. 'hands-off' schließt ein gelistetes Ticket aus.
 #   7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt.
@@ -194,22 +194,25 @@ assert_session_exists "AC3: gelistetes #99 schlägt ungelistetes ready #10" 99
 assert_session_absent "AC3: ungelistetes ready #10 wartet" 10
 
 # ==============================================================================
-# 4. Rolle aus Label: gelistetes 'plan' -> Planlauf (KEIN in-progress);
-#    gelistetes 'research' -> Recherche (KEIN in-progress).
+# 4. Rolle aus Label: gelistetes 'plan' -> Planlauf; gelistetes 'research' ->
+#    Recherche. Seit #387 (AC1) tragen Denk-Rollen waehrend des Laufs
+#    ebenfalls in-progress (Sichtbarkeit + haelt den Slot-Claim) -- vorher
+#    bekam nur die Bau-Rolle das Label, diese beiden Assertions drehten sich
+#    deshalb bewusst um, statt weiter das alte Verhalten zu verlangen.
 # ==============================================================================
 reset_state
 snapshot '[{"number":55,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '- #55'
 run_main
 assert_think_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
-assert_label_not_added "AC4: #55 bekommt KEIN in-progress (Denk-Rolle, kein Bau)" 55 in-progress
+assert_label_added "AC4/#387: #55 bekommt in-progress (auch als Denk-Ticket)" 55 in-progress
 
 reset_state
 snapshot '[{"number":66,"labels":[{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 queue_body_fixture 1000 '- #66'
 run_main
 assert_think_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
-assert_label_not_added "AC4: #66 bekommt KEIN in-progress" 66 in-progress
+assert_label_added "AC4/#387: #66 bekommt in-progress (auch als Denk-Ticket)" 66 in-progress
 
 # ==============================================================================
 # 5. 'needs-answer' schließt ein gelistetes Ticket aus -> Fallback baut #88.

@@ -292,7 +292,11 @@ list_json ready '[{"number":50,"labels":[{"name":"research"},{"name":"ready"}]}]
 list_json needs-input '[]'
 run_main
 assert_think_session "AC4: #50 wird über research verarbeitet" 50
-assert_not_contains "AC4: #50 bekommt KEIN in-progress (kein Bau-Zweig)" "$GHSTATE_DIR/applied-50" "ADD:in-progress"
+# #387 AC1: seit Issue #387 tragen Denk-Rollen (plan/research) waehrend des
+# Laufs ebenfalls in-progress -- Sichtbarkeit am Handy + haelt den Slot-Claim.
+# Vor #387 bekam nur der Bau-Zweig in-progress; diese Assertion drehte sich
+# deshalb bewusst um, statt weiter das alte Verhalten zu verlangen.
+assert_contains "AC4/#387: #50 bekommt in-progress (auch als Denk-Ticket)" "$GHSTATE_DIR/applied-50" "ADD:in-progress"
 
 # ==============================================================================
 # 5. Resumability: vorhandene Session-Datei -> --resume statt Neustart
