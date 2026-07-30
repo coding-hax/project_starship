@@ -46,6 +46,11 @@ offline für denselben Tag schreiben, legen jetzt zwei Zeilen an statt eine zu
 das nicht in diesem Ticket mitentschieden werden soll (eigenes Aufräum-Ticket, siehe
 issue #376).
 
+**Nachtrag issue #395:** Das Aufräum-Ticket hat entschieden (Owner-Variante A): nur
+der nachweislich tote Producer in `src/local/sync.ts` wird entfernt. Restore-UI und
+der `journalConflicts`-Store bleiben stehen, falls auf einem Gerät noch eine
+unrestaurierte Alt-Kopie aus der Zeit vor #376 liegt.
+
 ## Konsequenzen
 
 - **Migration:** `journal_entries` bekommt `created_at` (`timestamp with time zone
