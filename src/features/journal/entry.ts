@@ -1,7 +1,7 @@
-import { base64ToBytes } from '@/crypto/base64';
-import { decryptJournal, encryptJournal, type JournalContent } from '@/crypto/journal';
-import { db, type LocalRecord } from '@/local/dexie';
+import { encryptJournal, type JournalContent } from '@/crypto/journal';
+import { db } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
+import { decryptJournalRows } from './decrypt-journal-row';
 import { journalDek } from './lock-store';
 import { writeJournalEntry } from './write';
 
@@ -42,21 +42,10 @@ export interface JournalEntryView {
   content: JournalContent;
 }
 
-async function decryptRow(dek: CryptoKey, row: LocalRecord): Promise<JournalEntryView> {
-  const ciphertext = base64ToBytes(row.data.ciphertext as string);
-  const nonce = base64ToBytes(row.data.nonce as string);
-  const content = await decryptJournal(dek, ciphertext, nonce);
-  return {
-    id: row.id,
-    entryDate: row.data.entryDate as string,
-    createdAt: (row.data.createdAt as string | undefined) ?? row.updatedAt,
-    content,
-  };
-}
-
 /**
  * Every entry for one day, newest first (AC3). `[]` while locked — there is no
- * key to open anything with.
+ * key to open anything with. A single undecryptable row is skipped (issue
+ * #384), not fatal to the whole day's list — see decrypt-journal-row.ts.
  */
 export async function listJournalEntries(entryDate: string): Promise<JournalEntryView[]> {
   const dek = journalDek();
@@ -68,7 +57,12 @@ export async function listJournalEntries(entryDate: string): Promise<JournalEntr
     .and((row) => row.deletedAt === null && row.data.entryDate === entryDate)
     .toArray();
 
-  const entries = await Promise.all(rows.map((row) => decryptRow(dek, row)));
+  const entries = await decryptJournalRows(dek, rows, (row, content) => ({
+    id: row.id,
+    entryDate: row.data.entryDate as string,
+    createdAt: (row.data.createdAt as string | undefined) ?? row.updatedAt,
+    content,
+  }));
   return entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 

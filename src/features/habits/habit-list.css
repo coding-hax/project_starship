@@ -14,8 +14,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-4);
-  padding: var(--space-2) 0;
-  margin-bottom: var(--space-2);
+  padding: 0 0 var(--space-2) 0;
+  margin-bottom: 0;
 }
 
 .habit-list__month-nav-button {

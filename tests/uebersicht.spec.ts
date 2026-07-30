@@ -416,6 +416,30 @@ test('Journal-Sektion auf Mobile und Desktop, Dark Mode und reduzierte Bewegung 
 });
 
 /* -------------------------------------------------------------------------- */
+/* issue #382: Übersicht-Kopf als Text statt h2                               */
+/* -------------------------------------------------------------------------- */
+
+test('Journal-Kopf auf der Übersicht ist wie die Statuszeile ein Text statt einer h2-Überschrift (issue #382)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  const heading = journalSection(page).locator('.journal-today-section__heading');
+  await expect(heading).toHaveText('Journal');
+  expect(await heading.evaluate((el) => el.tagName)).toBe('P');
+
+  // Weder `.journal-today-section__heading` noch `.journal-today-section__status`
+  // setzt eine eigene font-size — beide sind gleich große Textzeilen derselben
+  // Karte. Als <h2> würde der Browser-Default davon abweichen und den Kopf
+  // gegenüber der Statuszeile überdimensioniert erscheinen lassen.
+  const [headingSize, statusSize] = await journalSection(page).evaluate((el) => [
+    getComputedStyle(el.querySelector('.journal-today-section__heading')!).fontSize,
+    getComputedStyle(el.querySelector('.journal-today-section__status')!).fontSize,
+  ]);
+  expect(headingSize).toBe(statusSize);
+});
+
+/* -------------------------------------------------------------------------- */
 /* issue #363: zwei Links mit dem zugänglichen Namen "Journal" (Fund aus #342) */
 /* -------------------------------------------------------------------------- */
 

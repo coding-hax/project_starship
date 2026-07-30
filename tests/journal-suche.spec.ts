@@ -169,6 +169,32 @@ for (const viewport of [
   });
 }
 
+test('AC8: eine unlesbare Zeile macht die Suche nicht blind (issue #384)', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-09', { text: 'Ein lesbarer Lauf-Eintrag', tags: [] });
+
+  // Giftzeile: gültiges Base64, aber unter keinem Schlüssel entschlüsselbar — genau
+  // der Fall, an dem `Promise.all` vorher den kompletten Ladevorgang rejectete
+  // (journal-search-cache.ts) und `entries` für immer `undefined` blieb.
+  await page.evaluate(() =>
+    window.__starship.mutate({
+      table: 'journal_entries',
+      op: 'upsert',
+      payload: {
+        entryDate: '2026-07-09',
+        ciphertext: btoa('nicht entschluesselbare bytes'),
+        nonce: btoa('123456789012'),
+      },
+    }),
+  );
+
+  const search = page.getByLabel('Journal durchsuchen');
+  await search.fill('lauf');
+
+  await expect(page.locator('.journal-search__result')).toHaveCount(1);
+  await expect(page.locator('.journal-search__result')).toContainText('Ein lesbarer Lauf-Eintrag');
+});
+
 test('AC7: die Suche nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({ page }) => {
   await setUpEditor(page);
 
