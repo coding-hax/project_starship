@@ -58,8 +58,13 @@
 }
 
 /* Kompakter als die SectionCard-Default (issue #288 AC2): Überschrift und Inhalt
-   rücken näher zusammen, weniger Luft um die Box. */
+   rücken näher zusammen, weniger Luft um die Box. Ohne margin-bottom: 0 addierte
+   sich section-card.css's eigener margin-bottom (--space-6) zum flex-gap des
+   `.weather-day`-Containers (--space-4) — der Abstand zwischen Tagesverlauf- und
+   Niederschlags-Box war dadurch größer als der zur Box mit den rohen Tageswerten
+   darüber, die diesen Rand nicht trägt (issue #381). */
 .weather-day__card {
+  margin-bottom: 0;
   padding: var(--space-3);
 }
 
