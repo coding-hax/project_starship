@@ -246,15 +246,18 @@ test('ohne Verbindung bietet der Gate kein Einrichten an, Wiederholen loest es a
   await setUpJournal(page, PASSPHRASE);
   await pushEverything(page);
 
-  // Zweites Geraet, dieselbe Sitzung, eigener leerer Speichercontainer. Sein
-  // Sync-Pull ist von der ersten Zeile an nicht erreichbar (Server weg), die
-  // Huelle landet also nie lokal — genau der Offline-Erststart, den der Gate
-  // ohne „einrichten" ueberstehen muss. (setOffline erst nach openSecondDevice
-  // waere ein Rennen: der App-Start-Pull auf /uebersicht holt die Huelle sonst
-  // schon, bevor wir offline gehen, und der Gate landete zu Recht auf `locked`.)
+  // Zweites Geraet, dieselbe Sitzung, eigener leerer Speichercontainer. Der
+  // Sync-Pull wird von der ersten Zeile an abgebrochen (Server weg) — vor jeder
+  // Navigation, damit der App-Start-Pull die Huelle nicht doch noch lokal
+  // ablegt. So bleibt es der reine Offline-Erststart, den der Gate ohne
+  // „einrichten" ueberstehen muss. (`setOffline` scheidet aus: es verschluckt im
+  // App Router schon die RSC-Payload der Navigation, die Seite kaeme nie so weit,
+  // den Gate ueberhaupt zu rendern. `openSecondDevice` mit spaeterem Abbruch
+  // waere ein Rennen: sein Pull auf /uebersicht holt die Huelle sonst schon,
+  // bevor wir abbrechen, und der Gate landete zu Recht auf `locked`.)
   const context = await browser.newContext({ storageState: await page.context().storageState() });
   const second = await context.newPage();
-  await second.route('**/api/sync/pull**', (route) => route.abort());
+  await second.route('**/api/sync/pull**', (route) => route.abort('failed'));
   await second.goto('/journal');
 
   await expect(second.locator('.journal-gate[data-state="unavailable"]')).toBeVisible();
