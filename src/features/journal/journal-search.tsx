@@ -115,7 +115,7 @@ export function JournalSearch({
       />
       <div className="journal-search__filters">
         <div className="journal-search__mood-filter">
-          <MoodScale value={mood} onChange={setMood} />
+          <MoodScale value={mood} onChange={setMood} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
         </div>
         {tagOptions.length > 0 && (
           <select
