@@ -24,5 +24,6 @@ export async function loadSearchableJournalEntries(): Promise<JournalSearchEntry
     createdAt: (row.data.createdAt as string | undefined) ?? row.updatedAt,
     text: content.text,
     tags: content.tags ?? [],
+    mood: content.mood,
   }));
 }

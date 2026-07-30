@@ -67,6 +67,7 @@ export function JournalEditor() {
   const [mood, setMood] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [searchActive, setSearchActive] = useState(false);
   const [undo, setUndo] = useState<UndoState | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entries = useJournalEntries(entryDate);
@@ -140,39 +141,43 @@ export function JournalEditor() {
 
   return (
     <>
-      <JournalSearch onSelect={setEntryDate} />
+      <JournalSearch onSelect={setEntryDate} onActiveChange={setSearchActive} />
       <div className="journal-editor">
-        <form className="journal-editor__form" onSubmit={handleSubmit}>
-          <MoodScale value={mood} onChange={setMood} />
-          <textarea
-            className="journal-editor__text"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Was ist heute passiert?"
-            aria-label="Journal-Text"
-          />
-          <input
-            type="text"
-            className="journal-editor__tags"
-            value={tagsInput}
-            onChange={(event) => setTagsInput(event.target.value)}
-            placeholder="Tags, mit Komma getrennt"
-            aria-label="Tags"
-          />
-          <button type="submit" className="journal-editor__submit">
-            Absenden
-          </button>
-        </form>
-        {conflicts?.map((conflict) => (
-          <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
-        ))}
-        <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
-        {entries && entries.length > 0 && (
-          <ul className="journal-editor__entries">
-            {entries.map((entry) => (
-              <JournalEntryRow key={entry.id} entry={entry} onDelete={handleDelete} />
+        {!searchActive && (
+          <>
+            <form className="journal-editor__form" onSubmit={handleSubmit}>
+              <MoodScale value={mood} onChange={setMood} />
+              <textarea
+                className="journal-editor__text"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Was ist heute passiert?"
+                aria-label="Journal-Text"
+              />
+              <input
+                type="text"
+                className="journal-editor__tags"
+                value={tagsInput}
+                onChange={(event) => setTagsInput(event.target.value)}
+                placeholder="Tags, mit Komma getrennt"
+                aria-label="Tags"
+              />
+              <button type="submit" className="journal-editor__submit">
+                Absenden
+              </button>
+            </form>
+            {conflicts?.map((conflict) => (
+              <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
             ))}
-          </ul>
+            <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
+            {entries && entries.length > 0 && (
+              <ul className="journal-editor__entries">
+                {entries.map((entry) => (
+                  <JournalEntryRow key={entry.id} entry={entry} onDelete={handleDelete} />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
       {undo && (
