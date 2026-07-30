@@ -520,8 +520,9 @@ test('AC8: zwei Geräte legen offline unabhängig je einen Eintrag für denselbe
   const distinctCiphertexts = new Set(rows.rows.map((r) => r.ciphertext as string));
   expect(distinctCiphertexts.size).toBe(2); // zwei verschiedene Zeilen, kein Überschreiben.
 
-  // Kein falsch-positiver Konflikt (ADR-0017 Punkt 3 greift nur bei einer echten
-  // id-Kollision, die es hier nicht mehr geben kann, ADR-0018).
+  // Kein falsch-positiver Konflikt — der Producer aus ADR-0017 Punkt 3 ist seit
+  // issue #395 entfernt (er griff ohnehin nur bei einer id-Kollision, die es seit
+  // ADR-0018 nicht mehr geben kann); der Store bleibt als Abfluss für Alt-Kopien leer.
   const conflictsA = await page.evaluate(() => window.__starship.debugJournalConflicts());
   const conflictsB = await deviceB.evaluate(() => window.__starship.debugJournalConflicts());
   expect(conflictsA).toHaveLength(0);
