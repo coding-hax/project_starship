@@ -229,12 +229,18 @@ export function parseFindKey(body: string | undefined | null): string | null {
 
 // Alle Fund-Tickets eines Schnappschusses, aeltestes zuerst (Tie-Break:
 // Ticketnummer) -- treibt sowohl die Prompt-Zeile (AC3) als auch
-// findFoundTicket() unten.
-export function foundTickets(snapshot: QueueIssue[]): { number: number; key: string }[] {
+// findFoundTicket() unten. #410 R4/AK9: 'inProgress' reicht durch, ob das
+// Ticket gerade gebaut wird -- der Snapshot traegt 'labels' bereits, kein
+// zusaetzlicher gh-Aufruf noetig.
+export function foundTickets(snapshot: QueueIssue[]): { number: number; keys: string[]; inProgress: boolean }[] {
   return snapshot
     .filter((issue) => parseFindKey(issue.body) !== null)
     .sort((a, b) => byCreatedAt(a, b) || a.number - b.number)
-    .map((issue) => ({ number: issue.number, key: parseFindKey(issue.body) as string }));
+    .map((issue) => ({
+      number: issue.number,
+      keys: [parseFindKey(issue.body) as string],
+      inProgress: hasLabel(issue, 'in-progress'),
+    }));
 }
 
 // AC2: zu einem Fundschluessel das bestehende Ticket finden -- zustandsagnostisch
@@ -242,6 +248,6 @@ export function foundTickets(snapshot: QueueIssue[]): { number: number; key: str
 // '--state all'). Mehrere Treffer: das AELTESTE gewinnt, denn das ist das
 // urspruengliche Ticket -- alles danach war bereits ein vermeidbares Duplikat.
 export function findFoundTicket(key: string, snapshot: QueueIssue[]): number | null {
-  const matches = foundTickets(snapshot).filter((entry) => entry.key === key);
+  const matches = foundTickets(snapshot).filter((entry) => entry.keys.includes(key));
   return matches.length > 0 ? matches[0]!.number : null;
 }

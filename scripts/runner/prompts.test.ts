@@ -110,7 +110,7 @@ describe('prompts', () => {
 
   // #366 AC3: die bekannten Fund-Tickets im Auftragstext, Positiv+Negativ.
   describe('Bekannte Fund-Tickets (#366)', () => {
-    const found: FoundTicket[] = [{ number: 349, key: 'tests/aktivitaeten.spec.ts:608' }];
+    const found: FoundTicket[] = [{ number: 349, keys: ['tests/aktivitaeten.spec.ts:608'], inProgress: false }];
 
     it('build-Prompt enthaelt Schluessel und Nummer, sofern welche existieren', () => {
       const prompt = buildPrompt(42, found);
@@ -186,6 +186,41 @@ describe('prompts', () => {
     ] as const)('%s-Prompt verlangt den Reproduktions-Nachweis im Body des Fund-Tickets', (_name, prompt) => {
       expect(prompt).toContain('Arbeitsbaum + Kommandozeile');
       expect(prompt).toContain('kein Fund, sondern ein Verdacht');
+    });
+  });
+
+  // #410 R4 (AK9-AK11): ein Fund-Ticket in Arbeit wird nicht ergaenzt --
+  // Verhaltensregel im Prompt plus sichtbarer Marker in der Liste bekannter
+  // Fund-Tickets.
+  describe('Ein Fund-Ticket in Arbeit wird nicht ergaenzt (#410 R4)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt beschreibt den Nichts-Neues- und den Neue-Information-Fall', (_name, prompt) => {
+      expect(prompt).toContain('in-progress');
+      expect(prompt).toContain('gar nichts tun, kein Kommentar');
+      expect(prompt).toContain('Nachtrag zu #X');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt nennt die Ausnahme fuer den bauenden Lauf selbst und den Menschen', (_name, prompt) => {
+      expect(prompt).toContain('Ausgenommen bleiben der bauende Lauf selbst');
+      expect(prompt).toContain('und der Mensch');
+    });
+
+    it('rendert den in-Arbeit-Marker fuer ein inProgress-Fund-Ticket', () => {
+      const found: FoundTicket[] = [{ number: 404, keys: ['scripts/tests/ci-watch.test.sh'], inProgress: true }];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#404 `scripts/tests/ci-watch.test.sh` (in Arbeit — nicht ergänzen)');
+    });
+
+    it('rendert keinen Marker fuer ein nicht-inProgress-Fund-Ticket', () => {
+      const found: FoundTicket[] = [{ number: 349, keys: ['tests/aktivitaeten.spec.ts:608'], inProgress: false }];
+      const prompt = buildPrompt(42, found);
+      expect(prompt).toContain('#349 `tests/aktivitaeten.spec.ts:608`.');
+      expect(prompt).not.toContain('in Arbeit — nicht ergänzen');
     });
   });
 

@@ -242,9 +242,17 @@ describe('foundTickets (#366)', () => {
       found(349, 'tests/a.spec.ts:1', '2026-07-29T09:36:00Z'),
     ];
     expect(foundTickets(snap)).toEqual([
-      { number: 349, key: 'tests/a.spec.ts:1' },
-      { number: 351, key: 'tests/a.spec.ts:1' },
+      { number: 349, keys: ['tests/a.spec.ts:1'], inProgress: false },
+      { number: 351, keys: ['tests/a.spec.ts:1'], inProgress: false },
     ]);
+  });
+
+  // #410 R4/AK9: das 'in-progress'-Label wird durchgereicht, damit der Prompt
+  // den Marker "nicht ergaenzen" rendern kann -- der Snapshot traegt 'labels'
+  // bereits, kein zusaetzlicher gh-Aufruf noetig.
+  it('marks a ticket as inProgress when it carries the label', () => {
+    const snap = [{ ...found(404, 'scripts/tests/ci-watch.test.sh', '2026-07-30T12:17:00Z'), labels: [{ name: 'in-progress' }] }];
+    expect(foundTickets(snap)).toEqual([{ number: 404, keys: ['scripts/tests/ci-watch.test.sh'], inProgress: true }]);
   });
 });
 

@@ -166,6 +166,20 @@ describe('roundPlan', () => {
     expect(run.prompt).not.toContain('Bekannte Fund-Tickets');
   });
 
+  // #410 R4/AK9: ein Fund-Ticket, das selbst 'in-progress' traegt, bekommt
+  // im Auftragstext den sichtbaren "nicht ergaenzen"-Marker.
+  it('markiert ein in-progress-Fund-Ticket im Bau-Prompt als "nicht ergaenzen"', () => {
+    const { gh } = ghDouble([
+      openIssues(
+        issueJson(77, ['ready']),
+        issueJson(404, ['in-progress'], '2026-07-30T12:17:00Z', 'Fund: scripts/tests/ci-watch.test.sh'),
+      ),
+      noOpenPrs,
+    ]);
+    const run = roundPlan(ctx(gh), opts) as RoundRun;
+    expect(run.prompt).toContain('#404 `scripts/tests/ci-watch.test.sh` (in Arbeit — nicht ergänzen)');
+  });
+
   it('gibt der Planer-Rolle Opus und eine nur lesende Allowlist (ADR-0005)', () => {
     const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;

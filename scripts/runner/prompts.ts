@@ -28,7 +28,8 @@ export const FIND_BODY_FORM = 'Fund: <pfad>:<zeile>';
 
 export interface FoundTicket {
   number: number;
-  key: string;
+  keys: string[];
+  inProgress: boolean;
 }
 
 // AC3: die bekannten Fund-Tickets im Auftragstext -- macht Dedupe mechanisch
@@ -61,10 +62,24 @@ CI-Beleg, dass derselbe Check dort rot ist. Ist keins von beidem erfüllt,
 entsteht **kein Ticket** — stattdessen eine Zeile im Fortschrittskommentar
 des laufenden Tickets. Das Fund-Ticket nennt im Body, wie reproduziert wurde
 (Arbeitsbaum + Kommandozeile, oder ein Link auf den roten CI-Job) — ohne
-diesen Nachweis ist es kein Fund, sondern ein Verdacht.`;
+diesen Nachweis ist es kein Fund, sondern ein Verdacht.
+
+**Ein Fund-Ticket in Arbeit wird nicht ergänzt.** Trägt das Ticket zu einem
+Fundschlüssel bereits das Label \`in-progress\`: ist es *nichts Neues*
+(derselbe Test, derselbe Fehler) — gar nichts tun, kein Kommentar,
+weitergehen. Ist es *neue Information* (ein anderer Fehler, eine zweite
+Ursache) — ein eigenes Ticket mit demselben \`Fund:\`-Schlüssel plus
+\`Nachtrag zu #X\` im Body. Ausgenommen bleiben der bauende Lauf selbst (der
+Fortschritts-, Blocker- und der Pflichtkommentar bei sensiblen Pfaden
+bleiben unverändert Pflicht) und der Mensch.`;
 
   if (found.length > 0) {
-    const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
+    const list = found
+      .map((f) => {
+        const keys = f.keys.join(', ');
+        return f.inProgress ? `#${f.number} \`${keys}\` (in Arbeit — nicht ergänzen)` : `#${f.number} \`${keys}\``;
+      })
+      .join(', ');
     section += `
 
 ## Bekannte Fund-Tickets
