@@ -4,6 +4,7 @@ import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { db } from '@/local/dexie';
 import { listJournalEntries, type JournalEntryView } from './entry';
+import { logJournalQueryError } from './log-query-error';
 import { useJournalLock } from './lock-store';
 
 /**
@@ -27,7 +28,7 @@ export function useJournalEntries(entryDate: string): JournalEntryView[] | undef
           if (!cancelled) setEntries(loaded);
         });
       },
-      error: (error) => console.error('journal entries live query failed', error),
+      error: () => logJournalQueryError('journal entries live query failed'),
     });
     return () => {
       cancelled = true;

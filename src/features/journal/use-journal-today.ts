@@ -6,6 +6,7 @@ import { base64ToBytes } from '@/crypto/base64';
 import { decryptJournal } from '@/crypto/journal';
 import { db } from '@/local/dexie';
 import { todayKey } from './entry';
+import { logJournalQueryError } from './log-query-error';
 import { journalDek, useJournalLock } from './lock-store';
 
 export interface JournalTodayState {
@@ -47,7 +48,7 @@ export function useJournalToday(): JournalTodayState | undefined {
         .map((record) => record.data as unknown as RowData);
     }).subscribe({
       next: setRows,
-      error: (error) => console.error('journal today live query failed', error),
+      error: () => logJournalQueryError('journal today live query failed'),
     });
     return () => subscription.unsubscribe();
   }, [entryDate]);
