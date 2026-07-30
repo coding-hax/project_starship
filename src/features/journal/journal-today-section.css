@@ -1,9 +1,5 @@
 .journal-today-section {
   display: block;
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
-  padding: var(--space-4);
   margin-bottom: var(--space-6);
   color: var(--text);
   text-decoration: none;
@@ -11,8 +7,7 @@
 
 .journal-today-section__heading {
   margin: 0 0 var(--space-2);
-  color: var(--area-journal);
-  font-weight: 650;
+  color: var(--text);
 }
 
 .journal-today-section__status {
