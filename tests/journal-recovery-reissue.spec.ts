@@ -29,9 +29,23 @@ async function setUpJournal(page: Page, passphrase: string): Promise<string> {
   return recoveryKey;
 }
 
+/**
+ * Client-side navigation to /einstellungen (issue #339/#391 pattern, see
+ * journal-lock.spec.ts AC5) — `page.goto` is a hard reload that drops the
+ * in-memory DEK (module variable, ADR-0016) before the settings panel ever
+ * sees `unlocked`. Einstellungen has no main-nav tab (issue #126), so the
+ * only client-side path is via Übersicht's inline entry point.
+ */
+async function goToSettings(page: Page) {
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Übersicht' }).click();
+  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+}
+
 /** Drives the settings panel's reissue flow end to end, returns the new key. */
 async function reissueRecovery(page: Page, passphrase: string): Promise<string> {
-  await page.goto('/einstellungen');
+  await goToSettings(page);
   await page.getByRole('button', { name: 'Neu ausstellen' }).click();
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByRole('button', { name: 'Neu ausstellen' }).click();
@@ -89,7 +103,7 @@ test('der alte Recovery-Key wird nach dem Neu-Ausstellen ungueltig', async ({ pa
 test('gesperrt bietet keinen Zugang zum Recovery-Key', async ({ page }) => {
   await setUpJournal(page, PASSPHRASE);
   await page.evaluate(() => window.__starship.journalLock());
-  await page.goto('/einstellungen');
+  await goToSettings(page);
 
   await expect(page.getByTestId('journal-recovery-key')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Neu ausstellen' })).toHaveCount(0);
@@ -157,7 +171,7 @@ for (const viewport of [
     await setUpJournal(page, PASSPHRASE);
     await page.setViewportSize(viewport);
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/einstellungen');
+    await goToSettings(page);
 
     await page.getByRole('button', { name: 'Neu ausstellen' }).click();
     await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
