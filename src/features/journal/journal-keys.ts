@@ -46,3 +46,17 @@ export async function writeEnvelope(envelope: Envelope): Promise<void> {
     payload: { envelope },
   });
 }
+
+/**
+ * Reissue only (issue #391) — mirrors `writeEnvelope`: pushes just
+ * `recoveryEnvelope`, so the merge on both the client (`outbox.ts`) and server
+ * (`push/route.ts`) leaves `envelope` untouched.
+ */
+export async function writeRecoveryEnvelope(recoveryEnvelope: Envelope): Promise<void> {
+  await mutate({
+    table: 'journal_keys',
+    rowId: JOURNAL_KEYS_ROW_ID,
+    op: 'upsert',
+    payload: { recoveryEnvelope },
+  });
+}

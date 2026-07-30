@@ -6,11 +6,18 @@ import { WrongPassphraseError } from '@/crypto/errors';
 import {
   createEnvelopesWithRecovery,
   openEnvelopeWithRecovery,
+  reissueRecovery,
   rewrapPassphrase,
 } from '@/crypto/journal';
 import { pull } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
-import { readEnvelope, readRecoveryEnvelope, writeEnvelope, writeEnvelopes } from './journal-keys';
+import {
+  readEnvelope,
+  readRecoveryEnvelope,
+  writeEnvelope,
+  writeEnvelopes,
+  writeRecoveryEnvelope,
+} from './journal-keys';
 import { readJournalPersistPref, subscribeJournalPersistPref } from './use-journal-persist-pref';
 
 export type JournalLockState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'unavailable';
@@ -308,6 +315,26 @@ export async function journalRewrapPassphrase(
   await writeEnvelope(newEnvelope);
 }
 
+/** Re-issues the recovery key (issue #391) — only while `unlocked` (AC "gesperrt
+ * bietet keinen Zugang"); requires the passphrase since the DEK in memory is
+ * non-extractable (ADR-0016) and the old recovery key is exactly what may be
+ * lost. `null` on a wrong passphrase (ruhige Meldung, Regel 9), the new key is
+ * shown to the user exactly once and never sent to the server. */
+export async function journalReissueRecovery(passphrase: string): Promise<string | null> {
+  if (current.state !== 'unlocked') return null;
+  const envelope = await readEnvelope();
+  if (!envelope) return null;
+
+  try {
+    const result = await reissueRecovery(envelope, passphrase);
+    await writeRecoveryEnvelope(result.recoveryEnvelope);
+    return result.recoveryKey;
+  } catch (error) {
+    if (!(error instanceof WrongPassphraseError)) throw error;
+    return null;
+  }
+}
+
 export async function journalLock(): Promise<void> {
   dek = null;
   disarmAutoLock();
@@ -354,6 +381,7 @@ export function useJournalLock() {
     unlock: journalUnlock,
     unlockWithRecovery: journalUnlockWithRecovery,
     rewrapPassphrase: journalRewrapPassphrase,
+    reissueRecovery: journalReissueRecovery,
     lock: journalLock,
     retry: journalRetryInitialize,
   };
