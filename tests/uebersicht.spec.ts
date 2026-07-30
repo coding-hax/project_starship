@@ -278,12 +278,22 @@ async function setUpJournal(page: Page, passphrase: string) {
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.getByTestId('journal-recovery-key').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
+/** Sets a mood and submits the entry (issue #376: explicit "Absenden", no more
+ * autosave) — the one helper every test below uses instead of repeating the
+ * two clicks. */
+async function submitMoodEntry(page: Page, mood: string): Promise<void> {
+  await page.getByRole('button', { name: mood, exact: true }).click();
+  await page.getByRole('button', { name: 'Absenden' }).click();
+}
+
 /**
- * The mood tap saves via a fire-and-forget `saveJournalEntry` (issue #340) — a
- * `page.reload()`/navigation right after `.click()` would race that write. Polls
+ * `appendJournalEntry` (issue #376) is a fire-and-forget write — a
+ * `page.reload()`/navigation right after submitting would race that write. Polls
  * the real IndexedDB record instead of a fixed wait.
  */
 async function waitForJournalEntryWritten(page: Page): Promise<void> {
@@ -304,7 +314,7 @@ test('Journal-Sektion zeigt "noch nicht geschrieben", bis heute ein Eintrag exis
   await expect(journalSection(page)).toContainText('Heute noch nicht geschrieben');
 
   await setUpJournal(page, 'ac1 passphrase');
-  await page.getByRole('button', { name: '7' }).click(); // Stimmungspunkt in der MoodScale
+  await submitMoodEntry(page, '7'); // Stimmungspunkt in der MoodScale, dann Absenden
   await waitForJournalEntryWritten(page);
   await page.goto('/uebersicht');
 
@@ -315,7 +325,7 @@ test('gesperrtes Journal zeigt weiterhin den korrekten (binären) Zustand, die �
   page,
 }) => {
   await setUpJournal(page, 'ac2 passphrase');
-  await page.getByRole('button', { name: '3' }).click();
+  await submitMoodEntry(page, '3');
   await waitForJournalEntryWritten(page);
 
   await page.reload(); // Default: nicht speicherresident (issue #339 AC4) -> sperrt wieder
@@ -339,7 +349,7 @@ test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmun
   page,
 }) => {
   await setUpJournal(page, 'ac4 passphrase');
-  await page.getByRole('button', { name: '9' }).click();
+  await submitMoodEntry(page, '9');
   await waitForJournalEntryWritten(page);
   // A client-side nav click (not page.goto, a hard navigation) — the DEK lives
   // only in an in-memory module variable (ADR-0016), so a real reload would
@@ -415,7 +425,7 @@ test('die Journal-Sektion hat einen eigenen zugänglichen Namen statt des nackte
   ).toBeVisible();
 
   await setUpJournal(page, '363 passphrase');
-  await page.getByRole('button', { name: '7' }).click(); // Stimmungspunkt in der MoodScale
+  await submitMoodEntry(page, '7'); // Stimmungspunkt in der MoodScale, dann Absenden
   await waitForJournalEntryWritten(page);
   // Client-seitige Navigation statt page.goto: der DEK lebt nur in-memory
   // (ADR-0016), ein harter Reload würde wieder sperren (issue #339 AC5).

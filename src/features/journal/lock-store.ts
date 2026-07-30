@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { createEnvelope, openEnvelope } from '@/crypto/envelope';
+import { openEnvelope } from '@/crypto/envelope';
 import { WrongPassphraseError } from '@/crypto/errors';
+import {
+  createEnvelopesWithRecovery,
+  openEnvelopeWithRecovery,
+  rewrapPassphrase,
+} from '@/crypto/journal';
 import { pull } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
-import { readEnvelope, writeEnvelope } from './journal-keys';
+import { readEnvelope, readRecoveryEnvelope, writeEnvelope, writeEnvelopes } from './journal-keys';
 import { readJournalPersistPref, subscribeJournalPersistPref } from './use-journal-persist-pref';
 
 export type JournalLockState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'unavailable';
@@ -222,27 +227,29 @@ function ensureInitialized(): Promise<void> {
   return initPromise;
 }
 
-export async function journalSetup(passphrase: string): Promise<void> {
-  // Last line of defence for issue #371: the row id is fixed, so a second setup
-  // would upsert a fresh DEK over the account's envelope and leave every entry
-  // written under the old one permanently unreadable. Refuse, never overwrite.
+/** Returns the recovery key (AC2, #372) — a KEK secret, never the DEK, shown to
+ * the user exactly once and never sent to the server. `null` when setup is
+ * refused because an envelope already exists (issue #371): the row id is fixed,
+ * so a second setup would upsert a fresh DEK over the account's envelope and
+ * leave every entry written under the old one permanently unreadable. */
+export async function journalSetup(passphrase: string): Promise<string | null> {
   if (await readEnvelope()) {
     // Eine bereits entsperrte Sitzung bleibt entsperrt — der DEK im Speicher ist
     // gültig, nur das Einrichten wird verweigert.
     if (current.state !== 'unlocked') {
       setSnapshot({ state: 'locked', error: ALREADY_SET_UP_MESSAGE });
     }
-    return;
+    return null;
   }
 
-  const envelope = await createEnvelope(passphrase);
-  const opened = await openEnvelope(envelope, passphrase);
-  await writeEnvelope(envelope);
-  dek = opened;
+  const result = await createEnvelopesWithRecovery(passphrase);
+  await writeEnvelopes(result.passphraseEnvelope, result.recoveryEnvelope);
+  dek = result.dek;
   setSnapshot({ state: 'unlocked', error: null });
-  getChannel().postMessage({ type: 'unlocked', dek: opened } satisfies BroadcastMessage);
+  getChannel().postMessage({ type: 'unlocked', dek: result.dek } satisfies BroadcastMessage);
   armAutoLock();
-  if (readJournalPersistPref()) await persistDek(opened);
+  if (readJournalPersistPref()) await persistDek(result.dek);
+  return result.recoveryKey;
 }
 
 export async function journalUnlock(passphrase: string): Promise<void> {
@@ -262,6 +269,43 @@ export async function journalUnlock(passphrase: string): Promise<void> {
     // Passphrase war, nur dass sie es war.
     setSnapshot({ state: 'locked', error: error.message });
   }
+}
+
+/** Second unlock path via the recovery key (AC3). A missing recovery envelope
+ * (e.g. a row from before #372) fails exactly like a wrong key — same message,
+ * same state — so the UI cannot tell the two cases apart (AC5). */
+export async function journalUnlockWithRecovery(recoveryKey: string): Promise<void> {
+  const recoveryEnvelope = await readRecoveryEnvelope();
+  if (!recoveryEnvelope) {
+    setSnapshot({ state: 'locked', error: new WrongPassphraseError().message });
+    return;
+  }
+
+  try {
+    const opened = await openEnvelopeWithRecovery(recoveryEnvelope, recoveryKey);
+    dek = opened;
+    setSnapshot({ state: 'unlocked', error: null });
+    getChannel().postMessage({ type: 'unlocked', dek: opened } satisfies BroadcastMessage);
+    armAutoLock();
+    if (readJournalPersistPref()) await persistDek(opened);
+  } catch (error) {
+    if (!(error instanceof WrongPassphraseError)) throw error;
+    setSnapshot({ state: 'locked', error: error.message });
+  }
+}
+
+/** Sets a new passphrase after a recovery unlock (AC4, optional) — the DEK
+ * already in memory is untouched, so entries stay readable without a re-unlock;
+ * only the passphrase envelope is rewrapped and pushed (`writeEnvelope`), never
+ * the recovery envelope. */
+export async function journalRewrapPassphrase(
+  recoveryKey: string,
+  newPassphrase: string,
+): Promise<void> {
+  const recoveryEnvelope = await readRecoveryEnvelope();
+  if (!recoveryEnvelope) throw new WrongPassphraseError();
+  const newEnvelope = await rewrapPassphrase(recoveryEnvelope, recoveryKey, newPassphrase);
+  await writeEnvelope(newEnvelope);
 }
 
 export async function journalLock(): Promise<void> {
@@ -308,6 +352,8 @@ export function useJournalLock() {
     error: snapshot.error,
     setup: journalSetup,
     unlock: journalUnlock,
+    unlockWithRecovery: journalUnlockWithRecovery,
+    rewrapPassphrase: journalRewrapPassphrase,
     lock: journalLock,
     retry: journalRetryInitialize,
   };

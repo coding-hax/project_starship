@@ -369,14 +369,15 @@ export type NewReminderPref = typeof reminderPrefs.$inferInsert;
 
 /**
  * Text, Stimmung und Tags reisen zusammen in einem AES-GCM-Chiffrat (ADR-0004) —
- * kein feldweiser Merge, eine upsert-Mutation ersetzt `ciphertext`/`nonce` gemeinsam
- * (ADR-0017). `ciphertext`/`nonce` sind `text` (Base64), nicht `bytea` — das Wire-
- * Format ist JSON, und src/crypto/base64.ts liefert ohnehin Base64-Strings.
+ * kein feldweiser Merge, eine upsert-Mutation ersetzt `ciphertext`/`nonce` gemeinsam.
+ * `ciphertext`/`nonce` sind `text` (Base64), nicht `bytea` — das Wire-Format ist
+ * JSON, und src/crypto/base64.ts liefert ohnehin Base64-Strings.
  *
- * `id` ist client-deterministisch aus `entryDate` (UUIDv5, src/local/uuid5.ts) statt
- * zufällig — „ein Eintrag je Tag" wird damit eine echte Schlüssel-Invariante statt
- * einer App-Konvention, und der bestehende ADR-0008-Konfliktpfad (baseSeq/syncSeq)
- * greift normal, ohne Sonderfall im Sync-Motor (ADR-0017).
+ * Ein Tag kann mehrere Einträge tragen (issue #376, ADR-0018) — `entry_date` ist
+ * deshalb nicht mehr eindeutig, und `id` ist client-zufällig (UUIDv7) statt
+ * deterministisch aus `entry_date` (ADR-0017 Punkt 1, abgelöst). `created_at` ist
+ * die Sortier-/Anzeigeanker, wie bei `tasks`/`habits` oben — `syncSeq` ändert sich
+ * bei jedem Update und taugt nicht als Erstellzeit.
  */
 export const journalEntries = pgTable(
   'journal_entries',
@@ -385,11 +386,13 @@ export const journalEntries = pgTable(
     entryDate: date('entry_date').notNull(),
     ciphertext: text('ciphertext').notNull(),
     nonce: text('nonce').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('journal_entries_updated_at_idx').on(table.updatedAt),
     index('journal_entries_sync_seq_idx').on(table.syncSeq),
-    uniqueIndex('journal_entries_entry_date_idx').on(table.entryDate),
+    index('journal_entries_entry_date_idx').on(table.entryDate),
+    index('journal_entries_created_at_idx').on(table.createdAt),
   ],
 );
 
@@ -407,6 +410,7 @@ export const journalKeys = pgTable(
   {
     ...syncColumns,
     envelope: jsonb('envelope').$type<Envelope>().notNull(),
+    recoveryEnvelope: jsonb('recovery_envelope').$type<Envelope>(),
   },
   (table) => [
     index('journal_keys_updated_at_idx').on(table.updatedAt),

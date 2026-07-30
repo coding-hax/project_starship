@@ -81,21 +81,27 @@ export interface ReminderPrefData {
  * Same as `HabitData`, for `journal_entries` (issue #338). `ciphertext`/`nonce` are
  * Base64 (src/crypto/base64.ts) — the wire format is JSON, this is opaque text to
  * the sync engine either way. `entryDate` is `YYYY-MM-DD`, like `HabitLogData.logDate`.
+ * `entryDate` is no longer unique per row (issue #376) — a day can carry several
+ * entries, ordered by `createdAt`.
  */
 export interface JournalEntryData {
   entryDate: string;
   ciphertext: string;
   nonce: string;
+  createdAt: string;
 }
 
 /**
  * Same as `HabitData`, for `journal_keys` (issue #338, ADR-0015). `envelope` carries
  * the `Envelope` shape from src/crypto/envelope.ts (kdfParams/wrappedDek/nonce) —
  * reused as `unknown` here so this file, like the sync engine itself, stays
- * content-blind and never imports crypto runtime code.
+ * content-blind and never imports crypto runtime code. `recoveryEnvelope` is the
+ * second KEK wrap under the recovery key (issue #372) — optional: a rewrap under a
+ * new passphrase pushes only `envelope`, never overwriting the recovery wrap.
  */
 export interface JournalKeysData {
   envelope: unknown;
+  recoveryEnvelope?: unknown;
 }
 
 export interface Mutation {

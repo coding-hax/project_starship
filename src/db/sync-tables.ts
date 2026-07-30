@@ -64,12 +64,12 @@ export const SYNC_REGISTRY = {
   },
   journal_entries: {
     table: journalEntries,
-    writable: ['entryDate', 'ciphertext', 'nonce'],
+    writable: ['entryDate', 'ciphertext', 'nonce', 'createdAt'],
     required: ['entryDate', 'ciphertext', 'nonce'],
   },
   journal_keys: {
     table: journalKeys,
-    writable: ['envelope'],
+    writable: ['envelope', 'recoveryEnvelope'],
     required: ['envelope'],
   },
   garmin_activities: {

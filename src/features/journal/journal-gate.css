@@ -69,3 +69,31 @@
 .journal-gate__submit:active {
   opacity: 0.85;
 }
+
+/* The recovery key itself (issue #372 AC2) — same treatment as .auth__code
+   in src/ui/shell.css so the two "only shown once" secrets read as one pattern. */
+.journal-gate__code {
+  display: block;
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, monospace;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+
+/* A secondary, text-styled action (recovery toggle, "Überspringen") — never
+   --danger, same calm register as the rest of this file. */
+.journal-gate__link {
+  min-height: var(--touch-target);
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+}

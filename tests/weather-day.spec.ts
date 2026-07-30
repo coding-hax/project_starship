@@ -319,6 +319,47 @@ test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard
   }
 });
 
+test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur oberen Box mit den rohen Tageswerten (issue #381)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const summary = await page.locator('.weather-day__summary').boundingBox();
+  const [tagesverlauf, niederschlag] = await page.locator('.weather-day__card').all();
+  const tagesverlaufBox = await tagesverlauf.boundingBox();
+  const niederschlagBox = await niederschlag.boundingBox();
+
+  const gapToChart = tagesverlaufBox!.y - (summary!.y + summary!.height);
+  const gapBetweenCharts = niederschlagBox!.y - (tagesverlaufBox!.y + tagesverlaufBox!.height);
+
+  expect(gapBetweenCharts).toBeLessThanOrEqual(gapToChart + 0.5);
+});
+
+test('die Überschriften „Tagesverlauf" und „Niederschlag" sitzen dicht unter der Oberkante ihrer Box', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Über der Überschrift darf nur das Kartenpolster stehen — nicht zusätzlich die
+  // globale h2-Marge (--space-6), die den Titel früher ~24px nach unten schob.
+  const padding = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-3')),
+  );
+
+  for (const title of ['Tagesverlauf', 'Niederschlag']) {
+    const card = page.locator('.weather-day__card', { hasText: title });
+    const cardBox = await card.boundingBox();
+    const titleBox = await card.getByRole('heading', { name: title }).boundingBox();
+    expect(titleBox!.y - cardBox!.y).toBeLessThanOrEqual(padding + 0.5);
+  }
+});
+
 test('die Kopfzeile sitzt dicht über der ersten Box, nicht mit großem Spalt (issue #344)', async ({
   page,
 }) => {
