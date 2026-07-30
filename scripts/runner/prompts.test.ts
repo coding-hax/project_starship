@@ -197,13 +197,23 @@ describe('prompts', () => {
     // Das Label flippt ERST am Ende -- ein abgebrochener Denk-Lauf darf ein
     // Ticket nie als baubereit zuruecklassen.
     it('flippt plan erst am Ende auf ready', () => {
-      expect(planPrompt(7)).toContain('gh issue edit 7 --remove-label plan --add-label\n   ready');
+      expect(planPrompt(7)).toContain('gh issue edit 7 --remove-label plan\n   --remove-label in-progress --add-label ready');
       expect(planPrompt(7)).toContain('Erst dieser abschließende Schritt flippt das Label');
     });
 
     it('flippt research auf needs-answer, nicht auf ready', () => {
-      expect(researchPrompt(7)).toContain('--remove-label research --add-label needs-answer');
+      expect(researchPrompt(7)).toContain('--remove-label research --remove-label in-progress\n   --add-label needs-answer');
       expect(researchPrompt(7)).toContain('der Mensch entscheidet');
+    });
+
+    // #387 AC4: der Prompt selbst nennt das Entfernen von in-progress beim
+    // abschliessenden Flip -- der Runner-Backstop in round.ts greift nur,
+    // falls ein Lauf das vergisst oder abbricht.
+    it('#387: nennt beim Flip explizit das Entfernen von in-progress (Denk-Lauf zu Ende)', () => {
+      expect(planPrompt(7)).toContain('--remove-label in-progress');
+      expect(planPrompt(7)).toContain('der Denk-Lauf ist zu Ende');
+      expect(researchPrompt(7)).toContain('--remove-label in-progress');
+      expect(researchPrompt(7)).toContain('der Denk-Lauf ist zu Ende');
     });
 
     // #43: eine Idee, die der Vision widerspricht, wird benannt und dem

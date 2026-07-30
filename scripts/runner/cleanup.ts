@@ -46,7 +46,12 @@ function runningIssue(gh: GhAdapter, claims: ClaimAdapter, slotId: string): stri
 
 export function cleanupStateDir(baseDir: string, gh: GhAdapter, now: number, claims: ClaimAdapter, slotId: string): string[] {
   const keep = runningIssue(gh, claims, slotId);
-  const keepFile = keep ? `session-${keep}` : '';
+  // #387 AC7: ein laufendes Ticket kann jetzt auch ein Denk-Lauf sein --
+  // dessen Session liegt unter 'session-think-<nr>', nicht 'session-<nr>'
+  // (#356). Beide Familien schonen, sonst verliert ein per Limit >7 Tage
+  // pausierter Planer-Lauf seine Denk-Session (dieselbe Fehlerklasse wie
+  // Korrektur 5 fuer Bau-Sessions).
+  const keepFiles = keep ? [`session-${keep}`, `session-think-${keep}`] : [];
   const removed: string[] = [];
 
   let entries: string[];
@@ -58,7 +63,7 @@ export function cleanupStateDir(baseDir: string, gh: GhAdapter, now: number, cla
 
   for (const name of entries) {
     if (!PREFIXES.some((p) => name.startsWith(p))) continue;
-    if (name === keepFile) continue;
+    if (keepFiles.includes(name)) continue;
 
     const path = join(baseDir, name);
     try {

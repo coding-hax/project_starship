@@ -229,8 +229,10 @@ ${FILE_ACCESS_RULE}
    Ticket-Nummern im Plan-Kommentar statt sie still zu ignorieren. Nur wenn
    keine existieren, legst du sie an.
 6. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
-   entfernen, dann gh issue edit ${issue} --remove-label plan --add-label
-   ready. Erst dieser abschließende Schritt flippt das Label.`;
+   entfernen, dann gh issue edit ${issue} --remove-label plan
+   --remove-label in-progress --add-label ready.
+   Erst dieser abschließende Schritt flippt das Label und entfernt
+   in-progress (der Denk-Lauf ist zu Ende).`;
 }
 
 /**
@@ -262,8 +264,9 @@ ${FILE_ACCESS_RULE}
    WEITER BEI DER RECHERCHE: <Abschnitt>".
 5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
    zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
-   gh issue edit ${issue} --remove-label research --add-label needs-answer.
-   Erst dieser abschließende Schritt flippt das Label — der Mensch entscheidet
+   gh issue edit ${issue} --remove-label research --remove-label in-progress
+   --add-label needs-answer. Erst dieser abschließende Schritt flippt das
+   Label und entfernt in-progress (der Denk-Lauf ist zu Ende) — der Mensch entscheidet
    danach, ob daraus plan wird oder die Idee verworfen wird.`;
 }
 

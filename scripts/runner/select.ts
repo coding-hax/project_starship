@@ -27,6 +27,13 @@ import { sessionKey } from './session.js';
 
 export type RunRole = 'build' | 'plan' | 'research';
 
+// Rollenableitung aus den Labels -- einzige Quelle, von running/queue (hier)
+// UND vom Resume-Zweig in round.ts benutzt (#387), damit alle drei Stellen
+// beweisbar synchron bleiben.
+export function roleFromLabels(issue: QueueIssue): RunRole {
+  return hasLabel(issue, 'plan') ? 'plan' : hasLabel(issue, 'research') ? 'research' : 'build';
+}
+
 // Labels, die ein Ticket VOLLSTAENDIG aus der Auswahl nehmen -- auf jedem
 // Zweig, nicht nur auf dem, an den gerade jemand gedacht hat (#266).
 //
@@ -95,7 +102,7 @@ export function selectTicket(
   );
 
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];
-  if (running) return { issue: running.number, role: 'build', source: 'running' };
+  if (running) return { issue: running.number, role: roleFromLabels(running), source: 'running' };
 
   const order = entries.map((entry) => entry.issue);
   if (order.length > 0) {
@@ -104,8 +111,7 @@ export function selectTicket(
       .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
     if (ranked.length > 0) {
       const picked = ranked[0];
-      const role: RunRole = hasLabel(picked, 'plan') ? 'plan' : hasLabel(picked, 'research') ? 'research' : 'build';
-      return { issue: picked.number, role, source: 'queue' };
+      return { issue: picked.number, role: roleFromLabels(picked), source: 'queue' };
     }
   }
 
@@ -164,15 +170,28 @@ export function pickTicket(
     case 'running':
       // Das Ticket traegt bereits 'in-progress' -- nichts umzuschreiben. Das
       // ist auch der Weg, auf dem ein beantwortetes Ticket zurueckkommt (#272).
-      return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'resume' };
+      // Rolle kommt aus den Labels (#387): ein fortgesetzter Denk-Lauf bleibt
+      // Denk-Lauf, statt hart als Bau-Lauf zurueckzukommen.
+      return {
+        kind: 'ticket',
+        issue: selected.issue,
+        role: selected.role,
+        mode: selected.role === 'build' ? 'resume' : hasSession(selected.issue, selected.role) ? 'resume' : 'start',
+      };
     case 'queue':
       if (selected.role === 'build') {
         gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);
         return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'start' };
       }
+      // #387 AC1: auch ein Denk-Ticket, das ueber die Queue kommt, bekommt
+      // in-progress -- ready bleibt unberuehrt (nur add, kein remove).
+      gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress']);
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
     case 'plan':
     case 'research':
+      // #387 AC1: Denk-Rollen tragen ab jetzt in-progress, solange sie laufen
+      // -- sichtbar am Handy und haelt den Slot-Claim (claim.ts).
+      gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress']);
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
     case 'ready':
       gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);

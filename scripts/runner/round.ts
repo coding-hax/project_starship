@@ -25,7 +25,7 @@ import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
 import { foundTickets, queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
-import { pickTicket, queueNext, type RunRole } from './select.js';
+import { pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
@@ -370,7 +370,10 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
 
   let issue = resumable.length > 0 ? resumable[0]!.number : 0;
   let mode = 'resume';
-  let role: RunRole = 'build';
+  // #387 AC2: die Rolle eines fortgesetzten Tickets kommt aus dessen Labels,
+  // nicht hart 'build' -- sonst kaeme ein fortgesetzter Denk-Lauf als Bau-Lauf
+  // zurueck (READONLY_TOOLS/planPrompt()/Opus wuerden faelschlich uebersprungen).
+  let role: RunRole = resumable.length > 0 ? roleFromLabels(resumable[0]!) : 'build';
   let ciFix = false;
   let ciSummary = '';
 
@@ -957,6 +960,20 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
     // global gefragt (#145): ein woanders wartendes Ticket darf die
     // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
     const postLabels = labelsOf(issue, gh);
+
+    // #387 AC4: Backstop fuers Entfernen von 'in-progress' nach einem
+    // Denk-Lauf. Der Prompt weist Claude an, beim Flip (plan->ready,
+    // research->needs-answer) 'in-progress' selbst zu entfernen -- ein
+    // abgebrochener oder vergesslicher Lauf koennte das Rollenlabel flippen
+    // und 'in-progress' trotzdem stehen lassen. Deterministisch statt auf den
+    // Prompt allein zu vertrauen: fehlt nach dem Lauf das Rollenlabel
+    // (plan/research), ist 'in-progress' stale und faellt hier weg. Bleibt
+    // das Rollenlabel stehen (z. B. der Planer hat nur eine Frage gestellt),
+    // ist der Lauf noch nicht fertig -- 'in-progress' bleibt bewusst.
+    if ((role === 'plan' || role === 'research') && !hasLabelWord(postLabels, role)) {
+      tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'in-progress']);
+    }
+
     if (hasLabelWord(postLabels, 'needs-answer')) {
       // #272: kein Umlabeln mehr. Das Ticket behaelt 'in-progress'; die
       // Auswahl ueberspringt es wegen 'needs-answer' und nimmt es ueber

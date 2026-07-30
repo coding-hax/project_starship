@@ -207,19 +207,20 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '70', '--add-label', 'in-progress', '--remove-label', 'ready']);
   });
 
-  it('Queue-Pick mit role=plan: keine Label-Mutation, MODE=start ohne Session', () => {
+  it('Queue-Pick mit role=plan: in-progress dazu (ready bleibt unberuehrt), MODE=start ohne Session', () => {
     const gh = ghDouble();
     const outcome = pickTicket([issue(60, ['plan'])], '- #60', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 60, role: 'plan', mode: 'start' });
-    expect(gh.run).not.toHaveBeenCalled();
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '60', '--add-label', 'in-progress']);
+    expect(gh.run).toHaveBeenCalledTimes(1);
   });
 
-  it('plan-Fallback mit vorhandener Session -> MODE=resume', () => {
+  it('plan-Fallback mit vorhandener Session -> MODE=resume, in-progress dazu (#387 AC1)', () => {
     state.write('session-think-47', 'sess-abc123');
     const gh = ghDouble();
     const outcome = pickTicket([issue(47, ['research'])], '', gh, state);
     expect(outcome).toEqual({ kind: 'ticket', issue: 47, role: 'research', mode: 'resume' });
-    expect(gh.run).not.toHaveBeenCalled();
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '47', '--add-label', 'in-progress']);
   });
 
   it('leere Session-Datei zaehlt als keine Session -> MODE=start', () => {
@@ -231,6 +232,7 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
       role: 'research',
       mode: 'start',
     });
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '47', '--add-label', 'in-progress']);
   });
 
   it('ready-Fallback: ready->in-progress, MODE=start', () => {
@@ -252,6 +254,49 @@ describe('pickTicket (Orchestrierung: Mutation + MODE)', () => {
     const gh = ghDouble();
     expect(pickTicket([], '', gh, state)).toEqual({ kind: 'none' });
     expect(gh.run).not.toHaveBeenCalled();
+  });
+
+  // #387: Denk-Laeufe (plan/research) tragen in-progress, solange sie laufen,
+  // und werden beim Fortsetzen als Denk-Lauf erkannt -- nicht als Bau-Lauf.
+  describe('Denk-Laeufe tragen in-progress (#387)', () => {
+    it('AC1: ein plan-Fallback-Treffer bekommt in-progress dazu, ready bliebe unberuehrt (waere es gesetzt)', () => {
+      const gh = ghDouble();
+      const outcome = pickTicket([issue(91, ['plan', 'ready'])], '', gh, state);
+      expect(outcome).toEqual({ kind: 'ticket', issue: 91, role: 'plan', mode: 'start' });
+      expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '91', '--add-label', 'in-progress']);
+      expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--remove-label']));
+    });
+
+    it('AC2: selectTicket liest die Rolle eines laufenden Denk-Tickets aus den Labels, nicht hart build', () => {
+      expect(selectTicket([issue(91, ['in-progress', 'plan'])])).toEqual({ issue: 91, role: 'plan', source: 'running' });
+      expect(selectTicket([issue(92, ['in-progress', 'research'])])).toEqual({
+        issue: 92,
+        role: 'research',
+        source: 'running',
+      });
+    });
+
+    it('AC2: pickTicket running-case reicht die Denk-Rolle durch, ohne erneut zu labeln', () => {
+      state.write('session-think-91', 'sess-plan-1');
+      const gh = ghDouble();
+      const outcome = pickTicket([issue(91, ['in-progress', 'plan'])], '', gh, state);
+      expect(outcome).toEqual({ kind: 'ticket', issue: 91, role: 'plan', mode: 'resume' });
+      expect(gh.run).not.toHaveBeenCalled();
+    });
+
+    it('AC2: fehlt die Denk-Session beim laufenden Ticket, ist MODE=start statt resume', () => {
+      const gh = ghDouble();
+      const outcome = pickTicket([issue(92, ['in-progress', 'research'])], '', gh, state);
+      expect(outcome).toEqual({ kind: 'ticket', issue: 92, role: 'research', mode: 'start' });
+      expect(gh.run).not.toHaveBeenCalled();
+    });
+
+    it('ein laufendes Bau-Ticket bleibt unveraendert build/resume', () => {
+      const gh = ghDouble();
+      const outcome = pickTicket([issue(93, ['in-progress'])], '', gh, state);
+      expect(outcome).toEqual({ kind: 'ticket', issue: 93, role: 'build', mode: 'resume' });
+      expect(gh.run).not.toHaveBeenCalled();
+    });
   });
 });
 
