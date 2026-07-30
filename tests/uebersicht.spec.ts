@@ -132,8 +132,17 @@ test('am Folgetag ist die gestern abgehakte Aufgabe aus der Übersicht verschwun
 
   await page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }).click();
   await expect(dueTaskItems(page)).toHaveCount(1);
+  // Erledigung muss persistiert sein, bevor der Tag wechselt — sonst lädt der
+  // Reload die noch offene (überfällige) Aufgabe und verdeckt die eigentliche Prüfung.
+  await expect(
+    page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }),
+  ).toBeChecked();
 
-  await skewClock(page, TOMORROW_NOON);
+  // Ein page.reload() setzt die Fake-Uhr auf den im beforeEach installierten
+  // Ausgangswert (NOW) zurück, nicht auf das letzte setFixedTime — die neu geladene
+  // Übersicht würde sonst weiter „heute" rendern. Neu aufsetzen, damit der frische
+  // Load tatsächlich am Folgetag passiert (issue #228 AC2+AC3).
+  await page.clock.install({ time: new Date(TOMORROW_NOON) });
   await page.reload();
 
   await expect(dueTaskItems(page)).toHaveCount(0);
