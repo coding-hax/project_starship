@@ -288,3 +288,115 @@ test('ohne Verbindung bietet der Gate kein Einrichten an, Wiederholen loest es a
   await second.getByRole('button', { name: 'Erneut versuchen' }).click();
   await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
+
+test('mehrere Tabs sperren konsistent, wenn der Auto-Lock-Timer eines Tabs ablaeuft (ADR-0016 Punkt 1)', async ({
+  page,
+  context,
+}) => {
+  await page.clock.install({ time: new Date() });
+  await setUpJournal(page, PASSPHRASE);
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  const secondPage = await context.newPage();
+  await secondPage.goto('/journal');
+  await expect(secondPage.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  // Uhr nur auf Tab A -- Tab Bs eigener 15-min-Echtzeittimer feuert in diesem
+  // Testfenster nicht, Tab B sperrt allein durch den Broadcast von A.
+  await freezeClock(page);
+  await page.clock.fastForward(AUTO_LOCK_MS + 1_000);
+
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  await expect(secondPage.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+});
+
+test('Ent- und Sperren funktioniert vollstaendig offline (ADR-0016 Punkt 2)', async ({
+  page,
+  context,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+  // Online neu geladen -- eine Navigation waehrend offline verschluckt im App
+  // Router die RSC-Payload (siehe Kommentar am #371-AC4-Test); readEnvelope()
+  // liest die schon lokal vorhandene Huelle, kein Pull noetig.
+  await page.reload();
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+
+  await context.setOffline(true);
+
+  await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  await page.evaluate(() => window.__starship.journalLock());
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+
+  await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('Opt-in AN schaltet den Auto-Lock-Timer ab (ADR-0016 Punkt 3, AC6 Gegenprobe)', async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date() });
+  await setUpJournal(page, PASSPHRASE);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Übersicht' }).click();
+  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+
+  const toggle = page.getByRole('switch', { name: 'Auf diesem Gerät entsperrt lassen' });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect
+    .poll(() => page.evaluate(() => window.__starship.journalHasPersistedDek()))
+    .toBe(true);
+
+  await nav.getByRole('link', { name: 'Journal' }).click();
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  // page.clock ueberlebt die client-seitigen Navigationen (kein Dokument-Reload).
+  await freezeClock(page);
+  await page.clock.fastForward(AUTO_LOCK_MS + 60_000);
+
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+});
+
+test('Geraetewechsel ohne persistierten DEK landet gesperrt, nicht automatisch offen (ADR-0016 Punkt 4)', async ({
+  page,
+  browser,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await nav.getByRole('link', { name: 'Übersicht' }).click();
+  await page.getByRole('link', { name: 'Einstellungen' }).click();
+  await expect(page).toHaveURL(/\/einstellungen$/);
+  const toggle = page.getByRole('switch', { name: 'Auf diesem Gerät entsperrt lassen' });
+  await toggle.click();
+  await expect
+    .poll(() => page.evaluate(() => window.__starship.journalHasPersistedDek()))
+    .toBe(true);
+
+  await nav.getByRole('link', { name: 'Journal' }).click();
+  await pushEverything(page);
+
+  // openSecondDevice kopiert storageState inkl. localStorage -- das Opt-in-Flag
+  // reist also mit. Genau das macht den Test aussagekraeftig: das Flag allein
+  // entsperrt B nicht, weil der persistierte DEK im IndexedDB-Store
+  // journalSession liegt, der nicht Teil von storageState ist.
+  const second = await openSecondDevice(browser, page);
+  await second.goto('/journal');
+
+  await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
+  await expect(second.locator('.journal-gate[data-state="unlocked"]')).toHaveCount(0);
+  expect(await second.evaluate(() => window.__starship.journalHasPersistedDek())).toBe(false);
+
+  await second.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+  await second.getByRole('button', { name: 'Entsperren', exact: true }).click();
+  await expect(second.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+});
