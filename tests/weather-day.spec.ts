@@ -319,6 +319,25 @@ test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard
   }
 });
 
+test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur oberen Box mit den rohen Tageswerten (issue #381)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const summary = await page.locator('.weather-day__summary').boundingBox();
+  const [tagesverlauf, niederschlag] = await page.locator('.weather-day__card').all();
+  const tagesverlaufBox = await tagesverlauf.boundingBox();
+  const niederschlagBox = await niederschlag.boundingBox();
+
+  const gapToChart = tagesverlaufBox!.y - (summary!.y + summary!.height);
+  const gapBetweenCharts = niederschlagBox!.y - (tagesverlaufBox!.y + tagesverlaufBox!.height);
+
+  expect(gapBetweenCharts).toBeLessThanOrEqual(gapToChart + 0.5);
+});
+
 test('die Überschriften „Tagesverlauf" und „Niederschlag" sitzen dicht unter der Oberkante ihrer Box', async ({
   page,
 }) => {
