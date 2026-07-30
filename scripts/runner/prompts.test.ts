@@ -144,6 +144,20 @@ describe('prompts', () => {
     });
   });
 
+  // #397: eigene Fund-Tickets duerfen wieder `plan` tragen -- unbedingt, auch
+  // ganz ohne bekannte Fund-Tickets (found=[]), sonst faehrt der allererste
+  // Fund labellos in den Posteingang statt in die Selbstheilung.
+  describe('Fund-Tickets tragen plan (#397)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt --label plan fuer selbst angelegte Fund-Tickets, auch ohne bekannte', (_name, prompt) => {
+      expect(prompt).toContain('--label plan');
+      expect(prompt).toContain('im selben Schritt');
+      expect(prompt).toContain('nur selbst angelegte');
+    });
+  });
+
   describe('CI-Fix-Prompt', () => {
     it('traegt die Fehlerursache woertlich in den Prompt', () => {
       expect(ciFixPrompt(7, 'shell.spec.ts:114 rot — Header-Aktivzustand')).toContain(
