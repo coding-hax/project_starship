@@ -150,6 +150,8 @@ function JournalSetupForm({ onSetup }: { onSetup: (passphrase: string) => Promis
         onChange={(event) => setPassphrase(event.target.value)}
         aria-label="Passphrase"
         placeholder="Passphrase"
+        name="new-journal-passphrase"
+        autoComplete="new-password"
       />
       <input
         type="password"
@@ -158,6 +160,8 @@ function JournalSetupForm({ onSetup }: { onSetup: (passphrase: string) => Promis
         onChange={(event) => setConfirm(event.target.value)}
         aria-label="Passphrase wiederholen"
         placeholder="Passphrase wiederholen"
+        name="new-journal-passphrase-confirm"
+        autoComplete="new-password"
       />
       {mismatch && (
         <p className="journal-gate__message" role="status">
@@ -221,6 +225,8 @@ function JournalUnlockForm({
         }
         aria-label={mode === 'passphrase' ? 'Passphrase' : 'Wiederherstellungsschlüssel'}
         placeholder={mode === 'passphrase' ? 'Passphrase' : 'Wiederherstellungsschlüssel'}
+        name={mode === 'passphrase' ? 'journal-passphrase' : undefined}
+        autoComplete={mode === 'passphrase' ? 'current-password' : 'off'}
       />
       {/* role=status, nie --danger (AC5): falsch ist ein ruhiger Hinweis, kein Fehlerbild —
           gilt für die falsche Passphrase genauso wie für den falschen Recovery-Key. */}
@@ -285,6 +291,8 @@ function JournalRewrapForm({
         onChange={(event) => setPassphrase(event.target.value)}
         aria-label="Neue Passphrase"
         placeholder="Neue Passphrase"
+        name="new-journal-passphrase"
+        autoComplete="new-password"
       />
       <input
         type="password"
@@ -293,6 +301,8 @@ function JournalRewrapForm({
         onChange={(event) => setConfirm(event.target.value)}
         aria-label="Neue Passphrase wiederholen"
         placeholder="Neue Passphrase wiederholen"
+        name="new-journal-passphrase-confirm"
+        autoComplete="new-password"
       />
       {mismatch && (
         <p className="journal-gate__message" role="status">

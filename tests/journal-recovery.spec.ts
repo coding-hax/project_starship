@@ -119,10 +119,19 @@ test('AC4: nach Recovery-Unlock kann eine neue Passphrase gesetzt werden, der DE
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 
   await page.getByRole('button', { name: 'Mit Wiederherstellungsschlüssel entsperren' }).click();
+  // Fund #392: der Recovery-Key soll nicht als neues Passwort vorgeschlagen werden.
+  await expect(page.getByLabel('Wiederherstellungsschlüssel')).toHaveAttribute(
+    'autocomplete',
+    'off',
+  );
   await page.getByLabel('Wiederherstellungsschlüssel').fill(recoveryKey);
   await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
 
   const NEW_PASSPHRASE = 'ac4 neue passphrase';
+  await expect(page.getByLabel('Neue Passphrase', { exact: true })).toHaveAttribute(
+    'autocomplete',
+    'new-password',
+  );
   await page.getByLabel('Neue Passphrase', { exact: true }).fill(NEW_PASSPHRASE);
   await page.getByLabel('Neue Passphrase wiederholen').fill(NEW_PASSPHRASE);
   await page.getByRole('button', { name: 'Festlegen' }).click();
