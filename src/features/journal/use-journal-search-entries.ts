@@ -22,9 +22,14 @@ export function useJournalSearchEntries(): JournalSearchEntry[] | undefined {
       db.records.where('table').equals('journal_entries').toArray(),
     ).subscribe({
       next: () => {
-        void loadSearchableJournalEntries().then((loaded) => {
-          if (!cancelled) setEntries(loaded);
-        });
+        void loadSearchableJournalEntries()
+          .then((loaded) => {
+            if (!cancelled) setEntries(loaded);
+          })
+          .catch((error) => {
+            console.error('journal search cache load failed', error);
+            if (!cancelled) setEntries([]);
+          });
       },
       error: (error) => console.error('journal search live query failed', error),
     });
