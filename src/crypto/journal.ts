@@ -141,3 +141,32 @@ export async function rewrapPassphrase(
   );
   return wrapDek(extractableDek, newPassphrase, kdfParamsOverride);
 }
+
+export interface ReissuedRecovery {
+  recoveryEnvelope: Envelope;
+  recoveryKey: string;
+}
+
+/**
+ * Issues a fresh recovery key for an already-set-up journal (issue #391): the
+ * original key can never be shown again (only its KEK-wrapped DEK is stored), so
+ * this generates a new one and re-wraps the *same* DEK under it — the old
+ * recovery envelope is overwritten and its key becomes invalid, entries stay
+ * readable under the unchanged DEK. Requires the passphrase (the only remaining
+ * proof of knowledge once the old recovery key is lost) to obtain an extractable
+ * DEK; a wrong passphrase throws `WrongPassphraseError` before anything is wrapped.
+ */
+export async function reissueRecovery(
+  passphraseEnvelope: Envelope,
+  passphrase: string,
+  kdfParamsOverride: Omit<KdfParams, 'salt'> = DEFAULT_KDF_PARAMS,
+): Promise<ReissuedRecovery> {
+  const extractableDek = await openEnvelopeExtractable(passphraseEnvelope, passphrase);
+  const recoveryKey = generateRecoveryKey();
+  const recoveryEnvelope = await wrapDek(
+    extractableDek,
+    normalizeRecoveryKey(recoveryKey),
+    kdfParamsOverride,
+  );
+  return { recoveryEnvelope, recoveryKey };
+}
