@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -527,6 +528,123 @@ test('AC8: zwei Geräte legen offline unabhängig je einen Eintrag für denselbe
   const conflictsB = await deviceB.evaluate(() => window.__starship.debugJournalConflicts());
   expect(conflictsA).toHaveLength(0);
   expect(conflictsB).toHaveLength(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #394 (Fund aus #377 Punkt 3): debugDumpStores (e2e-bridge.tsx)       */
+/* serialisiert seit #338/#341 auch journalConflicts. Diese zwei Tests        */
+/* beweisen aktiv, dass eine Konflikt-Kopie reines Chiffrat bleibt UND dass   */
+/* die Tagesliste (mehrere Einträge an einem Tag, #376) nie als Klartext in   */
+/* einem JSON-serialisierbaren Store landet (Regel 9).                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Schreibt eine journal_entries-Zeile mit einer FEST VORGEGEBENEN rowId über den
+ * rohen `mutate()` statt über write.ts/entry.ts — der einzige Weg, die Zeilen-id-
+ * Kollision zu erzwingen, die seit #376/ADR-0018 (zufällige uuidv7 statt
+ * deterministischer id) über den normalen Schreibpfad praktisch nie mehr vorkommt
+ * (siehe Kommentar bei AC8 oben). `mutate` ist dafür real genug — es ist derselbe
+ * Aufruf, den write.ts selbst macht, nur mit expliziter statt zufälliger rowId.
+ */
+async function writeRawEntry(devicePage: Page, rowId: string, entryDate: string, text: string): Promise<void> {
+  await devicePage.evaluate(
+    async ({ rowId, entryDate, text }) => {
+      const envelope = await window.__starship.createEnvelope('raw entry passphrase', {
+        name: 'PBKDF2',
+        hash: 'SHA-256',
+        iterations: 1000,
+      });
+      const dek = await window.__starship.openEnvelope(envelope, 'raw entry passphrase');
+      const { ciphertext, nonce } = await window.__starship.encryptJournal(dek, { text, tags: [] });
+      await window.__starship.mutate({
+        table: 'journal_entries',
+        rowId,
+        op: 'upsert',
+        payload: {
+          entryDate,
+          ciphertext: window.__starship.bytesToBase64(ciphertext),
+          nonce: window.__starship.bytesToBase64(nonce),
+        },
+      });
+    },
+    { rowId, entryDate, text },
+  );
+}
+
+test('AC1 (#394): ein per pull() verdrängter Eintrag landet als reines Chiffrat in journalConflicts, nie als Klartext', async ({
+  page,
+  browser,
+  context,
+}) => {
+  await registerPasskey(page);
+  const deviceB = await openSecondDevice(browser, page);
+
+  const rowId = randomUUID();
+  const entryDate = '2026-07-29';
+  const secretA = 'GERAET-A-VERDRAENGTER-KLARTEXT';
+  const secretB = 'GERAET-B-GEWINNT-KLARTEXT';
+
+  // Offline-Pfad (AC3): beide Geräte schreiben zunächst ohne Netz.
+  await context.setOffline(true);
+  await deviceB.context().setOffline(true);
+  await writeRawEntry(page, rowId, entryDate, secretA);
+  await writeRawEntry(deviceB, rowId, entryDate, secretB);
+
+  // Gerät A geht zuerst online: seine Zeile landet als Erste auf dem Server,
+  // der anschließende pull() im selben sync() stempelt ihren echten syncSeq.
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  // Gerät B geht online und überschreibt dieselbe Server-Zeile mit seinem
+  // eigenen Chiffrat (Push/Pull sind real, kein Stand-in).
+  await deviceB.context().setOffline(false);
+  await deviceB.evaluate(() => window.__starship.sync());
+
+  // Gerät A pullt erneut: sein lokaler Stand (secretA) weicht jetzt vom Server
+  // (secretB) ab — genau der PRESERVE_DISPLACED-Zweig in src/local/sync.ts.
+  await page.evaluate(() => window.__starship.sync());
+
+  const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
+  expect(conflicts).toHaveLength(1);
+  expect(conflicts[0].entryDate).toBe(entryDate);
+
+  const dump = await page.evaluate(() => window.__starship.debugDumpStores());
+  expect(dump).not.toContain(secretA);
+  expect(dump).not.toContain(secretB);
+});
+
+test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen nie als Klartext in einem Store', async ({
+  page,
+  context,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/journal');
+  // Offline-Pfad (AC3): Einrichten und alle drei Einträge entstehen ohne Netz.
+  await context.setOffline(true);
+
+  await page.getByLabel('Passphrase', { exact: true }).fill(EDITOR_PASSPHRASE);
+  await page.getByLabel('Passphrase wiederholen').fill(EDITOR_PASSPHRASE);
+  await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.getByTestId('journal-recovery-key').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+
+  const secrets = ['TAGESEINTRAG-EINS-GEHEIM', 'TAGESEINTRAG-ZWEI-GEHEIM', 'TAGESEINTRAG-DREI-GEHEIM'];
+  for (const text of secrets) {
+    await page.getByLabel('Journal-Text').fill(text);
+    await submit(page);
+  }
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(secrets.length);
+
+  const dumpOffline = await page.evaluate(() => window.__starship.debugDumpStores());
+  for (const secret of secrets) expect(dumpOffline).not.toContain(secret);
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const dumpOnline = await page.evaluate(() => window.__starship.debugDumpStores());
+  for (const secret of secrets) expect(dumpOnline).not.toContain(secret);
 });
 
 /* -------------------------------------------------------------------------- */
