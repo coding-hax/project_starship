@@ -236,6 +236,26 @@ describe('prompts', () => {
     });
   });
 
+  // #410 R3 (AK7-AK8): Geschwister-Vermerk -- Vorfall 1 (#394/#395 haben sich
+  // gegenseitig rot gemacht, weil kein Ticket vom anderen wusste).
+  describe('Geschwister-Vermerk (#410 R3)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt "Geschwister: #a #b #c" im Body mehrerer eigener Fund-Tickets', (_name, prompt) => {
+      expect(prompt).toContain('Geschwister: #a #b #c');
+      expect(prompt).toContain('die jeweils anderen');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt, Geschwister vor dem Bauen zu lesen und Ueberschneidungen zu benennen', (_name, prompt) => {
+      expect(prompt).toContain('Vor dem eigentlichen Bauen');
+      expect(prompt).toContain('im Fortschrittskommentar benannt statt blind gebaut');
+    });
+  });
+
   // #410 R1/AK1: ein Ticket mit mehreren 'Fund:'-Zeilen rendert alle
   // Schluessel gejoint in der Liste bekannter Fund-Tickets.
   describe('Mehrfachschluessel in der Liste bekannter Fund-Tickets (#410 R1)', () => {

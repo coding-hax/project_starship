@@ -75,7 +75,11 @@ weitergehen. Ist es *neue Information* (ein anderer Fehler, eine zweite
 Ursache) — ein eigenes Ticket mit demselben \`Fund:\`-Schlüssel plus
 \`Nachtrag zu #X\` im Body. Ausgenommen bleiben der bauende Lauf selbst (der
 Fortschritts-, Blocker- und der Pflichtkommentar bei sensiblen Pfaden
-bleiben unverändert Pflicht) und der Mensch.`;
+bleiben unverändert Pflicht) und der Mensch.
+
+**Geschwister-Vermerk.** Legt dieser Lauf mehrere Fund-Tickets an, trägt
+jedes im Body \`Geschwister: #a #b #c\` (die jeweils anderen).
+Vor dem eigentlichen Bauen die im Body des aktuellen Tickets genannten Geschwister lesen — berühren zwei davon dieselbe Datei oder denselben Test, wird das im Fortschrittskommentar benannt statt blind gebaut.`;
 
   if (found.length > 0) {
     const list = found
