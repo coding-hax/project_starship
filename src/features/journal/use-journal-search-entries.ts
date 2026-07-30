@@ -2,6 +2,7 @@ import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { db } from '@/local/dexie';
 import { loadSearchableJournalEntries } from './journal-search-cache';
+import { logJournalQueryError } from './log-query-error';
 import type { JournalSearchEntry } from './search';
 
 /**
@@ -26,12 +27,12 @@ export function useJournalSearchEntries(): JournalSearchEntry[] | undefined {
           .then((loaded) => {
             if (!cancelled) setEntries(loaded);
           })
-          .catch((error) => {
-            console.error('journal search cache load failed', error);
+          .catch(() => {
+            logJournalQueryError('journal search cache load failed');
             if (!cancelled) setEntries([]);
           });
       },
-      error: (error) => console.error('journal search live query failed', error),
+      error: () => logJournalQueryError('journal search live query failed'),
     });
     return () => {
       cancelled = true;
