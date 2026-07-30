@@ -181,6 +181,16 @@ describe('untriaged (#357)', () => {
     expect(untriaged(snap, [], noMeta)).toEqual([349, 400]);
     expect(untriaged([], [], noMeta)).toEqual([]);
   });
+
+  // #397: der Runner darf eigene Fund-Tickets wieder mit `plan` labeln --
+  // ein frisches Fund-Ticket taucht damit nicht mehr im Untriagiert-Bericht
+  // auf, obwohl es der Lauf selbst angelegt hat.
+  it('excludes a fresh find ticket that already carries plan', () => {
+    const snap: QueueIssue[] = [
+      { number: 349, labels: [label('plan')], body: 'Fund: tests/aktivitaeten.spec.ts:608' },
+    ];
+    expect(untriaged(snap, [], noMeta)).toEqual([]);
+  });
 });
 
 // #366: der Fundschluessel macht ein Fund-Ticket ueber den Testort statt der
