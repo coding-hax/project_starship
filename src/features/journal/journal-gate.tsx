@@ -16,7 +16,8 @@ import './journal-gate.css';
  * so both checks run *before* the `state` branches below, not inside them.
  */
 export function JournalGate() {
-  const { state, error, setup, unlock, unlockWithRecovery, rewrapPassphrase } = useJournalLock();
+  const { state, error, setup, unlock, unlockWithRecovery, rewrapPassphrase, retry } =
+    useJournalLock();
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [rewrapKey, setRewrapKey] = useState<string | null>(null);
 
@@ -66,6 +67,20 @@ export function JournalGate() {
         }}
         onSkip={() => setRewrapKey(null)}
       />
+    );
+  }
+
+  // Kein `setup`, solange unbekannt ist, ob es schon eine Hülle gibt (issue #371):
+  // einrichten würde den vorhandenen Schlüssel überschreiben.
+  if (state === 'unavailable') {
+    return (
+      <div className="journal-gate" data-state="unavailable">
+        <h2 className="journal-gate__title">Journal nicht erreichbar</h2>
+        <p className="journal-gate__hint">{error}</p>
+        <button type="button" className="journal-gate__submit" onClick={() => void retry()}>
+          Erneut versuchen
+        </button>
+      </div>
     );
   }
 

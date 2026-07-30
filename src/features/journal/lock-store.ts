@@ -8,11 +8,21 @@ import {
   openEnvelopeWithRecovery,
   rewrapPassphrase,
 } from '@/crypto/journal';
+import { pull } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
 import { readEnvelope, readRecoveryEnvelope, writeEnvelope, writeEnvelopes } from './journal-keys';
 import { readJournalPersistPref, subscribeJournalPersistPref } from './use-journal-persist-pref';
 
-export type JournalLockState = 'loading' | 'setup' | 'locked' | 'unlocked';
+export type JournalLockState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'unavailable';
+
+/** Shown in `unavailable` (issue #371) — offering setup here would risk re-wrapping
+ * the account's DEK, so the gate says why it cannot decide instead. */
+const UNAVAILABLE_MESSAGE =
+  'Ohne Verbindung lässt sich nicht prüfen, ob für dieses Konto schon eine Passphrase vergeben ist.';
+
+/** Shown when a setup is attempted although an envelope already exists (issue #371). */
+const ALREADY_SET_UP_MESSAGE =
+  'Für dieses Konto gibt es bereits eine Passphrase. Entsperre das Journal, statt es neu einzurichten.';
 
 /**
  * The inactivity window (issue #339 AC6) — the one named constant the auto-lock
@@ -161,13 +171,38 @@ async function initialize(): Promise<void> {
     return;
   }
 
-  const envelope = await readEnvelope();
+  const local = await readEnvelope();
   if (current.state !== 'loading') return;
-  if (!envelope) {
-    setSnapshot({ state: 'setup', error: null });
+  if (local) {
+    await settleWithEnvelope(ch);
     return;
   }
 
+  // "No local envelope" is not "no envelope" (issue #371). A device that has never
+  // pulled — fresh install, storage evicted by iOS, or simply the Safari container
+  // next to the home-screen PWA — would otherwise be offered a setup, and that
+  // setup upserts a new DEK onto the fixed row id, orphaning every existing entry.
+  // So ask the server once before believing the local emptiness.
+  const pulled = await pull();
+  if (current.state !== 'loading') return;
+
+  const remote = await readEnvelope();
+  if (current.state !== 'loading') return;
+  if (remote) {
+    await settleWithEnvelope(ch);
+    return;
+  }
+
+  if (!pulled) {
+    setSnapshot({ state: 'unavailable', error: UNAVAILABLE_MESSAGE });
+    return;
+  }
+
+  setSnapshot({ state: 'setup', error: null });
+}
+
+/** Locked, unless another tab is already unlocked and hands its DEK over (AC7). */
+async function settleWithEnvelope(ch: BroadcastChannel): Promise<void> {
   const shared = await requestSharedDek(ch);
   if (current.state !== 'loading') return;
   if (shared) {
@@ -180,14 +215,33 @@ async function initialize(): Promise<void> {
   setSnapshot({ state: 'locked', error: null });
 }
 
+/** The way out of `unavailable` — same decision, run again (issue #371 AC4). */
+export async function journalRetryInitialize(): Promise<void> {
+  initPromise = null;
+  setSnapshot({ state: 'loading', error: null });
+  await ensureInitialized();
+}
+
 function ensureInitialized(): Promise<void> {
   if (!initPromise) initPromise = initialize();
   return initPromise;
 }
 
-/** Returns the recovery key (AC2) — a KEK secret, never the DEK, shown to the
- * user exactly once and never sent to the server. */
-export async function journalSetup(passphrase: string): Promise<string> {
+/** Returns the recovery key (AC2, #372) — a KEK secret, never the DEK, shown to
+ * the user exactly once and never sent to the server. `null` when setup is
+ * refused because an envelope already exists (issue #371): the row id is fixed,
+ * so a second setup would upsert a fresh DEK over the account's envelope and
+ * leave every entry written under the old one permanently unreadable. */
+export async function journalSetup(passphrase: string): Promise<string | null> {
+  if (await readEnvelope()) {
+    // Eine bereits entsperrte Sitzung bleibt entsperrt — der DEK im Speicher ist
+    // gültig, nur das Einrichten wird verweigert.
+    if (current.state !== 'unlocked') {
+      setSnapshot({ state: 'locked', error: ALREADY_SET_UP_MESSAGE });
+    }
+    return null;
+  }
+
   const result = await createEnvelopesWithRecovery(passphrase);
   await writeEnvelopes(result.passphraseEnvelope, result.recoveryEnvelope);
   dek = result.dek;
@@ -301,5 +355,6 @@ export function useJournalLock() {
     unlockWithRecovery: journalUnlockWithRecovery,
     rewrapPassphrase: journalRewrapPassphrase,
     lock: journalLock,
+    retry: journalRetryInitialize,
   };
 }
