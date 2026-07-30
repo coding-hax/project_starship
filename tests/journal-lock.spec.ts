@@ -88,6 +88,25 @@ test('Default speicherresident: Kaltstart sperrt wieder (AC4)', async ({ page })
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
 
+test('Passphrase-Felder tragen autocomplete fuer den Passwortmanager (Fund #392)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/journal');
+  await expect(page.getByLabel('Passphrase', { exact: true })).toHaveAttribute(
+    'autocomplete',
+    'new-password',
+  );
+
+  await setUpJournal(page, PASSPHRASE);
+  await page.reload();
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  await expect(page.getByLabel('Passphrase', { exact: true })).toHaveAttribute(
+    'autocomplete',
+    'current-password',
+  );
+});
+
 test('Opt-in Default AUS, eingeschaltet ueberlebt den Neustart, Schluessel bleibt non-extractable (AC5)', async ({
   page,
 }) => {
