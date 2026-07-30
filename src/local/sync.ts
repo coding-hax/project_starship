@@ -1,17 +1,6 @@
-import { uuidv7 } from 'uuidv7';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
-import type { Mutation, PullResponse, PushResponse, SyncTable } from './types';
-
-/**
- * Tables whose displaced version a pull-side overwrite must keep, not just drop
- * (ADR-0017 point 3, issue #338 AC6). Generic set rather than a `journal_entries`
- * branch inline, so the pull loop below stays a content-blind check on membership,
- * not a table-name special case. `journal_entries` carries text/mood/tags in one
- * atomic ciphertext (ADR-0004) — a field-level merge is impossible, so the only way
- * to not lose a concurrently-written version is to keep a copy of what got overwritten.
- */
-const PRESERVE_DISPLACED: ReadonlySet<SyncTable> = new Set(['journal_entries']);
+import type { Mutation, PullResponse, PushResponse } from './types';
 
 /**
  * Push, then pull. Never the other way round: pulling first would overwrite local
@@ -130,7 +119,7 @@ export async function pull(): Promise<boolean> {
 
   const { changes, cursor }: PullResponse = await response.json();
 
-  await db.transaction('rw', db.records, db.outbox, db.journalConflicts, async () => {
+  await db.transaction('rw', db.records, db.outbox, async () => {
     const queued = await db.outbox.toArray();
     const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
 
@@ -144,29 +133,6 @@ export async function pull(): Promise<boolean> {
       // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
       // legitimate incoming change, nor let a stale one through.
       if (local?.syncSeq != null && local.syncSeq >= change.syncSeq) continue;
-
-      // This overwrite would drop a locally-known ciphertext the server never saw
-      // (e.g. two devices creating the same day's entry offline — baseSeq is null on
-      // both sides, so push's own detectOverwrite never catches it). Keep it before
-      // it is gone. Content-blind: only the opaque ciphertext is compared, never
-      // decrypted (Regel 9).
-      if (
-        PRESERVE_DISPLACED.has(change.table) &&
-        local &&
-        typeof local.data.ciphertext === 'string' &&
-        typeof change.data.ciphertext === 'string' &&
-        local.data.ciphertext !== change.data.ciphertext
-      ) {
-        await db.journalConflicts.add({
-          id: uuidv7(),
-          entryDate: local.data.entryDate as string,
-          ciphertext: local.data.ciphertext,
-          nonce: local.data.nonce as string,
-          displacedSyncSeq: local.syncSeq,
-          updatedAt: local.updatedAt,
-          capturedAt: new Date().toISOString(),
-        });
-      }
 
       await db.records.put({
         table: change.table,
