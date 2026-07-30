@@ -109,6 +109,22 @@ describe('cleanupStateDir', () => {
     expect(removed).toEqual(['session-400']);
   });
 
+  // #387 AC7: seit #387 kann ein laufendes (in-progress) Ticket auch ein
+  // Denk-Lauf sein -- dessen Session liegt unter 'session-think-<nr>' (#356),
+  // nicht 'session-<nr>'. Ohne Anpassung schonte cleanupStateDir nur die
+  // (fuer einen Denk-Lauf gar nicht existierende) 'session-<nr>' und liess
+  // 'session-think-<nr>' nach 7 Tagen verfallen -- dieselbe Fehlerklasse wie
+  // Korrektur 5, nur fuer die Denk-Session.
+  it('verschont die Denk-Session (session-think-<nr>) eines laufenden Plan-Tickets DIESES Slots', () => {
+    file('session-think-500', 40);
+    claimTake(claims, 500, SLOT);
+
+    const removed = cleanupStateDir(dir, ghDouble({ '500': issueView('OPEN', 'in-progress', 'plan') }), NOW, claims, SLOT);
+
+    expect(removed).toEqual([]);
+    expect(readdirSync(dir)).toEqual(['session-think-500']);
+  });
+
   it('raeumt weiter auf, wenn gh fehlschlaegt -- dann ohne Schonung', () => {
     file('session-400', 40);
     claimTake(claims, 400, SLOT);

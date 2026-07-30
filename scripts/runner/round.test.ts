@@ -12,6 +12,7 @@ import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
 import { createClaimAdapter, type ClaimAdapter } from './claim';
 import { roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } from './round';
+import { READONLY_TOOLS } from './prompts';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
 
@@ -328,6 +329,40 @@ describe('roundPlan', () => {
     });
   });
 
+  // #387 AC2: ein Denk-Lauf, der wegen in-progress ueber den running-Zweig
+  // fortgesetzt wird, muss Denk-Lauf bleiben -- nicht hart als Bau-Lauf
+  // zurueckkommen (READONLY_TOOLS/planPrompt()/Opus wuerden sonst
+  // faelschlich uebersprungen und ein halbfertiger Plan gebaut).
+  describe('Resume-Rolle eines fortgesetzten Denk-Laufs (#387 AC2)', () => {
+    it('ein Ticket mit in-progress + plan wird als Planer-Lauf fortgesetzt, nicht als Bau-Lauf', () => {
+      const { gh } = ghDouble([openIssues(issueJson(80, ['in-progress', 'plan'])), noOpenPrs, labelsAre('in-progress', 'plan')]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('plan');
+      expect(run.model).toBe('opus');
+      expect(run.tools).toBe(READONLY_TOOLS);
+      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.prompt).toContain('als **Planer**');
+      expect(run.beforeTip).toBe('');
+    });
+
+    it('ein Ticket mit in-progress + research wird als Recherche-Lauf fortgesetzt', () => {
+      const { gh } = ghDouble([openIssues(issueJson(81, ['in-progress', 'research'])), noOpenPrs, labelsAre('in-progress', 'research')]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('research');
+      expect(run.model).toBe('opus');
+      expect(run.tools).toContain('WebSearch');
+      expect(run.denyTools).toBe('Edit,Write');
+    });
+
+    it('ein Ticket mit nur in-progress (Bau) bleibt unveraendert Bau-Rolle', () => {
+      const { gh } = ghDouble([openIssues(issueJson(82, ['in-progress'])), noOpenPrs, labelsAre('in-progress')]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('build');
+      expect(run.tools).toContain('Write');
+      expect(run.denyTools).toBe('');
+    });
+  });
+
   // ADR-0007: 'no-escalation' friert auf der Default-Stufe ein, auch wenn
   // bereits eine hoehere Stufe gestempelt ist.
   it('friert das Modell bei no-escalation ein', () => {
@@ -414,6 +449,27 @@ describe('roundPlan', () => {
       ]);
       const result = roundPlan(ctx(gh), queueOpts);
       expect(result.status?.text).toContain('Nicht gelistet, wartet auf einen Platz: #400');
+    });
+
+    // #387 AC7: ein Denk-Ticket, das jetzt in-progress traegt (#384-Fall
+    // ready+plan), darf nicht als "wartet auf einen Platz" erscheinen -- es
+    // belegt ja gerade selbst den Bauplatz. Der Filter schloss in-progress
+    // schon vorher aus (Z. 328); dieser Test belegt, dass das auch fuer den
+    // neuen Denk-Fall gilt.
+    it('AC7: ein ready+plan+in-progress-Ticket taucht nicht als wartend auf einen Platz auf', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(300, ['ready', 'plan', 'in-progress']), issueJson(400, ['ready'], '2024-02-01T00:00:00Z')),
+        noOpenPrs,
+        queueIs('- #999'),
+        labelsAre('ready', 'plan', 'in-progress'),
+      ]);
+      const result = roundPlan(ctx(gh), queueOpts);
+      // #300 traegt in-progress -- es IST der gerade laufende Denk-Lauf und
+      // taucht deshalb legitim als "Plant gerade #300" auf. Der Punkt von AC7
+      // ist die "Nicht gelistet"-Zeile: die nennt nur #400, nicht #300.
+      expect(result.status?.text).toContain('Nicht gelistet, wartet auf einen Platz: #400');
+      expect(result.status?.text).not.toContain('Nicht gelistet, wartet auf einen Platz: #300');
+      expect(result.status?.title).toContain('#300');
     });
 
     it('AC4: ein blockiertes Ticket bekommt blocked-by und wird nicht gebaut', () => {
@@ -861,6 +917,37 @@ describe('roundEval', () => {
     // #272: kein Umlabeln mehr -- das Ticket behaelt 'in-progress' und wird
     // allein durch 'needs-answer' aus der Auswahl gehalten.
     expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(false);
+  });
+
+  // #387 AC4: der Prompt weist Claude an, beim Flip auch 'in-progress' zu
+  // entfernen -- dieser Backstop im Runner setzt es deterministisch durch,
+  // falls ein Lauf das vergisst oder abbricht, nachdem er schon geflippt hat.
+  describe('in-progress-Backstop fuer Denk-Rollen (#387 AC4)', () => {
+    it('entfernt in-progress, wenn der Planer-Lauf sauber auf ready geflippt hat (plan-Label weg)', () => {
+      const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'ready' }]);
+      roundEval(ctx(gh), { ...plan, role: 'plan' }, ok, '');
+      expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(true);
+    });
+
+    it('entfernt in-progress, wenn der Recherche-Lauf auf needs-answer geflippt hat (research-Label weg)', () => {
+      const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'needs-answer' }]);
+      const result = roundEval(ctx(gh), { ...plan, role: 'research' }, ok, '');
+      expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(true);
+      // needs-answer greift danach weiterhin -- die Chain stoppt gelb.
+      expect(result.status?.emoji).toBe('🟡');
+    });
+
+    it('laesst in-progress stehen, wenn der Planer nur eine Frage gestellt hat (plan-Label bleibt)', () => {
+      const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'plan\nneeds-answer' }]);
+      roundEval(ctx(gh), { ...plan, role: 'plan' }, ok, '');
+      expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(false);
+    });
+
+    it('fasst in-progress bei der Bau-Rolle nicht an', () => {
+      const { gh, calls } = ghDouble([{ match: (a) => a.includes('labels'), reply: 'ready' }]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(called(calls, 'edit', '77', '--remove-label', 'in-progress')).toBe(false);
+    });
   });
 
   describe('Limit (429)', () => {

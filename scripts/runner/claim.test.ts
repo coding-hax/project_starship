@@ -139,6 +139,18 @@ describe('claim.ts (#204)', () => {
       claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
       expect(claims.readSlot(212)).toBeNull();
     });
+
+    // #387 AC6: seit #387 traegt ein Denk-Ticket zusaetzlich 'in-progress'
+    // (sichtbar + haelt den Claim ueber isStillClaimable() bereits ab #326).
+    // Dieser Fall bestand vorher nicht, weil pickTicket() 'in-progress' nur
+    // fuer Bau-Tickets setzte -- jetzt ist er der Regelfall fuer einen
+    // laufenden Denk-Lauf.
+    it('behält einen alten Claim eines Denk-Tickets, das zusaetzlich in-progress traegt', () => {
+      claimTake(claims, 213, '1');
+      const gh = ghDouble([issueView('OPEN', 'in-progress', 'plan')]);
+      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      expect(claims.readSlot(213)).toBe('1');
+    });
   });
 
   it('claimRelease entfernt einen Claim vollständig (rm -rf)', () => {
