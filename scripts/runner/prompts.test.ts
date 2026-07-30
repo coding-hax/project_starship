@@ -158,6 +158,37 @@ describe('prompts', () => {
     });
   });
 
+  // #410 R2 (AK4-AK6): kein Fund-Ticket ohne ausgeschlossene Umgebungsfallen
+  // bzw. CI-Beleg -- Vorfall am 30.07.26, vier Tickets (#404-#407) fuer einen
+  // Fehler, der nur im Extra-Worktree ohne 'pnpm install'/mit geerbtem
+  // STATE_DIR/REPO_DIR auftrat.
+  describe('Kein Fund ohne Reproduktion (#410 R2)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt den Ausschluss der zwei Umgebungsfallen vor dem Anlegen', (_name, prompt) => {
+      expect(prompt).toContain("'pnpm install'");
+      expect(prompt).toContain("'env -u STATE_DIR -u REPO_DIR'");
+      expect(prompt).toContain('CI-Beleg');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt bei fehlendem Nachweis eine Zeile im Fortschrittskommentar statt eines Tickets', (_name, prompt) => {
+      expect(prompt).toContain('entsteht **kein Ticket**');
+      expect(prompt).toContain('Zeile im Fortschrittskommentar');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt den Reproduktions-Nachweis im Body des Fund-Tickets', (_name, prompt) => {
+      expect(prompt).toContain('Arbeitsbaum + Kommandozeile');
+      expect(prompt).toContain('kein Fund, sondern ein Verdacht');
+    });
+  });
+
   describe('CI-Fix-Prompt', () => {
     it('traegt die Fehlerursache woertlich in den Prompt', () => {
       expect(ciFixPrompt(7, 'shell.spec.ts:114 rot — Header-Aktivzustand')).toContain(

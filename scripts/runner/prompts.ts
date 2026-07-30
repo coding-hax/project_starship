@@ -49,7 +49,19 @@ denselben Fundschlüssel → Kommentar am bestehenden Ticket statt eines neuen.
 Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
 \`plan\` (\`gh issue create --label plan\` oder folgendes \`gh issue edit
 --add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
-docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".`;
+docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".
+
+**Kein Fund ohne Reproduktion.** Vor dem Anlegen die zwei bekannten
+Umgebungsfallen ausschließen: 'pnpm install' ist im benutzten Arbeitsbaum
+gelaufen (fehlendes 'tsx' färbt **alle** Bash-Suiten unter
+'scripts/tests/' rot und tarnt sich als Fachfehler) und der Lauf benutzt
+'env -u STATE_DIR -u REPO_DIR' (sonst greifen die Suiten auf das echte
+'.runner/' zu statt auf ihr eigenes Testverzeichnis). Alternativ genügt ein
+CI-Beleg, dass derselbe Check dort rot ist. Ist keins von beidem erfüllt,
+entsteht **kein Ticket** — stattdessen eine Zeile im Fortschrittskommentar
+des laufenden Tickets. Das Fund-Ticket nennt im Body, wie reproduziert wurde
+(Arbeitsbaum + Kommandozeile, oder ein Link auf den roten CI-Job) — ohne
+diesen Nachweis ist es kein Fund, sondern ein Verdacht.`;
 
   if (found.length > 0) {
     const list = found.map((f) => `#${f.number} \`${f.key}\``).join(', ');
