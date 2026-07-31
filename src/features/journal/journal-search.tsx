@@ -7,6 +7,7 @@ import { searchJournalEntries, type JournalSearchEntry } from './search';
 import { useJournalSearchEntries } from './use-journal-search-entries';
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -55,6 +56,7 @@ export function JournalSearch({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showFilters, setShowFilters] = useState(false);
 
   const trimmed = query.trim();
   const isActive = Boolean(trimmed) || mood !== null || tag !== null || Boolean(from) || Boolean(to);
@@ -82,12 +84,16 @@ export function JournalSearch({
     onActiveChange?.(isActive);
   }, [isActive, onActiveChange]);
 
-  function handleSelect(entryDate: string) {
-    setQuery('');
+  function resetFilters() {
     setMood(null);
     setTag(null);
     setFrom('');
     setTo('');
+  }
+
+  function handleSelect(entryDate: string) {
+    setQuery('');
+    resetFilters();
     onSelect(entryDate);
   }
 
@@ -105,50 +111,66 @@ export function JournalSearch({
 
   return (
     <div className="journal-search">
-      <input
-        type="search"
-        className="journal-search__input"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Journal durchsuchen …"
-        aria-label="Journal durchsuchen"
-      />
-      <div className="journal-search__filters">
-        <div className="journal-search__mood-filter">
-          <MoodScale value={mood} onChange={setMood} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
-        </div>
-        {tagOptions.length > 0 && (
-          <select
-            className="journal-search__tag-select"
-            aria-label="Tag filtern"
-            value={tag ?? ''}
-            onChange={(event) => setTag(event.target.value || null)}
-          >
-            <option value="">Alle Tags</option>
-            {tagOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="journal-search__date-range">
-          <input
-            type="date"
-            className="journal-search__date-input"
-            aria-label="Von Datum"
-            value={from}
-            onChange={(event) => setFrom(event.target.value)}
-          />
-          <input
-            type="date"
-            className="journal-search__date-input"
-            aria-label="Bis Datum"
-            value={to}
-            onChange={(event) => setTo(event.target.value)}
-          />
-        </div>
+      <div className="journal-search__bar">
+        <input
+          type="search"
+          className="journal-search__input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Journal durchsuchen …"
+          aria-label="Journal durchsuchen"
+        />
+        <button
+          type="button"
+          className="journal-search__filter-toggle"
+          aria-expanded={showFilters}
+          aria-controls="journal-search-filters"
+          onClick={() => setShowFilters((current) => !current)}
+        >
+          Filter
+        </button>
       </div>
+      {showFilters && (
+        <div className="journal-search__filters" id="journal-search-filters">
+          <div className="journal-search__mood-filter">
+            <MoodScale value={mood} onChange={setMood} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
+          </div>
+          {tagOptions.length > 0 && (
+            <select
+              className="journal-search__tag-select"
+              aria-label="Tag filtern"
+              value={tag ?? ''}
+              onChange={(event) => setTag(event.target.value || null)}
+            >
+              <option value="">Alle Tags</option>
+              {tagOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
+          <div className="journal-search__date-range">
+            <input
+              type="date"
+              className="journal-search__date-input"
+              aria-label="Von Datum"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+            />
+            <input
+              type="date"
+              className="journal-search__date-input"
+              aria-label="Bis Datum"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+            />
+          </div>
+          <button type="button" className="journal-search__reset" onClick={resetFilters}>
+            Zurücksetzen
+          </button>
+        </div>
+      )}
       {isActive && entries !== undefined && results.length === 0 && (
         <p className="journal-search__empty">Keine Treffer.</p>
       )}

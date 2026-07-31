@@ -35,6 +35,12 @@ async function unlockEditor(page: Page, passphrase = SEARCH_PASSPHRASE): Promise
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
+/** issue #423 AC-B: Mood-/Tag-/Datumsfilter sind standardmäßig verborgen und
+ * erscheinen erst nach Klick auf den Filter-Button. */
+async function openFilters(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+}
+
 /** Seeds a real, decryptable entry via the actual unlocked session's DEK (the
  * same call the editor's submit makes) — several days of real content for the
  * search to find, without driving the UI for each one. */
@@ -129,7 +135,7 @@ test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des 
   // Datum UND Uhrzeit (issue #376 AC6) — ein Treffer ist ein Eintrag, kein Tag.
   // Die Stimmung (issue #415 AC-P2) sitzt als eigene Span im selben Datumsblock.
   await expect(result.locator('.journal-search__result-date')).toHaveText(
-    /^01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
+    /^Mi\., 01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
   );
   await result.click();
 
@@ -164,6 +170,7 @@ for (const viewport of [
     await search.fill('eintrag');
     // Filterzeile (Mood/Tag/Datum, issue #415) steht auch bei 375px ohne
     // horizontalen Scroll — Tag-select erscheint erst, weil oben ein Tag geseedet wurde.
+    await openFilters(page);
     await page.getByLabel('Tag filtern').selectOption('sport');
     await page.getByLabel('Von Datum').fill('2026-07-01');
     await page.getByLabel('Bis Datum').fill('2026-07-31');
@@ -181,6 +188,7 @@ test('AC-F1: Mood-Filter zeigt nur Einträge mit der gewählten Stimmung', async
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', mood: '7', tags: [] });
   await seedEntry(page, '2026-07-03', { text: 'Eintrag C', mood: '7', tags: [] });
 
+  await openFilters(page);
   const moodFilter = page.locator('.journal-search__mood-filter');
   await moodFilter.getByRole('button', { name: 'Stimmung 7 filtern', exact: true }).click();
 
@@ -194,6 +202,7 @@ test('AC-F2: Tag-Filter zeigt nur Einträge mit exakt diesem Tag', async ({ page
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: ['sport'] });
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: ['büro'] });
 
+  await openFilters(page);
   await page.getByLabel('Tag filtern').selectOption('sport');
 
   const results = page.locator('.journal-search__result');
@@ -207,6 +216,7 @@ test('AC-F3: Datum von/bis engt den Zeitraum inklusiv ein', async ({ page }) => 
   await seedEntry(page, '2026-07-05', { text: 'Eintrag B', tags: [] });
   await seedEntry(page, '2026-07-10', { text: 'Eintrag C', tags: [] });
 
+  await openFilters(page);
   const results = page.locator('.journal-search__result');
 
   // nur "von" (nach/gleich) — B und C
@@ -236,6 +246,7 @@ test('AC-F4: Freitext + Mood verengen gemeinsam auf die Schnittmenge', async ({ 
   await page.getByLabel('Journal durchsuchen').fill('lauf');
   await expect(results).toHaveCount(2);
 
+  await openFilters(page);
   const moodFilter = page.locator('.journal-search__mood-filter');
   await moodFilter.getByRole('button', { name: 'Stimmung 7 filtern', exact: true }).click();
   await expect(results).toHaveCount(1);
@@ -294,6 +305,7 @@ test('AC-P4: ein Treffer klicken setzt alle Filter zurück und zeigt wieder den 
   await seedEntry(page, '2026-07-01', { text: 'Eintrag mit Tag', mood: '5', tags: ['sport'] });
 
   await page.getByLabel('Journal durchsuchen').fill('eintrag');
+  await openFilters(page);
   const moodFilter = page.locator('.journal-search__mood-filter');
   await moodFilter.getByRole('button', { name: 'Stimmung 5 filtern', exact: true }).click();
   await page.getByLabel('Tag filtern').selectOption('sport');
@@ -341,6 +353,7 @@ test('AC7: die Suche nutzt Tokens, die sich im Dark Mode tatsächlich unterschei
   const lightBg = await search.evaluate((el) => getComputedStyle(el).backgroundColor);
 
   // Datumsfeld (issue #415) — neues Control, dieselbe Token-Erwartung.
+  await openFilters(page);
   const fromDate = page.getByLabel('Von Datum');
   const lightDateBg = await fromDate.evaluate((el) => getComputedStyle(el).backgroundColor);
 
@@ -350,4 +363,42 @@ test('AC7: die Suche nutzt Tokens, die sich im Dark Mode tatsächlich unterschei
 
   const darkDateBg = await fromDate.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkDateBg).not.toBe(lightDateBg);
+});
+
+test('AC-B: die Filter sind standardmäßig verborgen und lassen sich per Filter-Button auf- und zuklappen', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const filterToggle = page.getByRole('button', { name: 'Filter', exact: true });
+  await expect(page.locator('.journal-search__filters')).toHaveCount(0);
+  await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
+
+  await filterToggle.click();
+  await expect(page.locator('.journal-search__filters')).toBeVisible();
+  await expect(filterToggle).toHaveAttribute('aria-expanded', 'true');
+
+  await filterToggle.click();
+  await expect(page.locator('.journal-search__filters')).toHaveCount(0);
+  await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', mood: '5', tags: ['sport'] });
+  await seedEntry(page, '2026-07-15', { text: 'Eintrag B', mood: '2', tags: ['büro'] });
+
+  await openFilters(page);
+  const results = page.locator('.journal-search__result');
+  await page.getByLabel('Von Datum').fill('2026-07-01');
+  await page.getByLabel('Bis Datum').fill('2026-07-01');
+  await expect(results).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Zurücksetzen', exact: true }).click();
+
+  await expect(page.getByLabel('Von Datum')).toHaveValue('');
+  await expect(page.getByLabel('Bis Datum')).toHaveValue('');
+  // Beide Einträge sind ohne Freitext nur über die Filter überhaupt aktiv (isActive) —
+  // nach dem Reset ist keiner mehr gesetzt, die Suche fällt in den inaktiven Leerzustand.
+  await expect(results).toHaveCount(0);
 });

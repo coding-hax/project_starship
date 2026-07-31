@@ -13,8 +13,9 @@ im selben PR. Eine veraltete Karte ist schlimmer als keine.
 src/
   app/                      Next.js App Router — Routen und API-Endpunkte
     (app)/layout.tsx        Auth-Gate + App-Shell + `<ModuleRouteGuard/>`. Ohne Session -> /anmelden
-    (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); h1+AppHeader fix, darunter `<UebersichtSections/>` (issue #308); vormals „Heute"/`/heute` (issue #161)
+    (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); h1+AppHeader fix, darunter `<DailyProgressRing/>` (issue #428) + `<UebersichtSections/>` (issue #308); vormals „Heute"/`/heute` (issue #161)
     (app)/uebersicht/uebersicht-sections.tsx   Client: iteriert die feste Reihenfolge Wetter→Aufgaben→Aktivitäten→Gewohnheiten→Journal (issue #342), rendert je aktivem Modul dessen `OverviewSection` aus der Registry über `useActiveSections` (issue #308)
+    (app)/uebersicht/daily-progress.ts / daily-progress-ring.tsx / .css   Tages-Fortschrittsring „heute N von M" (issue #428, M-1 aus #416): reine Zählung über `belongsOnUebersicht` (Aufgaben, wie `TaskList dueTodayOnly`) + `schedule-rules.ts` `isDueOnDay`/`isDoneOnDay` (Gewohnheiten, archivierte ausgeschlossen), respektiert `use-modules` (`isActive`); modulübergreifend, deshalb im Übersicht-Rahmen statt der per-Modul-`OverviewSection`-Registry; `null` bis alle Live-Queries durch sind und bei M=0 (kein „0 von 0")
     (app)/uebersicht/uebersicht.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
     (app)/aufgaben/         Aufgaben           (leer bis M1)
     (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
