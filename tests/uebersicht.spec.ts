@@ -132,8 +132,17 @@ test('am Folgetag ist die gestern abgehakte Aufgabe aus der Übersicht verschwun
 
   await page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }).click();
   await expect(dueTaskItems(page)).toHaveCount(1);
+  // Erledigung muss persistiert sein, bevor der Tag wechselt — sonst lädt der
+  // Reload die noch offene (überfällige) Aufgabe und verdeckt die eigentliche Prüfung.
+  await expect(
+    page.getByRole('checkbox', { name: 'Wird erledigt als erledigt markieren' }),
+  ).toBeChecked();
 
-  await skewClock(page, TOMORROW_NOON);
+  // Ein page.reload() setzt die Fake-Uhr auf den im beforeEach installierten
+  // Ausgangswert (NOW) zurück, nicht auf das letzte setFixedTime — die neu geladene
+  // Übersicht würde sonst weiter „heute" rendern. Neu aufsetzen, damit der frische
+  // Load tatsächlich am Folgetag passiert (issue #228 AC2+AC3).
+  await page.clock.install({ time: new Date(TOMORROW_NOON) });
   await page.reload();
 
   await expect(dueTaskItems(page)).toHaveCount(0);
@@ -416,27 +425,37 @@ test('Journal-Sektion auf Mobile und Desktop, Dark Mode und reduzierte Bewegung 
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #382: Übersicht-Kopf als Text statt h2                               */
+/* issue #413: Journal-Kopf wie Aufgaben/Gewohnheiten — echte h2, keine Karte */
+/* (löst den #382-Stand ab, der den Kopf auf Text-Größe abgesenkt hatte)      */
 /* -------------------------------------------------------------------------- */
 
-test('Journal-Kopf auf der Übersicht ist wie die Statuszeile ein Text statt einer h2-Überschrift (issue #382)', async ({
+test('Journal-Kopf auf der Übersicht ist eine echte Überschrift wie bei Aufgaben/Gewohnheiten (issue #413)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   const heading = journalSection(page).locator('.journal-today-section__heading');
   await expect(heading).toHaveText('Journal');
-  expect(await heading.evaluate((el) => el.tagName)).toBe('P');
+  expect(await heading.evaluate((el) => el.tagName)).toBe('H2');
 
-  // Weder `.journal-today-section__heading` noch `.journal-today-section__status`
-  // setzt eine eigene font-size — beide sind gleich große Textzeilen derselben
-  // Karte. Als <h2> würde der Browser-Default davon abweichen und den Kopf
-  // gegenüber der Statuszeile überdimensioniert erscheinen lassen.
-  const [headingSize, statusSize] = await journalSection(page).evaluate((el) => [
-    getComputedStyle(el.querySelector('.journal-today-section__heading')!).fontSize,
-    getComputedStyle(el.querySelector('.journal-today-section__status')!).fontSize,
+  // Der Kopf ist wieder eine echte Überschrift wie bei Aufgaben/Gewohnheiten —
+  // die App-weite h1,h2,h3-Regel hebt sie über font-weight ab, nicht über eine
+  // eigene Schriftgröße (der Fließtext-Wert bleibt app-weit einheitlich 16px).
+  const [headingWeight, statusWeight] = await journalSection(page).evaluate((el) => [
+    getComputedStyle(el.querySelector('.journal-today-section__heading')!).fontWeight,
+    getComputedStyle(el.querySelector('.journal-today-section__status')!).fontWeight,
   ]);
-  expect(headingSize).toBe(statusSize);
+  expect(Number(headingWeight)).toBeGreaterThan(Number(statusWeight));
+
+  // Keine bunte Kachel mehr: der Kopf trägt die normale Textfarbe, nicht die
+  // Journal-Bereichsfarbe — und die Sektion selbst hat keinen Karten-Hintergrund.
+  const [headingColor, sectionBackground] = await journalSection(page).evaluate((el) => [
+    getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
+    getComputedStyle(el).backgroundColor,
+  ]);
+  const bodyTextColor = await page.evaluate(() => getComputedStyle(document.body).color);
+  expect(headingColor).toBe(bodyTextColor);
+  expect(sectionBackground).toBe('rgba(0, 0, 0, 0)');
 });
 
 /* -------------------------------------------------------------------------- */
