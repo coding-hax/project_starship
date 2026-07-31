@@ -7,6 +7,7 @@ import { searchJournalEntries, type JournalSearchEntry } from './search';
 import { useJournalSearchEntries } from './use-journal-search-entries';
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',

@@ -129,7 +129,7 @@ test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des 
   // Datum UND Uhrzeit (issue #376 AC6) — ein Treffer ist ein Eintrag, kein Tag.
   // Die Stimmung (issue #415 AC-P2) sitzt als eigene Span im selben Datumsblock.
   await expect(result.locator('.journal-search__result-date')).toHaveText(
-    /^01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
+    /^Mi\., 01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
   );
   await result.click();
 

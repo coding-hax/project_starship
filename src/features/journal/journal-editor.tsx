@@ -27,7 +27,7 @@ function parseTags(raw: string): string[] {
 }
 
 const ENTRY_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
+  weekday: 'short',
   day: 'numeric',
   month: 'long',
 });

@@ -440,7 +440,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 /* -------------------------------------------------------------------------- */
 
 const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
+  weekday: 'short',
   day: 'numeric',
   month: 'long',
 });
