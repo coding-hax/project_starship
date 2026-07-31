@@ -1,0 +1,24 @@
+.daily-progress-ring {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.daily-progress-ring__svg {
+  flex-shrink: 0;
+}
+
+.daily-progress-ring__track {
+  stroke: var(--border);
+}
+
+.daily-progress-ring__fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.daily-progress-ring__label {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
