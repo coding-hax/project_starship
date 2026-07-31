@@ -1,0 +1,31 @@
+/**
+ * Wochenrückblick-Karte (issue #431) — gleiche Kartenform wie
+ * activity-month-strip.css, damit /uebersicht als ein System wirkt.
+ */
+
+.weekly-recap-card {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  color: var(--text);
+}
+
+.weekly-recap-card__heading {
+  margin: 0 0 var(--space-2);
+  color: var(--area-habits);
+  font-weight: 650;
+}
+
+.weekly-recap-card__metric {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly-recap-card__superlative {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+}
