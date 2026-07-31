@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { MoodScale } from '@/ui/mood-scale';
 import './journal-search.css';
-import { searchJournalEntries } from './search';
+import { searchJournalEntries, type JournalSearchEntry } from './search';
 import { useJournalSearchEntries } from './use-journal-search-entries';
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
@@ -15,6 +16,10 @@ const TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+/** Deterministic character threshold (issue #415 AC-P3) rather than a CSS
+ * overflow measurement — makes the cut Playwright-testable. */
+const SNIPPET_CHAR_LIMIT = 140;
 
 /** Local calendar day from a `YYYY-MM-DD` key, not UTC (same reasoning as
  * journal-editor.tsx's `todayKey`). */
@@ -30,21 +35,72 @@ function formatEntryDateTime(entryDate: string, createdAt: string): string {
 }
 
 /**
- * Suchfeld im Journal (issue #341, S4 von #302): sucht rein im Speicher über
- * den Sitzungs-Cache aus use-journal-search-entries.ts (AC1, AC2, AC4) — kein
- * eigener Ladezustand (AC4/Produktprinzip 1), solange der Cache noch aufbaut
- * bleibt die Suche einfach still.
+ * Suchfeld + Filter im Journal (issue #341/#376, erweitert um Mood-/Tag-/
+ * Datumsfilter und die Treffervorschau in issue #415): sucht rein im Speicher
+ * über den Sitzungs-Cache aus use-journal-search-entries.ts (AC1, AC2, AC4) —
+ * kein eigener Ladezustand (AC4/Produktprinzip 1), solange der Cache noch
+ * aufbaut bleibt die Suche einfach still.
  */
-export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => void }) {
+export function JournalSearch({
+  onSelect,
+  onActiveChange,
+}: {
+  onSelect: (entryDate: string) => void;
+  onActiveChange?: (active: boolean) => void;
+}) {
   const entries = useJournalSearchEntries();
   const [query, setQuery] = useState('');
+  const [mood, setMood] = useState<number | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const trimmed = query.trim();
-  const results = entries && trimmed ? searchJournalEntries(entries, query) : [];
+  const isActive = Boolean(trimmed) || mood !== null || tag !== null || Boolean(from) || Boolean(to);
+
+  const tagOptions = useMemo(() => {
+    const all = new Set<string>();
+    for (const entry of entries ?? []) {
+      for (const t of entry.tags) all.add(t);
+    }
+    return [...all].sort();
+  }, [entries]);
+
+  const results =
+    entries && isActive
+      ? searchJournalEntries(entries, {
+          query,
+          mood: mood === null ? undefined : String(mood),
+          tag: tag ?? undefined,
+          from: from || undefined,
+          to: to || undefined,
+        })
+      : [];
+
+  useEffect(() => {
+    onActiveChange?.(isActive);
+  }, [isActive, onActiveChange]);
 
   function handleSelect(entryDate: string) {
     setQuery('');
+    setMood(null);
+    setTag(null);
+    setFrom('');
+    setTo('');
     onSelect(entryDate);
+  }
+
+  function toggleExpanded(id: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   return (
@@ -57,29 +113,97 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
         placeholder="Journal durchsuchen …"
         aria-label="Journal durchsuchen"
       />
-      {trimmed && entries !== undefined && results.length === 0 && (
+      <div className="journal-search__filters">
+        <div className="journal-search__mood-filter">
+          <MoodScale value={mood} onChange={setMood} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
+        </div>
+        {tagOptions.length > 0 && (
+          <select
+            className="journal-search__tag-select"
+            aria-label="Tag filtern"
+            value={tag ?? ''}
+            onChange={(event) => setTag(event.target.value || null)}
+          >
+            <option value="">Alle Tags</option>
+            {tagOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="journal-search__date-range">
+          <input
+            type="date"
+            className="journal-search__date-input"
+            aria-label="Von Datum"
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+          />
+          <input
+            type="date"
+            className="journal-search__date-input"
+            aria-label="Bis Datum"
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+          />
+        </div>
+      </div>
+      {isActive && entries !== undefined && results.length === 0 && (
         <p className="journal-search__empty">Keine Treffer.</p>
       )}
       {results.length > 0 && (
         <ul className="journal-search__results">
           {results.map((entry) => (
-            <li key={entry.id}>
-              <button
-                type="button"
-                className="journal-search__result"
-                onClick={() => handleSelect(entry.entryDate)}
-              >
-                <span className="journal-search__result-date">
-                  {formatEntryDateTime(entry.entryDate, entry.createdAt)}
-                </span>
-                {entry.text && (
-                  <span className="journal-search__result-snippet">{entry.text}</span>
-                )}
-              </button>
-            </li>
+            <JournalSearchResult
+              key={entry.id}
+              entry={entry}
+              expanded={expanded.has(entry.id)}
+              onToggleExpanded={() => toggleExpanded(entry.id)}
+              onSelect={() => handleSelect(entry.entryDate)}
+            />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function JournalSearchResult({
+  entry,
+  expanded,
+  onToggleExpanded,
+  onSelect,
+}: {
+  entry: JournalSearchEntry;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  onSelect: () => void;
+}) {
+  const isLong = entry.text.length > SNIPPET_CHAR_LIMIT;
+  const snippet = expanded || !isLong ? entry.text : `${entry.text.slice(0, SNIPPET_CHAR_LIMIT)}…`;
+
+  return (
+    <li>
+      <button type="button" className="journal-search__result" onClick={onSelect}>
+        <span className="journal-search__result-date">
+          {formatEntryDateTime(entry.entryDate, entry.createdAt)}
+          {entry.mood && <span className="journal-search__result-mood"> · Stimmung {entry.mood}/10</span>}
+        </span>
+        {entry.text && <span className="journal-search__result-snippet">{snippet}</span>}
+      </button>
+      {isLong && (
+        <button
+          type="button"
+          className="journal-search__result-expand"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded();
+          }}
+        >
+          {expanded ? 'Weniger anzeigen' : 'Vollständigen Text anzeigen'}
+        </button>
+      )}
+    </li>
   );
 }

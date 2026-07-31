@@ -320,12 +320,15 @@ test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mind
   await page.setViewportSize({ width: 375, height: 667 });
   await setUpEditor(page);
 
-  const scale = page.locator('.mood-scale');
+  // issue #415: die Suche zeigt seither ihren eigenen Mood-Filter (ebenfalls
+  // eine MoodScale) permanent oberhalb des Formulars — auf das Editor-Formular
+  // scopen, sonst matchen Klassen-Locator wie hier zwei Instanzen.
+  const scale = page.locator('.journal-editor__form .mood-scale');
   const scrollWidth = await scale.evaluate((el) => el.scrollWidth);
   const clientWidth = await scale.evaluate((el) => el.clientWidth);
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 
-  const points = page.locator('.mood-scale__point');
+  const points = page.locator('.journal-editor__form .mood-scale__point');
   await expect(points).toHaveCount(10);
 
   const boxes = await Promise.all(Array.from({ length: 10 }, (_, i) => points.nth(i).boundingBox()));

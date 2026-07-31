@@ -127,8 +127,9 @@ test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des 
   await search.fill('stichwort');
   const result = page.locator('.journal-search__result').first();
   // Datum UND Uhrzeit (issue #376 AC6) — ein Treffer ist ein Eintrag, kein Tag.
+  // Die Stimmung (issue #415 AC-P2) sitzt als eigene Span im selben Datumsblock.
   await expect(result.locator('.journal-search__result-date')).toHaveText(
-    /^01\.07\.2026, \d{2}:\d{2}$/,
+    /^01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
   );
   await result.click();
 
@@ -157,10 +158,15 @@ for (const viewport of [
   test(`AC7: Suche bei ${viewport.width}px ohne horizontalen Seiten-Scroll`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await setUpEditor(page);
-    await seedEntry(page, '2026-07-10', { text: 'Ein Eintrag', tags: [] });
+    await seedEntry(page, '2026-07-10', { text: 'Ein Eintrag', tags: ['sport'] });
 
     const search = page.getByLabel('Journal durchsuchen');
     await search.fill('eintrag');
+    // Filterzeile (Mood/Tag/Datum, issue #415) steht auch bei 375px ohne
+    // horizontalen Scroll — Tag-select erscheint erst, weil oben ein Tag geseedet wurde.
+    await page.getByLabel('Tag filtern').selectOption('sport');
+    await page.getByLabel('Von Datum').fill('2026-07-01');
+    await page.getByLabel('Bis Datum').fill('2026-07-31');
     await expect(page.locator('.journal-search__result')).toHaveCount(1);
 
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -168,6 +174,139 @@ for (const viewport of [
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
 }
+
+test('AC-F1: Mood-Filter zeigt nur Einträge mit der gewählten Stimmung', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', mood: '3', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Eintrag B', mood: '7', tags: [] });
+  await seedEntry(page, '2026-07-03', { text: 'Eintrag C', mood: '7', tags: [] });
+
+  const moodFilter = page.locator('.journal-search__mood-filter');
+  await moodFilter.getByRole('button', { name: 'Stimmung 7 filtern', exact: true }).click();
+
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Eintrag C', 'Eintrag B']);
+});
+
+test('AC-F2: Tag-Filter zeigt nur Einträge mit exakt diesem Tag', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: ['sport'] });
+  await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: ['büro'] });
+
+  await page.getByLabel('Tag filtern').selectOption('sport');
+
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText('Eintrag A');
+});
+
+test('AC-F3: Datum von/bis engt den Zeitraum inklusiv ein', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: [] });
+  await seedEntry(page, '2026-07-05', { text: 'Eintrag B', tags: [] });
+  await seedEntry(page, '2026-07-10', { text: 'Eintrag C', tags: [] });
+
+  const results = page.locator('.journal-search__result');
+
+  // nur "von" (nach/gleich) — B und C
+  await page.getByLabel('Von Datum').fill('2026-07-05');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Eintrag C', 'Eintrag B']);
+
+  // nur "bis" (vor/gleich) — A und B
+  await page.getByLabel('Von Datum').fill('');
+  await page.getByLabel('Bis Datum').fill('2026-07-05');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
+
+  // beide gesetzt (Bereich) — nur B
+  await page.getByLabel('Von Datum').fill('2026-07-02');
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText('Eintrag B');
+});
+
+test('AC-F4: Freitext + Mood verengen gemeinsam auf die Schnittmenge', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Ruhiger Lauf', mood: '7', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Ruhiger Lauf', mood: '3', tags: [] });
+  await seedEntry(page, '2026-07-03', { text: 'Büro-Tag', mood: '7', tags: [] });
+
+  const results = page.locator('.journal-search__result');
+  await page.getByLabel('Journal durchsuchen').fill('lauf');
+  await expect(results).toHaveCount(2);
+
+  const moodFilter = page.locator('.journal-search__mood-filter');
+  await moodFilter.getByRole('button', { name: 'Stimmung 7 filtern', exact: true }).click();
+  await expect(results).toHaveCount(1);
+  await expect(results).toContainText('Ruhiger Lauf');
+});
+
+test('AC-P1: sobald ein Filter aktiv ist, weicht der Editor der Suche', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Ein Alltagseintrag', tags: [] });
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+
+  const search = page.getByLabel('Journal durchsuchen');
+  await search.fill('alltag');
+
+  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+  await expect(page.locator('.journal-editor__date')).toHaveCount(0);
+  await expect(page.locator('.journal-editor__entries')).toHaveCount(0);
+  await expect(page.locator('.journal-search__result')).toHaveCount(1);
+
+  await search.fill('');
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+});
+
+test('AC-P2: eine Treffervorschau zeigt die Stimmung des Eintrags', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag mit Stimmung', mood: '6', tags: [] });
+
+  await page.getByLabel('Journal durchsuchen').fill('stimmung');
+  await expect(page.locator('.journal-search__result')).toContainText('Stimmung 6/10');
+});
+
+test('AC-P3: langer Text wird gekürzt und lässt sich auf- und wieder zuklappen', async ({ page }) => {
+  await setUpEditor(page);
+  const longText = 'Lauf am Fluss und noch mehr Text darüber, was heute alles passiert ist, Wort für Wort. '.repeat(3);
+  await seedEntry(page, '2026-07-01', { text: longText, tags: [] });
+
+  await page.getByLabel('Journal durchsuchen').fill('lauf');
+  const snippet = page.locator('.journal-search__result-snippet');
+  await expect(snippet).toContainText('…');
+
+  const expandButton = page.getByRole('button', { name: 'Vollständigen Text anzeigen' });
+  await expect(expandButton).toBeVisible();
+  await expandButton.click();
+
+  await expect(snippet).not.toContainText('…');
+  const collapseButton = page.getByRole('button', { name: 'Weniger anzeigen' });
+  await expect(collapseButton).toBeVisible();
+  await collapseButton.click();
+
+  await expect(snippet).toContainText('…');
+  await expect(page.getByRole('button', { name: 'Vollständigen Text anzeigen' })).toBeVisible();
+});
+
+test('AC-P4: ein Treffer klicken setzt alle Filter zurück und zeigt wieder den Editor', async ({ page }) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag mit Tag', mood: '5', tags: ['sport'] });
+
+  await page.getByLabel('Journal durchsuchen').fill('eintrag');
+  const moodFilter = page.locator('.journal-search__mood-filter');
+  await moodFilter.getByRole('button', { name: 'Stimmung 5 filtern', exact: true }).click();
+  await page.getByLabel('Tag filtern').selectOption('sport');
+  await page.getByLabel('Von Datum').fill('2026-07-01');
+  await page.getByLabel('Bis Datum').fill('2026-07-01');
+  await expect(page.locator('.journal-search__result')).toHaveCount(1);
+
+  await page.locator('.journal-search__result').click();
+
+  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(page.locator('.journal-search__result')).toHaveCount(0);
+});
 
 test('AC8: eine unlesbare Zeile macht die Suche nicht blind (issue #384)', async ({ page }) => {
   await setUpEditor(page);
@@ -201,7 +340,14 @@ test('AC7: die Suche nutzt Tokens, die sich im Dark Mode tatsächlich unterschei
   const search = page.getByLabel('Journal durchsuchen');
   const lightBg = await search.evaluate((el) => getComputedStyle(el).backgroundColor);
 
+  // Datumsfeld (issue #415) — neues Control, dieselbe Token-Erwartung.
+  const fromDate = page.getByLabel('Von Datum');
+  const lightDateBg = await fromDate.evaluate((el) => getComputedStyle(el).backgroundColor);
+
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const darkBg = await search.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).not.toBe(lightBg);
+
+  const darkDateBg = await fromDate.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkDateBg).not.toBe(lightDateBg);
 });
