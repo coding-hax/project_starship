@@ -160,6 +160,36 @@ export const habitLogs = pgTable(
 export type HabitLog = typeof habitLogs.$inferSelect;
 export type NewHabitLog = typeof habitLogs.$inferInsert;
 
+/**
+ * A streak "joker": manually spent to bridge one missed due day instead of
+ * breaking the streak (issue #433, M-3 of #416). Quota (2 per calendar month,
+ * per habit) and eligibility live in src/features/habits/freeze.ts, not here —
+ * this table only records that a day was frozen. `freezeDate` is a calendar
+ * day (`date`, not `timestamp`) like `logDate`, same day-boundary reasoning.
+ * No `onDelete` cascade on `habitId`: tombstone convention like `habitLogs`.
+ * `uniqueIndex` on (habitId, freezeDate) is the second lock against a double
+ * freeze — quota math in `canRescue` is the first.
+ */
+export const habitFreezes = pgTable(
+  'habit_freezes',
+  {
+    ...syncColumns,
+    habitId: uuid('habit_id')
+      .notNull()
+      .references(() => habits.id),
+    freezeDate: date('freeze_date').notNull(),
+  },
+  (table) => [
+    index('habit_freezes_updated_at_idx').on(table.updatedAt),
+    index('habit_freezes_sync_seq_idx').on(table.syncSeq),
+    index('habit_freezes_habit_id_idx').on(table.habitId),
+    uniqueIndex('habit_freezes_habit_id_freeze_date_idx').on(table.habitId, table.freezeDate),
+  ],
+);
+
+export type HabitFreeze = typeof habitFreezes.$inferSelect;
+export type NewHabitFreeze = typeof habitFreezes.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* Garmin (ADR-0011). Server-origin data: read-only in the sync engine.       */
 /* -------------------------------------------------------------------------- */

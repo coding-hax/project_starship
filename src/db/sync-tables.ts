@@ -1,6 +1,7 @@
 import type { SyncTable } from '@/local/types';
 import {
   garminActivities,
+  habitFreezes,
   habitLogs,
   habits,
   journalEntries,
@@ -56,6 +57,11 @@ export const SYNC_REGISTRY = {
     table: habitLogs,
     writable: ['habitId', 'logDate', 'done'],
     required: ['habitId', 'logDate'],
+  },
+  habit_freezes: {
+    table: habitFreezes,
+    writable: ['habitId', 'freezeDate'],
+    required: ['habitId', 'freezeDate'],
   },
   reminder_prefs: {
     table: reminderPrefs,

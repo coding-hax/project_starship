@@ -154,6 +154,10 @@ db.version(4).stores({
   journalSession: 'id',
 });
 
+// issue #433 adds `habit_freezes` as a new `SyncTable` (src/local/types.ts), same
+// reasoning as `reminder_prefs`/`journal_entries` above — it lives in the generic
+// `records` store, no new store or index, so no db.version() bump.
+
 export { db };
 
 /**
