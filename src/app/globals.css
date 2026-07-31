@@ -19,6 +19,7 @@
 @import '../features/habits/habit-editor.css';
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';
+@import '../features/habits/weekly-recap-card.css';
 @import '../features/weather/weather-forecast.css';
 @import '../features/weather/weather-day.css';
 @import '../features/settings/weather-panel.css';
