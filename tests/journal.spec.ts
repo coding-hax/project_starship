@@ -463,6 +463,47 @@ test('AC1: über der Eintragsliste steht der aktuell sichtbare Tag, ausgeschrieb
   expect(dateBox!.y).toBeLessThan(listBox!.y);
 });
 
+test('AC-A (#423): das Datum steht oben rechts, vor dem Formular', async ({ page }) => {
+  await setUpEditor(page);
+
+  const dateBox = await page.locator('.journal-editor__date').boundingBox();
+  const formBox = await page.locator('.journal-editor__form').boundingBox();
+  const containerBox = await page.locator('.journal-editor').boundingBox();
+  expect(dateBox).not.toBeNull();
+  expect(formBox).not.toBeNull();
+  expect(containerBox).not.toBeNull();
+
+  // Oben: vor dem Formular statt danach.
+  expect(dateBox!.y).toBeLessThan(formBox!.y);
+  // Rechts: die rechte Kante des Datums liegt nahe der rechten Kante des Containers.
+  const dateRightEdge = dateBox!.x + dateBox!.width;
+  const containerRightEdge = containerBox!.x + containerBox!.width;
+  expect(containerRightEdge - dateRightEdge).toBeLessThan(2);
+});
+
+test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist zentriert', async ({ page }) => {
+  await setUpEditor(page);
+
+  const submitButton = page.getByRole('button', { name: 'Absenden' });
+  await expect(submitButton).toHaveCount(0);
+
+  await page.getByRole('button', { name: '6', exact: true }).click();
+  await expect(submitButton).toBeVisible();
+  await page.getByRole('button', { name: '6', exact: true }).click(); // zurücknehmen
+  await expect(submitButton).toHaveCount(0);
+
+  await page.getByLabel('Journal-Text').fill('Nur Text, kein Mood');
+  await expect(submitButton).toBeVisible();
+
+  const buttonBox = await submitButton.boundingBox();
+  const formBox = await page.locator('.journal-editor__form').boundingBox();
+  expect(buttonBox).not.toBeNull();
+  expect(formBox).not.toBeNull();
+  const buttonCenter = buttonBox!.x + buttonBox!.width / 2;
+  const formCenter = formBox!.x + formBox!.width / 2;
+  expect(Math.abs(buttonCenter - formCenter)).toBeLessThan(2);
+});
+
 test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne Neuladen auf den neuen Tag, und ein danach abgesendeter Eintrag trägt diesen neuen Kalendertag', async ({
   page,
 }) => {
