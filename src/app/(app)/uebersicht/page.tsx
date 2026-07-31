@@ -1,4 +1,5 @@
 import { AppHeader } from '@/ui/app-header';
+import { DailyProgressRing } from './daily-progress-ring';
 import { UebersichtSections } from './uebersicht-sections';
 
 export const metadata = { title: 'Übersicht · Starship' };
@@ -10,6 +11,7 @@ export default function UebersichtPage() {
         <h1>Übersicht</h1>
         <AppHeader variant="inline" />
       </div>
+      <DailyProgressRing />
       <UebersichtSections />
     </>
   );
