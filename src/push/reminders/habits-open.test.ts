@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { habits, type Habit, type HabitLog } from '@/db/schema';
+import { habitFreezes, habits, type Habit, type HabitFreeze, type HabitLog } from '@/db/schema';
 
 let habitRows: Habit[] = [];
 let logRows: HabitLog[] = [];
+const freezeRows: HabitFreeze[] = [];
 
 vi.mock('@/db', () => ({
   db: {
     select: () => ({
       from: (table: unknown) => ({
-        where: () => Promise.resolve(table === habits ? habitRows : logRows),
+        where: () =>
+          Promise.resolve(
+            table === habits ? habitRows : table === habitFreezes ? freezeRows : logRows,
+          ),
       }),
     }),
   },
@@ -51,24 +55,24 @@ function log(overrides: Partial<HabitLog> = {}): HabitLog {
 
 describe('selectOpenHabits', () => {
   it('a daily habit not yet done today is open', () => {
-    const open = selectOpenHabits([habit()], [], '2026-07-15');
+    const open = selectOpenHabits([habit()], [], [], '2026-07-15');
     expect(open).toEqual([{ name: 'Laufen', streak: 0 }]);
   });
 
   it('a daily habit already done today is not open', () => {
-    const open = selectOpenHabits([habit()], [log()], '2026-07-15');
+    const open = selectOpenHabits([habit()], [log()], [], '2026-07-15');
     expect(open).toEqual([]);
   });
 
   it('a weekly habit done earlier this week is not open, even though not done today', () => {
     const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
     const doneMonday = log({ habitId: 'habit-2', logDate: '2026-07-13' });
-    expect(selectOpenHabits([weekly], [doneMonday], '2026-07-15')).toEqual([]);
+    expect(selectOpenHabits([weekly], [doneMonday], [], '2026-07-15')).toEqual([]);
   });
 
   it('a weekly habit not done at all this week is open', () => {
     const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
-    expect(selectOpenHabits([weekly], [], '2026-07-15')).toEqual([{ name: 'Laufen', streak: 0 }]);
+    expect(selectOpenHabits([weekly], [], [], '2026-07-15')).toEqual([{ name: 'Laufen', streak: 0 }]);
   });
 
   it('the streak count is included and only counted from before today', () => {
@@ -76,7 +80,7 @@ describe('selectOpenHabits', () => {
       log({ logDate: '2026-07-14' }),
       log({ logDate: '2026-07-13' }),
     ];
-    expect(selectOpenHabits([habit()], streakLogs, '2026-07-15')).toEqual([
+    expect(selectOpenHabits([habit()], streakLogs, [], '2026-07-15')).toEqual([
       { name: 'Laufen', streak: 2 },
     ]);
   });

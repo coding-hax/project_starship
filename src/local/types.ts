@@ -9,6 +9,7 @@ export const SYNC_TABLES = [
   'tasks',
   'habits',
   'habit_logs',
+  'habit_freezes',
   'garmin_activities',
   'reminder_prefs',
   'journal_entries',
@@ -64,6 +65,15 @@ export interface HabitLogData {
   habitId: string;
   logDate: string;
   done: boolean;
+}
+
+/**
+ * Same as `HabitData`, for `habit_freezes` (issue #433, M-3 of #416). `freezeDate`
+ * is `YYYY-MM-DD`, like `HabitLogData.logDate` — the day the joker bridges.
+ */
+export interface HabitFreezeData {
+  habitId: string;
+  freezeDate: string;
 }
 
 /**
