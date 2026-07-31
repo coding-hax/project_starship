@@ -1,5 +1,8 @@
 'use client';
 
+import { createPortal } from 'react-dom';
+import { useToastHostNode } from './toast-host';
+
 export interface ToastProps {
   message: string;
   actionLabel: string;
@@ -20,8 +23,11 @@ export function Toast({
   onDismiss,
   variant = 'confirmation',
 }: ToastProps) {
-  return (
-    <div
+  const hostNode = useToastHostNode();
+  if (!hostNode) return null;
+
+  return createPortal(
+    <li
       className={variant === 'error' ? 'toast toast--error' : 'toast'}
       role={variant === 'error' ? 'alert' : 'status'}
     >
@@ -32,6 +38,7 @@ export function Toast({
       <button type="button" className="toast__dismiss" onClick={onDismiss} aria-label="Schließen">
         <span aria-hidden="true">×</span>
       </button>
-    </div>
+    </li>,
+    hostNode,
   );
 }

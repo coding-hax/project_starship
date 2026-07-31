@@ -1,15 +1,30 @@
 /**
- * Undo toast: sits above the bottom nav on mobile the same way the FAB does, so it
+ * Toast host: sits above the bottom nav on mobile the same way the FAB does, so it
  * never gets clipped by the safe area. It temporarily covers the FAB — acceptable,
- * because it is gone again in a few seconds.
+ * because it is gone again in a few seconds. Every `<Toast>` (src/ui/toast.tsx)
+ * portals a `<li>` into this `<ol>` (issue #427), so several toasts stack instead of
+ * landing on top of each other, and the host carries the one `aria-live` region for
+ * all of them.
  */
 
-.toast {
+.toast-host {
   position: fixed;
   left: var(--space-4);
   right: var(--space-4);
   bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset));
   z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* The host spans the full stacking area but has no visible chrome of its own —
+     empty space inside it must not swallow clicks meant for the FAB/page below. */
+  pointer-events: none;
+}
+
+.toast {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -18,6 +33,35 @@
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: var(--shadow-raised);
+  pointer-events: auto;
+  animation: toast-in var(--duration-base) var(--ease-spring);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Only a fade — no slide — once the user has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: toast-in-fade var(--duration-fast) var(--ease-spring);
+  }
+}
+
+@keyframes toast-in-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .toast--error {
@@ -62,10 +106,11 @@
 }
 
 @media (min-width: 768px) {
-  .toast {
+  .toast-host {
     left: auto;
     right: var(--space-6);
     bottom: calc(var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset));
     max-width: 360px;
+    align-items: flex-end;
   }
 }
