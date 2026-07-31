@@ -187,8 +187,9 @@ src/
     sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
     fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
     fab.css                 Position + Größe des FAB
-    toast.tsx               Wiederverwendbares Toast: `variant` confirmation (role="status", Undo) oder error (role="alert", --danger) (issue #182)
-    toast.css                Position über der Bottom-Nav, wie der FAB; toast--error für die Fehler-Variante
+    toast-host.tsx          Zentraler Toast-Host (issue #427): Modul-Store (Idiom wie journal/lock-store.ts) hält den Host-`<ol>`-Knoten, `<ToastHost/>` rendert ihn mit der einen `aria-live="polite"`-Region (+ `role="region"`) fürs ganze Shell; in `(app)/layout.tsx` neben `<SyncStatus/>` montiert
+    toast.tsx               Wiederverwendbares Toast: `variant` confirmation (role="status", Undo) oder error (role="alert", --danger) (issue #182); portalt seit issue #427 als `<li>` in `<ToastHost/>`, damit mehrere gleichzeitige Toasts sich stapeln statt zu überlappen — Props/Aufrufstellen unverändert
+    toast.css                Stapel-Layout + Position über der Bottom-Nav (wie der FAB) liegen seit issue #427 auf `.toast-host`; `.toast` selbst trägt nur noch Optik + Eintritts-Animation (`toast-in`, reduced-motion → `toast-in-fade`, nur Opacity); toast--error für die Fehler-Variante
     row.tsx / row.css       Label-links-Control-rechts-Zeile, Basis jeder Einstellungszeile
     section-card.tsx / .css Karte mit optionaler Überschrift/Aufklappen, gruppiert Rows
     toggle.tsx / .css       Switch (role="switch"), Federknopf

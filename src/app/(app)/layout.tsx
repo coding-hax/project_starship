@@ -6,6 +6,7 @@ import { ModuleRouteGuard } from '@/ui/module-route-guard';
 import { Nav } from '@/ui/nav';
 import { SyncBoot } from '@/ui/sync-boot';
 import { SyncStatus } from '@/ui/sync-status';
+import { ToastHost } from '@/ui/toast-host';
 
 /**
  * The gate for everything behind the login. Checked server-side on every render —
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <main className="shell__main">{children}</main>
       <SyncBoot />
       <SyncStatus />
+      <ToastHost />
       {process.env.NEXT_PUBLIC_E2E === '1' && <E2EBridge />}
     </div>
   );
