@@ -522,6 +522,13 @@ test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne 
 
   await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(tomorrow));
 
+  // Ab hier ist der deterministische Fast-Forward erledigt. Die Uhr läuft
+  // wieder in Echtzeit, damit Dexies liveQuery-Signal nach dem Absenden
+  // geflusht wird (unter angehaltener Fake-Uhr feuert der gefakte Timer der
+  // Zustellung nicht, die Tagesliste bliebe leer). In Produktion steht die
+  // Uhr nie — dieser Zustand ist ein reines Testartefakt.
+  await page.clock.resume();
+
   await page.getByLabel('Journal-Text').fill('Nach Mitternacht geschrieben');
   await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
