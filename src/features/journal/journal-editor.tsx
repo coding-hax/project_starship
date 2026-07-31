@@ -27,7 +27,7 @@ function parseTags(raw: string): string[] {
 }
 
 const ENTRY_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
+  weekday: 'short',
   day: 'numeric',
   month: 'long',
 });
@@ -145,6 +145,7 @@ export function JournalEditor() {
       <div className="journal-editor">
         {!searchActive && (
           <>
+            <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
             <form className="journal-editor__form" onSubmit={handleSubmit}>
               <MoodScale value={mood} onChange={setMood} />
               <textarea
@@ -162,14 +163,15 @@ export function JournalEditor() {
                 placeholder="Tags, mit Komma getrennt"
                 aria-label="Tags"
               />
-              <button type="submit" className="journal-editor__submit">
-                Absenden
-              </button>
+              {(mood !== null || text.trim() !== '') && (
+                <button type="submit" className="journal-editor__submit">
+                  Absenden
+                </button>
+              )}
             </form>
             {conflicts?.map((conflict) => (
               <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
             ))}
-            <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
             {entries && entries.length > 0 && (
               <ul className="journal-editor__entries">
                 {entries.map((entry) => (
