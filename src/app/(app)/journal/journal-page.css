@@ -1,0 +1,10 @@
+.journal-page__title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.journal-page__title-row h1 {
+  margin: 0;
+}
