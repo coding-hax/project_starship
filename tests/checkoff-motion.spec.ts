@@ -1,5 +1,58 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
+
+/**
+ * `getComputedStyle` right after `.click()` can catch the CSS transition mid-flight
+ * (the browser needs a style/layout pass before a transitioned property lands on its
+ * target value) — a single read is a race, not a fact about the app. Polling for the
+ * settled value is the correct wait, not a loosened assertion: the target value is
+ * exactly what AC1/AC4/AC5 require, we just stop guessing when to look for it.
+ */
+async function scaleOf(checkbox: Locator): Promise<number> {
+  return checkbox.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+}
+
+async function waitForScale(checkbox: Locator, expected: number) {
+  await expect.poll(() => scaleOf(checkbox)).toBeCloseTo(expected, 2);
+}
+
+async function waitForNoTransform(checkbox: Locator) {
+  await expect
+    .poll(() => checkbox.evaluate((el) => getComputedStyle(el).transform))
+    .toBe('none');
+}
+
+async function waitForOpacity(item: Locator, expected: string) {
+  await expect.poll(() => item.evaluate((el) => getComputedStyle(el).opacity)).toBe(expected);
+}
+
+/**
+ * `Locator.boundingBox()` is viewport-relative — on a short viewport, clicking a
+ * checkbox near the fold makes the browser scroll it into view, which shifts every
+ * element's viewport box by the same amount and would misread scroll as reflow.
+ * Document coordinates (adding the scroll offset back in) isolate the thing AC3
+ * actually asks about: did the row move relative to the page, not the window.
+ */
+async function documentBox(locator: Locator) {
+  return locator.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      x: rect.x + window.scrollX,
+      y: rect.y + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+}
+
+function yesterdayKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 /**
  * Proves the checkbox-checkoff micro-interaction (issue #435) for tasks and
@@ -14,6 +67,15 @@ interface Case {
   itemDoneClass: string;
   seed: (page: Page, name: string) => Promise<string>;
   checkboxLabel: (name: string) => string;
+  /**
+   * Puts a row into a state that already contains every element it will show
+   * after the click — for a habit, a pre-existing streak, so its badge is
+   * already on screen. Without this, checking off a brand-new habit reveals
+   * the streak badge for the first time, which is its own (pre-existing,
+   * out-of-scope-for-#435) layout shift and would be conflated with the
+   * checkbox motion this suite actually tests.
+   */
+  primeBeforeCheckoff?: (page: Page, id: string, name: string) => Promise<unknown>;
 }
 
 const CASES: Case[] = [
@@ -45,6 +107,22 @@ const CASES: Case[] = [
         name,
       ),
     checkboxLabel: (name) => `${name} für heute abhaken`,
+    primeBeforeCheckoff: async (page, habitId, name) => {
+      await page.evaluate(
+        (args) =>
+          window.__starship.mutate({
+            table: 'habit_logs',
+            op: 'upsert',
+            payload: { habitId: args.habitId, logDate: args.logDate, done: true },
+          }),
+        { habitId, logDate: yesterdayKey() },
+      );
+      // The mutation above lands in IndexedDB asynchronously; the streak badge
+      // only appears once the live query re-renders. Waiting for it here is what
+      // makes it "already on screen" for the boxBefore read that follows.
+      const item = itemsFor(page, 'Gewohnheiten heute').filter({ hasText: name });
+      await expect(item.locator('.habit-today__streak')).toBeVisible();
+    },
   },
 ];
 
@@ -89,6 +167,7 @@ for (const c of CASES) {
       expect(pseudoAnimations.after).toBe('none');
 
       await checkbox.click();
+      await waitForScale(checkbox, 1.12);
 
       // A pure scale matrix (b = c = e = f = 0) rules out any translation, i.e. a bounce.
       const matrix = await checkbox.evaluate((el) => {
@@ -116,11 +195,9 @@ for (const c of CASES) {
       await checkbox.click();
 
       await expect(checkbox).toBeChecked();
-      const transform = await checkbox.evaluate((el) => getComputedStyle(el).transform);
-      expect(transform).toBe('none');
+      await waitForNoTransform(checkbox);
       await expect(item).toHaveClass(new RegExp(c.itemDoneClass));
-      const opacity = await item.evaluate((el) => getComputedStyle(el).opacity);
-      expect(opacity).toBe('0.6');
+      await waitForOpacity(item, '0.6');
     });
 
     test(`${c.kind}: reduzierte Bewegung (In-App-Schalter) unterdrückt Transform, Erledigt bleibt sichtbar (AC2)`, async ({
@@ -138,29 +215,28 @@ for (const c of CASES) {
       await checkbox.click();
 
       await expect(checkbox).toBeChecked();
-      const transform = await checkbox.evaluate((el) => getComputedStyle(el).transform);
-      expect(transform).toBe('none');
+      await waitForNoTransform(checkbox);
       await expect(item).toHaveClass(new RegExp(c.itemDoneClass));
-      const opacity = await item.evaluate((el) => getComputedStyle(el).opacity);
-      expect(opacity).toBe('0.6');
+      await waitForOpacity(item, '0.6');
     });
 
     test(`${c.kind}: kein Layout-Shift beim Abhaken (AC3)`, async ({ page }) => {
       await page.goto(c.path);
       const firstName = `${c.kind} A`;
       const secondName = `${c.kind} B`;
-      await c.seed(page, firstName);
+      const firstId = await c.seed(page, firstName);
       await c.seed(page, secondName);
+      await c.primeBeforeCheckoff?.(page, firstId, firstName);
 
       // The neighbour, not the checked item itself — its box legitimately contains
       // the transform under test, so it is not honest evidence against a shift.
       const secondItem = itemsFor(page, c.listName).filter({ hasText: secondName });
-      const boxBefore = await secondItem.boundingBox();
+      const boxBefore = await documentBox(secondItem);
 
       const firstCheckbox = page.getByRole('checkbox', { name: c.checkboxLabel(firstName) });
       await firstCheckbox.click();
 
-      const boxAfter = await secondItem.boundingBox();
+      const boxAfter = await documentBox(secondItem);
       expect(boxAfter).toEqual(boxBefore);
     });
 
@@ -176,14 +252,16 @@ for (const c of CASES) {
         await page.goto(c.path);
         const firstName = `${c.kind} dunkel A`;
         const secondName = `${c.kind} dunkel B`;
-        await c.seed(page, firstName);
+        const firstId = await c.seed(page, firstName);
         await c.seed(page, secondName);
+        await c.primeBeforeCheckoff?.(page, firstId, firstName);
 
         const secondItem = itemsFor(page, c.listName).filter({ hasText: secondName });
-        const boxBefore = await secondItem.boundingBox();
+        const boxBefore = await documentBox(secondItem);
 
         const firstCheckbox = page.getByRole('checkbox', { name: c.checkboxLabel(firstName) });
         await firstCheckbox.click();
+        await waitForScale(firstCheckbox, 1.12);
 
         const matrix = await firstCheckbox.evaluate((el) => {
           const m = new DOMMatrix(getComputedStyle(el).transform);
@@ -192,7 +270,7 @@ for (const c of CASES) {
         expect(matrix.a).toBeCloseTo(1.12, 2);
         expect(matrix.b).toBe(0);
 
-        const boxAfter = await secondItem.boundingBox();
+        const boxAfter = await documentBox(secondItem);
         expect(boxAfter).toEqual(boxBefore);
       });
     }
