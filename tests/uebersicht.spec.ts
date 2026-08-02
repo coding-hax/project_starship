@@ -280,7 +280,14 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
 /* die Journal-Zustandsabdeckung liegt seit #505 bei den Gewohnheiten-Specs). */
 /* -------------------------------------------------------------------------- */
 
-test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — Nav-Tab und Route bleiben (issue #506)', async ({
+/** Top edge of `locator`'s box — the vertical anchor the order tests compare. */
+async function topOf(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Element muss für den Reihenfolge-Vergleich sichtbar sein');
+  return box.y;
+}
+
+test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — Nav-Tab und Route bleiben (issue #506 AC1+AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -292,4 +299,139 @@ test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — 
   await nav.getByRole('link', { name: 'Journal' }).click();
   await expect(page).toHaveURL(/\/journal$/);
   await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+});
+
+test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter → Aufgaben → Gewohnheiten, ohne Journal dazwischen (issue #506 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // Der Aktivitäten-Streifen zwischen Aufgaben und Gewohnheiten erscheint nur mit
+  // gesyncten Garmin-Daten (er rendert sonst nichts) — sein Platz in der Reihenfolge
+  // ist in aktivitaeten.spec.ts abgedeckt. Hier zählen die drei Sektionen, die auf
+  // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
+  // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
+  const wetter = page.locator('.weather-forecast');
+  const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+  const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  await expect(wetter).toBeVisible();
+  await expect(aufgaben).toBeVisible();
+  await expect(gewohnheiten).toBeVisible();
+
+  const [yWetter, yAufgaben, yGewohnheiten] = await Promise.all([
+    topOf(wetter),
+    topOf(aufgaben),
+    topOf(gewohnheiten),
+  ]);
+  expect(
+    yWetter < yAufgaben && yAufgaben < yGewohnheiten,
+    `Reihenfolge Wetter ${yWetter} → Aufgaben ${yAufgaben} → Gewohnheiten ${yGewohnheiten}`,
+  ).toBe(true);
+
+  // Kein Journal-Block irgendwo zwischen den Sektionen.
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+});
+
+test('das Journal-Modul behält seinen Nav-Tab und seine Route — /journal rendert direkt (issue #506 AC2)', async ({
+  page,
+}) => {
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toHaveAttribute('href', '/journal');
+
+  // Direkter Aufruf der Route (kein Klick) — die Route gehört weiterhin dem Modul.
+  await page.goto('/journal');
+  await expect(page).toHaveURL(/\/journal$/);
+  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+});
+
+test('das Journal-Modul behält sein Einstellungen-Panel (issue #506 AC2)', async ({ page }) => {
+  await page.goto('/einstellungen');
+
+  // Der Modul-Schalter (Journal an/aus) bleibt …
+  await expect(page.getByRole('switch', { name: 'Journal' })).toBeVisible();
+  // … und das eigene Einstellungen-Panel (SectionCard "Journal", eine echte h2).
+  await expect(page.getByRole('heading', { name: 'Journal', level: 2 })).toBeVisible();
+  await expect(page.getByText('Auf diesem Gerät entsperrt lassen').first()).toBeVisible();
+});
+
+test('nur die OverviewSection entfällt — wird das Journal-Modul abgeschaltet, verschwindet sein Nav-Tab wie zuvor (issue #506 AC2)', async ({
+  page,
+}) => {
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toBeVisible();
+
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toHaveCount(0);
+  // Weiterhin kein Journal-Block — das Abschalten ändert daran nichts.
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+
+  // Wieder an: der Nav-Tab kommt zurück, die Route ist wieder erreichbar.
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toBeVisible();
+});
+
+test('auf /uebersicht hängt der Name "Journal" nicht mehr doppelt an zwei Links — nur der Nav-Tab trägt ihn (Nachfolge #363 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+
+  // Vor #506 trug die Übersichts-Kachel denselben zugänglichen Namen wie der
+  // Nav-Eintrag (der Fund aus #363). Ohne die Kachel bleibt genau ein "Journal"-Link:
+  // der Nav-Tab.
+  await expect(page.getByRole('link', { name: 'Journal', exact: true })).toHaveCount(1);
+});
+
+test('kein Journal-Block auf der Übersicht — auf Mobile (375px) wie auf Desktop (1280px), Reihenfolge bleibt (issue #506 AC1)', async ({
+  page,
+}) => {
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+
+    await expect(page.locator('.journal-today-section')).toHaveCount(0);
+    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+    const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+    await expect(aufgaben).toBeVisible();
+    await expect(gewohnheiten).toBeVisible();
+    expect(await topOf(aufgaben), `Aufgaben über Gewohnheiten bei ${width}px`).toBeLessThan(
+      await topOf(gewohnheiten),
+    );
+  }
+});
+
+test('die Übersicht bleibt ohne Journal-Block auch im Dark Mode mit reduzierter Bewegung nutzbar (issue #506 AC1)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+
+  // Die Seite ist bedienbar: der Journal-Nav-Tab führt weiterhin zur Route.
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
+  await expect(page).toHaveURL(/\/journal$/);
+});
+
+test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg dorthin ist allein der Nav-Tab (issue #506 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+
+  // Die frühere Journal-Kachel war ein Link ins Journal *innerhalb* des
+  // Seiteninhalts (main), zusätzlich zum Nav-Tab im eigenen Landmark. Ohne die
+  // Kachel enthält der Inhalt keinen Journal-Link mehr.
+  const main = page.getByRole('main');
+  await expect(main.getByRole('link', { name: 'Journal' })).toHaveCount(0);
+  await expect(main.locator('a[href="/journal"]')).toHaveCount(0);
 });
