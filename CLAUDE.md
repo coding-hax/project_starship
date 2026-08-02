@@ -13,16 +13,16 @@ Vor jeder Arbeit lesen:
 - `docs/VISION.md` — was wir bauen und was ausdrücklich **nicht**
 - `docs/ARCHITECTURE.md` — Stack, Datenmodell, Sync-Konzept
 - `docs/DESIGN_SYSTEM.md` — Farben, Typo, Motion, Mobile-Patterns
-- `docs/WORKFLOW.md` — wie ein Ticket zum Merge wird
+- `docs/WORKFLOW.md` — wie ein Ticket zum Merge wird (Index, Details in `docs/workflow/`)
 - `docs/adr/` — bereits getroffene Entscheidungen. Diese werden nicht neu verhandelt.
 
 ## Harte Regeln
 
 1. **Ein Ticket zur Zeit.** WIP-Limit = 1. Kein neues Issue anfassen, solange ein PR offen ist. Keine "kleinen Nebenverbesserungen" im selben Branch. Laufen mehrere Runner-Slots (#204), gilt das WIP-Limit **pro Slot** — jeder Slot ist ein eigener Arbeitsbaum und baut für sich genommen an genau einem Ticket. Details: `docs/adr/0014-mehrere-runner-slots.md`.
-2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird als neues Issue angelegt, nicht implementiert. Vor dem Anlegen eines Fund-/Test-Tickets erst nach dem Fundschlüssel suchen (offen **und** geschlossen) — Titelform, Pflichtsuche und Trefferpolitik: `docs/WORKFLOW.md`, „Fundschlüssel & Pflichtsuche".
+2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird als neues Issue angelegt, nicht implementiert. Vor dem Anlegen eines Fund-/Test-Tickets erst nach dem Fundschlüssel suchen (offen **und** geschlossen) — Titelform, Pflichtsuche und Trefferpolitik: `docs/workflow/fundschluessel.md`, „Fundschlüssel & Pflichtsuche".
 3. **Keine neue Dependency ohne ADR.** Wenn ein Paket nötig scheint: ADR-Entwurf in den PR, Begründung, Alternativen. Warten auf Freigabe.
 4. **Keine Schema-Änderung ohne Migration.** Drizzle-Migration im selben PR, Up- und Down-Pfad.
-5. **Tests werden niemals abgeschwächt, um grün zu werden.** Ein roter Test ist ein Fund, kein Hindernis. Kein `test.skip`, kein aufgeweichtes Assert, kein erhöhter Timeout als Fix. Ein Flake-Nachweis läuft über `--repeat-each`, eingegrenzt auf die betroffenen Tests (siehe `docs/WORKFLOW.md`, „Wie ein Flake-Fix belegt wird") — **niemals** als N ganze Suiten hintereinander. Jedes Akzeptanzkriterium muss innerhalb eines Lauf-Fensters (45 Minuten) prüfbar sein — sonst ist es keine Anforderung, sondern eine Sackgasse.
+5. **Tests werden niemals abgeschwächt, um grün zu werden.** Ein roter Test ist ein Fund, kein Hindernis. Kein `test.skip`, kein aufgeweichtes Assert, kein erhöhter Timeout als Fix. Ein Flake-Nachweis läuft über `--repeat-each`, eingegrenzt auf die betroffenen Tests (siehe `docs/workflow/ticket-und-tests.md`, „Wie ein Flake-Fix belegt wird") — **niemals** als N ganze Suiten hintereinander. Jedes Akzeptanzkriterium muss innerhalb eines Lauf-Fensters (45 Minuten) prüfbar sein — sonst ist es keine Anforderung, sondern eine Sackgasse.
 6. **Jedes Feature-Ticket liefert Playwright-Tests**, die 1:1 die Akzeptanzkriterien abbilden.
 7. **Kein Vendor-Lock-in.** Keine Vercel- oder Neon-spezifischen Primitive. DB-Zugriff ausschließlich über Drizzle gegen Standard-Postgres. Das Projekt muss jederzeit auf einen eigenen Server umziehbar sein.
 8. **Local-first ist nicht optional.** Die UI liest und schreibt gegen IndexedDB, niemals direkt gegen die API. Jede Mutation läuft durch die Outbox.
@@ -56,7 +56,7 @@ Vor jeder Arbeit lesen:
   Eskalation nach drei erfolglosen Läufen. Der Mensch darf die Startstufe am
   Ticket vorgeben (`model:haiku|sonnet|opus`); `model:opus` baut dann sofort
   auf Opus, unter denselben Deckeln. Details, Labels, Deckel:
-  `docs/WORKFLOW.md`, `docs/adr/0005-opus-im-runner.md`,
+  `docs/workflow/eskalation.md`, `docs/adr/0005-opus-im-runner.md`,
   `docs/adr/0007-opus-eskalation-baut.md`,
   `docs/adr/0013-modellstufe-am-ticket.md`.
 
@@ -92,7 +92,7 @@ Mehr brauchst du hier nicht zu tun. Das Ticket behält `in-progress` (#272) und
 wird von der Auswahl übersprungen, solange `needs-answer` hängt — es wartet
 sichtbar, belegt aber keinen Bauplatz. Sobald der Mensch antwortet und das
 Label entfernt, wird es fortgesetzt, nicht neu gestartet. Details:
-`docs/WORKFLOW.md`, „Wartend ist nicht in Arbeit".
+`docs/workflow/zyklus.md`, „Wartend ist nicht in Arbeit".
 
 Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich vorgehen?"
 ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach links
@@ -271,7 +271,7 @@ vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-answer`
 (dieselbe erschöpfte Eskalation wie in „So fragst du" oben, ADR-0007) — drei
 rote Runden heißen, das Ticket ist falsch geschnitten,
 eine menschliche Entscheidung. Vollständige Zustandstabelle:
-`docs/WORKFLOW.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
+`docs/workflow/merge.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
 Stellst du stattdessen eine Frage (`needs-answer`, siehe „Autonomer Betrieb"
 oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
@@ -285,7 +285,7 @@ ready` erreichst.
 **Es gibt dort keinen Wächter mehr.** `protected-paths` blockierte seit #276
 nicht mehr und ist seit #283 ganz weg — ein Check, der nie fehlschlägt, bringt
 niemandem etwas bei. Der Mensch gibt die PRs ohnehin direkt frei (Begründung
-und der bewusst akzeptierte Preis: `docs/WORKFLOW.md`, „Ein Wächter").
+und der bewusst akzeptierte Preis: `docs/workflow/merge.md`, „Ein Wächter").
 
 Das macht deine Sorgfalt **wichtiger**, nicht unwichtiger. Berührt dein Diff
 einen dieser Pfade, **sofort beim Öffnen des PR**:

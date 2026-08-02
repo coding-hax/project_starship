@@ -20,8 +20,8 @@ auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert
 die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
 nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 
-// #366: Konstante Titel-/Body-Form, damit WORKFLOW.md und der Prompt nie
-// auseinanderlaufen -- ein Fund-Ticket wird nach dem Testort benannt, nicht
+// #366: Konstante Titel-/Body-Form, damit docs/workflow/fundschluessel.md und
+// der Prompt nie auseinanderlaufen -- ein Fund-Ticket wird nach dem Testort benannt, nicht
 // nach der Hypothese, und traegt den Schluessel maschinenlesbar im Body.
 export const FIND_TITLE_FORM = 'fund(<pfad>:<zeile>): …';
 export const FIND_BODY_FORM = 'Fund: <pfad>:<zeile>';
@@ -50,7 +50,7 @@ denselben Fundschlüssel → Kommentar am bestehenden Ticket statt eines neuen.
 Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
 \`plan\` (\`gh issue create --label plan\` oder folgendes \`gh issue edit
 --add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
-docs/WORKFLOW.md, „Fundschlüssel & Pflichtsuche".
+docs/workflow/fundschluessel.md, „Fundschlüssel & Pflichtsuche".
 
 **Ein Root-Cause, ein Ticket.** Mehrere rote Tests mit derselben vermuteten
 Ursache ergeben **ein** Ticket mit mehreren \`Fund:\`-Zeilen (je eine pro
