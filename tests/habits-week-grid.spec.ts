@@ -28,6 +28,19 @@ function monthGrid(page: Page, habitName: string) {
   return page.getByRole('list', { name: `Monat: ${habitName}` });
 }
 
+/** Mirrors JOURNAL_HABIT_ID in src/features/journal/journal-habit.ts (issue #505). */
+const JOURNAL_HABIT_ID = '5b5c9dc3-25c8-4f97-a4c5-61cb4c736c80';
+
+async function seedJournalHabit(page: Page): Promise<void> {
+  await page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', rowId: p.rowId, op: 'upsert', payload: p.payload }),
+    {
+      rowId: JOURNAL_HABIT_ID,
+      payload: { name: 'Journal', schedule: 'daily', color: '--area-journal', archivedAt: null },
+    },
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   // resetAppData, not resetDatabase: wiping sessions/credentials forces registerPasskey
   // through a full re-registration every test, and that leaves goto('/gewohnheiten')
@@ -243,6 +256,28 @@ test('"heute" ist nur im laufenden Monat markiert (issue #124 AC6)', async ({ pa
   for (let index = 0; index < juneCount; index += 1) {
     await expect(juneDays.nth(index)).not.toHaveAttribute('data-today', '');
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC5: die Journal-Zeile im Monatsraster ist nicht antippbar      */
+/* -------------------------------------------------------------------------- */
+
+test('die Journal-Zeile im Monatsraster ist nicht antippbar, ein Tipp legt keinen Log an (issue #505 AC5)', async ({
+  page,
+}) => {
+  await seedJournalHabit(page);
+
+  const days = monthGrid(page, 'Journal').getByRole('button');
+  const july14 = days.nth(13); // JULY_14 — weder heute noch Zukunft, nur readOnly deaktiviert
+  await expect(july14).toBeDisabled();
+
+  await july14.click({ force: true });
+
+  const logs = await page.evaluate(async (habitId) => {
+    const records = await window.__starship.debugRecords();
+    return records.filter((r) => r.table === 'habit_logs' && r.data.habitId === habitId);
+  }, JOURNAL_HABIT_ID);
+  expect(logs).toHaveLength(0);
 });
 
 /* -------------------------------------------------------------------------- */

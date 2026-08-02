@@ -56,6 +56,31 @@ async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<
   );
 }
 
+/** Mirrors JOURNAL_HABIT_ID in src/features/journal/journal-habit.ts (issue #505). */
+const JOURNAL_HABIT_ID = '5b5c9dc3-25c8-4f97-a4c5-61cb4c736c80';
+
+async function seedJournalHabit(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
+  await page.evaluate(
+    (p) =>
+      window.__starship.mutate({
+        table: 'habits',
+        rowId: p.rowId,
+        op: 'upsert',
+        payload: p.payload,
+      }),
+    {
+      rowId: JOURNAL_HABIT_ID,
+      payload: {
+        name: 'Journal',
+        schedule: 'daily',
+        color: '--area-journal',
+        archivedAt: null,
+        ...overrides,
+      },
+    },
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
@@ -266,6 +291,49 @@ test('Reaktivieren aus dem Archiv macht die Gewohnheit ohne Undo-Angebot wieder 
 
   await expect(habitItems(page).filter({ hasText: 'Alte Gewohnheit' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC2/AC3: die Journal-Gewohnheit ist fest — kein Archivieren,    */
+/* Editor zeigt nur den Rhythmus                                              */
+/* -------------------------------------------------------------------------- */
+
+test('die Journal-Gewohnheit hat keinen Archivieren-Button, eine normale Gewohnheit weiterhin (issue #505 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedJournalHabit(page);
+  await seedHabit(page, { name: 'Joggen', schedule: 'daily', color: null, archivedAt: null });
+
+  const journalItem = habitItems(page).filter({ hasText: 'Journal' });
+  await expect(journalItem).toBeVisible();
+  await expect(journalItem.getByRole('button', { name: /^(Archivieren|Reaktivieren)$/ })).toHaveCount(0);
+
+  const joggenItem = habitItems(page).filter({ hasText: 'Joggen' });
+  await expect(joggenItem.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
+});
+
+test('der Editor der Journal-Gewohnheit zeigt nur den Rhythmus, kein Namens- oder Farbfeld (issue #505 AC3)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedJournalHabit(page);
+
+  await tapHabit(page, 'Journal');
+  const dialog = editDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveCount(0);
+  await expect(dialog.locator('.habit-editor__colors')).toHaveCount(0);
+  await expect(dialog.getByRole('radio', { name: 'Täglich' })).toBeChecked();
+
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.op).toBe('upsert');
+  expect(last.payload).toEqual({ schedule: 'weekly' });
 });
 
 /* -------------------------------------------------------------------------- */

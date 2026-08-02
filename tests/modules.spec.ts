@@ -62,6 +62,48 @@ test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verände
   }
 });
 
+test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie (issue #505 AC7)', async ({
+  page,
+}) => {
+  await resetAppData();
+  await page.goto('/uebersicht');
+
+  // Wait for JournalHabitBoot's idempotent ensure to land locally, then push it —
+  // mutate() itself schedules no sync, so without this the row might not have
+  // reached the outbox yet when the explicit sync() below runs.
+  await expect
+    .poll(async () => {
+      const records = await page.evaluate(() => window.__starship.debugRecords());
+      return records.some((r) => r.table === 'habits' && r.data.name === 'Journal');
+    })
+    .toBe(true);
+  await page.evaluate(() => window.__starship.sync());
+
+  const before = await withDb((client) =>
+    client.query('SELECT id, archived_at FROM habits WHERE name = $1', ['Journal']),
+  );
+  expect(before.rowCount).toBe(1);
+  expect(before.rows[0].archived_at).toBeNull();
+  const habitId = before.rows[0].id as string;
+
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.evaluate(() => window.__starship.sync());
+
+  const afterOff = await withDb((client) =>
+    client.query('SELECT archived_at FROM habits WHERE id = $1', [habitId]),
+  );
+  expect(afterOff.rows[0].archived_at).not.toBeNull();
+
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.evaluate(() => window.__starship.sync());
+
+  const afterOn = await withDb((client) =>
+    client.query('SELECT archived_at FROM habits WHERE id = $1', [habitId]),
+  );
+  expect(afterOn.rows[0].archived_at).toBeNull();
+});
+
 test('wieder anschalten stellt den Tab an derselben Position wieder her (issue #307 AC3)', async ({ page }) => {
   await page.goto('/einstellungen');
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
