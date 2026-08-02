@@ -46,24 +46,38 @@ export function dayLabel(dateKey: string): string {
   return `${day}. ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+/** One grid cell: a date key plus whether it falls in the viewed month (issue #487). */
+export interface MonthGridDay {
+  dateKey: string;
+  inMonth: boolean;
+}
+
 /**
- * Mon–Sun grid cells for the month containing `date`, as date keys — `null`
- * pads the leading/trailing weeks so every row stays a full Mon–Sun week
- * (issue #124 AC1). Length is always a multiple of 7.
+ * Mon–Sun grid cells for the month containing `date`. Leading/trailing weeks
+ * are filled with the real days of the neighbouring months (issue #487,
+ * replaces the `null`-padding from #124 AC1) so every row stays a full
+ * Mon–Sun week and is fully tappable. Length is always a multiple of 7.
  */
-export function monthDays(date: Date): Array<string | null> {
+export function monthDays(date: Date): MonthGridDay[] {
   const year = date.getFullYear();
   const month = date.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstWeekday = new Date(year, month, 1).getDay(); // 0 = Sunday
-  const leadingBlanks = firstWeekday === 0 ? 6 : firstWeekday - 1;
+  const leadingCount = firstWeekday === 0 ? 6 : firstWeekday - 1;
 
-  const days: Array<string | null> = Array.from({ length: leadingBlanks }, () => null);
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    days.push(toDateKey(new Date(year, month, day)));
+  const days: MonthGridDay[] = [];
+  // `new Date(year, month, 1 - i)` rolls back into the previous month for
+  // i >= 1 — no separate "previous month" calculation needed.
+  for (let i = leadingCount; i > 0; i -= 1) {
+    days.push({ dateKey: toDateKey(new Date(year, month, 1 - i)), inMonth: false });
   }
-  const trailingBlanks = (7 - (days.length % 7)) % 7;
-  for (let i = 0; i < trailingBlanks; i += 1) days.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    days.push({ dateKey: toDateKey(new Date(year, month, day)), inMonth: true });
+  }
+  const trailingCount = (7 - (days.length % 7)) % 7;
+  for (let day = 1; day <= trailingCount; day += 1) {
+    days.push({ dateKey: toDateKey(new Date(year, month + 1, day)), inMonth: false });
+  }
 
   return days;
 }

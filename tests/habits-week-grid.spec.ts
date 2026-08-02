@@ -28,6 +28,15 @@ function monthGrid(page: Page, habitName: string) {
   return page.getByRole('list', { name: `Monat: ${habitName}` });
 }
 
+/**
+ * Addresses a grid cell by its accessible name (day, month, year) instead of
+ * position — since #487, leading/trailing cells are real neighbour-month
+ * days, so "Nth button" no longer means "Nth of the viewed month".
+ */
+function dayButton(grid: ReturnType<typeof monthGrid>, day: number, month: string) {
+  return grid.getByRole('button', { name: new RegExp(`^${day}\\. ${month} 2026\\b`) });
+}
+
 test.beforeEach(async ({ page }) => {
   // resetAppData, not resetDatabase: wiping sessions/credentials forces registerPasskey
   // through a full re-registration every test, and that leaves goto('/gewohnheiten')
@@ -59,29 +68,32 @@ test.beforeEach(async ({ page }) => {
 /* korrekt eingerückt                                                        */
 /* -------------------------------------------------------------------------- */
 
-test('das Raster zeigt genau die Tage des Monats, Mo–So-Spalten, Monatsanfang korrekt eingerückt (issue #124 AC1)', async ({
+test('das Raster zeigt genau die Tage des Monats plus die echten Nachbartage, Mo–So-Spalten (issue #124 AC1, #487 AC1)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Yoga', schedule: 'daily', color: null, archivedAt: null });
 
   const grid = monthGrid(page, 'Yoga');
-  // All 35 grid cells, including the leading/trailing blanks that keep every
-  // row a full Mon–Sun week.
+  // All 35 grid cells are real, tappable days now — the leading/trailing
+  // weeks show June 29/30 and August 1/2 instead of empty padding (#487 AC1).
   const cells = grid.locator('> li');
   await expect(cells).toHaveCount(35);
-  await expect(cells.nth(0)).toBeEmpty();
-  await expect(cells.nth(1)).toBeEmpty();
-  await expect(cells.nth(33)).toBeEmpty();
-  await expect(cells.nth(34)).toBeEmpty();
+  const allDays = grid.getByRole('button');
+  await expect(allDays).toHaveCount(35);
 
-  const days = grid.getByRole('button');
-  await expect(days).toHaveCount(31);
-  await expect(days.first()).toHaveText('1');
-  await expect(days.last()).toHaveText('31');
+  const julyDays = grid.locator('button:not([data-outside])');
+  await expect(julyDays).toHaveCount(31);
+  await expect(julyDays.first()).toHaveText('1');
+  await expect(julyDays.last()).toHaveText('31');
+
+  await expect(dayButton(grid, 29, 'Juni')).toBeVisible();
+  await expect(dayButton(grid, 30, 'Juni')).toBeVisible();
+  await expect(dayButton(grid, 1, 'August')).toBeVisible();
+  await expect(dayButton(grid, 2, 'August')).toBeVisible();
 
   // Every day cell stays a real touch target (min 44px) even inside a 5-row
   // month grid (playwright.config.ts runs this spec in both viewport projects).
-  const box = await days.first().boundingBox();
+  const box = await allDays.first().boundingBox();
   expect(box?.width).toBeGreaterThanOrEqual(44);
   expect(box?.height).toBeGreaterThanOrEqual(44);
 });
@@ -97,14 +109,14 @@ test('‹ und › blättern den Monat für alle Gewohnheiten gleichzeitig, Über
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
 
   await expect(page.getByText('Juli 2026', { exact: true })).toBeVisible();
-  await expect(monthGrid(page, 'Yoga').getByRole('button')).toHaveCount(31);
-  await expect(monthGrid(page, 'Lesen').getByRole('button')).toHaveCount(31);
+  await expect(monthGrid(page, 'Yoga').locator('button:not([data-outside])')).toHaveCount(31);
+  await expect(monthGrid(page, 'Lesen').locator('button:not([data-outside])')).toHaveCount(31);
 
   await page.getByRole('button', { name: 'Vorheriger Monat' }).click();
   await expect(page.getByText('Juni 2026', { exact: true })).toBeVisible();
   // June 2026 has 30 days.
-  await expect(monthGrid(page, 'Yoga').getByRole('button')).toHaveCount(30);
-  await expect(monthGrid(page, 'Lesen').getByRole('button')).toHaveCount(30);
+  await expect(monthGrid(page, 'Yoga').locator('button:not([data-outside])')).toHaveCount(30);
+  await expect(monthGrid(page, 'Lesen').locator('button:not([data-outside])')).toHaveCount(30);
 
   await page.getByRole('button', { name: 'Nächster Monat' }).click();
   await page.getByRole('button', { name: 'Nächster Monat' }).click();
@@ -127,16 +139,15 @@ test('erledigte Tage sind gefüllt, offene bleiben leer — auch in vergangenen 
   await seedHabitLog(page, { habitId, logDate: JULY_1, done: true });
   await seedHabitLog(page, { habitId, logDate: JUNE_10, done: true });
 
-  const julyDays = monthGrid(page, 'Lesen').getByRole('button');
-  await expect(julyDays.first()).toHaveClass(/habit-week-grid__day--done/);
-  await expect(julyDays.nth(1)).not.toHaveClass(/habit-week-grid__day--done/);
+  const julyGrid = monthGrid(page, 'Lesen');
+  await expect(dayButton(julyGrid, 1, 'Juli')).toHaveClass(/habit-week-grid__day--done/);
+  await expect(dayButton(julyGrid, 2, 'Juli')).not.toHaveClass(/habit-week-grid__day--done/);
 
   await page.getByRole('button', { name: 'Vorheriger Monat' }).click();
-  const juneDays = monthGrid(page, 'Lesen').getByRole('button');
-  // June starts on a Monday (no leading blank), so June 10 is the 10th button.
-  await expect(juneDays.nth(9)).toHaveClass(/habit-week-grid__day--done/);
-  for (const index of [0, 1, 8, 10]) {
-    await expect(juneDays.nth(index)).not.toHaveClass(/habit-week-grid__day--done/);
+  const juneGrid = monthGrid(page, 'Lesen');
+  await expect(dayButton(juneGrid, 10, 'Juni')).toHaveClass(/habit-week-grid__day--done/);
+  for (const day of [1, 2, 9, 11]) {
+    await expect(dayButton(juneGrid, day, 'Juni')).not.toHaveClass(/habit-week-grid__day--done/);
   }
 });
 
@@ -149,7 +160,7 @@ test('ein zurückliegender Tag lässt sich nachträglich abhaken und wieder lös
 }) => {
   await seedHabit(page, { name: 'Meditieren', schedule: 'daily', color: null, archivedAt: null });
   // July 1 — two weeks before NOW.
-  const pastDay = monthGrid(page, 'Meditieren').getByRole('button').first();
+  const pastDay = dayButton(monthGrid(page, 'Meditieren'), 1, 'Juli');
 
   await expect(pastDay).toHaveAttribute('aria-pressed', 'false');
   await pastDay.click();
@@ -174,7 +185,7 @@ test('ein zurückliegender Tag offline getippt erreicht den Server, sobald onlin
   await seedHabit(page, { name: 'Vitamine', schedule: 'daily', color: null, archivedAt: null });
   await context.setOffline(true);
 
-  const pastDay = monthGrid(page, 'Vitamine').getByRole('button').first();
+  const pastDay = dayButton(monthGrid(page, 'Vitamine'), 1, 'Juli');
   await pastDay.click();
   await expect(pastDay).toHaveAttribute('aria-pressed', 'true');
   await expect
@@ -213,7 +224,7 @@ test('ein zukünftiger Tag lässt sich nicht abhaken und ist visuell abgesetzt (
 }) => {
   await seedHabit(page, { name: 'Vorsorge', schedule: 'daily', color: null, archivedAt: null });
   // July 31 — future relative to NOW (July 15).
-  const futureDay = monthGrid(page, 'Vorsorge').getByRole('button').last();
+  const futureDay = dayButton(monthGrid(page, 'Vorsorge'), 31, 'Juli');
   await expect(futureDay).toHaveText('31');
 
   await expect(futureDay).toBeDisabled();
@@ -226,23 +237,34 @@ test('ein zukünftiger Tag lässt sich nicht abhaken und ist visuell abgesetzt (
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: "heute" ist nur im laufenden Monat markiert                            */
+/* AK: "heute" ist markiert, wo immer der Tag im Raster steht — auch als      */
+/* Nachbartag in der Ansicht des Nachbarmonats (issue #487 AC6, ersetzt die   */
+/* alte Annahme aus #124 AC6 "heute nur im laufenden Monat markiert")         */
 /* -------------------------------------------------------------------------- */
 
-test('"heute" ist nur im laufenden Monat markiert (issue #124 AC6)', async ({ page }) => {
+test('"heute" ist markiert, auch wenn der Tag als Nachbartag in einer anderen Monatsansicht erscheint (issue #487 AC6)', async ({
+  page,
+}) => {
+  // July 31, 2026 is a Friday — a leading neighbour day in August's grid.
+  // July 15 (beforeEach) and July 31 are the same month, so the already-
+  // mounted "viewedMonth" state (July) still matches after this skew.
+  await skewClock(page, '2026-07-31T12:00:00.000Z');
   await seedHabit(page, { name: 'Spaziergang', schedule: 'daily', color: null, archivedAt: null });
 
-  const julyDays = monthGrid(page, 'Spaziergang').getByRole('button');
-  // NOW is July 15 — the 15th button (index 14).
-  await expect(julyDays.nth(14)).toHaveAttribute('data-today', '');
-  await expect(julyDays.nth(14)).toHaveAccessibleName(/\(heute\)/);
+  const julyGrid = monthGrid(page, 'Spaziergang');
+  const julyToday = dayButton(julyGrid, 31, 'Juli');
+  await expect(julyToday).toHaveAttribute('data-today', '');
+  await expect(julyToday).toHaveAccessibleName(/\(heute\)/);
 
-  await page.getByRole('button', { name: 'Vorheriger Monat' }).click();
-  const juneDays = monthGrid(page, 'Spaziergang').getByRole('button');
-  const juneCount = await juneDays.count();
-  for (let index = 0; index < juneCount; index += 1) {
-    await expect(juneDays.nth(index)).not.toHaveAttribute('data-today', '');
-  }
+  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  const augustGrid = monthGrid(page, 'Spaziergang');
+  const augustNeighbourToday = dayButton(augustGrid, 31, 'Juli');
+  await expect(augustNeighbourToday).toHaveAttribute('data-outside', '');
+  await expect(augustNeighbourToday).toHaveAttribute('data-today', '');
+  await expect(augustNeighbourToday).toHaveAccessibleName(/\(heute\)/);
+
+  // A neighbour day that isn't today stays unmarked.
+  await expect(dayButton(augustGrid, 27, 'Juli')).not.toHaveAttribute('data-today', '');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -256,11 +278,11 @@ test('nachträgliches Abhaken schlägt sich sofort in der Streak-Anzeige nieder 
   await seedHabitLog(page, { habitId, logDate: JULY_14, done: true });
   await seedHabitLog(page, { habitId, logDate: JULY_15_TODAY, done: true });
 
-  const days = monthGrid(page, 'Yoga').getByRole('button');
+  const grid = monthGrid(page, 'Yoga');
   // Check off the two days before that — 12th and 13th — straight from the
   // month grid, extending the streak from 2 to 4.
-  await days.nth(11).click();
-  await days.nth(12).click();
+  await dayButton(grid, 12, 'Juli').click();
+  await dayButton(grid, 13, 'Juli').click();
 
   // A client-side navigation, not a reload — the same liveQuery both screens
   // read from must already reflect the write (due-today.ts's "no fetch needed").
@@ -282,11 +304,9 @@ test('ein Monat ohne einen einzigen Log zeigt ein leeres, aber vollständiges Ra
 
   const grid = monthGrid(page, 'Neu');
   await expect(grid).toBeVisible();
-  const days = grid.getByRole('button');
-  await expect(days).toHaveCount(31);
-  for (const index of [0, 5, 13, 30]) {
-    await expect(days.nth(index)).not.toHaveClass(/habit-week-grid__day--done/);
-  }
+  await expect(grid.locator('> li')).toHaveCount(35);
+  await expect(grid.locator('button:not([data-outside])')).toHaveCount(31);
+  await expect(grid.locator('.habit-week-grid__day--done')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -350,7 +370,7 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
   });
   await seedHabitLog(page, { habitId, logDate: JULY_1, done: true });
 
-  const day = monthGrid(page, 'Eigenfarbe').getByRole('button').first();
+  const day = dayButton(monthGrid(page, 'Eigenfarbe'), 1, 'Juli');
   await expect(day).toHaveClass(/habit-week-grid__day--done/);
   const expectedLight = await resolveBackgroundToken(page, '--area-journal');
   let lightColor = '';
@@ -386,5 +406,158 @@ test('bei reduzierter Bewegung ist der Zellen-Übergang augenblicklich (issue #1
   for (const duration of transitionDuration.split(',')) {
     expect(parseFloat(duration)).toBeLessThan(0.001);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Nachbartage sind optisch klar abgesetzt, bleiben aber lesbar           */
+/* -------------------------------------------------------------------------- */
+
+test('Nachbartage sind gedimmt und optisch von den Tagen des gewählten Monats abgesetzt (issue #487 AC2)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Kontrast', schedule: 'daily', color: null, archivedAt: null });
+
+  const grid = monthGrid(page, 'Kontrast');
+  const outsideDay = dayButton(grid, 30, 'Juni');
+  const inMonthDay = dayButton(grid, 2, 'Juli');
+
+  await expect(outsideDay).toHaveAttribute('data-outside', '');
+  await expect(inMonthDay).not.toHaveAttribute('data-outside', '');
+
+  const outsideOpacity = Number(
+    await outsideDay.evaluate((el) => getComputedStyle(el).opacity),
+  );
+  const inMonthOpacity = Number(
+    await inMonthDay.evaluate((el) => getComputedStyle(el).opacity),
+  );
+  expect(outsideOpacity).toBeLessThan(inMonthOpacity);
+  // Dimmed, but still readable — not fully transparent.
+  expect(outsideOpacity).toBeGreaterThan(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: ein Nachbartag ist vollwertig abhakbar, wie ein Tag des Monats         */
+/* -------------------------------------------------------------------------- */
+
+test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, zeigt die Habit-Farbe (issue #487 AC3)', async ({
+  page,
+}) => {
+  await seedHabit(page, {
+    name: 'Nachbar',
+    schedule: 'daily',
+    color: '--area-tasks',
+    archivedAt: null,
+  });
+
+  const neighbourDay = dayButton(monthGrid(page, 'Nachbar'), 30, 'Juni');
+
+  await expect(neighbourDay).toHaveAttribute('aria-pressed', 'false');
+  await neighbourDay.click();
+  await expect(neighbourDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(neighbourDay).toHaveClass(/habit-week-grid__day--done/);
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const logMutations = entries.filter((entry) => entry.table === 'habit_logs');
+  expect(logMutations).toHaveLength(1);
+  expect(logMutations[0].payload).toMatchObject({ logDate: '2026-06-30' });
+
+  await neighbourDay.click();
+  await expect(neighbourDay).toHaveAttribute('aria-pressed', 'false');
+  await expect(neighbourDay).not.toHaveClass(/habit-week-grid__day--done/);
+
+  // Both taps upsert the same row, same as a normal in-month day (issue #124 AC4).
+  const entriesAfter = await page.evaluate(() => window.__starship.pending());
+  const logMutationsAfter = entriesAfter.filter((entry) => entry.table === 'habit_logs');
+  expect(logMutationsAfter).toHaveLength(2);
+  expect(new Set(logMutationsAfter.map((entry) => entry.rowId)).size).toBe(1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: die Zukunftsregel gilt unverändert auch für Nachbartage                */
+/* -------------------------------------------------------------------------- */
+
+test('die Zukunftsregel gilt auch für einen zukünftigen Nachbartag (issue #487 AC4)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Vorsorge2', schedule: 'daily', color: null, archivedAt: null });
+
+  // NOW is July 15 — August 1 is a trailing neighbour day of July's view and
+  // lies in the future.
+  const futureNeighbour = dayButton(monthGrid(page, 'Vorsorge2'), 1, 'August');
+
+  await expect(futureNeighbour).toHaveAttribute('data-outside', '');
+  await expect(futureNeighbour).toHaveAttribute('data-future', '');
+  await expect(futureNeighbour).toBeDisabled();
+  await futureNeighbour.click({ force: true });
+  await expect(futureNeighbour).not.toHaveClass(/habit-week-grid__day--done/);
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries.filter((entry) => entry.table === 'habit_logs')).toHaveLength(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: derselbe Tag zeigt in zwei Monatsansichten denselben Zustand           */
+/* -------------------------------------------------------------------------- */
+
+test('derselbe Tag zeigt in beiden Monatsansichten denselben Zustand, sofort nach dem Blättern (issue #487 AC5)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Grenztag', schedule: 'daily', color: null, archivedAt: null });
+
+  const julyGrid = monthGrid(page, 'Grenztag');
+  const june30AsNeighbour = dayButton(julyGrid, 30, 'Juni');
+  await june30AsNeighbour.click();
+  await expect(june30AsNeighbour).toHaveClass(/habit-week-grid__day--done/);
+
+  await page.getByRole('button', { name: 'Vorheriger Monat' }).click();
+  const juneGrid = monthGrid(page, 'Grenztag');
+  const june30InMonth = dayButton(juneGrid, 30, 'Juni');
+  await expect(june30InMonth).not.toHaveAttribute('data-outside', '');
+  await expect(june30InMonth).toHaveClass(/habit-week-grid__day--done/);
+
+  // Toggling from the "home" month view is visible after paging back too.
+  await june30InMonth.click();
+  await expect(june30InMonth).not.toHaveClass(/habit-week-grid__day--done/);
+
+  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  const june30AsNeighbourAgain = dayButton(monthGrid(page, 'Grenztag'), 30, 'Juni');
+  await expect(june30AsNeighbourAgain).not.toHaveClass(/habit-week-grid__day--done/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: der zugängliche Name eines Nachbartags nennt Tag und Monat eindeutig   */
+/* -------------------------------------------------------------------------- */
+
+test('der zugängliche Name eines Nachbartags nennt Tag und Monat eindeutig (issue #487 AC7)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Name', schedule: 'daily', color: null, archivedAt: null });
+
+  const grid = monthGrid(page, 'Name');
+  await expect(grid.getByRole('button', { name: /^30\. Juni 2026: Name/ })).toBeVisible();
+  await expect(grid.getByRole('button', { name: /^1\. August 2026: Name/ })).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Nachbartage bleiben ≥44px, kein horizontales Scrollen                  */
+/* -------------------------------------------------------------------------- */
+
+test('Nachbartage bleiben ≥44px groß, kein horizontales Scrollen (issue #487 AC8)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Maß', schedule: 'daily', color: null, archivedAt: null });
+
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+
+  const neighbourDay = dayButton(monthGrid(page, 'Maß'), 30, 'Juni');
+  const box = await neighbourDay.boundingBox();
+  // Rounded, not compared exactly: Chromium's grid layout can report a
+  // sub-pixel-short boundingBox (e.g. 43.999969...) for a 44px min-height box
+  // (same float-serialization class as the reduced-motion duration check
+  // below) — the CSS token is an exact 44px, this only guards against that.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
