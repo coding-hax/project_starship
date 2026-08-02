@@ -64,6 +64,16 @@ describe('selectOpenHabits', () => {
     expect(open).toEqual([]);
   });
 
+  // The Journal habit (issue #505) is a plain `habits` row, recognized elsewhere
+  // only by a fixed id — no special-casing here (AC6), so it shows up (or not)
+  // exactly like any other daily habit.
+  it('a not-yet-written Journal habit shows up like any other open habit', () => {
+    const journal = habit({ name: 'Journal' });
+    expect(selectOpenHabits([journal], [], [], '2026-07-15')).toEqual([
+      { name: 'Journal', streak: 0 },
+    ]);
+  });
+
   it('a weekly habit done earlier this week is not open, even though not done today', () => {
     const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
     const doneMonday = log({ habitId: 'habit-2', logDate: '2026-07-13' });
