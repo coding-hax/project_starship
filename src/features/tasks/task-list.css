@@ -90,6 +90,16 @@
   transition: none;
 }
 
+/* `--child` below sets its own `transition` shorthand for transform/max-height/
+   opacity/…, which — being the same specificity as `--dragging` alone and
+   coming later in the file — would otherwise re-enable the transform
+   transition on a dragged subtask (issue #457). This compound selector has
+   higher specificity (two classes) than `--child` alone, so it wins
+   regardless of source order and keeps the drag lag-free. */
+.task-list__item--child.task-list__item--dragging {
+  transition: none;
+}
+
 /* Picked up for drag-to-nest (issue #89) — raised above its siblings while it
    follows the pointer; `--dragging` (always set together with this) already
    turns off the transition, so the translate/scale tracks the pointer with no
