@@ -24,7 +24,8 @@ untriagierte Eingang** — der Zustand ganz links im Diagramm, bevor du
 Runner baut es **nie**: die Auswahl-Kaskade (`scripts/runner/select.ts`)
 matcht ausschließlich Tickets mit einem Steuerlabel oder einem Queue-Eintrag,
 alles andere trifft keinen Zweig. Das ist Absicht, keine Lücke — `ready` ist
-bewusst dein Gate.
+bewusst dein Gate — außer für selbst angelegte Kinder-/Fund-Tickets, die
+schon mit `plan` entstehen und dieses Gate bewusst umgehen (siehe unten).
 
 Bis #357 war genau das aber unsichtbar: ein untriagiertes Ticket lag da, ohne
 dass irgendwo stand, dass es überhaupt existiert (#349/#351 sind so tagelang
@@ -223,6 +224,12 @@ Status-Issue unter „🏷️ Untriagiert" (#357) auf. Weiterhin gesperrt: fremd
 Tickets labeln, die Queue #92 umschreiben (#265) oder untriagierte
 Fremdtickets automatisch labeln. Titelform und Pflichtsuche vor dem Anlegen:
 „Fundschlüssel & Pflichtsuche" unten.
+
+Seit #439 gilt dieselbe Regel für **vom Planer beim Aufteilen eines Tickets
+angelegte Kinder-Tickets** (z. B. wenn der Plan das Ticket in T1/T2/T3
+zerlegt): auch sie tragen im selben Schritt `plan` und laufen denselben Weg
+`plan` → Opus plant → `ready` → gebaut, statt labellos im untriagierten
+Eingang liegenzubleiben (Owner-Entscheidung „Option A", 02.08.26).
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein
