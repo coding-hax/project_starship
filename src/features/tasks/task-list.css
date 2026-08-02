@@ -170,7 +170,10 @@
   left: var(--space-4);
   right: var(--space-4);
   bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4));
-  z-index: 20;
+  /* One above the toast host (src/ui/toast.css), which shares this strip: an undo
+     toast from a moment ago must not sit on top of the caption for the gesture
+     the hand is making right now. */
+  z-index: 21;
   margin: 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);

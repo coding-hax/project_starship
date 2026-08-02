@@ -245,7 +245,7 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
           and the text only changes when the resolved target does, so it is not a
           per-pixel announcement. */}
       {dropHint && (
-        <p role="status" className="task-list__drop-hint">
+        <p role="status" data-testid="task-drop-hint" className="task-list__drop-hint">
           {dropHint}
         </p>
       )}
