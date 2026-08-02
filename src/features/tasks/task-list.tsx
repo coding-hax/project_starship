@@ -157,13 +157,18 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
    */
   useEffect(() => {
     if (anchoredRef.current || tasks === undefined) return;
-    anchoredRef.current = true;
     const anchorTask = tasks.find((task) => task.completedAt === null);
     const anchorEl = anchorTask
       ? listRef.current?.querySelector<HTMLElement>(`[data-task-id="${anchorTask.id}"]`)
       : null;
+    // `useListPresence` (issue #430) seeds its `entries` state via its own effect,
+    // one render behind `rows` — the real `<ul>` isn't painted yet on the render
+    // where `tasks` first has content. Retry (via the `presenceRows.length`
+    // dependency below) instead of marking anchored against an empty list.
+    if (anchorTask && !anchorEl) return;
+    anchoredRef.current = true;
     anchorEl?.scrollIntoView({ block: 'start' });
-  }, [tasks]);
+  }, [tasks, presenceRows.length]);
 
   return (
     <>
