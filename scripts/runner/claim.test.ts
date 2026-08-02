@@ -48,21 +48,37 @@ describe('claim.ts (#204)', () => {
       expect(claims.readSlot(102)).toBe('1');
     });
 
-    // Korrektur 7: bricht ein Lauf zwischen mkdir und dem Schreiben der
-    // slot-Datei ab, bleibt ein Verzeichnis ohne (oder mit leerer) slot-Datei
-    // zurück. Das muss als FREI gelten, sonst ist das Ticket für immer tot --
-    // kein Sweep hilft, solange 'in-progress' klebt.
-    it('behandelt ein Claim-Verzeichnis mit fehlender slot-Datei als frei', () => {
+    // ADR-0020 (#449): genau EINER von zwei gleichzeitigen `claimTake`-Aufrufen
+    // gewinnt -- die zweite `rename` scheitert am nicht-leeren Ziel, es gibt
+    // nie einen leeren Zwischenzustand, den beide als frei lesen koennten.
+    it('laesst bei zwei Slots auf demselben Ticket nur genau einen gewinnen (AK1)', () => {
+      const first = claimTake(claims, 105, '1');
+      const second = claimTake(claims, 105, '2');
+      expect([first, second].filter(Boolean)).toHaveLength(1);
+      expect(claims.readSlot(105)).toBe(first ? '1' : '2');
+    });
+
+    // Korrektur 7 / ADR-0020: bricht ein Lauf zwischen mkdir und dem
+    // Schreiben der slot-Datei ab, bleibt ein leeres Verzeichnis zurück (kein
+    // Inhalt). Das muss weiterhin als FREI gelten und per `rename` ersetzbar
+    // sein, sonst ist das Ticket für immer tot -- kein Sweep hilft, solange
+    // 'in-progress' klebt (AK2).
+    it('behandelt ein leeres Claim-Verzeichnis (abgebrochener Altlauf) als frei', () => {
       mkdirSync(join(dir, '103'));
       expect(claims.readSlot(103)).toBe('');
       expect(claimTake(claims, 103, '2')).toBe(true);
       expect(claims.readSlot(103)).toBe('2');
     });
 
-    it('behandelt eine leere slot-Datei als frei', () => {
+    // ADR-0020: das fruehere Mikro-Loch -- ein Verzeichnis mit (leerer)
+    // slot-Datei ist fuer `rename` NICHT-leer und daher nicht mehr stehlbar.
+    // Anders als der Fall oben (komplett leeres Verzeichnis) ist hier bereits
+    // Inhalt da; genau dieses Loch schliesst der atomare Claim.
+    it('behandelt eine leere slot-Datei NICHT mehr als frei (geschlossenes Mikro-Loch)', () => {
       mkdirSync(join(dir, '104'));
       writeFileSync(join(dir, '104', 'slot'), '');
-      expect(claimTake(claims, 104, '3')).toBe(true);
+      expect(claimTake(claims, 104, '3')).toBe(false);
+      expect(claims.readSlot(104)).toBe('');
     });
   });
 

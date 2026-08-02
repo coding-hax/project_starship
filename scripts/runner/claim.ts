@@ -1,42 +1,55 @@
-// Ticket-Anspruch bei mehreren Slots (#204): atomarer `mkdir`-Claim unter
-// SHARED_DIR/claims/<issue>/, dieselbe Technik wie der bestehende Lauf-Lock in
-// claude-runner.sh -- `mkdir` ist atomar auf POSIX und ersetzt damit ein
-// fehlendes Compare-and-Swap bei GitHub-Labels (ein reines Label-Rennen waere
-// nicht sicher).
+// Ticket-Anspruch bei mehreren Slots (#204): atomarer Claim unter
+// SHARED_DIR/claims/<issue>/, per `rename` mit Besitzer-Inhalt angelegt
+// (ADR-0020, #449) -- ersetzt damit ein fehlendes Compare-and-Swap bei
+// GitHub-Labels (ein reines Label-Rennen waere nicht sicher).
 //
 // Ein Claim verfaellt am LABEL (in-progress), NIE an einer PID: der
 // Runner-Prozess stirbt planmaessig nach jedem Tick, ein in-progress-Ticket
 // ueberlebt viele Ticks (wartet z. B. 20 Minuten auf CI). PID-Liveness wuerde
 // jeden Claim nach wenigen Minuten freigeben -- genau der Schaden, den dieses
 // Ticket verhindern soll.
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { GhAdapter } from './gh.js';
 import type { QueueIssue } from './queue.js';
 
 export interface ClaimAdapter {
-  /** true = Verzeichnis wurde HIER neu angelegt (mkdir atomar gewonnen). */
-  take(issue: number): boolean;
+  /**
+   * true = Claim wurde HIER atomar mit `slotId` als Besitzer angelegt (frisch
+   * oder ein leeres Altverzeichnis ersetzt). false = Zielverzeichnis war
+   * bereits nicht-leer -- ein anderer Slot haelt den Claim (oder haelt ihn
+   * noch, Fortsetzung).
+   */
+  claimAtomic(issue: number, slotId: string): boolean;
   /** null = kein Claim vorhanden. '' = Claim da, slot-Datei leer/fehlt (frei). */
   readSlot(issue: number): string | null;
-  writeSlot(issue: number, slotId: string): void;
   /** Alter seit Anlage in ms, null wenn kein Claim existiert. */
   ageMs(issue: number, now: number): number | null;
   list(): number[];
   release(issue: number): void;
+  /** Raeumt `.tmp-*`-Reste eines zwischen Anlage und `rename` abgebrochenen `claimAtomic` weg. */
+  sweepTmp(olderThanMs: number, now: number): void;
 }
 
 export function createClaimAdapter(baseDir: string): ClaimAdapter {
   const dirOf = (issue: number) => join(baseDir, String(issue));
   const slotFile = (issue: number) => join(dirOf(issue), 'slot');
+  const tmpDirOf = () => join(baseDir, `.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`);
 
   return {
-    take(issue) {
+    claimAtomic(issue, slotId) {
       mkdirSync(baseDir, { recursive: true });
+      const tmp = tmpDirOf();
+      mkdirSync(tmp);
+      writeFileSync(join(tmp, 'slot'), slotId, 'utf-8');
       try {
-        mkdirSync(dirOf(issue));
+        // `rename` auf ein nicht-leeres Zielverzeichnis scheitert atomar
+        // (POSIX ENOTEMPTY) -- genau ein Gewinner, nie ein leerer
+        // Zwischenzustand wie beim frueheren mkdir+writeFile (ADR-0020).
+        renameSync(tmp, dirOf(issue));
         return true;
       } catch {
+        rmSync(tmp, { recursive: true, force: true });
         return false;
       }
     },
@@ -45,14 +58,10 @@ export function createClaimAdapter(baseDir: string): ClaimAdapter {
       try {
         return readFileSync(slotFile(issue), 'utf-8').trim();
       } catch {
-        // Verzeichnis da, slot-Datei (noch) nicht -- der Zwischenzustand aus
-        // Korrektur 7: zaehlt als frei, nicht als fremd.
+        // Verzeichnis da, slot-Datei (noch) nicht -- Zwischenzustand eines
+        // abgebrochenen Laufs (siehe claimAtomic), zaehlt als frei.
         return '';
       }
-    },
-    writeSlot(issue, slotId) {
-      mkdirSync(dirOf(issue), { recursive: true });
-      writeFileSync(slotFile(issue), slotId, 'utf-8');
     },
     ageMs(issue, now) {
       try {
@@ -73,6 +82,23 @@ export function createClaimAdapter(baseDir: string): ClaimAdapter {
     release(issue) {
       rmSync(dirOf(issue), { recursive: true, force: true });
     },
+    sweepTmp(olderThanMs, now) {
+      let names: string[];
+      try {
+        names = readdirSync(baseDir);
+      } catch {
+        return;
+      }
+      for (const name of names) {
+        if (!name.startsWith('.tmp-')) continue;
+        const path = join(baseDir, name);
+        try {
+          if (now - statSync(path).mtimeMs >= olderThanMs) rmSync(path, { recursive: true, force: true });
+        } catch {
+          // zwischen readdir und stat verschwunden -- kein Problem.
+        }
+      }
+    },
   };
 }
 
@@ -84,23 +110,14 @@ const SWEEP_GRACE_MS = 10 * 60 * 1000;
 
 /**
  * Beansprucht `issue` fuer `slotId`. true = das Ticket gehoert jetzt diesem
- * Slot -- entweder weil der Claim hier neu angelegt wurde, weil er schon
- * diesem Slot gehoerte (Fortsetzung), oder weil er verwaist war (Korrektur 7:
- * eine leere/fehlende slot-Datei gilt als FREI, nicht als fremd -- sonst
- * blockiert ein zwischen `mkdir` und dem Schreiben abgebrochener Claim das
- * Ticket fuer immer, ohne dass irgendwo etwas rot wird).
+ * Slot -- entweder weil der Claim atomar neu angelegt wurde (frisch oder ein
+ * leeres/verwaistes Altverzeichnis ersetzt, ADR-0020), oder weil er schon
+ * diesem Slot gehoerte (Fortsetzung). Ein voller Claim eines ANDEREN Slots
+ * laesst `claimAtomic` scheitern -- dann false, kein Fortsetzungsversuch.
  */
 export function claimTake(claims: ClaimAdapter, issue: number, slotId: string): boolean {
-  if (claims.take(issue)) {
-    claims.writeSlot(issue, slotId);
-    return true;
-  }
-  const owner = claims.readSlot(issue);
-  if (owner === null || owner === '') {
-    claims.writeSlot(issue, slotId);
-    return true;
-  }
-  return owner === slotId;
+  if (claims.claimAtomic(issue, slotId)) return true;
+  return claims.readSlot(issue) === slotId;
 }
 
 /**
@@ -181,6 +198,7 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
  * Stromausfall, ohne dass ein Mensch eingreifen muss.
  */
 export function claimSweep(claims: ClaimAdapter, gh: GhAdapter, now: number): void {
+  claims.sweepTmp(SWEEP_GRACE_MS, now);
   for (const issue of claims.list()) {
     const age = claims.ageMs(issue, now);
     if (age === null || age < SWEEP_GRACE_MS) continue;
