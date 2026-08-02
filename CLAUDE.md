@@ -210,8 +210,9 @@ Der Nutzer arbeitet mit einem Plan, dessen Kontingent begrenzt ist. Verbrauch
 skaliert mit **Kontext**, nicht mit der Anzahl deiner Nachrichten. Jede Datei, die
 du unnötig liest, kostet ihn Arbeitszeit am Ende der Woche.
 
-1. **Erst die Karte, dann suchen.** `docs/CODEMAP.md` beantwortet die meisten
-   „wo liegt…?"-Fragen. Grep erst, wenn die Karte nicht reicht.
+1. **Erst die Karte, dann suchen.** `docs/CODEMAP.md` gibt die Grobstruktur —
+   für Detail (Zusammenhänge, Implementierungsdetails) ist der
+   Explore-Subagent der Weg, nicht Grep im Hauptkontext.
 2. **Das Ticket nennt die betroffenen Dateien.** Lies die — und nicht das halbe Repo.
    Wenn die Liste im Ticket unvollständig ist, ergänze sie, statt beim nächsten Mal
    wieder zu suchen.
