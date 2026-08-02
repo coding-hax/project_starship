@@ -54,7 +54,8 @@ export function malformedFields(m: Mutation): string[] {
  */
 export interface HabitData {
   name: string;
-  schedule: 'daily' | 'weekly' | 'custom';
+  schedule: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  target: number;
   color: string | null;
   archivedAt: string | null;
   createdAt: string;

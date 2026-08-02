@@ -1,0 +1,1 @@
+ALTER TABLE "habits" ADD COLUMN "target" integer DEFAULT 1 NOT NULL;

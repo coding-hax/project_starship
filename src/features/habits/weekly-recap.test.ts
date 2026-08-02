@@ -7,6 +7,7 @@ const habit = (id: string, overrides: Partial<HabitView> = {}): HabitView => ({
   id,
   name: id,
   schedule: 'daily',
+  target: 1,
   color: null,
   archivedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -80,6 +81,33 @@ describe('computeWeeklyRecap — AC3: Kennzahl N von M', () => {
   it('weekly: ein einzelner Done-Log in der Woche genügt', () => {
     const habits = [habit('a', { schedule: 'weekly' })];
     const logs = [log('a', '2026-07-08')];
+    const recap = computeWeeklyRecap(habits, logs, NOW);
+    expect(recap?.metric).toEqual({ met: 1, total: 1 });
+  });
+
+  it('weekly mit target > 1: erst bei erreichtem Ziel erfüllt (issue #509)', () => {
+    const habits = [habit('a', { schedule: 'weekly', target: 3 })];
+    const logs = [log('a', '2026-07-08'), log('a', '2026-07-09')]; // nur 2 von 3
+    const recap = computeWeeklyRecap(habits, logs, NOW);
+    expect(recap?.metric).toEqual({ met: 0, total: 1 });
+  });
+
+  it('weekly mit target > 1: erfüllt sobald alle 3 Logs stehen (issue #509)', () => {
+    const habits = [habit('a', { schedule: 'weekly', target: 3 })];
+    const logs = [log('a', '2026-07-08'), log('a', '2026-07-09'), log('a', '2026-07-10')];
+    const recap = computeWeeklyRecap(habits, logs, NOW);
+    expect(recap?.metric).toEqual({ met: 1, total: 1 });
+  });
+
+  it('monatliche/quartalsweise/jährliche/zweiwöchentliche Gewohnheiten tragen nichts bei (issue #509)', () => {
+    const habits = [
+      habit('a'), // daily, erfüllt -> zählt
+      habit('b', { schedule: 'monthly' }),
+      habit('c', { schedule: 'quarterly' }),
+      habit('d', { schedule: 'yearly' }),
+      habit('e', { schedule: 'biweekly' }),
+    ];
+    const logs = LAST_WEEK_DAYS.map((d) => log('a', d));
     const recap = computeWeeklyRecap(habits, logs, NOW);
     expect(recap?.metric).toEqual({ met: 1, total: 1 });
   });

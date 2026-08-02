@@ -1,5 +1,5 @@
 import { currentWeekRange, weekDays } from './due-today';
-import { isDoneInWeek, isDoneOnDay, type WeekRange } from './schedule-rules';
+import { doneCountInPeriod, isDoneOnDay, type WeekRange } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -43,14 +43,23 @@ function isActiveInWeek(
   return true;
 }
 
-/** "Soll erfüllt" for one habit in `week` (AC3): weekly = ≥ 1 done, daily/custom = every day done. */
+/**
+ * Whether `habit`'s cadence fits a single Mon–Sun week at all (issue #509): a
+ * fortnight/month/quarter/year has no weekly quota to report, so it is
+ * excluded from both the numerator and denominator, not counted as "missed".
+ */
+function fitsInAWeek(habit: Pick<HabitView, 'schedule'>): boolean {
+  return habit.schedule === 'daily' || habit.schedule === 'weekly' || habit.schedule === 'custom';
+}
+
+/** "Soll erfüllt" for one habit in `week` (AC3): weekly = `target` reached, daily/custom = every day done. */
 function metQuotaInWeek(
-  habit: Pick<HabitView, 'id' | 'schedule'>,
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
   logs: HabitLogView[],
   week: WeekRange,
   days: string[],
 ): boolean {
-  if (habit.schedule === 'weekly') return isDoneInWeek(logs, habit.id, week);
+  if (habit.schedule === 'weekly') return doneCountInPeriod(logs, habit.id, week) >= habit.target;
   return days.every((day) => isDoneOnDay(logs, habit.id, day));
 }
 
@@ -58,7 +67,7 @@ function metQuotaInWeek(
 function computeWeekQuote(habits: HabitView[], logs: HabitLogView[], anchor: Date): WeekQuote {
   const week = currentWeekRange(anchor);
   const days = weekDays(anchor);
-  const active = habits.filter((habit) => isActiveInWeek(habit, week));
+  const active = habits.filter((habit) => fitsInAWeek(habit) && isActiveInWeek(habit, week));
   const met = active.filter((habit) => metQuotaInWeek(habit, logs, week, days)).length;
   return { met, total: active.length };
 }

@@ -50,7 +50,7 @@ export const SYNC_REGISTRY = {
   },
   habits: {
     table: habits,
-    writable: ['name', 'schedule', 'color', 'archivedAt', 'createdAt'],
+    writable: ['name', 'schedule', 'target', 'color', 'archivedAt', 'createdAt'],
     required: ['name', 'schedule'],
   },
   habit_logs: {

@@ -4,14 +4,34 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { mutate } from '@/local/outbox';
 import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
-import type { HabitView } from './use-habits';
+import type { HabitSchedule, HabitView } from './use-habits';
 
 const CREATE_LABEL = 'Gewohnheit anlegen';
 const EDIT_LABEL = 'Gewohnheit bearbeiten';
 
-const SCHEDULES: { value: 'daily' | 'weekly'; label: string }[] = [
+/**
+ * A vertical radio fieldset, not `SegmentedControl` (issue #509): six labels —
+ * Täglich/Wöchentlich/Alle zwei Wochen/Monatlich/Quartalsweise/Jährlich — don't
+ * fit a single segmented row at 375px. `custom` is left out: it has no UI yet
+ * (schema.ts), reserved for a later milestone.
+ */
+const SCHEDULES: { value: HabitSchedule; label: string }[] = [
   { value: 'daily', label: 'Täglich' },
   { value: 'weekly', label: 'Wöchentlich' },
+  { value: 'biweekly', label: 'Alle zwei Wochen' },
+  { value: 'monthly', label: 'Monatlich' },
+  { value: 'quarterly', label: 'Quartalsweise' },
+  { value: 'yearly', label: 'Jährlich' },
+];
+
+/** 1–6× pro Woche (issue #509 Owner-Entsch. 1) — "täglich" stays its own schedule, not "7×". */
+const TARGETS: { value: '1' | '2' | '3' | '4' | '5' | '6'; label: string }[] = [
+  { value: '1', label: '1' },
+  { value: '2', label: '2' },
+  { value: '3', label: '3' },
+  { value: '4', label: '4' },
+  { value: '5', label: '5' },
+  { value: '6', label: '6' },
 ];
 
 /**
@@ -42,7 +62,8 @@ export interface HabitEditorProps {
  */
 export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [name, setName] = useState('');
-  const [schedule, setSchedule] = useState<'daily' | 'weekly'>('daily');
+  const [schedule, setSchedule] = useState<HabitSchedule>('daily');
+  const [target, setTarget] = useState<'1' | '2' | '3' | '4' | '5' | '6'>('1');
   const [color, setColor] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
@@ -52,16 +73,30 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   useEffect(() => {
     if (open && !wasOpenRef.current && mode === 'edit' && habit) {
       setName(habit.name);
-      setSchedule(habit.schedule === 'weekly' ? 'weekly' : 'daily');
+      setSchedule(habit.schedule === 'custom' ? 'daily' : habit.schedule);
+      setTarget(
+        habit.schedule === 'weekly' && habit.target >= 1 && habit.target <= 6
+          ? (String(habit.target) as '1' | '2' | '3' | '4' | '5' | '6')
+          : '1',
+      );
       setColor(habit.color ?? '');
     }
     if (open && !wasOpenRef.current && mode === 'create') {
       setName('');
       setSchedule('daily');
+      setTarget('1');
       setColor('');
     }
     wasOpenRef.current = open;
   }, [open, mode, habit]);
+
+  // Every non-weekly period has a fixed target of 1 (issue #509) — reset it
+  // right where the schedule itself changes, not in an effect (no need to
+  // synchronize with anything external here, so no effect is warranted).
+  function handleScheduleChange(next: HabitSchedule) {
+    setSchedule(next);
+    if (next !== 'weekly') setTarget('1');
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +107,8 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
       return;
     }
 
+    const nextTarget = schedule === 'weekly' ? Number(target) : 1;
+
     if (mode === 'create') {
       onClose();
       await mutate({
@@ -80,6 +117,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
         payload: {
           name: trimmedName,
           schedule,
+          target: nextTarget,
           color: color || null,
           archivedAt: null,
           createdAt: new Date().toISOString(),
@@ -94,6 +132,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
     const payload: Record<string, unknown> = {};
     if (trimmedName !== habit.name) payload.name = trimmedName;
     if (schedule !== habit.schedule) payload.schedule = schedule;
+    if (nextTarget !== habit.target) payload.target = nextTarget;
     if (nextColor !== habit.color) payload.color = nextColor;
 
     onClose();
@@ -119,12 +158,28 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
           aria-label="Name"
           placeholder="z. B. Wasser trinken"
         />
-        <SegmentedControl
-          options={SCHEDULES}
-          value={schedule}
-          onChange={setSchedule}
-          label="Rhythmus"
-        />
+        <fieldset className="habit-editor__schedules">
+          <legend>Rhythmus</legend>
+          {SCHEDULES.map((option) => (
+            <label key={option.value} className="habit-editor__schedule-option">
+              <input
+                type="radio"
+                name="schedule"
+                checked={schedule === option.value}
+                onChange={() => handleScheduleChange(option.value)}
+              />
+              {option.label}
+            </label>
+          ))}
+        </fieldset>
+        {schedule === 'weekly' && (
+          <SegmentedControl
+            options={TARGETS}
+            value={target}
+            onChange={setTarget}
+            label="Wie oft pro Woche"
+          />
+        )}
         <fieldset className="habit-editor__colors">
           <legend>Farbe</legend>
           {COLORS.map((option) => (
