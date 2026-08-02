@@ -256,3 +256,47 @@ test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)',
     expect(paddingBottom).not.toBe('0px');
   });
 });
+
+test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', () => {
+  /**
+   * `getComputedStyle().backgroundColor` serializes an oklch-sourced color
+   * inconsistently across Chromium versions (sometimes `oklch(...)`, sometimes
+   * `oklab(... / a)`). Painting it into a canvas and reading the pixel back is
+   * source-agnostic and catches a `color-mix(..., transparent)` regression
+   * (alpha < 255) regardless of how the color string itself is serialized.
+   */
+  async function backgroundAlpha(page: Page) {
+    const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+    return nav.evaluate((el) => {
+      const color = getComputedStyle(el).backgroundColor;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      return ctx.getImageData(0, 0, 1, 1).data[3];
+    });
+  }
+
+  for (const path of ['/gewohnheiten', '/aufgaben', '/uebersicht']) {
+    test(`${path}: die Nav ist voll deckend, kein Blur`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto(path);
+
+      expect(await backgroundAlpha(page)).toBe(255);
+      const backdropFilter = await page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .evaluate((el) => getComputedStyle(el).backdropFilter);
+      expect(backdropFilter).toBe('none');
+    });
+  }
+
+  test('bleibt im Dark Mode voll deckend', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+    await page.emulateMedia({ colorScheme: 'dark' });
+
+    expect(await backgroundAlpha(page)).toBe(255);
+  });
+});
