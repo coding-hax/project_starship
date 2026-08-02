@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TaskView } from './use-tasks';
 
 /** Below this, releasing is a cancelled swipe — the row just springs back. */
@@ -49,6 +49,27 @@ export interface TaskItemProps {
   entering?: boolean;
   leaving?: boolean;
   onAnimationEnd?: () => void;
+  /**
+   * Reported on every move while this row is lifted, plus once on pick-up, with
+   * the same `targetId` a drop would use right now (issue #451). The list turns
+   * that into the live preview; `onDragEnd` clears it on drop *and* on cancel.
+   */
+  onDragOverTask?: (targetId: string | null) => void;
+  onDragEnd?: () => void;
+  /** Releasing now would make the dragged row a subtask of *this* one. */
+  isNestTarget?: boolean;
+  /** This row is the lifted one and releasing now would pull it out to top level. */
+  isUnnestPreview?: boolean;
+}
+
+/**
+ * Belt to `preventDefault()`'s braces (issue #451): a selection the user made
+ * *before* grabbing the row would otherwise still be highlighted underneath the
+ * drag, and on some browsers still be the thing the gesture picks up.
+ */
+function clearTextSelection() {
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed) selection.removeAllRanges();
 }
 
 function formatDueAt(dueAt: string): string {
@@ -87,6 +108,10 @@ export function TaskItem({
   entering = false,
   leaving = false,
   onAnimationEnd,
+  onDragOverTask,
+  onDragEnd,
+  isNestTarget = false,
+  isUnnestPreview = false,
 }: TaskItemProps) {
   const [dragX, setDragX] = useState(0);
   const [dragY, setDragY] = useState(0);
@@ -95,6 +120,10 @@ export function TaskItem({
   const [startX, setStartX] = useState<number | null>(null);
   const [startY, setStartY] = useState<number | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemRef = useRef<HTMLLIElement | null>(null);
+  const liftedRef = useRef(false);
+  /** Last pointer position, so the pick-up timer can resolve a target without an event. */
+  const pointerRef = useRef({ x: 0, y: 0 });
 
   const isDone = task.completedAt !== null;
   const priorityMeta = PRIORITY_META[task.priority];
@@ -103,6 +132,26 @@ export function TaskItem({
   // the data model does not support (one level only, issue #89).
   const draggable = !isParent && onDropOnTask !== undefined;
 
+  /**
+   * `touch-action: pan-y` (task-list.css) is what lets a finger scroll the list
+   * off a card, and it is latched for the whole gesture — by the time the row is
+   * lifted it can no longer be narrowed to `none` via CSS. Without this listener
+   * the browser would take the vertical part of a drag-to-nest as a page scroll
+   * and cancel the gesture, which is exactly the direction nesting needs
+   * (issue #451). React attaches `touchmove` passively at the root, so
+   * `preventDefault()` only bites from a natively registered non-passive
+   * listener — hence the effect rather than an `onTouchMove` prop.
+   */
+  useEffect(() => {
+    const el = itemRef.current;
+    if (!el) return;
+    function blockScrollWhileLifted(event: TouchEvent) {
+      if (liftedRef.current) event.preventDefault();
+    }
+    el.addEventListener('touchmove', blockScrollWhileLifted, { passive: false });
+    return () => el.removeEventListener('touchmove', blockScrollWhileLifted);
+  }, []);
+
   function clearLongPressTimer() {
     if (longPressTimerRef.current !== null) {
       clearTimeout(longPressTimerRef.current);
@@ -110,21 +159,34 @@ export function TaskItem({
     }
   }
 
+  function setLiftedState(next: boolean) {
+    liftedRef.current = next;
+    setLifted(next);
+  }
+
   function handlePointerDown(event: ReactPointerEvent<HTMLLIElement>) {
     if (event.button !== 0) return;
     // The checkbox is its own control — capturing the pointer here would steal the
     // click the browser is about to synthesize for it.
     if ((event.target as HTMLElement).closest('input, button')) return;
+    // Otherwise the browser starts a native text selection alongside the gesture:
+    // the word under the pointer gets selected and it is *that* selection the
+    // drag then moves, not the card (issue #451). Safe here because the row is
+    // not a focusable control — the two elements that are have already returned.
+    event.preventDefault();
+    clearTextSelection();
     setStartX(event.clientX);
     setStartY(event.clientY);
+    pointerRef.current = { x: event.clientX, y: event.clientY };
     setDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
 
     if (draggable) {
       clearLongPressTimer();
       longPressTimerRef.current = setTimeout(() => {
-        setLifted(true);
+        setLiftedState(true);
         navigator.vibrate?.(10);
+        onDragOverTask?.(resolveDropTarget(pointerRef.current.x, pointerRef.current.y));
       }, LONG_PRESS_MS);
     }
   }
@@ -133,10 +195,12 @@ export function TaskItem({
     if (!dragging || startX === null || startY === null) return;
     const deltaX = event.clientX - startX;
     const deltaY = event.clientY - startY;
+    pointerRef.current = { x: event.clientX, y: event.clientY };
 
     if (lifted) {
       setDragX(deltaX);
       setDragY(deltaY);
+      onDragOverTask?.(resolveDropTarget(event.clientX, event.clientY));
       return;
     }
 
@@ -150,11 +214,12 @@ export function TaskItem({
 
   /** `elementFromPoint` would just hit this row itself — it is rendered right
    * under the pointer — so pointer events are switched off for the lookup. */
-  function resolveDropTarget(event: ReactPointerEvent<HTMLLIElement>): string | null {
-    const el = event.currentTarget;
+  function resolveDropTarget(clientX: number, clientY: number): string | null {
+    const el = itemRef.current;
+    if (!el) return null;
     const previous = el.style.pointerEvents;
     el.style.pointerEvents = 'none';
-    const dropEl = document.elementFromPoint(event.clientX, event.clientY);
+    const dropEl = document.elementFromPoint(clientX, clientY);
     el.style.pointerEvents = previous;
 
     const targetId = dropEl?.closest<HTMLElement>('[data-task-id]')?.dataset.taskId ?? null;
@@ -169,7 +234,7 @@ export function TaskItem({
     }
     const wasLifted = lifted;
     setDragging(false);
-    setLifted(false);
+    setLiftedState(false);
     setStartX(null);
     setStartY(null);
     const delta = dragX;
@@ -177,7 +242,9 @@ export function TaskItem({
     setDragY(0);
 
     if (wasLifted) {
-      onDropOnTask?.(resolveDropTarget(event));
+      const target = resolveDropTarget(event.clientX, event.clientY);
+      onDragEnd?.();
+      onDropOnTask?.(target);
       return;
     }
 
@@ -199,15 +266,17 @@ export function TaskItem({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     setDragging(false);
-    setLifted(false);
+    setLiftedState(false);
     setStartX(null);
     setStartY(null);
     setDragX(0);
     setDragY(0);
+    onDragEnd?.();
   }
 
   return (
     <li
+      ref={itemRef}
       data-task-id={task.id}
       data-entering={entering}
       data-leaving={leaving}
@@ -218,7 +287,9 @@ export function TaskItem({
         (dragging ? ' task-list__item--dragging' : '') +
         (lifted ? ' task-list__item--lifted' : '') +
         (isChild ? ' task-list__item--child' : '') +
-        (isChild && !visible ? ' task-list__item--collapsed' : '')
+        (isChild && !visible ? ' task-list__item--collapsed' : '') +
+        (isNestTarget ? ' task-list__item--nest-target' : '') +
+        (isUnnestPreview ? ' task-list__item--unnest-preview' : '')
       }
       style={
         // Swipe/lift and the exit animation never overlap: onDelete only ever
