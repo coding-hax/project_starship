@@ -158,6 +158,19 @@ describe('prompts', () => {
     });
   });
 
+  // #439: vom Planer beim Aufteilen angelegte Kinder-Tickets tragen
+  // automatisch `plan`, analog zu den Fund-Tickets aus #397 -- sonst landen
+  // sie labellos und werden von selectTicket nie aufgegriffen.
+  describe('Kinder-Tickets tragen plan (#439)', () => {
+    const prompt = planPrompt(42);
+
+    it('Plan-Prompt verlangt --label plan und Eltern-Verweis fuer selbst angelegte Kinder-Tickets', () => {
+      expect(prompt).toContain('--label plan');
+      expect(prompt).toContain('#42');
+      expect(prompt).toContain('nur selbst angelegte');
+    });
+  });
+
   // #410 R1 (AK2): mehrere rote Tests mit derselben Ursache -> ein Ticket,
   // mehrere 'Fund:'-Zeilen, keine N Tickets.
   describe('Ein Root-Cause, ein Ticket (#410 R1/AK2)', () => {

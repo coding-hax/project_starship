@@ -589,7 +589,7 @@ test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber ni
   await expect(items.nth(1)).toContainText('14:30');
 });
 
-test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet er den Editor', async ({
+test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -599,11 +599,12 @@ test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet 
 
   await swipeLeft(item, 20); // below the 80px threshold
 
-  await expect(page.getByRole('button', { name: 'Löschen' })).toHaveCount(0);
+  await expect(item).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
   await expect(editorDialog(page)).toBeHidden();
 });
 
-test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen Undo-Toast', async ({
+test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -612,9 +613,6 @@ test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen 
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeLeft(item, 120);
-  const confirmButton = page.getByRole('button', { name: 'Löschen' });
-  await expect(confirmButton).toBeVisible();
-  await confirmButton.click();
 
   // Scoped to the list, not `page.getByText` — the undo toast's own message
   // ("„<title>" gelöscht") embeds the title too, so a page-wide text query would
@@ -640,7 +638,6 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeLeft(item, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
   // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
 
@@ -779,7 +776,6 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
 
   const item = taskItems(page).filter({ hasText: title });
   await swipeLeft(item, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
 
   // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
@@ -1060,7 +1056,6 @@ test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und K
 
   const parentItem = taskItems(page).filter({ hasText: 'Elternaufgabe' });
   await swipeLeft(parentItem, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
 
   await expect(taskItems(page)).toHaveCount(0);
   await expect(
@@ -1168,4 +1163,231 @@ test('ein Kind wird offline über den Editor zugeordnet und erreicht online die 
     client.query('SELECT parent_id FROM tasks WHERE title = $1', ['Unteraufgabe']),
   );
   expect(row.rows[0].parent_id).toBe(parentId);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Drag-to-nest: no text selection, live drop preview (issue #451)             */
+/* -------------------------------------------------------------------------- */
+
+function dropHint(page: Page) {
+  return page.getByTestId('task-drop-hint');
+}
+
+async function centerOf(locator: Locator): Promise<{ x: number; y: number }> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('centerOf: target has no bounding box');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/** Free space under the last card — where releasing means "no parent". */
+async function pointBelowList(page: Page): Promise<{ x: number; y: number }> {
+  const box = await page.getByRole('list', { name: 'Aufgaben' }).boundingBox();
+  if (!box) throw new Error('pointBelowList: list has no bounding box');
+  return { x: box.x + 24, y: box.y + box.height + 40 };
+}
+
+/**
+ * Picks a row up the way a long press does and *keeps holding* — every assertion
+ * about the preview has to happen while the pointer is still down, which is
+ * exactly the state the old code had no way to show anything in.
+ */
+async function liftRow(page: Page, row: Locator) {
+  const start = await centerOf(row);
+  await row.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: start.x,
+    clientY: start.y,
+    button: 0,
+    bubbles: true,
+  });
+  await freezeClock(page);
+  await page.clock.fastForward(LONG_PRESS_MS + 100);
+}
+
+async function holdOver(row: Locator, point: { x: number; y: number }) {
+  await row.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: point.x,
+    clientY: point.y,
+    bubbles: true,
+  });
+}
+
+async function releaseAt(row: Locator, point: { x: number; y: number }) {
+  await row.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: point.x,
+    clientY: point.y,
+    bubbles: true,
+  });
+}
+
+/** Returns whether the page's own scroll was cancelled for this touch move. */
+async function touchMoveWasBlocked(row: Locator): Promise<boolean> {
+  return row.evaluate((el) => {
+    const touch = new Touch({ identifier: 1, target: el, clientX: 10, clientY: 10 });
+    const event = new TouchEvent('touchmove', {
+      bubbles: true,
+      cancelable: true,
+      touches: [touch],
+      targetTouches: [touch],
+      changedTouches: [touch],
+    });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+}
+
+test('eine Aufgabe über die Liste zu ziehen markiert keinen Text (issue #451 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Zuerst erfasst' });
+  await seedTask(page, { title: 'Danach erfasst' });
+
+  const from = await centerOf(taskItems(page).filter({ hasText: 'Zuerst erfasst' }));
+  const to = await centerOf(taskItems(page).filter({ hasText: 'Danach erfasst' }));
+
+  // A real mouse drag, not a synthetic pointer event — native text selection is a
+  // browser default action, so only the real thing can prove it stays suppressed.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  const selectedWhileDragging = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  await page.mouse.up();
+
+  expect(selectedWhileDragging).toBe('');
+});
+
+test('eine angehobene Aufgabe über einer anderen zu halten markiert diese als Ziel und benennt die Wirkung (issue #451 AK2)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+  const target = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+
+  await liftRow(page, dragged);
+  await holdOver(dragged, await centerOf(target));
+
+  await expect(target).toHaveClass(/task-list__item--nest-target/);
+  await expect(dropHint(page)).toHaveText('„Wanderer" wird Unteraufgabe von „Sammelaufgabe"');
+  // Still held: a preview promises, it does not write.
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveCount(0);
+});
+
+test('über einer Unteraufgabe gehalten wird deren Elternteil als Ziel markiert, nicht die Unteraufgabe (issue #451 AK3)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Bestehendes Kind', parentId });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+  const child = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
+  const parent = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+
+  await liftRow(page, dragged);
+  await holdOver(dragged, await centerOf(child));
+
+  await expect(parent).toHaveClass(/task-list__item--nest-target/);
+  await expect(child).not.toHaveClass(/task-list__item--nest-target/);
+  await expect(dropHint(page)).toHaveText('„Wanderer" wird Unteraufgabe von „Sammelaufgabe"');
+
+  // And releasing does what the preview said — one level, attached to the parent.
+  await releaseAt(dragged, await centerOf(child));
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveText('0/2');
+});
+
+test('eine Unteraufgabe über den freien Bereich gehalten zeigt das Herauslösen an (issue #451 AK4)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Bestehendes Kind', parentId });
+
+  const dragged = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
+  const parent = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+
+  await liftRow(page, dragged);
+  await holdOver(dragged, await pointBelowList(page));
+
+  await expect(dropHint(page)).toHaveText('„Bestehendes Kind" wird keiner Aufgabe zugeordnet');
+  await expect(dragged).toHaveClass(/task-list__item--unnest-preview/);
+  await expect(parent).not.toHaveClass(/task-list__item--nest-target/);
+});
+
+test('eine Aufgabe, die schon auf Wurzelebene liegt, zeigt über dem freien Bereich keine Anzeige (issue #451 AK5)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+
+  await liftRow(page, dragged);
+  await holdOver(dragged, await pointBelowList(page));
+
+  await expect(dropHint(page)).toHaveCount(0);
+  await expect(page.locator('.task-list__item--nest-target')).toHaveCount(0);
+});
+
+test('die Markierung verschwindet, sobald der Zeiger das Ziel verlässt, und beim Abbruch der Geste (issue #451 AK6)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+  const target = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+
+  await liftRow(page, dragged);
+  await holdOver(dragged, await centerOf(target));
+  await expect(target).toHaveClass(/task-list__item--nest-target/);
+
+  await holdOver(dragged, await pointBelowList(page));
+  await expect(target).not.toHaveClass(/task-list__item--nest-target/);
+  await expect(dropHint(page)).toHaveCount(0);
+
+  await holdOver(dragged, await centerOf(target));
+  await expect(dropHint(page)).toHaveCount(1);
+  await dragged.dispatchEvent('pointercancel', { pointerId: 1, bubbles: true });
+
+  await expect(dropHint(page)).toHaveCount(0);
+  await expect(target).not.toHaveClass(/task-list__item--nest-target/);
+  // A cancelled gesture never nests — the abort is not a quiet drop.
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveCount(0);
+});
+
+test('das vertikale Ziehen einer angehobenen Karte scrollt die Seite nicht und bricht die Geste nicht ab (issue #451 AK7)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+  const target = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+
+  await liftRow(page, dragged);
+  expect(await touchMoveWasBlocked(dragged)).toBe(true);
+
+  // The gesture survives it and still lands where the preview said.
+  await holdOver(dragged, await centerOf(target));
+  await releaseAt(dragged, await centerOf(target));
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveText('0/1');
+
+  // And once nothing is lifted, the list scrolls with a finger again.
+  expect(await touchMoveWasBlocked(taskItems(page).first())).toBe(false);
 });
