@@ -1,317 +1,209 @@
 # Code-Karte
 
-**Zweck:** Diese Datei existiert, um Tokens zu sparen. Sie ist die Antwort auf
-„wo liegt eigentlich…?", damit niemand — Mensch oder Agent — sich durch das Repo
-grepen muss. Eine Zeile pro Datei oder Ordner, mehr nicht.
+**Zweck:** Tokens sparen — eine Zeile pro Datei/Ordner, reine Struktur.
+Beantwortet „wo liegt eigentlich…?", nicht „warum".
 
-**Regel:** Wer eine Datei anlegt, verschiebt oder löscht, aktualisiert diese Karte
-im selben PR. Eine veraltete Karte ist schlimmer als keine.
+**Regel:** Struktur, kein Warum. Begründungen, Entscheidungen und Issue-Historie
+gehören in `git blame`, die ADRs oder das Ticket — nicht hierher. Für Detail
+jenseits der Grobstruktur (Zusammenhänge, Implementierungsdetails) ist der
+**Explore-Subagent** der Weg, nicht ein Ausbau dieser Karte.
+
+Wer eine Datei anlegt, verschiebt oder löscht, aktualisiert diese Karte im
+selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ## Struktur
 
-```
-src/
-  app/                      Next.js App Router — Routen und API-Endpunkte
-    (app)/layout.tsx        Auth-Gate + App-Shell + `<ModuleRouteGuard/>`. Ohne Session -> /anmelden; `{children}` steckt seit issue #434 in `<PageTransition/>`
-    (app)/page-transition.tsx  Opacity-Crossfade-Wrapper um `{children}` (issue #434, Teil #418); sitzt bewusst ÜBER dem Router-Segment statt in `template.tsx`, damit die #233-Fokusführung (Router fokussiert das erste Segment-Element) erhalten bleibt; remountet nicht, retriggert die CSS-Animation je Pfadwechsel per Klassen-Toggle + Reflow
-    (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); h1+AppHeader fix, darunter `<DailyProgressRing/>` (issue #428) + `<UebersichtSections/>` (issue #308); vormals „Heute"/`/heute` (issue #161)
-    (app)/uebersicht/uebersicht-sections.tsx   Client: iteriert die feste Reihenfolge Wetter→Aufgaben→Aktivitäten→Gewohnheiten→Journal (issue #342), rendert je aktivem Modul dessen `OverviewSection` aus der Registry über `useActiveSections` (issue #308)
-    (app)/uebersicht/daily-progress.ts / daily-progress-ring.tsx / .css   Tages-Fortschrittsring „heute N von M" (issue #428, M-1 aus #416): reine Zählung über `belongsOnUebersicht` (Aufgaben, wie `TaskList dueTodayOnly`) + `schedule-rules.ts` `isDueOnDay`/`isDoneOnDay` (Gewohnheiten, archivierte ausgeschlossen), respektiert `use-modules` (`isActive`); modulübergreifend, deshalb im Übersicht-Rahmen statt der per-Modul-`OverviewSection`-Registry; `null` bis alle Live-Queries durch sind und bei M=0 (kein „0 von 0")
-    (app)/uebersicht/uebersicht.css   Titel-Zeile mit inline Einstellungen-Einstieg (issue #126); kein Shortcut-Link mehr, Tab in der Nav genügt (issue #137)
-    (app)/aufgaben/         Aufgaben           (leer bis M1)
-    (app)/gewohnheiten/     page.tsx           Gewohnheiten-Verwaltung (issue #102), eigener Tab (issue #123); /heute/gewohnheiten leitet per next.config.ts dauerhaft hierher weiter
-    (app)/aktivitaeten/     page.tsx           Garmin-Aktivitäten — eigene Seite, kein Widget (issue #180); <h1>, keine eigene Kopfzeile (DESIGN_SYSTEM.md, „Für den nächsten Screen")
-    (app)/kalender/         Termine            (leer bis M5)
-    (app)/wetter/[datum]/   page.tsx           Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang, rein aus der lokalen Ablage (issue #156); Kopfzeile = Zurück-Link links, Datum rechts — das <header> ist zugleich der Fokus-Fix, weil der App-Router nach der Navigation das erste Segment-Element fokussiert (issue #233)
-    (app)/journal/          page.tsx rendert `<JournalGate/>` — Entsperr-Automat (issue #339), kein Editor-Inhalt (S3b/#340)
-    (app)/einstellungen/    Einstellungen — core/fix: Darstellung (AppearancePanel) + Reihenfolge (NavOrderPanel) + Module (ModulePanel) + Push (PushPanel); modulgebunden über `<EinstellungenSections/>` (issue #308); Kopfzeile mit Zurück-Link (/uebersicht) + Titel wie die Wetter-Tagesseite, in einstellungen.css (issue #288)
-    (app)/einstellungen/einstellungen-sections.tsx   Client: feste Reihenfolge Aufgaben→Wetter→Journal→Export, rendert je aktivem Modul dessen `SettingsPanel` aus der Registry über `useActiveSections` (issue #308, #339)
-    anmelden/               Passkey: Einrichten, Anmelden, Recovery-Code
-    offline/                Service-Worker-Fallback ohne Netz
-    api/auth/               WebAuthn: register/login (options + verify), logout, status
-    api/sync/               push/ und pull/ — die einzigen Wege zu den Daten
-    api/push/               subscribe/unsubscribe/test — Push-Grundgerüst (issue #122), kein geschützter Pfad (kein Sync, keine Auth); reminders/ — POST, Bearer-Secret (REMINDER_SECRET) + Owner-Session als Zweitpfad wie garmin-sync, ruft sendDueReminders() (issue #239); `X-E2E-Now` überschreibt `now` nur unter NEXT_PUBLIC_E2E, damit Playwright den 07:00-Slot pinnen kann statt von der Tageszeit des Laufs abzuhängen (issue #241)
-    api/garmin-sync/        POST, Bearer-Secret + Owner-Session als Zweitpfad — holt Aktivitäten, schreibt nie ohne Netzwerk-Vorlauf in die Transaktion (ADR-0011, issue #186)
-    api/health/             SELECT 1 + Versions-SHA, ungeschützt — Ziel des Post-Deploy-Smoke
-    layout.tsx              Root: Inter, Viewport, PWA-Metadaten (Apple + Manifest); Bootstrap-Skript setzt data-theme/-reduce-motion/--font-scale UND seit issue #309 data-modules-off (Ausschlussliste, space-separated) auf <html> vor dem ersten Paint
-    manifest.ts             Web-App-Manifest (Next-Metadata-Route)
-    sw.ts                   Service Worker (Serwist-Quelle) -> public/sw.js; push/notificationclick-Handler + E2E-Hooks (__pushTest/__lastNotificationClick unter NEXT_PUBLIC_E2E) seit issue #122; bleibt module-ahnungslos (kein localStorage im SW, ADR-0012 K1/issue #309)
-    globals.css             Tailwind-Import + @theme-Mapping der Tokens; blendet seit issue #309 den `[data-module]`-Seiten-Wrapper einer Aus-Route vor der Hydration aus (`html[data-modules-off~='…']`)
-  db/
-    schema.ts               Drizzle-Schema — EINZIGE Quelle der Wahrheit fürs Datenmodell; `pushSubscriptions` seit issue #122, ohne syncColumns (Geräte-Infrastruktur wie sessions); garmin_activities (read-only) + garmin_tokens (nie synchronisiert) seit ADR-0011; `reminder_sends` (Doppelversand-Sperre, uniqueIndex kind+send_date+slot, ohne syncColumns) seit issue #239; `reminder_prefs` (synchronisiert, uniqueIndex kind, enabled/times je Erinnerungsart, leeres times ≠ keine Zeile) seit issue #244; `journal_entries` (entryDate Klartext, nicht mehr eindeutig — ein Tag kann mehrere Einträge tragen, ADR-0018 —, ciphertext/nonce als Base64-`text`, createdAt Sortieranker wie tasks/habits — ADR-0004/-0017/-0018) + `journal_keys` (envelope-jsonb, `Envelope`-Typ aus src/crypto/envelope.ts nur als Typ importiert, Regel 9 — ADR-0015) seit issue #338; `journal_keys.recoveryEnvelope` (nullable jsonb, zweiter KEK-Wrap fürs Recovery-Kit aus #343) seit issue #372; `habit_freezes` (der Streak-Joker, freezeDate wie habit_logs.logDate ein `date`, uniqueIndex habit_id+freeze_date als zweite Sperre gegen Doppel-Freeze neben der Kontingent-Prüfung in freeze.ts) seit issue #433
-    sync-tables.ts          Welche Tabellen der Sync anfassen darf + Feld-Whitelist; `readOnly`/`readable` für Server-Origin-Tabellen (issue #186); `reminder_prefs` schreibbar mit kind/enabled/times, required kind (issue #244); `journal_entries` schreibbar mit entryDate/ciphertext/nonce (required) + createdAt (nicht required, defaultNow() wie tasks/habits, ADR-0018), `journal_keys` schreibbar mit envelope/recoveryEnvelope (nur envelope required — ein Rewrap pusht recoveryEnvelope nie mit, issue #372) — kein Journal-Sonderfall, der Motor bleibt inhaltsblind (issue #338); `habit_freezes` schreibbar mit habitId/freezeDate, beide required, gleiches Muster wie habit_logs (issue #433)
-    sync-lock.ts            gemeinsamer pg_advisory_xact_lock für jede Sync-Schreib-Transaktion (push, garmin-sync) — verhindert sync_seq außer Reihenfolge (ADR-0008)
-    index.ts                DB-Verbindung (pg-Pool, Standard-Connection-String)
-    migrate.ts              wendet Migrationen an (pnpm db:migrate)
-    migrations/             generierte Migrationen, nie von Hand ändern
-    migrations/down/        Down-Pfad je Migration mit Rückweg, von Hand angewendet (Konvention seit #186); `0012_journal.down.sql` droppt journal_entries/journal_keys, FK-frei (issue #338); `0013_journal_recovery.down.sql` droppt `journal_keys.recovery_envelope` (issue #372); `0014_journal_multiple_entries.down.sql` entfernt created_at, macht entry_date wieder eindeutig (issue #376, ADR-0018)
-  local/
-    types.ts                Vertrag zwischen Outbox und /api/sync (beide Seiten); SYNC_TABLES/READ_ONLY_TABLES/isReadOnlyTable seit ADR-0011; `reminder_prefs` + ReminderPrefData seit issue #244; `journal_entries`/`journal_keys` + JournalEntryData/JournalKeysData seit issue #338, JournalEntryData trägt seit issue #376 zusätzlich createdAt; `JournalKeysData.recoveryEnvelope` (optional) seit issue #372; `habit_freezes` + HabitFreezeData (habitId/freezeDate) seit issue #433
-    dexie.ts                IndexedDB-Definition (outbox, records, meta); eigene weather-Tabelle, nie synchronisiert (ADR-0009, issue #139); WeatherDay trägt seit #156 zusätzlich sunrise/sunset/Wind + stündliche WeatherHour[] — kein neuer db.version()-Bump, da sich nur die Objektform, nicht der Store/Index ändert (Begründung im Kommentar dort); `reminder_prefs` (issue #244) lebt wie jede Synctabelle im generischen records-Store, ebenfalls ohne Versions-Bump (Begründung im Kommentar dort); `journal_entries`/`journal_keys` (issue #338) ebenso im generischen records-Store, ohne Bump; `journalConflicts`-Store (issue #338, ADR-0017 Punkt 3) ist dagegen neu -> db.version(3), additiv wie der weather-Store in v2; `journalSession`-Store (issue #339, der opt-in persistierte DEK, `dek-session.ts`) ist ebenfalls ein neuer Store -> db.version(4), additiv; `habit_freezes` (issue #433) wieder im generischen records-Store, ohne Bump
-    outbox.ts               Mutations-Queue — JEDE Schreiboperation läuft hier durch; mutate() wirft für eine read-only-Tabelle (ADR-0011)
-    sync.ts                 Push/Pull, Trigger (Start/Foreground/online), Cursor = sync_seq; der Konflikt-Kopie-Producer aus ADR-0017 Punkt 3 (schrieb die verdrängte Chiffrat-Fassung nach `journalConflicts`) ist mit issue #395 entfernt — seit issue #376/ADR-0018 ist die Zeilen-id zufällig, der Zweig konnte nicht mehr feuern; Restore-UI und der `journalConflicts`-Store bleiben als Abfluss für eine evtl. noch nicht wiederhergestellte Alt-Kopie stehen
-    conflict.ts             reine Konfliktregeln: Delete/Restore/Upsert, Overwrite-Flag, Pull-Cursor (ADR-0008)
-    use-live-table.ts       generischer liveQuery-Hook über `db.records`; von use-tasks/use-habits/use-habit-logs benutzt statt vierfach kopiertem Muster (issue #177)
-    push.ts                 einzige Stelle, die gegen /api/push spricht (Guard-Ausnahme wie sync.ts): getPushState (Abo statt bloßer Browser-Erlaubnis), subscribeToPush/unsubscribeFromPush/sendTestPush (issue #122); Push-Abo bewusst nicht Outbox-geführt (Geräte-Infrastruktur, kein Domänendatum)
-    garmin-sync.ts           einzige Stelle, die gegen /api/garmin-sync spricht (Guard-Ausnahme wie push.ts): triggerGarminSync() für den manuellen Kick von der Aktivitäten-Seite; kein Domänendatum, deshalb nicht Outbox-geführt (issue #230)
-  auth/
-    session.ts              Opakes Session-Token (nur als Hash in der DB), requireOwner()
-    webauthn.ts             Challenges, Credentials, Recovery-Code
-  crypto/                   Journal-Verschlüsselung (M4, S1 von #302, issue #337) — reine Logik, keine UI/Tabelle/Sync
-    errors.ts               WrongPassphraseError/JournalDecryptError — nie Schlüsselmaterial oder Klartext in der Message
-    base64.ts                bytesToBase64/base64ToBytes über btoa/atob, damit die Hülle JSON-serialisierbar bleibt
-    envelope.ts              KEK+Hülle (ADR-0015/-0016): deriveKek (PBKDF2 via WebCrypto) + createEnvelope/openEnvelope (DEK als AES-GCM, gewickelt vom KEK); DEK extractable nur kurz in createEnvelope zum Wickeln, openEnvelope liefert ihn stets non-extractable; DEFAULT_KDF_PARAMS 600k Iterationen SHA-256, optionaler zweiter Parameter an createEnvelope für abweichende (z. B. günstigere Test-)Parameter
-    journal.ts                encryptJournal/decryptJournal — Text+Stimmung+Tags in einem Chiffrat (ADR-0004), frisches Nonce je Aufruf; Re-Export der envelope-API, bleibt der eine Einstieg laut CODEMAP; `reissueRecovery` (issue #391) wickelt den unveränderten DEK unter einem frisch erzeugten Recovery-Key neu — braucht die Passphrase (extrahierbarer DEK), da der alte Recovery-Key ja gerade fehlt/verloren ist
-    __fixtures__/journal-vector.json  eingecheckter Testvektor (AC5) gegen unbemerkte Formatänderungen
-  modules/
-    registry.ts              MODULES + NavItem — einzige Quelle je Modul (stabile id, label, core, optional navItem/OverviewSection/SettingsPanel/routes); nav-items.ts leitet NAV_ITEMS daraus ab, use-modules.ts das Ein/Aus (ADR-0012, issue #307). `OverviewSection` (wetter/aufgaben/aktivitaeten/gewohnheiten/journal seit #342) + `SettingsPanel` (aufgaben/wetter/journal/export) seit issue #308 (journal seit #339) befüllt; `routes` (aufgaben/gewohnheiten/kalender/journal/aktivitaeten, je ein Pfad-Präfix) seit issue #309 befüllt, treibt `module-route-guard.tsx`
-    module-sections.ts       `useActiveSections(order, pick)` — löst eine seitenfest vorgegebene `order` von Modul-Ids gegen `isActive` + das per `pick` gewählte Registry-Feld auf (issue #308); `order` bewusst nicht `MODULES`-Reihenfolge selbst, weil Übersicht (Wetter zuerst) und Einstellungen (Registry-Reihenfolge) sich unterscheiden
-  push/                     Server-seitiger Versand (issue #122, ADR-0010)
-    vapid.ts                setzt VAPID-Details aus Env-Vars, lazy wie src/db/index.ts (Build braucht die Vars noch nicht)
-    send.ts                 sendPushToAll(payload) — 410/404 vom Push-Dienst löscht das Abo, sonst nur Log ohne endpoint/keys
-    notification.ts         reine buildNotification/parsePushPayload-Logik, von src/app/sw.ts benutzt (Vitest-testbar ohne SW-Scope)
-    schedule.ts             reine Logik, kein DB/Netz: berlinNow/dueSlots — Berliner Kalendertag+Uhrzeit über Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }), DST-sicher (issue #239)
-    reminders/index.ts      ReminderKind-Registry ({ kind, times, build }) + sendDueReminders() — build() vor der ON-CONFLICT-Sperre (reminder_sends), damit build()->null nie einen Sperr-Eintrag schreibt; `e2e-smoke` nur unter NEXT_PUBLIC_E2E (issue #239); `tasks-due` (07:00, issue #241) + `habits-open` (20:00, issue #243) fest registriert; `loadReminderPrefs()` liest `reminder_prefs` (issue #244) — fehlt eine Zeile gilt der Registry-Default, `enabled:false` liefert keinen Slot, gespeicherte `times` ersetzen den Default (auch leer); `interaction-limit` (09:00, issue #245) fest registriert, ohne Eintrag in REMINDER_KINDS/Panel — reines Wartungs-Signal, kein Nutzer-Domänendatum
-    reminders/reminder-kinds.ts  ReminderKindMeta ({ kind, label, defaultTimes }) + REMINDER_KINDS — rein, client-sicher, gemeinsame Quelle für push-panel.tsx und reminders/index.ts, damit Label und Standardzeiten nicht auseinanderlaufen (issue #244)
-    reminders/tasks-due.ts  `{ kind: 'tasks-due', times: ['07:00'], build }` — heute fällige (auch überfällige) Aufgaben, sortiert priority absteigend/dueAt aufsteigend; `selectDueTasks` rein (Berliner Kalendertag via `berlinNow`, DST-sicher) und deshalb ohne DB Vitest-testbar; nichts fällig -> `null` statt einer leeren Meldung; Text: 1 Aufgabe = Titel, sonst Anzahl + erste zwei Titel + „und N weitere"; `url: '/aufgaben'` (issue #241)
-    reminders/habits-open.ts `{ kind: 'habits-open', times: ['20:00'], build }` — abends noch offene, nicht archivierte Gewohnheiten (Berliner Kalendertag via `berlinNow`); `selectOpenHabits` rein und deshalb ohne DB Vitest-testbar, nutzt src/features/habits/schedule-rules.ts für „fällig"/„erledigt" statt eigener Zeitzonenlogik; Streak-Zahl kommt aus dem computeStreak (streak.ts), gefüttert über eine aus dem Berliner Datums-Schlüssel gebauten lokalen `Date` (rundet TZ-neutral, siehe Kommentar dort) UND seit issue #433 zusätzlich über `habit_freezes` (sonst zeigt der Push eine niedrigere Serie als die App); nichts offen -> `null`; Text: 1 offen = Name (+ „— N Tage in Folge" ab Streak 2), sonst Anzahl + erste zwei Namen + „und N weitere"; `url: '/gewohnheiten'` (issue #243)
-    reminders/interaction-limit.ts  `{ kind: 'interaction-limit', times: ['09:00'], build }` — ersetzt den monatlichen Issue-Kommentar aus `.github/workflows/interaction-limit-reminder.yml` (Ablaufdatum #70) durch Push; `build` vergleicht `now` rein gegen die Konstante `EXPIRY` (einzige Stelle mit dem Datum), kein DB-Zugriff nötig, deshalb ohne Vitest-Pendant über `X-E2E-Now` Playwright-testbar; `null` ab 30 Tagen vor Ablauf, sonst Text mit Resttagen; `url: '/'` (issue #245)
-  features/
-    tasks/
-      task-list.tsx          Aufgabenliste — liest via use-tasks.ts, nie per fetch; chat-artiger Scroll-Anker aufs älteste offene Todo (issue #88); gruppiert via groupTasks (issue #89), löst Drag-Drop über resolveNestTarget auf; rendert seit issue #430 eine flache, geflattete `TaskRow[]` (parent/child/flat) über `useListPresence` statt gruppierter Fragments — eine einzige Keyed-Zeilenliste fürs Ein-/Ausblenden, Nesting/Collapse/Swipe/Undo unverändert; `tasks`/`nodes` sind `useMemo`'d, damit die Presence nur bei echten Datenänderungen neu diffed, nicht bei jedem Re-Render
-      tasks-overview-section.tsx  `<h2>Aufgaben</h2>` + `<TaskList dueTodayOnly/>` als eine Einheit — Registry-`OverviewSection` für `aufgaben`, damit die Überschrift mit dem Modul verschwindet statt als Leiche auf /uebersicht stehen zu bleiben (issue #308)
-      task-item.tsx           eine Zeile: Checkbox, Tap öffnet Editor, Swipe rechts/links (erledigen/löschen); Eltern-Zeile mit Disclosure + Fortschritt, Long-Press hebt ein Blatt fürs Drag-to-Nest an (issue #89); optionale entering/leaving/onAnimationEnd-Props (issue #430) tragen `list-motion-item` + data-Flags; ein `leaving` bereits gelöschtes Element lässt den Bestätigen-Zweig sofort der normalen Zeile weichen, statt weiter „löschen?" zu fragen
-      use-tasks.ts            Dexie-Live-Query auf `records` (table='tasks'), Sortierung strikt nach createdAt (issue #88); groupTasks (eine Ebene Eltern/Kind) + resolveNestTarget (issue #89)
-      use-complete-task.ts    toggelt completedAt, hält den Undo-Zustand fürs Toast
-      use-delete-task.ts      Tombstone per Swipe, Undo via outbox-Op `restore`; löscht die Kinder eines Elterns mit, Undo stellt beide wieder her (issue #89)
-      task-editor.tsx         Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität, sendet nur geänderte Felder; „Unteraufgabe von"-Feld als deterministischer Zweitpfad zum Drag-to-Nest (issue #89)
-      task-editor.css         Styles fürs Editor-Sheet
-      task-list.css           Karten-, Checkbox-, Swipe- und Lösch-Bestätigungs-Styles
-      quick-add.tsx           FAB + Sheet + Titelfeld, parst Freitext (parse-task-input), speichert via outbox.mutate()
-      quick-add.css           Styles fürs Titelfeld + Speichern-Button im Sheet
-      parse-task-input.ts     reiner Parser: Freitext -> { title, dueAt } (relative Tage, Wochentage, Datum, Uhrzeit)
-      capture-confirm.tsx     Bestätigungs-Sheet für eine per Freitext erkannte Fälligkeit (issue #47 AC1)
-      capture-confirm.css     Styles fürs Bestätigungs-Sheet, Summary mit tabular-nums
-    events/                   (leer, ab M5)
-    journal/
-      write.ts                writeJournalEntry(entryDate, encrypted) — der eine Schreibpfad (issue #338 AC5): rowId ist zufälliges uuidv7 (mutate() ohne rowId), ciphertext/nonce via bytesToBase64, createdAt client-gesetzt (Sortieranker wie tasks/habits); jeder Aufruf legt eine NEUE Zeile an, kein Upsert auf dieselbe id mehr (issue #376, ADR-0018 löst die deterministische id aus ADR-0017 Punkt 1 ab). Kein Editor/UI/Decrypt (S3a)
-      journal-keys.ts          JOURNAL_KEYS_ROW_ID (feste, eingecheckte rowId, ADR-0016) + readEnvelope/writeEnvelope — die eine `journal_keys`-Zeile über db.records/mutate() (issue #339); readRecoveryEnvelope + writeEnvelopes(envelope, recoveryEnvelope) fürs Ersteinrichtungs-Upsert beider KEK-Wraps, writeEnvelope bleibt der Rewrap-Pfad (nur envelope, Merge erhält recoveryEnvelope) seit issue #372; `writeRecoveryEnvelope` (issue #391) ist der Spiegel dazu — pusht nur recoveryEnvelope, envelope bleibt beim Merge unberührt
-      dek-session.ts           persistDek/getPersistedDek/clearPersistedDek — der opt-in persistierte DEK im eigenen Dexie-Store `journalSession` (nicht `meta`, isoliert wegräumbar), non-extractable CryptoKey per Structured Clone, nie den Server (issue #339 AC5)
-      use-journal-persist-pref.ts  Opt-in „Auf diesem Gerät entsperrt lassen" — gerätelokal in localStorage (`starship:journal-persist`), Default AUS, Muster use-capture-prefs.ts; subscribeJournalPersistPref lässt lock-store.ts auf einen Flip reagieren, ohne selbst ein Hook zu sein (issue #339 AC5)
-      lock-store.ts            Kern des Entsperr-Automaten (issue #339, ADR-0016): Modul-Store (useSyncExternalStore) + in-memory DEK als Modulvariable, nie in React-State. `journalSetup`/`journalUnlock`/`journalLock` sind eigenständige Funktionen (auch vom E2E-Bridge direkt aufrufbar), `useJournalLock()` verdrahtet sie fürs UI. Zustände `setup`|`locked`|`unlocked`(+`loading` bis die erste IndexedDB-Lese durch ist). `AUTO_LOCK_MS` (15 Min) ist die eine benannte Konstante fürs Inaktivitätsfenster, per `pointerdown`/`keydown` zurückgesetzt, nur scharf wenn `unlocked` UND Opt-in AUS (AC5 vs. AC6). Mehrere Tabs teilen den klonbaren non-extractable DEK über `BroadcastChannel('starship:journal-lock')` (AC7); `journalDek()` gibt den DEK an die Editor-Helfer (entry.ts/conflicts.ts) weiter — bleibt Modulvariable, nur ein zusätzlicher Lesezugriff (issue #340); `journalSetup` erzeugt seit issue #372 über `createEnvelopesWithRecovery` beide KEK-Wraps und gibt den Recovery-Key zurück (AC2, einmalig anzeigen); `journalUnlockWithRecovery`/`journalRewrapPassphrase` (crypto/journal.ts) sind der zweite Entsperr-Weg (AC3) und der optionale Passphrase-Wechsel danach (AC4, derselbe DEK bleibt im Speicher) — eine fehlende recoveryEnvelope zeigt dieselbe ruhige Meldung wie ein falscher Key (AC5); `journalReissueRecovery` (issue #391) stellt — nur solange `unlocked` — über `crypto/journal.ts:reissueRecovery` + `writeRecoveryEnvelope` einen neuen Recovery-Key aus, der alte wird dabei ungültig; `null` bei falscher Passphrase (ruhig, Regel 9) oder außerhalb `unlocked`
-      decrypt-journal-row.ts    decryptJournalRows(dek, rows, toEntry) (issue #384): entschlüsselt jede Zeile einzeln in try/catch statt über ein gemeinsames `Promise.all` — eine unlesbare Zeile fällt raus (console.warn nur mit row.id, nie Chiffrat/Klartext/Schlüssel, Regel 9) statt die ganze Liste zu rejecten; geteilt von entry.ts und journal-search-cache.ts
-      entry.ts                 todayKey/appendJournalEntry/listJournalEntries/deleteJournalEntry (issue #340, umgebaut in issue #376/ADR-0018): ein Tag kann beliebig viele Einträge tragen — `appendJournalEntry` legt über `write.ts` immer eine NEUE Zeile an (kein Upsert mehr), `listJournalEntries` liefert die Einträge eines Tages entschlüsselt über `decrypt-journal-row.ts` (issue #384: eine unlesbare Zeile killt nicht mehr die ganze Tagesliste), neueste zuerst (`createdAt`, fällt für Alt-Zeilen ohne das Feld auf `LocalRecord.updatedAt` zurück), `deleteJournalEntry` ist Soft-Delete über `mutate()`; leere Inhalte werden nicht geschrieben (kein Geister-Eintrag). `todayKey()` (device-lokaler Kalendertag) seit issue #342 hier, geteilt mit use-journal-today.ts; `msUntilNextMidnight()` (issue #374) treibt journal-editor.tsx's Mitternachts-Rollover, gleiche lokale Basis wie `todayKey`
-      conflicts.ts              decryptJournalConflict/restoreJournalConflict (issue #340 AC8): macht die in S2 abgelegte Konflikt-Kopie lesbar; restoreJournalConflict hängt sie seit issue #376 über `appendJournalEntry` als NEUEN Eintrag an (kein "aktueller Eintrag" pro Tag mehr, den man überschreiben könnte), löscht die Kopie erst danach — nie still verschluckt
-      use-journal-conflicts.ts  liveQuery auf `db.journalConflicts` für einen `entryDate`, Muster wie `local/use-live-table.ts` (issue #340 AC8)
-      use-journal-entries.ts    useJournalEntries(entryDate) (issue #376): liveQuery auf `records` (table='journal_entries', Muster wie use-journal-search-entries.ts) treibt `listJournalEntries` erneut an, sobald sich die Tabelle ändert — Grundlage der Tagesliste im Editor
-      use-journal-today.ts      useJournalToday() (issue #342, S5 von #302; „mindestens ein Eintrag" seit issue #376 AC7): `written` kommt aus der bloßen Zeilenexistenz — mind. eine, nicht mehr genau eine (kein DEK nötig, korrekt auch gesperrt), `mood` ist die des zuletzt geschriebenen Eintrags und nur bei entsperrtem Journal gesetzt — `useJournalLock()` dient nur als Re-Render-Trigger, `journalDek()` wird bei jedem Lock-Wechsel frisch gelesen, damit keine veraltete Stimmung nach dem Sperren durchsickert
-      journal-today-section.tsx / .css  `JournalTodaySection` — Registry-`OverviewSection` für `journal` (issue #342): ganze Fläche ein `<Link>` auf `/journal` wie activity-month-strip.tsx, binäre Form „noch nicht/geschrieben", reicher mit Stimmung sobald entsperrt; kein neues Klartext-Feld serverseitig (AC3)
-      journal-editor.tsx / .css  Der Editor (S3b, issue #340; auf Absenden statt Autosave umgebaut in issue #376/ADR-0018): Formular mit `MoodScale`, Freitext, Tags und Absenden-Knopf — ein Absenden ein `appendJournalEntry`-Aufruf, Felder danach leer; darunter die Einträge des sichtbaren Tages (`use-journal-entries.ts`), neueste zuerst, mit Uhrzeit, je Eintrag löschbar (Undo-Toast über den outbox-`restore`-Op); Konflikt-Banner je `useJournalConflicts`-Treffer; rendert seit issue #341 zusätzlich `<JournalSearch/>` vor der Karte, `entryDate` per `onSelect` umschaltbar — ein Treffer wechselt den sichtbaren Tag; über der Eintragsliste steht seit issue #374 immer der sichtbare Tag ausgeschrieben (`journal-editor__date`, Stil von `ENTRY_DATE_FORMATTER`), ein einzelner auf die nächste lokale Mitternacht terminierter Timeout (`msUntilNextMidnight`, entry.ts) schaltet ihn ohne Neuladen weiter, aber nur solange `entryDate` noch dem vorherigen „heute" folgt — eine per Suche gewählte Vergangenheit bleibt stehen; genau dieser Rollover schließt auch die Lücke, durch die ein nach Mitternacht abgesendeter Eintrag sonst noch den Tag des Seitenaufrufs getragen hätte; Formular+Datum+Tagesliste+Konflikt-Banner weichen seit issue #415 vollständig der Suche, sobald `<JournalSearch/>` über `onActiveChange` einen aktiven Filter meldet (AC-P1); die Eintragsliste läuft seit issue #430 über `useListPresence` — ein neu abgesendeter Eintrag blendet ein, ein gelöschter aus, bevor er verschwindet
-      search.ts                 searchJournalEntries(entries, filters: JournalFilters) — reine In-Memory-Suche über bereits entschlüsselte `JournalSearchEntry[]` (issue #341, S4 von #302, Owner-Entscheidung „3a" in #301: entschlüsseln beim Laden, im Speicher suchen — kein Klartext-Index); Freitext bleibt Substring über Text+Tags (case-insensitiv), seit issue #415 UND-verknüpft mit optionalem `mood`/`tag` (exakt) und `from`/`to` (lexikografischer Vergleich auf `entryDate`, `YYYY-MM-DD`); kein Filter aktiv → `[]`. Treffer sind seit issue #376 einzelne Einträge, sortiert nach `createdAt` (neuester Eintrag zuerst, nicht mehr neuester Tag)
-      journal-search-cache.ts   loadSearchableJournalEntries — entschlüsselt alle `journal_entries`-Zeilen über `journalDek()` in ein reines In-Memory-Array (AC2) via `decrypt-journal-row.ts`, inkl. `id`/`createdAt`/`mood` (seit issue #415) je Eintrag; leer bei gesperrtem Journal, schreibt nie nach IndexedDB; eine unlesbare Zeile bleibt seit issue #384 nur diese eine, nicht mehr die ganze Suche
-      use-journal-search-entries.ts  `useJournalSearchEntries()` — liveQuery auf `records` (table='journal_entries', Muster wie use-journal-conflicts.ts) treibt journal-search-cache.ts erneut an, sobald sich die Tabelle ändert, damit ein gerade gespeicherter Eintrag ohne Reload auffindbar ist; `undefined` bis der erste Durchlauf durch ist; zweite Sicherung seit issue #384: ein Reject (statt eines übersprungenen Elements) landet in `.catch` und setzt `[]`, statt `entries` für immer `undefined` zu lassen
-      journal-search.tsx / .css  `<JournalSearch/>`: Suchfeld + Filterzeile (Mood über die bestehende `MoodScale`, Tag-`select` aus den geladenen Tags, zwei `input[type=date]` von/bis) + Ergebnisliste über search.ts/use-journal-search-entries.ts (issue #415), kein eigener Ladezustand (Produktprinzip 1); ruhiger Leerzustand ohne Treffer; ein Treffer zeigt Datum, Uhrzeit UND Stimmung (falls gesetzt), Text gekürzt ab `SNIPPET_CHAR_LIMIT` mit Auf-/Zuklapp-Button; ruft `onActiveChange(active)` bei jeder Filteränderung (AC-P1) und `onSelect(entryDate)` (issue #341) — ein Treffer setzt zusätzlich alle Filter zurück (AC-P4)
-      journal-gate.tsx / .css  Die Zustands-UI: `setup` (Passphrase 2x), `locked` (ruhiger Entsperr-Zustand, falsche Passphrase = `role=status`, nie `--danger`), `unlocked` rendert seit #340 `<JournalEditor/>` (issue #339, #340); zwei UI-only Zwischenschritte, unabhängig vom Lock-Zustand geprüft (issue #372): der einmalige Recovery-Key-Screen nach der Einrichtung (AC2, `data-testid="journal-recovery-key"`, Button „Habe ich gespeichert") und der optionale Passphrase-Rewrap-Screen nach einem Recovery-Unlock (AC4, „Festlegen"/„Überspringen"); `JournalUnlockForm` bekommt zusätzlich den Umschalter „Mit Wiederherstellungsschlüssel entsperren" (AC3)
-      journal-settings-panel.tsx / .css  SectionCard „Journal" mit dem Opt-in-Toggle aus use-journal-persist-pref.ts — als Journal-`SettingsPanel` in der Modul-Registry (issue #339); seit issue #391 zusätzlich eine „Wiederherstellungsschlüssel neu ausstellen"-Einheit, nur sichtbar bei `unlocked` (sonst ruhiger Hinweis „Entsperre zuerst das Journal"): Button öffnet ein Passphrase-Feld, `useJournalLock().reissueRecovery` liefert den neuen Key (`data-testid="journal-recovery-key"`, gleiche „nur dieses eine Mal"-Optik wie journal-gate.tsx) oder `null` bei falscher Passphrase (ruhige `role="status"`-Meldung, kein `--danger`)
-    habits/
-      use-habits.ts            Dexie-Live-Query auf `records` (table='habits'); HabitView + toHabitView (issue #102)
-      use-habit-logs.ts        Dexie-Live-Query auf `records` (table='habit_logs'); HabitLogView + toHabitLogView (issue #103)
-      use-habit-freezes.ts     Dexie-Live-Query auf `records` (table='habit_freezes'); HabitFreezeView + toHabitFreezeView, gleiches Muster wie use-habit-logs.ts (issue #433)
-      use-toggle-habit-log.ts  Abhaken/Zurücknehmen für heute via Outbox, findet die bestehende Log-Zeile statt UNIQUE(habit_id, log_date) zu riskieren (issue #103)
-      due-today.ts             reine Logik: doneEarlierThisWeek — ob eine wöchentliche Gewohnheit an einem früheren Tag dieser Mo–So-Woche erledigt wurde, treibt den „Diese Woche schon erledigt"-Hinweis (issue #224, vormals isDueToday-Filter aus #103, alle Rhythmen sind jetzt immer in der Übersicht), delegiert die Ist-erledigt-Prüfung an schedule-rules.ts; weekDays — die 7 Datums-Keys Mo–So einer Woche (issue #105); monthDays/monthLabel/addMonths/dayLabel — Monatsraster + Monatsleiste (issue #124)
-      schedule-rules.ts        reine Fälligkeits-/Erledigt-Regeln über Datums-Schlüssel (`YYYY-MM-DD`), keine `Date`-Methoden mit impliziter Zeitzone — isDueOnDay/isDoneOnDay/isDoneInWeek/weekRangeForDay, gemeinsam von due-today.ts + streak.ts (Browser-`Date`) UND src/push/reminders/habits-open.ts (Berlin-`Date` via berlinNow()) benutzt, damit „heute fällig" nicht zweimal (und potenziell abweichend) implementiert ist (issue #243); isFrozenOnDay seit issue #433, gleiche Rolle für habit_freezes wie isDoneOnDay für habit_logs
-      streak.ts                reine Logik: computeStreak — aufeinanderfolgende Tage (daily/custom) bzw. Mo–So-Wochen (weekly) bis heute/laufende Woche; offener heutiger Tag/laufende Woche bricht nicht, ausgelassener schon (issue #104); Ist-erledigt-Prüfung kommt aus schedule-rules.ts (issue #243); seit issue #433 ein Pflichtparameter `freezes` (vor `now`, kein Default) — ein daily/custom-Tag zählt auch, wenn er per Streak-Joker eingefroren wurde, `weekly` bleibt unberührt
-      freeze.ts                reine Logik (issue #433, M-3 aus #416): der Streak-Joker — MAX_JOKERS_PER_MONTH=2 je Habit, gapDay (der Joker überbrückt immer genau den Vortag) + monthKey/remainingJokers fürs Kontingent, canRescue (Wahrheitstabelle: nicht weekly, echte Lücke am Vortag, Kontingent übrig, Ergebnis-Streak ≥ 2) und currentStreakUsesFreeze (❄️-Marker, ob die laufende Serie einen gefrorenen Tag enthält)
-      habit-today.tsx / .css   Übersicht-Sektion: Abhak-Liste, Zeile bleibt nach dem Abhaken sichtbar (Undo per erneutem Tippen) (issue #103); Streak-Badge (🔥) je Zeile, nur wenn > 0 (issue #104); alle Gewohnheiten immer in der Liste, wöchentliche mit „Diese Woche schon erledigt"-Hinweis via doneEarlierThisWeek, solange heute noch offen (issue #224); Rescue-Button „Serie mit Joker retten" bei canRescue + ❄️-Marker bei currentStreakUsesFreeze, Undo-Toast nach dem Muster von use-delete-task.ts (issue #433)
-      habits-overview-section.tsx  `<h2>Gewohnheiten</h2>` + `<WeeklyRecapCard/>` + `<HabitToday/>` als eine Einheit — Registry-`OverviewSection` für `gewohnheiten` (issue #308, Wochenrückblick seit #431)
-      weekly-recap.ts          reine Logik (issue #431, M-2 aus #416): computeWeeklyRecap — N-von-M-Quote der zuletzt abgeschlossenen Mo–So-Woche (nie der laufenden) + optionaler Superlativ gegen die eigene Historie (nie gegen andere, docs/VISION.md); Aktiv-Status je vergangener Woche kommt aus `createdAt`/`archivedAt` als Momentaufnahme zum Wochenende (kein neues Feld, AC8); Superlativ vergleicht die Erfüllungsquote gegen jede frühere Woche mit Datenpunkt (`total > 0`), „beste Woche seit N Wochen" mit N = Anzahl dieser Vergleichswochen, genau eine Vergleichswoche -> „deine beste Woche" statt „seit 1 Woche"
-      weekly-recap-card.tsx / .css  Die Karte selbst: rendert `null` ohne aktive Gewohnheiten in der Bezugswoche (AC6, kein „0 von 0"), sonst Kennzahl + optionaler Superlativ-Text
-      habit-week-grid.tsx / .css  Monatsraster Mo–So je Habit-Zeile (issue #105 → #124), heutiger Tag nur im laufenden Monat markiert, Zukunft gesperrt, Zelle direkt abhakbar über useToggleHabitLog
-      use-archive-habit.ts     Archivieren/Reaktivieren (setzt/löscht archivedAt, nie deletedAt) mit Undo-Toast (issue #102)
-      habit-list.tsx / .css    Verwaltungsliste: aktive Gewohnheiten + eingeklappter Archiv-Bereich (SectionCard); Monatsleiste (‹/›) steuert den Monat aller Raster gemeinsam (issue #124); jede Zeile zeigt zusätzlich das Monatsraster; aktive und archivierte Liste tragen seit issue #430 je eine eigene `useListPresence`-Instanz — Archivieren ist bei Habits das „Verschwinden" (Löschen gibt es nicht), die Zeile blendet in der aktiven Liste aus, während sie in der archivierten neu einblendet
-      habit-editor.tsx / .css  Bottom-Sheet für Anlegen + Bearbeiten (Name, Rhythmus, Farbe aus den vier Bereichsfarben)
-      add-habit-fab.tsx        FAB + Sheet fürs Anlegen, gleiche Form wie quick-add.tsx
-    export/
-      export.ts               liest db.records, baut die Export-Payload (Schema-Version + Zeitstempel), löst den Download aus
-      export-panel.tsx         Button + Status in Einstellungen
-      export.css               Styles für das Export-Panel
-    activities/                Client-seitig, liest den Vertrag aus #186 (garmin_activities), rechnet nur -- kein eigener Garmin-Abruf (issue #180)
-      recap.ts                 computeRecap -- rollierendes 30-Tage-Fenster für die Seite (Aktivitäten + km)
-      format.ts                formatDistance/-Duration/-Pause/-Pace/-Hr/-Elevation -- Gedankenstrich statt 0 bei null
-      track-path.ts            projectTrack -- Äquirektangulär mit cos(latMid)-Korrektur, Bounding-Box in die viewBox eingepasst; SVG-Rückfall der Karte
-      line-path.ts             buildLinePath -- Wertreihe -> SVG-Pfad, null bricht den Pfad (Lücke statt erfundener Gerade), konstante Serie -> Mittellinie
-      monthly-summary.ts       computeMonthlySummary + activityTypeLabel -- laufender Kalendermonat, Aufschlüsselung je Aktivitätsart für den Monatsstand
-      use-activities.ts        ActivityView + toActivityView -- Dexie-Live-Query auf `records` (table='garmin_activities') über den Hook aus #177
-      use-activity-sync.ts     stößt POST /api/garmin-sync an, wenn der letzte erfolgreiche Sync dieses Geräts >= 30 min her ist; Intervall nur bei sichtbarem Tab, Zeitstempel in localStorage ('starship:garmin-synced-at'), Fehlschlag lässt ihn stehen (issue #230, Muster aus use-weather-forecast.ts)
-      activity-list.tsx / .css Recap oben, darunter ein ActivityBlock je Aktivität, neueste zuerst; Skeleton/Leerzustand nach dem Muster aus habit-list.tsx; ruft use-activity-sync.ts und zeigt ab 8 h ohne erfolgreichen Sync die Bildunterschrift `Stand: HH:MM` (issue #230)
-      activity-block.tsx / .css ein <article> je Aktivität: Karte, Kopfzahlen als <dl>, drei Kurven
-      activity-map.tsx / .css  Kartenbild (mapImage) oder SVG-Spur-Rückfall aus projectTrack, feste aspect-ratio -- kein Layout-Sprung beim Wechsel
-      activity-chart.tsx / .css eine der drei Kurven (HF/Pace/Höhe) aus buildLinePath, entfällt samt Überschrift bei komplett null
-      activity-month-strip.tsx / .css Monatsstand auf der Übersicht -- Zeile je Aktivitätsart, ganze Fläche verlinkt auf /aktivitaeten, erscheint nicht ohne jede Aktivität
-    garmin/                   Server-seitig, kein Client-Code -- keine Garmin-Spezifika außerhalb dieses Verzeichnisses (ADR-0011, issue #186)
-      connect-api.ts           handgerollte OAuth1-Signatur + OAuth2-Tausch + die zwei connectapi.garmin.com-Aufrufe, keine Client-Bibliothek
-      tokens.ts                liest/schreibt garmin_tokens, erneuert OAuth2 aus OAuth1, GarminBootstrapRequired statt Login-Versuch
-      activity-mapper.ts       reine Zuordnung Garmin-Rohform -> Kopfzahlen (mapActivityListEntry) + spaltenweiser Track (buildTrack), robust gegen wechselnde metricDescriptors-Reihenfolge
-      activity-diff.ts         reine Änderungserkennung (activityChanged) -- Grund, warum sync_seq nur bei echter Änderung bumpt, ohne SQL-WHERE-Klausel
-      static-map.ts            Kartenbild einmal je Aktivität, Mapbox Static Images; wirft nie, null ohne GARMIN_MAP_KEY oder bei Fehlschlag
-      sync-activities.ts       der ganze Ablauf ohne HTTP-Kram -- Netzarbeit vor der einen Schreib-Transaktion, dieselbe pg_advisory_xact_lock wie push (src/db/sync-lock.ts)
-    weather/
-      forecast.ts              Open-Meteo: fetchForecast(lat, lon)/parseForecast, isStale (3h-Fenster), weatherCacheKey (ein Cache-Row je Ort), weekdayLabel, isWeekend — isStaleWarning/formatStaleSince liegen seit #230 in src/ui/stale.ts; Ort kommt aus use-weather-location.ts, kein fester Ort mehr (issue #139, ADR-0009; Feinschliff issue #155; Ort wählbar issue #159); parseForecast bündelt seit #156 zusätzlich `hourly` (Temperatur/Niederschlag) je Tag mit ein, plus sunrise/sunset/Wind-Tageswerte — derselbe Aufruf, kein zweiter Endpunkt; findWeatherDay/hourLabel/formatDayHeading/temperatureLinePoints fürs Tagesdetail; temperatureAxis liefert die auf ganze Grad gerundete y-Spanne + Tick-Werte, temperatureLinePoints skaliert optional in genau diese Spanne, damit Kurve und Achsenbeschriftung übereinstimmen (issue #233)
-      geocoding.ts             searchLocations/formatGeocodingResult gegen Open-Meteos Geocoding-Suche — flüchtig, nie in Dexie abgelegt (issue #159)
-      wmo-icon.ts              reine Funktion: WMO weather_code -> eine von sieben Kategorien, unbekannter Code fällt auf 'cloudy' zurück
-      weather-category-labels.ts  Icon+Label je Kategorie, geteilt zwischen weather-forecast.tsx und weather-day.tsx, damit beide nicht auseinanderlaufen (issue #156)
-      use-weather-cache.ts     Reiner Lese-Hook: Live-Query auf db.weather ohne Refresh-Trigger — Basis für use-weather-forecast.ts UND use-weather-day.ts, damit das Öffnen der Tagesdetailseite nie selbst einen Netzaufruf auslöst (issue #156)
-      use-weather-forecast.ts  use-weather-cache.ts + Refresh-Trigger: Ortswechsel verwirft die alte Vorhersage statt sie zu vermischen (issue #159); Refresh nur wenn stale; zusätzlich Trigger bei visibilitychange/focus + Intervall solange sichtbar (issue #155), Fehler überschreiben den Cache nie
-      use-weather-day.ts       findWeatherDay auf use-weather-cache.ts — 'no-data' deckt sowohl „nie geladen" als auch „Datum außerhalb der 7-Tage-Vorhersage" ab (issue #156)
-      weather-forecast.tsx / .css  7-Tage-Streifen ganz oben auf Übersicht, zeigt den eingestellten Ort (issue #159); Skeleton reserviert die Höhe vor dem ersten Abruf (Smooth-Regel 3); Wochenend-Spalten mit outline statt border (kein Layout-Einfluss); Stand-Zeile nur >8h alt, absolut positioniert (issue #155); jede Tagesspalte ist seit #156 ein Link auf /wetter/<datum>, ≥44×44
-      weather-day.tsx / .css   Tagesdetailseite: Kopf (Icon/Höchst-Tiefst) samt kompaktem Vierer-Streifen Wind/Böen/Aufgang/Untergang, Temperaturkurve und Niederschlagsbalken als reines <svg> (kein Chart-Paket); beide teilen sich ChartFrame — eine Geometrie, beschriftete x-/y-Achse im selben SVG, damit jede Beschriftung an der x-Position ihres Datenpunkts sitzt (issue #233); 'loading'/'ready'/'no-data' aus use-weather-day.ts (issue #156)
-    settings/
-      use-appearance.ts       Theme/Reduce-Motion/Textgröße — gerätelokal in localStorage, setzt Attribute auf <html>
-      appearance-panel.tsx    Referenz der fünf Primitive: Theme (SegmentedControl), Bewegung reduzieren (Toggle), Textgröße (Slider)
-      use-capture-prefs.ts    „ohne Bestätigung direkt anlegen" — gerätelokal in localStorage (issue #47 AC3)
-      capture-panel.tsx       Toggle für use-capture-prefs in den Einstellungen
-      use-modules.ts          Modul-Ein/Aus (ADR-0012) — gerätelokal in localStorage (`starship:modules-off`), Ausschlussliste wie use-nav-order.ts, damit später ergänzte Module standardmäßig an sind; `core`-Module nie abschaltbar (issue #307)
-      module-panel.tsx        SectionCard mit einem Toggle je nicht-core Modul aus src/modules/registry.ts, dt. Labels aus der Registry (issue #307)
-      use-weather-location.ts Wetter-Ort { name, latitude, longitude } — gerätelokal in localStorage, Default Bonn (issue #159)
-      weather-panel.tsx / .css Ort suchen (geocoding.ts) + auswählen, plus Open-Meteo-Quellenangabe (vormals attribution-panel.tsx, issue #155/#159 — eine Fremdquelle, eine Tafel)
-      use-nav-order.ts        Reihenfolge der Nav-Einträge — gerätelokal in localStorage; resolveOrder(stored, items) rein: bekannte Ids in gespeicherter Reihenfolge, unbekannte raus, fehlende hinten dran (issue #205)
-      nav-order-panel.tsx / .css  SectionCard mit ↑/↓ je Eintrag, kein Drag & Drop (issue #205); zeigt seit #307 nur aktive Module (useModules().isActive), die gespeicherte Reihenfolge selbst bleibt vollständig erhalten
-      use-push.ts             Hook um src/local/push.ts (kein eigener fetch); Phasen loading/unsupported/default/denied/granted (issue #122)
-      use-reminder-prefs.ts   Dexie-Live-Query auf `records` (table='reminder_prefs') gemerged mit REMINDER_KINDS-Defaults zu ReminderPrefView je Art (keine Zeile → persisted:false); toggle/addTime/removeTime/setTimeAt über outbox.mutate(), findet die bestehende Zeile je kind statt UNIQUE(kind) zu riskieren wie use-toggle-habit-log.ts; times werden beim Schreiben dedupliziert + sortiert (issue #244)
-      push-panel.tsx / .css   Benachrichtigungen an-/abschalten + Testnachricht; denied zeigt erklärenden Text statt toter Schaltfläche (AC3, issue #122); im granted-Zweig zusätzlich je Erinnerungsart ein Block (Toggle + Zeitenliste mit entfernen + input type=time + „Zeit hinzufügen"), times bleiben beim Abschalten erhalten (issue #244)
-  ui/
-    mood-scale.tsx / .css   Zehn Ein-Tipp-Punkte 1–10 (issue #340 AC1/AC2): Tipp setzt, erneuter Tipp auf denselben Punkt nimmt zurück (`onChange(null)`); volle Zeilenbreite über `flex:1` je Punkt, `min-height:44px`, kein horizontaler Scroll (Owner-Entscheidung 29.07.26, Variante A); Zahl steht am Punkt, Bedeutung hängt nie allein an der Farbe
-    tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
-    motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006); seit issue #430 zusätzlich `.list-motion-item` + list-enter/list-exit-Keyframes (reduced-motion → list-enter-fade/list-exit-fade, nur Opacity) fürs Listen-Ein/Ausblenden in Aufgaben/Habits/Journal, nur transform/opacity, nie height/top/margin
-    use-list-presence.ts    useListPresence(items, getKey) (issue #430): hält ein aus `items` entferntes Element noch als `leaving` gemountet, bis dessen Exit-Animation per `onAnimationEnd` endet — reiner Unmount gäbe `motion.css` sonst nichts zum Animieren; `nextPresenceEntries`/`settlePresenceEntry` sind als reine Funktionen exportiert und per Vitest getestet (use-list-presence.test.ts), der Hook selbst ist nur ein useState/useEffect-Wrapper drumherum; Aufrufer müssen ein referenziell stabiles `items` (z. B. `useMemo` auf der Live-Query) übergeben, sonst diffed er auf jedem Re-Render neu
-    shell.css               App-Shell: Header + Bottom-Nav (mobil, Karussell ab mehr als fünf Einträgen) / Header + Sidebar (Desktop, kein Karussell) (issue #205); `.page-transition--enter`/`@keyframes page-fade-in` — reiner Opacity-Crossfade beim Tab-/Seitenwechsel, kein `transform` (issue #434)
-    app-header.tsx           Einstellungen-Einstieg, zwei Varianten: `chrome` (Shell, nur ab 768px) und `inline` (nur auf /uebersicht, mobil) (issue #123, #126)
-    module-route-guard.tsx  Client, in (app)/layout.tsx eingehängt: `usePathname`+`useModules`, liegt der Pfad unter `routes` eines Aus-Moduls → `router.replace('/uebersicht')`, core nie betroffen; rein clientseitig, kein SW-Bezug (ADR-0012 K1, issue #309); der Flacker-Schutz selbst kommt aus globals.css + dem Bootstrap-Skript in app/layout.tsx, nicht von hier
-    nav-items.ts            NAV_ITEMS — seit #307 reine Ableitung aus src/modules/registry.ts (`MODULES.flatMap(m => m.navItem ? [m.navItem] : [])`), Name/Form unverändert, damit use-nav-order.ts + Specs shell/nav-order* ihren Import nicht ändern (issue #205, #307)
-    nav.tsx                 Reihenfolge aus useNavOrder, zusätzlich seit #307 gefiltert über useModules().isActive (Filter beim Rendern, Position bleibt); holt den aktiven Tab beim Navigieren selbst heran über `list.scrollTo()` mit selbst berechnetem, auf den gültigen Scroll-Bereich geklemmtem Ziel statt `scrollIntoView()` — bleibt dadurch auf `.nav__list` beschränkt (rührt nie den Dokument-Scroll an) und überschießt am ersten/letzten Eintrag nicht (issue #123, #205, #229), reduced-motion-bewusst
-    sheet.tsx               Wiederverwendbares Bottom-Sheet auf <dialog>-Basis
-    sheet.css               Slide-up + Backdrop-Fade, reduced-motion = nur Opacity
-    fab.tsx                 Floating Action Button, fixiert über der Bottom-Nav
-    fab.css                 Position + Größe des FAB
-    toast-host.tsx          Zentraler Toast-Host (issue #427): Modul-Store (Idiom wie journal/lock-store.ts) hält den Host-`<ol>`-Knoten, `<ToastHost/>` rendert ihn mit der einen `aria-live="polite"`-Region (+ `role="region"`) fürs ganze Shell; in `(app)/layout.tsx` neben `<SyncStatus/>` montiert
-    toast.tsx               Wiederverwendbares Toast: `variant` confirmation (role="status", Undo) oder error (role="alert", --danger) (issue #182); portalt seit issue #427 als `<li>` in `<ToastHost/>`, damit mehrere gleichzeitige Toasts sich stapeln statt zu überlappen — Props/Aufrufstellen unverändert
-    toast.css                Stapel-Layout + Position über der Bottom-Nav (wie der FAB) liegen seit issue #427 auf `.toast-host`; `.toast` selbst trägt nur noch Optik + Eintritts-Animation (`toast-in`, reduced-motion → `toast-in-fade`, nur Opacity); toast--error für die Fehler-Variante
-    row.tsx / row.css       Label-links-Control-rechts-Zeile, Basis jeder Einstellungszeile
-    section-card.tsx / .css Karte mit optionaler Überschrift/Aufklappen, gruppiert Rows
-    toggle.tsx / .css       Switch (role="switch"), Federknopf
-    segmented-control.tsx / .css  Radiogroup mit gleitendem Auswahl-Indikator
-    slider.tsx / .css       Hülle um <input type="range">, aria-valuetext
-    sync-boot.tsx           startet den Sync beim Mount + fragt persistenten Storage an (issue #52)
-    persist-storage.ts      navigator.storage.persist()-Anfrage, idempotent, Status per getStoragePersistenceStatus()
-    e2e-bridge.tsx          Griff auf die echte Outbox für Playwright (nur NEXT_PUBLIC_E2E=1); debugPatchOutbox zum Simulieren einer poison mutation (issue #182); writeJournalEntry/bytesToBase64/debugJournalConflicts + createEnvelope/openEnvelope/encryptJournal für den echten Journal-Schreibpfad + Konflikt-Ablage, CryptoKey verlässt nie den page.evaluate-Aufruf (issue #338); journalSetup/journalUnlock/journalLock/journalLockState/journalHasPersistedDek/journalPersistedDekExtractable treiben den echten lock-store.ts-Automaten (issue #339); debugSeedJournalConflict legt eine Konflikt-Kopie über den echten in-page-DEK an, ohne den Zwei-Geräte-Pull aus journal.spec.ts nachzubauen (issue #340 AC8); debugDumpStores dumpt jeden JSON-serialisierbaren Dexie-Store als einen String, damit journal-suche.spec.ts (issue #341 AC2) einen Klartext-Leak in irgendeinem Store nachweisen könnte, statt nur `records` zu prüfen; appendJournalEntry/listJournalEntries/deleteJournalEntry (issue #376) sind der reale Mehr-Einträge-Schreib-/Lese-/Löschpfad, appendJournalEntry seedet mehrere Tage echten (unter dem aktuellen Sitzungs-DEK entschlüsselbaren) Inhalts für die Such-Suite statt roher Füll-Bytes (issue #341); kein journalEntryId mehr — die id ist seit issue #376/ADR-0018 zufällig, nicht mehr deterministisch aus dem Datum ableitbar
-    sync-status.tsx         liveQuery über db.outbox, zeigt Toast(variant=error) sobald overSyncErrorThreshold (issue #182)
-    stale.ts                isStaleWarning (8h-Schwelle) + formatStaleSince (HH:MM, lokal) -- geteilt von Wetter (#155) und Aktivitäten (#230), lag bis #230 in weather/forecast.ts
-tests/
-  global-setup.ts           Lauf-Lock: ein zweiter E2E-Lauf bricht ab, statt die DB zu teilen
-  global-teardown.ts        gibt das Lock wieder frei (nur das eigene)
-  run-lock.ts               Pfad des Lockfiles + Port (Dev) + PORT_PROD (Offline-Spec), gemeinsame Quelle für Setup und Config
-  helpers.ts                virtueller Authenticator, DB-Zugriff, Reset, Clock-Skew (skewClock); seedReminderPref(kind, enabled, times) für reminder_prefs (issue #244); resetAppData/resetDatabase löschen seit issue #433 zusätzlich habit_freezes (FK auf habits wie habit_logs)
-  shell.spec.ts             Login, fünf Tabs (aus NAV_ITEMS abgeleitet), aktiver Tab, Header-Einstellungen, Redirect /heute/gewohnheiten (issue #123)
-  nav-order.spec.ts         Karussell ab mehr Einträgen als Plätzen, aktiver Tab holt sich selbst heran, Reihenfolge in den Einstellungen + Reload, unbekannte/fehlende Ids, Sidebar ab 768px, reduced-motion, Dark Mode (issue #205)
-  offline-critical.spec.ts  Kritischer Pfad SW → IndexedDB → Outbox → Postgres, läuft gegen echten Prod-Build (issue #57); /heute leitet auch offline aus sw.ts um (issue #161); Direktaufruf einer Aus-Route leitet ebenso offline um, aber rein clientseitig aus module-route-guard.tsx, der SW kennt `starship:modules-off` gar nicht (issue #309 AC2)
-  sync.spec.ts              Outbox überlebt Reload, Tombstones, 401 ohne Session, Konfliktauflösung unter Uhrversatz (#53)
-  tasks.spec.ts             Aufgabenliste: leer, Tombstone, erledigt/sortiert, offline
-  uebersicht.spec.ts        /uebersicht: nur offene, heute fällige/überfällige Aufgaben, Leerzustand, TaskItem-Wiederverwendung (issue #87); Redirect/Manifest/Offline-SW-Weiterleitung von /heute (issue #161)
-  capture.spec.ts           Freitext-Fälligkeit: Bestätigungs-Sheet, Direkt-Pfad + Undo, offline (issue #47)
-  export.spec.ts            Export: alle Datensätze inkl. Tombstones, Schema-Version, offline
-  habits.spec.ts            Gewohnheiten: anlegen, bearbeiten, archivieren/reaktivieren, offline (issue #102)
-  habits-uebersicht.spec.ts Gewohnheiten in der Übersicht-Sektion: sichtbar, abhaken/zurücknehmen, Reload, Leerzustand, offline (issue #103)
-  streaks.spec.ts           Streak-Badge in der Übersicht-Sektion: daily 3 Tage/ausgelassen, Tageswechsel (page.clock), weekly 2 Wochen/Reset (issue #104); Streak-Joker (issue #433) J1-J5: Rescue-Aktion + Tap rettet die Serie, Freeze bleibt über einen Tageswechsel bestehen, erschöpftes Kontingent zeigt keine Aktion, weekly nie rescuebar, Offline-Pfad (Joker offline gesetzt -> Sync -> Postgres)
-  habits-week-grid.spec.ts Monatsraster: Monatsanfang eingerückt, Blättern via ‹/›, Zellen über Monate hinweg, Vergangenheit nachträglich abhakbar, Zukunft gesperrt, Heute nur im laufenden Monat, Streak reagiert sofort, leerer Monat, offline, Tokens/Dark/reduced-motion (issue #105 → #124)
-  persist-storage.spec.ts   navigator.storage.persist() beim Start: gewährt, schon gewährt, verweigert, nicht unterstützt (issue #52)
-  weather.spec.ts           Wetter auf Übersicht: 7 Tage/Kürzel/Symbol/Werte, 3h-Fenster, offline, Netzausfall mit/ohne Cache, reservierte Höhe, nie in der Outbox, 375/1280px, Tokens/Dark/reduced-motion (issue #139); Wochenend-Rahmen, Stand-Zeile erst >8h + kein Layout-Shift, Nachhol-Refresh bei visibilitychange/focus/Intervall (issue #155) — ruft nie die echte Open-Meteo-API
-  weather-day.spec.ts       Tagesdetailseite /wetter/<datum>: Tippen auf eine Spalte öffnet sie, Stundenverlauf/Niederschlag/Wind/Sonnenauf-und-untergang sichtbar, kein eigener Netzaufruf, offline aus der Ablage, Datum ohne Daten -> erklärender statt Fehler-Zustand, Zurück-Weg, Tap-Ziel ≥44×44, 375/1280px, Dark/reduced-motion (issue #156)
-  settings.spec.ts          Theme/Toggle/Slider, Fokus/Tastatur, reduced-motion, 60fps-Filter-Wächter; Open-Meteo-Quellenangabe (issue #155)
-  schema.spec.ts            Migrationen erzeugen exakt die Tabellen/Spalten aus src/db/schema.ts (inkl. garmin_activities/garmin_tokens, issue #186; journal_entries/journal_keys seit issue #338; habit_freezes seit issue #433)
-  journal.spec.ts           journal_entries/journal_keys (S2 von #302, issue #338) + Editor (S3b, #340), umgebaut in issue #376/ADR-0018: offline geschrieben -> online -> DB ohne Klartext-Fragment; ein geschriebener Record übersteht einen Dexie-Reopen (Reload), der journalConflicts-Store existiert danach (AC3); Migration-Down/Up je Migration in einer rückgerollten Transaktion, andere Tabellen bleiben unberührt; journal_entries trägt kein neues Klartext-Inhaltsfeld (nur created_at als Metadaten dazu); Editor-ACs (issue #376 AC1-AC9): kein Autosave (ein Mood-Tap allein schreibt nichts), Absenden leert das Feld, mehrere Einträge stehen darunter neueste zuerst mit Uhrzeit und überleben Reload+Entsperren, Stimmung/Tags gehören zum einzelnen Eintrag, Löschen ist Soft-Delete (deleted_at gesetzt, keine Hard-Delete), 375/1280px + Dark Mode; AC8 (Kern-Test): zwei Geräte legen offline unabhängig je einen Eintrag für denselben Tag an -> zwei Zeilen, kein Überschreiben, kein Konflikt (ersetzt die alten #338-Tests AC5/AC6, die die inzwischen abgelöste deterministische Tages-id prüften, ADR-0017 Punkt 1 -> ADR-0018); Konflikt-Banner (issue #340 AC8) bleibt UI-seitig testbar über debugSeedJournalConflict, Wiederherstellen hängt seit #376 einen neuen Eintrag an statt einen "aktuellen" zu überschreiben
-  journal-suche.spec.ts     Suche (S4 von #302, issue #341), Treffer sind Einträge statt Tage seit issue #376: Text-/Tag-Treffer, kein Klartext-Fragment danach in IndexedDB (AC2), kein Suchzustand bei gesperrtem Journal (AC3), keine Ladeanzeige (AC4), ruhiger Leerzustand (AC5), Treffer zeigt Datum UND Uhrzeit und wechselt den sichtbaren Tag statt ein Entwurfsfeld zu befüllen (AC6), mehrere Einträge desselben Tages sind eigenständige Treffer, 375/1280px + Dark Mode (AC7)
-  journal-recovery.spec.ts  Recovery-Kit aus #343 verdrahtet (issue #372), ein Test je AC: beide KEK-Wraps bei der Einrichtung (AC1), Recovery-Key genau einmal + gruppiert angezeigt (AC2), zweiter Entsperr-Weg mit korrektem Key (AC3), optionale neue Passphrase danach mit demselben DEK + alte Passphrase gibt nur die ruhige Meldung (AC4), falscher Recovery-Key nicht von falscher Passphrase unterscheidbar (AC5), angepasster Warnsatz im Einrichten-Screen (AC6), offline eingerichtet erreicht online beide Hüllen (DoD)
-  journal-recovery-reissue.spec.ts  Neu-Ausstellen aus den Journal-Einstellungen (issue #391): entsperrt stellt einen vom Setup-Key abweichenden neuen Key aus und dieser entsperrt danach, der alte Key wird dabei ungültig (ruhige Meldung), gesperrt bietet weder Key noch Aktion, Regel 9 (kein Recovery-Key im Log, nur recovery_envelope ändert sich, envelope bleibt gleich), offline neu ausgestellt geht in die Outbox und synct online nach (DoD), 375/1280px + Dark Mode/reduced-motion
-  garmin.spec.ts            Aktivität per withDb() serverseitig angelegt (das, was der Cron schreibt) landet über den normalen Pull im IndexedDB inkl. track; offline->online ohne Outbox; Client ruft /api/garmin-sync nie auf und garmin_tokens erscheint nirgends im IndexedDB (issue #186)
-  push-reminders.spec.ts    POST /api/push/reminders über die `e2e-smoke`-Art (kein echter Push-Dienst nötig — kein Abo hinterlegt, sendPushToAll läuft trotzdem real): Owner-Session-Auslöser ohne offene App sendet und sperrt reminder_sends, zweiter Auslöser am selben Tag sendet nicht erneut, ohne Session 401 (issue #239); `tasks-due` per `X-E2E-Now` auf den 07:00-Slot gepinnt: fällige Aufgabe löst aus, nichts fällig/erledigt/gelöscht löst nicht aus, überfällige zählt mit — Text/Pluralisierung bleibt Vitest-Sache (issue #241); `habits-open` per `X-E2E-Now` auf den 20:00-Slot gepinnt: offene Gewohnheit löst aus, alles abgehakt/wöchentlich diese Woche schon erledigt/archiviert lösen nicht aus — Text/Streak-Zahl bleibt Vitest-Sache (src/push/reminders/habits-open.test.ts, issue #243); `reminder_prefs` per seedReminderPref über `e2e-smoke`: enabled:false bleibt still trotz vergangener Zeit, geänderte Zeit wirkt, zwei Zeiten liefern zwei Slots/Zeilen, leere Zeiten senden nichts und lassen den Default nicht wiederkehren (issue #244); `interaction-limit` per `X-E2E-Now` auf verschiedene Abstände zum festen Ablaufdatum gepinnt: unter 30 Tagen löst aus, darüber nicht (issue #245)
-  reminder-prefs.spec.ts    Panel „Benachrichtigungen" je Erinnerungsart: Öffnen schreibt keine Zeile (AC5), Ab-/Anschalten, Uhrzeit ändern, zweite Zeit hinzufügen, Zeit(en) entfernen ohne Rückkehr der Defaults (AC1-4), offline geänderte Zeit erreicht online die Datenbank (AC6), 375/1280px, Dark Mode, reduced-motion (issue #244)
-  modules.spec.ts           Modul-Panel (ADR-0012): Auslieferungszustand sechs Tabs, Abschalten blendet nur den einen Tab aus, Wiederanschalten an gleicher Position, core (Übersicht/Einstellungen) ohne Schalter, Reload-fest, offline reine localStorage-Mutation ohne Outbox-Op, Dark Mode/reduced-motion (issue #307); Übersicht/Einstellungen deklarativ aus der Registry — Sektion/Panel folgt dem Schalter, Reihenfolge bleibt (issue #308); Route-Guard (issue #309): Direktaufruf einer Aus-Route landet auf /uebersicht ohne 404, `[data-module]`-Wrapper schon vor der Hydration per CSS unsichtbar (Skripte blockiert, kein Guard-Lauf nötig), aktives Modul bleibt erreichbar, core-Routen nie umgeleitet, Dark Mode/reduced-motion; läuft in beiden Playwright-Projekten (mobile 375px, desktop 1280px)
-  list-motion.spec.ts       Listen-Ein/Ausblenden (issue #430, #418 Entscheidung A): je Aufgaben/Habits/Journal ein Enter- (neu angelegt/abgesendet) und ein Exit-Test (gelöscht bzw. bei Habits archiviert — dort gibt es kein Löschen, Verschwinden aus der aktiven Liste ist das Exit-Äquivalent); prefers-reduced-motion über ein detached-Probe-Element statt gegen eine echte Zeile, weil tokens.css unter reduced-motion jede animation-duration auf 0.01ms nullt und das reale Enter/Leave-Fenster damit vor einer Assertion schließen könnte; die Keyframe-Eigenschaften (nur transform/opacity, nie height/top/margin) werden einmal direkt aus der CSSOM gelesen statt dreifach dupliziert, da der Mechanismus (motion.css) listenübergreifend derselbe ist; 375/1280px + Dark Mode an der Aufgabenliste als Vertreter
-scripts/
-  garmin-bootstrap.md       einmaliger Handgriff im Browser fürs Garmin-OAuth1-Token, ~jährlich fällig, führt nie automatisch (ADR-0011, issue #186)
-  claude-runner.sh          der autonome Runner (portabel: macOS + Linux), seit #203 (S6) nur noch EINSTIEGSPUNKT unter 250 Zeilen: die Entscheidungslogik liegt vollständig in scripts/runner/*.ts und wird über ts_run() gerufen. In Bash bleibt genau vier Dinge, jedes aus einem eigenen Grund -- (1) der Lauf-Lock über `mkdir`, atomar auf POSIX und damit Ersatz für das auf macOS fehlende flock; (2) das 'limit-until'-Gate, ein garantierter No-Op ohne tsx-Start und ohne gh-Aufruf, deshalb ruft es `fmt_hm` direkt statt über den Kern; (3) die Chain-Schleife (#61) samt MAX_ROUNDS/TICK_BUDGET; (4) `run_limited` als Ersatz für das auf macOS fehlende `timeout` -- es hängt an Signalen und Prozessgruppen, in Node wäre das ein Rückschritt -- plus der `claude`-Aufruf selbst: TS baut den Prompt und schreibt ihn nach stdout, Bash pipet ihn in `claude` (dessen Hintergrundjob braucht `<&0`, sonst ersetzt bash stdin durch /dev/null und der Prompt kommt nie an). `status()` bleibt ebenfalls bash-only, weil es den Ausfall des TS-Kerns melden muss -- die Ampel steht im TITEL des Status-Issues, damit sie in der Issue-Liste ohne Reinklicken sichtbar ist: 🟠 arbeitet an #N (vor dem `claude`-Aufruf gesetzt), 🟢 wartet/nichts offen (kein Eingreifen), 🟡 wartet auf dich (Frage offen oder Freigabe nötig), 🔴 Fehler (Eingreifen), 🔵 Limit erreicht (läuft von selbst weiter), ⚪️ nichts zu tun (kein Ticket auf `ready`); geschrieben wird nur bei inhaltlicher Änderung (#64, sha1 ohne den Zeitstempel). der Kill-Switch aus S1 und alle `*_bash`-Zweige sind mit S6 entfallen -- ein fehlendes `tsx` ist jetzt ein harter Fehler (Exit 127) und meldet sich über status(); seit #242 bekommt ein Bau-Lauf (role=build) einen eigenen Worktree als cwd statt im geteilten Haupt-Checkout zu bauen -- `worktrees_enabled()`/`branch_for_issue()`/`bootstrap_worktree()`/`ensure_worktree()` legen ihn unter `WORKTREE_BASE` (Default `.claude/worktrees/issue-<nr>`) an oder nutzen einen vorhandenen wieder, ein belegter/unregistrierter Pfad bricht den Lauf ab statt in den Haupt-Checkout auszuweichen; `run_limited()` bekommt dafür einen cwd-Parameter (Subshell `cd && exec`); `main()` prunt und entfernt Worktrees geschlossener Tickets je Tick. Aktiv nur, wenn REPO_DIR ein echter git-Arbeitsbaum ist -- in den Bash-Suiten (git gestubbt) bleibt das Feature unsichtbar inaktiv. Seit #204 traegt der Kopf zusaetzlich SLOT_ID/SLOT_COUNT/LEAD_SLOT/SHARED_DIR (Deckel 1-10, AK8); run_round() bestimmt EFF_LEAD/IS_LEAD JEDE Runde neu ueber `ts_run fleet-effective-lead`, VOR round-plan, weil dessen Waechter das vorher wissen muessen; apply_status() schreibt IMMER den eigenen Slot-Zustand (`fleet-write-state`), aber NUR der effektive Leitslot aggregiert und schreibt ans Status-Issue (`fleet-status`) -- Details ADR-0014; seit #331 haelt `start_fleet_publisher()`/`stop_fleet_publisher()` waehrend des `claude`-Aufrufs einen Hintergrund-Takt am Laufen, der apply_status() alle FLEET_PUBLISH_INTERVAL (Default 300s) erneut aufruft, NUR wenn IS_LEAD -- sonst friert die Flottenanzeige ein, solange der Leitslot in einem langen (Plan-)Lauf steckt; einziger Schreiber bleibt es trotzdem, weil der Vordergrund-Takt den Hintergrund-Takt vor seinem eigenen naechsten apply_status()-Aufruf abwartet (kill+wait); seit #356 (B) baut run_round() die `claude`-Argumente als `base_args` OHNE `--resume` und haengt `--resume` nur fuer den Erstversuch an (Merker `used_resume`) -- bricht der ab, prueft `ts_run round-recover` den Log auf eine nicht-fortsetzbare Session und laesst GENAU EINEN Frischversuch mit `base_args` folgen, dessen Ausgang allein in round-eval einfliesst, noch VOR der Wegwerf-Worktree-Entfernung
-  runner/cli.ts             TS-Kern-Dispatcher: argv[2] = Kommando, unbekannt -> Exit 2 auf stderr; verdrahtet gh/git/state/clock zu einem RunnerContext, den ts_run() über `tsx` aufruft (#198 S1); Handler geben `string | null` zurück (`null` = Exit 1, kein stdout -- Pendant zu `return 1` in Bash); ab S2 (#199) Kommandos `fmt-hm`/`d-plus`/`reset-epoch`/`queue-order-flat`/`queue-pending`/`queue-next`; ab S3 (#200) zusätzlich `sha1-of`/`tier-current`/`tier-bump`/`tier-reset`/`resume-allowed`/`blocker-sig`/`build-escalation-eval`/`opus-cap-reached`/`opus-cap-reserve`; ab S4 (#201) zusätzlich `pr-for-issue`/`pr-ci-state`/`pr-is-behind`/`pr-merge-state`/`pr-catch-up-behind`/`catchup-fail-reason`/`catchup-fail-escalated`/`catchup-fail-reset`/`pr-squash-merge`/`reopen-falsely-closed-issues`/`pr-failure-summary`; `CommandResult` bekommt dafür einen dritten Fall `{exitCode, stdout}` neben `string | null`, weil `pr-catch-up-behind` die vollen Zahlen-Exitcodes 0-5 seiner Bash-Vorlage braucht statt nur 0/1; ab S5 (#202) zusätzlich `watch-running-issue`/`watch-waiting-issues`, beide als JSON-String (`kind`-diskriminiert)
-  runner/gh.ts, git.ts      Adapter um `gh`/`git`, injizierbare exec-Funktion für Vitest-Doubles (#198 S1)
-  runner/state.ts           Adapter für Dateien unter $STATE_DIR, baseDir injizierbar -- Vitest zeigt nie auf das echte .runner/ (#198 S1); `remove()` seit #200 S3 (tierReset räumt Dateien weg, entspricht `rm -f`)
-  runner/clock.ts           Zeitquelle, injizierbar (createClock/createFixedClock) (#198 S1)
-  runner/time.ts            fmtHm/dPlus/resetEpoch -- TS-Portierung von fmt_hm/d_plus/reset_epoch, Zeit ausschließlich über den Clock-Adapter (#199 S2)
-  runner/queue.ts           queueEntries/queueOrderFlat/queueBlockers/queueBlocked/queueCycles/queueDone/queuePending + die geteilten Bausteine hasLabel/byCreatedAt/QueueIssue -- TS-Portierung der Prioritäts-Queue (#199 S2). Leseregel seit #265: NUR Zeilen, die mit '- #' beginnen, zählen als Eintrag; die erste Nummer ist das Ticket, weitere Nummern derselben Zeile sind Voraussetzungen ('- #266 nach #227'), das Wort dazwischen wird nicht geparst. Eine Voraussetzung gilt als erfüllt, sobald ihr Ticket nicht mehr im Snapshot offener Tickets steht -- deshalb kann der Zustand nicht veralten und eine nicht existierende Nummer blockiert nicht dauerhaft. queueCycles() findet Zirkel für die Statusmeldung, queueDone() die erledigten Einträge (der Runner schreibt das Queue-Issue NICHT um). queueNext() ist seit #271 NICHT mehr hier: es war eine zweite, von Hand gepflegte Kopie der Auswahl-Kaskade und driftete dreimal nachweislich ab -- jetzt steht es in select.ts und delegiert an selectTicket(). queuePending() bleibt bewusst eine andere Frage (offene Arbeit statt Wählbares) und zählt deshalb auch hands-off-Tickets mit. Seit #366, mehrzeilig seit #410: parseFindKeys() liest alle Fundschlüssel ('Fund: <pfad>:<zeile>', zeilenverankert, mehrere Zeilen möglich) aus einem Ticket-Body; foundTickets() listet alle Fund-Tickets eines Snapshots (number/keys/inProgress), ältestes zuerst; findFoundTicket() findet zu einem Schlüssel das (zustandsagnostische, offen wie geschlossen) bestehende Ticket über JEDEN seiner Schlüssel, mehrere Treffer -> das älteste gewinnt. QueueIssue trägt dafür zusätzlich optionale body/state/stateReason-Felder
-  runner/tier.ts            Tier-Typ ('haiku'|'sonnet'|'opus') + tierFromLabels/tierCurrent/tierBump/tierReset -- TS-Portierung der Modell-Eskalationsleiter (#200 S3). Seit #273/ADR-0013 kommt die Startstufe aus einem der drei Labels 'model:haiku|sonnet|opus' (trägt ein Ticket mehrere, gewinnt die teuerste); tierFromLabels() liefert sie OHNE den Eskalationszustand, weil round.ts sie so für die Denk-Rollen und für 'no-escalation' braucht. tierCurrent() gibt weiterhin einer schon eskalierten Stufe (tier-<nr>) den Vorrang -- das Label ist der Start, nicht die Fessel. Die vollständige Vorrangkette steht als Kommentar über der Modellwahl in round.ts, die Stufe selbst im Titel des Status-Issues
-  runner/escalation.ts      sha1Of/resumeAllowed/blockerSig/buildEscalationEval -- TS-Portierung von Fehlversuchs-/Wiederaufnahme-Auswertung; buildEscalationEval nutzt state/gh/git-Adapter, kein eigener ts_run-Befehl für den internen branchTip-Baustein (#200 S3)
-  runner/cap.ts             opusBuildCapReached/opusBuildCapReserve -- TS-Portierung des Opus-Tagesdeckels (2 Bau-Läufe/Ticket/Tag), 'opus-boost' umgeht ihn (#200 S3)
-  runner/pr.ts              PrState-Union (pending|failing|behind|success) + prForIssue/prCiState/prIsBehind/prMergeState/prSquashMerge/reopenFalselyClosedIssues/prFailureSummary -- TS-Portierung der PR-Zustandslogik, kein `jq`, JSON kommt direkt vom `gh`-Adapter (#201 S4). prOnlyProtectedPathsRed() ist mit #283 entfallen -- den Check, den es abfragte, gibt es nicht mehr; prFailureSummary() nimmt seitdem keinen Check-Namen mehr aus
-  runner/catchup.ts         CatchupResult-Union (ok/conflict/dirty/fetchFailed/checkoutFailed/pushFailed) + prCatchUpBehind/catchupFailReason/catchupFailEscalated/catchupFailReset -- TS-Portierung des Nachzieh-Ablaufs (fetch/checkout/merge/push über den git-Adapter); catchupExitCode/catchupStdout bilden die Union an der CLI-Kante auf die Zahlen-Exitcodes 0-5 zurück (#201 S4)
-  runner/watch.ts           EINE Übergangstabelle (`watchReaction()`, WatchState × waiting) statt zwei getrennter CI-Wachen -- `watchRunningIssue()`/`watchWaitingIssues()` lösen `PrState` (S4) je zu einem WatchState auf (inkl. Nachziehen/Eskalation) und lassen danach dieselbe Tabelle entscheiden; Eskalation bei transienten Nachzieh-Fehlern (`behind-retry`) bleibt bewusst nur für laufende Tickets aktiv, wartende bleiben dabei still (Status quo aus #173, keine neue Einschränkung); menschenlesbare Statustexte bleiben in claude-runner.sh, nicht hier (#202 S5); `PENDING_STALL_MINUTES` (Startwert 45) + dateibasierter Zeitstempel je Ticket (`pending-since-<issue>`, wie `catchup-fail-<issue>` in catchup.ts) messen, wie lange ein laufendes Ticket ununterbrochen auf `pending` steht -- über der Schwelle kippt `watchRunningIssue()` von 🟢 auf 🟡 (`escalated`/`minutes` im `RunningWatchResult`), der Zeitstempel verschwindet, sobald der PR nicht mehr pending ist; nur für laufende Tickets geführt, ein wartendes bleibt bei `pending` ohnehin still (issue #324)
-  runner/select.ts          selectTicket()/pickTicket() -- TS-Portierung der Ticketauswahl aus `run_round`; seit #272 ohne Park-Mechanik: `needs-answer` und `hands-off` werden einmal zentral vom Snapshot gefiltert, danach Präzedenz laufend > Prioritäts-Queue (S2) > plan > research > ready, je ältestes createdAt; `selectTicket()` ist rein, `pickTicket()` führt die dafür nötige Label-Mutation aus und bestimmt MODE (start/resume) (#202 S5); seit #271 liegt hier auch `queueNext()` (die Anzeige „was nähme der Runner als nächstes" fürs Status-Issue) als Dreizeiler über `selectTicket()` -- Anzeige und Auswahl können strukturell nicht mehr auseinanderlaufen, der Paritätstest in select.test.ts ist die Absicherung
-  runner/label-contract.test.ts  Wächter (#266, S4 von #264): hält Label-Beschreibung und Label-Verhalten zusammen. Prüft (1) dass jedes Label aus bootstrap-github.sh in der Tabelle in docs/WORKFLOW.md steht und umgekehrt, (2) dass jedes Label aus BLOCKING_LABELS (select.ts) ein Ticket auf JEDEM Zweig der Kaskade heraushält -- je Zweig mit Gegenprobe, dass dasselbe Ticket ohne das Label gewählt würde. Anlass: 'no-opus' beschrieb sich als Kill-Switch, wurde aber in drei von sechs Zweigen nicht geprüft (#227). Gegen den wieder eingebauten Defekt nachweislich rot (4 Fälle, running + Queue)
-  runner/status.ts          waitingIssues/queueSnapshot/queueBody -- TS-Portierung der Statusmeldungen; `status()`/`append_end_reason()` bleiben ABSICHTLICH bash-only (Endlosrekursions-Risiko über `ts_run()`, siehe Kommentar im File) (#202 S5)
-  runner/prompts.ts         buildPrompt/ciFixPrompt/planPrompt/researchPrompt + die Tool-Allowlists READONLY_TOOLS/BUILD_TOOLS -- die vier Agenten-Prompts als Funktionen statt als Bash-Heredocs (#203 S6). Seit #366: buildPrompt/ciFixPrompt bekommen einen optionalen dritten `found: FoundTicket[]`-Parameter (Default `[]`, FIND_TITLE_FORM/FIND_BODY_FORM als geteilte Konstanten mit WORKFLOW.md). Seit #397 rendert foundTicketsSection() immer den Absatz „## Fund-Tickets anlegen" (Pflichtsuche + Pflicht zu `--label plan` für selbst angelegte Fund-Tickets); nur die zusätzliche Liste „## Bekannte Fund-Tickets" bleibt bedingt auf `found.length > 0`
-  runner/round.ts           die ganze Runde: `roundPlan()` (Wächter, Ticketwahl, CI-Wache, Modell, Deckel, Prompt) und `roundEval()` (Session-ID, Read-only-Netz, Limit/Notbremse/Fehlschlag, Chain-Entscheidung). Die Runde zerfällt genau am `claude`-Aufruf, der in Bash bleibt -- deshalb zwei Funktionen und die Übergabe über $STATE_DIR/round.json (#203 S6); `roundRecover()` sitzt dazwischen (#356, B): erkennt "No conversation found with session ID" (ein per --resume uebergebenes, im aktuellen cwd unbekanntes Session-ID, #353) und laesst Bash GENAU EINEN Frischversuch ohne --resume fahren, BEVOR roundEval() den Absturz je zu Gesicht bekommt -- zaehlt deshalb nie als Eskalations-Fehlversuch; seit #366 holt roundPlan() den Snapshot zusätzlich mit `body` (--json ...,body) und reicht foundTickets(snapshot) für JEDEN Slot (nicht nur den Leitslot) an buildPrompt/ciFixPrompt durch
-  runner/session.ts         sessionFamily()/sessionKey() (#356, A): Bau- und Denk-Rollen (cwd .../issue-<nr> vs. .../readonly-<nr>) bekommen getrennte Session-Dateien (session-<nr> vs. session-think-<nr>) -- vorher geteilt, obwohl die Claude-CLI eine Session ans Arbeitsverzeichnis bindet, Ursache von #353. Beide Praefixe bleiben 'session-', cleanup.ts braucht keine Anpassung
-  runner/shim.ts            shimDriftReason(): weicht die AUSGEFUEHRTE Shim-Datei (~/.local/bin/starship-runner) von scripts/starship-runner im Ref ab? Liegt bewusst HIER und nicht im Shim: claude-runner.sh wird bei jedem Tick frisch aus origin/main materialisiert, der installierte Shim nicht -- eine zu alte Fassung koennte sonst nicht melden, dass sie zu alt ist. '' = kein Drift; fehlende Datei im Ref (aelterer main) und fehlende installierte Datei (Linux hat gar keinen Shim) sind ausdruecklich KEIN Drift. Beide Seiten werden um abschliessende Newlines normalisiert, weil der git-Adapter sie abschneidet und ein blosses Zeilenende-Delta sonst Daueralarm ausloeste (#252)
-  runner/cleanup.ts         cleanupStateDir(): räumt tier-/failcount-/opus-build-/opus-cap-msg-/session--Dateien älter als 7 Tage weg, verschont 'limit-until' und die Session des laufenden Tickets; ein Fehlschlag von gh verhindert das Aufräumen nicht (#64, portiert in #203 S6); die Schonung kommt seit #204 aus dem EIGENEN Claim (nicht mehr aus einer globalen '--label in-progress'-Abfrage) -- sonst haette sie bei mehreren Slots die Session eines FREMDEN Slots verschont
-  runner/claim.ts           mkdir-Claim fuer Ticket-Anspruch bei mehreren Slots (#204): claimTake/claimFilter/claimedElsewhere/claimSweep/claimRelease unter SHARED_DIR/claims/<issue>/, verfaellt am Label (in-progress), nie an einer PID; claimedElsewhere() liefert nur die Ausschlussmenge, damit select.ts den vollen Snapshot fuer die Abhaengigkeitsaufloesung (queueBlocked) behaelt
-  runner/fleet.ts           aggregierter Status bei mehreren Slots (#204, E5): jeder Slot schreibt seinen Zustand nach SHARED_DIR/slots/<id>/state.json (Inhalt+Herzschlag), effectiveLead() waehlt LEAD_SLOT solange frisch (Schwelle 90min) sonst den niedrigsten lebenden Slot (AK5), aggregateStatus() baut daraus EIN StatusUpdate -- bei genau einem bekannten Zustand unveraendert durchgereicht (AK9); jede Slot-Zeile traegt seit #331 zusaetzlich ihr eigenes Alter (formatAge, unabhaengig vom 90-Min-Schnitt fuers 💤-Symbol) -- eine zehn Minuten alte Zeile soll nicht wie eine frische aussehen (AK2)
-  runner/*.test.ts          Vitest-Suiten der TS-Adapter/des Dispatchers/Zeit/Queue/Eskalation/Deckel/PR-Zustände/Nachziehen/Wache/Ticketauswahl/Prompts/Runde/Aufräumen, laufen über `pnpm test` mit (#198 S1 bis #203 S6); chaining.test.ts ist das TS-Gegenstück zu tests/chaining.test.sh -- die Schleife bleibt in Bash, die Fortsetzungs-Entscheidung wird hier geprüft
-  tests/lib/ts-core-shims.sh  Namensbrücke für die Bash-Suiten: stellt die mit S6 entfallenen Wrapper (tier_current, queue_next, pr_squash_merge, ...) als direkte ts_run-Aufrufe wieder her, mit identischem stdout-/Exit-Code-Verhalten -- so blieben die Assertions der fünf betroffenen Suiten unangetastet (#203 S6)
-  tests/runner-ts.test.sh   Fixture-Tests für ts_run(): der Kern wird über RUNNER_HOME aufgelöst (nicht REPO_DIR), stdout/Exit-Code kommen durch, fehlendes tsx meldet sich hörbar über status() (#198 S1, auf S6 gezogen). Jeder Fall läuft in einer Subshell -- die Suite trägt ihr Scheitern deshalb über eine Flag-Datei nach außen, sonst meldete sie grün trotz roter Prüfungen (#203)
-  tests/worktree.test.sh    Fixture-Tests für den Ticket-Worktree (#242): anders als die übrigen Suiten wird `git` NICHT gestubbt -- ein echtes bare Repo als `origin` + ein echter Klon als REPO_DIR, `gh`/`claude` bleiben Attrappen. Deckt ab: cwd des Agenten ist der Worktree (AK1/AK2), Fortsetzung nutzt ihn wieder statt einen zweiten anzulegen (AK3), ein belegter/unregistrierter Pfad bricht den Lauf ab statt in den Haupt-Checkout auszuweichen (AK4), der Haupt-Checkout bleibt dabei unverändert (AK6), ein geschlossenes Ticket verliert seinen Worktree im nächsten Tick (AK5)
-  tests/status-queue.test.sh  Fixture-Tests für den Queue-Peek des Status-Tickets (#48)
-  tests/round-snap.test.sh    ROUND_SNAP-Sortierung (createdAt statt Nummer) + Session-ID-Regel (#64)
-  tests/round-plan-guard.test.sh  Fixture-Tests: run_round() meldet jeden round-plan-Fehlschlag (Exit ≠ 0 oder Exit 0 mit kaputtem JSON) über status() mit definiertem Exit 1, statt still auf einem kaputten `return ""` abzubrechen; Exit 127 bleibt ohne Doppelmeldung (#257)
-  tests/found-key.test.sh   Ende-zu-Ende-Test für den Fundschlüssel im Auftragstext (#366 AC3): über `roundPlan -> round-prompt -> claude` (Prompt via stdin) geprüft, dass ein untriagiertes Fund-Ticket im Snapshot die Sektion „## Bekannte Fund-Tickets" samt Nummer/Schlüssel tatsächlich in den an `claude` gepipten Prompt bringt, und dass sie ohne ein solches Ticket vollständig fehlt (Gegenprobe)
-  tests/session-recover.test.sh  Ende-zu-Ende-Test der Selbstheilung (#356, B): `claude`-Stub gibt bei `--resume` "No conversation found with session ID" + Exit 1 zurück, ohne `--resume` eine gültige Session -- prüft GENAU EINEN Frischversuch (claude zweimal, zweiter Aufruf ohne `--resume`), die Gift-Session-ID wird durch die neue ersetzt, ein Sichtbarkeits-Kommentar landet am Ticket, und `buildEscalationEval` zählt den geheilten Erstversuch NICHT zusätzlich mit (failcount bleibt bei 1, kein `needs-answer`)
-  check-test-integrity.sh   Wächter gegen abgeschwächte Tests
-  check-sync-invariants.sh  Wächter gegen direkten fetch(/api/) außerhalb der Outbox (#58); Trenner-Slash Pflicht, sonst false-positiv auf Fremdquellen wie https://api.open-meteo.com (#139)
-  check-dexie-bump.sh       Hinweis (kein Gate): Server-Migration ohne Dexie-Versions-Bump (#59)
-  tests/dexie-bump.test.sh  Fixture-Tests für check-dexie-bump.sh (#59)
-  tests/limit-until.test.sh Fixture-Tests: abgelaufenes 'limit-until' hebt die Pause selbst auf, aktives bleibt unangetastet, fehlender/kaputter Wert pausiert nicht dauerhaft (#121)
-  tests/opus-boost.test.sh Fixture-Tests (T1-T7): Label 'opus-boost' umgeht den Opus-Tagesdeckel je Ticket ohne Zähler-Reset, wird bei Nicht-Fortschritt abgezogen, no-escalation gewinnt, Erschöpfungsmeldung nur einmal/Tag (#136)
-  tests/ci-watch.test.sh   Fixture-Tests (T1-T9): CI-Wache vor der Ticketauswahl -- laeuft noch/gruen/rot/noch-kein-PR/kein-Ticketwechsel waehrend CI laeuft (#147); Zustand 'behind' zieht main per git nach, Konflikt startet Fix-Agenten, geparkte Tickets ohne Agentenlauf (#160)
-  tests/waiting-label.test.sh Fixture-Tests (#145, #272): in-progress+needs-answer belegt keinen Bauplatz und wird NICHT umgelabelt, ein beantwortetes Ticket laeuft ueber den running-Zweig weiter, Status nennt wartende Tickets zusätzlich
-  tests/waiting-ci-watch.test.sh Fixture-Tests: CI-Wache für ALLE wartenden Tickets gleichzeitig -- gruen wird freigegeben (ready+Auto-Merge, needs-answer faellt weg, kein Agentenlauf), alles andere bleibt still, laufendes Ticket wird nicht verzögert (#154, #272)
-  tests/squash-close-guard.test.sh Fixture-Tests (T1-T5): pr_squash_merge() traegt eigenen PR-Titel als Subject, leeres Body statt Commit-Historie; fremde 'Closes #N' aus mitgezogenen Merge-Commits (nachgestellter Fall #163/#168) bleiben aussen vor; reopen_falsely_closed_issues() als Netz oeffnet faelschlich geschlossene Tickets mit offenem eigenen PR wieder (#172)
-  starship-runner           der Shim, den launchd startet -- AUSGEFUEHRT wird die installierte Kopie unter ~/.local/bin/, diese hier ist die kanonische, reviewte Fassung (#252). Holt scripts/runner/, claude-runner.sh und package.json per `git archive` aus origin/main in ein Wegwerf-Verzeichnis und verlinkt node_modules aus dem Repo -- seit S6 muss der GANZE Runner mitwandern, sonst kaeme der TS-Kern aus dem Arbeitsbaum und die Zusage 'nur gemergter Code laeuft' gaelte nur fuer den Einstiegspunkt. Zwei Fallen sind hier festgenagelt: `pwd -P`, weil mktemp den /var-Symlink liefert und cli.ts ueber einen Symlink-Pfad stumm nichts tut (Exit 0, leere Ausgabe, #251), und kein `exec`, weil das den EXIT-Trap verschluckt (der alte Shim liess pro Tick eine Temp-Datei liegen). Der Shim selbst bleibt dumm: er entscheidet nichts, die Drift-Pruefung liegt in runner/shim.ts -- ein zu alter Shim koennte sonst nicht melden, dass er zu alt ist
-  tests/shim-start-path.test.sh  Fixture-Tests (B1-B3) fuer den ECHTEN Startpfad: materialisieren aus einem Ref, node_modules verlinken, ts_run ueber die Naht rufen und eine NICHT-LEERE Antwort erwarten. Genau das hat bis #249 niemand geprueft -- runner-ts.test.sh prueft ts_run bei bereits korrektem RUNNER_HOME, nicht ob der Shim ein brauchbares liefert (#252)
-  tests/shim-drift.test.sh  Fixture-Tests (T1/T2) fuer die MELDUNG, nicht die Entscheidung (die liegt in runner/shim.test.ts): claude-runner.sh fragt den echten Kern, macht aus der Antwort eine 🟡-Meldung mit Installationsbefehl und laeuft trotzdem weiter; identische Datei meldet nichts. Fixtures kommen aus `git show`, nicht aus dem Arbeitsbaum -- sonst haengt der Test an uncommitteten Aenderungen (#252)
-  bootstrap-github.sh       einmaliges GitHub-Setup (Labels, Milestones, Branch-Schutz)
-  vercel-build.sh           Release-Schritt: wendet Migrationen vor next build an (nur Production)
-  smoke-decide.sh           Post-Deploy-Smoke: HEALTHY/REVERT/AMBIGUOUS aus Health+Version+Playwright
-  launchd-setup.md          Runner als Dienst auf macOS; Abschnitt "Mehrere Slots" (#204)
-  systemd-setup.md          Runner als Dienst auf Linux; Abschnitt "Mehrere Slots" (#204)
-  gen-slot-plists.sh        erzeugt je Slot eine launchd-plist (#204) -- schreibt nur Dateien, laedt/installiert nichts von selbst; Slot 1 = vorhandener Checkout, Slot 2..N = eigener Clone unter ~/dev/starship-slot-<n>; STATUS_ISSUE ist bei mehreren Slots EINE Nummer fuer die ganze Flotte
-  tests/gen-slot-plists.test.sh  Fixture-Tests fuer den Plist-Generator: Slot-1-Passthrough, Deckel bei SLOT_COUNT>10, kein eigenmaechtiger launchctl-Aufruf
-.github/workflows/
-  ci.yml                    Lint, Typecheck, Vitest, Playwright, Schema-Drift-Gate; läuft nur bei echten Code-Änderungen (opened/synchronize/reopened), nicht bei Label-Events (issue #164)
-  guards.yml                Test-Integrity- und Protected-Paths-Gate; hören zusätzlich auf labeled/unlabeled, damit ein Label-Tap (tests-exempt) nur diese beiden neu prüft statt der ganzen CI (issue #164)
-  smoke.yml                 Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
-  garmin-sync.yml           nächtlicher Cron, POST /api/garmin-sync mit Bearer-Secret, vendor-neutral statt Vercel-Cron (Regel 7, issue #186)
-  reminders.yml             alle 30 min (Minute 7/37, versetzt zu garmin-sync.yml), POST /api/push/reminders mit Bearer-Secret (REMINDER_SECRET) — die Route entscheidet über src/push/schedule.ts, welche Berliner Zeit fällig ist (issue #239)
-docs/                       Vision, Architektur, Design, Workflow, Token-Budget, ADRs
-```
+### src/app — Routen & API
+
+- `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
+- `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
+- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>` (rendert je aktivem Modul dessen `OverviewSection`)
+- `(app)/aufgaben/` / `(app)/kalender/` — Aufgaben (leer bis M1) / Termine (leer bis M5)
+- `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
+- `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
+- `(app)/journal/page.tsx` — rendert `<JournalGate/>`, kein Editor-Inhalt direkt
+- `(app)/einstellungen/` — Darstellung, Reihenfolge, Module, Push (rendert je aktivem Modul dessen `SettingsPanel`)
+- `anmelden/` / `offline/` — Passkey (Einrichten/Anmelden/Recovery) + Service-Worker-Fallback ohne Netz
+- `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status) + SELECT 1 + Versions-SHA (ungeschützt)
+- `api/sync/` — `push/` und `pull/`, die einzigen Wege zu den Daten
+- `api/push/` / `api/garmin-sync/` — subscribe/unsubscribe/test+`reminders/`, holt Aktivitäten (beide Bearer-Secret)
+- `layout.tsx` / `manifest.ts` / `globals.css` — Root-Layout (PWA-Metadaten, Theme/Modul-Bootstrap), Manifest, Tailwind+Tokens
+- `sw.ts` — Service Worker (Serwist), Push/Notification-Handler, modul-unabhängig
+
+### src/db
+
+- `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit fürs Datenmodell
+- `sync-tables.ts` / `sync-lock.ts` — welche Tabellen/Felder Sync anfassen darf + `pg_advisory_xact_lock` je Schreib-Transaktion
+- `index.ts` / `migrate.ts` — DB-Verbindung (pg-Pool) + wendet Migrationen an (`pnpm db:migrate`)
+- `migrations/` / `migrations/down/` — generierte Migrationen (nie von Hand) + Down-Pfad je Migration
+
+### src/local — Outbox & Sync
+
+- `types.ts` — Vertrag zwischen Outbox und `/api/sync`
+- `dexie.ts` — IndexedDB-Definition (outbox, records, meta + Sonderstores)
+- `outbox.ts` / `sync.ts` — Mutations-Queue (jede Schreiboperation) + Push/Pull, Cursor = `sync_seq`
+- `conflict.ts` / `use-live-table.ts` — Konfliktregeln (Delete/Restore/Upsert) + generischer `liveQuery`-Hook
+- `push.ts` / `garmin-sync.ts` — einzige Stellen, die gegen `/api/push` bzw. `/api/garmin-sync` sprechen
+
+### src/auth
+
+- `session.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`
+- `webauthn.ts` — Challenges, Credentials, Recovery-Code
+
+### src/crypto — Journal-Verschlüsselung
+
+- `errors.ts` / `base64.ts` — `WrongPassphraseError`/`JournalDecryptError` (nie Klartext in der Message) + Base64-Helfer
+- `envelope.ts` — KEK+Hülle: `deriveKek` (PBKDF2) + `createEnvelope`/`openEnvelope` (DEK als AES-GCM)
+- `journal.ts` — `encryptJournal`/`decryptJournal`, `reissueRecovery`, Re-Export der envelope-API
+- `__fixtures__/journal-vector.json` — Testvektor gegen unbemerkte Formatänderungen
+
+### src/modules
+
+- `registry.ts` / `module-sections.ts` — `MODULES`+`NavItem` (einzige Quelle je Modul) + `useActiveSections(order, pick)`
+
+### src/push — Server-seitiger Versand
+
+- `vapid.ts` / `send.ts` — VAPID aus Env-Vars + `sendPushToAll(payload)`, löscht ungültige Abos
+- `notification.ts` / `schedule.ts` — reine `buildNotification`/`parsePushPayload`-Logik + `berlinNow`/`dueSlots` (DST-sicher)
+- `reminders/index.ts` / `reminder-kinds.ts` — Registry (`sendDueReminders`) + Kind-Metadaten
+- `reminders/tasks-due.ts` / `habits-open.ts` / `interaction-limit.ts` — feste Slots: fällige Aufgaben, offene Gewohnheiten, Ablauf
+
+### src/features/tasks
+
+- `task-list.tsx` / `task-list.css` / `tasks-overview-section.tsx` — Aufgabenliste (gruppiert, Drag-Drop) + `OverviewSection`
+- `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
+- `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo)
+- `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
+- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`
+- `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
+
+### src/features/journal
+
+- `write.ts` / `entry.ts` — `writeJournalEntry` (einziger Schreibpfad) + Listen/Anhängen/Löschen
+- `journal-keys.ts` — `readEnvelope`/`writeEnvelope`/`readRecoveryEnvelope`/`writeRecoveryEnvelope`
+- `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (Dexie-Store `journalSession`) + Pref
+- `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
+- `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (eine unlesbare fällt raus) + Konflikte
+- `use-journal-{conflicts,entries,search-entries}.ts` / `use-journal-today.ts` — `liveQuery`-Hooks + „mind. ein Eintrag heute"
+- `journal-today-section.tsx` / `.css` — `OverviewSection` für Journal
+- `journal-editor.tsx` / `.css` — Formular (Stimmung/Text/Tags) + Eintragsliste + Suche
+- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche, Entschlüsselungs-Cache, Suchfeld+Ergebnisliste
+- `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen
+- `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
+
+### src/features/habits
+
+- `use-habits.ts` / `use-habit-logs.ts` / `use-habit-freezes.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
+- `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
+- `streak.ts` / `freeze.ts` — `computeStreak` (berücksichtigt Freezes) + Streak-Joker: Kontingent, `canRescue`
+- `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge, Rescue-Button
+- `habits-overview-section.tsx` / `weekly-recap.ts` / `weekly-recap-card.tsx` / `.css` — `OverviewSection` + Wochenrückblick (Quote+Superlativ)
+- `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
+- `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
+
+### src/features/export
+
+- `export.ts` / `export-panel.tsx` / `.css` — baut Export-Payload aus `db.records`, löst Download aus, Button+Status
+
+### src/features/activities
+
+- `recap.ts` / `monthly-summary.ts` — `computeRecap` (30-Tage-Fenster) + `computeMonthlySummary` je Art
+- `format.ts` / `track-path.ts` / `line-path.ts` — Formatierung + SVG-Geometrie (Projektion, Wertreihe → Pfad)
+- `use-activities.ts` / `use-activity-sync.ts` — Dexie-Live-Query + stößt `/api/garmin-sync` an
+- `activity-list.tsx` / `.css` / `activity-block.tsx` / `.css` — Recap+Liste, eine Aktivität (Kopfzahlen+drei Kurven)
+- `activity-map.tsx` / `.css` / `activity-chart.tsx` / `.css` — Kartenbild/SVG-Spur, eine Kurve (HF/Pace/Höhe)
+- `activity-month-strip.tsx` / `.css` — Monatsstand auf der Übersicht
+
+### src/features/garmin — Server-seitig
+
+- `connect-api.ts` / `tokens.ts` — OAuth1-Signatur + OAuth2-Tausch/-Erneuerung, `garmin_tokens`
+- `activity-mapper.ts` / `activity-diff.ts` / `static-map.ts` — Rohform→Kopfzahlen+Track, `sync_seq`-Diff, Mapbox-Kartenbild
+- `sync-activities.ts` — kompletter Ablauf, eine Schreib-Transaktion
+
+### src/features/weather
+
+- `forecast.ts` — Open-Meteo: `fetchForecast`/`parseForecast`, `isStale`, Tagesdetail-Helfer
+- `geocoding.ts` / `wmo-icon.ts` / `weather-category-labels.ts` — Ortssuche (flüchtig) + Wettercode → Icon/Label
+- `use-weather-cache.ts` / `use-weather-forecast.ts` / `use-weather-day.ts` — Lese-Hook, Refresh-Trigger, Tagesdetail
+- `weather-forecast.tsx` / `.css` / `weather-day.tsx` / `.css` — 7-Tage-Streifen + Tagesdetail (Kurve/Niederschlag als `<svg>`)
+
+### src/features/settings
+
+- `use-appearance.ts` / `appearance-panel.tsx` — Theme/Reduce-Motion/Textgröße, gerätelokal + Steuerung
+- `use-capture-prefs.ts` / `capture-panel.tsx` — „ohne Bestätigung direkt anlegen" + Toggle
+- `use-modules.ts` / `module-panel.tsx` — Modul-Ein/Aus (`core` nie abschaltbar) + Toggle je Modul
+- `use-weather-location.ts` / `weather-panel.tsx` / `.css` — Wetter-Ort, gerätelokal, suchen/auswählen
+- `use-nav-order.ts` / `nav-order-panel.tsx` / `.css` — Reihenfolge der Nav-Einträge, ↑/↓ je Eintrag
+- `use-push.ts` / `use-reminder-prefs.ts` / `push-panel.tsx` / `.css` — Push-Hook, Prefs-Query, Panel (an/aus)
+
+### src/ui
+
+- `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
+- `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
+- `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet (issue #430)
+- `app-header.tsx` / `nav-items.ts` / `nav.tsx` / `module-route-guard.tsx` — Einstellungen-Einstieg, Nav-Ableitung+Reihenfolge, Aus-Route-Redirect
+- `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
+- `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
+- `row/section-card/toggle/segmented-control/slider.tsx` (+ `.css`) — Form-Primitive
+- `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync/Storage-Start, Fehler-Toast, Stale-Helfer
+- `e2e-bridge.tsx` — Test-Griff auf Outbox/Journal/Dexie-Dump (nur `NEXT_PUBLIC_E2E`)
+
+### tests/ — Playwright
+
+- `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
+- `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
+- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
+- `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
+- `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
+- `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
+- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
+- `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
+- `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
+- `schema.spec.ts` — Migrationen erzeugen exakt das Schema
+- `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
+- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull ins IndexedDB, Reminder-Versand, Panel „Benachrichtigungen"
+- `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
+
+### scripts/ — Runner & CI-Hilfen
+
+- `garmin-bootstrap.md` — einmaliger Handgriff fürs Garmin-OAuth1-Token
+- `claude-runner.sh` / `runner/cli.ts` — autonomer Runner, Einstiegspunkt (Bash) + TS-Kern-Dispatcher (`argv[2]`)
+- `runner/{gh,git,state,clock,time}.ts` — Adapter (gh/git/State-Dateien/Zeit), injizierbar für Vitest
+- `runner/{queue,tier,escalation,cap,pr,catchup}.ts` — Queue, Modell-Eskalation, Deckel, PR-Zustand, Nachzieh-Ablauf
+- `runner/{watch,select,status}.ts` — CI-Wache, Ticketauswahl, Statusmeldungen fürs Status-Issue
+- `runner/prompts.ts` / `runner/round.ts` — vier Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
+- `runner/{session,shim,cleanup,claim,fleet}.ts` — Session-Trennung, Shim-Drift, Aufräumen, Multi-Slot-Status
+- `runner/*.test.ts` — Vitest-Suiten der TS-Adapter, je eine Datei pro Modul
+- `check-test-integrity.sh` / `check-sync-invariants.sh` — Wächter: abgeschwächte Tests, `fetch(/api/)` außerhalb der Outbox
+- `check-dexie-bump.sh` / `check-codemap.sh` — fehlender Dexie-Bump-Hinweis, Wächter für diese Karte (schlank)
+- `tests/*.test.sh` — Bash-Fixture-Suiten, je eine Datei pro Guard/Runner-Baustein (Namen wie das geprüfte Skript)
+- `starship-runner` — Shim, den launchd/systemd startet
+- `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — GitHub-Setup, Migration vor Build, Post-Deploy-Smoke
+- `launchd-setup.md` / `systemd-setup.md` / `gen-slot-plists.sh` — Runner als Dienst, Plist-Generator je Slot
+
+### .github/workflows/
+
+- `ci.yml` / `guards.yml` — Lint/Typecheck/Vitest/Playwright/Schema-Drift/Codemap-Gate, Test-Integrity-Gate
+- `smoke.yml` — Post-Deploy-Smoke gegen Prod, Auto-Revert bei rot
+- `garmin-sync.yml` / `reminders.yml` — nächtlicher Cron `/api/garmin-sync`, alle 30 Min `/api/push/reminders`
+
+### docs/
+
+Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 
 ## Wo liegt was?
 
-| Ich suche…                               | Datei                                           |
-| ---------------------------------------- | ----------------------------------------------- |
-| das Datenmodell                          | `src/db/schema.ts`                              |
-| welche Felder ein Client schreiben darf  | `src/db/sync-tables.ts`                         |
-| wie eine Änderung zum Server kommt       | `src/local/outbox.ts`, dann `src/local/sync.ts` |
-| den Vertrag zwischen Client und Sync-API | `src/local/types.ts`                            |
-| wer reindarf                             | `src/auth/session.ts` (`requireOwner`)          |
-| Farben, Abstände, Motion                 | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
-| die Journal-Verschlüsselung              | `src/crypto/journal.ts` (+ `envelope.ts`, S1 von #302) |
-| warum etwas so entschieden wurde         | `docs/adr/`                                     |
+| Ich suche… | Datei |
+| --- | --- |
+| das Datenmodell | `src/db/schema.ts` |
+| welche Felder ein Client schreiben darf | `src/db/sync-tables.ts` |
+| wie eine Änderung zum Server kommt | `src/local/outbox.ts`, dann `src/local/sync.ts` |
+| den Vertrag zwischen Client und Sync-API | `src/local/types.ts` |
+| wer reindarf | `src/auth/session.ts` (`requireOwner`) |
+| Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
+| die Journal-Verschlüsselung | `src/crypto/journal.ts` (+ `envelope.ts`) |
+| warum etwas so entschieden wurde | `docs/adr/` |
 
 ## Wichtige Invarianten
 
@@ -321,6 +213,11 @@ docs/                       Vision, Architektur, Design, Workflow, Token-Budget,
 - Jede API-Route prüft `requireOwner()`. Es gibt keinen zweiten Pfad in die Daten.
 - Jede synchronisierte Tabelle spreizt `syncColumns` aus `src/db/schema.ts`.
 - Löschen ist **immer** ein Tombstone (`deleted_at`), nie ein `DELETE`.
+- Der App-Router fokussiert nach einer Navigation automatisch das erste Element
+  des Segments — `page-transition.tsx` liegt deshalb bewusst über dem
+  Router-Segment (nicht in `template.tsx`), und Seiten mit eigener Kopfzeile
+  (z. B. `wetter/[datum]/page.tsx`) tragen ihre Kopfzeile bewusst als `<header>`,
+  weil sie so dieses erste fokussierte Element wird.
 
 ## Bauen
 
