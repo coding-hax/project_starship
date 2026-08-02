@@ -104,6 +104,10 @@ export function JournalSearch({
     setQuery('');
     resetFilters();
     setShowAll(false);
+    // issue #456: showFilters allein hält isActive sonst weiter offen, selbst
+    // nach dem Reset der Filterwerte — ein Treffer wählen muss die Suche
+    // vollständig verlassen (AC-P4), nicht nur die Filterwerte leeren.
+    setShowFilters(false);
     onSelect(entryDate);
   }
 
