@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
@@ -46,6 +47,9 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [color, setColor] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
+  /** The Journal habit's name and colour are fixed (issue #505 AC3) — only its
+   * rhythm can be changed here. */
+  const isJournal = mode === 'edit' && habit?.id === JOURNAL_HABIT_ID;
 
   // Load values exactly once, on the closed->open transition — not on every
   // re-render, or a live-query update elsewhere would overwrite mid-typing input.
@@ -89,12 +93,14 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
     }
 
     if (!habit) return;
-    const nextColor = color || null;
 
     const payload: Record<string, unknown> = {};
-    if (trimmedName !== habit.name) payload.name = trimmedName;
     if (schedule !== habit.schedule) payload.schedule = schedule;
-    if (nextColor !== habit.color) payload.color = nextColor;
+    if (!isJournal) {
+      const nextColor = color || null;
+      if (trimmedName !== habit.name) payload.name = trimmedName;
+      if (nextColor !== habit.color) payload.color = nextColor;
+    }
 
     onClose();
     if (Object.keys(payload).length > 0) {
@@ -110,40 +116,44 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
       initialFocusRef={nameRef}
     >
       <form className="habit-editor" onSubmit={handleSubmit}>
-        <input
-          ref={nameRef}
-          type="text"
-          className="habit-editor__name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          aria-label="Name"
-          placeholder="z. B. Wasser trinken"
-        />
+        {!isJournal && (
+          <input
+            ref={nameRef}
+            type="text"
+            className="habit-editor__name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            aria-label="Name"
+            placeholder="z. B. Wasser trinken"
+          />
+        )}
         <SegmentedControl
           options={SCHEDULES}
           value={schedule}
           onChange={setSchedule}
           label="Rhythmus"
         />
-        <fieldset className="habit-editor__colors">
-          <legend>Farbe</legend>
-          {COLORS.map((option) => (
-            <label key={option.value || 'default'} className="habit-editor__color-option">
-              <input
-                type="radio"
-                name="color"
-                checked={color === option.value}
-                onChange={() => setColor(option.value)}
-              />
-              <span
-                className="habit-editor__color-swatch"
-                style={{ background: `var(${option.token})` }}
-                aria-hidden="true"
-              />
-              {option.label}
-            </label>
-          ))}
-        </fieldset>
+        {!isJournal && (
+          <fieldset className="habit-editor__colors">
+            <legend>Farbe</legend>
+            {COLORS.map((option) => (
+              <label key={option.value || 'default'} className="habit-editor__color-option">
+                <input
+                  type="radio"
+                  name="color"
+                  checked={color === option.value}
+                  onChange={() => setColor(option.value)}
+                />
+                <span
+                  className="habit-editor__color-swatch"
+                  style={{ background: `var(${option.token})` }}
+                  aria-hidden="true"
+                />
+                {option.label}
+              </label>
+            ))}
+          </fieldset>
+        )}
         <button type="submit" className="habit-editor__submit">
           {mode === 'create' ? 'Anlegen' : 'Speichern'}
         </button>

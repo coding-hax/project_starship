@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SectionCard } from '@/ui/section-card';
 import { Toast } from '@/ui/toast';
@@ -62,9 +63,11 @@ function HabitRow({
           <span className="habit-list__title">{habit.name}</span>
           <span className="habit-list__schedule">{SCHEDULE_LABELS[habit.schedule]}</span>
         </button>
-        <button type="button" className="habit-list__archive" onClick={onToggleArchive}>
-          {archived ? 'Reaktivieren' : 'Archivieren'}
-        </button>
+        {habit.id !== JOURNAL_HABIT_ID && (
+          <button type="button" className="habit-list__archive" onClick={onToggleArchive}>
+            {archived ? 'Reaktivieren' : 'Archivieren'}
+          </button>
+        )}
       </div>
       <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} viewedMonth={viewedMonth} />
     </li>

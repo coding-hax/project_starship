@@ -1,5 +1,6 @@
 'use client';
 
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { dayLabel, monthDays, toDateKey } from './due-today';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
@@ -32,6 +33,7 @@ export function HabitWeekGrid({
   const today = toDateKey(now);
   const isCurrentMonth =
     viewedMonth.getFullYear() === now.getFullYear() && viewedMonth.getMonth() === now.getMonth();
+  const readOnly = habit.id === JOURNAL_HABIT_ID;
 
   return (
     <div className="habit-week-grid-wrap">
@@ -68,11 +70,11 @@ export function HabitWeekGrid({
                 }
                 data-today={isToday ? '' : undefined}
                 data-future={isFuture ? '' : undefined}
-                disabled={isFuture}
+                disabled={isFuture || readOnly}
                 style={done ? { background: `var(${habit.color ?? '--area-habits'})` } : undefined}
                 aria-pressed={isFuture ? undefined : done}
                 aria-label={label}
-                onClick={() => onToggle(habit.id, day)}
+                onClick={readOnly ? undefined : () => onToggle(habit.id, day)}
               >
                 <span aria-hidden="true">{dayNumber}</span>
               </button>
