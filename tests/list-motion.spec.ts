@@ -133,12 +133,16 @@ test.describe('Aufgaben', () => {
     page,
   }) => {
     await page.goto('/aufgaben');
-    await seedTask(page, { title: 'Item A' });
+    // Explicit, strictly increasing createdAt: without it both rows fall back to
+    // the same epoch value (use-tasks.ts's toTaskView), and compareTasks can then
+    // sort "Item B" *above* "Item A" — a real reorder that would shift Item A too,
+    // but not the animation-driven layout shift this AC is actually about.
+    await seedTask(page, { title: 'Item A', createdAt: '2024-01-01T00:00:00.000Z' });
     const itemA = taskItems(page).filter({ hasText: 'Item A' });
     await expect(itemA).toBeVisible();
     const before = await itemA.boundingBox();
 
-    await seedTask(page, { title: 'Item B' });
+    await seedTask(page, { title: 'Item B', createdAt: '2024-01-01T00:00:01.000Z' });
     await expect(taskItems(page)).toHaveCount(2);
     const after = await itemA.boundingBox();
 

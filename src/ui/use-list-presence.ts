@@ -113,18 +113,35 @@ export function settlePresenceEntry<T>(
  * on the underlying live-query result) — a fresh array/object identity on every
  * render, even with identical content, is read as "changed" and defeats the
  * "only animate real additions/removals" guarantee.
+ *
+ * `getKey` is deliberately *not* a dependency of the effect below, only read
+ * through a ref — callers pass it as an inline arrow (`h => h.id`), a fresh
+ * function identity on every render. Depending on it directly, with a stable
+ * `items`, still re-ran the effect (and its `setEntries`) on every render,
+ * which re-ran the component, which recreated `getKey` again: an infinite
+ * update loop (issue #430, caught by the habits/journal Playwright specs —
+ * "Maximum update depth exceeded", 32 duplicate rows). The value itself is
+ * always a trivial, stable-in-spirit id lookup, so re-running the diff only
+ * when `items` actually changes is correct, not a staleness risk.
  */
 export function useListPresence<T>(items: T[], getKey: (item: T) => string): ListPresenceRow<T>[] {
   const establishedRef = useRef(false);
+  const getKeyRef = useRef(getKey);
+  // No dependency array: this needs to run after *every* render, purely to keep
+  // the ref current — a plain assignment during render is a lint error (refs
+  // aren't render values), so the sync happens here instead.
+  useEffect(() => {
+    getKeyRef.current = getKey;
+  });
   const [entries, setEntries] = useState<ListPresenceEntry<T>[]>([]);
 
   useEffect(() => {
     setEntries((prev) => {
-      const step = nextPresenceEntries(prev, establishedRef.current, items, getKey);
+      const step = nextPresenceEntries(prev, establishedRef.current, items, getKeyRef.current);
       establishedRef.current = step.established;
       return step.entries;
     });
-  }, [items, getKey]);
+  }, [items]);
 
   function handleAnimationEnd(key: string) {
     setEntries((prev) => settlePresenceEntry(prev, key));
