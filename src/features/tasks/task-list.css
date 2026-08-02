@@ -297,26 +297,3 @@
   color: var(--danger);
   font-weight: 600;
 }
-
-.task-list__item--confirm-delete {
-  border-color: var(--danger);
-  background: var(--surface-raised);
-  cursor: pointer;
-}
-
-.task-list__confirm-text {
-  flex: 1;
-  color: var(--text);
-}
-
-.task-list__confirm-delete {
-  min-height: var(--touch-target);
-  padding: 0 var(--space-4);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--danger);
-  color: var(--accent-fg);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}

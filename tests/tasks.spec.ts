@@ -589,7 +589,7 @@ test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber ni
   await expect(items.nth(1)).toContainText('14:30');
 });
 
-test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet er den Editor', async ({
+test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -599,11 +599,12 @@ test('ein zu kurzer Linksswipe zeigt weder eine Löschbestätigung noch öffnet 
 
   await swipeLeft(item, 20); // below the 80px threshold
 
-  await expect(page.getByRole('button', { name: 'Löschen' })).toHaveCount(0);
+  await expect(item).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
   await expect(editorDialog(page)).toBeHidden();
 });
 
-test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen Undo-Toast', async ({
+test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -612,9 +613,6 @@ test('Wisch nach links, dann „Löschen" setzt einen Tombstone und zeigt einen 
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeLeft(item, 120);
-  const confirmButton = page.getByRole('button', { name: 'Löschen' });
-  await expect(confirmButton).toBeVisible();
-  await confirmButton.click();
 
   // Scoped to the list, not `page.getByText` — the undo toast's own message
   // ("„<title>" gelöscht") embeds the title too, so a page-wide text query would
@@ -640,7 +638,6 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeLeft(item, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
   // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
 
@@ -779,7 +776,6 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
 
   const item = taskItems(page).filter({ hasText: title });
   await swipeLeft(item, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
 
   // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
@@ -1060,7 +1056,6 @@ test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und K
 
   const parentItem = taskItems(page).filter({ hasText: 'Elternaufgabe' });
   await swipeLeft(parentItem, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
 
   await expect(taskItems(page)).toHaveCount(0);
   await expect(

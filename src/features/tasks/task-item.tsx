@@ -78,10 +78,11 @@ function formatDueAt(dueAt: string): string {
 }
 
 /**
- * Swipe right to toggle done, swipe left to reveal a delete confirmation (both via
- * Pointer Events rather than Touch Events — that also makes the gesture driveable
- * with a mouse and with Playwright's synthetic pointer events, with no branching
- * for input type). Tapping the row without a meaningful drag opens the editor.
+ * Swipe right to toggle done, swipe left to delete (with undo toast, no inline
+ * confirm) (both via Pointer Events rather than Touch Events — that also makes
+ * the gesture driveable with a mouse and with Playwright's synthetic pointer
+ * events, with no branching for input type). Tapping the row without a
+ * meaningful drag opens the editor.
  *
  * Moving (docs/DESIGN_SYSTEM.md: "verschieben/löschen") is a separate, later ticket —
  * a left swipe here only ever leads to delete.
@@ -109,7 +110,6 @@ export function TaskItem({
   const [lifted, setLifted] = useState(false);
   const [startX, setStartX] = useState<number | null>(null);
   const [startY, setStartY] = useState<number | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemRef = useRef<HTMLLIElement | null>(null);
   const liftedRef = useRef(false);
@@ -242,7 +242,7 @@ export function TaskItem({
     if (delta > SWIPE_THRESHOLD_PX) {
       onToggle();
     } else if (delta < -SWIPE_THRESHOLD_PX) {
-      setConfirmingDelete(true);
+      onDelete();
     } else if (Math.abs(delta) <= TAP_TOLERANCE_PX) {
       onEdit();
     }
@@ -263,27 +263,6 @@ export function TaskItem({
     setDragX(0);
     setDragY(0);
     onDragEnd?.();
-  }
-
-  if (confirmingDelete) {
-    return (
-      <li
-        className="task-list__item task-list__item--confirm-delete"
-        onClick={() => setConfirmingDelete(false)}
-      >
-        <span className="task-list__confirm-text">{`„${task.title}" löschen?`}</span>
-        <button
-          type="button"
-          className="task-list__confirm-delete"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        >
-          Löschen
-        </button>
-      </li>
-    );
   }
 
   return (
