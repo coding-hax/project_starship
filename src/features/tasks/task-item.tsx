@@ -43,6 +43,12 @@ export interface TaskItemProps {
    * long-press lift entirely — used for the /uebersicht view, which does not nest.
    */
   onDropOnTask?: (targetId: string | null) => void;
+  /** Enter/exit presence (issue #430, use-list-presence.ts). `leaving` stays true
+   *  for the whole exit animation — the row is kept mounted by the caller until
+   *  `onAnimationEnd` fires. */
+  entering?: boolean;
+  leaving?: boolean;
+  onAnimationEnd?: () => void;
   /**
    * Reported on every move while this row is lifted, plus once on pick-up, with
    * the same `targetId` a drop would use right now (issue #451). The list turns
@@ -99,6 +105,9 @@ export function TaskItem({
   expanded = true,
   onToggleExpand,
   onDropOnTask,
+  entering = false,
+  leaving = false,
+  onAnimationEnd,
   onDragOverTask,
   onDragEnd,
   isNestTarget = false,
@@ -269,9 +278,12 @@ export function TaskItem({
     <li
       ref={itemRef}
       data-task-id={task.id}
+      data-entering={entering}
+      data-leaving={leaving}
       inert={isChild && !visible}
       className={
         (isDone ? 'task-list__item task-list__item--done' : 'task-list__item') +
+        ' list-motion-item' +
         (dragging ? ' task-list__item--dragging' : '') +
         (lifted ? ' task-list__item--lifted' : '') +
         (isChild ? ' task-list__item--child' : '') +
@@ -280,6 +292,10 @@ export function TaskItem({
         (isUnnestPreview ? ' task-list__item--unnest-preview' : '')
       }
       style={
+        // Swipe/lift and the exit animation never overlap: onDelete only ever
+        // fires from endDrag, by which point dragging/lifted are already false,
+        // so this inline transform and list-exit's animated transform are never
+        // both live on the same element.
         lifted
           ? { transform: `translate(${dragX}px, ${dragY}px) scale(1.03)` }
           : dragX
@@ -290,6 +306,7 @@ export function TaskItem({
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
+      onAnimationEnd={onAnimationEnd}
     >
       {isParent && (
         <button

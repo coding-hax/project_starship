@@ -140,7 +140,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/ui
 
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets, App-Shell
+- `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
+- `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet (issue #430)
 - `app-header.tsx` / `nav-items.ts` / `nav.tsx` / `module-route-guard.tsx` — Einstellungen-Einstieg, Nav-Ableitung+Reihenfolge, Aus-Route-Redirect
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
