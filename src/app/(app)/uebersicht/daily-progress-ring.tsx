@@ -15,8 +15,8 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  * von M" aus Aufgaben + Gewohnheiten, modulübergreifend — deshalb im
  * Übersicht-Rahmen (page.tsx) statt in der per-Modul-`OverviewSection`-Registry.
  * Rendert `null`, bis alle drei Live-Queries durch sind (kein Layout-Shift,
- * Smooth-Regel 3, gleiches Muster wie `HabitToday`/`JournalTodaySection`) und
- * bei M = 0 dauerhaft (ruhiger Leerzustand statt „0 von 0").
+ * Smooth-Regel 3, gleiches Muster wie `HabitToday`) und bei M = 0 dauerhaft
+ * (ruhiger Leerzustand statt „0 von 0").
  */
 export function DailyProgressRing() {
   const tasks = useTasks();
