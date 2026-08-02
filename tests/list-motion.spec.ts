@@ -129,8 +129,8 @@ test.describe('Aufgaben', () => {
     const item = taskItems(page).filter({ hasText: 'Wird gelöscht' });
     await expect(item).toHaveAttribute('data-entering', 'false');
 
+    // #432: a left swipe deletes straight away (undo toast, no confirm click).
     await swipeLeft(item, 120);
-    await page.getByRole('button', { name: 'Löschen' }).click();
 
     await expect(item).toHaveAttribute('data-leaving', 'true');
     expect(await item.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-exit');
@@ -348,8 +348,8 @@ for (const viewport of [
     const created = taskItems(page).filter({ hasText: `Neu ${viewport.width}` });
     expect(await created.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-enter');
 
+    // #432: a left swipe deletes straight away (undo toast, no confirm click).
     await swipeLeft(created, 120);
-    await page.getByRole('button', { name: 'Löschen' }).click();
     await expect(created).toHaveAttribute('data-leaving', 'true');
     await expect(created).toHaveCount(0);
   });
