@@ -6,6 +6,7 @@ import type { JournalConflict } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
 import { MoodScale } from '@/ui/mood-scale';
 import { Toast } from '@/ui/toast';
+import { useListPresence } from '@/ui/use-list-presence';
 import { decryptJournalConflict, restoreJournalConflict } from './conflicts';
 import {
   appendJournalEntry,
@@ -72,6 +73,7 @@ export function JournalEditor() {
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entries = useJournalEntries(entryDate);
   const conflicts = useJournalConflicts(entryDate);
+  const entryRows = useListPresence(entries ?? [], (entry) => entry.id);
 
   // AC2: staying open across midnight rolls the visible day forward on its
   // own, no reload. A single timeout scheduled for the exact next midnight
@@ -172,10 +174,17 @@ export function JournalEditor() {
             {conflicts?.map((conflict) => (
               <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
             ))}
-            {entries && entries.length > 0 && (
+            {entryRows.length > 0 && (
               <ul className="journal-editor__entries">
-                {entries.map((entry) => (
-                  <JournalEntryRow key={entry.id} entry={entry} onDelete={handleDelete} />
+                {entryRows.map((row) => (
+                  <JournalEntryRow
+                    key={row.key}
+                    entry={row.item}
+                    onDelete={handleDelete}
+                    entering={row.status === 'entering'}
+                    leaving={row.status === 'leaving'}
+                    onAnimationEnd={row.onAnimationEnd}
+                  />
                 ))}
               </ul>
             )}
@@ -199,12 +208,23 @@ export function JournalEditor() {
 function JournalEntryRow({
   entry,
   onDelete,
+  entering,
+  leaving,
+  onAnimationEnd,
 }: {
   entry: JournalEntryView;
   onDelete: (id: string) => void;
+  entering: boolean;
+  leaving: boolean;
+  onAnimationEnd: () => void;
 }) {
   return (
-    <li className="journal-editor__entry">
+    <li
+      className="journal-editor__entry list-motion-item"
+      data-entering={entering}
+      data-leaving={leaving}
+      onAnimationEnd={onAnimationEnd}
+    >
       <div className="journal-editor__entry-header">
         <time className="journal-editor__entry-time" dateTime={entry.createdAt}>
           {formatEntryTime(entry.createdAt)}

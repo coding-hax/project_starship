@@ -43,3 +43,74 @@
 .spring-press:active {
   scale: 0.96;
 }
+
+/**
+ * List item enter/exit (issue #430) — CSS-only per #418 decision A, no motion
+ * library. `transform`/`opacity` only, never `height`/`top`/`margin`, so a row
+ * appearing or disappearing never shifts its neighbours (DESIGN_SYSTEM.md).
+ *
+ * Driven by `data-entering`/`data-leaving` from `use-list-presence.ts` rather
+ * than `@starting-style`: React removes a deleted row from the DOM immediately,
+ * before any transition could run, so the exit needs the row kept mounted
+ * (via the hook) with an explicit `animation` to play instead.
+ */
+.list-motion-item[data-entering='true'] {
+  animation: list-enter var(--duration-base) var(--ease-spring);
+}
+
+.list-motion-item[data-leaving='true'] {
+  animation: list-exit var(--duration-spring-smooth) var(--ease-spring-smooth) forwards;
+  pointer-events: none;
+}
+
+@keyframes list-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes list-exit {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Only a fade — no slide — once the user has asked for less motion, same
+   pattern as toast.css's toast-in-fade. */
+@media (prefers-reduced-motion: reduce) {
+  .list-motion-item[data-entering='true'] {
+    animation-name: list-enter-fade;
+  }
+
+  .list-motion-item[data-leaving='true'] {
+    animation-name: list-exit-fade;
+  }
+}
+
+@keyframes list-enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes list-exit-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
