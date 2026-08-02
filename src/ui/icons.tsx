@@ -184,6 +184,18 @@ export function IconMoon({ className }: IconProps) {
   );
 }
 
+export function IconReset({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Gegen-den-Uhrzeigersinn-Pfeil (Journal-Suchfilter zurücksetzen, issue #455) —
+          gespiegelt zu IconHabits' Streak-Pfeil, damit beide trotz ähnlicher Form nicht
+          wie dasselbe Icon wirken. */}
+      <path d="M5.5 8.5A7 7 0 1 1 5 12" />
+      <path d="M5 4v5h5" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
