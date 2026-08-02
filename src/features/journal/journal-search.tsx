@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { MoodScale } from '@/ui/mood-scale';
+import { IconReset } from '@/ui/icons';
 import './journal-search.css';
 import { searchJournalEntries, type JournalSearchEntry } from './search';
 import { useJournalSearchEntries } from './use-journal-search-entries';
@@ -165,10 +166,15 @@ export function JournalSearch({
               value={to}
               onChange={(event) => setTo(event.target.value)}
             />
+            <button
+              type="button"
+              className="journal-search__reset"
+              aria-label="Zurücksetzen"
+              onClick={resetFilters}
+            >
+              <IconReset />
+            </button>
           </div>
-          <button type="button" className="journal-search__reset" onClick={resetFilters}>
-            Zurücksetzen
-          </button>
         </div>
       )}
       {isActive && entries !== undefined && results.length === 0 && (
