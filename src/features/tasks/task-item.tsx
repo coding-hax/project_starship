@@ -63,10 +63,11 @@ function formatDueAt(dueAt: string): string {
 }
 
 /**
- * Swipe right to toggle done, swipe left to reveal a delete confirmation (both via
- * Pointer Events rather than Touch Events — that also makes the gesture driveable
- * with a mouse and with Playwright's synthetic pointer events, with no branching
- * for input type). Tapping the row without a meaningful drag opens the editor.
+ * Swipe right to toggle done, swipe left to delete (with undo toast, no inline
+ * confirm) (both via Pointer Events rather than Touch Events — that also makes
+ * the gesture driveable with a mouse and with Playwright's synthetic pointer
+ * events, with no branching for input type). Tapping the row without a
+ * meaningful drag opens the editor.
  *
  * Moving (docs/DESIGN_SYSTEM.md: "verschieben/löschen") is a separate, later ticket —
  * a left swipe here only ever leads to delete.
@@ -93,7 +94,6 @@ export function TaskItem({
   const [lifted, setLifted] = useState(false);
   const [startX, setStartX] = useState<number | null>(null);
   const [startY, setStartY] = useState<number | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isDone = task.completedAt !== null;
@@ -184,7 +184,7 @@ export function TaskItem({
     if (delta > SWIPE_THRESHOLD_PX) {
       onToggle();
     } else if (delta < -SWIPE_THRESHOLD_PX) {
-      setConfirmingDelete(true);
+      onDelete();
     } else if (Math.abs(delta) <= TAP_TOLERANCE_PX) {
       onEdit();
     }
@@ -206,30 +206,6 @@ export function TaskItem({
     setDragY(0);
   }
 
-  // `leaving` wins over a still-open confirm dialog — the task is already gone
-  // (onDelete fired), so the row fades out showing its last known content
-  // instead of a confirm prompt for a delete that already happened.
-  if (confirmingDelete && !leaving) {
-    return (
-      <li
-        className="task-list__item task-list__item--confirm-delete list-motion-item"
-        onClick={() => setConfirmingDelete(false)}
-      >
-        <span className="task-list__confirm-text">{`„${task.title}" löschen?`}</span>
-        <button
-          type="button"
-          className="task-list__confirm-delete"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        >
-          Löschen
-        </button>
-      </li>
-    );
-  }
-
   return (
     <li
       data-task-id={task.id}
@@ -245,10 +221,10 @@ export function TaskItem({
         (isChild && !visible ? ' task-list__item--collapsed' : '')
       }
       style={
-        // Swipe/lift and the exit animation never overlap: deleting only ever
-        // fires from the confirm dialog (dragging/lifted are already false by
-        // then), so this inline transform and list-exit's animated transform
-        // are never both live on the same element.
+        // Swipe/lift and the exit animation never overlap: onDelete only ever
+        // fires from endDrag, by which point dragging/lifted are already false,
+        // so this inline transform and list-exit's animated transform are never
+        // both live on the same element.
         lifted
           ? { transform: `translate(${dragX}px, ${dragY}px) scale(1.03)` }
           : dragX

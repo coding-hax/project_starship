@@ -49,12 +49,11 @@ async function swipeLeft(locator: Locator, distancePx: number) {
   });
 }
 
-/** Swipe + confirm — the row's own "Löschen" button, not the toast, is what actually
- * tombstones the task and fires the undo toast. */
+/** Swipe-left alone tombstones the task and fires the undo toast — no inline
+ * confirm step (issue #432). */
 async function deleteTaskByTitle(page: Page, title: string) {
   const item = taskItems(page).filter({ hasText: title });
   await swipeLeft(item, 120);
-  await page.getByRole('button', { name: 'Löschen' }).click();
 }
 
 /** Mirrors sync.spec.ts AC2 — five failed pushes in a row cross SYNC_ERROR_THRESHOLD

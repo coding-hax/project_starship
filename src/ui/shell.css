@@ -29,6 +29,28 @@
   margin-inline: auto;
 }
 
+/*
+ * Tab/page transition (issue #434, part of #418): a quiet opacity fade-in on the
+ * incoming page, restarted per navigation by `page-transition.tsx` via a classList
+ * toggle. Only `opacity` — no `transform` — so there's no layout shift and no new
+ * containing block for the `position: fixed` FAB/Sheet/Toast elements pages render
+ * (only `transform`/`filter` create one). `prefers-reduced-motion` needs no guard
+ * here: the global rule in tokens.css already collapses `animation-duration` to
+ * 0.01ms, which reads as instant.
+ */
+.page-transition--enter {
+  animation: page-fade-in var(--duration-base) var(--ease-spring);
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* ------------------------------- header ---------------------------------- */
 
 /*
