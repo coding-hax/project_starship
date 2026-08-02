@@ -67,27 +67,45 @@ function ratio(quote: WeekQuote): number {
   return quote.total === 0 ? 0 : quote.met / quote.total;
 }
 
+/** One earlier week with data, at `distance` calendar weeks before the reference week. */
+interface PreviousWeek {
+  distance: number;
+  ratio: number;
+}
+
+const MIN_HISTORY_FOR_BEST_EVER = 3; // #504: "Deine beste Woche" braucht eine Mindesthistorie, sonst ist der Satz zu groß
+
 /**
- * The superlative (AC4): compares the reference week's ratio against every
- * earlier week that actually had data (`total > 0`), most recent first —
- * `previousDataWeeks[0]`, if present, is literally last week.
+ * The superlative (#504): compares the reference week's ratio against every
+ * earlier week that actually had data, most recent first —
+ * `history[0]`, if present, is the calendar-nearest data week.
+ *
+ * - `best-ever`: strictly beats every earlier data week, and there are at
+ *   least `MIN_HISTORY_FOR_BEST_EVER` of them.
+ * - `best-since`: an earlier week was strictly better; `weeks` is the
+ *   calendar distance to the most recent such week (>= 2 — a strictly
+ *   better *direct* previous week (distance 1) is not a "best since", it's
+ *   just "last week was better", so it returns `null` instead).
+ * - `tied-with-last-week`: the direct previous week (distance 1, with data)
+ *   has the same ratio. Checked before the `best-since` search, so a tie
+ *   with the direct previous week wins over a better week further back.
  */
-function computeSuperlative(
-  reference: WeekQuote,
-  previousDataWeeks: WeekQuote[],
-): Superlative | null {
-  if (previousDataWeeks.length === 0) return null; // AC5: zu wenig Historie
+function computeSuperlative(reference: WeekQuote, history: PreviousWeek[]): Superlative | null {
+  if (history.length === 0) return null; // keine Vorwoche mit Daten
 
   const referenceRatio = ratio(reference);
-  const beatsAll = previousDataWeeks.every((week) => referenceRatio > ratio(week));
-  if (beatsAll) {
-    return previousDataWeeks.length === 1
-      ? { kind: 'best-ever' }
-      : { kind: 'best-since', weeks: previousDataWeeks.length };
+
+  const directPrev = history[0].distance === 1 ? history[0] : null;
+  if (directPrev) {
+    if (directPrev.ratio > referenceRatio) return null;
+    if (directPrev.ratio === referenceRatio) return { kind: 'tied-with-last-week' };
   }
 
-  const lastWeek = previousDataWeeks[0];
-  if (referenceRatio === ratio(lastWeek)) return { kind: 'tied-with-last-week' };
+  const better = history.find((week) => week.ratio > referenceRatio);
+  if (better) return { kind: 'best-since', weeks: better.distance };
+
+  const beatsAll = history.every((week) => referenceRatio > week.ratio);
+  if (beatsAll && history.length >= MIN_HISTORY_FOR_BEST_EVER) return { kind: 'best-ever' };
 
   return null;
 }
@@ -110,13 +128,15 @@ export function computeWeeklyRecap(
     habits[0].createdAt,
   );
 
-  const previousDataWeeks: WeekQuote[] = [];
+  const history: PreviousWeek[] = [];
   let cursor = addDays(referenceAnchor, -7);
+  let distance = 1;
   while (currentWeekRange(cursor).end >= earliestCreatedAt.slice(0, 10)) {
     const quote = computeWeekQuote(habits, logs, cursor);
-    if (quote.total > 0) previousDataWeeks.push(quote);
+    if (quote.total > 0) history.push({ distance, ratio: ratio(quote) });
     cursor = addDays(cursor, -7);
+    distance += 1;
   }
 
-  return { metric, superlative: computeSuperlative(metric, previousDataWeeks) };
+  return { metric, superlative: computeSuperlative(metric, history) };
 }
