@@ -10,8 +10,8 @@
 // Diese Suite prueft zwei Dinge, die sonst nur durch Hinsehen zusammenhaengen:
 //
 //   1. VOLLSTAENDIGKEIT -- jedes Label, das `bootstrap-github.sh` anlegt, steht
-//      in der Tabelle in docs/WORKFLOW.md, und umgekehrt. Ein neues Label ohne
-//      Doku faellt auf, eine Doku-Zeile ohne Label ebenso.
+//      in der Tabelle in docs/workflow/labels.md, und umgekehrt. Ein neues Label
+//      ohne Doku faellt auf, eine Doku-Zeile ohne Label ebenso.
 //   2. VERHALTEN -- jedes Label aus `BLOCKING_LABELS` haelt ein Ticket auf
 //      JEDEM Zweig der Auswahl-Kaskade heraus, nicht nur auf dem, an den
 //      jemand gerade gedacht hat. Das ist der Teil, der die Klasse Fehler
@@ -33,18 +33,16 @@ function bootstrapLabels(): string[] {
   return [...text.matchAll(/^label\s+"([^"]+)"/gm)].map((m) => m[1]!);
 }
 
-// Die Label-Tabelle in docs/WORKFLOW.md: Zeilen, die mit '|' beginnen, erste
-// Zelle, alle in Backticks stehenden Namen. Eine Zelle darf mehrere tragen
-// (`model:haiku` `model:sonnet` `model:opus`) -- sie beschreiben dasselbe
-// Verhalten und teilen sich eine Zeile.
+// docs/workflow/labels.md enthaelt nur die eine Label-Tabelle -- keine
+// Abschnitts-Grenze noetig, es reicht, jede Tabellenzeile (Start '|') der
+// ganzen Datei zu lesen. Erste Zelle, alle in Backticks stehenden Namen.
+// Eine Zelle darf mehrere tragen (`model:haiku` `model:sonnet` `model:opus`)
+// -- sie beschreiben dasselbe Verhalten und teilen sich eine Zeile.
 function documentedLabels(): string[] {
-  const text = readFileSync(join(ROOT, 'docs', 'WORKFLOW.md'), 'utf-8');
-  const start = text.indexOf('## Labels — sie steuern den Runner');
-  expect(start, 'Abschnitt "## Labels — sie steuern den Runner" fehlt in docs/WORKFLOW.md').toBeGreaterThan(-1);
-  const section = text.slice(start, text.indexOf('\n## ', start + 5));
+  const text = readFileSync(join(ROOT, 'docs', 'workflow', 'labels.md'), 'utf-8');
 
   const labels: string[] = [];
-  for (const line of section.split('\n')) {
+  for (const line of text.split('\n')) {
     if (!line.startsWith('|')) continue;
     const firstCell = line.split('|')[1] ?? '';
     if (firstCell.includes('---') || firstCell.trim() === 'Label') continue;
@@ -53,15 +51,15 @@ function documentedLabels(): string[] {
   return labels;
 }
 
-describe('Label-Vollstaendigkeit: bootstrap <-> docs/WORKFLOW.md (#266 AC1)', () => {
+describe('Label-Vollstaendigkeit: bootstrap <-> docs/workflow/labels.md (#266 AC1)', () => {
   it('jedes angelegte Label steht in der Tabelle', () => {
     const missing = bootstrapLabels().filter((label) => !documentedLabels().includes(label));
-    expect(missing, `In bootstrap-github.sh angelegt, aber in docs/WORKFLOW.md nicht beschrieben: ${missing.join(', ')}`).toEqual([]);
+    expect(missing, `In bootstrap-github.sh angelegt, aber in docs/workflow/labels.md nicht beschrieben: ${missing.join(', ')}`).toEqual([]);
   });
 
   it('jedes beschriebene Label wird auch angelegt', () => {
     const extra = documentedLabels().filter((label) => !bootstrapLabels().includes(label));
-    expect(extra, `In docs/WORKFLOW.md beschrieben, aber von bootstrap-github.sh nicht angelegt: ${extra.join(', ')}`).toEqual([]);
+    expect(extra, `In docs/workflow/labels.md beschrieben, aber von bootstrap-github.sh nicht angelegt: ${extra.join(', ')}`).toEqual([]);
   });
 
   // Ein frisch aufgesetztes Repo muss die Steuerung vollstaendig haben. Genau
