@@ -115,26 +115,57 @@ test('N von M zählt weekly (≥ 1 Log) und daily (alle 7 Tage) korrekt gemischt
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC4: Superlativ                                                            */
+/* AC4/AC1-#504: Superlativ                                                   */
 /* -------------------------------------------------------------------------- */
 
-test('schlägt die einzige Vorwoche in der Historie → "Deine beste Woche" (AC4)', async ({
-  page,
-}) => {
-  const habitId = await seedHabit(page, { createdAt: '2026-06-29T00:00:00.000Z' });
-  await seedDoneDays(page, habitId, REF_WEEK); // Bezugswoche: 7/7
-  await seedHabitLog(page, habitId, PREV_WEEK[0]); // Vorwoche: 1/7 -> unvollständig
+test('schlägt >= 3 frühere Datenwochen → "Deine beste Woche" (#504 AC1)', async ({ page }) => {
+  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedDoneDays(page, habitId, REF_WEEK); // Bezugswoche: 7/7, sonst keine Logs -> alle Vorwochen 0/7
 
   await expect(recapCard(page).getByText('Deine beste Woche')).toBeVisible();
 });
 
-test('schlägt mehr als eine Vorwoche → "Beste Woche seit N Wochen" (AC4)', async ({ page }) => {
+test('genau 1 oder 2 Vorwochen mit Daten geschlagen → kein Superlativ, Kennzahl bleibt (#504 AC2)', async ({
+  page,
+}) => {
   const habitId = await seedHabit(page, { createdAt: '2026-06-22T00:00:00.000Z' });
   await seedDoneDays(page, habitId, REF_WEEK); // Bezugswoche: 7/7
   await seedHabitLog(page, habitId, PREV_WEEK[0]); // Woche davor: 1/7
-  await seedHabitLog(page, habitId, PREV_PREV_WEEK[0]); // noch eine Woche davor: 1/7
+  await seedHabitLog(page, habitId, PREV_PREV_WEEK[0]); // noch eine Woche davor: 1/7 -> nur 2 Datenwochen
+
+  const card = recapCard(page);
+  await expect(card.getByText('1 von 1')).toBeVisible();
+  await expect(card).not.toContainText('Beste');
+  await expect(card).not.toContainText('So viel wie letzte Woche');
+});
+
+test('bessere Woche 2 Kalenderwochen zurück → "Beste Woche seit 2 Wochen" (#504 AC3)', async ({
+  page,
+}) => {
+  const a = await seedHabit(page, { name: 'a', createdAt: '2026-05-01T00:00:00.000Z' });
+  const b = await seedHabit(page, { name: 'b', createdAt: '2026-05-01T00:00:00.000Z' });
+  const c = await seedHabit(page, { name: 'c', createdAt: '2026-05-01T00:00:00.000Z' });
+
+  await seedDoneDays(page, a, REF_WEEK); // Bezugswoche: a,b voll -> 2/3
+  await seedDoneDays(page, b, REF_WEEK);
+  await seedDoneDays(page, a, PREV_WEEK); // Vorwoche: nur a voll -> 1/3, schlechter
+  await seedDoneDays(page, a, PREV_PREV_WEEK); // 2 Kalenderwochen zurück: alle voll -> 3/3, besser
+  await seedDoneDays(page, b, PREV_PREV_WEEK);
+  await seedDoneDays(page, c, PREV_PREV_WEEK);
 
   await expect(recapCard(page).getByText('Beste Woche seit 2 Wochen')).toBeVisible();
+});
+
+test('bessere Woche genau 1 Kalenderwoche zurück → kein Superlativ, kein "seit 1 Wochen" (#504 AC4)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedDoneDays(page, habitId, PREV_WEEK); // Vorwoche: 7/7 (besser als die Bezugswoche)
+
+  const card = recapCard(page);
+  await expect(card.getByText('0 von 1')).toBeVisible();
+  await expect(card).not.toContainText('Beste');
+  await expect(card).not.toContainText('So viel wie letzte Woche');
 });
 
 test('Gleichstand mit der Vorwoche → "So viel wie letzte Woche" (AC4)', async ({ page }) => {
@@ -194,9 +225,8 @@ test('eine erst diese Woche angelegte Gewohnheit lässt die Karte ebenfalls weg 
 /* -------------------------------------------------------------------------- */
 
 test('die Karte erwähnt nie andere Personen, auch im Bestwert-Fall (AC7)', async ({ page }) => {
-  const habitId = await seedHabit(page, { createdAt: '2026-06-29T00:00:00.000Z' });
-  await seedDoneDays(page, habitId, REF_WEEK);
-  await seedHabitLog(page, habitId, PREV_WEEK[0]);
+  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedDoneDays(page, habitId, REF_WEEK); // sonst keine Logs -> alle Vorwochen 0/7, >= 3 Datenwochen
 
   const text = await recapCard(page).innerText();
   const lines = text.split('\n').filter((line) => line.trim() !== '');
@@ -245,9 +275,8 @@ test('die Kennzahl nutzt tabular-nums (AC9)', async ({ page }) => {
 test('der Superlativ-Text nutzt den gedämpften Text-Token, auch im Dark Mode (AC9)', async ({
   page,
 }) => {
-  const habitId = await seedHabit(page, { createdAt: '2026-06-29T00:00:00.000Z' });
-  await seedDoneDays(page, habitId, REF_WEEK);
-  await seedHabitLog(page, habitId, PREV_WEEK[0]);
+  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedDoneDays(page, habitId, REF_WEEK); // sonst keine Logs -> alle Vorwochen 0/7, >= 3 Datenwochen
 
   const superlative = recapCard(page).locator('.weekly-recap-card__superlative');
   const lightColor = await superlative.evaluate((el) => getComputedStyle(el).color);
