@@ -24,12 +24,12 @@ function fakeContext(): RunnerContext {
       remove: vi.fn(),
     },
     claims: {
-      take: vi.fn().mockReturnValue(true),
+      claimAtomic: vi.fn().mockReturnValue(true),
       readSlot: vi.fn().mockReturnValue(null),
-      writeSlot: vi.fn(),
       ageMs: vi.fn().mockReturnValue(null),
       list: vi.fn().mockReturnValue([]),
       release: vi.fn(),
+      sweepTmp: vi.fn(),
     },
     fleet: {
       write: vi.fn(),

@@ -267,6 +267,11 @@ bootstrap_worktree() {   # $1 = Worktree-Pfad
   if [ ! -e "$wt/.env.local" ] && [ -f "$REPO_DIR/.env.local" ]; then
     ln -s "$REPO_DIR/.env.local" "$wt/.env.local" 2>/dev/null
   fi
+  # Push-Netz gegen Doppelbau (#449, ADR-0020): absoluter Pfad IN den
+  # Worktree, damit die eingecheckte Hook-Datei auf jedem Branch da ist --
+  # unabhaengig vom Haupt-Checkout. Nur Bau-Worktrees (nicht
+  # readonly_worktree(): Lese-Rollen pushen nie).
+  git -C "$wt" config core.hooksPath "$wt/scripts/git-hooks" 2>/dev/null
   return 0
 }
 
