@@ -276,7 +276,12 @@ ${FILE_ACCESS_RULE}
    dieselbe Antwort unabhängig gelesen und ebenfalls umgesetzt haben.
    Findest du welche: lege **nichts neu an**, sondern nenne die gefundenen
    Ticket-Nummern im Plan-Kommentar statt sie still zu ignorieren. Nur wenn
-   keine existieren, legst du sie an.
+   keine existieren, legst du sie an — und zwar mit
+   'gh issue create --label plan' und einem Verweis auf #${issue} im Body
+   (im selben Schritt, wie #397 es für Fund-Tickets vorschreibt;
+   nur selbst angelegte, nie fremde). So wird jedes Kind selbst geplant und
+   vom Planer-Lauf am Ende auf 'ready' gesetzt, statt labellos
+   liegenzubleiben.
 6. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker
    entfernen, dann gh issue edit ${issue} --remove-label plan
    --remove-label in-progress --add-label ready.

@@ -68,6 +68,14 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   // Ephemeral, not persisted (per-ticket decision) — default expanded, so a
   // reload never hides subtasks the user hasn't deliberately collapsed.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // What a drop would do *right now* (issue #451) — set on pick-up and on every
+  // move while lifted, cleared on drop and on cancel. `targetId` is still the raw
+  // row under the pointer; the one-level rule is applied below, so the preview
+  // cannot drift from what `handleNest` actually does.
+  const [dragPreview, setDragPreview] = useState<{
+    draggedId: string;
+    targetId: string | null;
+  } | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const anchoredRef = useRef(false);
 
@@ -79,6 +87,34 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   const nestCandidates = nodes
     .filter((node) => node.task.id !== editingTaskId)
     .map((node) => node.task);
+
+  /**
+   * The live drop preview (issue #451), derived through the *same*
+   * `resolveNestTarget` the drop itself uses — that is what makes holding over a
+   * subtask highlight its parent rather than the subtask, and what keeps a drop
+   * that would change nothing (back where it started, or a top-level row over
+   * empty space) from showing a promise it will not keep.
+   */
+  const draggedTask = dragPreview
+    ? (allTasks?.find((task) => task.id === dragPreview.draggedId) ?? null)
+    : null;
+  const previewParentId = dragPreview
+    ? resolveNestTarget(dragPreview.draggedId, dragPreview.targetId, allTasks ?? [])
+    : null;
+  const previewChangesSomething = draggedTask !== null && draggedTask.parentId !== previewParentId;
+  const nestTargetId = previewChangesSomething ? previewParentId : null;
+  const unnestingId = previewChangesSomething && previewParentId === null ? draggedTask.id : null;
+  const previewParentTitle = nestTargetId
+    ? (allTasks?.find((task) => task.id === nestTargetId)?.title ?? null)
+    : null;
+  const dropHint =
+    draggedTask === null
+      ? null
+      : previewParentTitle !== null
+        ? `„${draggedTask.title}" wird Unteraufgabe von „${previewParentTitle}"`
+        : unnestingId !== null
+          ? `„${draggedTask.title}" wird keiner Aufgabe zugeordnet`
+          : null;
 
   function toggleExpanded(taskId: string) {
     setCollapsed((prev) => {
@@ -174,6 +210,12 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
                     onEdit={() => setEditingTaskId(node.task.id)}
                     onDelete={() => deleteTask(node.task, node.children)}
                     onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
+                    onDragOverTask={(targetId) =>
+                      setDragPreview({ draggedId: node.task.id, targetId })
+                    }
+                    onDragEnd={() => setDragPreview(null)}
+                    isNestTarget={node.task.id === nestTargetId}
+                    isUnnestPreview={node.task.id === unnestingId}
                   />
                   {node.children.map((child) => (
                     <TaskItem
@@ -185,11 +227,27 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
                       onEdit={() => setEditingTaskId(child.id)}
                       onDelete={() => deleteTask(child)}
                       onDropOnTask={(targetId) => handleNest(child.id, targetId)}
+                      onDragOverTask={(targetId) =>
+                        setDragPreview({ draggedId: child.id, targetId })
+                      }
+                      onDragEnd={() => setDragPreview(null)}
+                      isNestTarget={child.id === nestTargetId}
+                      isUnnestPreview={child.id === unnestingId}
                     />
                   ))}
                 </Fragment>
               ))}
         </ul>
+      )}
+
+      {/* Names the pending drop in words while a row is held (issue #451) — the
+          highlighted row alone says *where*, not *what*. role="status" is polite,
+          and the text only changes when the resolved target does, so it is not a
+          per-pixel announcement. */}
+      {dropHint && (
+        <p role="status" data-testid="task-drop-hint" className="task-list__drop-hint">
+          {dropHint}
+        </p>
       )}
 
       <TaskEditor
