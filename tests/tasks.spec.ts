@@ -1242,6 +1242,20 @@ async function touchMoveWasBlocked(row: Locator): Promise<boolean> {
   });
 }
 
+/** `transition-duration` is a list positionally matched to `transition-property` —
+ * reads the entry for `property`, or `0` if it is not in the list at all (e.g.
+ * `transition: none`), since an untransitioned property changes instantaneously
+ * either way. */
+async function transitionDurationFor(row: Locator, property: string): Promise<number> {
+  return row.evaluate((el, prop) => {
+    const style = getComputedStyle(el);
+    const properties = style.transitionProperty.split(',').map((s) => s.trim());
+    const durations = style.transitionDuration.split(',').map((s) => s.trim());
+    const idx = properties.indexOf(prop);
+    return idx === -1 ? 0 : parseFloat(durations[idx]);
+  }, property);
+}
+
 test('eine Aufgabe über die Liste zu ziehen markiert keinen Text (issue #451 AK1)', async ({
   page,
 }) => {
@@ -1394,4 +1408,25 @@ test('das vertikale Ziehen einer angehobenen Karte scrollt die Seite nicht und b
 
   // And once nothing is lifted, the list scrolls with a finger again.
   expect(await touchMoveWasBlocked(taskItems(page).first())).toBe(false);
+});
+
+test('eine angehobene Unteraufgabe folgt dem Zeiger ohne Verzögerung, die Klapp-Animation behält ihre Dauer (issue #457 AK1/AK2)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  const child = taskItems(page).filter({ hasText: 'Kind' });
+
+  // Ruhezustand: die Klapp-Animation behält ihre Dauer — die Änderung betrifft
+  // nur den Ziehzustand.
+  expect(await transitionDurationFor(child, 'max-height')).toBeGreaterThan(0);
+
+  await liftRow(page, child);
+
+  // Angehoben (`--dragging` + `--child`): die transform-Komponente läuft ohne
+  // Verzögerung, unabhängig davon, dass die Karte weiterhin `--child` trägt.
+  expect(await transitionDurationFor(child, 'transform')).toBe(0);
 });
