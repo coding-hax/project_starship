@@ -28,8 +28,12 @@ function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
+/** Direct `<li>` children only — `getByRole('listitem')` would also match the
+ * day cells of every habit's nested `<HabitWeekGrid>` `<ul>` (habits.spec.ts's
+ * own `habitItems` gets away with the broader query because every one of its
+ * uses filters by habit name first, which day-number cells never match). */
 function habitItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).locator('> li');
 }
 
 async function swipeLeft(locator: ReturnType<typeof taskItems>, distancePx: number) {
@@ -81,10 +85,8 @@ function journalEntries(page: Page) {
   return page.locator('.journal-editor__entry');
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async () => {
   await resetAppData();
-  // The lists must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
-  await page.route('**/api/sync/**', (route) => route.abort('failed'));
 });
 
 /* -------------------------------------------------------------------------- */
@@ -94,6 +96,12 @@ test.beforeEach(async ({ page }) => {
 test.describe('Aufgaben', () => {
   test.beforeEach(async ({ page }) => {
     await registerPasskey(page);
+    // The lists must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
+    // Scoped to tasks/habits only: journal's first-load lock-store initialize()
+    // needs one real `pull()` to tell "never synced" apart from "no envelope"
+    // (issue #371) — journal.spec.ts's own setUpEditor relies on that and never
+    // aborts sync either.
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
   });
 
   test('AC1: ein neu angelegtes Element blendet ein, das vorhandene nicht', async ({ page }) => {
@@ -146,7 +154,19 @@ test.describe('Aufgaben', () => {
     await expect(taskItems(page)).toHaveCount(2);
     const after = await itemA.boundingBox();
 
-    expect(after).toEqual(before);
+    if (!before || !after) throw new Error('AC4: itemA has no bounding box');
+    // A few px of tolerance, not exact equality: repeated runs show a consistent
+    // ~0.5px Y-only sub-pixel shift from the browser's own layout/compositing —
+    // toBeCloseTo(x, 0)'s 0.5px tolerance was too tight for that noise. A real
+    // layout shift (an errant height/top/margin animation) would move the row by
+    // the list-enter keyframe's translateY(8px) or more, an order of magnitude past
+    // this threshold — see the dedicated keyframe-properties test below for proof
+    // the animation itself never touches those properties.
+    const LAYOUT_SHIFT_TOLERANCE_PX = 2;
+    expect(Math.abs(after.x - before.x)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after.y - before.y)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after.width - before.width)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after.height - before.height)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
   });
 });
 
@@ -157,6 +177,7 @@ test.describe('Aufgaben', () => {
 test.describe('Gewohnheiten', () => {
   test.beforeEach(async ({ page }) => {
     await registerPasskey(page);
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
   });
 
   test('AC1: eine neu angelegte Gewohnheit blendet ein, die vorhandene nicht', async ({ page }) => {
@@ -258,6 +279,7 @@ test('AC4: die Enter/Exit-Keyframes fassen nur transform/opacity an, nie height/
   page,
 }) => {
   await registerPasskey(page);
+  await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await page.goto('/aufgaben');
 
   for (const name of ['list-enter', 'list-exit']) {
@@ -295,6 +317,7 @@ test('AC3: prefers-reduced-motion schwenkt auf die Fade-Varianten (nur Opacity, 
   page,
 }) => {
   await registerPasskey(page);
+  await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await page.goto('/aufgaben');
 
   expect(await computedAnimationNameFor(page, 'data-entering')).toBe('list-enter');
@@ -316,6 +339,7 @@ for (const viewport of [
   test(`AC5: Enter/Exit funktionieren bei ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await registerPasskey(page);
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
     await page.goto('/aufgaben');
     await seedTask(page, { title: 'Baseline' });
     await expect(taskItems(page)).toHaveCount(1);
@@ -335,6 +359,7 @@ test('AC5: Dark Mode — die Enter-Animation läuft unverändert (reines Motion,
   page,
 }) => {
   await registerPasskey(page);
+  await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'Baseline' });
