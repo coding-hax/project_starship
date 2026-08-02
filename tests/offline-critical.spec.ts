@@ -108,3 +108,74 @@ test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Wo
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC8: offline geänderter Rhythmus UND ein offline geschriebener  */
+/* Eintrag der Journal-Gewohnheit (Auto-Log) erreichen zusammen die Datenbank */
+/* -------------------------------------------------------------------------- */
+
+test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Journal-Gewohnheit erreichen zusammen die Datenbank (issue #505 AC8)', async ({
+  page,
+  context,
+}) => {
+  const passphrase = 'ac8 offline passphrase';
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+
+  // Passphrase-Einrichtung und der erste Boot-Sync (der die Journal-Gewohnheit
+  // anlegt, journal-habit-boot.tsx) brauchen ein echtes Netz — beides online, bevor
+  // es offline geht.
+  await nav.getByRole('link', { name: 'Journal' }).click();
+  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+  await page.getByLabel('Passphrase wiederholen').fill(passphrase);
+  await page.getByRole('button', { name: 'Einrichten' }).click();
+  await page.getByTestId('journal-recovery-key').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+
+  await nav.getByRole('link', { name: 'Gewohnheiten' }).click();
+  const journalHabit = page
+    .getByRole('list', { name: 'Gewohnheiten', exact: true })
+    .getByRole('listitem')
+    .filter({ hasText: 'Journal' });
+  await expect(journalHabit).toBeVisible();
+
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+
+  await context.setOffline(true);
+
+  // Rhythmus offline wechseln.
+  await journalHabit.getByRole('button', { name: /^Journal\b/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Gewohnheit bearbeiten' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  // Client-seitige next/link-Navigation (kein page.goto) — der Reload oben hat den
+  // Service Worker bereits als Controller bestätigt, ein voller Seitenwechsel würde
+  // hier nur den im Speicher gehaltenen Journal-Schlüssel unnötig wieder sperren.
+  await nav.getByRole('link', { name: 'Journal' }).click();
+  const entryText = 'Offline im Tunnel geschrieben';
+  await page.getByLabel('Journal-Text').fill(entryText);
+  await page.getByRole('button', { name: 'Absenden' }).click();
+  await expect(page.getByText(entryText)).toBeVisible();
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const row = await withDb((client) =>
+    client.query(
+      `SELECT h.schedule, hl.done FROM habits h
+       JOIN habit_logs hl ON hl.habit_id = h.id
+       WHERE h.name = 'Journal' AND hl.log_date = $1 AND hl.deleted_at IS NULL`,
+      [entryDate],
+    ),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0].schedule).toBe('weekly');
+  expect(row.rows[0].done).toBe(true);
+});
