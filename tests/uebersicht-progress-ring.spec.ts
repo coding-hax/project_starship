@@ -187,3 +187,41 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
     .evaluate((el) => getComputedStyle(el).transitionDuration);
   expect(parseFloat(fillTransition)).toBeLessThan(0.001);
 });
+
+test('eine wöchentliche Gewohnheit, die früher diese Woche abgehakt wurde, fällt aus dem Ring heraus (issue #503 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Überfällig, offen', dueAt: YESTERDAY_MORNING });
+  const habitId = await seedHabit(page, {
+    name: 'Joggen',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await expect(ring(page)).toHaveText('heute 0 von 2');
+
+  // Monday of the current Mon–Sun week — earlier than today (Wednesday).
+  await seedHabitLog(page, { habitId, logDate: '2026-07-13', done: true });
+  await page.reload();
+
+  await expect(ring(page)).toHaveText('heute 0 von 1');
+});
+
+test('eine wöchentliche Gewohnheit, die heute abgehakt wurde, bleibt im Ring (kein Rückwärtssprung) (issue #503 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const habitId = await seedHabit(page, {
+    name: 'Joggen',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: null,
+  });
+  await expect(ring(page)).toHaveText('heute 0 von 1');
+
+  await seedHabitLog(page, { habitId, logDate: '2026-07-15', done: true });
+  await page.reload();
+
+  await expect(ring(page)).toHaveText('heute 1 von 1');
+});
