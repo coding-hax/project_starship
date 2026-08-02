@@ -333,10 +333,14 @@ test('bei reduzierter Bewegung schließt das Sheet nur mit einem Opacity-Überga
   await openQuickAdd(page);
 
   const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  // Resolve the handle while the dialog is still open — once Escape closes it,
+  // the element loses its `dialog` role and the role locator would hang until
+  // the 30s timeout (issue #450).
+  const handle = await dialog.elementHandle();
   await page.keyboard.press('Escape');
 
-  const transitionProperty = await dialog.evaluate(
-    (el) => getComputedStyle(el.firstElementChild as Element).transitionProperty,
+  const transitionProperty = await handle!.evaluate(
+    (el) => getComputedStyle((el as Element).firstElementChild as Element).transitionProperty,
   );
   expect(transitionProperty).toBe('opacity');
 });
