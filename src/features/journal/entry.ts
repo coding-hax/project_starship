@@ -2,6 +2,7 @@ import { encryptJournal, type JournalContent } from '@/crypto/journal';
 import { db } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
 import { decryptJournalRows } from './decrypt-journal-row';
+import { logJournalHabit } from './journal-habit';
 import { journalDek } from './lock-store';
 import { writeJournalEntry } from './write';
 
@@ -71,6 +72,11 @@ export async function listJournalEntries(entryDate: string): Promise<JournalEntr
  * through the write path (write.ts) — every submission is its own entry (issue
  * #376), never an edit of a previous one. A no-op while locked or for an empty
  * submission.
+ *
+ * Also checks off today's Journal habit (issue #505 AC4) — the row is
+ * display-only from the habits UI, this submission is its only writer.
+ * Idempotent: a second entry the same day finds the existing log and leaves
+ * it at `done: true` instead of creating a second one.
  */
 export async function appendJournalEntry(entryDate: string, content: JournalContent): Promise<void> {
   const dek = journalDek();
@@ -78,6 +84,7 @@ export async function appendJournalEntry(entryDate: string, content: JournalCont
 
   const encrypted = await encryptJournal(dek, content);
   await writeJournalEntry(entryDate, encrypted);
+  await logJournalHabit(entryDate);
 }
 
 /** Soft-delete over the existing sync path (AC5) — same tombstone mechanism as

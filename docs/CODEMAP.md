@@ -91,6 +91,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen
 - `journal-header-date.tsx` / `.css` — heutiges Datum neben dem Seitentitel, oben rechts (issue #469)
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
+- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Entarchivieren/Abhaken der Journal-Gewohnheit (issue #505)
+- `journal-habit-boot.tsx` — legt die Journal-Gewohnheit idempotent nach dem ersten Pull an (issue #505)
 
 ### src/features/habits
 
