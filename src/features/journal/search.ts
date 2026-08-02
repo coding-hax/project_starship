@@ -27,7 +27,9 @@ export interface JournalFilters {
  * "3a" in #301: decrypt on load, scan in memory, no on-disk index. Free text is
  * a case-insensitive substring match against text and tags; every other filter
  * (mood, tag, date range) narrows the result further (AND, issue #415 AC-F4).
- * No filter set at all has nothing to search for and returns no results.
+ * No filter set at all has nothing to search for and returns no results —
+ * unless `showAllWhenEmpty` (issue #456: opening the filter panel or
+ * submitting an empty search shows every entry instead of a blank list).
  * `entryDate` is `YYYY-MM-DD`, same format `input[type=date]` produces, so the
  * date range is a plain lexicographic string comparison — no `Date`/timezone
  * involved. Since issue #376 a day can carry several entries — most recent
@@ -36,10 +38,11 @@ export interface JournalFilters {
 export function searchJournalEntries(
   entries: JournalSearchEntry[],
   filters: JournalFilters,
+  options: { showAllWhenEmpty?: boolean } = {},
 ): JournalSearchEntry[] {
   const needle = filters.query.trim().toLowerCase();
   const isActive = Boolean(needle) || Boolean(filters.mood) || Boolean(filters.tag) || Boolean(filters.from) || Boolean(filters.to);
-  if (!isActive) return [];
+  if (!isActive && !options.showAllWhenEmpty) return [];
 
   return entries
     .filter((entry) => {
