@@ -36,6 +36,28 @@ function habitItems(page: Page) {
   return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).locator('> li');
 }
 
+/** Document-absolute rect (adds scroll offset back in) rather than
+ * `boundingBox`'s viewport-relative one. AC4 asks whether a row *moves in the
+ * layout* when a sibling enters below it — not whether the viewport scrolled.
+ * The chat-style scroll anchor (issue #88) lands on the oldest open task on
+ * open; measured against the viewport, that one-time scroll firing between the
+ * before/after snapshots reads as a phantom few-px "shift" under CPU load,
+ * while the layout itself never moved. Document coordinates isolate the real
+ * thing the AC is about. */
+async function documentRect(
+  locator: ReturnType<typeof taskItems>,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  return locator.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+}
+
 async function swipeLeft(locator: ReturnType<typeof taskItems>, distancePx: number) {
   const box = await locator.boundingBox();
   if (!box) throw new Error('swipeLeft: target has no bounding box');
@@ -148,21 +170,19 @@ test.describe('Aufgaben', () => {
     await seedTask(page, { title: 'Item A', createdAt: '2024-01-01T00:00:00.000Z' });
     const itemA = taskItems(page).filter({ hasText: 'Item A' });
     await expect(itemA).toBeVisible();
-    const before = await itemA.boundingBox();
+    const before = await documentRect(itemA);
 
     await seedTask(page, { title: 'Item B', createdAt: '2024-01-01T00:00:01.000Z' });
     await expect(taskItems(page)).toHaveCount(2);
-    const after = await itemA.boundingBox();
+    const after = await documentRect(itemA);
 
-    if (!before || !after) throw new Error('AC4: itemA has no bounding box');
-    // A few px of tolerance, not exact equality: repeated runs show a consistent
-    // ~0.5px Y-only sub-pixel shift from the browser's own layout/compositing —
-    // toBeCloseTo(x, 0)'s 0.5px tolerance was too tight for that noise. A real
-    // layout shift (an errant height/top/margin animation) would move the row by
-    // the list-enter keyframe's translateY(8px) or more, an order of magnitude past
-    // this threshold — see the dedicated keyframe-properties test below for proof
-    // the animation itself never touches those properties.
-    const LAYOUT_SHIFT_TOLERANCE_PX = 2;
+    // A hair of tolerance, not exact equality, for pure sub-pixel layout
+    // rounding — `documentRect` already factors scroll out (see its comment), so
+    // a real layout shift (an errant height/top/margin animation) would move the
+    // row by the list-enter keyframe's translateY(8px) or more, an order of
+    // magnitude past this threshold. The dedicated keyframe-properties test below
+    // proves the animation itself never touches those properties.
+    const LAYOUT_SHIFT_TOLERANCE_PX = 1;
     expect(Math.abs(after.x - before.x)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
     expect(Math.abs(after.y - before.y)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
     expect(Math.abs(after.width - before.width)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
