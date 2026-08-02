@@ -117,7 +117,7 @@ describe('prompts', () => {
       expect(prompt).toContain('## Bekannte Fund-Tickets');
       expect(prompt).toContain('#349');
       expect(prompt).toContain('tests/aktivitaeten.spec.ts:608');
-      expect(prompt).toContain('docs/WORKFLOW.md');
+      expect(prompt).toContain('docs/workflow/fundschluessel.md');
     });
 
     it('build-Prompt ohne Fund-Tickets enthaelt den Abschnitt gar nicht', () => {
