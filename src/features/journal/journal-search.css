@@ -65,15 +65,16 @@
 }
 
 .journal-search__reset {
-  align-self: flex-start;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
   min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
-  font: inherit;
-  font-weight: 600;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }

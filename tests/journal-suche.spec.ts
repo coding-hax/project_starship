@@ -383,6 +383,51 @@ test('AC-B: die Filter sind standardmäßig verborgen und lassen sich per Filter
   await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
 });
 
+test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge, der Editor weicht (issue #456)', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: [] });
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+
+  await openFilters(page);
+
+  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
+
+  // Filter wieder zuklappen, ohne einen Filter gesetzt zu haben — der Editor
+  // kehrt zurück, die Suche ist wieder inaktiv.
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(results).toHaveCount(0);
+});
+
+test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-Menü offen sein muss (issue #456)', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: [] });
+
+  const search = page.getByLabel('Journal durchsuchen');
+  await expect(search).toHaveValue('');
+  await search.press('Enter');
+
+  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
+
+  // Ein Treffer klicken setzt die "alle anzeigen"-Ansicht wie jeden anderen
+  // Filter zurück (AC-P4-Verhalten).
+  await results.first().click();
+  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+  await expect(page.locator('.journal-editor__form')).toBeVisible();
+});
+
 test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', mood: '5', tags: ['sport'] });
@@ -398,7 +443,33 @@ test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig',
 
   await expect(page.getByLabel('Von Datum')).toHaveValue('');
   await expect(page.getByLabel('Bis Datum')).toHaveValue('');
-  // Beide Einträge sind ohne Freitext nur über die Filter überhaupt aktiv (isActive) —
-  // nach dem Reset ist keiner mehr gesetzt, die Suche fällt in den inaktiven Leerzustand.
-  await expect(results).toHaveCount(0);
+  // issue #456: das Filter-Menü ist nach dem Reset weiterhin offen — und ein
+  // offenes Filter-Menü ohne gesetzten Filter zeigt seitdem alle Einträge,
+  // statt in den inaktiven Leerzustand zu fallen.
+  await expect(results).toHaveCount(2);
+});
+
+test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darunter (issue #455)', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openFilters(page);
+
+  const fromDate = page.getByLabel('Von Datum');
+  const resetButton = page.getByRole('button', { name: 'Zurücksetzen', exact: true });
+
+  const dateBox = (await fromDate.boundingBox())!;
+  const resetBox = (await resetButton.boundingBox())!;
+  expect(dateBox).not.toBeNull();
+  expect(resetBox).not.toBeNull();
+
+  // Gleiche Zeile: die vertikalen Mittelpunkte liegen praktisch aufeinander,
+  // statt der Knopf als eigene Zeile darunter zu stehen.
+  const dateCenterY = dateBox.y + dateBox.height / 2;
+  const resetCenterY = resetBox.y + resetBox.height / 2;
+  expect(Math.abs(dateCenterY - resetCenterY)).toBeLessThan(2);
+
+  // Icon statt Text (Vorschlag aus dem Ticket).
+  await expect(resetButton.locator('svg')).toHaveCount(1);
+  await expect(resetButton).not.toHaveText('Zurücksetzen');
 });

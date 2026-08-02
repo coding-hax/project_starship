@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { MoodScale } from '@/ui/mood-scale';
+import { IconReset } from '@/ui/icons';
 import './journal-search.css';
 import { searchJournalEntries, type JournalSearchEntry } from './search';
 import { useJournalSearchEntries } from './use-journal-search-entries';
@@ -57,9 +58,14 @@ export function JournalSearch({
   const [to, setTo] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const trimmed = query.trim();
-  const isActive = Boolean(trimmed) || mood !== null || tag !== null || Boolean(from) || Boolean(to);
+  const hasFilterValue = mood !== null || tag !== null || Boolean(from) || Boolean(to);
+  // issue #456: das Öffnen des Filter-Menüs und ein Enter im leeren Suchfeld
+  // zeigen sofort alle Einträge, statt eines leeren Ergebnisses — der Editor
+  // weicht in beiden Fällen genauso wie bei einem echten Treffer.
+  const isActive = Boolean(trimmed) || hasFilterValue || showFilters || showAll;
 
   const tagOptions = useMemo(() => {
     const all = new Set<string>();
@@ -71,13 +77,17 @@ export function JournalSearch({
 
   const results =
     entries && isActive
-      ? searchJournalEntries(entries, {
-          query,
-          mood: mood === null ? undefined : String(mood),
-          tag: tag ?? undefined,
-          from: from || undefined,
-          to: to || undefined,
-        })
+      ? searchJournalEntries(
+          entries,
+          {
+            query,
+            mood: mood === null ? undefined : String(mood),
+            tag: tag ?? undefined,
+            from: from || undefined,
+            to: to || undefined,
+          },
+          { showAllWhenEmpty: showFilters || showAll },
+        )
       : [];
 
   useEffect(() => {
@@ -94,6 +104,11 @@ export function JournalSearch({
   function handleSelect(entryDate: string) {
     setQuery('');
     resetFilters();
+    setShowAll(false);
+    // issue #456: showFilters allein hält isActive sonst weiter offen, selbst
+    // nach dem Reset der Filterwerte — ein Treffer wählen muss die Suche
+    // vollständig verlassen (AC-P4), nicht nur die Filterwerte leeren.
+    setShowFilters(false);
     onSelect(entryDate);
   }
 
@@ -117,6 +132,12 @@ export function JournalSearch({
           className="journal-search__input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              setShowAll(true);
+            }
+          }}
           placeholder="Journal durchsuchen …"
           aria-label="Journal durchsuchen"
         />
@@ -165,10 +186,15 @@ export function JournalSearch({
               value={to}
               onChange={(event) => setTo(event.target.value)}
             />
+            <button
+              type="button"
+              className="journal-search__reset"
+              aria-label="Zurücksetzen"
+              onClick={resetFilters}
+            >
+              <IconReset />
+            </button>
           </div>
-          <button type="button" className="journal-search__reset" onClick={resetFilters}>
-            Zurücksetzen
-          </button>
         </div>
       )}
       {isActive && entries !== undefined && results.length === 0 && (
