@@ -22,12 +22,16 @@ export interface SheetProps {
  */
 export function Sheet({ open, onClose, label, initialFocusRef, children }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Captured right before `showModal()` steals focus, so it survives the whole
+  // time the sheet is open and is still there to restore once it closes.
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
 
     if (open && !dialog.open) {
+      triggerRef.current = document.activeElement as HTMLElement | null;
       dialog.showModal();
       initialFocusRef?.current?.focus();
     }
@@ -41,7 +45,14 @@ export function Sheet({ open, onClose, label, initialFocusRef, children }: Sheet
       ref={ref}
       className="sheet"
       aria-label={label}
-      onClose={onClose}
+      onClose={() => {
+        onClose();
+        // Fires for all three close paths (action, ESC, backdrop) — one place
+        // returns focus regardless of how the sheet was dismissed.
+        if (triggerRef.current && document.contains(triggerRef.current)) {
+          triggerRef.current.focus();
+        }
+      }}
       onCancel={onClose}
       onClick={(event) => {
         // The dialog element is sized to the full viewport (see sheet.css) — a click

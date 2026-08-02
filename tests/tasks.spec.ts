@@ -289,6 +289,78 @@ test('bei reduzierter Bewegung öffnet das Sheet nur mit einem Opacity-Übergang
   expect(transitionProperty).toBe('opacity');
 });
 
+test('Fokus kehrt nach dem Schließen per Aktion zum FAB zurück (issue #429)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  // No date in the title — a parsed due date would pop the capture-confirm sheet
+  // instead of returning focus straight to the FAB.
+  await quickAddTitleField(page).fill('Ohne Datum');
+  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
+  await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('Fokus kehrt nach ESC zum FAB zurück (issue #429)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
+  await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('Fokus kehrt nach einem Klick auf den Backdrop zum FAB zurück (issue #429)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  // The content sits bottom-centered — a click near the top-left corner lands on
+  // the dialog itself, i.e. the backdrop, not on .sheet__content.
+  await dialog.click({ position: { x: 5, y: 5 } });
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('bei reduzierter Bewegung schließt das Sheet nur mit einem Opacity-Übergang (issue #429)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  await page.keyboard.press('Escape');
+
+  const transitionProperty = await dialog.evaluate(
+    (el) => getComputedStyle(el.firstElementChild as Element).transitionProperty,
+  );
+  expect(transitionProperty).toBe('opacity');
+});
+
+test('kein Layout-Shift beim Schließen des Sheets (issue #429)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  // Not the FAB itself: opening moves the pointer onto it, and once the dialog
+  // stops covering it, its own `:hover` affordance (fab.css) scales it up — a
+  // real but unrelated effect that would masquerade as a layout shift here.
+  const heading = page.getByRole('heading', { level: 1 });
+  const boxBefore = await heading.boundingBox();
+  const scrollWidthBefore = await page.evaluate(() => document.documentElement.scrollWidth);
+
+  await openQuickAdd(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
+
+  const boxAfter = await heading.boundingBox();
+  const scrollWidthAfter = await page.evaluate(() => document.documentElement.scrollWidth);
+
+  expect(boxAfter).toEqual(boxBefore);
+  expect(scrollWidthAfter).toBe(scrollWidthBefore);
+});
+
 test('Wisch nach rechts erledigt die Aufgabe und zeigt einen Undo-Toast', async ({ page }) => {
   await page.goto('/aufgaben');
   const title = 'Wird gewischt';
