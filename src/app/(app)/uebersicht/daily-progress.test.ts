@@ -94,6 +94,47 @@ describe('computeDailyProgress', () => {
     expect(computeDailyProgress([], habits, [], onlyHabits, NOW)).toEqual({ done: 0, total: 1 });
   });
 
+  it('a weekly habit done earlier this week drops out of both counts (issue #503, AC1)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-13', done: true })]; // Monday, earlier this week
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('a weekly habit done today still counts in both counts, no backwards jump (issue #503, AC2)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-15', done: true })]; // today
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 1, total: 1 });
+  });
+
+  it('a daily habit done yesterday still counts as open today (issue #503, AC4)', () => {
+    const habits = [habit({ id: 'h-daily', schedule: 'daily' })];
+    const logs = [log({ habitId: 'h-daily', logDate: '2026-07-14', done: true })]; // yesterday
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 1 });
+  });
+
+  it('the ring has nothing left when the only weekly habit was done earlier this week (issue #503, AC5)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-13', done: true })];
+    expect(computeDailyProgress([], habits, logs, allActive, NOW)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('a new week resets a weekly habit back to open (issue #503, AC6)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-06', done: true })]; // Monday of the prior week
+
+    const sameWeekLater = new Date('2026-07-07T12:00:00.000Z'); // Tuesday, still that week -> excluded
+    expect(computeDailyProgress([], habits, logs, onlyHabits, sameWeekLater)).toEqual({
+      done: 0,
+      total: 0,
+    });
+
+    const nextWeek = new Date('2026-07-15T12:00:00.000Z'); // Wednesday, a week later -> open again
+    expect(computeDailyProgress([], habits, logs, onlyHabits, nextWeek)).toEqual({
+      done: 0,
+      total: 1,
+    });
+  });
+
   it('both modules off yields nothing, regardless of data', () => {
     const tasks = [task()];
     const habits = [habit()];
