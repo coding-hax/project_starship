@@ -1,7 +1,9 @@
 /**
- * Bottom sheet (docs/DESIGN_SYSTEM.md): slides up with a spring, backdrop fades in.
- * `@starting-style` gives the entry transition without a JS animation library —
- * exit needs none, since the sheet only ever has an acceptance criterion for opening.
+ * Bottom sheet (docs/DESIGN_SYSTEM.md): slides up with a spring, backdrop fades in,
+ * and mirrors both on the way out. `@starting-style` gives the entry transition
+ * without a JS animation library; `allow-discrete` keeps the exit in the top layer
+ * long enough for the transform/opacity transition below to finish before
+ * `display:none` actually removes it (MDN's standard `<dialog>` exit recipe).
  */
 
 dialog.sheet {
@@ -18,6 +20,9 @@ dialog.sheet {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  transition:
+    display var(--duration-base) allow-discrete,
+    overlay var(--duration-base) allow-discrete;
 }
 
 dialog.sheet:not([open]) {
@@ -34,6 +39,10 @@ dialog.sheet::backdrop {
   dialog.sheet[open]::backdrop {
     opacity: 0;
   }
+}
+
+dialog.sheet:not([open])::backdrop {
+  opacity: 0;
 }
 
 .sheet__content {
@@ -58,8 +67,19 @@ dialog.sheet::backdrop {
   }
 }
 
+dialog.sheet:not([open]) .sheet__content {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
 /* Only a fade — no slide — once the user has asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
+  dialog.sheet {
+    transition:
+      display var(--duration-fast) allow-discrete,
+      overlay var(--duration-fast) allow-discrete;
+  }
+
   .sheet__content {
     transform: none;
     transition: opacity var(--duration-fast) var(--ease-spring);
@@ -70,5 +90,9 @@ dialog.sheet::backdrop {
       transform: none;
       opacity: 0;
     }
+  }
+
+  dialog.sheet:not([open]) .sheet__content {
+    transform: none;
   }
 }
