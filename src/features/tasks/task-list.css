@@ -72,8 +72,18 @@
   /* Only relevant while a swipe is releasing — see .task-list__item--dragging,
      which turns this off so the row follows the pointer with no lag. */
   transition: transform var(--duration-base) var(--ease-spring);
-  /* Let the browser keep handling vertical scroll; only the horizontal axis is ours. */
+  /* Let the browser keep handling vertical scroll; only the horizontal axis is ours.
+     While a row is *lifted*, task-item.tsx additionally cancels the vertical pan
+     from a non-passive touchmove listener — touch-action is latched for the whole
+     gesture and cannot be narrowed after the pick-up (issue #451). */
   touch-action: pan-y;
+  /* A press-and-drag must move the card, never start a native text selection —
+     without this the browser selects the word under the pointer and drags *that*
+     (issue #451). The row carries no selectable content the user needs: the
+     editor is one tap away. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .task-list__item--dragging {
@@ -107,7 +117,70 @@
     opacity var(--duration-spring-smooth) var(--ease-spring-smooth),
     padding var(--duration-spring-smooth) var(--ease-spring-smooth),
     margin var(--duration-spring-smooth) var(--ease-spring-smooth),
+    width var(--duration-spring-smooth) var(--ease-spring-smooth),
     border-width var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+/* Live drop preview (issue #451).
+   ------------------------------------------------------------------
+   Both states are pure colour/geometry on top of the card and only exist while a
+   finger or mouse button is down, so there is nothing to animate *in* — what
+   little does move (the un-nest slide) rides the card's existing margin/width
+   transition, which the global `prefers-reduced-motion` rule in tokens.css
+   already zeroes. */
+
+/* Releasing now nests the dragged row under this one. The bar along the bottom
+   starts at the child indent, so the card shows *where* the subtask will line up
+   rather than only that something will happen. */
+.task-list__item--nest-target {
+  position: relative;
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+}
+
+.task-list__item--nest-target::after {
+  content: '';
+  position: absolute;
+  left: var(--space-8);
+  right: var(--space-4);
+  bottom: var(--space-2);
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+/* The dragged subtask itself, while a release would pull it back out to top
+   level: it drops its indent — so it visibly leaves the parent's column — and
+   goes dashed, since it is on its way out of a container rather than into one. */
+.task-list__item--unnest-preview {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.task-list__item--unnest-preview.task-list__item--child {
+  width: 100%;
+  margin-left: 0;
+}
+
+/* Sits where the toasts sit (src/ui/toast.css) — above the bottom nav and the
+   safe area — because that is the one strip of screen a dragging finger is not
+   covering. Never interactive: it is a caption for a gesture in progress. */
+.task-list__drop-hint {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4));
+  z-index: 20;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--accent);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-raised);
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
 }
 
 .task-list__item--collapsed {
