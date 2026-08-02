@@ -481,6 +481,29 @@ test('AC-A (#423): das Datum steht oben rechts, vor dem Formular', async ({ page
   expect(containerRightEdge - dateRightEdge).toBeLessThan(2);
 });
 
+test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf deren Höhe, oben rechts', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/journal');
+
+  const heading = page.getByRole('heading', { name: 'Journal', exact: true });
+  const headerDate = page.locator('.journal-header-date');
+  await expect(heading).toBeVisible();
+  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date()));
+
+  const headingBox = await heading.boundingBox();
+  const dateBox = await headerDate.boundingBox();
+  expect(headingBox).not.toBeNull();
+  expect(dateBox).not.toBeNull();
+
+  // Auf Höhe: vertikale Ausdehnung von Datum und Überschrift überlappt.
+  expect(dateBox!.y).toBeLessThan(headingBox!.y + headingBox!.height);
+  expect(dateBox!.y + dateBox!.height).toBeGreaterThan(headingBox!.y);
+  // Rechts: das Datum liegt rechts von der Überschrift.
+  expect(dateBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+});
+
 test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist zentriert', async ({ page }) => {
   await setUpEditor(page);
 
