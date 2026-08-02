@@ -9,11 +9,13 @@ import {
   reissueRecovery,
   rewrapPassphrase,
 } from '@/crypto/journal';
-import { pull } from '@/local/sync';
+import { pull, sync } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
 import {
+  keyRowIsTombstoned,
   readEnvelope,
   readRecoveryEnvelope,
+  restoreKeyRow,
   writeEnvelope,
   writeEnvelopes,
   writeRecoveryEnvelope,
@@ -208,8 +210,23 @@ async function initialize(): Promise<void> {
   setSnapshot({ state: 'setup', error: null });
 }
 
-/** Locked, unless another tab is already unlocked and hands its DEK over (AC7). */
+/**
+ * Locked, unless another tab is already unlocked and hands its DEK over (AC7).
+ *
+ * Reaching here means the account has a wrap, so a tombstone on the key row is a
+ * state the app repairs rather than reads around (issue #453) — one payload-free
+ * `restore` through the normal outbox, which converges every device on the next
+ * pull. The push is nudged instead of left to the 30s poll: nothing else calls
+ * `scheduleSync`, and a repair that only lands on the next tick is one a second
+ * device can still read as "no envelope" in between. The queue is durable either
+ * way, so the send itself stays fire-and-forget.
+ */
 async function settleWithEnvelope(ch: BroadcastChannel): Promise<void> {
+  if (await keyRowIsTombstoned()) {
+    await restoreKeyRow();
+    void sync();
+  }
+
   const shared = await requestSharedDek(ch);
   if (current.state !== 'loading') return;
   if (shared) {
