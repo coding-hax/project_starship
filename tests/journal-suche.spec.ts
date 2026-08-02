@@ -402,3 +402,28 @@ test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig',
   // nach dem Reset ist keiner mehr gesetzt, die Suche fällt in den inaktiven Leerzustand.
   await expect(results).toHaveCount(0);
 });
+
+test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darunter (issue #455)', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openFilters(page);
+
+  const fromDate = page.getByLabel('Von Datum');
+  const resetButton = page.getByRole('button', { name: 'Zurücksetzen', exact: true });
+
+  const dateBox = (await fromDate.boundingBox())!;
+  const resetBox = (await resetButton.boundingBox())!;
+  expect(dateBox).not.toBeNull();
+  expect(resetBox).not.toBeNull();
+
+  // Gleiche Zeile: die vertikalen Mittelpunkte liegen praktisch aufeinander,
+  // statt der Knopf als eigene Zeile darunter zu stehen.
+  const dateCenterY = dateBox.y + dateBox.height / 2;
+  const resetCenterY = resetBox.y + resetBox.height / 2;
+  expect(Math.abs(dateCenterY - resetCenterY)).toBeLessThan(2);
+
+  // Icon statt Text (Vorschlag aus dem Ticket).
+  await expect(resetButton.locator('svg')).toHaveCount(1);
+  await expect(resetButton).not.toHaveText('Zurücksetzen');
+});
