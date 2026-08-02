@@ -122,27 +122,42 @@ describe('monthLabel / dayLabel (issue #124)', () => {
   });
 });
 
-describe('monthDays (issue #124 AC1)', () => {
-  it('pads a month that starts mid-week to full Mon–Sun rows', () => {
-    // July 2026 starts on a Wednesday: 2 leading blanks, 31 days, 2 trailing.
+describe('monthDays (issue #124 AC1, neighbour days added in #487)', () => {
+  it('pads a month that starts mid-week with real days of the previous/next month', () => {
+    // July 2026 starts on a Wednesday: 2 leading days from June, 31 July
+    // days, 2 trailing days from August.
     const days = monthDays(new Date(2026, 6, 15));
     expect(days).toHaveLength(35);
-    expect(days.slice(0, 2)).toEqual([null, null]);
-    expect(days[2]).toBe('2026-07-01');
-    expect(days[32]).toBe('2026-07-31');
-    expect(days.slice(33)).toEqual([null, null]);
+    expect(days.slice(0, 2)).toEqual([
+      { dateKey: '2026-06-29', inMonth: false },
+      { dateKey: '2026-06-30', inMonth: false },
+    ]);
+    expect(days[2]).toEqual({ dateKey: '2026-07-01', inMonth: true });
+    expect(days[32]).toEqual({ dateKey: '2026-07-31', inMonth: true });
+    expect(days.slice(33)).toEqual([
+      { dateKey: '2026-08-01', inMonth: false },
+      { dateKey: '2026-08-02', inMonth: false },
+    ]);
   });
 
-  it('needs no leading blanks when the month starts on a Monday', () => {
+  it('needs no leading neighbour days when the month starts on a Monday', () => {
     // June 2026 starts on a Monday.
     const days = monthDays(new Date(2026, 5, 10));
-    expect(days[0]).toBe('2026-06-01');
-    expect(days.filter((day) => day !== null)).toHaveLength(30);
+    expect(days[0]).toEqual({ dateKey: '2026-06-01', inMonth: true });
+    expect(days.filter((day) => day.inMonth)).toHaveLength(30);
   });
 
   it('is always a multiple of 7', () => {
     for (let month = 0; month < 12; month += 1) {
       expect(monthDays(new Date(2026, month, 1)).length % 7).toBe(0);
     }
+  });
+
+  it('carries real date keys across a year boundary', () => {
+    // December 2026 starts on a Tuesday (1 leading day from November) and
+    // has 31 days, ending on a Thursday (3 trailing days into January 2027).
+    const days = monthDays(new Date(2026, 11, 15));
+    expect(days[0]).toEqual({ dateKey: '2026-11-30', inMonth: false });
+    expect(days[days.length - 1]).toEqual({ dateKey: '2027-01-03', inMonth: false });
   });
 });

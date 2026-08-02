@@ -69,6 +69,19 @@
   color: var(--accent-fg);
 }
 
+/* Neighbour-month day (issue #487 AC2): dimmed via opacity, same as
+   [data-future] below, so it stays combinable with the --done background —
+   opacity fades the habit-colour fill instead of hiding it. Muted text only
+   applies to the undone state; a done neighbour day keeps --accent-fg for
+   contrast against its coloured background (AC3). */
+.habit-week-grid__day[data-outside] {
+  opacity: 0.6;
+}
+
+.habit-week-grid__day[data-outside]:not(.habit-week-grid__day--done) {
+  color: var(--text-muted);
+}
+
 .habit-week-grid__day[data-future] {
   color: var(--text-muted);
   opacity: 0.4;
