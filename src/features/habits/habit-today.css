@@ -27,8 +27,6 @@
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
-  /* Only opacity moves here (AC5) — `prefers-reduced-motion` needs no extra
-     handling: tokens.css's global rule zeroes transition-duration everywhere. */
   transition: opacity var(--duration-base) var(--ease-spring);
 }
 
@@ -109,10 +107,22 @@
   height: 22px;
   accent-color: var(--accent);
   cursor: pointer;
-  /* The other half of AC5's "opacity/scale only" check-off animation. */
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 
 .habit-today__checkbox:checked {
   transform: scale(1.12);
+}
+
+/* tokens.css's global reduced-motion rule only zeroes transition-duration,
+   not the transform itself — without this, reduced-motion users would still
+   see a static 12% jump instead of no movement at all (issue #435). */
+@media (prefers-reduced-motion: reduce) {
+  .habit-today__checkbox:checked {
+    transform: none;
+  }
+}
+
+:root[data-reduce-motion='true'] .habit-today__checkbox:checked {
+  transform: none;
 }
