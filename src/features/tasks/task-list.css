@@ -169,6 +169,26 @@
   height: 22px;
   accent-color: var(--accent);
   cursor: pointer;
+  /* Same check-off scale as .habit-today__checkbox (issue #435) — kept in
+     step so the two feel like one interaction, not two. */
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.task-list__checkbox:checked {
+  transform: scale(1.12);
+}
+
+/* tokens.css's global reduced-motion rule only zeroes transition-duration,
+   not the transform itself — without this, reduced-motion users would still
+   see a static 12% jump instead of no movement at all. */
+@media (prefers-reduced-motion: reduce) {
+  .task-list__checkbox:checked {
+    transform: none;
+  }
+}
+
+:root[data-reduce-motion='true'] .task-list__checkbox:checked {
+  transform: none;
 }
 
 .task-list__item--done {
