@@ -343,15 +343,18 @@ test('bei reduzierter Bewegung schließt das Sheet nur mit einem Opacity-Überga
 
 test('kein Layout-Shift beim Schließen des Sheets (issue #429)', async ({ page }) => {
   await page.goto('/aufgaben');
-  const fab = page.getByRole('button', { name: QUICK_ADD_LABEL });
-  const boxBefore = await fab.boundingBox();
+  // Not the FAB itself: opening moves the pointer onto it, and once the dialog
+  // stops covering it, its own `:hover` affordance (fab.css) scales it up — a
+  // real but unrelated effect that would masquerade as a layout shift here.
+  const heading = page.getByRole('heading', { level: 1 });
+  const boxBefore = await heading.boundingBox();
   const scrollWidthBefore = await page.evaluate(() => document.documentElement.scrollWidth);
 
   await openQuickAdd(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
 
-  const boxAfter = await fab.boundingBox();
+  const boxAfter = await heading.boundingBox();
   const scrollWidthAfter = await page.evaluate(() => document.documentElement.scrollWidth);
 
   expect(boxAfter).toEqual(boxBefore);
