@@ -175,6 +175,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `runner/prompts.ts` / `runner/round.ts` — vier Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session-Trennung, Shim-Drift, Aufräumen, Multi-Slot-Status
 - `runner/*.test.ts` — Vitest-Suiten der TS-Adapter, je eine Datei pro Modul
+- `git-hooks/pre-push` — Push-Netz gegen Doppelbau (ADR-0020): bricht nur ab, wenn der Claim des Tickets fremdem Slot gehört
 - `check-test-integrity.sh` / `check-sync-invariants.sh` — Wächter: abgeschwächte Tests, `fetch(/api/)` außerhalb der Outbox
 - `check-dexie-bump.sh` / `check-codemap.sh` — fehlender Dexie-Bump-Hinweis, Wächter für diese Karte (schlank)
 - `tests/*.test.sh` — Bash-Fixture-Suiten, je eine Datei pro Guard/Runner-Baustein (Namen wie das geprüfte Skript)

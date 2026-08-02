@@ -48,6 +48,12 @@ das Risiko, das dieses Ticket beseitigen soll, nicht vermehren.
 
 ### Ticket-Anspruch: atomarer `mkdir`-Claim
 
+_Verfeinert durch ADR-0020 (#449): der zweistufige `mkdir` + `writeFile` unten
+öffnete ein Fenster, in dem ein Claim kurz leer und damit für einen zweiten
+Slot als frei sichtbar war (Vorfall #430). ADR-0020 ersetzt beide Schritte
+durch eine einzige atomare `rename`-Operation mit Besitzer-Inhalt; diese
+Sektion beschreibt weiterhin den historischen Stand._
+
 `SHARED_DIR/claims/<issue>/` (`SHARED_DIR` liegt außerhalb jedes
 Arbeitsbaums, Default `~/.starship-runner`) — dieselbe Technik wie der
 bestehende Lauf-Lock, `mkdir` ist auf POSIX atomar. Ein Slot-Label am Issue
