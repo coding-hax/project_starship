@@ -1,0 +1,29 @@
+#!/bin/sh
+# Push-Netz gegen Doppelbau (#449, ADR-0020): zweite Verteidigungslinie hinter
+# dem atomaren Claim in scripts/runner/claim.ts. Bricht NUR ab, wenn der Claim
+# des aktuellen Tickets nachweislich einem ANDEREN Slot gehoert -- jede andere
+# Lage (kein Branch, keine Ticketnummer, kein Runner-Kontext, kein Claim)
+# faellt offen durch, damit legitime Runner-Catch-up-Pushes und
+# Menschen-Pushes nie faelschlich scheitern.
+#
+# Verdrahtet ueber `git config core.hooksPath` NUR in Bau-Worktrees
+# (claude-runner.sh: bootstrap_worktree()), nicht global.
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+[ -n "$branch" ] || exit 0
+
+nr=$(printf '%s' "$branch" | sed -En 's#^(feat|fix|chore)/([0-9]+)-.*#\2#p')
+[ -n "$nr" ] || exit 0
+
+[ -n "$SHARED_DIR" ] || exit 0
+[ -n "$SLOT_ID" ] || exit 0
+
+owner=$(cat "$SHARED_DIR/claims/$nr/slot" 2>/dev/null)
+[ -n "$owner" ] || exit 0
+
+if [ "$owner" != "$SLOT_ID" ]; then
+  echo "pre-push: Ticket #$nr wird laut Claim von Slot $owner gebaut, nicht von diesem Slot ($SLOT_ID) -- Push abgebrochen (#449)." >&2
+  exit 1
+fi
+
+exit 0
