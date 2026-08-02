@@ -12,7 +12,8 @@ im selben PR. Eine veraltete Karte ist schlimmer als keine.
 ```
 src/
   app/                      Next.js App Router — Routen und API-Endpunkte
-    (app)/layout.tsx        Auth-Gate + App-Shell + `<ModuleRouteGuard/>`. Ohne Session -> /anmelden
+    (app)/layout.tsx        Auth-Gate + App-Shell + `<ModuleRouteGuard/>`. Ohne Session -> /anmelden; `{children}` steckt seit issue #434 in `<PageTransition/>`
+    (app)/page-transition.tsx  Opacity-Crossfade-Wrapper um `{children}` (issue #434, Teil #418); sitzt bewusst ÜBER dem Router-Segment statt in `template.tsx`, damit die #233-Fokusführung (Router fokussiert das erste Segment-Element) erhalten bleibt; remountet nicht, retriggert die CSS-Animation je Pfadwechsel per Klassen-Toggle + Reflow
     (app)/uebersicht/       Dashboard          (Klammer — wächst ab M1 je Milestone mit); h1+AppHeader fix, darunter `<DailyProgressRing/>` (issue #428) + `<UebersichtSections/>` (issue #308); vormals „Heute"/`/heute` (issue #161)
     (app)/uebersicht/uebersicht-sections.tsx   Client: iteriert die feste Reihenfolge Wetter→Aufgaben→Aktivitäten→Gewohnheiten→Journal (issue #342), rendert je aktivem Modul dessen `OverviewSection` aus der Registry über `useActiveSections` (issue #308)
     (app)/uebersicht/daily-progress.ts / daily-progress-ring.tsx / .css   Tages-Fortschrittsring „heute N von M" (issue #428, M-1 aus #416): reine Zählung über `belongsOnUebersicht` (Aufgaben, wie `TaskList dueTodayOnly`) + `schedule-rules.ts` `isDueOnDay`/`isDoneOnDay` (Gewohnheiten, archivierte ausgeschlossen), respektiert `use-modules` (`isActive`); modulübergreifend, deshalb im Übersicht-Rahmen statt der per-Modul-`OverviewSection`-Registry; `null` bis alle Live-Queries durch sind und bei M=0 (kein „0 von 0")
@@ -182,7 +183,7 @@ src/
     mood-scale.tsx / .css   Zehn Ein-Tipp-Punkte 1–10 (issue #340 AC1/AC2): Tipp setzt, erneuter Tipp auf denselben Punkt nimmt zurück (`onChange(null)`); volle Zeilenbreite über `flex:1` je Punkt, `min-height:44px`, kein horizontaler Scroll (Owner-Entscheidung 29.07.26, Variante A); Zahl steht am Punkt, Bedeutung hängt nie allein an der Farbe
     tokens.css              OKLCH-Farbtokens, hell + dunkel + expliziter Theme-Override, Spacing, Motion, --font-scale
     motion.css              Spring-Feder-Presets (--ease-spring-snappy/-smooth), .spring-press-Utility (ADR-0006)
-    shell.css               App-Shell: Header + Bottom-Nav (mobil, Karussell ab mehr als fünf Einträgen) / Header + Sidebar (Desktop, kein Karussell) (issue #205)
+    shell.css               App-Shell: Header + Bottom-Nav (mobil, Karussell ab mehr als fünf Einträgen) / Header + Sidebar (Desktop, kein Karussell) (issue #205); `.page-transition--enter`/`@keyframes page-fade-in` — reiner Opacity-Crossfade beim Tab-/Seitenwechsel, kein `transform` (issue #434)
     app-header.tsx           Einstellungen-Einstieg, zwei Varianten: `chrome` (Shell, nur ab 768px) und `inline` (nur auf /uebersicht, mobil) (issue #123, #126)
     module-route-guard.tsx  Client, in (app)/layout.tsx eingehängt: `usePathname`+`useModules`, liegt der Pfad unter `routes` eines Aus-Moduls → `router.replace('/uebersicht')`, core nie betroffen; rein clientseitig, kein SW-Bezug (ADR-0012 K1, issue #309); der Flacker-Schutz selbst kommt aus globals.css + dem Bootstrap-Skript in app/layout.tsx, nicht von hier
     nav-items.ts            NAV_ITEMS — seit #307 reine Ableitung aus src/modules/registry.ts (`MODULES.flatMap(m => m.navItem ? [m.navItem] : [])`), Name/Form unverändert, damit use-nav-order.ts + Specs shell/nav-order* ihren Import nicht ändern (issue #205, #307)
