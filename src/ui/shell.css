@@ -110,8 +110,8 @@
   bottom: 0;
   display: flex;
   align-items: center;
-  background: color-mix(in oklch, var(--surface) 92%, transparent);
-  backdrop-filter: blur(12px);
+  /* Opaque per #444 — no glass look here, do not reintroduce the blur. */
+  background: var(--surface);
   border-top: 1px solid var(--border);
   /* A bare `env()` resolves to nothing on a device without a notch, computing to
      0px — the home-indicator gap disappears entirely instead of just not growing.
