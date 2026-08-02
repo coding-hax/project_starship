@@ -7,6 +7,7 @@ import { Nav } from '@/ui/nav';
 import { SyncBoot } from '@/ui/sync-boot';
 import { SyncStatus } from '@/ui/sync-status';
 import { ToastHost } from '@/ui/toast-host';
+import { PageTransition } from './page-transition';
 
 /**
  * The gate for everything behind the login. Checked server-side on every render —
@@ -20,7 +21,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <ModuleRouteGuard />
       <AppHeader />
       <Nav />
-      <main className="shell__main">{children}</main>
+      <main className="shell__main">
+        <PageTransition>{children}</PageTransition>
+      </main>
       <SyncBoot />
       <SyncStatus />
       <ToastHost />
