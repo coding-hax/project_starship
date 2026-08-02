@@ -43,6 +43,12 @@ export interface TaskItemProps {
    * long-press lift entirely — used for the /uebersicht view, which does not nest.
    */
   onDropOnTask?: (targetId: string | null) => void;
+  /** Enter/exit presence (issue #430, use-list-presence.ts). `leaving` stays true
+   *  for the whole exit animation — the row is kept mounted by the caller until
+   *  `onAnimationEnd` fires. */
+  entering?: boolean;
+  leaving?: boolean;
+  onAnimationEnd?: () => void;
 }
 
 function formatDueAt(dueAt: string): string {
@@ -77,6 +83,9 @@ export function TaskItem({
   expanded = true,
   onToggleExpand,
   onDropOnTask,
+  entering = false,
+  leaving = false,
+  onAnimationEnd,
 }: TaskItemProps) {
   const [dragX, setDragX] = useState(0);
   const [dragY, setDragY] = useState(0);
@@ -197,10 +206,13 @@ export function TaskItem({
     setDragY(0);
   }
 
-  if (confirmingDelete) {
+  // `leaving` wins over a still-open confirm dialog — the task is already gone
+  // (onDelete fired), so the row fades out showing its last known content
+  // instead of a confirm prompt for a delete that already happened.
+  if (confirmingDelete && !leaving) {
     return (
       <li
-        className="task-list__item task-list__item--confirm-delete"
+        className="task-list__item task-list__item--confirm-delete list-motion-item"
         onClick={() => setConfirmingDelete(false)}
       >
         <span className="task-list__confirm-text">{`„${task.title}" löschen?`}</span>
@@ -221,15 +233,22 @@ export function TaskItem({
   return (
     <li
       data-task-id={task.id}
+      data-entering={entering}
+      data-leaving={leaving}
       inert={isChild && !visible}
       className={
         (isDone ? 'task-list__item task-list__item--done' : 'task-list__item') +
+        ' list-motion-item' +
         (dragging ? ' task-list__item--dragging' : '') +
         (lifted ? ' task-list__item--lifted' : '') +
         (isChild ? ' task-list__item--child' : '') +
         (isChild && !visible ? ' task-list__item--collapsed' : '')
       }
       style={
+        // Swipe/lift and the exit animation never overlap: deleting only ever
+        // fires from the confirm dialog (dragging/lifted are already false by
+        // then), so this inline transform and list-exit's animated transform
+        // are never both live on the same element.
         lifted
           ? { transform: `translate(${dragX}px, ${dragY}px) scale(1.03)` }
           : dragX
@@ -240,6 +259,7 @@ export function TaskItem({
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
+      onAnimationEnd={onAnimationEnd}
     >
       {isParent && (
         <button

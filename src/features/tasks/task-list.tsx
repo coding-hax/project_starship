@@ -1,13 +1,33 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { mutate } from '@/local/outbox';
 import { Toast } from '@/ui/toast';
+import { useListPresence } from '@/ui/use-list-presence';
 import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
-import { belongsOnUebersicht, groupTasks, resolveNestTarget, useTasks } from './use-tasks';
+import {
+  belongsOnUebersicht,
+  groupTasks,
+  resolveNestTarget,
+  useTasks,
+  type TaskNode,
+  type TaskView,
+} from './use-tasks';
+
+/**
+ * One `<li>` worth of row, flattened out of the parent/child tree (issue #430)
+ * — `useListPresence` needs one flat, uniformly-keyed array to diff against;
+ * grouped `Fragment`s per parent had no single key per row to track. `kind`
+ * carries just enough of the originating node to rebuild the same props
+ * `TaskItem` always got, nothing more.
+ */
+type TaskRow =
+  | { id: string; kind: 'flat'; task: TaskView }
+  | { id: string; kind: 'parent'; node: TaskNode }
+  | { id: string; kind: 'child'; node: TaskNode; child: TaskView };
 
 function subscribeToOnlineStatus(callback: () => void): () => void {
   window.addEventListener('online', callback);
@@ -50,7 +70,15 @@ export interface TaskListProps {
 
 export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}) {
   const allTasks = useTasks();
-  const tasks = dueTodayOnly ? allTasks?.filter((task) => belongsOnUebersicht(task)) : allTasks;
+  // `useMemo`'d on `[allTasks, dueTodayOnly]` — `allTasks` is referentially
+  // stable across renders that aren't a real live-query emission (see
+  // use-live-table.ts), and `useListPresence` below needs that stability to
+  // tell "the data changed" apart from "this component re-rendered for some
+  // other reason" (editingTaskId, collapsed, …).
+  const tasks = useMemo(
+    () => (dueTodayOnly ? allTasks?.filter((task) => belongsOnUebersicht(task)) : allTasks),
+    [allTasks, dueTodayOnly],
+  );
   const online = useOnline();
   const {
     toggleComplete,
@@ -74,11 +102,22 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   const editingTask = allTasks?.find((task) => task.id === editingTaskId) ?? null;
   // Grouped from the full list, not the /uebersicht-filtered `tasks` — nesting still
   // needs the whole task graph even when the view itself renders flat (issue #89).
-  const nodes = groupTasks(allTasks ?? []);
+  const nodes = useMemo(() => groupTasks(allTasks ?? []), [allTasks]);
   const editingNode = nodes.find((node) => node.task.id === editingTaskId);
   const nestCandidates = nodes
     .filter((node) => node.task.id !== editingTaskId)
     .map((node) => node.task);
+
+  const rows = useMemo<TaskRow[]>(() => {
+    if (dueTodayOnly) {
+      return (tasks ?? []).map((task) => ({ id: task.id, kind: 'flat' as const, task }));
+    }
+    return nodes.flatMap((node) => [
+      { id: node.task.id, kind: 'parent' as const, node },
+      ...node.children.map((child) => ({ id: child.id, kind: 'child' as const, node, child })),
+    ]);
+  }, [dueTodayOnly, tasks, nodes]);
+  const presenceRows = useListPresence(rows, (row) => row.id);
 
   function toggleExpanded(taskId: string) {
     setCollapsed((prev) => {
@@ -136,7 +175,7 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
         </p>
       )}
 
-      {tasks === undefined ? null : tasks.length === 0 ? (
+      {tasks === undefined ? null : presenceRows.length === 0 ? (
         <p
           className={
             dueTodayOnly ? 'task-list__empty task-list__empty--compact' : 'task-list__empty'
@@ -152,43 +191,59 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
             ? { 'aria-labelledby': headingId }
             : { 'aria-label': dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben' })}
         >
-          {dueTodayOnly
-            ? tasks.map((task) => (
+          {presenceRows.map((row) => {
+            const entering = row.status === 'entering';
+            const leaving = row.status === 'leaving';
+            const shared = { entering, leaving, onAnimationEnd: row.onAnimationEnd };
+
+            if (row.item.kind === 'flat') {
+              const { task } = row.item;
+              return (
                 <TaskItem
-                  key={task.id}
+                  key={row.key}
                   task={task}
                   onToggle={() => toggleComplete(task)}
                   onEdit={() => setEditingTaskId(task.id)}
                   onDelete={() => deleteTask(task)}
+                  {...shared}
                 />
-              ))
-            : nodes.map((node) => (
-                <Fragment key={node.task.id}>
-                  <TaskItem
-                    task={node.task}
-                    isParent={node.total > 0}
-                    progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
-                    expanded={!collapsed.has(node.task.id)}
-                    onToggleExpand={() => toggleExpanded(node.task.id)}
-                    onToggle={() => toggleComplete(node.task)}
-                    onEdit={() => setEditingTaskId(node.task.id)}
-                    onDelete={() => deleteTask(node.task, node.children)}
-                    onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
-                  />
-                  {node.children.map((child) => (
-                    <TaskItem
-                      key={child.id}
-                      task={child}
-                      isChild
-                      visible={!collapsed.has(node.task.id)}
-                      onToggle={() => toggleComplete(child)}
-                      onEdit={() => setEditingTaskId(child.id)}
-                      onDelete={() => deleteTask(child)}
-                      onDropOnTask={(targetId) => handleNest(child.id, targetId)}
-                    />
-                  ))}
-                </Fragment>
-              ))}
+              );
+            }
+
+            if (row.item.kind === 'parent') {
+              const { node } = row.item;
+              return (
+                <TaskItem
+                  key={row.key}
+                  task={node.task}
+                  isParent={node.total > 0}
+                  progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
+                  expanded={!collapsed.has(node.task.id)}
+                  onToggleExpand={() => toggleExpanded(node.task.id)}
+                  onToggle={() => toggleComplete(node.task)}
+                  onEdit={() => setEditingTaskId(node.task.id)}
+                  onDelete={() => deleteTask(node.task, node.children)}
+                  onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
+                  {...shared}
+                />
+              );
+            }
+
+            const { node, child } = row.item;
+            return (
+              <TaskItem
+                key={row.key}
+                task={child}
+                isChild
+                visible={!collapsed.has(node.task.id)}
+                onToggle={() => toggleComplete(child)}
+                onEdit={() => setEditingTaskId(child.id)}
+                onDelete={() => deleteTask(child)}
+                onDropOnTask={(targetId) => handleNest(child.id, targetId)}
+                {...shared}
+              />
+            );
+          })}
         </ul>
       )}
 
