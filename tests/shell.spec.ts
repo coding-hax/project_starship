@@ -153,10 +153,9 @@ test('the bottom nav still reserves space for the home indicator (issue #123 AC6
       }
       for (const rule of Array.from(rules)) {
         // Assert against the rule's serialized text, not `rule.style`: lightningcss
-        // lowers the sibling `color-mix()` background into a nested `@supports`, and
-        // per CSS nesting the declarations after it — padding-bottom included — move
-        // into an implicit `&` block, so `rule.style.paddingBottom` reads empty even
-        // though the declaration is still applied to `.nav`.
+        // can move a declaration into an implicit `&` block under nesting, so
+        // `rule.style.paddingBottom` may read empty even though the declaration is
+        // still applied to `.nav`.
         if (
           rule instanceof CSSStyleRule &&
           rule.selectorText === '.nav' &&
