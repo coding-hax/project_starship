@@ -27,6 +27,23 @@ async function waitForOpacity(item: Locator, expected: string) {
 }
 
 /**
+ * A row that has just been seeded plays its own enter animation (issue #430,
+ * `list-enter`: `translateY(8px)` → `none`). `getBoundingClientRect` includes
+ * transforms, so reading a *neighbour's* box while that animation is still in
+ * flight captures an interpolated position, and the comparison after the click
+ * then measures the animation finishing rather than a reflow — a ~3 px phantom
+ * shift, and a flaky one, because it depends on when the read lands.
+ *
+ * Waiting for the row's own animations to finish is the precondition the AC3/AC5
+ * assertions always assumed; the assertions themselves stay exact.
+ */
+async function waitForEnterSettled(item: Locator) {
+  await expect
+    .poll(() => item.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')))
+    .toBe(false);
+}
+
+/**
  * `Locator.boundingBox()` is viewport-relative — on a short viewport, clicking a
  * checkbox near the fold makes the browser scroll it into view, which shifts every
  * element's viewport box by the same amount and would misread scroll as reflow.
@@ -231,6 +248,7 @@ for (const c of CASES) {
       // The neighbour, not the checked item itself — its box legitimately contains
       // the transform under test, so it is not honest evidence against a shift.
       const secondItem = itemsFor(page, c.listName).filter({ hasText: secondName });
+      await waitForEnterSettled(secondItem);
       const boxBefore = await documentBox(secondItem);
 
       const firstCheckbox = page.getByRole('checkbox', { name: c.checkboxLabel(firstName) });
@@ -257,6 +275,7 @@ for (const c of CASES) {
         await c.primeBeforeCheckoff?.(page, firstId, firstName);
 
         const secondItem = itemsFor(page, c.listName).filter({ hasText: secondName });
+        await waitForEnterSettled(secondItem);
         const boxBefore = await documentBox(secondItem);
 
         const firstCheckbox = page.getByRole('checkbox', { name: c.checkboxLabel(firstName) });

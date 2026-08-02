@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SectionCard } from '@/ui/section-card';
 import { Toast } from '@/ui/toast';
+import { useListPresence } from '@/ui/use-list-presence';
 import { addMonths, monthLabel, startOfMonth } from './due-today';
 import { HabitEditor } from './habit-editor';
 import { HabitWeekGrid } from './habit-week-grid';
@@ -25,6 +26,9 @@ interface HabitRowProps {
   onEdit: () => void;
   onToggleArchive: () => void;
   onToggleLog: (habitId: string, logDate: string) => void;
+  entering: boolean;
+  leaving: boolean;
+  onAnimationEnd: () => void;
 }
 
 function HabitRow({
@@ -34,11 +38,20 @@ function HabitRow({
   onEdit,
   onToggleArchive,
   onToggleLog,
+  entering,
+  leaving,
+  onAnimationEnd,
 }: HabitRowProps) {
   const archived = habit.archivedAt !== null;
 
   return (
-    <li className="habit-list__item" data-habit-id={habit.id}>
+    <li
+      className="habit-list__item list-motion-item"
+      data-habit-id={habit.id}
+      data-entering={entering}
+      data-leaving={leaving}
+      onAnimationEnd={onAnimationEnd}
+    >
       <div className="habit-list__row">
         <span
           className="habit-list__color"
@@ -101,8 +114,17 @@ export function HabitList() {
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [viewedMonth, setViewedMonth] = useState<Date>(() => startOfMonth(new Date()));
 
-  const active = habits?.filter((habit) => habit.archivedAt === null) ?? [];
-  const archived = habits?.filter((habit) => habit.archivedAt !== null) ?? [];
+  // `useMemo`'d on `habits` alone (referentially stable across renders that
+  // aren't a real live-query emission, see use-live-table.ts) — `useListPresence`
+  // reads a fresh array/object identity as "changed", so an unmemoized filter()
+  // here would re-diff (and re-render) on every unrelated re-render.
+  const active = useMemo(() => habits?.filter((habit) => habit.archivedAt === null) ?? [], [habits]);
+  const archived = useMemo(
+    () => habits?.filter((habit) => habit.archivedAt !== null) ?? [],
+    [habits],
+  );
+  const activeRows = useListPresence(active, (habit) => habit.id);
+  const archivedRows = useListPresence(archived, (habit) => habit.id);
   const editingHabit = habits?.find((habit) => habit.id === editingHabitId) ?? null;
   const visibleLogs = logs ?? [];
 
@@ -114,36 +136,42 @@ export function HabitList() {
         <>
           <MonthNav viewedMonth={viewedMonth} onChange={setViewedMonth} />
 
-          {active.length === 0 ? (
+          {activeRows.length === 0 ? (
             <p className="habit-list__empty">Keine aktiven Gewohnheiten.</p>
           ) : (
             <ul className="habit-list" aria-label="Gewohnheiten">
-              {active.map((habit) => (
+              {activeRows.map((row) => (
                 <HabitRow
-                  key={habit.id}
-                  habit={habit}
+                  key={row.key}
+                  habit={row.item}
                   logs={visibleLogs}
                   viewedMonth={viewedMonth}
-                  onEdit={() => setEditingHabitId(habit.id)}
-                  onToggleArchive={() => toggleArchive(habit)}
+                  onEdit={() => setEditingHabitId(row.item.id)}
+                  onToggleArchive={() => toggleArchive(row.item)}
                   onToggleLog={toggleLog}
+                  entering={row.status === 'entering'}
+                  leaving={row.status === 'leaving'}
+                  onAnimationEnd={row.onAnimationEnd}
                 />
               ))}
             </ul>
           )}
 
-          {archived.length > 0 && (
+          {archivedRows.length > 0 && (
             <SectionCard title="Archiviert" collapsible defaultOpen={false}>
               <ul className="habit-list" aria-label="Archivierte Gewohnheiten">
-                {archived.map((habit) => (
+                {archivedRows.map((row) => (
                   <HabitRow
-                    key={habit.id}
-                    habit={habit}
+                    key={row.key}
+                    habit={row.item}
                     logs={visibleLogs}
                     viewedMonth={viewedMonth}
-                    onEdit={() => setEditingHabitId(habit.id)}
-                    onToggleArchive={() => toggleArchive(habit)}
+                    onEdit={() => setEditingHabitId(row.item.id)}
+                    onToggleArchive={() => toggleArchive(row.item)}
                     onToggleLog={toggleLog}
+                    entering={row.status === 'entering'}
+                    leaving={row.status === 'leaving'}
+                    onAnimationEnd={row.onAnimationEnd}
                   />
                 ))}
               </ul>
