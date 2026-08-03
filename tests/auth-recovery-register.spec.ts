@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/server';
-import { createRegistrationCredential, registerPasskey, resetDatabase, withDb } from './helpers';
+import {
+  createRegistrationCredential,
+  enableVirtualAuthenticator,
+  registerPasskey,
+  resetDatabase,
+  withDb,
+} from './helpers';
 
 /**
  * Issue #476 (Fund F3, Deep Review 02.08.26). `register/options` used to burn the
@@ -50,14 +56,29 @@ async function logout(page: Page): Promise<void> {
   expect(response.ok()).toBe(true);
 }
 
-/** One existing credential (firstSetup=false) but no active session — the state
- *  an owner who lost their device/session is actually in when they reach for a
- *  recovery code. */
-async function setUpLoggedOutOwner(page: Page): Promise<void> {
+/** Seeds one existing credential (firstSetup=false) via `page` — the ceremony
+ *  helpers below never touch `page` again, since recovery always runs from a
+ *  different device (see `openRecoveryDevice`). */
+async function seedExistingCredential(page: Page): Promise<void> {
   await resetDatabase();
   await registerPasskey(page); // real ceremony; its own recovery code is unused here
   await seedRecoveryCode(RECOVERY_CODE);
-  await logout(page);
+}
+
+/**
+ * A recovery code exists precisely because the *original* device/authenticator
+ * is unavailable — reusing `page`'s authenticator here would make the server
+ * correctly refuse a second resident credential for the same account
+ * (`excludeCredentials` matches it, InvalidStateError). A fresh context with its
+ * own virtual authenticator is what recovery is actually exercising: a new
+ * device, no session cookie, no existing credential of its own.
+ */
+async function openRecoveryDevice(browser: Browser): Promise<Page> {
+  const context = await browser.newContext();
+  const devicePage = await context.newPage();
+  await enableVirtualAuthenticator(devicePage);
+  await devicePage.goto('/anmelden');
+  return devicePage;
 }
 
 async function requestOptions(page: Page, recoveryCode?: string) {
@@ -79,24 +100,27 @@ async function fullRecoveryCeremony(page: Page, recoveryCode: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await setUpLoggedOutOwner(page);
+  await seedExistingCredential(page);
 });
 
 test('AK1: ein options-Aufruf mit gueltigem Recovery-Code laesst usedAt null', async ({
-  page,
+  browser,
 }) => {
-  const optionsRes = await requestOptions(page, RECOVERY_CODE);
+  const devicePage = await openRecoveryDevice(browser);
+
+  const optionsRes = await requestOptions(devicePage, RECOVERY_CODE);
   expect(optionsRes.status()).toBe(200);
 
   expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
 });
 
 test('AK2: nach erfolgreichem verify ist usedAt gesetzt, derselbe Code wird beim naechsten options mit 403 abgewiesen', async ({
-  page,
+  browser,
 }) => {
   const before = await credentialCount();
+  const devicePage = await openRecoveryDevice(browser);
 
-  const { verifyRes, verifyBody } = await fullRecoveryCeremony(page, RECOVERY_CODE);
+  const { verifyRes, verifyBody } = await fullRecoveryCeremony(devicePage, RECOVERY_CODE);
   expect(verifyRes.status()).toBe(200);
   expect(verifyBody.verified).toBe(true);
   expect(await credentialCount()).toBe(before + 1);
@@ -105,23 +129,24 @@ test('AK2: nach erfolgreichem verify ist usedAt gesetzt, derselbe Code wird beim
   // A successful verify signs the caller in (createSession) — log out again so the
   // next options call is rejected for the code, not merely allowed because the
   // caller now happens to be authenticated.
-  await logout(page);
-  const secondOptionsRes = await requestOptions(page, RECOVERY_CODE);
+  await logout(devicePage);
+  const secondOptionsRes = await requestOptions(devicePage, RECOVERY_CODE);
   expect(secondOptionsRes.status()).toBe(403);
 });
 
 test('AK3: eine abgebrochene Zeremonie laesst den Code gueltig, ein zweiter Anlauf erzeugt den Passkey', async ({
-  page,
+  browser,
 }) => {
   const before = await credentialCount();
+  const devicePage = await openRecoveryDevice(browser);
 
   // Abgebrochen: eine options-Runde, aber kein verify danach.
-  const optionsRes = await requestOptions(page, RECOVERY_CODE);
+  const optionsRes = await requestOptions(devicePage, RECOVERY_CODE);
   expect(optionsRes.status()).toBe(200);
   expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
 
   // Zweiter Anlauf mit demselben, noch gueltigen Code fuehrt zum Passkey.
-  const { verifyRes } = await fullRecoveryCeremony(page, RECOVERY_CODE);
+  const { verifyRes } = await fullRecoveryCeremony(devicePage, RECOVERY_CODE);
   expect(verifyRes.status()).toBe(200);
   expect(await credentialCount()).toBe(before + 1);
   expect(await recoveryCodeUsedAt(RECOVERY_CODE)).not.toBeNull();
