@@ -787,3 +787,87 @@ test('AC9: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich 
   const darkBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).not.toBe(lightBg);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #480 (Fund F7): AES-GCM ohne AAD — Chiffrate binden seither id +      */
+/* entryDate als Additional Authenticated Data. Bestehende (v1) Chiffrate ohne */
+/* AAD bleiben ueber die Nonce-Laenge (12 vs. 13 Byte) weiterhin lesbar — das  */
+/* deckt der feste Testvektor in src/crypto/journal.test.ts (AC5 dort) ab.    */
+/* -------------------------------------------------------------------------- */
+
+test('AC1/AC4 (#480): ein echter appendJournalEntry erzeugt eine 13-Byte-Nonce mit v2-Versionsmarke', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.evaluate((passphrase) => window.__starship.journalSetup(passphrase), '480 nonce passphrase');
+
+  const entryDate = '2026-08-03';
+  await page.evaluate(
+    ({ entryDate }) => window.__starship.appendJournalEntry(entryDate, { text: 'v2-Eintrag', tags: [] }),
+    { entryDate },
+  );
+
+  const records = await page.evaluate(() => window.__starship.debugRecords());
+  const row = records.find((r) => r.table === 'journal_entries' && r.data.entryDate === entryDate);
+  expect(row).toBeDefined();
+
+  const nonceLength = await page.evaluate(
+    (nonceB64) => Uint8Array.from(atob(nonceB64), (c) => c.charCodeAt(0)).length,
+    row!.data.nonce as string,
+  );
+  expect(nonceLength).toBe(13);
+});
+
+test('AC2 (#480): ein serverseitig zwischen zwei Zeilen vertauschtes Chiffrat ist unter der fremden Zeile nicht mehr entschluesselbar', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  const passphrase = '480 swap passphrase';
+  await page.evaluate((passphrase) => window.__starship.journalSetup(passphrase), passphrase);
+
+  const dateA = '2026-05-03';
+  const dateB = '2026-07-12';
+  await page.evaluate(
+    async ({ dateA, dateB }) => {
+      await window.__starship.appendJournalEntry(dateA, { text: 'Eintrag vom dritten Mai', tags: [] });
+      await window.__starship.appendJournalEntry(dateB, { text: 'Eintrag vom zwoelften Juli', tags: [] });
+    },
+    { dateA, dateB },
+  );
+
+  // Both rows must actually be synced (real `syncSeq`, empty outbox) before the
+  // swap below — otherwise the page.goto()'s own SyncBoot-triggered sync() would
+  // push these rows' still-queued ORIGINAL payload and pull it straight back,
+  // silently undoing the local patch before the assertions ever run (the swap
+  // below only ever touches `data`, never the outbox or `syncSeq`, so a later
+  // pull only skips overwriting it once the row is already known-synced).
+  await page.evaluate(() => window.__starship.sync());
+
+  const records = await page.evaluate(() => window.__starship.debugRecords());
+  const rowA = records.find((r) => r.table === 'journal_entries' && r.data.entryDate === dateA)!;
+  const rowB = records.find((r) => r.table === 'journal_entries' && r.data.entryDate === dateB)!;
+
+  // Simuliert einen serverseitigen Zeilentausch (F7): Zeile B traegt jetzt das
+  // Chiffrat/die Nonce von Zeile A, ihr eigenes `id`/`entryDate` bleibt gleich.
+  await page.evaluate(
+    ({ id, ciphertext, nonce }) =>
+      window.__starship.debugPatchRecord('journal_entries', id, { ciphertext, nonce }),
+    { id: rowB.id, ciphertext: rowA.data.ciphertext, nonce: rowA.data.nonce },
+  );
+
+  // journalLockState() only ever leaves 'loading' once JournalGate's
+  // useJournalLock() effect has mounted and run initialize() — a bare reload on
+  // /uebersicht never mounts it, so the poll below would hang forever. /journal
+  // is the one route that does.
+  await page.goto('/journal');
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
+  await page.evaluate((passphrase) => window.__starship.journalUnlock(passphrase), passphrase);
+  await expect.poll(() => page.evaluate(() => window.__starship.journalLockState())).toBe('unlocked');
+
+  const entriesA = await page.evaluate((dateA) => window.__starship.listJournalEntries(dateA), dateA);
+  const entriesB = await page.evaluate((dateB) => window.__starship.listJournalEntries(dateB), dateB);
+
+  expect(entriesA).toHaveLength(1);
+  expect(entriesA[0]!.content.text).toBe('Eintrag vom dritten Mai');
+  expect(entriesB).toHaveLength(0);
+});

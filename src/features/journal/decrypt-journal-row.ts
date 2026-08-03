@@ -1,5 +1,5 @@
 import { base64ToBytes } from '@/crypto/base64';
-import { decryptJournal, type JournalContent } from '@/crypto/journal';
+import { decryptJournal, journalEntryAad, type JournalContent } from '@/crypto/journal';
 import type { LocalRecord } from '@/local/dexie';
 
 function isPresent<E>(entry: E | null): entry is E {
@@ -24,7 +24,8 @@ export async function decryptJournalRows<T>(
       try {
         const ciphertext = base64ToBytes(row.data.ciphertext as string);
         const nonce = base64ToBytes(row.data.nonce as string);
-        const content = await decryptJournal(dek, ciphertext, nonce);
+        const aad = journalEntryAad(row.id, row.data.entryDate as string);
+        const content = await decryptJournal(dek, ciphertext, nonce, aad);
         return toEntry(row, content);
       } catch (error) {
         console.warn('journal entry undecryptable, skipping', row.id, error);

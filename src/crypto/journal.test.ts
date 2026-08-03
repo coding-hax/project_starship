@@ -7,6 +7,7 @@ import {
   decryptJournal,
   encryptJournal,
   generateRecoveryKey,
+  journalEntryAad,
   normalizeRecoveryKey,
   openEnvelopeWithRecovery,
   rewrapPassphrase,
@@ -184,6 +185,68 @@ describe('encryptJournal / decryptJournal', () => {
     const decrypted = await decryptJournal(dek, ciphertext, nonce);
 
     expect(decrypted).toEqual(content);
+  });
+});
+
+describe('encryptJournal / decryptJournal — AAD (issue #480, F7)', () => {
+  it('AC1: encrypting with an AAD produces a 13-byte nonce carrying the v2 version marker', async () => {
+    const { dek } = await makeEnvelopeAndDek();
+    const content: JournalContent = { text: 'AAD-gebunden', tags: [] };
+
+    const { nonce } = await encryptJournal(dek, content, journalEntryAad('row-id', '2026-08-03'));
+
+    expect(nonce.length).toBe(13);
+    expect(nonce[0]).toBe(0x02);
+  });
+
+  it('AC1/AC4: a v2 ciphertext round-trips when decrypted with the same id/entryDate AAD', async () => {
+    const { dek } = await makeEnvelopeAndDek();
+    const content: JournalContent = { text: 'roundtrip mit AAD', mood: 'gut', tags: ['x'] };
+    const aad = journalEntryAad('row-id', '2026-08-03');
+
+    const { ciphertext, nonce } = await encryptJournal(dek, content, aad);
+
+    await expect(decryptJournal(dek, ciphertext, nonce, aad)).resolves.toEqual(content);
+  });
+
+  it('AC2: a v2 ciphertext bound to one id/entryDate fails to decrypt under a foreign one (swapped row)', async () => {
+    const { dek } = await makeEnvelopeAndDek();
+    const content: JournalContent = { text: 'gehoert zu Zeile A', tags: [] };
+    const { ciphertext, nonce } = await encryptJournal(
+      dek,
+      content,
+      journalEntryAad('row-a', '2026-08-03'),
+    );
+
+    await expect(
+      decryptJournal(dek, ciphertext, nonce, journalEntryAad('row-b', '2026-07-12')),
+    ).rejects.toBeInstanceOf(JournalDecryptError);
+  });
+
+  it('AC4: a v1 nonce (12 bytes, no AAD) keeps decrypting via the AAD-free branch even when an AAD is passed in', async () => {
+    const { dek } = await makeEnvelopeAndDek();
+    const content: JournalContent = { text: 'alter Bestand ohne AAD', tags: [] };
+
+    const { ciphertext, nonce } = await encryptJournal(dek, content);
+    expect(nonce.length).toBe(12);
+
+    await expect(
+      decryptJournal(dek, ciphertext, nonce, journalEntryAad('irrelevant', '2026-01-01')),
+    ).resolves.toEqual(content);
+  });
+
+  it('AC4: a corrupted version marker on a 13-byte nonce is rejected instead of silently treated as v1', async () => {
+    const { dek } = await makeEnvelopeAndDek();
+    const content: JournalContent = { text: 'x', tags: [] };
+    const aad = journalEntryAad('row-id', '2026-08-03');
+    const { ciphertext, nonce } = await encryptJournal(dek, content, aad);
+
+    const badMarker = new Uint8Array(nonce);
+    badMarker[0] = 0x09;
+
+    await expect(decryptJournal(dek, ciphertext, badMarker, aad)).rejects.toBeInstanceOf(
+      JournalDecryptError,
+    );
   });
 });
 
