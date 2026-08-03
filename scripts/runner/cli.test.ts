@@ -35,6 +35,14 @@ function fakeContext(): RunnerContext {
       write: vi.fn(),
       readAll: vi.fn().mockReturnValue([]),
     },
+    lead: {
+      read: vi.fn().mockReturnValue(null),
+      tryAcquire: vi.fn().mockReturnValue(true),
+      tryReap: vi.fn().mockReturnValue(false),
+      renew: vi.fn(),
+      holds: vi.fn().mockReturnValue(false),
+      release: vi.fn(),
+    },
     slotId: '1',
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
   };
@@ -138,7 +146,11 @@ describe('dispatch', () => {
       'round-recover',
       'round-eval',
       // #204 (E5): aggregierter Status bei mehreren Slots.
+      // #488 (F14): 'fleet-verify-lead' prueft die Fuehrung per Lease zum
+      // Zeitpunkt eines globalen Seiteneffekts, statt IS_LEAD 45 Min. lang
+      // aus dem Rundenbeginn mitzuschleppen.
       'fleet-effective-lead',
+      'fleet-verify-lead',
       'fleet-write-state',
       'fleet-status',
     ]);
@@ -276,6 +288,53 @@ describe('dispatch', () => {
 
         stdout.mockRestore();
       });
+    });
+  });
+
+  // #488 (F14): 'fleet-effective-lead' bleibt vertraglich unveraendert
+  // (Rueckgabe = entitled), versucht aber per Seiteneffekt die Lease zu
+  // uebernehmen. 'fleet-verify-lead' prueft die Fuehrung frisch zum
+  // Zeitpunkt eines globalen Seiteneffekts (AK3) statt eines bei
+  // Rundenbeginn festgehaltenen IS_LEAD.
+  describe('fleet-effective-lead / fleet-verify-lead dispatch (#488)', () => {
+    it('fleet-effective-lead versucht die Lease zu uebernehmen, gibt aber weiter `entitled` zurueck', () => {
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const ctx = fakeContext();
+
+      const rc = dispatch(ctx, ['fleet-effective-lead', '1', '1']);
+
+      expect(rc).toBe(0);
+      expect(stdout).toHaveBeenCalledWith('1\n');
+      expect(ctx.lead.tryAcquire).toHaveBeenCalledWith('1', expect.any(Number), expect.any(Number));
+
+      stdout.mockRestore();
+    });
+
+    it('fleet-verify-lead: Exit 0 + renew, wenn dieser Slot die Lease haelt', () => {
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const ctx = fakeContext();
+      (ctx.lead.holds as ReturnType<typeof vi.fn>).mockReturnValue(true);
+
+      const rc = dispatch(ctx, ['fleet-verify-lead']);
+
+      expect(rc).toBe(0);
+      expect(ctx.lead.renew).toHaveBeenCalledWith('1', expect.any(Number), expect.any(Number));
+
+      stdout.mockRestore();
+    });
+
+    it('fleet-verify-lead: Exit 1 ohne stdout, wenn dieser Slot die Lease NICHT haelt', () => {
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const ctx = fakeContext();
+      (ctx.lead.holds as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+      const rc = dispatch(ctx, ['fleet-verify-lead']);
+
+      expect(rc).toBe(1);
+      expect(stdout).not.toHaveBeenCalled();
+      expect(ctx.lead.renew).not.toHaveBeenCalled();
+
+      stdout.mockRestore();
     });
   });
 
