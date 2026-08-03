@@ -7,6 +7,58 @@ import { selectSince } from '@/local/conflict';
 import { SYNC_TABLES, type ChangeRow, type PullResponse } from '@/local/types';
 
 /**
+ * One query per table (below), so every read but the first must see a snapshot
+ * from before any of them started — otherwise a push that commits between two of
+ * these reads leaves a gap: a row from the earlier table never appears in this or
+ * any future pull, because the cursor already moved past its `sync_seq` (fund
+ * F1 / #472). `readChangesSince` is factored out so a test can run it against a
+ * plain (autocommit) executor and reproduce the gap, then against a `tx` and show
+ * it is gone.
+ */
+export async function readChangesSince(
+  executor: Pick<typeof db, 'select'>,
+  since: number,
+): Promise<ChangeRow[]> {
+  const changes: ChangeRow[] = [];
+
+  for (const name of SYNC_TABLES) {
+    const entry = SYNC_REGISTRY[name] as {
+      table: typeof SYNC_REGISTRY.tasks.table;
+      writable: readonly string[];
+      readable?: readonly string[];
+    };
+    const table = entry.table;
+    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
+    // projects its own `readable` list instead.
+    const projection = entry.readable ?? entry.writable;
+
+    const rows = await executor
+      .select()
+      .from(table)
+      .where(gt(table.syncSeq, since))
+      .orderBy(asc(table.syncSeq));
+
+    for (const row of rows) {
+      const data: Record<string, unknown> = {};
+      for (const field of projection) {
+        data[field] = (row as Record<string, unknown>)[field];
+      }
+
+      changes.push({
+        table: name,
+        id: row.id,
+        updatedAt: row.updatedAt.toISOString(),
+        deletedAt: row.deletedAt?.toISOString() ?? null,
+        syncSeq: row.syncSeq,
+        data,
+      });
+    }
+  }
+
+  return changes;
+}
+
+/**
  * Everything that arrived after `since`, oldest arrival first.
  *
  * Soft-deleted rows are included on purpose: the client needs the tombstone, or a
@@ -32,41 +84,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const changes: ChangeRow[] = [];
-
-  for (const name of SYNC_TABLES) {
-    const entry = SYNC_REGISTRY[name] as {
-      table: typeof SYNC_REGISTRY.tasks.table;
-      writable: readonly string[];
-      readable?: readonly string[];
-    };
-    const table = entry.table;
-    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
-    // projects its own `readable` list instead.
-    const projection = entry.readable ?? entry.writable;
-
-    const rows = await db
-      .select()
-      .from(table)
-      .where(gt(table.syncSeq, since))
-      .orderBy(asc(table.syncSeq));
-
-    for (const row of rows) {
-      const data: Record<string, unknown> = {};
-      for (const field of projection) {
-        data[field] = (row as Record<string, unknown>)[field];
-      }
-
-      changes.push({
-        table: name,
-        id: row.id,
-        updatedAt: row.updatedAt.toISOString(),
-        deletedAt: row.deletedAt?.toISOString() ?? null,
-        syncSeq: row.syncSeq,
-        data,
-      });
-    }
-  }
+  const changes = await db.transaction((tx) => readChangesSince(tx, since), {
+    isolationLevel: 'repeatable read',
+    accessMode: 'read only',
+  });
 
   changes.sort((a, b) => a.syncSeq - b.syncSeq);
 
