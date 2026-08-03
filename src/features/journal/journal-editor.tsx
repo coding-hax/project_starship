@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { JournalContent } from '@/crypto/journal';
-import type { JournalConflict } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
 import { MoodScale } from '@/ui/mood-scale';
 import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
-import { decryptJournalConflict, restoreJournalConflict } from './conflicts';
 import {
   appendJournalEntry,
   deleteJournalEntry,
@@ -17,7 +14,6 @@ import {
 } from './entry';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
-import { useJournalConflicts } from './use-journal-conflicts';
 import { useJournalEntries } from './use-journal-entries';
 
 function parseTags(raw: string): string[] {
@@ -72,7 +68,6 @@ export function JournalEditor() {
   const [undo, setUndo] = useState<UndoState | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const entries = useJournalEntries(entryDate);
-  const conflicts = useJournalConflicts(entryDate);
   const entryRows = useListPresence(entries ?? [], (entry) => entry.id);
 
   // AC2: staying open across midnight rolls the visible day forward on its
@@ -171,9 +166,6 @@ export function JournalEditor() {
                 </button>
               )}
             </form>
-            {conflicts?.map((conflict) => (
-              <JournalConflictBanner key={conflict.id} conflict={conflict} onRestore={restoreJournalConflict} />
-            ))}
             {entryRows.length > 0 && (
               <ul className="journal-editor__entries">
                 {entryRows.map((row) => (
@@ -246,40 +238,5 @@ function JournalEntryRow({
         <p className="journal-editor__entry-tags">{entry.content.tags!.join(', ')}</p>
       )}
     </li>
-  );
-}
-
-/** A displaced version of an entry for this day (ADR-0017 point 3) — shown,
- * never silently dropped (AC8). Decrypts only its own copy. Restoring appends
- * it as a new entry (conflicts.ts) — there is no single "current entry" per
- * day to overwrite anymore. */
-function JournalConflictBanner({
-  conflict,
-  onRestore,
-}: {
-  conflict: JournalConflict;
-  onRestore: (conflict: JournalConflict) => Promise<void>;
-}) {
-  const [content, setContent] = useState<JournalContent | null>(null);
-
-  useEffect(() => {
-    void decryptJournalConflict(conflict).then(setContent);
-  }, [conflict]);
-
-  if (!content) return null;
-
-  return (
-    <div className="journal-editor__conflict" role="status">
-      <p className="journal-editor__conflict-hint">
-        Ein anderer Eintrag für diesen Tag wurde überschrieben: „{content.text || '(kein Text)'}“
-      </p>
-      <button
-        type="button"
-        className="journal-editor__conflict-restore"
-        onClick={() => onRestore(conflict)}
-      >
-        Wiederherstellen
-      </button>
-    </div>
   );
 }

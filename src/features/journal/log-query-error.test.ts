@@ -5,11 +5,11 @@ import { logJournalQueryError } from './log-query-error';
 // The hooks named in issue #393 — every one of their liveQuery/catch error
 // branches must route through `logJournalQueryError` instead of handing the
 // raw Dexie error to console.* (`use-journal-today.ts` dropped from this list
-// in issue #506, its own file deleted along with it).
+// in issue #506, `use-journal-conflicts.ts` in #477 — both files deleted
+// along with the entry).
 const HOOK_FILES = [
   new URL('./use-journal-entries.ts', import.meta.url),
   new URL('./use-journal-search-entries.ts', import.meta.url),
-  new URL('./use-journal-conflicts.ts', import.meta.url),
 ];
 
 describe('logJournalQueryError', () => {

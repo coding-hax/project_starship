@@ -8,7 +8,7 @@ import type { JournalSearchEntry } from './search';
 /**
  * The session cache search reads from (AC2, owner decision "3a" in #301):
  * re-decrypts every `journal_entries` row whenever the table changes — same
- * `liveQuery` pattern as use-journal-conflicts.ts — so an entry saved moments
+ * `liveQuery` pattern as use-journal-entries.ts — so an entry saved moments
  * ago is searchable right away, not just after a reload. Nothing here ever
  * reaches IndexedDB; only this hook's React state holds the plaintext, gone
  * the moment the component is. `undefined` while locked or before the first
