@@ -107,3 +107,9 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+
+/* Spacing between active/empty habits section and archived section — issue #486 */
+.habit-list + .section-card,
+.habit-list__empty + .section-card {
+  margin-top: var(--space-6);
+}
