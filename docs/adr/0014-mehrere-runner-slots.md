@@ -22,7 +22,8 @@ und die Test-Infrastruktur (eine DB, feste Ports, ein Lock unter
 ## Entscheidung
 
 **Ein Slot = eine launchd-/systemd-Instanz + ein eigener vollständiger Clone +
-ein eigenes `.runner/`.** `SLOT_ID` (1…`SLOT_COUNT`) ist die einzige
+ein eigenes `.runner/`** (Ausnahme: die ticketbezogenen Zähler darin sind
+geteilt, siehe „Ticket-Zähler sind geteilt" unten, #484). `SLOT_ID` (1…`SLOT_COUNT`) ist die einzige
 slotspezifische Variable — Ports und der Zustandsordner leiten sich
 rechnerisch daraus ab. `SLOT_ID=1` (bzw. `SLOT_COUNT=1`) verhält sich exakt
 wie vor diesem Ticket (AK9) — das ist der Rückweg für den Vollausbau:
@@ -151,6 +152,34 @@ Das Kontingent ist EINS, nicht pro Slot. `limit-until` wandert von
 zweiten State-Adapter (`ctx.sharedState`, einzige Schreibstelle: der
 429-Zweig in `roundEval()`), gelesen vom Bash-Limit-Gate aus derselben
 `SHARED_DIR`-Datei.
+
+### Ticket-Zähler sind geteilt
+
+_Nachtrag #484 (Fund F12 im Deep Review 02.08.26)._ Claims liegen seit diesem
+ADR slotübergreifend in `SHARED_DIR` — die ticketbezogenen **Zähler** dazu
+lagen bis #484 trotzdem in `STATE_DIR` (also je Arbeitsbaum): `tier-<nr>`,
+`failcount-<nr>`, `opus-build-<datum>-<nr>`, `opus-cap-msg-<datum>-<nr>`,
+`resume-count-<nr>`, dazu `blocker-sig-<nr>` und `branch-head-<nr>` (untrennbar
+an `failcount` gekoppelt, siehe `escalation.ts`). Wanderte ein Ticket den Slot
+— nach einem Sweep (F10), von Hand umgelabelt, nach einem Absturz —, fing der
+neue Slot bei null an: der Opus-Bau-Deckel (ADR-0007, zwei Läufe/Tag) griff
+dann pro Slot statt flottenweit, bei drei Slots also bis zu sechs statt zwei;
+die Drei-Fehlversuche-Eskalation zählte neu und feuerte entsprechend später.
+
+Seit #484 liegen alle genannten Präfixe wie `limit-until` in `SHARED_DIR`,
+über denselben zweiten Adapter (`ctx.sharedState`) — `tierCurrent`/`tierBump`/
+`tierReset`, `opusBuildCapReached`/`opusBuildCapReserve` und
+`buildEscalationEval` bekommen ihn an den Aufrufkanten in `round.ts`/`cli.ts`
+gereicht, die Funktionen selbst bleiben generisch über `StateAdapter`.
+`cleanupSharedTicketState()` (`cleanup.ts`) räumt dieselben Präfixe unter
+`SHARED_DIR` über die bestehende 7-Tage-Regel auf — sonst hätten sie sich dort
+für immer angesammelt (Regression von #64).
+
+Bewusst **weiterhin slot-lokal** in `STATE_DIR`: `session-<nr>`/
+`session-think-<nr>` (Sitzung, siehe „Sessions bleiben getrennt" oben),
+`transient-<nr>` (Infra-Hänger innerhalb eines Laufs, zählt nicht als
+Eskalations-Fehlversuch, ADR-0007) und `catchup-fail-<nr>`/`pending-<nr>`
+(CI-/Nachzieh-Wache, Leitslot-Phase — ein anderer Zweck als der Opus-Deckel).
 
 ### Tests: Ports und Lock aus `SLOT_ID`
 
