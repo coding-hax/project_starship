@@ -332,6 +332,7 @@ declare global {
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugPatchRecord: (table: string, id: string, patch: Record<string, unknown>) => Promise<number>;
       debugRecords: () => Promise<
         Array<{
           table: string;
