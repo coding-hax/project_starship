@@ -571,3 +571,70 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
   // so compare the parsed value rather than the exact string.
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK: Abstand zwischen aktiver Liste und Archiv-Block (issue #486)          */
+/* -------------------------------------------------------------------------- */
+
+test('der Abstand zwischen letzter aktiver Gewohnheit und Archiv-Block ist größer als der Abstand zwischen zwei Gewohnheitskarten', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedHabit(page, { name: 'Aktiv 1', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, {
+    name: 'Archiviert 1',
+    schedule: 'daily',
+    color: null,
+    archivedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  const listItems = habitItems(page);
+  const lastActiveItem = listItems.last();
+  const archivedSection = page.locator('.section-card');
+
+  const lastActiveRect = await lastActiveItem.boundingBox();
+  const archivedRect = await archivedSection.boundingBox();
+
+  if (lastActiveRect && archivedRect) {
+    const spacingBetween = archivedRect.y - (lastActiveRect.y + lastActiveRect.height);
+    // --space-6 = 24px
+    expect(spacingBetween).toBeGreaterThanOrEqual(24);
+  }
+});
+
+test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Gewohnheiten', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedHabit(page, {
+    name: 'Nur archiviert',
+    schedule: 'daily',
+    color: null,
+    archivedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  const emptyMessage = page.getByText('Keine aktiven Gewohnheiten.');
+  const archivedSection = page.locator('.section-card');
+
+  const emptyRect = await emptyMessage.boundingBox();
+  const archivedRect = await archivedSection.boundingBox();
+
+  if (emptyRect && archivedRect) {
+    const spacingBetween = archivedRect.y - (emptyRect.y + emptyRect.height);
+    // --space-6 = 24px
+    expect(spacingBetween).toBeGreaterThanOrEqual(24);
+  }
+});
+
+test('bei fehlenden archivierten Gewohnheiten entsteht kein zusätzlicher Leerraum', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedHabit(page, { name: 'Nur aktiv', schedule: 'daily', color: null, archivedAt: null });
+
+  const listItems = habitItems(page);
+  await expect(listItems).toHaveCount(1);
+
+  const archivedSection = page.locator('.section-card');
+  await expect(archivedSection).toBeHidden();
+});
