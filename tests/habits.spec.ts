@@ -636,5 +636,5 @@ test('bei fehlenden archivierten Gewohnheiten entsteht kein zusätzlicher Leerra
   await expect(listItems).toHaveCount(1);
 
   const archivedButton = page.getByRole('button', { name: 'Archiviert' });
-  await expect(archivedButton).not.toBeVisible();
+  await expect(archivedButton).toHaveCount(0);
 });
