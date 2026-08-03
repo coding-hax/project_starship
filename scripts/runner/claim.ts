@@ -102,11 +102,18 @@ export function createClaimAdapter(baseDir: string): ClaimAdapter {
   };
 }
 
-// Korrektur 6: ein Claim unter 10 Minuten wird vom Sweep NIE angefasst.
-// Zwischen `claimTake()` und dem Setzen von `in-progress` liegen mehrere
-// `gh`-Aufrufe -- tickt der Leitslot in genau diesem Fenster, saehe er einen
-// Claim ohne 'in-progress' und raeumte ihn faelschlich weg.
-const SWEEP_GRACE_MS = 10 * 60 * 1000;
+// Die Notbremse killt jeden Lauf spaetestens nach MAX_RUNTIME
+// (scripts/claude-runner.sh, Default 2700 s = 45 min). Die Schonfrist liegt
+// bewusst DARUEBER (abgeleitet, nicht frei gewaehlt), damit ein noch laufender
+// Bau prinzipiell nie in den Sweep geraet -- auch am oberen Ende seiner
+// Laufzeit, wenn er sein 'in-progress' noch nicht gesetzt hat (#482).
+const MAX_RUNTIME_MS = 45 * 60 * 1000;
+export const SWEEP_GRACE_MS = MAX_RUNTIME_MS + 5 * 60 * 1000; // 50 min
+
+// `.tmp-*`-Reste eines abgebrochenen `claimAtomic` sind eine andere Concern
+// als die Schonfrist fuer laufende Builds -- eigene Konstante, damit das
+// Anheben von SWEEP_GRACE_MS (#482) das bisherige Raeum-Timing nicht anfasst.
+const TMP_STALE_MS = 10 * 60 * 1000;
 
 /**
  * Beansprucht `issue` fuer `slotId`. true = das Ticket gehoert jetzt diesem
@@ -184,10 +191,12 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
     const labels = spaceIdx === -1 ? [] : out.slice(spaceIdx + 1).split(',');
     return state === 'OPEN' && labels.some((label) => ACTIVE_ROLE_LABELS.includes(label));
   } catch {
-    // gh scheitert (Netz, geloeschtes Ticket) -- best effort wie ueberall
-    // sonst im Runner: lieber ein zu frueh freigegebener Claim (der naechste
-    // Take gewinnt ihn zurueck) als ein haengender Sweep.
-    return false;
+    // gh scheitert (Netz, Rate-Limit, geloeschtes Ticket): NICHT freigeben (#482).
+    // Ein Fehlschlag ist kein Beweis, dass das Ticket erledigt ist -- ein noch
+    // laufender Besitzer hat seinen Claim schon und nimmt ihn nicht erneut, ein
+    // anderer Slot wuerde ihn stattdessen fortsetzen (round.ts). Nur ein positiv
+    // bestaetigtes "geschlossen oder ohne Rollen-Label" (der try-Pfad) gibt frei.
+    return true;
   }
 }
 
@@ -198,7 +207,7 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
  * Stromausfall, ohne dass ein Mensch eingreifen muss.
  */
 export function claimSweep(claims: ClaimAdapter, gh: GhAdapter, now: number): void {
-  claims.sweepTmp(SWEEP_GRACE_MS, now);
+  claims.sweepTmp(TMP_STALE_MS, now);
   for (const issue of claims.list()) {
     const age = claims.ageMs(issue, now);
     if (age === null || age < SWEEP_GRACE_MS) continue;

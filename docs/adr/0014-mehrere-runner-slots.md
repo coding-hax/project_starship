@@ -70,9 +70,13 @@ Umgesetzt in `scripts/runner/claim.ts`. Eine leere/fehlende `slot`-Datei gilt
 als **frei**, nicht als fremd — sonst blockiert ein zwischen `mkdir` und dem
 Schreiben abgebrochener Claim das Ticket für immer, ohne dass irgendwo etwas
 rot wird. `claimSweep()` (nur Leitslot) räumt verwaiste Claims weg, überspringt
-aber Claims unter 10 Minuten Alter (Schonfrist) — zwischen `claimTake()` und
-dem Setzen von `in-progress` liegen mehrere `gh`-Aufrufe, und der Sweep darf
-einen frischen Claim in genau diesem Fenster nicht wegräumen.
+aber Claims unter der Schonfrist (`SWEEP_GRACE_MS`, abgeleitet von und bewusst
+**über** der maximalen Laufzeit `MAX_RUNTIME_MS`, 50 statt 45 min) — so gerät
+ein noch laufender Bau strukturell nie in den Sweep, selbst am oberen Ende
+seiner Laufzeit. Freigegeben wird ein Claim außerdem nur bei einem **positiv
+bestätigten** „geschlossen oder ohne Rollen-Label"; scheitert `gh` (Netz,
+Rate-Limit), bleibt der Claim bestehen statt freigegeben zu werden — ein
+Fehlschlag ist kein Beweis, dass das Ticket erledigt ist (#482).
 
 **Ein Filter statt sechs Umbauten.** Die Ticketauswahl trifft in
 `scripts/runner/select.ts` an sechs Stellen eine Entscheidung (laufendes
