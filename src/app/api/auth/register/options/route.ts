@@ -4,9 +4,9 @@ import { getSession } from '@/auth/session';
 import {
   hasAnyCredential,
   listCredentials,
-  redeemRecoveryCode,
   relyingParty,
   storeChallenge,
+  verifyRecoveryCode,
 } from '@/auth/webauthn';
 
 /**
@@ -22,10 +22,11 @@ export async function POST(request: Request) {
 
   const firstSetup = !(await hasAnyCredential());
   const authenticated = (await getSession()) !== null;
-  const recovered =
+  const recoveryCodeId =
     typeof recoveryCode === 'string' && recoveryCode.length > 0
-      ? await redeemRecoveryCode(recoveryCode)
-      : false;
+      ? await verifyRecoveryCode(recoveryCode)
+      : null;
+  const recovered = recoveryCodeId !== null;
 
   if (!firstSetup && !authenticated && !recovered) {
     return NextResponse.json({ error: 'Registrierung nicht erlaubt.' }, { status: 403 });
@@ -50,6 +51,6 @@ export async function POST(request: Request) {
     },
   });
 
-  await storeChallenge(options.challenge, 'registration');
+  await storeChallenge(options.challenge, 'registration', recoveryCodeId);
   return NextResponse.json(options);
 }
