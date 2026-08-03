@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/db';
 import { habitLogs, habits, tasks } from '@/db/schema';
-import { readChangesSince } from './route';
+import { readChangesSince } from './read-changes-since';
 
 vi.mock('@/auth/session', () => ({
   requireOwner: vi.fn().mockResolvedValue('owner-id'),
