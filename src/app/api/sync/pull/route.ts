@@ -1,10 +1,9 @@
-import { asc, gt } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
-import { SYNC_REGISTRY } from '@/db/sync-tables';
 import { selectSince } from '@/local/conflict';
-import { SYNC_TABLES, type ChangeRow, type PullResponse } from '@/local/types';
+import type { PullResponse } from '@/local/types';
+import { readChangesSince } from './read-changes-since';
 
 /**
  * Everything that arrived after `since`, oldest arrival first.
@@ -32,41 +31,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const changes: ChangeRow[] = [];
-
-  for (const name of SYNC_TABLES) {
-    const entry = SYNC_REGISTRY[name] as {
-      table: typeof SYNC_REGISTRY.tasks.table;
-      writable: readonly string[];
-      readable?: readonly string[];
-    };
-    const table = entry.table;
-    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
-    // projects its own `readable` list instead.
-    const projection = entry.readable ?? entry.writable;
-
-    const rows = await db
-      .select()
-      .from(table)
-      .where(gt(table.syncSeq, since))
-      .orderBy(asc(table.syncSeq));
-
-    for (const row of rows) {
-      const data: Record<string, unknown> = {};
-      for (const field of projection) {
-        data[field] = (row as Record<string, unknown>)[field];
-      }
-
-      changes.push({
-        table: name,
-        id: row.id,
-        updatedAt: row.updatedAt.toISOString(),
-        deletedAt: row.deletedAt?.toISOString() ?? null,
-        syncSeq: row.syncSeq,
-        data,
-      });
-    }
-  }
+  const changes = await db.transaction((tx) => readChangesSince(tx, since), {
+    isolationLevel: 'repeatable read',
+    accessMode: 'read only',
+  });
 
   changes.sort((a, b) => a.syncSeq - b.syncSeq);
 

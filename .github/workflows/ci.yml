@@ -242,6 +242,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
+      - run: pnpm test:db
       - run: pnpm exec playwright test --project=offline-mobile --project=offline-desktop
         env:
           E2E_SCOPE: offline
