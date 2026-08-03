@@ -162,8 +162,12 @@ export interface PushConflict {
 
 export interface PushRejection {
   mutationId: string;
-  /** Why this mutation was dropped. Retrying will not help either way — this is a bug. */
-  reason?: 'missing-required' | 'malformed' | 'read-only';
+  /**
+   * Why this mutation was dropped. Retrying will not help either way — this is a bug.
+   * `constraint` = rejected by the database itself (unique/FK/…), unhealable like
+   * `malformed`, always with an empty `missing`.
+   */
+  reason?: 'missing-required' | 'malformed' | 'read-only' | 'constraint';
   /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }

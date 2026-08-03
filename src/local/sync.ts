@@ -95,8 +95,9 @@ export async function push(): Promise<void> {
   }
 
   if (result.rejected.length > 0) {
-    // Malformed. Retrying would wedge the queue behind a mutation that can never land.
-    console.error('[sync] malformed mutations dropped', result.rejected);
+    // Unhealable (malformed, read-only, or a DB constraint). Retrying would wedge
+    // the queue behind a mutation that can never land.
+    console.error('[sync] rejected mutations dropped', result.rejected);
     await discardStale(result.rejected.map((r) => r.mutationId));
   }
 }
