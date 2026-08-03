@@ -57,3 +57,35 @@ export function selectSince<T extends WithSyncSeq>(
   const cursor = changes.reduce((max, row) => Math.max(max, row.syncSeq), since);
   return { changes, cursor };
 }
+
+/**
+ * Page size for `/api/sync/pull` (fund F5, #478). An unbounded first sync reads a
+ * device's entire history into one response — a recovery-case timeout/OOM. 200 is a
+ * compromise: few round trips for a large recovery sync, bounded response size.
+ */
+export const PULL_PAGE_LIMIT = 200;
+
+/**
+ * Caps a pull's rows to `limit` and reports whether more remain, given a global,
+ * monotonic `syncSeq` (ADR-0008) — keyset pagination is exact here: `> since`
+ * never skips or repeats a row, whichever page it lands on.
+ *
+ * `rows` is not assumed sorted; that is this function's job, so a caller merging
+ * several per-table queries can hand over the concatenation as-is. `moreBeyondLimit`
+ * flags a table whose own query already hit its `LIMIT` — such a table may hold rows
+ * beyond what was fetched at all, so `hasMore` must stay true even when the merged
+ * `rows` fit within `limit` (e.g. one table maxed out, every other table came back
+ * empty).
+ */
+export function pageChanges<T extends WithSyncSeq>(
+  rows: readonly T[],
+  since: number,
+  limit: number,
+  moreBeyondLimit: boolean,
+): { changes: T[]; cursor: number; hasMore: boolean } {
+  const sorted = [...rows].sort((a, b) => a.syncSeq - b.syncSeq);
+  const overflow = sorted.length > limit;
+  const changes = overflow ? sorted.slice(0, limit) : sorted;
+  const cursor = changes.reduce((max, row) => Math.max(max, row.syncSeq), since);
+  return { changes, cursor, hasMore: overflow || moreBeyondLimit };
+}

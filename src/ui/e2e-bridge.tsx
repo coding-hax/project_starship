@@ -15,7 +15,7 @@ import {
 } from '@/features/journal/lock-store';
 import { appendJournalEntry, deleteJournalEntry, listJournalEntries } from '@/features/journal/entry';
 import { writeJournalEntry } from '@/features/journal/write';
-import { db } from '@/local/dexie';
+import { db, setMeta } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
 import { getStoragePersistenceStatus } from './persist-storage';
@@ -43,6 +43,10 @@ export function E2EBridge() {
         persistStatus: getStoragePersistenceStatus,
         debugRecords: () => db.records.toArray(),
         debugMeta: () => db.meta.toArray(),
+        // Lets a test set the pull cursor directly (issue #478's pagination tests
+        // seed rows *after* a baseline marker and start the device there, so
+        // assertions never depend on what other tests left in the shared dev DB).
+        debugSetMeta: (key: string, value: unknown) => setMeta(key, value),
         // Every JSON-serializable store in one string (issue #341 AC2) — the search
         // session cache lives only in React state, so a plaintext leak into any
         // store, not just `records`, would show up here as a substring match.
