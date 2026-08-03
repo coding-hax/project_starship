@@ -576,7 +576,10 @@ test.describe('Cursor überspringt nie dauerhaft eine wartende Zeile (#479)', ()
     const serverAfterB = await withDb((c) =>
       c.query('SELECT sync_seq FROM tasks WHERE id = $1', [rowId]),
     );
-    const seqAfterB: number = serverAfterB.rows[0].sync_seq;
+    // node-postgres returns bigint (int8) columns as strings, not numbers, to
+    // avoid silent precision loss — Number() here mirrors what Drizzle's
+    // `bigint(..., { mode: 'number' })` does for every other reader of this column.
+    const seqAfterB: number = Number(serverAfterB.rows[0].sync_seq);
 
     // Device A: block push only, then mutate R locally so a mutation for it sits
     // in the outbox — the following pull must skip B's version of R because A's
