@@ -635,6 +635,6 @@ test('bei fehlenden archivierten Gewohnheiten entsteht kein zusätzlicher Leerra
   const listItems = habitItems(page);
   await expect(listItems).toHaveCount(1);
 
-  const archivedSection = page.locator('.section-card');
-  await expect(archivedSection).toBeHidden();
+  const archivedButton = page.getByRole('button', { name: 'Archiviert' });
+  await expect(archivedButton).not.toBeVisible();
 });
