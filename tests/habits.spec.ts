@@ -592,6 +592,8 @@ test('der Abstand zwischen letzter aktiver Gewohnheit und Archiv-Block ist grÃ¶Ã
   const lastActiveItem = listItems.last();
   const archivedSection = page.locator('.section-card');
 
+  await expect.poll(() => lastActiveItem.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
+
   const lastActiveRect = await lastActiveItem.boundingBox();
   const archivedRect = await archivedSection.boundingBox();
 
@@ -615,6 +617,8 @@ test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Gewohnhe
 
   const emptyMessage = page.getByText('Keine aktiven Gewohnheiten.');
   const archivedSection = page.locator('.section-card');
+
+  await expect.poll(() => archivedSection.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
 
   const emptyRect = await emptyMessage.boundingBox();
   const archivedRect = await archivedSection.boundingBox();
