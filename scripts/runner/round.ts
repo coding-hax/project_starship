@@ -1153,7 +1153,7 @@ solange das Label \`needs-answer\` hängt.`,
   // Eskalations-Fehlversuch (ADR-0007).
   buildEscalationEval(
     { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model },
-    state,
+    sharedState,
     gh,
     git,
   );
