@@ -359,17 +359,6 @@ declare global {
       >;
       deleteJournalEntry: (id: string) => Promise<void>;
       bytesToBase64: (bytes: number[]) => string;
-      debugJournalConflicts: () => Promise<
-        Array<{
-          id: string;
-          entryDate: string;
-          ciphertext: string;
-          nonce: string;
-          displacedSyncSeq: number | null;
-          updatedAt: string;
-          capturedAt: string;
-        }>
-      >;
       createEnvelope: (
         passphrase: string,
         kdfParamsOverride?: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number },
@@ -385,10 +374,6 @@ declare global {
       journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
       journalHasPersistedDek: () => Promise<boolean>;
       journalPersistedDekExtractable: () => Promise<boolean | null>;
-      debugSeedJournalConflict: (
-        entryDate: string,
-        content: { text: string; mood?: string; tags?: string[] },
-      ) => Promise<void>;
       debugDumpStores: () => Promise<string>;
     };
   }
