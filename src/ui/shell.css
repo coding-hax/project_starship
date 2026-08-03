@@ -108,6 +108,15 @@
   min-width: 0;
   position: sticky;
   bottom: 0;
+  /* `.nav` sits before `main` in the DOM (focus/reading order, layout.tsx), so
+     without a stacking order it paints first — page content (max 1, see
+     task-list.css:111 drag rows and segmented-control.css:27) and the
+     `page-transition--enter` wrapper (its own stacking context from the opacity
+     animation) paint as later siblings and cover the sticky bar once the compositor
+     re-rasterizes after a scroll (issue #508). 5 sits above that content, below the
+     FAB (10, fab.css:25), the toast host (20, toast.css:15) and the drag caption
+     (21, task-list.css:186). */
+  z-index: 5;
   display: flex;
   align-items: center;
   /* Opaque per #444 — no glass look here, do not reintroduce the blur. */
