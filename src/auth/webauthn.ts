@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { authChallenges, credentials, recoveryCodes } from '@/db/schema';
@@ -18,6 +18,7 @@ export function relyingParty() {
 export async function storeChallenge(
   challenge: string,
   kind: 'registration' | 'authentication',
+  recoveryCodeId: string | null = null,
 ): Promise<void> {
   await db.delete(authChallenges).where(lt(authChallenges.expiresAt, new Date()));
   await db.insert(authChallenges).values({
@@ -25,24 +26,32 @@ export async function storeChallenge(
     challenge,
     kind,
     expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
+    recoveryCodeId,
   });
 }
 
-/** Consumes the challenge: valid at most once, never after it expired. */
+/**
+ * Consumes the challenge: valid at most once, never after it expired. Carries the
+ * recovery-code binding set by `storeChallenge` — that is how `verify` learns a
+ * registration is recovery-backed without trusting a code sent again by the client.
+ */
 export async function consumeChallenge(
   challenge: string,
   kind: 'registration' | 'authentication',
-): Promise<boolean> {
+): Promise<{ ok: boolean; recoveryCodeId: string | null }> {
   const [row] = await db
     .select()
     .from(authChallenges)
     .where(eq(authChallenges.challenge, challenge))
     .limit(1);
 
-  if (!row) return false;
+  if (!row) return { ok: false, recoveryCodeId: null };
   await db.delete(authChallenges).where(eq(authChallenges.id, row.id));
 
-  return row.kind === kind && row.expiresAt > new Date();
+  return {
+    ok: row.kind === kind && row.expiresAt > new Date(),
+    recoveryCodeId: row.recoveryCodeId,
+  };
 }
 
 export async function listCredentials() {
@@ -76,20 +85,38 @@ export async function issueRecoveryCode(): Promise<string> {
   return code;
 }
 
-/** Burns the code on success — a recovery code works once. */
-export async function redeemRecoveryCode(code: string): Promise<boolean> {
+/**
+ * Checks the code against the stored hashes without burning it — `usedAt` stays
+ * untouched. Registration only *starts* here; burning this early would strand the
+ * caller with no passkey if the WebAuthn ceremony that follows never completes.
+ */
+export async function verifyRecoveryCode(code: string): Promise<string | null> {
   const candidates = await db.select().from(recoveryCodes).where(isNull(recoveryCodes.usedAt));
   const incoming = Buffer.from(hash(code.trim().toUpperCase()));
 
   for (const row of candidates) {
     const stored = Buffer.from(row.codeHash);
     if (stored.length === incoming.length && timingSafeEqual(stored, incoming)) {
-      await db
-        .update(recoveryCodes)
-        .set({ usedAt: new Date() })
-        .where(eq(recoveryCodes.id, row.id));
-      return true;
+      return row.id;
     }
   }
-  return false;
+  return null;
+}
+
+/**
+ * Burns the code — a recovery code works once. Conditioned on `isNull(usedAt)` and
+ * checked via `returning` (not read-then-write) so two concurrent ceremonies with
+ * the same code can never both succeed. Pass `exec` to run inside the same
+ * transaction as the credential insert it gates.
+ */
+export async function burnRecoveryCode(
+  id: string,
+  exec: Pick<typeof db, 'update'> = db,
+): Promise<boolean> {
+  const burned = await exec
+    .update(recoveryCodes)
+    .set({ usedAt: new Date() })
+    .where(and(eq(recoveryCodes.id, id), isNull(recoveryCodes.usedAt)))
+    .returning({ id: recoveryCodes.id });
+  return burned.length === 1;
 }
