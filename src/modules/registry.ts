@@ -2,7 +2,6 @@ import { ActivityMonthStrip } from '@/features/activities/activity-month-strip';
 import { ExportPanel } from '@/features/export/export-panel';
 import { HabitsOverviewSection } from '@/features/habits/habits-overview-section';
 import { JournalSettingsPanel } from '@/features/journal/journal-settings-panel';
-import { JournalTodaySection } from '@/features/journal/journal-today-section';
 import { CapturePanel } from '@/features/settings/capture-panel';
 import { WeatherPanel } from '@/features/settings/weather-panel';
 import { TasksOverviewSection } from '@/features/tasks/tasks-overview-section';
@@ -101,7 +100,6 @@ export const MODULES: readonly ModuleDefinition[] = [
       accent: 'var(--area-journal)',
       Icon: IconJournal,
     },
-    OverviewSection: JournalTodaySection,
     SettingsPanel: JournalSettingsPanel,
     routes: ['/journal'],
   },

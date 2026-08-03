@@ -275,238 +275,163 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #342 (S5 von #302): Journal-Sektion "heute schon geschrieben?"       */
+/* issue #506: Journal-Block von der Übersicht entfernt (Nachfolge #342/#413/ */
+/* #363, deren Journal-Kachel-Verhalten hier absichtlich abgeschafft wird —   */
+/* die Journal-Zustandsabdeckung liegt seit #505 bei den Gewohnheiten-Specs). */
 /* -------------------------------------------------------------------------- */
 
-function journalSection(page: Page) {
-  return page.locator('.journal-today-section');
+/** Top edge of `locator`'s box — the vertical anchor the order tests compare. */
+async function topOf(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('Element muss für den Reihenfolge-Vergleich sichtbar sein');
+  return box.y;
 }
 
-async function setUpJournal(page: Page, passphrase: string) {
-  // Der Gate darf die Einrichtung erst anbieten, wenn er beim Server nachgefragt
-  // hat, ob dieses Konto schon eine Hülle besitzt (issue #371) — sonst überschreibt
-  // ein Gerät ohne lokale Kopie den DEK und macht alle Einträge unlesbar. Die Hülle
-  // ist Server-Zustand, nicht die eigene Anzeige-Datenhaltung: Regel 8 ("die UI liest
-  // aus IndexedDB") bleibt für Aufgaben, Termine und Habits vom `abort` im
-  // beforeEach vollständig abgedeckt. Eine spätere Route gewinnt in Playwright über
-  // die frühere, also bleibt `push` weiterhin blockiert.
-  await page.route('**/api/sync/pull**', (route) => route.continue());
-
-  await page.goto('/journal');
-  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
-  await page.getByLabel('Passphrase wiederholen').fill(passphrase);
-  await page.getByRole('button', { name: 'Einrichten' }).click();
-  await page.getByTestId('journal-recovery-key').waitFor();
-  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
-}
-
-/** Sets a mood and submits the entry (issue #376: explicit "Absenden", no more
- * autosave) — the one helper every test below uses instead of repeating the
- * two clicks. */
-async function submitMoodEntry(page: Page, mood: string): Promise<void> {
-  await page.getByRole('button', { name: mood, exact: true }).click();
-  await page.getByRole('button', { name: 'Absenden' }).click();
-}
-
-/**
- * `appendJournalEntry` (issue #376) is a fire-and-forget write — a
- * `page.reload()`/navigation right after submitting would race that write. Polls
- * the real IndexedDB record instead of a fixed wait.
- */
-async function waitForJournalEntryWritten(page: Page): Promise<void> {
-  await expect
-    .poll(() =>
-      page
-        .evaluate(() => window.__starship.debugRecords())
-        .then((records) => records.some((r) => r.table === 'journal_entries')),
-    )
-    .toBe(true);
-}
-
-test('Journal-Sektion zeigt "noch nicht geschrieben", bis heute ein Eintrag existiert (issue #342 AC1)', async ({
+test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — Nav-Tab und Route bleiben (issue #506 AC1+AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
-  await expect(journalSection(page)).toContainText('Heute noch nicht geschrieben');
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Journal' })).toHaveCount(0);
 
-  await setUpJournal(page, 'ac1 passphrase');
-  await submitMoodEntry(page, '7'); // Stimmungspunkt in der MoodScale, dann Absenden
-  await waitForJournalEntryWritten(page);
-  await page.goto('/uebersicht');
-
-  await expect(journalSection(page)).toContainText('Heute geschrieben');
-});
-
-test('gesperrtes Journal zeigt weiterhin den korrekten (binären) Zustand, die Übersicht bleibt bedienbar (issue #342 AC2)', async ({
-  page,
-}) => {
-  await setUpJournal(page, 'ac2 passphrase');
-  await submitMoodEntry(page, '3');
-  await waitForJournalEntryWritten(page);
-
-  await page.reload(); // Default: nicht speicherresident (issue #339 AC4) -> sperrt wieder
-  await page.goto('/uebersicht');
-
-  // Gesperrt: die reichere Stimmungsangabe (AC4) fällt auf die binäre Form zurück,
-  // statt eine veraltete oder falsche Stimmung zu zeigen.
-  await expect(journalSection(page)).toContainText('Heute geschrieben');
-  await expect(journalSection(page)).not.toContainText('Stimmung');
-
-  // "Kalender", not "Aufgaben": Next 16's dev-only "Issues" indicator (unrelated to
-  // this app, not gated by `devIndicators: false` — every /uebersicht visit here logs
-  // the mocked weather-fetch failure as one such "issue") renders bottom-left on
-  // mobile and covers the two leftmost tabs, "Übersicht" and "Aufgaben".
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await nav.getByRole('link', { name: 'Kalender' }).click();
-  await expect(page).toHaveURL(/\/kalender$/);
-});
-
-test('bei entsperrtem Journal wird die Sektion reicher — sie zeigt die Stimmung des Tages (issue #342 AC4)', async ({
-  page,
-}) => {
-  await setUpJournal(page, 'ac4 passphrase');
-  await submitMoodEntry(page, '9');
-  await waitForJournalEntryWritten(page);
-  // A client-side nav click (not page.goto, a hard navigation) — the DEK lives
-  // only in an in-memory module variable (ADR-0016), so a real reload would
-  // re-lock by default (issue #339 AC5) and this AC would be untestable.
-  await page
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Übersicht' })
-    .click();
-
-  await expect(journalSection(page)).toContainText('Stimmung 9/10');
-});
-
-test('Tippen auf die Sektion führt zum heutigen Eintrag (issue #342 AC5)', async ({ page }) => {
-  await page.goto('/uebersicht');
-
-  await journalSection(page).click();
+  await nav.getByRole('link', { name: 'Journal' }).click();
   await expect(page).toHaveURL(/\/journal$/);
   await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
 });
 
-test('Journal-Modul aus blendet die Sektion auf der Übersicht aus (issue #342 AC6)', async ({
+test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter → Aufgaben → Gewohnheiten, ohne Journal dazwischen (issue #506 AC1)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
-  await expect(journalSection(page)).toBeVisible();
+
+  // Der Aktivitäten-Streifen zwischen Aufgaben und Gewohnheiten erscheint nur mit
+  // gesyncten Garmin-Daten (er rendert sonst nichts) — sein Platz in der Reihenfolge
+  // ist in aktivitaeten.spec.ts abgedeckt. Hier zählen die drei Sektionen, die auf
+  // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
+  // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
+  const wetter = page.locator('.weather-forecast');
+  const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+  const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  await expect(wetter).toBeVisible();
+  await expect(aufgaben).toBeVisible();
+  await expect(gewohnheiten).toBeVisible();
+
+  const [yWetter, yAufgaben, yGewohnheiten] = await Promise.all([
+    topOf(wetter),
+    topOf(aufgaben),
+    topOf(gewohnheiten),
+  ]);
+  expect(
+    yWetter < yAufgaben && yAufgaben < yGewohnheiten,
+    `Reihenfolge Wetter ${yWetter} → Aufgaben ${yAufgaben} → Gewohnheiten ${yGewohnheiten}`,
+  ).toBe(true);
+
+  // Kein Journal-Block irgendwo zwischen den Sektionen.
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+});
+
+test('das Journal-Modul behält seinen Nav-Tab und seine Route — /journal rendert direkt (issue #506 AC2)', async ({
+  page,
+}) => {
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toHaveAttribute('href', '/journal');
+
+  // Direkter Aufruf der Route (kein Klick) — die Route gehört weiterhin dem Modul.
+  await page.goto('/journal');
+  await expect(page).toHaveURL(/\/journal$/);
+  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+});
+
+test('das Journal-Modul behält sein Einstellungen-Panel (issue #506 AC2)', async ({ page }) => {
+  await page.goto('/einstellungen');
+
+  // Der Modul-Schalter (Journal an/aus) bleibt …
+  await expect(page.getByRole('switch', { name: 'Journal' })).toBeVisible();
+  // … und das eigene Einstellungen-Panel (SectionCard "Journal", eine echte h2).
+  await expect(page.getByRole('heading', { name: 'Journal', level: 2 })).toBeVisible();
+  await expect(page.getByText('Auf diesem Gerät entsperrt lassen').first()).toBeVisible();
+});
+
+test('nur die OverviewSection entfällt — wird das Journal-Modul abgeschaltet, verschwindet sein Nav-Tab wie zuvor (issue #506 AC2)', async ({
+  page,
+}) => {
+  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toBeVisible();
 
   await page.goto('/einstellungen');
   await page.getByRole('switch', { name: 'Journal' }).click();
 
   await page.goto('/uebersicht');
-  await expect(journalSection(page)).toHaveCount(0);
+  await expect(nav.getByRole('link', { name: 'Journal' })).toHaveCount(0);
+  // Weiterhin kein Journal-Block — das Abschalten ändert daran nichts.
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+
+  // Wieder an: der Nav-Tab kommt zurück, die Route ist wieder erreichbar.
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.goto('/uebersicht');
+  await expect(nav.getByRole('link', { name: 'Journal' })).toBeVisible();
 });
 
-test('Journal-Sektion auf Mobile und Desktop, Dark Mode und reduzierte Bewegung (issue #342 AC7)', async ({
+test('auf /uebersicht hängt der Name "Journal" nicht mehr doppelt an zwei Links — nur der Nav-Tab trägt ihn (Nachfolge #363 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+
+  // Vor #506 trug die Übersichts-Kachel denselben zugänglichen Namen wie der
+  // Nav-Eintrag (der Fund aus #363). Ohne die Kachel bleibt genau ein "Journal"-Link:
+  // der Nav-Tab.
+  await expect(page.getByRole('link', { name: 'Journal', exact: true })).toHaveCount(1);
+});
+
+test('kein Journal-Block auf der Übersicht — auf Mobile (375px) wie auf Desktop (1280px), Reihenfolge bleibt (issue #506 AC1)', async ({
   page,
 }) => {
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/uebersicht');
-    await expect(journalSection(page)).toBeVisible();
+
+    await expect(page.locator('.journal-today-section')).toHaveCount(0);
+    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+    const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+    await expect(aufgaben).toBeVisible();
+    await expect(gewohnheiten).toBeVisible();
+    expect(await topOf(aufgaben), `Aufgaben über Gewohnheiten bei ${width}px`).toBeLessThan(
+      await topOf(gewohnheiten),
+    );
   }
+});
 
-  const lightColor = await journalSection(page).evaluate(
-    (el) => getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
-  );
-
+test('die Übersicht bleibt ohne Journal-Block auch im Dark Mode mit reduzierter Bewegung nutzbar (issue #506 AC1)', async ({
+  page,
+}) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  await page.reload();
-  await expect(journalSection(page)).toBeVisible();
-  const darkColor = await journalSection(page).evaluate(
-    (el) => getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
-  );
+  await page.goto('/uebersicht');
 
-  expect(darkColor).not.toBe(lightColor);
+  await expect(page.locator('.journal-today-section')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+
+  // Die Seite ist bedienbar: der Journal-Nav-Tab führt weiterhin zur Route.
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
+  await expect(page).toHaveURL(/\/journal$/);
 });
 
-/* -------------------------------------------------------------------------- */
-/* issue #413: Journal-Kopf wie Aufgaben/Gewohnheiten — echte h2, keine Karte */
-/* (löst den #382-Stand ab, der den Kopf auf Text-Größe abgesenkt hatte)      */
-/* -------------------------------------------------------------------------- */
-
-test('Journal-Kopf auf der Übersicht ist eine echte Überschrift wie bei Aufgaben/Gewohnheiten (issue #413)', async ({
+test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg dorthin ist allein der Nav-Tab (issue #506 AC1)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
+  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
 
-  const heading = journalSection(page).locator('.journal-today-section__heading');
-  await expect(heading).toHaveText('Journal');
-  expect(await heading.evaluate((el) => el.tagName)).toBe('H2');
-
-  // Der Kopf ist wieder eine echte Überschrift wie bei Aufgaben/Gewohnheiten —
-  // die App-weite h1,h2,h3-Regel hebt sie über font-weight ab, nicht über eine
-  // eigene Schriftgröße (der Fließtext-Wert bleibt app-weit einheitlich 16px).
-  const [headingWeight, statusWeight] = await journalSection(page).evaluate((el) => [
-    getComputedStyle(el.querySelector('.journal-today-section__heading')!).fontWeight,
-    getComputedStyle(el.querySelector('.journal-today-section__status')!).fontWeight,
-  ]);
-  expect(Number(headingWeight)).toBeGreaterThan(Number(statusWeight));
-
-  // Keine bunte Kachel mehr: der Kopf trägt die normale Textfarbe, nicht die
-  // Journal-Bereichsfarbe — und die Sektion selbst hat keinen Karten-Hintergrund.
-  const [headingColor, sectionBackground] = await journalSection(page).evaluate((el) => [
-    getComputedStyle(el.querySelector('.journal-today-section__heading')!).color,
-    getComputedStyle(el).backgroundColor,
-  ]);
-  const bodyTextColor = await page.evaluate(() => getComputedStyle(document.body).color);
-  expect(headingColor).toBe(bodyTextColor);
-  expect(sectionBackground).toBe('rgba(0, 0, 0, 0)');
-});
-
-/* -------------------------------------------------------------------------- */
-/* issue #363: zwei Links mit dem zugänglichen Namen "Journal" (Fund aus #342) */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Alle zugänglichen Namen von role=link auf der Seite, per echter
- * Accessibility-Tree-Berechnung (`ariaSnapshot`, YAML-artig: jede Zeile mit
- * einer Link-Rolle trägt den Namen in Anführungszeichen, z. B. `- link "Journal"`).
- */
-async function linkAccessibleNames(page: Page): Promise<string[]> {
-  const snapshot = await page.locator('body').ariaSnapshot();
-  return [...snapshot.matchAll(/-\s*link "([^"]*)"/g)].map((match) => match[1]);
-}
-
-test('die Journal-Sektion hat einen eigenen zugänglichen Namen statt des nackten "Journal" wie der Nav-Eintrag (issue #363 AC1)', async ({
-  page,
-}) => {
-  await page.goto('/uebersicht');
-
-  await expect(
-    page.getByRole('link', { name: 'Journal — heute noch nicht geschrieben', exact: true }),
-  ).toBeVisible();
-
-  await setUpJournal(page, '363 passphrase');
-  await submitMoodEntry(page, '7'); // Stimmungspunkt in der MoodScale, dann Absenden
-  await waitForJournalEntryWritten(page);
-  // Client-seitige Navigation statt page.goto: der DEK lebt nur in-memory
-  // (ADR-0016), ein harter Reload würde wieder sperren (issue #339 AC5).
-  await page
-    .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Übersicht' })
-    .click();
-
-  await expect(
-    page.getByRole('link', {
-      name: 'Journal — heute geschrieben, Stimmung 7 von 10',
-      exact: true,
-    }),
-  ).toBeVisible();
-});
-
-test('kein zugänglicher Name hängt auf /uebersicht doppelt an zwei Links (issue #363 AC2)', async ({
-  page,
-}) => {
-  await page.goto('/uebersicht');
-  await expect(journalSection(page)).toBeVisible();
-
-  const names = await linkAccessibleNames(page);
-  const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
-
-  expect(duplicates, `doppelte Linknamen: ${duplicates.join(', ')}`).toEqual([]);
+  // Die frühere Journal-Kachel war ein Link ins Journal *innerhalb* des
+  // Seiteninhalts (main), zusätzlich zum Nav-Tab im eigenen Landmark. Ohne die
+  // Kachel enthält der Inhalt keinen Journal-Link mehr.
+  const main = page.getByRole('main');
+  await expect(main.getByRole('link', { name: 'Journal' })).toHaveCount(0);
+  await expect(main.locator('a[href="/journal"]')).toHaveCount(0);
 });
