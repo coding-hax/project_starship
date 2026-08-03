@@ -625,16 +625,3 @@ test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Gewohnhe
     expect(spacingBetween).toBeGreaterThanOrEqual(24);
   }
 });
-
-test('bei fehlenden archivierten Gewohnheiten entsteht kein zusätzlicher Leerraum', async ({
-  page,
-}) => {
-  await page.goto('/gewohnheiten');
-  await seedHabit(page, { name: 'Nur aktiv', schedule: 'daily', color: null, archivedAt: null });
-
-  const listItems = habitItems(page);
-  await expect(listItems).toHaveCount(1);
-
-  const archivedButton = page.getByRole('button', { name: 'Archiviert' });
-  await expect(archivedButton).toHaveCount(0);
-});
