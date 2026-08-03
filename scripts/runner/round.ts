@@ -798,6 +798,14 @@ function parseField(out: string, field: string): string {
   }
 }
 
+// Textmuster duerfen nur den CLI-eigenen Anteil der Ausgabe sehen, nie die
+// Antwort des Agenten (F17, #491): `result` ist im Erfolgsfall Agententext.
+// Kein/ungueltiges JSON (Kill vor der JSON-Ausgabe) -> alles ist stderr = CLI.
+function cliOnly(out: string): string {
+  const result = parseField(out, 'result');
+  return result === '' ? out : out.split(result).join(' ');
+}
+
 function errorExcerpt(out: string, log: string): string {
   let txt = parseField(out, 'result');
   if (txt === '') txt = log.split('\n').slice(-20).join('\n');
@@ -1051,7 +1059,8 @@ Kein Eingreifen nötig.`,
   const apiStatus = parseField(outcome.out, 'api_error_status');
   const resultTxt = parseField(outcome.out, 'result');
 
-  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(outcome.out)) {
+  // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'result' scheidet aus.
+  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliOnly(outcome.out))) {
     const epoch = resetEpoch(resultTxt, clock);
     let when: string;
     if (epoch !== null) {
@@ -1102,9 +1111,10 @@ Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**`,
   // Antwort. Der richtige Umgang ist ein neuer Versuch beim naechsten Takt,
   // kein needs-answer. Zaehlt bewusst NICHT als Eskalations-Fehlversuch
   // (ADR-0007): Infrastruktur, kein Inhalt.
+  // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'resultTxt' scheidet aus.
   const transient =
     ['500', '502', '503', '504', '529'].includes(apiStatus) ||
-    /api error|server error|overloaded|connection error|timed? ?out/i.test(`${outcome.out}\n${resultTxt}`);
+    /api error|server error|overloaded|connection error|timed? ?out/i.test(cliOnly(outcome.out));
 
   if (transient) {
     const count = Number(state.read(transientFile) ?? '0') + 1;
