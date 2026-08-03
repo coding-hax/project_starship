@@ -242,6 +242,18 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     text: text + releasedNote + queueNote,
   });
 
+  // #483 (F11): Text fuer beide Claim-Verlust-Stellen (Wache-Vorlauf UND
+  // Ticketwahl) identisch -- kein Duplikat, `issue` per Closure.
+  const lostClaim = (): RoundDone => ({
+    kind: 'done',
+    rc: 0,
+    status: status(
+      `#${issue} an anderen Slot verloren`,
+      '🟢',
+      `🟢 **#${issue}** wurde im selben Moment von einem anderen Slot beansprucht — kein Agentenlauf hier. Der nächste Takt wählt neu. **Kein Eingreifen nötig.**`,
+    ),
+  });
+
   // --- CI-Wache fuer WARTENDE Tickets (#154, erweitert um #173, seit #272
   // ohne Park-Mechanik) -- #204: NUR der Leitslot, sonst rufen mehrere Slots
   // 'gh pr merge' fuer dasselbe wartende Ticket und posten doppelte Notizen. --
@@ -382,6 +394,10 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // CI-Zustand den Takt: kein Agentenlauf fuers Warten, kein Wechsel auf ein
   // anderes Ticket, solange hier noch etwas offen ist.
   if (issue > 0) {
+    // #483 (F11): erst der Claim, dann JEDER Seiteneffekt der CI-Wache
+    // (`pr ready`, Squash-Merge, Nachziehen) -- sonst fahren alle Slots die
+    // Wache parallel, sobald der Claim mal fehlt (Sweep/Absturz/Handlabeln).
+    if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
       const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
@@ -565,15 +581,7 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
   // fortgesetztes 'in-progress' oben UND ein frisch von pickTicket()
   // gewaehltes Ticket.
   if (!claimTake(claims, issue, slotId)) {
-    return {
-      kind: 'done',
-      rc: 0,
-      status: status(
-        `#${issue} an anderen Slot verloren`,
-        '🟢',
-        `🟢 **#${issue}** wurde im selben Moment von einem anderen Slot beansprucht — kein Agentenlauf hier. Der nächste Takt wählt neu. **Kein Eingreifen nötig.**`,
-      ),
-    };
+    return lostClaim();
   }
 
   // Ab hier ist das Ticket fest und der `claude`-Aufruf steht kurz bevor.

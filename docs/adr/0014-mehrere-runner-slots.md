@@ -111,6 +111,11 @@ sie betrifft ausschließlich das Ticket, das dieser Slot beansprucht hat. Diese
 Unterscheidung ist der Kern des Umbaus; sie zu verwechseln bedeutet entweder
 einen blinden Slot oder doppelte Merge-Versuche.
 
+Seit #483 (F11) läuft diese Wache erst **nach** `claimTake`; verliert der Slot
+den Claim, endet die Runde ohne Wache. Der Claim wird über alle Wache-Ausgänge
+**gehalten** (verfällt am Label, nicht pro Bau-Lauf) und erst von
+`claimSweep` freigegeben, sobald `in-progress` fällt.
+
 `cleanupStateDir()` (räumt alte `tier-`/`session-`-Dateien) schont normalerweise
 die Session-Datei des gerade laufenden Tickets — das bestimmte bisher eine
 **globale** Abfrage (`--label in-progress`, erstes Treffer). Bei mehreren
