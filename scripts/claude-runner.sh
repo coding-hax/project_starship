@@ -499,25 +499,52 @@ run_round() {
   return "$(printf '%s' "$eval_out" | jq -r '.rc')"
 }
 
+# --- Nie zwei Läufe gleichzeitig ---------------------------------------------
+# Fund #489: die alte mkdir+rm-rf-Übernahme eines verwaisten Locks hatte zwei
+# Fenster (Doppel-rm/Doppel-mkdir, PID-Schreiben nach mkdir). ln scheitert
+# atomar mit EEXIST, wenn das Ziel existiert -- die PID steht schon VOR der
+# Sichtbarkeit der Lock-Datei fest (AK1), kein leeres Zwischenfenster.
+acquire_run_lock() {   # $1 = Lock-Dateipfad, $2 = eigene PID
+  local lock="$1" me="$2" tmp="$1.tmp.$2" owner
+  printf '%s\n' "$me" > "$tmp" 2>/dev/null || return 1
+  # 1) Frisch: Hardlink zieht die schon befuellte tmp-Datei atomar an den
+  #    Platz. Scheitert (EEXIST), wenn der Lock schon existiert.
+  if ln "$tmp" "$lock" 2>/dev/null; then rm -f "$tmp"; return 0; fi
+  # 2) Lock existiert -- lebt der Besitzer? Dann nie verdraengen (AK3).
+  owner=$(cat "$lock" 2>/dev/null)
+  case "$owner" in
+    ''|*[!0-9]*) : ;;                              # leer/Muell -> verwaist
+    *) if kill -0 "$owner" 2>/dev/null; then rm -f "$tmp"; return 1; fi ;;
+  esac
+  # 3) Verwaist: den Lock EINMAL wegfangen (rename, genau ein Gewinner unter
+  #    gleichzeitigen Uebernehmern), dann Frisch-Fall. Kein gemeinsames rm auf
+  #    dem umkaempften Pfad mehr.
+  local dead="$lock.orphan.$me"
+  if mv "$lock" "$dead" 2>/dev/null; then
+    # Zwischen 2) und hier koennte ein anderer Uebernehmer schon einen
+    # LEBENDEN Lock hingelegt haben, den wir weggefangen haben -> pruefen und
+    # per ln zuruecklegen (nicht mv: kein Klobbern), dann busy.
+    owner=$(cat "$dead" 2>/dev/null)
+    if [ -n "$owner" ] && kill -0 "$owner" 2>/dev/null; then
+      ln "$dead" "$lock" 2>/dev/null; rm -f "$dead" "$tmp"; return 1
+    fi
+    rm -f "$dead"
+    if ln "$tmp" "$lock" 2>/dev/null; then rm -f "$tmp"; return 0; fi
+  fi
+  # Rennen verloren -> folgenlos: ein anderer haelt den Lock jetzt.
+  rm -f "$tmp"; return 1
+}
+
 # --- Der imperative Hauptteil ------------------------------------------------
 # In main() gekapselt, damit Tests die Funktionen oben sourcen können, ohne
 # einen echten Lauf zu starten (Source-Guard ganz unten).
 main() {
 
-# --- Nie zwei Läufe gleichzeitig ---------------------------------------------
-# mkdir ist atomar auf POSIX — das ersetzt flock, das es auf macOS nicht gibt.
-LOCK="$STATE_DIR/lock.d"
-if ! mkdir "$LOCK" 2>/dev/null; then
-  OWNER=$(cat "$LOCK/pid" 2>/dev/null || echo "")
-  if [ -n "$OWNER" ] && kill -0 "$OWNER" 2>/dev/null; then
-    echo "läuft bereits (PID $OWNER)"; exit 0
-  fi
-  # Verwaister Lock (Rechner abgestürzt, Prozess tot) — übernehmen.
-  rm -rf "$LOCK"
-  mkdir "$LOCK" 2>/dev/null || { echo "läuft bereits"; exit 0; }
+LOCK="$STATE_DIR/lock"
+if ! acquire_run_lock "$LOCK" "$$"; then
+  echo "läuft bereits ($(cat "$LOCK" 2>/dev/null))"; exit 0
 fi
-echo $$ > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
+trap 'rm -f "$LOCK"' EXIT
 
 # .runner/ raeumt sich auf (#64) -- Regeln in scripts/runner/cleanup.ts.
 ts_run cleanup-state >/dev/null
