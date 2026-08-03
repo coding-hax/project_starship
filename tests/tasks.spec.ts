@@ -492,8 +492,12 @@ test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }
   const wrap = checkboxFor(page, title).locator('xpath=..');
   const box = await wrap.boundingBox();
 
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // Rounded, not compared exactly: Chromium's grid layout can report a
+  // sub-pixel-short boundingBox (e.g. 43.999969...) for a 44px min-height box
+  // (same float-serialization class as habits-week-grid.spec.ts:556-561) —
+  // the CSS token is an exact 44px, this only guards against that.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
 test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation', async ({ page }) => {
