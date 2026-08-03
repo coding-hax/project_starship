@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Browser, Page } from '@playwright/test';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
 import { Client } from 'pg';
 import { AUTH_STATE } from './run-lock';
 
@@ -26,6 +30,64 @@ export async function enableVirtualAuthenticator(page: Page) {
     },
   });
   return { client, authenticatorId };
+}
+
+/**
+ * Drives `navigator.credentials.create()` by hand against a registration-options
+ * response — the same ceremony `startRegistration` (@simplewebauthn/browser) runs
+ * for the "Passkey einrichten" button, but written out directly because the
+ * recovery-code registration path (#476) has no UI entry point to click through
+ * (a recovery code cannot be typed anywhere yet). The virtual authenticator signs
+ * for real; only the base64url<->ArrayBuffer plumbing normally hidden by the
+ * client library is inlined here.
+ */
+export async function createRegistrationCredential(
+  page: Page,
+  optionsJSON: PublicKeyCredentialCreationOptionsJSON,
+): Promise<RegistrationResponseJSON> {
+  return page.evaluate(async (options) => {
+    function base64UrlToBuffer(value: string): ArrayBuffer {
+      const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const raw = atob(padded);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+      return bytes.buffer;
+    }
+    function bufferToBase64Url(buffer: ArrayBuffer): string {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    const publicKey = {
+      ...options,
+      challenge: base64UrlToBuffer(options.challenge),
+      user: { ...options.user, id: base64UrlToBuffer(options.user.id) },
+      excludeCredentials: (options.excludeCredentials ?? []).map((credential) => ({
+        ...credential,
+        id: base64UrlToBuffer(credential.id),
+      })),
+    };
+
+    const credential = (await navigator.credentials.create({
+      publicKey: publicKey as unknown as PublicKeyCredentialCreationOptions,
+    })) as PublicKeyCredential;
+    const response = credential.response as AuthenticatorAttestationResponse;
+
+    return {
+      id: credential.id,
+      rawId: bufferToBase64Url(credential.rawId),
+      type: credential.type,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response: {
+        clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+        attestationObject: bufferToBase64Url(response.attestationObject),
+        transports: response.getTransports ? response.getTransports() : [],
+      },
+    } as unknown as RegistrationResponseJSON;
+  }, optionsJSON);
 }
 
 /**
