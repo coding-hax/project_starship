@@ -805,3 +805,145 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
   });
 });
+
+/**
+ * #474 — a DB constraint violation (not one the handler catches itself, e.g.
+ * `habit_logs`' `UNIQUE(habit_id, log_date)`) used to abort the whole push
+ * transaction with a 500, wedging every mutation behind it in the outbox forever.
+ * Each write now runs in its own savepoint, so only the poisoned mutation is
+ * dropped (`reason: 'constraint'`) — the rest of the batch still lands.
+ */
+test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', () => {
+  test('AK1+AK2: die vergiftete Mutation wird verworfen, der Rest desselben Batches kommt trotzdem an', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Laufen', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Queue a valid task and a *second* log for the same habit + day while offline,
+    // so both land in the same push batch. The second log has no rowId — it is a new
+    // row, so it collides with the habit_logs UNIQUE(habit_id, log_date) index.
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+    await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Sollte trotzdem ankommen' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+
+    // The poisoned log is dropped (discardStale) instead of retried forever, and it
+    // did not hold up the task behind it.
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toHaveCount(0);
+
+    const taskRows = await withDb((c) =>
+      c.query("SELECT id FROM tasks WHERE title = 'Sollte trotzdem ankommen'"),
+    );
+    expect(taskRows.rowCount).toBe(1);
+
+    const logRows = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-02',
+      ]),
+    );
+    expect(logRows.rowCount).toBe(1);
+  });
+
+  test('AK4: zwei Geräte loggen dieselbe Gewohnheit am selben Tag offline — Bs Outbox bleibt nicht hängen', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const devicePage = await openSecondDevice(browser, page);
+    // Pull A's habit + log first, so B knows about the day before it logs its own.
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    // B logs the same habit on the same day offline — no rowId, so it is a new row
+    // and collides with the same UNIQUE(habit_id, log_date) index as Test A above.
+    await devicePage.route('**/api/sync/**', (route) => route.abort('failed'));
+    await devicePage.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(1);
+
+    await devicePage.unroute('**/api/sync/**');
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(0);
+    await expect(
+      devicePage.getByText('Änderungen konnten nicht synchronisiert werden.'),
+    ).toHaveCount(0);
+
+    // Exactly one row survives for (habitId, 2026-08-02) — B's duplicate was rejected,
+    // not silently merged. B's local checkmark for its own log staying stale until the
+    // next pull is a real UX gap, deliberately out of scope here — see #502.
+    const logRows = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-02',
+      ]),
+    );
+    expect(logRows.rowCount).toBe(1);
+
+    await devicePage.close();
+  });
+});
