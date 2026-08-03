@@ -21,23 +21,72 @@ export interface EncryptedJournal {
   nonce: Uint8Array<ArrayBuffer>;
 }
 
+/**
+ * 1-byte prefix on a v2 nonce (issue #480, F7) — never fed to GCM itself, only
+ * used to tell a 13-byte v2 nonce (`[VERSION_MARKER, ...12-byte IV]`, bound to
+ * an AAD) apart from a 12-byte v1 nonce (no AAD, pre-#480). The length itself
+ * is the dispatch key in `decryptJournal`, not this byte's value.
+ */
+const VERSION_MARKER = 0x02;
+
+/**
+ * The AAD every v2 journal ciphertext is bound to (issue #480, F7): a row's
+ * `id` and `entryDate`. Encrypt and decrypt share this one function so the two
+ * sides can never derive the binding differently. `id` (UUIDv7) and
+ * `entryDate` (`YYYY-MM-DD`) never contain `:`, so the separator is unambiguous.
+ */
+export function journalEntryAad(id: string, entryDate: string): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`${id}:${entryDate}`);
+}
+
+/**
+ * `aad` omitted keeps the pre-#480 v1 shape (12-byte nonce, no
+ * `additionalData`) so every existing call site and stored ciphertext stays
+ * valid. `aad` set produces a v2 ciphertext (13-byte nonce, `additionalData`
+ * bound in) — the real write path (entry.ts) always passes it, so new entries
+ * are always v2.
+ */
 export async function encryptJournal(
   dek: CryptoKey,
   content: JournalContent,
+  aad?: Uint8Array<ArrayBuffer>,
 ): Promise<EncryptedJournal> {
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode(JSON.stringify(content));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, dek, plaintext);
+  const algorithm: AesGcmParams = aad
+    ? { name: 'AES-GCM', iv, additionalData: aad }
+    : { name: 'AES-GCM', iv };
+  const ciphertext = await crypto.subtle.encrypt(algorithm, dek, plaintext);
+  const nonce = aad ? new Uint8Array([VERSION_MARKER, ...iv]) : iv;
   return { ciphertext: new Uint8Array(ciphertext), nonce };
 }
 
+/**
+ * Dispatches on the nonce's decoded length, never on whether `aad` was passed
+ * in — a v1 row (12 bytes) always takes the AAD-free branch, so there is no
+ * path that could hand a v1 ciphertext to GCM with an AAD it was never
+ * encrypted with (the "journal looks empty after update" risk). A v2 row
+ * (13 bytes) is checked against `aad` regardless of whether the caller passed
+ * one; a swapped ciphertext (foreign `id`/`entryDate`, so a mismatched `aad`)
+ * fails the GCM tag exactly like any other tampering.
+ */
 export async function decryptJournal(
   dek: CryptoKey,
   ciphertext: Uint8Array<ArrayBuffer>,
   nonce: Uint8Array<ArrayBuffer>,
+  aad?: Uint8Array<ArrayBuffer>,
 ): Promise<JournalContent> {
   try {
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, dek, ciphertext);
+    let algorithm: AesGcmParams;
+    if (nonce.length === 13) {
+      if (nonce[0] !== VERSION_MARKER) throw new JournalDecryptError();
+      algorithm = { name: 'AES-GCM', iv: nonce.slice(1), additionalData: aad };
+    } else if (nonce.length === 12) {
+      algorithm = { name: 'AES-GCM', iv: nonce };
+    } else {
+      throw new JournalDecryptError();
+    }
+    const plaintext = await crypto.subtle.decrypt(algorithm, dek, ciphertext);
     return JSON.parse(new TextDecoder().decode(plaintext)) as JournalContent;
   } catch {
     throw new JournalDecryptError();

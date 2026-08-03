@@ -80,6 +80,17 @@ export function E2EBridge() {
         // way to reproduce a poison mutation for the #182 tests.
         debugPatchOutbox: (id: string, patch: Record<string, unknown>) =>
           db.outbox.update(id, patch),
+        // Simulates a server-side ciphertext swap between two already-synced rows
+        // (issue #480, F7 AC2) — something no client call can produce, only direct
+        // storage tampering. `records` is keyed by `[table+id]`, not `id` alone;
+        // the patched fields (ciphertext/nonce) live under `data`, not top-level,
+        // so this merges into the existing `data` rather than shadowing it.
+        debugPatchRecord: async (table: string, id: string, patch: Record<string, unknown>) => {
+          const key = [table, id] as never;
+          const row = await db.records.get(key);
+          if (!row) return 0;
+          return db.records.update(key, { data: { ...row.data, ...patch } });
+        },
         // Drives the real lock-store state machine (issue #339) rather than a
         // test double — journalUnlock resolves 'ok'/'wrong' from the state it
         // actually landed in, never from the thrown error's message.

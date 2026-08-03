@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEnvelope, openEnvelope } from '@/crypto/envelope';
-import { encryptJournal } from '@/crypto/journal';
+import { encryptJournal, journalEntryAad } from '@/crypto/journal';
 import { bytesToBase64 } from '@/crypto/base64';
 import type { LocalRecord } from '@/local/dexie';
 import { decryptJournalRows } from './decrypt-journal-row';
@@ -59,5 +59,23 @@ describe('decryptJournalRows', () => {
       { id: 'a', text: 'eins' },
       { id: 'b', text: 'zwei' },
     ]);
+  });
+
+  it('issue #480 AC2: a v2 ciphertext swapped onto a foreign row (different id) drops out, the untouched row survives', async () => {
+    const dek = await makeDek();
+    const a = await encryptJournal(dek, { text: 'gehoert zu a', tags: [] }, journalEntryAad('a', '2026-07-09'));
+    const rows = [
+      // Own ciphertext on its own row (its own AAD) — control row, stays readable.
+      makeRow('a', bytesToBase64(a.ciphertext), bytesToBase64(a.nonce)),
+      // Same ciphertext/nonce placed under a foreign row id ("b") — AAD mismatch.
+      makeRow('b', bytesToBase64(a.ciphertext), bytesToBase64(a.nonce)),
+    ];
+
+    const entries = await decryptJournalRows(dek, rows, (row, content) => ({
+      id: row.id,
+      text: content.text,
+    }));
+
+    expect(entries).toEqual([{ id: 'a', text: 'gehoert zu a' }]);
   });
 });

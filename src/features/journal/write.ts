@@ -13,10 +13,12 @@ import { mutate } from '@/local/outbox';
 export async function writeJournalEntry(
   entryDate: string,
   encrypted: EncryptedJournal,
+  rowId?: string,
 ): Promise<string> {
   return mutate({
     table: 'journal_entries',
     op: 'upsert',
+    rowId,
     payload: {
       entryDate,
       createdAt: new Date().toISOString(),
