@@ -1,3 +1,4 @@
+import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
 import type { Mutation, PullResponse, PushResponse } from './types';
@@ -120,6 +121,8 @@ export async function pull(): Promise<boolean> {
 
   const { changes, cursor }: PullResponse = await response.json();
 
+  const skipped: number[] = [];
+
   await db.transaction('rw', db.records, db.outbox, async () => {
     const queued = await db.outbox.toArray();
     const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
@@ -129,7 +132,10 @@ export async function pull(): Promise<boolean> {
 
       // A local row that is still queued for push is newer by definition — do not
       // overwrite it with what the server currently holds.
-      if (queuedSet.has(`${change.table}:${change.id}`)) continue;
+      if (queuedSet.has(`${change.table}:${change.id}`)) {
+        skipped.push(change.syncSeq);
+        continue;
+      }
 
       // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
       // legitimate incoming change, nor let a stale one through.
@@ -147,7 +153,7 @@ export async function pull(): Promise<boolean> {
     }
   });
 
-  await setMeta(META_LAST_PULLED_SEQ, cursor);
+  await setMeta(META_LAST_PULLED_SEQ, cursorAfterSkips(cursor, skipped));
   return true;
 }
 
