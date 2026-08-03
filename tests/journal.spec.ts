@@ -847,9 +847,12 @@ test('AC2 (#480): ein serverseitig zwischen zwei Zeilen vertauschtes Chiffrat is
     { id: rowB.id, ciphertext: rowA.data.ciphertext, nonce: rowA.data.nonce },
   );
 
-  await page.reload();
-  await page.waitForFunction(() => typeof window.__starship !== 'undefined');
-  await expect.poll(() => page.evaluate(() => window.__starship.journalLockState())).toBe('locked');
+  // journalLockState() only ever leaves 'loading' once JournalGate's
+  // useJournalLock() effect has mounted and run initialize() — a bare reload on
+  // /uebersicht never mounts it, so the poll below would hang forever. /journal
+  // is the one route that does.
+  await page.goto('/journal');
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
   await page.evaluate((passphrase) => window.__starship.journalUnlock(passphrase), passphrase);
   await expect.poll(() => page.evaluate(() => window.__starship.journalLockState())).toBe('unlocked');
 
