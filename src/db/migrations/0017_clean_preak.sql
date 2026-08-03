@@ -1,0 +1,2 @@
+ALTER TABLE "auth_challenges" ADD COLUMN "recovery_code_id" uuid;--> statement-breakpoint
+ALTER TABLE "auth_challenges" ADD CONSTRAINT "auth_challenges_recovery_code_id_recovery_codes_id_fk" FOREIGN KEY ("recovery_code_id") REFERENCES "public"."recovery_codes"("id") ON DELETE no action ON UPDATE no action;

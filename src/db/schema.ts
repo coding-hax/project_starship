@@ -306,6 +306,7 @@ export const authChallenges = pgTable(
     kind: text('kind').$type<'registration' | 'authentication'>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    recoveryCodeId: uuid('recovery_code_id').references(() => recoveryCodes.id),
   },
   (table) => [index('auth_challenges_expires_at_idx').on(table.expiresAt)],
 );
