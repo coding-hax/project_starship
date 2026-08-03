@@ -89,3 +89,28 @@ export function pageChanges<T extends WithSyncSeq>(
   const cursor = changes.reduce((max, row) => Math.max(max, row.syncSeq), since);
   return { changes, cursor, hasMore: overflow || moreBeyondLimit };
 }
+
+/**
+ * The client's pull cursor must not advance past a change it skipped because a
+ * local mutation for that row was still queued (issue #479). Marking such a
+ * sequence "seen" means that if the local mutation is later discarded
+ * (discardStale), the skipped server version is never pulled again — a silent,
+ * self-perpetuating divergence. So the cursor stops just below the lowest
+ * skipped syncSeq; everything at or above it is re-delivered on the next pull,
+ * where the row is re-evaluated once the mutation has cleared.
+ *
+ * `selectSince` (above) is the server's cursor and is deliberately untouched —
+ * it cannot know the client's queue.
+ */
+export function cursorAfterSkips(
+  responseCursor: number,
+  skippedSyncSeqs: readonly number[],
+): number {
+  if (skippedSyncSeqs.length === 0) return responseCursor;
+  const lowest = Math.min(...skippedSyncSeqs);
+  // `lowest - 1` never rewinds below the previous cursor: a skipped change was
+  // itself returned by the server, so its syncSeq is strictly greater than the
+  // `since` we asked with. It may equal `since` (no advance) — correct: we may
+  // not step past an unseen change we could not merge yet.
+  return Math.min(responseCursor, lowest - 1);
+}

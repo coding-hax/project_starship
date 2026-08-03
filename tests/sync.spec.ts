@@ -545,6 +545,90 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
 });
 
 /**
+ * #479 — a row skipped during pull because a local mutation for it was still
+ * queued used to let the cursor advance past it anyway. If that mutation was
+ * later discarded (e.g. rejected as malformed), the skipped server version was
+ * never pulled again — a silent, self-perpetuating divergence.
+ */
+test.describe('Cursor überspringt nie dauerhaft eine wartende Zeile (#479)', () => {
+  test('AK1+AK2: die übersprungene Änderung wird nachgeholt, sobald die wartende Mutation verworfen wird', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    // Device A creates row R, synced to Postgres.
+    const rowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Ursprung' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+
+    // Device B pulls R, then edits it — the server state for R advances past
+    // what A has seen so far.
+    const deviceB = await openSecondDevice(browser, page);
+    await deviceB.evaluate(() => window.__starship.sync());
+    await editTaskOnDevice(deviceB, rowId, 'Von B');
+
+    const serverAfterB = await withDb((c) =>
+      c.query('SELECT sync_seq FROM tasks WHERE id = $1', [rowId]),
+    );
+    // node-postgres returns bigint (int8) columns as strings, not numbers, to
+    // avoid silent precision loss — Number() here mirrors what Drizzle's
+    // `bigint(..., { mode: 'number' })` does for every other reader of this column.
+    const seqAfterB: number = Number(serverAfterB.rows[0].sync_seq);
+
+    // Device A: block push only, then mutate R locally so a mutation for it sits
+    // in the outbox — the following pull must skip B's version of R because A's
+    // own write is still queued.
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'Von A, wartet' },
+        }),
+      rowId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+
+    // The skip happened: A's cursor must not have advanced past B's write, and
+    // A's local row must still show its own pending edit, not B's.
+    const metaAfterSkip = await page.evaluate(() => window.__starship.debugMeta());
+    const cursorAfterSkip = metaAfterSkip.find((m) => m.key === 'lastPulledSeq')?.value as number;
+    expect(cursorAfterSkip).toBeLessThan(seqAfterB);
+
+    const recordsAfterSkip = await page.evaluate(() => window.__starship.debugRecords());
+    expect(recordsAfterSkip.find((r) => r.id === rowId)?.data.title).toBe('Von A, wartet');
+
+    // Release push, then corrupt A's queued mutation so the server rejects it as
+    // malformed — discardStale drops it, freeing R for the next pull to re-fetch.
+    await page.unroute('**/api/sync/push');
+    await page.evaluate(async (id) => {
+      const entries = await window.__starship.pending();
+      const entry = entries.find((e) => e.rowId === id);
+      if (!entry) throw new Error('outbox entry not found');
+      await window.__starship.debugPatchOutbox(entry.id, { updatedAt: 42 });
+    }, rowId);
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // R now shows B's version, not A's discarded one — the cursor clamp let the
+    // skipped change be re-delivered instead of staying stuck behind it forever.
+    const recordsAfterHeal = await page.evaluate(() => window.__starship.debugRecords());
+    expect(recordsAfterHeal.find((r) => r.id === rowId)?.data.title).toBe('Von B');
+
+    await deviceB.close();
+  });
+});
+
+/**
  * M2 foundation (#101) — data model only, no UI. Mirrors the sync_state offline
  * test above: the outbox does not know or care what table it is carrying.
  */

@@ -1,3 +1,4 @@
+import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
 import type { Mutation, PullResponse, PushResponse } from './types';
@@ -130,6 +131,8 @@ export async function pull(): Promise<boolean> {
 
     const { changes, cursor, hasMore }: PullResponse = await response.json();
 
+    const skipped: number[] = [];
+
     await db.transaction('rw', db.records, db.outbox, async () => {
       const queued = await db.outbox.toArray();
       const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
@@ -139,7 +142,10 @@ export async function pull(): Promise<boolean> {
 
         // A local row that is still queued for push is newer by definition — do not
         // overwrite it with what the server currently holds.
-        if (queuedSet.has(`${change.table}:${change.id}`)) continue;
+        if (queuedSet.has(`${change.table}:${change.id}`)) {
+          skipped.push(change.syncSeq);
+          continue;
+        }
 
         // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
         // legitimate incoming change, nor let a stale one through.
@@ -157,12 +163,18 @@ export async function pull(): Promise<boolean> {
       }
     });
 
-    await setMeta(META_LAST_PULLED_SEQ, cursor);
+    // Clamped below any row this page skipped (issue #479) — everything at or
+    // above the clamp is re-delivered on a later pull, once the local mutation
+    // that shadowed it has cleared.
+    const nextCursor = cursorAfterSkips(cursor, skipped);
+    await setMeta(META_LAST_PULLED_SEQ, nextCursor);
     appliedAny = true;
 
-    // `cursor <= since` guards against a server that reports `hasMore` without the
-    // cursor actually advancing — without it, that would spin forever.
-    if (!hasMore || cursor <= since) break;
+    // `nextCursor <= since` guards against a server that reports `hasMore` without
+    // the cursor actually advancing, and against a skip clamping this page's cursor
+    // back to (or below) where it started — either way, looping again here would
+    // just re-fetch the same page forever instead of making progress.
+    if (!hasMore || nextCursor <= since) break;
   }
 
   return appliedAny;

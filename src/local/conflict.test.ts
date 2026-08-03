@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectOverwrite, pageChanges, resolveDeletedAt, selectSince } from './conflict';
+import { cursorAfterSkips, detectOverwrite, pageChanges, resolveDeletedAt, selectSince } from './conflict';
 
 describe('resolveDeletedAt', () => {
   it('upsert never sets deleted_at — a fresh row stays alive', () => {
@@ -136,5 +136,23 @@ describe('pageChanges (fund F5, #478)', () => {
     const result = pageChanges([], 7, 5, false);
 
     expect(result).toEqual({ changes: [], cursor: 7, hasMore: false });
+  });
+});
+
+describe('cursorAfterSkips', () => {
+  it('leaves the cursor unchanged when nothing was skipped', () => {
+    expect(cursorAfterSkips(5, [])).toBe(5);
+  });
+
+  it('clamps the cursor below a single skipped syncSeq', () => {
+    expect(cursorAfterSkips(9, [6])).toBe(5);
+  });
+
+  it('clamps to the lowest of several skipped syncSeqs', () => {
+    expect(cursorAfterSkips(9, [6, 8])).toBe(5);
+  });
+
+  it('never rewinds below the previous cursor even if the skip equals `since`', () => {
+    expect(cursorAfterSkips(6, [6])).toBe(5);
   });
 });
