@@ -20,6 +20,7 @@ const tx = {
   }),
   insert: () => ({ values: insertValues }),
   update: () => ({ set: () => ({ where: updateWhere }) }),
+  transaction: (fn: (sp: unknown) => Promise<void>) => fn(tx),
 };
 
 vi.mock('@/db', () => ({
@@ -78,6 +79,26 @@ describe('POST /api/sync/push', () => {
     const { POST } = await import('./route');
     const response = await POST(makeRequest('not-an-array'));
     expect(response.status).toBe(400);
+  });
+
+  it('rejects a mutation that violates a DB constraint without wedging the rest of the batch', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    insertValues.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
+
+    try {
+      const { POST } = await import('./route');
+      const poisoned = validMutation('poisoned');
+      const mutations = [poisoned, validMutation('ok')];
+
+      const response = await POST(makeRequest(mutations));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.applied).toEqual(['ok']);
+      expect(body.rejected).toEqual([{ mutationId: 'poisoned', reason: 'constraint', missing: [] }]);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('rejects a mutation on a read-only table (ADR-0011) without touching the DB', async () => {
