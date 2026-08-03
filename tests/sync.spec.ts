@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import {
   freezeClock,
   openSecondDevice,
@@ -1029,5 +1030,100 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
     expect(logRows.rowCount).toBe(1);
 
     await devicePage.close();
+  });
+});
+
+test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (fund F5, #478)', () => {
+  /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq. */
+  async function seedTasks(count: number, titlePrefix: string) {
+    const result = await withDb((c) =>
+      c.query(
+        `INSERT INTO tasks (id, title, sync_seq)
+         SELECT gen_random_uuid(), $1 || g, nextval('sync_seq')
+         FROM generate_series(1, $2) AS g
+         RETURNING id, sync_seq`,
+        [titlePrefix, count],
+      ),
+    );
+    return result.rows.map((r) => ({ id: r.id as string, syncSeq: Number(r.sync_seq) }));
+  }
+
+  test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({ page }) => {
+    await registerPasskey(page);
+
+    const seeded = await seedTasks(PULL_PAGE_LIMIT + 50, 'Seed AK2 ');
+    const maxSeq = Math.max(...seeded.map((r) => r.syncSeq));
+
+    let pullRequests = 0;
+    await page.route('**/api/sync/pull**', async (route) => {
+      pullRequests++;
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // More than N+50 rows in one PULL_PAGE_LIMIT-capped response is impossible —
+    // this alone proves more than one request was necessary.
+    expect(pullRequests).toBeGreaterThan(1);
+
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const taskIds = records.filter((r) => r.table === 'tasks').map((r) => r.id);
+    // Every seeded row landed exactly once — nothing lost across the page boundary,
+    // nothing duplicated.
+    expect(new Set(taskIds)).toEqual(new Set(seeded.map((r) => r.id)));
+
+    const meta = await page.evaluate(() => window.__starship.debugMeta());
+    const cursor = meta.find((m) => m.key === 'lastPulledSeq')?.value;
+    expect(cursor).toBe(maxSeq);
+  });
+
+  test('AK4: bricht der Erstsync zwischen zwei Seiten ab, setzt der nächste Sync fort statt neu zu beginnen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const seeded = await seedTasks(PULL_PAGE_LIMIT * 2 + 50, 'Seed AK4 ');
+    const sortedSeqs = seeded.map((r) => r.syncSeq).sort((a, b) => a - b);
+    const firstPageBoundary = sortedSeqs[PULL_PAGE_LIMIT - 1];
+    const maxSeq = sortedSeqs[sortedSeqs.length - 1];
+
+    // Let the first page through, then cut the network — the train-tunnel case.
+    let pullCount = 0;
+    await page.route('**/api/sync/pull**', async (route) => {
+      pullCount++;
+      if (pullCount === 2) {
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    const metaAfterAbort = await page.evaluate(() => window.__starship.debugMeta());
+    const cursorAfterAbort = metaAfterAbort.find((m) => m.key === 'lastPulledSeq')?.value;
+    // Neither 0 (a restart) nor the full history (the abort silently lost) — exactly
+    // the boundary of the one page that landed before the network died.
+    expect(cursorAfterAbort).toBe(firstPageBoundary);
+
+    await page.unroute('**/api/sync/pull**');
+    const sinceValues: number[] = [];
+    await page.route('**/api/sync/pull**', async (route) => {
+      sinceValues.push(Number(new URL(route.request().url()).searchParams.get('since')));
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // Resumes from the persisted boundary, not from 0 — no restart.
+    expect(sinceValues[0]).toBe(firstPageBoundary);
+
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const taskIds = records.filter((r) => r.table === 'tasks').map((r) => r.id);
+    expect(new Set(taskIds)).toEqual(new Set(seeded.map((r) => r.id)));
+
+    const metaFinal = await page.evaluate(() => window.__starship.debugMeta());
+    const finalCursor = metaFinal.find((m) => m.key === 'lastPulledSeq')?.value;
+    expect(finalCursor).toBe(maxSeq);
   });
 });
