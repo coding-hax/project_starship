@@ -66,6 +66,7 @@ jobs:
       - run: bash scripts/tests/runner-ts.test.sh
       - run: bash scripts/tests/worktree.test.sh
       - run: bash scripts/tests/gen-slot-plists.test.sh
+      - run: bash scripts/tests/run-lock.test.sh
       - run: bash scripts/tests/fleet-lead.test.sh
       # Die Parity-Suiten S2-S5 sind mit #203 (S6) entfallen: sie verglichen den
       # TS-Kern gegen den Bash-Pfad, den diese Stufe entfernt hat. Ohne
