@@ -176,6 +176,7 @@ test.describe('Aufgaben', () => {
     await seedTask(page, { title: 'Item A', createdAt: '2024-01-01T00:00:00.000Z' });
     const itemA = taskItems(page).filter({ hasText: 'Item A' });
     await expect(itemA).toBeVisible();
+    await waitForEnterSettled(itemA);
     const before = await documentRect(itemA);
 
     await seedTask(page, { title: 'Item B', createdAt: '2024-01-01T00:00:01.000Z' });
