@@ -356,12 +356,20 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
+    // The bar is a carousel past five entries (issue #205) — with six NAV_ITEMS
+    // registered, the sixth stays scrolled out of the list's own viewport by
+    // default and has no on-screen point to hit-test, so "jeder sichtbare Tab"
+    // means every entry whose box actually falls inside the list's visible width.
+    const listBox = (await page.locator('.nav__list').boundingBox())!;
     for (const item of NAV_ITEMS) {
       const link = page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: item.label });
       const box = (await link.boundingBox())!;
+      const centerX = box.x + box.width / 2;
+      if (centerX < listBox.x || centerX > listBox.x + listBox.width) continue;
+
       const hitsNav = await page.evaluate(
         ([x, y]) => document.elementFromPoint(x, y)?.closest('.nav') != null,
-        [box.x + box.width / 2, box.y + box.height / 2] as const,
+        [centerX, box.y + box.height / 2] as const,
       );
       expect(hitsNav, `Tab „${item.label}" trifft nicht die Nav`).toBe(true);
     }
@@ -388,6 +396,20 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     );
 
     const item = page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem').filter({ hasText: title });
+
+    // FAB check first, before any toast — toast.css documents that the toast is
+    // allowed to cover the FAB while it's showing ("acceptable, because it is gone
+    // again in a few seconds"), so that overlap is not what AC3 is about. AC3 is
+    // that neither ever sinks *below the nav*.
+    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+    await expect(fab).toBeVisible();
+    const fabBox = (await fab.boundingBox())!;
+    const fabHit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('.fab') != null,
+      [fabBox.x + fabBox.width / 2, fabBox.y + fabBox.height / 2] as const,
+    );
+    expect(fabHit, 'FAB liegt unter der Nav statt darüber').toBe(true);
+
     const box = (await item.boundingBox())!;
     const clientY = box.y + box.height / 2;
     const startX = box.x + box.width - 20;
@@ -399,25 +421,23 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
 
     const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });
     await expect(toast).toBeVisible();
-    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
-    await expect(fab).toBeVisible();
+    const toastBox = (await toast.boundingBox())!;
+    const toastHit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('.toast') != null,
+      [toastBox.x + toastBox.width / 2, toastBox.y + toastBox.height / 2] as const,
+    );
+    expect(toastHit, 'Toast liegt unter der Nav statt darüber').toBe(true);
 
+    // The individual `<li role="status">` toast carries no z-index of its own —
+    // it inherits its stacking from the `.toast-host` `<ol>` it's portaled into
+    // (toast.tsx/toast-host.tsx), which is where toast.css's z-index: 20 lives.
     const [navZ, fabZ, toastZ] = await Promise.all([
       page.locator('.nav').evaluate((el) => Number(getComputedStyle(el).zIndex)),
       fab.evaluate((el) => Number(getComputedStyle(el).zIndex)),
-      toast.evaluate((el) => Number(getComputedStyle(el).zIndex)),
+      page.locator('.toast-host').evaluate((el) => Number(getComputedStyle(el).zIndex)),
     ]);
     expect(navZ).toBe(5);
     expect(fabZ).toBeGreaterThan(navZ);
     expect(toastZ).toBeGreaterThan(fabZ);
-
-    // Both sit above the nav's screen region entirely by position (fab.css/toast.css),
-    // so a tap right on the FAB must still reach it rather than the bar underneath.
-    const fabBox = (await fab.boundingBox())!;
-    const fabHit = await page.evaluate(
-      ([x, y]) => document.elementFromPoint(x, y)?.closest('.fab') != null,
-      [fabBox.x + fabBox.width / 2, fabBox.y + fabBox.height / 2] as const,
-    );
-    expect(fabHit).toBe(true);
   });
 });
