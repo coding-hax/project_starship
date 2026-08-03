@@ -58,6 +58,12 @@ async function documentRect(
   });
 }
 
+async function waitForEnterSettled(locator: ReturnType<typeof taskItems>) {
+  await expect
+    .poll(() => locator.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')))
+    .toBe(false);
+}
+
 async function swipeLeft(locator: ReturnType<typeof taskItems>, distancePx: number) {
   const box = await locator.boundingBox();
   if (!box) throw new Error('swipeLeft: target has no bounding box');
@@ -170,10 +176,12 @@ test.describe('Aufgaben', () => {
     await seedTask(page, { title: 'Item A', createdAt: '2024-01-01T00:00:00.000Z' });
     const itemA = taskItems(page).filter({ hasText: 'Item A' });
     await expect(itemA).toBeVisible();
+    await waitForEnterSettled(itemA);
     const before = await documentRect(itemA);
 
     await seedTask(page, { title: 'Item B', createdAt: '2024-01-01T00:00:01.000Z' });
     await expect(taskItems(page)).toHaveCount(2);
+    await waitForEnterSettled(itemA);
     const after = await documentRect(itemA);
 
     // A hair of tolerance, not exact equality, for pure sub-pixel layout
