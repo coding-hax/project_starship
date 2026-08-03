@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
   }
 
-  if (!(await consumeChallenge(body.challenge, 'authentication'))) {
+  if (!(await consumeChallenge(body.challenge, 'authentication')).ok) {
     return NextResponse.json({ error: 'Challenge abgelaufen.' }, { status: 400 });
   }
 
