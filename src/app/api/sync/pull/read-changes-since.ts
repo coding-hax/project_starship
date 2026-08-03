@@ -1,6 +1,7 @@
 import { asc, gt } from 'drizzle-orm';
 import { db } from '@/db';
 import { SYNC_REGISTRY } from '@/db/sync-tables';
+import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import { SYNC_TABLES, type ChangeRow } from '@/local/types';
 
 /**
@@ -13,12 +14,21 @@ import { SYNC_TABLES, type ChangeRow } from '@/local/types';
  * against a `tx` and show it is gone) but because Next.js route files may only
  * export the handful of recognized route fields (`GET`, `POST`, …); any other
  * export fails the build ("is not a valid Route export field").
+ *
+ * Each per-table query is capped at `PULL_PAGE_LIMIT` (fund F5, #478) — an
+ * unbounded read of an entire table's history is exactly the recovery-sync
+ * timeout/OOM the fund describes. `truncated` reports whether any table hit that
+ * cap, i.e. may hold rows this call never even fetched — `route.ts` folds that
+ * into the response's `hasMore` alongside `pageChanges`' own overflow check, since
+ * a table capped at the limit can still merge into fewer than `PULL_PAGE_LIMIT`
+ * combined rows if every other table came back empty.
  */
 export async function readChangesSince(
   executor: Pick<typeof db, 'select'>,
   since: number,
-): Promise<ChangeRow[]> {
+): Promise<{ changes: ChangeRow[]; truncated: boolean }> {
   const changes: ChangeRow[] = [];
+  let truncated = false;
 
   for (const name of SYNC_TABLES) {
     const entry = SYNC_REGISTRY[name] as {
@@ -35,7 +45,10 @@ export async function readChangesSince(
       .select()
       .from(table)
       .where(gt(table.syncSeq, since))
-      .orderBy(asc(table.syncSeq));
+      .orderBy(asc(table.syncSeq))
+      .limit(PULL_PAGE_LIMIT);
+
+    if (rows.length === PULL_PAGE_LIMIT) truncated = true;
 
     for (const row of rows) {
       const data: Record<string, unknown> = {};
@@ -54,5 +67,5 @@ export async function readChangesSince(
     }
   }
 
-  return changes;
+  return { changes, truncated };
 }

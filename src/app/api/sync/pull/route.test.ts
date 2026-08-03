@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/db';
 import { habitLogs, habits, tasks } from '@/db/schema';
+import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import { readChangesSince } from './read-changes-since';
 
 vi.mock('@/auth/session', () => ({
@@ -51,11 +52,20 @@ function pauseBeforeTable<E extends Pick<typeof db, 'select'>>(
                       get(whereTarget, whereProp, whereReceiver) {
                         if (whereProp !== 'orderBy') return Reflect.get(whereTarget, whereProp, whereReceiver);
                         const originalOrderBy = Reflect.get(whereTarget, whereProp, whereReceiver) as typeof whereTarget.orderBy;
-                        return (...orderArgs: Parameters<typeof originalOrderBy>) =>
-                          (async () => {
-                            await onPause();
-                            return originalOrderBy.apply(whereTarget, orderArgs);
-                          })();
+                        return (...orderArgs: Parameters<typeof originalOrderBy>) => {
+                          const orderByResult = originalOrderBy.apply(whereTarget, orderArgs);
+                          return new Proxy(orderByResult, {
+                            get(orderByTarget, orderByProp, orderByReceiver) {
+                              if (orderByProp !== 'limit') return Reflect.get(orderByTarget, orderByProp, orderByReceiver);
+                              const originalLimit = Reflect.get(orderByTarget, orderByProp, orderByReceiver) as typeof orderByTarget.limit;
+                              return (...limitArgs: Parameters<typeof originalLimit>) =>
+                                (async () => {
+                                  await onPause();
+                                  return originalLimit.apply(orderByTarget, limitArgs);
+                                })();
+                            },
+                          });
+                        };
                       },
                     });
                   };
@@ -137,7 +147,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
       pushed = await commitPush();
     });
 
-    const changes = await readChangesSince(executor, since);
+    const { changes } = await readChangesSince(executor, since);
 
     expect(pushed).toBeDefined();
     const hasTask = changes.some((c) => c.table === 'tasks' && c.syncSeq === pushed?.taskSeq);
@@ -154,7 +164,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
     const { since, commitPush } = await setUp();
     let pushed: { taskSeq: number; logSeq: number } | undefined;
 
-    const changes = await db.transaction(
+    const { changes } = await db.transaction(
       (tx) => {
         const executor = pauseBeforeTable(tx, habitLogs, async () => {
           pushed = await commitPush();
@@ -181,7 +191,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
     const transactionSpy = vi.fn((callback: (tx: unknown) => unknown, _options: unknown) => {
       const tx = {
         select: () => ({
-          from: () => ({ where: () => ({ orderBy: () => Promise.resolve([]) }) }),
+          from: () => ({ where: () => ({ orderBy: () => ({ limit: () => Promise.resolve([]) }) }) }),
         }),
       };
       return callback(tx);
@@ -202,5 +212,53 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
       vi.doUnmock('@/db');
       vi.resetModules();
     }
+  });
+});
+
+describe('readChangesSince pagination (fund F5, #478)', () => {
+  // A fake executor, not `db` — the per-table `LIMIT` is capped correctness the
+  // query builder is trusted for (drizzle's own contract); what this suite verifies
+  // is `readChangesSince`'s own aggregation: does it notice a table came back full.
+  function fakeRow(seq: number) {
+    return {
+      id: `row-${seq}`,
+      updatedAt: new Date('2026-08-01T00:00:00Z'),
+      deletedAt: null,
+      syncSeq: seq,
+      title: `Seed ${seq}`,
+    };
+  }
+
+  function fakeExecutor(rowsByTable: Map<unknown, ReturnType<typeof fakeRow>[]>): Pick<typeof db, 'select'> {
+    return {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => ({
+            orderBy: () => ({
+              limit: () => Promise.resolve(rowsByTable.get(table) ?? []),
+            }),
+          }),
+        }),
+      }),
+    } as unknown as Pick<typeof db, 'select'>;
+  }
+
+  it('truncated is true when a table comes back with exactly PULL_PAGE_LIMIT rows — it may hold more', async () => {
+    const rows = Array.from({ length: PULL_PAGE_LIMIT }, (_, i) => fakeRow(i + 1));
+    const executor = fakeExecutor(new Map([[tasks, rows]]));
+
+    const { changes, truncated } = await readChangesSince(executor, 0);
+
+    expect(changes).toHaveLength(PULL_PAGE_LIMIT);
+    expect(truncated).toBe(true);
+  });
+
+  it('truncated is false when every table comes back under PULL_PAGE_LIMIT', async () => {
+    const rows = Array.from({ length: PULL_PAGE_LIMIT - 1 }, (_, i) => fakeRow(i + 1));
+    const executor = fakeExecutor(new Map([[tasks, rows]]));
+
+    const { truncated } = await readChangesSince(executor, 0);
+
+    expect(truncated).toBe(false);
   });
 });
