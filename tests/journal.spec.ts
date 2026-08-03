@@ -94,11 +94,11 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
   // Diese Fassung braucht keine konkrete Versionsnummer und kann daher nicht mit
   // einer bestehenden Verbindung kollidieren: sie schreibt einen Record über den
   // echten Schreibpfad, lädt neu — derselbe Dexie-`db`-Singleton öffnet 'starship'
-  // dabei ein zweites Mal — und prüft, dass der Record noch da ist UND der neue
-  // `journalConflicts`-Store (issue #338) existiert, also der Bump auf Version 3
-  // tatsächlich stattgefunden hat. Schwächer als eine echte Alt-Installation, aber
+  // dabei ein zweites Mal — und prüft, dass der Record noch da ist UND der
+  // `journalConflicts`-Store (issue #338, entfernt in #477/ADR-0018 über Version 5)
+  // tatsächlich weg ist. Schwächer als eine echte Alt-Installation, aber
   // deterministisch und beweist denselben Kern der AC: bestehende Daten übersteht
-  // einen Dexie-Reopen, auf dem der neue Store hinzugekommen ist.
+  // einen Dexie-Reopen, auf dem sich die Store-Liste verändert hat.
   await registerPasskey(page);
 
   const rowId = await page.evaluate(() =>
@@ -131,7 +131,7 @@ test('AC3: bestehende Records überleben den Dexie-Versions-Bump auf 3', async (
       }),
   );
   expect(storeNames).toContain('records');
-  expect(storeNames).toContain('journalConflicts');
+  expect(storeNames).not.toContain('journalConflicts');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -597,19 +597,16 @@ test('AC8: zwei Geräte legen offline unabhängig je einen Eintrag für denselbe
 
   // Kein falsch-positiver Konflikt — der Producer aus ADR-0017 Punkt 3 ist seit
   // issue #395 entfernt (er griff ohnehin nur bei einer id-Kollision, die es seit
-  // ADR-0018 nicht mehr geben kann); der Store bleibt als Abfluss für Alt-Kopien leer.
-  const conflictsA = await page.evaluate(() => window.__starship.debugJournalConflicts());
-  const conflictsB = await deviceB.evaluate(() => window.__starship.debugJournalConflicts());
-  expect(conflictsA).toHaveLength(0);
-  expect(conflictsB).toHaveLength(0);
+  // ADR-0018 nicht mehr geben kann); der Store selbst ist seit #477 entfernt.
 });
 
 /* -------------------------------------------------------------------------- */
 /* issue #394 (Fund aus #377 Punkt 3): debugDumpStores (e2e-bridge.tsx)       */
-/* serialisiert seit #338/#341 auch journalConflicts. Diese zwei Tests        */
-/* beweisen aktiv, dass die Verdrängung eines Eintrags KEINEN Klartext in     */
-/* einem JSON-serialisierbaren Store hinterlässt und dass die Tagesliste      */
-/* (mehrere Einträge an einem Tag, #376) es ebenso wenig tut (Regel 9).       */
+/* serialisierte bis #477 auch journalConflicts (Store seither entfernt).    */
+/* Diese zwei Tests beweisen aktiv, dass die Verdrängung eines Eintrags       */
+/* KEINEN Klartext in einem JSON-serialisierbaren Store hinterlässt und dass  */
+/* die Tagesliste (mehrere Einträge an einem Tag, #376) es ebenso wenig tut   */
+/* (Regel 9).                                                                */
 /*                                                                            */
 /* #395 (Owner-Entscheidung „B", 30.07.): AC1 hat ursprünglich zusätzlich     */
 /* behauptet, die Verdrängung LEGE eine Konflikt-Kopie an. Mit dem Entfernen  */
@@ -686,11 +683,9 @@ test('AC1 (#394, nach #395): ein per pull() verdrängter Eintrag hinterlässt ke
   // src/local/sync.ts, seitdem überschreibt der pull() die Zeile schlicht.
   await page.evaluate(() => window.__starship.sync());
 
-  // #395: kein Producer mehr, also keine Kopie. Der Verlust von secretA ist der
-  // bewusst akzeptierte Preis der Entscheidung, nicht ein Fehlschlag dieses Tests.
-  const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
-  expect(conflicts).toHaveLength(0);
-
+  // #395: kein Producer mehr (#477: der Store selbst ist weg), also keine Kopie.
+  // Der Verlust von secretA ist der bewusst akzeptierte Preis der Entscheidung,
+  // nicht ein Fehlschlag dieses Tests.
   const dump = await page.evaluate(() => window.__starship.debugDumpStores());
   expect(dump).not.toContain(secretA);
   expect(dump).not.toContain(secretB);
@@ -731,45 +726,28 @@ test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen ni
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #340 AC8, angepasst an #376: eine Konflikt-Kopie bleibt sichtbar und */
-/* wiederherstellbar — Wiederherstellen hängt sie jetzt als neuen Eintrag an  */
-/* (es gibt keinen "aktuellen Eintrag" pro Tag mehr, den man überschreiben    */
-/* könnte). Der Trigger-Weg (echte id-Kollision) ist seit ADR-0018 praktisch  */
-/* tot, aber das UI selbst (journalConflicts, die Banner-Komponente) bleibt   */
-/* bewusst im Code (CLAUDE.md „Fallen" im Plan-Kommentar) — dieser Test seedet*/
-/* die Konflikt-Kopie deshalb direkt statt über einen Zwei-Geräte-Pull.       */
+/* issue #477 (ADR-0018): das Konflikt-Teilsystem aus #340/#376 ist entfernt  */
+/* — kein Produzent mehr seit #395, Eintrags-Konflikte sind seit ADR-0018     */
+/* strukturell unmöglich (jeder Eintrag eine eigene uuidv7-Zeile). Dieser     */
+/* Test ersetzt den früheren Seed-Test 1:1 (Regel 5: Testzahl sinkt nicht)    */
+/* und beweist stattdessen aktiv, dass Banner und Bridge-Handle weg sind.     */
 /* -------------------------------------------------------------------------- */
 
-test('eine Konflikt-Kopie ist im Editor sichtbar und wiederherstellbar — Wiederherstellen hängt sie als neuen Eintrag an', async ({
+test('Konflikt-Banner erscheint nie und das Bridge-Handle dafür existiert nicht mehr (#477)', async ({
   page,
 }) => {
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
 
-  await page.evaluate(
-    (d) =>
-      window.__starship.debugSeedJournalConflict(d, {
-        text: 'Verdrängter Text',
-        mood: '3',
-        tags: ['alt'],
-      }),
-    entryDate,
+  await page.getByLabel('Journal-Text').fill('Normaler Eintrag');
+  await page.getByRole('button', { name: 'Absenden' }).click();
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await expect(page.locator('.journal-editor__conflict')).toHaveCount(0);
+
+  const hasDebugJournalConflicts = await page.evaluate(
+    () => 'debugJournalConflicts' in window.__starship,
   );
-
-  const banner = page.locator('.journal-editor__conflict');
-  await expect(banner).toBeVisible();
-  await expect(banner).toContainText('Verdrängter Text');
-
-  await banner.getByRole('button', { name: 'Wiederherstellen' }).click();
-  await expect(banner).toHaveCount(0);
-
-  const entries = page.locator('.journal-editor__entry');
-  await expect(entries).toHaveCount(1);
-  await expect(entries.first()).toContainText('Verdrängter Text');
-  await expect(entries.first()).toContainText('Stimmung 3/10');
-
-  const conflicts = await page.evaluate(() => window.__starship.debugJournalConflicts());
-  expect(conflicts).toHaveLength(0);
+  expect(hasDebugJournalConflicts).toBe(false);
 });
 
 test('bei gesperrtem Journal ist der Editor nicht erreichbar, sondern der Entsperr-Zustand', async ({
