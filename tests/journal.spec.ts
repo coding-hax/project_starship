@@ -835,6 +835,14 @@ test('AC2 (#480): ein serverseitig zwischen zwei Zeilen vertauschtes Chiffrat is
     { dateA, dateB },
   );
 
+  // Both rows must actually be synced (real `syncSeq`, empty outbox) before the
+  // swap below — otherwise the page.goto()'s own SyncBoot-triggered sync() would
+  // push these rows' still-queued ORIGINAL payload and pull it straight back,
+  // silently undoing the local patch before the assertions ever run (the swap
+  // below only ever touches `data`, never the outbox or `syncSeq`, so a later
+  // pull only skips overwriting it once the row is already known-synced).
+  await page.evaluate(() => window.__starship.sync());
+
   const records = await page.evaluate(() => window.__starship.debugRecords());
   const rowA = records.find((r) => r.table === 'journal_entries' && r.data.entryDate === dateA)!;
   const rowB = records.find((r) => r.table === 'journal_entries' && r.data.entryDate === dateB)!;
