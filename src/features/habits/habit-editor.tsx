@@ -166,7 +166,14 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
                 type="radio"
                 name="schedule"
                 checked={schedule === option.value}
+                aria-checked={schedule === option.value}
                 onChange={() => handleScheduleChange(option.value)}
+                // A radio input's default focus-on-activation happens as part of
+                // `mousedown` (not `pointerdown`) — next to the name field (#138)
+                // that steals focus mid-typing. Suppressing `mousedown`'s default
+                // leaves focus wherever it already was; the checked-toggle is part
+                // of `click`'s own activation behaviour, so `onChange` still fires.
+                onMouseDown={(event) => event.preventDefault()}
               />
               {option.label}
             </label>

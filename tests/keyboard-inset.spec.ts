@@ -63,16 +63,23 @@ test.describe('Keyboard-safe Layout (#106)', () => {
 });
 
 /**
- * #138: `SegmentedControl`'s options are real `<button>`s, and a browser's default
- * action for a pointer tap on a focusable element is to focus it — next to a text
- * field, that steals focus mid-typing. On a real device the OS reacts by closing
- * the keyboard, which (via `KeyboardInset` above) drops `--keyboard-inset` back to
- * 0 and slides the sheet down under the user's next tap. Headless Chromium has no
- * real keyboard to close, so the synthetic shrink from the block above stands in
- * for "keyboard is up" — the regression this guards against is the focus steal
- * itself, which is directly observable via `document.activeElement`.
+ * #138: the schedule fieldset's options are focusable controls, and a browser's
+ * default action for a pointer tap on a focusable element is to focus it — next
+ * to a text field, that steals focus mid-typing. On a real device the OS reacts
+ * by closing the keyboard, which (via `KeyboardInset` above) drops
+ * `--keyboard-inset` back to 0 and slides the sheet down under the user's next
+ * tap. Headless Chromium has no real keyboard to close, so the synthetic shrink
+ * from the block above stands in for "keyboard is up" — the regression this
+ * guards against is the focus steal itself, which is directly observable via
+ * `document.activeElement`.
+ *
+ * Probes "Monatlich", not "Wöchentlich" (issue #509): selecting "Wöchentlich"
+ * now legitimately grows the sheet — it reveals the 1–6× target picker — so it
+ * would conflate that intentional layout change with the regression this test
+ * guards against. "Monatlich" exercises the same radio-click/focus code path
+ * without adding any UI, keeping the bounding-box assertion meaningful.
  */
-test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => {
+test.describe('Rhythmus-Auswahl behält Fokus bei Zeigergeräten (#138)', () => {
   test.beforeEach(async () => {
     await resetAppData();
   });
@@ -113,7 +120,7 @@ test.describe('SegmentedControl behält Fokus bei Zeigergeräten (#138)', () => 
 
     const before = await sheetContent.boundingBox();
 
-    await page.getByRole('radio', { name: 'Wöchentlich' }).click();
+    await page.getByRole('radio', { name: 'Monatlich' }).click();
 
     // The real regression signal: focus never left the name field, so a real
     // device's OS would never have had a reason to close the keyboard.

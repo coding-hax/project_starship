@@ -154,6 +154,65 @@ test('eine ausgelassene Woche setzt die Serie zurück (issue #104 AC3)', async (
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: beliebige Perioden — Streak zählt Perioden mit erreichtem target       */
+/* (issue #509 AC7)                                                           */
+/* -------------------------------------------------------------------------- */
+
+test('eine monatliche Gewohnheit zeigt Streak 2 über zwei aufeinanderfolgende Monate', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Miete überweisen',
+    schedule: 'monthly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-06-05', done: true }); // Vormonat
+  await seedHabitLog(page, { habitId, logDate: TODAY, done: true }); // laufender Monat
+
+  const item = habitTodayItems(page).filter({ hasText: 'Miete überweisen' });
+  await expect(item.getByLabel('Streak: 2')).toBeVisible();
+});
+
+test('die laufende, noch offene Periode bricht die Serie nicht (issue #104, verallgemeinert in #509)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Miete überweisen',
+    schedule: 'monthly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-06-05', done: true }); // Vormonat erledigt
+  // Laufender Monat (Juli) noch offen — kein Log.
+
+  const item = habitTodayItems(page).filter({ hasText: 'Miete überweisen' });
+  await expect(item.getByLabel('Streak: 1')).toBeVisible();
+});
+
+test('eine „3× pro Woche"-Gewohnheit zählt eine Woche erst als Serienglied, wenn alle 3 stehen', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Krafttraining',
+    schedule: 'weekly',
+    target: 3,
+    color: null,
+    archivedAt: null,
+  });
+  // Vorwoche: alle 3 erledigt.
+  await seedHabitLog(page, { habitId, logDate: '2026-07-06', done: true });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-07', done: true });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-08', done: true });
+  // Diese Woche: nur 2 von 3 — die laufende Periode ist noch offen.
+  await seedHabitLog(page, { habitId, logDate: '2026-07-14', done: true });
+  await seedHabitLog(page, { habitId, logDate: TODAY, done: true });
+
+  const item = habitTodayItems(page).filter({ hasText: 'Krafttraining' });
+  await expect(item.getByLabel('Streak: 1')).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
 /* Streak-Joker (issue #433, M-3 aus #416)                                    */
 /* -------------------------------------------------------------------------- */
 

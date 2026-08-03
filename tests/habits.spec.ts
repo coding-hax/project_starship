@@ -156,6 +156,109 @@ test('Tastaturbedienung des Rhythmus bleibt unverändert: Tab erreicht die Auswa
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: Neue Rhythmen — 1–6× pro Woche, zweiwöchentlich, monatlich, …          */
+/* (issue #509 AC1, AC7)                                                      */
+/* -------------------------------------------------------------------------- */
+
+test('die Rhythmus-Auswahl bietet alle sechs Perioden an (issue #509 AC1)', async ({ page }) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+
+  const dialog = createDialog(page);
+  for (const label of [
+    'Täglich',
+    'Wöchentlich',
+    'Alle zwei Wochen',
+    'Monatlich',
+    'Quartalsweise',
+    'Jährlich',
+  ]) {
+    await expect(dialog.getByRole('radio', { name: label })).toBeVisible();
+  }
+});
+
+test('der Ziel-Zähler erscheint nur bei „Wöchentlich" und speichert den gewählten Wert (issue #509 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+  const dialog = createDialog(page);
+
+  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' })).toHaveCount(0);
+
+  await nameField(page).fill('Laufen');
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  const counter = dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' });
+  await expect(counter).toBeVisible();
+  await counter.getByRole('radio', { name: '3' }).click();
+
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.payload).toMatchObject({ schedule: 'weekly', target: 3 });
+
+  const item = habitItems(page).filter({ hasText: 'Laufen' });
+  await expect(item).toContainText('3× pro Woche');
+});
+
+test('wechselt man von „Wöchentlich" zu einer anderen Periode, verschwindet der Zähler und target bleibt 1 (issue #509)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+  const dialog = createDialog(page);
+
+  await nameField(page).fill('Großputz');
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '5' }).click();
+  await dialog.getByRole('radio', { name: 'Monatlich' }).check();
+
+  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' })).toHaveCount(0);
+
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.payload).toMatchObject({ schedule: 'monthly', target: 1 });
+});
+
+test('Tippen auf eine andere Periode lässt den Fokus im Namensfeld (Erweiterung von #138 auf issue #509)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  await openAddHabit(page);
+
+  await nameField(page).pressSequentially('Vitamine');
+  await createDialog(page).getByRole('radio', { name: 'Monatlich' }).click();
+
+  await expect(nameField(page)).toBeFocused();
+  await expect(createDialog(page).getByRole('radio', { name: 'Monatlich' })).toBeChecked();
+
+  await page.keyboard.type('!');
+  await expect(nameField(page)).toHaveValue('Vitamine!');
+});
+
+test('eine Gewohnheit ohne target-Feld aus der Zeit vor #509 zeigt sich unverändert als „Wöchentlich" (AC7)', async ({
+  page,
+}) => {
+  await page.goto('/gewohnheiten');
+  // No `target` key at all — simulates a record synced before this migration.
+  await seedHabit(page, { name: 'Alte Gewohnheit', schedule: 'weekly', color: null, archivedAt: null });
+
+  const item = habitItems(page).filter({ hasText: 'Alte Gewohnheit' });
+  await expect(item).toContainText('Wöchentlich');
+  await expect(item).not.toContainText('×');
+
+  await tapHabit(page, 'Alte Gewohnheit');
+  const dialog = editDialog(page);
+  await expect(dialog.getByRole('radio', { name: 'Wöchentlich' })).toBeChecked();
+  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '1' })).toBeChecked();
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Bearbeiten und Archivieren funktionieren; archivierte verschwinden     */
 /* -------------------------------------------------------------------------- */
 
@@ -343,6 +446,45 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
     client.query('SELECT archived_at FROM habits WHERE name = $1', ['Offline archivieren']),
   );
   expect(row.rows[0].archived_at).not.toBeNull();
+});
+
+test('offline den Rhythmus einer Gewohnheit geändert: sofort sichtbar, in der Outbox, kommt online serverseitig an (issue #509 AC8)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/gewohnheiten');
+  await seedHabit(page, {
+    name: 'Rhythmus wechseln',
+    schedule: 'daily',
+    target: 1,
+    color: null,
+    archivedAt: null,
+  });
+  await context.setOffline(true);
+
+  await tapHabit(page, 'Rhythmus wechseln');
+  const dialog = editDialog(page);
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '4' }).click();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  const item = habitItems(page).filter({ hasText: 'Rhythmus wechseln' });
+  await expect(item).toContainText('4× pro Woche');
+  // One entry for the seed, one for the schedule/target change — both queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+  // Order matters here — see the comment at the equivalent point above (#120).
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query('SELECT schedule, target FROM habits WHERE name = $1', ['Rhythmus wechseln']),
+  );
+  expect(row.rows[0].schedule).toBe('weekly');
+  expect(row.rows[0].target).toBe(4);
 });
 
 /* -------------------------------------------------------------------------- */

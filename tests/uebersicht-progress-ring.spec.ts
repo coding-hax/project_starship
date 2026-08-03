@@ -225,3 +225,39 @@ test('eine wöchentliche Gewohnheit, die heute abgehakt wurde, bleibt im Ring (k
 
   await expect(ring(page)).toHaveText('heute 1 von 1');
 });
+
+test('eine monatliche Gewohnheit, die am 3. abgehakt wurde, fällt am 4. aus dem Ring heraus (issue #509 AC4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const habitId = await seedHabit(page, {
+    name: 'Miete überweisen',
+    schedule: 'monthly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-03', done: true });
+
+  await skewClock(page, '2026-07-04T09:00:00.000Z');
+  await page.reload();
+
+  await expect(ring(page)).toHaveCount(0);
+});
+
+test('die monatliche Gewohnheit ist im neuen Monat wieder offen (issue #509 AC5)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const habitId = await seedHabit(page, {
+    name: 'Miete überweisen',
+    schedule: 'monthly',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-03', done: true });
+
+  await skewClock(page, '2026-08-01T09:00:00.000Z');
+  await page.reload();
+
+  await expect(ring(page)).toHaveText('heute 0 von 1');
+});
