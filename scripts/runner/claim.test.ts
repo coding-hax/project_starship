@@ -3,7 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
-import { claimFilter, claimRelease, claimSweep, claimTake, createClaimAdapter, type ClaimAdapter } from './claim';
+import {
+  claimFilter,
+  claimRelease,
+  claimSweep,
+  claimTake,
+  createClaimAdapter,
+  SWEEP_GRACE_MS,
+  type ClaimAdapter,
+} from './claim';
 import type { QueueIssue } from './queue';
 
 function ghDouble(routes: { match: (args: string[]) => boolean; reply: string }[] = []) {
@@ -107,25 +115,23 @@ describe('claim.ts (#204)', () => {
 
     it('räumt einen verwaisten Claim weg, wenn das Ticket geschlossen ist', () => {
       claimTake(claims, 201, '1');
-      const past = Date.now() - 11 * 60 * 1000;
       const gh = ghDouble([issueView('CLOSED')]);
-      claimSweep(claims, gh, past + 11 * 60 * 1000 + 1);
       // ageMs wird über now-mtime bestimmt; wir setzen "now" weit genug voraus.
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(201)).toBeNull();
     });
 
     it('räumt einen alten Claim weg, dessen Ticket kein in-progress mehr trägt', () => {
       claimTake(claims, 202, '1');
       const gh = ghDouble([issueView('OPEN', 'ready')]); // in-progress abgenommen
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(202)).toBeNull();
     });
 
     it('behält einen alten Claim, dessen Ticket weiterhin offen und in-progress ist', () => {
       claimTake(claims, 203, '1');
       const gh = ghDouble([issueView('OPEN', 'in-progress')]);
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(203)).toBe('1');
     });
 
@@ -138,21 +144,21 @@ describe('claim.ts (#204)', () => {
     it('behält einen alten Claim, dessen Ticket weiterhin einen Plan-Lauf traegt', () => {
       claimTake(claims, 210, '1');
       const gh = ghDouble([issueView('OPEN', 'plan')]);
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(210)).toBe('1');
     });
 
     it('behält einen alten Claim, dessen Ticket weiterhin einen Recherche-Lauf traegt', () => {
       claimTake(claims, 211, '1');
       const gh = ghDouble([issueView('OPEN', 'research')]);
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(211)).toBe('1');
     });
 
     it('räumt einen alten Plan-Claim weg, sobald das Label auf ready geflippt ist', () => {
       claimTake(claims, 212, '1');
       const gh = ghDouble([issueView('OPEN', 'ready')]); // 'plan' abgenommen, Planung fertig
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(212)).toBeNull();
     });
 
@@ -164,8 +170,27 @@ describe('claim.ts (#204)', () => {
     it('behält einen alten Claim eines Denk-Tickets, das zusaetzlich in-progress traegt', () => {
       claimTake(claims, 213, '1');
       const gh = ghDouble([issueView('OPEN', 'in-progress', 'plan')]);
-      claimSweep(claims, gh, Date.now() + 11 * 60 * 1000);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
       expect(claims.readSlot(213)).toBe('1');
+    });
+
+    it('behält einen alten Claim, wenn der gh-Adapter wirft (Netz/Rate-Limit, #482)', () => {
+      claimTake(claims, 220, '1');
+      const gh: GhAdapter = {
+        run: vi.fn(() => {
+          throw new Error('gh: network');
+        }),
+      };
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
+      expect(claims.readSlot(220)).toBe('1');
+    });
+
+    it('sweept einen Claim jünger als die maximale Laufzeit nicht, auch wenn gh CLOSED meldet (#482)', () => {
+      claimTake(claims, 221, '1');
+      const gh = ghDouble([issueView('CLOSED')]);
+      // 44 min < SWEEP_GRACE_MS (50 min) -- Schonfrist greift, gh wird gar nicht gefragt.
+      claimSweep(claims, gh, Date.now() + 44 * 60 * 1000);
+      expect(claims.readSlot(221)).toBe('1');
     });
   });
 
