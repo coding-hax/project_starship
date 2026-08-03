@@ -160,7 +160,13 @@ apply_status() {   # $1 = JSON mit optionalem .status
       "$(printf '%s' "$s" | jq -r '.text')" >/dev/null
   fi
 
-  [ "$IS_LEAD" -eq 1 ] || return 0
+  # #488 (F14): frische Pruefung statt des bei Rundenbeginn festgehaltenen
+  # IS_LEAD -- der Hintergrund-Publisher (start_fleet_publisher) ruft
+  # apply_status() bis zu FLEET_PUBLISH_INTERVAL lang erneut auf, waehrend
+  # die Fuehrung laengst gewechselt haben kann (AK3). Der Keep-alive-`renew`
+  # in fleet-verify-lead haelt die Lease waehrend eines laufenden Bau-Laufs
+  # frisch, solange dieser Slot sie noch haelt.
+  ts_run fleet-verify-lead >/dev/null 2>&1 || return 0
   agg=$(ts_run fleet-status "$SLOT_COUNT" "$LEAD_SLOT" "$EFF_LEAD")
   [ -z "$agg" ] || [ "$agg" = "null" ] && return 0
   status "$(printf '%s' "$agg" | jq -r '.title')" \
@@ -366,8 +372,15 @@ run_round() {
   # duerfen, BEVOR sie liefen. EFF_LEAD bleibt fuer die ganze Runde fest (auch
   # fuer apply_status() nach round-eval) -- kein Flackern zwischen den beiden
   # ts_run-Aufrufen derselben Runde.
+  #
+  # #488 (F14): fleet-effective-lead berechnet EFF_LEAD weiter wie bisher
+  # (Herzschlag-Berechtigung), versucht aber ALS SEITENEFFEKT die Lease unter
+  # SHARED_DIR/lead zu uebernehmen. IS_LEAD kommt NICHT mehr aus einem
+  # simplen Vergleich SLOT_ID=EFF_LEAD (zwei Slots koennten das am
+  # Frischerand unterschiedlich auswerten), sondern aus fleet-verify-lead --
+  # nur wer die Lease TATSAECHLICH haelt, ist Leitslot.
   EFF_LEAD=$(ts_run fleet-effective-lead "$SLOT_COUNT" "$LEAD_SLOT")
-  IS_LEAD=0; [ "$SLOT_ID" = "$EFF_LEAD" ] && IS_LEAD=1
+  IS_LEAD=0; ts_run fleet-verify-lead >/dev/null 2>&1 && IS_LEAD=1
   export EFF_LEAD IS_LEAD
 
   local plan plan_rc kind rc timed eval_out
