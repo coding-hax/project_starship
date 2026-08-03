@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
-import { selectSince } from '@/local/conflict';
+import { pageChanges, PULL_PAGE_LIMIT } from '@/local/conflict';
 import type { PullResponse } from '@/local/types';
 import { readChangesSince } from './read-changes-since';
 
 /**
- * Everything that arrived after `since`, oldest arrival first.
+ * Up to `PULL_PAGE_LIMIT` changes that arrived after `since`, oldest arrival
+ * first. `hasMore` tells the client whether to pull again with `since = cursor`
+ * (fund F5, #478) — an unbounded response here is exactly the recovery-sync
+ * timeout/OOM the fund describes.
  *
  * Soft-deleted rows are included on purpose: the client needs the tombstone, or a
  * row deleted on the phone would live on forever on the laptop.
@@ -31,14 +34,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const changes = await db.transaction((tx) => readChangesSince(tx, since), {
+  const { changes, truncated } = await db.transaction((tx) => readChangesSince(tx, since), {
     isolationLevel: 'repeatable read',
     accessMode: 'read only',
   });
 
-  changes.sort((a, b) => a.syncSeq - b.syncSeq);
-
-  const { cursor } = selectSince(changes, since);
-  const response: PullResponse = { changes, cursor };
+  const { changes: page, cursor, hasMore } = pageChanges(changes, since, PULL_PAGE_LIMIT, truncated);
+  const response: PullResponse = { changes: page, cursor, hasMore };
   return NextResponse.json(response);
 }

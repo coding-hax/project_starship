@@ -199,4 +199,6 @@ export interface PullResponse {
   changes: ChangeRow[];
   /** Highest `syncSeq` among the returned changes — the cursor for the next pull. */
   cursor: number;
+  /** True → more changes remain; the client must pull again with `since = cursor`. */
+  hasMore: boolean;
 }
