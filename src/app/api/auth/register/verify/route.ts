@@ -28,12 +28,23 @@ export async function POST(request: Request) {
   // recovery code — determined before the transaction, same as the credential count.
   const firstCredential = !(await hasAnyCredential());
 
-  const verification = await verifyRegistrationResponse({
-    response: body.response,
-    expectedChallenge: body.challenge,
-    expectedOrigin: rp.origin,
-    expectedRPID: rp.id,
-  });
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: body.response,
+      expectedChallenge: body.challenge,
+      expectedOrigin: rp.origin,
+      expectedRPID: rp.id,
+    });
+  } catch {
+    // The library throws on a malformed/tampered response instead of returning
+    // verified: false (AK1). Distinct from the !verified branch below, which
+    // stays 400 — that's an existing, intentionally unchanged behavior (see PR).
+    return NextResponse.json(
+      { error: 'Passkey konnte nicht verifiziert werden.' },
+      { status: 401 },
+    );
+  }
 
   if (!verification.verified || !verification.registrationInfo) {
     return NextResponse.json(
