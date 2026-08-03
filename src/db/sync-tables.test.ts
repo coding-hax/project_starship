@@ -149,6 +149,16 @@ describe('writableFields for habits', () => {
     expect(fields).not.toHaveProperty('id');
     expect(fields).not.toHaveProperty('updatedAt');
   });
+
+  it('keeps target (issue #509), the DB default fills it in when a client omits it', () => {
+    const fields = writableFields('habits', {
+      name: 'Laufen',
+      schedule: 'weekly',
+      target: 3,
+    });
+
+    expect(fields.target).toBe(3);
+  });
 });
 
 describe('missingRequired for habits', () => {
@@ -159,6 +169,10 @@ describe('missingRequired for habits', () => {
   it('names what a create is missing', () => {
     expect(missingRequired('habits', { name: 'Meditieren' })).toEqual(['schedule']);
     expect(missingRequired('habits', {})).toEqual(['name', 'schedule']);
+  });
+
+  it('does not require target — a pre-#509 client can still push (target defaults in the DB)', () => {
+    expect(missingRequired('habits', { name: 'Meditieren', schedule: 'daily' })).toEqual([]);
   });
 });
 

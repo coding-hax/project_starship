@@ -18,7 +18,8 @@ async function reminderSendRows(kind: string): Promise<unknown[]> {
 
 async function insertHabit(overrides: {
   name?: string;
-  schedule?: 'daily' | 'weekly' | 'custom';
+  schedule?: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  target?: number;
   archivedAt?: string | null;
   deletedAt?: string | null;
 } = {}): Promise<string> {
@@ -26,14 +27,15 @@ async function insertHabit(overrides: {
   await withDb((client) =>
     client.query(
       `INSERT INTO habits
-        (id, updated_at, deleted_at, synced_at, sync_seq, name, schedule, color, archived_at, created_at)
+        (id, updated_at, deleted_at, synced_at, sync_seq, name, schedule, target, color, archived_at, created_at)
        VALUES
-        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, NULL, $5, now())`,
+        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, NULL, $6, now())`,
       [
         id,
         overrides.deletedAt ?? null,
         overrides.name ?? 'Laufen',
         overrides.schedule ?? 'daily',
+        overrides.target ?? 1,
         overrides.archivedAt ?? null,
       ],
     ),
@@ -231,6 +233,79 @@ test.describe('habits-open', () => {
     const body = await response.json();
 
     expect(body.sent).not.toContain('habits-open');
+  });
+
+  /**
+   * Owner-Entscheidung 2 (issue #509, AC6): the reminder only mentions a habit
+   * once its period is actually running out — a weekly habit stays silent on
+   * Wednesday no matter what, and only speaks up on the last day of its week.
+   */
+  const AT_2005_BERLIN_LAST_DAY_OF_WEEK = { 'x-e2e-now': '2026-07-19T18:05:00.000Z' }; // Sunday 20:05 CEST
+
+  test('eine offene wöchentliche Gewohnheit bleibt vor dem letzten Tag der Woche still (issue #509)', async ({
+    request,
+  }) => {
+    await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
+
+    // AT_2005_BERLIN is Wednesday — the week only ends on Sunday.
+    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('habits-open');
+  });
+
+  test('eine offene wöchentliche Gewohnheit meldet sich am letzten Tag der Woche (issue #509)', async ({
+    request,
+  }) => {
+    await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
+
+    const response = await request.post('/api/push/reminders', {
+      headers: AT_2005_BERLIN_LAST_DAY_OF_WEEK,
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('habits-open');
+  });
+
+  test('eine „3x pro Woche"-Gewohnheit mit 2 von 3 gilt am letzten Tag der Woche noch als offen (issue #509)', async ({
+    request,
+  }) => {
+    const habitId = await insertHabit({ name: 'Krafttraining', schedule: 'weekly', target: 3 });
+    await insertHabitLog(habitId, '2026-07-13');
+    await insertHabitLog(habitId, '2026-07-14');
+
+    const response = await request.post('/api/push/reminders', {
+      headers: AT_2005_BERLIN_LAST_DAY_OF_WEEK,
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('habits-open');
+  });
+
+  test('eine jährliche Gewohnheit bleibt still, wenn mehr als 7 Tage bis Jahresende bleiben (issue #509 AC6)', async ({
+    request,
+  }) => {
+    await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });
+
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-12-01T19:05:00.000Z' }, // 20:05 CET, 30 Tage bis Jahresende
+    });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('habits-open');
+  });
+
+  test('eine jährliche Gewohnheit meldet sich innerhalb der letzten 7 Tage des Jahres (issue #509 AC6)', async ({
+    request,
+  }) => {
+    await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });
+
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-12-28T19:05:00.000Z' }, // 20:05 CET, 3 Tage bis Jahresende
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('habits-open');
   });
 });
 

@@ -215,6 +215,54 @@ test('eine wöchentliche Gewohnheit mit Wochen-Hinweis lässt sich offline für 
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: „N× pro Woche" — Zwischenstand und „schon erledigt" (issue #509 AC2/AC3) */
+/* -------------------------------------------------------------------------- */
+
+test('eine "3x pro Woche"-Gewohnheit mit 2 von 3 zeigt ihren Zwischenstand (issue #509 AC2)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Krafttraining',
+    schedule: 'weekly',
+    target: 3,
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-14', done: true });
+
+  const item = habitTodayItems(page).filter({ hasText: 'Krafttraining' });
+  await expect(item).toBeVisible();
+  await expect(item.getByText('2 von 3 diese Woche')).toBeVisible();
+  await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
+});
+
+test('eine "3x pro Woche"-Gewohnheit mit allen 3 Haken gilt als erledigt (issue #509 AC3)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Krafttraining',
+    schedule: 'weekly',
+    target: 3,
+    color: null,
+    archivedAt: null,
+  });
+  // All 3 checks land on days earlier this week than "today" — Friday, so Mon/
+  // Tue/Thu are all available (Wednesday, the suite's usual NOW, only has two
+  // earlier days in its own week to seed on).
+  await seedHabitLog(page, { habitId, logDate: MONDAY_THIS_WEEK, done: true });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-14', done: true });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-16', done: true });
+  await skewClock(page, '2026-07-17T12:00:00.000Z'); // Friday, same week
+  await page.reload();
+
+  const item = habitTodayItems(page).filter({ hasText: 'Krafttraining' });
+  await expect(item).toBeVisible();
+  await expect(item.getByText('Diese Woche schon erledigt')).toBeVisible();
+  await expect(item.getByText(/von 3 diese Woche/)).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Erneutes Tippen nimmt die Markierung zurück — kein Doppel-Log          */
 /* -------------------------------------------------------------------------- */
 

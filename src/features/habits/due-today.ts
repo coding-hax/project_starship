@@ -1,4 +1,4 @@
-import { isDoneInWeek } from './schedule-rules';
+import { isTargetMet, periodRangeFor } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -102,23 +102,22 @@ export function weekDays(date: Date): string[] {
 }
 
 /**
- * Whether `habit` was already checked off on an earlier day of the current
- * Mon–Sun week (issue #224) — drives the "Diese Woche schon erledigt" hint in
- * the Übersicht check-off list. Only weekly habits can be done "earlier this
- * week" in a way that matters; a completion *today* does not count towards
- * this, so the hint stays even after today's own row is checked off
- * (issue #288) — it reports on the week, not on today's checkbox.
+ * Whether `habit`'s `target` was already reached on an earlier day of its
+ * running period (issue #509, generalizes issue #224's weekly-only rule) —
+ * drives the "Diese Woche schon erledigt" hint in the Übersicht check-off list
+ * and its progress-ring exclusion. A completion *today* does not count towards
+ * this, so the hint stays even after today's own row is checked off (issue
+ * #288) — it reports on the period, not on today's checkbox. `daily`/`custom`
+ * (target always 1, one-day period) can never be "earlier" than themselves.
  */
-export function doneEarlierThisWeek(
-  habit: HabitView,
+export function metEarlierInPeriod(
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
   logs: HabitLogView[],
   now: Date = new Date(),
 ): boolean {
-  if (habit.schedule !== 'weekly') return false;
-
   const today = toDateKey(now);
-  const range = currentWeekRange(now);
+  const range = periodRangeFor(habit, today);
   const earlierLogs = logs.filter((log) => log.logDate !== today);
 
-  return isDoneInWeek(earlierLogs, habit.id, range);
+  return isTargetMet(habit, earlierLogs, range);
 }

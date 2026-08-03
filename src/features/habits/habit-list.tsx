@@ -16,8 +16,17 @@ import { useToggleHabitLog } from './use-toggle-habit-log';
 const SCHEDULE_LABELS: Record<HabitView['schedule'], string> = {
   daily: 'Täglich',
   weekly: 'Wöchentlich',
+  biweekly: 'Alle zwei Wochen',
+  monthly: 'Monatlich',
+  quarterly: 'Quartalsweise',
+  yearly: 'Jährlich',
   custom: 'Benutzerdefiniert',
 };
+
+function scheduleLabel(habit: HabitView): string {
+  const base = SCHEDULE_LABELS[habit.schedule];
+  return habit.schedule === 'weekly' && habit.target > 1 ? `${habit.target}× pro Woche` : base;
+}
 
 interface HabitRowProps {
   habit: HabitView;
@@ -60,7 +69,7 @@ function HabitRow({
         />
         <button type="button" className="habit-list__name" onClick={onEdit}>
           <span className="habit-list__title">{habit.name}</span>
-          <span className="habit-list__schedule">{SCHEDULE_LABELS[habit.schedule]}</span>
+          <span className="habit-list__schedule">{scheduleLabel(habit)}</span>
         </button>
         <button type="button" className="habit-list__archive" onClick={onToggleArchive}>
           {archived ? 'Reaktivieren' : 'Archivieren'}

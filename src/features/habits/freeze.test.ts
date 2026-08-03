@@ -8,6 +8,7 @@ const daily = (overrides: Partial<HabitView> = {}): HabitView => ({
   id: 'habit-1',
   name: 'x',
   schedule: 'daily',
+  target: 1,
   color: null,
   archivedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',
@@ -15,6 +16,7 @@ const daily = (overrides: Partial<HabitView> = {}): HabitView => ({
 });
 
 const weekly = (overrides: Partial<HabitView> = {}): HabitView => daily({ schedule: 'weekly', ...overrides });
+const custom = (overrides: Partial<HabitView> = {}): HabitView => daily({ schedule: 'custom', ...overrides });
 
 let logId = 0;
 const log = (dateKey: string, done = true): HabitLogView => ({
@@ -67,6 +69,11 @@ describe('canRescue', () => {
   it('weekly habits can never be rescued', () => {
     const logs = [log('2026-07-13')]; // gap on the 14th
     expect(canRescue(weekly(), logs, [], WEDNESDAY)).toBe(false);
+  });
+
+  it('custom habits can never be rescued either (issue #509 narrows the joker to daily only)', () => {
+    const logs = [log('2026-07-13')]; // gap on the 14th
+    expect(canRescue(custom(), logs, [], WEDNESDAY)).toBe(false);
   });
 
   it('no gap on the day before → false', () => {

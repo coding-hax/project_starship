@@ -111,13 +111,17 @@ export type NewTask = typeof tasks.$inferInsert;
 /**
  * `schedule: 'custom'` is reserved for a later milestone (no UI yet), analogous to
  * `recurrenceRule` on `tasks` — carried now so M2 does not need a second migration.
+ * `target` is "how often per period", only > 1 for `weekly` (issue #509).
  */
 export const habits = pgTable(
   'habits',
   {
     ...syncColumns,
     name: text('name').notNull(),
-    schedule: text('schedule').$type<'daily' | 'weekly' | 'custom'>().notNull(),
+    schedule: text('schedule').$type<
+      'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
+    >().notNull(),
+    target: integer('target').notNull().default(1),
     color: text('color'),
     /** Archiving, not deleting — the streak history stays intact. */
     archivedAt: timestamp('archived_at', { withTimezone: true }),

@@ -3,7 +3,7 @@ import {
   addMonths,
   currentWeekRange,
   dayLabel,
-  doneEarlierThisWeek,
+  metEarlierInPeriod,
   monthDays,
   monthLabel,
   startOfMonth,
@@ -16,6 +16,7 @@ const habit = (overrides: Partial<HabitView>): HabitView => ({
   id: 'habit-1',
   name: 'x',
   schedule: 'daily',
+  target: 1,
   color: null,
   archivedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',
@@ -55,11 +56,11 @@ describe('currentWeekRange', () => {
   });
 });
 
-describe('doneEarlierThisWeek', () => {
-  it('a daily habit never carries the week hint, done or not', () => {
-    expect(doneEarlierThisWeek(habit({ schedule: 'daily' }), [], WEDNESDAY)).toBe(false);
+describe('metEarlierInPeriod', () => {
+  it('a daily habit never carries the hint, done or not (issue #509: one-day period)', () => {
+    expect(metEarlierInPeriod(habit({ schedule: 'daily' }), [], WEDNESDAY)).toBe(false);
     expect(
-      doneEarlierThisWeek(
+      metEarlierInPeriod(
         habit({ schedule: 'daily' }),
         [log({ logDate: '2026-07-15', done: true })],
         WEDNESDAY,
@@ -67,37 +68,69 @@ describe('doneEarlierThisWeek', () => {
     ).toBe(false);
   });
 
-  it('a custom-schedule habit never carries the week hint (no due-logic exists for it yet)', () => {
-    expect(doneEarlierThisWeek(habit({ schedule: 'custom' }), [], WEDNESDAY)).toBe(false);
+  it('a custom-schedule habit never carries the hint (no due-logic exists for it yet)', () => {
+    expect(metEarlierInPeriod(habit({ schedule: 'custom' }), [], WEDNESDAY)).toBe(false);
   });
 
   it('a weekly habit with no log this week has no hint', () => {
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), [], WEDNESDAY)).toBe(false);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), [], WEDNESDAY)).toBe(false);
   });
 
   it('a weekly habit done earlier this week has the hint', () => {
     const logs = [log({ logDate: '2026-07-13', done: true })];
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(true);
   });
 
   it('a weekly habit done last week has no hint this week', () => {
     const logs = [log({ logDate: '2026-07-06', done: true })];
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
   it('a weekly habit checked off today has no hint (it is already shown as done, AC4)', () => {
     const logs = [log({ logDate: '2026-07-15', done: true })];
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
   it('a weekly habit with only an undone log this week has no hint', () => {
     const logs = [log({ logDate: '2026-07-13', done: false })];
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
   });
 
   it('ignores logs for a different habit', () => {
     const logs = [log({ habitId: 'other-habit', logDate: '2026-07-13', done: true })];
-    expect(doneEarlierThisWeek(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly' }), logs, WEDNESDAY)).toBe(false);
+  });
+
+  // Friday this week, so Mon–Thu are all "earlier" days to seed logs on.
+  const FRIDAY = new Date(2026, 6, 17, 12, 0, 0);
+
+  it('a "3x pro Woche" habit with only 2 earlier logs this week has no hint yet (issue #509 AC2)', () => {
+    const logs = [
+      log({ logDate: '2026-07-13', done: true }),
+      log({ logDate: '2026-07-14', done: true }),
+    ];
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly', target: 3 }), logs, FRIDAY)).toBe(false);
+  });
+
+  it('a "3x pro Woche" habit with 3 earlier logs this week has the hint (issue #509 AC3)', () => {
+    const logs = [
+      log({ logDate: '2026-07-13', done: true }),
+      log({ logDate: '2026-07-14', done: true }),
+      log({ logDate: '2026-07-16', done: true }),
+    ];
+    expect(metEarlierInPeriod(habit({ schedule: 'weekly', target: 3 }), logs, FRIDAY)).toBe(true);
+  });
+
+  it('a monthly habit done on the 3rd carries the hint on the 4th (issue #509 AC4)', () => {
+    const logs = [log({ logDate: '2026-07-03', done: true })];
+    const fourth = new Date(2026, 6, 4, 12, 0, 0);
+    expect(metEarlierInPeriod(habit({ schedule: 'monthly' }), logs, fourth)).toBe(true);
+  });
+
+  it('a monthly habit is open again once the month rolls over (issue #509 AC5)', () => {
+    const logs = [log({ logDate: '2026-07-03', done: true })];
+    const nextMonth = new Date(2026, 7, 1, 12, 0, 0);
+    expect(metEarlierInPeriod(habit({ schedule: 'monthly' }), logs, nextMonth)).toBe(false);
   });
 });
 
