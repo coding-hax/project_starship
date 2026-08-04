@@ -106,7 +106,17 @@ verfälschen".
 `reopenFalselyClosedIssues`, die CI-Wache für wartende Tickets
 (`needs-answer`) und `claimSweep` laufen nur, wenn dieser Slot der
 **effektive** Leitslot ist — sonst schreiben mehrere Slots denselben
-Issue-Kommentar oder dieselbe Label-Mutation mehrfach. **Nicht** betroffen:
+Issue-Kommentar oder dieselbe Label-Mutation mehrfach.
+
+> **Verfeinerung (ADR-0021, #488, F14):** `effectiveLead()` allein ist eine je
+> Slot berechnete MEINUNG über den Herzschlag — rund um die Frischegrenze
+> lesen zwei Slots denselben Zustand unterschiedlich und halten sich beide
+> für den effektiven Leitslot. Seit ADR-0021 liefert eine atomare Lease unter
+> `SHARED_DIR/lead/` den tatsächlichen gegenseitigen Ausschluss obendrauf;
+> `effectiveLead()` bleibt unverändert die Quelle der Berechtigung (wer
+> DÜRFTE), nicht mehr die alleinige Wahrheit darüber, wer die Wächter FÄHRT.
+
+**Nicht** betroffen:
 die CI-Wache für das **eigene** laufende Ticket — die gehört in jeden Slot,
 sie betrifft ausschließlich das Ticket, das dieser Slot beansprucht hat. Diese
 Unterscheidung ist der Kern des Umbaus; sie zu verwechseln bedeutet entweder
@@ -148,6 +158,14 @@ besser als gar keiner.
 `claude-runner.sh`, vor `round-plan`), nicht einmal beim Skriptstart — sonst
 bliebe ein ausgefallener Leitslot bis zum nächsten Prozessstart „lead", ohne
 dass je ein anderer Slot übernimmt.
+
+> **Verfeinerung (ADR-0021, #488, F14):** „jede Runde neu bestimmt" reichte
+> für den Rundenbeginn, ließ aber den Hintergrund-Publisher (#331) bis zu
+> `FLEET_PUBLISH_INTERVAL` lang mit einem am Rundenbeginn eingefrorenen
+> `IS_LEAD` weiterlaufen, obwohl die Führung währenddessen gewechselt haben
+> kann. Seit ADR-0021 prüft `fleet-verify-lead` die Lease frisch zum
+> Zeitpunkt jedes globalen Seiteneffekts — auch aus dem Hintergrund heraus,
+> nicht nur bei Rundenbeginn.
 
 ### `limit-until` ist geteilt
 

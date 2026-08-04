@@ -1285,6 +1285,86 @@ describe('roundEval', () => {
     });
   });
 
+  // F17 (#491): Textmuster fuer Limit/Uebergang duerfen nur den CLI-eigenen
+  // Anteil der Ausgabe sehen, nie 'result' -- sonst entkommt ein Ticket, das
+  // inhaltlich mit Fehlermeldungen/Timeouts zu tun hat, dem Eskalationsdeckel.
+  describe('Textmuster sehen nur den CLI-Anteil, nicht die Agentenantwort (F17, #491)', () => {
+    it('AK1: sauberer Lauf (Exit 0) mit "usage limit"/"timed out" in der Agentenantwort wird NICHT als Limit/Uebergang eingestuft', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 0, out: '{"session_id":"s","result":"usage limit erreicht, Test ist timed out"}', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.chain).toBe('continue');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(state.read('transient-77')).toBeNull();
+    });
+
+    it('AK1/AK4: inhaltlicher Fehlschlag mit "usage limit"/"timed out" nur im Agententext (kein api_error_status) wird als Fehlschlag eingestuft, nicht als Limit -- failcount steigt', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        {
+          rc: 1,
+          out: '{"subtype":"error_max_turns","is_error":true,"result":"Test lief in usage limit und ist timed out"}',
+          timedOut: false,
+          maxRuntime: 2700,
+        },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔴');
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(sharedState.read('limit-until')).toBeNull();
+      expect(state.read('failcount-77')).toBe('1\n');
+    });
+
+    it('AK2 (Rueckfall): ein Limit-Text OHNE JSON (kein "result" zum Ausfiltern) wird weiterhin als Limit erkannt', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: 'Claude usage limit reached ∙ resets 3pm', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔵');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+    });
+
+    it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON wird weiterhin als Uebergang erkannt', () => {
+      const { gh } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: 'Error: overloaded_error', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.status?.text).toContain('Versuch 1 von 3');
+      expect(state.read('transient-77')).toBe('1');
+    });
+
+    it('AK3 (Trennschaerfe): derselbe Wortlaut ("overloaded") nur in der Agentenantwort loest KEINEN Uebergang aus, sondern einen inhaltlichen Fehlschlag', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        {
+          rc: 1,
+          out: '{"subtype":"error_max_turns","is_error":true,"result":"server was overloaded per log"}',
+          timedOut: false,
+          maxRuntime: 2700,
+        },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔴');
+      expect(state.read('transient-77')).toBeNull();
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+    });
+  });
+
   // ADR-0005: das Netz greift unabhaengig vom Exit-Code -- auch ein
   // "erfolgreicher" Denk-Lauf darf den Arbeitsbaum nicht beschmutzen.
   describe('Read-only-Netz fuer Denk-Rollen (ADR-0005 + #63, indexbewusster Tripwire seit #325)', () => {
