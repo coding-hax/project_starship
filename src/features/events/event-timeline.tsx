@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useNow } from '@/ui/use-now';
@@ -42,10 +43,16 @@ export interface EventTimelineProps {
  */
 export function EventTimeline({ events, exceptions, selectedDay, today, onEditEvent }: EventTimelineProps) {
   const now = useNow();
-  const occurrences = expandForDay(events, exceptions, selectedDay);
-  const cards = layoutForDay(occurrences, selectedDay);
+  const occurrences = useMemo(
+    () => expandForDay(events, exceptions, selectedDay),
+    [events, exceptions, selectedDay],
+  );
+  const cards = useMemo(() => layoutForDay(occurrences, selectedDay), [occurrences, selectedDay]);
   const cardRows = useListPresence(cards, (card) => card.id);
-  const allDayItems = allDayEventsForDay(occurrences, selectedDay);
+  const allDayItems = useMemo(
+    () => allDayEventsForDay(occurrences, selectedDay),
+    [occurrences, selectedDay],
+  );
   const allDayRows = useListPresence(allDayItems, (item) => item.id);
   const showNowLine = selectedDay === today;
 
