@@ -119,7 +119,7 @@ export default defineConfig({
     // project at all. Playwright does not warn about that. This comment is the warning.
     {
       name: 'mobile',
-      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|.*\.desktop)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.desktop)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

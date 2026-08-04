@@ -26,9 +26,11 @@ jobs:
         with: { fetch-depth: 0 }
       - run: git fetch origin main
       - name: Run test-integrity guard
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           EXEMPT=""
-          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'tests-exempt'; then
+          if printf '%s' "$PR_LABELS" | grep -q 'tests-exempt'; then
             EXEMPT=1
           fi
           bash scripts/check-test-integrity.sh origin/main "$EXEMPT"

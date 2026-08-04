@@ -75,15 +75,15 @@ Tor, sondern eine Pflicht — der Bau-Prompt verlangt bei `src/db/`,
 `src/crypto/`, `src/local/`, `src/app/api/sync/`, allem mit `auth` im Namen,
 `.github/` und `scripts/` einen **Kommentar am Ticket**: was geändert wurde,
 warum, was schiefgehen könnte. Die übrigen Netze sind `schema-drift`, `quality`
-(Sync-Invarianten), `test-integrity`, `e2e-offline` und die Review-Rolle
-`db-migration`.
+(Sync-Invarianten), `test-integrity`, `e2e-offline`, `e2e-shipped` und die
+Review-Rolle `db-migration`.
 
 **Der bewusst in Kauf genommene Preis:** ein unbeaufsichtigter Runner-Lauf
 kann eine Migration, eine Krypto-Änderung oder einen Sync-Eingriff selbst
 mergen, ohne dass ein Mensch draufgesehen hat. Die verbleibenden Netze sind
-`schema-drift`, `quality` (Sync-Invarianten), `test-integrity`, `e2e-offline`
-und die `db-migration`-Review-Rolle. Wer das zurückdrehen will, ändert
-`.github/workflows/guards.yml` — die Pfadliste steht dort unverändert.
+`schema-drift`, `quality` (Sync-Invarianten), `test-integrity`, `e2e-offline`,
+`e2e-shipped` und die `db-migration`-Review-Rolle. Wer das zurückdrehen will,
+ändert `.github/workflows/guards.yml` — die Pfadliste steht dort unverändert.
 
 Damit merged Claude alles ohne dich.
 
