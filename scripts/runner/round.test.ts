@@ -1319,7 +1319,9 @@ describe('roundEval', () => {
       expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
       expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
       expect(sharedState.read('limit-until')).toBeNull();
-      expect(state.read('failcount-77')).toBe('1\n');
+      // #484: failcount- lebt seit dieser Aenderung im sharedState (siehe
+      // Test oben, AC1) -- der slot-lokale state bleibt dabei leer.
+      expect(sharedState.read('failcount-77')).toBe('1\n');
     });
 
     it('AK2 (Rueckfall): ein Limit-Text OHNE JSON (kein "result" zum Ausfiltern) wird weiterhin als Limit erkannt', () => {
