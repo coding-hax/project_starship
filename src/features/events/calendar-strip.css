@@ -70,19 +70,36 @@
   touch-action: none;
 }
 
-/* The accordion trick: a single-row grid track collapses to 0fr and expands to
-   1fr, animating a property that (unlike max-height) has no "how tall is the
-   content really" guess baked in — grid-template-rows can transition to the
-   1fr computed from the child's own intrinsic height instead. */
+/*
+ * The accordion trick: a single-row grid track collapses to 0fr and expands to
+ * 1fr, animating a property that (unlike max-height) has no "how tall is the
+ * content really" guess baked in — grid-template-rows can transition to the
+ * 1fr computed from the child's own intrinsic height instead.
+ *
+ * `visibility` rides along, inherited by every day button inside a collapsed
+ * row: `overflow: hidden` on `.calendar-strip__days` only clips *painting*,
+ * the buttons still report their real 44px boxes to anything that queries the
+ * DOM directly (keyboard focus order, Playwright's `toBeVisible`) — without
+ * this they would stay tabbable/"visible" while invisible on screen. The
+ * delayed transition means a collapsing row only truly hides once the shrink
+ * has finished (no pop), while an expanding one is visible immediately.
+ */
 .calendar-strip__week-row {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth);
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
+    visibility 0s var(--duration-spring-smooth);
 }
 
 .calendar-strip__week-row[data-selected],
 .calendar-strip[data-expanded='true'] .calendar-strip__week-row {
   grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
+    visibility 0s;
 }
 
 .calendar-strip__days {
