@@ -26,8 +26,9 @@ zu leeren, Sonnet sieht also alles, was Opus erarbeitet hat.
 es gibt. Sie ist für Architektur, Ticketschrieb und Bugs, an denen Sonnet zweimal
 gescheitert ist. **Niemals** für Implementierung, niemals für Suchen, niemals im Runner
 — außer in den zwei eng begrenzten, nur-lesenden Denk-Rollen (Planung, Feature-
-Recherche) aus `docs/adr/0005-opus-im-runner.md` (kein Tages-Deckel, Kill-Switch
-`hands-off`, nie Bauen) und der **Eskalations-Rolle** aus
+Recherche) aus `docs/adr/0005-opus-im-runner.md` (flottenweiter Deckel von
+20 Läufen/Tag über beide Rollen zusammen seit #492, Kill-Switch `hands-off`,
+nie Bauen) und der **Eskalations-Rolle** aus
 `docs/adr/0007-opus-eskalation-baut.md`: Bleibt ein Ticket auf Sonnet/Haiku
 dreimal ohne Fortschritt, baut Opus als letzte Stufe selbst — mit hartem Deckel
 **max. 2 Opus-Bau-Läufe pro Ticket/Tag** und Kill-Switch `no-escalation`. Das ist
