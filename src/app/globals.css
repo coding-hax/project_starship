@@ -34,6 +34,7 @@
 @import '../features/events/event-editor.css';
 @import '../features/events/recurrence-scope-sheet.css';
 @import '../features/events/calendar-view.css';
+@import '../features/events/events-overview-section.css';
 @import './(app)/uebersicht/uebersicht.css';
 @import './(app)/einstellungen/einstellungen.css';
 

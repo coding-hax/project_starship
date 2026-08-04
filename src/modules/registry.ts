@@ -1,4 +1,5 @@
 import { ActivityMonthStrip } from '@/features/activities/activity-month-strip';
+import { EventsOverviewSection } from '@/features/events/events-overview-section';
 import { ExportPanel } from '@/features/export/export-panel';
 import { HabitsOverviewSection } from '@/features/habits/habits-overview-section';
 import { JournalSettingsPanel } from '@/features/journal/journal-settings-panel';
@@ -87,6 +88,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       accent: 'var(--area-events)',
       Icon: IconCalendar,
     },
+    OverviewSection: EventsOverviewSection,
     routes: ['/kalender'],
   },
   {
