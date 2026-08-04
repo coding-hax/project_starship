@@ -626,8 +626,11 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
 
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
-  await page.getByLabel('Von').fill(`${TODAY}T19:00`);
-  await page.getByLabel('Bis').fill(`${TODAY}T20:00`);
+  // `datetime-local` is read back in the *browser's* local time (CI runs UTC,
+  // no timezoneId override) — fill the UTC clock time that reads 19:00–20:00
+  // once the card renders it back in Berlin time (CEST, UTC+2).
+  await page.getByLabel('Von').fill(`${TODAY}T17:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T18:00`);
   await page.getByRole('button', { name: 'Speichern' }).click();
 
   const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
@@ -671,8 +674,9 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await nextDay(page, 7);
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
-  await page.getByLabel('Von').fill('2026-07-25T19:00');
-  await page.getByLabel('Bis').fill('2026-07-25T20:00');
+  // Same UTC-vs-Berlin offset as the "nur dieser" test above.
+  await page.getByLabel('Von').fill('2026-07-25T17:00');
+  await page.getByLabel('Bis').fill('2026-07-25T18:00');
   await page.getByRole('button', { name: 'Speichern' }).click();
 
   const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
