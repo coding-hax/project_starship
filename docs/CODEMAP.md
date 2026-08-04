@@ -115,12 +115,16 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`,
   `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
   (Übersicht, issue #559)
+- `recurrence.ts` — reine Serien-Expansion (issue #557): `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
+- `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
+- `use-event-exceptions.ts` — `EventExceptionView`/`toEventExceptionView` + `useEventExceptions()`, nur lesend — Schreiben läuft über `event-mutations.ts`
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
   darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
 - `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
-- `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
+- `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten, schreibt über `mutate()`; bei einer Serien-Instanz öffnet Speichern/Löschen erst `<RecurrenceScopeSheet/>` (S6)
+- `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 - `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin" (issue #559, S8 von #473): nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
 
