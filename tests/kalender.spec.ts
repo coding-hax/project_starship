@@ -501,3 +501,56 @@ test('ein Termin ausserhalb seines Datumsbereichs steht nicht im Band (#555 AC2)
 
   await expect(allDayBar(page, 'Nur gestern')).toHaveCount(0);
 });
+
+/* -------------------------------------------------------------------------- */
+/* #557 (S6): Serientermine + Ausnahmen                                       */
+/* -------------------------------------------------------------------------- */
+
+test('eine woechentliche Serie landet ueber einen Monatswechsel hinweg am richtigen Wochentag, mit der richtigen Uhrzeit (AC1)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Wochenmeeting',
+    allDay: false,
+    startsAt: '2026-07-13T07:00:00.000Z', // 09:00 Berlin
+    endsAt: '2026-07-13T08:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+    // No byWeekday — defaults to the anchor's own weekday (event-time.ts doc).
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+
+  // Three weeks later, crossing the July/August boundary.
+  await skewClock(page, '2026-08-03T10:00:00.000Z');
+  await page.reload();
+
+  const card = eventCard(page, 'Wochenmeeting');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('09:00');
+  await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
+});
+
+test('eine woechentliche Serie behaelt ihre lokale Uhrzeit ueber die Sommerzeit-Umstellung hinweg (AC2)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'DST-Meeting',
+    allDay: false,
+    startsAt: '2026-03-23T08:00:00.000Z', // 09:00 Berlin (CET, UTC+1)
+    endsAt: '2026-03-23T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+
+  // One week later — spans the 2026-03-29 changeover into CEST (UTC+2).
+  await skewClock(page, '2026-03-30T10:00:00.000Z');
+  await page.reload();
+
+  const card = eventCard(page, 'DST-Meeting');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('09:00');
+  await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
+});
