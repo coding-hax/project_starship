@@ -140,7 +140,13 @@ Check würde nur Fehlalarme produzieren.
 - Der Fix behebt die Ursache. **Nie** den Test aufweichen: kein `test.skip`,
   kein hochgesetzter Timeout als Lösung, kein gelockertes Assert, kein `waitForTimeout`.
 - Selektoren über `getByRole` / `getByLabel`. Keine CSS-Klassen als Selektor.
-- Jeder Feature-Test läuft in beiden Viewports: 375 × 812 (iPhone) und 1280 × 800.
+- Jeder Feature-Test läuft in **einem** Viewport: 375 × 812 (iPhone). Bis #564 lief
+  jeder Test zusätzlich in 1280 × 800 — das war exakt die Hälfte der Suite (573 von
+  1171 Tests, 48,8 von 98 Minuten Testzeit) und hat `e2e-main` von ~6 auf ~13 Minuten
+  gebracht. 568 dieser 573 Tests waren dieselben Assertions in breiter. Schreibe
+  **keine** Desktop-Akzeptanzkriterien mehr: sie würden nirgends ausgeführt und sähen
+  trotzdem nach Abdeckung aus. Desktop-only-Layout (Sidebar, Nav-Reihenfolge) ist
+  damit ungeprüft — das ist der bewusst bezahlte Preis, siehe #564.
 - **Offline-Tests sind Pflicht** — `context.setOffline(true)`, Mutation, wieder online,
   Assertion gegen den Serverzustand.
 
