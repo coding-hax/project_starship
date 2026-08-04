@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { isReadOnlyTable, isSyncTable, malformedFields, SYNC_TABLES, type Mutation } from './types';
+import {
+  isReadOnlyTable,
+  isSyncTable,
+  malformedFields,
+  NATURAL_KEYS,
+  naturalKeyOf,
+  SYNC_TABLES,
+  type Mutation,
+} from './types';
 
 function validMutation(id: string): Mutation {
   return {
@@ -51,5 +59,29 @@ describe('garmin (ADR-0011)', () => {
   it('garmin_tokens never appears in SYNC_TABLES — tokens never leave the server through sync', () => {
     expect(isSyncTable('garmin_tokens')).toBe(false);
     expect(SYNC_TABLES).not.toContain('garmin_tokens');
+  });
+});
+
+describe('events/event_exceptions (issue #552, S1 of #473)', () => {
+  it('both are sync tables, neither is read-only', () => {
+    expect(isSyncTable('events')).toBe(true);
+    expect(isSyncTable('event_exceptions')).toBe(true);
+    expect(isReadOnlyTable('events')).toBe(false);
+    expect(isReadOnlyTable('event_exceptions')).toBe(false);
+  });
+
+  it('event_exceptions has the natural key (eventId, originalDate) — a series referenced, not a list on events (AC6)', () => {
+    expect(NATURAL_KEYS.event_exceptions).toEqual(['eventId', 'originalDate']);
+    expect(NATURAL_KEYS.events).toBeUndefined();
+  });
+
+  it('naturalKeyOf joins eventId + originalDate so two devices moving the same instance collapse to one row', () => {
+    expect(
+      naturalKeyOf('event_exceptions', { eventId: 'event-1', originalDate: '2026-10-25' }),
+    ).toBe('event-1:2026-10-25');
+  });
+
+  it('naturalKeyOf is null for an incomplete payload — a partial update missing one of the key fields', () => {
+    expect(naturalKeyOf('event_exceptions', { eventId: 'event-1' })).toBeNull();
   });
 });
