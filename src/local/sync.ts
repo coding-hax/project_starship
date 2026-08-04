@@ -2,7 +2,7 @@ import { stashDisplacedJournalKey } from '@/features/journal/journal-key-stash';
 import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
-import type { Mutation, PullResponse, PushResponse } from './types';
+import { naturalKeyOf, type Mutation, type PullResponse, type PushResponse } from './types';
 
 /**
  * Push, then pull. Never the other way round: pulling first would overwrite local
@@ -170,6 +170,27 @@ export async function pull(): Promise<boolean> {
           syncSeq: change.syncSeq,
           data: change.data,
         });
+
+        // Two devices offline can each mint their own uuid for the same natural
+        // key (`habit_logs`/`habit_freezes`, issue #475). The server upsert
+        // (route.ts) already collapsed both onto one server-side row — `change`
+        // above — but this device may still hold the displaced local row under
+        // its own uuid. Sweep it out now so the store never shows the same
+        // (habitId, logDate) twice. Cheap even unindexed: local record counts per
+        // table stay in the dozens for a single-user app.
+        const key = naturalKeyOf(change.table, change.data);
+        if (key !== null) {
+          const siblings = await db.records.where('table').equals(change.table).toArray();
+          for (const sibling of siblings) {
+            if (
+              sibling.id !== change.id &&
+              naturalKeyOf(change.table, sibling.data) === key &&
+              !queuedSet.has(`${sibling.table}:${sibling.id}`)
+            ) {
+              await db.records.delete([sibling.table, sibling.id] as never);
+            }
+          }
+        }
       }
     });
 
