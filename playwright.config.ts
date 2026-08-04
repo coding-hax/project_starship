@@ -110,7 +110,7 @@ export default defineConfig({
     // rightly so: nothing in the file tells a scoped test apart from a disabled one.
     {
       name: 'mobile',
-      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|.*\.desktop)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.desktop)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -120,7 +120,7 @@ export default defineConfig({
     },
     {
       name: 'desktop',
-      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|.*\.mobile)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.mobile)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
