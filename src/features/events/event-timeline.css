@@ -52,7 +52,7 @@
   right: 0;
   height: 2px;
   background: var(--area-events);
-  transition: top var(--duration-base) linear;
+  transition: top var(--duration-base) var(--ease-spring);
 }
 
 .event-timeline__now-line::before {
