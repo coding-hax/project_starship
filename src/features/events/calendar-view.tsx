@@ -6,7 +6,9 @@ import { Fab } from '@/ui/fab';
 import { Toast } from '@/ui/toast';
 import { EventEditor, type EventEditorState } from './event-editor';
 import { EventTimeline } from './event-timeline';
+import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
+import { useEventExceptions } from './use-event-exceptions';
 import { useEvents } from './use-events';
 import { WeekStrip } from './week-strip';
 
@@ -21,6 +23,7 @@ const CREATE_LABEL = 'Termin erfassen';
  */
 export function CalendarView() {
   const events = useEvents();
+  const exceptions = useEventExceptions();
   const today = berlinNow(new Date()).dateKey;
   const [selectedDay, setSelectedDay] = useState(today);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
@@ -30,8 +33,13 @@ export function CalendarView() {
     setEditorState({ mode: 'create', event: null });
   }
 
-  function openEdit(id: string) {
-    const event = events?.find((candidate) => candidate.id === id);
+  /**
+   * `occurrence.eventId` is the anchor `events` row for both a plain event and
+   * a series instance — the "nur dieser"/"alle folgenden" scope routing that
+   * tells the two apart lives in the editor's submit path (S6), not here.
+   */
+  function openEdit(occurrence: Occurrence) {
+    const event = events?.find((candidate) => candidate.id === occurrence.eventId);
     if (event) setEditorState({ mode: 'edit', event });
   }
 
@@ -46,6 +54,7 @@ export function CalendarView() {
       </header>
       <EventTimeline
         events={events ?? []}
+        exceptions={exceptions ?? []}
         selectedDay={selectedDay}
         today={today}
         onEditEvent={openEdit}

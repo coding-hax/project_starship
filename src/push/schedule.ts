@@ -30,6 +30,39 @@ export function berlinNow(now: Date): BerlinTime {
   return { dateKey, minutesOfDay };
 }
 
+function epochDay(dateKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+/**
+ * Inverse of `berlinNow` (issue #557, S6 of #473): the UTC instant whose Berlin
+ * wall-clock reading is `(dateKey, minutesOfDay)`. Recurrence expansion needs
+ * this to turn a series anchor's Berlin time back into a real instant for each
+ * occurrence's date, without ever guessing at the UTC offset by hand — the
+ * correction loop below defers to `berlinNow`/ICU for that, same as the forward
+ * direction. A first guess at UTC offset 0 is off by exactly Berlin's offset
+ * (1h or 2h); comparing that guess's own `berlinNow` reading against the target
+ * yields the correction directly. A second iteration only matters for the rare
+ * case where the first correction lands the guess on the other side of a DST
+ * changeover than the target — offsets take only two values, so two rounds
+ * always converge.
+ */
+export function berlinInstant(dateKey: string, minutesOfDay: number): Date {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  let guess = new Date(Date.UTC(year, month - 1, day, 0, 0) + minutesOfDay * 60_000);
+
+  for (let i = 0; i < 2; i++) {
+    const actual = berlinNow(guess);
+    if (actual.dateKey === dateKey && actual.minutesOfDay === minutesOfDay) break;
+    const dayDiff = epochDay(dateKey) - epochDay(actual.dateKey);
+    const diffMinutes = dayDiff * 1440 + (minutesOfDay - actual.minutesOfDay);
+    guess = new Date(guess.getTime() + diffMinutes * 60_000);
+  }
+
+  return guess;
+}
+
 /** A reminder kind's due times, `'HH:MM'` — a list because T5 will allow more than one. */
 export interface SlotSource {
   kind: string;

@@ -18,14 +18,22 @@ function berlinDateKey(instant: string): string {
   return berlinNow(new Date(instant)).dateKey;
 }
 
-export interface TimelineEvent extends Omit<EventView, 'startsAt' | 'endsAt'> {
-  /** Narrowed from `EventView` — `layoutForDay` only ever keeps scheduled events. */
-  startsAt: string;
-  endsAt: string;
-  /** Top offset as a percentage of the 0–24h axis (`minutesOfDay / 1440 * 100`). */
-  topPct: number;
-  /** Card height as a percentage of the axis, floored so the tap target stays reachable. */
-  heightPct: number;
+/**
+ * What `layoutForDay`/`allDayEventsForDay` need from a rendered item — the
+ * shape both `EventView` (a plain event) and `Occurrence` (a series instance,
+ * recurrence.ts) satisfy, so the layout functions work on either without this
+ * file importing recurrence.ts (which itself imports from here — see its doc
+ * comment).
+ */
+export interface TimelineSource {
+  id: string;
+  title: string;
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  category: EventView['category'];
 }
 
 /**
@@ -43,10 +51,21 @@ const MIN_HEIGHT_PCT = (44 / MINUTES_PER_DAY) * 100;
  * it is clamped to the day's own bounds (0 / 1440 minutes) — a real over-midnight
  * split into two cards is S4, not built here.
  */
-export function layoutForDay(events: EventView[], dayKey: string): TimelineEvent[] {
+export function layoutForDay<T extends TimelineSource>(
+  events: T[],
+  dayKey: string,
+): (Omit<T, 'startsAt' | 'endsAt'> & {
+  /** Narrowed from `TimelineSource` — kept only when both are set. */
+  startsAt: string;
+  endsAt: string;
+  /** Top offset as a percentage of the 0–24h axis (`minutesOfDay / 1440 * 100`). */
+  topPct: number;
+  /** Card height as a percentage of the axis, floored so the tap target stays reachable. */
+  heightPct: number;
+})[] {
   return events
     .filter(
-      (event): event is EventView & { startsAt: string; endsAt: string } =>
+      (event): event is T & { startsAt: string; endsAt: string } =>
         !event.allDay && event.startsAt !== null && event.endsAt !== null,
     )
     .filter((event) => berlinDateKey(event.startsAt) === dayKey || berlinDateKey(event.endsAt) === dayKey)
@@ -66,8 +85,17 @@ export function nowLinePct(now: Date): number {
   return (berlinNow(now).minutesOfDay / MINUTES_PER_DAY) * 100;
 }
 
-export interface AllDayItem extends Omit<EventView, 'startsAt' | 'endsAt'> {
-  /** Narrowed from `EventView` — `allDayEventsForDay` only ever keeps all-day events. */
+/**
+ * All-day events whose `[startDate, endDate]` range (both are date keys,
+ * `YYYY-MM-DD` — lexicographic order matches calendar order) covers `dayKey`.
+ * A month/year boundary inside that range needs no special casing here: date
+ * keys compare correctly across it, and `addDays` (used to page `dayKey`
+ * day-by-day) already carries the rollover.
+ */
+export function allDayEventsForDay<T extends TimelineSource>(
+  events: T[],
+  dayKey: string,
+): (T & {
   startDate: string;
   endDate: string;
   /** True when the bar's range reaches beyond `dayKey` on that side — the bar's
@@ -76,19 +104,10 @@ export interface AllDayItem extends Omit<EventView, 'startsAt' | 'endsAt'> {
    *  through, not three unrelated bars (AC2/AC3). */
   continuesBefore: boolean;
   continuesAfter: boolean;
-}
-
-/**
- * All-day events whose `[startDate, endDate]` range (both are date keys,
- * `YYYY-MM-DD` — lexicographic order matches calendar order) covers `dayKey`.
- * A month/year boundary inside that range needs no special casing here: date
- * keys compare correctly across it, and `addDays` (used to page `dayKey`
- * day-by-day) already carries the rollover.
- */
-export function allDayEventsForDay(events: EventView[], dayKey: string): AllDayItem[] {
+})[] {
   return events
     .filter(
-      (event): event is EventView & { startDate: string; endDate: string } =>
+      (event): event is T & { startDate: string; endDate: string } =>
         event.allDay && event.startDate !== null && event.endDate !== null,
     )
     .filter((event) => event.startDate <= dayKey && dayKey <= event.endDate)
@@ -104,7 +123,8 @@ export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
 }
 
-function parseDateKey(dateKey: string): Date {
+/** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
+export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
@@ -125,6 +145,11 @@ export function addDays(dateKey: string, delta: number): string {
   const date = parseDateKey(dateKey);
   date.setUTCDate(date.getUTCDate() + delta);
   return formatDateKey(date);
+}
+
+/** Days from `a` to `b` (`b - a`) — pure date-key arithmetic, see `addDays`. */
+export function dateKeyDiff(a: string, b: string): number {
+  return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
 }
 
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */
