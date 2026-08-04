@@ -21,7 +21,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben →
   Aktivitäten → Gewohnheiten)
 - `(app)/aufgaben/` — Aufgaben (leer bis M1)
-- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline, S2 von #473, issue #553); Editor/Monat/Serien folgen S3–S6
+- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum (issue #469) + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
@@ -110,9 +110,11 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
-- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay` + `editorState`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `week-strip.tsx` / `.css` — zugeklapptes Wochenband Mo–So, Vor/Zurück-Tag + antippbare Tage
-- `event-timeline.tsx` / `.css` — Stundenachse 0–24h, Jetzt-Linie, Terminkarten mit Kategorie-Farbkante
+- `event-timeline.tsx` / `.css` — Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
+- `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
+- `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 
 ### src/features/export
 
