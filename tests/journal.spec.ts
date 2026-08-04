@@ -481,6 +481,12 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den 
 
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);
+  // submit() only clicks — appendJournalEntry (entry.ts) keeps running after the
+  // click resolves, and logJournalHabit is its *last* await. Racing straight into
+  // sync() below can catch it between the journal_entries write and the habit_logs
+  // one, pushing the entry but not yet the log. The rendered entry is the signal
+  // that the whole chain, auto-log included, has settled.
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Erster Eintrag' })).toBeVisible();
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => journalHabitLogRows(entryDate)).toHaveLength(1);
@@ -489,6 +495,7 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den 
 
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Zweiter Eintrag' })).toBeVisible();
   await page.evaluate(() => window.__starship.sync());
 
   // Idempotent (ADR-0018): der zweite Eintrag am selben Tag findet die bestehende
