@@ -53,6 +53,68 @@ async function insertHabitLog(habitId: string, logDate: string, done = true): Pr
   );
 }
 
+async function insertEvent(overrides: {
+  title?: string;
+  allDay?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  recurrence?: { freq: 'daily' | 'weekly' | 'monthly' | 'yearly'; interval: number; byWeekday?: number[] } | null;
+  reminderMinutes?: number | null;
+  deletedAt?: string | null;
+} = {}): Promise<string> {
+  const id = randomUUID();
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO events
+        (id, updated_at, deleted_at, synced_at, sync_seq, title, all_day, starts_at, ends_at, start_date, end_date, category, recurrence, reminder_minutes)
+       VALUES
+        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, $6, $7, $8, NULL, $9, $10)`,
+      [
+        id,
+        overrides.deletedAt ?? null,
+        overrides.title ?? 'Zahnarzt',
+        overrides.allDay ?? false,
+        overrides.startsAt ?? null,
+        overrides.endsAt ?? null,
+        overrides.startDate ?? null,
+        overrides.endDate ?? null,
+        overrides.recurrence ? JSON.stringify(overrides.recurrence) : null,
+        overrides.reminderMinutes ?? 15,
+      ],
+    ),
+  );
+  return id;
+}
+
+async function insertEventException(
+  eventId: string,
+  overrides: {
+    originalDate?: string;
+    cancelled?: boolean;
+    overrideStartsAt?: string | null;
+    overrideEndsAt?: string | null;
+  } = {},
+): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO event_exceptions
+        (id, updated_at, deleted_at, synced_at, sync_seq, event_id, original_date, cancelled, override_starts_at, override_ends_at, override_start_date, override_end_date)
+       VALUES
+        ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, $5, $6, NULL, NULL)`,
+      [
+        randomUUID(),
+        eventId,
+        overrides.originalDate ?? '2026-07-27',
+        overrides.cancelled ?? false,
+        overrides.overrideStartsAt ?? null,
+        overrides.overrideEndsAt ?? null,
+      ],
+    ),
+  );
+}
+
 async function insertTask(overrides: {
   title?: string;
   dueAt?: string | null;
@@ -399,5 +461,100 @@ test.describe('reminder_prefs (e2e-smoke)', () => {
 
     expect(body.sent).not.toContain('e2e-smoke');
     expect(await reminderSendRows('e2e-smoke')).toHaveLength(0);
+  });
+});
+
+/**
+ * `event-reminder` (issue #558, S7 of #473) — the second phase in
+ * `sendDueReminders` (src/push/reminders/index.ts), not a `ReminderKind`: it
+ * has no daily slot, only a per-event/per-occurrence moving reminder time
+ * (`start - reminderMinutes`). The fine-grained window/dedup-key logic is
+ * Vitest territory (src/push/reminders/events-due.test.ts) — this suite only
+ * proves the HTTP layer wires it up per AC.
+ */
+test.describe('event-reminder', () => {
+  test('ein Termin um 14:00 mit Erinnerung löst um 13:45 eine Erinnerung aus (AC1)', async ({ request }) => {
+    await insertEvent({
+      title: 'Zahnarzt',
+      startsAt: '2026-07-20T12:00:00.000Z', // 14:00 CEST
+      endsAt: '2026-07-20T12:30:00.000Z',
+      reminderMinutes: 15,
+    });
+
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-20T11:45:00.000Z' }, // 13:45 CEST
+    });
+    const body = await response.json();
+
+    expect(body.sent).toContain('event-reminder');
+    expect(await reminderSendRows('event-reminder')).toHaveLength(1);
+  });
+
+  test('ein zweiter Auslöser am selben Fenster stellt nicht doppelt zu (AC3)', async ({ request }) => {
+    await insertEvent({
+      title: 'Zahnarzt',
+      startsAt: '2026-07-20T12:00:00.000Z',
+      endsAt: '2026-07-20T12:30:00.000Z',
+      reminderMinutes: 15,
+    });
+    const headers = { 'x-e2e-now': '2026-07-20T11:45:00.000Z' };
+
+    await request.post('/api/push/reminders', { headers });
+    const second = await request.post('/api/push/reminders', { headers });
+    const body = await second.json();
+
+    expect(body.sent).not.toContain('event-reminder');
+    expect(body.skipped).toContain('event-reminder');
+    expect(await reminderSendRows('event-reminder')).toHaveLength(1);
+  });
+
+  test('ein verschobenes Serien-Vorkommen erinnert relativ zur neuen Zeit (AC2)', async ({ request }) => {
+    const eventId = await insertEvent({
+      title: 'Wöchentliches Meeting',
+      startsAt: '2026-07-20T07:00:00.000Z', // 09:00 CEST, Monday anchor
+      endsAt: '2026-07-20T07:30:00.000Z',
+      recurrence: { freq: 'weekly', interval: 1, byWeekday: [0] },
+      reminderMinutes: 15,
+    });
+    await insertEventException(eventId, {
+      originalDate: '2026-07-27',
+      overrideStartsAt: '2026-07-27T13:00:00.000Z', // moved to 15:00 CEST
+    });
+
+    // Old 09:00 raster stays silent — the occurrence moved.
+    const oldRaster = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-27T06:45:00.000Z' },
+    });
+    expect((await oldRaster.json()).sent).not.toContain('event-reminder');
+
+    // New 15:00 raster fires.
+    const newRaster = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-27T12:45:00.000Z' },
+    });
+    expect((await newRaster.json()).sent).toContain('event-reminder');
+
+    const rows = await withDb((client) =>
+      client.query('SELECT slot FROM reminder_sends WHERE kind = $1', ['event-reminder']),
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].slot).toBe(`${eventId}:2026-07-27`);
+  });
+
+  test('ein ausgefallenes Serien-Vorkommen löst keine Erinnerung aus (AC4)', async ({ request }) => {
+    const eventId = await insertEvent({
+      title: 'Wöchentliches Meeting',
+      startsAt: '2026-07-20T07:00:00.000Z',
+      endsAt: '2026-07-20T07:30:00.000Z',
+      recurrence: { freq: 'weekly', interval: 1, byWeekday: [0] },
+      reminderMinutes: 15,
+    });
+    await insertEventException(eventId, { originalDate: '2026-07-27', cancelled: true });
+
+    const response = await request.post('/api/push/reminders', {
+      headers: { 'x-e2e-now': '2026-07-27T06:45:00.000Z' },
+    });
+    const body = await response.json();
+
+    expect(body.sent).not.toContain('event-reminder');
   });
 });
