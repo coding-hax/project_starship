@@ -62,4 +62,18 @@ else
   ok "Code- und Teständerungen passen zusammen."
 fi
 
+# --- 4. Keine rohe Wanduhr in Specs (#495) -----------------------------------
+# new Date() ohne Argument liest die echte Systemzeit -> Mitternachts-/DST-Flakes.
+# new Date(irgendwas) ist erlaubt (siehe FIXED_NOW/installClockAt in helpers.ts).
+# Scope bewusst nur *.spec.ts: helpers.ts (installClockAt selbst) und
+# global-setup.ts (Lock-Zeitstempel, echte Wanduhr korrekt) bleiben aussen vor.
+DATE_PATTERN='new[[:space:]]*Date\([[:space:]]*\)'
+
+if grep -rEn "$DATE_PATTERN" tests/ --include='*.spec.ts' 2>/dev/null; then
+  red "Rohe Wanduhr (new Date() ohne Argument) in einem Spec gefunden (siehe oben)."
+  echo "  FIXED_NOW/installClockAt aus tests/helpers.ts benutzen statt der echten Uhr."
+else
+  ok "Keine rohe Wanduhr in Specs."
+fi
+
 exit $FAIL

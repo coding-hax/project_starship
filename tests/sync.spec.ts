@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import {
+  FIXED_NOW,
   freezeClock,
   openSecondDevice,
   registerPasskey,
@@ -772,7 +773,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
         {
           table: 'tasks',
           id: taskId,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(FIXED_NOW).toISOString(),
           deletedAt: null,
           syncSeq: 2, // Newer than the local record's syncSeq (1)
           data: { title: 'Change from another device' },

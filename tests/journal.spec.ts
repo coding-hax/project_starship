@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { Client } from 'pg';
-import { freezeClock, openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  freezeClock,
+  installClockAt,
+  openSecondDevice,
+  registerPasskey,
+  resetAppData,
+  withDb,
+} from './helpers';
 
 /**
  * S2 of #302 (issue #338): journal_entries + journal_keys, the Dexie bump, the
@@ -386,8 +394,12 @@ test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin d
 test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — zwei Einträge tragen unterschiedliche Werte', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await page.getByRole('button', { name: '5', exact: true }).click();
   await page.getByLabel('Journal-Text').fill('Ruhiger Moment');
@@ -415,8 +427,12 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
 test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über den bestehenden Sync-Pfad, kein Hard-Delete', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await page.getByLabel('Journal-Text').fill('Wird gelöscht');
   await submit(page);
@@ -448,8 +464,9 @@ const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
 test('AC1: über der Eintragsliste steht der aktuell sichtbare Tag, ausgeschrieben auf Deutsch', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const today = new Date();
+  const today = new Date(FIXED_NOW);
 
   await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(today));
 
@@ -484,13 +501,14 @@ test('AC-A (#423): das Datum steht oben rechts, vor dem Formular', async ({ page
 test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf deren Höhe, oben rechts', async ({
   page,
 }) => {
+  await installClockAt(page);
   await registerPasskey(page);
   await page.goto('/journal');
 
   const heading = page.getByRole('heading', { name: 'Journal', exact: true });
   const headerDate = page.locator('.journal-header-date');
   await expect(heading).toBeVisible();
-  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date()));
+  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(FIXED_NOW)));
 
   const headingBox = await heading.boundingBox();
   const dateBox = await headerDate.boundingBox();
@@ -530,12 +548,12 @@ test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist 
 test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne Neuladen auf den neuen Tag, und ein danach abgesendeter Eintrag trägt diesen neuen Kalendertag', async ({
   page,
 }) => {
-  const now = new Date();
+  const now = new Date(FIXED_NOW);
   const beforeMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 58, 0, 0);
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const tomorrowKey = tomorrow.toLocaleDateString('en-CA');
 
-  await page.clock.install({ time: beforeMidnight });
+  await installClockAt(page, beforeMidnight.toISOString());
   await setUpEditor(page);
 
   await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(now));

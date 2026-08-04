@@ -10,6 +10,22 @@ import { AUTH_STATE } from './run-lock';
 export { AUTH_STATE };
 
 /**
+ * A fixed "now" for specs that would otherwise read the real wall clock (#495).
+ * Midday, far from midnight and DST, matching the NOW already proven in
+ * uebersicht.spec.ts.
+ */
+export const FIXED_NOW = '2026-07-18T12:00:00.000Z';
+
+/**
+ * Installs the fake clock at `when` (default FIXED_NOW). Call before the first
+ * navigation — the clock ticks forward at real rate afterwards (so liveQuery/
+ * sync timers keep firing); only `freezeClock`/`fastForward` actually stop it.
+ */
+export async function installClockAt(page: Page, when: string = FIXED_NOW) {
+  await page.clock.install({ time: new Date(when) });
+}
+
+/**
  * Chrome's virtual authenticator. This is not a mock of our auth code — the real
  * WebAuthn ceremony runs, the real @simplewebauthn verification runs, a real
  * credential lands in Postgres. Only the hardware is virtual.

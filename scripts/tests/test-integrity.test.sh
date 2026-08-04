@@ -103,6 +103,24 @@ assert_exit "AC5a: gesunkene Testanzahl ohne Exempt-Flag schlägt an" 1 \
 assert_exit "AC5b: dieselbe Änderung mit TESTS_EXEMPT ist grün" 0 \
   bash -c "cd '$REPO5' && bash '$GUARD' '$BASE5' 1"
 
+# --- 6. Abschnitt 4 (#495): rohe Wanduhr in Specs -----------------------------
+# new Date() ohne Argument in einem Spec macht den Wächter rot; new Date() mit
+# einem Argument (fester Test-Zeitpunkt) ist die Gegenprobe und bleibt grün.
+REPO6="$TMP/case6"
+new_repo "$REPO6"
+BASE6=$(git -C "$REPO6" rev-parse HEAD)
+printf "test('uses wall clock', () => { new Date(); });\n" > "$REPO6/tests/clock.spec.ts"
+git -C "$REPO6" add -A
+git -C "$REPO6" commit -q -m "add spec with raw wall clock"
+assert_exit "AC6a: new Date() ohne Argument in einem Spec macht den Wächter rot" 1 \
+  bash -c "cd '$REPO6' && bash '$GUARD' '$BASE6'"
+
+printf "test('uses fixed clock', () => { new Date('2026-07-18'); });\n" > "$REPO6/tests/clock.spec.ts"
+git -C "$REPO6" add -A
+git -C "$REPO6" commit -q -m "fix: use fixed test clock"
+assert_exit "AC6b: new Date() mit Argument bleibt grün (Gegenprobe)" 0 \
+  bash -c "cd '$REPO6' && bash '$GUARD' '$BASE6'"
+
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
