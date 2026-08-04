@@ -1,5 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { freezeClock, installClockAt, registerPasskey, resetAppData, skewClock } from './helpers';
+import {
+  freezeClock,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  skewClock,
+  withDb,
+} from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
 // Berlin (CEST, UTC+2), same calendar day as every event seeded below unless
@@ -477,4 +484,140 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
   });
 
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* #554 (S3): Termin-Editor — Anlegen, Ändern, Löschen, offline, ganztägig    */
+/* -------------------------------------------------------------------------- */
+
+const CREATE_LABEL = 'Termin erfassen';
+const EDIT_LABEL = 'Termin bearbeiten';
+
+test('ein neu angelegter Termin erscheint sofort in der Timeline (#554 AC1)', async ({ page }) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeVisible();
+
+  await page.getByLabel('Titel').fill('Zahnarzttermin');
+  // Mittags gefüllt (TZ-robust, siehe Testplan) — Sichtbarkeit ist die Aussage,
+  // nicht die exakte Stundenposition (die deckt schon kalender.spec.ts's AC1 ab).
+  await page.getByLabel('Von').fill(`${TODAY}T12:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
+  await page.getByLabel('Kategorie').selectOption('gesundheit');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeHidden();
+  await expect(eventCard(page, 'Zahnarzttermin')).toBeVisible();
+});
+
+test('das Ändern eines Termins spiegelt sich sofort in der Timeline (#554 AC2)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Altes Meeting',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await eventCard(page, 'Altes Meeting').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await expect(page.getByLabel('Titel')).toHaveValue('Altes Meeting');
+
+  await page.getByLabel('Titel').fill('Neues Meeting');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(eventCard(page, 'Neues Meeting')).toBeVisible();
+  await expect(eventCard(page, 'Altes Meeting')).toHaveCount(0);
+});
+
+test('das Löschen eines Termins zeigt einen Undo-Toast, der ihn zurückholt (#554 AC3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Zu löschen',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await eventCard(page, 'Zu löschen').click();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  // Scoped to the dialog, not a bare page-wide query — the card itself is a
+  // <button> whose accessible name contains the event's own title, and this
+  // test's title happens to contain the substring "löschen" too (Playwright's
+  // `name` match is substring, case-insensitive by default).
+  await editDialog.getByRole('button', { name: 'Löschen' }).click();
+
+  await expect(eventCard(page, 'Zu löschen')).toHaveCount(0);
+  const undoToast = page.getByRole('status').filter({ hasText: 'gelöscht' });
+  await expect(undoToast).toBeVisible();
+
+  await undoToast.getByRole('button', { name: 'Rückgängig' }).click();
+  await expect(eventCard(page, 'Zu löschen')).toBeVisible();
+  await expect(undoToast).toHaveCount(0);
+});
+
+test('ein offline angelegter Termin steht sofort lokal und erreicht nach dem Onlinegehen die echte Datenbank (#554 AC4)', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await page.getByLabel('Titel').fill('Im Zug erfasst');
+  await page.getByLabel('Von').fill(`${TODAY}T12:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(eventCard(page, 'Im Zug erfasst')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach cuts the sync endpoints so the timeline can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM events WHERE title = $1', ['Im Zug erfasst']),
+  );
+  expect(row.rowCount).toBe(1);
+});
+
+test('der ganztägig-Umschalter wechselt zwischen Uhrzeit- und reinem Datumsfeld, ohne die Zeitmodelle zu vermischen (#554 AC5)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeVisible();
+
+  await expect(page.getByLabel('Von')).toHaveAttribute('type', 'datetime-local');
+
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await expect(page.getByLabel('Von')).toHaveAttribute('type', 'date');
+
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await expect(page.getByLabel('Von')).toHaveAttribute('type', 'datetime-local');
+});
+
+test('bei reduzierter Bewegung öffnet der Termin-Editor nur mit einem Opacity-Übergang (#554, Motion)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+
+  const dialog = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(dialog).toBeVisible();
+  const transitionProperty = await dialog.evaluate(
+    (el) => getComputedStyle(el.firstElementChild as Element).transitionProperty,
+  );
+  expect(transitionProperty).toBe('opacity');
 });

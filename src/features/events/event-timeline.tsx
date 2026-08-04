@@ -23,13 +23,16 @@ export interface EventTimelineProps {
   selectedDay: string;
   /** Today's Berlin date key — the now-line only ever shows on today's own timeline. */
   today: string;
+  /** Opens the editor on a card tap (issue #554). Optional — S1/S2 tests that
+   *  only check visibility render this component without it. */
+  onEditEvent?: (id: string) => void;
 }
 
 /**
  * Day timeline: 0–24h hour axis, now-line, scheduled event cards (issue #553).
  * All-day/multi-day events are S4 (#555) — `layoutForDay` already filters them out.
  */
-export function EventTimeline({ events, selectedDay, today }: EventTimelineProps) {
+export function EventTimeline({ events, selectedDay, today, onEditEvent }: EventTimelineProps) {
   const now = useNow();
   const cards = layoutForDay(events, selectedDay);
   const rows = useListPresence(cards, (card) => card.id);
@@ -62,10 +65,16 @@ export function EventTimeline({ events, selectedDay, today }: EventTimelineProps
                 borderInlineStartColor: categoryEdgeVar(card.category),
               }}
             >
-              <span className="event-timeline__card-title">{card.title}</span>
-              <span className="event-timeline__card-time">
-                {formatTime(card.startsAt)}–{formatTime(card.endsAt)}
-              </span>
+              <button
+                type="button"
+                className="event-timeline__card-button"
+                onClick={() => onEditEvent?.(card.id)}
+              >
+                <span className="event-timeline__card-title">{card.title}</span>
+                <span className="event-timeline__card-time">
+                  {formatTime(card.startsAt)}–{formatTime(card.endsAt)}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
