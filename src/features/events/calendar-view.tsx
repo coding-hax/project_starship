@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
 import { Toast } from '@/ui/toast';
@@ -14,6 +14,18 @@ import { useEvents } from './use-events';
 
 const CREATE_LABEL = 'Termin erfassen';
 
+function subscribeNever() {
+  return () => {};
+}
+
+function getTodayKey() {
+  return berlinNow(new Date()).dateKey;
+}
+
+function getServerTodayKey(): string | null {
+  return null;
+}
+
 /**
  * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473): a day timeline behind
  * a week strip that pulls open into the full month, plus the FAB-driven
@@ -21,12 +33,25 @@ const CREATE_LABEL = 'Termin erfassen';
  * device's local one — the same reference `berlinNow` already gives the
  * reminder scheduler (src/push/schedule.ts), so there is only ever one
  * "today" in this app.
+ *
+ * `today` is `null` during SSR and the very first client render (issue #579):
+ * `berlinNow` reads the client clock, which at that point differs from the
+ * Node process's clock (and, in Playwright, from the faked browser clock) —
+ * computing it directly in the render body produced a hydration mismatch. The
+ * same fix as `JournalHeaderDate` (`useSyncExternalStore` with a `null`
+ * server snapshot) fills it in only once the client has taken over.
+ * `selectedDay` falls back to `today` until the user picks a day of their
+ * own, so it is `null` under the exact same condition. The date-dependent
+ * subtree (strip + timeline) only renders once both are known, which also
+ * keeps `EventTimeline`'s `useNow`-driven now-line off the server render
+ * entirely.
  */
 export function CalendarView() {
   const events = useEvents();
   const exceptions = useEventExceptions();
-  const today = berlinNow(new Date()).dateKey;
-  const [selectedDay, setSelectedDay] = useState(today);
+  const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
+  const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);
+  const selectedDay = selectedDayOverride ?? today;
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
@@ -68,30 +93,36 @@ export function CalendarView() {
           live in it, not just a bare heading. */}
       <header className="calendar-view__header">
         <h1>Kalender</h1>
-        <CalendarStrip
-          selectedDay={selectedDay}
-          onSelectDay={setSelectedDay}
-          today={today}
-          events={events ?? []}
-          expanded={expanded}
-          onExpandChange={setExpanded}
-        />
+        {today !== null && selectedDay !== null && (
+          <CalendarStrip
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDayOverride}
+            today={today}
+            events={events ?? []}
+            expanded={expanded}
+            onExpandChange={setExpanded}
+          />
+        )}
       </header>
-      <EventTimeline
-        events={events ?? []}
-        exceptions={exceptions ?? []}
-        selectedDay={selectedDay}
-        today={today}
-        onEditEvent={openEdit}
-      />
+      {today !== null && selectedDay !== null && (
+        <EventTimeline
+          events={events ?? []}
+          exceptions={exceptions ?? []}
+          selectedDay={selectedDay}
+          today={today}
+          onEditEvent={openEdit}
+        />
+      )}
       <Fab label={CREATE_LABEL} onClick={openCreate} />
-      <EventEditor
-        state={editorState}
-        selectedDay={selectedDay}
-        exceptions={exceptions ?? []}
-        onClose={() => setEditorState(null)}
-        onDelete={deleteEvent}
-      />
+      {today !== null && selectedDay !== null && (
+        <EventEditor
+          state={editorState}
+          selectedDay={selectedDay}
+          exceptions={exceptions ?? []}
+          onClose={() => setEditorState(null)}
+          onDelete={deleteEvent}
+        />
+      )}
       {undo && (
         <Toast
           message={`„${undo.title}" gelöscht`}
