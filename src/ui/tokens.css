@@ -30,6 +30,15 @@
   --accent: var(--area-tasks);
   --accent-fg: oklch(99% 0.005 85);
 
+  /* --- event category colours: accents *within* the Termine area, not a second
+     set of primaries — all clustered around --area-events' hue (195), same
+     lightness/chroma as the area colours (issue #553). --- */
+  --cat-privat: oklch(66% 0.11 170);
+  --cat-arbeit: oklch(66% 0.11 210);
+  --cat-gesundheit: oklch(66% 0.11 155);
+  --cat-sport: oklch(66% 0.11 185);
+  --cat-familie: oklch(66% 0.11 230);
+
   /* --- semantic ----------------------------------------------------------- */
   --success: oklch(66% 0.15 148);
   --warning: oklch(76% 0.14 75);
@@ -94,6 +103,12 @@
     --area-habits: oklch(72% 0.13 148);
     --area-activities: oklch(70% 0.14 260);
 
+    --cat-privat: oklch(72% 0.1 170);
+    --cat-arbeit: oklch(72% 0.1 210);
+    --cat-gesundheit: oklch(72% 0.1 155);
+    --cat-sport: oklch(72% 0.1 185);
+    --cat-familie: oklch(72% 0.1 230);
+
     --accent-fg: oklch(18% 0.012 60);
 
     --success: oklch(72% 0.13 148);
@@ -118,6 +133,12 @@
   --area-journal: oklch(70% 0.13 305);
   --area-habits: oklch(72% 0.13 148);
   --area-activities: oklch(70% 0.14 260);
+
+  --cat-privat: oklch(72% 0.1 170);
+  --cat-arbeit: oklch(72% 0.1 210);
+  --cat-gesundheit: oklch(72% 0.1 155);
+  --cat-sport: oklch(72% 0.1 185);
+  --cat-familie: oklch(72% 0.1 230);
 
   --accent-fg: oklch(18% 0.012 60);
 
