@@ -537,6 +537,12 @@ test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand
 test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #559 AC4)', async ({
   page,
 }) => {
+  // Must be installed before this goto — useNow's setInterval is registered on
+  // whatever clock is active at mount time, so the beforeEach's skewClock (only
+  // setFixedTime, timers stay real, see its own doc comment) would leave it
+  // uncontrolled and fastForward below would never reach it (same gotcha as
+  // toast.spec.ts's AC4 auto-dismiss test).
+  await page.clock.install({ time: new Date(NOW) });
   await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Zahnarzt',
