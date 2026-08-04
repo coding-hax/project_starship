@@ -220,7 +220,13 @@ function JournalOrphanedKeyCard() {
     event.preventDefault();
     const count = await recoverOrphaned(secret, useRecoveryKey);
     setSecret('');
-    setMessage(count > 0 ? `${count} Einträge geborgen.` : 'Keine Einträge geborgen.');
+    setMessage(
+      count === 0
+        ? 'Keine Einträge geborgen.'
+        : count === 1
+          ? '1 Eintrag geborgen.'
+          : `${count} Einträge geborgen.`,
+    );
   }
 
   return (
