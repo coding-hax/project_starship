@@ -81,7 +81,10 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
   Eskalations-Zustandsmaschine (Stufen, Zähler, Deckel) wird kurz beschrieben.
 - `scripts/claude-runner.sh` bekommt Tier-Zustand (`tier-<nr>`,
   `failcount-<nr>`), Fortschritts-/Fehlschlag-Erkennung und den Opus-Bau-Deckel
-  (`opus-<datum>-<nr>`), alles dateibasiert unter `.runner/`.
+  (`opus-<datum>-<nr>`), dateibasiert. Seit #484 liegen diese Zähler
+  slotübergreifend unter `SHARED_DIR`, nicht im slot-lokalen `.runner/` —
+  sonst griffe der Opus-Tagesdeckel nur je Slot statt flottenweit, sobald ein
+  Ticket den Slot wechselt (siehe ADR-0014, „Ticket-Zähler sind geteilt").
 - Der Bau-Prompt verlangt ab dem ersten erfolglosen Lauf einen wachsenden
   „## Was schon versucht wurde"-Abschnitt im Fortschrittskommentar (zuerst
   lesen, ausgeschlossene Wege nicht wiederholen) sowie eine ab dann je
