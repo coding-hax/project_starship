@@ -1,5 +1,7 @@
 import type { SyncTable } from '@/local/types';
 import {
+  eventExceptions,
+  events,
   garminActivities,
   habitFreezes,
   habitLogs,
@@ -77,6 +79,34 @@ export const SYNC_REGISTRY = {
     table: journalKeys,
     writable: ['envelope', 'recoveryEnvelope'],
     required: ['envelope'],
+  },
+  events: {
+    table: events,
+    writable: [
+      'title',
+      'allDay',
+      'startsAt',
+      'endsAt',
+      'startDate',
+      'endDate',
+      'category',
+      'recurrence',
+      'reminderMinutes',
+    ],
+    required: ['title'],
+  },
+  event_exceptions: {
+    table: eventExceptions,
+    writable: [
+      'eventId',
+      'originalDate',
+      'cancelled',
+      'overrideStartsAt',
+      'overrideEndsAt',
+      'overrideStartDate',
+      'overrideEndDate',
+    ],
+    required: ['eventId', 'originalDate'],
   },
   garmin_activities: {
     table: garminActivities,
