@@ -41,7 +41,8 @@ import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, roundRecover, type RoundRun } from './round.js';
 import { cleanupStateDir, cleanupSharedTicketState } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
-import { aggregateStatus, createFleetAdapter, effectiveLead, type FleetAdapter } from './fleet.js';
+import { aggregateStatus, createFleetAdapter, effectiveLead, STALE_MS, type FleetAdapter } from './fleet.js';
+import { acquireLead, createLeadAdapter, type LeadAdapter } from './lead.js';
 
 export interface RunnerContext {
   gh: GhAdapter;
@@ -53,6 +54,8 @@ export interface RunnerContext {
   claims: ClaimAdapter;
   /** Slotübergreifend unter SHARED_DIR/slots (#204), siehe fleet.ts. */
   fleet: FleetAdapter;
+  /** Slotübergreifend unter SHARED_DIR/lead (#488), siehe lead.ts. */
+  lead: LeadAdapter;
   /** Dieser Slot -- '1' in der Ein-Slot-Welt (AK9). */
   slotId: string;
   clock: Clock;
@@ -229,8 +232,10 @@ export const commands: Record<string, CommandHandler> = {
   },
 
   // --- Aggregierter Status bei mehreren Slots (#204, E5) -------------------
-  // Drei Kommandos, je Runde EINMAL gerufen (siehe claude-runner.sh):
-  //   fleet-effective-lead -> wer faehrt GERADE die globalen Waechter?
+  // Vier Kommandos, je Runde gerufen (siehe claude-runner.sh):
+  //   fleet-effective-lead -> wer DUERFTE (Herzschlag-Berechtigung) UND
+  //                           versucht per Seiteneffekt die Lease zu halten
+  //   fleet-verify-lead    -> haelt DIESER Slot die Lease JETZT (#488)?
   //   fleet-write-state    -> JEDER Slot traegt seinen Zustand ein (Herzschlag)
   //   fleet-status         -> NUR der effektive Leitslot baut daraus das eine
   //                           StatusUpdate fuers Status-Issue
@@ -238,7 +243,24 @@ export const commands: Record<string, CommandHandler> = {
     const slotCount = Math.max(1, Number(args[0] ?? 1));
     const leadSlot = args[1] ?? '1';
     const slotIds = Array.from({ length: slotCount }, (_, i) => String(i + 1));
-    return effectiveLead(ctx.fleet.readAll(), slotIds, leadSlot, ctx.clock.now().getTime());
+    const entitled = effectiveLead(ctx.fleet.readAll(), slotIds, leadSlot, ctx.clock.now().getTime());
+    // Seiteneffekt (#488, F14): entscheidet den gegenseitigen Ausschluss per
+    // Lease, damit zwei Slots, die denselben Herzschlag am Frischerand
+    // unterschiedlich lesen, nicht beide die globalen Waechter fahren.
+    // Rueckgabe bleibt `entitled` -- der EFF_LEAD-Vertrag (Status-Notiz in
+    // aggregateStatus, Failover-Reihenfolge) aendert sich nicht.
+    acquireLead(ctx.lead, entitled, ctx.slotId, ctx.clock.now().getTime(), STALE_MS);
+    return entitled;
+  },
+  // Prueft die Fuehrung ZUM ZEITPUNKT DES EFFEKTS (AK3), statt das bei
+  // Rundenbeginn bestimmte IS_LEAD bis zu FLEET_PUBLISH_INTERVAL lang
+  // mitzuschleppen. Haelt dieser Slot die Lease: Keep-alive-`renew` (haelt
+  // sie waehrend eines langen Bau-Laufs frisch) + Exit 0. Sonst Exit 1.
+  'fleet-verify-lead': (ctx) => {
+    const now = ctx.clock.now().getTime();
+    if (!ctx.lead.holds(ctx.slotId)) return null;
+    ctx.lead.renew(ctx.slotId, now, STALE_MS);
+    return '';
   },
   'fleet-write-state': (ctx, args) => {
     const slotId = args[0] ?? ctx.slotId;
@@ -301,6 +323,7 @@ function defaultContext(): RunnerContext {
     sharedState: createStateAdapter(sharedDir()),
     claims: createClaimAdapter(join(sharedDir(), 'claims')),
     fleet: createFleetAdapter(sharedDir()),
+    lead: createLeadAdapter(join(sharedDir(), 'lead')),
     slotId: slotId(),
     clock: createClock(),
   };

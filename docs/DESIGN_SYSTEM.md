@@ -19,6 +19,17 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
+### Kategoriefarben (Termine, issue #553)
+
+Innerhalb des Bereichs Termine tragen die fünf Kategorien (`privat`, `arbeit`,
+`gesundheit`, `sport`, `familie`) je einen eigenen Akzent — `--cat-privat` /
+`--cat-arbeit` / `--cat-gesundheit` / `--cat-sport` / `--cat-familie`. Das sind
+**keine** fünf gleichberechtigten Primärfarben, sondern Varianten um den
+Teal-Ton der Bereichsfarbe (gleiche Helligkeit/Chroma, nur der Farbton wandert).
+Sie erscheinen ausschließlich als 3px-Farbkante an der Terminkarte, nie als
+Flächenfarbe — die Fläche bleibt `--surface`. Ein Termin ohne Kategorie trägt
+stattdessen `--area-events`.
+
 ### Neutrale
 
 - Hintergrund hell: **warmes Off-White**, niemals reines `#FFFFFF`
@@ -46,6 +57,41 @@ Dark Mode ist keine Nachrüstung: jedes Token existiert in beiden Modi von Anfan
 - Schatten: weich, tief liegend, niedrige Deckkraft. Keine harten Ränder.
 - Spacing-Skala: 4 / 8 / 12 / 16 / 24 / 32 / 48. Nichts dazwischen.
 - Karten statt Tabellen auf Mobile. Tabellen erst ab Desktop-Breakpoint.
+
+## Ebenen
+
+Jede schwebende Fläche nimmt eine benannte Stufe aus `src/ui/tokens.css`, nie eine
+roh gewählte Zahl. Damit ist „liegt drüber / liegt drunter" eine Entscheidung im
+Design-System, nicht das Ergebnis von DOM-Reihenfolge und Zufall (Anlass: #508,
+die Bottom-Nav hatte gar kein `z-index` und wurde vom Seiteninhalt überdeckt).
+
+| Token | Wert | Fläche |
+|---|---|---|
+| `--z-nav` | 10 | Bottom-Nav / Sidebar |
+| `--z-fab` | 20 | Floating Action Button |
+| `--z-toast` | 30 | Toast-Host |
+| `--z-drag` | 40 | Drag-Caption |
+| `--z-sheet` | 50 | Modales Sheet + Backdrop |
+
+Stufen liegen in Zehnerschritten auseinander, damit später eine Ebene dazwischen
+passt, ohne alle darüber neu zu nummerieren.
+
+Das Sheet ist ein modaler `<dialog>` (`showModal()`) und liegt deshalb ohnehin in
+der Top-Layer des Browsers — **über allem**, unabhängig von `z-index` und
+DOM-Reihenfolge. `--z-sheet` erzeugt diese Garantie nicht, sondern dokumentiert sie
+und ordnet das Sheet gegen künftige Top-Layer-Geschwister. Weil der Toast-Host im
+normalen Layer liegt (also hinter dem Sheet-Backdrop), gilt: **ein offenes Sheet
+liegt immer über einem Toast**, auch wenn `--z-toast` (30) kleiner ist als
+`--z-sheet` (50) — das ist beabsichtigt, nicht ein Zahlendreher.
+
+Ausnahme: `z-index: 1` innerhalb einer Komponente, die ihren eigenen
+Stacking-Context nie verlässt (z. B. eine angehobene Karte während des Ziehens,
+der aktive Segmented-Control-Button über seinem Indikator), bleibt eine rohe Zahl
+mit Kommentar — das ist kein Teil dieser Skala.
+
+Baust du eine neue schwebende Fläche: erst prüfen, ob sie in eine bestehende Stufe
+passt. Braucht sie eine eigene, wird die Skala in `tokens.css` erweitert, nicht mit
+einer freien Zahl umgangen.
 
 ## Motion
 

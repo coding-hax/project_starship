@@ -3,7 +3,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { Client } from 'pg';
-import { freezeClock, openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  freezeClock,
+  installClockAt,
+  openSecondDevice,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  withDb,
+} from './helpers';
 
 /**
  * S2 of #302 (issue #338): journal_entries + journal_keys, the Dexie bump, the
@@ -33,6 +42,7 @@ test('offline geschriebener Eintrag erreicht online die Datenbank ohne Klartext-
   context,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
   await context.setOffline(true);
 
   const entryDate = '2026-07-29';
@@ -386,8 +396,12 @@ test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin d
 test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — zwei Einträge tragen unterschiedliche Werte', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await page.getByRole('button', { name: '5', exact: true }).click();
   await page.getByLabel('Journal-Text').fill('Ruhiger Moment');
@@ -415,8 +429,12 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
 test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über den bestehenden Sync-Pfad, kein Hard-Delete', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await page.getByLabel('Journal-Text').fill('Wird gelöscht');
   await submit(page);
@@ -436,6 +454,103 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 });
 
 /* -------------------------------------------------------------------------- */
+/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Gewohnheit ab    */
+/* -------------------------------------------------------------------------- */
+
+async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: string; done: boolean }>> {
+  const rows = await withDb((client) =>
+    client.query(
+      `SELECT hl.id, hl.done FROM habit_logs hl
+       JOIN habits h ON h.id = hl.habit_id
+       WHERE h.name = 'Journal' AND hl.log_date = $1 AND hl.deleted_at IS NULL`,
+      [entryDate],
+    ),
+  );
+  return rows.rows;
+}
+
+test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
+
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  // submit() only clicks — appendJournalEntry (entry.ts) keeps running after the
+  // click resolves, and logJournalHabit is its *last* await. Racing straight into
+  // sync() below can catch it between the journal_entries write and the habit_logs
+  // one, pushing the entry but not yet the log. The rendered entry is the signal
+  // that the whole chain, auto-log included, has settled.
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Erster Eintrag' })).toBeVisible();
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => journalHabitLogRows(entryDate)).toHaveLength(1);
+  const [first] = await journalHabitLogRows(entryDate);
+  expect(first.done).toBe(true);
+
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Zweiter Eintrag' })).toBeVisible();
+  await page.evaluate(() => window.__starship.sync());
+
+  // Idempotent (ADR-0018): der zweite Eintrag am selben Tag findet die bestehende
+  // Log-Zeile wieder statt eine zweite gegen UNIQUE(habit_id, log_date) anzulegen.
+  const rows = await journalHabitLogRows(entryDate);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].id).toBe(first.id);
+  expect(rows[0].done).toBe(true);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Gewohnheit  */
+/* an, ein zweiter Boot (Reload) keine zweite                                 */
+/* -------------------------------------------------------------------------- */
+
+test('AC1 (#505): das Journal-Modul legt genau eine Journal-Gewohnheit an, ein zweiter Boot keine zweite', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+
+  await expect
+    .poll(async () => {
+      const records = await page.evaluate(() => window.__starship.debugRecords());
+      return records.filter((r) => r.table === 'habits' && r.data.name === 'Journal').length;
+    })
+    .toBe(1);
+  await page.evaluate(() => window.__starship.sync());
+
+  const rows = await withDb((client) =>
+    client.query("SELECT id, schedule, color, archived_at FROM habits WHERE name = 'Journal'"),
+  );
+  expect(rows.rowCount).toBe(1);
+  expect(rows.rows[0].schedule).toBe('daily');
+  expect(rows.rows[0].color).toBe('--area-journal');
+  expect(rows.rows[0].archived_at).toBeNull();
+  const habitId = rows.rows[0].id as string;
+
+  // Zweiter Boot (Reload) — Anlegen ist idempotent auf Existenz, nicht auf "wurde
+  // je aufgerufen" (issue #505 AC1): keine zweite Zeile, dieselbe id wie zuvor.
+  await page.reload();
+  await expect
+    .poll(async () => {
+      const records = await page.evaluate(() => window.__starship.debugRecords());
+      return records.filter((r) => r.table === 'habits' && r.data.name === 'Journal').length;
+    })
+    .toBe(1);
+  await page.evaluate(() => window.__starship.sync());
+
+  const rowsAfter = await withDb((client) => client.query("SELECT id FROM habits WHERE name = 'Journal'"));
+  expect(rowsAfter.rowCount).toBe(1);
+  expect(rowsAfter.rows[0].id).toBe(habitId);
+});
+
+/* -------------------------------------------------------------------------- */
 /* issue #374: Datum im Journal-Kopf, Eintrag trägt den Tag des Absendens     */
 /* -------------------------------------------------------------------------- */
 
@@ -448,8 +563,9 @@ const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
 test('AC1: über der Eintragsliste steht der aktuell sichtbare Tag, ausgeschrieben auf Deutsch', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const today = new Date();
+  const today = new Date(FIXED_NOW);
 
   await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(today));
 
@@ -484,13 +600,14 @@ test('AC-A (#423): das Datum steht oben rechts, vor dem Formular', async ({ page
 test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf deren Höhe, oben rechts', async ({
   page,
 }) => {
+  await installClockAt(page);
   await registerPasskey(page);
   await page.goto('/journal');
 
   const heading = page.getByRole('heading', { name: 'Journal', exact: true });
   const headerDate = page.locator('.journal-header-date');
   await expect(heading).toBeVisible();
-  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date()));
+  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(FIXED_NOW)));
 
   const headingBox = await heading.boundingBox();
   const dateBox = await headerDate.boundingBox();
@@ -530,12 +647,12 @@ test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist 
 test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne Neuladen auf den neuen Tag, und ein danach abgesendeter Eintrag trägt diesen neuen Kalendertag', async ({
   page,
 }) => {
-  const now = new Date();
+  const now = new Date(FIXED_NOW);
   const beforeMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 58, 0, 0);
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const tomorrowKey = tomorrow.toLocaleDateString('en-CA');
 
-  await page.clock.install({ time: beforeMidnight });
+  await installClockAt(page, beforeMidnight.toISOString());
   await setUpEditor(page);
 
   await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(now));

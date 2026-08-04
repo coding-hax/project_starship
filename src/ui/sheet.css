@@ -20,6 +20,12 @@ dialog.sheet {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* `showModal()` already puts this in the browser's top layer, which paints
+     over everything regardless of z-index/DOM order — this token (tokens.css)
+     documents the sheet's place in the named scale and orders it against any
+     future top-layer siblings, it does not itself create the "above
+     everything" guarantee. */
+  z-index: var(--z-sheet);
   transition:
     display var(--duration-base) allow-discrete,
     overlay var(--duration-base) allow-discrete;

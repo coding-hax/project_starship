@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import { registerPasskey, resetAppData, settleJournalHabitBoot, withDb } from './helpers';
 
 /**
  * Garmin-Aktivitäten (ADR-0011, issue #186): read-only Server-Origin-Daten. Der
@@ -74,11 +74,10 @@ test('eine vom Cron geschriebene Aktivität landet über den normalen Pull im In
   await registerPasskey(page);
   const id = await insertGarminActivity({ distanceMeters: 5432 });
 
-  await page.evaluate(() => window.__starship.sync());
-
-  await expect
-    .poll(async () => (await garminRecords(page)).some((r) => r.id === id))
-    .toBe(true);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.__starship.sync());
+    return (await garminRecords(page)).some((r) => r.id === id);
+  }).toBe(true);
 
   const record = (await garminRecords(page)).find((r) => r.id === id);
   expect(record?.data.distanceMeters).toBe(5432);
@@ -91,6 +90,7 @@ test('offline angelegt, online geholt: Aktivitäten kommen ausschließlich über
   page,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   await page.context().setOffline(true);
   const id = await insertGarminActivity();
@@ -99,11 +99,11 @@ test('offline angelegt, online geholt: Aktivitäten kommen ausschließlich über
   expect(await page.evaluate(() => window.__starship.size())).toBe(0);
 
   await page.context().setOffline(false);
-  await page.evaluate(() => window.__starship.sync());
 
-  await expect
-    .poll(async () => (await garminRecords(page)).some((r) => r.id === id))
-    .toBe(true);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.__starship.sync());
+    return (await garminRecords(page)).some((r) => r.id === id);
+  }).toBe(true);
 
   // Still nothing in the outbox once the row has arrived.
   expect(await page.evaluate(() => window.__starship.size())).toBe(0);
@@ -113,6 +113,7 @@ test('eine Mutation auf garmin_activities wird clientseitig abgewiesen, bevor si
   page,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   await expect(
     page.evaluate(() =>
@@ -140,11 +141,11 @@ test('der Client ruft /api/garmin-sync nie auf, und garmin_tokens erscheint nirg
 
   await registerPasskey(page);
   const id = await insertGarminActivity();
-  await page.evaluate(() => window.__starship.sync());
 
-  await expect
-    .poll(async () => (await garminRecords(page)).some((r) => r.id === id))
-    .toBe(true);
+  await expect.poll(async () => {
+    await page.evaluate(() => window.__starship.sync());
+    return (await garminRecords(page)).some((r) => r.id === id);
+  }).toBe(true);
 
   expect(garminSyncCalls).toEqual([]);
 

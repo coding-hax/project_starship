@@ -28,6 +28,19 @@ function monthGrid(page: Page, habitName: string) {
   return page.getByRole('list', { name: `Monat: ${habitName}` });
 }
 
+/** Mirrors JOURNAL_HABIT_ID in src/features/journal/journal-habit.ts (issue #505). */
+const JOURNAL_HABIT_ID = '5b5c9dc3-25c8-4f97-a4c5-61cb4c736c80';
+
+async function seedJournalHabit(page: Page): Promise<void> {
+  await page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', rowId: p.rowId, op: 'upsert', payload: p.payload }),
+    {
+      rowId: JOURNAL_HABIT_ID,
+      payload: { name: 'Journal', schedule: 'daily', color: '--area-journal', archivedAt: null },
+    },
+  );
+}
+
 /**
  * Addresses a grid cell by its accessible name (day, month, year) instead of
  * position — since #487, leading/trailing cells are real neighbour-month
@@ -94,8 +107,12 @@ test('das Raster zeigt genau die Tage des Monats plus die echten Nachbartage, Mo
   // Every day cell stays a real touch target (min 44px) even inside a 5-row
   // month grid (playwright.config.ts runs this spec in both viewport projects).
   const box = await allDays.first().boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // Rounded, not compared exactly: Chromium's grid layout can report a
+  // sub-pixel-short boundingBox (e.g. 43.999969...) for a 44px min-height box
+  // (same float-serialization class as the neighbour-day check below, #526) —
+  // the CSS token is an exact 44px, this only guards against that.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -268,6 +285,28 @@ test('"heute" ist markiert, auch wenn der Tag als Nachbartag in einer anderen Mo
 });
 
 /* -------------------------------------------------------------------------- */
+/* issue #505 AC5: die Journal-Zeile im Monatsraster ist nicht antippbar      */
+/* -------------------------------------------------------------------------- */
+
+test('die Journal-Zeile im Monatsraster ist nicht antippbar, ein Tipp legt keinen Log an (issue #505 AC5)', async ({
+  page,
+}) => {
+  await seedJournalHabit(page);
+
+  const days = monthGrid(page, 'Journal').getByRole('button');
+  const july14 = days.nth(13); // JULY_14 — weder heute noch Zukunft, nur readOnly deaktiviert
+  await expect(july14).toBeDisabled();
+
+  await july14.click({ force: true });
+
+  const logs = await page.evaluate(async (habitId) => {
+    const records = await window.__starship.debugRecords();
+    return records.filter((r) => r.table === 'habit_logs' && r.data.habitId === habitId);
+  }, JOURNAL_HABIT_ID);
+  expect(logs).toHaveLength(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Nachträgliches Abhaken schlägt sich sofort in der Streak-Anzeige nieder */
 /* -------------------------------------------------------------------------- */
 
@@ -325,8 +364,10 @@ test('das Monatsraster bleibt innerhalb der Seitenbreite, keine horizontale Vers
 
   const days = monthGrid(page, 'Laufen').getByRole('button');
   const box = await days.first().boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // Rounded, not compared exactly: same sub-pixel boundingBox artifact as the
+  // month-grid check above (#526) — the CSS token is an exact 44px.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
 /* -------------------------------------------------------------------------- */

@@ -66,6 +66,8 @@ jobs:
       - run: bash scripts/tests/runner-ts.test.sh
       - run: bash scripts/tests/worktree.test.sh
       - run: bash scripts/tests/gen-slot-plists.test.sh
+      - run: bash scripts/tests/run-lock.test.sh
+      - run: bash scripts/tests/fleet-lead.test.sh
       # Die Parity-Suiten S2-S5 sind mit #203 (S6) entfallen: sie verglichen den
       # TS-Kern gegen den Bash-Pfad, den diese Stufe entfernt hat. Ohne
       # Vergleichslaeufer waren beide Seiten identisch leer -- gruen, aber ohne
@@ -84,19 +86,25 @@ jobs:
   # blocking the merge.
   #
   # e2e-main is further split into a shard matrix (#118, widened to 10 in #220): the
-  # ~4.6s/test that's left after #115 is real work (page boot, sync, expect.poll),
+  # ~5.0s/test that's left after #115 is real work (page boot, sync, expect.poll),
   # nothing left to optimize away, only to distribute. Each shard is its own job with
   # its own Postgres — sharding only splits which tests run where, never a database, so
   # nothing here shares state across shards. fail-fast is off so a red shard doesn't
   # cancel the others: we want the full picture (and the full merged report) every run.
   #
-  # Why 10 and not more: every shard re-pays ~100s of fixed cost (job setup, dev-server
+  # Why 10 and not more: every shard re-pays ~60s of fixed cost (job setup, dev-server
   # boot, and the `setup` project's real WebAuthn ceremony, which is per-run and cannot
   # be shared). Past ~10 the added shards mostly buy warm-up, and 10 shards plus the
   # five other jobs in this workflow already sit at 15 of the 20 concurrent jobs the
   # account gets — leaving room for one other workflow, not for a second full CI run.
   # Playwright splits by test count, not by duration, so the slowest shard still sets
-  # the wall clock; expect ~5 min, not the ~3 min a naive division suggests.
+  # the wall clock.
+  #
+  # Measured on run 30889590678 (before #564): 98 min of test time over 1171 tests,
+  # shards ranging 6.6–11.6 min, slowest job 12m56s. #564 dropped the `desktop`
+  # project — half the suite — which leaves ~49 min and should land near ~6 min.
+  # Staying at 10 shards is deliberate: fewer shards would make the fixed ~60s a
+  # bigger share of each job, so 6 shards would be ~9 min, worse than 10.
   e2e-main:
     runs-on: ubuntu-latest
     strategy:
@@ -150,7 +158,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
-      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/10 --reporter=blob
+      - run: pnpm exec playwright test --project=mobile --shard=${{ matrix.shard }}/10 --reporter=blob
         env:
           E2E_SCOPE: main
       # Blob keeps every shard's attachments (traces, screenshots, video) so the
