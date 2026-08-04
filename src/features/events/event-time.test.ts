@@ -3,8 +3,10 @@ import {
   addDays,
   allDayEventsForDay,
   berlinMinutesOfDay,
+  categoriesForDay,
   categoryEdgeVar,
   layoutForDay,
+  monthDaysFor,
   nowLinePct,
   weekDaysFor,
 } from './event-time';
@@ -172,6 +174,87 @@ describe('weekDaysFor', () => {
       '2026-07-18',
       '2026-07-19',
     ]);
+  });
+});
+
+describe('monthDaysFor', () => {
+  it('pads a month that starts mid-week with real neighbour-month days, 35 keys total', () => {
+    // July 2026 starts on a Wednesday (same month due-today.test.ts uses for
+    // its habits month grid): 2 leading June days, 31 July days, 2 trailing
+    // August days.
+    const days = monthDaysFor('2026-07-18');
+    expect(days).toHaveLength(35);
+    expect(days[0]).toBe('2026-06-29');
+    expect(days[2]).toBe('2026-07-01');
+    expect(days[32]).toBe('2026-07-31');
+    expect(days[34]).toBe('2026-08-02');
+  });
+
+  it('grows to 42 keys when the month needs six full weeks', () => {
+    // November 2026 starts on a Sunday: 6 leading October days, 30 November
+    // days, 6 trailing December days.
+    const days = monthDaysFor('2026-11-15');
+    expect(days).toHaveLength(42);
+    expect(days[0]).toBe('2026-10-26');
+    expect(days[days.length - 1]).toBe('2026-12-06');
+  });
+
+  it('needs no leading neighbour days when the month starts on a Monday', () => {
+    // June 2026 starts on a Monday.
+    const days = monthDaysFor('2026-06-10');
+    expect(days[0]).toBe('2026-06-01');
+  });
+
+  it('is always a multiple of 7, for every month', () => {
+    for (let month = 1; month <= 12; month += 1) {
+      const key = `2026-${String(month).padStart(2, '0')}-15`;
+      expect(monthDaysFor(key).length % 7).toBe(0);
+    }
+  });
+
+  it("contains the month's own first and last date key", () => {
+    const days = monthDaysFor('2026-07-18');
+    expect(days).toContain('2026-07-01');
+    expect(days).toContain('2026-07-31');
+  });
+});
+
+describe('categoriesForDay', () => {
+  const DAY = '2026-07-18';
+
+  function withStart(overrides: Partial<EventView>): EventView {
+    return event({ startsAt: `${DAY}T09:00:00.000Z`, endsAt: `${DAY}T10:00:00.000Z`, ...overrides });
+  }
+
+  it('dedupes two events of the same category into a single dot', () => {
+    const events = [withStart({ category: 'arbeit' }), withStart({ category: 'arbeit' })];
+    expect(categoriesForDay(events, DAY)).toEqual(['arbeit']);
+  });
+
+  it('orders categories stably, unkategorisiert last', () => {
+    const events = [
+      withStart({ category: 'sport' }),
+      withStart({ category: null }),
+      withStart({ category: 'arbeit' }),
+    ];
+    expect(categoriesForDay(events, DAY)).toEqual(['arbeit', 'sport', null]);
+  });
+
+  it('returns an empty list for a day without events', () => {
+    expect(categoriesForDay([], DAY)).toEqual([]);
+  });
+
+  it('ignores events on other days', () => {
+    const events = [withStart({ startsAt: '2026-07-19T09:00:00.000Z', endsAt: '2026-07-19T10:00:00.000Z' })];
+    expect(categoriesForDay(events, DAY)).toEqual([]);
+  });
+
+  it('caps at 4 dots even when all 5 categories plus unkategorisiert are present', () => {
+    const events = (['privat', 'arbeit', 'gesundheit', 'sport', 'familie', null] as const).map((category) =>
+      withStart({ category }),
+    );
+    expect(categoriesForDay(events, DAY)).toHaveLength(4);
+    expect(categoriesForDay(events, DAY)).toEqual(['privat', 'arbeit', 'gesundheit', 'sport']);
   });
 });
 
