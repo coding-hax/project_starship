@@ -14,6 +14,7 @@
     "test:db": "vitest run -c vitest.db.config.mts",
     "e2e": "playwright test",
     "e2e:smoke": "playwright test -c playwright.smoke.config.ts",
+    "e2e:shipped": "playwright test -c playwright.shipped.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
