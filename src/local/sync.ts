@@ -1,3 +1,4 @@
+import { stashDisplacedJournalKey } from '@/features/journal/journal-key-stash';
 import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
@@ -133,7 +134,7 @@ export async function pull(): Promise<boolean> {
 
     const skipped: number[] = [];
 
-    await db.transaction('rw', db.records, db.outbox, async () => {
+    await db.transaction('rw', db.records, db.outbox, db.journalKeyStash, async () => {
       const queued = await db.outbox.toArray();
       const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
 
@@ -150,6 +151,15 @@ export async function pull(): Promise<boolean> {
         // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
         // legitimate incoming change, nor let a stale one through.
         if (local?.syncSeq != null && local.syncSeq >= change.syncSeq) continue;
+
+        // First-setup race (issue #518): two devices offline both mint a DEK onto
+        // `journal_keys`'s fixed row id, arrival-wins (ADR-0008) lets one win — the
+        // loser's envelope would otherwise vanish here and orphan every entry it
+        // encrypted. Stash it before it is overwritten, on this device only, since
+        // this is the only device that still has it (the server already lost).
+        if (change.table === 'journal_keys' && local) {
+          await stashDisplacedJournalKey(local.data, change.data);
+        }
 
         await db.records.put({
           table: change.table,

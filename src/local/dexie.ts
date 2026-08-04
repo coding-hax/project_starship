@@ -85,12 +85,30 @@ export interface JournalSessionEntry {
   dek: CryptoKey;
 }
 
+/**
+ * A `journal_keys` envelope displaced by a foreign, newer one arriving on `pull()`
+ * (issue #518) — the first-setup race two devices can hit offline: both mint a DEK
+ * onto the same fixed row id, arrival-wins (ADR-0008) lets one win, and the loser's
+ * envelope would otherwise vanish everywhere (client and server both overwrite it),
+ * orphaning every entry it encrypted. Captured here, on this device only, before the
+ * overwrite lands — never synced, the server has already discarded it too.
+ * `envelope`/`recoveryEnvelope` are opaque (`unknown`): this store, like the sync
+ * engine itself, never imports crypto runtime code.
+ */
+export interface JournalKeyStashEntry {
+  id: string;
+  envelope: unknown;
+  recoveryEnvelope?: unknown;
+  capturedAt: string;
+}
+
 const db = new Dexie('starship') as Dexie & {
   outbox: EntityTable<OutboxEntry, 'id'>;
   records: EntityTable<LocalRecord, 'id'>;
   meta: EntityTable<MetaEntry, 'key'>;
   weather: EntityTable<WeatherCacheEntry, 'key'>;
   journalSession: EntityTable<JournalSessionEntry, 'id'>;
+  journalKeyStash: EntityTable<JournalKeyStashEntry, 'id'>;
 };
 
 db.version(1).stores({
@@ -142,6 +160,13 @@ db.version(4).stores({
 // data.
 db.version(5).stores({
   journalConflicts: null,
+});
+
+// Additive: a new store for the displaced-envelope stash (issue #518). Existing
+// stores/rows are untouched, an upgrading install just gains an empty stash — the
+// down path is simply never writing to it, same as `journalSession` (v4) above.
+db.version(6).stores({
+  journalKeyStash: 'id, capturedAt',
 });
 
 export { db };
