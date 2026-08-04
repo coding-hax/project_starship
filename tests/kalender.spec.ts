@@ -58,6 +58,67 @@ async function resolveCardColor(
   );
 }
 
+function calendarStrip(page: Page) {
+  return page.locator('.calendar-strip');
+}
+
+function calendarWeeks(page: Page) {
+  return page.locator('.calendar-strip__weeks');
+}
+
+function dayButton(page: Page, ariaLabel: string) {
+  return page.locator(`button[aria-label="${ariaLabel}"]`);
+}
+
+function dayDots(page: Page, ariaLabel: string) {
+  return dayButton(page, ariaLabel).locator('.calendar-strip__dot');
+}
+
+/**
+ * Drives the same Pointer Events CalendarStrip listens to (issue #556) —
+ * dispatched directly on the gesture surface, same technique as tasks.spec.ts's
+ * swipeRight/swipeLeft. Positive `deltaY` swipes down (opens the month),
+ * negative swipes up (closes it back to the week).
+ */
+async function swipeVertical(locator: Locator, deltaY: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('swipeVertical: target has no bounding box');
+  const clientX = box.x + box.width / 2;
+  const startY = box.y + 10;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX,
+    clientY: startY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + deltaY,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + deltaY,
+    bubbles: true,
+  });
+}
+
+/** Same probe technique as resolveCardColor, for an arbitrary background-color token. */
+async function resolveToken(page: Page, cssVar: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, cssVar);
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The timeline must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -244,6 +305,182 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
   await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* S5 (#556): aufklappender Monat — Wischgeste, Punkte, reduced-motion        */
+/* -------------------------------------------------------------------------- */
+
+test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen zieht ihn zum vollen Monat auf (S5 AC1)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+
+  // 2026-07-22 (Mittwoch) liegt in der Folgewoche, außerhalb der um TODAY
+  // selektierten Woche (13.–19.) — im zugeklappten Zustand nicht sichtbar.
+  const outsideDay = dayButton(page, 'Mi, 22.');
+  await expect(outsideDay).not.toBeVisible();
+
+  await swipeVertical(calendarWeeks(page), 80);
+
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+  await expect(outsideDay).toBeVisible();
+});
+
+test('ein Aufwaerts-Wisch am aufgezogenen Monat zieht ihn zum Wochenstreifen zusammen (S5 AC2)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await swipeVertical(calendarWeeks(page), 80);
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+
+  await swipeVertical(calendarWeeks(page), -80);
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+});
+
+test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streifen zusammen (S5 AC2)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await swipeVertical(calendarWeeks(page), 80);
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+
+  const outsideDay = dayButton(page, 'Mi, 22.');
+  await outsideDay.click();
+
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(outsideDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(outsideDay).toBeVisible();
+});
+
+test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Tage ohne Termin keinen (S5 AC3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Arbeit-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Sport-Termin',
+    allDay: false,
+    startsAt: `${TOMORROW}T09:00:00.000Z`,
+    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'sport',
+  });
+
+  const todayDots = dayDots(page, 'Sa, 18.');
+  await expect(todayDots).toHaveCount(1);
+  const expectedArbeit = await resolveToken(page, '--cat-arbeit');
+  await expect
+    .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedArbeit);
+
+  const tomorrowDots = dayDots(page, 'So, 19.');
+  await expect(tomorrowDots).toHaveCount(1);
+  const expectedSport = await resolveToken(page, '--cat-sport');
+  await expect
+    .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSport);
+
+  // 2026-07-13 (Montag) liegt in der gleichen, immer sichtbaren Woche und hat keinen Termin.
+  await expect(dayDots(page, 'Mo, 13.')).toHaveCount(0);
+});
+
+test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im Dark Mode (S5 AC3, Dark Mode)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Arbeit-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const dot = dayDots(page, 'Sa, 18.').first();
+  const expectedLight = await resolveToken(page, '--cat-arbeit');
+  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const expectedDark = await resolveToken(page, '--cat-arbeit');
+  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
+  expect(expectedDark).not.toBe(expectedLight);
+});
+
+test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
+  page,
+}) => {
+  // Bewusst kein seedEvent auf TODAY: ein Termin am initial angezeigten Tag
+  // kombiniert mit den vielen Tag-Wechseln unten triggert einen vorbestehenden,
+  // von diesem Ticket unabhängigen Bug (nicht-memoisiertes useListPresence-Array
+  // in event-timeline.tsx, Fund #578) — AC4 prüft die Rücksprung-Navigation
+  // selbst, die Kartenanzeige ist schon durch AC1/AC3 abgedeckt.
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
+  for (let i = 0; i < 20; i += 1) {
+    await nextDay.click();
+  }
+
+  const todayButton = page.getByRole('button', { name: 'Heute' });
+  await expect(todayButton).toBeVisible();
+  await todayButton.click();
+
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+});
+
+test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu (S5 AC5, Motion)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  const weekRow = page.locator('.calendar-strip__week-row').first();
+  const transitionDuration = await weekRow.evaluate((el) => getComputedStyle(el).transitionDuration);
+  for (const duration of transitionDuration.split(',')) {
+    expect(parseFloat(duration)).toBeLessThan(0.001);
+  }
+
+  const strip = calendarStrip(page);
+  await swipeVertical(calendarWeeks(page), 80);
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+
+  await swipeVertical(calendarWeeks(page), -80);
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+});
+
+test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwerk (S5, Offline-Pfad)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Nach-Reload',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'gesundheit',
+  });
+
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
 });
 
 /* -------------------------------------------------------------------------- */

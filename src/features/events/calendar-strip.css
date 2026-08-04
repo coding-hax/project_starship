@@ -1,0 +1,168 @@
+/* Week strip that pulls open into a month (issue #556, S5 of #473 — was a
+   fixed Mon–Sun row in S2/#553's week-strip). Sits inside calendar-view.tsx's
+   <header>, same 7-column grid vocabulary as habit-week-grid.css/
+   weather-forecast.css's day strip. */
+
+.calendar-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.calendar-strip__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.calendar-strip__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.calendar-strip__nav:focus-visible,
+.calendar-strip__today:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.calendar-strip__today {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--area-events);
+  color: var(--accent-fg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calendar-strip__weekday-header {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* The gesture surface (calendar-strip.tsx's onPointer*): sits at the top of a
+   page that scrolls vertically, so a plain touchmove would be swallowed by the
+   page's own scroll before it ever reaches the swipe threshold. */
+.calendar-strip__weeks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  touch-action: none;
+}
+
+/*
+ * The accordion trick: a single-row grid track collapses to 0fr and expands to
+ * 1fr, animating a property that (unlike max-height) has no "how tall is the
+ * content really" guess baked in — grid-template-rows can transition to the
+ * 1fr computed from the child's own intrinsic height instead.
+ *
+ * `visibility` rides along, inherited by every day button inside a collapsed
+ * row: `overflow: hidden` on `.calendar-strip__days` only clips *painting*,
+ * the buttons still report their real 44px boxes to anything that queries the
+ * DOM directly (keyboard focus order, Playwright's `toBeVisible`) — without
+ * this they would stay tabbable/"visible" while invisible on screen. The
+ * delayed transition means a collapsing row only truly hides once the shrink
+ * has finished (no pop), while an expanding one is visible immediately.
+ */
+.calendar-strip__week-row {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
+    visibility 0s var(--duration-spring-smooth);
+}
+
+.calendar-strip__week-row[data-selected],
+.calendar-strip[data-expanded='true'] .calendar-strip__week-row {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
+    visibility 0s;
+}
+
+.calendar-strip__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.calendar-strip__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-1) 0;
+  border: none;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-spring);
+}
+
+.calendar-strip__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.calendar-strip__day[data-today] {
+  color: var(--area-events);
+}
+
+.calendar-strip__day--selected {
+  background: var(--area-events);
+  color: var(--accent-fg);
+}
+
+.calendar-strip__day--selected[data-today] {
+  color: var(--accent-fg);
+}
+
+/* Neighbour-month day (monthDaysFor's leading/trailing weeks): dimmed via
+   opacity, same technique as habit-week-grid.css's [data-outside]. */
+.calendar-strip__day[data-outside-month] {
+  opacity: 0.5;
+}
+
+.calendar-strip__dots {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.calendar-strip__dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-pill);
+}

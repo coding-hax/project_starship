@@ -112,11 +112,13 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`
-  plus `upcomingEventsToday`/`formatCountdown` (Übersicht, issue #559)
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`,
+  `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
+  (Übersicht, issue #559)
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
-- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay` + `editorState`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
-- `week-strip.tsx` / `.css` — zugeklapptes Wochenband Mo–So, Vor/Zurück-Tag + antippbare Tage
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
+  darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
+- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
 - `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
