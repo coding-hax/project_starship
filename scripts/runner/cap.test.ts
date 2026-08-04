@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
-import { opusBuildCapReached, opusBuildCapReserve } from './cap';
+import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap';
 
 describe('opusBuildCapReached / opusBuildCapReserve', () => {
   let dir: string;
@@ -44,5 +44,41 @@ describe('opusBuildCapReached / opusBuildCapReserve', () => {
     expect(state.read('opus-build-20260726-205')?.trim()).toBe('1');
     opusBuildCapReserve(205, state, clock);
     expect(state.read('opus-build-20260726-205')?.trim()).toBe('2');
+  });
+});
+
+describe('thinkingCapReached / thinkingCapReserve (#492)', () => {
+  let dir: string;
+  let state: StateAdapter;
+  const clock = createFixedClock(new Date(2026, 6, 26, 10, 0, 0));
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'runner-cap-'));
+    state = createStateAdapter(dir);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('treats a missing counter file as 0 (not reached)', () => {
+    expect(thinkingCapReached(state, clock)).toBe(false);
+  });
+
+  it('is not reached below the daily count of 20', () => {
+    state.write('thinking-cap-20260726', '19\n');
+    expect(thinkingCapReached(state, clock)).toBe(false);
+  });
+
+  it('is reached once the daily count hits 20', () => {
+    state.write('thinking-cap-20260726', '20\n');
+    expect(thinkingCapReached(state, clock)).toBe(true);
+  });
+
+  it('reserve increments one shared, ticket-uebergreifende counter for today', () => {
+    thinkingCapReserve(state, clock);
+    expect(state.read('thinking-cap-20260726')?.trim()).toBe('1');
+    thinkingCapReserve(state, clock);
+    expect(state.read('thinking-cap-20260726')?.trim()).toBe('2');
   });
 });

@@ -134,3 +134,37 @@ Das Wegwerfen des Worktrees ist die Bereinigung; das Netz meldet nur noch.
 Zusätzlich (O3): Lese-Rollen bekommen `--disallowedTools "Edit,Write"` als
 harte Zusatzgrenze neben der bestehenden Allowlist (`READONLY_DENY` in
 `scripts/runner/prompts.ts`).
+
+## Nachtrag 04.08.2026 — doch ein Tages-Deckel, aber nur für die Summe (#492)
+
+Der Abschnitt „Grenzen" oben sagte bewusst „Kein künstlicher Tages-Deckel
+fürs Denken" — Planung und Recherche sollten so oft laufen, wie sie brauchen.
+Der Deep Review vom 02.08.26 (Finding F18, #492) zeigte die Lücke, die das
+offen ließ: kein bestehender Deckel begrenzt die **Summe** der Denk-Rollen-
+Läufe über alle Tickets hinweg. Drei Slots, 120-Sekunden-Takt, ein einzelnes
+versehentlich `plan`-markiertes Ticket, das nach jedem Lauf wieder eingeplant
+wird — das verbrennt ein ganzes Tageskontingent, ohne dass der (ticket- und
+opus-spezifische) Bau-Deckel aus ADR-0007 je greift, weil der für die
+Denk-Rollen gar nicht zuständig ist.
+
+**Owner-Entscheidung 03.08.26 (Option C von dreien):** nur die Denk-Rollen
+deckeln, Bau-Läufe bleiben unbegrenzt — die hängen an Tickets und begrenzen
+sich dadurch schon selbst (ADR-0007). Verworfen wurden „so lassen" (die
+Lücke bleibt offen) und „alle Läufe je Tag deckeln" (träfe auch das Bauen,
+das gar nicht die Quelle des Problems ist).
+
+**Umsetzung:** ein flottenweiter, ticketübergreifender Zähler unter
+`SHARED_DIR` (`thinking-cap-<datum>` in `scripts/runner/cap.ts`,
+`thinkingCapReached`/`thinkingCapReserve`) — bewusst **ein** gemeinsamer
+Zähler für `plan` **und** `research`, kein `-${issue}`-Suffix wie beim
+Opus-Bau-Deckel, weil genau die Summe über alle Tickets die Lücke war. Der
+Deckel greift unabhängig vom aufgelösten Modell (auch bei `model:sonnet` auf
+einem `plan`-Ticket) — die Rolle selbst ist die Kostenquelle, nicht nur
+Opus darin. Voraussetzung war #484 (Zähler flottenweit statt slot-lokal),
+sonst hätte der Deckel dieselbe Lücke gehabt wie der Opus-Bau-Deckel vor
+#484. Schwelle: 20 Läufe/Tag, gewählt als grober, aber wirksamer Rundwert
+weit über dem normalen Planungs-/Recherche-Durchsatz — reine Kostenbremse,
+bei Bedarf per Folge-Ticket nachjustierbar. Ist der Deckel erreicht, endet
+die Runde für dieses Ticket mit 🟡 und dem Hinweis, dass morgen automatisch
+weiterläuft — kein `needs-answer`, analog zum Opus-Bau-Deckel aus ADR-0007
+(#272: Wartend auf Zeit ist kein Wartelabel).
