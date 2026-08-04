@@ -54,8 +54,16 @@ shim_materialise() {   # $1 = Zielverzeichnis -> stdout: aufgelöster Pfad
   #
   # Die Existenzprüfung ist nötig, weil `ln -s` auch auf ein nicht vorhandenes
   # Ziel klaglos zeigt — der Fehler fiele sonst erst beim ersten ts_run auf.
+  # `[ -d ]` sieht aber nur, ob das Verzeichnis da ist, nicht ob sein Inhalt
+  # auflösbar ist: ein hohler pnpm-Baum (tote Symlinks, z.B. nach `git worktree
+  # remove` eines fremden Slots) besteht sie trotzdem und `ln -s` verlinkt
+  # klaglos einen unbrauchbaren Baum — deshalb zusätzlich die Auflösbarkeit
+  # des Runner-Einstiegs prüfen (#563).
   [ -d "$REPO/node_modules" ] || {
     echo "node_modules fehlt in $REPO — ist dort pnpm install gelaufen?" >&2; return 1; }
+  [ -e "$REPO/node_modules/tsx/dist/cli.mjs" ] || {
+    echo "node_modules in $REPO ist unbrauchbar (tsx nicht auflösbar) — dort \`pnpm install\` laufen lassen." >&2
+    return 1; }
   ln -s "$REPO/node_modules" "$dest/node_modules" || {
     echo "node_modules nicht verlinkbar." >&2; return 1; }
 
