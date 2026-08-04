@@ -104,7 +104,8 @@ export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
 }
 
-function parseDateKey(dateKey: string): Date {
+/** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
+export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
@@ -125,6 +126,11 @@ export function addDays(dateKey: string, delta: number): string {
   const date = parseDateKey(dateKey);
   date.setUTCDate(date.getUTCDate() + delta);
   return formatDateKey(date);
+}
+
+/** Days from `a` to `b` (`b - a`) — pure date-key arithmetic, see `addDays`. */
+export function dateKeyDiff(a: string, b: string): number {
+  return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
 }
 
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */
