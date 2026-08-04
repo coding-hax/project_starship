@@ -65,7 +65,7 @@ r3=1; resume_allowed "$ISSUE" && r3=0
 assert_eq "AC5: 1. Fortsetzung erlaubt" "0" "$r1"
 assert_eq "AC5: 2. Fortsetzung erlaubt" "0" "$r2"
 assert_eq "AC5: 3. Fortsetzung wird gekappt" "1" "$r3"
-assert_eq "AC5: Zähler steht nach dem Kappen wieder auf 0" "0" "$(cat "$STATE_DIR/resume-count-$ISSUE" 2>/dev/null)"
+assert_eq "AC5: Zähler steht nach dem Kappen wieder auf 0" "0" "$(cat "$SHARED_DIR/resume-count-$ISSUE" 2>/dev/null)"
 
 r4=1; resume_allowed "$ISSUE" && r4=0
 assert_eq "AC5: nach dem Kappen beginnt ein neuer Zyklus (4. Aufruf erlaubt)" "0" "$r4"
@@ -77,8 +77,8 @@ reset_state
 resume_allowed 202 >/dev/null
 resume_allowed 202 >/dev/null
 resume_allowed 999 >/dev/null
-assert_eq "AC6: neues Ticket startet unabhängig bei 1" "1" "$(cat "$STATE_DIR/resume-count-999" 2>/dev/null)"
-assert_eq "AC6: bestehendes Ticket bleibt von einem anderen Ticket unberührt" "2" "$(cat "$STATE_DIR/resume-count-202" 2>/dev/null)"
+assert_eq "AC6: neues Ticket startet unabhängig bei 1" "1" "$(cat "$SHARED_DIR/resume-count-999" 2>/dev/null)"
+assert_eq "AC6: bestehendes Ticket bleibt von einem anderen Ticket unberührt" "2" "$(cat "$SHARED_DIR/resume-count-202" 2>/dev/null)"
 
 # ==============================================================================
 echo

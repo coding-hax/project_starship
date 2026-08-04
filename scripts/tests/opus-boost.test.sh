@@ -179,7 +179,7 @@ assert_file_present() {
 # ==============================================================================
 reset_state
 ISSUE=201
-echo 2 > "$STATE_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
+echo 2 > "$SHARED_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
 if opus_build_cap_reached "$ISSUE" "opus-boost in-progress"; then
   red "T1: opus-boost umgeht den Deckel bei Zähler=2 (rc sollte 1 sein)"
 else
@@ -196,13 +196,13 @@ fi
 # ==============================================================================
 reset_state
 ISSUE=202
-echo 1 > "$STATE_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
+echo 1 > "$SHARED_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
 if opus_build_cap_reached "$ISSUE" "in-progress"; then
   red "T2: Zähler=1 ohne Boost -> Deckel noch nicht erreicht"
 else
   ok "T2: Zähler=1 ohne Boost -> Deckel noch nicht erreicht"
 fi
-echo 2 > "$STATE_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
+echo 2 > "$SHARED_DIR/opus-build-$(date +%Y%m%d)-$ISSUE"
 if opus_build_cap_reached "$ISSUE" "in-progress"; then
   ok "T2: Zähler=2 ohne Boost -> Deckel erreicht"
 else
@@ -234,7 +234,7 @@ esac
 reset_state
 ISSUE=204
 setup_issue "$ISSUE" "opus-boost"
-echo opus > "$STATE_DIR/tier-$ISSUE"
+echo opus > "$SHARED_DIR/tier-$ISSUE"
 RUN_ROLE=build LABELS="in-progress opus-boost" MODEL=opus BEFORE_TIP="sha-alt"
 echo "sha-neu" > "$GHSTATE_DIR/tip-$ISSUE"   # Branch hat sich bewegt
 build_escalation_eval
@@ -259,7 +259,7 @@ _Lauf-Ende 22.07. 10:00: gate-rot, unfertig — nächster Lauf macht weiter._" \
 build_escalation_eval
 build_escalation_eval
 build_escalation_eval
-assert_file_absent "T5: no-escalation verhindert jeden tier_bump, auch mit opus-boost" "$STATE_DIR/tier-$ISSUE"
+assert_file_absent "T5: no-escalation verhindert jeden tier_bump, auch mit opus-boost" "$SHARED_DIR/tier-$ISSUE"
 T5_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$T5_LABELS" in
   *opus-boost*) ok "T5: opus-boost bleibt unangetastet (inert) unter no-escalation" ;;
@@ -272,9 +272,9 @@ esac
 reset_state
 ISSUE=206
 setup_issue "$ISSUE"
-echo opus > "$STATE_DIR/tier-$ISSUE"
+echo opus > "$SHARED_DIR/tier-$ISSUE"
 TODAY=$(date +%Y%m%d)
-echo 2 > "$STATE_DIR/opus-build-$TODAY-$ISSUE"
+echo 2 > "$SHARED_DIR/opus-build-$TODAY-$ISSUE"
 (
   CLAUDE_STUB_MODE=success
   export CLAUDE_STUB_MODE
@@ -288,7 +288,7 @@ echo 2 > "$STATE_DIR/opus-build-$TODAY-$ISSUE"
 assert_eq "T6: Meldung geht genau einmal raus, trotz zweier Ticks" \
   "1" "$(cat "$GHSTATE_DIR/commentcount-$ISSUE" 2>/dev/null || echo 0)"
 assert_file_present "T6: Stempeldatei für den heutigen Tag existiert" \
-  "$STATE_DIR/opus-cap-msg-$TODAY-$ISSUE"
+  "$SHARED_DIR/opus-cap-msg-$TODAY-$ISSUE"
 T6_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 # #272: hier stand bis S2b 'needs-input'. Das war unter zwei Wartelabeln noch
 # stimmig -- 'needs-input' hiess "haengt", 'needs-answer' hiess "es ist eine

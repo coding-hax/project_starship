@@ -194,7 +194,7 @@ _Lauf-Ende 16.07. 10:00: gate-rot, unfertig — nächster Lauf macht weiter._" \
   > "$GHSTATE_DIR/lastcomment-$ISSUE"
 # kein tip-101 -> branch_tip liefert leer -> "kein Fortschritt"
 build_escalation_eval
-assert_eq "AC1: erster Fehlversuch setzt failcount=1" "1" "$(cat "$STATE_DIR/failcount-$ISSUE" 2>/dev/null)"
+assert_eq "AC1: erster Fehlversuch setzt failcount=1" "1" "$(cat "$SHARED_DIR/failcount-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
 # 2. Limit-Ausgang zählt nicht als Fehlversuch (main()-Integrationstest)
@@ -207,7 +207,7 @@ setup_issue "$ISSUE"
   export CLAUDE_STUB_MODE
   main
 ) >/dev/null 2>&1
-assert_file_absent "AC2: Limit-Lauf legt keinen failcount an" "$STATE_DIR/failcount-$ISSUE"
+assert_file_absent "AC2: Limit-Lauf legt keinen failcount an" "$SHARED_DIR/failcount-$ISSUE"
 LIMIT_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$LIMIT_LABELS" in
   *blocked-limit*) ok "AC2: Limit-Lauf setzt blocked-limit" ;;
@@ -228,7 +228,7 @@ build_escalation_eval
 build_escalation_eval
 build_escalation_eval
 assert_eq "AC3: drei Fehlversuche schalten auf opus hoch" "opus" "$(tier_current "$ISSUE")"
-assert_eq "AC3: Fehlversuchs-Zähler wird beim Hochschalten zurückgesetzt" "0" "$(cat "$STATE_DIR/failcount-$ISSUE" 2>/dev/null)"
+assert_eq "AC3: Fehlversuchs-Zähler wird beim Hochschalten zurückgesetzt" "0" "$(cat "$SHARED_DIR/failcount-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
 # 4. Fortschritt (Branch-Tip bewegt) -> tier_reset auf Default
@@ -236,13 +236,13 @@ assert_eq "AC3: Fehlversuchs-Zähler wird beim Hochschalten zurückgesetzt" "0" 
 reset_state
 ISSUE=104 RUN_ROLE=build LABELS="" BEFORE_TIP="sha-alt"
 setup_issue "$ISSUE"
-echo opus > "$STATE_DIR/tier-$ISSUE"
-echo 2 > "$STATE_DIR/failcount-$ISSUE"
-echo "irgendeine-sig" > "$STATE_DIR/blocker-sig-$ISSUE"
+echo opus > "$SHARED_DIR/tier-$ISSUE"
+echo 2 > "$SHARED_DIR/failcount-$ISSUE"
+echo "irgendeine-sig" > "$SHARED_DIR/blocker-sig-$ISSUE"
 echo "sha-neu" > "$GHSTATE_DIR/tip-$ISSUE"   # Branch hat sich bewegt
 build_escalation_eval
 assert_eq "AC4: Fortschritt setzt Stufe auf Default zurück" "sonnet" "$(tier_current "$ISSUE")"
-assert_file_absent "AC4: Fortschritt löscht den Fehlversuchs-Zähler" "$STATE_DIR/failcount-$ISSUE"
+assert_file_absent "AC4: Fortschritt löscht den Fehlversuchs-Zähler" "$SHARED_DIR/failcount-$ISSUE"
 
 # ==============================================================================
 # 5. no-escalation -> nie tier_bump, auch nicht nach 3 Fehlversuchen
@@ -257,7 +257,7 @@ _Lauf-Ende 16.07. 10:00: gate-rot, unfertig — nächster Lauf macht weiter._" \
 build_escalation_eval
 build_escalation_eval
 build_escalation_eval
-assert_file_absent "AC5: no-escalation verhindert jeden tier_bump" "$STATE_DIR/tier-$ISSUE"
+assert_file_absent "AC5: no-escalation verhindert jeden tier_bump" "$SHARED_DIR/tier-$ISSUE"
 
 # ==============================================================================
 # 6. Opus-Deckel: 3. Opus-Lauf ohne Fortschritt -> needs-answer, kein 3. Bau
@@ -265,9 +265,9 @@ assert_file_absent "AC5: no-escalation verhindert jeden tier_bump" "$STATE_DIR/t
 reset_state
 ISSUE=106
 setup_issue "$ISSUE"
-echo opus > "$STATE_DIR/tier-$ISSUE"          # Eskalation ist schon auf Opus
+echo opus > "$SHARED_DIR/tier-$ISSUE"          # Eskalation ist schon auf Opus
 TODAY=$(date +%Y%m%d)
-echo 2 > "$STATE_DIR/opus-build-$TODAY-$ISSUE"   # heute schon 2 Opus-Bau-Läufe verbraucht
+echo 2 > "$SHARED_DIR/opus-build-$TODAY-$ISSUE"   # heute schon 2 Opus-Bau-Läufe verbraucht
 (
   CLAUDE_STUB_MODE=success
   export CLAUDE_STUB_MODE
@@ -282,7 +282,7 @@ case "$CAP_LABELS" in
   *needs-answer*) red "AC6 (#272): kein needs-answer -- der Tagesdeckel wartet auf Zeit, nicht auf dich (Labels: $CAP_LABELS)" ;;
   *) ok "AC6 (#272): kein needs-answer -- der Tagesdeckel wartet auf Zeit, nicht auf dich" ;;
 esac
-assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$STATE_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
+assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$SHARED_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
 # 7. Abweichende Blocker-Signatur -> failcount zurück auf 0
@@ -290,14 +290,14 @@ assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$STATE_DIR/op
 reset_state
 ISSUE=107 RUN_ROLE=build LABELS="" BEFORE_TIP="sha-alt"
 setup_issue "$ISSUE"
-echo 2 > "$STATE_DIR/failcount-$ISSUE"
-echo "alte-signatur-die-nirgendwo-vorkommt" > "$STATE_DIR/blocker-sig-$ISSUE"
+echo 2 > "$SHARED_DIR/failcount-$ISSUE"
+echo "alte-signatur-die-nirgendwo-vorkommt" > "$SHARED_DIR/blocker-sig-$ISSUE"
 printf '%s' "## 🤖 Fortschritt (automatisch aktualisiert)
 
 _Lauf-Ende 16.07. 11:00: gate-rot — ein ANDERER Test schlägt jetzt fehl._" \
   > "$GHSTATE_DIR/lastcomment-$ISSUE"
 build_escalation_eval
-assert_eq "AC7: neue Blocker-Signatur setzt failcount zurück" "0" "$(cat "$STATE_DIR/failcount-$ISSUE" 2>/dev/null)"
+assert_eq "AC7: neue Blocker-Signatur setzt failcount zurück" "0" "$(cat "$SHARED_DIR/failcount-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
 # 8. #196: Eskalation SELBST erschöpft (Opus dreimal ohne Fortschritt auf der
@@ -307,7 +307,7 @@ assert_eq "AC7: neue Blocker-Signatur setzt failcount zurück" "0" "$(cat "$STAT
 reset_state
 ISSUE=108
 setup_issue "$ISSUE"
-echo opus > "$STATE_DIR/tier-$ISSUE"
+echo opus > "$SHARED_DIR/tier-$ISSUE"
 RUN_ROLE=build LABELS="in-progress" MODEL=opus BEFORE_TIP="sha-alt"
 printf '%s' "## 🤖 Fortschritt (automatisch aktualisiert)
 
