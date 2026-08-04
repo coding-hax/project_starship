@@ -112,9 +112,11 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`,
+  `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
-- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay` + `expanded` + `editorState`, Header mit `<CalendarStrip/>`, darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
+  darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
 - `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
