@@ -94,8 +94,12 @@ test('das Raster zeigt genau die Tage des Monats plus die echten Nachbartage, Mo
   // Every day cell stays a real touch target (min 44px) even inside a 5-row
   // month grid (playwright.config.ts runs this spec in both viewport projects).
   const box = await allDays.first().boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // Rounded, not compared exactly: Chromium's grid layout can report a
+  // sub-pixel-short boundingBox (e.g. 43.999969...) for a 44px min-height box
+  // (same float-serialization class as the neighbour-day check below, #526) —
+  // the CSS token is an exact 44px, this only guards against that.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -325,8 +329,10 @@ test('das Monatsraster bleibt innerhalb der Seitenbreite, keine horizontale Vers
 
   const days = monthGrid(page, 'Laufen').getByRole('button');
   const box = await days.first().boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  // Rounded, not compared exactly: same sub-pixel boundingBox artifact as the
+  // month-grid check above (#526) — the CSS token is an exact 44px.
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(44);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
 /* -------------------------------------------------------------------------- */
