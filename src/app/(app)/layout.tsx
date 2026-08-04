@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/auth/session';
+import { JournalHabitBoot } from '@/features/journal/journal-habit-boot';
 import { AppHeader } from '@/ui/app-header';
 import { E2EBridge } from '@/ui/e2e-bridge';
 import { ModuleRouteGuard } from '@/ui/module-route-guard';
@@ -25,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <PageTransition>{children}</PageTransition>
       </main>
       <SyncBoot />
+      <JournalHabitBoot />
       <SyncStatus />
       <ToastHost />
       {process.env.NEXT_PUBLIC_E2E === '1' && <E2EBridge />}
