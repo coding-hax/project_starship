@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { NAV_ITEMS } from '../src/ui/nav-items';
-import { registerPasskey } from './helpers';
+import { registerPasskey, resetAppData } from './helpers';
 
 declare global {
   interface Window {
@@ -298,5 +298,148 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
     await page.emulateMedia({ colorScheme: 'dark' });
 
     expect(await backgroundAlpha(page)).toBe(255);
+  });
+});
+
+/**
+ * `.nav` gains a `z-index` (shell.css) because it is a DOM sibling *before* `main`
+ * (focus order, layout.tsx) while its sticky screen position is visually below it —
+ * without a stacking order the DOM's paint order wins once the page repaints after a
+ * scroll, and page content (or the perpetually-animating `.page-transition--enter`
+ * wrapper, issue #508) paints over the bar instead of under it.
+ */
+test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nicht mehr darüber (issue #508)', () => {
+  test.beforeEach(async ({ page }) => {
+    await resetAppData();
+    // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+    await registerPasskey(page);
+  });
+
+  /**
+   * Eight month grids comfortably push `/gewohnheiten` past the 812px mobile
+   * viewport — the repro needs a list that scrolls under the nav, not a specific count.
+   */
+  async function seedOverflowingHabitList(page: Page) {
+    for (let i = 1; i <= 8; i += 1) {
+      await page.evaluate(
+        (name) =>
+          window.__starship.mutate({
+            table: 'habits',
+            op: 'upsert',
+            payload: { name, schedule: 'daily', color: null, archivedAt: null },
+          }),
+        `Gewohnheit ${i}`,
+      );
+    }
+  }
+
+  /**
+   * A plain `page.goto('/gewohnheiten')` is `page-transition.tsx`'s first render,
+   * which the component deliberately skips (no incoming class on initial mount) —
+   * only a client-side navigation *arriving* at the route sets `page-transition--enter`,
+   * so the repro has to go through the tab bar rather than a direct navigation.
+   */
+  async function navigateToGewohnheitenWithEnterClass(page: Page) {
+    await page.goto('/uebersicht');
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Gewohnheiten' })
+      .click();
+    await expect(page).toHaveURL(/\/gewohnheiten$/);
+    await expect(page.locator('.page-transition')).toHaveClass(/page-transition--enter/);
+  }
+
+  test('AC1: elementFromPoint auf jedem sichtbaren Tab trifft die Nav, nie eine Tageskachel', async ({ page }) => {
+    await seedOverflowingHabitList(page);
+    await navigateToGewohnheitenWithEnterClass(page);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    // The bar is a carousel past five entries (issue #205) — with six NAV_ITEMS
+    // registered, the sixth stays scrolled out of the list's own viewport by
+    // default and has no on-screen point to hit-test, so "jeder sichtbare Tab"
+    // means every entry whose box actually falls inside the list's visible width.
+    const listBox = (await page.locator('.nav__list').boundingBox())!;
+    for (const item of NAV_ITEMS) {
+      const link = page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: item.label });
+      const box = (await link.boundingBox())!;
+      const centerX = box.x + box.width / 2;
+      if (centerX < listBox.x || centerX > listBox.x + listBox.width) continue;
+
+      const hitsNav = await page.evaluate(
+        ([x, y]) => document.elementFromPoint(x, y)?.closest('.nav') != null,
+        [centerX, box.y + box.height / 2] as const,
+      );
+      expect(hitsNav, `Tab „${item.label}" trifft nicht die Nav`).toBe(true);
+    }
+  });
+
+  test('AC2: ein Tap auf einen sichtbaren Tab wechselt die Route statt in einer Tageskachel zu landen', async ({
+    page,
+  }) => {
+    await seedOverflowingHabitList(page);
+    await navigateToGewohnheitenWithEnterClass(page);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
+    await expect(page).toHaveURL(/\/aufgaben$/);
+  });
+
+  test('AC3: FAB und Toast bleiben über der Nav (--z-fab / --z-toast, tokens.css)', async ({ page }) => {
+    const title = 'Wird für den Stacking-Test gelöscht';
+    await page.goto('/aufgaben');
+    await page.evaluate(
+      (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
+      title,
+    );
+
+    const item = page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem').filter({ hasText: title });
+
+    // FAB check first, before any toast — toast.css documents that the toast is
+    // allowed to cover the FAB while it's showing ("acceptable, because it is gone
+    // again in a few seconds"), so that overlap is not what AC3 is about. AC3 is
+    // that neither ever sinks *below the nav*.
+    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+    await expect(fab).toBeVisible();
+    const fabBox = (await fab.boundingBox())!;
+    const fabHit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('.fab') != null,
+      [fabBox.x + fabBox.width / 2, fabBox.y + fabBox.height / 2] as const,
+    );
+    expect(fabHit, 'FAB liegt unter der Nav statt darüber').toBe(true);
+
+    const box = (await item.boundingBox())!;
+    const clientY = box.y + box.height / 2;
+    const startX = box.x + box.width - 20;
+    // Same synthetic swipe-to-delete gesture as tasks.spec.ts — far enough left to
+    // clear the delete threshold and surface the undo toast.
+    await item.dispatchEvent('pointerdown', { pointerId: 1, clientX: startX, clientY, button: 0, bubbles: true });
+    await item.dispatchEvent('pointermove', { pointerId: 1, clientX: startX - 120, clientY, bubbles: true });
+    await item.dispatchEvent('pointerup', { pointerId: 1, clientX: startX - 120, clientY, bubbles: true });
+
+    const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });
+    await expect(toast).toBeVisible();
+    const toastBox = (await toast.boundingBox())!;
+    const toastHit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('.toast') != null,
+      [toastBox.x + toastBox.width / 2, toastBox.y + toastBox.height / 2] as const,
+    );
+    expect(toastHit, 'Toast liegt unter der Nav statt darüber').toBe(true);
+
+    // The individual `<li role="status">` toast carries no z-index of its own —
+    // it inherits its stacking from the `.toast-host` `<ol>` it's portaled into
+    // (toast.tsx/toast-host.tsx), which is where toast.css's `--z-toast` lives.
+    const [navZ, fabZ, toastZ] = await Promise.all([
+      page.locator('.nav').evaluate((el) => Number(getComputedStyle(el).zIndex)),
+      fab.evaluate((el) => Number(getComputedStyle(el).zIndex)),
+      page.locator('.toast-host').evaluate((el) => Number(getComputedStyle(el).zIndex)),
+    ]);
+    // Absolute values (and the full scale's ordering) are covered by the
+    // z-layers tests in design-system.spec.ts — this just re-confirms the
+    // relative order the AC actually cares about, nav < fab < toast.
+    expect(fabZ).toBeGreaterThan(navZ);
+    expect(toastZ).toBeGreaterThan(fabZ);
   });
 });

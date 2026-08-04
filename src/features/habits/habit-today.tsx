@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { Toast } from '@/ui/toast';
 import { metEarlierInPeriod, toDateKey } from './due-today';
@@ -119,6 +120,7 @@ export function HabitToday() {
           const streak = computeStreak(habit, logs, freezes, now);
           const usesFreeze = currentStreakUsesFreeze(habit, logs, freezes, now);
           const rescuable = canRescue(habit, logs, freezes, now);
+          const isJournal = habit.id === JOURNAL_HABIT_ID;
           return (
             <li
               key={habit.id}
@@ -164,8 +166,13 @@ export function HabitToday() {
                   type="checkbox"
                   className="habit-today__checkbox"
                   checked={doneToday}
-                  onChange={() => toggle(habit.id, today)}
-                  aria-label={`${habit.name} für heute abhaken`}
+                  disabled={isJournal}
+                  onChange={isJournal ? undefined : () => toggle(habit.id, today)}
+                  aria-label={
+                    isJournal
+                      ? `${habit.name}${doneToday ? ' heute geschrieben' : ' heute noch nicht geschrieben'}`
+                      : `${habit.name} für heute abhaken`
+                  }
                 />
               </span>
             </li>

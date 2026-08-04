@@ -20,7 +20,7 @@
 // Bewusst NICHT geprueft: die Farben und Texte, die auf GitHub tatsaechlich
 // gesetzt sind. Das braeuchte einen Netzzugriff im Test und wuerde die Suite
 // von einem fremden Zustand abhaengig machen.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BLOCKING_LABELS, selectTicket } from './select';
@@ -120,5 +120,43 @@ describe('Ausschluss-Labels greifen auf jedem Zweig (#266 AC2)', () => {
   it('traegt jedes Ticket ein Ausschluss-Label, waehlt der Runner gar nichts', () => {
     const snapshot = BLOCKING_LABELS.map((label, i) => issue(10 + i, ['ready', label]));
     expect(selectTicket(snapshot)).toBeNull();
+  });
+});
+
+// --- Workflow-Labels existieren wirklich (#485 AK3) -------------------------
+// #485: smoke.yml sprach an drei Stellen von 'needs-input', einem Label, das
+// seit #272 nicht mehr existiert -- 'gh ... --label needs-input' scheitert
+// gegen ein unbekanntes Label, also erzeugte ein rotes Prod-Deployment still
+// gar kein Ticket. Diese Suite haelt die Verbindung fest: jedes Label, das ein
+// Workflow per '--label'/'--add-label' an gh uebergibt, muss auch tatsaechlich
+// in bootstrap-github.sh angelegt sein.
+function workflowLabels(): { file: string; label: string }[] {
+  const dir = join(ROOT, '.github', 'workflows');
+  const found: { file: string; label: string }[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.yml') && !file.endsWith('.yaml')) continue;
+    const text = readFileSync(join(dir, file), 'utf-8');
+    for (const match of text.matchAll(/--(?:add-)?label\s+([A-Za-z0-9:_-]+)/g)) {
+      found.push({ file, label: match[1]! });
+    }
+  }
+  return found;
+}
+
+describe('Workflow-Labels existieren in bootstrap-github.sh (#485 AK3)', () => {
+  it('jedes per --label/--add-label verwendete Label wird auch angelegt', () => {
+    const bootstrap = bootstrapLabels();
+    const missing = workflowLabels().filter(({ label }) => !bootstrap.includes(label));
+    expect(
+      missing,
+      `In .github/workflows/ per --label/--add-label benutzt, aber von bootstrap-github.sh nicht angelegt: ${missing
+        .map(({ file, label }) => `${file}: '${label}'`)
+        .join(', ')}`,
+    ).toEqual([]);
+  });
+
+  // Kontrolle gegen einen Test, der nur deshalb gruen ist, weil er nichts findet.
+  it('findet ueberhaupt Label-Verwendungen in den Workflows', () => {
+    expect(workflowLabels().length).toBeGreaterThan(0);
   });
 });

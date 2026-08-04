@@ -22,7 +22,7 @@
   justify-content: center;
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-spring);
-  z-index: 10;
+  z-index: var(--z-fab);
 }
 
 .fab:hover {

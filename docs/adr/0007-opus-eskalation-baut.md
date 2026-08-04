@@ -25,7 +25,7 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
 
 - **Hochstufen:** Drei aufeinanderfolgende Läufe „kein Fortschritt" auf der
   aktuellen Stufe schalten eine Stufe hoch. Steckt Opus als höchste Stufe
-  ebenfalls dreimal ohne Fortschritt fest: Stop, Label `needs-input`,
+  ebenfalls dreimal ohne Fortschritt fest: Stop, Label `needs-answer`,
   Blocker-Kommentar am Ticket.
 - **„Kein Fortschritt"** = kein neuer Commit auf dem Feature-Branch (Vergleich
   der Branch-Spitze auf `origin` vor/nach dem Lauf) **und** dieselbe
@@ -40,7 +40,7 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
   (eigener Zähler, unabhängig vom Planer-Zähler — für die Bau-Rolle gibt es
   bewusst **keine** Ausnahme wie in ADR-0005/PR #46 für Planung/Recherche,
   weil Opus hier tatsächlich schreibt statt nur zu lesen). Überschreitung:
-  sofort `needs-input`, kein weiterer Opus-Bau-Versuch an diesem Tag.
+  sofort `needs-answer`, kein weiterer Opus-Bau-Versuch an diesem Tag.
 - **Kill-Switch:** Label `no-escalation` friert ein Ticket auf der
   Standard-Stufe ein — es wird nie hochgeschaltet, unabhängig vom
   Fehlversuchs-Zähler.
@@ -81,7 +81,10 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
   Eskalations-Zustandsmaschine (Stufen, Zähler, Deckel) wird kurz beschrieben.
 - `scripts/claude-runner.sh` bekommt Tier-Zustand (`tier-<nr>`,
   `failcount-<nr>`), Fortschritts-/Fehlschlag-Erkennung und den Opus-Bau-Deckel
-  (`opus-<datum>-<nr>`), alles dateibasiert unter `.runner/`.
+  (`opus-<datum>-<nr>`), dateibasiert. Seit #484 liegen diese Zähler
+  slotübergreifend unter `SHARED_DIR`, nicht im slot-lokalen `.runner/` —
+  sonst griffe der Opus-Tagesdeckel nur je Slot statt flottenweit, sobald ein
+  Ticket den Slot wechselt (siehe ADR-0014, „Ticket-Zähler sind geteilt").
 - Der Bau-Prompt verlangt ab dem ersten erfolglosen Lauf einen wachsenden
   „## Was schon versucht wurde"-Abschnitt im Fortschrittskommentar (zuerst
   lesen, ausgeschlossene Wege nicht wiederholen) sowie eine ab dann je

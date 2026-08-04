@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  openMeteoForecastBody,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  withDb,
+} from './helpers';
 
 const MODULES_OFF_KEY = 'starship:modules-off';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
@@ -60,6 +66,38 @@ test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verände
   for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Aktivitäten']) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible();
   }
+});
+
+test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie (issue #505 AC7)', async ({
+  page,
+}) => {
+  await resetAppData();
+  await page.goto('/uebersicht');
+  await settleJournalHabitBoot(page);
+
+  const before = await withDb((client) =>
+    client.query('SELECT id, archived_at FROM habits WHERE name = $1', ['Journal']),
+  );
+  expect(before.rowCount).toBe(1);
+  expect(before.rows[0].archived_at).toBeNull();
+  const habitId = before.rows[0].id as string;
+
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.evaluate(() => window.__starship.sync());
+
+  const afterOff = await withDb((client) =>
+    client.query('SELECT archived_at FROM habits WHERE id = $1', [habitId]),
+  );
+  expect(afterOff.rows[0].archived_at).not.toBeNull();
+
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await page.evaluate(() => window.__starship.sync());
+
+  const afterOn = await withDb((client) =>
+    client.query('SELECT archived_at FROM habits WHERE id = $1', [habitId]),
+  );
+  expect(afterOn.rows[0].archived_at).toBeNull();
 });
 
 test('wieder anschalten stellt den Tab an derselben Position wieder her (issue #307 AC3)', async ({ page }) => {

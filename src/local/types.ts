@@ -14,6 +14,8 @@ export const SYNC_TABLES = [
   'reminder_prefs',
   'journal_entries',
   'journal_keys',
+  'events',
+  'event_exceptions',
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
@@ -30,6 +32,38 @@ export const READ_ONLY_TABLES: readonly SyncTable[] = ['garmin_activities'];
 
 export function isReadOnlyTable(table: SyncTable): boolean {
   return (READ_ONLY_TABLES as readonly string[]).includes(table);
+}
+
+/**
+ * Tables with a natural key beyond `id` (a `uniqueIndex` in schema.ts, see
+ * `habit_logs_habit_id_log_date_idx` / `habit_freezes_habit_id_freeze_date_idx`,
+ * issue #475): two devices can independently mint a row with a different `id` for
+ * the same `(habitId, logDate)` while offline. Field names are the wire/`data`
+ * shape (as in `HabitLogData`/`HabitFreezeData` above), not the Drizzle column
+ * names, so both `push` (server) and `pull` (client) can key off the same map
+ * without drifting apart — like `READ_ONLY_TABLES`.
+ */
+export const NATURAL_KEYS: Partial<Record<SyncTable, readonly string[]>> = {
+  habit_logs: ['habitId', 'logDate'],
+  habit_freezes: ['habitId', 'freezeDate'],
+  event_exceptions: ['eventId', 'originalDate'],
+};
+
+/**
+ * The natural-key values for `data`, joined into a comparable string — `null` if
+ * `table` has no natural key, or `data` is missing one of its fields (an as-yet
+ * incomplete payload, e.g. a partial update that only touches `done`).
+ */
+export function naturalKeyOf(table: SyncTable, data: Record<string, unknown>): string | null {
+  const keyFields = NATURAL_KEYS[table];
+  if (!keyFields) return null;
+  const values: string[] = [];
+  for (const field of keyFields) {
+    const value = data[field];
+    if (typeof value !== 'string') return null;
+    values.push(value);
+  }
+  return values.join(':');
 }
 
 /**
@@ -113,6 +147,48 @@ export interface JournalEntryData {
 export interface JournalKeysData {
   envelope: unknown;
   recoveryEnvelope?: unknown;
+}
+
+/**
+ * Same as `HabitData`, for `events` (issue #552, S1 of #473). `startsAt`/`endsAt`
+ * are ISO instants (scheduled events); `startDate`/`endDate` are `YYYY-MM-DD`
+ * calendar days (all-day events), like `HabitLogData.logDate` — see the doc
+ * comment on `events` in src/db/schema.ts for why the two never mix on one row.
+ * `recurrence`/`reminderMinutes` are reserved for S6/S7, unwritten until then.
+ */
+export interface EventData {
+  title: string;
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  category: 'privat' | 'arbeit' | 'gesundheit' | 'sport' | 'familie' | null;
+  recurrence: {
+    freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    byWeekday?: number[];
+    until?: string;
+    count?: number;
+  } | null;
+  reminderMinutes: number | null;
+}
+
+/**
+ * Same as `HabitData`, for `event_exceptions` (issue #552, S1 of #473) — one
+ * exception to a recurring `events` row, keyed by `(eventId, originalDate)`
+ * (`NATURAL_KEYS` above), never a list column on `events` itself. `overrideStartsAt`
+ * /`overrideEndsAt`/`overrideStartDate`/`overrideEndDate` mirror the same
+ * instant-vs-calendar-day split as `EventData`.
+ */
+export interface EventExceptionData {
+  eventId: string;
+  originalDate: string;
+  cancelled: boolean;
+  overrideStartsAt: string | null;
+  overrideEndsAt: string | null;
+  overrideStartDate: string | null;
+  overrideEndDate: string | null;
 }
 
 export interface Mutation {

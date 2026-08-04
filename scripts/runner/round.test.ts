@@ -89,7 +89,9 @@ describe('roundPlan', () => {
   });
 
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
-    // roundPlan schreibt/liest 'sharedState' nirgends -- derselbe Adapter reicht.
+    // Die meisten Faelle hier pruefen nicht, WELCHER Adapter getroffen wird --
+    // derselbe reicht. #484: die eigene Gruppe unten prueft state/sharedState
+    // bewusst getrennt.
     return { gh, git, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
   }
 
@@ -936,6 +938,70 @@ describe('roundPlan', () => {
       expect(called(calls, 'comment', '77')).toBe(false);
     });
   });
+
+  // #484: tier-/opus-build-/opus-cap-msg- gehoeren in den sharedState, nicht
+  // ins slot-lokale state -- sonst zaehlt der Opus-Tagesdeckel (und die
+  // Eskalationsstufe) pro Slot statt flottenweit.
+  describe('Ticket-Zaehler leben im sharedState, nicht im slot-lokalen state (#484)', () => {
+    let sharedDir2: string;
+    let sharedState2: StateAdapter;
+
+    beforeEach(() => {
+      sharedDir2 = mkdtempSync(join(tmpdir(), 'round-shared-'));
+      sharedState2 = createStateAdapter(sharedDir2);
+    });
+    afterEach(() => {
+      rmSync(sharedDir2, { recursive: true, force: true });
+    });
+
+    it('AC1/AC3: der Opus-Tagesdeckel liest/schreibt sharedState, das slot-lokale state bleibt leer', () => {
+      sharedState2.write('opus-build-20260726-77', '2');
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(77, ['ready', 'model:opus'])),
+        noOpenPrs,
+        labelsAre('ready', 'model:opus'),
+      ]);
+      const result = roundPlan(
+        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK },
+        opts,
+      );
+      expect(result.status?.text).toContain('Opus-Tagesbudget');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      expect(state.exists('opus-build-20260726-77')).toBe(false);
+    });
+
+    it('AC1: eine eskalierte Modellstufe (tier-<nr>) kommt aus sharedState', () => {
+      sharedState2.write('tier-96', 'opus');
+      const { gh } = ghDouble([openIssues(issueJson(96, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      const run = roundPlan(
+        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK },
+        opts,
+      ) as RoundRun;
+      expect(run.model).toBe('opus');
+      expect(state.exists('tier-96')).toBe(false);
+    });
+
+    it('AC2: ein anderer Slot (eigenes state-Verzeichnis) sieht denselben erschoepften Deckel ueber das gemeinsame sharedState', () => {
+      sharedState2.write('opus-build-20260726-77', '2');
+      const stateSlot2Dir = mkdtempSync(join(tmpdir(), 'round-slot2-'));
+      const stateSlot2 = createStateAdapter(stateSlot2Dir);
+      try {
+        const { gh, calls } = ghDouble([
+          openIssues(issueJson(77, ['ready', 'model:opus'])),
+          noOpenPrs,
+          labelsAre('ready', 'model:opus'),
+        ]);
+        const result = roundPlan(
+          { gh, git: gitDouble(), state: stateSlot2, sharedState: sharedState2, claims, slotId: '2', clock: CLOCK },
+          opts,
+        );
+        expect(result.status?.text).toContain('Opus-Tagesbudget');
+        expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      } finally {
+        rmSync(stateSlot2Dir, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 describe('roundEval', () => {
@@ -1125,6 +1191,61 @@ describe('roundEval', () => {
     });
   });
 
+  // #484: failcount-/blocker-sig- (buildEscalationEval) gehoeren neben
+  // limit-until in den sharedState -- sonst zaehlt die Eskalation pro Slot
+  // neu, sobald ein Ticket den Slot wechselt.
+  describe('Ticket-Zaehler leben im sharedState, nicht im slot-lokalen state (#484)', () => {
+    it('AC1: ein inhaltlicher Fehlschlag schreibt failcount- ins sharedState, nicht ins state', () => {
+      const { gh } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: '{"result":"echter Fehlschlag"}', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.chain).toBe('stop');
+      expect(sharedState.read('failcount-77')).toBe('1\n');
+      expect(state.exists('failcount-77')).toBe(false);
+    });
+
+    it('AC1: eine neue Blocker-Signatur schreibt blocker-sig- ins sharedState, nicht ins state', () => {
+      const { gh } = ghDouble([
+        {
+          match: (a) => a.includes('comments'),
+          reply:
+            '## 🤖 Fortschritt (automatisch aktualisiert)\n\n_Lauf-Ende 16.07. 10:00: gate-rot, unfertig — nächster Lauf macht weiter._',
+        },
+      ]);
+      roundEval(ctx(gh), plan, { rc: 1, out: '{"result":"echter Fehlschlag"}', timedOut: false, maxRuntime: 2700 }, '');
+      expect(sharedState.read('blocker-sig-77')).not.toBeNull();
+      expect(state.exists('blocker-sig-77')).toBe(false);
+    });
+
+    it('AC4: Sessions bleiben slot-lokal, auch wenn zwei Slots dasselbe sharedState teilen', () => {
+      const stateSlot2Dir = mkdtempSync(join(tmpdir(), 'round-eval-slot2-'));
+      const stateSlot2 = createStateAdapter(stateSlot2Dir);
+      try {
+        const { gh: gh1 } = ghDouble();
+        roundEval({ gh: gh1, git: gitDouble(), state, sharedState, claims, slotId: '1', clock: CLOCK }, plan, ok, '');
+        expect(state.read('session-77')).toBe('sid-1');
+
+        const { gh: gh2 } = ghDouble();
+        const okSlot2 = { rc: 0, out: '{"session_id":"sid-slot2","result":"ok"}', timedOut: false, maxRuntime: 2700 };
+        roundEval(
+          { gh: gh2, git: gitDouble(), state: stateSlot2, sharedState, claims, slotId: '2', clock: CLOCK },
+          plan,
+          okSlot2,
+          '',
+        );
+        expect(stateSlot2.read('session-77')).toBe('sid-slot2');
+        // Slot 1s Session bleibt unangetastet, obwohl beide dasselbe sharedState teilen.
+        expect(state.read('session-77')).toBe('sid-1');
+      } finally {
+        rmSync(stateSlot2Dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it('meldet die Notbremse blau und ohne needs-answer', () => {
     const { gh, calls } = ghDouble();
     const result = roundEval(ctx(gh), plan, { ...ok, rc: 143, timedOut: true }, '');
@@ -1198,7 +1319,9 @@ describe('roundEval', () => {
       expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
       expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
       expect(sharedState.read('limit-until')).toBeNull();
-      expect(state.read('failcount-77')).toBe('1\n');
+      // #484: failcount- lebt seit dieser Aenderung im sharedState (siehe
+      // Test oben, AC1) -- der slot-lokale state bleibt dabei leer.
+      expect(sharedState.read('failcount-77')).toBe('1\n');
     });
 
     it('AK2 (Rueckfall): ein Limit-Text OHNE JSON (kein "result" zum Ausfiltern) wird weiterhin als Limit erkannt', () => {
