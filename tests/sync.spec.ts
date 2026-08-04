@@ -1334,6 +1334,105 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
   });
 });
 
+test.describe('Serientermin-Ausnahmen: Konvergenz bei paralleler Verschiebung (#557 AC6)', () => {
+  test('zwei Geräte verschieben dasselbe Vorkommen — eine Fassung gewinnt eindeutig, nichts geht kommentarlos verloren (ADR-0008)', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    const eventId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'events',
+        op: 'upsert',
+        payload: {
+          title: 'Yoga',
+          allDay: false,
+          startsAt: '2026-08-10T16:00:00.000Z',
+          endsAt: '2026-08-10T17:00:00.000Z',
+          recurrence: { freq: 'weekly', interval: 1 },
+        },
+      }),
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const devicePage = await openSecondDevice(browser, page);
+    // Pull the series onto B first, so both devices know the same occurrence.
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    // A moves the occurrence to 19:00 Berlin and syncs — this row arrives first.
+    const idA = await page.evaluate(
+      (eId) =>
+        window.__starship.mutate({
+          table: 'event_exceptions',
+          op: 'upsert',
+          payload: {
+            eventId: eId,
+            originalDate: '2026-08-10',
+            cancelled: false,
+            overrideStartsAt: '2026-08-10T17:00:00.000Z',
+            overrideEndsAt: '2026-08-10T18:00:00.000Z',
+          },
+        }),
+      eventId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // B, independently offline, moves the very same occurrence to 20:00 — its own uuid.
+    await devicePage.route('**/api/sync/**', (route) => route.abort('failed'));
+    const idB = await devicePage.evaluate(
+      (eId) =>
+        window.__starship.mutate({
+          table: 'event_exceptions',
+          op: 'upsert',
+          payload: {
+            eventId: eId,
+            originalDate: '2026-08-10',
+            cancelled: false,
+            overrideStartsAt: '2026-08-10T18:00:00.000Z',
+            overrideEndsAt: '2026-08-10T19:00:00.000Z',
+          },
+        }),
+      eventId,
+    );
+    expect(idB).not.toBe(idA);
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(1);
+
+    await devicePage.unroute('**/api/sync/**');
+    await devicePage.evaluate(() => window.__starship.sync());
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Exactly one row on the server for this occurrence — A's id (arrived first,
+    // #475's natural-key convergence), but B's later-arriving override wins on
+    // content (ADR-0008, arrival order) — nothing silently dropped, no duplicate.
+    const rows = await withDb((c) =>
+      c.query(
+        'SELECT id, override_starts_at FROM event_exceptions WHERE event_id = $1 AND original_date = $2',
+        [eventId, '2026-08-10'],
+      ),
+    );
+    expect(rows.rowCount).toBe(1);
+    expect(rows.rows[0].id).toBe(idA);
+    expect(new Date(rows.rows[0].override_starts_at).toISOString()).toBe('2026-08-10T18:00:00.000Z');
+
+    // A's own local view converges to the same winner once it syncs again.
+    await page.evaluate(() => window.__starship.sync());
+    const recordsA = await page.evaluate(() => window.__starship.debugRecords());
+    const exceptionRecordsA = recordsA.filter(
+      (r) =>
+        r.table === 'event_exceptions' &&
+        r.data.eventId === eventId &&
+        r.data.originalDate === '2026-08-10',
+    );
+    expect(exceptionRecordsA).toHaveLength(1);
+    expect(exceptionRecordsA[0].id).toBe(idA);
+
+    await devicePage.close();
+  });
+});
+
 test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (fund F5, #478)', () => {
   /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq. */
   async function seedTasks(count: number, titlePrefix: string) {

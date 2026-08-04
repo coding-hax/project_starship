@@ -30,17 +30,33 @@ export function CalendarView() {
   const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
 
   function openCreate() {
-    setEditorState({ mode: 'create', event: null });
+    setEditorState({ mode: 'create', event: null, occurrence: null });
   }
 
   /**
    * `occurrence.eventId` is the anchor `events` row for both a plain event and
    * a series instance — the "nur dieser"/"alle folgenden" scope routing that
-   * tells the two apart lives in the editor's submit path (S6), not here.
+   * tells the two apart lives in the editor's submit path (S6), keyed off
+   * `occurrence.originalDate` (set only for a series instance). The editor
+   * seeds its time fields from `occurrence` itself, not the anchor row — a
+   * later occurrence already reads differently (its own exception override,
+   * or simply a later date at the anchor's own time-of-day).
    */
   function openEdit(occurrence: Occurrence) {
     const event = events?.find((candidate) => candidate.id === occurrence.eventId);
-    if (event) setEditorState({ mode: 'edit', event });
+    if (event) {
+      setEditorState({
+        mode: 'edit',
+        event,
+        occurrence: {
+          originalDate: occurrence.originalDate ?? null,
+          startsAt: occurrence.startsAt,
+          endsAt: occurrence.endsAt,
+          startDate: occurrence.startDate,
+          endDate: occurrence.endDate,
+        },
+      });
+    }
   }
 
   return (
@@ -63,6 +79,7 @@ export function CalendarView() {
       <EventEditor
         state={editorState}
         selectedDay={selectedDay}
+        exceptions={exceptions ?? []}
         onClose={() => setEditorState(null)}
         onDelete={deleteEvent}
       />

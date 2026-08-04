@@ -1,0 +1,52 @@
+/**
+ * "Nur dieser" / "Alle folgenden" / "Ganze Serie" — asked whenever an edit or
+ * delete targets one occurrence of a recurring series (issue #557, S6).
+ */
+
+.recurrence-scope-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.recurrence-scope-sheet__question {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.recurrence-scope-sheet__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.recurrence-scope-sheet__option {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.recurrence-scope-sheet__option:active {
+  opacity: 0.85;
+}
+
+.recurrence-scope-sheet__cancel {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
