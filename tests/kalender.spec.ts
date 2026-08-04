@@ -554,3 +554,38 @@ test('eine woechentliche Serie behaelt ihre lokale Uhrzeit ueber die Sommerzeit-
   await expect(card).toContainText('09:00');
   await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
 });
+
+test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche spaeter wieder (Wiederholungs-UI)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await page.getByLabel('Titel').fill('Yoga');
+  await page.getByLabel('Von').fill(`${TODAY}T18:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T19:00`);
+  await page.getByLabel('Wiederholung', { exact: true }).selectOption('weekly');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toBeVisible();
+
+  for (let day = 0; day < 7; day++) {
+    await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  }
+  await expect(eventCard(page, 'Yoga')).toBeVisible();
+});
+
+test('das Intervall-Feld und die Wochentage erscheinen nur, wenn eine Wiederholung gewaehlt ist', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await expect(page.getByLabel('Intervall')).toHaveCount(0);
+
+  await page.getByLabel('Wiederholung', { exact: true }).selectOption('weekly');
+  await expect(page.getByLabel('Intervall')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'Mo' })).toBeVisible();
+
+  await page.getByLabel('Wiederholung', { exact: true }).selectOption('daily');
+  await expect(page.getByRole('checkbox', { name: 'Mo' })).toHaveCount(0);
+
+  await page.getByLabel('Wiederholung', { exact: true }).selectOption('');
+  await expect(page.getByLabel('Intervall')).toHaveCount(0);
+});

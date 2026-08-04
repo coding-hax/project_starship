@@ -13,7 +13,9 @@
 .event-editor__title,
 .event-editor__category,
 .event-editor__start,
-.event-editor__end {
+.event-editor__end,
+.event-editor__recurrence-freq,
+.event-editor__recurrence-interval {
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
@@ -27,7 +29,44 @@
 .event-editor__title:focus,
 .event-editor__category:focus,
 .event-editor__start:focus,
-.event-editor__end:focus {
+.event-editor__end:focus,
+.event-editor__recurrence-freq:focus,
+.event-editor__recurrence-interval:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Same fieldset/legend/option shape as habit-editor.css, reused here so a
+   Wochentage/Ende group reads like the habit editor's Rhythmus group. */
+.event-editor__weekdays,
+.event-editor__recurrence-end {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.event-editor__weekdays legend,
+.event-editor__recurrence-end legend {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: var(--space-2);
+}
+
+.event-editor__weekday-option,
+.event-editor__recurrence-end-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  color: var(--text);
+}
+
+.event-editor__weekday-option input:focus-visible,
+.event-editor__recurrence-end-option input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
