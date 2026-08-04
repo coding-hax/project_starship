@@ -1,7 +1,7 @@
 /**
  * Pure timeline-layout logic (issue #553, S2 of #473; all-day band issue #555,
- * S4) — no DB, no DOM, so it's Vitest-testable like habits/due-today.ts and
- * schedule-rules.ts.
+ * S4; overview countdown issue #559, S8) — no DB, no DOM, so it's Vitest-testable
+ * like habits/due-today.ts and schedule-rules.ts.
  */
 
 import { berlinNow } from '@/push/schedule';
@@ -121,6 +121,44 @@ export function allDayEventsForDay<T extends TimelineSource>(
 /** The card's left edge colour — the single place this category → token mapping lives. */
 export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
+}
+
+export interface UpcomingEvent extends Omit<EventView, 'startsAt' | 'endsAt'> {
+  /** Narrowed from `EventView` — `upcomingEventsToday` only ever keeps scheduled events. */
+  startsAt: string;
+  endsAt: string;
+}
+
+/**
+ * Scheduled (non-all-day) events on today's Berlin calendar day that haven't ended
+ * yet, earliest start first (issue #559, S8 of #473). The first entry is "the next
+ * event" for the overview's countdown — it may already be in progress; the rest
+ * render as the thin "rest of day" rows.
+ */
+export function upcomingEventsToday(events: EventView[], now: Date): UpcomingEvent[] {
+  const dayKey = berlinNow(now).dateKey;
+  return events
+    .filter(
+      (event): event is EventView & { startsAt: string; endsAt: string } =>
+        !event.allDay && event.startsAt !== null && event.endsAt !== null,
+    )
+    .filter((event) => berlinDateKey(event.startsAt) === dayKey)
+    .filter((event) => new Date(event.endsAt).getTime() > now.getTime())
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/**
+ * "in 40 Min" / "in 2 Std 5 Min" for an event starting at `startsAt`, "Jetzt" once
+ * it has started — never a negative countdown, since `upcomingEventsToday`'s first
+ * entry may already be in progress (issue #559).
+ */
+export function formatCountdown(now: Date, startsAt: string): string {
+  const diffMinutes = Math.round((new Date(startsAt).getTime() - now.getTime()) / 60_000);
+  if (diffMinutes <= 0) return 'Jetzt';
+  if (diffMinutes < 60) return `in ${diffMinutes} Min`;
+  const hours = Math.floor(diffMinutes / 60);
+  const minutes = diffMinutes % 60;
+  return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
 }
 
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
