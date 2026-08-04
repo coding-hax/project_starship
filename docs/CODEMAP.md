@@ -17,7 +17,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
-- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>` (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben → Aktivitäten → Gewohnheiten)
+- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
+  (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben →
+  Aktivitäten → Gewohnheiten)
 - `(app)/aufgaben/` — Aufgaben (leer bis M1)
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline, S2 von #473, issue #553); Editor/Monat/Serien folgen S3–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
