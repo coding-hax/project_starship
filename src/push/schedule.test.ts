@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { berlinNow, dueSlots } from './schedule';
+import { berlinInstant, berlinNow, dueSlots } from './schedule';
 
 describe('berlinNow', () => {
   it('reports 07:00 Berlin time on a summer date (CEST, UTC+2)', () => {
@@ -30,6 +30,28 @@ describe('berlinNow', () => {
       dateKey: '2026-10-25',
       minutesOfDay: 7 * 60,
     });
+  });
+});
+
+describe('berlinInstant', () => {
+  it('is the inverse of berlinNow on a summer date (CEST, UTC+2)', () => {
+    const instant = berlinInstant('2026-07-15', 9 * 60);
+    expect(berlinNow(instant)).toEqual({ dateKey: '2026-07-15', minutesOfDay: 9 * 60 });
+  });
+
+  it('is the inverse of berlinNow on a winter date (CET, UTC+1)', () => {
+    const instant = berlinInstant('2026-01-15', 9 * 60);
+    expect(berlinNow(instant)).toEqual({ dateKey: '2026-01-15', minutesOfDay: 9 * 60 });
+  });
+
+  it('round-trips 09:00 Berlin across the spring changeover (2026-03-29, CET -> CEST)', () => {
+    const instant = berlinInstant('2026-03-29', 9 * 60);
+    expect(berlinNow(instant)).toEqual({ dateKey: '2026-03-29', minutesOfDay: 9 * 60 });
+  });
+
+  it('round-trips 09:00 Berlin across the autumn changeover (2026-10-25, CEST -> CET)', () => {
+    const instant = berlinInstant('2026-10-25', 9 * 60);
+    expect(berlinNow(instant)).toEqual({ dateKey: '2026-10-25', minutesOfDay: 9 * 60 });
   });
 });
 

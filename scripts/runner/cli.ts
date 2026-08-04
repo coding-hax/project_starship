@@ -39,7 +39,7 @@ import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from '.
 import { pickTicket, queueNext } from './select.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, roundRecover, type RoundRun } from './round.js';
-import { cleanupStateDir } from './cleanup.js';
+import { cleanupStateDir, cleanupSharedTicketState } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
 import { aggregateStatus, createFleetAdapter, effectiveLead, STALE_MS, type FleetAdapter } from './fleet.js';
 import { acquireLead, createLeadAdapter, type LeadAdapter } from './lead.js';
@@ -48,7 +48,7 @@ export interface RunnerContext {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
-  /** Slotübergreifend unter SHARED_DIR (#204) -- siehe round.ts, roundEval. */
+  /** Slotübergreifend unter SHARED_DIR (#204/#484) -- siehe round.ts, roundEval/roundPlan. */
   sharedState: StateAdapter;
   /** Slotübergreifend unter SHARED_DIR/claims (#204), siehe claim.ts. */
   claims: ClaimAdapter;
@@ -94,13 +94,13 @@ export const commands: Record<string, CommandHandler> = {
     return next === null ? '' : String(next);
   },
   'sha1-of': (_ctx, args) => sha1Of(args[0] ?? ''),
-  'tier-current': (ctx, args) => tierCurrent(Number(args[0]), ctx.state, ctx.gh),
-  'tier-bump': (ctx, args) => (tierBump(Number(args[0]), ctx.state, ctx.gh) ? '' : null),
+  'tier-current': (ctx, args) => tierCurrent(Number(args[0]), ctx.sharedState, ctx.gh),
+  'tier-bump': (ctx, args) => (tierBump(Number(args[0]), ctx.sharedState, ctx.gh) ? '' : null),
   'tier-reset': (ctx, args) => {
-    tierReset(Number(args[0]), ctx.state);
+    tierReset(Number(args[0]), ctx.sharedState);
     return '';
   },
-  'resume-allowed': (ctx, args) => (resumeAllowed(Number(args[0]), ctx.state).allowed ? '' : null),
+  'resume-allowed': (ctx, args) => (resumeAllowed(Number(args[0]), ctx.sharedState).allowed ? '' : null),
   'blocker-sig': (ctx, args) => blockerSig(Number(args[0]), ctx.gh),
   'build-escalation-eval': (ctx, args) => {
     buildEscalationEval(
@@ -111,16 +111,16 @@ export const commands: Record<string, CommandHandler> = {
         beforeTip: args[3] ?? '',
         model: args[4] ?? '',
       },
-      ctx.state,
+      ctx.sharedState,
       ctx.gh,
       ctx.git,
     );
     return '';
   },
   'opus-cap-reached': (ctx, args) =>
-    opusBuildCapReached(Number(args[0]), args[1] ?? '', ctx.state, ctx.clock) ? '' : null,
+    opusBuildCapReached(Number(args[0]), args[1] ?? '', ctx.sharedState, ctx.clock) ? '' : null,
   'opus-cap-reserve': (ctx, args) => {
-    opusBuildCapReserve(Number(args[0]), ctx.state, ctx.clock);
+    opusBuildCapReserve(Number(args[0]), ctx.sharedState, ctx.clock);
     return '';
   },
   'pr-for-issue': (ctx, args) => prForIssue(Number(args[0]), ctx.gh),
@@ -167,6 +167,7 @@ export const commands: Record<string, CommandHandler> = {
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
   'cleanup-state': (ctx) => {
     cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime(), ctx.claims, ctx.slotId);
+    cleanupSharedTicketState(sharedDir(), ctx.clock.now().getTime());
     return '';
   },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
