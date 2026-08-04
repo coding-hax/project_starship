@@ -387,7 +387,7 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     await expect(page).toHaveURL(/\/aufgaben$/);
   });
 
-  test('AC3: FAB und Toast bleiben über der Nav (fab.css z-index 10 / toast.css z-index 20)', async ({ page }) => {
+  test('AC3: FAB und Toast bleiben über der Nav (--z-fab / --z-toast, tokens.css)', async ({ page }) => {
     const title = 'Wird für den Stacking-Test gelöscht';
     await page.goto('/aufgaben');
     await page.evaluate(
@@ -430,13 +430,15 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
 
     // The individual `<li role="status">` toast carries no z-index of its own —
     // it inherits its stacking from the `.toast-host` `<ol>` it's portaled into
-    // (toast.tsx/toast-host.tsx), which is where toast.css's z-index: 20 lives.
+    // (toast.tsx/toast-host.tsx), which is where toast.css's `--z-toast` lives.
     const [navZ, fabZ, toastZ] = await Promise.all([
       page.locator('.nav').evaluate((el) => Number(getComputedStyle(el).zIndex)),
       fab.evaluate((el) => Number(getComputedStyle(el).zIndex)),
       page.locator('.toast-host').evaluate((el) => Number(getComputedStyle(el).zIndex)),
     ]);
-    expect(navZ).toBe(5);
+    // Absolute values (and the full scale's ordering) are covered by the
+    // z-layers tests in design-system.spec.ts — this just re-confirms the
+    // relative order the AC actually cares about, nav < fab < toast.
     expect(fabZ).toBeGreaterThan(navZ);
     expect(toastZ).toBeGreaterThan(fabZ);
   });
