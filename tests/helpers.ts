@@ -43,6 +43,9 @@ export async function enableVirtualAuthenticator(page: Page) {
       hasUserVerification: true,
       isUserVerified: true, // stands in for Face ID succeeding
       automaticPresenceSimulation: true,
+      // The journal's PRF-derived unlock key (#511) reuses this same login
+      // passkey, so the virtual authenticator must speak the prf extension too.
+      hasPrf: true,
     },
   });
   return { client, authenticatorId };
