@@ -101,3 +101,45 @@ export function weekDaysFor(dateKey: string): string[] {
   const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
   return Array.from({ length: 7 }, (_, offset) => addDays(dateKey, diffToMonday + offset));
 }
+
+/**
+ * Full Mon–Sun weeks covering the month containing `dateKey` (issue #556, S5):
+ * the 1st rolled back to its Monday, the last rolled forward to its Sunday,
+ * neighbour-month days included (dimmed in the UI via `data-outside-month`) so
+ * every row stays a complete week. Always 35 or 42 keys, same UTC anchoring as
+ * `addDays`/`weekDaysFor` — device-timezone independent.
+ */
+export function monthDaysFor(dateKey: string): string[] {
+  const date = parseDateKey(dateKey);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const firstKey = formatDateKey(new Date(Date.UTC(year, month, 1)));
+  const lastKey = formatDateKey(new Date(Date.UTC(year, month + 1, 0)));
+  const gridStart = weekDaysFor(firstKey)[0];
+  const gridEnd = weekDaysFor(lastKey)[6];
+
+  const days: string[] = [];
+  for (let key = gridStart; key <= gridEnd; key = addDays(key, 1)) {
+    days.push(key);
+  }
+  return days;
+}
+
+/**
+ * The categories present on `dateKey`, deduplicated and stably ordered
+ * (`CATEGORIES` order from use-events.ts, `null` last) — one dot per category,
+ * not per event (issue #556, S5). All-day/multi-day layout is S4; this places
+ * an event by `berlinDateKey(startsAt)` only, which is enough for a dot.
+ * Capped at 4 so the day cell never overflows.
+ */
+const CATEGORY_ORDER: EventView['category'][] = ['privat', 'arbeit', 'gesundheit', 'sport', 'familie', null];
+const MAX_DOTS_PER_DAY = 4;
+
+export function categoriesForDay(events: EventView[], dateKey: string): EventView['category'][] {
+  const present = new Set(
+    events.filter((event) => event.startsAt !== null && berlinDateKey(event.startsAt) === dateKey).map(
+      (event) => event.category,
+    ),
+  );
+  return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, MAX_DOTS_PER_DAY);
+}
