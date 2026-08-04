@@ -106,10 +106,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
-- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`
-- `week-strip.tsx` / `.css` — zugeklapptes Wochenband Mo–So, Vor/Zurück-Tag + antippbare Tage
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`, Header mit `<CalendarStrip/>`, darunter `<EventTimeline/>`
+- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
 - `event-timeline.tsx` / `.css` — Stundenachse 0–24h, Jetzt-Linie, Terminkarten mit Kategorie-Farbkante
 
 ### src/features/export
