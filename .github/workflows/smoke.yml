@@ -133,7 +133,7 @@ jobs:
             gh pr merge --squash --auto "$BRANCH"
           else
             echo "::warning::REVERT_PAT ist nicht gesetzt — der PR wurde mit GITHUB_TOKEN erstellt und bekommt daher nie seine Required Checks (GitHub verhindert das für PRs von Actions). Bitte manuell mergen oder einmalig 'gh secret set REVERT_PAT' mit einem fine-grained PAT (contents:write, pull-requests:write) einrichten."
-            gh pr edit "$BRANCH" --add-label needs-input
+            gh pr edit "$BRANCH" --add-label needs-answer
           fi
 
           echo "pr_url=$(gh pr view "$BRANCH" --json url -q .url)" >>"$GITHUB_OUTPUT"
@@ -146,7 +146,7 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           gh issue create \
             --title "🔴 Prod-Smoke fehlgeschlagen ($(date -u +%Y-%m-%dT%H:%MZ))" \
-            --label needs-input \
+            --label needs-answer \
             --body "Post-Deploy-Smoke war rot **am bestätigt neuen Deploy** (\`${{ steps.target.outputs.sha }}\`): Health ok=${{ steps.health.outputs.ok }} status=${{ steps.health.outputs.status }}, Playwright=${{ steps.playwright.outputs.result || 'fail' }}. Revert-PR: ${{ steps.revert.outputs.pr_url }}. Run: $RUN_URL"
 
       # --- AMBIGUOUS: version never matched — never revert on this alone -------
@@ -158,5 +158,5 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           gh issue create \
             --title "🟡 Prod-Smoke konnte den neuen Deploy nicht bestätigen ($(date -u +%Y-%m-%dT%H:%MZ))" \
-            --label needs-input \
+            --label needs-answer \
             --body "\`/api/health\` hat auch nach mehreren Versuchen nicht die erwartete Version \`${{ steps.target.outputs.sha }}\` gemeldet (zuletzt: \`${{ steps.health.outputs.version }}\`). Kein Revert — das könnte Cache/Timing sein, kein bestätigter Fehler. Bitte manuell prüfen. Run: $RUN_URL"
