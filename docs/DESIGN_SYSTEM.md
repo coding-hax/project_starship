@@ -19,6 +19,17 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
+### Kategoriefarben (Termine, issue #553)
+
+Innerhalb des Bereichs Termine tragen die fünf Kategorien (`privat`, `arbeit`,
+`gesundheit`, `sport`, `familie`) je einen eigenen Akzent — `--cat-privat` /
+`--cat-arbeit` / `--cat-gesundheit` / `--cat-sport` / `--cat-familie`. Das sind
+**keine** fünf gleichberechtigten Primärfarben, sondern Varianten um den
+Teal-Ton der Bereichsfarbe (gleiche Helligkeit/Chroma, nur der Farbton wandert).
+Sie erscheinen ausschließlich als 3px-Farbkante an der Terminkarte, nie als
+Flächenfarbe — die Fläche bleibt `--surface`. Ein Termin ohne Kategorie trägt
+stattdessen `--area-events`.
+
 ### Neutrale
 
 - Hintergrund hell: **warmes Off-White**, niemals reines `#FFFFFF`

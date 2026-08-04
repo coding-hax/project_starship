@@ -29,6 +29,9 @@
 @import '../features/activities/activity-map.css';
 @import '../features/activities/activity-chart.css';
 @import '../features/activities/activity-month-strip.css';
+@import '../features/events/week-strip.css';
+@import '../features/events/event-timeline.css';
+@import '../features/events/calendar-view.css';
 @import './(app)/uebersicht/uebersicht.css';
 @import './(app)/einstellungen/einstellungen.css';
 

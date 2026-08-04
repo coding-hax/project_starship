@@ -213,7 +213,9 @@ export async function resetAppData() {
       'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
         'DELETE FROM reminder_prefs; DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs/habit_freezes first — both reference habits via a foreign key.
-        'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits;',
+        'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
+        // event_exceptions first — it references events via a foreign key (issue #553).
+        'DELETE FROM event_exceptions; DELETE FROM events;',
     );
   });
 }
@@ -249,7 +251,9 @@ export async function resetDatabase() {
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         'DELETE FROM garmin_activities; ' +
         'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM journal_entries; ' +
-        'DELETE FROM journal_keys;',
+        'DELETE FROM journal_keys; ' +
+        // event_exceptions first — it references events via a foreign key (issue #553).
+        'DELETE FROM event_exceptions; DELETE FROM events;',
     );
   });
 }
@@ -356,7 +360,9 @@ declare global {
           | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'
-          | 'journal_keys';
+          | 'journal_keys'
+          | 'events'
+          | 'event_exceptions';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;
