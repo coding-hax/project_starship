@@ -47,9 +47,19 @@ export async function recoverOrphanedEntries(
   for (const stashed of stash) {
     let dekAlt: CryptoKey;
     try {
-      dekAlt = useRecoveryKey
-        ? await openEnvelopeWithRecovery(stashed.envelope as Envelope, secret)
-        : await openEnvelope(stashed.envelope as Envelope, secret);
+      // `stashed.envelope` is the passphrase wrap, `stashed.recoveryEnvelope` the
+      // separate recovery-key wrap (issue #372) — the two are wrapped under
+      // different KEKs around the same DEK. Opening the wrong one for the mode
+      // the caller picked isn't "wrong secret", it's certain failure regardless
+      // of the secret's own correctness, so a missing `recoveryEnvelope` (a
+      // stash captured before #372, or a device that never had one) is folded
+      // into the same WrongPassphraseError path as an actual wrong key (Regel 9).
+      if (useRecoveryKey) {
+        if (!stashed.recoveryEnvelope) throw new WrongPassphraseError();
+        dekAlt = await openEnvelopeWithRecovery(stashed.recoveryEnvelope as Envelope, secret);
+      } else {
+        dekAlt = await openEnvelope(stashed.envelope as Envelope, secret);
+      }
     } catch (error) {
       if (!(error instanceof WrongPassphraseError)) throw error;
       continue; // Not the right secret for this stash entry — try the next one, if any.

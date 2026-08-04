@@ -8,8 +8,10 @@ import { logJournalQueryError } from './log-query-error';
 /**
  * Whether this device is currently holding a displaced `journal_keys` envelope
  * (issue #518) — drives the recovery affordance's visibility in the editor.
- * `liveQuery`, same pattern as `use-journal-entries.ts`, so a just-recovered
- * (and GC'd) stash hides the affordance again without a reload.
+ * `liveQuery`, same pattern as `use-journal-entries.ts`. Recovery GCs the stash
+ * as part of the same operation that reports how many entries it found, so this
+ * flips to `false` right away — `JournalOrphanedKeyCard` keeps itself mounted
+ * a moment longer via its own `message` state so that count is still readable.
  */
 export function useOrphanedKey(): boolean {
   const [hasStash, setHasStash] = useState(false);

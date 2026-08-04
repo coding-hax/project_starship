@@ -213,13 +213,26 @@ function JournalOrphanedKeyCard() {
   const [useRecoveryKey, setUseRecoveryKey] = useState(false);
   const [secret, setSecret] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  // Recovery deletes the stash entry as part of the same operation that reports
+  // the count — `useOrphanedKey()`'s liveQuery can observe that deletion (a real
+  // IndexedDB round trip) and flip `hasStash` to false *while `handleSubmit` is
+  // still awaiting* `recoverOrphaned`, in an entirely separate render from the
+  // one that will eventually set `message`. Gating only on `!hasStash && !message`
+  // still unmounts in that window (message is still null there) — and a
+  // now-unmounted component discards every `setState` call still in flight,
+  // silently, so the confirmation text never appears. `recovering` closes that
+  // gap: set synchronously before the `await`, it keeps the card mounted for the
+  // entire round trip, however the two async updates happen to interleave.
+  const [recovering, setRecovering] = useState(false);
 
-  if (!hasStash) return null;
+  if (!hasStash && !recovering && !message) return null;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setRecovering(true);
     const count = await recoverOrphaned(secret, useRecoveryKey);
     setSecret('');
+    setRecovering(false);
     setMessage(
       count === 0
         ? 'Keine Einträge geborgen.'
