@@ -10,6 +10,7 @@ import {
   openSecondDevice,
   registerPasskey,
   resetAppData,
+  settleJournalHabitBoot,
   withDb,
 } from './helpers';
 
@@ -41,6 +42,7 @@ test('offline geschriebener Eintrag erreicht online die Datenbank ohne Klartext-
   context,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
   await context.setOffline(true);
 
   const entryDate = '2026-07-29';
@@ -449,6 +451,103 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
   );
   expect(row.rowCount).toBe(1); // Soft-Delete: die Zeile existiert weiterhin.
   expect(row.rows[0].deleted_at).not.toBeNull();
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Gewohnheit ab    */
+/* -------------------------------------------------------------------------- */
+
+async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: string; done: boolean }>> {
+  const rows = await withDb((client) =>
+    client.query(
+      `SELECT hl.id, hl.done FROM habit_logs hl
+       JOIN habits h ON h.id = hl.habit_id
+       WHERE h.name = 'Journal' AND hl.log_date = $1 AND hl.deleted_at IS NULL`,
+      [entryDate],
+    ),
+  );
+  return rows.rows;
+}
+
+test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
+
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  // submit() only clicks — appendJournalEntry (entry.ts) keeps running after the
+  // click resolves, and logJournalHabit is its *last* await. Racing straight into
+  // sync() below can catch it between the journal_entries write and the habit_logs
+  // one, pushing the entry but not yet the log. The rendered entry is the signal
+  // that the whole chain, auto-log included, has settled.
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Erster Eintrag' })).toBeVisible();
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => journalHabitLogRows(entryDate)).toHaveLength(1);
+  const [first] = await journalHabitLogRows(entryDate);
+  expect(first.done).toBe(true);
+
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Zweiter Eintrag' })).toBeVisible();
+  await page.evaluate(() => window.__starship.sync());
+
+  // Idempotent (ADR-0018): der zweite Eintrag am selben Tag findet die bestehende
+  // Log-Zeile wieder statt eine zweite gegen UNIQUE(habit_id, log_date) anzulegen.
+  const rows = await journalHabitLogRows(entryDate);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].id).toBe(first.id);
+  expect(rows[0].done).toBe(true);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Gewohnheit  */
+/* an, ein zweiter Boot (Reload) keine zweite                                 */
+/* -------------------------------------------------------------------------- */
+
+test('AC1 (#505): das Journal-Modul legt genau eine Journal-Gewohnheit an, ein zweiter Boot keine zweite', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+
+  await expect
+    .poll(async () => {
+      const records = await page.evaluate(() => window.__starship.debugRecords());
+      return records.filter((r) => r.table === 'habits' && r.data.name === 'Journal').length;
+    })
+    .toBe(1);
+  await page.evaluate(() => window.__starship.sync());
+
+  const rows = await withDb((client) =>
+    client.query("SELECT id, schedule, color, archived_at FROM habits WHERE name = 'Journal'"),
+  );
+  expect(rows.rowCount).toBe(1);
+  expect(rows.rows[0].schedule).toBe('daily');
+  expect(rows.rows[0].color).toBe('--area-journal');
+  expect(rows.rows[0].archived_at).toBeNull();
+  const habitId = rows.rows[0].id as string;
+
+  // Zweiter Boot (Reload) — Anlegen ist idempotent auf Existenz, nicht auf "wurde
+  // je aufgerufen" (issue #505 AC1): keine zweite Zeile, dieselbe id wie zuvor.
+  await page.reload();
+  await expect
+    .poll(async () => {
+      const records = await page.evaluate(() => window.__starship.debugRecords());
+      return records.filter((r) => r.table === 'habits' && r.data.name === 'Journal').length;
+    })
+    .toBe(1);
+  await page.evaluate(() => window.__starship.sync());
+
+  const rowsAfter = await withDb((client) => client.query("SELECT id FROM habits WHERE name = 'Journal'"));
+  expect(rowsAfter.rowCount).toBe(1);
+  expect(rowsAfter.rows[0].id).toBe(habitId);
 });
 
 /* -------------------------------------------------------------------------- */

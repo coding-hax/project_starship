@@ -7,6 +7,7 @@ import {
   openSecondDevice,
   registerPasskey,
   resetAppData,
+  settleJournalHabitBoot,
   skewClock,
   withDb,
 } from './helpers';
@@ -35,6 +36,7 @@ test.beforeEach(async () => {
  */
 test('a mutation made offline survives a reload and reaches Postgres', async ({ page }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   // Cut the sync endpoints. The page still serves, but nothing can be pushed —
   // which is exactly what a train tunnel looks like to the outbox.
@@ -191,6 +193,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
     await page.goto('/aufgaben');
 
     let pullRequests = 0;
@@ -638,6 +641,10 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
     page,
   }) => {
     await registerPasskey(page);
+    // Settle the boot-created Journal habit (issue #505 AC1) *before* going offline —
+    // it must reach Postgres first, or the row-count assertions below would count
+    // it as part of this test's own offline batch.
+    await settleJournalHabitBoot(page);
 
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
 
@@ -660,8 +667,9 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
 
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
+    // Just the already-synced Journal habit — this test's own habit is still offline.
     const beforeSync = await withDb((c) => c.query('SELECT * FROM habits'));
-    expect(beforeSync.rowCount).toBe(0);
+    expect(beforeSync.rowCount).toBe(1);
 
     await page.unroute('**/api/sync/**');
     await page.evaluate(() => window.__starship.sync());
@@ -816,6 +824,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const validTitles = ['Gültig 1', 'Gültig 2', 'Gültig 3'];
     for (const title of validTitles) {
@@ -852,6 +861,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
     await page.goto('/aufgaben');
 
     await page.evaluate(() =>
@@ -1188,6 +1198,10 @@ test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (f
 
   test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({ page }) => {
     await registerPasskey(page);
+    // Settle the boot-created Journal habit (issue #505 AC1) first — otherwise its
+    // create mutation, still pending in the outbox, gets pushed interleaved with the
+    // bulk-seeded tasks below and claims a sync_seq the `maxSeq` math doesn't expect.
+    await settleJournalHabitBoot(page);
 
     const seeded = await seedTasks(PULL_PAGE_LIMIT + 50, 'Seed AK2 ');
     const maxSeq = Math.max(...seeded.map((r) => r.syncSeq));
@@ -1219,6 +1233,7 @@ test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (f
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const seeded = await seedTasks(PULL_PAGE_LIMIT * 2 + 50, 'Seed AK4 ');
     const sortedSeqs = seeded.map((r) => r.syncSeq).sort((a, b) => a - b);

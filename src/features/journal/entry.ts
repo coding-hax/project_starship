@@ -3,6 +3,7 @@ import { encryptJournal, journalEntryAad, type JournalContent } from '@/crypto/j
 import { db } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
 import { decryptJournalRows } from './decrypt-journal-row';
+import { logJournalHabit } from './journal-habit';
 import { journalDek } from './lock-store';
 import { writeJournalEntry } from './write';
 
@@ -74,6 +75,11 @@ export async function listJournalEntries(entryDate: string): Promise<JournalEntr
  * submission. The row `id` is generated here, before encrypting, so it can be
  * bound into the ciphertext as AAD together with `entryDate` (issue #480,
  * F7) — a ciphertext moved onto a different row fails to decrypt there.
+ *
+ * Also checks off today's Journal habit (issue #505 AC4) — the row is
+ * display-only from the habits UI, this submission is its only writer.
+ * Idempotent: a second entry the same day finds the existing log and leaves
+ * it at `done: true` instead of creating a second one.
  */
 export async function appendJournalEntry(entryDate: string, content: JournalContent): Promise<void> {
   const dek = journalDek();
@@ -82,6 +88,7 @@ export async function appendJournalEntry(entryDate: string, content: JournalCont
   const id = uuidv7();
   const encrypted = await encryptJournal(dek, content, journalEntryAad(id, entryDate));
   await writeJournalEntry(entryDate, encrypted, id);
+  await logJournalHabit(entryDate);
 }
 
 /** Soft-delete over the existing sync path (AC5) — same tombstone mechanism as

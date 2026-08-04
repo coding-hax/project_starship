@@ -24,6 +24,19 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
   );
 }
 
+/** Mirrors JOURNAL_HABIT_ID in src/features/journal/journal-habit.ts (issue #505). */
+const JOURNAL_HABIT_ID = '5b5c9dc3-25c8-4f97-a4c5-61cb4c736c80';
+
+async function seedJournalHabit(page: Page): Promise<void> {
+  await page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', rowId: p.rowId, op: 'upsert', payload: p.payload }),
+    {
+      rowId: JOURNAL_HABIT_ID,
+      payload: { name: 'Journal', schedule: 'daily', color: '--area-journal', archivedAt: null },
+    },
+  );
+}
+
 // beforeEach aborts every /api/sync/** call, so a checked-off log never reaches
 // Postgres in this suite (issue #224) — assert against the IndexedDB record the
 // E2E bridge exposes instead, sorted so multi-row assertions stay deterministic.
@@ -64,6 +77,23 @@ test('eine tägliche Gewohnheit erscheint in der Übersicht-Sektion und lässt s
 
   await expect(item.getByRole('checkbox')).toBeChecked();
   await expect(item).toHaveClass(/habit-today__item--done/);
+});
+
+test('die Journal-Zeile ist nicht antippbar, ein Tipp legt keinen Log an (issue #505 AC5)', async ({
+  page,
+}) => {
+  await seedJournalHabit(page);
+
+  const item = habitTodayItems(page).filter({ hasText: 'Journal' });
+  await expect(item).toBeVisible();
+  const checkbox = item.getByRole('checkbox');
+  await expect(checkbox).toBeDisabled();
+  await expect(checkbox).not.toBeChecked();
+
+  await checkbox.click({ force: true });
+
+  await expect(checkbox).not.toBeChecked();
+  expect(await habitLogRecords(page, JOURNAL_HABIT_ID)).toHaveLength(0);
 });
 
 test('eine wöchentliche Gewohnheit ohne Log in dieser Woche erscheint ebenfalls', async ({
