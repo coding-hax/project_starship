@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
  * Issue #372: wires up the recovery kit from #343 — both KEK wraps at setup,
@@ -11,8 +11,9 @@ const PASSPHRASE = 'ac372 passphrase';
 const WRONG_PASSPHRASE = 'falsches passwort';
 const WRONG_RECOVERY_KEY = 'definitely-not-the-recovery-key-0000';
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
   await resetAppData();
+  await installClockAt(page);
 });
 
 /** Setup, confirming the one-time recovery-key screen. Returns the key shown,
@@ -32,7 +33,7 @@ async function setUpJournal(page: Page, passphrase: string): Promise<string> {
 }
 
 async function todayKey(page: Page): Promise<string> {
-  return page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  return page.evaluate((iso) => new Date(iso).toLocaleDateString('en-CA'), FIXED_NOW);
 }
 
 async function journalKeysRow() {
