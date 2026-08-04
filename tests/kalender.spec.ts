@@ -111,14 +111,15 @@ test('die Jetzt-Linie sitzt korrekt kurz vor und kurz nach Mitternacht (AC2)', a
 test('die Jetzt-Linie rueckt mit der Zeit weiter, ohne dass die Seite neu laedt (AC2)', async ({
   page,
 }) => {
-  // Midday, far from the midnight edge — this test is about ticking, not clamping.
-  await skewClock(page, `${TODAY}T07:00:00.000Z`); // 09:00 Berlin
-  await page.reload();
+  // beforeEach already loaded /kalender at installClockAt's default (14:00
+  // Berlin) — far from the midnight edge, no reload needed for this one.
+  // Reloading right before freezeClock/fastForward (like the two tests above
+  // do) raced the fresh mount's setInterval registration against the fake
+  // clock in this specific combination and never fired it — plain continued
+  // ticking from the original navigation, proven by journal-lock.spec.ts's
+  // auto-lock tests, avoids that.
   const initialTop = await styleTopPct(nowLine(page));
 
-  // Pauses the still-ticking installed clock, then jumps it forward deterministically
-  // (same freezeClock + fastForward pairing as journal-lock.spec.ts's auto-lock tests)
-  // — long enough to fire useNow's 60s interval at least once.
   await freezeClock(page);
   await page.clock.fastForward(90_000);
 
