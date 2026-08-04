@@ -83,13 +83,14 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  // Every feature test runs in both viewports. A layout that only works on desktop
-  // is not done. Three specs are the exception and run only against the prod-build
-  // projects below: offline-critical.spec.ts and push-sw.prod.spec.ts need a real
-  // service worker (Serwist is disabled in dev, see next.config.ts), and
-  // smoke.prod.spec.ts asserts a production artefact (`/sw.js`). The latter used to
-  // run here and passed only because an earlier `pnpm build` had left `public/sw.js`
-  // behind for the dev server to serve — an accident, not coverage (#115).
+  // Feature tests run in ONE viewport: 375 × 812. The second one is gone (#564) —
+  // see the `mobile` project below for what that cost and why it was still done.
+  // Three specs are the exception and run only against the prod-build projects
+  // below: offline-critical.spec.ts and push-sw.prod.spec.ts need a real service
+  // worker (Serwist is disabled in dev, see next.config.ts), and smoke.prod.spec.ts
+  // asserts a production artefact (`/sw.js`). The latter used to run here and passed
+  // only because an earlier `pnpm build` had left `public/sw.js` behind for the dev
+  // server to serve — an accident, not coverage (#115).
   projects: [
     // Runs the real WebAuthn ceremony once and leaves the session in AUTH_STATE; every
     // project below starts from it instead of registering a passkey per test (#115).
@@ -102,12 +103,20 @@ export default defineConfig({
         baseURL: E2E_SCOPE === 'offline' ? baseURLProd : baseURL,
       },
     },
-    // A handful of shell assertions only hold in one layout (#126: the settings entry
-    // point is inline on Heute for mobile, in the sidebar for desktop). Those live in
-    // `*.mobile.spec.ts` / `*.desktop.spec.ts` and are routed by project here — the way
-    // Playwright scopes tests to a viewport. Doing it with `test.skip(project.name !== …)`
-    // inside a shared file would be a runtime skip, which `test-integrity` rejects and
-    // rightly so: nothing in the file tells a scoped test apart from a disabled one.
+    // The `desktop` twin of this project is gone (#564). It was exactly half the
+    // suite — 573 tests, 48.8 of the 98 minutes `e2e-main` spent running them — and
+    // 568 of those 573 were the same assertions replayed at 1280 × 800. Dropping it
+    // takes `e2e-main` from ~13 min to ~6 min of wall clock.
+    //
+    // The remaining 5 were NOT duplicates, and they are the real price of this
+    // change: `shell.desktop.spec.ts` (3) and `nav-order.desktop.spec.ts` (2) cover
+    // layout that only exists on a wide screen (#126: the settings entry point is
+    // inline on Heute for mobile, in the sidebar for desktop). Nothing runs them
+    // anymore. Both files stay in the repo on purpose — "erstmal" means desktop can
+    // come back by re-adding the project, and deleting the files would drop the
+    // `test(` count that `test-integrity` guards. So: this project's `testIgnore`
+    // still excludes `*.desktop.spec.ts`, which now means those specs match no
+    // project at all. Playwright does not warn about that. This comment is the warning.
     {
       name: 'mobile',
       testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.desktop)\.spec\.ts$/,
@@ -115,16 +124,6 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 375, height: 812 },
-        storageState: AUTH_STATE,
-      },
-    },
-    {
-      name: 'desktop',
-      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.mobile)\.spec\.ts$/,
-      dependencies: ['setup'],
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1280, height: 800 },
         storageState: AUTH_STATE,
       },
     },

@@ -455,3 +455,100 @@ export const journalKeys = pgTable(
 
 export type JournalKeys = typeof journalKeys.$inferSelect;
 export type NewJournalKeys = typeof journalKeys.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/* Termine (M5, issue #552, S1 of #473). Foundation only — no route/UI yet.   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Two time models share this table, never the same row: a scheduled event carries
+ * a UTC instant (`startsAt`/`endsAt`), an all-day/multi-day event carries a
+ * calendar-day key with no time (`startDate`/`endDate`) — a naive local datetime is
+ * ambiguous across the autumn DST fold, an instant is not. `allDay` is the
+ * discriminator; a query must branch on it rather than guess from which columns are
+ * set. `endDate: null` means a one-day all-day event. No timezone conversion lives
+ * here (`src/push/schedule.ts` `berlinNow` stays the only DST-aware reference) —
+ * S1 only shapes the columns so the two models can never collide (issue #552 AC5).
+ *
+ * `recurrence`/`reminderMinutes` are reserved for S6/S7, same pattern as
+ * `tasks.recurrenceRule` — carried now so those stages need no second migration.
+ * `recurrence` is deliberately a narrow JSON shape (freq/interval/byWeekday?/
+ * until?/count?), not an `rrule` string — no new dependency without an ADR (Regel
+ * 3). `reminderMinutes` is a single integer ("15 Minuten vorher" per S7), not an
+ * array — multiple reminders per event is additive if ever needed.
+ */
+export const events = pgTable(
+  'events',
+  {
+    ...syncColumns,
+    title: text('title').notNull(),
+    allDay: boolean('all_day').notNull().default(false),
+    startsAt: timestamp('starts_at', { withTimezone: true }),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    startDate: date('start_date'),
+    endDate: date('end_date'),
+    category: text('category').$type<
+      'privat' | 'arbeit' | 'gesundheit' | 'sport' | 'familie'
+    >(),
+    recurrence: jsonb('recurrence').$type<{
+      freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+      interval: number;
+      byWeekday?: number[];
+      until?: string;
+      count?: number;
+    }>(),
+    reminderMinutes: integer('reminder_minutes'),
+  },
+  (table) => [
+    index('events_updated_at_idx').on(table.updatedAt),
+    index('events_sync_seq_idx').on(table.syncSeq),
+    index('events_starts_at_idx').on(table.startsAt),
+    index('events_start_date_idx').on(table.startDate),
+  ],
+);
+
+export type Event = typeof events.$inferSelect;
+export type NewEvent = typeof events.$inferInsert;
+
+/**
+ * One exception to a recurring `events` row — moved to a different time/date, or
+ * cancelled outright — never a list column on `events` itself (issue #552 AC6): a
+ * list would collide the moment two devices move different instances of the same
+ * series offline, each overwriting the other's edit on next sync. A dedicated
+ * table upserts on the natural key `(eventId, originalDate)` instead, same
+ * pattern as `habitLogs`/`habitFreezes` (issue #475) — two devices moving the same
+ * instance each mint their own row id, but the natural key + delete-wins conflict
+ * rule (ADR-0008) collapse them to one. No `onDelete` cascade on `eventId`:
+ * deleting is always a tombstone (see ARCHITECTURE.md), never a hard `DELETE`, so
+ * the FK action never fires. `overrideStartsAt`/`overrideEndsAt` and
+ * `overrideStartDate`/`overrideEndDate` mirror the same instant-vs-calendar-day
+ * split as `events` — an exception can move a timed event to another instant, or
+ * an all-day event to another day, never mixing the two models.
+ */
+export const eventExceptions = pgTable(
+  'event_exceptions',
+  {
+    ...syncColumns,
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id),
+    originalDate: date('original_date').notNull(),
+    cancelled: boolean('cancelled').notNull().default(false),
+    overrideStartsAt: timestamp('override_starts_at', { withTimezone: true }),
+    overrideEndsAt: timestamp('override_ends_at', { withTimezone: true }),
+    overrideStartDate: date('override_start_date'),
+    overrideEndDate: date('override_end_date'),
+  },
+  (table) => [
+    index('event_exceptions_updated_at_idx').on(table.updatedAt),
+    index('event_exceptions_sync_seq_idx').on(table.syncSeq),
+    index('event_exceptions_event_id_idx').on(table.eventId),
+    uniqueIndex('event_exceptions_event_id_original_date_idx').on(
+      table.eventId,
+      table.originalDate,
+    ),
+  ],
+);
+
+export type EventException = typeof eventExceptions.$inferSelect;
+export type NewEventException = typeof eventExceptions.$inferInsert;

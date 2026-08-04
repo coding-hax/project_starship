@@ -1,5 +1,6 @@
 'use client';
 
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { dayLabel, monthDays, toDateKey } from './due-today';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
@@ -30,6 +31,8 @@ export function HabitWeekGrid({
 }: HabitWeekGridProps) {
   const days = monthDays(viewedMonth);
   const today = toDateKey(now);
+  // The Journal habit's cells are display-only (issue #505 AC5) — no tap toggles a log.
+  const readOnly = habit.id === JOURNAL_HABIT_ID;
 
   return (
     <div className="habit-week-grid-wrap">
@@ -64,11 +67,11 @@ export function HabitWeekGrid({
                 data-today={isToday ? '' : undefined}
                 data-future={isFuture ? '' : undefined}
                 data-outside={inMonth ? undefined : ''}
-                disabled={isFuture}
+                disabled={isFuture || readOnly}
                 style={done ? { background: `var(${habit.color ?? '--area-habits'})` } : undefined}
                 aria-pressed={isFuture ? undefined : done}
                 aria-label={label}
-                onClick={() => onToggle(habit.id, day)}
+                onClick={readOnly ? undefined : () => onToggle(habit.id, day)}
               >
                 <span aria-hidden="true">{dayNumber}</span>
               </button>

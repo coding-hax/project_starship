@@ -245,6 +245,142 @@ describe('garmin_activities is read-only', () => {
   });
 });
 
+describe('writableFields for events (issue #552)', () => {
+  it('coerces starts_at/ends_at to Date across the autumn DST fold (AC5)', () => {
+    // 2026-10-25 is the DST fold in Europe/Berlin — a naive local datetime is
+    // ambiguous there, a UTC instant is not. The round trip must be exact.
+    const fields = writableFields('events', {
+      title: 'Arzttermin',
+      allDay: false,
+      startsAt: '2026-10-25T00:30:00.000Z',
+      endsAt: '2026-10-25T01:30:00.000Z',
+    });
+
+    expect(fields.startsAt).toBeInstanceOf(Date);
+    expect((fields.startsAt as Date).toISOString()).toBe('2026-10-25T00:30:00.000Z');
+    expect(fields.endsAt).toBeInstanceOf(Date);
+    expect((fields.endsAt as Date).toISOString()).toBe('2026-10-25T01:30:00.000Z');
+  });
+
+  it('leaves start_date/end_date as a plain YYYY-MM-DD string, never a Date (AC5)', () => {
+    // Same DST-fold day, but as an all-day event — must not be run through
+    // `new Date(...)`, which would risk a timezone-shifted calendar day.
+    const fields = writableFields('events', {
+      title: 'Urlaub',
+      allDay: true,
+      startDate: '2026-10-25',
+      endDate: '2026-10-27',
+    });
+
+    expect(fields.startDate).toBe('2026-10-25');
+    expect(fields.startDate).not.toBeInstanceOf(Date);
+    expect(fields.endDate).toBe('2026-10-27');
+    expect(fields.endDate).not.toBeInstanceOf(Date);
+  });
+
+  it('keeps category/recurrence/reminderMinutes unchanged — not timestamp columns', () => {
+    const fields = writableFields('events', {
+      title: 'Wöchentliches Meeting',
+      category: 'arbeit',
+      recurrence: { freq: 'weekly', interval: 1 },
+      reminderMinutes: 15,
+    });
+
+    expect(fields.category).toBe('arbeit');
+    expect(fields.recurrence).toEqual({ freq: 'weekly', interval: 1 });
+    expect(fields.reminderMinutes).toBe(15);
+  });
+
+  it('drops fields a client must never set', () => {
+    const fields = writableFields('events', {
+      title: 'Arzttermin',
+      id: 'attacker-chosen',
+      updatedAt: '1970-01-01T00:00:00.000Z',
+    });
+
+    expect(fields).toEqual({ title: 'Arzttermin' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('missingRequired for events', () => {
+  it('passes when title is present', () => {
+    expect(missingRequired('events', { title: 'Arzttermin' })).toEqual([]);
+  });
+
+  it('names the missing title, so the push can 400 instead of 500', () => {
+    expect(missingRequired('events', {})).toEqual(['title']);
+  });
+});
+
+describe('writableFields for event_exceptions (issue #552)', () => {
+  it('keeps the whitelisted fields, leaving originalDate a string and coercing overrides to Date', () => {
+    const fields = writableFields('event_exceptions', {
+      eventId: 'event-uuid',
+      originalDate: '2026-10-25',
+      cancelled: false,
+      overrideStartsAt: '2026-10-26T09:00:00.000Z',
+      overrideStartDate: null,
+    });
+
+    expect(fields.eventId).toBe('event-uuid');
+    expect(fields.originalDate).toBe('2026-10-25');
+    expect(fields.originalDate).not.toBeInstanceOf(Date);
+    expect(fields.cancelled).toBe(false);
+    expect(fields.overrideStartsAt).toBeInstanceOf(Date);
+    expect(fields.overrideStartDate).toBeNull();
+  });
+
+  it('drops fields a client must never set', () => {
+    const fields = writableFields('event_exceptions', {
+      eventId: 'event-uuid',
+      originalDate: '2026-10-25',
+      id: 'attacker-chosen',
+      syncSeq: 999,
+    });
+
+    expect(fields).toEqual({ eventId: 'event-uuid', originalDate: '2026-10-25' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('syncSeq');
+  });
+});
+
+describe('missingRequired for event_exceptions', () => {
+  it('passes when eventId and originalDate are present', () => {
+    expect(
+      missingRequired('event_exceptions', { eventId: 'event-uuid', originalDate: '2026-10-25' }),
+    ).toEqual([]);
+  });
+
+  it('names what a create is missing', () => {
+    expect(missingRequired('event_exceptions', { eventId: 'event-uuid' })).toEqual(['originalDate']);
+    expect(missingRequired('event_exceptions', {})).toEqual(['eventId', 'originalDate']);
+  });
+});
+
+describe('events/event_exceptions time-model columns (issue #552 AC5/AC6)', () => {
+  it('starts_at/ends_at are timestamptz, start_date/end_date are a bare date — never the same column type', () => {
+    const columns = getTableColumns(SYNC_REGISTRY.events.table as PgTable);
+
+    expect(columns.startsAt.columnType).toBe('PgTimestamp');
+    expect((columns.startsAt as unknown as { withTimezone: boolean }).withTimezone).toBe(true);
+    expect(columns.endsAt.columnType).toBe('PgTimestamp');
+    expect(columns.startDate.columnType).not.toBe('PgTimestamp');
+    expect(columns.endDate.columnType).not.toBe('PgTimestamp');
+  });
+
+  it('events carries no exceptions list column — event_exceptions is the only home for them (AC6)', () => {
+    const columns = getTableColumns(SYNC_REGISTRY.events.table as PgTable);
+    expect(columns).not.toHaveProperty('exceptions');
+  });
+
+  it('event_exceptions references the series by event_id, not the other way round (AC6)', () => {
+    const columns = getTableColumns(SYNC_REGISTRY.event_exceptions.table as PgTable);
+    expect(columns).toHaveProperty('eventId');
+  });
+});
+
 describe('sync columns present', () => {
   // A synchronised table without these carries no way to soft-delete or resolve
   // conflicts — typecheck alone would not catch a table that forgets to spread

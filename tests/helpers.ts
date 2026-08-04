@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Browser, Page } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -43,6 +43,9 @@ export async function enableVirtualAuthenticator(page: Page) {
       hasUserVerification: true,
       isUserVerified: true, // stands in for Face ID succeeding
       automaticPresenceSimulation: true,
+      // The journal's PRF-derived unlock key (#511) reuses this same login
+      // passkey, so the virtual authenticator must speak the prf extension too.
+      hasPrf: true,
     },
   });
   return { client, authenticatorId };
@@ -210,9 +213,29 @@ export async function resetAppData() {
       'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
         'DELETE FROM reminder_prefs; DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs/habit_freezes first — both reference habits via a foreign key.
-        'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits;',
+        'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
+        // event_exceptions first — it references events via a foreign key (issue #553).
+        'DELETE FROM event_exceptions; DELETE FROM events;',
     );
   });
+}
+
+/**
+ * Settles the boot-time Journal-habit creation (issue #505 AC1) deterministically.
+ * `JournalHabitBoot` creates the row itself on every fresh account (the Journal
+ * module is active by default), but only after its own `await sync()` resolves —
+ * timing that isn't bound to anything a spec can wait on, so its `mutate()` can
+ * land in the outbox at any point after boot, including inside a window a spec is
+ * already using to assert an exact outbox size or habit-row count (#505 ripple).
+ * Calling `ensureJournalHabit` directly is idempotent with whatever the boot effect
+ * does on its own — whichever of the two runs first wins, the other is a no-op.
+ * Call right after `registerPasskey`, while still online, before the spec's own
+ * scenario starts.
+ */
+export async function settleJournalHabitBoot(page: Page): Promise<void> {
+  await page.evaluate(() => window.__starship.ensureJournalHabit());
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 }
 
 /**
@@ -228,7 +251,9 @@ export async function resetDatabase() {
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         'DELETE FROM garmin_activities; ' +
         'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM journal_entries; ' +
-        'DELETE FROM journal_keys;',
+        'DELETE FROM journal_keys; ' +
+        // event_exceptions first — it references events via a foreign key (issue #553).
+        'DELETE FROM event_exceptions; DELETE FROM events;',
     );
   });
 }
@@ -335,7 +360,9 @@ declare global {
           | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'
-          | 'journal_keys';
+          | 'journal_keys'
+          | 'events'
+          | 'event_exceptions';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;
@@ -375,6 +402,7 @@ declare global {
         }>
       >;
       deleteJournalEntry: (id: string) => Promise<void>;
+      ensureJournalHabit: () => Promise<void>;
       bytesToBase64: (bytes: number[]) => string;
       createEnvelope: (
         passphrase: string,

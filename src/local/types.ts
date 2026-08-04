@@ -14,6 +14,8 @@ export const SYNC_TABLES = [
   'reminder_prefs',
   'journal_entries',
   'journal_keys',
+  'events',
+  'event_exceptions',
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
@@ -44,6 +46,7 @@ export function isReadOnlyTable(table: SyncTable): boolean {
 export const NATURAL_KEYS: Partial<Record<SyncTable, readonly string[]>> = {
   habit_logs: ['habitId', 'logDate'],
   habit_freezes: ['habitId', 'freezeDate'],
+  event_exceptions: ['eventId', 'originalDate'],
 };
 
 /**
@@ -144,6 +147,48 @@ export interface JournalEntryData {
 export interface JournalKeysData {
   envelope: unknown;
   recoveryEnvelope?: unknown;
+}
+
+/**
+ * Same as `HabitData`, for `events` (issue #552, S1 of #473). `startsAt`/`endsAt`
+ * are ISO instants (scheduled events); `startDate`/`endDate` are `YYYY-MM-DD`
+ * calendar days (all-day events), like `HabitLogData.logDate` — see the doc
+ * comment on `events` in src/db/schema.ts for why the two never mix on one row.
+ * `recurrence`/`reminderMinutes` are reserved for S6/S7, unwritten until then.
+ */
+export interface EventData {
+  title: string;
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  category: 'privat' | 'arbeit' | 'gesundheit' | 'sport' | 'familie' | null;
+  recurrence: {
+    freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    byWeekday?: number[];
+    until?: string;
+    count?: number;
+  } | null;
+  reminderMinutes: number | null;
+}
+
+/**
+ * Same as `HabitData`, for `event_exceptions` (issue #552, S1 of #473) — one
+ * exception to a recurring `events` row, keyed by `(eventId, originalDate)`
+ * (`NATURAL_KEYS` above), never a list column on `events` itself. `overrideStartsAt`
+ * /`overrideEndsAt`/`overrideStartDate`/`overrideEndDate` mirror the same
+ * instant-vs-calendar-day split as `EventData`.
+ */
+export interface EventExceptionData {
+  eventId: string;
+  originalDate: string;
+  cancelled: boolean;
+  overrideStartsAt: string | null;
+  overrideEndsAt: string | null;
+  overrideStartDate: string | null;
+  overrideEndDate: string | null;
 }
 
 export interface Mutation {
