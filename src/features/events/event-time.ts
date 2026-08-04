@@ -1,7 +1,7 @@
 /**
- * Pure timeline-layout logic (issue #553, S2 of #473) — no DB, no DOM, so it's
- * Vitest-testable like habits/due-today.ts and schedule-rules.ts. Only scheduled
- * (`allDay: false`) events are handled here; the all-day band is S4 (#555).
+ * Pure timeline-layout logic (issue #553, S2 of #473; all-day band issue #555,
+ * S4) — no DB, no DOM, so it's Vitest-testable like habits/due-today.ts and
+ * schedule-rules.ts.
  */
 
 import { berlinNow } from '@/push/schedule';
@@ -64,6 +64,39 @@ export function layoutForDay(events: EventView[], dayKey: string): TimelineEvent
 /** Now-line position as a percentage of the same 0–24h axis `layoutForDay` uses. */
 export function nowLinePct(now: Date): number {
   return (berlinNow(now).minutesOfDay / MINUTES_PER_DAY) * 100;
+}
+
+export interface AllDayItem extends Omit<EventView, 'startsAt' | 'endsAt'> {
+  /** Narrowed from `EventView` — `allDayEventsForDay` only ever keeps all-day events. */
+  startDate: string;
+  endDate: string;
+  /** True when the bar's range reaches beyond `dayKey` on that side — the bar's
+   *  edge there is squared off with a chevron instead of a rounded end, so a
+   *  3-day event reads as one continuous shape across the days it's paged
+   *  through, not three unrelated bars (AC2/AC3). */
+  continuesBefore: boolean;
+  continuesAfter: boolean;
+}
+
+/**
+ * All-day events whose `[startDate, endDate]` range (both are date keys,
+ * `YYYY-MM-DD` — lexicographic order matches calendar order) covers `dayKey`.
+ * A month/year boundary inside that range needs no special casing here: date
+ * keys compare correctly across it, and `addDays` (used to page `dayKey`
+ * day-by-day) already carries the rollover.
+ */
+export function allDayEventsForDay(events: EventView[], dayKey: string): AllDayItem[] {
+  return events
+    .filter(
+      (event): event is EventView & { startDate: string; endDate: string } =>
+        event.allDay && event.startDate !== null && event.endDate !== null,
+    )
+    .filter((event) => event.startDate <= dayKey && dayKey <= event.endDate)
+    .map((event) => ({
+      ...event,
+      continuesBefore: event.startDate < dayKey,
+      continuesAfter: event.endDate > dayKey,
+    }));
 }
 
 /** The card's left edge colour — the single place this category → token mapping lives. */
