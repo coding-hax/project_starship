@@ -21,7 +21,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben →
   Aktivitäten → Gewohnheiten)
 - `(app)/aufgaben/` — Aufgaben (leer bis M1)
-- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline, S2 von #473, issue #553); Editor/Monat/Serien folgen S3–S6
+- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum (issue #469) + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
