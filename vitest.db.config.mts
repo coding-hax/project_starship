@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { config } from 'dotenv';
 import { defineConfig } from 'vitest/config';
+import { slotWorkerLimit } from './vitest.pool.mts';
 
 /**
  * The one Vitest tier that needs a real Postgres — DATABASE_URL, real MVCC
@@ -21,6 +22,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/app/api/sync/pull/route.test.ts'],
+    ...slotWorkerLimit(),
   },
   resolve: {
     alias: {

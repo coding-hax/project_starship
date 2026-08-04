@@ -140,6 +140,36 @@ export MAX_ROUNDS=1
 )
 
 # ==============================================================================
+# B4: Ein HOHLER node_modules-Baum (Verzeichnis da, tsx nur ein toter Symlink)
+#     bricht ebenso hörbar ab wie ein fehlendes node_modules -- statt klaglos
+#     verlinkt zu werden und erst beim ersten ts_run mit MODULE_NOT_FOUND zu
+#     krachen (#563).
+# ==============================================================================
+(
+  cd "$REPO_ROOT" || exit 1
+  export RUNNER_REF="HEAD"
+  # shellcheck source=/dev/null
+  source "$SHIM"
+  # Der Shim setzt `set -e`; gesourct gilt das hier weiter und würde den
+  # ersten erwarteten Fehlschlag (B4) stumm die Subshell beenden lassen.
+  set +e
+
+  mkdir -p "$TMP/b4-repo/node_modules" "$TMP/b4-dest"
+  ln -s /nonexistent-store/tsx "$TMP/b4-repo/node_modules/tsx"   # toter Link
+  REPO="$TMP/b4-repo"
+
+  ERR=$(shim_materialise "$TMP/b4-dest" 2>&1 >/dev/null); RC=$?
+
+  if [ "$RC" -eq 0 ]; then
+    red "B4: hohler node_modules-Baum wurde stillschweigend akzeptiert (Exit 0)"
+  elif ! printf '%s' "$ERR" | grep -q "pnpm install"; then
+    red "B4: Exit $RC, aber die Meldung nennt pnpm install nicht: '$ERR'"
+  else
+    ok "B4: hohler node_modules-Baum bricht hörbar mit pnpm-Hinweis ab (Exit $RC)"
+  fi
+)
+
+# ==============================================================================
 echo
 [ -e "$FAIL_FLAG" ] && FAIL=1
 if [ "$FAIL" -eq 0 ]; then

@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
@@ -8,6 +8,7 @@ import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
   isReadOnlyTable,
   malformedFields,
+  NATURAL_KEYS,
   type Mutation,
   type PushConflict,
   type PushRejection,
@@ -82,7 +83,27 @@ export async function POST(request: Request) {
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
 
-      const [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
+      let [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
+
+      const fields = writableFields(mutation.table, mutation.payload ?? {});
+
+      // Two devices offline can each mint their own uuid for the same natural key
+      // (`habit_logs`/`habit_freezes`, issue #475) — the id lookup above finds
+      // nothing, but a row for this (habitId, logDate) may already exist. Upsert
+      // on the natural key instead of blindly inserting a second row that then
+      // collides with the table's `uniqueIndex`. Only `upsert` takes this path;
+      // `delete`/`restore` always carry the real `rowId`.
+      const keyFields = NATURAL_KEYS[mutation.table];
+      let targetId = mutation.rowId;
+      if (!existing && mutation.op === 'upsert' && keyFields?.every((f) => f in fields)) {
+        const columns = table as unknown as Record<string, Parameters<typeof eq>[0]>;
+        [existing] = await tx
+          .select()
+          .from(table)
+          .where(and(...keyFields.map((f) => eq(columns[f], fields[f]))))
+          .limit(1);
+        if (existing) targetId = existing.id as string;
+      }
 
       const deletedAt = resolveDeletedAt(
         mutation.op,
@@ -90,8 +111,6 @@ export async function POST(request: Request) {
         incomingUpdatedAt,
       );
       const conflict = detectOverwrite(mutation.baseSeq, existing?.syncSeq ?? null);
-
-      const fields = writableFields(mutation.table, mutation.payload ?? {});
 
       if (!existing) {
         // Creating a row: the NOT NULL columns must be present. Reject at the door
@@ -115,10 +134,10 @@ export async function POST(request: Request) {
                 syncedAt: now,
                 syncSeq: sql`nextval('sync_seq')`,
               })
-              .where(eq(table.id, mutation.rowId));
+              .where(eq(table.id, targetId));
           } else {
             await sp.insert(table).values({
-              id: mutation.rowId,
+              id: targetId,
               ...fields,
               updatedAt: incomingUpdatedAt,
               deletedAt,

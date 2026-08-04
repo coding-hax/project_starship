@@ -32,8 +32,15 @@ function taskItems(page: Page) {
  * day cells of every habit's nested `<HabitWeekGrid>` `<ul>` (habits.spec.ts's
  * own `habitItems` gets away with the broader query because every one of its
  * uses filters by habit name first, which day-number cells never match). */
+/** Excludes the fixed Journal habit (issue #505) — boot creates it on every fresh
+ * account with the Journal module active, before this file's own beforeEach even
+ * gets to block the sync route, so it's already in the list by the time these
+ * tests seed their own rows. Irrelevant ambient state for what AC1/AC2 test. */
 function habitItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).locator('> li');
+  return page
+    .getByRole('list', { name: 'Gewohnheiten', exact: true })
+    .locator('> li')
+    .filter({ hasNotText: 'Journal' });
 }
 
 /** Document-absolute rect (adds scroll offset back in) rather than
@@ -56,6 +63,12 @@ async function documentRect(
       height: rect.height,
     };
   });
+}
+
+async function waitForEnterSettled(locator: ReturnType<typeof taskItems>) {
+  await expect
+    .poll(() => locator.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')))
+    .toBe(false);
 }
 
 async function swipeLeft(locator: ReturnType<typeof taskItems>, distancePx: number) {
@@ -170,10 +183,12 @@ test.describe('Aufgaben', () => {
     await seedTask(page, { title: 'Item A', createdAt: '2024-01-01T00:00:00.000Z' });
     const itemA = taskItems(page).filter({ hasText: 'Item A' });
     await expect(itemA).toBeVisible();
+    await waitForEnterSettled(itemA);
     const before = await documentRect(itemA);
 
     await seedTask(page, { title: 'Item B', createdAt: '2024-01-01T00:00:01.000Z' });
     await expect(taskItems(page)).toHaveCount(2);
+    await waitForEnterSettled(itemA);
     const after = await documentRect(itemA);
 
     // A hair of tolerance, not exact equality, for pure sub-pixel layout

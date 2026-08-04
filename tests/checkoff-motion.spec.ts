@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
  * `getComputedStyle` right after `.click()` can catch the CSS transition mid-flight
@@ -63,7 +63,7 @@ async function documentBox(locator: Locator) {
 }
 
 function yesterdayKey(): string {
-  const d = new Date();
+  const d = new Date(FIXED_NOW);
   d.setDate(d.getDate() - 1);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -149,6 +149,7 @@ function itemsFor(page: Page, listName: string) {
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
+  await installClockAt(page);
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
