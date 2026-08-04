@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock } from './helpers';
+import {
+  freezeClock,
+  openMeteoForecastBody,
+  registerPasskey,
+  resetAppData,
+  skewClock,
+} from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
 const NOW = '2026-07-18T12:00:00.000Z';
@@ -28,6 +34,13 @@ async function gapBetween(above: Locator, below: Locator): Promise<number> {
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
+async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
     payload,
   );
 }
@@ -434,4 +447,144 @@ test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg
   const main = page.getByRole('main');
   await expect(main.getByRole('link', { name: 'Journal' })).toHaveCount(0);
   await expect(main.locator('a[href="/journal"]')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #559 (S8 von #473): Übersicht-Sektion "Nächster Termin"              */
+/* -------------------------------------------------------------------------- */
+
+test('der nächste Termin heute steht groß mit Countdown-Text (issue #559 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // NOW = 12:00 UTC = 14:00 Berlin (CEST). +40 Min -> 14:40 Berlin.
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toBeVisible();
+  await expect(next).toContainText('in 40 Min');
+  await expect(next).toContainText('Zahnarzt');
+});
+
+test('weitere Termine am selben Tag stehen darunter als dünne Zeilen, nicht gleichwertig groß (issue #559 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: '2026-07-18T15:00:00.000Z',
+    endsAt: '2026-07-18T16:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Zahnarzt');
+  await expect(next).not.toContainText('Teammeeting');
+
+  const restItems = page.locator('.events-overview__rest-item');
+  await expect(restItems).toHaveCount(1);
+  await expect(restItems.first()).toContainText('Teammeeting');
+  await expect(restItems.first()).toContainText('17:00'); // 15:00 UTC = 17:00 Berlin
+
+  // Deutlich kleinere Schrift als die große Anzeige des nächsten Termins.
+  const [nextFontSize, restFontSize] = await Promise.all([
+    next.locator('.events-overview__next-countdown').evaluate((el) => getComputedStyle(el).fontSize),
+    restItems.first().evaluate((el) => getComputedStyle(el).fontSize),
+  ]);
+  expect(parseFloat(nextFontSize)).toBeGreaterThan(parseFloat(restFontSize));
+});
+
+test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #559 AC3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // Ein Termin, der schon vorbei ist, zählt nicht als "weiterer Termin heute".
+  await seedEvent(page, {
+    title: 'Vorbei',
+    allDay: false,
+    startsAt: '2026-07-18T09:00:00.000Z',
+    endsAt: '2026-07-18T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(page.locator('.events-overview__empty')).toBeVisible();
+  await expect(page.getByText('Keine weiteren Termine heute')).toBeVisible();
+  await expect(page.locator('.events-overview__next')).toHaveCount(0);
+});
+
+test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #559 AC4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const countdown = page.locator('.events-overview__next-countdown');
+  await expect(countdown).toHaveText('in 40 Min');
+
+  await freezeClock(page);
+  await page.clock.fastForward(10 * 60 * 1000);
+
+  await expect(countdown).toHaveText('in 30 Min');
+});
+
+test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #559 AC5)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+    const id = await seedEvent(page, {
+      title: 'Zahnarzt',
+      allDay: false,
+      startsAt: '2026-07-18T12:40:00.000Z',
+      endsAt: '2026-07-18T13:10:00.000Z',
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+
+    const heading = page.getByRole('heading', { name: 'Termine', level: 2 });
+    const next = page.locator('.events-overview__next');
+    await expect(heading).toBeVisible();
+    await expect(next).toBeVisible();
+    await expect(next).toContainText('in 40 Min');
+
+    await page.evaluate(
+      (rowId) => window.__starship.mutate({ table: 'events', rowId, op: 'delete' }),
+      id,
+    );
+    await expect(page.locator('.events-overview__empty')).toBeVisible();
+  }
 });

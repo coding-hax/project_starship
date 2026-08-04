@@ -33,6 +33,7 @@
 @import '../features/events/event-timeline.css';
 @import '../features/events/event-editor.css';
 @import '../features/events/calendar-view.css';
+@import '../features/events/events-overview-section.css';
 @import './(app)/uebersicht/uebersicht.css';
 @import './(app)/einstellungen/einstellungen.css';
 

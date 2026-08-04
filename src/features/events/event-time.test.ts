@@ -4,8 +4,10 @@ import {
   allDayEventsForDay,
   berlinMinutesOfDay,
   categoryEdgeVar,
+  formatCountdown,
   layoutForDay,
   nowLinePct,
+  upcomingEventsToday,
   weekDaysFor,
 } from './event-time';
 import type { EventView } from './use-events';
@@ -233,5 +235,81 @@ describe('categoryEdgeVar', () => {
 
   it('falls back to the area colour when there is no category', () => {
     expect(categoryEdgeVar(null)).toBe('var(--area-events)');
+  });
+});
+
+describe('upcomingEventsToday', () => {
+  // 12:00 UTC on 2026-07-18 = 14:00 Berlin (CEST).
+  const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+
+  it('orders today\'s remaining events by start time', () => {
+    const later = event({
+      title: 'Später',
+      startsAt: iso(Date.UTC(2026, 6, 18, 15, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 16, 0)),
+    });
+    const next = event({
+      title: 'Als Nächstes',
+      startsAt: iso(Date.UTC(2026, 6, 18, 13, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 14, 0)),
+    });
+
+    expect(upcomingEventsToday([later, next], NOW).map((e) => e.title)).toEqual([
+      'Als Nächstes',
+      'Später',
+    ]);
+  });
+
+  it('keeps an event that has already started but not yet ended', () => {
+    const inProgress = event({
+      startsAt: iso(Date.UTC(2026, 6, 18, 11, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 13, 0)),
+    });
+
+    expect(upcomingEventsToday([inProgress], NOW)).toHaveLength(1);
+  });
+
+  it('drops an event that has already ended', () => {
+    const past = event({
+      startsAt: iso(Date.UTC(2026, 6, 18, 9, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 10, 0)),
+    });
+
+    expect(upcomingEventsToday([past], NOW)).toEqual([]);
+  });
+
+  it('drops an event on a different day', () => {
+    const tomorrow = event({
+      startsAt: iso(Date.UTC(2026, 6, 19, 9, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 19, 10, 0)),
+    });
+
+    expect(upcomingEventsToday([tomorrow], NOW)).toEqual([]);
+  });
+
+  it('drops all-day events', () => {
+    const allDay = event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-18' });
+
+    expect(upcomingEventsToday([allDay], NOW)).toEqual([]);
+  });
+});
+
+describe('formatCountdown', () => {
+  const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+
+  it('reports whole minutes under an hour', () => {
+    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 12, 40)))).toBe('in 40 Min');
+  });
+
+  it('reports hours and minutes over an hour', () => {
+    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 14, 5)))).toBe('in 2 Std 5 Min');
+  });
+
+  it('omits minutes on an exact hour boundary', () => {
+    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 14, 0)))).toBe('in 2 Std');
+  });
+
+  it('reads "Jetzt" once the event has started', () => {
+    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 11, 0)))).toBe('Jetzt');
   });
 });

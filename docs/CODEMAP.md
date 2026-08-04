@@ -18,8 +18,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
-  (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben →
-  Aktivitäten → Gewohnheiten)
+  (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Termine →
+  Aufgaben → Aktivitäten → Gewohnheiten)
 - `(app)/aufgaben/` — Aufgaben (leer bis M1)
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
@@ -108,13 +108,14 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`, `upcomingEventsToday`/`formatCountdown` (Übersicht, issue #559)
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay` + `editorState`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `week-strip.tsx` / `.css` — zugeklapptes Wochenband Mo–So, Vor/Zurück-Tag + antippbare Tage
 - `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
+- `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin" (issue #559, S8 von #473): nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
 
 ### src/features/export
 
