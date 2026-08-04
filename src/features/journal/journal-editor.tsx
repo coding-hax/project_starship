@@ -14,7 +14,9 @@ import {
 } from './entry';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
+import { useJournalLock } from './lock-store';
 import { useJournalEntries } from './use-journal-entries';
+import { useOrphanedKey } from './use-orphaned-key';
 
 function parseTags(raw: string): string[] {
   return raw
@@ -142,6 +144,7 @@ export function JournalEditor() {
       <div className="journal-editor">
         {!searchActive && (
           <>
+            <JournalOrphanedKeyCard />
             <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
             <form className="journal-editor__form" onSubmit={handleSubmit}>
               <MoodScale value={mood} onChange={setMood} />
@@ -192,6 +195,89 @@ export function JournalEditor() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * Shown only while this device holds a displaced `journal_keys` envelope (issue
+ * #518) — a first-setup race left some entries readable only under the DEK it
+ * wrapped. Calm register throughout (ADR-0016, same as `journal-gate.css`'s
+ * locked state): no `--danger`, a wrong secret gets the same quiet "nichts
+ * geborgen" as "there was nothing to recover" (Regel 9) — the two are
+ * indistinguishable on purpose, same reasoning as `journalUnlock`'s uniform
+ * `WrongPassphraseError` message.
+ */
+function JournalOrphanedKeyCard() {
+  const hasStash = useOrphanedKey();
+  const { recoverOrphaned } = useJournalLock();
+  const [useRecoveryKey, setUseRecoveryKey] = useState(false);
+  const [secret, setSecret] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  // Recovery deletes the stash entry as part of the same operation that reports
+  // the count — `useOrphanedKey()`'s liveQuery can observe that deletion (a real
+  // IndexedDB round trip) and flip `hasStash` to false *while `handleSubmit` is
+  // still awaiting* `recoverOrphaned`, in an entirely separate render from the
+  // one that will eventually set `message`. Gating only on `!hasStash && !message`
+  // still unmounts in that window (message is still null there) — and a
+  // now-unmounted component discards every `setState` call still in flight,
+  // silently, so the confirmation text never appears. `recovering` closes that
+  // gap: set synchronously before the `await`, it keeps the card mounted for the
+  // entire round trip, however the two async updates happen to interleave.
+  const [recovering, setRecovering] = useState(false);
+
+  if (!hasStash && !recovering && !message) return null;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRecovering(true);
+    const count = await recoverOrphaned(secret, useRecoveryKey);
+    setSecret('');
+    setRecovering(false);
+    setMessage(
+      count === 0
+        ? 'Keine Einträge geborgen.'
+        : count === 1
+          ? '1 Eintrag geborgen.'
+          : `${count} Einträge geborgen.`,
+    );
+  }
+
+  return (
+    <form className="journal-orphaned-key" data-state="orphaned-key" onSubmit={handleSubmit}>
+      <p className="journal-orphaned-key__hint">
+        Auf diesem Gerät liegen Einträge mit einem älteren Schlüssel.{' '}
+        {useRecoveryKey
+          ? 'Entsperre sie mit dem damaligen Wiederherstellungsschlüssel.'
+          : 'Entsperre sie mit der damaligen Passphrase.'}
+      </p>
+      <input
+        type={useRecoveryKey ? 'text' : 'password'}
+        className="journal-orphaned-key__input"
+        value={secret}
+        onChange={(event) => setSecret(event.target.value)}
+        aria-label={useRecoveryKey ? 'Damaliger Wiederherstellungsschlüssel' : 'Damalige Passphrase'}
+        placeholder={useRecoveryKey ? 'Wiederherstellungsschlüssel' : 'Passphrase'}
+        autoComplete="off"
+      />
+      {message && (
+        <p className="journal-orphaned-key__message" role="status">
+          {message}
+        </p>
+      )}
+      <button type="submit" className="journal-orphaned-key__submit">
+        Bergen
+      </button>
+      <button
+        type="button"
+        className="journal-orphaned-key__link"
+        onClick={() => {
+          setUseRecoveryKey((current) => !current);
+          setSecret('');
+        }}
+      >
+        {useRecoveryKey ? 'Mit Passphrase bergen' : 'Mit Wiederherstellungsschlüssel bergen'}
+      </button>
+    </form>
   );
 }
 

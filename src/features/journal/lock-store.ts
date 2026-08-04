@@ -20,6 +20,7 @@ import {
   writeEnvelopes,
   writeRecoveryEnvelope,
 } from './journal-keys';
+import { recoverOrphanedEntries } from './recover-orphaned-entries';
 import { readJournalPersistPref, subscribeJournalPersistPref } from './use-journal-persist-pref';
 
 export type JournalLockState = 'loading' | 'setup' | 'locked' | 'unlocked' | 'unavailable';
@@ -276,6 +277,23 @@ export async function journalSetup(passphrase: string): Promise<string | null> {
   return result.recoveryKey;
 }
 
+/**
+ * Test-only sibling of `journalSetup` (issue #518, exposed via `e2e-bridge.tsx`
+ * behind `NEXT_PUBLIC_E2E`): mints a fresh envelope onto the fixed key row without
+ * the "already set up" guard above. Reproduces what a second device racing a first
+ * setup does — the guard exists precisely to stop a *legitimate* second setup, not
+ * the race itself, so a test proving the race's fallout has to bypass it the same
+ * way the race does.
+ */
+export async function debugCompetingSetup(passphrase: string): Promise<void> {
+  const result = await createEnvelopesWithRecovery(passphrase);
+  await writeEnvelopes(result.passphraseEnvelope, result.recoveryEnvelope);
+  dek = result.dek;
+  setSnapshot({ state: 'unlocked', error: null });
+  getChannel().postMessage({ type: 'unlocked', dek: result.dek } satisfies BroadcastMessage);
+  armAutoLock();
+}
+
 export async function journalUnlock(passphrase: string): Promise<void> {
   const envelope = await readEnvelope();
   if (!envelope) return;
@@ -352,6 +370,20 @@ export async function journalReissueRecovery(passphrase: string): Promise<string
   }
 }
 
+/**
+ * Thin wrapper over `recoverOrphanedEntries` (issue #518) — only while `unlocked`,
+ * same guard as `journalReissueRecovery`, since the recovery itself needs the
+ * current DEK from memory to know what "already readable" means. No new lock
+ * state: the affordance that calls this lives entirely inside `unlocked`.
+ */
+export async function journalRecoverOrphaned(
+  secret: string,
+  useRecoveryKey: boolean,
+): Promise<number> {
+  if (current.state !== 'unlocked') return 0;
+  return recoverOrphanedEntries(secret, useRecoveryKey);
+}
+
 export async function journalLock(): Promise<void> {
   dek = null;
   disarmAutoLock();
@@ -399,6 +431,7 @@ export function useJournalLock() {
     unlockWithRecovery: journalUnlockWithRecovery,
     rewrapPassphrase: journalRewrapPassphrase,
     reissueRecovery: journalReissueRecovery,
+    recoverOrphaned: journalRecoverOrphaned,
     lock: journalLock,
     retry: journalRetryInitialize,
   };

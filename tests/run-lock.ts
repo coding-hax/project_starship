@@ -33,3 +33,10 @@ export const PORT = 3100 + 10 * (SLOT_ID - 1);
 
 /** Prod-build server for the offline-critical spec — the dev server never ships a service worker. */
 export const PORT_PROD = PORT + 1;
+
+/**
+ * Prod-build server built WITHOUT `NEXT_PUBLIC_E2E` (#497) — the actually-shipped
+ * bundle. Separate from PORT_PROD because the two builds set the flag differently at
+ * build time and can't share `.next`.
+ */
+export const PORT_SHIPPED = PORT + 2;

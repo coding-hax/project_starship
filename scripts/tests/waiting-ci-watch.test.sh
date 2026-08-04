@@ -382,7 +382,7 @@ assert_labels "T8 (#272): #421 bleibt wartend -- rote Checks starten keinen Lauf
 assert_file_absent "T8 (#272): kein Fix-Agent, solange die Frage offen ist" "$GHSTATE_DIR/claude-called"
 assert_file_absent "T8: kein Auto-Merge bei roten Checks" "$GHSTATE_DIR/merged-721"
 assert_file_absent "T8 (#272): kein Fehlversuch in der Eskalation, es lief ja nichts" \
-  "$STATE_DIR/failcount-421"
+  "$SHARED_DIR/failcount-421"
 
 # ==============================================================================
 # T9 -- #283: 'protected-paths' ist kein Sonderfall mehr. Fuer ein WARTENDES

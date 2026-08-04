@@ -24,6 +24,9 @@
 
 .segmented__option {
   position: relative;
+  /* Not on the z-layers scale (tokens.css): lifts the button above the
+     absolutely positioned .segmented__indicator within this same .segmented,
+     never leaves this stacking context. */
   z-index: 1;
   min-height: calc(var(--touch-target) - 4px);
   padding: 0 var(--space-3);

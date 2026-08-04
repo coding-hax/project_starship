@@ -420,6 +420,12 @@ declare global {
       journalHasPersistedDek: () => Promise<boolean>;
       journalPersistedDekExtractable: () => Promise<boolean | null>;
       debugDumpStores: () => Promise<string>;
+      // issue #518: journal_keys first-setup race.
+      debugCompetingSetup: (passphrase: string) => Promise<void>;
+      debugJournalKeyStash: () => Promise<
+        Array<{ id: string; envelope: unknown; recoveryEnvelope?: unknown; capturedAt: string }>
+      >;
+      journalRecoverOrphaned: (secret: string, useRecoveryKey: boolean) => Promise<number>;
     };
   }
 }

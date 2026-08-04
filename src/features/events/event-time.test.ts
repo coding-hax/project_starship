@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  allDayEventsForDay,
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
@@ -25,6 +26,7 @@ function event(overrides: Partial<EventView>): EventView {
     startDate: null,
     endDate: null,
     category: null,
+    recurrence: null,
     ...overrides,
   };
 }
@@ -253,6 +255,58 @@ describe('categoriesForDay', () => {
     );
     expect(categoriesForDay(events, DAY)).toHaveLength(4);
     expect(categoriesForDay(events, DAY)).toEqual(['privat', 'arbeit', 'gesundheit', 'sport']);
+  });
+});
+
+describe('allDayEventsForDay', () => {
+  it('places a single-day all-day event on its own day, not continuing either side', () => {
+    const events = [event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-18' })];
+
+    const [item] = allDayEventsForDay(events, '2026-07-18');
+
+    expect(item.continuesBefore).toBe(false);
+    expect(item.continuesAfter).toBe(false);
+  });
+
+  it('shows a 3-day event on each of its three days, flagged as continuing on the middle/edge days', () => {
+    const events = [event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-20' })];
+
+    const first = allDayEventsForDay(events, '2026-07-18')[0];
+    const middle = allDayEventsForDay(events, '2026-07-19')[0];
+    const last = allDayEventsForDay(events, '2026-07-20')[0];
+
+    expect(first.continuesBefore).toBe(false);
+    expect(first.continuesAfter).toBe(true);
+    expect(middle.continuesBefore).toBe(true);
+    expect(middle.continuesAfter).toBe(true);
+    expect(last.continuesBefore).toBe(true);
+    expect(last.continuesAfter).toBe(false);
+  });
+
+  it('stays correct across a month boundary', () => {
+    const events = [event({ allDay: true, startDate: '2026-07-30', endDate: '2026-08-02' })];
+
+    expect(allDayEventsForDay(events, '2026-07-31')).toHaveLength(1);
+    expect(allDayEventsForDay(events, '2026-08-01')[0].continuesBefore).toBe(true);
+    expect(allDayEventsForDay(events, '2026-08-02')[0].continuesAfter).toBe(false);
+  });
+
+  it('excludes a day outside the event range', () => {
+    const events = [event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-19' })];
+
+    expect(allDayEventsForDay(events, '2026-07-20')).toEqual([]);
+  });
+
+  it('filters out scheduled (non-all-day) events', () => {
+    const events = [
+      event({
+        allDay: false,
+        startsAt: iso(Date.UTC(2026, 6, 18, 7, 0)),
+        endsAt: iso(Date.UTC(2026, 6, 18, 8, 0)),
+      }),
+    ];
+
+    expect(allDayEventsForDay(events, '2026-07-18')).toEqual([]);
   });
 });
 

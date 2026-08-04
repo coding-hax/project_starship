@@ -84,10 +84,14 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `write.ts` / `entry.ts` — `writeJournalEntry` (einziger Schreibpfad) + Listen/Anhängen/Löschen
 - `journal-keys.ts` — `readEnvelope`/`writeEnvelope`/`readRecoveryEnvelope`/`writeRecoveryEnvelope`
+- `journal-key-stash.ts` — Dexie-Store `journalKeyStash` (issue #518): fängt einen beim Pull
+  verdrängten `journal_keys`-Envelope auf, statt ihn still zu verlieren
+- `recover-orphaned-entries.ts` — bergt Einträge, die nur unter einem gestashten Alt-DEK lesbar
+  sind, verschlüsselt sie unter dem aktuellen DEK neu (issue #518)
 - `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (Dexie-Store `journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (eine unlesbare fällt raus) + Konflikte
-- `use-journal-{conflicts,entries,search-entries}.ts` — `liveQuery`-Hooks
+- `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Formular (Stimmung/Text/Tags) + Eintragsliste + Suche
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche, Entschlüsselungs-Cache, Suchfeld+Ergebnisliste
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen
@@ -108,11 +112,11 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay` + `expanded` + `editorState`, Header mit `<CalendarStrip/>`, darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
-- `event-timeline.tsx` / `.css` — Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
+- `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten (Titel/Kategorie/ganztägig-Umschalter/Von-Bis), schreibt über `mutate()`
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 
@@ -170,6 +174,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
+- `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
@@ -179,6 +184,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
 - `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
+- `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes,
+  Bergung der Alt-Einträge (issue #518, AK1–AK7)
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull ins IndexedDB, Reminder-Versand, Panel „Benachrichtigungen"
 - `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
 

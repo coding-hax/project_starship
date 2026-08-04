@@ -47,7 +47,13 @@ export interface RoundContext {
   gh: GhAdapter;
   git: GitAdapter;
   state: StateAdapter;
-  /** Slotübergreifend (#204) -- ausschließlich 'limit-until' lebt hier, siehe roundEval. */
+  /**
+   * Slotübergreifend (#204) -- 'limit-until' (siehe roundEval) sowie die
+   * ticketbezogenen Zähler tier-/failcount-/opus-build-/opus-cap-msg-/
+   * resume-count-/blocker-sig-/branch-head- (#484): wandert ein Ticket den
+   * Slot, bleibt der Zählerstand erhalten. Sitzungsbezogenes (Session-IDs,
+   * transient-*) bleibt bewusst in `state`.
+   */
   sharedState: StateAdapter;
   /** Ticket-Anspruch bei mehreren Slots (#204), siehe claim.ts. */
   claims: ClaimAdapter;
@@ -189,7 +195,7 @@ function pendingWording(pending: string, queueBodyText: string): { title: string
 // ---------------------------------------------------------------------------
 
 export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanResult {
-  const { gh, git, state, claims, slotId, clock } = ctx;
+  const { gh, git, state, sharedState, claims, slotId, clock } = ctx;
   const { isLead } = opts;
 
   // #204, Frage 5 = A: nur der Leitslot faehrt die globalen Waechter -- sonst
@@ -627,7 +633,7 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
   } else if (role === 'plan' || role === 'research') {
     model = labelTier ?? 'opus';
   } else {
-    model = tierCurrent(issue, state, gh);
+    model = tierCurrent(issue, sharedState, gh);
   }
 
   const busy =
@@ -662,10 +668,10 @@ hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
   // Greift VOR dem Aufruf, damit ein erschoepftes Tagesbudget nicht noch einen
   // teuren dritten Opus-Lauf kostet.
   if (role === 'build' && model === 'opus') {
-    if (opusBuildCapReached(issue, labels, state, clock)) {
+    if (opusBuildCapReached(issue, labels, sharedState, clock)) {
       // Meldung hoechstens einmal je Ticket und Tag (#136).
       const stamp = `opus-cap-msg-${yyyymmdd(clock)}-${issue}`;
-      if (!state.exists(stamp)) {
+      if (!sharedState.exists(stamp)) {
         tryGh(gh, [
           'issue',
           'comment',
@@ -675,7 +681,7 @@ hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
 
 Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opus-boost\`, um für dieses Ticket noch heute einen weiteren Opus-Bau-Versuch freizugeben (wird nur bei ausbleibendem Fortschritt wieder abgezogen). Willst du dauerhaft bei Sonnet/Haiku bleiben, setze stattdessen das Label \`no-escalation\`.`,
         ]);
-        state.write(stamp, '');
+        sharedState.write(stamp, '');
       }
       // #272: NICHT 'needs-answer'. Der Tagesdeckel wartet auf Zeit, nicht auf
       // eine geschriebene Antwort -- morgen laeuft er von selbst weiter. Genau
@@ -698,7 +704,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
         ),
       };
     }
-    opusBuildCapReserve(issue, state, clock);
+    opusBuildCapReserve(issue, sharedState, clock);
   }
 
   const beforeTip = role === 'build' ? branchTip(issue, git) : '';
@@ -708,7 +714,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   // Bauen liegt der Stand in Git + Fortschrittskommentar.
   const sid = state.read(sessionKey(issue, role)) ?? '';
   let resume = '';
-  if (mode === 'resume' && sid !== '' && (role !== 'build' || resumeAllowed(issue, state).allowed)) {
+  if (mode === 'resume' && sid !== '' && (role !== 'build' || resumeAllowed(issue, sharedState).allowed)) {
     resume = sid;
   }
 
@@ -967,7 +973,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
     // Commit) -- das entscheidet die Eskalation (ADR-0007).
     buildEscalationEval(
       { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model },
-      state,
+      sharedState,
       gh,
       git,
     );
@@ -1165,7 +1171,7 @@ solange das Label \`needs-answer\` hängt.`,
   // Eskalations-Fehlversuch (ADR-0007).
   buildEscalationEval(
     { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model },
-    state,
+    sharedState,
     gh,
     git,
   );
