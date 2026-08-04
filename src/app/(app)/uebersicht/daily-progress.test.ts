@@ -29,6 +29,7 @@ function habit(overrides: Partial<HabitView> = {}): HabitView {
     id: 'habit-1',
     name: 'Habit',
     schedule: 'daily',
+    target: 1,
     color: null,
     archivedAt: null,
     createdAt: YESTERDAY.toISOString(),
@@ -92,6 +93,72 @@ describe('computeDailyProgress', () => {
     const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
     // Still inside the week, so it *does* count — sanity check against schedule-rules.
     expect(computeDailyProgress([], habits, [], onlyHabits, NOW)).toEqual({ done: 0, total: 1 });
+  });
+
+  it('a weekly habit done earlier this week drops out of both counts (issue #503, AC1)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-13', done: true })]; // Monday, earlier this week
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('a weekly habit done today still counts in both counts, no backwards jump (issue #503, AC2)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-15', done: true })]; // today
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 1, total: 1 });
+  });
+
+  it('a daily habit done yesterday still counts as open today (issue #503, AC4)', () => {
+    const habits = [habit({ id: 'h-daily', schedule: 'daily' })];
+    const logs = [log({ habitId: 'h-daily', logDate: '2026-07-14', done: true })]; // yesterday
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 1 });
+  });
+
+  it('the ring has nothing left when the only weekly habit was done earlier this week (issue #503, AC5)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-13', done: true })];
+    expect(computeDailyProgress([], habits, logs, allActive, NOW)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('a new week resets a weekly habit back to open (issue #503, AC6)', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly' })];
+    const logs = [log({ habitId: 'h-weekly', logDate: '2026-07-06', done: true })]; // Monday of the prior week
+
+    const sameWeekLater = new Date('2026-07-07T12:00:00.000Z'); // Tuesday, still that week -> excluded
+    expect(computeDailyProgress([], habits, logs, onlyHabits, sameWeekLater)).toEqual({
+      done: 0,
+      total: 0,
+    });
+
+    const nextWeek = new Date('2026-07-15T12:00:00.000Z'); // Wednesday, a week later -> open again
+    expect(computeDailyProgress([], habits, logs, onlyHabits, nextWeek)).toEqual({
+      done: 0,
+      total: 1,
+    });
+  });
+
+  it('a monthly habit met earlier this month drops out of both counts (issue #509 AC4)', () => {
+    const habits = [habit({ id: 'h-monthly', schedule: 'monthly' })];
+    const logs = [log({ habitId: 'h-monthly', logDate: '2026-07-03', done: true })]; // earlier this month
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('a monthly habit is open again once the month rolls over (issue #509 AC5)', () => {
+    const habits = [habit({ id: 'h-monthly', schedule: 'monthly' })];
+    const logs = [log({ habitId: 'h-monthly', logDate: '2026-07-03', done: true })];
+    const nextMonth = new Date('2026-08-01T12:00:00.000Z');
+    expect(computeDailyProgress([], habits, logs, onlyHabits, nextMonth)).toEqual({
+      done: 0,
+      total: 1,
+    });
+  });
+
+  it('a "3x pro Woche" habit with 2 of 3 done still counts as open', () => {
+    const habits = [habit({ id: 'h-weekly', schedule: 'weekly', target: 3 })];
+    const logs = [
+      log({ habitId: 'h-weekly', logDate: '2026-07-13', done: true }),
+      log({ habitId: 'h-weekly', logDate: '2026-07-14', done: true }),
+    ];
+    expect(computeDailyProgress([], habits, logs, onlyHabits, NOW)).toEqual({ done: 0, total: 1 });
   });
 
   it('both modules off yields nothing, regardless of data', () => {

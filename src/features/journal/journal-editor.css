@@ -1,7 +1,6 @@
 /**
  * Same field styling as task-editor.css/habit-editor.css so this reads as one
- * system. The mood scale is the first child (AC1), the conflict banner (AC8)
- * is deliberately calm — role="status", no --danger, same as journal-gate.css.
+ * system. The mood scale is the first child (AC1).
  */
 
 .journal-editor {
@@ -121,38 +120,4 @@
 .journal-editor__tags:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.journal-editor__conflict {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border-radius: var(--radius-card);
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-.journal-editor__conflict-hint {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.journal-editor__conflict-restore {
-  align-self: flex-start;
-  min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.journal-editor__conflict-restore:active {
-  opacity: 0.85;
 }

@@ -31,8 +31,7 @@ export function HabitWeekGrid({
 }: HabitWeekGridProps) {
   const days = monthDays(viewedMonth);
   const today = toDateKey(now);
-  const isCurrentMonth =
-    viewedMonth.getFullYear() === now.getFullYear() && viewedMonth.getMonth() === now.getMonth();
+  // The Journal habit's cells are display-only (issue #505 AC5) — no tap toggles a log.
   const readOnly = habit.id === JOURNAL_HABIT_ID;
 
   return (
@@ -43,16 +42,13 @@ export function HabitWeekGrid({
         ))}
       </ul>
       <ul className="habit-week-grid" aria-label={`Monat: ${habit.name}`}>
-        {days.map((day, index) => {
-          if (day === null) {
-            // Padding cell so the grid keeps full Mon–Sun rows at month edges.
-            return <li key={`pad-${index}`} className="habit-week-grid__cell" aria-hidden="true" />;
-          }
-
+        {days.map(({ dateKey: day, inMonth }) => {
           const done = logs.some(
             (log) => log.habitId === habit.id && log.logDate === day && log.done,
           );
-          const isToday = isCurrentMonth && day === today;
+          // No isCurrentMonth gate here (issue #487 AC6) — "heute" is marked
+          // wherever today's date key lands, including as a neighbour day.
+          const isToday = day === today;
           const isFuture = day > today;
           const dayNumber = Number(day.slice(-2));
           const label = `${dayLabel(day)}${isToday ? ' (heute)' : ''}: ${habit.name} ${
@@ -70,6 +66,7 @@ export function HabitWeekGrid({
                 }
                 data-today={isToday ? '' : undefined}
                 data-future={isFuture ? '' : undefined}
+                data-outside={inMonth ? undefined : ''}
                 disabled={isFuture || readOnly}
                 style={done ? { background: `var(${habit.color ?? '--area-habits'})` } : undefined}
                 aria-pressed={isFuture ? undefined : done}

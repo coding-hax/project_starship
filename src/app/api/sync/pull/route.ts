@@ -1,13 +1,15 @@
-import { asc, gt } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
-import { SYNC_REGISTRY } from '@/db/sync-tables';
-import { selectSince } from '@/local/conflict';
-import { SYNC_TABLES, type ChangeRow, type PullResponse } from '@/local/types';
+import { pageChanges, PULL_PAGE_LIMIT } from '@/local/conflict';
+import type { PullResponse } from '@/local/types';
+import { readChangesSince } from './read-changes-since';
 
 /**
- * Everything that arrived after `since`, oldest arrival first.
+ * Up to `PULL_PAGE_LIMIT` changes that arrived after `since`, oldest arrival
+ * first. `hasMore` tells the client whether to pull again with `since = cursor`
+ * (fund F5, #478) — an unbounded response here is exactly the recovery-sync
+ * timeout/OOM the fund describes.
  *
  * Soft-deleted rows are included on purpose: the client needs the tombstone, or a
  * row deleted on the phone would live on forever on the laptop.
@@ -32,45 +34,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const changes: ChangeRow[] = [];
+  const { changes, truncated } = await db.transaction((tx) => readChangesSince(tx, since), {
+    isolationLevel: 'repeatable read',
+    accessMode: 'read only',
+  });
 
-  for (const name of SYNC_TABLES) {
-    const entry = SYNC_REGISTRY[name] as {
-      table: typeof SYNC_REGISTRY.tasks.table;
-      writable: readonly string[];
-      readable?: readonly string[];
-    };
-    const table = entry.table;
-    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
-    // projects its own `readable` list instead.
-    const projection = entry.readable ?? entry.writable;
-
-    const rows = await db
-      .select()
-      .from(table)
-      .where(gt(table.syncSeq, since))
-      .orderBy(asc(table.syncSeq));
-
-    for (const row of rows) {
-      const data: Record<string, unknown> = {};
-      for (const field of projection) {
-        data[field] = (row as Record<string, unknown>)[field];
-      }
-
-      changes.push({
-        table: name,
-        id: row.id,
-        updatedAt: row.updatedAt.toISOString(),
-        deletedAt: row.deletedAt?.toISOString() ?? null,
-        syncSeq: row.syncSeq,
-        data,
-      });
-    }
-  }
-
-  changes.sort((a, b) => a.syncSeq - b.syncSeq);
-
-  const { cursor } = selectSince(changes, since);
-  const response: PullResponse = { changes, cursor };
+  const { changes: page, cursor, hasMore } = pageChanges(changes, since, PULL_PAGE_LIMIT, truncated);
+  const response: PullResponse = { changes: page, cursor, hasMore };
   return NextResponse.json(response);
 }

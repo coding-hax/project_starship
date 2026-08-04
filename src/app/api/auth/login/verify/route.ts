@@ -6,13 +6,18 @@ import { consumeChallenge, relyingParty } from '@/auth/webauthn';
 import { db } from '@/db';
 import { credentials } from '@/db/schema';
 
+// Same message for "unknown passkey" and "signature invalid" — otherwise an
+// unauthenticated caller could probe which credential IDs exist (AK2).
+const authFailed = () =>
+  NextResponse.json({ error: 'Anmeldung fehlgeschlagen.' }, { status: 401 });
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body?.response || typeof body.challenge !== 'string') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
   }
 
-  if (!(await consumeChallenge(body.challenge, 'authentication'))) {
+  if (!(await consumeChallenge(body.challenge, 'authentication')).ok) {
     return NextResponse.json({ error: 'Challenge abgelaufen.' }, { status: 400 });
   }
 
@@ -23,25 +28,32 @@ export async function POST(request: Request) {
     .limit(1);
 
   if (!credential) {
-    return NextResponse.json({ error: 'Unbekannter Passkey.' }, { status: 401 });
+    return authFailed();
   }
 
   const rp = relyingParty();
-  const verification = await verifyAuthenticationResponse({
-    response: body.response,
-    expectedChallenge: body.challenge,
-    expectedOrigin: rp.origin,
-    expectedRPID: rp.id,
-    credential: {
-      id: credential.credentialId,
-      publicKey: new Uint8Array(Buffer.from(credential.publicKey, 'base64url')),
-      counter: credential.counter,
-      transports: credential.transports as never,
-    },
-  });
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: body.response,
+      expectedChallenge: body.challenge,
+      expectedOrigin: rp.origin,
+      expectedRPID: rp.id,
+      credential: {
+        id: credential.credentialId,
+        publicKey: new Uint8Array(Buffer.from(credential.publicKey, 'base64url')),
+        counter: credential.counter,
+        transports: credential.transports as never,
+      },
+    });
+  } catch {
+    // The library throws on a malformed/tampered response instead of returning
+    // verified: false — treat that the same as a failed verification (AK1).
+    return authFailed();
+  }
 
   if (!verification.verified) {
-    return NextResponse.json({ error: 'Anmeldung fehlgeschlagen.' }, { status: 401 });
+    return authFailed();
   }
 
   // The signature counter guards against cloned authenticators; it must never go backwards.

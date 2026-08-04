@@ -5,15 +5,34 @@ import { useCallback, useRef, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { Toast } from '@/ui/toast';
-import { doneEarlierThisWeek, toDateKey } from './due-today';
+import { metEarlierInPeriod, toDateKey } from './due-today';
 import { canRescue, currentStreakUsesFreeze, gapDay } from './freeze';
+import { periodStatusFor } from './schedule-rules';
 import { computeStreak } from './streak';
 import { useHabitFreezes } from './use-habit-freezes';
 import { useHabitLogs } from './use-habit-logs';
-import { useHabits } from './use-habits';
+import { useHabits, type HabitSchedule } from './use-habits';
 import { useToggleHabitLog } from './use-toggle-habit-log';
 
 const RESCUE_UNDO_TIMEOUT_MS = 5000;
+
+/** "<Hinweis> schon erledigt" per Periode (issue #509, weekly ist #224's Wortlaut). */
+const PERIOD_DONE_HINTS: Partial<Record<HabitSchedule, string>> = {
+  weekly: 'Diese Woche schon erledigt',
+  biweekly: 'Diese zwei Wochen schon erledigt',
+  monthly: 'Diesen Monat schon erledigt',
+  quarterly: 'Dieses Quartal schon erledigt',
+  yearly: 'Dieses Jahr schon erledigt',
+};
+
+/** "N von M <Periode>" — der Perioden-Teil für den offenen Zwischenstand (AC2). */
+const PERIOD_PROGRESS_LABELS: Partial<Record<HabitSchedule, string>> = {
+  weekly: 'diese Woche',
+  biweekly: 'in diesen zwei Wochen',
+  monthly: 'diesen Monat',
+  quarterly: 'dieses Quartal',
+  yearly: 'dieses Jahr',
+};
 
 interface RescueUndo {
   freezeId: string;
@@ -93,7 +112,11 @@ export function HabitToday() {
           const doneToday = logs.some(
             (log) => log.habitId === habit.id && log.logDate === today && log.done,
           );
-          const showWeekHint = doneEarlierThisWeek(habit, logs, now);
+          const doneHint = PERIOD_DONE_HINTS[habit.schedule];
+          const showWeekHint = doneHint !== undefined && metEarlierInPeriod(habit, logs, now);
+          const progressLabel = PERIOD_PROGRESS_LABELS[habit.schedule];
+          const status = progressLabel !== undefined ? periodStatusFor(habit, logs, today) : null;
+          const showProgress = status !== null && !showWeekHint && status.target > 1 && !status.met;
           const streak = computeStreak(habit, logs, freezes, now);
           const usesFreeze = currentStreakUsesFreeze(habit, logs, freezes, now);
           const rescuable = canRescue(habit, logs, freezes, now);
@@ -112,8 +135,11 @@ export function HabitToday() {
               />
               <span className="habit-today__name-group">
                 <span className="habit-today__name">{habit.name}</span>
-                {showWeekHint && (
-                  <span className="habit-today__week-hint">Diese Woche schon erledigt</span>
+                {showWeekHint && <span className="habit-today__week-hint">{doneHint}</span>}
+                {showProgress && status && (
+                  <span className="habit-today__week-hint">
+                    {status.count} von {status.target} {progressLabel}
+                  </span>
                 )}
                 {rescuable && (
                   <button

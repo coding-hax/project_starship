@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { requireOwner, UnauthorizedError } from '@/auth/session';
 import { db } from '@/db';
@@ -8,6 +8,7 @@ import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
   isReadOnlyTable,
   malformedFields,
+  NATURAL_KEYS,
   type Mutation,
   type PushConflict,
   type PushRejection,
@@ -31,6 +32,10 @@ import {
  * otherwise a later-committing transaction could hand out a lower `sync_seq` than
  * one that is still in flight, and that row would never appear to a puller reading
  * the sequence range in between (ADR-0008).
+ *
+ * Each write runs in its own savepoint: a DB constraint violation rolls back only
+ * that mutation and is reported as `rejected` (`reason: 'constraint'`), instead of
+ * aborting the whole transaction and 500-ing the entire batch.
  */
 export async function POST(request: Request) {
   try {
@@ -78,7 +83,27 @@ export async function POST(request: Request) {
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
 
-      const [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
+      let [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
+
+      const fields = writableFields(mutation.table, mutation.payload ?? {});
+
+      // Two devices offline can each mint their own uuid for the same natural key
+      // (`habit_logs`/`habit_freezes`, issue #475) — the id lookup above finds
+      // nothing, but a row for this (habitId, logDate) may already exist. Upsert
+      // on the natural key instead of blindly inserting a second row that then
+      // collides with the table's `uniqueIndex`. Only `upsert` takes this path;
+      // `delete`/`restore` always carry the real `rowId`.
+      const keyFields = NATURAL_KEYS[mutation.table];
+      let targetId = mutation.rowId;
+      if (!existing && mutation.op === 'upsert' && keyFields?.every((f) => f in fields)) {
+        const columns = table as unknown as Record<string, Parameters<typeof eq>[0]>;
+        [existing] = await tx
+          .select()
+          .from(table)
+          .where(and(...keyFields.map((f) => eq(columns[f], fields[f]))))
+          .limit(1);
+        if (existing) targetId = existing.id as string;
+      }
 
       const deletedAt = resolveDeletedAt(
         mutation.op,
@@ -87,20 +112,7 @@ export async function POST(request: Request) {
       );
       const conflict = detectOverwrite(mutation.baseSeq, existing?.syncSeq ?? null);
 
-      const fields = writableFields(mutation.table, mutation.payload ?? {});
-
-      if (existing) {
-        await tx
-          .update(table)
-          .set({
-            ...fields,
-            updatedAt: incomingUpdatedAt,
-            deletedAt,
-            syncedAt: now,
-            syncSeq: sql`nextval('sync_seq')`,
-          })
-          .where(eq(table.id, mutation.rowId));
-      } else {
+      if (!existing) {
         // Creating a row: the NOT NULL columns must be present. Reject at the door
         // rather than let the insert blow up as a 500 inside the transaction.
         const missing = missingRequired(mutation.table, fields);
@@ -108,15 +120,39 @@ export async function POST(request: Request) {
           rejected.push({ mutationId: mutation.id, reason: 'missing-required', missing });
           continue;
         }
+      }
 
-        await tx.insert(table).values({
-          id: mutation.rowId,
-          ...fields,
-          updatedAt: incomingUpdatedAt,
-          deletedAt,
-          syncedAt: now,
-          syncSeq: sql`nextval('sync_seq')`,
-        } as unknown as typeof table.$inferInsert);
+      try {
+        await tx.transaction(async (sp) => {
+          if (existing) {
+            await sp
+              .update(table)
+              .set({
+                ...fields,
+                updatedAt: incomingUpdatedAt,
+                deletedAt,
+                syncedAt: now,
+                syncSeq: sql`nextval('sync_seq')`,
+              })
+              .where(eq(table.id, targetId));
+          } else {
+            await sp.insert(table).values({
+              id: targetId,
+              ...fields,
+              updatedAt: incomingUpdatedAt,
+              deletedAt,
+              syncedAt: now,
+              syncSeq: sql`nextval('sync_seq')`,
+            } as unknown as typeof table.$inferInsert);
+          }
+        });
+      } catch {
+        console.error('[push] mutation rejected by the database', {
+          mutationId: mutation.id,
+          table: mutation.table,
+        });
+        rejected.push({ mutationId: mutation.id, reason: 'constraint', missing: [] });
+        continue;
       }
 
       applied.push(mutation.id);

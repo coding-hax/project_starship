@@ -17,7 +17,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
-- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>` (rendert je aktivem Modul dessen `OverviewSection`)
+- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>` (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben → Aktivitäten → Gewohnheiten)
 - `(app)/aufgaben/` / `(app)/kalender/` — Aufgaben (leer bis M1) / Termine (leer bis M5)
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
@@ -84,8 +84,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (Dexie-Store `journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (eine unlesbare fällt raus) + Konflikte
-- `use-journal-{conflicts,entries,search-entries}.ts` / `use-journal-today.ts` — `liveQuery`-Hooks + „mind. ein Eintrag heute"
-- `journal-today-section.tsx` / `.css` — `OverviewSection` für Journal
+- `use-journal-{conflicts,entries,search-entries}.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Formular (Stimmung/Text/Tags) + Eintragsliste + Suche
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche, Entschlüsselungs-Cache, Suchfeld+Ergebnisliste
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen

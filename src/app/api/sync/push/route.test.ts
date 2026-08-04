@@ -8,18 +8,20 @@ vi.mock('@/auth/session', () => ({
 
 const insertValues = vi.fn().mockResolvedValue(undefined);
 const updateWhere = vi.fn().mockResolvedValue(undefined);
+const selectLimit = vi.fn().mockResolvedValue([]);
 
 const tx = {
   execute: vi.fn().mockResolvedValue(undefined),
   select: () => ({
     from: () => ({
       where: () => ({
-        limit: () => Promise.resolve([]),
+        limit: selectLimit,
       }),
     }),
   }),
   insert: () => ({ values: insertValues }),
   update: () => ({ set: () => ({ where: updateWhere }) }),
+  transaction: (fn: (sp: unknown) => Promise<void>) => fn(tx),
 };
 
 vi.mock('@/db', () => ({
@@ -51,6 +53,7 @@ describe('POST /api/sync/push', () => {
   beforeEach(() => {
     insertValues.mockClear();
     updateWhere.mockClear();
+    selectLimit.mockReset().mockResolvedValue([]);
   });
 
   it('applies the valid mutations and rejects the malformed one individually', async () => {
@@ -80,6 +83,26 @@ describe('POST /api/sync/push', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rejects a mutation that violates a DB constraint without wedging the rest of the batch', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    insertValues.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
+
+    try {
+      const { POST } = await import('./route');
+      const poisoned = validMutation('poisoned');
+      const mutations = [poisoned, validMutation('ok')];
+
+      const response = await POST(makeRequest(mutations));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.applied).toEqual(['ok']);
+      expect(body.rejected).toEqual([{ mutationId: 'poisoned', reason: 'constraint', missing: [] }]);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it('rejects a mutation on a read-only table (ADR-0011) without touching the DB', async () => {
     const { POST } = await import('./route');
     const mutation: Mutation = {
@@ -100,5 +123,31 @@ describe('POST /api/sync/push', () => {
     expect(body.rejected).toEqual([{ mutationId: 'garmin-1', reason: 'read-only', missing: [] }]);
     expect(insertValues).not.toHaveBeenCalled();
     expect(updateWhere).not.toHaveBeenCalled();
+  });
+
+  it('upserts on the natural key (habitId, logDate) instead of inserting a colliding row (#475)', async () => {
+    const { POST } = await import('./route');
+    const existingRow = { id: 'row-existing', deletedAt: null, syncSeq: 3, updatedAt: new Date() };
+    // First select (by id) finds nothing, second (by natural key) finds the row
+    // another device already created for this (habitId, logDate).
+    selectLimit.mockResolvedValueOnce([]).mockResolvedValueOnce([existingRow]);
+
+    const mutation: Mutation = {
+      id: 'log-b',
+      table: 'habit_logs',
+      rowId: 'row-from-device-b',
+      op: 'upsert',
+      payload: { habitId: 'habit-1', logDate: '2026-08-04', done: false },
+      updatedAt: new Date().toISOString(),
+      baseSeq: null,
+    };
+
+    const response = await POST(makeRequest([mutation]));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.applied).toEqual(['log-b']);
+    expect(insertValues).not.toHaveBeenCalled();
+    expect(updateWhere).toHaveBeenCalledWith(expect.anything());
   });
 });

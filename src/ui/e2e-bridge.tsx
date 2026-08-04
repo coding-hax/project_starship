@@ -1,18 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { uuidv7 } from 'uuidv7';
 import { bytesToBase64 } from '@/crypto/base64';
 import { createEnvelope, openEnvelope, type Envelope, type KdfParams } from '@/crypto/envelope';
 import { encryptJournal, type JournalContent } from '@/crypto/journal';
 import { getPersistedDek } from '@/features/journal/dek-session';
-import {
-  journalDek,
-  journalLock,
-  journalLockSnapshot,
-  journalSetup,
-  journalUnlock,
-} from '@/features/journal/lock-store';
+import { journalLock, journalLockSnapshot, journalSetup, journalUnlock } from '@/features/journal/lock-store';
 import { appendJournalEntry, deleteJournalEntry, listJournalEntries } from '@/features/journal/entry';
 import { writeJournalEntry } from '@/features/journal/write';
 import { db } from '@/local/dexie';
@@ -48,22 +41,20 @@ export function E2EBridge() {
         // store, not just `records`, would show up here as a substring match.
         // `journalSession` holds a CryptoKey, not text, and is left out on purpose.
         debugDumpStores: async () => {
-          const [outbox, records, meta, weather, journalConflicts] = await Promise.all([
+          const [outbox, records, meta, weather] = await Promise.all([
             db.outbox.toArray(),
             db.records.toArray(),
             db.meta.toArray(),
             db.weather.toArray(),
-            db.journalConflicts.toArray(),
           ]);
-          return JSON.stringify({ outbox, records, meta, weather, journalConflicts });
+          return JSON.stringify({ outbox, records, meta, weather });
         },
-        // The real write path (AC5) plus the real conflict-copy store (AC6) — the
-        // suite drives writeJournalEntry itself rather than re-deriving row ids in
-        // the test, and reads what pull() actually stashed instead of duplicating
-        // its logic. createEnvelope/openEnvelope/encryptJournal let AC7 prove the
-        // offline row that reaches Postgres is real ciphertext, not a stand-in —
-        // the CryptoKey a call returns only ever travels to the next call inside the
-        // same page.evaluate, never back across the Node/browser boundary.
+        // The real write path (AC5) — the suite drives writeJournalEntry itself
+        // rather than re-deriving row ids in the test. createEnvelope/openEnvelope/
+        // encryptJournal let AC7 prove the offline row that reaches Postgres is
+        // real ciphertext, not a stand-in — the CryptoKey a call returns only ever
+        // travels to the next call inside the same page.evaluate, never back
+        // across the Node/browser boundary.
         writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) =>
           writeJournalEntry(entryDate, {
             ciphertext: new Uint8Array(ciphertext),
@@ -77,25 +68,6 @@ export function E2EBridge() {
         listJournalEntries: (entryDate: string) => listJournalEntries(entryDate),
         deleteJournalEntry: (id: string) => deleteJournalEntry(id),
         bytesToBase64: (bytes: number[]) => bytesToBase64(new Uint8Array(bytes)),
-        debugJournalConflicts: () => db.journalConflicts.toArray(),
-        // Seeds a conflict copy for AC8 without the two-device pull dance from
-        // journal.spec.ts's AC6 — encrypts under the real in-page DEK (never
-        // exported back to Node) in exactly the shape pull() writes.
-        debugSeedJournalConflict: async (entryDate: string, content: JournalContent) => {
-          const dek = journalDek();
-          if (!dek) throw new Error('journal is locked');
-          const { ciphertext, nonce } = await encryptJournal(dek, content);
-          const now = new Date().toISOString();
-          await db.journalConflicts.add({
-            id: uuidv7(),
-            entryDate,
-            ciphertext: bytesToBase64(ciphertext),
-            nonce: bytesToBase64(nonce),
-            displacedSyncSeq: null,
-            updatedAt: now,
-            capturedAt: now,
-          });
-        },
         createEnvelope: (passphrase: string, kdfParamsOverride?: Omit<KdfParams, 'salt'>) =>
           createEnvelope(passphrase, kdfParamsOverride),
         openEnvelope: (envelope: Envelope, passphrase: string) => openEnvelope(envelope, passphrase),
@@ -108,6 +80,17 @@ export function E2EBridge() {
         // way to reproduce a poison mutation for the #182 tests.
         debugPatchOutbox: (id: string, patch: Record<string, unknown>) =>
           db.outbox.update(id, patch),
+        // Simulates a server-side ciphertext swap between two already-synced rows
+        // (issue #480, F7 AC2) — something no client call can produce, only direct
+        // storage tampering. `records` is keyed by `[table+id]`, not `id` alone;
+        // the patched fields (ciphertext/nonce) live under `data`, not top-level,
+        // so this merges into the existing `data` rather than shadowing it.
+        debugPatchRecord: async (table: string, id: string, patch: Record<string, unknown>) => {
+          const key = [table, id] as never;
+          const row = await db.records.get(key);
+          if (!row) return 0;
+          return db.records.update(key, { data: { ...row.data, ...patch } });
+        },
         // Drives the real lock-store state machine (issue #339) rather than a
         // test double — journalUnlock resolves 'ok'/'wrong' from the state it
         // actually landed in, never from the thrown error's message.

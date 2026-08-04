@@ -1,4 +1,5 @@
-import { encryptJournal, type JournalContent } from '@/crypto/journal';
+import { uuidv7 } from 'uuidv7';
+import { encryptJournal, journalEntryAad, type JournalContent } from '@/crypto/journal';
 import { db } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
 import { decryptJournalRows } from './decrypt-journal-row';
@@ -71,7 +72,9 @@ export async function listJournalEntries(entryDate: string): Promise<JournalEntr
  * Encrypts mood/text/tags into one ciphertext (ADR-0004) and appends a new row
  * through the write path (write.ts) — every submission is its own entry (issue
  * #376), never an edit of a previous one. A no-op while locked or for an empty
- * submission.
+ * submission. The row `id` is generated here, before encrypting, so it can be
+ * bound into the ciphertext as AAD together with `entryDate` (issue #480,
+ * F7) — a ciphertext moved onto a different row fails to decrypt there.
  *
  * Also checks off today's Journal habit (issue #505 AC4) — the row is
  * display-only from the habits UI, this submission is its only writer.
@@ -82,8 +85,9 @@ export async function appendJournalEntry(entryDate: string, content: JournalCont
   const dek = journalDek();
   if (!dek || isEmptyContent(content)) return;
 
-  const encrypted = await encryptJournal(dek, content);
-  await writeJournalEntry(entryDate, encrypted);
+  const id = uuidv7();
+  const encrypted = await encryptJournal(dek, content, journalEntryAad(id, entryDate));
+  await writeJournalEntry(entryDate, encrypted, id);
   await logJournalHabit(entryDate);
 }
 

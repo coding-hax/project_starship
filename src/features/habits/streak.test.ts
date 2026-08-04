@@ -8,6 +8,7 @@ const daily = (overrides: Partial<HabitView> = {}): HabitView => ({
   id: 'habit-1',
   name: 'x',
   schedule: 'daily',
+  target: 1,
   color: null,
   archivedAt: null,
   createdAt: '2026-07-01T00:00:00.000Z',
@@ -15,6 +16,7 @@ const daily = (overrides: Partial<HabitView> = {}): HabitView => ({
 });
 
 const weekly = (overrides: Partial<HabitView> = {}): HabitView => daily({ schedule: 'weekly', ...overrides });
+const monthly = (overrides: Partial<HabitView> = {}): HabitView => daily({ schedule: 'monthly', ...overrides });
 
 let logId = 0;
 const log = (dateKey: string, done = true): HabitLogView => ({
@@ -105,5 +107,39 @@ describe('computeStreak — weekly', () => {
     const logs = [log('2026-07-14')]; // this week only
     const freezes = [freeze('2026-07-10')]; // inside last week's range
     expect(computeStreak(weekly(), logs, freezes, WEDNESDAY)).toBe(1);
+  });
+
+  it('a "3x pro Woche" target only counts a week once all 3 are done', () => {
+    // This week: only 2 done, so it does not count yet — streak counts back
+    // from the last fully-met week (last week, with 3 done).
+    const logs = [
+      log('2026-07-14'),
+      log('2026-07-15'),
+      log('2026-07-06'),
+      log('2026-07-07'),
+      log('2026-07-08'),
+    ];
+    expect(computeStreak(weekly({ target: 3 }), logs, [], WEDNESDAY)).toBe(1);
+  });
+});
+
+describe('computeStreak — monthly (issue #509)', () => {
+  it('done this month and last month → streak 2', () => {
+    const logs = [log('2026-07-10'), log('2026-06-05')];
+    expect(computeStreak(monthly(), logs, [], WEDNESDAY)).toBe(2);
+  });
+
+  it('the running month not done yet does not break the streak (issue #104)', () => {
+    const logs = [log('2026-06-05')]; // last month only, nothing this month yet
+    expect(computeStreak(monthly(), logs, [], WEDNESDAY)).toBe(1);
+  });
+
+  it('a skipped month resets the streak', () => {
+    const logs = [log('2026-07-10'), log('2026-05-05')]; // June skipped
+    expect(computeStreak(monthly(), logs, [], WEDNESDAY)).toBe(1);
+  });
+
+  it('an untouched habit has streak 0', () => {
+    expect(computeStreak(monthly(), [], [], WEDNESDAY)).toBe(0);
   });
 });

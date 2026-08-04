@@ -32,6 +32,7 @@ function habit(overrides: Partial<Habit> = {}): Habit {
     syncSeq: 1,
     name: 'Laufen',
     schedule: 'daily',
+    target: 1,
     color: null,
     archivedAt: null,
     createdAt: new Date('2026-01-01'),
@@ -74,15 +75,71 @@ describe('selectOpenHabits', () => {
     ]);
   });
 
-  it('a weekly habit done earlier this week is not open, even though not done today', () => {
+  it('a weekly habit is never in the reminder window before the last day of its week (issue #509 Owner-Entsch. 2)', () => {
     const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
-    const doneMonday = log({ habitId: 'habit-2', logDate: '2026-07-13' });
-    expect(selectOpenHabits([weekly], [doneMonday], [], '2026-07-15')).toEqual([]);
+    // Wednesday — the week only ends on Sunday (2026-07-19).
+    expect(selectOpenHabits([weekly], [], [], '2026-07-15')).toEqual([]);
   });
 
-  it('a weekly habit not done at all this week is open', () => {
+  it('a weekly habit done earlier this week is not open on the last day of the week', () => {
     const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
-    expect(selectOpenHabits([weekly], [], [], '2026-07-15')).toEqual([{ name: 'Laufen', streak: 0 }]);
+    const doneMonday = log({ habitId: 'habit-2', logDate: '2026-07-13' });
+    expect(selectOpenHabits([weekly], [doneMonday], [], '2026-07-19')).toEqual([]);
+  });
+
+  it('a weekly habit not done at all is open on the last day of the week', () => {
+    const weekly = habit({ id: 'habit-2', schedule: 'weekly' });
+    expect(selectOpenHabits([weekly], [], [], '2026-07-19')).toEqual([{ name: 'Laufen', streak: 0 }]);
+  });
+
+  it('a "3x pro Woche" habit with only 2 done is still open on the last day of the week', () => {
+    const weekly = habit({ id: 'habit-2', schedule: 'weekly', target: 3 });
+    const logs = [
+      log({ habitId: 'habit-2', logDate: '2026-07-13' }),
+      log({ habitId: 'habit-2', logDate: '2026-07-14' }),
+    ];
+    expect(selectOpenHabits([weekly], logs, [], '2026-07-19')).toEqual([{ name: 'Laufen', streak: 0 }]);
+  });
+
+  it('a "3x pro Woche" habit with all 3 done is not open on the last day of the week', () => {
+    const weekly = habit({ id: 'habit-2', schedule: 'weekly', target: 3 });
+    const logs = [
+      log({ habitId: 'habit-2', logDate: '2026-07-13' }),
+      log({ habitId: 'habit-2', logDate: '2026-07-14' }),
+      log({ habitId: 'habit-2', logDate: '2026-07-15' }),
+    ];
+    expect(selectOpenHabits([weekly], logs, [], '2026-07-19')).toEqual([]);
+  });
+
+  it('a biweekly habit is only in the reminder window on the last day of its fortnight', () => {
+    const biweekly = habit({ id: 'habit-2', schedule: 'biweekly' });
+    // 2026-07-13..2026-07-26 is one fortnight (ISO week 29 pairs with 30).
+    expect(selectOpenHabits([biweekly], [], [], '2026-07-15')).toEqual([]);
+    expect(selectOpenHabits([biweekly], [], [], '2026-07-26')).toEqual([
+      { name: 'Laufen', streak: 0 },
+    ]);
+  });
+
+  it('a monthly habit is open in the last 3 days of the month, not before', () => {
+    const monthly = habit({ id: 'habit-2', schedule: 'monthly' });
+    expect(selectOpenHabits([monthly], [], [], '2026-07-28')).toEqual([]);
+    expect(selectOpenHabits([monthly], [], [], '2026-07-29')).toEqual([
+      { name: 'Laufen', streak: 0 },
+    ]);
+    expect(selectOpenHabits([monthly], [], [], '2026-07-31')).toEqual([
+      { name: 'Laufen', streak: 0 },
+    ]);
+  });
+
+  it('a yearly habit is open in the last 7 days of the year, not before', () => {
+    const yearly = habit({ id: 'habit-2', schedule: 'yearly' });
+    expect(selectOpenHabits([yearly], [], [], '2026-12-24')).toEqual([]);
+    expect(selectOpenHabits([yearly], [], [], '2026-12-25')).toEqual([
+      { name: 'Laufen', streak: 0 },
+    ]);
+    expect(selectOpenHabits([yearly], [], [], '2026-12-31')).toEqual([
+      { name: 'Laufen', streak: 0 },
+    ]);
   });
 
   it('the streak count is included and only counted from before today', () => {

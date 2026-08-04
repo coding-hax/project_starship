@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { uuidv7 } from 'uuidv7';
 import { createSession } from '@/auth/session';
 import {
+  burnRecoveryCode,
   consumeChallenge,
   hasAnyCredential,
   issueRecoveryCode,
@@ -17,19 +18,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
   }
 
-  if (!(await consumeChallenge(body.challenge, 'registration'))) {
+  const { ok, recoveryCodeId } = await consumeChallenge(body.challenge, 'registration');
+  if (!ok) {
     return NextResponse.json({ error: 'Challenge abgelaufen.' }, { status: 400 });
   }
 
   const rp = relyingParty();
+  // A recovery-backed verify is never firstCredential, so it never mints a new
+  // recovery code — determined before the transaction, same as the credential count.
   const firstCredential = !(await hasAnyCredential());
 
-  const verification = await verifyRegistrationResponse({
-    response: body.response,
-    expectedChallenge: body.challenge,
-    expectedOrigin: rp.origin,
-    expectedRPID: rp.id,
-  });
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: body.response,
+      expectedChallenge: body.challenge,
+      expectedOrigin: rp.origin,
+      expectedRPID: rp.id,
+    });
+  } catch {
+    // The library throws on a malformed/tampered response instead of returning
+    // verified: false (AK1). Distinct from the !verified branch below, which
+    // stays 400 — that's an existing, intentionally unchanged behavior (see PR).
+    return NextResponse.json(
+      { error: 'Passkey konnte nicht verifiziert werden.' },
+      { status: 401 },
+    );
+  }
 
   if (!verification.verified || !verification.registrationInfo) {
     return NextResponse.json(
@@ -39,18 +54,39 @@ export async function POST(request: Request) {
   }
 
   const { credential } = verification.registrationInfo;
-  await db.insert(credentials).values({
-    id: uuidv7(),
-    credentialId: credential.id,
-    publicKey: Buffer.from(credential.publicKey).toString('base64url'),
-    counter: credential.counter,
-    transports: credential.transports ?? [],
-    label: typeof body.label === 'string' ? body.label : null,
-  });
+
+  try {
+    await db.transaction(async (tx) => {
+      if (recoveryCodeId && !(await burnRecoveryCode(recoveryCodeId, tx))) {
+        throw new RecoveryCodeAlreadyUsedError();
+      }
+
+      await tx.insert(credentials).values({
+        id: uuidv7(),
+        credentialId: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString('base64url'),
+        counter: credential.counter,
+        transports: credential.transports ?? [],
+        label: typeof body.label === 'string' ? body.label : null,
+      });
+    });
+  } catch (error) {
+    if (error instanceof RecoveryCodeAlreadyUsedError) {
+      return NextResponse.json({ error: 'Recovery-Code bereits verbraucht.' }, { status: 403 });
+    }
+    throw error;
+  }
 
   await createSession();
 
   // The recovery code exists once, at first setup, and is never recoverable again.
   const recoveryCode = firstCredential ? await issueRecoveryCode() : null;
   return NextResponse.json({ verified: true, recoveryCode });
+}
+
+class RecoveryCodeAlreadyUsedError extends Error {
+  constructor() {
+    super('Recovery code already used');
+    this.name = 'RecoveryCodeAlreadyUsedError';
+  }
 }

@@ -66,6 +66,8 @@ jobs:
       - run: bash scripts/tests/runner-ts.test.sh
       - run: bash scripts/tests/worktree.test.sh
       - run: bash scripts/tests/gen-slot-plists.test.sh
+      - run: bash scripts/tests/run-lock.test.sh
+      - run: bash scripts/tests/fleet-lead.test.sh
       # Die Parity-Suiten S2-S5 sind mit #203 (S6) entfallen: sie verglichen den
       # TS-Kern gegen den Bash-Pfad, den diese Stufe entfernt hat. Ohne
       # Vergleichslaeufer waren beide Seiten identisch leer -- gruen, aber ohne
@@ -242,6 +244,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
+      - run: pnpm test:db
       - run: pnpm exec playwright test --project=offline-mobile --project=offline-desktop
         env:
           E2E_SCOPE: offline

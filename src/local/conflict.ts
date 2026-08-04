@@ -57,3 +57,60 @@ export function selectSince<T extends WithSyncSeq>(
   const cursor = changes.reduce((max, row) => Math.max(max, row.syncSeq), since);
   return { changes, cursor };
 }
+
+/**
+ * Page size for `/api/sync/pull` (fund F5, #478). An unbounded first sync reads a
+ * device's entire history into one response — a recovery-case timeout/OOM. 200 is a
+ * compromise: few round trips for a large recovery sync, bounded response size.
+ */
+export const PULL_PAGE_LIMIT = 200;
+
+/**
+ * Caps a pull's rows to `limit` and reports whether more remain, given a global,
+ * monotonic `syncSeq` (ADR-0008) — keyset pagination is exact here: `> since`
+ * never skips or repeats a row, whichever page it lands on.
+ *
+ * `rows` is not assumed sorted; that is this function's job, so a caller merging
+ * several per-table queries can hand over the concatenation as-is. `moreBeyondLimit`
+ * flags a table whose own query already hit its `LIMIT` — such a table may hold rows
+ * beyond what was fetched at all, so `hasMore` must stay true even when the merged
+ * `rows` fit within `limit` (e.g. one table maxed out, every other table came back
+ * empty).
+ */
+export function pageChanges<T extends WithSyncSeq>(
+  rows: readonly T[],
+  since: number,
+  limit: number,
+  moreBeyondLimit: boolean,
+): { changes: T[]; cursor: number; hasMore: boolean } {
+  const sorted = [...rows].sort((a, b) => a.syncSeq - b.syncSeq);
+  const overflow = sorted.length > limit;
+  const changes = overflow ? sorted.slice(0, limit) : sorted;
+  const cursor = changes.reduce((max, row) => Math.max(max, row.syncSeq), since);
+  return { changes, cursor, hasMore: overflow || moreBeyondLimit };
+}
+
+/**
+ * The client's pull cursor must not advance past a change it skipped because a
+ * local mutation for that row was still queued (issue #479). Marking such a
+ * sequence "seen" means that if the local mutation is later discarded
+ * (discardStale), the skipped server version is never pulled again — a silent,
+ * self-perpetuating divergence. So the cursor stops just below the lowest
+ * skipped syncSeq; everything at or above it is re-delivered on the next pull,
+ * where the row is re-evaluated once the mutation has cleared.
+ *
+ * `selectSince` (above) is the server's cursor and is deliberately untouched —
+ * it cannot know the client's queue.
+ */
+export function cursorAfterSkips(
+  responseCursor: number,
+  skippedSyncSeqs: readonly number[],
+): number {
+  if (skippedSyncSeqs.length === 0) return responseCursor;
+  const lowest = Math.min(...skippedSyncSeqs);
+  // `lowest - 1` never rewinds below the previous cursor: a skipped change was
+  // itself returned by the server, so its syncSeq is strictly greater than the
+  // `since` we asked with. It may equal `since` (no advance) — correct: we may
+  // not step past an unseen change we could not merge yet.
+  return Math.min(responseCursor, lowest - 1);
+}

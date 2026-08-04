@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import {
+  FIXED_NOW,
   freezeClock,
   openSecondDevice,
   registerPasskey,
@@ -544,6 +546,90 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
 });
 
 /**
+ * #479 — a row skipped during pull because a local mutation for it was still
+ * queued used to let the cursor advance past it anyway. If that mutation was
+ * later discarded (e.g. rejected as malformed), the skipped server version was
+ * never pulled again — a silent, self-perpetuating divergence.
+ */
+test.describe('Cursor überspringt nie dauerhaft eine wartende Zeile (#479)', () => {
+  test('AK1+AK2: die übersprungene Änderung wird nachgeholt, sobald die wartende Mutation verworfen wird', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    // Device A creates row R, synced to Postgres.
+    const rowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Ursprung' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+
+    // Device B pulls R, then edits it — the server state for R advances past
+    // what A has seen so far.
+    const deviceB = await openSecondDevice(browser, page);
+    await deviceB.evaluate(() => window.__starship.sync());
+    await editTaskOnDevice(deviceB, rowId, 'Von B');
+
+    const serverAfterB = await withDb((c) =>
+      c.query('SELECT sync_seq FROM tasks WHERE id = $1', [rowId]),
+    );
+    // node-postgres returns bigint (int8) columns as strings, not numbers, to
+    // avoid silent precision loss — Number() here mirrors what Drizzle's
+    // `bigint(..., { mode: 'number' })` does for every other reader of this column.
+    const seqAfterB: number = Number(serverAfterB.rows[0].sync_seq);
+
+    // Device A: block push only, then mutate R locally so a mutation for it sits
+    // in the outbox — the following pull must skip B's version of R because A's
+    // own write is still queued.
+    await page.route('**/api/sync/push', (route) => route.abort('failed'));
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'Von A, wartet' },
+        }),
+      rowId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+
+    // The skip happened: A's cursor must not have advanced past B's write, and
+    // A's local row must still show its own pending edit, not B's.
+    const metaAfterSkip = await page.evaluate(() => window.__starship.debugMeta());
+    const cursorAfterSkip = metaAfterSkip.find((m) => m.key === 'lastPulledSeq')?.value as number;
+    expect(cursorAfterSkip).toBeLessThan(seqAfterB);
+
+    const recordsAfterSkip = await page.evaluate(() => window.__starship.debugRecords());
+    expect(recordsAfterSkip.find((r) => r.id === rowId)?.data.title).toBe('Von A, wartet');
+
+    // Release push, then corrupt A's queued mutation so the server rejects it as
+    // malformed — discardStale drops it, freeing R for the next pull to re-fetch.
+    await page.unroute('**/api/sync/push');
+    await page.evaluate(async (id) => {
+      const entries = await window.__starship.pending();
+      const entry = entries.find((e) => e.rowId === id);
+      if (!entry) throw new Error('outbox entry not found');
+      await window.__starship.debugPatchOutbox(entry.id, { updatedAt: 42 });
+    }, rowId);
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // R now shows B's version, not A's discarded one — the cursor clamp let the
+    // skipped change be re-delivered instead of staying stuck behind it forever.
+    const recordsAfterHeal = await page.evaluate(() => window.__starship.debugRecords());
+    expect(recordsAfterHeal.find((r) => r.id === rowId)?.data.title).toBe('Von B');
+
+    await deviceB.close();
+  });
+});
+
+/**
  * M2 foundation (#101) — data model only, no UI. Mirrors the sync_state offline
  * test above: the outbox does not know or care what table it is carrying.
  */
@@ -687,7 +773,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
         {
           table: 'tasks',
           id: taskId,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(FIXED_NOW).toISOString(),
           deletedAt: null,
           syncSeq: 2, // Newer than the local record's syncSeq (1)
           data: { title: 'Change from another device' },
@@ -803,5 +889,379 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
 
     await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * #474 — a DB constraint violation (not one the handler catches itself, e.g.
+ * `habit_logs`' `UNIQUE(habit_id, log_date)`) used to abort the whole push
+ * transaction with a 500, wedging every mutation behind it in the outbox forever.
+ * Each write now runs in its own savepoint, so only the poisoned mutation is
+ * dropped (`reason: 'constraint'`) — the rest of the batch still lands.
+ */
+test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', () => {
+  test('AK1+AK2: die vergiftete Mutation wird verworfen, der Rest desselben Batches kommt trotzdem an', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Laufen', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Queue a valid task and a *second* log for the same habit + day while offline,
+    // so both land in the same push batch. The second log has no rowId — it is a new
+    // row, so it collides with the habit_logs UNIQUE(habit_id, log_date) index.
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+    await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Sollte trotzdem ankommen' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+
+    // The poisoned log is dropped (discardStale) instead of retried forever, and it
+    // did not hold up the task behind it.
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+    await expect(page.getByText('Änderungen konnten nicht synchronisiert werden.')).toHaveCount(0);
+
+    const taskRows = await withDb((c) =>
+      c.query("SELECT id FROM tasks WHERE title = 'Sollte trotzdem ankommen'"),
+    );
+    expect(taskRows.rowCount).toBe(1);
+
+    const logRows = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-02',
+      ]),
+    );
+    expect(logRows.rowCount).toBe(1);
+  });
+
+  test('AK4: zwei Geräte loggen dieselbe Gewohnheit am selben Tag offline — Bs Outbox bleibt nicht hängen', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const devicePage = await openSecondDevice(browser, page);
+    // Pull A's habit + log first, so B knows about the day before it logs its own.
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    // B logs the same habit on the same day offline — no rowId, so it is a new row
+    // and collides with the same UNIQUE(habit_id, log_date) index as Test A above.
+    await devicePage.route('**/api/sync/**', (route) => route.abort('failed'));
+    await devicePage.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-02', done: true },
+        }),
+      habitId,
+    );
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(1);
+
+    await devicePage.unroute('**/api/sync/**');
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(0);
+    await expect(
+      devicePage.getByText('Änderungen konnten nicht synchronisiert werden.'),
+    ).toHaveCount(0);
+
+    // Exactly one row survives for (habitId, 2026-08-02) — B's duplicate upserts onto
+    // A's existing row by natural key instead of colliding with it (#475); this savepoint
+    // path stays the net for the DB-constraint triggers #475 does not intercept (reminder_sends,
+    // FK, a malformed date). B's local checkmark for its own log staying stale until the
+    // next pull is a real UX gap, deliberately out of scope here — see #502.
+    const logRows = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-02',
+      ]),
+    );
+    expect(logRows.rowCount).toBe(1);
+
+    await devicePage.close();
+  });
+});
+
+/**
+ * #475 — two devices offline each mint their own uuid for the same natural key
+ * (`(habitId, logDate)` / `(habitId, freezeDate)`). The server now upserts onto the
+ * row that arrived first instead of letting the second insert collide with the
+ * table's `uniqueIndex` (that collision is what #474 above turns into a harmless
+ * `reason: 'constraint'` rejection when it does happen elsewhere).
+ */
+test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)', () => {
+  test('AK1: zwei eigene uuids für denselben (habitId, logDate) konvergieren auf die zuerst angekommene Zeile, die spätere Ankunft gewinnt bei done', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // "Device A": the first uuid for this (habitId, logDate), done:true, synced.
+    const idA = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-04', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // "Device B": its own, distinct uuid for the very same day, done:false.
+    const idB = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-04', done: false },
+        }),
+      habitId,
+    );
+    expect(idB).not.toBe(idA);
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Exactly one row on the server, under A's id (arrived first), carrying B's
+    // (later-arriving) `done` value — arrival order decides, not creation order.
+    const logRows = await withDb((c) =>
+      c.query('SELECT id, done FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-04',
+      ]),
+    );
+    expect(logRows.rowCount).toBe(1);
+    expect(logRows.rows[0].id).toBe(idA);
+    expect(logRows.rows[0].done).toBe(false);
+
+    // AK3: the pull that followed the push swept B's now-displaced local row out of
+    // IndexedDB too — the store never shows the same day twice.
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const logRecords = records.filter(
+      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-04',
+    );
+    expect(logRecords).toHaveLength(1);
+    expect(logRecords[0].id).toBe(idA);
+  });
+
+  test('AK2: zwei eigene uuids für denselben (habitId, freezeDate) konvergieren auf eine Zeile mit gestiegenem sync_seq', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Laufen', schedule: 'daily' },
+      }),
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const idA = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_freezes',
+          op: 'upsert',
+          payload: { habitId: hId, freezeDate: '2026-08-04' },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const freezeRowsAfterA = await withDb((c) =>
+      c.query('SELECT sync_seq FROM habit_freezes WHERE habit_id = $1 AND freeze_date = $2', [
+        habitId,
+        '2026-08-04',
+      ]),
+    );
+    expect(freezeRowsAfterA.rowCount).toBe(1);
+    const syncSeqAfterA = Number(freezeRowsAfterA.rows[0].sync_seq);
+
+    const idB = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_freezes',
+          op: 'upsert',
+          payload: { habitId: hId, freezeDate: '2026-08-04' },
+        }),
+      habitId,
+    );
+    expect(idB).not.toBe(idA);
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    // Still exactly one row, same id as before — but its sync_seq climbed, proving
+    // B's mutation landed as an update on A's row rather than being silently dropped.
+    const freezeRowsAfterB = await withDb((c) =>
+      c.query('SELECT id, sync_seq FROM habit_freezes WHERE habit_id = $1 AND freeze_date = $2', [
+        habitId,
+        '2026-08-04',
+      ]),
+    );
+    expect(freezeRowsAfterB.rowCount).toBe(1);
+    expect(freezeRowsAfterB.rows[0].id).toBe(idA);
+    expect(Number(freezeRowsAfterB.rows[0].sync_seq)).toBeGreaterThan(syncSeqAfterA);
+  });
+});
+
+test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (fund F5, #478)', () => {
+  /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq. */
+  async function seedTasks(count: number, titlePrefix: string) {
+    const result = await withDb((c) =>
+      c.query(
+        `INSERT INTO tasks (id, title, sync_seq)
+         SELECT gen_random_uuid(), $1 || g, nextval('sync_seq')
+         FROM generate_series(1, $2) AS g
+         RETURNING id, sync_seq`,
+        [titlePrefix, count],
+      ),
+    );
+    return result.rows.map((r) => ({ id: r.id as string, syncSeq: Number(r.sync_seq) }));
+  }
+
+  test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({ page }) => {
+    await registerPasskey(page);
+
+    const seeded = await seedTasks(PULL_PAGE_LIMIT + 50, 'Seed AK2 ');
+    const maxSeq = Math.max(...seeded.map((r) => r.syncSeq));
+
+    let pullRequests = 0;
+    await page.route('**/api/sync/pull**', async (route) => {
+      pullRequests++;
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // More than N+50 rows in one PULL_PAGE_LIMIT-capped response is impossible —
+    // this alone proves more than one request was necessary.
+    expect(pullRequests).toBeGreaterThan(1);
+
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const taskIds = records.filter((r) => r.table === 'tasks').map((r) => r.id);
+    // Every seeded row landed exactly once — nothing lost across the page boundary,
+    // nothing duplicated.
+    expect(new Set(taskIds)).toEqual(new Set(seeded.map((r) => r.id)));
+
+    const meta = await page.evaluate(() => window.__starship.debugMeta());
+    const cursor = meta.find((m) => m.key === 'lastPulledSeq')?.value;
+    expect(cursor).toBe(maxSeq);
+  });
+
+  test('AK4: bricht der Erstsync zwischen zwei Seiten ab, setzt der nächste Sync fort statt neu zu beginnen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const seeded = await seedTasks(PULL_PAGE_LIMIT * 2 + 50, 'Seed AK4 ');
+    const sortedSeqs = seeded.map((r) => r.syncSeq).sort((a, b) => a - b);
+    const firstPageBoundary = sortedSeqs[PULL_PAGE_LIMIT - 1];
+    const maxSeq = sortedSeqs[sortedSeqs.length - 1];
+
+    // Let the first page through, then cut the network — the train-tunnel case.
+    let pullCount = 0;
+    await page.route('**/api/sync/pull**', async (route) => {
+      pullCount++;
+      if (pullCount === 2) {
+        await route.abort('failed');
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    const metaAfterAbort = await page.evaluate(() => window.__starship.debugMeta());
+    const cursorAfterAbort = metaAfterAbort.find((m) => m.key === 'lastPulledSeq')?.value;
+    // Neither 0 (a restart) nor the full history (the abort silently lost) — exactly
+    // the boundary of the one page that landed before the network died.
+    expect(cursorAfterAbort).toBe(firstPageBoundary);
+
+    await page.unroute('**/api/sync/pull**');
+    const sinceValues: number[] = [];
+    await page.route('**/api/sync/pull**', async (route) => {
+      sinceValues.push(Number(new URL(route.request().url()).searchParams.get('since')));
+      await route.continue();
+    });
+
+    await page.evaluate(() => window.__starship.sync());
+
+    // Resumes from the persisted boundary, not from 0 — no restart.
+    expect(sinceValues[0]).toBe(firstPageBoundary);
+
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const taskIds = records.filter((r) => r.table === 'tasks').map((r) => r.id);
+    expect(new Set(taskIds)).toEqual(new Set(seeded.map((r) => r.id)));
+
+    const metaFinal = await page.evaluate(() => window.__starship.debugMeta());
+    const finalCursor = metaFinal.find((m) => m.key === 'lastPulledSeq')?.value;
+    expect(finalCursor).toBe(maxSeq);
   });
 });

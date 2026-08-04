@@ -8,8 +8,9 @@ import type { HabitView } from './use-habits';
 /**
  * The streak joker (issue #433, M-3 of #416): manually spent to bridge one
  * missed due day instead of breaking the streak. Owner decision (31.07.26):
- * quota per habit, 2 per calendar month, `daily`/`custom` only — `weekly`
- * stays untouched.
+ * quota per habit, 2 per calendar month, `daily` only. Issue #509 narrows this
+ * further from "daily/custom" to "daily" — `daily` is the only schedule whose
+ * streak counts in days, which is the only unit a joker can bridge.
  */
 export const MAX_JOKERS_PER_MONTH = 2;
 
@@ -36,19 +37,18 @@ export function remainingJokers(freezes: HabitFreezeView[], habitId: string, mon
 
 /**
  * Whether `habit` can spend a joker right now. True exactly when: the schedule
- * is `daily`/`custom` (never `weekly`), yesterday (`gapDay`) is a genuine gap
- * (no `done` log, not already frozen), the habit still has quota left this
- * month, and freezing that gap would actually reconnect a streak of at least 2
- * — a joker bridges an existing streak, it never invents one out of a single
- * isolated gap.
+ * is `daily`, yesterday (`gapDay`) is a genuine gap (no `done` log, not already
+ * frozen), the habit still has quota left this month, and freezing that gap
+ * would actually reconnect a streak of at least 2 — a joker bridges an
+ * existing streak, it never invents one out of a single isolated gap.
  */
 export function canRescue(
-  habit: Pick<HabitView, 'id' | 'schedule'>,
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
   logs: HabitLogView[],
   freezes: HabitFreezeView[],
   now: Date = new Date(),
 ): boolean {
-  if (habit.schedule === 'weekly') return false;
+  if (habit.schedule !== 'daily') return false;
 
   const gap = gapDay(now);
   if (isDoneOnDay(logs, habit.id, gap)) return false;
@@ -62,15 +62,15 @@ export function canRescue(
 /**
  * Whether the streak currently shown for `habit` (the same run `computeStreak`
  * counts) contains at least one frozen day — drives the ❄️ marker (issue #433
- * point 3), a `weekly` habit never qualifies.
+ * point 3), only a `daily` habit ever qualifies.
  */
 export function currentStreakUsesFreeze(
-  habit: Pick<HabitView, 'id' | 'schedule'>,
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
   logs: HabitLogView[],
   freezes: HabitFreezeView[],
   now: Date = new Date(),
 ): boolean {
-  if (habit.schedule === 'weekly') return false;
+  if (habit.schedule !== 'daily') return false;
 
   let cursor = now;
   const today = toDateKey(now);

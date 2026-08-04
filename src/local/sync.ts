@@ -1,6 +1,7 @@
+import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
-import type { Mutation, PullResponse, PushResponse } from './types';
+import { naturalKeyOf, type Mutation, type PullResponse, type PushResponse } from './types';
 
 /**
  * Push, then pull. Never the other way round: pulling first would overwrite local
@@ -95,8 +96,9 @@ export async function push(): Promise<void> {
   }
 
   if (result.rejected.length > 0) {
-    // Malformed. Retrying would wedge the queue behind a mutation that can never land.
-    console.error('[sync] malformed mutations dropped', result.rejected);
+    // Unhealable (malformed, read-only, or a DB constraint). Retrying would wedge
+    // the queue behind a mutation that can never land.
+    console.error('[sync] rejected mutations dropped', result.rejected);
     await discardStale(result.rejected.map((r) => r.mutationId));
   }
 }
@@ -105,49 +107,98 @@ export async function push(): Promise<void> {
  * Resolves `true` only if the server's changes were actually applied. Callers that
  * merely trigger a sync can ignore it; a caller that has to tell "the server has
  * nothing" apart from "we never asked" cannot (issue #371).
+ *
+ * Loops page by page (fund F5, #478) — the server caps a single response at
+ * `PULL_PAGE_LIMIT` and reports `hasMore`; a fresh device's first sync can be many
+ * pages. `since` is re-read from `META_LAST_PULLED_SEQ` every round rather than
+ * carried in a local variable, and the cursor is persisted after each page, not
+ * just at the end — so a mid-loop failure (offline, tab closed) leaves the next
+ * sync resuming from the last completed page, never restarting at 0 (AK4).
  */
 export async function pull(): Promise<boolean> {
-  const since = (await getMeta<number>(META_LAST_PULLED_SEQ)) ?? 0;
+  let appliedAny = false;
 
-  let response: Response;
-  try {
-    response = await fetch(`/api/sync/pull?since=${since}`);
-  } catch {
-    return false; // Offline. Try again on the next trigger.
-  }
-  if (!response.ok) return false;
+  for (;;) {
+    const since = (await getMeta<number>(META_LAST_PULLED_SEQ)) ?? 0;
 
-  const { changes, cursor }: PullResponse = await response.json();
-
-  await db.transaction('rw', db.records, db.outbox, async () => {
-    const queued = await db.outbox.toArray();
-    const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
-
-    for (const change of changes) {
-      const local = await db.records.get([change.table, change.id] as never);
-
-      // A local row that is still queued for push is newer by definition — do not
-      // overwrite it with what the server currently holds.
-      if (queuedSet.has(`${change.table}:${change.id}`)) continue;
-
-      // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
-      // legitimate incoming change, nor let a stale one through.
-      if (local?.syncSeq != null && local.syncSeq >= change.syncSeq) continue;
-
-      await db.records.put({
-        table: change.table,
-        id: change.id,
-        updatedAt: change.updatedAt,
-        deletedAt: change.deletedAt,
-        syncedAt: change.updatedAt,
-        syncSeq: change.syncSeq,
-        data: change.data,
-      });
+    let response: Response;
+    try {
+      response = await fetch(`/api/sync/pull?since=${since}`);
+    } catch {
+      return appliedAny; // Offline. Try again on the next trigger.
     }
-  });
+    if (!response.ok) return appliedAny;
 
-  await setMeta(META_LAST_PULLED_SEQ, cursor);
-  return true;
+    const { changes, cursor, hasMore }: PullResponse = await response.json();
+
+    const skipped: number[] = [];
+
+    await db.transaction('rw', db.records, db.outbox, async () => {
+      const queued = await db.outbox.toArray();
+      const queuedSet = new Set(queued.map((m) => `${m.table}:${m.rowId}`));
+
+      for (const change of changes) {
+        const local = await db.records.get([change.table, change.id] as never);
+
+        // A local row that is still queued for push is newer by definition — do not
+        // overwrite it with what the server currently holds.
+        if (queuedSet.has(`${change.table}:${change.id}`)) {
+          skipped.push(change.syncSeq);
+          continue;
+        }
+
+        // syncSeq, not updatedAt (ADR-0008) — a client clock cannot suppress a
+        // legitimate incoming change, nor let a stale one through.
+        if (local?.syncSeq != null && local.syncSeq >= change.syncSeq) continue;
+
+        await db.records.put({
+          table: change.table,
+          id: change.id,
+          updatedAt: change.updatedAt,
+          deletedAt: change.deletedAt,
+          syncedAt: change.updatedAt,
+          syncSeq: change.syncSeq,
+          data: change.data,
+        });
+
+        // Two devices offline can each mint their own uuid for the same natural
+        // key (`habit_logs`/`habit_freezes`, issue #475). The server upsert
+        // (route.ts) already collapsed both onto one server-side row — `change`
+        // above — but this device may still hold the displaced local row under
+        // its own uuid. Sweep it out now so the store never shows the same
+        // (habitId, logDate) twice. Cheap even unindexed: local record counts per
+        // table stay in the dozens for a single-user app.
+        const key = naturalKeyOf(change.table, change.data);
+        if (key !== null) {
+          const siblings = await db.records.where('table').equals(change.table).toArray();
+          for (const sibling of siblings) {
+            if (
+              sibling.id !== change.id &&
+              naturalKeyOf(change.table, sibling.data) === key &&
+              !queuedSet.has(`${sibling.table}:${sibling.id}`)
+            ) {
+              await db.records.delete([sibling.table, sibling.id] as never);
+            }
+          }
+        }
+      }
+    });
+
+    // Clamped below any row this page skipped (issue #479) — everything at or
+    // above the clamp is re-delivered on a later pull, once the local mutation
+    // that shadowed it has cleared.
+    const nextCursor = cursorAfterSkips(cursor, skipped);
+    await setMeta(META_LAST_PULLED_SEQ, nextCursor);
+    appliedAny = true;
+
+    // `nextCursor <= since` guards against a server that reports `hasMore` without
+    // the cursor actually advancing, and against a skip clamping this page's cursor
+    // back to (or below) where it started — either way, looping again here would
+    // just re-fetch the same page forever instead of making progress.
+    if (!hasMore || nextCursor <= since) break;
+  }
+
+  return appliedAny;
 }
 
 /** Debounced trigger — call after a mutation without hammering the endpoint. */

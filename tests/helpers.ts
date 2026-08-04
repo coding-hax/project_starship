@@ -1,9 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import type { Browser, Page } from '@playwright/test';
+import type {
+  PublicKeyCredentialCreationOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
 import { Client } from 'pg';
 import { AUTH_STATE } from './run-lock';
 
 export { AUTH_STATE };
+
+/**
+ * A fixed "now" for specs that would otherwise read the real wall clock (#495).
+ * Midday, far from midnight and DST, matching the NOW already proven in
+ * uebersicht.spec.ts.
+ */
+export const FIXED_NOW = '2026-07-18T12:00:00.000Z';
+
+/**
+ * Installs the fake clock at `when` (default FIXED_NOW). Call before the first
+ * navigation — the clock ticks forward at real rate afterwards (so liveQuery/
+ * sync timers keep firing); only `freezeClock`/`fastForward` actually stop it.
+ */
+export async function installClockAt(page: Page, when: string = FIXED_NOW) {
+  await page.clock.install({ time: new Date(when) });
+}
 
 /**
  * Chrome's virtual authenticator. This is not a mock of our auth code — the real
@@ -23,9 +43,70 @@ export async function enableVirtualAuthenticator(page: Page) {
       hasUserVerification: true,
       isUserVerified: true, // stands in for Face ID succeeding
       automaticPresenceSimulation: true,
+      // The journal's PRF-derived unlock key (#511) reuses this same login
+      // passkey, so the virtual authenticator must speak the prf extension too.
+      hasPrf: true,
     },
   });
   return { client, authenticatorId };
+}
+
+/**
+ * Drives `navigator.credentials.create()` by hand against a registration-options
+ * response — the same ceremony `startRegistration` (@simplewebauthn/browser) runs
+ * for the "Passkey einrichten" button, but written out directly because the
+ * recovery-code registration path (#476) has no UI entry point to click through
+ * (a recovery code cannot be typed anywhere yet). The virtual authenticator signs
+ * for real; only the base64url<->ArrayBuffer plumbing normally hidden by the
+ * client library is inlined here.
+ */
+export async function createRegistrationCredential(
+  page: Page,
+  optionsJSON: PublicKeyCredentialCreationOptionsJSON,
+): Promise<RegistrationResponseJSON> {
+  return page.evaluate(async (options) => {
+    function base64UrlToBuffer(value: string): ArrayBuffer {
+      const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const raw = atob(padded);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+      return bytes.buffer;
+    }
+    function bufferToBase64Url(buffer: ArrayBuffer): string {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    const publicKey = {
+      ...options,
+      challenge: base64UrlToBuffer(options.challenge),
+      user: { ...options.user, id: base64UrlToBuffer(options.user.id) },
+      excludeCredentials: (options.excludeCredentials ?? []).map((credential) => ({
+        ...credential,
+        id: base64UrlToBuffer(credential.id),
+      })),
+    };
+
+    const credential = (await navigator.credentials.create({
+      publicKey: publicKey as unknown as PublicKeyCredentialCreationOptions,
+    })) as PublicKeyCredential;
+    const response = credential.response as AuthenticatorAttestationResponse;
+
+    return {
+      id: credential.id,
+      rawId: bufferToBase64Url(credential.rawId),
+      type: credential.type,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response: {
+        clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+        attestationObject: bufferToBase64Url(response.attestationObject),
+        transports: response.getTransports ? response.getTransports() : [],
+      },
+    } as unknown as RegistrationResponseJSON;
+  }, optionsJSON);
 }
 
 /**
@@ -270,6 +351,7 @@ declare global {
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugPatchRecord: (table: string, id: string, patch: Record<string, unknown>) => Promise<number>;
       debugRecords: () => Promise<
         Array<{
           table: string;
@@ -297,17 +379,6 @@ declare global {
       >;
       deleteJournalEntry: (id: string) => Promise<void>;
       bytesToBase64: (bytes: number[]) => string;
-      debugJournalConflicts: () => Promise<
-        Array<{
-          id: string;
-          entryDate: string;
-          ciphertext: string;
-          nonce: string;
-          displacedSyncSeq: number | null;
-          updatedAt: string;
-          capturedAt: string;
-        }>
-      >;
       createEnvelope: (
         passphrase: string,
         kdfParamsOverride?: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number },
@@ -323,10 +394,6 @@ declare global {
       journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
       journalHasPersistedDek: () => Promise<boolean>;
       journalPersistedDekExtractable: () => Promise<boolean | null>;
-      debugSeedJournalConflict: (
-        entryDate: string,
-        content: { text: string; mood?: string; tags?: string[] },
-      ) => Promise<void>;
       debugDumpStores: () => Promise<string>;
     };
   }

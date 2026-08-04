@@ -70,9 +70,13 @@ Umgesetzt in `scripts/runner/claim.ts`. Eine leere/fehlende `slot`-Datei gilt
 als **frei**, nicht als fremd — sonst blockiert ein zwischen `mkdir` und dem
 Schreiben abgebrochener Claim das Ticket für immer, ohne dass irgendwo etwas
 rot wird. `claimSweep()` (nur Leitslot) räumt verwaiste Claims weg, überspringt
-aber Claims unter 10 Minuten Alter (Schonfrist) — zwischen `claimTake()` und
-dem Setzen von `in-progress` liegen mehrere `gh`-Aufrufe, und der Sweep darf
-einen frischen Claim in genau diesem Fenster nicht wegräumen.
+aber Claims unter der Schonfrist (`SWEEP_GRACE_MS`, abgeleitet von und bewusst
+**über** der maximalen Laufzeit `MAX_RUNTIME_MS`, 50 statt 45 min) — so gerät
+ein noch laufender Bau strukturell nie in den Sweep, selbst am oberen Ende
+seiner Laufzeit. Freigegeben wird ein Claim außerdem nur bei einem **positiv
+bestätigten** „geschlossen oder ohne Rollen-Label"; scheitert `gh` (Netz,
+Rate-Limit), bleibt der Claim bestehen statt freigegeben zu werden — ein
+Fehlschlag ist kein Beweis, dass das Ticket erledigt ist (#482).
 
 **Ein Filter statt sechs Umbauten.** Die Ticketauswahl trifft in
 `scripts/runner/select.ts` an sechs Stellen eine Entscheidung (laufendes
@@ -101,11 +105,26 @@ verfälschen".
 `reopenFalselyClosedIssues`, die CI-Wache für wartende Tickets
 (`needs-answer`) und `claimSweep` laufen nur, wenn dieser Slot der
 **effektive** Leitslot ist — sonst schreiben mehrere Slots denselben
-Issue-Kommentar oder dieselbe Label-Mutation mehrfach. **Nicht** betroffen:
+Issue-Kommentar oder dieselbe Label-Mutation mehrfach.
+
+> **Verfeinerung (ADR-0021, #488, F14):** `effectiveLead()` allein ist eine je
+> Slot berechnete MEINUNG über den Herzschlag — rund um die Frischegrenze
+> lesen zwei Slots denselben Zustand unterschiedlich und halten sich beide
+> für den effektiven Leitslot. Seit ADR-0021 liefert eine atomare Lease unter
+> `SHARED_DIR/lead/` den tatsächlichen gegenseitigen Ausschluss obendrauf;
+> `effectiveLead()` bleibt unverändert die Quelle der Berechtigung (wer
+> DÜRFTE), nicht mehr die alleinige Wahrheit darüber, wer die Wächter FÄHRT.
+
+**Nicht** betroffen:
 die CI-Wache für das **eigene** laufende Ticket — die gehört in jeden Slot,
 sie betrifft ausschließlich das Ticket, das dieser Slot beansprucht hat. Diese
 Unterscheidung ist der Kern des Umbaus; sie zu verwechseln bedeutet entweder
 einen blinden Slot oder doppelte Merge-Versuche.
+
+Seit #483 (F11) läuft diese Wache erst **nach** `claimTake`; verliert der Slot
+den Claim, endet die Runde ohne Wache. Der Claim wird über alle Wache-Ausgänge
+**gehalten** (verfällt am Label, nicht pro Bau-Lauf) und erst von
+`claimSweep` freigegeben, sobald `in-progress` fällt.
 
 `cleanupStateDir()` (räumt alte `tier-`/`session-`-Dateien) schont normalerweise
 die Session-Datei des gerade laufenden Tickets — das bestimmte bisher eine
@@ -138,6 +157,14 @@ besser als gar keiner.
 `claude-runner.sh`, vor `round-plan`), nicht einmal beim Skriptstart — sonst
 bliebe ein ausgefallener Leitslot bis zum nächsten Prozessstart „lead", ohne
 dass je ein anderer Slot übernimmt.
+
+> **Verfeinerung (ADR-0021, #488, F14):** „jede Runde neu bestimmt" reichte
+> für den Rundenbeginn, ließ aber den Hintergrund-Publisher (#331) bis zu
+> `FLEET_PUBLISH_INTERVAL` lang mit einem am Rundenbeginn eingefrorenen
+> `IS_LEAD` weiterlaufen, obwohl die Führung währenddessen gewechselt haben
+> kann. Seit ADR-0021 prüft `fleet-verify-lead` die Lease frisch zum
+> Zeitpunkt jedes globalen Seiteneffekts — auch aus dem Hintergrund heraus,
+> nicht nur bei Rundenbeginn.
 
 ### `limit-until` ist geteilt
 

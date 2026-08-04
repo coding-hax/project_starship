@@ -777,6 +777,116 @@ describe('roundPlan', () => {
     });
   });
 
+  // #483 (F11): der Claim fuer ein fortgesetztes Ticket muss VOR jedem
+  // Seiteneffekt der CI-Wache stehen -- sonst faehrt ein Slot ohne Claim
+  // (Sweep/Absturz/Handlabeln) trotzdem `pr ready`/Merge/Nachziehen.
+  describe('CI-Wache laeuft erst nach claimTake (#483, F11)', () => {
+    const withPr = (issue: number, labels: string[], checks: string) => [
+      openIssues(issueJson(issue, labels)),
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'list',
+        reply: JSON.stringify([{ number: 5, title: 'feat: x', headRefName: `feat/${issue}-x` }]),
+      },
+      { match: (a: string[]) => a.includes('checks'), reply: checks },
+      labelsAre(...labels),
+    ];
+
+    const pending = JSON.stringify([{ bucket: 'pending', name: 'e2e' }]);
+    const green = JSON.stringify([{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }]);
+    const failing = JSON.stringify([{ bucket: 'fail', name: 'e2e' }]);
+
+    const withMergeState = (issue: number, extra: { match: (a: string[]) => boolean; reply: string }[] = []) => [
+      ...withPr(issue, ['in-progress'], green),
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+      },
+      { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
+      ...extra,
+    ];
+
+    // Modelliert die enge Rennluecke, die F11 schliesst: `claimedElsewhere()`
+    // liest `list()` VOR dem eigentlichen `claimTake` -- ein Claim, der genau
+    // dazwischen von einem anderen Slot landet, ist fuer `list()` noch
+    // unsichtbar (Snapshot ist schon aeltere Momentaufnahme), laesst das
+    // Ticket also den vorgelagerten Filter passieren, faellt dann aber beim
+    // atomaren `claimTake` durch. Der echte fs-Adapter kann dieses Fenster in
+    // einem synchronen Test nicht abbilden -- deshalb ein Double.
+    function raceClaims(owner: string): ClaimAdapter {
+      return {
+        claimAtomic: () => false,
+        readSlot: () => owner,
+        ageMs: () => null,
+        list: () => [],
+        release: () => {},
+        sweepTmp: () => {},
+      };
+    }
+
+    // AK1/AK2: ein anderer Slot gewinnt das atomare `claimTake` GENAU in der
+    // Luecke -- Slot '1' verliert den Claim, BEVOR `prForIssue`/die Wache
+    // ueberhaupt laeuft. Kein Agentenlauf, kein einziger gh-Schreibzugriff.
+    it('AK1/AK2: Claim im Rennen verloren -- Runde endet ohne gh-Schreibzugriff, kein Wache-Seiteneffekt', () => {
+      const { gh, calls } = ghDouble(withPr(77, ['in-progress'], pending));
+      const result = roundPlan({ ...ctx(gh), claims: raceClaims('2'), slotId: '1' }, { ...opts, isLead: false });
+      expect(result.kind).toBe('done');
+      expect(result.status?.title).toBe('#77 an anderen Slot verloren');
+      expect(called(calls, 'pr', 'ready')).toBe(false);
+      expect(called(calls, 'pr', 'checks')).toBe(false);
+      expect(called(calls, 'issue', 'comment')).toBe(false);
+      expect(called(calls, 'edit')).toBe(false);
+    });
+
+    // AK1/AK3 pending: der Claim steht schon, BEVOR die Wache ueberhaupt
+    // `prForIssue` aufruft.
+    it('AK1/AK3: pendender PR -- Claim ist gehalten, bevor die Wache entscheidet', () => {
+      const { gh } = ghDouble(withPr(77, ['in-progress'], pending));
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.status?.text).toContain('CI läuft für #77');
+      expect(claims.readSlot(77)).toBe('1');
+    });
+
+    // AK3 merged: gruener PR -- die Wache merged UND behaelt den Claim (er
+    // verfaellt am Label 'in-progress', nicht am Ausgang des Bau-Laufs).
+    it('AK3: gruener PR -- ready+merge laufen, Claim bleibt gehalten', () => {
+      const { gh, calls } = ghDouble(withMergeState(77));
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.status?.text).toContain('als `ready` markiert');
+      expect(called(calls, 'pr', 'ready')).toBe(true);
+      expect(claims.readSlot(77)).toBe('1');
+    });
+
+    // AK3 build-fix: rote Checks -- ein Bau-Lauf mit CI-Fix-Auftrag startet,
+    // der Claim bleibt gehalten (derselbe Slot baut ja weiter an #77).
+    it('AK3: rote Checks -- CI-Fix-Lauf startet, Claim bleibt gehalten', () => {
+      const { gh } = ghDouble(withPr(77, ['in-progress'], failing));
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('run');
+      if (result.kind === 'run') {
+        expect(result.role).toBe('build');
+      }
+      expect(claims.readSlot(77)).toBe('1');
+    });
+
+    // F11-Kern: zwei Slots im selben Takt, KEIN Vorab-Claim -- Slot '1' claimt
+    // und faehrt die Wache; Slot '2' sieht #77 danach ueber `claimedElsewhere()`
+    // als fremd beansprucht und betritt die Wache gar nicht erst (weder
+    // `prForIssue` noch ein Wache-Seiteneffekt) -- der Claim bleibt bei Slot 1.
+    it('F11: zwei Slots ohne Vorab-Claim -- nur der Gewinner faehrt die Wache', () => {
+      const { gh: gh1, calls: calls1 } = ghDouble(withPr(77, ['in-progress'], pending));
+      const result1 = roundPlan(ctx(gh1), opts);
+      expect(result1.status?.text).toContain('CI läuft für #77');
+      expect(called(calls1, 'pr', 'checks')).toBe(true);
+
+      const { gh: gh2, calls: calls2 } = ghDouble(withPr(77, ['in-progress'], pending));
+      const result2 = roundPlan({ ...ctx(gh2), slotId: '2' }, { ...opts, isLead: false });
+      expect(result2.kind).toBe('done');
+      expect(called(calls2, 'pr', 'checks')).toBe(false);
+      expect(called(calls2, 'pr', 'ready')).toBe(false);
+      expect(claims.readSlot(77)).toBe('1');
+    });
+  });
+
   describe('Opus-Bau-Deckel (ADR-0007)', () => {
     it('haelt das Ticket an, wenn das Tagesbudget erschoepft ist', () => {
       state.write('tier-77', 'opus');
@@ -1051,6 +1161,86 @@ describe('roundEval', () => {
       const { gh } = ghDouble();
       roundEval(ctx(gh), plan, ok, '');
       expect(state.read('transient-77')).toBeNull();
+    });
+  });
+
+  // F17 (#491): Textmuster fuer Limit/Uebergang duerfen nur den CLI-eigenen
+  // Anteil der Ausgabe sehen, nie 'result' -- sonst entkommt ein Ticket, das
+  // inhaltlich mit Fehlermeldungen/Timeouts zu tun hat, dem Eskalationsdeckel.
+  describe('Textmuster sehen nur den CLI-Anteil, nicht die Agentenantwort (F17, #491)', () => {
+    it('AK1: sauberer Lauf (Exit 0) mit "usage limit"/"timed out" in der Agentenantwort wird NICHT als Limit/Uebergang eingestuft', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 0, out: '{"session_id":"s","result":"usage limit erreicht, Test ist timed out"}', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.chain).toBe('continue');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(state.read('transient-77')).toBeNull();
+    });
+
+    it('AK1/AK4: inhaltlicher Fehlschlag mit "usage limit"/"timed out" nur im Agententext (kein api_error_status) wird als Fehlschlag eingestuft, nicht als Limit -- failcount steigt', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        {
+          rc: 1,
+          out: '{"subtype":"error_max_turns","is_error":true,"result":"Test lief in usage limit und ist timed out"}',
+          timedOut: false,
+          maxRuntime: 2700,
+        },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔴');
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(sharedState.read('limit-until')).toBeNull();
+      expect(state.read('failcount-77')).toBe('1\n');
+    });
+
+    it('AK2 (Rueckfall): ein Limit-Text OHNE JSON (kein "result" zum Ausfiltern) wird weiterhin als Limit erkannt', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: 'Claude usage limit reached ∙ resets 3pm', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔵');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+    });
+
+    it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON wird weiterhin als Uebergang erkannt', () => {
+      const { gh } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: 'Error: overloaded_error', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(result.status?.text).toContain('Versuch 1 von 3');
+      expect(state.read('transient-77')).toBe('1');
+    });
+
+    it('AK3 (Trennschaerfe): derselbe Wortlaut ("overloaded") nur in der Agentenantwort loest KEINEN Uebergang aus, sondern einen inhaltlichen Fehlschlag', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        {
+          rc: 1,
+          out: '{"subtype":"error_max_turns","is_error":true,"result":"server was overloaded per log"}',
+          timedOut: false,
+          maxRuntime: 2700,
+        },
+        '',
+      );
+      expect(result.status?.emoji).toBe('🔴');
+      expect(state.read('transient-77')).toBeNull();
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
     });
   });
 

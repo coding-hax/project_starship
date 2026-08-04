@@ -242,6 +242,18 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     text: text + releasedNote + queueNote,
   });
 
+  // #483 (F11): Text fuer beide Claim-Verlust-Stellen (Wache-Vorlauf UND
+  // Ticketwahl) identisch -- kein Duplikat, `issue` per Closure.
+  const lostClaim = (): RoundDone => ({
+    kind: 'done',
+    rc: 0,
+    status: status(
+      `#${issue} an anderen Slot verloren`,
+      '🟢',
+      `🟢 **#${issue}** wurde im selben Moment von einem anderen Slot beansprucht — kein Agentenlauf hier. Der nächste Takt wählt neu. **Kein Eingreifen nötig.**`,
+    ),
+  });
+
   // --- CI-Wache fuer WARTENDE Tickets (#154, erweitert um #173, seit #272
   // ohne Park-Mechanik) -- #204: NUR der Leitslot, sonst rufen mehrere Slots
   // 'gh pr merge' fuer dasselbe wartende Ticket und posten doppelte Notizen. --
@@ -382,6 +394,10 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // CI-Zustand den Takt: kein Agentenlauf fuers Warten, kein Wechsel auf ein
   // anderes Ticket, solange hier noch etwas offen ist.
   if (issue > 0) {
+    // #483 (F11): erst der Claim, dann JEDER Seiteneffekt der CI-Wache
+    // (`pr ready`, Squash-Merge, Nachziehen) -- sonst fahren alle Slots die
+    // Wache parallel, sobald der Claim mal fehlt (Sweep/Absturz/Handlabeln).
+    if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
       const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
@@ -565,15 +581,7 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
   // fortgesetztes 'in-progress' oben UND ein frisch von pickTicket()
   // gewaehltes Ticket.
   if (!claimTake(claims, issue, slotId)) {
-    return {
-      kind: 'done',
-      rc: 0,
-      status: status(
-        `#${issue} an anderen Slot verloren`,
-        '🟢',
-        `🟢 **#${issue}** wurde im selben Moment von einem anderen Slot beansprucht — kein Agentenlauf hier. Der nächste Takt wählt neu. **Kein Eingreifen nötig.**`,
-      ),
-    };
+    return lostClaim();
   }
 
   // Ab hier ist das Ticket fest und der `claude`-Aufruf steht kurz bevor.
@@ -788,6 +796,14 @@ function parseField(out: string, field: string): string {
   } catch {
     return '';
   }
+}
+
+// Textmuster duerfen nur den CLI-eigenen Anteil der Ausgabe sehen, nie die
+// Antwort des Agenten (F17, #491): `result` ist im Erfolgsfall Agententext.
+// Kein/ungueltiges JSON (Kill vor der JSON-Ausgabe) -> alles ist stderr = CLI.
+function cliOnly(out: string): string {
+  const result = parseField(out, 'result');
+  return result === '' ? out : out.split(result).join(' ');
 }
 
 function errorExcerpt(out: string, log: string): string {
@@ -1043,7 +1059,8 @@ Kein Eingreifen nötig.`,
   const apiStatus = parseField(outcome.out, 'api_error_status');
   const resultTxt = parseField(outcome.out, 'result');
 
-  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(outcome.out)) {
+  // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'result' scheidet aus.
+  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliOnly(outcome.out))) {
     const epoch = resetEpoch(resultTxt, clock);
     let when: string;
     if (epoch !== null) {
@@ -1094,9 +1111,10 @@ Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**`,
   // Antwort. Der richtige Umgang ist ein neuer Versuch beim naechsten Takt,
   // kein needs-answer. Zaehlt bewusst NICHT als Eskalations-Fehlversuch
   // (ADR-0007): Infrastruktur, kein Inhalt.
+  // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'resultTxt' scheidet aus.
   const transient =
     ['500', '502', '503', '504', '529'].includes(apiStatus) ||
-    /api error|server error|overloaded|connection error|timed? ?out/i.test(`${outcome.out}\n${resultTxt}`);
+    /api error|server error|overloaded|connection error|timed? ?out/i.test(cliOnly(outcome.out));
 
   if (transient) {
     const count = Number(state.read(transientFile) ?? '0') + 1;

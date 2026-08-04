@@ -8,7 +8,7 @@ import {
   type HabitFreeze,
   type HabitLog,
 } from '@/db/schema';
-import { isDoneInWeek, isDoneOnDay, isDueOnDay, weekRangeForDay } from '@/features/habits/schedule-rules';
+import { addDaysToKey, isTargetMet, periodRangeFor, type WeekRange } from '@/features/habits/schedule-rules';
 import { computeStreak } from '@/features/habits/streak';
 import { berlinNow } from '@/push/schedule';
 import type { PushPayload } from '@/push/send';
@@ -43,6 +43,31 @@ function buildBody(open: OpenHabit[]): string {
 }
 
 /**
+ * Owner-Entscheidung 2 (issue #509): the 20:00 reminder only mentions a habit
+ * once its period is actually running out, not every evening for months —
+ * `daily`/`custom` every day (as before), `weekly`/`biweekly` on the last day
+ * of the period, `monthly` in its last 3 days, `quarterly`/`yearly` in their
+ * last 7 days.
+ */
+function isInReminderWindow(habit: Pick<Habit, 'schedule'>, dateKey: string, range: WeekRange): boolean {
+  switch (habit.schedule) {
+    case 'daily':
+    case 'custom':
+      return true;
+    case 'weekly':
+    case 'biweekly':
+      return dateKey === range.end;
+    case 'monthly':
+      return dateKey >= addDaysToKey(range.end, -2);
+    case 'quarterly':
+    case 'yearly':
+      return dateKey >= addDaysToKey(range.end, -6);
+    default:
+      return true;
+  }
+}
+
+/**
  * Pure so "which habits are open" is Vitest-testable without a database — same
  * belt-and-braces split as `selectDueTasks` (tasks-due.ts): the query below
  * already excludes archived/deleted habits, this is the belt to its braces.
@@ -53,15 +78,12 @@ export function selectOpenHabits(
   freezes: HabitFreeze[],
   dateKey: string,
 ): OpenHabit[] {
-  const weekRange = weekRangeForDay(dateKey);
-
   return candidates
     .filter((habit) => habit.archivedAt === null && habit.deletedAt === null)
     .filter((habit) => {
-      if (!isDueOnDay(habit, dateKey, weekRange)) return false;
-      return habit.schedule === 'weekly'
-        ? !isDoneInWeek(logs, habit.id, weekRange)
-        : !isDoneOnDay(logs, habit.id, dateKey);
+      const range = periodRangeFor(habit, dateKey);
+      if (!isInReminderWindow(habit, dateKey, range)) return false;
+      return !isTargetMet(habit, logs, range);
     })
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((habit) => ({

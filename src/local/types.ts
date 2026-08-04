@@ -33,6 +33,37 @@ export function isReadOnlyTable(table: SyncTable): boolean {
 }
 
 /**
+ * Tables with a natural key beyond `id` (a `uniqueIndex` in schema.ts, see
+ * `habit_logs_habit_id_log_date_idx` / `habit_freezes_habit_id_freeze_date_idx`,
+ * issue #475): two devices can independently mint a row with a different `id` for
+ * the same `(habitId, logDate)` while offline. Field names are the wire/`data`
+ * shape (as in `HabitLogData`/`HabitFreezeData` above), not the Drizzle column
+ * names, so both `push` (server) and `pull` (client) can key off the same map
+ * without drifting apart — like `READ_ONLY_TABLES`.
+ */
+export const NATURAL_KEYS: Partial<Record<SyncTable, readonly string[]>> = {
+  habit_logs: ['habitId', 'logDate'],
+  habit_freezes: ['habitId', 'freezeDate'],
+};
+
+/**
+ * The natural-key values for `data`, joined into a comparable string — `null` if
+ * `table` has no natural key, or `data` is missing one of its fields (an as-yet
+ * incomplete payload, e.g. a partial update that only touches `done`).
+ */
+export function naturalKeyOf(table: SyncTable, data: Record<string, unknown>): string | null {
+  const keyFields = NATURAL_KEYS[table];
+  if (!keyFields) return null;
+  const values: string[] = [];
+  for (const field of keyFields) {
+    const value = data[field];
+    if (typeof value !== 'string') return null;
+    values.push(value);
+  }
+  return values.join(':');
+}
+
+/**
  * Which fields a mutation is missing or has the wrong type for — empty means
  * well-formed. A poison mutation (one client bug away from wedging the whole
  * outbox forever, see push() in src/local/sync.ts) must be rejected on its own
@@ -54,7 +85,8 @@ export function malformedFields(m: Mutation): string[] {
  */
 export interface HabitData {
   name: string;
-  schedule: 'daily' | 'weekly' | 'custom';
+  schedule: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  target: number;
   color: string | null;
   archivedAt: string | null;
   createdAt: string;
@@ -161,8 +193,12 @@ export interface PushConflict {
 
 export interface PushRejection {
   mutationId: string;
-  /** Why this mutation was dropped. Retrying will not help either way — this is a bug. */
-  reason?: 'missing-required' | 'malformed' | 'read-only';
+  /**
+   * Why this mutation was dropped. Retrying will not help either way — this is a bug.
+   * `constraint` = rejected by the database itself (unique/FK/…), unhealable like
+   * `malformed`, always with an empty `missing`.
+   */
+  reason?: 'missing-required' | 'malformed' | 'read-only' | 'constraint';
   /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }
@@ -194,4 +230,6 @@ export interface PullResponse {
   changes: ChangeRow[];
   /** Highest `syncSeq` among the returned changes — the cursor for the next pull. */
   cursor: number;
+  /** True → more changes remain; the client must pull again with `since = cursor`. */
+  hasMore: boolean;
 }

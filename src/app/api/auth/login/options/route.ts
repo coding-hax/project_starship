@@ -4,6 +4,12 @@ import { listCredentials, relyingParty, storeChallenge } from '@/auth/webauthn';
 
 export async function POST() {
   const rp = relyingParty();
+  // Deliberately unauthenticated: this is a usernameless WebAuthn flow, so
+  // allowCredentials must list the known credential IDs before login for the
+  // platform to offer them as a choice. IDs are not secrets; the only thing an
+  // observer learns is how many devices are registered. Accepted for a
+  // single-user app in exchange for better passkey selection at sign-in,
+  // rather than leaving allowCredentials empty (Deep Review F8, AK4).
   const existing = await listCredentials();
 
   const options = await generateAuthenticationOptions({
