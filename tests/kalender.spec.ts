@@ -826,3 +826,107 @@ test('das Intervall-Feld und die Wochentage erscheinen nur, wenn eine Wiederholu
   await page.getByLabel('Wiederholung', { exact: true }).selectOption('');
   await expect(page.getByLabel('Intervall')).toHaveCount(0);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AC3–AC5: Ausnahmen fuer Serientermine ("nur dieser"/"alle folgenden")      */
+/* -------------------------------------------------------------------------- */
+
+async function seedWeeklySeries(page: Page): Promise<void> {
+  await seedEvent(page, {
+    title: 'Yoga',
+    allDay: false,
+    startsAt: `${TODAY}T16:00:00.000Z`, // 18:00 Berlin (CEST, UTC+2)
+    endsAt: `${TODAY}T17:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+}
+
+async function nextDay(page: Page, times = 1): Promise<void> {
+  for (let day = 0; day < times; day++) {
+    await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  }
+}
+
+async function previousDay(page: Page, times = 1): Promise<void> {
+  for (let day = 0; day < times; day++) {
+    await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  }
+}
+
+test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben unveraendert (AC3)', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  await eventCard(page, 'Yoga').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  // `datetime-local` is read back in the *browser's* local time (CI runs UTC,
+  // no timezoneId override) — fill the UTC clock time that reads 19:00–20:00
+  // once the card renders it back in Berlin time (CEST, UTC+2).
+  await page.getByLabel('Von').fill(`${TODAY}T17:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T18:00`);
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
+  await expect(scopeDialog).toBeVisible();
+  await scopeDialog.getByRole('button', { name: 'Nur dieser' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toContainText('19:00');
+
+  // A week later, the series' own occurrence still runs at the original time.
+  await nextDay(page, 7);
+  await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
+test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timeline (AC4)', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  await eventCard(page, 'Yoga').click();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByRole('button', { name: 'Löschen' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Termin löschen — für welche Vorkommen?' });
+  await expect(scopeDialog).toBeVisible();
+  await scopeDialog.getByRole('button', { name: 'Nur dieser' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toHaveCount(0);
+
+  // The next occurrence a week later is untouched.
+  await nextDay(page, 7);
+  await expect(eventCard(page, 'Yoga')).toBeVisible();
+});
+
+test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frueheren (AC5)', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  // Edit the second occurrence (a week later), not the series' own first one.
+  await nextDay(page, 7);
+  await eventCard(page, 'Yoga').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  // Same UTC-vs-Berlin offset as the "nur dieser" test above.
+  await page.getByLabel('Von').fill('2026-07-25T17:00');
+  await page.getByLabel('Bis').fill('2026-07-25T18:00');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
+  await expect(scopeDialog).toBeVisible();
+  await scopeDialog.getByRole('button', { name: 'Alle folgenden' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toContainText('19:00');
+
+  // A further week on, the change still applies.
+  await nextDay(page, 7);
+  await expect(eventCard(page, 'Yoga')).toContainText('19:00');
+
+  // Back on the series' own first occurrence, the original time survives.
+  await previousDay(page, 14);
+  await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
