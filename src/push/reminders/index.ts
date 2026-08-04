@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { reminderPrefs, reminderSends } from '@/db/schema';
 import { dueSlots } from '@/push/schedule';
 import { sendPushToAll, type PushPayload } from '@/push/send';
+import { collectDueEventReminders } from './events-due';
 import { habitsOpen } from './habits-open';
 import { interactionLimit } from './interaction-limit';
 import { tasksDue } from './tasks-due';
@@ -68,6 +69,7 @@ export async function sendDueReminders(
   now: Date,
   kinds: ReminderKind[] = reminderKinds,
   loadPrefs: () => Promise<Map<string, ReminderPref>> = loadReminderPrefs,
+  collectEvents: (now: Date) => ReturnType<typeof collectDueEventReminders> = collectDueEventReminders,
 ): Promise<SendDueRemindersResult> {
   const prefs = await loadPrefs();
 
@@ -107,6 +109,27 @@ export async function sendDueReminders(
 
     await sendPushToAll(payload);
     sent.push(kind);
+  }
+
+  // Second phase (issue #558, S7 of #473): per-event "15 Minuten vorher"
+  // reminders. These are a moving point in time per event, not a fixed daily
+  // slot, so they bypass `dueSlots`/`ReminderKind` entirely — same
+  // collect -> lock -> send order as the loop above, just keyed on
+  // `event-reminder` + the occurrence's own lock slot instead of a kind's name.
+  for (const { lockSlot, sendDate, payload } of await collectEvents(now)) {
+    const claimed = await db
+      .insert(reminderSends)
+      .values({ id: uuidv7(), kind: 'event-reminder', sendDate, slot: lockSlot })
+      .onConflictDoNothing()
+      .returning({ id: reminderSends.id });
+
+    if (claimed.length === 0) {
+      skipped.push('event-reminder');
+      continue;
+    }
+
+    await sendPushToAll(payload);
+    sent.push('event-reminder');
   }
 
   return { sent, skipped };
