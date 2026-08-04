@@ -153,6 +153,11 @@ db.version(4).stores({
 // reasoning as `reminder_prefs`/`journal_entries` above — it lives in the generic
 // `records` store, no new store or index, so no db.version() bump.
 
+// issue #552 (S1 of #473) adds `events`/`event_exceptions` as new `SyncTable`s
+// (src/local/types.ts), same reasoning as `reminder_prefs`/`habit_freezes` above —
+// both live in the generic `records` store, discriminated by `table` alone, no new
+// store or index, so no db.version() bump.
+
 // Store removal (issue #477, ADR-0018): entry conflicts are structurally impossible
 // since every journal entry is its own uuidv7 row with no edit path — the store has
 // had no producer since #395 removed PRESERVE_DISPLACED. `null` is Dexie's way to

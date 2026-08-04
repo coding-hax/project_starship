@@ -215,9 +215,9 @@ fi
 # laufen (der alte Bug), stuende hier '2' statt '1', dazu ein
 # needs-answer-Kommentar (oben schon widerlegt) und RC=1 (oben schon 0).
 assert_eq "AC5: buildEscalationEval zaehlt den Erstversuch NICHT zusaetzlich mit (failcount=1, nicht 2)" \
-  "1" "$(cat "$STATE_DIR/failcount-70" 2>/dev/null | tr -d '[:space:]')"
+  "1" "$(cat "$SHARED_DIR/failcount-70" 2>/dev/null | tr -d '[:space:]')"
 
-if [ -f "$STATE_DIR/tier-70" ]; then
+if [ -f "$SHARED_DIR/tier-70" ]; then
   red "AC5: die Modellstufe haette bei nur einem Fehlversuch NICHT eskalieren duerfen"
 else
   ok "AC5: keine Modell-Eskalation ausgeloest"

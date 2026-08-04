@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import {
+  FIXED_NOW,
   freezeClock,
   openSecondDevice,
   registerPasskey,
   resetAppData,
+  settleJournalHabitBoot,
   skewClock,
   withDb,
 } from './helpers';
@@ -34,6 +36,7 @@ test.beforeEach(async () => {
  */
 test('a mutation made offline survives a reload and reaches Postgres', async ({ page }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   // Cut the sync endpoints. The page still serves, but nothing can be pushed —
   // which is exactly what a train tunnel looks like to the outbox.
@@ -190,6 +193,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
     await page.goto('/aufgaben');
 
     let pullRequests = 0;
@@ -637,6 +641,10 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
     page,
   }) => {
     await registerPasskey(page);
+    // Settle the boot-created Journal habit (issue #505 AC1) *before* going offline —
+    // it must reach Postgres first, or the row-count assertions below would count
+    // it as part of this test's own offline batch.
+    await settleJournalHabitBoot(page);
 
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
 
@@ -659,8 +667,9 @@ test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
 
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
+    // Just the already-synced Journal habit — this test's own habit is still offline.
     const beforeSync = await withDb((c) => c.query('SELECT * FROM habits'));
-    expect(beforeSync.rowCount).toBe(0);
+    expect(beforeSync.rowCount).toBe(1);
 
     await page.unroute('**/api/sync/**');
     await page.evaluate(() => window.__starship.sync());
@@ -772,7 +781,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
         {
           table: 'tasks',
           id: taskId,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(FIXED_NOW).toISOString(),
           deletedAt: null,
           syncSeq: 2, // Newer than the local record's syncSeq (1)
           data: { title: 'Change from another device' },
@@ -815,6 +824,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const validTitles = ['Gültig 1', 'Gültig 2', 'Gültig 3'];
     for (const title of validTitles) {
@@ -851,6 +861,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
     await page.goto('/aufgaben');
 
     await page.evaluate(() =>
@@ -1021,8 +1032,11 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
     // Exactly one row survives for (habitId, 2026-08-02) — B's duplicate upserts onto
     // A's existing row by natural key instead of colliding with it (#475); this savepoint
     // path stays the net for the DB-constraint triggers #475 does not intercept (reminder_sends,
-    // FK, a malformed date). B's local checkmark for its own log staying stale until the
-    // next pull is a real UX gap, deliberately out of scope here — see #502.
+    // FK, a malformed date). B's local view of its own log is displaced under B's own uuid
+    // between push() and the pull() that follows inside the same sync() call (sync.ts:35-36) —
+    // that pull sweeps the displaced row out (see "Konvergenz" describe block below, #475/#502.
+    // Only if that pull itself fails does the displaced row outlive this sync() call; the next
+    // successful sync() still clears it (covered separately, #502).
     const logRows = await withDb((c) =>
       c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
         habitId,
@@ -1168,6 +1182,156 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     expect(freezeRowsAfterB.rows[0].id).toBe(idA);
     expect(Number(freezeRowsAfterB.rows[0].sync_seq)).toBeGreaterThan(syncSeqAfterA);
   });
+
+  test('AK3 (#502): zwei echte Geräte konvergieren nach einem einzigen sync() auch lokal auf eine Zeile', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    const idA = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-05', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const devicePage = await openSecondDevice(browser, page);
+    // Pull A's habit + log first, so B knows about the day before it logs its own.
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    // B logs the same habit on the same day offline — its own, distinct uuid.
+    await devicePage.route('**/api/sync/**', (route) => route.abort('failed'));
+    const idB = await devicePage.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-05', done: true },
+        }),
+      habitId,
+    );
+    expect(idB).not.toBe(idA);
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(1);
+
+    await devicePage.unroute('**/api/sync/**');
+    // A single sync() — push (upserts onto A's row by natural key) then pull (sweeps
+    // B's now-displaced local row) run back to back inside it (sync.ts:35-36).
+    await devicePage.evaluate(() => window.__starship.sync());
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(0);
+
+    const serverRows = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-05',
+      ]),
+    );
+    expect(serverRows.rowCount).toBe(1);
+    expect(serverRows.rows[0].id).toBe(idA);
+
+    // The part AK4 above never checked: B's own local store, not just the server.
+    const records = await devicePage.evaluate(() => window.__starship.debugRecords());
+    const logRecords = records.filter(
+      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-05',
+    );
+    expect(logRecords).toHaveLength(1);
+    expect(logRecords[0].id).toBe(idA);
+
+    await devicePage.close();
+  });
+
+  test('AK4 (#502): scheitert der Pull nach erfolgreichem Push, überlebt die verdrängte lokale Zeile bis zum nächsten erfolgreichen sync()', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+
+    const habitId = await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: 'Meditieren', schedule: 'daily' },
+      }),
+    );
+    const idA = await page.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-06', done: true },
+        }),
+      habitId,
+    );
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const devicePage = await openSecondDevice(browser, page);
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    const idB = await devicePage.evaluate(
+      (hId) =>
+        window.__starship.mutate({
+          table: 'habit_logs',
+          op: 'upsert',
+          payload: { habitId: hId, logDate: '2026-08-06', done: true },
+        }),
+      habitId,
+    );
+    expect(idB).not.toBe(idA);
+
+    // Push goes through — the server already upserts onto A's row (#475) — but the
+    // pull that would sweep B's now-displaced local row fails (connection dropped
+    // right after, not offline before): sync.ts:128 catches it and returns quietly,
+    // no exception, no retry within this call.
+    await devicePage.route('**/api/sync/pull**', (route) => route.abort('failed'));
+    await devicePage.evaluate(() => window.__starship.sync());
+    await expect.poll(() => devicePage.evaluate(() => window.__starship.size())).toBe(0);
+
+    const serverRowsAfterFailedPull = await withDb((c) =>
+      c.query('SELECT id FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
+        habitId,
+        '2026-08-06',
+      ]),
+    );
+    // The server already converged on A's row — the push succeeded independently
+    // of the pull that failed afterwards.
+    expect(serverRowsAfterFailedPull.rowCount).toBe(1);
+    expect(serverRowsAfterFailedPull.rows[0].id).toBe(idA);
+
+    const recordsAfterFailedPull = await devicePage.evaluate(() => window.__starship.debugRecords());
+    const logRecordsAfterFailedPull = recordsAfterFailedPull.filter(
+      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
+    );
+    // B still shows two local rows for the same day — its own displaced one never
+    // got swept, because the pull that does the sweeping never landed.
+    expect(logRecordsAfterFailedPull).toHaveLength(2);
+
+    // The next sync() that actually gets to pull cleans it up — no data loss, no
+    // permanent duplicate, just a window that outlives one failed sync() call.
+    await devicePage.unroute('**/api/sync/pull**');
+    await devicePage.evaluate(() => window.__starship.sync());
+
+    const recordsAfterRecovery = await devicePage.evaluate(() => window.__starship.debugRecords());
+    const logRecordsAfterRecovery = recordsAfterRecovery.filter(
+      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
+    );
+    expect(logRecordsAfterRecovery).toHaveLength(1);
+    expect(logRecordsAfterRecovery[0].id).toBe(idA);
+
+    await devicePage.close();
+  });
 });
 
 test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (fund F5, #478)', () => {
@@ -1187,6 +1351,10 @@ test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (f
 
   test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({ page }) => {
     await registerPasskey(page);
+    // Settle the boot-created Journal habit (issue #505 AC1) first — otherwise its
+    // create mutation, still pending in the outbox, gets pushed interleaved with the
+    // bulk-seeded tasks below and claims a sync_seq the `maxSeq` math doesn't expect.
+    await settleJournalHabitBoot(page);
 
     const seeded = await seedTasks(PULL_PAGE_LIMIT + 50, 'Seed AK2 ');
     const maxSeq = Math.max(...seeded.map((r) => r.syncSeq));
@@ -1218,6 +1386,7 @@ test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (f
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const seeded = await seedTasks(PULL_PAGE_LIMIT * 2 + 50, 'Seed AK4 ');
     const sortedSeqs = seeded.map((r) => r.syncSeq).sort((a, b) => a - b);

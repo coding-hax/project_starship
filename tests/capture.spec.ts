@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
@@ -32,7 +32,7 @@ async function submitQuickAdd(page: Page, text: string) {
  * in capture-confirm.tsx, computed at run time — never hard-coded (helper.ts pattern
  * used elsewhere: the assertion must not depend on which day the suite runs). */
 function expectedDueAt(daysFromNow: number, hours: number, minutes: number): Date {
-  const date = new Date();
+  const date = new Date(FIXED_NOW);
   date.setDate(date.getDate() + daysFromNow);
   date.setHours(hours, minutes, 0, 0);
   return date;
@@ -58,6 +58,7 @@ test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
+  await installClockAt(page);
   await registerPasskey(page);
 });
 

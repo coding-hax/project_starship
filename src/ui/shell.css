@@ -113,10 +113,10 @@
      task-list.css:111 drag rows and segmented-control.css:27) and the
      `page-transition--enter` wrapper (its own stacking context from the opacity
      animation) paint as later siblings and cover the sticky bar once the compositor
-     re-rasterizes after a scroll (issue #508). 5 sits above that content, below the
-     FAB (10, fab.css:25), the toast host (20, toast.css:15) and the drag caption
-     (21, task-list.css:186). */
-  z-index: 5;
+     re-rasterizes after a scroll (issue #508). `--z-nav` (tokens.css) sits above
+     that content, below the FAB, the toast host and the drag caption — see the
+     z-layers scale in tokens.css / docs/DESIGN_SYSTEM.md "Ebenen". */
+  z-index: var(--z-nav);
   display: flex;
   align-items: center;
   /* Opaque per #444 — no glass look here, do not reintroduce the blur. */

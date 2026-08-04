@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cleanupStateDir } from './cleanup.js';
+import { cleanupStateDir, cleanupSharedTicketState } from './cleanup.js';
 import { createClaimAdapter, claimTake, type ClaimAdapter } from './claim.js';
 import type { GhAdapter } from './gh.js';
 
@@ -144,5 +144,76 @@ describe('cleanupStateDir', () => {
 
   it('ist mit einem fehlenden Verzeichnis zufrieden', () => {
     expect(cleanupStateDir(join(dir, 'gibt-es-nicht'), ghDouble(), NOW, claims, SLOT)).toEqual([]);
+  });
+});
+
+// #484: die ticketbezogenen Zaehler sind nach SHARED_DIR umgezogen (round.ts/
+// cli.ts) -- ohne dieses Gegenstueck wuerden sie dort NIE aufgeraeumt
+// (Regression von #64).
+describe('cleanupSharedTicketState', () => {
+  let sharedDir: string;
+
+  function sharedFile(name: string, ageDays: number): void {
+    const path = join(sharedDir, name);
+    writeFileSync(path, 'x', 'utf-8');
+    const seconds = (NOW - ageDays * DAY) / 1000;
+    utimesSync(path, seconds, seconds);
+  }
+
+  beforeEach(() => {
+    sharedDir = mkdtempSync(join(tmpdir(), 'runner-cleanup-shared-'));
+  });
+
+  afterEach(() => {
+    rmSync(sharedDir, { recursive: true, force: true });
+  });
+
+  it('entfernt alte Ticket-Zaehler-Praefixe (>7 Tage)', () => {
+    sharedFile('tier-601', 10);
+    sharedFile('failcount-602', 30);
+    sharedFile('opus-build-20260701-603', 8);
+    sharedFile('opus-cap-msg-20260701-604', 9);
+    sharedFile('blocker-sig-605', 20);
+    sharedFile('branch-head-606', 20);
+    sharedFile('resume-count-607', 20);
+
+    const removed = cleanupSharedTicketState(sharedDir, NOW);
+
+    expect(removed.sort()).toEqual([
+      'blocker-sig-605',
+      'branch-head-606',
+      'failcount-602',
+      'opus-build-20260701-603',
+      'opus-cap-msg-20260701-604',
+      'resume-count-607',
+      'tier-601',
+    ]);
+    expect(readdirSync(sharedDir)).toEqual([]);
+  });
+
+  it('laesst frische Ticket-Zaehler stehen', () => {
+    sharedFile('tier-701', 6);
+
+    expect(cleanupSharedTicketState(sharedDir, NOW)).toEqual([]);
+    expect(readdirSync(sharedDir)).toEqual(['tier-701']);
+  });
+
+  it('fasst limit-until nicht an, auch wenn es uralt ist', () => {
+    sharedFile('limit-until', 99);
+
+    expect(cleanupSharedTicketState(sharedDir, NOW)).toEqual([]);
+    expect(readdirSync(sharedDir)).toEqual(['limit-until']);
+  });
+
+  it('fasst claims/ und slots/ (Unterverzeichnisse) nicht an', () => {
+    mkdirSync(join(sharedDir, 'claims'));
+    mkdirSync(join(sharedDir, 'slots'));
+
+    expect(cleanupSharedTicketState(sharedDir, NOW)).toEqual([]);
+    expect(readdirSync(sharedDir).sort()).toEqual(['claims', 'slots']);
+  });
+
+  it('ist mit einem fehlenden Verzeichnis zufrieden', () => {
+    expect(cleanupSharedTicketState(join(sharedDir, 'gibt-es-nicht'), NOW)).toEqual([]);
   });
 });

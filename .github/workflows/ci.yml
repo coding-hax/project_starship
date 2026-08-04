@@ -86,19 +86,25 @@ jobs:
   # blocking the merge.
   #
   # e2e-main is further split into a shard matrix (#118, widened to 10 in #220): the
-  # ~4.6s/test that's left after #115 is real work (page boot, sync, expect.poll),
+  # ~5.0s/test that's left after #115 is real work (page boot, sync, expect.poll),
   # nothing left to optimize away, only to distribute. Each shard is its own job with
   # its own Postgres — sharding only splits which tests run where, never a database, so
   # nothing here shares state across shards. fail-fast is off so a red shard doesn't
   # cancel the others: we want the full picture (and the full merged report) every run.
   #
-  # Why 10 and not more: every shard re-pays ~100s of fixed cost (job setup, dev-server
+  # Why 10 and not more: every shard re-pays ~60s of fixed cost (job setup, dev-server
   # boot, and the `setup` project's real WebAuthn ceremony, which is per-run and cannot
   # be shared). Past ~10 the added shards mostly buy warm-up, and 10 shards plus the
   # five other jobs in this workflow already sit at 15 of the 20 concurrent jobs the
   # account gets — leaving room for one other workflow, not for a second full CI run.
   # Playwright splits by test count, not by duration, so the slowest shard still sets
-  # the wall clock; expect ~5 min, not the ~3 min a naive division suggests.
+  # the wall clock.
+  #
+  # Measured on run 30889590678 (before #564): 98 min of test time over 1171 tests,
+  # shards ranging 6.6–11.6 min, slowest job 12m56s. #564 dropped the `desktop`
+  # project — half the suite — which leaves ~49 min and should land near ~6 min.
+  # Staying at 10 shards is deliberate: fewer shards would make the fixed ~60s a
+  # bigger share of each job, so 6 shards would be ~9 min, worse than 10.
   e2e-main:
     runs-on: ubuntu-latest
     strategy:
@@ -152,7 +158,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
-      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/10 --reporter=blob
+      - run: pnpm exec playwright test --project=mobile --shard=${{ matrix.shard }}/10 --reporter=blob
         env:
           E2E_SCOPE: main
       # Blob keeps every shard's attachments (traces, screenshots, video) so the
@@ -254,21 +260,86 @@ jobs:
           name: playwright-report-offline
           path: playwright-report/
 
+  # #497 (Fund F23): e2e-offline above builds WITH NEXT_PUBLIC_E2E=1 for the SW/bridge
+  # specs, which inlines E2E-only branches (src/app/sw.ts) that tree-shake out of the
+  # real bundle — nothing proved the branch that actually ships still boots. This job
+  # builds WITHOUT the flag (playwright.shipped.config.ts) and runs a narrow smoke spec
+  # against it: passkey login, offline shell+data after reload, online sync. Own
+  # `.next/cache` key so the two differently-flagged builds don't fight over one cache.
+  e2e-shipped:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: starship
+          POSTGRES_PASSWORD: starship
+          POSTGRES_DB: starship
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U starship -d starship"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install-deps chromium
+      - run: pnpm exec playwright install chromium
+      - uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-shipped-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            nextjs-shipped-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # A real (not E2E-specific) VAPID keypair, same throwaway-but-well-formed
+      # reasoning as e2e-main/e2e-offline above — prod has its own, this only has to
+      # be well-formed for the build to boot, never reachable.
+      - name: Generate a throwaway VAPID keypair
+        run: |
+          node -e "
+            const { generateVAPIDKeys } = require('web-push');
+            const { publicKey, privateKey } = generateVAPIDKeys();
+            require('fs').appendFileSync(process.env.GITHUB_ENV, [
+              'NEXT_PUBLIC_VAPID_PUBLIC_KEY=' + publicKey,
+              'VAPID_PRIVATE_KEY=' + privateKey,
+              'VAPID_SUBJECT=mailto:ci@starship.invalid',
+              '',
+            ].join('\n'));
+          "
+      - run: pnpm db:migrate
+      - run: pnpm e2e:shipped
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-shipped
+          path: playwright-report/
+
   # The required status check. Keeping this name means branch protection and
   # auto-merge stay untouched by the split above. `if: always()` plus the explicit
   # result check matters: a failed `needs` would otherwise leave this job *skipped*,
   # and a skipped required check never turns the merge red.
   e2e:
-    needs: [e2e-main, e2e-offline]
+    needs: [e2e-main, e2e-offline, e2e-shipped]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Both e2e halves must be green
+      - name: All e2e halves must be green
         run: |
           echo "e2e-main:    ${{ needs.e2e-main.result }}"
           echo "e2e-offline: ${{ needs.e2e-offline.result }}"
+          echo "e2e-shipped: ${{ needs.e2e-shipped.result }}"
           [ "${{ needs.e2e-main.result }}" = "success" ] \
-            && [ "${{ needs.e2e-offline.result }}" = "success" ]
+            && [ "${{ needs.e2e-offline.result }}" = "success" ] \
+            && [ "${{ needs.e2e-shipped.result }}" = "success" ]
 
   # --- Guard: schema drift --------------------------------------------------
   # #28: prod ran on a schema that no longer matched src/db/schema.ts because a

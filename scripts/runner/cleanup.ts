@@ -5,12 +5,33 @@
 // was aelter als sieben Tage ist. Ausdruecklich verschont: 'limit-until' (kein
 // Ticketbezug, faellt schon durch das Praefix-Raster) und die Session-Datei des
 // GERADE laufenden Tickets, egal wie alt sie ist.
+//
+// #484: die ticketbezogenen Zaehler sind nach SHARED_DIR umgezogen (siehe
+// round.ts/cli.ts) -- laegen sie dort, wuerden sie von HIER aus nie
+// aufgeraeumt (Regression von #64). cleanupSharedTicketState() unten ist das
+// Gegenstueck fuer SHARED_DIR: dieselbe 7-Tage-Regel, aber ohne
+// Session-Schonung (dort liegen keine Sessions) und ohne 'limit-until'/
+// 'claims/'/'slots/' zu beruehren (die matchen ohnehin keins der
+// Ticket-Praefixe unten).
 import { readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ClaimAdapter } from './claim.js';
 import type { GhAdapter } from './gh.js';
 
-const PREFIXES = ['tier-', 'failcount-', 'opus-build-', 'opus-cap-msg-', 'session-'];
+export const STATE_PREFIXES = ['tier-', 'failcount-', 'opus-build-', 'opus-cap-msg-', 'session-'];
+// Reisen aus STATE_DIR nach SHARED_DIR mit (#484): tier-/failcount-/
+// opus-build-/opus-cap-msg- wie oben, dazu blocker-sig- (untrennbar an
+// failcount gekoppelt, siehe escalation.ts) und branch-head- (nur in
+// tierReset geloescht, toter Write-Pfad) sowie resume-count- (escalation.ts).
+export const SHARED_TICKET_PREFIXES = [
+  'tier-',
+  'failcount-',
+  'opus-build-',
+  'opus-cap-msg-',
+  'blocker-sig-',
+  'branch-head-',
+  'resume-count-',
+];
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Welches Ticket laeuft gerade IN DIESEM SLOT? Dessen Session-Datei ueberlebt
@@ -44,7 +65,14 @@ function runningIssue(gh: GhAdapter, claims: ClaimAdapter, slotId: string): stri
   return '';
 }
 
-export function cleanupStateDir(baseDir: string, gh: GhAdapter, now: number, claims: ClaimAdapter, slotId: string): string[] {
+export function cleanupStateDir(
+  baseDir: string,
+  gh: GhAdapter,
+  now: number,
+  claims: ClaimAdapter,
+  slotId: string,
+  prefixes: string[] = STATE_PREFIXES,
+): string[] {
   const keep = runningIssue(gh, claims, slotId);
   // #387 AC7: ein laufendes Ticket kann jetzt auch ein Denk-Lauf sein --
   // dessen Session liegt unter 'session-think-<nr>', nicht 'session-<nr>'
@@ -62,7 +90,7 @@ export function cleanupStateDir(baseDir: string, gh: GhAdapter, now: number, cla
   }
 
   for (const name of entries) {
-    if (!PREFIXES.some((p) => name.startsWith(p))) continue;
+    if (!prefixes.some((p) => name.startsWith(p))) continue;
     if (keepFiles.includes(name)) continue;
 
     const path = join(baseDir, name);
@@ -70,6 +98,41 @@ export function cleanupStateDir(baseDir: string, gh: GhAdapter, now: number, cla
       const stat = statSync(path);
       // Unterverzeichnisse bleiben unangetastet: `find -maxdepth 1 -delete`
       // haette an einem nicht leeren Verzeichnis ohnehin nur gemeckert.
+      if (!stat.isFile()) continue;
+      if (now - stat.mtimeMs <= MAX_AGE_MS) continue;
+      unlinkSync(path);
+      removed.push(name);
+    } catch {
+      // Datei ist zwischen readdir und unlink verschwunden -- egal, Ziel erreicht.
+    }
+  }
+
+  return removed;
+}
+
+// SHARED_DIR-Gegenstueck (#484): keine Session-Schonung (dort liegen keine
+// Sessions), sonst dieselbe Alters-Regel. 'limit-until'/'claims/'/'slots/'
+// sind hier bewusst NICHT genannt -- sie matchen keins der Praefixe oben und
+// fallen damit von selbst durchs Raster.
+export function cleanupSharedTicketState(baseDir: string, now: number): string[] {
+  const removed: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(baseDir);
+  } catch {
+    return removed;
+  }
+
+  for (const name of entries) {
+    if (!SHARED_TICKET_PREFIXES.some((p) => name.startsWith(p))) continue;
+
+    const path = join(baseDir, name);
+    try {
+      const stat = statSync(path);
+      // Gleichzeitiges Aufraeumen zweier Slots auf derselben alten Datei ist
+      // gutartig: ENOENT von unlinkSync landet im catch unten und wird
+      // geschluckt, das Ziel (Datei weg) ist ohnehin erreicht.
       if (!stat.isFile()) continue;
       if (now - stat.mtimeMs <= MAX_AGE_MS) continue;
       unlinkSync(path);

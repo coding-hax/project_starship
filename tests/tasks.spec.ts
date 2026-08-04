@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { freezeClock, registerPasskey, resetAppData, withDb } from './helpers';
+import { FIXED_NOW, freezeClock, registerPasskey, resetAppData, withDb } from './helpers';
 
 /** Mirrors task-item.tsx's own LONG_PRESS_MS — how long a hold picks a row up
  * for drag-to-nest instead of starting a swipe. */
@@ -450,7 +450,7 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
 test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({ page }) => {
   await page.goto('/aufgaben');
   const title = 'Toggle-Testfall';
-  await seedTask(page, { title, completedAt: new Date().toISOString() });
+  await seedTask(page, { title, completedAt: new Date(FIXED_NOW).toISOString() });
   const item = taskItems(page).filter({ hasText: title });
   await expect(item).toHaveClass(/task-list__item--done/);
 
@@ -720,7 +720,7 @@ test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige ode
   await seedTask(page, {
     title: 'Erledigt trotz alter Fälligkeit',
     dueAt: '2020-01-01T09:00:00.000Z',
-    completedAt: new Date().toISOString(),
+    completedAt: new Date(FIXED_NOW).toISOString(),
   });
 
   await expect(dueLabelFor(page, 'Überfällig')).toHaveClass(/task-list__due--overdue/);

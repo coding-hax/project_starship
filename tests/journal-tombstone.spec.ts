@@ -1,5 +1,12 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  openSecondDevice,
+  registerPasskey,
+  resetAppData,
+  withDb,
+} from './helpers';
 
 /**
  * Issue #453: a tombstone on the one row that carries the account's key material.
@@ -20,8 +27,9 @@ const OTHER_PASSPHRASE = 'eine voellig andere passphrase';
 /** Mirrors JOURNAL_KEYS_ROW_ID in src/features/journal/journal-keys.ts. */
 const JOURNAL_KEYS_ROW_ID = '3f2a9b6e-9d3c-4f7a-8b2e-6b1c9a4d7e05';
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
   await resetAppData();
+  await installClockAt(page);
 });
 
 async function setUpJournal(page: Page, passphrase: string) {
@@ -89,7 +97,10 @@ test('AC2: die bestehende Passphrase entsperrt weiterhin, Eintraege bleiben lesb
   page,
 }) => {
   await setUpJournal(page, PASSPHRASE);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
   await page.evaluate(
     (date) => window.__starship.appendJournalEntry(date, { text: 'vor dem Tombstone' }),
     entryDate,

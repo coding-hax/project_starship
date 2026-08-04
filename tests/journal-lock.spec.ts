@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { freezeClock, openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  freezeClock,
+  installClockAt,
+  openSecondDevice,
+  registerPasskey,
+  resetAppData,
+  withDb,
+} from './helpers';
 
 const PASSPHRASE = 'correct horse battery staple';
 const WRONG_PASSPHRASE = 'falsches passwort';
@@ -141,7 +148,7 @@ test('Opt-in Default AUS, eingeschaltet ueberlebt den Neustart, Schluessel bleib
 test('Auto-Lock sperrt nach dem Inaktivitaetsfenster, Aktivitaet davor haelt es offen (AC6)', async ({
   page,
 }) => {
-  await page.clock.install({ time: new Date() });
+  await installClockAt(page);
   await setUpJournal(page, PASSPHRASE);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 
@@ -153,7 +160,7 @@ test('Auto-Lock sperrt nach dem Inaktivitaetsfenster, Aktivitaet davor haelt es 
 test('Aktivitaet vor Ablauf des Fensters haelt das Journal entsperrt (AC6 Gegenprobe)', async ({
   page,
 }) => {
-  await page.clock.install({ time: new Date() });
+  await installClockAt(page);
   await setUpJournal(page, PASSPHRASE);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 
@@ -293,7 +300,7 @@ test('mehrere Tabs sperren konsistent, wenn der Auto-Lock-Timer eines Tabs ablae
   page,
   context,
 }) => {
-  await page.clock.install({ time: new Date() });
+  await installClockAt(page);
   await setUpJournal(page, PASSPHRASE);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 
@@ -340,7 +347,7 @@ test('Ent- und Sperren funktioniert vollstaendig offline (ADR-0016 Punkt 2)', as
 test('Opt-in AN schaltet den Auto-Lock-Timer ab (ADR-0016 Punkt 3, AC6 Gegenprobe)', async ({
   page,
 }) => {
-  await page.clock.install({ time: new Date() });
+  await installClockAt(page);
   await setUpJournal(page, PASSPHRASE);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });

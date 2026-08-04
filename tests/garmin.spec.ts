@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import { registerPasskey, resetAppData, settleJournalHabitBoot, withDb } from './helpers';
 
 /**
  * Garmin-Aktivitäten (ADR-0011, issue #186): read-only Server-Origin-Daten. Der
@@ -90,6 +90,7 @@ test('offline angelegt, online geholt: Aktivitäten kommen ausschließlich über
   page,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   await page.context().setOffline(true);
   const id = await insertGarminActivity();
@@ -112,6 +113,7 @@ test('eine Mutation auf garmin_activities wird clientseitig abgewiesen, bevor si
   page,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
 
   await expect(
     page.evaluate(() =>

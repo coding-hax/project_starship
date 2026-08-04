@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import { registerPasskey, resetAppData, settleJournalHabitBoot, skewClock, withDb } from './helpers';
 
 // A Wednesday, same reference date as habits-heute.spec.ts.
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -313,9 +313,14 @@ test('J5 Offline-Pfad: ein offline eingesetzter Joker landet nach dem Sync in Po
   // Flush the two seed mutations so the outbox below reflects only the rescue's
   // own mutation — this test proves the *rescue* reaches Postgres offline, not
   // the pre-existing habit/log (same route/unroute dance as sync.spec.ts).
+  // Also settle the Journal habit (issue #505 AC1) in the same window: this is
+  // the first successful sync of the test, so it is what first lets a device know
+  // it is safe to create the row (journal-habit-boot.tsx's "never before the first
+  // pull" guard) — done here, its own boot effect would otherwise still fire on the
+  // reload below (`META_LAST_PULLED_SEQ` is now set) and land as a second, unrelated
+  // pending mutation right next to the rescue's.
   await page.unroute('**/api/sync/**');
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  await settleJournalHabitBoot(page);
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
 
   await page.reload();
