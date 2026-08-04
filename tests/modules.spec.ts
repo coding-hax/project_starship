@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  openMeteoForecastBody,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  withDb,
+} from './helpers';
 
 const MODULES_OFF_KEY = 'starship:modules-off';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
@@ -67,17 +73,7 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
 }) => {
   await resetAppData();
   await page.goto('/uebersicht');
-
-  // Wait for JournalHabitBoot's idempotent ensure to land locally, then push it —
-  // mutate() itself schedules no sync, so without this the row might not have
-  // reached the outbox yet when the explicit sync() below runs.
-  await expect
-    .poll(async () => {
-      const records = await page.evaluate(() => window.__starship.debugRecords());
-      return records.some((r) => r.table === 'habits' && r.data.name === 'Journal');
-    })
-    .toBe(true);
-  await page.evaluate(() => window.__starship.sync());
+  await settleJournalHabitBoot(page);
 
   const before = await withDb((client) =>
     client.query('SELECT id, archived_at FROM habits WHERE name = $1', ['Journal']),

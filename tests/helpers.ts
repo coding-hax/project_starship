@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Browser, Page } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   RegistrationResponseJSON,
@@ -219,6 +219,24 @@ export async function resetAppData() {
 }
 
 /**
+ * Settles the boot-time Journal-habit creation (issue #505 AC1) deterministically.
+ * `JournalHabitBoot` creates the row itself on every fresh account (the Journal
+ * module is active by default), but only after its own `await sync()` resolves —
+ * timing that isn't bound to anything a spec can wait on, so its `mutate()` can
+ * land in the outbox at any point after boot, including inside a window a spec is
+ * already using to assert an exact outbox size or habit-row count (#505 ripple).
+ * Calling `ensureJournalHabit` directly is idempotent with whatever the boot effect
+ * does on its own — whichever of the two runs first wins, the other is a no-op.
+ * Call right after `registerPasskey`, while still online, before the spec's own
+ * scenario starts.
+ */
+export async function settleJournalHabitBoot(page: Page): Promise<void> {
+  await page.evaluate(() => window.__starship.ensureJournalHabit());
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+}
+
+/**
  * A truly clean slate: no credential, no session, no synced row. Only for specs that
  * assert the pristine, never-registered state (shell.spec.ts). It logs the shared
  * session out — `registerPasskey` notices and re-registers for whoever comes next.
@@ -378,6 +396,7 @@ declare global {
         }>
       >;
       deleteJournalEntry: (id: string) => Promise<void>;
+      ensureJournalHabit: () => Promise<void>;
       bytesToBase64: (bytes: number[]) => string;
       createEnvelope: (
         passphrase: string,

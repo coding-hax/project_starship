@@ -10,6 +10,7 @@ import {
   openSecondDevice,
   registerPasskey,
   resetAppData,
+  settleJournalHabitBoot,
   withDb,
 } from './helpers';
 
@@ -41,6 +42,7 @@ test('offline geschriebener Eintrag erreicht online die Datenbank ohne Klartext-
   context,
 }) => {
   await registerPasskey(page);
+  await settleJournalHabitBoot(page);
   await context.setOffline(true);
 
   const entryDate = '2026-07-29';
@@ -470,8 +472,12 @@ async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: strin
 test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
   page,
 }) => {
+  await installClockAt(page);
   await setUpEditor(page);
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);

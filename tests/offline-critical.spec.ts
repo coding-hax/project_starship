@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  skewClock,
+  withDb,
+} from './helpers';
 
 /**
  * The one spec that proves the full offline round-trip (issue #57): a real service
@@ -119,25 +126,34 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   context,
 }) => {
   const passphrase = 'ac8 offline passphrase';
-  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
 
-  // Passphrase-Einrichtung und der erste Boot-Sync (der die Journal-Gewohnheit
-  // anlegt, journal-habit-boot.tsx) brauchen ein echtes Netz — beides online, bevor
-  // es offline geht.
-  await nav.getByRole('link', { name: 'Journal' }).click();
-  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
-  await page.getByLabel('Passphrase wiederholen').fill(passphrase);
-  await page.getByRole('button', { name: 'Einrichten' }).click();
-  await page.getByTestId('journal-recovery-key').waitFor();
-  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+  // Fixed clock, same pattern as habits-uebersicht.spec.ts — beforeEach's
+  // registerPasskey already navigated, so install() (which needs to run before the
+  // first navigation) is not an option; setFixedTime() has no such restriction and
+  // survives the reload below. Needed so entryDate below can't straddle a real
+  // midnight during the test (#495).
+  await skewClock(page, FIXED_NOW);
 
-  await nav.getByRole('link', { name: 'Gewohnheiten' }).click();
+  // Passphrase-Einrichtung über die Bridge, nicht die /journal-UI: jede Navigation
+  // dorthin lädt einen RSC-Payload, den Serwists Laufzeit-Cache nur unter dem
+  // jeweils aktuellen `_rsc`-Query-Hash ablegt — der ändert sich bei jedem Besuch,
+  // ein späterer Offline-Aufruf trifft also nie denselben Cache-Eintrag (anders als
+  // die reinen Dokument-Navigationen der beiden Tests oben, denen ein einzelner,
+  // stabiler Pfad genügt). journalSetup() ist derselbe Aufruf, den das Formular
+  // selbst macht (lock-store.ts), nur ohne den fragilen Navigationspfad.
+  await page.evaluate((p) => window.__starship.journalSetup(p), passphrase);
+
+  await page.goto('/gewohnheiten');
   const journalHabit = page
     .getByRole('list', { name: 'Gewohnheiten', exact: true })
     .getByRole('listitem')
     .filter({ hasText: 'Journal' });
   await expect(journalHabit).toBeVisible();
+  // Settle it (issue #505 AC1) before going offline — JournalHabitBoot enqueues its
+  // create mutation asynchronously after its own boot sync, with no bound on when;
+  // left unsettled it can still be sitting in the outbox once offline, inflating the
+  // size() count the rhythm-change/entry actions below expect to own exclusively.
+  await settleJournalHabitBoot(page);
 
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
@@ -145,7 +161,16 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
 
   await context.setOffline(true);
 
-  // Rhythmus offline wechseln.
+  // The reload wiped the in-memory DEK (lock-store.ts's `dek` is a module
+  // variable) — restoring it normally needs journal-gate.tsx to mount (its
+  // `useJournalLock` effect is what calls `ensureInitialized`), which only
+  // happens on /journal, not here. journalUnlock() re-derives it directly from
+  // the already-pulled local envelope (readEnvelope, pure IndexedDB) — no
+  // component mount and no network needed, so it works offline too.
+  await page.evaluate((p) => window.__starship.journalUnlock(p), passphrase);
+
+  // Rhythmus offline wechseln — bleibt auf /gewohnheiten, dessen Cache der Reload
+  // oben bereits bestätigt hat (kein zweiter fragiler Navigationspfad nötig).
   await journalHabit.getByRole('button', { name: /^Journal\b/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Gewohnheit bearbeiten' });
   await expect(dialog).toBeVisible();
@@ -153,20 +178,25 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   await dialog.getByRole('button', { name: 'Speichern' }).click();
   await expect(dialog).toBeHidden();
 
-  // Client-seitige next/link-Navigation (kein page.goto) — der Reload oben hat den
-  // Service Worker bereits als Controller bestätigt, ein voller Seitenwechsel würde
-  // hier nur den im Speicher gehaltenen Journal-Schlüssel unnötig wieder sperren.
-  await nav.getByRole('link', { name: 'Journal' }).click();
+  // Eintrag über die Bridge (appendJournalEntry, derselbe Aufruf wie der echte
+  // Editor-Submit, inkl. Auto-Log AC4) statt einer Navigation zu /journal — aus
+  // demselben Grund wie journalSetup oben.
   const entryText = 'Offline im Tunnel geschrieben';
-  await page.getByLabel('Journal-Text').fill(entryText);
-  await page.getByRole('button', { name: 'Absenden' }).click();
-  await expect(page.getByText(entryText)).toBeVisible();
+  await page.evaluate(
+    ({ iso, text }) => window.__starship.appendJournalEntry(new Date(iso).toLocaleDateString('en-CA'), { text }),
+    { iso: FIXED_NOW, text: entryText },
+  );
+  // Rhythmuswechsel (habits) + Eintrag (journal_entries) + Auto-Log (habit_logs).
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(3);
 
   await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
-  const entryDate = await page.evaluate(() => new Date().toLocaleDateString('en-CA'));
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
   const row = await withDb((client) =>
     client.query(
       `SELECT h.schedule, hl.done FROM habits h
