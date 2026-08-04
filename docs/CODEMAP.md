@@ -70,6 +70,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `notification.ts` / `schedule.ts` — reine `buildNotification`/`parsePushPayload`-Logik + `berlinNow`/`dueSlots` (DST-sicher)
 - `reminders/index.ts` / `reminder-kinds.ts` — Registry (`sendDueReminders`) + Kind-Metadaten
 - `reminders/tasks-due.ts` / `habits-open.ts` / `interaction-limit.ts` — feste Slots: fällige Aufgaben, offene Gewohnheiten, Ablauf
+- `reminders/events-due.ts` — reine `dueEventReminders` + DB-`collectDueEventReminders`: „15 Minuten vorher" pro Termin (S7, kein fester Slot, nutzt S6-Expansion)
 
 ### src/features/tasks
 
