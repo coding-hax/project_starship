@@ -18,7 +18,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>` (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Aufgaben → Aktivitäten → Gewohnheiten)
-- `(app)/aufgaben/` / `(app)/kalender/` — Aufgaben (leer bis M1) / Termine (leer bis M5)
+- `(app)/aufgaben/` — Aufgaben (leer bis M1)
+- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline, S2 von #473, issue #553); Editor/Monat/Serien folgen S3–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum (issue #469) + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
@@ -101,6 +102,14 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
 - `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
 
+### src/features/events
+
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`, `berlinMinutesOfDay`/`addDays`/`weekDaysFor`
+- `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`, Header mit `<WeekStrip/>`, darunter `<EventTimeline/>`
+- `week-strip.tsx` / `.css` — zugeklapptes Wochenband Mo–So, Vor/Zurück-Tag + antippbare Tage
+- `event-timeline.tsx` / `.css` — Stundenachse 0–24h, Jetzt-Linie, Terminkarten mit Kategorie-Farbkante
+
 ### src/features/export
 
 - `export.ts` / `export-panel.tsx` / `.css` — baut Export-Payload aus `db.records`, löst Download aus, Button+Status
@@ -141,6 +150,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
 - `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet (issue #430)
+- `use-now.ts` — `useNow(intervalMs)`: tickendes `Date` (Default 60s), treibt z. B. die Kalender-Jetzt-Linie (issue #553)
 - `app-header.tsx` / `nav-items.ts` / `nav.tsx` / `module-route-guard.tsx` — Einstellungen-Einstieg, Nav-Ableitung+Reihenfolge, Aus-Route-Redirect
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
@@ -157,6 +167,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
+- `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema

@@ -46,11 +46,7 @@ export function EventTimeline({ events, selectedDay, today }: EventTimelineProps
       </ul>
       <div className="event-timeline__track">
         {showNowLine && (
-          <div
-            className="event-timeline__now-line"
-            data-testid="event-timeline-now-line"
-            style={{ top: `${nowLinePct(now)}%` }}
-          />
+          <div className="event-timeline__now-line" style={{ top: `${nowLinePct(now)}%` }} />
         )}
         <ul className="event-timeline__cards">
           {rows.map(({ key, item: card, status, onAnimationEnd }) => (
