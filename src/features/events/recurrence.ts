@@ -18,7 +18,7 @@ import { addDays, berlinMinutesOfDay, dateKeyDiff, parseDateKey, weekDaysFor } f
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
 
-type Recurrence = NonNullable<EventView['recurrence']>;
+export type Recurrence = NonNullable<EventView['recurrence']>;
 
 /**
  * One rendered instance — a plain event as-is, or one occurrence of a
@@ -47,8 +47,13 @@ function weekdayIndex(dateKey: string): number {
   return (parseDateKey(dateKey).getUTCDay() + 6) % 7;
 }
 
-/** Does `dateKey` match the series' freq/interval/byWeekday pattern — ignores `until`/`count`. */
-function matchesPattern(rule: Recurrence, anchorDateKey: string, dateKey: string): boolean {
+/**
+ * Does `dateKey` match the series' freq/interval/byWeekday pattern — ignores
+ * `until`/`count`. Exported for `event-mutations.ts`'s `truncateRecurrence`,
+ * which needs to count a rule's own occurrences independent of its existing
+ * bounds (it is computing a *new* bound).
+ */
+export function matchesPattern(rule: Recurrence, anchorDateKey: string, dateKey: string): boolean {
   const diffDays = dateKeyDiff(anchorDateKey, dateKey);
   if (diffDays < 0) return false;
 
@@ -111,7 +116,8 @@ export function occurrencesOnDay(rule: Recurrence, anchorDateKey: string, dateKe
   return true;
 }
 
-function anchorDateKeyOf(event: EventView): string | null {
+/** The Berlin calendar day a series' pattern is anchored on — `event-mutations.ts` reuses this too. */
+export function anchorDateKeyOf(event: EventView): string | null {
   if (event.allDay) return event.startDate;
   if (!event.startsAt) return null;
   return berlinNow(new Date(event.startsAt)).dateKey;
