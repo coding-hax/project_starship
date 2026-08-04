@@ -240,6 +240,50 @@ describe('roundPlan', () => {
     });
   });
 
+  // --- Denk-Rollen-Tagesdeckel (#492, Nachtrag zu ADR-0005) -----------------
+  describe('Denk-Rollen-Tagesdeckel (#492)', () => {
+    it('laesst die Planer-Rolle unter dem Deckel unangetastet und reserviert einen Slot', () => {
+      const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.kind).toBe('run');
+      expect(state.read('thinking-cap-20260726')?.trim()).toBe('1');
+    });
+
+    it('stoppt die Planer-Rolle, sobald der flottenweite Tagesdeckel erreicht ist', () => {
+      state.write('thinking-cap-20260726', '20');
+      const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.text).toContain('Denk-Rollen');
+      // Der Zaehler bleibt bei 20, kein weiterer Verbrauch fuer den geblockten Lauf.
+      expect(state.read('thinking-cap-20260726')?.trim()).toBe('20');
+    });
+
+    it('stoppt auch die Recherche-Rolle am selben, gemeinsamen Zaehler', () => {
+      state.write('thinking-cap-20260726', '20');
+      const { gh } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.text).toContain('Denk-Rollen');
+    });
+
+    it('zaehlt Planer- und Recherche-Laeufe ticketuebergreifend im selben Zaehler', () => {
+      const { gh: ghPlan } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+      roundPlan(ctx(ghPlan), opts);
+      const { gh: ghResearch } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+      roundPlan(ctx(ghResearch), opts);
+      expect(state.read('thinking-cap-20260726')?.trim()).toBe('2');
+    });
+
+    it('laesst Bau-Laeufe vom Deckel unberuehrt, auch wenn er erschoepft ist', () => {
+      state.write('thinking-cap-20260726', '20');
+      const { gh } = ghDouble([openIssues(issueJson(82, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.kind).toBe('run');
+      expect(run.role).toBe('build');
+    });
+  });
+
   // --- Startstufe am Ticket (ADR-0013, #273) --------------------------------
   describe('Modellstufe per Label', () => {
     it('AC1: model:opus baut sofort auf Opus, ohne vorherige Eskalation', () => {

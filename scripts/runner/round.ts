@@ -31,7 +31,7 @@ import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from '.
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
 import { buildEscalationEval, resumeAllowed } from './escalation.js';
-import { opusBuildCapReached, opusBuildCapReserve } from './cap.js';
+import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
 import {
   BUILD_TOOLS,
@@ -634,6 +634,28 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
     model = labelTier ?? 'opus';
   } else {
     model = tierCurrent(issue, sharedState, gh);
+  }
+
+  // --- Denk-Rollen-Tagesdeckel (#492, Nachtrag zu ADR-0005) -----------------
+  // Flottenweit, ticketuebergreifend: anders als der Opus-Bau-Deckel oben
+  // zaehlt hier EIN gemeinsamer Zaehler ueber alle Tickets, weil genau die
+  // Summe die Luecke aus #492 war (ein einzelnes durchdrehendes plan-Ticket
+  // schoepft kein Ticket-Budget aus, sondern das Tageskontingent der ganzen
+  // Flotte). Greift VOR dem Aufruf, unabhaengig vom aufgeloesten Modell --
+  // die Rolle selbst ist die Kostenquelle, nicht nur Opus darin.
+  if (role === 'plan' || role === 'research') {
+    if (thinkingCapReached(sharedState, clock)) {
+      return {
+        kind: 'done',
+        rc: 0,
+        status: status(
+          `Denk-Deckel (#${issue})`,
+          '🟡',
+          `🟡 **Tagesbudget für Denk-Rollen (plan/research) erschöpft.** Morgen läuft es von selbst weiter — Bau-Läufe sind davon nicht betroffen.`,
+        ),
+      };
+    }
+    thinkingCapReserve(sharedState, clock);
   }
 
   const busy =
