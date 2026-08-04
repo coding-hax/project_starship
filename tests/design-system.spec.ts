@@ -110,3 +110,128 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
     }
   });
 });
+
+/**
+ * Issue #510: one named z-index scale (tokens.css) instead of scattered raw numbers,
+ * so "sits above / below" is a design-system decision rather than an accident of DOM
+ * order. The sheet is a modal `<dialog>` (`showModal()`), which the browser paints in
+ * the top layer above everything else regardless of z-index — `--z-sheet` documents
+ * that place in the scale, it does not itself create the guarantee (docs/DESIGN_SYSTEM.md
+ * "Ebenen").
+ */
+test.describe('Design-System: Ebenen (z-Skala)', () => {
+  const viewports = [
+    { width: 375, height: 667 },
+    { width: 1280, height: 1024 },
+  ] as const;
+  const themes = ['hell', 'dunkel'] as const;
+
+  for (const viewport of viewports) {
+    for (const theme of themes) {
+      test(`AC1/AC2/AC6: Skala ist gesetzt, steigend, jede Fläche trägt ihren Token (${viewport.width}px, ${theme})`, async ({
+        page,
+      }) => {
+        await page.setViewportSize(viewport);
+        await registerPasskey(page);
+        await page.goto('/aufgaben');
+        await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+
+        const tokens = await page.evaluate(() => {
+          const style = getComputedStyle(document.documentElement);
+          return {
+            nav: Number(style.getPropertyValue('--z-nav')),
+            fab: Number(style.getPropertyValue('--z-fab')),
+            toast: Number(style.getPropertyValue('--z-toast')),
+            drag: Number(style.getPropertyValue('--z-drag')),
+            sheet: Number(style.getPropertyValue('--z-sheet')),
+          };
+        });
+
+        // Strictly ascending — the whole point of a scale over scattered numbers,
+        // and z-values are theme-independent (same scale in light and dark).
+        expect(tokens.nav).toBeGreaterThan(0);
+        expect(tokens.fab).toBeGreaterThan(tokens.nav);
+        expect(tokens.toast).toBeGreaterThan(tokens.fab);
+        expect(tokens.drag).toBeGreaterThan(tokens.toast);
+        expect(tokens.sheet).toBeGreaterThan(tokens.drag);
+
+        const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+        await expect(fab).toBeVisible();
+
+        const [navZ, fabZ, toastZ] = await Promise.all([
+          page.locator('.nav').evaluate((el) => Number(getComputedStyle(el).zIndex)),
+          fab.evaluate((el) => Number(getComputedStyle(el).zIndex)),
+          page.locator('.toast-host').evaluate((el) => Number(getComputedStyle(el).zIndex)),
+        ]);
+        expect(navZ).toBe(tokens.nav);
+        expect(fabZ).toBe(tokens.fab);
+        expect(toastZ).toBe(tokens.toast);
+
+        await fab.click();
+        const sheet = page.locator('dialog.sheet[open]');
+        await expect(sheet).toBeVisible();
+        const sheetZ = await sheet.evaluate((el) => Number(getComputedStyle(el).zIndex));
+        expect(sheetZ).toBe(tokens.sheet);
+      });
+    }
+  }
+
+  test('AC3: offenes Sheet samt Backdrop liegt über Nav und FAB', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+    await fab.click();
+    await expect(page.locator('dialog.sheet[open]')).toBeVisible();
+
+    const navBox = (await page.locator('.nav').boundingBox())!;
+    const fabBox = (await fab.boundingBox())!;
+
+    const [navUnderSheet, fabUnderSheet] = await Promise.all([
+      page.evaluate(
+        ([x, y]) => document.elementFromPoint(x, y)?.closest('dialog.sheet') != null,
+        [navBox.x + navBox.width / 2, navBox.y + navBox.height / 2] as const,
+      ),
+      page.evaluate(
+        ([x, y]) => document.elementFromPoint(x, y)?.closest('dialog.sheet') != null,
+        [fabBox.x + fabBox.width / 2, fabBox.y + fabBox.height / 2] as const,
+      ),
+    ]);
+
+    expect(navUnderSheet, 'Nav sticht durch das offene Sheet').toBe(true);
+    expect(fabUnderSheet, 'FAB sticht durch das offene Sheet').toBe(true);
+  });
+
+  test('AC4: ein Toast bleibt hinter einem offenen Sheet', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/aufgaben');
+
+    // FAB first, while it's still free — an error toast would otherwise cover it,
+    // and AC4 is about the sheet/toast order, not the FAB.
+    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+    await fab.click();
+    await expect(page.locator('dialog.sheet[open]')).toBeVisible();
+
+    // A real sticky error toast, same trigger as tests/toast.spec.ts's own helper:
+    // five failed pushes in a row cross SYNC_ERROR_THRESHOLD and surface it via
+    // sync-status.tsx — not a fabricated DOM node.
+    await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
+    await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Bleibt hängen' } }),
+    );
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
+
+    const toast = page.locator('.toast--error');
+    await expect(toast).toBeVisible();
+    const toastBox = (await toast.boundingBox())!;
+
+    const toastUnderSheet = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest('dialog.sheet') != null,
+      [toastBox.x + toastBox.width / 2, toastBox.y + toastBox.height / 2] as const,
+    );
+
+    expect(toastUnderSheet, 'Sheet liegt nicht über dem Toast, obwohl beide offen sind').toBe(true);
+  });
+});

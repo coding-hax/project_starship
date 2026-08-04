@@ -75,6 +75,21 @@
 
   /* Einstellungen (ADR-0006): multiplies body text size, default = unscaled. */
   --font-scale: 1;
+
+  /* --- z-layers (issue #510, prompted by #508) ----------------------------
+     One named scale for everything that floats, so "sits above / below" is a
+     design-system decision instead of an accident of DOM order. Steps of 10
+     leave room to slot a layer in later without renumbering everyone above it.
+     Local `z-index: 1` inside a component that never leaves its own stacking
+     context (e.g. a lifted drag row, a segmented-control indicator) is NOT on
+     this scale — it stays a raw value with a comment marking it as such. */
+  --z-nav: 10; /* bottom nav / sidebar — lifted above page content (#508) */
+  --z-fab: 20; /* floating action button — above the nav it sits over */
+  --z-toast: 30; /* toast host — transient, briefly covers the FAB */
+  --z-drag: 40; /* drag caption — above a lingering undo toast during a drag */
+  --z-sheet: 50; /* modal sheet + backdrop — highest named layer; the actual
+     "above everything" guarantee comes from `dialog.showModal()`'s top layer,
+     this token only documents and orders it against future top-layer siblings */
 }
 
 /*
