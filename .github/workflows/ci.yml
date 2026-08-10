@@ -59,6 +59,8 @@ jobs:
       - run: bash scripts/tests/test-integrity.test.sh
       - run: bash scripts/check-codemap.sh
       - run: bash scripts/tests/codemap.test.sh
+      - run: bash scripts/check-design-tokens.sh
+      - run: bash scripts/tests/design-tokens.test.sh
       - run: git fetch origin main
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh

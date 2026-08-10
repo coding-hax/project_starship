@@ -18,6 +18,9 @@
   --text-muted: oklch(52% 0.015 60);
   --border: oklch(90% 0.012 75);
   --border-strong: oklch(70% 0.015 75);
+  /* Deutlich schwächer als --border: Raster, Achsen, Trennlinien — nie
+     bedeutungstragende Kanten, die bleiben --border vorbehalten (issue #591). */
+  --border-faint: oklch(95% 0.008 75);
 
   /* --- area colours: they carry the orientation --------------------------- */
   --area-tasks: oklch(70% 0.17 42); /* coral / mango — the app's primary */
@@ -76,6 +79,23 @@
   /* Einstellungen (ADR-0006): multiplies body text size, default = unscaled. */
   --font-scale: 1;
 
+  /* --- typography: role names, not sizes (issue #591) ---------------------
+     A component reaches for --text-body or --text-meta, never --text-1/2/3 —
+     the role name forces the decision at the call site instead of picking a
+     size and hoping it reads as the right hierarchy. See docs/DESIGN_SYSTEM.md,
+     "Komposition". */
+  --text-title: 32px;
+  --text-section: 20px;
+  --text-body: 16px;
+  --text-secondary: 14px;
+  --text-meta: 12px;
+
+  --weight-normal: 400;
+  --weight-emphasis: 600;
+
+  --leading-heading: 1.2;
+  --leading-body: 1.5;
+
   /* --- z-layers (issue #510, prompted by #508) ----------------------------
      One named scale for everything that floats, so "sits above / below" is a
      design-system decision instead of an accident of DOM order. Steps of 10
@@ -110,6 +130,7 @@
     --text-muted: oklch(70% 0.012 75);
     --border: oklch(33% 0.014 60);
     --border-strong: oklch(55% 0.016 60);
+    --border-faint: oklch(28% 0.012 60);
 
     /* Lifted and slightly desaturated: on a dark ground the same chroma reads as neon. */
     --area-tasks: oklch(75% 0.15 42);
@@ -142,6 +163,7 @@
   --text-muted: oklch(70% 0.012 75);
   --border: oklch(33% 0.014 60);
   --border-strong: oklch(55% 0.016 60);
+  --border-faint: oklch(28% 0.012 60);
 
   --area-tasks: oklch(75% 0.15 42);
   --area-events: oklch(72% 0.1 195);

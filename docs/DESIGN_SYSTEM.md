@@ -51,6 +51,35 @@ Dark Mode ist keine Nachrüstung: jedes Token existiert in beiden Modi von Anfan
 - Skala: 12 / 14 / 16 / 20 / 24 / 32. Fließtext 16px, nie kleiner als 14px auf Mobile.
 - Zeilenhöhe großzügig (1.5 für Text, 1.2 für Überschriften).
 
+## Komposition
+
+Typografie ist über Rollennamen tokenisiert, nicht über Größen — eine
+Aufrufstelle greift zu `--text-body`, nie zu `--text-1` (`src/ui/tokens.css`,
+issue #591):
+
+| Token | Größe | Rolle |
+|---|---|---|
+| `--text-title` | 32px | Seitentitel |
+| `--text-section` | 20px | Abschnittsüberschrift |
+| `--text-body` | 16px | Fließtext |
+| `--text-secondary` | 14px | Sekundärtext, Labels |
+| `--text-meta` | 12px | Metadaten (Zeitstempel, Zähler) |
+
+Dazu `--weight-normal` (400) / `--weight-emphasis` (600) und je eine
+Zeilenhöhe: `--leading-heading` (1.2) für Überschriften, `--leading-body`
+(1.5) für Fließtext.
+
+**Struktur ist immer leiser als Inhalt.** Ein Raster, eine Achse, eine
+Trennlinie transportiert keine Bedeutung — sie ordnet nur. Solche Elemente
+nehmen `--border-faint`, deutlich schwächer als `--border`. `--border` bleibt
+Kanten vorbehalten, die selbst etwas bedeuten (eine Karte, ein aktiver
+Zustand, eine Kategoriefarbe).
+
+**Eine Betonung je Fläche.** Pro Karte oder Zeile trägt genau ein Element
+`--weight-emphasis` oder eine Akzentfarbe — nie beides gleichzeitig auf
+mehreren Elementen derselben Fläche. Konkurrierende Betonungen heben sich
+gegenseitig auf; die Hierarchie geht verloren, die Fläche wird laut.
+
 ## Form & Raum
 
 - Radien: **großzügig** (12–16px für Karten, 999px für Pills). Nichts wirkt kantig.
