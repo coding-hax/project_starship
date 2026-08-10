@@ -123,7 +123,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
   darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
-- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände
+- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen
+  Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar,
+  öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten, schreibt über `mutate()`; bei einer Serien-Instanz öffnet Speichern/Löschen erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
