@@ -20,7 +20,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .task-editor__notes {
@@ -41,7 +41,7 @@
   flex-direction: column;
   gap: var(--space-2);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .task-editor__priority {
@@ -55,7 +55,7 @@
 .task-editor__priority legend {
   width: 100%;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   margin-bottom: var(--space-2);
 }
 
@@ -75,7 +75,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }

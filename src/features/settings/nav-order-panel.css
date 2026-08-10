@@ -13,7 +13,7 @@
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--text-body);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }

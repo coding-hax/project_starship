@@ -11,7 +11,7 @@
   border: 1px solid var(--border);
   background: var(--surface-raised);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .task-list__empty {
@@ -193,7 +193,7 @@
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: var(--shadow-raised);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   text-align: center;
   pointer-events: none;
 }
@@ -237,7 +237,7 @@
 }
 
 .task-list__progress {
-  font-size: 14px;
+  font-size: var(--text-secondary);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -316,7 +316,7 @@
 }
 
 .task-list__due {
-  font-size: 14px;
+  font-size: var(--text-secondary);
   color: var(--text-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -327,5 +327,5 @@
 
 .task-list__due--overdue {
   color: var(--danger);
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
 }
