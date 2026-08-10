@@ -12,7 +12,7 @@
 .recurrence-scope-sheet__question {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .recurrence-scope-sheet__options {
@@ -29,7 +29,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   text-align: start;
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
@@ -47,6 +47,6 @@
   background: none;
   color: var(--text-muted);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
 }
