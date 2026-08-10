@@ -1,13 +1,11 @@
 /**
- * Pure timeline-layout logic (issue #553, S2 of #473; all-day band issue #555,
- * S4; overview countdown issue #559, S8) — no DB, no DOM, so it's Vitest-testable
- * like habits/due-today.ts and schedule-rules.ts.
+ * Pure agenda/calendar-day logic (issue #553, S2 of #473; agenda issue #597;
+ * all-day band issue #555, S4; overview countdown issue #559, S8) — no DB, no
+ * DOM, so it's Vitest-testable like habits/due-today.ts and schedule-rules.ts.
  */
 
 import { berlinNow } from '@/push/schedule';
 import type { EventView } from './use-events';
-
-const MINUTES_PER_DAY = 1440;
 
 /** Berlin-local minutes since midnight for an ISO instant — thin wrapper, no new TZ logic. */
 export function berlinMinutesOfDay(instant: string): number {
