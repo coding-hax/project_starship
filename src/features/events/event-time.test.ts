@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  agendaForDay,
   allDayEventsForDay,
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
   formatCountdown,
-  layoutForDay,
   monthDaysFor,
-  nowLinePct,
+  nextInAgenda,
   upcomingEventsToday,
   weekDaysFor,
 } from './event-time';
@@ -45,10 +45,10 @@ describe('berlinMinutesOfDay', () => {
   });
 });
 
-describe('layoutForDay', () => {
+describe('agendaForDay', () => {
   const DAY = '2026-07-18'; // CEST, Berlin = UTC+2
 
-  it('places a same-day event at its Berlin start/end minute', () => {
+  it('keeps a same-day event', () => {
     const events = [
       event({
         // 09:00-10:00 Berlin.
@@ -57,16 +57,16 @@ describe('layoutForDay', () => {
       }),
     ];
 
-    const [layout] = layoutForDay(events, DAY);
+    const [item] = agendaForDay(events, DAY);
 
-    expect(layout.topPct).toBeCloseTo((9 * 60 * 100) / 1440);
-    expect(layout.heightPct).toBeCloseTo((60 * 100) / 1440);
+    expect(item.startsAt).toBe(events[0].startsAt);
+    expect(item.endsAt).toBe(events[0].endsAt);
   });
 
   it('filters out all-day events', () => {
     const events = [event({ allDay: true, startDate: DAY, endDate: DAY, startsAt: null, endsAt: null })];
 
-    expect(layoutForDay(events, DAY)).toEqual([]);
+    expect(agendaForDay(events, DAY)).toEqual([]);
   });
 
   it('filters out an event that never touches the requested day', () => {
@@ -77,10 +77,10 @@ describe('layoutForDay', () => {
       }),
     ];
 
-    expect(layoutForDay(events, DAY)).toEqual([]);
+    expect(agendaForDay(events, DAY)).toEqual([]);
   });
 
-  it('clamps an event that starts the previous day to the day\'s top edge', () => {
+  it('includes an event that starts the previous day and ends on the requested day', () => {
     const events = [
       event({
         // 23:30 Berlin the day before -> 00:30 Berlin on DAY.
@@ -89,51 +89,81 @@ describe('layoutForDay', () => {
       }),
     ];
 
-    const [layout] = layoutForDay(events, DAY);
-
-    expect(layout.topPct).toBe(0);
+    expect(agendaForDay(events, DAY)).toHaveLength(1);
   });
 
-  it('clamps an event that ends the next day to the day\'s bottom edge', () => {
+  it('sorts chronologically regardless of input order', () => {
+    const later = event({
+      id: 'evt-later',
+      startsAt: iso(Date.UTC(2026, 6, 18, 13, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 14, 0)),
+    });
+    const earlier = event({
+      id: 'evt-earlier',
+      startsAt: iso(Date.UTC(2026, 6, 18, 7, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 8, 0)),
+    });
+
+    expect(agendaForDay([later, earlier], DAY).map((item) => item.id)).toEqual(['evt-earlier', 'evt-later']);
+  });
+
+  it('flags two events whose intervals overlap', () => {
     const events = [
       event({
-        // 22:00 Berlin on DAY -> 00:30 Berlin the next day (2.5h, well above the tap-target floor).
-        startsAt: iso(Date.UTC(2026, 6, 18, 20, 0)),
-        endsAt: iso(Date.UTC(2026, 6, 18, 22, 30)),
+        id: 'evt-a',
+        startsAt: iso(Date.UTC(2026, 6, 18, 9, 0)),
+        endsAt: iso(Date.UTC(2026, 6, 18, 10, 0)),
+      }),
+      event({
+        id: 'evt-b',
+        startsAt: iso(Date.UTC(2026, 6, 18, 9, 30)),
+        endsAt: iso(Date.UTC(2026, 6, 18, 10, 30)),
       }),
     ];
 
-    const [layout] = layoutForDay(events, DAY);
-
-    expect(layout.topPct + layout.heightPct).toBeCloseTo(100);
+    expect(agendaForDay(events, DAY).every((item) => item.overlaps)).toBe(true);
   });
 
-  it('floors the height of a very short event to the tap-target minimum', () => {
+  it('does not flag two disjoint events', () => {
     const events = [
       event({
-        // 09:00-09:05 Berlin — 5 minutes, far under the 44-minute floor.
-        startsAt: iso(Date.UTC(2026, 6, 18, 7, 0)),
-        endsAt: iso(Date.UTC(2026, 6, 18, 7, 5)),
+        id: 'evt-a',
+        startsAt: iso(Date.UTC(2026, 6, 18, 9, 0)),
+        endsAt: iso(Date.UTC(2026, 6, 18, 10, 0)),
+      }),
+      event({
+        id: 'evt-b',
+        startsAt: iso(Date.UTC(2026, 6, 18, 11, 0)),
+        endsAt: iso(Date.UTC(2026, 6, 18, 12, 0)),
       }),
     ];
 
-    const [layout] = layoutForDay(events, DAY);
-
-    expect(layout.heightPct).toBeCloseTo((44 * 100) / 1440);
+    expect(agendaForDay(events, DAY).some((item) => item.overlaps)).toBe(false);
   });
 });
 
-describe('nowLinePct', () => {
-  it('sits near the bottom of the axis just before midnight (23:59 Berlin)', () => {
-    const pct = nowLinePct(new Date(iso(Date.UTC(2026, 6, 18, 21, 59))));
+describe('nextInAgenda', () => {
+  const item = (id: string, endsAt: string) => ({ id, endsAt });
 
-    expect(pct).toBeCloseTo((1439 * 100) / 1440);
+  it('picks the first item on today that has not ended yet', () => {
+    const items = [item('a', iso(Date.UTC(2026, 6, 18, 13, 0))), item('b', iso(Date.UTC(2026, 6, 18, 15, 0)))];
+    const now = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+
+    expect(nextInAgenda(items, now, true)?.id).toBe('a');
   });
 
-  it('sits near the top of the axis just after midnight (00:01 Berlin)', () => {
-    const pct = nowLinePct(new Date(iso(Date.UTC(2026, 6, 18, 22, 1))));
+  it('skips an already-ended item on today', () => {
+    const items = [item('a', iso(Date.UTC(2026, 6, 18, 11, 0))), item('b', iso(Date.UTC(2026, 6, 18, 15, 0)))];
+    const now = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
 
-    expect(pct).toBeCloseTo(100 / 1440);
+    expect(nextInAgenda(items, now, true)?.id).toBe('b');
+  });
+
+  it('picks the first item on a day that is not today', () => {
+    const items = [item('a', iso(Date.UTC(2026, 6, 19, 9, 0))), item('b', iso(Date.UTC(2026, 6, 19, 15, 0)))];
+    const now = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+
+    expect(nextInAgenda(items, now, false)?.id).toBe('a');
   });
 });
 
