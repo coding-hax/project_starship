@@ -95,6 +95,10 @@
 
   --leading-heading: 1.2;
   --leading-body: 1.5;
+  /* Single-glyph icon/symbol centering (FAB "+", toast dismiss "×") — not a
+     prose line-height, so neither --leading-heading nor --leading-body fits;
+     forcing one of those would shift the glyph (issue #592). */
+  --leading-tight: 1;
 
   /* --- z-layers (issue #510, prompted by #508) ----------------------------
      One named scale for everything that floats, so "sits above / below" is a
