@@ -339,12 +339,6 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
     browser,
   }) => {
     await registerPasskey(page);
-    page.on('request', (req) => {
-      if (req.url().includes('/api/sync/push')) console.log('DEBUG A push req', req.postData());
-    });
-    page.on('response', async (res) => {
-      if (res.url().includes('/api/sync/push')) console.log('DEBUG A push res', res.status(), await res.text());
-    });
 
     const rowId = await page.evaluate(async () => {
       const id = await window.__starship.mutate({
@@ -355,36 +349,21 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
       await window.__starship.sync();
       return id;
     });
-    console.log('DEBUG rowId returned', rowId);
-
-    const afterCreate = await withDb((c) => c.query('SELECT id, title, sync_seq FROM tasks'));
-    console.log('DEBUG all tasks after A create+sync', JSON.stringify(afterCreate.rows));
 
     const devicePage = await openSecondDevice(browser, page);
     // Pull the original row first, so device B's edit carries the correct baseSeq.
-    const pullResult = await devicePage.evaluate(async () => {
-      const res = await fetch('/api/sync/pull?since=0');
-      return { status: res.status, body: await res.text() };
+    await devicePage.evaluate(async () => {
+      await fetch('/api/sync/pull?since=0');
     });
-    console.log('DEBUG B raw pull', JSON.stringify(pullResult));
     await devicePage.evaluate(() => window.__starship.sync());
 
     const warnings: string[] = [];
     devicePage.on('console', (msg) => {
       if (msg.type() === 'warning') warnings.push(msg.text());
     });
-    devicePage.on('request', (req) => {
-      if (req.url().includes('/api/sync/push')) console.log('DEBUG push req', req.postData());
-    });
-    devicePage.on('response', async (res) => {
-      if (res.url().includes('/api/sync/push')) console.log('DEBUG push res', await res.text());
-    });
 
     // A arrives first, with a normal clock.
     await editTaskOnDevice(page, rowId, 'Von A, aktuelle Uhr');
-
-    console.log('DEBUG B records before edit', JSON.stringify(await devicePage.evaluate(() => (window.__starship as unknown as { debugRecords: () => unknown }).debugRecords())));
-    console.log('DEBUG B meta before edit', JSON.stringify(await devicePage.evaluate(() => (window.__starship as unknown as { debugMeta: () => unknown }).debugMeta())));
 
     // B arrives second, but its clock is skewed ten years into the past — under
     // the old updated_at comparison this write would have been rejected as
@@ -463,9 +442,6 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
     browser,
   }) => {
     await registerPasskey(page);
-    page.on('response', async (res) => {
-      if (res.url().includes('/api/sync/push')) console.log('DEBUG push res (page)', await res.text());
-    });
 
     // Case 1: delete, then restore — undo wins because it arrives last.
     const deletedRowId = await page.evaluate(async () => {
