@@ -77,6 +77,11 @@ Ablauf:
    'pnpm lint', 'pnpm typecheck', 'pnpm test' (zusammen unter einer Minute) —
    und behebe Rot dort selbst. Kein voller 'pnpm e2e' lokal, das kostet zu
    viel vom Zeitfenster und die volle Suite läuft ohnehin in CI.
+   Brauchst du 'pnpm install': **nur** mit '--dir <Haupt-Checkout>', **nie**
+   mit cwd in einem Worktree — der Worktree-'node_modules'-Symlink zeigt auf
+   den Haupt-Checkout, ein Install mit cwd im Worktree schreibt dessen
+   Top-Level-Links relativ zum Worktree und die bleiben nach 'git worktree
+   remove' tot zurück (#606).
    Unmittelbar vor dem finalen Push ziehst du 'main' proaktiv nach, damit
    der PR nicht schon als „behind" entsteht: erst sicherstellen, dass der
    Arbeitsbaum sauber ist (alles committet — niemals in einen unsauberen
