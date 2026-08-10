@@ -961,3 +961,26 @@ test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest kei
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Fund #579: SSR/Client-Hydration-Mismatch bei "today"                       */
+/* -------------------------------------------------------------------------- */
+
+test('kein Hydration-Mismatch beim Laden von /kalender, obwohl nur die Browser-Uhr gefaelscht ist (Fund #579)', async ({
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(err.message));
+
+  // beforeEach's goto happened before the listeners above were registered —
+  // reload for a fresh SSR+hydration cycle with the fake clock still installed.
+  await page.reload();
+
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
+
+  expect(consoleErrors.filter((text) => /hydrat|did.?n.?t match/i.test(text))).toEqual([]);
+});
