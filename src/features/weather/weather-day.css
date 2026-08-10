@@ -38,7 +38,7 @@
   /* Ohne das griffe die globale h1-Regel (margin-block-end: var(--space-6)) und
      schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem Zurück-Link. */
   margin: 0;
-  font-size: 17px;
+  font-size: var(--text-body);
   text-align: right;
 }
 
@@ -49,7 +49,7 @@
   min-height: 44px;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .weather-day__back:focus-visible {
@@ -97,13 +97,13 @@
 
 .weather-day__stat dt {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .weather-day__stat dd {
   margin: 0;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -126,19 +126,19 @@
 }
 
 .weather-day__temp-max {
-  font-size: 32px;
+  font-size: var(--text-title);
   color: var(--text);
 }
 
 .weather-day__temp-min {
-  font-size: 20px;
+  font-size: var(--text-section);
   color: var(--text-muted);
 }
 
 /* Ersetzt sichtbar den Mond, wenn der Folgetag fehlt (issue #269 AC3). */
 .weather-day__temp-fallback-label {
   align-self: center;
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -176,14 +176,14 @@
 
 .weather-day__chart-tick {
   fill: var(--text-muted);
-  font-size: 9px;
+  font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
 }
 
 .weather-day__precipitation-summary {
   margin: 0 0 var(--space-2);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .weather-day__precipitation-bar {
@@ -211,5 +211,5 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }

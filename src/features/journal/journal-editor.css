@@ -20,8 +20,8 @@
   align-self: flex-end;
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
 }
 
 .journal-editor__submit {
@@ -33,7 +33,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -68,13 +68,13 @@
 }
 
 .journal-editor__entry-time {
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }
 
 .journal-editor__entry-mood {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-editor__entry-delete {
@@ -96,7 +96,7 @@
 .journal-editor__entry-tags {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-editor__text,
@@ -108,7 +108,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-editor__text {
@@ -138,7 +138,7 @@
 .journal-orphaned-key__hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-orphaned-key__input {
@@ -149,7 +149,7 @@
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-orphaned-key__input:focus {
@@ -160,7 +160,7 @@
 .journal-orphaned-key__message {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-orphaned-key__submit {
@@ -172,7 +172,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -189,7 +189,7 @@
   background: none;
   color: var(--accent);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-secondary);
   cursor: pointer;
   text-decoration: underline;
 }

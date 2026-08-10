@@ -59,7 +59,7 @@
 }
 
 .habit-today__week-hint {
-  font-size: 13px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -73,7 +73,7 @@
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-secondary);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -89,8 +89,8 @@
 
 .habit-today__streak {
   flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
 }
 
 .habit-today__checkbox-wrap {

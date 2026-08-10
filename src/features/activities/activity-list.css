@@ -1,6 +1,6 @@
 .activity-list__recap {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   margin: 0 0 var(--space-4);
 }
 
@@ -20,7 +20,7 @@
    caption hangs under (issue #230 AC4). */
 .activity-list__caption {
   margin: var(--space-4) 0 0;
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }

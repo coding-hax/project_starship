@@ -26,7 +26,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-search__input:focus {
@@ -43,7 +43,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -95,7 +95,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-search__date-range {
@@ -114,13 +114,13 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-search__empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-search__results {
@@ -161,18 +161,18 @@
 }
 
 .journal-search__result-date {
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
 }
 
 .journal-search__result-mood {
-  font-weight: 400;
+  font-weight: var(--weight-normal);
   color: var(--text-muted);
 }
 
 .journal-search__result-snippet {
   max-width: 100%;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   white-space: pre-wrap;
 }
 
@@ -184,7 +184,7 @@
   background: none;
   color: var(--accent);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-secondary);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }

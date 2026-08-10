@@ -25,13 +25,16 @@ test.describe('Design-System: Heading↔Content-Abstand', () => {
 });
 
 test.describe('Design-System: FAB-Glyphengröße', () => {
-  test('FAB-Icon hat 34px font-size (AC1)', async ({ page }) => {
+  test('FAB-Icon folgt --text-title (AC1)', async ({ page }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
 
     const fabIcon = page.locator('.fab__icon');
     const fontSize = await fabIcon.evaluate((el) => getComputedStyle(el).fontSize);
-    expect(fontSize).toBe('34px');
+    const textTitle = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
+    );
+    expect(fontSize).toBe(textTitle);
   });
 
   test('FAB-Button ist exakt 56×56px (AC2)', async ({ page }) => {

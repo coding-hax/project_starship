@@ -20,15 +20,15 @@
 
 .journal-gate__title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
   color: var(--text);
 }
 
 .journal-gate__hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-gate__input {
@@ -39,7 +39,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-gate__input:focus {
@@ -50,7 +50,7 @@
 .journal-gate__message {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-gate__submit {
@@ -61,7 +61,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -79,7 +79,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--border);
   font-family: ui-monospace, monospace;
-  font-size: 18px;
+  font-size: var(--text-body);
   letter-spacing: 0.08em;
   user-select: all;
 }
@@ -93,7 +93,7 @@
   background: none;
   color: var(--accent);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-secondary);
   cursor: pointer;
   text-decoration: underline;
 }

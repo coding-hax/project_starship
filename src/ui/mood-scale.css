@@ -19,7 +19,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
 }
 

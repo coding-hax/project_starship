@@ -34,8 +34,8 @@
 }
 
 .fab__icon {
-  font-size: 34px;
-  line-height: 1;
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
 }
 
 @media (min-width: 768px) {

@@ -74,7 +74,7 @@
 
 .toast__message {
   flex: 1;
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .toast__action {
@@ -85,7 +85,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -100,8 +100,8 @@
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 20px;
-  line-height: 1;
+  font-size: var(--text-section);
+  line-height: var(--leading-tight);
   cursor: pointer;
 }
 

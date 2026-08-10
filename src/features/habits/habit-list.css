@@ -92,7 +92,7 @@
 }
 
 .habit-list__schedule {
-  font-size: 14px;
+  font-size: var(--text-secondary);
   color: var(--text-muted);
 }
 

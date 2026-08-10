@@ -8,7 +8,7 @@
 
 .export__hint {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .export__button {
@@ -19,7 +19,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -35,5 +35,5 @@
 
 .export__error {
   color: var(--danger);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }

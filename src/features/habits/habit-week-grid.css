@@ -19,7 +19,7 @@
   margin: 0;
   padding: 0;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -50,7 +50,7 @@
   border-radius: var(--radius-card);
   background: transparent;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   cursor: pointer;
   /* Only background/opacity move here — no layout properties (same rule as
      habit-today.css's check-off animation, AC4/reduced-motion). */
