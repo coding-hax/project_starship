@@ -54,6 +54,12 @@ dialog.sheet:not([open])::backdrop {
 .sheet__content {
   width: 100%;
   max-width: 480px;
+  /* Caps the card at the dialog's own height (never the reduced by
+     --keyboard-inset) so its top edge can never be pushed above y=0 — the
+     padding-bottom below already reserves the keyboard's height, so a card
+     capped at 100% naturally ends its visible content right above it. */
+  max-height: 100%;
+  overflow-y: auto;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
   background: var(--surface);
   box-shadow: var(--shadow-raised);

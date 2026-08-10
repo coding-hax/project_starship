@@ -1,5 +1,31 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
+
+async function shrinkViewportForKeyboard(page: Page, px = 300) {
+  await page.evaluate((shrinkBy) => {
+    const vv = window.visualViewport!;
+    const shrunk = window.innerHeight - shrinkBy;
+    Object.defineProperty(vv, 'height', { configurable: true, get: () => shrunk });
+    Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 0 });
+    vv.dispatchEvent(new Event('resize'));
+  }, px);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
+      ),
+    )
+    .toBe(`${px}px`);
+}
+
+/** `boundingBox().y >= 0` and its bottom edge above where the keyboard starts. */
+async function expectVisibleAboveKeyboard(page: Page, locator: Locator, keyboardPx: number) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  const innerHeight = await page.evaluate(() => window.innerHeight);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(innerHeight - keyboardPx);
+}
 
 /**
  * Keyboard-safe layout (#106). Headless Chromium never shows a real software
@@ -140,5 +166,130 @@ test.describe('Rhythmus-Auswahl behält Fokus bei Zeigergeräten (#138)', () => 
     const after = await sheetContent.boundingBox();
     expect(after).not.toBeNull();
     expect(round(after!)).toEqual(round(before!));
+  });
+});
+
+/**
+ * #594: `.sheet__content` grows upward by `--keyboard-inset` (sheet.css) but
+ * had no `max-height`/`overflow-y` — a card taller than the visible viewport
+ * pushed its top, and with it the focused field, off the top of the screen
+ * with nothing to scroll it back into view.
+ */
+test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => {
+  test.beforeEach(async () => {
+    await resetAppData();
+  });
+
+  test('Gewohnheits-Sheet: Namensfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+    await expect(nameField).toBeFocused();
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+
+    await shrinkViewportForKeyboard(page);
+
+    await expectVisibleAboveKeyboard(page, nameField, 300);
+    const contentBox = await sheetContent.boundingBox();
+    expect(contentBox).not.toBeNull();
+    expect(contentBox!.y).toBeGreaterThanOrEqual(0);
+  });
+
+  test('Termin-Sheet: Titelfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/kalender');
+    await page.getByRole('button', { name: 'Termin erfassen' }).click();
+
+    const titleField = page.getByLabel('Titel');
+    await expect(titleField).toBeFocused();
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+
+    await shrinkViewportForKeyboard(page);
+
+    await expectVisibleAboveKeyboard(page, titleField, 300);
+    const contentBox = await sheetContent.boundingBox();
+    expect(contentBox).not.toBeNull();
+    expect(contentBox!.y).toBeGreaterThanOrEqual(0);
+  });
+
+  test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    // "Wöchentlich" reveals the 1–6× target picker (issue #509) — tall enough
+    // together with the six schedule radios and four colour options to exceed
+    // the ~512px left once a 300px keyboard covers the bottom of a 812px screen.
+    await page.getByRole('radio', { name: 'Wöchentlich' }).click();
+
+    await shrinkViewportForKeyboard(page);
+
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+    const { scrollHeight, clientHeight } = await sheetContent.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(scrollHeight).toBeGreaterThan(clientHeight);
+
+    const submitButton = page.getByRole('button', { name: 'Anlegen' });
+    await submitButton.scrollIntoViewIfNeeded();
+    await expect(submitButton).toBeInViewport();
+
+    // Scrolling back to the top brings the name field back into view — the
+    // top of the content is not stranded once you have scrolled down.
+    await sheetContent.evaluate((el) => el.scrollTo({ top: 0 }));
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+    await expectVisibleAboveKeyboard(page, nameField, 300);
+  });
+
+  test('ohne Tastatur sitzt das Gewohnheits-Sheet weiterhin bündig am unteren Rand', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+    await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+    const box = await sheetContent.boundingBox();
+    expect(box).not.toBeNull();
+    const innerHeight = await page.evaluate(() => window.innerHeight);
+    expect(Math.round(box!.y + box!.height)).toBe(innerHeight);
+  });
+
+  test('ohne Tastatur sitzt das Termin-Sheet weiterhin bündig am unteren Rand', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/kalender');
+    await page.getByRole('button', { name: 'Termin erfassen' }).click();
+
+    const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+    await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+    const box = await sheetContent.boundingBox();
+    expect(box).not.toBeNull();
+    const innerHeight = await page.evaluate(() => window.innerHeight);
+    expect(Math.round(box!.y + box!.height)).toBe(innerHeight);
+  });
+
+  test('prefers-reduced-motion: Sichtbarkeitsgrenzen gelten bei offener Tastatur unverändert', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await registerPasskey(page);
+    await page.goto('/gewohnheiten');
+    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+    await expect(nameField).toBeFocused();
+
+    await shrinkViewportForKeyboard(page);
+
+    await expectVisibleAboveKeyboard(page, nameField, 300);
   });
 });
