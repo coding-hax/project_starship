@@ -6,8 +6,8 @@ Zustandsmaschine des ganzen Setups:
 | Label            | Bedeutung                                                      | Wer setzt es |
 | ---------------- | -------------------------------------------------------------- | ------------ |
 | `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-answer`. | **Du**       |
-| `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Auslagern eines Fund-Tickets) |
-| `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**; der Planer-Lauf am Ende eines Fund-Ticket-Durchlaufs (#397) |
+| `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Aufteilen in Kind-Tickets) |
+| `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**; der Planer-Lauf am Ende eines Kind-Ticket-Durchlaufs (#439) |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins.           | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es in der Queue steht oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
@@ -23,23 +23,26 @@ Der Bau fordert `tests-exempt` per Kommentar an (Selbst-Ausnahme wäre derselbe
 Interessenkonflikt wie bei Tests); der Planer benennt im Plan, welche Änderung
 testlos gerechtfertigt ist, du setzt das Label.
 
-**Ein beim Auslagern eines Fund-Tickets angelegtes Ticket** (z. B. #349/#351,
-während #325 gefunden) trägt seit #397 im selben Schritt **`plan`** — nie
-`ready`. Das Fund-Ticket läuft damit ohne menschliches Zutun durch: Fund →
-`plan` → Opus plant → `ready` (gesetzt vom Planer-Lauf am Ende) → gebaut. Das
-`ready`-Gate greift für diesen Weg nicht mehr — Selbstheilung bei roten Tests
-schlägt hier bewusst die Freigabekontrolle (Owner-Entscheidung, 30.07.26).
-Weil `plan` ein Steuerlabel ist, taucht das Ticket **nicht** im aggregierten
-Status-Issue unter „🏷️ Untriagiert" (#357) auf. Weiterhin gesperrt: fremde
-Tickets labeln, die Queue #92 umschreiben (#265) oder untriagierte
-Fremdtickets automatisch labeln. Titelform und Pflichtsuche vor dem Anlegen:
-„Fundschlüssel & Pflichtsuche" in `docs/workflow/fundschluessel.md`.
+**Der Runner legt keine Fund-Tickets mehr an (#588).** Bis dahin lagerte ein
+Lauf einen Fund neben der Spur (roter Test, Auffälligkeit) in ein eigenes
+Ticket aus, das über einen Fundschlüssel `Fund: <pfad>:<zeile>` dedupliziert
+und mit `plan` sofort in die Selbstheilung geschickt wurde (#397). Der Apparat
+hat die Duplikate nicht verhindert — zum selben Fund entstanden trotzdem
+mehrere Tickets, und die Triage musste sie hinterher von Hand gruppieren.
+Ein Fund landet jetzt als Zeile unter „## Funde nebenbei" im
+Fortschrittskommentar des laufenden Tickets. Bestehende Tickets mit einer
+`Fund:`-Zeile bleiben ganz normale Tickets; die Zeile ist nur noch Text.
 
-Seit #439 gilt dieselbe Regel für **vom Planer beim Aufteilen eines Tickets
-angelegte Kinder-Tickets** (z. B. wenn der Plan das Ticket in T1/T2/T3
-zerlegt): auch sie tragen im selben Schritt `plan` und laufen denselben Weg
-`plan` → Opus plant → `ready` → gebaut, statt labellos im untriagierten
-Eingang liegenzubleiben (Owner-Entscheidung „Option A", 02.08.26).
+**Vom Planer beim Aufteilen eines Tickets angelegte Kinder-Tickets** (z. B.
+wenn der Plan das Ticket in T1/T2/T3 zerlegt) tragen seit #439 im selben
+Schritt **`plan`** — nie `ready`. Sie laufen damit den Weg `plan` → Opus
+plant → `ready` (gesetzt vom Planer-Lauf am Ende) → gebaut, statt labellos im
+untriagierten Eingang liegenzubleiben (Owner-Entscheidung „Option A",
+02.08.26). Weil `plan` ein Steuerlabel ist, taucht so ein Ticket **nicht** im
+aggregierten Status-Issue unter „🏷️ Untriagiert" (#357) auf. Das ist seit
+#588 die einzige Stelle, an der ein Lauf überhaupt noch ein Ticket anlegt.
+Weiterhin gesperrt: fremde Tickets labeln, die Queue #92 umschreiben (#265)
+oder untriagierte Fremdtickets automatisch labeln.
 
 **Im Fallback** (leeres/fehlendes Queue-Issue oder Ticket nicht gelistet) nimmt
 der Runner nur Tickets mit `ready`, die **nicht** `needs-answer` tragen — ein

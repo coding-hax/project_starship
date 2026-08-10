@@ -20,90 +20,43 @@ auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert
 die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
 nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 
-// #366: Konstante Titel-/Body-Form, damit docs/workflow/fundschluessel.md und
-// der Prompt nie auseinanderlaufen -- ein Fund-Ticket wird nach dem Testort benannt, nicht
-// nach der Hypothese, und traegt den Schluessel maschinenlesbar im Body.
-export const FIND_TITLE_FORM = 'fund(<pfad>:<zeile>): …';
-export const FIND_BODY_FORM = 'Fund: <pfad>:<zeile>';
+// #588: Der Runner legt keine Fund-Tickets mehr an.
+//
+// Bis hierher stand an dieser Stelle ein ueber #366/#397 und mehrere Vorfaelle
+// gewachsenes Regelwerk (~40 Zeilen im Prompt) plus ein Snapshot-Apparat in
+// queue.ts/round.ts, der die bereits bekannten Fund-Tickets in den Auftragstext
+// rendern liess, damit das Dedupe mechanisch greift. Der Aufwand hat die
+// Tickets nicht verhindert: zum selben Fund entstanden trotzdem mehrere, weil
+// die Pflichtsuche nur greift, wenn der Lauf daran denkt -- und die Triage
+// musste sie hinterher von Hand nach Datei:Zeile gruppieren.
+//
+// Ein Fund ist damit nicht mehr wertlos, er wird nur nicht mehr zum Ticket:
+// er landet als Zeile im Fortschrittskommentar des Tickets, an dem der Lauf
+// ohnehin arbeitet. Das ist derselbe Ort, den die alte Fassung schon fuer
+// unbelegte Funde vorsah -- jetzt ist er der einzige.
+const NO_FIND_TICKETS_RULE = `
 
-export interface FoundTicket {
-  number: number;
-  keys: string[];
-  inProgress: boolean;
-}
+## Funde: kein neues Ticket
 
-// AC3: die bekannten Fund-Tickets im Auftragstext -- macht Dedupe mechanisch
-// statt nur vorgeschrieben (Teil 3 aus #366, im Gegensatz zur Pflichtsuche
-// aus Teil 2, auf die sich der Lauf nur verlassen kann, wenn er daran denkt).
-// #397: der Pflichtsuche-/Label-Absatz wird IMMER gerendert -- auch beim
-// allerersten Fund, wenn der Snapshot null offene Fund-Tickets kennt. Nur die
-// Liste bekannter Tickets ("## Bekannte Fund-Tickets") bleibt bedingt, damit
-// found-key.test.sh und die #366-Assertions fuer den leeren Fall gruen bleiben.
-function foundTicketsSection(found: FoundTicket[]): string {
-  let section = `
+Du legst **keine** Fund-Tickets an. Kein \`gh issue create\` für einen roten
+Test, eine Auffälligkeit oder einen Verdacht — auch dann nicht, wenn der Fund
+echt und reproduzierbar ist.
 
-## Fund-Tickets anlegen
+Stattdessen: eine Zeile unter \`## Funde nebenbei\` im Fortschrittskommentar
+des Tickets, an dem du gerade arbeitest, mit Fundort (\`<pfad>:<zeile>\`) und
+Symptom in einem Satz. Danach arbeitest du an deinem Ticket weiter — ein Fund
+ist kein Auftrag und ändert deinen Auftrag nicht.
 
-Vor \`gh issue create\` für einen roten Test erst suchen (Dedupe):
-\`gh issue list --state all --search '"Fund: <pfad>:<zeile>"'\`. Treffer auf
-denselben Fundschlüssel → Kommentar am bestehenden Ticket statt eines neuen.
-Ein Fund-Ticket, das DIESER Lauf selbst anlegt, trägt im selben Schritt
-\`plan\` (\`gh issue create --label plan\` oder folgendes \`gh issue edit
---add-label plan\`) — nur selbst angelegte, nie fremde. Siehe
-docs/workflow/fundschluessel.md, „Fundschlüssel & Pflichtsuche".
+Unberührt bleibt, was ein Ticket ohnehin verlangt: der Fortschrittskommentar,
+der Blocker-Kommentar, der Pflichtkommentar bei sensiblen Pfaden und die Frage
+per \`needs-answer\`.`;
 
-**Ein Root-Cause, ein Ticket.** Mehrere rote Tests mit derselben vermuteten
-Ursache ergeben **ein** Ticket mit mehreren \`Fund:\`-Zeilen (je eine pro
-Testort), nicht N Tickets. Getrennte Tickets nur bei getrennten Ursachen.
-
-**Kein Fund ohne Reproduktion.** Vor dem Anlegen die zwei bekannten
-Umgebungsfallen ausschließen: 'pnpm install' ist im benutzten Arbeitsbaum
-gelaufen (fehlendes 'tsx' färbt **alle** Bash-Suiten unter
-'scripts/tests/' rot und tarnt sich als Fachfehler) und der Lauf benutzt
-'env -u STATE_DIR -u REPO_DIR' (sonst greifen die Suiten auf das echte
-'.runner/' zu statt auf ihr eigenes Testverzeichnis). Alternativ genügt ein
-CI-Beleg, dass derselbe Check dort rot ist. Ist keins von beidem erfüllt,
-entsteht **kein Ticket** — stattdessen eine Zeile im Fortschrittskommentar
-des laufenden Tickets. Das Fund-Ticket nennt im Body, wie reproduziert wurde
-(Arbeitsbaum + Kommandozeile, oder ein Link auf den roten CI-Job) — ohne
-diesen Nachweis ist es kein Fund, sondern ein Verdacht.
-
-**Ein Fund-Ticket in Arbeit wird nicht ergänzt.** Trägt das Ticket zu einem
-Fundschlüssel bereits das Label \`in-progress\`: ist es *nichts Neues*
-(derselbe Test, derselbe Fehler) — gar nichts tun, kein Kommentar,
-weitergehen. Ist es *neue Information* (ein anderer Fehler, eine zweite
-Ursache) — ein eigenes Ticket mit demselben \`Fund:\`-Schlüssel plus
-\`Nachtrag zu #X\` im Body. Ausgenommen bleiben der bauende Lauf selbst (der
-Fortschritts-, Blocker- und der Pflichtkommentar bei sensiblen Pfaden
-bleiben unverändert Pflicht) und der Mensch.
-
-**Geschwister-Vermerk.** Legt dieser Lauf mehrere Fund-Tickets an, trägt
-jedes im Body \`Geschwister: #a #b #c\` (die jeweils anderen).
-Vor dem eigentlichen Bauen die im Body des aktuellen Tickets genannten Geschwister lesen — berühren zwei davon dieselbe Datei oder denselben Test, wird das im Fortschrittskommentar benannt statt blind gebaut.`;
-
-  if (found.length > 0) {
-    const list = found
-      .map((f) => {
-        const keys = f.keys.join(', ');
-        return f.inProgress ? `#${f.number} \`${keys}\` (in Arbeit — nicht ergänzen)` : `#${f.number} \`${keys}\``;
-      })
-      .join(', ');
-    section += `
-
-## Bekannte Fund-Tickets
-
-Bereits bekannt (gegen diese zusätzlich prüfen): ${list}.`;
-  }
-
-  return section;
-}
-
-export function buildPrompt(issue: number, found: FoundTicket[] = []): string {
+export function buildPrompt(issue: number): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Arbeite an Issue #${issue} in diesem Repo.
 
-${FILE_ACCESS_RULE}${foundTicketsSection(found)}
+${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}
 
 Ablauf:
 1. Pflichtlektüre ist NUR CLAUDE.md und docs/CODEMAP.md. Nichts sonst liest du
@@ -194,14 +147,14 @@ Ablauf:
  * #283: Bis hierher gab es eine Ausnahme fuer 'protected-paths' -- der Check
  * war eine Genehmigungs-Schranke, kein Fund. Den Job gibt es nicht mehr.
  */
-export function ciFixPrompt(issue: number, ciSummary: string, found: FoundTicket[] = []): string {
+export function ciFixPrompt(issue: number, ciSummary: string): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Der Draft-PR zu Issue #${issue} hat rote CI. Der Runner-Takt hat gewartet, bis
 alle Checks durch waren, und startet dich JETZT gezielt, weil es etwas zu TUN
 gibt.
 
-${FILE_ACCESS_RULE}${foundTicketsSection(found)}
+${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}
 
 ## Was rot ist
 
@@ -278,8 +231,9 @@ ${FILE_ACCESS_RULE}
    Ticket-Nummern im Plan-Kommentar statt sie still zu ignorieren. Nur wenn
    keine existieren, legst du sie an — und zwar mit
    'gh issue create --label plan' und einem Verweis auf #${issue} im Body
-   (im selben Schritt, wie #397 es für Fund-Tickets vorschreibt;
-   nur selbst angelegte, nie fremde). So wird jedes Kind selbst geplant und
+   (Label im selben Schritt, nur selbst angelegte, nie fremde). Das ist die
+   einzige Stelle, an der ein Lauf noch Tickets anlegt — Funde gehören seit
+   #588 in den Fortschrittskommentar, nicht in ein Ticket. So wird jedes Kind selbst geplant und
    vom Planer-Lauf am Ende auf 'ready' gesetzt, statt labellos
    liegenzubleiben.
 6. Ist der Plan **vollständig**: Statuszeile „Status: **fertig**", Marker

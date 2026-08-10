@@ -18,7 +18,7 @@ untriagierte Eingang** — der Zustand ganz links im Diagramm, bevor du
 Runner baut es **nie**: die Auswahl-Kaskade (`scripts/runner/select.ts`)
 matcht ausschließlich Tickets mit einem Steuerlabel oder einem Queue-Eintrag,
 alles andere trifft keinen Zweig. Das ist Absicht, keine Lücke — `ready` ist
-bewusst dein Gate — außer für selbst angelegte Kinder-/Fund-Tickets, die
+bewusst dein Gate — außer für selbst angelegte Kinder-Tickets, die
 schon mit `plan` entstehen und dieses Gate bewusst umgehen (siehe
 `docs/workflow/labels.md`).
 
