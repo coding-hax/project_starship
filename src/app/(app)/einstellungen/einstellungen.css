@@ -10,7 +10,7 @@
 
 .einstellungen__title {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--text-body);
   text-align: right;
 }
 
@@ -21,7 +21,7 @@
   min-height: 44px;
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .einstellungen__back:focus-visible {
