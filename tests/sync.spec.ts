@@ -1341,6 +1341,7 @@ test.describe('Serientermin-Ausnahmen: Konvergenz bei paralleler Verschiebung (#
     browser,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const eventId = await page.evaluate(() =>
       window.__starship.mutate({
