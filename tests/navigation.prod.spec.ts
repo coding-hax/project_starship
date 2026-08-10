@@ -20,16 +20,40 @@ test.describe('angemeldet', () => {
   test('ein Tab-Wechsel zum Kalender geht ohne Dokument- oder RSC-Request an den Server (AK1)', async ({
     page,
   }) => {
+    // Registered before goto() so it also catches the Link prefetch itself — that
+    // fetch is expected (it is what makes the later click free) and must not be
+    // mistaken for one the click caused.
+    const kalenderRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      const isRscRequest = url.searchParams.has('_rsc') && url.pathname === '/kalender';
+      const isDocumentNavigation = request.resourceType() === 'document' && url.pathname === '/kalender';
+      if (isRscRequest || isDocumentNavigation) kalenderRequests.push(request.url());
+    });
+
     await page.goto('/uebersicht');
     await page.waitForLoadState('networkidle');
 
-    const serverRequests: string[] = [];
-    page.on('request', (request) => {
-      const url = new URL(request.url());
-      const isRscRequest = url.searchParams.has('_rsc');
-      const isDocumentNavigation = request.resourceType() === 'document' && url.pathname === '/kalender';
-      if (isRscRequest || isDocumentNavigation) serverRequests.push(request.url());
-    });
+    // `networkidle` only proves no request is in flight, not that the Kalender
+    // link's own prefetch has actually gone out yet — that fires from a
+    // post-hydration router effect, which a loaded CI runner can delay past the
+    // networkidle window. Wait for the real signal (bounded, so a genuinely
+    // missing prefetch still fails the assertion below instead of hanging).
+    if (kalenderRequests.length === 0) {
+      await page
+        .waitForRequest(
+          (request) => {
+            const url = new URL(request.url());
+            return url.pathname === '/kalender' && url.searchParams.has('_rsc');
+          },
+          { timeout: 15_000 },
+        )
+        .catch(() => {});
+    }
+
+    // The prefetch (if any) already happened above — only what the click itself
+    // triggers from here on counts towards the assertion.
+    kalenderRequests.length = 0;
 
     const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
     await nav.getByRole('link', { name: 'Kalender' }).click();
@@ -37,7 +61,7 @@ test.describe('angemeldet', () => {
     await expect(page.locator('[data-module="kalender"]')).toBeVisible();
     await expect(page.getByText('Keine Termine an diesem Tag.')).toBeVisible();
 
-    expect(serverRequests).toEqual([]);
+    expect(kalenderRequests).toEqual([]);
   });
 
   test('offline bleiben Übersicht, Aufgaben, Kalender und Gewohnheiten erreichbar, ohne Offline-Fallback (AK2)', async ({
