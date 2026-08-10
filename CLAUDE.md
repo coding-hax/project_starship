@@ -12,7 +12,7 @@ Vor jeder Arbeit lesen:
 
 - `docs/VISION.md` — was wir bauen und was ausdrücklich **nicht**
 - `docs/ARCHITECTURE.md` — Stack, Datenmodell, Sync-Konzept
-- `docs/DESIGN_SYSTEM.md` — Farben, Typo, Motion, Mobile-Patterns
+- `docs/DESIGN_SYSTEM.md` — Farben, Typo, Motion, Mobile-Patterns (Index, Details in `docs/design/`)
 - `docs/WORKFLOW.md` — wie ein Ticket zum Merge wird (Index, Details in `docs/workflow/`)
 - `docs/adr/` — bereits getroffene Entscheidungen. Diese werden nicht neu verhandelt.
 
