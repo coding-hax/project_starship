@@ -119,7 +119,7 @@ export default defineConfig({
     // project at all. Playwright does not warn about that. This comment is the warning.
     {
       name: 'mobile',
-      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|.*\.desktop)\.spec\.ts$/,
+      testIgnore: /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|.*\.desktop)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -129,7 +129,7 @@ export default defineConfig({
     },
     {
       name: 'offline-mobile',
-      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -140,7 +140,7 @@ export default defineConfig({
     },
     {
       name: 'offline-desktop',
-      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
