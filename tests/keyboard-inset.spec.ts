@@ -18,13 +18,17 @@ async function shrinkViewportForKeyboard(page: Page, px = 300) {
     .toBe(`${px}px`);
 }
 
-/** `boundingBox().y >= 0` and its bottom edge above where the keyboard starts. */
+/**
+ * `boundingBox().y >= 0` and its bottom edge above where the keyboard starts.
+ * Rounded to whole pixels — sub-pixel layout noise (e.g. -0.19) is irrelevant
+ * to the regression this guards against, same convention as the #138 test above.
+ */
 async function expectVisibleAboveKeyboard(page: Page, locator: Locator, keyboardPx: number) {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
-  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(Math.round(box!.y)).toBeGreaterThanOrEqual(0);
   const innerHeight = await page.evaluate(() => window.innerHeight);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(innerHeight - keyboardPx);
+  expect(Math.round(box!.y + box!.height)).toBeLessThanOrEqual(innerHeight - keyboardPx);
 }
 
 /**
@@ -196,7 +200,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await expectVisibleAboveKeyboard(page, nameField, 300);
     const contentBox = await sheetContent.boundingBox();
     expect(contentBox).not.toBeNull();
-    expect(contentBox!.y).toBeGreaterThanOrEqual(0);
+    expect(Math.round(contentBox!.y)).toBeGreaterThanOrEqual(0);
   });
 
   test('Termin-Sheet: Titelfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
@@ -215,7 +219,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await expectVisibleAboveKeyboard(page, titleField, 300);
     const contentBox = await sheetContent.boundingBox();
     expect(contentBox).not.toBeNull();
-    expect(contentBox!.y).toBeGreaterThanOrEqual(0);
+    expect(Math.round(contentBox!.y)).toBeGreaterThanOrEqual(0);
   });
 
   test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
@@ -236,7 +240,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     }));
     expect(scrollHeight).toBeGreaterThan(clientHeight);
 
-    const submitButton = page.getByRole('button', { name: 'Anlegen' });
+    const submitButton = sheetContent.getByRole('button', { name: 'Anlegen', exact: true });
     await submitButton.scrollIntoViewIfNeeded();
     await expect(submitButton).toBeInViewport();
 
