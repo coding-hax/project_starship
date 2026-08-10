@@ -4,8 +4,9 @@ import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { sessions } from '@/db/schema';
+import { SESSION_COOKIE } from './session-cookie';
 
-export const SESSION_COOKIE = 'starship_session';
+export { SESSION_COOKIE };
 
 /** Long-lived on purpose: the goal is never having to log in again. */
 const SESSION_TTL_DAYS = 365;
