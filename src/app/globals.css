@@ -30,7 +30,7 @@
 @import '../features/activities/activity-chart.css';
 @import '../features/activities/activity-month-strip.css';
 @import '../features/events/calendar-strip.css';
-@import '../features/events/event-timeline.css';
+@import '../features/events/event-agenda.css';
 @import '../features/events/event-editor.css';
 @import '../features/events/recurrence-scope-sheet.css';
 @import '../features/events/calendar-view.css';

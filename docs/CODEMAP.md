@@ -113,17 +113,17 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `layoutForDay`/`nowLinePct`/`categoryEdgeVar`/`allDayEventsForDay`,
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `agendaForDay`/`nextInAgenda`/`categoryEdgeVar`/`allDayEventsForDay`,
   `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
-  (Übersicht, issue #559)
+  (Übersicht, issue #559; Agenda issue #597)
 - `recurrence.ts` — reine Serien-Expansion (issue #557): `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`)
 - `use-event-exceptions.ts` — `EventExceptionView`/`toEventExceptionView` + `useEventExceptions()`, nur lesend — Schreiben läuft über `event-mutations.ts`
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
-  darunter `<EventTimeline/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
+  darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
-- `event-timeline.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über der Stundenachse 0–24h, Jetzt-Linie, Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante
+- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar, öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten, schreibt über `mutate()`; bei einer Serien-Instanz öffnet Speichern/Löschen erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)

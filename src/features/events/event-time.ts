@@ -37,52 +37,58 @@ export interface TimelineSource {
 }
 
 /**
- * `--touch-target` (44px, tokens.css) against the 1440px-tall day axis that
- * `event-timeline.css` builds from `--hour-height: 60px` × 24 — that sizing makes
- * 1 minute == 1 px, so the same fraction that positions a card in percent also
- * floors its height at a tappable size.
+ * Scheduled events on `dayKey` (a Berlin calendar day, `YYYY-MM-DD`), chronological
+ * (issue #597 — replaces the hour-axis `layoutForDay`). All-day events and events
+ * with no `startsAt`/`endsAt` are filtered out, same touch rule as before: an event
+ * starting before `dayKey` or ending after it still shows (its instant is just
+ * outside the day, the agenda has no axis to clamp it to).
  */
-const MIN_HEIGHT_PCT = (44 / MINUTES_PER_DAY) * 100;
-
-/**
- * Visible, scheduled events on `dayKey` (a Berlin calendar day, `YYYY-MM-DD`),
- * positioned on a 0–24h axis. All-day events and events with no `startsAt`/
- * `endsAt` are filtered out. An event that starts before `dayKey` or ends after
- * it is clamped to the day's own bounds (0 / 1440 minutes) — a real over-midnight
- * split into two cards is S4, not built here.
- */
-export function layoutForDay<T extends TimelineSource>(
+export function agendaForDay<T extends TimelineSource>(
   events: T[],
   dayKey: string,
 ): (Omit<T, 'startsAt' | 'endsAt'> & {
   /** Narrowed from `TimelineSource` — kept only when both are set. */
   startsAt: string;
   endsAt: string;
-  /** Top offset as a percentage of the 0–24h axis (`minutesOfDay / 1440 * 100`). */
-  topPct: number;
-  /** Card height as a percentage of the axis, floored so the tap target stays reachable. */
-  heightPct: number;
+  /** True when this item's [start, end) interval overlaps any other item on the day. */
+  overlaps: boolean;
 })[] {
-  return events
+  const touching = events
     .filter(
       (event): event is T & { startsAt: string; endsAt: string } =>
         !event.allDay && event.startsAt !== null && event.endsAt !== null,
     )
     .filter((event) => berlinDateKey(event.startsAt) === dayKey || berlinDateKey(event.endsAt) === dayKey)
-    .map((event) => {
-      const startMinutes =
-        berlinDateKey(event.startsAt) === dayKey ? berlinMinutesOfDay(event.startsAt) : 0;
-      const endMinutes =
-        berlinDateKey(event.endsAt) === dayKey ? berlinMinutesOfDay(event.endsAt) : MINUTES_PER_DAY;
-      const topPct = (startMinutes / MINUTES_PER_DAY) * 100;
-      const heightPct = Math.max(((endMinutes - startMinutes) / MINUTES_PER_DAY) * 100, MIN_HEIGHT_PCT);
-      return { ...event, topPct, heightPct };
-    });
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+  return touching.map((event) => {
+    const start = new Date(event.startsAt).getTime();
+    const end = new Date(event.endsAt).getTime();
+    const overlaps = touching.some(
+      (other) =>
+        other !== event &&
+        start < new Date(other.endsAt).getTime() &&
+        new Date(other.startsAt).getTime() < end,
+    );
+    return { ...event, overlaps };
+  });
 }
 
-/** Now-line position as a percentage of the same 0–24h axis `layoutForDay` uses. */
-export function nowLinePct(now: Date): number {
-  return (berlinNow(now).minutesOfDay / MINUTES_PER_DAY) * 100;
+/**
+ * The item to bring into view when the agenda opens (AK4): today, the first item
+ * that hasn't ended yet (may already be in progress); any other day, simply the
+ * first item. `null` when there's nothing to focus (empty list, or today with
+ * every item already ended).
+ */
+export function nextInAgenda<T extends { endsAt: string }>(
+  items: T[],
+  now: Date,
+  isToday: boolean,
+): T | null {
+  if (isToday) {
+    return items.find((item) => new Date(item.endsAt).getTime() > now.getTime()) ?? null;
+  }
+  return items[0] ?? null;
 }
 
 /**
