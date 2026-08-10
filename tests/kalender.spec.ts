@@ -420,11 +420,7 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im 
 test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
   page,
 }) => {
-  // Bewusst kein seedEvent auf TODAY: ein Termin am initial angezeigten Tag
-  // kombiniert mit den vielen Tag-Wechseln unten triggert einen vorbestehenden,
-  // von diesem Ticket unabhängigen Bug (nicht-memoisiertes useListPresence-Array
-  // in event-timeline.tsx, Fund #578) — AC4 prüft die Rücksprung-Navigation
-  // selbst, die Kartenanzeige ist schon durch AC1/AC3 abgedeckt.
+  // #578 behoben, Kartenanzeige durch AC1/AC3 + Regressionstest unten abgedeckt.
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
 
   const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
@@ -929,6 +925,41 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   // Back on the series' own first occurrence, the original time survives.
   await previousDay(page, 14);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #578 (Fund): useListPresence-Array stabilisiert                            */
+/* -------------------------------------------------------------------------- */
+
+test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest keine Endlosschleife aus (Fund #578)', async ({
+  page,
+}) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
+  page.on('pageerror', (err) => consoleErrors.push(err.message));
+
+  await seedEvent(page, {
+    title: 'Dauertermin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Dauertermin')).toBeVisible();
+
+  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
+  const previousDayButton = page.getByRole('button', { name: 'Vorheriger Tag' });
+  for (let i = 0; i < 6; i += 1) {
+    await nextDay.click();
+    await previousDayButton.click();
+  }
+
+  await expect(eventCard(page, 'Dauertermin')).toBeVisible();
+  expect(consoleErrors).toEqual([]);
 });
 
 /* -------------------------------------------------------------------------- */

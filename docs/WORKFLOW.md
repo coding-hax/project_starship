@@ -12,12 +12,11 @@ CLAUDE.md). Diese Datei ist nur noch das Inhaltsverzeichnis:
 | --- | --- |
 | Der Zyklus: Issue → research/plan → Branch → PR → Merge, WIP-Limit, Runner-Slots, Worktree, „Wartend ist nicht in Arbeit" | `docs/workflow/zyklus.md` |
 | Die Prioritäts-Queue (angepinntes Queue-Issue, Reihenfolge, `blocked-by`) | `docs/workflow/queue.md` |
-| Labels — sie steuern den Runner (Tabelle, Fund-/Kinder-Tickets, „Zwei Arten des Wartens") | `docs/workflow/labels.md` |
-| Fundschlüssel & Pflichtsuche (Fund-Ticket-Form, Dedupe, Geschwister-Vermerk) | `docs/workflow/fundschluessel.md` |
+| Labels — sie steuern den Runner (Tabelle, Kinder-Tickets, „Zwei Arten des Wartens") | `docs/workflow/labels.md` |
 | Modell-Eskalation beim Bauen (ADR-0007, `model:*`, Opus-Deckel) | `docs/workflow/eskalation.md` |
 | Merge: Draft-PR, Auto-Merge, Branch-Schutz, Wächter, Ticket-Schließen (#172) | `docs/workflow/merge.md` |
 | CI-Wache (Runner-Takt): pending/failing/conflict/behind/success | `docs/workflow/ci-wache.md` |
 | Status/Board, Definition of Ready + Issue-Template, Branch & Commit, CI-Schritte, Migrationen, Playwright-Regeln, was Claude darf, nützliche Befehle | `docs/workflow/ticket-und-tests.md` |
 
-Ein Verweis wie „`docs/workflow/fundschluessel.md`, „Pflichtsuche"" meint: Datei
+Ein Verweis wie „`docs/workflow/labels.md`, „Zwei Arten des Wartens"" meint: Datei
 öffnen, zum benannten Absatz springen — nicht die ganze Datei lesen.

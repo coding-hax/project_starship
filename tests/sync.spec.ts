@@ -884,6 +884,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
   }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await settleJournalHabitBoot(page);
 
     await page.evaluate(() =>
       window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Offline hängt fest' } }),
@@ -1340,6 +1341,7 @@ test.describe('Serientermin-Ausnahmen: Konvergenz bei paralleler Verschiebung (#
     browser,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const eventId = await page.evaluate(() =>
       window.__starship.mutate({
