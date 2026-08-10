@@ -20,12 +20,12 @@
 }
 
 .row__label {
-  font-size: 16px;
+  font-size: var(--text-body);
   color: var(--text);
 }
 
 .row__description {
-  font-size: 14px;
+  font-size: var(--text-secondary);
   color: var(--text-muted);
 }
 

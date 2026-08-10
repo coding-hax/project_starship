@@ -2,7 +2,7 @@
   margin: 0;
   padding: var(--space-2) 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-settings-panel__recovery {
@@ -20,7 +20,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .journal-settings-panel__input:focus {
@@ -31,7 +31,7 @@
 .journal-settings-panel__message {
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .journal-settings-panel__button {
@@ -42,7 +42,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -59,7 +59,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--border);
   font-family: ui-monospace, monospace;
-  font-size: 18px;
+  font-size: var(--text-body);
   letter-spacing: 0.08em;
   overflow-wrap: break-word;
   user-select: all;

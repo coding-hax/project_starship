@@ -15,13 +15,13 @@
 .weekly-recap-card__heading {
   margin: 0 0 var(--space-2);
   color: var(--area-habits);
-  font-weight: 650;
+  font-weight: var(--weight-emphasis);
 }
 
 .weekly-recap-card__metric {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 650;
+  font-size: var(--text-section);
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }
 

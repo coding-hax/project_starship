@@ -18,7 +18,7 @@
 .activity-block__date {
   margin: var(--space-1) 0 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .activity-block__stats {
@@ -30,12 +30,12 @@
 
 .activity-block__stat dt {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .activity-block__stat dd {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-section);
   font-variant-numeric: tabular-nums;
 }
 

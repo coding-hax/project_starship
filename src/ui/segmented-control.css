@@ -34,8 +34,8 @@
   background: transparent;
   border-radius: var(--radius-pill);
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
   color: var(--text-muted);
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-spring-snappy);

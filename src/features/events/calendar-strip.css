@@ -43,8 +43,8 @@
   border-radius: var(--radius-pill);
   background: var(--area-events);
   color: var(--accent-fg);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
 }
 
@@ -56,7 +56,7 @@
   margin: 0;
   padding: 0;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -126,7 +126,7 @@
   border-radius: var(--radius-card);
   background: transparent;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-spring);

@@ -20,16 +20,16 @@
 
 .events-overview__next-countdown {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 650;
+  font-size: var(--text-section);
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
   color: var(--area-events);
 }
 
 .events-overview__next-title {
   margin: var(--space-1) 0 0;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
 }
 
 .events-overview__next-time {
@@ -57,7 +57,7 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   color: var(--text-muted);
-  font-size: 0.875rem;
+  font-size: var(--text-secondary);
 }
 
 .events-overview__rest-time {

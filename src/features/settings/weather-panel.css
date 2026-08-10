@@ -7,7 +7,7 @@
 }
 
 .weather-panel__search-label {
-  font-size: 16px;
+  font-size: var(--text-body);
   color: var(--text);
 }
 
@@ -26,7 +26,7 @@
   background: var(--surface-raised);
   color: var(--text);
   font: inherit;
-  font-size: 16px; /* iOS zooms the viewport below 16px on focus */
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
 .weather-panel__search-input:focus {
@@ -42,7 +42,7 @@
   background: var(--accent);
   color: var(--accent-fg);
   font: inherit;
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
@@ -55,7 +55,7 @@
   margin: 0;
   padding: var(--space-2) 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
 
 .weather-panel__results {
