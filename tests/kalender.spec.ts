@@ -1,12 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import {
-  freezeClock,
-  installClockAt,
-  registerPasskey,
-  resetAppData,
-  skewClock,
-  withDb,
-} from './helpers';
+import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
 // Berlin (CEST, UTC+2), same calendar day as every event seeded below unless
@@ -22,20 +15,11 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
 }
 
 function eventCard(page: Page, title: string) {
-  return page.locator('.event-timeline__card').filter({ hasText: title });
+  return page.locator('.event-agenda__item').filter({ hasText: title });
 }
 
 function allDayBar(page: Page, title: string) {
-  return page.locator('.event-timeline__all-day-button').filter({ hasText: title });
-}
-
-function nowLine(page: Page) {
-  return page.locator('.event-timeline__now-line');
-}
-
-async function styleTopPct(locator: Locator): Promise<number> {
-  const top = await locator.evaluate((el) => (el as HTMLElement).style.top);
-  return parseFloat(top);
+  return page.locator('.event-agenda__all-day-button').filter({ hasText: title });
 }
 
 /** Same probe technique as habits-week-grid.spec.ts's resolveBackgroundToken. */
@@ -47,7 +31,7 @@ async function resolveCardColor(
   return page.evaluate(
     ({ cssVar, property }) => {
       const probe = document.createElement('li');
-      probe.className = 'event-timeline__card';
+      probe.className = 'event-agenda__item';
       probe.style[property] = `var(${cssVar})`;
       document.body.appendChild(probe);
       const color = getComputedStyle(probe)[property];
@@ -133,15 +117,21 @@ test.beforeEach(async ({ page }) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC1: Stundenachse + Terminkarten zur richtigen Uhrzeit                     */
+/* AC1: chronologische Agenda-Liste, voll sichtbar (issue #597)               */
 /* -------------------------------------------------------------------------- */
 
-test('ein Termin am aktuellen Tag erscheint im richtigen Stundenband der Timeline, mit Titel (AC1)', async ({
+test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel und voller Uhrzeit (AC1, AK1, AK2)', async ({
   page,
 }) => {
-  await expect(page.getByText('00:00')).toBeVisible();
-  await expect(page.getByText('23:00')).toBeVisible();
-
+  await seedEvent(page, {
+    title: 'Nachmittagstermin',
+    allDay: false,
+    startsAt: `${TODAY}T12:00:00.000Z`, // 14:00 Berlin
+    endsAt: `${TODAY}T13:00:00.000Z`, // 15:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
   await seedEvent(page, {
     title: 'Zahnarzt',
     allDay: false,
@@ -154,61 +144,224 @@ test('ein Termin am aktuellen Tag erscheint im richtigen Stundenband der Timelin
 
   const card = eventCard(page, 'Zahnarzt');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('09:00');
+  await expect(card).toContainText('09:00–10:00');
 
-  // 09:00 Berlin = 540 of 1440 minutes = 37.5% down the 0-24h axis.
-  await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
+  // Chronological order in the DOM, not insertion order (AK1).
+  const titles = await page.locator('.event-agenda__item').allTextContents();
+  expect(titles[0]).toContain('Zahnarzt');
+  expect(titles[1]).toContain('Nachmittagstermin');
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC2: Jetzt-Linie                                                          */
+/* AK3: spärlicher/leerer Tag                                                */
 /* -------------------------------------------------------------------------- */
 
-test('die Jetzt-Linie sitzt korrekt kurz vor und kurz nach Mitternacht (AC2)', async ({ page }) => {
-  // 23:59 Berlin = 21:59 UTC, still 2026-07-18.
-  await skewClock(page, `${TODAY}T21:59:00.000Z`);
-  await page.reload();
-  await expect(nowLine(page)).toBeVisible();
-  const lateTop = await styleTopPct(nowLine(page));
-  expect(lateTop).toBeGreaterThan(95);
-
-  // 00:01 Berlin the next day = 22:01 UTC on TODAY's date.
-  await skewClock(page, `${TODAY}T22:01:00.000Z`);
-  await page.reload();
-  await expect(nowLine(page)).toBeVisible();
-  const earlyTop = await styleTopPct(nowLine(page));
-  expect(earlyTop).toBeLessThan(5);
-});
-
-test('die Jetzt-Linie rueckt mit der Zeit weiter, ohne dass die Seite neu laedt (AC2)', async ({
+test('nach dem letzten Termin des Tages steht die Meldung "Danach nichts mehr geplant." (AK3a)', async ({
   page,
 }) => {
-  // beforeEach already loaded /kalender at installClockAt's default (14:00
-  // Berlin) — far from the midnight edge, no reload needed for this one.
-  // Reloading right before freezeClock/fastForward (like the two tests above
-  // do) raced the fresh mount's setInterval registration against the fake
-  // clock in this specific combination and never fired it — plain continued
-  // ticking from the original navigation, proven by journal-lock.spec.ts's
-  // auto-lock tests, avoids that.
-  const initialTop = await styleTopPct(nowLine(page));
+  await seedEvent(page, {
+    title: 'Einziger Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
 
-  await freezeClock(page);
-  await page.clock.fastForward(90_000);
-
-  await expect.poll(() => styleTopPct(nowLine(page))).toBeGreaterThan(initialTop);
+  await expect(eventCard(page, 'Einziger Termin')).toBeVisible();
+  await expect(page.locator('.event-agenda__sparse')).toHaveText('Danach nichts mehr geplant.');
 });
 
-test('bei reduzierter Bewegung bewegt sich die Jetzt-Linie ohne Uebergang (AC2, Motion)', async ({
+test('ein komplett leerer Tag zeigt den Leerzustand, keine Terminkarten (AK3b)', async ({ page }) => {
+  await expect(page.locator('.event-agenda__empty')).toHaveText('Keine Termine an diesem Tag.');
+  await expect(page.locator('.event-agenda__item')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4: Fokus auf den naechsten anstehenden Termin beim Oeffnen               */
+/* -------------------------------------------------------------------------- */
+
+test('am aktuellen Tag steht der naechste noch nicht beendete Termin im Blick, ein bereits beendeter nicht (AK4a)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Schon vorbei',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00-10:00 Berlin, endet vor der geskripteten Uhrzeit (14:00 Berlin)
+    endsAt: `${TODAY}T08:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Noch bevorstehend',
+    allDay: false,
+    startsAt: `${TODAY}T14:00:00.000Z`, // 16:00-17:00 Berlin, liegt noch vor uns
+    endsAt: `${TODAY}T15:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  const upcoming = eventCard(page, 'Noch bevorstehend');
+  await expect(upcoming).toHaveAttribute('data-upcoming', 'true');
+  await expect(eventCard(page, 'Schon vorbei')).toHaveAttribute('data-upcoming', 'false');
+
+  const box = await upcoming.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeLessThan(812);
+});
+
+test('an einem anderen Tag als heute steht der erste Termin des Tages im Blick (AK4b)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Morgen zuerst',
+    allDay: false,
+    startsAt: `${TOMORROW}T07:00:00.000Z`,
+    endsAt: `${TOMORROW}T08:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Morgen danach',
+    allDay: false,
+    startsAt: `${TOMORROW}T14:00:00.000Z`,
+    endsAt: `${TOMORROW}T15:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+
+  await expect(eventCard(page, 'Morgen zuerst')).toHaveAttribute('data-upcoming', 'true');
+  await expect(eventCard(page, 'Morgen danach')).toHaveAttribute('data-upcoming', 'false');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK5: Kennzeichnung ueberlappender Termine                                  */
+/* -------------------------------------------------------------------------- */
+
+test('zwei zeitlich ueberlappende Termine tragen beide die Ueberschneidungs-Kennzeichnung (AK5a)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ueberlappend A',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ueberlappend B',
+    allDay: false,
+    startsAt: `${TODAY}T09:30:00.000Z`,
+    endsAt: `${TODAY}T10:30:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(eventCard(page, 'Ueberlappend A')).toHaveAttribute('data-overlap', 'true');
+  await expect(eventCard(page, 'Ueberlappend B')).toHaveAttribute('data-overlap', 'true');
+  await expect(page.getByText('überschneidet sich')).toHaveCount(2);
+});
+
+test('zwei zeitlich getrennte Termine tragen keine Ueberschneidungs-Kennzeichnung (AK5b)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Getrennt A',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Getrennt B',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(eventCard(page, 'Getrennt A')).toHaveAttribute('data-overlap', 'false');
+  await expect(eventCard(page, 'Getrennt B')).toHaveAttribute('data-overlap', 'false');
+  await expect(page.getByText('überschneidet sich')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK7: Trennlinien nutzen --border-faint                                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Trennlinie vor der spaerlich-Meldung nutzt --border-faint (AK7)', async ({ page }) => {
+  await seedEvent(page, {
+    title: 'Fuer die Trennlinie',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const expected = await resolveToken(page, '--border-faint');
+  await expect(page.locator('.event-agenda__sparse')).toHaveCSS('border-top-color', expected);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK9: prefers-reduced-motion                                                */
+/* -------------------------------------------------------------------------- */
+
+test('bei reduzierter Bewegung erscheint ein neuer Termin ohne Bewegungs-Uebergang (AK9, Motion)', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.reload();
 
-  const transitionDuration = await nowLine(page).evaluate(
-    (el) => getComputedStyle(el).transitionDuration,
-  );
-  for (const duration of transitionDuration.split(',')) {
-    expect(parseFloat(duration)).toBeLessThan(0.001);
+  // A baseline item first establishes the list as non-empty (use-list-presence.ts:
+  // the first-ever snapshot always seeds as 'present', never 'entering', so a
+  // page that starts genuinely empty can't prove the enter animation) — same
+  // two-step pattern list-motion.spec.ts uses for tasks/habits.
+  await seedEvent(page, {
+    title: 'Bestehender Termin',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`,
+    endsAt: `${TODAY}T08:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bestehender Termin')).toHaveAttribute('data-entering', 'false');
+
+  await seedEvent(page, {
+    title: 'Reduzierte Bewegung',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const card = eventCard(page, 'Reduzierte Bewegung');
+  await expect(card).toHaveAttribute('data-entering', 'true');
+  const duration = await card.evaluate((el) => getComputedStyle(el).animationDuration);
+  for (const d of duration.split(',')) {
+    expect(parseFloat(d)).toBeLessThan(0.001);
   }
 });
 
@@ -761,7 +914,6 @@ test('eine woechentliche Serie landet ueber einen Monatswechsel hinweg am richti
   const card = eventCard(page, 'Wochenmeeting');
   await expect(card).toBeVisible();
   await expect(card).toContainText('09:00');
-  await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
 });
 
 test('eine woechentliche Serie behaelt ihre lokale Uhrzeit ueber die Sommerzeit-Umstellung hinweg (AC2)', async ({
@@ -785,7 +937,6 @@ test('eine woechentliche Serie behaelt ihre lokale Uhrzeit ueber die Sommerzeit-
   const card = eventCard(page, 'DST-Meeting');
   await expect(card).toBeVisible();
   await expect(card).toContainText('09:00');
-  await expect.poll(() => styleTopPct(card)).toBeCloseTo(37.5, 1);
 });
 
 test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche spaeter wieder (Wiederholungs-UI)', async ({

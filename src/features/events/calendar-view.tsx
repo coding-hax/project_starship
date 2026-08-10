@@ -5,8 +5,8 @@ import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
 import { Toast } from '@/ui/toast';
 import { CalendarStrip } from './calendar-strip';
+import { EventAgenda } from './event-agenda';
 import { EventEditor, type EventEditorState } from './event-editor';
-import { EventTimeline } from './event-timeline';
 import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions } from './use-event-exceptions';
@@ -27,8 +27,9 @@ function getServerTodayKey(): string | null {
 }
 
 /**
- * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473): a day timeline behind
- * a week strip that pulls open into the full month, plus the FAB-driven
+ * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473; agenda issue #597): a
+ * day agenda behind a week strip that pulls open into the full month, plus
+ * the FAB-driven
  * create/edit/delete editor. `selectedDay` is a Berlin calendar day, not the
  * device's local one — the same reference `berlinNow` already gives the
  * reminder scheduler (src/push/schedule.ts), so there is only ever one
@@ -42,9 +43,9 @@ function getServerTodayKey(): string | null {
  * server snapshot) fills it in only once the client has taken over.
  * `selectedDay` falls back to `today` until the user picks a day of their
  * own, so it is `null` under the exact same condition. The date-dependent
- * subtree (strip + timeline) only renders once both are known, which also
- * keeps `EventTimeline`'s `useNow`-driven now-line off the server render
- * entirely.
+ * subtree (strip + agenda) only renders once both are known, which also
+ * keeps `EventAgenda`'s `useNow`-driven upcoming-item focus off the server
+ * render entirely.
  */
 export function CalendarView() {
   const events = useEvents();
@@ -105,7 +106,7 @@ export function CalendarView() {
         )}
       </header>
       {today !== null && selectedDay !== null && (
-        <EventTimeline
+        <EventAgenda
           events={events ?? []}
           exceptions={exceptions ?? []}
           selectedDay={selectedDay}
