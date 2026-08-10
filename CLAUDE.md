@@ -129,6 +129,12 @@ git -C /Users/max/dev/project_starship worktree add -b feat/42-quick-add \
   weiter, statt einen zweiten anzulegen.
 - Der Haupt-Checkout bleibt auf `main` und sauber. Findest du ihn auf einem
   Feature-Branch vor: **nicht** darin weiterarbeiten, eigenen Worktree anlegen.
+- `pnpm install` läuft **nur** mit `--dir <Haupt-Checkout>`, **nie** mit cwd in
+  einem Worktree: `bootstrap_worktree()` verlinkt `worktree/node_modules` auf
+  den Haupt-Checkout, damit im Worktree kein Install nötig ist. Ein Install mit
+  cwd im Worktree schreibt dessen Top-Level-Links relativ zum Worktree-Pfad —
+  die bleiben nach `git worktree remove` tot zurück und töten den Runner still
+  (Vorfall vom 10.08.26, siehe Issue 606).
 
 ### Fortschritt sichern — nach JEDEM Schritt
 

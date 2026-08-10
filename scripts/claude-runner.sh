@@ -140,6 +140,34 @@ Runners \`pnpm install\` ausführen."
   return "$rc"
 }
 
+# Preflight gegen einen kaputten Top-Level-Symlink in $REPO_DIR/node_modules
+# (#606): bootstrap_worktree() verlinkt Worktrees auf den Haupt-Checkout, und
+# ein pnpm install mit cwd im Worktree schreibt diese Links relativ -- nach
+# `git worktree remove` zeigen sie ins Leere. `node_modules/.bin/tsx` bleibt
+# dabei als Datei bestehen, ts_run() bekommt also Exit 1 statt 127 und der
+# laute Pfad dort feuert nie (siehe Vorfall vom 10.08.26). Deshalb hier direkt
+# gegen die Aufloesbarkeit von tsx pruefen, nicht nur gegen die Existenz von
+# node_modules -- das kann der Shim (starship-runner:57) schon.
+#
+# Torgesteuert: fehlt node_modules komplett (z.B. frisch geklonter Baum in
+# einer Testsuite), ist das kein Fall fuer diese Meldung -- das faengt der
+# bestehende Exit-127-Pfad in ts_run() ab. Nur ein Baum, in dem node_modules
+# existiert, aber tsx darin nicht aufloest, ist das hier beschriebene stumme
+# Sterben.
+require_resolvable_tsx() {
+  [ -e "$REPO_DIR/node_modules" ] || return 0
+  [ -e "$REPO_DIR/node_modules/tsx/package.json" ] && return 0
+  status "node_modules kaputt" "🔴" \
+    "🔴 \`$REPO_DIR/node_modules/tsx\` ist nicht auflösbar (toter Symlink oder
+unvollständiger Baum) -- der Runner würde ohne den TS-Kern still sterben.
+
+Reparatur **im Haupt-Checkout**: \`CI=true pnpm install --prefer-offline\`.
+\`CI=true\` ist Pflicht: sonst hält pnpm an der Rückfrage »modules directory
+will be removed and reinstalled from scratch. Proceed?« und der
+unbeaufsichtigte Lauf hängt."
+  return 1
+}
+
 # Traegt den von round.ts gebauten Status in den EIGENEN Slot-Zustand ein
 # (#204, E5) -- IMMER, auch ohne inhaltliche Aenderung: sonst haelt fleet.ts
 # diesen Slot faelschlich fuer ausgefallen, sobald er lange genug nichts
@@ -558,6 +586,12 @@ if ! acquire_run_lock "$LOCK" "$$"; then
   echo "läuft bereits ($(cat "$LOCK" 2>/dev/null))"; exit 0
 fi
 trap 'rm -f "$LOCK"' EXIT
+
+# Preflight vor dem ersten ts_run (#606): der Tool-Loop oben (`for tool in gh
+# jq claude`) kann noch nicht meldend abbrechen -- status() ist dort erst
+# ab :108 definiert. Deshalb hier, sobald status() verfuegbar ist und bevor
+# der TS-Kern ueberhaupt zum ersten Mal gerufen wird.
+require_resolvable_tsx || exit 1
 
 # .runner/ raeumt sich auf (#64) -- Regeln in scripts/runner/cleanup.ts.
 ts_run cleanup-state >/dev/null

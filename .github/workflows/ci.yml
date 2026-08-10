@@ -65,6 +65,7 @@ jobs:
       - run: bash scripts/check-dexie-bump.sh origin/main
       - run: bash scripts/tests/dexie-bump.test.sh
       - run: bash scripts/tests/runner-ts.test.sh
+      - run: bash scripts/tests/node-modules-preflight.test.sh
       - run: bash scripts/tests/worktree.test.sh
       - run: bash scripts/tests/gen-slot-plists.test.sh
       - run: bash scripts/tests/run-lock.test.sh

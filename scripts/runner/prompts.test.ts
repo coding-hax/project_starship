@@ -55,6 +55,14 @@ describe('prompts', () => {
       expect(prompt).toContain("**Kein** 'gh pr checks --watch'");
     });
 
+    // #606: pnpm install mit cwd im Worktree schreibt dessen Top-Level-Links
+    // relativ zum Worktree -- die bleiben nach 'git worktree remove' tot
+    // zurueck und toeten den Runner still (Vorfall vom 10.08.26).
+    it('verlangt pnpm install nur im Haupt-Checkout, nie mit cwd im Worktree', () => {
+      expect(prompt).toContain('--dir <Haupt-Checkout>');
+      expect(prompt).toContain('nie mit cwd in einem Worktree');
+    });
+
     // #191: der Agent zieht main selbst nach, damit der PR nicht schon als
     // 'behind' entsteht -- pr_catch_up_behind bleibt nur das Netz dahinter.
     it('verlangt das proaktive Nachziehen von main vor dem finalen Push', () => {
