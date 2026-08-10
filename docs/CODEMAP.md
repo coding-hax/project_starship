@@ -15,7 +15,12 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/app — Routen & API
 
-- `(app)/layout.tsx` — Auth-Gate, App-Shell, `<ModuleRouteGuard/>`, ohne Session → `/anmelden`
+- `middleware.ts` — Auth-Gate vor dem `(app)`-Segment: prüft nur Cookie-**Anwesenheit**
+  (kein DB-Zugriff), `matcher` auf die `(app)`-Routen; ohne Cookie → `/anmelden`. Macht
+  `(app)/layout.tsx` synchron und damit statisch vorrenderbar (issue #599). Liegt
+  bewusst unter `src/`, nicht an der Repo-Wurzel — dort lädt Next es lautlos nie.
+- `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
+  an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
   (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Termine →
@@ -51,6 +56,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/auth
 
 - `session.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`
+- `session-cookie.ts` — nur `SESSION_COOKIE`, blattlos (keine Imports), damit `middleware.ts` es im Edge-Runtime laden kann (issue #599)
 - `webauthn.ts` — Challenges, Credentials, Recovery-Code
 
 ### src/crypto — Journal-Verschlüsselung
@@ -185,6 +191,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
+- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, issue #599)
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
