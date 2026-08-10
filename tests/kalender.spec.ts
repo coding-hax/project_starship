@@ -332,6 +332,21 @@ test('bei reduzierter Bewegung erscheint ein neuer Termin ohne Bewegungs-Ueberga
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
+  // A baseline item first establishes the list as non-empty (use-list-presence.ts:
+  // the first-ever snapshot always seeds as 'present', never 'entering', so a
+  // page that starts genuinely empty can't prove the enter animation) — same
+  // two-step pattern list-motion.spec.ts uses for tasks/habits.
+  await seedEvent(page, {
+    title: 'Bestehender Termin',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`,
+    endsAt: `${TODAY}T08:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bestehender Termin')).toHaveAttribute('data-entering', 'false');
+
   await seedEvent(page, {
     title: 'Reduzierte Bewegung',
     allDay: false,
