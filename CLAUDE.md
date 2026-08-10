@@ -327,7 +327,7 @@ Ein Ticket ist fertig, wenn **alle** Punkte erfüllt sind:
 - [ ] Playwright-Test je Akzeptanzkriterium, grün
 - [ ] Offline-Pfad getestet (Mutation offline → online → serverseitig angekommen)
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e` grün
-- [ ] Mobile (375px) geprüft — Desktop (1280px) läuft seit #564 nicht mehr in CI
+- [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop (1280px) läuft seit #564 nicht mehr in CI
 - [ ] Keine neuen Dependencies ohne ADR
 - [ ] Dark Mode funktioniert
 - [ ] `prefers-reduced-motion` respektiert

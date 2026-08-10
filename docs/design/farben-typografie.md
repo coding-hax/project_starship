@@ -2,6 +2,12 @@
 
 ## Farben
 
+Warmes Off-White statt reinem Weiß, warmes Anthrazit statt Schwarz: das bleibt
+— unabhängig vom Leitsatz (`docs/DESIGN_SYSTEM.md`), der „simpel, modern" statt
+„lebensfroh" verlangt. Die warmen Neutralen sind eine Eigenschaft der Palette,
+kein Ableger einer Stimmung. Bereichs- und Kategoriefarben ändern sich dadurch
+nicht.
+
 Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent bleibt.
 
 ### Bereichsfarben (tragen die Orientierung)

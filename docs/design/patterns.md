@@ -48,5 +48,7 @@ in die Bottom-Nav oder auf Übersicht — nicht in ein neues Header-Element.
 
 ## Desktop
 
-Dieselbe App, kein zweites Design: Bottom-Nav wird zur **Sidebar**, Listen werden mehrspaltig.
-Zusätzlich Tastaturkürzel (`n` = neu, `/` = suchen, `j`/`k` = navigieren).
+Dieselbe App, breiter — abgeleitet aus dem Hochformat, nie ein zweiter Entwurf
+(Leitsatz, `docs/DESIGN_SYSTEM.md`). Bottom-Nav wird zur **Sidebar**, Listen
+werden mehrspaltig. Zusätzlich Tastaturkürzel (`n` = neu, `/` = suchen, `j`/`k`
+= navigieren).
