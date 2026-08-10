@@ -219,36 +219,11 @@ export function untriaged(
 // nicht triggert -- dieselbe Vorsicht wie bei ENTRY_LINE oben. #410 R1/AK1:
 // globales Flag statt nur der ersten Zeile -- ein Ticket, das dieselbe
 // Ursache in mehreren roten Tests belegt, traegt mehrere 'Fund:'-Zeilen.
-const FIND_KEY_LINE = /^\s*Fund:\s*(.+?)\s*$/gm;
-
-// Alle Schluessel eines Bodys, in Dokumentreihenfolge, dedupliziert.
-export function parseFindKeys(body: string | undefined | null): string[] {
-  if (!body) return [];
-  const keys = [...body.matchAll(FIND_KEY_LINE)].map((match) => match[1]!);
-  return [...new Set(keys)];
-}
-
-// Alle Fund-Tickets eines Schnappschusses, aeltestes zuerst (Tie-Break:
-// Ticketnummer) -- treibt sowohl die Prompt-Zeile (AC3) als auch
-// findFoundTicket() unten. #410 R4/AK9: 'inProgress' reicht durch, ob das
-// Ticket gerade gebaut wird -- der Snapshot traegt 'labels' bereits, kein
-// zusaetzlicher gh-Aufruf noetig.
-export function foundTickets(snapshot: QueueIssue[]): { number: number; keys: string[]; inProgress: boolean }[] {
-  return snapshot
-    .filter((issue) => parseFindKeys(issue.body).length > 0)
-    .sort((a, b) => byCreatedAt(a, b) || a.number - b.number)
-    .map((issue) => ({
-      number: issue.number,
-      keys: parseFindKeys(issue.body),
-      inProgress: hasLabel(issue, 'in-progress'),
-    }));
-}
-
-// AC2: zu einem Fundschluessel das bestehende Ticket finden -- zustandsagnostisch
-// (offen wie geschlossen; der Aufrufer liefert das ueber einen Schnappschuss mit
-// '--state all'). Mehrere Treffer: das AELTESTE gewinnt, denn das ist das
-// urspruengliche Ticket -- alles danach war bereits ein vermeidbares Duplikat.
-export function findFoundTicket(key: string, snapshot: QueueIssue[]): number | null {
-  const matches = foundTickets(snapshot).filter((entry) => entry.keys.includes(key));
-  return matches.length > 0 ? matches[0]!.number : null;
-}
+// #588: Hier lagen 'parseFindKeys', 'foundTickets' und 'findFoundTicket' --
+// der Dedupe-Apparat hinter den Fund-Tickets (Fundschluessel 'Fund: <pfad>:
+// <zeile>' aus dem Ticket-Body lesen, das aelteste Ticket je Schluessel
+// finden, die Liste in den Prompt rendern). Der Runner legt keine
+// Fund-Tickets mehr an, also gibt es nichts mehr zu deduplizieren.
+//
+// Bestehende Tickets mit einer 'Fund:'-Zeile im Body bleiben davon unberuehrt
+// -- sie sind ganz normale Tickets, die Zeile ist ab jetzt nur noch Text.

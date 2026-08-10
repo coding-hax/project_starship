@@ -144,10 +144,10 @@ describe('roundPlan', () => {
     expect(run.status.title).toBe('arbeitet an #77 (sonnet, seit 09:22)');
   });
 
-  // #366 AC3: bekannte Fund-Tickets landen im Auftragstext, damit ein Lauf
-  // die Geschwister eines Fund-Tickets nicht mehr uebersehen kann -- egal
-  // welcher Slot ihn faehrt (nicht an isLead gekoppelt).
-  it('nimmt ein untriagiertes Fund-Ticket mit Schluessel in den Bau-Prompt auf', () => {
+  // #588: der Snapshot rendert keine Fund-Tickets mehr in den Auftragstext.
+  // Ein Ticket mit einer 'Fund:'-Zeile im Body ist ab jetzt ein ganz normales
+  // Ticket -- die Zeile ist Text, kein Schluessel.
+  it('rendert keine Fund-Ticket-Liste in den Bau-Prompt', () => {
     const { gh } = ghDouble([
       openIssues(
         issueJson(77, ['ready']),
@@ -157,29 +157,15 @@ describe('roundPlan', () => {
     ]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;
     expect(run.kind).toBe('run');
-    expect(run.prompt).toContain('Bekannte Fund-Tickets');
-    expect(run.prompt).toContain('#349');
-    expect(run.prompt).toContain('tests/aktivitaeten.spec.ts:608');
+    expect(run.prompt).not.toContain('Bekannte Fund-Tickets');
+    expect(run.prompt).not.toContain('tests/aktivitaeten.spec.ts:608');
   });
 
-  it('laesst die Sektion "Bekannte Fund-Tickets" weg, wenn keins existiert', () => {
+  it('traegt stattdessen das Verbot samt Ersatzweg in den Bau-Prompt', () => {
     const { gh } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs]);
     const run = roundPlan(ctx(gh), opts) as RoundRun;
-    expect(run.prompt).not.toContain('Bekannte Fund-Tickets');
-  });
-
-  // #410 R4/AK9: ein Fund-Ticket, das selbst 'in-progress' traegt, bekommt
-  // im Auftragstext den sichtbaren "nicht ergaenzen"-Marker.
-  it('markiert ein in-progress-Fund-Ticket im Bau-Prompt als "nicht ergaenzen"', () => {
-    const { gh } = ghDouble([
-      openIssues(
-        issueJson(77, ['ready']),
-        issueJson(404, ['in-progress'], '2026-07-30T12:17:00Z', 'Fund: scripts/tests/ci-watch.test.sh'),
-      ),
-      noOpenPrs,
-    ]);
-    const run = roundPlan(ctx(gh), opts) as RoundRun;
-    expect(run.prompt).toContain('#404 `scripts/tests/ci-watch.test.sh` (in Arbeit — nicht ergänzen)');
+    expect(run.prompt).toContain('## Funde: kein neues Ticket');
+    expect(run.prompt).toContain('## Funde nebenbei');
   });
 
   it('gibt der Planer-Rolle Opus und eine nur lesende Allowlist (ADR-0005)', () => {

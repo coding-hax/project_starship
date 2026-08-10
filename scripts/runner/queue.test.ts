@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  findFoundTicket,
-  foundTickets,
-  parseFindKeys,
   queueBlocked,
   queueCycles,
   queueDone,
@@ -182,125 +179,13 @@ describe('untriaged (#357)', () => {
     expect(untriaged([], [], noMeta)).toEqual([]);
   });
 
-  // #397: der Runner darf eigene Fund-Tickets wieder mit `plan` labeln --
-  // ein frisches Fund-Ticket taucht damit nicht mehr im Untriagiert-Bericht
-  // auf, obwohl es der Lauf selbst angelegt hat.
-  it('excludes a fresh find ticket that already carries plan', () => {
-    const snap: QueueIssue[] = [
-      { number: 349, labels: [label('plan')], body: 'Fund: tests/aktivitaeten.spec.ts:608' },
-    ];
+  // Ein Ticket mit Rollen-Label ist triagiert, egal wer es angelegt hat --
+  // urspruenglich an selbst angelegten Fund-Tickets aufgefallen (#397). Die
+  // legt der Runner seit #588 nicht mehr an; die Regel gilt unveraendert
+  // fuer jedes Ticket, das schon ein Label traegt.
+  it('excludes a ticket that already carries plan', () => {
+    const snap: QueueIssue[] = [{ number: 349, labels: [label('plan')], body: 'irgendein Tickettext' }];
     expect(untriaged(snap, [], noMeta)).toEqual([]);
   });
 });
 
-// #366: der Fundschluessel macht ein Fund-Ticket ueber den Testort statt der
-// Titel-Hypothese wiederfindbar -- #349/#351/#364 waren drei Tickets fuer
-// denselben roten Test (tests/aktivitaeten.spec.ts:608), weil keine der drei
-// Titel-Varianten die anderen gefunden haette.
-describe('parseFindKeys (#366 AC1, #410 R1/AK1)', () => {
-  it('reads the key from a "Fund: <pfad>:<zeile>" line', () => {
-    expect(parseFindKeys('Fund: tests/aktivitaeten.spec.ts:608')).toEqual(['tests/aktivitaeten.spec.ts:608']);
-  });
-
-  it('reads the key from anywhere in a longer body, trimmed', () => {
-    const body = '## Warum\n\nFehlschlag im CI.\n\nFund: tests/nav.spec.ts:42  \n\nWeitere Details.';
-    expect(parseFindKeys(body)).toEqual(['tests/nav.spec.ts:42']);
-  });
-
-  it('returns [] when the body has no key', () => {
-    expect(parseFindKeys('Ganz normales Ticket ohne Fundschluessel.')).toEqual([]);
-  });
-
-  it('returns [] for undefined/empty body', () => {
-    expect(parseFindKeys(undefined)).toEqual([]);
-    expect(parseFindKeys('')).toEqual([]);
-  });
-
-  // Zeilenanker wie bei ENTRY_LINE: Fliesstext, das "Fund:" nicht am
-  // Zeilenanfang enthaelt, triggert nicht.
-  it('prose mentioning "Fund:" mid-line does not trigger', () => {
-    expect(parseFindKeys('Siehe den Fund: er steht weiter unten.')).toEqual([]);
-  });
-
-  // #410 R1/AK1: mehrere rote Tests mit derselben vermuteten Ursache tragen
-  // mehrere 'Fund:'-Zeilen in einem Ticket statt N Tickets (AK2).
-  it('reads all matching lines, in document order', () => {
-    expect(parseFindKeys('Fund: a.spec.ts:1\nFund: b.spec.ts:2')).toEqual(['a.spec.ts:1', 'b.spec.ts:2']);
-  });
-
-  it('dedupliziert wiederholte Schluessel', () => {
-    expect(parseFindKeys('Fund: a.spec.ts:1\nFund: a.spec.ts:1')).toEqual(['a.spec.ts:1']);
-  });
-});
-
-function found(number: number, key: string, createdAt: string): QueueIssue {
-  return { number, labels: [], createdAt, body: `Fund: ${key}` };
-}
-
-describe('foundTickets (#366)', () => {
-  it('returns [] for a snapshot with no key at all', () => {
-    expect(foundTickets([{ number: 1, labels: [], body: 'kein Schluessel hier' }])).toEqual([]);
-  });
-
-  it('lists tickets with a key, oldest first', () => {
-    const snap = [
-      found(351, 'tests/a.spec.ts:1', '2026-07-29T10:00:00Z'),
-      found(349, 'tests/a.spec.ts:1', '2026-07-29T09:36:00Z'),
-    ];
-    expect(foundTickets(snap)).toEqual([
-      { number: 349, keys: ['tests/a.spec.ts:1'], inProgress: false },
-      { number: 351, keys: ['tests/a.spec.ts:1'], inProgress: false },
-    ]);
-  });
-
-  // #410 R4/AK9: das 'in-progress'-Label wird durchgereicht, damit der Prompt
-  // den Marker "nicht ergaenzen" rendern kann -- der Snapshot traegt 'labels'
-  // bereits, kein zusaetzlicher gh-Aufruf noetig.
-  it('marks a ticket as inProgress when it carries the label', () => {
-    const snap = [{ ...found(404, 'scripts/tests/ci-watch.test.sh', '2026-07-30T12:17:00Z'), labels: [{ name: 'in-progress' }] }];
-    expect(foundTickets(snap)).toEqual([{ number: 404, keys: ['scripts/tests/ci-watch.test.sh'], inProgress: true }]);
-  });
-});
-
-describe('findFoundTicket (#366 AC2)', () => {
-  it('returns null when no ticket carries the key', () => {
-    expect(findFoundTicket('tests/a.spec.ts:1', [{ number: 1, labels: [], body: '' }])).toBeNull();
-  });
-
-  it('finds the single ticket carrying the key', () => {
-    const snap = [found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z')];
-    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
-  });
-
-  // #366: genau der Fall, der #349/#351/#364 verhindert haette -- drei
-  // Tickets fuer denselben Testort, das AELTESTE gewinnt.
-  it('multiple matches: the oldest wins', () => {
-    const snap = [
-      found(364, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T18:00:00Z'),
-      found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z'),
-      found(351, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T10:00:00Z'),
-    ];
-    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
-  });
-
-  // Zustandsagnostisch: ein offenes und ein geschlossenes Ticket mit
-  // demselben Schluessel -- welches gewinnt, entscheidet allein das Alter,
-  // nicht der Zustand. '--state all' zu fragen ist Sache des Aufrufers.
-  it('is state-agnostic -- mixed open/closed, oldest still wins', () => {
-    const snap: QueueIssue[] = [
-      { ...found(364, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T18:00:00Z'), state: 'OPEN' },
-      { ...found(349, 'tests/aktivitaeten.spec.ts:608', '2026-07-29T09:36:00Z'), state: 'CLOSED' },
-    ];
-    expect(findFoundTicket('tests/aktivitaeten.spec.ts:608', snap)).toBe(349);
-  });
-
-  // #410 R1/AK1: ein Ticket, das dieselbe Ursache in mehreren roten Tests
-  // belegt, traegt mehrere 'Fund:'-Zeilen -- getroffen wird ueber JEDEN
-  // seiner Schluessel, nicht nur den ersten.
-  it('matches a ticket with multiple keys via its second key', () => {
-    const snap: QueueIssue[] = [
-      { number: 404, labels: [], createdAt: '2026-07-30T12:17:00Z', body: 'Fund: a.spec.ts:1\nFund: b.spec.ts:2' },
-    ];
-    expect(findFoundTicket('b.spec.ts:2', snap)).toBe(404);
-  });
-});
