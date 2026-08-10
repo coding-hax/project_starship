@@ -38,7 +38,7 @@ vi.mock('./dexie', () => ({
 }));
 
 import { cursorAfterSkips } from './conflict';
-import { pull, push } from './sync';
+import { pull, push, setUnauthorizedHandler } from './sync';
 
 function outboxEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
   return {
@@ -89,6 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setUnauthorizedHandler(null);
 });
 
 describe('pull', () => {
@@ -167,6 +168,24 @@ describe('pull', () => {
     expect(result).toBe(false);
     expect(setMetaMock).not.toHaveBeenCalled();
   });
+
+  it('calls the unauthorized handler and stops on a 401, without touching the cursor', async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
+
+    const result = await pull();
+
+    expect(result).toBe(false);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(setMetaMock).not.toHaveBeenCalled();
+  });
+
+  it('does nothing special on a 401 when no handler is registered', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
+
+    await expect(pull()).resolves.toBe(false);
+  });
 });
 
 describe('push', () => {
@@ -232,5 +251,17 @@ describe('push', () => {
 
     expect(markAppliedMock).toHaveBeenCalledWith([expect.objectContaining({ id: 'm1' })]);
     expect(discardStaleMock).not.toHaveBeenCalled();
+  });
+
+  it('calls the unauthorized handler on a 401 instead of marking the queue failed', async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
+
+    await push();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(markFailedMock).not.toHaveBeenCalled();
   });
 });

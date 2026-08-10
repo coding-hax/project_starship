@@ -15,6 +15,12 @@ import { naturalKeyOf, type Mutation, type PullResponse, type PushResponse } fro
 let inFlight: Promise<void> | null = null;
 let rerun = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+/** Wired by sync-boot.tsx: a 401 means the cookie is stale, not that this push/pull failed. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
 
 export async function sync(): Promise<void> {
   // Coalesce overlapping triggers into the running sync, but never let coalescing
@@ -76,6 +82,13 @@ export async function push(): Promise<void> {
     return;
   }
 
+  if (response.status === 401) {
+    // Stale cookie, not a poison mutation — the queue must survive a re-login.
+    // Does not count towards SYNC_ERROR_THRESHOLD (no markFailed).
+    onUnauthorized?.();
+    return;
+  }
+
   if (!response.ok) {
     await markFailed(
       mutations.map((m) => m.id),
@@ -127,6 +140,11 @@ export async function pull(): Promise<boolean> {
       response = await fetch(`/api/sync/pull?since=${since}`);
     } catch {
       return appliedAny; // Offline. Try again on the next trigger.
+    }
+
+    if (response.status === 401) {
+      onUnauthorized?.();
+      return appliedAny;
     }
     if (!response.ok) return appliedAny;
 
