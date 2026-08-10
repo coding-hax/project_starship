@@ -46,6 +46,26 @@ Prüfe den Diff gegen diese harten Regeln:
   `font-variant-numeric: tabular-nums`. Größen aus der Skala in `docs/DESIGN_SYSTEM.md`,
   Fließtext nicht kleiner als 14px auf Mobile.
 
+## 5. Komposition — nicht Vokabeln, sondern Sätze
+
+Die Prüfungen 1–4 sind Vokabeltests: „ist das ein erlaubtes Token?". Ein Screen kann
+alle vier makellos bestehen und trotzdem flach wirken. Prüfe deshalb zusätzlich gegen
+`docs/design/farben-typografie.md`, „Komposition":
+
+- **Größenrollen:** Der Screen benutzt mindestens drei der fünf Rollen
+  (`--text-title | --text-section | --text-body | --text-secondary | --text-meta`) —
+  oder, wenn er bewusst zurückhaltend ist, ausschließlich `--text-secondary`.
+  **Rot:** alles auf einer einzigen anderen Rolle (z. B. durchgehend `--text-body`)
+  oder wahllos gemischt ohne erkennbare Hierarchie.
+- **Struktur leiser als Inhalt:** Raster, Achsen und Trennlinien tragen
+  `--border-faint`, nicht `--border`. `--border` bleibt Kanten vorbehalten, die
+  selbst etwas bedeuten (Karte, aktiver Zustand, Kategoriefarbe).
+  **Rot:** `--border` auf einer reinen Ordnungslinie.
+- **Eine Betonung je Fläche:** Pro Karte oder Zeile trägt genau ein Element
+  `--weight-emphasis` oder eine Akzentfarbe, nie beides gleichzeitig auf mehreren
+  Elementen derselben Fläche. **Rot:** zwei oder mehr konkurrierende Betonungen
+  auf derselben Fläche.
+
 ## Report-Format — knapp, nichts darüber hinaus
 
 ```
@@ -55,6 +75,7 @@ Design-Review: <Datei(en)>
 2. Raum:    ok / <Fund>
 3. Motion:  ok / <Fund: Transition ohne reduced-motion-Guard>
 4. Typo:    ok / <Fund>
+5. Komposition: ok / <Fund: z. B. --border statt --border-faint auf einer Trennlinie>
 
 Empfehlung: <ein Satz>
 ```
