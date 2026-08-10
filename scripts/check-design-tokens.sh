@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Warn-Wächter: rohe font-size/font-weight/line-height außerhalb von
-# src/ui/tokens.css (issue #591). Warnmodus: Ausgabe ja, Exit-Code immer 0 —
-# der harte Modus kommt erst, wenn die Migration der 145 Fundstellen (Folgeticket)
-# durch ist, sonst wäre der Check ab Minute eins rot.
+# Wächter: rohe font-size/font-weight/line-height außerhalb von
+# src/ui/tokens.css (issue #591, hart seit #593). Fund -> Exit-Code 1.
 set -uo pipefail
 
 SRC_DIR="${SRC_DIR:-src}"
@@ -36,7 +34,8 @@ done < <(grep -rEn '^[[:space:]]*(font-size|font-weight|line-height)[[:space:]]*
 echo
 if [ "$FOUND" -eq 1 ]; then
   echo "Rohe font-size/font-weight/line-height außerhalb von $TOKENS_FILE gefunden (siehe oben)."
-  echo "Warnmodus: kein Fehlschlag. Migration auf die Typo-Tokens ist ein Folgeticket (issue #591)."
+  echo "Bitte auf die Typo-Tokens in $TOKENS_FILE umstellen."
+  exit 1
 else
   echo "✓ Keine rohen Typo-Werte außerhalb von $TOKENS_FILE gefunden."
 fi

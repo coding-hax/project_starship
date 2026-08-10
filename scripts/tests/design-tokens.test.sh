@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests für scripts/check-design-tokens.sh (issue #591).
+# Tests für scripts/check-design-tokens.sh (issue #591, harter Modus #593).
 # Reine Bash-Assertions gegen ein Wegwerf-Fixture, kein echter Repo-Zustand
 # nötig — SRC_DIR/TOKENS_FILE sind env-überschreibbar genau dafür.
 set -uo pipefail
@@ -45,10 +45,10 @@ EOF
 OUTPUT=$(env SRC_DIR="$TMP/src" TOKENS_FILE="$TMP/src/ui/tokens.css" bash "$GUARD")
 EXIT_CODE=$?
 
-if [ "$EXIT_CODE" -eq 0 ]; then
-  ok "AC1: Warnmodus endet immer mit Exit-Code 0."
+if [ "$EXIT_CODE" -eq 1 ]; then
+  ok "AC1: gepflanzter Rohwert lässt den Wächter mit Exit-Code 1 enden."
 else
-  red "AC1: erwarteter Exit-Code 0, bekommen $EXIT_CODE."
+  red "AC1: erwarteter Exit-Code 1, bekommen $EXIT_CODE."
 fi
 
 if printf '%s' "$OUTPUT" | grep -q 'task-item.css:2'; then
@@ -90,12 +90,19 @@ cat > "$TMP2/src/clean/clean.css" <<'EOF'
 }
 EOF
 CLEAN_OUTPUT=$(env SRC_DIR="$TMP2/src" TOKENS_FILE="$TMP2/src/ui/tokens.css" bash "$GUARD")
+CLEAN_EXIT_CODE=$?
 rm -rf "$TMP2"
 
 if printf '%s' "$CLEAN_OUTPUT" | grep -q 'Keine rohen Typo-Werte'; then
   ok "AC6: sauberes Fixture meldet keine Funde."
 else
   red "AC6: sauberes Fixture hätte 'Keine rohen Typo-Werte' melden müssen."
+fi
+
+if [ "$CLEAN_EXIT_CODE" -eq 0 ]; then
+  ok "AC7: sauberes Fixture endet mit Exit-Code 0."
+else
+  red "AC7: erwarteter Exit-Code 0, bekommen $CLEAN_EXIT_CODE."
 fi
 
 # ==============================================================================
