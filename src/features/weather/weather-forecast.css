@@ -12,7 +12,7 @@
 
 .weather-forecast__location {
   margin: 0 0 var(--space-1);
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -107,7 +107,7 @@
 }
 
 .weather-forecast__weekday {
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
 }
 
@@ -124,8 +124,8 @@
   flex-direction: column;
   align-items: center;
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  line-height: 1.3;
+  font-size: var(--text-meta);
+  line-height: var(--leading-heading);
 }
 
 .weather-forecast__temp-max {
@@ -143,7 +143,7 @@
   top: 100%;
   left: 0;
   margin: var(--space-1) 0 0;
-  font-size: 12px;
+  font-size: var(--text-meta);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -159,5 +159,5 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-secondary);
 }
