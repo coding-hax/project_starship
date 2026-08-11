@@ -54,10 +54,23 @@ funktioniert online nicht und umgekehrt — das ist die Sicherheitsgarantie von 
 kein Fehler. Lokale Entwicklung und Produktion sind zwei getrennte Welten mit zwei
 getrennten Datenbanken.
 
-## Stand
+## Fertig
 
-M0 (Fundament) steht und ist verifiziert: PWA auf dem iPhone im Standalone-Modus
-installiert, Login per Face ID, Sync-Grundgerüst mit Outbox (Mutation überlebt Reload
-und landet in Postgres), Design-Tokens, App-Shell, CI mit vier Required Checks.
+- **Aufgaben** — schnell erfassen, Fälligkeit, Priorität, Erledigen per Swipe, offline
+- **Gewohnheiten** — täglich/wöchentlich abhaken, Streaks, Wochenübersicht
+- **Journal** — freier Text, Stimmung, Tags, lokal durchsuchbar; **Ende-zu-Ende-verschlüsselt**
+- **Termine** — Tages-/Wochenansicht, Serien mit Ausnahmen, offline
+- **Übersicht** — Dashboard, das alles zusammenführt
+- **Erinnerungen** — fällige Aufgaben und Streaks via Web Push
+- **Export** — vollständige Datenexporte, ohne Vendor-Lock-in
+- **Wetter & Aktivitäten** — Wetterdaten und Garmin-Integration
 
-Noch **kein** Feature — Aufgaben sind M1.
+Die App ist **auf dem iPhone installierbar** (Standalone-PWA), **funktioniert offline** und
+ist **lokal entwickelbar** — mit lokalem Postgres, eigenständigem Development und Tests ohne
+externe Abhängigkeiten. Passkeys ermöglichen Login per Face ID.
+
+## Lizenz
+
+Dieses Repo ist eine **persönliche Ein-Personen-App**. Alle Rechte bleiben beim Urheber
+vorbehalten — es wird nicht als Angebot oder Grundlage zur Nachnutzung bereitgestellt.
+Das Repo ist aus Kostengründen öffentlich (CI), nicht wegen Lizenz.
