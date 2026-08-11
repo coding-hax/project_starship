@@ -169,6 +169,12 @@ export SHARED_DIR="$TMP/shared"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=999
 export MAX_ROUNDS=1
+# Diese Suite prueft die "Wartend"-CI-Wache, die nur im isLead-Zweig laeuft
+# (ADR-0014 "Globale Waechter: nur der Leitslot"). Ohne diese Pins erbt der
+# Test SLOT_ID/SLOT_COUNT/LEAD_SLOT aus der aufrufenden Shell -- im
+# Runner-Prozessbaum ist SLOT_COUNT>1 exportiert, dann ist dieser Slot nicht
+# Leitslot und die geprueften Wirkungen (T1/T6) bleiben aus (#532).
+export SLOT_ID=1 SLOT_COUNT=1 LEAD_SLOT=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
