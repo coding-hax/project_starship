@@ -93,7 +93,7 @@ export function CalendarView() {
           same reasoning as weather-day.tsx) — CalendarStrip's paging controls
           live in it, not just a bare heading. */}
       <header className="calendar-view__header">
-        <h1>Kalender</h1>
+        <h1 className="calendar-view__heading">Kalender</h1>
         {today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
@@ -104,6 +104,19 @@ export function CalendarView() {
             expanded={expanded}
             onExpandChange={setExpanded}
           />
+        )}
+        {today !== null && selectedDay !== null && (
+          <div className="calendar-view__today-chip-slot">
+            {selectedDay !== today && (
+              <button
+                type="button"
+                className="calendar-view__today-chip"
+                onClick={() => setSelectedDayOverride(today)}
+              >
+                Heute
+              </button>
+            )}
+          </div>
         )}
       </header>
       {today !== null && selectedDay !== null && (
