@@ -43,7 +43,10 @@ case "${1:-} ${2:-}" in
         *) shift ;;
       esac
     done
-    [ "$json" = "title" ] && cat "$G/title-$pr" 2>/dev/null
+    case "$json" in
+      title) cat "$G/title-$pr" 2>/dev/null ;;
+      state) cat "$G/prstate-$pr" 2>/dev/null ;;
+    esac
     ;;
   "pr list")
     cat "$G/prlist.json" 2>/dev/null || echo "[]"
@@ -195,6 +198,9 @@ printf '%s' '[
   {"number":170,"title":"feat(weather): Feinschliff — Closes #155"}
 ]' > "$GHSTATE_DIR/prlist.json"
 echo CLOSED > "$GHSTATE_DIR/state-163"
+# #531: reopen_falsely_closed_issues() recheckt den PR-Status live (T1) vor
+# dem Reopen -- der T0-Schnappschuss aus prlist.json allein reicht nicht mehr.
+echo OPEN > "$GHSTATE_DIR/prstate-166"
 reopen_falsely_closed_issues
 assert_file_present "T4: #163 wird wieder geöffnet" "$GHSTATE_DIR/reopened-163"
 assert_eq "T4: Issue-Status steht wieder auf OPEN" "OPEN" "$(cat "$GHSTATE_DIR/state-163")"
