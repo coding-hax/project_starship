@@ -99,12 +99,12 @@ test('the nav carries the same six entries in both layouts (issue #123 AC3, #180
   }
 });
 
-test('/heute/routinen permanently redirects to /routinen instead of 404ing (issue #123 AC4)', async ({
+test('/heute/gewohnheiten permanently redirects to /routinen instead of 404ing (issue #123 AC4)', async ({
   page,
 }) => {
   await registerPasskey(page);
 
-  const response = await page.goto('/heute/routinen');
+  const response = await page.goto('/heute/gewohnheiten');
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/routinen$/);
   await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
