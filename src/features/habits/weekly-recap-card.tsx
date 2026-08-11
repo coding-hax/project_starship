@@ -21,7 +21,7 @@ function superlativeText(superlative: Superlative): string {
  * zuletzt abgeschlossene Mo–So-Woche, ausschließlich gegen die eigene
  * Historie (docs/VISION.md, nie ein Vergleich mit anderen). Rendert nichts
  * während des Ladens und nichts, sobald geladen aber ohne aktive
- * Gewohnheiten in der Bezugswoche (AC6) — kein Layout-Shift, kein Spinner.
+ * Routinen in der Bezugswoche (AC6) — kein Layout-Shift, kein Spinner.
  *
  * Beide „nichts" sehen von außen gleich aus, sind es aber nicht: das eine wird zu
  * Inhalt, das andere bleibt leer. `useBlockReady` meldet genau diesen Unterschied

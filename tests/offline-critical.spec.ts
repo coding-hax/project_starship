@@ -118,10 +118,10 @@ test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Wo
 
 /* -------------------------------------------------------------------------- */
 /* issue #505 AC8: offline geänderter Rhythmus UND ein offline geschriebener  */
-/* Eintrag der Journal-Gewohnheit (Auto-Log) erreichen zusammen die Datenbank */
+/* Eintrag der Journal-Routine (Auto-Log) erreichen zusammen die Datenbank */
 /* -------------------------------------------------------------------------- */
 
-test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Journal-Gewohnheit erreichen zusammen die Datenbank (issue #505 AC8)', async ({
+test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Journal-Routine erreichen zusammen die Datenbank (issue #505 AC8)', async ({
   page,
   context,
 }) => {
@@ -143,9 +143,9 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   // selbst macht (lock-store.ts), nur ohne den fragilen Navigationspfad.
   await page.evaluate((p) => window.__starship.journalSetup(p), passphrase);
 
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   const journalHabit = page
-    .getByRole('list', { name: 'Gewohnheiten', exact: true })
+    .getByRole('list', { name: 'Routinen', exact: true })
     .getByRole('listitem')
     .filter({ hasText: 'Journal' });
   await expect(journalHabit).toBeVisible();
@@ -169,10 +169,10 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   // component mount and no network needed, so it works offline too.
   await page.evaluate((p) => window.__starship.journalUnlock(p), passphrase);
 
-  // Rhythmus offline wechseln — bleibt auf /gewohnheiten, dessen Cache der Reload
+  // Rhythmus offline wechseln — bleibt auf /routinen, dessen Cache der Reload
   // oben bereits bestätigt hat (kein zweiter fragiler Navigationspfad nötig).
   await journalHabit.getByRole('button', { name: /^Journal\b/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Gewohnheit bearbeiten' });
+  const dialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
   await dialog.getByRole('button', { name: 'Speichern' }).click();

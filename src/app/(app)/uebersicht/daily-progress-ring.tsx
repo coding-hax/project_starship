@@ -13,7 +13,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /**
  * Tages-Fortschrittsring auf /uebersicht (issue #428, M-1 aus #416): „heute N
- * von M" aus Aufgaben + Gewohnheiten, modulübergreifend — deshalb im
+ * von M" aus Aufgaben + Routinen, modulübergreifend — deshalb im
  * Übersicht-Rahmen (page.tsx) statt in der per-Modul-`OverviewSection`-Registry.
  * Rendert `null`, bis alle drei Live-Queries durch sind (kein Layout-Shift,
  * Smooth-Regel 3, gleiches Muster wie `HabitToday`) und bei M = 0 dauerhaft

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { migrateModuleIds } from '@/modules/module-ids';
 import { NAV_ITEMS, type NavItem } from '@/ui/nav-items';
 
 const ORDER_KEY = 'starship:nav-order';
@@ -14,7 +15,11 @@ function readOrder(): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return isStringArray(parsed) ? parsed : [];
+    // Mapped on read, never written back: `resolveOrder()` drops ids it does not know,
+    // so without this a renamed module loses its stored position and gets re-appended
+    // at the end of the carousel. The stored value heals itself on the next reorder,
+    // because `write()` persists the already-mapped snapshot.
+    return isStringArray(parsed) ? migrateModuleIds(parsed) : [];
   } catch {
     return [];
   }

@@ -49,7 +49,7 @@ test('Ersteinrichtung erzeugt die Huelle und entsperrt sofort (AC1)', async ({ p
   expect(await journalKeyRowCount()).toBe(1);
 });
 
-test('gesperrt bleibt Uebersicht/Aufgaben/Gewohnheiten voll bedienbar (AC2)', async ({ page }) => {
+test('gesperrt bleibt Uebersicht/Aufgaben/Routinen voll bedienbar (AC2)', async ({ page }) => {
   await setUpJournal(page, PASSPHRASE);
   await page.reload();
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
@@ -64,8 +64,8 @@ test('gesperrt bleibt Uebersicht/Aufgaben/Gewohnheiten voll bedienbar (AC2)', as
   await expect(page).toHaveURL(/\/aufgaben$/);
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 1 })).toBeVisible();
 
-  await nav.getByRole('link', { name: 'Gewohnheiten' }).click();
-  await expect(page).toHaveURL(/\/gewohnheiten$/);
+  await nav.getByRole('link', { name: 'Routinen' }).click();
+  await expect(page).toHaveURL(/\/routinen$/);
 });
 
 test('richtige Passphrase entsperrt, falsche zeigt eine ruhige Meldung ohne Absturz (AC3)', async ({

@@ -114,7 +114,7 @@ h3 {
  * frame — well before `module-route-guard.tsx` mounts and redirects.
  */
 html[data-modules-off~='aufgaben'] [data-module='aufgaben'],
-html[data-modules-off~='gewohnheiten'] [data-module='gewohnheiten'],
+html[data-modules-off~='routinen'] [data-module='routinen'],
 html[data-modules-off~='kalender'] [data-module='kalender'],
 html[data-modules-off~='journal'] [data-module='journal'],
 html[data-modules-off~='aktivitaeten'] [data-module='aktivitaeten'] {

@@ -12,7 +12,7 @@ import { useModules } from './use-modules';
  * (und ab T2/T3 die zugehörigen Bereiche) blenden es aus. `core`-Module (Übersicht,
  * Einstellungen) tauchen hier nie auf.
  *
- * Journal ist die eine Ausnahme (issue #505 AC7): die Journal-Gewohnheit wird nur an
+ * Journal ist die eine Ausnahme (issue #505 AC7): die Journal-Routine wird nur an
  * der Flanke dieses Schalters archiviert/entarchiviert, nie bei jedem Mount — sonst
  * würde ein unterschiedlicher Schalterstand zwischen zwei Geräten über den Sync
  * endlos hin- und herschreiben.

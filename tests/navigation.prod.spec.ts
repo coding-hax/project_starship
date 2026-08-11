@@ -72,7 +72,7 @@ test.describe('angemeldet', () => {
     expect(kalenderRequests).toEqual([]);
   });
 
-  test('offline bleiben Übersicht, Aufgaben, Kalender und Gewohnheiten erreichbar, ohne Offline-Fallback (AK2)', async ({
+  test('offline bleiben Übersicht, Aufgaben, Kalender und Routinen erreichbar, ohne Offline-Fallback (AK2)', async ({
     page,
     context,
   }) => {
@@ -85,7 +85,7 @@ test.describe('angemeldet', () => {
     const stops: Array<[label: string, heading: string]> = [
       ['Aufgaben', 'Aufgaben'],
       ['Kalender', 'Kalender'],
-      ['Gewohnheiten', 'Gewohnheiten verwalten'],
+      ['Routinen', 'Routinen verwalten'],
       ['Übersicht', 'Übersicht'],
     ];
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { migrateModuleIds } from '@/modules/module-ids';
 import { MODULES } from '@/modules/registry';
 
 const MODULES_OFF_KEY = 'starship:modules-off';
@@ -14,7 +15,11 @@ function readOff(): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return isStringArray(parsed) ? parsed : [];
+    // Mapped on read, never written back: this is an exclusion list, so a renamed
+    // module whose stored id no longer matches would silently switch back **on**. The
+    // stored value heals itself on the next toggle, because `write()` persists the
+    // already-mapped snapshot.
+    return isStringArray(parsed) ? migrateModuleIds(parsed) : [];
   } catch {
     return [];
   }
