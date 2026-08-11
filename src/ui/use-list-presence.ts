@@ -19,6 +19,11 @@ interface PresenceStep<T> {
   established: boolean;
 }
 
+/** A `PresenceStep` plus the subject it was computed for — see `resetKey` below. */
+interface PresenceState<T> extends PresenceStep<T> {
+  resetKey: string | undefined;
+}
+
 /**
  * Pure diff step, exported for the Vitest unit (issue #430) — the hook below is
  * just a thin useState/useEffect wrapper around it.
@@ -86,6 +91,20 @@ export function nextPresenceEntries<T>(
   return { entries: merged, established: true };
 }
 
+/**
+ * Every item as a settled `present` row — no enter, no leave (issue #611).
+ *
+ * Used when the caller swaps the list's *subject* rather than its contents
+ * (`resetKey` below): the previous rows are not departures that earned an exit
+ * animation, they belong to something the user is no longer looking at.
+ */
+export function seedPresenceEntries<T>(
+  items: T[],
+  getKey: (item: T) => string,
+): ListPresenceEntry<T>[] {
+  return items.map((item) => ({ key: getKey(item), item, status: 'present' as const }));
+}
+
 /** Called from a row's `onAnimationEnd` — `entering` settles to `present`, a
  * settled `leaving` row is finally dropped. Any other status is untouched, so a
  * stray animationend (e.g. from an unrelated child animation bubbling up) is a
@@ -123,9 +142,25 @@ export function settlePresenceEntry<T>(
  * "Maximum update depth exceeded", 32 duplicate rows). The value itself is
  * always a trivial, stable-in-spirit id lookup, so re-running the diff only
  * when `items` actually changes is correct, not a staleness risk.
+ *
+ * `resetKey` names *what the list is about* — the calendar day a timeline
+ * shows, say. Changing it swaps the whole list rather than adding to or
+ * removing from it, so the old rows are dropped outright and the new ones seed
+ * as `present` (issue #611). Without it, paging from one day to the next let
+ * yesterday's cards linger over today's for the length of the exit animation,
+ * because a key missing from the next snapshot is indistinguishable from a
+ * deleted row. Two things have to happen for that, and the second is easy to
+ * miss: the seed is what this render *returns*, not just what the effect
+ * below stores — the effect runs after the paint, so a state-only reset would
+ * still show one frame of the old day. Callers whose list keeps a single
+ * subject for its lifetime (tasks, habits) leave it undefined and keep the
+ * pure add/remove behaviour.
  */
-export function useListPresence<T>(items: T[], getKey: (item: T) => string): ListPresenceRow<T>[] {
-  const establishedRef = useRef(false);
+export function useListPresence<T>(
+  items: T[],
+  getKey: (item: T) => string,
+  resetKey?: string,
+): ListPresenceRow<T>[] {
   const getKeyRef = useRef(getKey);
   // No dependency array: this needs to run after *every* render, purely to keep
   // the ref current — a plain assignment during render is a lint error (refs
@@ -133,19 +168,39 @@ export function useListPresence<T>(items: T[], getKey: (item: T) => string): Lis
   useEffect(() => {
     getKeyRef.current = getKey;
   });
-  const [entries, setEntries] = useState<ListPresenceEntry<T>[]>([]);
+  const [state, setState] = useState<PresenceState<T>>(() => ({
+    entries: [],
+    established: false,
+    resetKey,
+  }));
 
   useEffect(() => {
-    setEntries((prev) => {
-      const step = nextPresenceEntries(prev, establishedRef.current, items, getKeyRef.current);
-      establishedRef.current = step.established;
-      return step.entries;
+    setState((prev) => {
+      if (prev.resetKey !== resetKey) {
+        return {
+          entries: seedPresenceEntries(items, getKeyRef.current),
+          // A list that was already established stays established across the
+          // swap: landing on an empty day is a settled answer, not the
+          // "still loading" ambiguity nextPresenceEntries has to guess at, so
+          // a row arriving afterwards is a real addition and may animate in.
+          established: prev.established || items.length > 0,
+          resetKey,
+        };
+      }
+      const step = nextPresenceEntries(prev.entries, prev.established, items, getKeyRef.current);
+      return { entries: step.entries, established: step.established, resetKey };
     });
-  }, [items]);
+  }, [items, resetKey]);
 
   function handleAnimationEnd(key: string) {
-    setEntries((prev) => settlePresenceEntry(prev, key));
+    setState((prev) => ({ ...prev, entries: settlePresenceEntry(prev.entries, key) }));
   }
+
+  // `getKey` straight from the arguments here, not `getKeyRef` — this runs
+  // during render, where reading a ref is both a lint error and pointless: the
+  // prop itself is the current value, the ref only exists to keep the effect
+  // below off `getKey`'s ever-changing identity.
+  const entries = state.resetKey === resetKey ? state.entries : seedPresenceEntries(items, getKey);
 
   return entries.map((entry) => ({ ...entry, onAnimationEnd: () => handleAnimationEnd(entry.key) }));
 }
