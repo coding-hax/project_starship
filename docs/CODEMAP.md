@@ -253,6 +253,7 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 | den Vertrag zwischen Client und Sync-API | `src/local/types.ts` |
 | wer reindarf | `src/auth/session.ts` (`requireOwner`) |
 | Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
+| wie ein Screen aus mehreren Live-Queries lädt | `src/ui/overview-ready.tsx` |
 | die Journal-Verschlüsselung | `src/crypto/journal.ts` (+ `envelope.ts`) |
 | warum etwas so entschieden wurde | `docs/adr/` |
 

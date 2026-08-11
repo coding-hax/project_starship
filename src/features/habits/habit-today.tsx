@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
+import { useBlockReady } from '@/ui/overview-ready';
 import { Toast } from '@/ui/toast';
 import { metEarlierInPeriod, toDateKey } from './due-today';
 import { canRescue, currentStreakUsesFreeze, gapDay } from './freeze';
@@ -56,6 +57,8 @@ export function HabitToday() {
   const logs = useHabitLogs();
   const freezes = useHabitFreezes();
   const toggle = useToggleHabitLog(logs);
+
+  useBlockReady(habits !== undefined && logs !== undefined && freezes !== undefined);
 
   const [rescueUndo, setRescueUndo] = useState<RescueUndo | null>(null);
   const rescueTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
