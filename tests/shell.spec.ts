@@ -35,7 +35,7 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
 
   for (const [label, path, heading] of [
     ['Aufgaben', '/aufgaben', 'Aufgaben'],
-    ['Gewohnheiten', '/gewohnheiten', 'Gewohnheiten verwalten'],
+    ['Routinen', '/routinen', 'Routinen verwalten'],
     ['Kalender', '/kalender', 'Kalender'],
     ['Journal', '/journal', 'Journal'],
     ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
@@ -99,15 +99,15 @@ test('the nav carries the same six entries in both layouts (issue #123 AC3, #180
   }
 });
 
-test('/heute/gewohnheiten permanently redirects to /gewohnheiten instead of 404ing (issue #123 AC4)', async ({
+test('/heute/gewohnheiten permanently redirects to /routinen instead of 404ing (issue #123 AC4)', async ({
   page,
 }) => {
   await registerPasskey(page);
 
   const response = await page.goto('/heute/gewohnheiten');
   expect(response?.status()).toBeLessThan(400);
-  await expect(page).toHaveURL(/\/gewohnheiten$/);
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/\/routinen$/);
+  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
 
   const redirected = response!.request().redirectedFrom();
   expect(redirected).not.toBeNull();
@@ -183,7 +183,7 @@ test('the header and nav respect reduced motion and stay legible in dark mode (i
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  const habitsTab = nav.getByRole('link', { name: 'Gewohnheiten' });
+  const habitsTab = nav.getByRole('link', { name: 'Routinen' });
   await habitsTab.click();
   await expect(habitsTab).toHaveAttribute('aria-current', 'page');
   const darkColor = await habitsTab.evaluate((el) => getComputedStyle(el).color);
@@ -263,7 +263,7 @@ test('the active tab colors its icon via currentColor, with no second color defi
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  const habitsTab = nav.getByRole('link', { name: 'Gewohnheiten' });
+  const habitsTab = nav.getByRole('link', { name: 'Routinen' });
   await habitsTab.click();
 
   // Read both colors in one round-trip: the link's color transitions on activation
@@ -283,7 +283,7 @@ test('switching tabs never shifts where main starts, whether or not the settings
   const main = page.locator('main.shell__main');
   const uebersichtY = (await main.boundingBox())!.y;
 
-  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+  for (const path of ['/aufgaben', '/routinen', '/kalender', '/journal']) {
     await page.goto(path);
     const box = await main.boundingBox();
     expect(box).not.toBeNull();

@@ -28,7 +28,7 @@ const BLOCKS = {
   termine: '.events-overview__next, .events-overview__empty',
   aufgaben: '.task-list, .task-list__empty',
   wochenrueckblick: '.weekly-recap-card',
-  gewohnheiten: '.habit-today, .habit-today__empty',
+  routinen: '.habit-today, .habit-today__empty',
 } as const;
 
 interface ShiftEntry {
@@ -204,7 +204,7 @@ test('alle Blöcke werden im selben Frame sichtbar, nicht nacheinander (AC2)', a
 
   // Jeder gemessene Block muss aufgetaucht sein — sonst misst der Test nichts.
   expect(Object.keys(reveal.firstVisibleFrame).sort()).toEqual(
-    ['aufgaben', 'gewohnheiten', 'ring', 'termine', 'wochenrueckblick'].sort(),
+    ['aufgaben', 'routinen', 'ring', 'termine', 'wochenrueckblick'].sort(),
   );
   expect(new Set(frames).size).toBe(1);
 });
@@ -295,12 +295,12 @@ test('im Dark Mode wird derselbe Inhalt enthüllt (AC7)', async ({ page }) => {
   await expect(page.locator('.overview-ready')).toBeVisible();
 });
 
-/** Die id der einzigen gesäten Gewohnheit — für Logs, die auf sie zeigen müssen. */
+/** Die id der einzigen gesäten Routine — für Logs, die auf sie zeigen müssen. */
 async function firstHabitId(page: Page): Promise<string> {
   return page.evaluate(async () => {
     const records = await window.__starship.debugRecords();
     const habit = records.find((record) => record.table === 'habits');
-    if (!habit) throw new Error('keine Gewohnheit gesät');
+    if (!habit) throw new Error('keine Routine gesät');
     return habit.id;
   });
 }

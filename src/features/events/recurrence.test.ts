@@ -14,6 +14,7 @@ function event(overrides: Partial<EventView>): EventView {
     endDate: null,
     category: null,
     recurrence: null,
+    origin: 'local',
     ...overrides,
   };
 }
@@ -147,6 +148,7 @@ describe('expandForDay', () => {
         startDate: null,
         endDate: null,
         category: null,
+        origin: 'local',
       },
     ]);
   });
@@ -170,6 +172,7 @@ describe('expandForDay', () => {
         startDate: null,
         endDate: null,
         category: null,
+        origin: 'local',
       },
     ]);
   });
@@ -220,6 +223,7 @@ describe('expandForDay', () => {
         startDate: null,
         endDate: null,
         category: null,
+        origin: 'local',
       },
     ]);
 
@@ -248,6 +252,7 @@ describe('expandForDay', () => {
         startDate: '2026-07-27',
         endDate: '2026-07-28',
         category: null,
+        origin: 'local',
       },
     ]);
   });

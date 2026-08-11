@@ -99,7 +99,7 @@ describe('computeWeeklyRecap — AC3: Kennzahl N von M', () => {
     expect(recap?.metric).toEqual({ met: 1, total: 1 });
   });
 
-  it('monatliche/quartalsweise/jährliche/zweiwöchentliche Gewohnheiten tragen nichts bei (issue #509)', () => {
+  it('monatliche/quartalsweise/jährliche/zweiwöchentliche Routinen tragen nichts bei (issue #509)', () => {
     const habits = [
       habit('a'), // daily, erfüllt -> zählt
       habit('b', { schedule: 'monthly' }),
@@ -112,7 +112,7 @@ describe('computeWeeklyRecap — AC3: Kennzahl N von M', () => {
     expect(recap?.metric).toEqual({ met: 1, total: 1 });
   });
 
-  it('mehrere Gewohnheiten: nur die erfüllten zählen in N', () => {
+  it('mehrere Routinen: nur die erfüllten zählen in N', () => {
     const habits = [
       habit('a'),
       habit('b', { schedule: 'weekly' }),
@@ -140,7 +140,7 @@ describe('computeWeeklyRecap — Superlativ: best-ever braucht Mindesthistorie (
 describe('computeWeeklyRecap — Superlativ: zu wenig Historie für best-ever (#504 AC2)', () => {
   it('genau 1 Vorwoche mit Daten geschlagen -> kein Superlativ', () => {
     // createdAt so gesetzt, dass genau eine Vorwoche als Datenpunkt existiert
-    // (die Woche davor liegt vor der Gründung der Gewohnheit).
+    // (die Woche davor liegt vor der Gründung der Routine).
     const habits = [habit('a', { createdAt: '2026-06-29T00:00:00.000Z' })];
     const logs = [
       ...LAST_WEEK_DAYS.map((d) => log('a', d)), // Referenzwoche: 7/7
@@ -182,10 +182,10 @@ describe('computeWeeklyRecap — Superlativ: best-since mit Kalenderabstand (#50
     expect(recap?.superlative).toEqual({ kind: 'best-since', weeks: 2 });
   });
 
-  it('Kalenderwoche ohne aktive Gewohnheit zählt beim Abstand mit', () => {
+  it('Kalenderwoche ohne aktive Routine zählt beim Abstand mit', () => {
     // "p" ist während der Vorwoche (distance 1) bereits archiviert, "q"
     // existiert erst ab der Referenzwoche -- die Vorwoche hat deshalb gar
-    // keine aktive Gewohnheit (total 0, kein Datenpunkt), zählt aber
+    // keine aktive Routine (total 0, kein Datenpunkt), zählt aber
     // trotzdem als Kalenderwoche für den Abstand zur besseren Woche davor.
     const habits = [
       habit('p', { createdAt: '2026-06-22T00:00:00.000Z', archivedAt: '2026-06-29T00:00:00.000Z' }),
@@ -263,17 +263,17 @@ describe('computeWeeklyRecap — AC5 aus #431: zu wenig Historie', () => {
   });
 });
 
-describe('computeWeeklyRecap — AC6: keine aktiven Gewohnheiten', () => {
-  it('keine Gewohnheiten überhaupt -> null', () => {
+describe('computeWeeklyRecap — AC6: keine aktiven Routinen', () => {
+  it('keine Routinen überhaupt -> null', () => {
     expect(computeWeeklyRecap([], [], NOW)).toBeNull();
   });
 
-  it('alle Gewohnheiten erst nach der Bezugswoche angelegt -> null', () => {
+  it('alle Routinen erst nach der Bezugswoche angelegt -> null', () => {
     const habits = [habit('a', { createdAt: '2026-07-14T00:00:00.000Z' })];
     expect(computeWeeklyRecap(habits, [], NOW)).toBeNull();
   });
 
-  it('alle Gewohnheiten vor der Bezugswoche archiviert -> null', () => {
+  it('alle Routinen vor der Bezugswoche archiviert -> null', () => {
     const habits = [
       habit('a', { archivedAt: '2026-07-01T00:00:00.000Z' }),
     ];

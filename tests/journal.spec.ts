@@ -454,7 +454,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Gewohnheit ab    */
+/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Routine ab    */
 /* -------------------------------------------------------------------------- */
 
 async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: string; done: boolean }>> {
@@ -469,7 +469,7 @@ async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: strin
   return rows.rows;
 }
 
-test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
+test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
   page,
 }) => {
   await installClockAt(page);
@@ -507,11 +507,11 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den 
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Gewohnheit  */
+/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Routine  */
 /* an, ein zweiter Boot (Reload) keine zweite                                 */
 /* -------------------------------------------------------------------------- */
 
-test('AC1 (#505): das Journal-Modul legt genau eine Journal-Gewohnheit an, ein zweiter Boot keine zweite', async ({
+test('AC1 (#505): das Journal-Modul legt genau eine Journal-Routine an, ein zweiter Boot keine zweite', async ({
   page,
 }) => {
   await registerPasskey(page);

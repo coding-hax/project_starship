@@ -247,15 +247,15 @@ test.describe('tasks-due', () => {
  * As with `tasks-due`, the exact notification text (name, "und N weitere", the
  * streak suffix) is Vitest territory (src/push/reminders/habits-open.test.ts) —
  * no push_subscriptions row is seeded here, so this suite only proves whether
- * `habits-open` fires, not what it says. "Tippen öffnet /gewohnheiten" (AC6) is
+ * `habits-open` fires, not what it says. "Tippen öffnet /routinen" (AC6) is
  * the generic SW notificationclick behaviour already proven for any payload's
  * `url` in tests/push-sw.prod.spec.ts (#122); habits-open.test.ts already asserts
- * it hands that handler `url: '/gewohnheiten'`.
+ * it hands that handler `url: '/routinen'`.
  */
 test.describe('habits-open', () => {
   const AT_2005_BERLIN = { 'x-e2e-now': '2026-07-15T18:05:00.000Z' }; // 20:05 CEST, a Wednesday
 
-  test('eine offene Gewohnheit löst eine Erinnerung aus (AC1)', async ({ request }) => {
+  test('eine offene Routine löst eine Erinnerung aus (AC1)', async ({ request }) => {
     await insertHabit({ name: 'Laufen' });
 
     const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
@@ -276,7 +276,7 @@ test.describe('habits-open', () => {
     expect(body.skipped).toContain('habits-open');
   });
 
-  test('eine wöchentliche Gewohnheit, diese Woche schon erledigt, gilt nicht als offen (AC3)', async ({
+  test('eine wöchentliche Routine, diese Woche schon erledigt, gilt nicht als offen (AC3)', async ({
     request,
   }) => {
     const habitId = await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
@@ -288,8 +288,8 @@ test.describe('habits-open', () => {
     expect(body.sent).not.toContain('habits-open');
   });
 
-  test('archivierte Gewohnheiten erscheinen nie (AC4)', async ({ request }) => {
-    await insertHabit({ name: 'Alte Gewohnheit', archivedAt: '2026-06-01T00:00:00.000Z' });
+  test('archivierte Routinen erscheinen nie (AC4)', async ({ request }) => {
+    await insertHabit({ name: 'Alte Routine', archivedAt: '2026-06-01T00:00:00.000Z' });
 
     const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
     const body = await response.json();
@@ -304,7 +304,7 @@ test.describe('habits-open', () => {
    */
   const AT_2005_BERLIN_LAST_DAY_OF_WEEK = { 'x-e2e-now': '2026-07-19T18:05:00.000Z' }; // Sunday 20:05 CEST
 
-  test('eine offene wöchentliche Gewohnheit bleibt vor dem letzten Tag der Woche still (issue #509)', async ({
+  test('eine offene wöchentliche Routine bleibt vor dem letzten Tag der Woche still (issue #509)', async ({
     request,
   }) => {
     await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
@@ -316,7 +316,7 @@ test.describe('habits-open', () => {
     expect(body.sent).not.toContain('habits-open');
   });
 
-  test('eine offene wöchentliche Gewohnheit meldet sich am letzten Tag der Woche (issue #509)', async ({
+  test('eine offene wöchentliche Routine meldet sich am letzten Tag der Woche (issue #509)', async ({
     request,
   }) => {
     await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
@@ -329,7 +329,7 @@ test.describe('habits-open', () => {
     expect(body.sent).toContain('habits-open');
   });
 
-  test('eine „3x pro Woche"-Gewohnheit mit 2 von 3 gilt am letzten Tag der Woche noch als offen (issue #509)', async ({
+  test('eine „3x pro Woche"-Routine mit 2 von 3 gilt am letzten Tag der Woche noch als offen (issue #509)', async ({
     request,
   }) => {
     const habitId = await insertHabit({ name: 'Krafttraining', schedule: 'weekly', target: 3 });
@@ -344,7 +344,7 @@ test.describe('habits-open', () => {
     expect(body.sent).toContain('habits-open');
   });
 
-  test('eine jährliche Gewohnheit bleibt still, wenn mehr als 7 Tage bis Jahresende bleiben (issue #509 AC6)', async ({
+  test('eine jährliche Routine bleibt still, wenn mehr als 7 Tage bis Jahresende bleiben (issue #509 AC6)', async ({
     request,
   }) => {
     await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });
@@ -357,7 +357,7 @@ test.describe('habits-open', () => {
     expect(body.sent).not.toContain('habits-open');
   });
 
-  test('eine jährliche Gewohnheit meldet sich innerhalb der letzten 7 Tage des Jahres (issue #509 AC6)', async ({
+  test('eine jährliche Routine meldet sich innerhalb der letzten 7 Tage des Jahres (issue #509 AC6)', async ({
     request,
   }) => {
     await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });

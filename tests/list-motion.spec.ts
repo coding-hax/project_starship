@@ -38,7 +38,7 @@ function taskItems(page: Page) {
  * tests seed their own rows. Irrelevant ambient state for what AC1/AC2 test. */
 function habitItems(page: Page) {
   return page
-    .getByRole('list', { name: 'Gewohnheiten', exact: true })
+    .getByRole('list', { name: 'Routinen', exact: true })
     .locator('> li')
     .filter({ hasNotText: 'Journal' });
 }
@@ -206,17 +206,17 @@ test.describe('Aufgaben', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* Gewohnheiten                                                                */
+/* Routinen                                                                */
 /* -------------------------------------------------------------------------- */
 
-test.describe('Gewohnheiten', () => {
+test.describe('Routinen', () => {
   test.beforeEach(async ({ page }) => {
     await registerPasskey(page);
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
   });
 
-  test('AC1: eine neu angelegte Gewohnheit blendet ein, die vorhandene nicht', async ({ page }) => {
-    await page.goto('/gewohnheiten');
+  test('AC1: eine neu angelegte Routine blendet ein, die vorhandene nicht', async ({ page }) => {
+    await page.goto('/routinen');
     await seedHabit(page, { name: 'Joggen', schedule: 'daily', color: null, archivedAt: null });
     await expect(habitItems(page)).toHaveCount(1);
     const existing = habitItems(page).filter({ hasText: 'Joggen' });
@@ -232,7 +232,7 @@ test.describe('Gewohnheiten', () => {
   test('AC2: Archivieren blendet die Zeile aus der aktiven Liste aus, bevor sie verschwindet', async ({
     page,
   }) => {
-    await page.goto('/gewohnheiten');
+    await page.goto('/routinen');
     await seedHabit(page, { name: 'Tagebuch', schedule: 'daily', color: null, archivedAt: null });
     const item = habitItems(page).filter({ hasText: 'Tagebuch' });
     await expect(item).toHaveAttribute('data-entering', 'false');

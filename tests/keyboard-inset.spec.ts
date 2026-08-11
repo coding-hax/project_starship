@@ -118,8 +118,8 @@ test.describe('Rhythmus-Auswahl behält Fokus bei Zeigergeräten (#138)', () => 
     page,
   }) => {
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
-    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });
     await expect(nameField).toBeFocused();
@@ -184,12 +184,12 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await resetAppData();
   });
 
-  test('Gewohnheits-Sheet: Namensfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
+  test('Routinen-Sheet: Namensfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
     page,
   }) => {
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
-    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });
     await expect(nameField).toBeFocused();
@@ -224,8 +224,8 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
 
   test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
-    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
     // "Wöchentlich" reveals the 1–6× target picker (issue #509) — tall enough
     // together with the six schedule radios and four colour options to exceed
     // the ~512px left once a 300px keyboard covers the bottom of a 812px screen.
@@ -251,12 +251,12 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await expectVisibleAboveKeyboard(page, nameField, 300);
   });
 
-  test('ohne Tastatur sitzt das Gewohnheits-Sheet weiterhin bündig am unteren Rand', async ({
+  test('ohne Tastatur sitzt das Routinen-Sheet weiterhin bündig am unteren Rand', async ({
     page,
   }) => {
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
-    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const sheetContent = page.getByRole('dialog').locator('.sheet__content');
     await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -286,8 +286,8 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
-    await page.getByRole('button', { name: 'Gewohnheit anlegen' }).click();
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });
     await expect(nameField).toBeFocused();

@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Starship',
     short_name: 'Starship',
-    description: 'Termine, Aufgaben, Journal und Gewohnheiten an einem Ort.',
+    description: 'Termine, Aufgaben, Journal und Routinen an einem Ort.',
     start_url: '/uebersicht',
     // Home-screen launch must open standalone, not in a Safari tab.
     display: 'standalone',

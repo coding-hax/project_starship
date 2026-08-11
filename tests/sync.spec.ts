@@ -679,7 +679,7 @@ test.describe('Cursor überspringt nie dauerhaft eine wartende Zeile (#479)', ()
  * M2 foundation (#101) — data model only, no UI. Mirrors the sync_state offline
  * test above: the outbox does not know or care what table it is carrying.
  */
-test.describe('Gewohnheiten: Datenmodell + Sync (#101)', () => {
+test.describe('Routinen: Datenmodell + Sync (#101)', () => {
   test('a habit and a log created offline reach Postgres with a sync_seq once online', async ({
     page,
   }) => {
@@ -1022,7 +1022,7 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
     expect(logRows.rowCount).toBe(1);
   });
 
-  test('AK4: zwei Geräte loggen dieselbe Gewohnheit am selben Tag offline — Bs Outbox bleibt nicht hängen', async ({
+  test('AK4: zwei Geräte loggen dieselbe Routine am selben Tag offline — Bs Outbox bleibt nicht hängen', async ({
     page,
     browser,
   }) => {

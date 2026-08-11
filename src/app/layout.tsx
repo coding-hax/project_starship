@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { LEGACY_MODULE_IDS } from '@/modules/module-ids';
 import { KeyboardInset } from '@/ui/keyboard-inset';
 
 const inter = Inter({
@@ -11,7 +12,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'Starship',
-  description: 'Termine, Aufgaben, Journal und Gewohnheiten an einem Ort.',
+  description: 'Termine, Aufgaben, Journal und Routinen an einem Ort.',
   applicationName: 'Starship',
   manifest: '/manifest.webmanifest',
   // iOS ignores the manifest for the home-screen icon and the standalone flag;
@@ -49,6 +50,15 @@ export const viewport: Viewport = {
 // follows the same idea for an off module's route (issue #309): globals.css hides its
 // `[data-module]` wrapper the instant this attribute lands, before the route guard
 // (`module-route-guard.tsx`) even mounts.
+//
+// The legacy-id mapping is inlined from `LEGACY_MODULE_IDS` rather than imported,
+// because this runs as a plain string before any bundle exists — but it is generated
+// from the same constant `use-modules.ts` maps with, so the two can never drift. Without
+// it, a module switched off under its old id would be visible for exactly one frame
+// (issue #655): React would hide it on mount, which is the flash this script exists to
+// prevent.
+const LEGACY_MODULE_IDS_JSON = JSON.stringify(Object.fromEntries(LEGACY_MODULE_IDS));
+
 const THEME_BOOTSTRAP_SCRIPT = `(function () {
   try {
     var html = document.documentElement;
@@ -60,8 +70,16 @@ const THEME_BOOTSTRAP_SCRIPT = `(function () {
     if (reduceMotion === 'true') html.setAttribute('data-reduce-motion', 'true');
     if (textScale) html.style.setProperty('--font-scale', textScale);
     if (modulesOff) {
+      var legacy = ${LEGACY_MODULE_IDS_JSON};
       var off = JSON.parse(modulesOff);
-      if (Array.isArray(off) && off.length) html.setAttribute('data-modules-off', off.join(' '));
+      if (Array.isArray(off) && off.length) {
+        var mapped = [];
+        for (var i = 0; i < off.length; i++) {
+          var id = Object.prototype.hasOwnProperty.call(legacy, off[i]) ? legacy[off[i]] : off[i];
+          if (mapped.indexOf(id) === -1) mapped.push(id);
+        }
+        html.setAttribute('data-modules-off', mapped.join(' '));
+      }
     }
   } catch (e) {}
 })();`;

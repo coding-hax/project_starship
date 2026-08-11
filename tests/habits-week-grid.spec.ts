@@ -52,7 +52,7 @@ function dayButton(grid: ReturnType<typeof monthGrid>, day: number, month: strin
 
 test.beforeEach(async ({ page }) => {
   // resetAppData, not resetDatabase: wiping sessions/credentials forces registerPasskey
-  // through a full re-registration every test, and that leaves goto('/gewohnheiten')
+  // through a full re-registration every test, and that leaves goto('/routinen')
   // racing session propagation — a stale session redirects to /anmelden, where the app
   // layout (and with it the E2E bridge) never mounts, so window.__starship never appears
   // and the wait below hits its timeout (#120). The stable habit specs (habits-heute,
@@ -63,7 +63,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   // The E2E bridge attaches window.__starship from a post-hydration effect
   // (src/ui/e2e-bridge.tsx), which can land after goto's load event. These tests
   // reach for seedHabit → window.__starship.mutate as their very first step, with no
@@ -116,10 +116,10 @@ test('das Raster zeigt genau die Tage des Monats plus die echten Nachbartage, Mo
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: ‹/› blättern den Monat für alle Gewohnheiten gleichzeitig              */
+/* AK: ‹/› blättern den Monat für alle Routinen gleichzeitig              */
 /* -------------------------------------------------------------------------- */
 
-test('‹ und › blättern den Monat für alle Gewohnheiten gleichzeitig, Überschrift nennt Monat und Jahr (issue #124 AC2)', async ({
+test('‹ und › blättern den Monat für alle Routinen gleichzeitig, Überschrift nennt Monat und Jahr (issue #124 AC2)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Yoga', schedule: 'daily', color: null, archivedAt: null });
@@ -327,7 +327,7 @@ test('nachträgliches Abhaken schlägt sich sofort in der Streak-Anzeige nieder 
   // read from must already reflect the write (due-today.ts's "no fetch needed").
   await page.getByRole('link', { name: 'Übersicht' }).click();
   await expect(
-    page.getByRole('list', { name: 'Gewohnheiten heute' }).getByLabel('Streak: 4'),
+    page.getByRole('list', { name: 'Routinen heute' }).getByLabel('Streak: 4'),
   ).toBeVisible();
 });
 

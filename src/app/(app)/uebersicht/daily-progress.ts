@@ -13,13 +13,13 @@ export interface DailyProgress {
  * "heute N von M" (issue #428, M-1 aus #416) — reine Zählung über die schon
  * vorhandenen Modul-Definitionen von „fällig"/„erledigt", keine eigene Logik:
  * Aufgaben über dieselbe `belongsOnUebersicht`-Regel wie `TaskList
- * dueTodayOnly` (issue #87/#228), Gewohnheiten über `schedule-rules.ts`
+ * dueTodayOnly` (issue #87/#228), Routinen über `schedule-rules.ts`
  * (issue #243, verallgemeinert auf beliebige Perioden in #509). Ein
  * abgeschaltetes Modul (`isActive`, ADR-0012) trägt nichts bei, archivierte
- * Gewohnheiten zählen nie mit (wie `HabitToday`). Eine Gewohnheit, deren
+ * Routinen zählen nie mit (wie `HabitToday`). Eine Routine, deren
  * `target` an einem früheren Tag ihrer laufenden Periode schon erreicht wurde,
  * fällt ganz aus Zähler und Nenner heraus (issue #503, #509) —
- * `metEarlierInPeriod`, damit eine heute abgehakte Gewohnheit im Ring stehen
+ * `metEarlierInPeriod`, damit eine heute abgehakte Routine im Ring stehen
  * bleibt statt rückwärts zu springen.
  */
 export function computeDailyProgress(
@@ -38,7 +38,7 @@ export function computeDailyProgress(
     done += dueTasks.filter((task) => task.completedAt !== null).length;
   }
 
-  if (isActive('gewohnheiten')) {
+  if (isActive('routinen')) {
     const dateKey = toDateKey(now);
     const dueHabits = habits.filter(
       (habit) => habit.archivedAt === null && !metEarlierInPeriod(habit, logs, now),

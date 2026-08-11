@@ -60,7 +60,7 @@ test('zeigt einen Ring in der Form "heute N von M", sobald etwas fällig ist (is
   await expect(ring(page)).toHaveText('heute 0 von 1');
 });
 
-test('zählt fällige Aufgaben (dueTodayOnly-Logik) und fällige Gewohnheiten zusammen, erledigt via completedAt/isDoneOnDay (issue #428 AC2)', async ({
+test('zählt fällige Aufgaben (dueTodayOnly-Logik) und fällige Routinen zusammen, erledigt via completedAt/isDoneOnDay (issue #428 AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -108,7 +108,7 @@ test('ein abgeschaltetes Modul trägt nichts zur Zählung bei (issue #428 AC3)',
   await page.reload();
   await expect(ring(page)).toHaveText('heute 1 von 1');
 
-  await setModulesOff(page, ['gewohnheiten']);
+  await setModulesOff(page, ['routinen']);
   await page.reload();
   await expect(ring(page)).toHaveText('heute 0 von 1');
 });
@@ -131,7 +131,7 @@ test('beide Module aus lässt den Ring weg, obwohl Daten vorhanden sind (issue #
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
   await expect(ring(page)).toBeVisible();
 
-  await setModulesOff(page, ['aufgaben', 'gewohnheiten']);
+  await setModulesOff(page, ['aufgaben', 'routinen']);
   await page.reload();
 
   await expect(ring(page)).toHaveCount(0);
@@ -188,7 +188,7 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
   expect(parseFloat(fillTransition)).toBeLessThan(0.001);
 });
 
-test('eine wöchentliche Gewohnheit, die früher diese Woche abgehakt wurde, fällt aus dem Ring heraus (issue #503 AC1)', async ({
+test('eine wöchentliche Routine, die früher diese Woche abgehakt wurde, fällt aus dem Ring heraus (issue #503 AC1)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -208,7 +208,7 @@ test('eine wöchentliche Gewohnheit, die früher diese Woche abgehakt wurde, fä
   await expect(ring(page)).toHaveText('heute 0 von 1');
 });
 
-test('eine wöchentliche Gewohnheit, die heute abgehakt wurde, bleibt im Ring (kein Rückwärtssprung) (issue #503 AC2)', async ({
+test('eine wöchentliche Routine, die heute abgehakt wurde, bleibt im Ring (kein Rückwärtssprung) (issue #503 AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -226,7 +226,7 @@ test('eine wöchentliche Gewohnheit, die heute abgehakt wurde, bleibt im Ring (k
   await expect(ring(page)).toHaveText('heute 1 von 1');
 });
 
-test('eine monatliche Gewohnheit, die am 3. abgehakt wurde, fällt am 4. aus dem Ring heraus (issue #509 AC4)', async ({
+test('eine monatliche Routine, die am 3. abgehakt wurde, fällt am 4. aus dem Ring heraus (issue #509 AC4)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -244,7 +244,7 @@ test('eine monatliche Gewohnheit, die am 3. abgehakt wurde, fällt am 4. aus dem
   await expect(ring(page)).toHaveCount(0);
 });
 
-test('die monatliche Gewohnheit ist im neuen Monat wieder offen (issue #509 AC5)', async ({
+test('die monatliche Routine ist im neuen Monat wieder offen (issue #509 AC5)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');

@@ -34,7 +34,7 @@ test('the settings entry point stays reachable from every screen via the sidebar
 }) => {
   await registerPasskey(page);
 
-  for (const path of ['/uebersicht', '/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+  for (const path of ['/uebersicht', '/aufgaben', '/routinen', '/kalender', '/journal']) {
     await page.goto(path);
     await expect(page.getByRole('link', { name: 'Einstellungen' })).toBeVisible();
   }

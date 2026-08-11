@@ -279,7 +279,7 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
     });
   }
 
-  for (const path of ['/gewohnheiten', '/aufgaben', '/uebersicht']) {
+  for (const path of ['/routinen', '/aufgaben', '/uebersicht']) {
     test(`${path}: die Nav ist voll deckend, kein Blur`, async ({ page }) => {
       await registerPasskey(page);
       await page.goto(path);
@@ -294,7 +294,7 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
 
   test('bleibt im Dark Mode voll deckend', async ({ page }) => {
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
+    await page.goto('/routinen');
     await page.emulateMedia({ colorScheme: 'dark' });
 
     expect(await backgroundAlpha(page)).toBe(255);
@@ -317,7 +317,7 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
   });
 
   /**
-   * Eight month grids comfortably push `/gewohnheiten` past the 812px mobile
+   * Eight month grids comfortably push `/routinen` past the 812px mobile
    * viewport — the repro needs a list that scrolls under the nav, not a specific count.
    */
   async function seedOverflowingHabitList(page: Page) {
@@ -329,30 +329,30 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
             op: 'upsert',
             payload: { name, schedule: 'daily', color: null, archivedAt: null },
           }),
-        `Gewohnheit ${i}`,
+        `Routine ${i}`,
       );
     }
   }
 
   /**
-   * A plain `page.goto('/gewohnheiten')` is `page-transition.tsx`'s first render,
+   * A plain `page.goto('/routinen')` is `page-transition.tsx`'s first render,
    * which the component deliberately skips (no incoming class on initial mount) —
    * only a client-side navigation *arriving* at the route sets `page-transition--enter`,
    * so the repro has to go through the tab bar rather than a direct navigation.
    */
-  async function navigateToGewohnheitenWithEnterClass(page: Page) {
+  async function navigateToRoutinenWithEnterClass(page: Page) {
     await page.goto('/uebersicht');
     await page
       .getByRole('navigation', { name: 'Hauptnavigation' })
-      .getByRole('link', { name: 'Gewohnheiten' })
+      .getByRole('link', { name: 'Routinen' })
       .click();
-    await expect(page).toHaveURL(/\/gewohnheiten$/);
+    await expect(page).toHaveURL(/\/routinen$/);
     await expect(page.locator('.page-transition')).toHaveClass(/page-transition--enter/);
   }
 
   test('AC1: elementFromPoint auf jedem sichtbaren Tab trifft die Nav, nie eine Tageskachel', async ({ page }) => {
     await seedOverflowingHabitList(page);
-    await navigateToGewohnheitenWithEnterClass(page);
+    await navigateToRoutinenWithEnterClass(page);
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
@@ -379,7 +379,7 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     page,
   }) => {
     await seedOverflowingHabitList(page);
-    await navigateToGewohnheitenWithEnterClass(page);
+    await navigateToRoutinenWithEnterClass(page);
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 

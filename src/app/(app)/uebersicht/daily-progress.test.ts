@@ -43,7 +43,7 @@ function log(overrides: Partial<HabitLogView> = {}): HabitLogView {
 
 const allActive = () => true;
 const onlyTasks = (id: string) => id === 'aufgaben';
-const onlyHabits = (id: string) => id === 'gewohnheiten';
+const onlyHabits = (id: string) => id === 'routinen';
 const noneActive = () => false;
 
 describe('computeDailyProgress', () => {
@@ -73,7 +73,7 @@ describe('computeDailyProgress', () => {
     });
   });
 
-  it('excludes habits when the Gewohnheiten module is off', () => {
+  it('excludes habits when the Routinen module is off', () => {
     const tasks = [task()];
     const habits = [habit()];
     const logs: HabitLogView[] = [];
