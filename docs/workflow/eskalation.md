@@ -33,6 +33,18 @@ also direkt zu „Eskalation erschöpft" + `needs-answer`.
 - **Kein Fortschritt** = kein neuer Commit **und** dieselbe Blocker-Signatur
   wie im Vorlauf (siehe #33). Ein Lauf, der durch Limit oder Notbremse
   unterbrochen wurde, zählt nie als Fehlversuch.
+- **Auffälligkeit (F26/#499):** Steht die Branch-Spitze, hat der Lauf aber
+  trotzdem einen Fortschrittskommentar angelegt, ist das schlimmer als ein
+  gewöhnlicher Fehlversuch — die gemeldete Arbeit ist nicht durch Git gedeckt,
+  und der nächste Lauf würde ihr glauben. Erkannt wird das über `createdAt`
+  des Kommentars gegen den Laufbeginn (`runStart`), nicht über
+  `updatedAt`/`lastEditedAt` — `gh` liefert beide durchweg `null`, auch bei
+  nachweislich editierten Kommentaren. Der Runner schreibt dann einen
+  **eigenen, sichtbaren** Kommentar am Ticket. Nie `--edit-last`, kein
+  `needs-answer` (die Meldung ist informativ, keine Frage) — der
+  Fortschrittskommentar selbst bleibt unangetastet, der Wert liegt darin,
+  dass ein Mensch die durch Git nicht gedeckte Aussage sieht. Die gewöhnliche
+  Eskalationslogik (failcount/Tier) läuft davon unbeeinflusst weiter.
 - Bleibt Opus als höchste Stufe ebenfalls dreimal ohne Fortschritt: Stop,
   Label `needs-answer`, Blocker-Kommentar am Ticket.
 - **Opus-Deckel:** höchstens 2 Opus-Bau-Läufe pro Ticket und Kalendertag.

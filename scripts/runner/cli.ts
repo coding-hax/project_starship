@@ -110,6 +110,7 @@ export const commands: Record<string, CommandHandler> = {
         labels: args[2] ?? '',
         beforeTip: args[3] ?? '',
         model: args[4] ?? '',
+        runStart: args[5] ?? '',
       },
       ctx.sharedState,
       ctx.gh,

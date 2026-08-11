@@ -105,6 +105,8 @@ export interface RoundRun {
   resume: string;
   labels: string;
   beforeTip: string;
+  /** Laufbeginn (ISO), nur fuer die Bau-Rolle befuellt, sonst '' (#499). */
+  runStart: string;
   queueBody: string;
   didWork: boolean;
   lastIssue: string;
@@ -730,6 +732,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   }
 
   const beforeTip = role === 'build' ? branchTip(issue, git) : '';
+  const runStart = role === 'build' ? clock.now().toISOString() : '';
 
   // Resume-Deckel nur fuers Bauen (#62): die Denk-Rollen tragen ihren Kontext
   // bewusst in der Session, dort ist die breite Lektuere der Auftrag. Fuers
@@ -779,6 +782,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     resume,
     labels,
     beforeTip,
+    runStart,
     queueBody: body,
     didWork: opts.didWork,
     lastIssue: opts.lastIssue,
@@ -989,7 +993,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
     // Ein sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein
     // Commit) -- das entscheidet die Eskalation (ADR-0007).
     buildEscalationEval(
-      { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model },
+      { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model, runStart: plan.runStart },
       sharedState,
       gh,
       git,
@@ -1187,7 +1191,7 @@ solange das Label \`needs-answer\` hängt.`,
   // Ein "echter" inhaltlicher Fehlschlag -- das zaehlt als
   // Eskalations-Fehlversuch (ADR-0007).
   buildEscalationEval(
-    { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model },
+    { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model, runStart: plan.runStart },
     sharedState,
     gh,
     git,

@@ -15,6 +15,20 @@ function ghComments(body: string): GhAdapter {
   return { run: vi.fn().mockReturnValue(body) };
 }
 
+// Args-bewusster Double: blockerSig fragt mit -q nach dem letzten Body,
+// progressCommentWrittenThisRun fragt ohne -q nach dem rohen comments-Array.
+function ghWithComments(comments: Array<{ body: string; createdAt: string }>): GhAdapter {
+  return {
+    run: vi.fn().mockImplementation((args: string[]) => {
+      if (args.includes('-q')) {
+        const last = comments[comments.length - 1];
+        return last ? last.body : '';
+      }
+      return JSON.stringify({ comments });
+    }),
+  };
+}
+
 function gitTip(sha: string): GitAdapter {
   return {
     run: vi.fn().mockReturnValue(sha ? `${sha}\trefs/heads/feat/1-x` : ''),
@@ -246,5 +260,91 @@ describe('buildEscalationEval', () => {
     );
     expect(state.exists('failcount-300')).toBe(false);
     expect(gh.run).not.toHaveBeenCalled();
+  });
+
+  // F26/#499: Kommentar behauptet Fortschritt, Branch-Spitze steht -- der
+  // #430-Fall.
+  describe('F26/#499: Fortschritt ohne Commit', () => {
+    it('AK1: standing tip + fresh progress comment this run -> reports an Auffälligkeit', () => {
+      const gh = ghWithComments([
+        { body: PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'), createdAt: '2026-08-03T10:05:00Z' },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 401,
+          runRole: 'build',
+          labels: '',
+          beforeTip: '',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+        },
+        state,
+        gh,
+        gitTip(''), // kein Branch -> Spitze steht
+      );
+      expect(gh.run).toHaveBeenCalledWith(['issue', 'comment', '401', '--body', expect.stringContaining('Auffälligkeit')]);
+    });
+
+    it('AK2: moved tip -> no Auffälligkeit even with a fresh progress comment', () => {
+      const gh = ghWithComments([
+        { body: PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'), createdAt: '2026-08-03T10:05:00Z' },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 402,
+          runRole: 'build',
+          labels: '',
+          beforeTip: 'sha-alt',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+        },
+        state,
+        gh,
+        gitTip('sha-neu'),
+      );
+      expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
+    });
+
+    it('AK3: standing tip + unchanged (stale) progress comment -> no Auffälligkeit, failcount still rises', () => {
+      const gh = ghWithComments([
+        { body: PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'), createdAt: '2026-08-03T09:00:00Z' },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 403,
+          runRole: 'build',
+          labels: '',
+          beforeTip: '',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+        },
+        state,
+        gh,
+        gitTip(''),
+      );
+      expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
+      expect(state.read('failcount-403')?.trim()).toBe('1');
+    });
+
+    it('AK4: the progress comment itself is never edited or overwritten', () => {
+      const gh = ghWithComments([
+        { body: PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'), createdAt: '2026-08-03T10:05:00Z' },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 404,
+          runRole: 'build',
+          labels: '',
+          beforeTip: '',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+        },
+        state,
+        gh,
+        gitTip(''),
+      );
+      const calls = (gh.run as ReturnType<typeof vi.fn>).mock.calls as string[][];
+      expect(calls.some((call) => call.includes('--edit-last'))).toBe(false);
+    });
   });
 });
