@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  addMonths,
   agendaForDay,
   allDayEventsForDay,
   berlinMinutesOfDay,
@@ -30,6 +31,7 @@ function event(overrides: Partial<EventView>): EventView {
     startDate: null,
     endDate: null,
     category: null,
+    origin: 'local',
     recurrence: null,
     ...overrides,
   };
@@ -180,6 +182,20 @@ describe('addDays', () => {
 
   it('rolls forward across a year boundary', () => {
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+});
+
+describe('addMonths', () => {
+  it('advances a date key by whole months', () => {
+    expect(addMonths('2026-01-15', 1)).toBe('2026-02-15');
+  });
+
+  it('rolls back across a year boundary', () => {
+    expect(addMonths('2026-01-15', -1)).toBe('2025-12-15');
+  });
+
+  it('rolls forward across a year boundary', () => {
+    expect(addMonths('2026-12-15', 1)).toBe('2027-01-15');
   });
 });
 

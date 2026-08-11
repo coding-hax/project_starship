@@ -7,15 +7,30 @@
  * to `horizon` (the caller, `use-ics-subscriptions.ts`, picks the window).
  */
 
-import { addDays, dateKeyDiff } from './event-time';
+import { addDays, addMonths, dateKeyDiff } from './event-time';
 import type { ParsedIcsEvent } from './ics-parse';
 import { occurrencesOnDay } from './recurrence';
+import { berlinNow } from '@/push/schedule';
 import type { SubscribedEvent } from '@/local/dexie';
 
 /** Inclusive `YYYY-MM-DD` window series/single events are expanded/filtered into. */
 export interface IcsHorizon {
   start: string;
   end: string;
+}
+
+/** Feiertage/geteilte Kalender ändern sich selten — ein knappes Fenster würde nur unnötig oft nachfragen (ADR-0022). */
+export const ICS_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+export function isIcsStale(fetchedAt: string | null, now: Date = new Date()): boolean {
+  if (fetchedAt === null) return true;
+  return now.getTime() - new Date(fetchedAt).getTime() >= ICS_REFRESH_INTERVAL_MS;
+}
+
+/** −1 Monat … +12 Monate um heute (ADR-0022) — deckelt eine unbegrenzte `RRULE` und die insgesamt gespeicherte Menge. */
+export function icsHorizon(now: Date = new Date()): IcsHorizon {
+  const { dateKey } = berlinNow(now);
+  return { start: addMonths(dateKey, -1), end: addMonths(dateKey, 12) };
 }
 
 /** Expands `parsed` into `SubscribedEvent`s, all within `horizon` — a non-recurring event outside it is dropped, same as a series' out-of-range occurrences. */

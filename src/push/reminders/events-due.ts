@@ -154,6 +154,7 @@ function toEventReminderSource(row: Event): EventReminderSource {
     endDate: row.endDate,
     category: row.category,
     recurrence: row.recurrence,
+    origin: 'local',
     reminderMinutes: row.reminderMinutes,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
   };

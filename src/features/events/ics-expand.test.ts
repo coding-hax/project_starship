@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandIcsEvents } from './ics-expand';
+import { ICS_REFRESH_INTERVAL_MS, expandIcsEvents, icsHorizon, isIcsStale } from './ics-expand';
 import type { ParsedIcsEvent } from './ics-parse';
 
 const HORIZON = { start: '2026-01-01', end: '2026-01-31' };
@@ -77,5 +77,33 @@ describe('expandIcsEvents', () => {
 
   it('returns nothing for an empty input', () => {
     expect(expandIcsEvents([], HORIZON)).toEqual([]);
+  });
+});
+
+describe('isIcsStale', () => {
+  it('is stale when there is no cached fetch yet', () => {
+    expect(isIcsStale(null)).toBe(true);
+  });
+
+  it('is not stale right after a fetch', () => {
+    const fetchedAt = '2026-07-23T09:00:00.000Z';
+    expect(isIcsStale(fetchedAt, new Date(fetchedAt))).toBe(false);
+  });
+
+  it('is not stale just under the refresh interval', () => {
+    const fetchedAt = '2026-07-23T09:00:00.000Z';
+    expect(isIcsStale(fetchedAt, new Date(new Date(fetchedAt).getTime() + ICS_REFRESH_INTERVAL_MS - 1))).toBe(false);
+  });
+
+  it('is stale once the refresh interval has passed', () => {
+    const fetchedAt = '2026-07-23T09:00:00.000Z';
+    expect(isIcsStale(fetchedAt, new Date(new Date(fetchedAt).getTime() + ICS_REFRESH_INTERVAL_MS))).toBe(true);
+  });
+});
+
+describe('icsHorizon', () => {
+  it('spans one month back and twelve months forward from today', () => {
+    const horizon = icsHorizon(new Date('2026-07-15T10:00:00.000Z'));
+    expect(horizon).toEqual({ start: '2026-06-15', end: '2027-07-15' });
   });
 });

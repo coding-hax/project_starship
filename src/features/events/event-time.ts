@@ -171,7 +171,8 @@ export function parseDateKey(dateKey: string): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function formatDateKey(date: Date): string {
+/** Inverse of `parseDateKey` — exported for callers that need to build a date key off UTC-field arithmetic `addDays` can't express, e.g. `addMonths` (ics-fetch's horizon window). */
+export function formatDateKey(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -192,6 +193,19 @@ export function addDays(dateKey: string, delta: number): string {
 /** Days from `a` to `b` (`b - a`) — pure date-key arithmetic, see `addDays`. */
 export function dateKeyDiff(a: string, b: string): number {
   return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
+}
+
+/**
+ * `dateKey` shifted by `delta` calendar months (issue #560's ICS-abo horizon
+ * window) — `setUTCMonth` clamps a day that doesn't exist in the target month
+ * (e.g. 31 Jan + 1 month) forward into the month after, same "never silently
+ * shift within the same call" caveat as `Date` itself; the horizon window this
+ * feeds only cares about the month boundary, not the exact day.
+ */
+export function addMonths(dateKey: string, delta: number): string {
+  const date = parseDateKey(dateKey);
+  date.setUTCMonth(date.getUTCMonth() + delta);
+  return formatDateKey(date);
 }
 
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */

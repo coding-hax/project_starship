@@ -14,6 +14,7 @@ function event(overrides: Partial<EventView>): EventView {
     endDate: null,
     category: null,
     recurrence: null,
+    origin: 'local',
     ...overrides,
   };
 }
