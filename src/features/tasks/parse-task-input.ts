@@ -74,6 +74,31 @@ const TIME_PATTERNS = [
   /\b(\d{1,2}):(\d{2})\b/,
 ];
 
+// Ausgeschriebene Uhrzeiten 1-12 — Diktat sagt "um zwölf", nicht "um 12". Bewusst nur
+// bis zwölf (AC8): 13-24 ausgeschrieben ist selten und bliebe sonst beim Default 09:00,
+// was dokumentiert und akzeptiert ist (kein Scope-Creep, Regel 2).
+const WORD_NUMBERS: Record<string, number> = {
+  eins: 1,
+  ein: 1,
+  zwei: 2,
+  drei: 3,
+  vier: 4,
+  fünf: 5,
+  sechs: 6,
+  sieben: 7,
+  acht: 8,
+  neun: 9,
+  zehn: 10,
+  elf: 11,
+  zwölf: 12,
+};
+const WORD_NUMBER_GROUP = `(${Object.keys(WORD_NUMBERS).join('|')})`;
+
+const WORD_TIME_PATTERNS = [
+  new RegExp(`${WORD_BEFORE}um\\s+${WORD_NUMBER_GROUP}${WORD_AFTER}`, 'iu'),
+  new RegExp(`${WORD_BEFORE}${WORD_NUMBER_GROUP}${WORD_AFTER}\\s*uhr${WORD_AFTER}`, 'iu'),
+];
+
 const FILLER_PATTERN = /\b(erinnere mich an|erstelle|neue aufgabe|aufgabe|termin)\b/gi;
 
 function resolveDate(text: string, now: Date): { date: Date | null; remaining: string } {
@@ -116,6 +141,16 @@ function resolveTime(text: string): { hours: number; minutes: number; remaining:
       };
     }
   }
+  for (const pattern of WORD_TIME_PATTERNS) {
+    const found = extract(text, pattern);
+    if (found) {
+      return {
+        hours: WORD_NUMBERS[found.match[1].toLowerCase()],
+        minutes: 0,
+        remaining: found.remaining,
+      };
+    }
+  }
   return { hours: 9, minutes: 0, remaining: text };
 }
 
@@ -123,7 +158,7 @@ function cleanTitle(text: string): string {
   return text
     .replace(FILLER_PATTERN, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .replace(/^[\s,.;:!?]+|[\s,.;:!?]+$/g, '')
     .trim();
 }
 
