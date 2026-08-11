@@ -95,7 +95,8 @@ Was nicht als Kriterium dasteht, wird nicht gebaut.
 1. `pnpm lint`
 2. `pnpm typecheck`
 3. `pnpm test` (Vitest)
-4. `pnpm e2e` (Playwright, gegen Preview-Deployment)
+4. E2E-Tests in CI (Playwright in `ci.yml`, lokal laufen Tests gegen eine lokale
+   Postgres-Instanz und einen lokalen Dev-Server)
 5. `scripts/check-sync-invariants.sh` — kein Feature-Code spricht direkt gegen `/api`
 6. `scripts/check-test-integrity.sh` — Anwesenheits-Gate: Code ohne Test ist rot,
    außer das PR trägt `tests-exempt`

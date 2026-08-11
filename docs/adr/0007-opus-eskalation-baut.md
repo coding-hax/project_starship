@@ -61,11 +61,13 @@ bzw. `haiku` bei Label `model:haiku`) → `opus` (letzte Stufe, baut).
   Read-only-Netz aus ADR-0005, das ausschließlich für `RUN_ROLE=plan` greift.
   Opus darf hier also tatsächlich Dateien ändern, committen und pushen.
 - Damit ein unbeaufsichtigt schreibender Opus-Lauf trotzdem nie ungeprüft in
-  `main` landet, bleiben die bestehenden Wächter unverändert scharf:
-  `protected-paths` (hält jeden PR an `scripts/`, `.github/`, `src/db/` etc.
-  offen, bis ein Mensch eingreift; seit #276 blockiert er nicht mehr) und `test-integrity`
+  `main` landet, bleiben die bestehenden Wächter unverändert scharf: ~~`protected-paths`~~
+  (siehe #283 — dieser Check existiert nicht mehr) und `test-integrity`
   (verhindert abgeschwächte Tests). Opus-Code entsteht ungeprüft, wird aber
-  nie ungeprüft gemerged.
+  nie ungeprüft gemerged. Sensible Pfade (`scripts/`, `.github/`, `src/db/` etc.)
+  sind nicht mehr durch einen GitHub-Check geschützt, sondern durch einen
+  obligatorischen **Kommentar am Ticket** (siehe CLAUDE.md, Punkt „Sensible Pfade")
+  für jeden Bau-Lauf, der diese berührt.
 - Der Opus-Deckel ist eine reine Kostenbremse, keine Sicherheitsgrenze — die
   Sicherheitsgrenze sind die beiden Wächter oben.
 

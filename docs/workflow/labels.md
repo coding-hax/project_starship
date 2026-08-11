@@ -8,7 +8,7 @@ Zustandsmaschine des ganzen Setups:
 | `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-answer`. | **Du**       |
 | `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Aufteilen in Kind-Tickets) |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**; der Planer-Lauf am Ende eines Kind-Ticket-Durchlaufs (#439) |
-| `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins. Wird geschlossen (Auto-Merge oder von Hand), nimmt der nächste `claimSweep` das Label wieder ab (#498). | Runner       |
+| `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins **je Slot** (#204). Wird geschlossen (Auto-Merge oder von Hand), nimmt der nächste `claimSweep` das Label wieder ab (#498). | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Queue aus und parkt es. | Claude / Runner |
 | `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es in der Queue steht oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
 | `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
