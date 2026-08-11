@@ -2,24 +2,61 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { allowedCaptureKinds, decideCaptureRoute } from '@/features/capture/route-capture';
+import { toDateKey } from '@/features/habits/due-today';
+import { useHabitLogs } from '@/features/habits/use-habit-logs';
+import { useHabits } from '@/features/habits/use-habits';
+import { useToggleHabitLog } from '@/features/habits/use-toggle-habit-log';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
+import { useModules } from '@/features/settings/use-modules';
 import { Sheet } from '@/ui/sheet';
+import { Toast } from '@/ui/toast';
 import { setCaptureDraft } from './capture-draft-store';
-import { parseTaskInput } from './parse-task-input';
 
 const LABEL = 'Aufgabe erfassen';
+const UNDO_TIMEOUT_MS = 5000;
+
+interface HabitCheckUndo {
+  habitId: string;
+  habitName: string;
+  logDate: string;
+}
 
 /**
- * Erfassungsknopf in der Titelzeile von `/uebersicht` (issue #618, S1 von #617):
- * ein Freitextfeld, dessen geparstes Ergebnis über den Draft-Store nach `/aufgaben`
- * wandert, wo `QuickAddTask` es im Mount-Effect konsumiert und durch **dieselbe**
- * Sheet-vs-Direkt-Entscheidung schickt wie eine dort getippte Eingabe.
+ * Erfassungsknopf in der Titelzeile von `/uebersicht`: ein Freitextfeld, dessen
+ * Ergebnis der Router (issue #619, `route-capture.ts`) in eine von drei Bahnen
+ * lenkt — `task`/`event` wandern über den Draft-Store zum passenden Editor
+ * (`/aufgaben` bzw. `/kalender`, issue #618/#619), `habit_check` hakt bei hoher
+ * Konfidenz sofort ab (Undo-Toast, kein Editor) oder schickt bei unklarem
+ * Treffer nach `/routinen`, ohne etwas anzurühren.
  */
 export function UebersichtCapture() {
   const [open, setOpen] = useState(false);
+  const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
+  const { isActive } = useModules();
+  const habits = useHabits();
+  const logs = useHabitLogs();
+  const toggleHabitLog = useToggleHabitLog(logs);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function dismissHabitUndo() {
+    if (undoTimeoutRef.current !== null) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    setHabitUndo(null);
+  }
+
+  async function handleHabitUndo() {
+    if (!habitUndo) return;
+    const { habitId, logDate } = habitUndo;
+    dismissHabitUndo();
+    await toggleHabitLog(habitId, logDate);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const raw = inputRef.current?.value.trim();
 
@@ -28,11 +65,47 @@ export function UebersichtCapture() {
       return;
     }
 
-    const parsed = parseTaskInput(raw, new Date());
-    setCaptureDraft({ items: [parsed] });
+    // Journal ist nie ein Erfassungsziel (CLAUDE.md Regel 9) und die Journal-
+    // Gewohnheit hakt sich nur über einen geschriebenen Eintrag ab, nie manuell
+    // (habit-today.tsx sperrt ihre Checkbox genauso).
+    const captureHabits = (habits ?? [])
+      .filter((habit) => habit.archivedAt === null && habit.id !== JOURNAL_HABIT_ID)
+      .map((habit) => ({ id: habit.id, name: habit.name }));
+
+    const decision = decideCaptureRoute(raw, {
+      now: new Date(),
+      tz: 'Europe/Berlin',
+      habits: captureHabits,
+      allowedKinds: allowedCaptureKinds(isActive),
+    });
+
     if (inputRef.current) inputRef.current.value = '';
     setOpen(false);
-    router.push('/aufgaben');
+
+    if (decision.action === 'task') {
+      setCaptureDraft({ items: [decision.draft] });
+      router.push('/aufgaben');
+      return;
+    }
+
+    if (decision.action === 'event') {
+      setCaptureDraft({ items: [decision.draft] });
+      router.push('/kalender');
+      return;
+    }
+
+    if (decision.action === 'habit-review') {
+      router.push('/routinen');
+      return;
+    }
+
+    const { habitId } = decision;
+    const habitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
+    const logDate = toDateKey(new Date());
+    dismissHabitUndo();
+    await toggleHabitLog(habitId, logDate);
+    setHabitUndo({ habitId, habitName, logDate });
+    undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
   }
 
   return (
@@ -60,6 +133,14 @@ export function UebersichtCapture() {
           </button>
         </form>
       </Sheet>
+      {habitUndo && (
+        <Toast
+          message={`„${habitUndo.habitName}" abgehakt`}
+          actionLabel="Rückgängig"
+          onAction={handleHabitUndo}
+          onDismiss={dismissHabitUndo}
+        />
+      )}
     </>
   );
 }

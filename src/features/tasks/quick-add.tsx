@@ -102,10 +102,12 @@ export function QuickAddTask() {
   // (issue #618) — genau einmal pro Mount, der Store leert sich selbst beim Lesen.
   // `queueMicrotask` schiebt `applyParsed` (und sein mögliches `setDraft`) hinter
   // einen echten Tick, statt synchron im Effekt-Body selbst Zustand zu setzen.
+  // Der Store trägt seit #619 auch `event`-Items (Ziel `/kalender`) — die landen
+  // nie hier, aber der Discriminant muss trotzdem geprüft werden.
   useEffect(() => {
     const batch = consumeCaptureDraft();
     const item = batch?.items[0];
-    if (item) queueMicrotask(() => void applyParsed(item));
+    if (item?.kind === 'task') queueMicrotask(() => void applyParsed(item));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

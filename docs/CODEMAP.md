@@ -88,7 +88,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
 - `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `extractDateTimeSlot`/`cleanTitle` sind die Bausteine für `src/features/capture/`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
-- `capture-draft-store.ts` — `CaptureDraft`/`CaptureDraftBatch` (task-only), In-Memory-Übergabe von der Übersicht zum FAB
+- `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor` (issue #618, #619)
+- `uebersicht-capture.tsx` — Erfassungsknopf in der Titelzeile von `/uebersicht`: ruft `route-capture.ts` auf, lenkt `task`/`event` über den Draft-Store weiter, hakt `habit_check` bei hoher Konfidenz direkt ab (Undo-Toast) oder navigiert nach `/routinen` (issue #619)
 
 ### src/features/capture
 
@@ -96,6 +97,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art) + Titelbildung, reine Funktion, kein React/Dexie
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet)
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
+- `route-capture.ts` — die eine Stelle, die "wohin damit" entscheidet (issue #619): ruft `recognizeLocally` auf, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` leitet die erlaubten Arten aus den aktiven Modulen ab
 
 ### src/features/journal
 
@@ -214,6 +216,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, issue #599)
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
+- `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (issue #618)
+- `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Gewohnheit abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)
