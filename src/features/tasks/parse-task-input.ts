@@ -130,7 +130,12 @@ function resolveDate(text: string, now: Date): { date: Date | null; remaining: s
   return { date: null, remaining: text };
 }
 
-function resolveTime(text: string): { hours: number; minutes: number; remaining: string } {
+function resolveTime(text: string): {
+  hours: number;
+  minutes: number;
+  remaining: string;
+  explicit: boolean;
+} {
   for (const pattern of TIME_PATTERNS) {
     const found = extract(text, pattern);
     if (found) {
@@ -138,6 +143,7 @@ function resolveTime(text: string): { hours: number; minutes: number; remaining:
         hours: Number(found.match[1]),
         minutes: found.match[2] ? Number(found.match[2]) : 0,
         remaining: found.remaining,
+        explicit: true,
       };
     }
   }
@@ -148,13 +154,14 @@ function resolveTime(text: string): { hours: number; minutes: number; remaining:
         hours: WORD_NUMBERS[found.match[1].toLowerCase()],
         minutes: 0,
         remaining: found.remaining,
+        explicit: true,
       };
     }
   }
-  return { hours: 9, minutes: 0, remaining: text };
+  return { hours: 9, minutes: 0, remaining: text, explicit: false };
 }
 
-function cleanTitle(text: string): string {
+export function cleanTitle(text: string): string {
   return text
     .replace(FILLER_PATTERN, ' ')
     .replace(/\s+/g, ' ')
@@ -162,24 +169,35 @@ function cleanTitle(text: string): string {
     .trim();
 }
 
-export function parseTaskInput(text: string, now: Date = new Date()): ParsedTaskInput {
+/**
+ * Datum-/Uhrzeit-Slot allein, ohne Titel-Bereinigung — der Erkennungs-Baustein, den
+ * issue #621 (Klassifikator) wiederverwendet statt die Grammatik zu duplizieren.
+ */
+export interface DateTimeSlot {
+  date: Date | null;
+  hasExplicitTime: boolean;
+  remaining: string;
+}
+
+export function extractDateTimeSlot(text: string, now: Date = new Date()): DateTimeSlot {
   const { date, remaining: afterDate } = resolveDate(text, now);
 
-  let remaining = afterDate;
-  let dueAt: string | null = null;
-
-  if (date) {
-    const { hours, minutes, remaining: afterTime } = resolveTime(afterDate);
-    remaining = afterTime;
-    date.setHours(hours, minutes, 0, 0);
-    dueAt = date.toISOString();
+  if (!date) {
+    return { date: null, hasExplicitTime: false, remaining: afterDate };
   }
 
+  const { hours, minutes, remaining: afterTime, explicit } = resolveTime(afterDate);
+  date.setHours(hours, minutes, 0, 0);
+  return { date, hasExplicitTime: explicit, remaining: afterTime };
+}
+
+export function parseTaskInput(text: string, now: Date = new Date()): ParsedTaskInput {
+  const { date, remaining } = extractDateTimeSlot(text, now);
   const title = cleanTitle(remaining);
 
   if (!title) {
     return { title: text.trim(), dueAt: null };
   }
 
-  return { title, dueAt };
+  return { title, dueAt: date ? date.toISOString() : null };
 }
