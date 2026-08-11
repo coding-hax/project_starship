@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nextPresenceEntries, settlePresenceEntry, type ListPresenceEntry } from './use-list-presence';
+import {
+  nextPresenceEntries,
+  seedPresenceEntries,
+  settlePresenceEntry,
+  type ListPresenceEntry,
+} from './use-list-presence';
 
 interface Row {
   id: string;
@@ -66,6 +71,20 @@ describe('nextPresenceEntries', () => {
     const items = [{ id: 'a', label: 'A (edited)' }];
     const step = nextPresenceEntries(prev, true, items, getKey);
     expect(step.entries).toEqual([{ key: 'a', item: items[0], status: 'entering' }]);
+  });
+});
+
+describe('seedPresenceEntries', () => {
+  it('marks every item present — a subject swap animates nothing (issue #611)', () => {
+    const items = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }];
+    expect(seedPresenceEntries(items, getKey)).toEqual([
+      { key: 'a', item: items[0], status: 'present' },
+      { key: 'b', item: items[1], status: 'present' },
+    ]);
+  });
+
+  it('keeps nothing from before — the previous subject leaves no leaving rows', () => {
+    expect(seedPresenceEntries([], getKey)).toEqual([]);
   });
 });
 

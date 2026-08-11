@@ -1137,6 +1137,160 @@ test('kein Hydration-Mismatch beim Laden von /kalender, obwohl nur die Browser-U
 });
 
 /* -------------------------------------------------------------------------- */
+/* #611: Tageswechsel tauscht die Liste hart — keine Termine von gestern       */
+/* -------------------------------------------------------------------------- */
+
+interface AgendaRowSnapshot {
+  text: string;
+  entering: string | null;
+  leaving: string | null;
+}
+
+/**
+ * Clicks a day-navigation button *inside* the page and reads the agenda back in
+ * the very next animation frame — the first frame the browser paints after the
+ * day changed, i.e. exactly what the user sees (#611 AC1/AC2). Nothing here is
+ * retried on purpose: a Playwright locator would happily wait out the 240 ms
+ * exit animation, which is the bug rather than something to wait for.
+ *
+ * One frame is the earliest honest place to look: React 19 flushes a discrete
+ * event's updates in a microtask, not synchronously inside `click()`, so
+ * reading straight after the call would report the pre-click DOM even with the
+ * bug fixed.
+ */
+async function agendaAfterDaySwitch(
+  page: Page,
+  navLabel: string,
+): Promise<{ items: AgendaRowSnapshot[]; allDay: AgendaRowSnapshot[] }> {
+  return page.evaluate(async (label) => {
+    const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (!button) throw new Error(`agendaAfterDaySwitch: no button labelled "${label}"`);
+    button.click();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    const snapshot = (selector: string) =>
+      Array.from(document.querySelectorAll(selector)).map((element) => ({
+        text: element.textContent ?? '',
+        entering: element.getAttribute('data-entering'),
+        leaving: element.getAttribute('data-leaving'),
+      }));
+    return {
+      items: snapshot('.event-agenda__item'),
+      allDay: snapshot('.event-agenda__all-day-item'),
+    };
+  }, navLabel);
+}
+
+test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agenda, schon im ersten Frame (#611 AC1, AC3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Heute-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Morgen-Termin',
+    allDay: false,
+    startsAt: `${TOMORROW}T09:00:00.000Z`,
+    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
+
+  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  expect(forward.items.map((row) => row.text)).toHaveLength(1);
+  expect(forward.items[0].text).toContain('Morgen-Termin');
+  expect(forward.items.filter((row) => row.leaving === 'true')).toEqual([]);
+  expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
+
+  // …and back again: the same swap in the other direction, not a one-way fix.
+  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
+  expect(backward.items.map((row) => row.text)).toHaveLength(1);
+  expect(backward.items[0].text).toContain('Heute-Termin');
+  expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
+});
+
+test('beim Tageswechsel raeumt auch das Ganztags-Band den vorherigen Tag sofort (#611 AC2, AC3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Heute ganztags',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Morgen ganztags',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TOMORROW,
+    endDate: TOMORROW,
+    category: null,
+  });
+  await expect(allDayBar(page, 'Heute ganztags')).toBeVisible();
+
+  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  expect(forward.allDay.map((row) => row.text)).toHaveLength(1);
+  expect(forward.allDay[0].text).toContain('Morgen ganztags');
+  expect(forward.allDay.filter((row) => row.leaving === 'true')).toEqual([]);
+  expect(forward.allDay.filter((row) => row.entering === 'true')).toEqual([]);
+});
+
+test('am angezeigten Tag animieren Zu- und Abgaenge weiterhin (#611 AC4, Regression #430)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Bleibt erstmal',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bleibt erstmal')).toBeVisible();
+
+  // Freezes the enter/exit animations mid-flight so their states can be
+  // asserted without racing a 190/240 ms window — the animation still starts,
+  // it just never reaches animationend, which is what would clear the flag.
+  await page.addStyleTag({
+    content: '.list-motion-item { animation-play-state: paused !important; }',
+  });
+
+  await seedEvent(page, {
+    title: 'Kommt dazu',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  const entering = page.locator('.event-agenda__item[data-entering="true"]');
+  await expect(entering).toHaveCount(1);
+  await expect(entering).toContainText('Kommt dazu');
+
+  await eventCard(page, 'Bleibt erstmal').click();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByRole('button', { name: 'Löschen' }).click();
+
+  const leaving = page.locator('.event-agenda__item[data-leaving="true"]');
+  await expect(leaving).toHaveCount(1);
+  await expect(leaving).toContainText('Bleibt erstmal');
+});
+
+/* -------------------------------------------------------------------------- */
 /* #612: die Punkte im Band lesen die expandierten Vorkommen                  */
 /* -------------------------------------------------------------------------- */
 

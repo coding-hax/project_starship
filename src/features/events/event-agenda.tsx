@@ -49,12 +49,15 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
     [events, exceptions, selectedDay],
   );
   const items = useMemo(() => agendaForDay(occurrences, selectedDay), [occurrences, selectedDay]);
-  const itemRows = useListPresence(items, (item) => item.id);
+  // `selectedDay` as the presence reset key (issue #611): paging to another day
+  // replaces the list wholesale, so the previous day's entries are dropped on
+  // the spot instead of lingering over the new day for their exit animation.
+  const itemRows = useListPresence(items, (item) => item.id, selectedDay);
   const allDayItems = useMemo(
     () => allDayEventsForDay(occurrences, selectedDay),
     [occurrences, selectedDay],
   );
-  const allDayRows = useListPresence(allDayItems, (item) => item.id);
+  const allDayRows = useListPresence(allDayItems, (item) => item.id, selectedDay);
   const upcoming = nextInAgenda(items, now, selectedDay === today);
 
   useEffect(() => {
