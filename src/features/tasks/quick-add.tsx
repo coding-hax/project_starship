@@ -6,8 +6,9 @@ import { mutate } from '@/local/outbox';
 import { Fab } from '@/ui/fab';
 import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
+import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
-import { parseTaskInput } from './parse-task-input';
+import { parseTaskInput, type ParsedTaskInput } from './parse-task-input';
 
 const LABEL = 'Aufgabe erfassen';
 const UNDO_TIMEOUT_MS = 5000;
@@ -83,6 +84,31 @@ export function QuickAddTask() {
     await mutate({ table: 'tasks', rowId: taskId, op: 'delete' });
   }
 
+  // issue #618: derselbe Entscheidungsweg für Eingaben aus diesem Sheet und für
+  // Drafts, die von der Übersicht her über den Draft-Store ankommen — ein einziger
+  // Entscheidungsort statt zweier Kopien der Sheet-vs-Direkt-Logik.
+  async function applyParsed(parsed: ParsedTaskInput) {
+    if (parsed.dueAt && !directCapture) {
+      setDraft({ title: parsed.title, dueAt: parsed.dueAt });
+      return;
+    }
+
+    // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet — nur
+    // nötig, wenn dabei tatsächlich ein Datum ohne Review gesetzt wurde (AC4).
+    await createTask(parsed.title, parsed.dueAt, parsed.dueAt !== null);
+  }
+
+  // Konsumiert einen Draft, der über die Erfassung auf /uebersicht angelegt wurde
+  // (issue #618) — genau einmal pro Mount, der Store leert sich selbst beim Lesen.
+  // `queueMicrotask` schiebt `applyParsed` (und sein mögliches `setDraft`) hinter
+  // einen echten Tick, statt synchron im Effekt-Body selbst Zustand zu setzen.
+  useEffect(() => {
+    const batch = consumeCaptureDraft();
+    const item = batch?.items[0];
+    if (item) queueMicrotask(() => void applyParsed(item));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const raw = inputRef.current?.value.trim();
@@ -96,15 +122,7 @@ export function QuickAddTask() {
     setOpen(false);
 
     const parsed = parseTaskInput(raw, new Date());
-
-    if (parsed.dueAt && !directCapture) {
-      setDraft({ title: parsed.title, dueAt: parsed.dueAt });
-      return;
-    }
-
-    // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet — nur
-    // nötig, wenn dabei tatsächlich ein Datum ohne Review gesetzt wurde (AC4).
-    await createTask(parsed.title, parsed.dueAt, parsed.dueAt !== null);
+    await applyParsed(parsed);
   }
 
   async function handleConfirm(title: string, dueAt: string) {
