@@ -1,12 +1,42 @@
 /* Einstellungen sits inline with the heading on mobile — Übersicht is the only
- * screen that carries it there (issue #126). */
+ * screen that carries it there (issue #126). Titelzeile plus Erfassungsknopf
+ * (issue #618): ein echtes Raster statt flex-space-between, sonst hängt die
+ * Position des mittleren Knopfs von der Breite der äußeren Kinder ab und driftet
+ * sichtbar aus der Mitte. */
 .uebersicht__title-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
 }
 
 .uebersicht__title-row h1 {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.uebersicht__title-row .app-header--inline {
+  justify-self: end;
+}
+
+.uebersicht-capture__button {
+  justify-self: center;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--text-title);
+  line-height: var(--leading-tight);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.uebersicht-capture__button:active {
+  opacity: 0.85;
 }

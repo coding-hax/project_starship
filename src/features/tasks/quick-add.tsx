@@ -100,10 +100,12 @@ export function QuickAddTask() {
 
   // Konsumiert einen Draft, der über die Erfassung auf /uebersicht angelegt wurde
   // (issue #618) — genau einmal pro Mount, der Store leert sich selbst beim Lesen.
+  // `queueMicrotask` schiebt `applyParsed` (und sein mögliches `setDraft`) hinter
+  // einen echten Tick, statt synchron im Effekt-Body selbst Zustand zu setzen.
   useEffect(() => {
     const batch = consumeCaptureDraft();
     const item = batch?.items[0];
-    if (item) void applyParsed(item);
+    if (item) queueMicrotask(() => void applyParsed(item));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
