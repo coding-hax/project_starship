@@ -3,7 +3,7 @@
 import { useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SegmentedControl } from '@/ui/segmented-control';
-import { addDays, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
+import { addDays, addMonths, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
@@ -107,22 +107,21 @@ export function CalendarStrip({
   function endGesture(event: ReactPointerEvent<HTMLDivElement>) {
     if (startXRef.current === null || startYRef.current === null) return;
     const dx = event.clientX - startXRef.current;
-    const dy = event.clientY - startYRef.current;
     const axis = lockedAxisRef.current;
     startXRef.current = null;
     startYRef.current = null;
     lockedAxisRef.current = null;
-    if (axis === 'y') {
-      if (dy > SWIPE_THRESHOLD_PX && !expanded) {
-        onExpandChange(true);
-      } else if (dy < -SWIPE_THRESHOLD_PX && expanded) {
-        onExpandChange(false);
-      }
-    } else if (axis === 'x' && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
-      // Left (dx<0) pages to the following week, right to the previous one —
-      // addDays is calendar-day arithmetic, so ±7 always lands on the same
-      // weekday (issue #629, AK3).
-      onSelectDay(addDays(selectedDay, dx < 0 ? 7 : -7));
+    if (axis === 'x' && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
+      // Left (dx<0) pages forward, right pages back — a week in week view
+      // (addDays, ±7 always lands on the same weekday, issue #629, AK3), a
+      // month in month view (addMonths, same day-of-month, clamped at the
+      // month's end, issue #662, AK-B). A vertical swipe only locks the axis
+      // so a vertically guided pointer can't accidentally page — it has no
+      // effect of its own; the segmented control is the only way to switch
+      // week/month (issue #662, AK-A).
+      onSelectDay(
+        expanded ? addMonths(selectedDay, dx < 0 ? 1 : -1) : addDays(selectedDay, dx < 0 ? 7 : -7),
+      );
     }
   }
 

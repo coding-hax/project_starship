@@ -210,6 +210,23 @@ export function dateKeyDiff(a: string, b: string): number {
   return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
 }
 
+/**
+ * `dateKey` shifted by `delta` months, same day-of-month, clamped to the
+ * target month's last day — 31.01. + 1 → 28.02. (29.02. in a leap year),
+ * never rolling over into the following month (issue #662, S5 of #622, the
+ * decision that #630's `‹ ›` month-buttons will reuse this same helper for).
+ */
+export function addMonths(dateKey: string, delta: number): string {
+  const date = parseDateKey(dateKey);
+  const day = date.getUTCDate();
+  const targetMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1));
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  targetMonth.setUTCDate(Math.min(day, lastDayOfTargetMonth));
+  return formatDateKey(targetMonth);
+}
+
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */
 export function weekDaysFor(dateKey: string): string[] {
   const date = parseDateKey(dateKey);
