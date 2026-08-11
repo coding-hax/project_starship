@@ -1,0 +1,26 @@
+/**
+ * The held state of /uebersicht's content area (issue #642, see overview-ready.tsx).
+ *
+ * `visibility: hidden` rather than `display: none`: the subtree is laid out and
+ * measured as usual, just not painted, so the reveal is a pure paint change with
+ * no reflow behind it. It also takes the half-built screen out of the a11y tree
+ * for the duration — a screen reader never reads a state that is about to be
+ * replaced.
+ *
+ * Only `opacity` animates — no `transform` — for the same reason as
+ * `.page-transition--enter` in shell.css: no layout shift, and no new containing
+ * block for the `position: fixed` Toast a block may render (only
+ * `transform`/`filter` create one).
+ *
+ * No reduced-motion guard here: the global rule in tokens.css collapses
+ * `transition-duration` to 0.01ms whenever `prefers-reduced-motion` or the in-app
+ * `data-reduce-motion` toggle is on, which reads as instant (AC6).
+ */
+.overview-ready {
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.overview-ready--pending {
+  visibility: hidden;
+  opacity: 0;
+}
