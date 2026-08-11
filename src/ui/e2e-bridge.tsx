@@ -105,6 +105,11 @@ export function E2EBridge() {
           if (!row) return 0;
           return db.records.update(key, { data: { ...row.data, ...patch } });
         },
+        // Removes a row through Dexie's own already-open connection (issue #650
+        // Fund, modules.spec.ts AC7) — raw `indexedDB.deleteDatabase`/`.open` races
+        // Dexie's versionchange handler instead (see journal.spec.ts AC3), so specs
+        // that need a genuinely empty local slate go through the app's own db.
+        debugDeleteRecord: (table: string, id: string) => db.records.delete([table, id] as never),
         // Drives the real lock-store state machine (issue #339) rather than a
         // test double — journalUnlock resolves 'ok'/'wrong' from the state it
         // actually landed in, never from the thrown error's message.

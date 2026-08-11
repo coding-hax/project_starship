@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import {
   openMeteoForecastBody,
   registerPasskey,
@@ -72,6 +73,19 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
   page,
 }) => {
   await resetAppData();
+  // beforeEach's registerPasskey already loaded /uebersicht once, so
+  // JournalHabitBoot's own boot effect may have already created+synced a local
+  // Journal-habit row before the resetAppData() wipe above ran — a race
+  // against the SQL DELETE that leaves the client believing the row still
+  // exists while Postgres just lost it (issue #650 Fund). ensureJournalHabit()
+  // below only checks local existence, so a stale local row makes it a no-op
+  // and the wiped server row never gets recreated. Clear it through Dexie's
+  // own connection first, so the ensure below always starts from a genuinely
+  // empty slate.
+  await page.evaluate(
+    ([table, id]) => window.__starship.debugDeleteRecord(table, id),
+    ['habits', JOURNAL_HABIT_ID] as [string, string],
+  );
   await page.goto('/uebersicht');
   await settleJournalHabitBoot(page);
 
@@ -84,6 +98,12 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
 
   await page.goto('/einstellungen');
   await page.getByRole('switch', { name: 'Journal' }).click();
+  // module-panel.tsx fires archiveJournalHabit() fire-and-forget (`void`), never
+  // awaited by the click handler — calling sync() right after click() can win the
+  // race against that mutation's own `readHabitRow()` + `mutate()` chain and push
+  // an empty outbox (issue #650 Fund). Wait for the queued entry to actually land
+  // before triggering the push.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
   await page.evaluate(() => window.__starship.sync());
 
   const afterOff = await withDb((client) =>
@@ -92,6 +112,7 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
   expect(afterOff.rows[0].archived_at).not.toBeNull();
 
   await page.getByRole('switch', { name: 'Journal' }).click();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
   await page.evaluate(() => window.__starship.sync());
 
   const afterOn = await withDb((client) =>
