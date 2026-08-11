@@ -12,7 +12,7 @@ import { WeeklyRecapCard } from './weekly-recap-card';
 export function HabitsOverviewSection() {
   return (
     <>
-      <h2>Gewohnheiten</h2>
+      <h2>Routinen</h2>
       <WeeklyRecapCard />
       <HabitToday />
     </>

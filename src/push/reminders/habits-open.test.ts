@@ -200,7 +200,7 @@ describe('habits-open build()', () => {
     ];
     logRows = [];
     expect(await build(AT_2005_BERLIN)).toEqual({
-      title: '3 Gewohnheiten heute noch offen',
+      title: '3 Routinen heute noch offen',
       body: 'Laufen, Meditieren und 1 weitere',
       url: '/gewohnheiten',
     });

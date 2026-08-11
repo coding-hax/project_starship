@@ -73,7 +73,7 @@ describe('computeDailyProgress', () => {
     });
   });
 
-  it('excludes habits when the Gewohnheiten module is off', () => {
+  it('excludes habits when the Routinen module is off', () => {
     const tasks = [task()];
     const habits = [habit()];
     const logs: HabitLogView[] = [];

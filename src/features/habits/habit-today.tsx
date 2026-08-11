@@ -99,7 +99,7 @@ export function HabitToday() {
   if (active.length === 0) {
     return (
       <p className="habit-today__empty">
-        Noch keine Gewohnheiten.{' '}
+        Noch keine Routinen.{' '}
         <Link href="/routinen">Jetzt anlegen</Link>
       </p>
     );
@@ -110,7 +110,7 @@ export function HabitToday() {
 
   return (
     <>
-      <ul className="habit-today" aria-label="Gewohnheiten heute">
+      <ul className="habit-today" aria-label="Routinen heute">
         {active.map((habit) => {
           const doneToday = logs.some(
             (log) => log.habitId === habit.id && log.logDate === today && log.done,

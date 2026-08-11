@@ -152,7 +152,7 @@
   flex: 0 0 20%;
   /* Flex items default to `min-width: auto` (their content's min-content size),
      which wins over a smaller flex-basis when flex-shrink is 0 — an unbreakable
-     label ("Gewohnheiten") would otherwise force this one slot past its 20% and
+     label ("Aktivitäten") would otherwise force this one slot past its 20% and
      the whole row past five visible items. `min-width: 0` makes the 20% absolute. */
   min-width: 0;
   scroll-snap-align: start;
