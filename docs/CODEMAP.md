@@ -35,7 +35,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status) + SELECT 1 + Versions-SHA (ungeschützt)
 - `api/sync/` — `push/` und `pull/`, die einzigen Wege zu den Daten
 - `api/push/` / `api/garmin-sync/` — subscribe/unsubscribe/test+`reminders/`, holt Aktivitäten (beide Bearer-Secret)
-- `api/ics/` — SSRF-abgesicherter Proxy für abonnierte `.ics`-Feeds (issue #560, ADR-0022): `ssrf.ts` (Schema+IP-Sperre, rein) + `route.ts` (DNS-Auflösung, Redirect-Revalidierung je Hop, Größen-/Zeit-Cap), `requireOwner()`-geschützt
+- `api/ics/` — SSRF-abgesicherter Proxy für abonnierte `.ics`-Feeds (issue #560, ADR-0022): `ssrf.ts`
+  (Schema+IP-Sperre, rein) + `route.ts` (DNS-Auflösung, Redirect-Revalidierung je Hop, Größen-/Zeit-Cap), `requireOwner()`-geschützt
 - `layout.tsx` / `manifest.ts` / `globals.css` — Root-Layout (PWA-Metadaten, Theme/Modul-Bootstrap), Manifest, Tailwind+Tokens
 - `sw.ts` — Service Worker (Serwist), Push/Notification-Handler, modul-unabhängig
 
@@ -125,11 +126,16 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   (Übersicht, issue #559; Agenda issue #597)
 - `recurrence.ts` — reine Serien-Expansion (issue #557): `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
-- `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin` (`'local'|'subscribed'`, View-Feld) unterscheidet synced von abonnierten Terminen (issue #560)
+- `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
+  (`'local'|'subscribed'`, View-Feld) unterscheidet synced von abonnierten Terminen (issue #560)
 - `use-event-exceptions.ts` — `EventExceptionView`/`toEventExceptionView` + `useEventExceptions()`, nur lesend — Schreiben läuft über `event-mutations.ts`
-- `ics-parse.ts` — Minimal-RFC-5545-Parser, nur ganztägig (issue #560, ADR-0022): `parseIcs(text)` liest `UID`/`SUMMARY`/`DTSTART`/`DTEND`/`RRULE`/`EXDATE` aus `VEVENT`s, überliest den Rest; getimte Termine fallen heraus
-- `ics-expand.ts` — reine Serien-Expansion für abonnierte Kalender (issue #560): `expandIcsEvents(parsed, horizon)` über `occurrencesOnDay` (recurrence.ts), `isIcsStale`/`icsHorizon`/`ICS_REFRESH_INTERVAL_MS`
-- `use-ics-subscriptions.ts` — Wetter-Muster (ADR-0009) für `.ics`-Abos: `useIcsSubscriptionList`/`useSubscribedEvents` (Live-Query), `refreshStaleSubscriptions`/`useIcsSubscriptionsRefresh` (Fetch nur bei Staleness, Fehler rühren nur `lastError` an)
+- `ics-parse.ts` — Minimal-RFC-5545-Parser, nur ganztägig (issue #560, ADR-0022): `parseIcs(text)` liest
+  `UID`/`SUMMARY`/`DTSTART`/`DTEND`/`RRULE`/`EXDATE` aus `VEVENT`s, überliest den Rest; getimte Termine fallen heraus
+- `ics-expand.ts` — reine Serien-Expansion für abonnierte Kalender (issue #560): `expandIcsEvents(parsed, horizon)`
+  über `occurrencesOnDay` (recurrence.ts), `isIcsStale`/`icsHorizon`/`ICS_REFRESH_INTERVAL_MS`
+- `use-ics-subscriptions.ts` — Wetter-Muster (ADR-0009) für `.ics`-Abos: `useIcsSubscriptionList`/`useSubscribedEvents`
+  (Live-Query), `refreshStaleSubscriptions`/`useIcsSubscriptionsRefresh` (Fetch nur bei Staleness, Fehler
+  rühren nur `lastError` an)
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
   darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events` (issue #560 AK2)
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
