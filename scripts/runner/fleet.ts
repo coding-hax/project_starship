@@ -141,6 +141,10 @@ function worstEmoji(states: SlotState[]): string {
  * einem bekannten Zustand: unveraendert durchreichen (AK9). `leadSlot` hier
  * ist der EFFEKTIVE Leitslot (Ergebnis von effectiveLead()) -- weicht er vom
  * konfigurierten LEAD_SLOT ab, nennt der Text die Uebernahme (AK5).
+ *
+ * `catchupCount` (#515, P2): Anzahl erfolgreicher Nachzieh-Merges im
+ * 7-Tage-Fenster, ueber alle Slots summiert -- erscheint NUR im
+ * Mehr-Slot-Zweig (AC3/AK9: der Ein-Slot-Passthrough bleibt byte-identisch).
  */
 export function aggregateStatus(
   states: SlotState[],
@@ -149,6 +153,7 @@ export function aggregateStatus(
   effectiveLeadSlot: string,
   nowMs: number,
   staleMs = STALE_MS,
+  catchupCount?: number,
 ): StatusUpdate | null {
   if (states.length === 0) return null;
   if (states.length === 1 && slotCount <= 1) {
@@ -172,9 +177,14 @@ export function aggregateStatus(
       ? `\n\n⚠️ **Leitslot übernommen:** Slot ${configuredLeadSlot} antwortet nicht mehr, Slot ${effectiveLeadSlot} führt Status und globale Wächter.`
       : '';
 
+  const catchupNote =
+    catchupCount !== undefined
+      ? `\n\n📊 Nachzieh-Läufe (7 T.): ${catchupCount} — je ≈ ein voller CI-Lauf am 20-Job-Limit.`
+      : '';
+
   return {
     title,
     emoji,
-    text: `${emoji} **Runner-Flotte:** ${activeCount} von ${slotCount} Slots aktiv.\n\n${lines.join('\n')}${takeoverNote}`,
+    text: `${emoji} **Runner-Flotte:** ${activeCount} von ${slotCount} Slots aktiv.\n\n${lines.join('\n')}${takeoverNote}${catchupNote}`,
   };
 }

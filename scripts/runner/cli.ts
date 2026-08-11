@@ -42,6 +42,7 @@ import { roundEval, roundPlan, roundRecover, type RoundRun } from './round.js';
 import { cleanupStateDir, cleanupSharedTicketState } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
 import { aggregateStatus, createFleetAdapter, effectiveLead, STALE_MS, type FleetAdapter } from './fleet.js';
+import { catchupCountWindow } from './catchup-metrics.js';
 import { acquireLead, createLeadAdapter, type LeadAdapter } from './lead.js';
 
 export interface RunnerContext {
@@ -152,7 +153,14 @@ export const commands: Record<string, CommandHandler> = {
   'pr-failure-summary': (ctx, args) => prFailureSummary(args[0] ?? '', ctx.gh),
   'watch-running-issue': (ctx, args) =>
     JSON.stringify(
-      watchRunningIssue(Number(args[0]), args[1] ?? '', { gh: ctx.gh, git: ctx.git, state: ctx.state, clock: ctx.clock }),
+      watchRunningIssue(Number(args[0]), args[1] ?? '', {
+        gh: ctx.gh,
+        git: ctx.git,
+        state: ctx.state,
+        clock: ctx.clock,
+        slotId: ctx.slotId,
+        sharedState: ctx.sharedState,
+      }),
     ),
   'watch-waiting-issues': (ctx, args) =>
     JSON.stringify(
@@ -161,6 +169,8 @@ export const commands: Record<string, CommandHandler> = {
         git: ctx.git,
         state: ctx.state,
         clock: ctx.clock,
+        slotId: ctx.slotId,
+        sharedState: ctx.sharedState,
       }),
     ),
   'pick-ticket': (ctx, args) =>
@@ -276,7 +286,17 @@ export const commands: Record<string, CommandHandler> = {
     const slotCount = Math.max(1, Number(args[0] ?? 1));
     const leadSlot = args[1] ?? '1';
     const effectiveLeadSlot = args[2] ?? leadSlot;
-    const result = aggregateStatus(ctx.fleet.readAll(), slotCount, leadSlot, effectiveLeadSlot, ctx.clock.now().getTime());
+    const slotIds = Array.from({ length: slotCount }, (_, i) => String(i + 1));
+    const catchupCount = catchupCountWindow(slotIds, ctx.sharedState, ctx.clock);
+    const result = aggregateStatus(
+      ctx.fleet.readAll(),
+      slotCount,
+      leadSlot,
+      effectiveLeadSlot,
+      ctx.clock.now().getTime(),
+      STALE_MS,
+      catchupCount,
+    );
     return JSON.stringify(result);
   },
 };

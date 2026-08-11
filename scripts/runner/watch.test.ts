@@ -17,6 +17,7 @@ import {
 } from './watch';
 
 const FIXED_CLOCK = createFixedClock(new Date('2026-07-28T10:00:00Z'));
+const SLOT_ID = '1';
 
 const ALL_STATES: WatchState[] = [
   'pending',
@@ -208,16 +209,18 @@ function gitFake(fx: GitFixture = {}): GitAdapter {
 describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () => {
   let dir: string;
   let state: StateAdapter;
+  let sharedState: StateAdapter;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'runner-watch-'));
     state = createStateAdapter(dir);
+    sharedState = createStateAdapter(join(dir, 'shared'));
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   it('T1: CI läuft noch (pending) -> kein Merge, kein Fix', () => {
     const gh = ghFake({ checks: { '501': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pending', name: 'e2e' }] } });
-    const result = watchRunningIssue(301, '501', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(301, '501', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result).toEqual({ kind: 'pending', escalated: false, minutes: 0 });
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '501']);
   });
@@ -230,15 +233,15 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     const clock: Clock = { now: () => new Date(nowMs) };
     const gh = ghFake({ checks: { '900': [{ bucket: 'pending', name: 'e2e' }] } });
 
-    const first = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock });
+    const first = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
     expect(first).toEqual({ kind: 'pending', escalated: false, minutes: 0 });
 
     nowMs += (PENDING_STALL_MINUTES - 1) * 60_000;
-    const stillGreen = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock });
+    const stillGreen = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
     expect(stillGreen).toEqual({ kind: 'pending', escalated: false, minutes: PENDING_STALL_MINUTES - 1 });
 
     nowMs += 1 * 60_000;
-    const escalated = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock });
+    const escalated = watchRunningIssue(900, '900', { gh, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
     expect(escalated).toEqual({ kind: 'pending', escalated: true, minutes: PENDING_STALL_MINUTES });
   });
 
@@ -248,17 +251,17 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     let nowMs = Date.parse('2026-07-28T10:00:00Z');
     const clock: Clock = { now: () => new Date(nowMs) };
     const ghPending = ghFake({ checks: { '901': [{ bucket: 'pending', name: 'e2e' }] } });
-    watchRunningIssue(901, '901', { gh: ghPending, git: gitFake(), state, clock });
+    watchRunningIssue(901, '901', { gh: ghPending, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
 
     nowMs += (PENDING_STALL_MINUTES + 5) * 60_000;
     const ghFailing = ghFake({
       checks: { '901': [{ bucket: 'fail', name: 'e2e', description: 'kaputt' }] },
     });
-    watchRunningIssue(901, '901', { gh: ghFailing, git: gitFake(), state, clock });
+    watchRunningIssue(901, '901', { gh: ghFailing, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
 
     nowMs += 60_000;
     const ghPendingAgain = ghFake({ checks: { '901': [{ bucket: 'pending', name: 'e2e' }] } });
-    const result = watchRunningIssue(901, '901', { gh: ghPendingAgain, git: gitFake(), state, clock });
+    const result = watchRunningIssue(901, '901', { gh: ghPendingAgain, git: gitFake(), state, clock, slotId: SLOT_ID, sharedState });
     expect(result).toEqual({ kind: 'pending', escalated: false, minutes: 0 });
   });
 
@@ -267,7 +270,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       checks: { '502': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
       mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN' } },
     });
-    const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result).toEqual({ kind: 'merged' });
     expect(gh.run).toHaveBeenCalledWith(['pr', 'ready', '502']);
   });
@@ -281,7 +284,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
         ],
       },
     });
-    const result = watchRunningIssue(303, '503', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(303, '503', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).toBe('build-fix');
     if (result.kind === 'build-fix') {
       expect(result.summary).toContain('e2e');
@@ -303,7 +306,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     const gh = ghFake({
       checks: { '504': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'irgendwas' }] },
     });
-    const result = watchRunningIssue(304, '504', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(304, '504', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).toBe('build-fix');
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '304', '--add-label', 'needs-answer']);
   });
@@ -313,9 +316,12 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       checks: { '701': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
       mergeState: { '701': { headRefName: 'fix/401-x', mergeStateStatus: 'BEHIND' } },
     });
-    const result = watchRunningIssue(401, '701', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(401, '701', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result).toEqual({ kind: 'caught-up' });
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '701']);
+    // #515 AC1: ein erfolgreiches Nachziehen (behind -> ok) schreibt genau ein
+    // Ereignis in die Nachzieh-Metrik des eigenen Slots.
+    expect(sharedState.read(`catchup-${SLOT_ID}.log`)).toBe(`${FIXED_CLOCK.now().getTime()}\n`);
   });
 
   it('T8: Nachziehen scheitert an echtem Merge-Konflikt -> Fix-Agent mit Konfliktdateien', () => {
@@ -324,13 +330,15 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       mergeState: { '702': { headRefName: 'fix/402-x', mergeStateStatus: 'BEHIND' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts', 'src/b.ts'] });
-    const result = watchRunningIssue(402, '702', { gh, git, state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(402, '702', { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).toBe('build-fix');
     if (result.kind === 'build-fix') {
       expect(result.summary).toContain('Merge-Konflikt');
       expect(result.summary).toContain('src/a.ts');
       expect(result.summary).toContain('src/b.ts');
     }
+    // #515 AC4: ein gescheiterter (konfliktbehafteter) Nachziehversuch zaehlt nicht.
+    expect(sharedState.read(`catchup-${SLOT_ID}.log`)).toBeNull();
   });
 
   it('T15/T16: unsauberer Arbeitsbaum -> retry grün, erst nach 3 Runden eskaliert gelb', () => {
@@ -339,9 +347,9 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       mergeState: { '740': { headRefName: 'fix/440-x', mergeStateStatus: 'BEHIND' } },
     });
     const git = gitFake({ dirty: ['some/file.ts'] });
-    const r1 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK });
-    const r2 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK });
-    const r3 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK });
+    const r1 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
+    const r2 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
+    const r3 = watchRunningIssue(440, '740', { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(r1).toEqual({ kind: 'retry', reason: 'unsauberer Arbeitsbaum', paths: ['some/file.ts'], escalated: false });
     expect(r2).toEqual({ kind: 'retry', reason: 'unsauberer Arbeitsbaum', paths: ['some/file.ts'], escalated: false });
     expect(r3).toEqual({ kind: 'retry', reason: 'unsauberer Arbeitsbaum', paths: ['some/file.ts'], escalated: true });
@@ -353,7 +361,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       checks: { '750': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
       mergeState: { '750': { headRefName: 'fix/450-x', mergeStateStatus: 'DIRTY' } },
     });
-    const result = watchRunningIssue(450, '750', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(450, '750', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).not.toBe('merged');
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '750']);
   });
@@ -364,7 +372,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       mergeState: { '751': { headRefName: 'fix/451-x', mergeStateStatus: 'DIRTY' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts', 'src/b.ts'] });
-    const result = watchRunningIssue(451, '751', { gh, git, state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(451, '751', { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).toBe('build-fix');
     if (result.kind === 'build-fix') {
       expect(result.summary).toContain('DIRTY');
@@ -381,7 +389,7 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       checks: { '752': [{ bucket: 'pass', name: 'quality' }] },
       mergeState: { '752': { headRefName: 'fix/452-x', mergeStateStatus: 'DIRTY' } },
     });
-    const result = watchRunningIssue(452, '752', { gh, git: gitFake({ failFetch: true }), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(452, '752', { gh, git: gitFake({ failFetch: true }), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result.kind).toBe('build-fix');
     if (result.kind === 'build-fix') expect(result.summary).toContain('unbekannt');
   });
@@ -393,8 +401,10 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
       checks: { '753': [{ bucket: 'pass', name: 'quality' }] },
       mergeState: { '753': { headRefName: 'fix/453-x', mergeStateStatus: 'DIRTY' } },
     });
-    const result = watchRunningIssue(453, '753', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const result = watchRunningIssue(453, '753', { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(result).toEqual({ kind: 'caught-up' });
+    // #515 AC1: gilt auch fuer den DIRTY-Zweig (GitHubs DIRTY-Meldung, aber lokal ok).
+    expect(sharedState.read(`catchup-${SLOT_ID}.log`)).toBe(`${FIXED_CLOCK.now().getTime()}\n`);
   });
 
   it('T17/T18/T19: fetch/checkout/push-Fehlschlag sind unterscheidbare Gründe', () => {
@@ -403,9 +413,9 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
         checks: { [pr]: [{ bucket: 'pass', name: 'quality' }] },
         mergeState: { [pr]: { headRefName: 'fix/x', mergeStateStatus: 'BEHIND' } },
       });
-    const fetchResult = watchRunningIssue(442, '742', { gh: gh('742'), git: gitFake({ failFetch: true }), state, clock: FIXED_CLOCK });
-    const checkoutResult = watchRunningIssue(443, '743', { gh: gh('743'), git: gitFake({ failCheckout: true }), state, clock: FIXED_CLOCK });
-    const pushResult = watchRunningIssue(444, '744', { gh: gh('744'), git: gitFake({ failPush: true }), state, clock: FIXED_CLOCK });
+    const fetchResult = watchRunningIssue(442, '742', { gh: gh('742'), git: gitFake({ failFetch: true }), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
+    const checkoutResult = watchRunningIssue(443, '743', { gh: gh('743'), git: gitFake({ failCheckout: true }), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
+    const pushResult = watchRunningIssue(444, '744', { gh: gh('744'), git: gitFake({ failPush: true }), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(fetchResult.kind === 'retry' && fetchResult.reason).toContain('fetch fehlgeschlagen');
     expect(checkoutResult.kind === 'retry' && checkoutResult.reason).toBe('checkout fehlgeschlagen');
     expect(pushResult.kind === 'retry' && pushResult.reason).toBe('push fehlgeschlagen');
@@ -420,10 +430,12 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
 describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)', () => {
   let dir: string;
   let state: StateAdapter;
+  let sharedState: StateAdapter;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'runner-watch-waiting-'));
     state = createStateAdapter(dir);
+    sharedState = createStateAdapter(join(dir, 'shared'));
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -436,7 +448,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
     });
-    const outcome = watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const outcome = watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(outcome.released).toEqual([401]);
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '401', '--remove-label', 'needs-answer']);
   });
@@ -446,7 +458,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
     });
-    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
@@ -459,7 +471,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
     });
-    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     const edits = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
       .map((c) => c[0])
       .filter((args) => args[0] === 'issue' && args[1] === 'edit');
@@ -474,7 +486,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }] },
     });
-    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     const sequence = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
       .map((c) => c[0])
       .filter((args) => (args[0] === 'pr' && (args[1] === 'ready' || args[1] === 'merge')) || args[1] === 'edit')
@@ -487,7 +499,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 602, headRefName: 'fix/402-x' }],
       checks: { '602': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pending', name: 'e2e' }] },
     });
-    expect(watchWaitingIssues([issue(402)], { gh: ghPending, git: gitFake(), state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(402)], { gh: ghPending, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
   });
 
   it('T5: mehrere wartende Tickets -- eins grün (freigegeben), eins pending (bleibt)', () => {
@@ -506,6 +518,8 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       git: gitFake(),
       state,
       clock: FIXED_CLOCK,
+      slotId: SLOT_ID,
+      sharedState,
     });
     expect(outcome.released).toEqual([501]);
   });
@@ -517,7 +531,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       mergeState: { '720': { headRefName: 'fix/420-x', mergeStateStatus: 'BEHIND' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts'] });
-    expect(watchWaitingIssues([issue(420)], { gh, git, state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(420)], { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
     expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--add-label', 'in-progress']));
   });
 
@@ -528,7 +542,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       mergeState: { '753': { headRefName: 'fix/453-x', mergeStateStatus: 'DIRTY' } },
     });
     const git = gitFake({ failMerge: true, conflictFiles: ['src/a.ts'] });
-    expect(watchWaitingIssues([issue(453)], { gh, git, state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(453)], { gh, git, state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
   });
 
   // #217 AC4: ohne dieses Gate faellt das Ticket aus jeder Wache heraus --
@@ -545,7 +559,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
         return base.run(args);
       }),
     };
-    const outcome = watchWaitingIssues([issue(454)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const outcome = watchWaitingIssues([issue(454)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(outcome.released).toEqual([]);
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '454', '--remove-label', 'needs-answer']);
   });
@@ -555,7 +569,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 721, headRefName: 'fix/421-x' }],
       checks: { '721': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
     });
-    expect(watchWaitingIssues([issue(421)], { gh, git: gitFake(), state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(421)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
   });
 
   it('T9: nur protected-paths rot -> bleibt still', () => {
@@ -563,7 +577,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 722, headRefName: 'fix/422-x' }],
       checks: { '722': [{ bucket: 'pass', name: 'quality' }, { bucket: 'fail', name: 'protected-paths', description: 'Approval missing' }] },
     });
-    expect(watchWaitingIssues([issue(422)], { gh, git: gitFake(), state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(422)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
   });
 
   // #272: die eigentliche Zusicherung dieser Stufe -- ein Ticket, das auf eine
@@ -573,7 +587,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       prList: [{ number: 723, headRefName: 'fix/423-x' }],
       checks: { '723': [{ bucket: 'fail', name: 'e2e', description: '2 tests failed' }] },
     });
-    watchWaitingIssues([issue(423)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    watchWaitingIssues([issue(423)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
@@ -588,7 +602,7 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
         '828': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }],
       },
     });
-    const outcome = watchWaitingIssues([issue(425), issue(428, '2024-02-01T00:00:00Z')], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    const outcome = watchWaitingIssues([issue(425), issue(428, '2024-02-01T00:00:00Z')], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState });
     expect(outcome.released).toEqual([428]);
   });
 
@@ -610,12 +624,14 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
       git: gitFake(),
       state,
       clock: FIXED_CLOCK,
+      slotId: SLOT_ID,
+      sharedState,
     });
     expect(outcome.released).toEqual([426, 427]);
   });
 
   it('kein offener PR fürs Ticket -> wird übersprungen, kein Fehler', () => {
     const gh = ghFake({ prList: [] });
-    expect(watchWaitingIssues([issue(999)], { gh, git: gitFake(), state, clock: FIXED_CLOCK })).toEqual({ released: [] });
+    expect(watchWaitingIssues([issue(999)], { gh, git: gitFake(), state, clock: FIXED_CLOCK, slotId: SLOT_ID, sharedState })).toEqual({ released: [] });
   });
 });

@@ -213,6 +213,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `claude-runner.sh` / `runner/cli.ts` — autonomer Runner, Einstiegspunkt (Bash) + TS-Kern-Dispatcher (`argv[2]`)
 - `runner/{gh,git,state,clock,time}.ts` — Adapter (gh/git/State-Dateien/Zeit), injizierbar für Vitest
 - `runner/{queue,tier,escalation,cap,pr,catchup}.ts` — Queue, Modell-Eskalation, Deckel, PR-Zustand, Nachzieh-Ablauf
+- `runner/catchup-metrics.ts` — Telemetrie für erfolgreiche Nachzieh-Merges (7-Tage-Fenster je Slot), additiv neben `catchup.ts`
 - `runner/{watch,select,status}.ts` — CI-Wache, Ticketauswahl, Statusmeldungen fürs Status-Issue
 - `runner/prompts.ts` / `runner/round.ts` — vier Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session-Trennung, Shim-Drift, Aufräumen, Multi-Slot-Status

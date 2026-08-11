@@ -272,7 +272,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     : [];
 
   if (waitingOnHuman.length > 0) {
-    const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state, clock });
+    const watched = watchWaitingIssues(waitingOnHuman, { gh, git, state, clock, slotId, sharedState });
 
     // #217 AC4: ein Ticket landet nur dann in '.released', wenn 'gh pr merge'
     // tatsaechlich geklappt hat -- sonst bleibt es wartend.
@@ -408,7 +408,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
-      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
+      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock, slotId, sharedState });
       switch (watch.kind) {
         case 'pending':
           // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist

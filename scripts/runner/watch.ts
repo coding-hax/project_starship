@@ -33,6 +33,7 @@ import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
 import { prCiState, prFailureSummary, prForIssue, prSquashMerge } from './pr.js';
 import { catchupFailEscalated, catchupFailReason, catchupFailReset, prCatchUpBehind } from './catchup.js';
+import { recordCatchup } from './catchup-metrics.js';
 
 // #324: ab dieser Schwelle (Minuten) gilt ein 'pending' als haengen geblieben
 // statt als normal laufende CI -- Startwert lt. Ticket, benannte Konstante
@@ -153,6 +154,10 @@ interface WatchDeps {
   git: GitAdapter;
   state: StateAdapter;
   clock: Clock;
+  // #515 (P2): eigener Slot + geteilter Zustand fuer die Nachzieh-Metrik
+  // (recordCatchup) -- getrennt von `state`, das sitzungs-/ticketbezogen ist.
+  slotId: string;
+  sharedState: StateAdapter;
 }
 
 interface ResolvedWatchState {
@@ -233,7 +238,10 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   if (ciState === 'conflict') {
     const probe = prCatchUpBehind(pr, deps.git, deps.gh);
     catchupFailReset(issue, deps.state);
-    if (probe.kind === 'ok') return { state: 'behind-caught-up' };
+    if (probe.kind === 'ok') {
+      recordCatchup(deps.slotId, deps.sharedState, deps.clock);
+      return { state: 'behind-caught-up' };
+    }
     if (probe.kind === 'conflict') return { state: 'dirty-conflict', conflictFiles: probe.files };
     const probeCode = { dirty: 2, fetchFailed: 3, checkoutFailed: 4, pushFailed: 5 } as const;
     return { state: 'dirty-conflict', conflictProbeFailReason: catchupFailReason(probeCode[probe.kind]) };
@@ -243,6 +251,7 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   const result = prCatchUpBehind(pr, deps.git, deps.gh);
   if (result.kind === 'ok') {
     catchupFailReset(issue, deps.state);
+    recordCatchup(deps.slotId, deps.sharedState, deps.clock);
     return { state: 'behind-caught-up' };
   }
   if (result.kind === 'conflict') {

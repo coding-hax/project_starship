@@ -167,4 +167,37 @@ describe('aggregateStatus (#204 AK4/AK9)', () => {
     const result = aggregateStatus(states, 2, '1', '1', NOW);
     expect(result?.text).toContain('_(vor 2 Std. 5 Min.)_');
   });
+
+  // #515 AC2: die Nachzieh-Metrik erscheint NUR im Mehr-Slot-Zweig, als
+  // eigene Zeile am Ende des Texts.
+  it('#515 AC2: catchupCount > 0 haengt die Nachzieh-Zeile an den Mehr-Slot-Text an', () => {
+    const states = [
+      { slotId: '1', emoji: '🟢', title: 'x', text: '', updatedAtMs: NOW },
+      { slotId: '2', emoji: '🟢', title: 'y', text: '', updatedAtMs: NOW },
+    ];
+    const result = aggregateStatus(states, 2, '1', '1', NOW, STALE_MS, 5);
+    expect(result?.text).toContain('Nachzieh-Läufe (7 T.): 5');
+  });
+
+  it('#515: ohne catchupCount (undefined) fehlt die Nachzieh-Zeile', () => {
+    const states = [
+      { slotId: '1', emoji: '🟢', title: 'x', text: '', updatedAtMs: NOW },
+      { slotId: '2', emoji: '🟢', title: 'y', text: '', updatedAtMs: NOW },
+    ];
+    const result = aggregateStatus(states, 2, '1', '1', NOW);
+    expect(result?.text).not.toContain('Nachzieh-Läufe');
+  });
+
+  // #515 AC3/AK9: der Ein-Slot-Passthrough bleibt byte-identisch, unabhaengig
+  // davon, ob/welcher catchupCount uebergeben wird -- sonst brechen die
+  // Bash-Fixtures (ci-watch.test.sh, waiting-ci-watch.test.sh).
+  it('#515 AC3: der Ein-Slot-Passthrough bleibt unveraendert, auch mit catchupCount gesetzt', () => {
+    const states = [{ slotId: '1', emoji: '🟠', title: 'arbeitet an #70', text: 'Details' }];
+    const withTs = states.map((s) => ({ ...s, updatedAtMs: NOW }));
+    expect(aggregateStatus(withTs, 1, '1', '1', NOW, STALE_MS, 42)).toEqual({
+      title: 'arbeitet an #70',
+      emoji: '🟠',
+      text: 'Details',
+    });
+  });
 });
