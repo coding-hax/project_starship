@@ -12,6 +12,8 @@ import {
   upcomingEventsToday,
   weekDaysFor,
 } from './event-time';
+import { expandForDay } from './recurrence';
+import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
 
 function iso(utc: number): string {
@@ -287,6 +289,106 @@ describe('categoriesForDay', () => {
     );
     expect(categoriesForDay(events, DAY)).toHaveLength(4);
     expect(categoriesForDay(events, DAY)).toEqual(['privat', 'arbeit', 'gesundheit', 'sport']);
+  });
+});
+
+/**
+ * The dots read expanded occurrences, exactly as calendar-strip.tsx composes
+ * the two (issue #612) — before that, `categoriesForDay` filtered raw `events`
+ * rows by `startsAt`, so a series was dotted only on its anchor day, a cancelled
+ * instance kept its dot, and an all-day event never got one at all.
+ */
+describe('categoriesForDay over expandForDay', () => {
+  function dotsOn(
+    events: EventView[],
+    exceptions: EventExceptionView[],
+    dayKey: string,
+  ): EventView['category'][] {
+    return categoriesForDay(expandForDay(events, exceptions, dayKey), dayKey);
+  }
+
+  const weeklySeries = event({
+    // Monday 2026-07-13, 09:00 Berlin.
+    startsAt: '2026-07-13T07:00:00.000Z',
+    endsAt: '2026-07-13T08:00:00.000Z',
+    category: 'arbeit',
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+
+  it('dots every occurrence of a series, not just its anchor day', () => {
+    expect(dotsOn([weeklySeries], [], '2026-07-13')).toEqual(['arbeit']);
+    expect(dotsOn([weeklySeries], [], '2026-07-20')).toEqual(['arbeit']);
+    // Across the month boundary — the strip renders neighbour-month days too.
+    expect(dotsOn([weeklySeries], [], '2026-08-03')).toEqual(['arbeit']);
+  });
+
+  it('leaves the days between two occurrences undotted', () => {
+    expect(dotsOn([weeklySeries], [], '2026-07-16')).toEqual([]);
+  });
+
+  it('drops the dot of a cancelled occurrence, keeping the rest of the series', () => {
+    const cancelled: EventExceptionView = {
+      id: 'exc-1',
+      eventId: 'evt-1',
+      originalDate: '2026-07-20',
+      cancelled: true,
+      overrideStartsAt: null,
+      overrideEndsAt: null,
+      overrideStartDate: null,
+      overrideEndDate: null,
+    };
+
+    expect(dotsOn([weeklySeries], [cancelled], '2026-07-20')).toEqual([]);
+    expect(dotsOn([weeklySeries], [cancelled], '2026-07-27')).toEqual(['arbeit']);
+  });
+
+  it('dots an all-day event, which carries no startsAt at all', () => {
+    const allDay = event({
+      allDay: true,
+      startDate: '2026-07-18',
+      endDate: '2026-07-18',
+      category: 'privat',
+    });
+
+    expect(dotsOn([allDay], [], '2026-07-18')).toEqual(['privat']);
+  });
+
+  it('dots every day a multi-day event spans, not only its first', () => {
+    const trip = event({
+      allDay: true,
+      startDate: '2026-07-18',
+      endDate: '2026-07-20',
+      category: 'familie',
+    });
+
+    expect(dotsOn([trip], [], '2026-07-18')).toEqual(['familie']);
+    expect(dotsOn([trip], [], '2026-07-19')).toEqual(['familie']);
+    expect(dotsOn([trip], [], '2026-07-20')).toEqual(['familie']);
+    expect(dotsOn([trip], [], '2026-07-21')).toEqual([]);
+  });
+
+  it('dots a recurring all-day series on a later occurrence', () => {
+    const series = event({
+      allDay: true,
+      startDate: '2026-07-18',
+      endDate: '2026-07-18',
+      category: 'sport',
+      recurrence: { freq: 'weekly', interval: 1 },
+    });
+
+    expect(dotsOn([series], [], '2026-07-25')).toEqual(['sport']);
+  });
+
+  it('stops dotting a series after its until date', () => {
+    const bounded = event({
+      startsAt: '2026-07-13T07:00:00.000Z',
+      endsAt: '2026-07-13T08:00:00.000Z',
+      category: 'gesundheit',
+      recurrence: { freq: 'weekly', interval: 1, until: '2026-07-20' },
+    });
+
+    expect(dotsOn([bounded], [], '2026-07-20')).toEqual(['gesundheit']);
+    expect(dotsOn([bounded], [], '2026-07-27')).toEqual([]);
   });
 });
 

@@ -1,8 +1,10 @@
 'use client';
 
-import { useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { addDays, categoriesForDay, categoryEdgeVar, monthDaysFor } from './event-time';
+import { expandForDay } from './recurrence';
+import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -18,6 +20,9 @@ export interface CalendarStripProps {
   /** Today's Berlin date key — marks the current day and drives the "Heute" button. */
   today: string;
   events: EventView[];
+  /** `event_exceptions` rows — same input the timeline gets, so a cancelled or
+   *  moved instance drops out of the dots too (issue #612). */
+  exceptions: EventExceptionView[];
   /** Auf (Monat) oder zu (Wochenstreifen) — issue #556, S5. */
   expanded: boolean;
   onExpandChange: (next: boolean) => void;
@@ -43,10 +48,25 @@ export function CalendarStrip({
   onSelectDay,
   today,
   events,
+  exceptions,
   expanded,
   onExpandChange,
 }: CalendarStripProps) {
-  const weeks = chunkIntoWeeks(monthDaysFor(selectedDay));
+  const days = useMemo(() => monthDaysFor(selectedDay), [selectedDay]);
+  const weeks = useMemo(() => chunkIntoWeeks(days), [days]);
+  /**
+   * One `expandForDay` pass per rendered day (35 or 42) — the same call the
+   * timeline makes for the selected day, so the dots agree with it by
+   * construction instead of by a second, parallel rule (issue #612). Memoised
+   * because every row is rendered whether or not the month is expanded.
+   */
+  const dotsByDay = useMemo(
+    () =>
+      new Map(
+        days.map((day) => [day, categoriesForDay(expandForDay(events, exceptions, day), day)]),
+      ),
+    [days, events, exceptions],
+  );
   const selectedMonth = selectedDay.slice(0, 7);
   const startYRef = useRef<number | null>(null);
   const movedRef = useRef(false);
@@ -157,7 +177,7 @@ export function CalendarStrip({
                   const isSelected = day === selectedDay;
                   const isOutsideMonth = day.slice(0, 7) !== selectedMonth;
                   const dayNumber = Number(day.slice(-2));
-                  const dots = categoriesForDay(events, day);
+                  const dots = dotsByDay.get(day) ?? [];
                   return (
                     <li key={day}>
                       <button

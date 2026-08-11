@@ -228,17 +228,28 @@ export function monthDaysFor(dateKey: string): string[] {
 /**
  * The categories present on `dateKey`, deduplicated and stably ordered
  * (`CATEGORIES` order from use-events.ts, `null` last) — one dot per category,
- * not per event (issue #556, S5). All-day/multi-day layout is S4; this places
- * an event by `berlinDateKey(startsAt)` only, which is enough for a dot.
+ * not per event (issue #556, S5).
+ *
+ * Takes already-expanded `Occurrence`s, not raw `events` rows (issue #612). A
+ * series' later instances only exist after `expandForDay`, and this file cannot
+ * call it itself — recurrence.ts imports from here, so the arrow points one way
+ * only (see `TimelineSource`). Day membership then reuses the timeline's own two
+ * predicates instead of a third, private comparison: a day carries a dot exactly
+ * when the timeline below it renders something — all-day and multi-day events
+ * (which have no `startsAt` at all) included.
+ *
  * Capped at 4 so the day cell never overflows.
  */
 const CATEGORY_ORDER: EventView['category'][] = ['privat', 'arbeit', 'gesundheit', 'sport', 'familie', null];
 const MAX_DOTS_PER_DAY = 4;
 
-export function categoriesForDay(events: EventView[], dateKey: string): EventView['category'][] {
+export function categoriesForDay<T extends TimelineSource>(
+  occurrences: T[],
+  dateKey: string,
+): EventView['category'][] {
   const present = new Set(
-    events.filter((event) => event.startsAt !== null && berlinDateKey(event.startsAt) === dateKey).map(
-      (event) => event.category,
+    [...agendaForDay(occurrences, dateKey), ...allDayEventsForDay(occurrences, dateKey)].map(
+      (occurrence) => occurrence.category,
     ),
   );
   return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, MAX_DOTS_PER_DAY);

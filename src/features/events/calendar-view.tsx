@@ -100,6 +100,7 @@ export function CalendarView() {
             onSelectDay={setSelectedDayOverride}
             today={today}
             events={events ?? []}
+            exceptions={exceptions ?? []}
             expanded={expanded}
             onExpandChange={setExpanded}
           />
