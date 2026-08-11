@@ -34,6 +34,8 @@ export function resumeAllowed(issue: number, state: StateAdapter): ResumeResult 
 
 const BLOCKER_LINE_RE = /Lauf-Ende|← HIER WEITER|Endgrund/;
 
+export const PROGRESS_MARKER = 'Fortschritt (automatisch aktualisiert)';
+
 // sha1 der Blocker-Kennzeilen (Endgrund + Wiederaufnahmestelle) aus dem
 // LETZTEN Kommentar -- aber nur, wenn das ueberhaupt der Fortschrittskommentar
 // ist (#33). Kein Fortschrittskommentar (Lauf brach ganz frueh ab) -> ''.
@@ -52,7 +54,7 @@ export function blockerSig(issue: number, gh: GhAdapter): string {
   } catch {
     last = '';
   }
-  if (!last.includes('Fortschritt (automatisch aktualisiert)')) return '';
+  if (!last.includes(PROGRESS_MARKER)) return '';
 
   const body = last
     .split('\n')
@@ -77,12 +79,36 @@ function branchTip(issue: number, git: GitAdapter): string {
   return firstLine.split(/\s+/)[0] ?? '';
 }
 
+// F26/#499: erkennt, ob DIESER Lauf einen Fortschrittskommentar angelegt hat,
+// waehrend die Branch-Spitze stehen blieb -- updatedAt/lastEditedAt liefert
+// gh durchweg null (verifiziert an #430), darum createdAt gegen runStart.
+// Rein lesend, best effort: jeder Fehler -> false, keine Meldung.
+export function progressCommentWrittenThisRun(issue: number, gh: GhAdapter, runStart: string): boolean {
+  if (!runStart) return false;
+  const start = new Date(runStart).getTime();
+  if (Number.isNaN(start)) return false;
+  try {
+    const raw = gh.run(['issue', 'view', String(issue), '--json', 'comments']);
+    const parsed = JSON.parse(raw) as { comments?: Array<{ body?: string; createdAt?: string }> };
+    return (parsed.comments ?? []).some((c) => {
+      if (!c.body?.includes(PROGRESS_MARKER) || !c.createdAt) return false;
+      const created = new Date(c.createdAt).getTime();
+      return !Number.isNaN(created) && created >= start;
+    });
+  } catch {
+    return false;
+  }
+}
+
 export interface EscalationInput {
   issue: number;
   runRole: string;
   labels: string;
   beforeTip: string;
   model: string;
+  /** Laufbeginn (ISO), nur fuer die Bau-Rolle befuellt -- Basis fuer
+   * progressCommentWrittenThisRun(). undefined/'' = kein Check (#499). */
+  runStart?: string;
 }
 
 // Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
@@ -94,7 +120,7 @@ export function buildEscalationEval(
   gh: GhAdapter,
   git: GitAdapter,
 ): void {
-  const { issue, runRole, labels, beforeTip, model } = input;
+  const { issue, runRole, labels, beforeTip, model, runStart } = input;
   if (runRole !== 'build') return;
   if (labels.includes('no-escalation')) return;
 
@@ -102,6 +128,24 @@ export function buildEscalationEval(
   if (after && after !== beforeTip) {
     tierReset(issue, state); // Fortschritt -- zurueck auf die Default-Stufe.
     return;
+  }
+
+  // F26/#499: Spitze steht, aber dieser Lauf hat trotzdem einen
+  // Fortschrittskommentar angelegt -- die gemeldete Arbeit ist nicht durch
+  // Git gedeckt. Eigener Kommentar, NIE --edit-last (AK4), kein
+  // needs-answer -- die gewoehnliche Eskalation laeuft unveraendert weiter.
+  if (progressCommentWrittenThisRun(issue, gh, runStart ?? '')) {
+    try {
+      gh.run([
+        'issue',
+        'comment',
+        String(issue),
+        '--body',
+        '🤖 Auffälligkeit: Dieser Bau-Lauf hat den Fortschrittskommentar aktualisiert, aber die Branch-Spitze hat sich nicht bewegt — kein neuer Commit/Push deckt den gemeldeten Stand. Bitte prüfen, bevor ein Folge-Lauf ihm glaubt. (Der Fortschrittskommentar wurde nicht verändert.)',
+      ]);
+    } catch {
+      // best effort
+    }
   }
 
   // opus-boost (#136) wird von einem ERGEBNISLOSEN Opus-Bau-Lauf verbraucht --

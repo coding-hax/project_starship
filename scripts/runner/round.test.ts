@@ -1061,6 +1061,7 @@ describe('roundEval', () => {
     resume: '',
     labels: 'ready ',
     beforeTip: 'abc',
+    runStart: '',
     queueBody: '',
     didWork: false,
     lastIssue: '',
