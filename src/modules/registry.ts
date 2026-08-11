@@ -4,6 +4,7 @@ import { ExportPanel } from '@/features/export/export-panel';
 import { HabitsOverviewSection } from '@/features/habits/habits-overview-section';
 import { JournalSettingsPanel } from '@/features/journal/journal-settings-panel';
 import { CapturePanel } from '@/features/settings/capture-panel';
+import { IcsSubscriptionsPanel } from '@/features/settings/ics-subscriptions-panel';
 import { WeatherPanel } from '@/features/settings/weather-panel';
 import { TasksOverviewSection } from '@/features/tasks/tasks-overview-section';
 import { WeatherForecast } from '@/features/weather/weather-forecast';
@@ -89,6 +90,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       Icon: IconCalendar,
     },
     OverviewSection: EventsOverviewSection,
+    SettingsPanel: IcsSubscriptionsPanel,
     routes: ['/kalender'],
   },
   {

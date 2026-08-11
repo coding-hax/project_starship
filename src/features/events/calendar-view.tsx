@@ -11,7 +11,7 @@ import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions } from './use-event-exceptions';
 import { useEvents } from './use-events';
-import { useSubscribedEvents } from './use-ics-subscriptions';
+import { useIcsSubscriptionsRefresh, useSubscribedEvents } from './use-ics-subscriptions';
 
 const CREATE_LABEL = 'Termin erfassen';
 
@@ -51,6 +51,7 @@ function getServerTodayKey(): string | null {
 export function CalendarView() {
   const events = useEvents();
   const subscribedEvents = useSubscribedEvents();
+  useIcsSubscriptionsRefresh();
   const exceptions = useEventExceptions();
   const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
   const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);

@@ -46,6 +46,21 @@ export async function refreshStaleSubscriptions(): Promise<void> {
   );
 }
 
+/** Read-only live view of every `.ics` subscription row (config + cache) — the settings panel's list, and the base `useSubscribedEvents` builds on. */
+export function useIcsSubscriptionList(): IcsSubscriptionEntry[] {
+  const [subscriptions, setSubscriptions] = useState<IcsSubscriptionEntry[]>([]);
+
+  useEffect(() => {
+    const subscription = liveQuery(() => db.icsSubscriptions.toArray()).subscribe({
+      next: setSubscriptions,
+      error: (error) => console.error('[ics] live query failed', error),
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return subscriptions;
+}
+
 function toSubscribedEventView(subscription: IcsSubscriptionEntry): EventView[] {
   return subscription.events.map((event) => ({
     id: `${subscription.id}:${event.uid}:${event.startDate}`,
@@ -63,17 +78,7 @@ function toSubscribedEventView(subscription: IcsSubscriptionEntry): EventView[] 
 
 /** Read-only live view of every subscribed calendar's already-expanded events — no fetch side effects, mirrors `useWeatherCache`. */
 export function useSubscribedEvents(): EventView[] {
-  const [subscriptions, setSubscriptions] = useState<IcsSubscriptionEntry[]>([]);
-
-  useEffect(() => {
-    const subscription = liveQuery(() => db.icsSubscriptions.toArray()).subscribe({
-      next: setSubscriptions,
-      error: (error) => console.error('[ics] live query failed', error),
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return subscriptions.flatMap(toSubscribedEventView);
+  return useIcsSubscriptionList().flatMap(toSubscribedEventView);
 }
 
 /**
