@@ -18,7 +18,7 @@ export const config = {
     '/uebersicht/:path*',
     '/aufgaben/:path*',
     '/kalender/:path*',
-    '/gewohnheiten/:path*',
+    '/routinen/:path*',
     '/journal/:path*',
     '/aktivitaeten/:path*',
     '/einstellungen/:path*',

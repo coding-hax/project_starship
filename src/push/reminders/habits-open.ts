@@ -108,7 +108,7 @@ export async function build(now: Date): Promise<PushPayload | null> {
   if (open.length === 0) return null;
 
   const title = open.length === 1 ? 'Noch offen' : `${open.length} Gewohnheiten heute noch offen`;
-  return { title, body: buildBody(open), url: '/gewohnheiten' };
+  return { title, body: buildBody(open), url: '/routinen' };
 }
 
 export const habitsOpen: ReminderKind = { kind: 'habits-open', times: ['20:00'], build };

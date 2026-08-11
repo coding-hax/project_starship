@@ -38,7 +38,7 @@ export function computeDailyProgress(
     done += dueTasks.filter((task) => task.completedAt !== null).length;
   }
 
-  if (isActive('gewohnheiten')) {
+  if (isActive('routinen')) {
     const dateKey = toDateKey(now);
     const dueHabits = habits.filter(
       (habit) => habit.archivedAt === null && !metEarlierInPeriod(habit, logs, now),
