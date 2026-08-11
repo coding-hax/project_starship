@@ -2,10 +2,18 @@
 
 import { useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
-import { addDays, categoriesForDay, categoryEdgeVar, monthDaysFor } from './event-time';
+import { SegmentedControl } from '@/ui/segmented-control';
+import { addDays, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
+
+type StripView = 'woche' | 'monat';
+
+const VIEW_OPTIONS: { value: StripView; label: string }[] = [
+  { value: 'woche', label: 'Woche' },
+  { value: 'monat', label: 'Monat' },
+];
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -17,7 +25,7 @@ const TAP_TOLERANCE_PX = 8;
 export interface CalendarStripProps {
   selectedDay: string;
   onSelectDay: (dateKey: string) => void;
-  /** Today's Berlin date key — marks the current day and drives the "Heute" button. */
+  /** Today's Berlin date key — marks the current day (`data-today`) in the grid. */
   today: string;
   events: EventView[];
   /** `event_exceptions` rows — same input the timeline gets, so a cancelled or
@@ -122,6 +130,15 @@ export function CalendarStrip({
 
   return (
     <div className="calendar-strip" data-expanded={expanded}>
+      <div className="calendar-strip__title-row">
+        <p className="calendar-strip__title">{formatMonthTitle(selectedDay)}</p>
+        <SegmentedControl
+          options={VIEW_OPTIONS}
+          value={expanded ? 'monat' : 'woche'}
+          onChange={(next) => onExpandChange(next === 'monat')}
+          label="Ansicht"
+        />
+      </div>
       <div className="calendar-strip__toolbar">
         <button
           type="button"
@@ -131,16 +148,6 @@ export function CalendarStrip({
         >
           <IconChevronLeft />
         </button>
-        {selectedDay !== today && (
-          <button
-            type="button"
-            className="calendar-strip__today"
-            aria-label="Heute"
-            onClick={() => onSelectDay(today)}
-          >
-            Heute
-          </button>
-        )}
         <button
           type="button"
           className="calendar-strip__nav"
