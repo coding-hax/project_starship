@@ -175,7 +175,14 @@ export function claimedElsewhere(claims: ClaimAdapter, slotId: string): Set<numb
 // #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an).
 const ACTIVE_ROLE_LABELS = ['in-progress', 'plan', 'research'];
 
-function isStillClaimable(issue: number, gh: GhAdapter): boolean {
+const GH_FAILED = 'gh-failed';
+
+interface IssueState {
+  state: string;
+  labels: string[];
+}
+
+function issueState(issue: number, gh: GhAdapter): IssueState | typeof GH_FAILED {
   try {
     const out = gh.run([
       'issue',
@@ -189,14 +196,14 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
     const spaceIdx = out.indexOf(' ');
     const state = spaceIdx === -1 ? out : out.slice(0, spaceIdx);
     const labels = spaceIdx === -1 ? [] : out.slice(spaceIdx + 1).split(',');
-    return state === 'OPEN' && labels.some((label) => ACTIVE_ROLE_LABELS.includes(label));
+    return { state, labels };
   } catch {
     // gh scheitert (Netz, Rate-Limit, geloeschtes Ticket): NICHT freigeben (#482).
     // Ein Fehlschlag ist kein Beweis, dass das Ticket erledigt ist -- ein noch
     // laufender Besitzer hat seinen Claim schon und nimmt ihn nicht erneut, ein
     // anderer Slot wuerde ihn stattdessen fortsetzen (round.ts). Nur ein positiv
     // bestaetigtes "geschlossen oder ohne Rollen-Label" (der try-Pfad) gibt frei.
-    return true;
+    return GH_FAILED;
   }
 }
 
@@ -204,14 +211,29 @@ function isStillClaimable(issue: number, gh: GhAdapter): boolean {
  * NUR vom Leitslot, einmal pro Runde: raeumt verwaiste Claims weg. Ein
  * Ticket ohne `in-progress` (gemergt, geschlossen, vom Menschen
  * zurueckgesetzt) gibt seinen Platz von selbst frei -- auch nach einem
- * Stromausfall, ohne dass ein Mensch eingreifen muss.
+ * Stromausfall, ohne dass ein Mensch eingreifen muss. Ein Claim, dessen
+ * Ticket beim Freigeben bereits CLOSED ist, traegt oft noch `in-progress`
+ * (#498: GitHub schliesst beim Auto-Merge, ohne dass Runner-Code laeuft, der
+ * es abnaehme) -- der Sweep nimmt es hier best-effort mit ab.
  */
 export function claimSweep(claims: ClaimAdapter, gh: GhAdapter, now: number): void {
   claims.sweepTmp(TMP_STALE_MS, now);
   for (const issue of claims.list()) {
     const age = claims.ageMs(issue, now);
     if (age === null || age < SWEEP_GRACE_MS) continue;
-    if (isStillClaimable(issue, gh)) continue;
+    const info = issueState(issue, gh);
+    if (info === GH_FAILED) continue; // #482: kein Beweis fuer "erledigt" -- Claim behalten.
+    if (info.state === 'OPEN' && info.labels.some((label) => ACTIVE_ROLE_LABELS.includes(label))) continue;
+    // Nur bei bestaetigt CLOSED abnehmen -- niemals bei OPEN (auch nicht ohne
+    // Rollen-Label): ein offenes Ticket sein `in-progress` zu nehmen, gaebe es
+    // der Flotte weg, obwohl es niemand geloest hat.
+    if (info.state === 'CLOSED' && info.labels.includes('in-progress')) {
+      try {
+        gh.run(['issue', 'edit', String(issue), '--remove-label', 'in-progress']);
+      } catch {
+        /* best-effort -- ein Fehlschlag bricht den Sweep nicht ab */
+      }
+    }
     claimRelease(claims, issue);
   }
 }

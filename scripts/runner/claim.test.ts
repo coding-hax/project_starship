@@ -192,6 +192,35 @@ describe('claim.ts (#204)', () => {
       claimSweep(claims, gh, Date.now() + 44 * 60 * 1000);
       expect(claims.readSlot(221)).toBe('1');
     });
+
+    // #498 AK1/AK4: GitHub schliesst ein Ticket beim Auto-Merge, ohne dass
+    // Runner-Code laeuft, der 'in-progress' abnaehme -- das Label klebt bis
+    // zum naechsten Sweep. Hier nimmt der Sweep es beim Freigeben mit ab.
+    it('nimmt in-progress ab, wenn ein alter Claim auf ein geschlossenes Ticket trifft (#498 AK1)', () => {
+      claimTake(claims, 230, '1');
+      const gh = ghDouble([issueView('CLOSED', 'in-progress')]);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
+      expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '230', '--remove-label', 'in-progress']);
+      expect(claims.readSlot(230)).toBeNull();
+    });
+
+    // Guard gegen Diebstahl: bei OPEN darf 'in-progress' NIE abgenommen
+    // werden, sonst gaebe der Sweep ein Ticket frei, an dem noch gebaut wird.
+    it('nimmt in-progress bei einem offenen Ticket nicht ab (Guard)', () => {
+      claimTake(claims, 231, '1');
+      const gh = ghDouble([issueView('OPEN', 'in-progress')]);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
+      expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '231', '--remove-label', 'in-progress']);
+      expect(claims.readSlot(231)).toBe('1');
+    });
+
+    it('raeumt einen geschlossenen Claim ohne in-progress ohne remove-label-Aufruf (kein Rauschen)', () => {
+      claimTake(claims, 232, '1');
+      const gh = ghDouble([issueView('CLOSED', 'ready')]);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
+      expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '232', '--remove-label', 'in-progress']);
+      expect(claims.readSlot(232)).toBeNull();
+    });
   });
 
   it('claimRelease entfernt einen Claim vollständig (rm -rf)', () => {
