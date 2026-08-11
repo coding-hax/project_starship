@@ -1,5 +1,6 @@
 'use client';
 
+import { useBlockReady } from '@/ui/overview-ready';
 import { useNow } from '@/ui/use-now';
 import { categoryEdgeVar, formatCountdown, upcomingEventsToday } from './event-time';
 import { useEvents } from './use-events';
@@ -20,10 +21,16 @@ function formatTime(instant: string): string {
  * #473, Owner-Entscheidung 6): the next event today rendered large with a
  * countdown, the rest of the day underneath as thin rows. `useNow` re-renders the
  * countdown every tick, so it stays current without a reload.
+ *
+ * The loading `null` swallows this section's own `<h2>` too, so its arrival moved
+ * every section below it — `useBlockReady` ties it into the overview's single
+ * reveal point instead (issue #642).
  */
 export function EventsOverviewSection() {
   const events = useEvents();
   const now = useNow();
+
+  useBlockReady(events !== undefined);
 
   if (events === undefined) return null;
 

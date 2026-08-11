@@ -84,8 +84,16 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
 - `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo)
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
-- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`
+- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `extractDateTimeSlot`/`cleanTitle` sind die Bausteine für `src/features/capture/`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
+- `capture-draft-store.ts` — `CaptureDraft`/`CaptureDraftBatch` (task-only), In-Memory-Übergabe von der Übersicht zum FAB
+
+### src/features/capture
+
+- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner (#620), eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
+- `local-recognizer.ts` — Klassifikator (Punktzahl je Art) + Titelbildung, reine Funktion, kein React/Dexie
+- `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet)
+- `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
 
 ### src/features/journal
 
@@ -245,6 +253,7 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 | den Vertrag zwischen Client und Sync-API | `src/local/types.ts` |
 | wer reindarf | `src/auth/session.ts` (`requireOwner`) |
 | Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
+| wie ein Screen aus mehreren Live-Queries lädt | `src/ui/overview-ready.tsx` |
 | die Journal-Verschlüsselung | `src/crypto/journal.ts` (+ `envelope.ts`) |
 | warum etwas so entschieden wurde | `docs/adr/` |
 
