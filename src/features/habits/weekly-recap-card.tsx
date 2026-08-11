@@ -1,5 +1,6 @@
 'use client';
 
+import { useBlockReady } from '@/ui/overview-ready';
 import { computeWeeklyRecap, type Superlative } from './weekly-recap';
 import { useHabitLogs } from './use-habit-logs';
 import { useHabits } from './use-habits';
@@ -21,10 +22,16 @@ function superlativeText(superlative: Superlative): string {
  * Historie (docs/VISION.md, nie ein Vergleich mit anderen). Rendert nichts
  * während des Ladens und nichts, sobald geladen aber ohne aktive
  * Gewohnheiten in der Bezugswoche (AC6) — kein Layout-Shift, kein Spinner.
+ *
+ * Beide „nichts" sehen von außen gleich aus, sind es aber nicht: das eine wird zu
+ * Inhalt, das andere bleibt leer. `useBlockReady` meldet genau diesen Unterschied
+ * an die Übersicht, damit sie erst zeigt, wenn er entschieden ist (issue #642).
  */
 export function WeeklyRecapCard() {
   const habits = useHabits();
   const logs = useHabitLogs();
+
+  useBlockReady(habits !== undefined && logs !== undefined);
 
   if (habits === undefined || logs === undefined) return null;
 

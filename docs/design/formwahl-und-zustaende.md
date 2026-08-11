@@ -38,3 +38,29 @@ Aufgaben, ein Journaleintrag. Für „leer" gab es eine Vorschrift, für „voll
 implizit auch; für „fast leer" keine — deshalb hat ihn niemand entworfen.
 Spärlich wird als ruhige Notiz gestaltet („Danach nichts mehr geplant."),
 nicht als leeres Gerüst und nicht als aufgeblasener Leerzustand.
+
+### Ladend gehört dem Screen, nicht dem einzelnen Block
+
+**Ladend** ist der Zustand, der am leichtesten pro Komponente entschieden wird
+und genau dann falsch ist. Jeder einzelne Block, der während seiner Live-Query
+`null` rendert, tut das Richtige; sechs davon auf einem Screen antworten in
+beliebiger Reihenfolge, und jeder klappt auf Kosten aller darunter auf — der
+Layout-Shift aus Smooth-Regel 3, verschoben auf die erste Sekunde nach dem
+Öffnen (issue #642).
+
+Ein Skeleton je Block heilt das nicht, sondern dreht es um: Blöcke, die geladen
+absichtlich *nichts* zeigen (Fortschrittsring bei M = 0, Wochenrückblick ohne
+Bezugswoche, Monatsstreifen ohne Aktivitäten), müssten reservierte Höhe wieder
+hergeben. Ein Kollaps schiebt so hart wie ein Pop-in.
+
+Deshalb gilt: **ein Enthüllungspunkt je Screen.** Der Inhalt bleibt verborgen,
+bis alle lokalen Blöcke einmal geantwortet haben, und erscheint dann gemeinsam
+unterhalb dessen, was schon steht — Anfügen nach unten verschiebt per Definition
+nichts. Das braucht keine geratene Höhe und entscheidet „Block vorhanden oder
+nicht?", bevor zum ersten Mal Inhalt gemalt wird. Umgesetzt in
+`src/ui/overview-ready.tsx`.
+
+Was **nicht** in den Enthüllungspunkt gehört: alles, was an einem echten
+Netz-Request hängt (das Wetter). Es darf den Screen nie aufhalten und behält
+sein formgleiches Skeleton. Die Wartezeit ist damit ein IndexedDB-Lesen, kein
+Roundtrip — Smooth-Regel 2 („keine Spinner für eigene Daten") bleibt gewahrt.
