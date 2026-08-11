@@ -39,6 +39,18 @@
   outline-offset: -2px;
 }
 
+/* Abonniert, schreibgeschützt (issue #560, ADR-0022): kein Klick-Cursor
+   (it's a <div>, not a <button>), gedämpfter Text, gestrichelte statt
+   durchgezogener Kante — liest als "von außen", nicht als eigener Termin. */
+.event-agenda__all-day-button[data-origin='subscribed'] {
+  border-inline-start-style: dashed;
+  cursor: default;
+}
+
+.event-agenda__all-day-button[data-origin='subscribed'] .event-agenda__all-day-title {
+  color: var(--text-muted);
+}
+
 /* Squared-off edge where the bar continues onto the previous/next day —
    together with the chevron, the "kein abgeschnittener Balken ohne
    Fortsetzungshinweis" requirement (AC3). */

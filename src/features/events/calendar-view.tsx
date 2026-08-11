@@ -11,6 +11,7 @@ import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions } from './use-event-exceptions';
 import { useEvents } from './use-events';
+import { useSubscribedEvents } from './use-ics-subscriptions';
 
 const CREATE_LABEL = 'Termin erfassen';
 
@@ -49,6 +50,7 @@ function getServerTodayKey(): string | null {
  */
 export function CalendarView() {
   const events = useEvents();
+  const subscribedEvents = useSubscribedEvents();
   const exceptions = useEventExceptions();
   const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
   const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);
@@ -56,6 +58,12 @@ export function CalendarView() {
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
+
+  // Merged only for display (CalendarStrip/EventAgenda) — `openEdit` below keeps
+  // looking up `events` alone, so a subscribed item can never resolve to an
+  // editable anchor row (ADR-0022 AK2, deep enforcement beyond the read-only
+  // rendering in event-agenda.tsx).
+  const timelineEvents = [...(events ?? []), ...subscribedEvents];
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
@@ -99,7 +107,7 @@ export function CalendarView() {
             selectedDay={selectedDay}
             onSelectDay={setSelectedDayOverride}
             today={today}
-            events={events ?? []}
+            events={timelineEvents}
             exceptions={exceptions ?? []}
             expanded={expanded}
             onExpandChange={setExpanded}
@@ -108,7 +116,7 @@ export function CalendarView() {
       </header>
       {today !== null && selectedDay !== null && (
         <EventAgenda
-          events={events ?? []}
+          events={timelineEvents}
           exceptions={exceptions ?? []}
           selectedDay={selectedDay}
           today={today}

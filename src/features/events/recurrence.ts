@@ -40,6 +40,7 @@ export interface Occurrence {
   startDate: string | null;
   endDate: string | null;
   category: EventView['category'];
+  origin: EventView['origin'];
 }
 
 /** 0 = Mo … 6 = So (Montag-erster wie `weekDaysFor`), not JS's `getUTCDay()` (0 = So). */
@@ -149,7 +150,15 @@ function toSeriesOccurrence(
   originalDate: string,
   exception: EventExceptionView | undefined,
 ): Occurrence {
-  const shared = { id: `${event.id}:${originalDate}`, eventId: event.id, originalDate, title: event.title, allDay: event.allDay, category: event.category };
+  const shared = {
+    id: `${event.id}:${originalDate}`,
+    eventId: event.id,
+    originalDate,
+    title: event.title,
+    allDay: event.allDay,
+    category: event.category,
+    origin: event.origin,
+  };
 
   if (event.allDay) {
     const base =
@@ -197,6 +206,7 @@ export function expandForDay(
         startDate: event.startDate,
         endDate: event.endDate,
         category: event.category,
+        origin: event.origin,
       });
       continue;
     }
