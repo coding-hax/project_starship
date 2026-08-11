@@ -182,7 +182,7 @@ test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Statu
   await expect(items.nth(2)).toHaveText(/Zuletzt angelegt, ohne Termin/);
 });
 
-test('tasks stay visible offline, with a calm notice instead of an error', async ({
+test('tasks stay visible offline, with a calm notice instead of an error (issue #643 AC4)', async ({
   page,
   context,
 }) => {
@@ -197,6 +197,19 @@ test('tasks stay visible offline, with a calm notice instead of an error', async
   await expect(page.getByText('Bleibt da')).toBeVisible();
 
   await context.setOffline(false);
+});
+
+test('die Offline-Notiz verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #643 AC5)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
 });
 
 test('der FAB öffnet ein Sheet mit fokussiertem Titelfeld', async ({ page }) => {
