@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { mutate } from '@/local/outbox';
+import { useBlockReady } from '@/ui/overview-ready';
 import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
 import { TaskEditor } from './task-editor';
@@ -79,6 +80,9 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
     () => (dueTodayOnly ? allTasks?.filter((task) => belongsOnUebersicht(task)) : allTasks),
     [allTasks, dueTodayOnly],
   );
+  // Inert on /aufgaben, where this list is the whole screen and has nothing below
+  // it to push; on /uebersicht it joins the shared reveal point (issue #642).
+  useBlockReady(allTasks !== undefined);
   const online = useOnline();
   const {
     toggleComplete,

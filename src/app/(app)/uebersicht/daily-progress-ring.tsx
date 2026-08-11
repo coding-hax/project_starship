@@ -4,6 +4,7 @@ import { useHabitLogs } from '@/features/habits/use-habit-logs';
 import { useHabits } from '@/features/habits/use-habits';
 import { useModules } from '@/features/settings/use-modules';
 import { useTasks } from '@/features/tasks/use-tasks';
+import { useBlockReady } from '@/ui/overview-ready';
 import './daily-progress-ring.css';
 import { computeDailyProgress } from './daily-progress';
 
@@ -17,12 +18,18 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  * Rendert `null`, bis alle drei Live-Queries durch sind (kein Layout-Shift,
  * Smooth-Regel 3, gleiches Muster wie `HabitToday`) und bei M = 0 dauerhaft
  * (ruhiger Leerzustand statt „0 von 0").
+ *
+ * Als oberster Block der Seite schöbe genau dieser Wechsel alles darunter nach
+ * unten — `useBlockReady` hängt ihn deshalb an den gemeinsamen
+ * Enthüllungspunkt der Übersicht (issue #642).
  */
 export function DailyProgressRing() {
   const tasks = useTasks();
   const habits = useHabits();
   const logs = useHabitLogs();
   const { isActive } = useModules();
+
+  useBlockReady(tasks !== undefined && habits !== undefined && logs !== undefined);
 
   if (tasks === undefined || habits === undefined || logs === undefined) return null;
 
