@@ -160,3 +160,38 @@ describe('Workflow-Labels existieren in bootstrap-github.sh (#485 AK3)', () => {
     expect(workflowLabels().length).toBeGreaterThan(0);
   });
 });
+
+// --- Branch-Schutz-Checks gegen CI-Jobs validieren (#500) ---
+function branchProtectionChecks(): string[] {
+  const text = readFileSync(join(ROOT, 'docs', 'workflow', 'merge.md'), 'utf-8');
+  const matches = [...text.matchAll(/required_status_checks\.contexts\[\]=([a-z0-9-]+)/g)];
+  return matches.map((m) => m[1]!).sort();
+}
+
+function ciJobs(): string[] {
+  const ciText = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf-8');
+  const guardsText = readFileSync(join(ROOT, '.github', 'workflows', 'guards.yml'), 'utf-8');
+  const allText = ciText + guardsText;
+  const matches = [...allText.matchAll(/^  ([a-z0-9-]+):$/gm)];
+  const jobs = matches
+    .map((m) => m[1]!)
+    .filter((job) => !job.startsWith('_')) // Filter internal jobs
+    .filter((job) => job !== 'e2e-main-report' && job !== 'e2e-offline-report'); // Filter non-required jobs
+  return jobs.sort();
+}
+
+describe('Branch-Schutz-Checks gegen CI-Jobs (#500)', () => {
+  it('jeder im Snippet genannte Check ist ein Job in ci.yml oder guards.yml', () => {
+    const checks = branchProtectionChecks();
+    const jobs = ciJobs();
+    const missing = checks.filter((check) => !jobs.includes(check));
+    expect(missing, `Branch-Schutz nennt Checks, die nicht in CI-Jobs existieren: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('alle erforderlichen CI-Jobs sind im Branch-Schutz-Snippet enthalten', () => {
+    const checks = branchProtectionChecks();
+    const requiredJobs = ['quality', 'e2e', 'schema-drift', 'test-integrity'].sort();
+    const missing = requiredJobs.filter((job) => !checks.includes(job));
+    expect(missing, `Required Jobs fehlen im Branch-Schutz-Snippet: ${missing.join(', ')}`).toEqual([]);
+  });
+});

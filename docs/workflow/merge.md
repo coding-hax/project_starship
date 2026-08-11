@@ -44,6 +44,7 @@ gh api -X PUT repos/:owner/:repo/branches/main/protection \
   -F required_status_checks.strict=true \
   -f 'required_status_checks.contexts[]=quality' \
   -f 'required_status_checks.contexts[]=e2e' \
+  -f 'required_status_checks.contexts[]=schema-drift' \
   -f 'required_status_checks.contexts[]=test-integrity' \
   -F enforce_admins=false \
   -F required_pull_request_reviews=null \
@@ -69,23 +70,15 @@ ein PR anfasst, und danach immer grün war. Ein Check, der nie fehlschlägt,
 bringt niemandem etwas bei — und war trotzdem ein Required Check, der bei jedem
 PR einen Runner belegte. Also weg, samt dem toten Zweig im Runner-Kern.
 
-**Der ausgesprochene Preis:** Ein unbeaufsichtigter Lauf kann eine Migration,
-eine Krypto-Änderung oder einen Sync-Fix allein mergen. Was bleibt, ist kein
-Tor, sondern eine Pflicht — der Bau-Prompt verlangt bei `src/db/`,
-`src/crypto/`, `src/local/`, `src/app/api/sync/`, allem mit `auth` im Namen,
-`.github/` und `scripts/` einen **Kommentar am Ticket**: was geändert wurde,
-warum, was schiefgehen könnte. Die übrigen Netze sind `schema-drift`, `quality`
-(Sync-Invarianten), `test-integrity`, `e2e-offline`, `e2e-shipped` und die
-Review-Rolle `db-migration`.
-
-**Der bewusst in Kauf genommene Preis:** ein unbeaufsichtigter Runner-Lauf
+**Der bewusst in Kauf genommene Preis:** Ein unbeaufsichtigter Runner-Lauf
 kann eine Migration, eine Krypto-Änderung oder einen Sync-Eingriff selbst
-mergen, ohne dass ein Mensch draufgesehen hat. Die verbleibenden Netze sind
-`schema-drift`, `quality` (Sync-Invarianten), `test-integrity`, `e2e-offline`,
-`e2e-shipped` und die `db-migration`-Review-Rolle. Wer das zurückdrehen will,
-ändert `.github/workflows/guards.yml` — die Pfadliste steht dort unverändert.
-
-Damit merged Claude alles ohne dich.
+mergen, ohne dass ein Mensch draufgesehen hat. Was bleibt, ist kein Tor,
+sondern eine Pflicht — der Bau-Prompt verlangt bei `src/db/`, `src/crypto/`,
+`src/local/`, `src/app/api/sync/`, allem mit `auth` im Namen, `.github/` und
+`scripts/` einen **Kommentar am Ticket**: was geändert wurde, warum, was
+schiefgehen könnte. Die verbleibenden Netze sind `schema-drift`, `quality`
+(Sync-Invarianten), `test-integrity`, `e2e-offline`, `e2e-shipped` und die
+Review-Rolle `db-migration`. Damit merged Claude alles ohne dich.
 
 **Wie ein Ticket geschlossen wird — und wie nicht (#172).** Ein Squash-Merge
 schließt in GitHub automatisch jedes Ticket, dessen `Closes #N` irgendwo in
