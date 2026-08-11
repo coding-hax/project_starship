@@ -88,4 +88,39 @@ describe('parseTaskInput', () => {
     expect(result.title).toBe('morgen um 12');
     expect(result.dueAt).toBeNull();
   });
+
+  it('AC7: iOS-Auto-Satzzeichen am Rand hinterlassen keinen Müll im Titel', () => {
+    const result = parseTaskInput('Zahnarzt morgen um 12.', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('AC7: iOS-Auto-Satzzeichen nach einem Komma hinterlassen keinen Müll im Titel', () => {
+    const result = parseTaskInput('Erinnere mich an Zahnarzt, morgen um 12.', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('AC7: interne Kommata im Titel bleiben erhalten', () => {
+    const result = parseTaskInput('Milch, Eier kaufen heute', NOW);
+    expect(result.title).toBe('Milch, Eier kaufen');
+    expect(result.dueAt).toBe(iso(2024, 1, 15));
+  });
+
+  it('AC8: erkennt ausgeschriebene Uhrzeit "um zwölf"', () => {
+    const result = parseTaskInput('Zahnarzt morgen um zwölf', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('AC8: erkennt ausgeschriebene Uhrzeit "<Zahl> Uhr"', () => {
+    const result = parseTaskInput('Zahnarzt heute drei Uhr', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 15, 3, 0));
+  });
+
+  it('AC8: ausgeschriebene Uhrzeiten über zwölf fallen weiterhin auf 09:00 (dokumentierte Grenze)', () => {
+    const result = parseTaskInput('Zahnarzt morgen um vierzehn', NOW);
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 9, 0));
+  });
 });
