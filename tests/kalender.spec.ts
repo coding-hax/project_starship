@@ -1289,3 +1289,190 @@ test('am angezeigten Tag animieren Zu- und Abgaenge weiterhin (#611 AC4, Regress
   await expect(leaving).toHaveCount(1);
   await expect(leaving).toContainText('Bleibt erstmal');
 });
+
+/* -------------------------------------------------------------------------- */
+/* #612: die Punkte im Band lesen die expandierten Vorkommen                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Vorher las `categoriesForDay` die Roh-Zeilen aus `events` und verglich nur
+ * `startsAt` — eine Serie bekam ihren Punkt darum ausschließlich am Ankertag,
+ * ein abgesagtes Vorkommen behielt ihn, und ein ganztägiger Termin (ohne
+ * `startsAt`) hatte nie einen. TODAY (2026-07-18) ist ein Samstag; die
+ * Folgevorkommen liegen auf 'Sa, 25.' und 'Sa, 1.' (August), beide noch im
+ * Juliraster der aufgezogenen Ansicht.
+ */
+/**
+ * Wie `eventCard`, aber ohne das gerade abziehende Exemplar. Springt man in
+ * einem Klick von einem Vorkommen direkt zum nächsten, hält `useListPresence`
+ * die alte Karte bis zum Ende ihrer Exit-Animation im DOM — beide tragen
+ * denselben Titel, und `eventCard` verletzt dann Playwrights Strict Mode.
+ * (Die bestehenden S6-Tests laufen über Tage ohne Vorkommen und treffen das
+ * nicht.)
+ */
+function settledEventCard(page: Page, title: string) {
+  return page
+    .locator('.event-agenda__item:not([data-leaving="true"])')
+    .filter({ hasText: title });
+}
+
+async function seedWeeklyDotSeries(page: Page): Promise<void> {
+  await seedEvent(page, {
+    title: 'Yoga',
+    allDay: false,
+    startsAt: `${TODAY}T16:00:00.000Z`, // 18:00 Berlin (CEST, UTC+2)
+    endsAt: `${TODAY}T17:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+}
+
+test('eine woechentliche Serie setzt an jedem Vorkommen einen Punkt, nicht nur am Ankertag (#612 AC1)', async ({
+  page,
+}) => {
+  await seedWeeklyDotSeries(page);
+  await swipeVertical(calendarWeeks(page), 80);
+
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+  await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
+  // Über den Monatswechsel hinweg — 2026-08-01 liegt in der letzten Rasterzeile.
+  await expect(dayDots(page, 'Sa, 1.')).toHaveCount(1);
+
+  // Die Tage dazwischen gehören nicht zur Serie.
+  await expect(dayDots(page, 'So, 19.')).toHaveCount(0);
+  await expect(dayDots(page, 'Mo, 20.')).toHaveCount(0);
+});
+
+test('die Serien-Punkte ueberleben einen Reload ohne Netzwerk, kommen also aus IndexedDB (#612 AC1, Offline-Pfad)', async ({
+  page,
+}) => {
+  await seedWeeklyDotSeries(page);
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+
+  // beforeEach kappt /api/sync/** — nach dem Reload können die Punkte nur aus
+  // IndexedDB stammen, die Expansion läuft also rein lokal (gleiche Technik wie
+  // der S5-Offline-Test weiter oben).
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+  await swipeVertical(calendarWeeks(page), 80);
+
+  await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
+});
+
+test('ein ausgefallenes Vorkommen verliert seinen Punkt, die uebrigen behalten ihn (#612 AC2)', async ({
+  page,
+}) => {
+  await seedWeeklyDotSeries(page);
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+
+  await eventCard(page, 'Yoga').click();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByRole('button', { name: 'Löschen' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Termin löschen — für welche Vorkommen?' });
+  await expect(scopeDialog).toBeVisible();
+  await scopeDialog.getByRole('button', { name: 'Nur dieser' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toHaveCount(0);
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(0);
+
+  // Nur dieses eine Vorkommen ist weg — die Serie punktet weiter.
+  await swipeVertical(calendarWeeks(page), 80);
+  await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
+});
+
+test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag seiner Spanne (#612 AC3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'privat',
+  });
+
+  const dots = dayDots(page, 'Sa, 18.');
+  await expect(dots).toHaveCount(1);
+  const expectedPrivat = await resolveToken(page, '--cat-privat');
+  await expect
+    .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedPrivat);
+
+  await seedEvent(page, {
+    title: 'Kurzurlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-19',
+    endDate: '2026-07-21',
+    category: 'familie',
+  });
+
+  await expect(dayDots(page, 'So, 19.')).toHaveCount(1);
+  await expect(dayDots(page, 'Mo, 20.')).toHaveCount(1);
+  await expect(dayDots(page, 'Di, 21.')).toHaveCount(1);
+  await expect(dayDots(page, 'Mi, 22.')).toHaveCount(0);
+});
+
+test('Punkt und Tagesansicht stimmen ueberein: ein Punkt genau dann, wenn der Tag einen Termin zeigt (#612 AC4)', async ({
+  page,
+}) => {
+  await seedWeeklyDotSeries(page);
+
+  // Das Vorkommen eine Woche weiter: Punkt im Band UND Karte in der Tagesansicht.
+  await swipeVertical(calendarWeeks(page), 80);
+  await dayButton(page, 'Sa, 25.').click();
+  await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
+  await expect(settledEventCard(page, 'Yoga')).toBeVisible();
+
+  // Ein Tag ohne Vorkommen: weder Punkt noch Karte.
+  await dayButton(page, 'So, 26.').click();
+  await expect(dayDots(page, 'So, 26.')).toHaveCount(0);
+  await expect(settledEventCard(page, 'Yoga')).toHaveCount(0);
+});
+
+test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzeltermin auf denselben Tag fallen (#612 AC5)', async ({
+  page,
+}) => {
+  await seedWeeklyDotSeries(page); // arbeit, wöchentlich ab Sa 18.
+  await seedEvent(page, {
+    title: 'Zweites Arbeitsding',
+    allDay: false,
+    startsAt: '2026-07-25T09:00:00.000Z',
+    endsAt: '2026-07-25T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Laufrunde',
+    allDay: false,
+    startsAt: '2026-07-25T11:00:00.000Z',
+    endsAt: '2026-07-25T12:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'sport',
+  });
+
+  await swipeVertical(calendarWeeks(page), 80);
+
+  // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
+  const dots = dayDots(page, 'Sa, 25.');
+  await expect(dots).toHaveCount(2);
+  const expectedArbeit = await resolveToken(page, '--cat-arbeit');
+  const expectedSport = await resolveToken(page, '--cat-sport');
+  await expect
+    .poll(() => dots.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedArbeit);
+  await expect
+    .poll(() => dots.nth(1).evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSport);
+});
