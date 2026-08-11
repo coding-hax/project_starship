@@ -95,6 +95,17 @@ describe('nextRevealState', () => {
     expect(after.revealed).toBe(true);
   });
 
+  it('force reveals a screen whose block never answers, so it is never left blank', () => {
+    const stuck = apply(
+      INITIAL_REVEAL_STATE,
+      { kind: 'register', id: 'ring', ready: false },
+      { kind: 'settle' },
+    );
+    expect(stuck.revealed).toBe(false);
+
+    expect(apply(stuck, { kind: 'force' }).revealed).toBe(true);
+  });
+
   it('returns the identical state for a no-op register, so the effect loop terminates', () => {
     const state = apply(INITIAL_REVEAL_STATE, { kind: 'register', id: 'ring', ready: false });
 

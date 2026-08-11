@@ -53,9 +53,23 @@ export interface RevealState {
 export type RevealAction =
   | { kind: 'register'; id: string; ready: boolean }
   | { kind: 'unregister'; id: string }
-  | { kind: 'settle' };
+  | { kind: 'settle' }
+  | { kind: 'force' };
 
 export const INITIAL_REVEAL_STATE: RevealState = { pending: new Map(), revealed: false };
+
+/**
+ * Notausgang, damit ein Block, der nie antwortet, nicht die Startseite leert.
+ *
+ * `use-live-table.ts` schluckt einen Fehler der Live-Query mit `console.error` und
+ * lässt die Zeilen für immer auf `undefined` — vor diesem Ticket fehlte dann ein
+ * Block, jetzt bliebe die ganze Fläche verborgen, inklusive des Wetters, das gar
+ * nicht an Dexie hängt. Nach dieser Frist wird gezeigt, was da ist: dann poppt
+ * wieder, was nachkommt, aber die Übersicht ist nie dauerhaft leer. Großzügig
+ * bemessen — ein IndexedDB-Lesen liegt im Millisekundenbereich, im Normalbetrieb
+ * feuert das hier nie.
+ */
+export const REVEAL_FALLBACK_MS = 2000;
 
 /**
  * The latch, as a pure reducer so it is testable without a DOM (same split as
@@ -94,6 +108,8 @@ export function nextRevealState(state: RevealState, action: RevealAction): Revea
       }
       return { pending: state.pending, revealed: true };
     }
+    case 'force':
+      return { pending: state.pending, revealed: true };
   }
 }
 
@@ -120,6 +136,12 @@ export function OverviewReadyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     dispatch({ kind: 'settle' });
   }, [state]);
+
+  useEffect(() => {
+    if (state.revealed) return;
+    const timer = setTimeout(() => dispatch({ kind: 'force' }), REVEAL_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [state.revealed]);
 
   return (
     <OverviewReadyContext.Provider value={api}>
