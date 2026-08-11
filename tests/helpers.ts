@@ -376,6 +376,7 @@ declare global {
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
       debugPatchRecord: (table: string, id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugDeleteRecord: (table: string, id: string) => Promise<void>;
       debugRecords: () => Promise<
         Array<{
           table: string;
