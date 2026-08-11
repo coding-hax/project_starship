@@ -40,8 +40,8 @@ test('a tab switch restarts the opacity animation on the transition wrapper (iss
   await registerPasskey(page);
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await nav.getByRole('link', { name: 'Gewohnheiten' }).click();
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 })).toBeVisible();
+  await nav.getByRole('link', { name: 'Routinen' }).click();
+  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
 
   const wrapper = page.locator('.page-transition');
   const { animationName, animationDuration, transform } = await wrapper.evaluate((el) => {
@@ -67,7 +67,7 @@ test('switching tabs never shifts where main starts (issue #434 AC1, regression 
   const uebersichtY = (await main.boundingBox())!.y;
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  for (const label of ['Aufgaben', 'Gewohnheiten', 'Kalender', 'Journal']) {
+  for (const label of ['Aufgaben', 'Routinen', 'Kalender', 'Journal']) {
     await nav.getByRole('link', { name: label }).click();
     const box = await main.boundingBox();
     expect(box).not.toBeNull();

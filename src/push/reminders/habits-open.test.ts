@@ -178,7 +178,7 @@ describe('habits-open build()', () => {
     expect(await build(AT_2005_BERLIN)).toEqual({
       title: 'Noch offen',
       body: 'Laufen',
-      url: '/gewohnheiten',
+      url: '/routinen',
     });
   });
 
@@ -188,7 +188,7 @@ describe('habits-open build()', () => {
     expect(await build(AT_2005_BERLIN)).toEqual({
       title: 'Noch offen',
       body: 'Laufen — 2 Tage in Folge',
-      url: '/gewohnheiten',
+      url: '/routinen',
     });
   });
 
@@ -202,7 +202,7 @@ describe('habits-open build()', () => {
     expect(await build(AT_2005_BERLIN)).toEqual({
       title: '3 Routinen heute noch offen',
       body: 'Laufen, Meditieren und 1 weitere',
-      url: '/gewohnheiten',
+      url: '/routinen',
     });
   });
 });

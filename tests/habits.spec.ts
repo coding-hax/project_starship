@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData, withDb } from './helpers';
 
-const ADD_LABEL = 'Gewohnheit anlegen';
-const EDIT_LABEL = 'Gewohnheit bearbeiten';
+const ADD_LABEL = 'Routine anlegen';
+const EDIT_LABEL = 'Routine bearbeiten';
 
 async function openAddHabit(page: Page) {
   await page.getByRole('button', { name: ADD_LABEL }).click();
@@ -22,11 +22,11 @@ function editDialog(page: Page) {
 
 /** Scoped to the active list — the archived section has its own list further down. */
 function habitItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten', exact: true }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Routinen', exact: true }).getByRole('listitem');
 }
 
 function archivedHabitItems(page: Page) {
-  return page.getByRole('list', { name: 'Archivierte Gewohnheiten' }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Archivierte Routinen' }).getByRole('listitem');
 }
 
 async function expandArchived(page: Page) {
@@ -90,16 +90,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('ein designter Leerzustand statt eines leeren Screens', async ({ page }) => {
-  await page.goto('/gewohnheiten');
-  await expect(page.getByText('Keine Gewohnheiten. Leg deine erste an.')).toBeVisible();
+  await page.goto('/routinen');
+  await expect(page.getByText('Keine Routinen. Leg deine erste an.')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
 /* AK: Habit mit Name + Schedule anlegen; erscheint in der Liste              */
 /* -------------------------------------------------------------------------- */
 
-test('eine per FAB angelegte Gewohnheit erscheint sofort in der Liste', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+test('eine per FAB angelegte Routine erscheint sofort in der Liste', async ({ page }) => {
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   await expect(createDialog(page)).toBeVisible();
@@ -116,7 +116,7 @@ test('eine per FAB angelegte Gewohnheit erscheint sofort in der Liste', async ({
 });
 
 test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
@@ -127,7 +127,7 @@ test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async (
 });
 
 test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
   await nameField(page).fill('Meditieren');
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
@@ -142,7 +142,7 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
 test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippen hängt an statt zu ersetzen (#138)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   await nameField(page).pressSequentially('Wasser');
@@ -167,7 +167,7 @@ test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippe
 test('Tastaturbedienung des Rhythmus bleibt unverändert: Tab erreicht die Auswahl, Pfeiltasten verschieben Fokus und Auswahl (#138)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
   await nameField(page).fill('Lesen');
 
@@ -186,7 +186,7 @@ test('Tastaturbedienung des Rhythmus bleibt unverändert: Tab erreicht die Auswa
 /* -------------------------------------------------------------------------- */
 
 test('die Rhythmus-Auswahl bietet alle sechs Perioden an (issue #509 AC1)', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   const dialog = createDialog(page);
@@ -205,7 +205,7 @@ test('die Rhythmus-Auswahl bietet alle sechs Perioden an (issue #509 AC1)', asyn
 test('der Ziel-Zähler erscheint nur bei „Wöchentlich" und speichert den gewählten Wert (issue #509 AC1)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
   const dialog = createDialog(page);
 
@@ -231,7 +231,7 @@ test('der Ziel-Zähler erscheint nur bei „Wöchentlich" und speichert den gew�
 test('wechselt man von „Wöchentlich" zu einer anderen Periode, verschwindet der Zähler und target bleibt 1 (issue #509)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
   const dialog = createDialog(page);
 
@@ -253,7 +253,7 @@ test('wechselt man von „Wöchentlich" zu einer anderen Periode, verschwindet d
 test('Tippen auf eine andere Periode lässt den Fokus im Namensfeld (Erweiterung von #138 auf issue #509)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   await nameField(page).pressSequentially('Vitamine');
@@ -266,18 +266,18 @@ test('Tippen auf eine andere Periode lässt den Fokus im Namensfeld (Erweiterung
   await expect(nameField(page)).toHaveValue('Vitamine!');
 });
 
-test('eine Gewohnheit ohne target-Feld aus der Zeit vor #509 zeigt sich unverändert als „Wöchentlich" (AC7)', async ({
+test('eine Routine ohne target-Feld aus der Zeit vor #509 zeigt sich unverändert als „Wöchentlich" (AC7)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   // No `target` key at all — simulates a record synced before this migration.
-  await seedHabit(page, { name: 'Alte Gewohnheit', schedule: 'weekly', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Alte Routine', schedule: 'weekly', color: null, archivedAt: null });
 
-  const item = habitItems(page).filter({ hasText: 'Alte Gewohnheit' });
+  const item = habitItems(page).filter({ hasText: 'Alte Routine' });
   await expect(item).toContainText('Wöchentlich');
   await expect(item).not.toContainText('×');
 
-  await tapHabit(page, 'Alte Gewohnheit');
+  await tapHabit(page, 'Alte Routine');
   const dialog = editDialog(page);
   await expect(dialog.getByRole('radio', { name: 'Wöchentlich' })).toBeChecked();
   await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '1' })).toBeChecked();
@@ -287,8 +287,8 @@ test('eine Gewohnheit ohne target-Feld aus der Zeit vor #509 zeigt sich unverän
 /* AK: Bearbeiten und Archivieren funktionieren; archivierte verschwinden     */
 /* -------------------------------------------------------------------------- */
 
-test('Tippen auf eine Gewohnheit öffnet den Editor mit Name und Rhythmus', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+test('Tippen auf eine Routine öffnet den Editor mit Name und Rhythmus', async ({ page }) => {
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
 
   await tapHabit(page, 'Joggen');
@@ -302,7 +302,7 @@ test('Tippen auf eine Gewohnheit öffnet den Editor mit Name und Rhythmus', asyn
 test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensatz', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
 
   await tapHabit(page, 'Lesen');
@@ -317,8 +317,8 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
   expect(last.payload).toEqual({ schedule: 'weekly' });
 });
 
-test('eine Farbe wählen und speichern setzt die Eigenfarbe der Gewohnheit', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async ({ page }) => {
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Dehnen', schedule: 'daily', color: null, archivedAt: null });
 
   await tapHabit(page, 'Dehnen');
@@ -332,10 +332,10 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Gewohnheit', asy
   expect(last.payload).toEqual({ color: '--area-tasks' });
 });
 
-test('Archivieren entfernt die Gewohnheit aus der aktiven Liste und zeigt einen Undo-Toast', async ({
+test('Archivieren entfernt die Routine aus der aktiven Liste und zeigt einen Undo-Toast', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Tagebuch', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Tagebuch' });
   await expect(item).toBeVisible();
@@ -350,10 +350,10 @@ test('Archivieren entfernt die Gewohnheit aus der aktiven Liste und zeigt einen 
   await expect(archivedHabitItems(page).filter({ hasText: 'Tagebuch' })).toBeVisible();
 });
 
-test('der Undo-Toast beim Archivieren macht es rückgängig, die Gewohnheit ist wieder aktiv', async ({
+test('der Undo-Toast beim Archivieren macht es rückgängig, die Routine ist wieder aktiv', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Stretching', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Stretching' });
 
@@ -375,36 +375,36 @@ test('der Undo-Toast beim Archivieren macht es rückgängig, die Gewohnheit ist 
   expect(row.rows[0].archived_at).toBeNull();
 });
 
-test('Reaktivieren aus dem Archiv macht die Gewohnheit ohne Undo-Angebot wieder aktiv', async ({
+test('Reaktivieren aus dem Archiv macht die Routine ohne Undo-Angebot wieder aktiv', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, {
-    name: 'Alte Gewohnheit',
+    name: 'Alte Routine',
     schedule: 'daily',
     color: null,
     archivedAt: '2026-01-01T00:00:00.000Z',
   });
 
   await expandArchived(page);
-  const archivedItem = archivedHabitItems(page).filter({ hasText: 'Alte Gewohnheit' });
+  const archivedItem = archivedHabitItems(page).filter({ hasText: 'Alte Routine' });
   await expect(archivedItem).toBeVisible();
 
   await archivedItem.getByRole('button', { name: 'Reaktivieren' }).click();
 
-  await expect(habitItems(page).filter({ hasText: 'Alte Gewohnheit' })).toBeVisible();
+  await expect(habitItems(page).filter({ hasText: 'Alte Routine' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #505 AC2/AC3: die Journal-Gewohnheit ist fest — kein Archivieren,    */
+/* issue #505 AC2/AC3: die Journal-Routine ist fest — kein Archivieren,    */
 /* Editor zeigt nur den Rhythmus                                              */
 /* -------------------------------------------------------------------------- */
 
-test('die Journal-Gewohnheit hat keinen Archivieren-Button, eine normale Gewohnheit weiterhin (issue #505 AC2)', async ({
+test('die Journal-Routine hat keinen Archivieren-Button, eine normale Routine weiterhin (issue #505 AC2)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedJournalHabit(page);
   await seedHabit(page, { name: 'Joggen', schedule: 'daily', color: null, archivedAt: null });
 
@@ -416,10 +416,10 @@ test('die Journal-Gewohnheit hat keinen Archivieren-Button, eine normale Gewohnh
   await expect(joggenItem.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
 });
 
-test('der Editor der Journal-Gewohnheit zeigt nur den Rhythmus, kein Namens- oder Farbfeld (issue #505 AC3)', async ({
+test('der Editor der Journal-Routine zeigt nur den Rhythmus, kein Namens- oder Farbfeld (issue #505 AC3)', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedJournalHabit(page);
 
   await tapHabit(page, 'Journal');
@@ -447,7 +447,7 @@ test('offline angelegt: sofort sichtbar, genau ein Eintrag in der Outbox', async
   page,
   context,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await context.setOffline(true);
 
   await openAddHabit(page);
@@ -460,11 +460,11 @@ test('offline angelegt: sofort sichtbar, genau ein Eintrag in der Outbox', async
   await context.setOffline(false);
 });
 
-test('nach dem Onlinegehen erreicht die offline angelegte Gewohnheit die echte Datenbank', async ({
+test('nach dem Onlinegehen erreicht die offline angelegte Routine die echte Datenbank', async ({
   page,
   context,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await context.setOffline(true);
 
   await openAddHabit(page);
@@ -494,7 +494,7 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   page,
   context,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Offline archivieren', schedule: 'daily', color: null, archivedAt: null });
   await context.setOffline(true);
 
@@ -516,11 +516,11 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   expect(row.rows[0].archived_at).not.toBeNull();
 });
 
-test('offline den Rhythmus einer Gewohnheit geändert: sofort sichtbar, in der Outbox, kommt online serverseitig an (issue #509 AC8)', async ({
+test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outbox, kommt online serverseitig an (issue #509 AC8)', async ({
   page,
   context,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, {
     name: 'Rhythmus wechseln',
     schedule: 'daily',
@@ -574,10 +574,10 @@ function colorDotFor(page: Page, name: string) {
   return habitItems(page).filter({ hasText: name }).locator('.habit-list__color');
 }
 
-test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode', async ({
+test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', color: null, archivedAt: null });
 
   const dot = colorDotFor(page, 'Standardfarbe');
@@ -592,7 +592,7 @@ test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, au
 });
 
 test('eine gewählte Eigenfarbe zeigt den passenden Bereichs-Token', async ({ page }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, {
     name: 'Eigenfarbe',
     schedule: 'daily',
@@ -609,7 +609,7 @@ test('bei reduzierter Bewegung öffnet das Anlegen-Sheet nur mit einem Opacity-�
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await openAddHabit(page);
 
   const dialog = createDialog(page);
@@ -623,7 +623,7 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, {
     name: 'Archiviert & ruhig',
     schedule: 'daily',
@@ -644,10 +644,10 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
 /* AK: Abstand zwischen aktiver Liste und Archiv-Block (issue #486)          */
 /* -------------------------------------------------------------------------- */
 
-test('der Abstand zwischen letzter aktiver Gewohnheit und Archiv-Block ist größer als der Abstand zwischen zwei Gewohnheitskarten', async ({
+test('der Abstand zwischen letzter aktiver Routine und Archiv-Block ist größer als der Abstand zwischen zwei Routinenkarten', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, { name: 'Aktiv 1', schedule: 'daily', color: null, archivedAt: null });
   await seedHabit(page, {
     name: 'Archiviert 1',
@@ -672,10 +672,10 @@ test('der Abstand zwischen letzter aktiver Gewohnheit und Archiv-Block ist grö�
   }
 });
 
-test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Gewohnheiten', async ({
+test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Routinen', async ({
   page,
 }) => {
-  await page.goto('/gewohnheiten');
+  await page.goto('/routinen');
   await seedHabit(page, {
     name: 'Nur archiviert',
     schedule: 'daily',
@@ -683,7 +683,7 @@ test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Gewohnhe
     archivedAt: '2026-01-01T00:00:00.000Z',
   });
 
-  const emptyMessage = page.getByText('Keine aktiven Gewohnheiten.');
+  const emptyMessage = page.getByText('Keine aktiven Routinen.');
   const archivedSection = page.locator('.section-card');
 
   await expect.poll(() => archivedSection.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);

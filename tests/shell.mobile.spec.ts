@@ -31,7 +31,7 @@ test('the settings entry point sits inline on Übersicht and on none of the othe
   const uebersichtSettings = page.getByRole('link', { name: 'Einstellungen' });
   await expect(uebersichtSettings).toBeVisible();
 
-  for (const path of ['/aufgaben', '/gewohnheiten', '/kalender', '/journal']) {
+  for (const path of ['/aufgaben', '/routinen', '/kalender', '/journal']) {
     await page.goto(path);
     await expect(page.getByRole('link', { name: 'Einstellungen' })).toHaveCount(0);
   }

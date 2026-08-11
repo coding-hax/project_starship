@@ -61,7 +61,7 @@ test.beforeEach(async ({ page }) => {
 /* AC1: Die Karte "Wochenrückblick" erscheint                                 */
 /* -------------------------------------------------------------------------- */
 
-test('die Karte "Wochenrückblick" erscheint, sobald es eine Bezugswoche mit aktiven Gewohnheiten gibt (AC1)', async ({
+test('die Karte "Wochenrückblick" erscheint, sobald es eine Bezugswoche mit aktiven Routinen gibt (AC1)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
@@ -194,7 +194,7 @@ test('weder Bestwert noch Gleichstand → kein Superlativ, nur die Kennzahl (AC4
 /* -------------------------------------------------------------------------- */
 
 test('erste erfasste Woche zeigt nur die Kennzahl, keinen Superlativ (AC5)', async ({ page }) => {
-  // Die Gewohnheit existiert erst seit der Bezugswoche selbst — keine Vorwoche möglich.
+  // Die Routine existiert erst seit der Bezugswoche selbst — keine Vorwoche möglich.
   const habitId = await seedHabit(page, { createdAt: REF_WEEK[0] + 'T00:00:00.000Z' });
   await seedDoneDays(page, habitId, REF_WEEK);
 
@@ -205,14 +205,14 @@ test('erste erfasste Woche zeigt nur die Kennzahl, keinen Superlativ (AC5)', asy
 });
 
 /* -------------------------------------------------------------------------- */
-/* AC6: Keine aktiven Gewohnheiten → Karte erscheint nicht                    */
+/* AC6: Keine aktiven Routinen → Karte erscheint nicht                    */
 /* -------------------------------------------------------------------------- */
 
-test('ohne jede Gewohnheit erscheint die Karte nicht (AC6, kein "0 von 0")', async ({ page }) => {
+test('ohne jede Routine erscheint die Karte nicht (AC6, kein "0 von 0")', async ({ page }) => {
   await expect(recapCard(page)).toHaveCount(0);
 });
 
-test('eine erst diese Woche angelegte Gewohnheit lässt die Karte ebenfalls weg (AC6)', async ({
+test('eine erst diese Woche angelegte Routine lässt die Karte ebenfalls weg (AC6)', async ({
   page,
 }) => {
   await seedHabit(page, { createdAt: '2026-07-14T00:00:00.000Z' });

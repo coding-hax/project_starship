@@ -43,7 +43,7 @@ function log(overrides: Partial<HabitLogView> = {}): HabitLogView {
 
 const allActive = () => true;
 const onlyTasks = (id: string) => id === 'aufgaben';
-const onlyHabits = (id: string) => id === 'gewohnheiten';
+const onlyHabits = (id: string) => id === 'routinen';
 const noneActive = () => false;
 
 describe('computeDailyProgress', () => {
