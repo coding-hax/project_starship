@@ -161,6 +161,22 @@ export function reopenFalselyClosedIssues(gh: GhAdapter): void {
     }
     if (state !== 'CLOSED') continue;
 
+    // #531: Der 'pr list'-Schnappschuss oben ist T0, dieser Punkt hier ist
+    // T1 > T0 -- ein Auto-Merge-PR kann sich in der Zwischenzeit selbst
+    // gemergt und damit sein eigenes 'Closes #N' bereits eingeloest haben.
+    // Nur ein *live* noch offener PR traegt die Invariante des Waechters
+    // ("ein offener PR mit Closes #N kann #N nicht geschlossen haben").
+    // Scheitert die Abfrage, wird bewusst NICHT reopnt (Fail-safe: ein
+    // faelschliches Reopen ist teurer als ein ausgelassenes -- die naechste
+    // Runde prueft ohnehin erneut).
+    let prState = '';
+    try {
+      prState = gh.run(['pr', 'view', String(item.number), '--json', 'state', '-q', '.state']).trim();
+    } catch {
+      prState = '';
+    }
+    if (prState !== 'OPEN') continue;
+
     try {
       gh.run(['issue', 'reopen', issue]);
     } catch {

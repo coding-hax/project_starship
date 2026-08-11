@@ -8,6 +8,7 @@ import {
   categoriesForDay,
   categoryEdgeVar,
   formatCountdown,
+  formatMonthTitle,
   monthDaysFor,
   nextInAgenda,
   upcomingEventsToday,
@@ -523,6 +524,20 @@ describe('upcomingEventsToday', () => {
     const allDay = event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-18' });
 
     expect(upcomingEventsToday([allDay], NOW)).toEqual([]);
+  });
+});
+
+describe('formatMonthTitle', () => {
+  it('formats month and year, German', () => {
+    expect(formatMonthTitle('2026-07-18')).toBe('Juli 2026');
+  });
+
+  it('does not shift the month for the first day, UTC-anchored', () => {
+    expect(formatMonthTitle('2026-08-01')).toBe('August 2026');
+  });
+
+  it('does not shift the year for the last day of the year', () => {
+    expect(formatMonthTitle('2026-12-31')).toBe('Dezember 2026');
   });
 });
 

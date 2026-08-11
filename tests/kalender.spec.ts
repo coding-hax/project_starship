@@ -570,7 +570,7 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im 
   expect(expectedDark).not.toBe(expectedLight);
 });
 
-test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
+test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
   page,
 }) => {
   // #578 behoben, Kartenanzeige durch AC1/AC3 + Regressionstest unten abgedeckt.
@@ -581,11 +581,125 @@ test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem ande
     await nextDay.click();
   }
 
-  const todayButton = page.getByRole('button', { name: 'Heute' });
-  await expect(todayButton).toBeVisible();
-  await todayButton.click();
+  const todayChip = page.getByRole('button', { name: 'Heute' });
+  await expect(todayChip).toBeVisible();
+  await todayChip.click();
 
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter, Ruecksprung-Chip (S1)  */
+/* -------------------------------------------------------------------------- */
+
+test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monatsgrenze (AK1)', async ({ page }) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await expect(title).toHaveText('Juli 2026');
+
+  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
+  for (let i = 0; i < 14; i += 1) {
+    await nextDay.click();
+  }
+
+  await expect(title).toHaveText('August 2026');
+});
+
+test('der Woche/Monat-Umschalter klappt den Streifen auf und zu, Segmente tragen den Auswahlzustand (AK2)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  const woche = page.getByRole('radio', { name: 'Woche' });
+  const monat = page.getByRole('radio', { name: 'Monat' });
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(woche).toHaveAttribute('aria-checked', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'false');
+
+  await monat.click();
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'true');
+  await expect(woche).toHaveAttribute('aria-checked', 'false');
+
+  await woche.click();
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(woche).toHaveAttribute('aria-checked', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'false');
+});
+
+test('Titel und Umschalter behalten Position und Hoehe, wenn ein anderer Tag gewaehlt wird (AK5)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const switcher = page.getByRole('radiogroup', { name: 'Ansicht' });
+  const header = page.locator('.calendar-view__header');
+
+  const titleBoxBefore = await title.boundingBox();
+  const switcherBoxBefore = await switcher.boundingBox();
+  const headerHeightBefore = (await header.boundingBox())?.height;
+
+  await dayButton(page, 'So, 19.').click();
+
+  const titleBoxAfter = await title.boundingBox();
+  const switcherBoxAfter = await switcher.boundingBox();
+  const headerHeightAfter = (await header.boundingBox())?.height;
+
+  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
+  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
+  expect(switcherBoxAfter?.x).toBe(switcherBoxBefore?.x);
+  expect(switcherBoxAfter?.y).toBe(switcherBoxBefore?.y);
+  expect(headerHeightAfter).toBe(headerHeightBefore);
+});
+
+test('der Ruecksprung-Chip erscheint ohne ein Nachbar-Element zu verschieben, waehlt heute und verschwindet dann (AK6)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const titleBoxBefore = await title.boundingBox();
+
+  await dayButton(page, 'So, 19.').click();
+
+  const chip = page.getByRole('button', { name: 'Heute' });
+  await expect(chip).toBeVisible();
+  const titleBoxAfter = await title.boundingBox();
+  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
+  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
+
+  await chip.click();
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('bei reduzierter Bewegung blendet der Ruecksprung-Chip ohne Uebergang ein (AK6, Motion)', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await dayButton(page, 'So, 19.').click();
+  const chip = page.getByRole('button', { name: 'Heute' });
+  await expect(chip).toBeVisible();
+  const transitionDuration = await chip.evaluate((el) => getComputedStyle(el).transitionDuration);
+  for (const duration of transitionDuration.split(',')) {
+    expect(parseFloat(duration)).toBeLessThan(0.001);
+  }
+});
+
+test('der Ruecksprung-Chip nutzt semantische Farb-Tokens, mit eigenem Wert im Dark Mode (AK6, Dark Mode)', async ({
+  page,
+}) => {
+  await dayButton(page, 'So, 19.').click();
+  const chip = page.getByRole('button', { name: 'Heute' });
+
+  const expectedLight = await resolveToken(page, '--area-events');
+  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const expectedDark = await resolveToken(page, '--area-events');
+  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
+  expect(expectedDark).not.toBe(expectedLight);
 });
 
 test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu (S5 AC5, Motion)', async ({

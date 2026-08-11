@@ -165,6 +165,22 @@ export function formatCountdown(now: Date, startsAt: string): string {
   return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
 }
 
+const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/**
+ * "Juli 2026" for the calendar header (issue #628, S1 of #622) — `timeZone:
+ * 'UTC'` is required, not cosmetic: `parseDateKey` anchors `dateKey` at UTC
+ * midnight, so formatting in the device's local zone would shift the day
+ * (and sometimes the month) at a month boundary.
+ */
+export function formatMonthTitle(dateKey: string): string {
+  return MONTH_TITLE_FORMATTER.format(parseDateKey(dateKey));
+}
+
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
 export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);
