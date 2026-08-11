@@ -1434,3 +1434,178 @@ test('eine angehobene Unteraufgabe folgt dem Zeiger ohne Verzögerung, die Klapp
   // Verzögerung, unabhängig davon, dass die Karte weiterhin `--child` trägt.
   expect(await transitionDurationFor(child, 'transform')).toBe(0);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Anlege-Sheet: „Mehr"-Bereich (issue #650)                                   */
+/* -------------------------------------------------------------------------- */
+
+function quickAddDialog(page: Page) {
+  return page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+}
+
+function moreToggle(page: Page) {
+  return quickAddDialog(page).getByRole('button', { name: 'Mehr' });
+}
+
+function quickAddNotes(page: Page) {
+  return quickAddDialog(page).getByRole('textbox', { name: 'Notiz der Aufgabe' });
+}
+
+async function submitQuickAdd(page: Page) {
+  await quickAddDialog(page).getByRole('button', { name: 'Hinzufügen' }).click();
+}
+
+test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await expect(quickAddTitleField(page)).toHaveAttribute('placeholder', 'Todo Titel');
+});
+
+test('der „Mehr"-Bereich startet zugeklappt — Titel und Enter genügen (issue #650 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'false');
+  await expect(quickAddNotes(page)).toHaveCount(0);
+
+  await quickAddTitleField(page).fill('Ohne Umweg');
+  await quickAddTitleField(page).press('Enter');
+
+  await expect(page.getByText('Ohne Umweg')).toBeVisible();
+  await expect(quickAddDialog(page)).toBeHidden();
+});
+
+test('aufgeklappt bietet der Bereich Notiz, Fälligkeit, Unteraufgabe und Priorität (issue #650 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  await moreToggle(page).click();
+
+  const dialog = quickAddDialog(page);
+  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'true');
+  await expect(quickAddNotes(page)).toBeVisible();
+  await expect(dialog.getByLabel('Fälligkeit')).toBeVisible();
+  await expect(dialog.getByRole('combobox', { name: 'Unteraufgabe von' })).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: 'Dringend' })).toBeVisible();
+});
+
+test('im „Mehr"-Bereich gesetzte Felder hängen an der neu angelegten Aufgabe (issue #650 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = quickAddDialog(page);
+  await quickAddTitleField(page).fill('Mit allem');
+  await moreToggle(page).click();
+  await quickAddNotes(page).fill('Eine Notiz');
+  await dialog.getByLabel('Fälligkeit').fill('2026-07-20T09:00');
+  await dialog.getByRole('radio', { name: 'Dringend' }).check();
+  await submitQuickAdd(page);
+  await expect(dialog).toBeHidden();
+
+  // Gegengeprüft im Bearbeiten-Sheet: was hier steht, ist das, was tatsächlich
+  // am Datensatz hängt — nicht bloß das, was das Anlege-Sheet angezeigt hat.
+  await tapTask(page, 'Mit allem');
+  const editor = editorDialog(page);
+  await expect(editor.getByRole('textbox', { name: 'Titel' })).toHaveValue('Mit allem');
+  await expect(editor.getByRole('textbox', { name: 'Notiz' })).toHaveValue('Eine Notiz');
+  await expect(editor.getByLabel('Fälligkeit')).toHaveValue('2026-07-20T09:00');
+  await expect(editor.getByRole('radio', { name: 'Dringend' })).toBeChecked();
+});
+
+test('„Unteraufgabe von" beim Anlegen macht die neue Aufgabe sofort zum Kind (issue #650 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Elternaufgabe' });
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Gleich verschachtelt');
+  await moreToggle(page).click();
+  await quickAddDialog(page)
+    .getByRole('combobox', { name: 'Unteraufgabe von' })
+    .selectOption({ label: 'Elternaufgabe' });
+  await submitQuickAdd(page);
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+});
+
+test('eine gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue #650 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = quickAddDialog(page);
+  await quickAddTitleField(page).fill('Arzt anrufen morgen um 12');
+  await moreToggle(page).click();
+  await dialog.getByLabel('Fälligkeit').fill('2026-07-25T08:30');
+  await submitQuickAdd(page);
+
+  // Kein Bestätigungs-Sheet und kein Undo-Toast: beide sichern ein ungeprüft
+  // geratenes Datum ab — hier hat der Mensch selbst eines eingetragen.
+  await expect(page.getByRole('dialog', { name: 'Aufgabe bestätigen' })).toBeHidden();
+
+  await tapTask(page, 'Arzt anrufen');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-25T08:30');
+});
+
+test('ein erneut geöffnetes Sheet startet wieder leer und zugeklappt (issue #650 AK6)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await quickAddTitleField(page).fill('Erste Aufgabe');
+  await moreToggle(page).click();
+  await quickAddNotes(page).fill('Bleibt nicht stehen');
+  await quickAddDialog(page).getByRole('radio', { name: 'Hoch' }).check();
+  await submitQuickAdd(page);
+  await expect(page.getByText('Erste Aufgabe')).toBeVisible();
+
+  await openQuickAdd(page);
+  await expect(quickAddTitleField(page)).toHaveValue('');
+  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'false');
+
+  await moreToggle(page).click();
+  await expect(quickAddNotes(page)).toHaveValue('');
+  await expect(quickAddDialog(page).getByRole('radio', { name: 'Normal' })).toBeChecked();
+});
+
+test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Datenbank (issue #650 AK7)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await context.setOffline(true);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Offline mit Priorität');
+  await moreToggle(page).click();
+  await quickAddNotes(page).fill('Im Zug notiert');
+  await quickAddDialog(page).getByRole('radio', { name: 'Dringend' }).check();
+  await submitQuickAdd(page);
+
+  await expect(page.getByText('Offline mit Priorität')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach cuts the sync endpoints so the list can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT notes, priority FROM tasks WHERE title = $1', ['Offline mit Priorität']),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0]).toMatchObject({ notes: 'Im Zug notiert', priority: 2 });
+});

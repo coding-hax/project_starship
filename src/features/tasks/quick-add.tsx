@@ -259,7 +259,7 @@ export function QuickAddTask() {
                   className="quick-add__due"
                   value={dueAt}
                   onChange={(event) => setDueAt(event.target.value)}
-                  aria-label="Fälligkeit der Aufgabe"
+                  aria-label="Fälligkeit"
                 />
               </label>
               <label className="quick-add__field">
@@ -268,7 +268,7 @@ export function QuickAddTask() {
                   className="quick-add__parent"
                   value={parentId}
                   onChange={(event) => setParentId(event.target.value)}
-                  aria-label="Übergeordnete Aufgabe"
+                  aria-label="Unteraufgabe von"
                 >
                   <option value={NO_PARENT}>Keine (Top-Level)</option>
                   {nestCandidates.map((candidate) => (
