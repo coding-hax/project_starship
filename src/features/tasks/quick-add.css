@@ -1,6 +1,7 @@
 /**
- * The sheet's content: just a title field and a save button. Fälligkeit/Priorität
- * stay out on purpose (issue #6 non-goal, own ticket).
+ * The create sheet's content: a title field, a collapsed "Mehr"-Bereich and a save
+ * button. Same field styling as task-editor.css so both sheets read as one system —
+ * the fields behind "Mehr" are literally the edit sheet's fields (issue #650).
  */
 
 .quick-add {
@@ -9,7 +10,10 @@
   gap: var(--space-4);
 }
 
-.quick-add__input {
+.quick-add__input,
+.quick-add__notes,
+.quick-add__due,
+.quick-add__parent {
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
@@ -20,9 +24,93 @@
   font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
-.quick-add__input:focus {
+.quick-add__notes {
+  resize: vertical;
+  min-height: calc(var(--touch-target) * 2);
+}
+
+.quick-add__input:focus,
+.quick-add__notes:focus,
+.quick-add__due:focus,
+.quick-add__parent:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* A quiet row, not a second call to action — the primary path stays title + save. */
+.quick-add__more {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+}
+
+.quick-add__more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-card);
+}
+
+/* Chevron down = "there is more below"; it flips up once the fields are out.
+   `prefers-reduced-motion` needs no extra handling: the global rule in
+   tokens.css forces transition-duration to 0.01ms for everything. */
+.quick-add__more-icon {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.quick-add__more[aria-expanded='true'] .quick-add__more-icon {
+  transform: rotate(-135deg);
+}
+
+.quick-add__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.quick-add__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.quick-add__priority {
+  display: flex;
+  gap: var(--space-4);
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.quick-add__priority legend {
+  width: 100%;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.quick-add__priority-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  color: var(--text);
 }
 
 .quick-add__submit {
