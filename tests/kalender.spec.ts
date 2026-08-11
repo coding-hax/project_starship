@@ -1148,6 +1148,20 @@ test('kein Hydration-Mismatch beim Laden von /kalender, obwohl nur die Browser-U
  * Folgevorkommen liegen auf 'Sa, 25.' und 'Sa, 1.' (August), beide noch im
  * Juliraster der aufgezogenen Ansicht.
  */
+/**
+ * Wie `eventCard`, aber ohne das gerade abziehende Exemplar. Springt man in
+ * einem Klick von einem Vorkommen direkt zum nächsten, hält `useListPresence`
+ * die alte Karte bis zum Ende ihrer Exit-Animation im DOM — beide tragen
+ * denselben Titel, und `eventCard` verletzt dann Playwrights Strict Mode.
+ * (Die bestehenden S6-Tests laufen über Tage ohne Vorkommen und treffen das
+ * nicht.)
+ */
+function settledEventCard(page: Page, title: string) {
+  return page
+    .locator('.event-agenda__item:not([data-leaving="true"])')
+    .filter({ hasText: title });
+}
+
 async function seedWeeklyDotSeries(page: Page): Promise<void> {
   await seedEvent(page, {
     title: 'Yoga',
@@ -1263,12 +1277,12 @@ test('Punkt und Tagesansicht stimmen ueberein: ein Punkt genau dann, wenn der Ta
   await swipeVertical(calendarWeeks(page), 80);
   await dayButton(page, 'Sa, 25.').click();
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
-  await expect(eventCard(page, 'Yoga')).toBeVisible();
+  await expect(settledEventCard(page, 'Yoga')).toBeVisible();
 
   // Ein Tag ohne Vorkommen: weder Punkt noch Karte.
   await dayButton(page, 'So, 26.').click();
   await expect(dayDots(page, 'So, 26.')).toHaveCount(0);
-  await expect(eventCard(page, 'Yoga')).toHaveCount(0);
+  await expect(settledEventCard(page, 'Yoga')).toHaveCount(0);
 });
 
 test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzeltermin auf denselben Tag fallen (#612 AC5)', async ({
