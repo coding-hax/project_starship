@@ -213,6 +213,73 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     await expect.poll(() => pullRequests).toBe(1);
   });
 
+  /**
+   * AK1 (#528): a caller docking onto an in-flight sync must not be served a pull
+   * that started before its own call — even when its outbox is empty, which is the
+   * exact condition the old single-`rerun`-flag coalescing dropped (`sync.ts:36`
+   * pre-fix, the Garmin flake in `garmin.spec.ts:130`). Deterministic, no timers:
+   * the mount pull is held via `route.fetch()` + a manual gate so the docking call
+   * provably lands *during* that pull, not before or after it.
+   */
+  test('a caller that docks mid-pull gets a pull that started after its own call, even with an empty outbox (AK1, #528)', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    let pullCount = 0;
+    let signalFirstPullFetched: () => void = () => {};
+    const firstPullFetched = new Promise<void>((resolve) => {
+      signalFirstPullFetched = resolve;
+    });
+    let releaseFirstPull: () => void = () => {};
+    const firstPullHeld = new Promise<void>((resolve) => {
+      releaseFirstPull = resolve;
+    });
+
+    await page.route('**/api/sync/pull**', async (route) => {
+      pullCount++;
+      if (pullCount !== 1) {
+        await route.continue();
+        return;
+      }
+      // Captures the server's answer now — before device B's row exists — so the
+      // response held below is provably the stale, pre-insert one.
+      const response = await route.fetch();
+      signalFirstPullFetched();
+      await firstPullHeld;
+      await route.fulfill({ response });
+    });
+
+    // Remounts SyncBoot, whose mount effect calls the one sync() this test holds.
+    await page.reload();
+    await firstPullFetched;
+
+    const devicePage = await openSecondDevice(browser, page);
+    const title = 'Nach dem Andocken angekommen';
+    await createTaskOnDevice(devicePage, title);
+
+    // Not awaited yet — this call must dock onto the still-held mount sync.
+    const probe = page.evaluate(async (expectedTitle) => {
+      const p = window.__starship.sync(); // docks -> sets both rerun flags synchronously
+      (window as unknown as { __coalesced?: boolean }).__coalesced = true;
+      await p;
+      const rows = await window.__starship.debugRecords();
+      return rows.some((r) => r.table === 'tasks' && (r.data as { title?: string }).title === expectedTitle);
+    }, title);
+
+    // Proves the dock happened before release, i.e. while the first pull was still
+    // in flight — otherwise this would be racing against sync()'s own coalescing.
+    await page.waitForFunction(() => (window as unknown as { __coalesced?: boolean }).__coalesced === true);
+    releaseFirstPull();
+
+    expect(await probe).toBe(true);
+    expect(pullCount).toBeGreaterThanOrEqual(2);
+    expect(await page.evaluate(() => window.__starship.size())).toBe(0);
+    await devicePage.close();
+  });
+
   test('an interval tick without a connection does not throw, the next tick still syncs', async ({
     page,
     browser,

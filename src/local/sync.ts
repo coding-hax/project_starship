@@ -13,7 +13,14 @@ import { naturalKeyOf, type Mutation, type PullResponse, type PushResponse } fro
  */
 
 let inFlight: Promise<void> | null = null;
-let rerun = false;
+// Two flags, not one (#528): a caller docking onto a running sync needs its own
+// rerun to fire whenever it arrives *during a pull*, regardless of the outbox —
+// otherwise it can resolve on a pull that started before its own call and miss
+// server rows that only just committed. `queuedRerun` still gates the push-only
+// case on outbox state, so overlapping *pull-only* triggers (the visible-tab
+// interval and a focus firing together, #29) keep collapsing into one pull.
+let queuedRerun = false;
+let pullRerun = false;
 let debounce: ReturnType<typeof setTimeout> | null = null;
 let onUnauthorized: (() => void) | null = null;
 
@@ -24,24 +31,30 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 
 export async function sync(): Promise<void> {
   // Coalesce overlapping triggers into the running sync, but never let coalescing
-  // drop a caller's own work. A call arriving mid-run flags a rerun and joins the
-  // in-flight promise; the loop takes another lap only if that rerun coincides with
-  // queued work. So a sync() issued right after mutate() is guaranteed to push that
-  // mutation — its `await` cannot resolve on a run that began before the row existed
-  // — while overlapping *pull-only* triggers (the visible-tab interval and a focus
-  // firing together, #29) enqueue nothing and still collapse into a single pull.
+  // drop a caller's own work or serve it stale data. A call arriving mid-run sets
+  // both flags and joins the in-flight promise. `queuedRerun` resets at the top of
+  // each lap, so a sync() issued right after mutate() is guaranteed to push that
+  // mutation — its `await` cannot resolve on a run that began before the row
+  // existed. `pullRerun` resets immediately before `pull()` instead: that reset
+  // point is what separates "docked before this lap's pull started" (still counts
+  // as fresh, no extra round) from "docked while the pull was in flight" (may have
+  // missed rows that committed mid-pull, needs another round) — the exact case
+  // AK1 requires and #29's single-pull guarantee (AK2) does not forbid, since two
+  // triggers firing together dock before the reset, not during the pull itself.
   if (inFlight) {
-    rerun = true;
+    queuedRerun = true;
+    pullRerun = true;
     return inFlight;
   }
 
   inFlight = (async () => {
     try {
       do {
-        rerun = false;
+        queuedRerun = false;
         await push();
+        pullRerun = false;
         await pull();
-      } while (rerun && (await pending()).length > 0);
+      } while (pullRerun || (queuedRerun && (await pending()).length > 0));
     } finally {
       inFlight = null;
     }
