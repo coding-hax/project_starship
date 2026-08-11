@@ -63,12 +63,12 @@ test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verände
 
   await expect(nav.getByRole('link', { name: 'Journal' })).toHaveCount(0);
   await expect(nav.locator('.nav__item')).toHaveCount(5);
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Aktivitäten']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Routinen', 'Kalender', 'Aktivitäten']) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible();
   }
 });
 
-test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie (issue #505 AC7)', async ({
+test('Journal aus archiviert die Journal-Routine, wieder an entarchiviert sie (issue #505 AC7)', async ({
   page,
 }) => {
   await resetAppData();
@@ -135,13 +135,13 @@ test('core-Module (Übersicht, Einstellungen) haben keinen Schalter, Einstellung
 
 test('der Zustand übersteht einen Reload (issue #307 AC5)', async ({ page }) => {
   await page.goto('/einstellungen');
-  await page.getByRole('switch', { name: 'Gewohnheiten' }).click();
-  await expect(page.getByRole('switch', { name: 'Gewohnheiten' })).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('switch', { name: 'Routinen' }).click();
+  await expect(page.getByRole('switch', { name: 'Routinen' })).toHaveAttribute('aria-checked', 'false');
 
   await page.reload();
-  await expect(page.getByRole('switch', { name: 'Gewohnheiten' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('switch', { name: 'Routinen' })).toHaveAttribute('aria-checked', 'false');
   await expect(
-    page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Gewohnheiten' }),
+    page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Routinen' }),
   ).toHaveCount(0);
 });
 
@@ -246,7 +246,7 @@ test('aktivitaeten aus blendet den Monatsstreifen aus, auch wenn Aktivitäten vo
   await expect(page.locator('.activity-month-strip')).toHaveCount(0);
 });
 
-test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten→Gewohnheiten, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
+test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten→Routinen, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
   page,
 }) => {
   await resetAppData();
@@ -259,20 +259,20 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   const wetter = page.locator('.weather-forecast');
   const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
   const aktivitaeten = page.locator('.activity-month-strip');
-  const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
 
   await expect(wetter).toBeVisible();
   await expect(aktivitaeten).toBeVisible();
 
-  const [wetterY, aufgabenY, aktivitaetenY, gewohnheitenY] = await Promise.all([
+  const [wetterY, aufgabenY, aktivitaetenY, routinenY] = await Promise.all([
     topOf(wetter),
     topOf(aufgaben),
     topOf(aktivitaeten),
-    topOf(gewohnheiten),
+    topOf(routinen),
   ]);
   expect(wetterY).toBeLessThan(aufgabenY);
   expect(aufgabenY).toBeLessThan(aktivitaetenY);
-  expect(aktivitaetenY).toBeLessThan(gewohnheitenY);
+  expect(aktivitaetenY).toBeLessThan(routinenY);
 
   // Aufgaben (mittendrin) abschalten — die übrigen drei behalten ihre Reihenfolge,
   // statt in der falschen Sequenz aufzurücken.
@@ -281,13 +281,13 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   await page.goto('/uebersicht');
   await expect(aufgaben).toHaveCount(0);
 
-  const [wetterY2, aktivitaetenY2, gewohnheitenY2] = await Promise.all([
+  const [wetterY2, aktivitaetenY2, routinenY2] = await Promise.all([
     topOf(wetter),
     topOf(aktivitaeten),
-    topOf(gewohnheiten),
+    topOf(routinen),
   ]);
   expect(wetterY2).toBeLessThan(aktivitaetenY2);
-  expect(aktivitaetenY2).toBeLessThan(gewohnheitenY2);
+  expect(aktivitaetenY2).toBeLessThan(routinenY2);
 });
 
 test('offline: aufgaben abschalten bleibt eine reine localStorage-Mutation, keine Outbox-Op — die Übersicht-Sektion folgt beim nächsten (Online-)Laden derselben Registry-Prüfung wie die anderen Module (issue #308, Regression zu #307 AC6)', async ({
@@ -366,7 +366,7 @@ test('ein aktives Modul bleibt über seine Route direkt erreichbar (issue #309 A
 });
 
 test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue #309 AC4)', async ({ page }) => {
-  await setModulesOff(page, ['journal', 'kalender', 'gewohnheiten', 'aufgaben', 'aktivitaeten']);
+  await setModulesOff(page, ['journal', 'kalender', 'routinen', 'aufgaben', 'aktivitaeten']);
 
   await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/uebersicht$/);

@@ -12,7 +12,7 @@ const MONDAY_LAST_WEEK = '2026-07-06';
 const MONDAY_TWO_WEEKS_AGO = '2026-06-29';
 
 function habitTodayItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten heute' }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Routinen heute' }).getByRole('listitem');
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -158,7 +158,7 @@ test('eine ausgelassene Woche setzt die Serie zurück (issue #104 AC3)', async (
 /* (issue #509 AC7)                                                           */
 /* -------------------------------------------------------------------------- */
 
-test('eine monatliche Gewohnheit zeigt Streak 2 über zwei aufeinanderfolgende Monate', async ({
+test('eine monatliche Routine zeigt Streak 2 über zwei aufeinanderfolgende Monate', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -190,7 +190,7 @@ test('die laufende, noch offene Periode bricht die Serie nicht (issue #104, vera
   await expect(item.getByLabel('Streak: 1')).toBeVisible();
 });
 
-test('eine „3× pro Woche"-Gewohnheit zählt eine Woche erst als Serienglied, wenn alle 3 stehen', async ({
+test('eine „3× pro Woche"-Routine zählt eine Woche erst als Serienglied, wenn alle 3 stehen', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -284,7 +284,7 @@ test('J3: erschöpftes Kontingent zeigt keine Rescue-Aktion, die Serie bleibt ge
   await expect(item.locator('.habit-today__streak')).toHaveCount(0);
 });
 
-test('J4: eine wöchentliche Gewohnheit bekommt nie eine Rescue-Aktion', async ({ page }) => {
+test('J4: eine wöchentliche Routine bekommt nie eine Rescue-Aktion', async ({ page }) => {
   const habitId = await seedHabit(page, {
     name: 'Wöchentlich ohne Joker',
     schedule: 'weekly',

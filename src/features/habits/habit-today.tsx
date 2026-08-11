@@ -42,7 +42,7 @@ interface RescueUndo {
 
 /**
  * The daily check-off list (issue #103), on /uebersicht next to the shortcut into the
- * management screen (issue #102) — the /gewohnheiten tab (issue #123) is the
+ * management screen (issue #102) — the /routinen tab (issue #123) is the
  * other entry point.
  *
  * Unlike the task list, a checked-off row stays in place rather than
@@ -99,8 +99,8 @@ export function HabitToday() {
   if (active.length === 0) {
     return (
       <p className="habit-today__empty">
-        Noch keine Gewohnheiten.{' '}
-        <Link href="/gewohnheiten">Jetzt anlegen</Link>
+        Noch keine Routinen.{' '}
+        <Link href="/routinen">Jetzt anlegen</Link>
       </p>
     );
   }
@@ -110,7 +110,7 @@ export function HabitToday() {
 
   return (
     <>
-      <ul className="habit-today" aria-label="Gewohnheiten heute">
+      <ul className="habit-today" aria-label="Routinen heute">
         {active.map((habit) => {
           const doneToday = logs.some(
             (log) => log.habitId === habit.id && log.logDate === today && log.done,

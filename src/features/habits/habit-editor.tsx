@@ -7,8 +7,8 @@ import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
 import type { HabitSchedule, HabitView } from './use-habits';
 
-const CREATE_LABEL = 'Gewohnheit anlegen';
-const EDIT_LABEL = 'Gewohnheit bearbeiten';
+const CREATE_LABEL = 'Routine anlegen';
+const EDIT_LABEL = 'Routine bearbeiten';
 
 /**
  * A vertical radio fieldset, not `SegmentedControl` (issue #509): six labels —

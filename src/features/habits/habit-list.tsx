@@ -143,15 +143,15 @@ export function HabitList() {
   return (
     <>
       {habits === undefined ? null : active.length === 0 && archived.length === 0 ? (
-        <p className="habit-list__empty">Keine Gewohnheiten. Leg deine erste an.</p>
+        <p className="habit-list__empty">Keine Routinen. Leg deine erste an.</p>
       ) : (
         <>
           <MonthNav viewedMonth={viewedMonth} onChange={setViewedMonth} />
 
           {activeRows.length === 0 ? (
-            <p className="habit-list__empty">Keine aktiven Gewohnheiten.</p>
+            <p className="habit-list__empty">Keine aktiven Routinen.</p>
           ) : (
-            <ul className="habit-list" aria-label="Gewohnheiten">
+            <ul className="habit-list" aria-label="Routinen">
               {activeRows.map((row) => (
                 <HabitRow
                   key={row.key}
@@ -171,7 +171,7 @@ export function HabitList() {
 
           {archivedRows.length > 0 && (
             <SectionCard title="Archiviert" collapsible defaultOpen={false}>
-              <ul className="habit-list" aria-label="Archivierte Gewohnheiten">
+              <ul className="habit-list" aria-label="Archivierte Routinen">
                 {archivedRows.map((row) => (
                   <HabitRow
                     key={row.key}

@@ -109,9 +109,9 @@ const CASES: Case[] = [
     checkboxLabel: (title) => `${title} als erledigt markieren`,
   },
   {
-    kind: 'Gewohnheit',
+    kind: 'Routine',
     path: '/uebersicht',
-    listName: 'Gewohnheiten heute',
+    listName: 'Routinen heute',
     itemDoneClass: 'habit-today__item--done',
     seed: (page, name) =>
       page.evaluate(
@@ -137,7 +137,7 @@ const CASES: Case[] = [
       // The mutation above lands in IndexedDB asynchronously; the streak badge
       // only appears once the live query re-renders. Waiting for it here is what
       // makes it "already on screen" for the boxBefore read that follows.
-      const item = itemsFor(page, 'Gewohnheiten heute').filter({ hasText: name });
+      const item = itemsFor(page, 'Routinen heute').filter({ hasText: name });
       await expect(item.locator('.habit-today__streak')).toBeVisible();
     },
   },

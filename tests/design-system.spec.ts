@@ -91,10 +91,10 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
     }
   });
 
-  test('FAB-Icon liegt innerhalb des FAB-Buttons auch auf /gewohnheiten (geteilt)', async ({ page }) => {
+  test('FAB-Icon liegt innerhalb des FAB-Buttons auch auf /routinen (geteilt)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await registerPasskey(page);
-    await page.goto('/gewohnheiten');
+    await page.goto('/routinen');
 
     const fab = page.locator('.fab');
     const fabIcon = page.locator('.fab__icon');

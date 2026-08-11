@@ -44,15 +44,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
-  // Habits moved to their own tab at /gewohnheiten (issue #123). Permanent so
-  // bookmarks, an already-open tab, and the service worker's cached shell all
-  // still land in the right place.
+  // Habits moved to their own tab (issue #123), which was then renamed from
+  // "Gewohnheiten" to "Routinen" (issue #655). Permanent so bookmarks, an already-open
+  // tab, and the service worker's cached shell all still land in the right place.
+  //
+  // /heute/gewohnheiten points straight at the current route rather than hopping via
+  // /gewohnheiten: a chain of two permanent redirects is one cached 308 per hop, and
+  // the intermediate one is exactly what an old service worker may already hold.
   //
   // "Heute" was renamed to "Übersicht" (issue #161), same reasoning: an
   // installed PWA's start_url, old bookmarks, and open tabs must keep working.
   async redirects() {
     return [
-      { source: '/heute/gewohnheiten', destination: '/gewohnheiten', permanent: true },
+      { source: '/heute/gewohnheiten', destination: '/routinen', permanent: true },
+      { source: '/gewohnheiten', destination: '/routinen', permanent: true },
       { source: '/heute', destination: '/uebersicht', permanent: true },
     ];
   },
