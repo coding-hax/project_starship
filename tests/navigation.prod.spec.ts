@@ -11,9 +11,17 @@ import { registerPasskey, resetAppData } from './helpers';
  * playwright.config.ts), same as offline-critical.spec.ts.
  */
 
+const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+
 test.describe('angemeldet', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppData();
+    // The overview mounts the weather module (src/modules/registry.ts), which fires a
+    // real request against open-meteo. Left unrouted it never settles on a CI runner,
+    // so the `networkidle` waits below can never be reached — the same mock every
+    // other spec touching /uebersicht already installs (issue #613). The forecast
+    // itself is irrelevant here, so failing it outright is enough.
+    await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
     await registerPasskey(page);
   });
 
