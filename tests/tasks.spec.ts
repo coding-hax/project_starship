@@ -1563,12 +1563,15 @@ test('ein erneut geöffnetes Sheet startet wieder leer und zugeklappt (issue #65
   await page.goto('/aufgaben');
   await openQuickAdd(page);
 
-  await quickAddTitleField(page).fill('Erste Aufgabe');
+  // Kein Titel, in dem ein Füllwort aus parse-task-input.ts steckt („Aufgabe",
+  // „Termin", …) — der Parser streicht die heraus, und der Test suchte dann eine
+  // Aufgabe, die so nie angelegt wurde.
+  await quickAddTitleField(page).fill('Zuerst gespeichert');
   await moreToggle(page).click();
   await quickAddNotes(page).fill('Bleibt nicht stehen');
   await quickAddDialog(page).getByRole('radio', { name: 'Hoch' }).check();
   await submitQuickAdd(page);
-  await expect(page.getByText('Erste Aufgabe')).toBeVisible();
+  await expect(page.getByText('Zuerst gespeichert')).toBeVisible();
 
   await openQuickAdd(page);
   await expect(quickAddTitleField(page)).toHaveValue('');
