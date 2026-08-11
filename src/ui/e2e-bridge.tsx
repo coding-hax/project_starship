@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import { uuidv7 } from 'uuidv7';
 import { bytesToBase64 } from '@/crypto/base64';
 import { createEnvelope, openEnvelope, type Envelope, type KdfParams } from '@/crypto/envelope';
 import { encryptJournal, type JournalContent } from '@/crypto/journal';
+import { refreshStaleSubscriptions } from '@/features/events/use-ics-subscriptions';
 import { getPersistedDek } from '@/features/journal/dek-session';
 import {
   debugCompetingSetup,
@@ -50,15 +52,24 @@ export function E2EBridge() {
         // store, not just `records`, would show up here as a substring match.
         // `journalSession` holds a CryptoKey, not text, and is left out on purpose.
         debugDumpStores: async () => {
-          const [outbox, records, meta, weather, journalKeyStash] = await Promise.all([
+          const [outbox, records, meta, weather, journalKeyStash, icsSubscriptions] = await Promise.all([
             db.outbox.toArray(),
             db.records.toArray(),
             db.meta.toArray(),
             db.weather.toArray(),
             db.journalKeyStash.toArray(),
+            db.icsSubscriptions.toArray(),
           ]);
-          return JSON.stringify({ outbox, records, meta, weather, journalKeyStash });
+          return JSON.stringify({ outbox, records, meta, weather, journalKeyStash, icsSubscriptions });
         },
+        // issue #560: seeds a subscription row directly (mirrors the settings
+        // panel's own write), without triggering a refresh — specs call
+        // refreshIcsSubscriptions() themselves as a separate step, after setting
+        // up their own `page.route('**/api/ics*', ...)` mock (or, for the SSRF
+        // spec, deliberately without one, so the real proxy route runs).
+        addIcsSubscription: (url: string, name: string) =>
+          db.icsSubscriptions.put({ id: uuidv7(), url, name, fetchedAt: null, lastError: null, events: [] }),
+        refreshIcsSubscriptions: () => refreshStaleSubscriptions(),
         // The real write path (AC5) — the suite drives writeJournalEntry itself
         // rather than re-deriving row ids in the test. createEnvelope/openEnvelope/
         // encryptJournal let AC7 prove the offline row that reaches Postgres is

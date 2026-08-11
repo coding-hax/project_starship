@@ -1705,3 +1705,139 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
     .poll(() => dots.nth(1).evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
 });
+
+/* -------------------------------------------------------------------------- */
+/* ICS-Abo, schreibgeschützt (issue #560, ADR-0022)                           */
+/* -------------------------------------------------------------------------- */
+
+const ICS_URL = 'https://example.com/feiertage.ics';
+
+function icsDateKey(dateKey: string): string {
+  return dateKey.replace(/-/g, '');
+}
+
+function icsFixture(events: string[]): string {
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', ...events, 'END:VCALENDAR'].join('\r\n');
+}
+
+function singleDayIcsEvent(uid: string, summary: string, dateKey: string): string[] {
+  return ['BEGIN:VEVENT', `UID:${uid}`, `SUMMARY:${summary}`, `DTSTART;VALUE=DATE:${icsDateKey(dateKey)}`, 'END:VEVENT'];
+}
+
+function seriesIcsEvent(uid: string, summary: string, startDateKey: string, rrule: string): string[] {
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `SUMMARY:${summary}`,
+    `DTSTART;VALUE=DATE:${icsDateKey(startDateKey)}`,
+    `RRULE:${rrule}`,
+    'END:VEVENT',
+  ];
+}
+
+/** Fulfils every request to the SSRF-guarded proxy route with `body`, counting how often it was actually called. */
+async function mockIcsFeed(page: Page, body: string): Promise<() => number> {
+  let calls = 0;
+  await page.route('**/api/ics**', (route) => {
+    calls += 1;
+    return route.fulfill({ status: 200, contentType: 'text/calendar', body });
+  });
+  return () => calls;
+}
+
+async function addIcsSubscription(page: Page, url: string, name: string): Promise<void> {
+  await page.evaluate(({ url, name }) => window.__starship.addIcsSubscription(url, name), { url, name });
+}
+
+async function refreshIcsSubscriptions(page: Page): Promise<void> {
+  await page.evaluate(() => window.__starship.refreshIcsSubscriptions());
+}
+
+test('ein abonnierter ganztägiger Termin erscheint schreibgeschützt und optisch abgesetzt im All-Day-Band (AK1)', async ({
+  page,
+}) => {
+  await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+
+  const bar = allDayBar(page, 'Nationalfeiertag');
+  await expect(bar).toBeVisible();
+  await expect(bar).toHaveAttribute('data-origin', 'subscribed');
+  // Editierbare Termine sind <button>, abonnierte <div> — die technische Basis
+  // von AK2 (kein Editor-Zugriff).
+  expect(await bar.evaluate((el) => el.tagName)).toBe('DIV');
+});
+
+test('ein Tap auf einen abonnierten Termin öffnet keinen Editor (AK2)', async ({ page }) => {
+  await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+
+  await allDayBar(page, 'Nationalfeiertag').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
+});
+
+test('ein Abo mit interner Zieladresse wird vom Proxy abgelehnt, kein Termin erscheint (AK3, SSRF)', async ({
+  page,
+}) => {
+  // Kein page.route-Mock hier — die echte, SSRF-abgesicherte Node-Route
+  // (src/app/api/ics/route.ts) muss selbst ablehnen, nicht ein Test-Double.
+  await addIcsSubscription(page, 'https://127.0.0.1/feiertage.ics', 'Intern');
+  await refreshIcsSubscriptions(page);
+
+  await expect(page.locator('.event-agenda__all-day-button')).toHaveCount(0);
+
+  await page.goto('/einstellungen');
+  await expect(page.locator('.ics-subscriptions-panel__error')).toHaveText(
+    'Zieladresse ist nicht öffentlich erreichbar.',
+  );
+});
+
+test('eine Serie in der fremden ICS-Datei erscheint als expandierte Einzeltermine, nicht als eigene Serie (AK4)', async ({
+  page,
+}) => {
+  await mockIcsFeed(page, icsFixture(seriesIcsEvent('daily-1', 'Aktionstag', TODAY, 'FREQ=DAILY;COUNT=3')));
+  await addIcsSubscription(page, ICS_URL, 'Aktionstage');
+  await refreshIcsSubscriptions(page);
+
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  // COUNT=3: der vierte Tag hat kein Vorkommen mehr — expandiert, nicht endlos.
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toHaveCount(0);
+
+  // Jedes einzelne Vorkommen bleibt schreibgeschützt, nicht nur das erste.
+  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await allDayBar(page, 'Aktionstag').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
+});
+
+test('abonnierte Termine rendern offline aus dem Cache, ohne eigenen Netzaufruf (DoD: Offline-Pfad)', async ({
+  page,
+}) => {
+  // ADR-0009: abonnierte Termine werden nie synchronisiert — die DoD-Formel
+  // "offline → online → serverseitig angekommen" ist hier N/A. Geprüft wird
+  // stattdessen "rendert offline aus dem Cache, kein Netzaufruf" (derselbe
+  // Aufbau wie weather-day.spec.ts's Offline-Test).
+  const callCount = await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+  await expect(allDayBar(page, 'Nationalfeiertag')).toBeVisible();
+  expect(callCount()).toBe(1);
+
+  await page.unroute('**/api/ics**');
+  await page.route('**/api/ics**', (route) => route.abort('failed'));
+  const requestUrls: string[] = [];
+  page.on('request', (request) => requestUrls.push(request.url()));
+
+  await page.reload();
+
+  await expect(allDayBar(page, 'Nationalfeiertag')).toBeVisible();
+  expect(requestUrls.some((url) => url.includes('/api/ics'))).toBe(false);
+});

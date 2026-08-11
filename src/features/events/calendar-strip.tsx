@@ -3,7 +3,7 @@
 import { useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SegmentedControl } from '@/ui/segmented-control';
-import { addDays, addMonths, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
+import { addDays, addMonthsClamped, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
@@ -114,13 +114,15 @@ export function CalendarStrip({
     if (axis === 'x' && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
       // Left (dx<0) pages forward, right pages back — a week in week view
       // (addDays, ±7 always lands on the same weekday, issue #629, AK3), a
-      // month in month view (addMonths, same day-of-month, clamped at the
-      // month's end, issue #662, AK-B). A vertical swipe only locks the axis
-      // so a vertically guided pointer can't accidentally page — it has no
-      // effect of its own; the segmented control is the only way to switch
-      // week/month (issue #662, AK-A).
+      // month in month view (addMonthsClamped, same day-of-month, clamped at
+      // the month's end, issue #662, AK-B). A vertical swipe only locks the
+      // axis so a vertically guided pointer can't accidentally page — it has
+      // no effect of its own; the segmented control is the only way to
+      // switch week/month (issue #662, AK-A).
       onSelectDay(
-        expanded ? addMonths(selectedDay, dx < 0 ? 1 : -1) : addDays(selectedDay, dx < 0 ? 7 : -7),
+        expanded
+          ? addMonthsClamped(selectedDay, dx < 0 ? 1 : -1)
+          : addDays(selectedDay, dx < 0 ? 7 : -7),
       );
     }
   }

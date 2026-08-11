@@ -16,6 +16,11 @@ export interface EventView {
   endDate: string | null;
   category: EventData['category'];
   recurrence: EventData['recurrence'];
+  /** View-only, not a schema column (issue #560): `'local'` for a synced `events`
+   * row, `'subscribed'` for a read-only ICS-abo instance (use-ics-subscriptions.ts).
+   * Drives the read-only card variant and keeps the editor's `events`-only lookup
+   * from ever finding a subscribed item (ADR-0022 AK2). */
+  origin: 'local' | 'subscribed';
 }
 
 const CATEGORIES: NonNullable<EventData['category']>[] = [
@@ -64,6 +69,7 @@ export function toEventView(id: string, data: Record<string, unknown>): EventVie
       ? (data.category as EventView['category'])
       : null,
     recurrence: toRecurrence(data.recurrence),
+    origin: 'local',
   };
 }
 

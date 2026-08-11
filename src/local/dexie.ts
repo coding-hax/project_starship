@@ -102,6 +102,41 @@ export interface JournalKeyStashEntry {
   capturedAt: string;
 }
 
+/**
+ * One already-expanded, all-day occurrence of a subscribed calendar's event
+ * (issue #560, ADR-0022) — the parser/expander's output, never a raw `VEVENT`.
+ * Dates are Berlin calendar days, `YYYY-MM-DD`, same shape as `EventView`'s
+ * `startDate`/`endDate`. Getimte Termine (mit Uhrzeit/`TZID`) fallen beim
+ * Parsen bereits heraus (ADR-0022 Entscheidung A), landen also nie hier.
+ */
+export interface SubscribedEvent {
+  /** The `VEVENT`'s own `UID`, not unique across subscriptions — combined
+   * with the subscription id and date for the view's row key (use-ics-subscriptions.ts). */
+  uid: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * One `.ics` subscription (issue #560, ADR-0022): config (`url`/`name`) and
+ * cache (`events`) in the same row, like `WeatherCacheEntry` — so a failed
+ * refresh can update `lastError` alone without ever touching `events`. Read-
+ * only external data, never synced (ADR-0009): not in `SYNC_TABLES`, never
+ * in the outbox, never in Postgres.
+ */
+export interface IcsSubscriptionEntry {
+  id: string;
+  url: string;
+  name: string;
+  /** ISO instant of the last successful fetch, or `null` before the first one. */
+  fetchedAt: string | null;
+  /** The last fetch's failure, shown in the settings panel — cleared on the
+   * next successful fetch. `events` below is untouched while this is set. */
+  lastError: string | null;
+  events: SubscribedEvent[];
+}
+
 const db = new Dexie('starship') as Dexie & {
   outbox: EntityTable<OutboxEntry, 'id'>;
   records: EntityTable<LocalRecord, 'id'>;
@@ -109,6 +144,7 @@ const db = new Dexie('starship') as Dexie & {
   weather: EntityTable<WeatherCacheEntry, 'key'>;
   journalSession: EntityTable<JournalSessionEntry, 'id'>;
   journalKeyStash: EntityTable<JournalKeyStashEntry, 'id'>;
+  icsSubscriptions: EntityTable<IcsSubscriptionEntry, 'id'>;
 };
 
 db.version(1).stores({
@@ -172,6 +208,14 @@ db.version(5).stores({
 // down path is simply never writing to it, same as `journalSession` (v4) above.
 db.version(6).stores({
   journalKeyStash: 'id, capturedAt',
+});
+
+// Additive: a new store for `.ics` subscriptions (issue #560, ADR-0022) — same
+// reasoning as `weather` (v2)/`journalKeyStash` (v6) above: read-only external
+// data, its own store, never in `records`/the outbox/Postgres. An upgrading
+// install just gains an empty store, no data to migrate.
+db.version(7).stores({
+  icsSubscriptions: 'id',
 });
 
 export { db };

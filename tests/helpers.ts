@@ -426,6 +426,9 @@ declare global {
         Array<{ id: string; envelope: unknown; recoveryEnvelope?: unknown; capturedAt: string }>
       >;
       journalRecoverOrphaned: (secret: string, useRecoveryKey: boolean) => Promise<number>;
+      // issue #560: ICS-Abo (ADR-0022).
+      addIcsSubscription: (url: string, name: string) => Promise<string>;
+      refreshIcsSubscriptions: () => Promise<void>;
     };
   }
 }
