@@ -17,10 +17,12 @@ const VIEW_OPTIONS: { value: StripView; label: string }[] = [
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-/** Past this vertical delta, releasing is a swipe, not a tap. */
+/** Past this delta on the locked axis, releasing is a swipe, not a tap — applies to both axes. */
 const SWIPE_THRESHOLD_PX = 48;
 /** Movement at or below this still counts as a tap — the day button's own click fires normally. */
 const TAP_TOLERANCE_PX = 8;
+/** Past this delta on either axis, the gesture locks to whichever axis moved further (issue #629). */
+const AXIS_LOCK_PX = 12;
 
 export interface CalendarStripProps {
   selectedDay: string;
@@ -76,35 +78,58 @@ export function CalendarStrip({
     [days, events, exceptions],
   );
   const selectedMonth = selectedDay.slice(0, 7);
+  const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
+  const lockedAxisRef = useRef<'x' | 'y' | null>(null);
   const movedRef = useRef(false);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
+    startXRef.current = event.clientX;
     startYRef.current = event.clientY;
+    lockedAxisRef.current = null;
     movedRef.current = false;
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (startYRef.current === null) return;
-    if (Math.abs(event.clientY - startYRef.current) > TAP_TOLERANCE_PX) {
+    if (startXRef.current === null || startYRef.current === null) return;
+    const dx = event.clientX - startXRef.current;
+    const dy = event.clientY - startYRef.current;
+    if (lockedAxisRef.current === null && Math.max(Math.abs(dx), Math.abs(dy)) > AXIS_LOCK_PX) {
+      lockedAxisRef.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    const guidedDelta = lockedAxisRef.current === 'x' ? dx : dy;
+    if (lockedAxisRef.current !== null && Math.abs(guidedDelta) > TAP_TOLERANCE_PX) {
       movedRef.current = true;
     }
   }
 
   function endGesture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (startYRef.current === null) return;
-    const deltaY = event.clientY - startYRef.current;
+    if (startXRef.current === null || startYRef.current === null) return;
+    const dx = event.clientX - startXRef.current;
+    const dy = event.clientY - startYRef.current;
+    const axis = lockedAxisRef.current;
+    startXRef.current = null;
     startYRef.current = null;
-    if (deltaY > SWIPE_THRESHOLD_PX && !expanded) {
-      onExpandChange(true);
-    } else if (deltaY < -SWIPE_THRESHOLD_PX && expanded) {
-      onExpandChange(false);
+    lockedAxisRef.current = null;
+    if (axis === 'y') {
+      if (dy > SWIPE_THRESHOLD_PX && !expanded) {
+        onExpandChange(true);
+      } else if (dy < -SWIPE_THRESHOLD_PX && expanded) {
+        onExpandChange(false);
+      }
+    } else if (axis === 'x' && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
+      // Left (dx<0) pages to the following week, right to the previous one —
+      // addDays is calendar-day arithmetic, so ±7 always lands on the same
+      // weekday (issue #629, AK3).
+      onSelectDay(addDays(selectedDay, dx < 0 ? 7 : -7));
     }
   }
 
   function cancelGesture() {
+    startXRef.current = null;
     startYRef.current = null;
+    lockedAxisRef.current = null;
     movedRef.current = false;
   }
 

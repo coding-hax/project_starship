@@ -91,6 +91,65 @@ async function swipeVertical(locator: Locator, deltaY: number) {
   });
 }
 
+/**
+ * Horizontal counterpart of swipeVertical (issue #629) — negative `deltaX`
+ * swipes left, which pages to the following week (+7 days, same weekday).
+ */
+async function swipeHorizontal(locator: Locator, deltaX: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('swipeHorizontal: target has no bounding box');
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + 10;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX + deltaX,
+    clientY,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX + deltaX,
+    clientY,
+    bubbles: true,
+  });
+}
+
+/** Pages the strip a whole week per swipe — left swipe, +7 days each (issue #629). */
+async function nextWeek(page: Page, times = 1): Promise<void> {
+  for (let i = 0; i < times; i += 1) {
+    await swipeHorizontal(calendarWeeks(page), -80);
+  }
+}
+
+/** Pages the strip a whole week back per swipe — right swipe, −7 days each (issue #629). */
+async function prevWeek(page: Page, times = 1): Promise<void> {
+  for (let i = 0; i < times; i += 1) {
+    await swipeHorizontal(calendarWeeks(page), 80);
+  }
+}
+
+/**
+ * Taps a day button in the strip, pulling the month open first if that day's
+ * week row is collapsed (`visibility: hidden`, `isVisible()` reports that) —
+ * the tap itself collapses the strip back (issue #629, replaces stepping
+ * there via the "Nächster/Vorheriger Tag" buttons).
+ */
+async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
+  const button = dayButton(page, ariaLabel);
+  if (!(await button.isVisible())) {
+    await swipeVertical(calendarWeeks(page), 80);
+  }
+  await button.click();
+}
+
 /** Same probe technique as resolveCardColor, for an arbitrary background-color token. */
 async function resolveToken(page: Page, cssVar: string): Promise<string> {
   return page.evaluate((cssVar) => {
@@ -240,7 +299,7 @@ test('an einem anderen Tag als heute steht der erste Termin des Tages im Blick (
     category: null,
   });
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
 
   await expect(eventCard(page, 'Morgen zuerst')).toHaveAttribute('data-upcoming', 'true');
   await expect(eventCard(page, 'Morgen danach')).toHaveAttribute('data-upcoming', 'false');
@@ -451,13 +510,60 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
   await expect(eventCard(page, 'Morgen-Termin')).toBeVisible();
   await expect(eventCard(page, 'Heute-Termin')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, 'Sa, 18.');
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* #629 (S2): Wochen-Wischen mit Achsensperre statt Tag-Pfeilen               */
+/* -------------------------------------------------------------------------- */
+
+test('ein Links-Wisch ueber die Tage zeigt die Folgewoche, ausgewaehlt ist derselbe Wochentag (AK3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Naechste-Woche-Termin',
+    allDay: false,
+    startsAt: '2026-07-25T09:00:00.000Z', // Sa, 25. — derselbe Wochentag wie TODAY
+    endsAt: '2026-07-25T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await swipeHorizontal(calendarWeeks(page), -80);
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(eventCard(page, 'Naechste-Woche-Termin')).toBeVisible();
+
+  // Zweimal zurueck (rechts) — eine Woche vor TODAY, wieder Samstag.
+  await swipeHorizontal(calendarWeeks(page), 80);
+  await swipeHorizontal(calendarWeeks(page), 80);
+  await expect(dayButton(page, 'Sa, 11.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('ein Wisch, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen Tag durch den Klick aus (AK4)', async ({
+  page,
+}) => {
+  const target = dayButton(page, 'Sa, 18.');
+  const box = await target.boundingBox();
+  if (!box) throw new Error('AK4: Tages-Knopf hat keine BoundingBox');
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  // page.mouse erzeugt echte Pointer-Events *und* den Klick, anders als
+  // dispatchEvent — genau der Fall, den AK4 gegen Klick-Schlucken absichert.
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 80, startY, { steps: 5 });
+  await page.mouse.up();
+
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'false');
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -597,10 +703,7 @@ test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monats
   const title = calendarStrip(page).locator('.calendar-strip__title');
   await expect(title).toHaveText('Juli 2026');
 
-  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
-  for (let i = 0; i < 14; i += 1) {
-    await nextDay.click();
-  }
+  await nextWeek(page, 2);
 
   await expect(title).toHaveText('August 2026');
 });
@@ -919,13 +1022,13 @@ test('ein 3-tägiger, ganztägiger Termin steht beim Blaettern an jedem der drei
 
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'Mo, 20.');
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'Di, 21.');
   await expect(allDayBar(page, 'Konferenz')).toHaveCount(0);
 });
 
@@ -951,7 +1054,7 @@ test('ein mehrtägiger Termin ueber einen Monatswechsel bleibt an der Monatsgren
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
 
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, 'Fr, 31.');
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
 });
@@ -1065,9 +1168,7 @@ test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche s
 
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 
-  for (let day = 0; day < 7; day++) {
-    await page.getByRole('button', { name: 'Nächster Tag' }).click();
-  }
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -1105,18 +1206,6 @@ async function seedWeeklySeries(page: Page): Promise<void> {
   });
 }
 
-async function nextDay(page: Page, times = 1): Promise<void> {
-  for (let day = 0; day < times; day++) {
-    await page.getByRole('button', { name: 'Nächster Tag' }).click();
-  }
-}
-
-async function previousDay(page: Page, times = 1): Promise<void> {
-  for (let day = 0; day < times; day++) {
-    await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
-  }
-}
-
 test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben unveraendert (AC3)', async ({
   page,
 }) => {
@@ -1138,7 +1227,7 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A week later, the series' own occurrence still runs at the original time.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -1159,7 +1248,7 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
   await expect(eventCard(page, 'Yoga')).toHaveCount(0);
 
   // The next occurrence a week later is untouched.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -1169,7 +1258,7 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await seedWeeklySeries(page);
 
   // Edit the second occurrence (a week later), not the series' own first one.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   // Same UTC-vs-Berlin offset as the "nur dieser" test above.
@@ -1184,11 +1273,11 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A further week on, the change still applies.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // Back on the series' own first occurrence, the original time survives.
-  await previousDay(page, 14);
+  await prevWeek(page, 2);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -1216,11 +1305,9 @@ test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest kei
   });
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
 
-  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
-  const previousDayButton = page.getByRole('button', { name: 'Vorheriger Tag' });
   for (let i = 0; i < 6; i += 1) {
-    await nextDay.click();
-    await previousDayButton.click();
+    await selectStripDay(page, 'So, 19.');
+    await selectStripDay(page, 'Sa, 18.');
   }
 
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
@@ -1317,14 +1404,14 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   });
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 
-  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  const forward = await agendaAfterDaySwitch(page, 'So, 19.');
   expect(forward.items.map((row) => row.text)).toHaveLength(1);
   expect(forward.items[0].text).toContain('Morgen-Termin');
   expect(forward.items.filter((row) => row.leaving === 'true')).toEqual([]);
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
+  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
@@ -1353,7 +1440,7 @@ test('beim Tageswechsel raeumt auch das Ganztags-Band den vorherigen Tag sofort 
   });
   await expect(allDayBar(page, 'Heute ganztags')).toBeVisible();
 
-  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  const forward = await agendaAfterDaySwitch(page, 'So, 19.');
   expect(forward.allDay.map((row) => row.text)).toHaveLength(1);
   expect(forward.allDay[0].text).toContain('Morgen ganztags');
   expect(forward.allDay.filter((row) => row.leaving === 'true')).toEqual([]);
