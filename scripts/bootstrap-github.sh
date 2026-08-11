@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Einmaliges GitHub-Setup für dieses Repo (START-HERE.md, Schritt 8).
 #
-# Legt an: privates Repo, Labels, Milestones, Issue-Template, Status-Issue,
+# Legt an: privates Repo, Labels, Issue-Template, Status-Issue,
 # Branch-Schutz auf main. Idempotent — ein zweiter Lauf schadet nicht.
 #
 # Voraussetzung: gh auth login ist durch.
@@ -57,18 +57,10 @@ label "bug"            "D73A4A" "Etwas funktioniert nicht."
 label "epic"           "006B75" "Rein zum Sortieren — steuert nichts im Runner. Markiert zusammenhängende Tickets."
 
 # --- 3. Milestones ---------------------------------------------------------
-echo "==> Milestones"
-milestone() {
-  gh api "repos/$SLUG/milestones" -f title="$1" -f description="$2" >/dev/null 2>&1 \
-    && echo "    $1" || echo "    $1 (existiert)"
-}
-milestone "M0 – Fundament"       "Repo, CI, Passkey-Login, Design-Tokens, App-Shell, PWA, Sync-Grundgerüst"
-milestone "M1 – Aufgaben"        "CRUD, Fälligkeit, Priorität, Swipe-Erledigen, offline"
-milestone "M2 – Termine (lokal)" "Tages-/Wochenansicht, CRUD, Serientermine"
-milestone "M3 – Journal"         "Editor, Stimmung, Tags, lokale Suche, E2E-Verschlüsselung"
-milestone "M4 – Gewohnheiten"    "Habits, Abhaken, Streaks, Wochenraster"
-milestone "M5 – Heute-Dashboard" "Zusammenführung, Web Push für Erinnerungen"
-milestone "M6 – Sprachmemo"      "Aufnahme → Transkript → strukturierter Terminvorschlag"
+# Absichtlich keine. Die Roadmap steht ausschliesslich in docs/VISION.md.
+# Die Milestones hier waren eine zweite Kopie davon, die nach der Neusortierung
+# vom 16.07.26 nie nachgezogen wurde: ab M2 trug dieselbe Nummer in beiden
+# Quellen einen anderen Inhalt. Zwei Roadmaps, eine gepflegt.
 
 # --- 4. Status-Issue -------------------------------------------------------
 # Der Runner schreibt die Farbe in den TITEL, damit man den Zustand in der
