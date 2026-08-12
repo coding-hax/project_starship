@@ -1,10 +1,11 @@
+/* `align-items: flex-start`, not `center`: the h1 keeps its regular
+   `margin-block-end: var(--space-6)` (design-system.spec.ts's global
+   header↔content rule, #85) — centering against that trailing margin would
+   pull the button visibly below the heading's own text. Top-aligning both
+   sidesteps the margin entirely, since it never enters a start-edge layout. */
 .aufgaben-page__title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-}
-
-.aufgaben-page__title-row h1 {
-  margin: 0;
 }

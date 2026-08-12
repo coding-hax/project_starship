@@ -1,3 +1,6 @@
+/* No colour transition: static, token-driven colour needs no motion to begin
+   with (same call as task-list.css's priority dot/due label) — `aria-pressed`
+   flips the surface/icon colour outright. */
 .hide-completed-toggle {
   min-width: var(--touch-target);
   min-height: var(--touch-target);
@@ -9,9 +12,6 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
 }
 
 .hide-completed-toggle:hover {
