@@ -211,3 +211,28 @@ export function IconChevronRight({ className }: IconProps) {
     </svg>
   );
 }
+
+// --- Gewohnheiten: Streak-Zähler und Joker in habit-today.tsx ---
+
+export function IconStreak({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Einteilige Flamme mit angedeuteter Zunge — bewusst ohne Innenkontur:
+          der Streak steht bei --text-secondary (14px), dort läuft eine zweite
+          Linie in die Außenkante. Ersetzt das 🔥-Emoji (patterns.md,
+          "Nie ein Unicode-Glyph"). */}
+      <path d="M12 2.8c.4 2.6 1.9 4 3.2 5.4C16.7 9.8 18 11.4 18 13.8a6 6 0 0 1-12 0c0-1.9.7-3.3 1.7-4.5.2 1.3.8 2.1 1.6 2.5-.5-3.6.3-6.6 2.7-9z" />
+    </svg>
+  );
+}
+
+export function IconFreeze({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Schild statt Schneeflocke: der Nutzertext sagt "Serie mit Joker retten",
+          die Funktion schützt die Serie. Eine Flocke wäre zudem dieselbe Form,
+          die IconWeatherSnow schon trägt. Ersetzt das ❄️-Emoji. */}
+      <path d="M12 3.2l6.5 2.6v5.4c0 4.2-2.7 7.5-6.5 9.1-3.8-1.6-6.5-4.9-6.5-9.1V5.8z" />
+    </svg>
+  );
+}
