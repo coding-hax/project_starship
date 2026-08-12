@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { OverviewBlock } from '@/ui/overview-block';
 import { formatStaleSince, isStaleWarning } from '@/ui/stale';
-import { isWeekend, weekdayLabel } from './forecast';
+import { isWeekend, isWindy, weekdayLabel } from './forecast';
 import { useWeatherForecast } from './use-weather-forecast';
 import { WEATHER_ICON_BY_CATEGORY, WEATHER_LABEL_BY_CATEGORY } from './weather-category-labels';
 import { weatherCategory } from './wmo-icon';
@@ -52,7 +52,26 @@ export function WeatherForecast() {
                     {/* Own page with the hourly breakdown (issue #156) — the whole
                         card is the tap target (≥44×44, DESIGN_SYSTEM Mobile-Patterns). */}
                     <Link href={`/wetter/${day.date}`} className="weather-forecast__day-link">
-                      <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
+                      <span className="weather-forecast__weekday-row">
+                        <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
+                        {isWindy(day) ? (
+                          <svg
+                            className="weather-forecast__wind"
+                            viewBox="0 0 16 16"
+                            width="13"
+                            height="13"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            role="img"
+                            aria-label="windig"
+                          >
+                            <path d="M1.5 7h7a2 2 0 1 0-2-2" />
+                            <path d="M1.5 11h5.5a2 2 0 1 1-2 2" />
+                          </svg>
+                        ) : null}
+                      </span>
                       <span
                         className="weather-forecast__icon"
                         role="img"

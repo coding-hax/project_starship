@@ -117,9 +117,28 @@
   }
 }
 
+/* Centered so a windstill day (no icon, the common case) keeps its weekday label
+ * dead-center in the column, exactly as before this row existed (issue #695 AC8).
+ * A windy day's icon pulls the label ~8px left of that — the accepted price, see
+ * the ticket, rather than reserving icon space on every column. */
+.weather-forecast__weekday-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
 .weather-forecast__weekday {
   font-size: var(--text-meta);
   color: var(--text-muted);
+}
+
+/* `--text`, not `--text-muted`: the mark has to stand out against the already
+ * muted weekday label. Not `--warning`/`--accent` either — a windy day is
+ * information, not a warning or a task (issue #695). */
+.weather-forecast__wind {
+  flex-shrink: 0;
+  color: var(--text);
 }
 
 .weather-forecast__icon {

@@ -160,6 +160,20 @@ export function isWeekend(dateKey: string): boolean {
   return day === 0 || day === 6;
 }
 
+/** Bft 7 — the threshold the DWD warns of "Windböen" at (issue #695). Gusts decide
+ * how a day *feels*: 25 km/h average with 60 km/h gusts reads windier than a steady 32. */
+export const WINDY_GUST_THRESHOLD_KMH = 50;
+
+/** Bft 5 — the steadily brisk day without individual spikes (issue #695). Its own
+ * condition, or that day never trips the gust threshold above and falls through. */
+export const WINDY_SPEED_THRESHOLD_KMH = 30;
+
+/** Marks a day windy in the 7-day strip (issue #695) — gusts OR average wind past
+ * their threshold, each catching a different kind of windy day (see the constants). */
+export function isWindy(day: Pick<WeatherDay, 'windGustsMax' | 'windSpeedMax'>): boolean {
+  return day.windGustsMax >= WINDY_GUST_THRESHOLD_KMH || day.windSpeedMax >= WINDY_SPEED_THRESHOLD_KMH;
+}
+
 
 /**
  * `HH:MM` straight out of a local ISO instant (`WeatherHour.time`, `sunrise`,
