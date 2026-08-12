@@ -473,6 +473,30 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
   expect(loadingHeight).toBe(loadedHeight);
 });
 
+test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/ready (issue #652 AC1)', async ({
+  page,
+}) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(OPEN_METEO_PATTERN, async (route) => {
+    await gate;
+    await route.abort('failed');
+  });
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
+  const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+
+  release();
+  await expect(page.getByText('Vorhersage konnte nicht geladen werden.')).toBeVisible();
+  const errorHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+
+  expect(errorHeight).toBe(loadingHeight);
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: Das Auftauchen der Stand-Zeile verschiebt nichts darunter (issue #155)  */
 /* -------------------------------------------------------------------------- */

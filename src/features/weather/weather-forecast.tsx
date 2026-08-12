@@ -21,25 +21,20 @@ export function WeatherForecast() {
   const { phase, days, fetchedAt } = useWeatherForecast(location);
   const ariaLabel = `Wettervorhersage ${location.name}, sieben Tage`;
 
-  if (phase === 'empty-error') {
-    return (
-      <OverviewBlock title="Wetter" area="var(--area-weather)">
-        <section className="weather-forecast" aria-label={ariaLabel}>
-          <p className="weather-forecast__empty">Vorhersage konnte nicht geladen werden.</p>
-        </section>
-      </OverviewBlock>
-    );
-  }
-
-  // `loading` and `ready` share this exact grid shape, so the very first paint
-  // already reserves the height the loaded state needs (Smooth-Regel 3). The
-  // caption below is absolutely positioned and outside this flow entirely —
-  // its own appearance can't shift anything, loading or not.
+  // `loading`, `ready` and `empty-error` all render this same seven-column grid
+  // shape, so the very first paint already reserves the height every other phase
+  // needs (Smooth-Regel 3). `empty-error` keeps the (invisible) placeholder
+  // columns in the DOM and overlays the message on top of them instead of
+  // replacing them with a shorter box — that way it inherits their real height
+  // for free instead of a hand-picked pixel guess that can silently drift out of
+  // sync with it (issue #652 AC1). The stale-data caption stays absolutely
+  // positioned and outside this flow entirely — its own appearance can't shift
+  // anything either.
   return (
     <OverviewBlock title="Wetter" area="var(--area-weather)">
       <section className="weather-forecast" aria-label={ariaLabel}>
         <p className="weather-forecast__location">{location.name}</p>
-        <ol className="weather-forecast__days" aria-hidden={phase === 'loading' || undefined}>
+        <ol className="weather-forecast__days" aria-hidden={phase !== 'ready' || undefined}>
           {phase === 'ready' && days
             ? days.map((day) => {
                 const category = weatherCategory(day.weatherCode);
@@ -76,8 +71,17 @@ export function WeatherForecast() {
             : Array.from({ length: 7 }, (_, i) => (
                 // Same markup and classes as a loaded column, values swapped for
                 // placeholders — that, not a guessed pixel height, is what keeps this
-                // row exactly as tall as the loaded one (Smooth-Regel 3).
-                <li key={i} className="weather-forecast__day weather-forecast__day--skeleton">
+                // row exactly as tall as the loaded one (Smooth-Regel 3). In
+                // `empty-error` the columns turn invisible (`--error`, CSS) rather
+                // than disappear — the overlaid message below inherits their height.
+                <li
+                  key={i}
+                  className={
+                    phase === 'empty-error'
+                      ? 'weather-forecast__day weather-forecast__day--error'
+                      : 'weather-forecast__day weather-forecast__day--skeleton'
+                  }
+                >
                   <span className="weather-forecast__day-link">
                     <span className="weather-forecast__weekday">&nbsp;</span>
                     <span className="weather-forecast__icon weather-forecast__icon--placeholder" />
@@ -89,6 +93,9 @@ export function WeatherForecast() {
                 </li>
               ))}
         </ol>
+        {phase === 'empty-error' ? (
+          <p className="weather-forecast__empty">Vorhersage konnte nicht geladen werden.</p>
+        ) : null}
         {phase === 'ready' && fetchedAt && isStaleWarning(fetchedAt) ? (
           // Absolutely positioned (weather-forecast.css) so its appearance never shifts
           // the content below — the section's own height never includes it (issue #155).
