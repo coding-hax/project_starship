@@ -16,15 +16,7 @@ import {
 import { RecurrenceScopeSheet, type RecurrenceScope } from './recurrence-scope-sheet';
 import { anchorDateKeyOf } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
-import type { EventView } from './use-events';
-
-const CATEGORIES: { value: NonNullable<EventData['category']>; label: string }[] = [
-  { value: 'privat', label: 'Privat' },
-  { value: 'arbeit', label: 'Arbeit' },
-  { value: 'gesundheit', label: 'Gesundheit' },
-  { value: 'sport', label: 'Sport' },
-  { value: 'familie', label: 'Familie' },
-];
+import { EVENT_CATEGORIES, type EventView } from './use-events';
 
 /** Sentinel for "keine Kategorie" — a real category value can never equal this. */
 const NO_CATEGORY = '';
@@ -448,7 +440,7 @@ export function EventEditor({
               aria-label="Kategorie"
             >
               <option value={NO_CATEGORY}>Keine</option>
-              {CATEGORIES.map((c) => (
+              {EVENT_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
                 </option>

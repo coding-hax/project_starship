@@ -397,6 +397,36 @@ export const reminderPrefs = pgTable(
 export type ReminderPref = typeof reminderPrefs.$inferSelect;
 export type NewReminderPref = typeof reminderPrefs.$inferInsert;
 
+/**
+ * User-chosen override for a calendar category's accent color (issue #660).
+ * Synchronised like `reminderPrefs` above — a category color is a domain
+ * assignment ("Arbeit ist blau"), not a device setting, so it must not differ
+ * between phone and laptop. One row per `category` (`uniqueIndex`); no row means
+ * "use the `--cat-<category>` default from tokens.css" (AC5), so this table is
+ * additive-only and never carries a default color of its own.
+ *
+ * `color` holds a `--swatch-*` token name (src/ui/swatch-palette.ts), not a
+ * resolved value — CategoryColorsBoot writes it into an inline `var()` reference
+ * on `<html>`, never a computed color, so it keeps resolving correctly per theme
+ * (AC7).
+ */
+export const categoryColors = pgTable(
+  'category_colors',
+  {
+    ...syncColumns,
+    category: text('category').notNull(),
+    color: text('color').notNull(),
+  },
+  (table) => [
+    index('category_colors_updated_at_idx').on(table.updatedAt),
+    index('category_colors_sync_seq_idx').on(table.syncSeq),
+    uniqueIndex('category_colors_category_idx').on(table.category),
+  ],
+);
+
+export type CategoryColor = typeof categoryColors.$inferSelect;
+export type NewCategoryColor = typeof categoryColors.$inferInsert;
+
 /* -------------------------------------------------------------------------- */
 /* Journal (M4, ADR-0004/-0015/-0017). Ciphertext-only — only `entryDate`     */
 /* stays plaintext (CLAUDE.md Regel 9).                                       */

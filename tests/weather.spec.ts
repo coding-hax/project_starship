@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { freezeClock, registerPasskey, resetAppData, skewClock } from './helpers';
 
 // A Monday (issue #139) — matches the weekday labels asserted below.
@@ -712,4 +712,138 @@ test('bei reduzierter Bewegung steht der Lade-Puls still (issue #139 AC10)', asy
   expect(parseFloat(duration)).toBeLessThan(0.001);
 
   release();
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: dauerhafte kleine Umgebungsbewegung der sieben Wetter-Icons (issue #661) */
+/* -------------------------------------------------------------------------- */
+
+// Je Kategorie ein Element, dessen Animation direkt geprüft werden kann — Reihenfolge
+// deckt sich mit DAY_SET_A.codes/.categories (issue #139 NOW ist ein Montag).
+const WEATHER_ICON_ANIMATED_SELECTOR: Record<string, string> = {
+  Klar: '.weather-icon__disc',
+  'Teils bewölkt': '.weather-icon__sun',
+  Bewölkt: '.weather-icon__cloud',
+  Nebel: '.weather-icon__fog-line--1',
+  Regen: '.weather-icon__drop',
+  Schnee: '.weather-icon__flake',
+  Gewitter: '.weather-icon__bolt',
+};
+
+async function animationState(locator: Locator) {
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { name: style.animationName, duration: style.animationDuration, iterationCount: style.animationIterationCount };
+  });
+}
+
+test('jede Kategorie rendert ihre erwarteten Einzelelemente (issue #661 AK1)', async ({ page }) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // DAY_SET_A.categories: Klar, Teils bewölkt, Bewölkt, Nebel, Regen, Schnee, Gewitter.
+  await expect(weatherDays(page).nth(0).locator('.weather-icon__ray')).toHaveCount(8);
+  await expect(weatherDays(page).nth(3).locator('.weather-icon__fog-line')).toHaveCount(2);
+  await expect(weatherDays(page).nth(4).locator('.weather-icon__drop')).toHaveCount(3);
+  await expect(weatherDays(page).nth(5).locator('.weather-icon__flake')).toHaveCount(2);
+});
+
+test('für jede der sieben Kategorien läuft im Streifen mindestens eine Endlos-Animation (issue #661 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  for (let i = 0; i < 7; i += 1) {
+    const category = DAY_SET_A.categories[i];
+    const selector = WEATHER_ICON_ANIMATED_SELECTOR[category];
+    const { name, iterationCount } = await animationState(
+      weatherDays(page).nth(i).locator(selector).first(),
+    );
+    expect(name, `${category}: ${selector}`).not.toBe('none');
+    for (const count of iterationCount.split(',')) {
+      expect(count.trim(), `${category}: ${selector}`).toBe('infinite');
+    }
+  }
+});
+
+test('App-Schalter „Bewegung reduzieren" stoppt die Wetter-Icon-Animationen (issue #661 AK4)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/einstellungen');
+  await page.getByRole('switch', { name: 'Bewegung reduzieren' }).click();
+
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  const { duration, iterationCount } = await animationState(
+    weatherDays(page).first().locator('.weather-icon__disc'),
+  );
+  expect(parseFloat(duration)).toBeLessThan(0.001);
+  expect(iterationCount).toBe('1');
+});
+
+test('OS-Einstellung „Bewegung reduzieren" stoppt die Wetter-Icon-Animationen ebenso (issue #661 AK5)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  const { duration, iterationCount } = await animationState(
+    weatherDays(page).first().locator('.weather-icon__disc'),
+  );
+  expect(parseFloat(duration)).toBeLessThan(0.001);
+  expect(iterationCount).toBe('1');
+});
+
+test('das Nebel-Icon ragt nicht mehr über die Zeichenfläche (issue #661 AK6)', async ({ page }) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // Index 3 = Nebel (DAY_SET_A.codes[3] = 45).
+  const fogSvg = weatherDays(page).nth(3).locator('.weather-forecast__icon svg');
+  const bbox = await fogSvg.evaluate((el) => {
+    const b = (el as unknown as SVGGraphicsElement).getBBox();
+    return { y: b.y };
+  });
+  // Halbe Strichbreite (0.75) als Rand, getBBox() ignoriert die Strichbreite selbst.
+  expect(bbox.y).toBeGreaterThanOrEqual(0.75);
+});
+
+test('beide Schneeflocken sind mittig, keine Flocke steht mehr schief (issue #661 AK7)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // Index 5 = Schnee (DAY_SET_A.codes[5] = 73).
+  const snowDay = weatherDays(page).nth(5);
+
+  async function flakeCenter(className: string) {
+    return snowDay.locator(`.${className}`).evaluate((el) => {
+      const b = (el as unknown as SVGGraphicsElement).getBBox();
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    });
+  }
+
+  const center1 = await flakeCenter('weather-icon__flake--1');
+  expect(center1.x).toBeCloseTo(9, 1);
+  expect(center1.y).toBeCloseTo(19, 1);
+
+  const center2 = await flakeCenter('weather-icon__flake--2');
+  expect(center2.x).toBeCloseTo(15, 1);
+  expect(center2.y).toBeCloseTo(19, 1);
 });

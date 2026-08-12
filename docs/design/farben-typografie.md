@@ -12,24 +12,24 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 ### Bereichsfarben (tragen die Orientierung)
 
-| Bereich      | Farbe           | Rolle                    |
-| ------------ | --------------- | ------------------------ |
-| Aufgaben     | Koralle / Mango | Primärfarbe der App      |
-| Termine      | Teal            | ruhig, strukturiert      |
-| Journal      | Warmes Violett  | persönlich, introspektiv |
-| Gewohnheiten | Sattes Grün     | Wachstum, Streaks        |
-| Aktivitäten  | Blau            | Garmin, Strecke/Puls (issue #180) |
-| Wetter       | Teal-Cyan       | Vorhersage (issue #652) |
+| Bereich     | Farbe           | Rolle                             |
+| ----------- | --------------- | --------------------------------- |
+| Aufgaben    | Koralle / Mango | Primärfarbe der App               |
+| Termine     | Teal            | ruhig, strukturiert               |
+| Journal     | Warmes Violett  | persönlich, introspektiv          |
+| Routinen    | Sattes Grün     | Wachstum, Streaks                 |
+| Aktivitäten | Blau            | Garmin, Strecke/Puls (issue #180) |
+| Wetter      | Teal-Cyan       | Vorhersage (issue #652)           |
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
 ### Frei wählbare Nutzerfarben (`--swatch-*`, issue #658)
 
 Wo eine Person aus mehreren gleichrangigen Optionen wählt — aktuell die
-Gewohnheiten-Farbe, ab #660 auch Kategoriefarben in den Einstellungen — reichen
+Routinen-Farbe, ab #660 auch Kategoriefarben in den Einstellungen — reichen
 die fünf Bereichsfarben nicht: sie tragen woanders schon eine feste Bedeutung
 und stünden zur Auswahl in Konkurrenz zu sich selbst. Die zehn Optionen des
-Gewohnheiten-Farbwählers sind deshalb die fünf Bereichsfarben (`--area-tasks`,
+Routinen-Farbwählers sind deshalb die fünf Bereichsfarben (`--area-tasks`,
 `--area-events`, `--area-journal`, `--area-habits`, `--area-activities`) plus
 fünf neue `--swatch-*`-Tokens, die es sonst nirgends in der App gibt:
 

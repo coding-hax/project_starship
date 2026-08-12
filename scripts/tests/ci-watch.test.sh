@@ -124,6 +124,14 @@ STUB
 # Fehl-Marker fuer 'fetch'/'checkout -B'/'push' -- damit die drei
 # unterscheidbaren Nicht-Konflikt-Ursachen (#171 AC2) einzeln simulierbar
 # sind. Alles andere bleibt ein folgenloses exit 0, wie zuvor.
+#
+# #665: 'worktree list --porcelain' liefert per Default LEER -- kein Worktree
+# haelt je einen Branch, prCatchUpBehind() bleibt fuer diese ganze Suite auf
+# dem Fallback-Pfad (heutiges Verhalten, alle bestehenden Tests unveraendert).
+# Ueber die Marker-Datei git-worktree-block laesst sich GENAU EIN Testfall
+# (T26) auf den Worktree-Pfad umschalten. 'checkout -B' hinterlaesst
+# zusaetzlich einen Aufruf-Marker, damit T26 belegen kann, dass er dort NICHT
+# mehr aufgerufen wird.
 cat > "$FAKEBIN/git" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -142,7 +150,7 @@ case "${1:-}" in
     ;;
   checkout)
     case "${2:-}" in
-      -B) [ -e "$G/git-checkout-fail" ] && exit 1; exit 0 ;;
+      -B) touch "$G/git-checkout-b-called"; [ -e "$G/git-checkout-fail" ] && exit 1; exit 0 ;;
       *) exit 0 ;;
     esac
     ;;
@@ -158,6 +166,10 @@ case "${1:-}" in
     ;;
   diff)
     [ -e "$G/git-merge-conflict" ] && printf 'src/a.ts\nsrc/b.ts\n'
+    exit 0
+    ;;
+  worktree)
+    [ -e "$G/git-worktree-block" ] && cat "$G/git-worktree-block"
     exit 0
     ;;
   *) exit 0 ;;
@@ -239,6 +251,15 @@ setup_conflict() {
     > "$GHSTATE_DIR/checks-$pr.json"
   printf '{"headRefName":"fix/%s-runner-ci-watch","mergeStateStatus":"DIRTY"}' \
     "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
+}
+
+# $1 = Branchname -> laesst 'git worktree list --porcelain' im Stub so
+# antworten, als hielte ein Worktree unter /wt/issue diesen Branch (#665,
+# T26). Ohne diesen Aufruf bleibt die Antwort leer (Fallback-Pfad).
+setup_worktree_block() {
+  local branch="$1"
+  printf 'worktree /wt/issue\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/%s\n' \
+    "$branch" > "$GHSTATE_DIR/git-worktree-block"
 }
 
 assert_file_absent() {
@@ -374,6 +395,25 @@ if grep -q 'prCatchUpBehind(' "$WATCH_TS"; then
   ok "T5b (#191): prCatchUpBehind() wird weiterhin von der CI-Wache aufgerufen"
 else
   red "T5b (#191): Aufruf von prCatchUpBehind() in scripts/runner/watch.ts fehlt"
+fi
+
+# ==============================================================================
+# T5c (#665, AK3) -- statischer Verdrahtungs-Check: run_round() muss den
+# Index-Guard fuer role=build VOR dem 'claude'-Start aufrufen -- sonst
+# committet ein Bau-Lauf auf einem bereits quer stehenden Index den Revert
+# eines main-Merges mit. Laufzeit-Nachweis ist hier nicht moeglich (diese
+# Suite haelt worktrees_enabled() bewusst inaktiv, s.o.) -- das
+# End-zu-Ende-Verhalten selbst deckt scripts/tests/catchup-worktree.test.sh ab.
+# ==============================================================================
+if grep -q 'ts_run worktree-index-ok "$run_cwd"' "$RUNNER"; then
+  ok "T5c (#665): run_round() ruft den AK3-Guard worktree-index-ok mit run_cwd auf"
+else
+  red "T5c (#665): AK3-Guard worktree-index-ok fehlt in run_round()"
+fi
+if grep -q '\[ "$role" = "build" \] && worktrees_enabled' "$RUNNER"; then
+  ok "T5c (#665): der Guard ist auf role=build eingeschraenkt (Lese-Rollen committen nie)"
+else
+  red "T5c (#665): der Guard ist NICHT erkennbar auf role=build eingeschraenkt"
 fi
 
 # ==============================================================================
@@ -764,6 +804,28 @@ case "$LABELS_454" in
   *needs-answer*) ok "T25: Ticket bleibt wartend, wenn der Merge fehlschlägt" ;;
   *) red "T25: Ticket bleibt wartend, wenn der Merge fehlschlägt (Labels: )" ;;
 esac
+
+# ==============================================================================
+# T26 (#665) -- haelt ein Worktree den PR-Branch (git-worktree-block simuliert
+# das ueber 'git worktree list --porcelain'), zieht prCatchUpBehind() dort
+# nach OHNE 'checkout -B' -- sonst genau der Vorfallstyp aus dem Ticket
+# (invertierter Index im Worktree). Fachlich bleibt das Ergebnis identisch zu
+# T7 (reines Nachziehen, kein Agentenlauf, kein Auto-Merge): nur der WEG
+# dorthin unterscheidet sich.
+# ==============================================================================
+reset_state
+setup_wip_issue 460
+setup_pr 460 760
+setup_behind 460 760
+setup_worktree_block "fix/460-runner-ci-watch"
+run_round
+assert_file_absent "T26 (#665): kein Agentenlauf beim Nachziehen im Worktree-Pfad" \
+  "$GHSTATE_DIR/claude-called"
+assert_file_absent "T26: kein Auto-Merge direkt nach dem Nachziehen" "$GHSTATE_DIR/merged-760"
+assert_contains "T26: Status zeigt wieder 'CI läuft'" \
+  "CI läuft" "$(cat "$GHSTATE_DIR/status-title" 2>/dev/null)"
+assert_file_absent "T26: 'checkout -B' wird NICHT aufgerufen, wenn ein Worktree den Branch haelt" \
+  "$GHSTATE_DIR/git-checkout-b-called"
 
 # ==============================================================================
 echo

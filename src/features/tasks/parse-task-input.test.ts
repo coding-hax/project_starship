@@ -83,10 +83,10 @@ describe('parseTaskInput', () => {
     expect(result.dueAt).toBeNull();
   });
 
-  it('bleibt nur Datum/Zeit ohne Titel übrig, fällt die Rohzeile als Titel zurück', () => {
+  it('AC5 (#687): bleibt nach dem Entfernen aller Spans kein Titel übrig, bleibt er leer — die Fälligkeit bleibt erhalten, keine Rohzeile mehr als Fallback', () => {
     const result = parseTaskInput('morgen um 12', NOW);
-    expect(result.title).toBe('morgen um 12');
-    expect(result.dueAt).toBeNull();
+    expect(result.title).toBe('');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
   });
 
   it('AC7: iOS-Auto-Satzzeichen am Rand hinterlassen keinen Müll im Titel', () => {
@@ -122,5 +122,118 @@ describe('parseTaskInput', () => {
   it('AC8: ausgeschriebene Uhrzeiten über zwölf fallen weiterhin auf 09:00 (dokumentierte Grenze)', () => {
     const result = parseTaskInput('Zahnarzt morgen um vierzehn', NOW);
     expect(result.dueAt).toBe(iso(2024, 1, 16, 9, 0));
+  });
+});
+
+describe('parseTaskInput — #687 AK1: Schreibweise der Uhrzeit ändert das Ergebnis nicht', () => {
+  it('"um H Uhr" ist ein Span, kein "Uhr bleibt im Titel"-Rest (der ursprüngliche Bug)', () => {
+    const result = parseTaskInput('morgen um 14 Uhr Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+
+  it('"um H:MM Uhr" ist ebenfalls ein einziger, längster Span', () => {
+    const result = parseTaskInput('morgen um 14:30 Uhr Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 30));
+  });
+
+  it('"H Uhr" ohne "um" liefert dasselbe Ergebnis', () => {
+    const result = parseTaskInput('morgen 14 Uhr Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+
+  it('"um H" ohne "Uhr" liefert dasselbe Ergebnis', () => {
+    const result = parseTaskInput('morgen um 14 Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+});
+
+describe('parseTaskInput — #687 AK2: Uhrzeit ohne Datum wird ausgewertet', () => {
+  it('liegt die Uhrzeit noch in der Zukunft, gilt sie für heute', () => {
+    // NOW = Mo 15.01.2024 10:00 -> 15 Uhr ist noch nicht vorbei.
+    const result = parseTaskInput('Zahnarzt um 15 Uhr', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 15, 15, 0));
+  });
+
+  it('liegt die Uhrzeit bereits in der Vergangenheit, gilt sie für morgen', () => {
+    const result = parseTaskInput('Zahnarzt um 9 Uhr', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 9, 0));
+  });
+});
+
+describe('parseTaskInput — #687 AK3: Titel ist der Rest, nicht das Ergebnis einer Blacklist', () => {
+  it('"erste Aufgabe erledigen" bleibt unverändert — kein Span trifft', () => {
+    expect(parseTaskInput('erste Aufgabe erledigen', NOW).title).toBe('erste Aufgabe erledigen');
+  });
+
+  it('"Aufgabenliste sortieren" bleibt unverändert — "aufgabe" ist Teil eines längeren Worts', () => {
+    expect(parseTaskInput('Aufgabenliste sortieren', NOW).title).toBe('Aufgabenliste sortieren');
+  });
+
+  it('führendes "Mit" steht an keiner Span-Grenze und bleibt stehen', () => {
+    const result = parseTaskInput('Mit dem Auto morgen zur Werkstatt', NOW);
+    expect(result.title).toBe('Mit dem Auto zur Werkstatt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16));
+  });
+
+  it('"am"/"um" fallen als Bindewörter an der Span-Grenze, "in der Klinik" bleibt', () => {
+    const result = parseTaskInput('Zahnarzt am Dienstag um 12 in der Klinik', NOW);
+    expect(result.title).toBe('Zahnarzt in der Klinik');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('"bei Dr." ist keines der Bindewörter und bleibt im Titel', () => {
+    const result = parseTaskInput('Anruf bei Dr. Meier morgen 9 Uhr', NOW);
+    expect(result.title).toBe('Anruf bei Dr. Meier');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 9, 0));
+  });
+
+  it('"Termin"/"Aufgabe" mitten im Satz bleiben stehen, keine Wort-Blacklist mehr', () => {
+    const result = parseTaskInput('morgen 14 Uhr Termin mit Termin-Chef besprechen', NOW);
+    expect(result.title).toBe('Termin mit Termin-Chef besprechen');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+});
+
+describe('parseTaskInput — #687 AK4: Kommandopräfixe fallen, Inhalt bleibt', () => {
+  it('"neue Aufgabe:" fällt komplett samt Doppelpunkt', () => {
+    const result = parseTaskInput('neue Aufgabe: Küche putzen', NOW);
+    expect(result.title).toBe('Küche putzen');
+    expect(result.dueAt).toBeNull();
+  });
+
+  it('"bitte" am Satzanfang fällt, das restliche Datum/Zeit bleibt erhalten', () => {
+    const result = parseTaskInput('bitte morgen um 9 Anna anrufen', NOW);
+    expect(result.title).toBe('Anna anrufen');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 9, 0));
+  });
+
+  it('"erinnere mich" fällt, "daran" fällt als Bindewort direkt nach dem Datum-Span', () => {
+    const result = parseTaskInput('erinnere mich morgen daran, den Müll rauszubringen', NOW);
+    expect(result.title).toBe('den Müll rauszubringen');
+    expect(result.dueAt).toBe(iso(2024, 1, 16));
+  });
+
+  it('"Termin" fällt, wenn unmittelbar (auch über Satzzeichen hinweg) ein Datum-Span folgt', () => {
+    const result = parseTaskInput('Termin, morgen, 14 Uhr, Zahnarzt.', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+
+  it('"Termin" + Datum direkt gefolgt, "beim" fällt nach dem Zeit-Span', () => {
+    const result = parseTaskInput('Termin morgen um 12 beim Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('"Titel X" ist eine explizite Titelangabe und schlägt alles andere', () => {
+    const result = parseTaskInput('erstelle einen Termin für morgen um 12, Titel Doktor', NOW);
+    expect(result.title).toBe('Doktor');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
   });
 });

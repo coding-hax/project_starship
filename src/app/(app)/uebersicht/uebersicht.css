@@ -66,3 +66,15 @@
 .uebersicht-capture__button:active {
   opacity: 0.85;
 }
+
+/* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe
+ * absichtlich im Feld stehen bleibt, statt das Sheet zu schließen. */
+.uebersicht-capture__notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}

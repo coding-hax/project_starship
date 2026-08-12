@@ -5,6 +5,7 @@ import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
+import { SWATCH_PALETTE } from '@/ui/swatch-palette';
 import type { HabitSchedule, HabitView } from './use-habits';
 
 const CREATE_LABEL = 'Routine anlegen';
@@ -36,26 +37,18 @@ const TARGETS: { value: '1' | '2' | '3' | '4' | '5' | '6'; label: string }[] = [
 ];
 
 /**
- * Ten swatches (issue #658, up from the original four of issue #102): the four
- * area colours already audited for contrast and dark mode, `--area-activities`
- * (the one area colour missing from the original set), and five new
- * `--swatch-*` tokens reserved for free-choice colours (docs/DESIGN_SYSTEM.md).
- * Order is binding — #660 reuses this exact palette for settings categories.
- * `''` is the sentinel for "no override" — `color: null` on the row, which the
- * list resolves to `--area-habits` (the AC's default).
+ * Derived from `SWATCH_PALETTE` (src/ui/swatch-palette.ts, issue #658), shared
+ * with the settings category-colours panel (issue #660). Only the first entry
+ * (`--area-habits`) differs here: `''` is the sentinel for "no override" —
+ * `color: null` on the row, which the list resolves to `--area-habits` anyway,
+ * so it doubles as this editor's "Standard" option.
  */
-const COLORS: { value: string; token: string; label: string }[] = [
-  { value: '', token: '--area-habits', label: 'Grün (Standard)' },
-  { value: '--area-tasks', token: '--area-tasks', label: 'Koralle' },
-  { value: '--area-events', token: '--area-events', label: 'Teal' },
-  { value: '--area-journal', token: '--area-journal', label: 'Violett' },
-  { value: '--area-activities', token: '--area-activities', label: 'Blau' },
-  { value: '--swatch-rose', token: '--swatch-rose', label: 'Rosé' },
-  { value: '--swatch-amber', token: '--swatch-amber', label: 'Bernstein' },
-  { value: '--swatch-lime', token: '--swatch-lime', label: 'Limette' },
-  { value: '--swatch-sky', token: '--swatch-sky', label: 'Himmelblau' },
-  { value: '--swatch-magenta', token: '--swatch-magenta', label: 'Magenta' },
-];
+const COLORS: { value: string; token: string; label: string }[] = SWATCH_PALETTE.map(
+  (swatch, index) =>
+    index === 0
+      ? { value: '', token: swatch.token, label: `${swatch.label} (Standard)` }
+      : { value: swatch.token, token: swatch.token, label: swatch.label },
+);
 
 export interface HabitEditorProps {
   open: boolean;

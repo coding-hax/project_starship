@@ -211,7 +211,8 @@ export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
-        'DELETE FROM reminder_prefs; DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
+        'DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
+        'DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs/habit_freezes first — both reference habits via a foreign key.
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         // event_exceptions first — it references events via a foreign key (issue #553).
@@ -250,7 +251,8 @@ export async function resetDatabase() {
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         'DELETE FROM garmin_activities; ' +
-        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM journal_entries; ' +
+        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
+        'DELETE FROM journal_entries; ' +
         'DELETE FROM journal_keys; ' +
         // event_exceptions first — it references events via a foreign key (issue #553).
         'DELETE FROM event_exceptions; DELETE FROM events;',
@@ -284,6 +286,23 @@ export async function seedReminderPref(kind: string, enabled: boolean, times: st
        VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)
        ON CONFLICT (kind) DO UPDATE SET enabled = $3, times = $4`,
       [randomUUID(), kind, enabled, JSON.stringify(times)],
+    ),
+  );
+}
+
+/**
+ * Seeds a `category_colors` row the way a real client upsert would leave it
+ * (src/db/sync-tables.ts, issue #660) — same shape `useCategoryColors`'s
+ * `setColor` produces, so a spec can assert AC9's offline→online path without
+ * driving the panel's own UI first.
+ */
+export async function seedCategoryColor(category: string, color: string): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO category_colors (id, updated_at, deleted_at, synced_at, sync_seq, category, color)
+       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3)
+       ON CONFLICT (category) DO UPDATE SET color = $3`,
+      [randomUUID(), category, color],
     ),
   );
 }
@@ -362,7 +381,8 @@ declare global {
           | 'journal_entries'
           | 'journal_keys'
           | 'events'
-          | 'event_exceptions';
+          | 'event_exceptions'
+          | 'category_colors';
         rowId?: string;
         op: 'upsert' | 'delete' | 'restore';
         payload?: Record<string, unknown>;

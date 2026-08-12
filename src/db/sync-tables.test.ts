@@ -359,6 +359,32 @@ describe('missingRequired for event_exceptions', () => {
   });
 });
 
+describe('writableFields for category_colors (issue #660)', () => {
+  it('keeps category and color, drops fields a client must never set', () => {
+    const fields = writableFields('category_colors', {
+      category: 'arbeit',
+      color: '--swatch-sky',
+      id: 'attacker-chosen',
+      syncSeq: 999,
+    });
+
+    expect(fields).toEqual({ category: 'arbeit', color: '--swatch-sky' });
+    expect(fields).not.toHaveProperty('id');
+    expect(fields).not.toHaveProperty('syncSeq');
+  });
+});
+
+describe('missingRequired for category_colors', () => {
+  it('passes when category and color are present', () => {
+    expect(missingRequired('category_colors', { category: 'arbeit', color: '--swatch-sky' })).toEqual([]);
+  });
+
+  it('names what a create is missing', () => {
+    expect(missingRequired('category_colors', { category: 'arbeit' })).toEqual(['color']);
+    expect(missingRequired('category_colors', {})).toEqual(['category', 'color']);
+  });
+});
+
 describe('events/event_exceptions time-model columns (issue #552 AC5/AC6)', () => {
   it('starts_at/ends_at are timestamptz, start_date/end_date are a bare date — never the same column type', () => {
     const columns = getTableColumns(SYNC_REGISTRY.events.table as PgTable);

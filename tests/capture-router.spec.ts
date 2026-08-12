@@ -105,7 +105,9 @@ test('AC2: Freitext ohne erkanntes Datum ergibt einen ganztägigen Termin auf de
   await page.waitForURL('**/kalender');
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('mit Chef');
+  // "Meeting" bleibt im Titel stehen (R3, #687 AK3): nur Datum-/Zeit-Spans und
+  // angrenzende Bindewörter werden entfernt, keine Vokabular-Blacklist mehr.
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Meeting mit Chef');
   await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
     'aria-checked',
     'true',
