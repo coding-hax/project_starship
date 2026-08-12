@@ -34,7 +34,15 @@ import {
   prSquashMerge,
   reopenFalselyClosedIssues,
 } from './pr.js';
-import { catchupExitCode, catchupFailEscalated, catchupFailReason, catchupFailReset, catchupStdout, prCatchUpBehind } from './catchup.js';
+import {
+  catchupExitCode,
+  catchupFailEscalated,
+  catchupFailReason,
+  catchupFailReset,
+  catchupStdout,
+  prCatchUpBehind,
+  worktreeIndexOk,
+} from './catchup.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { pickTicket, queueNext } from './select.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
@@ -142,6 +150,12 @@ export const commands: Record<string, CommandHandler> = {
   'catchup-fail-reset': (ctx, args) => {
     catchupFailReset(Number(args[0]), ctx.state);
     return '';
+  },
+  // AK3 (#665): Guard vor dem Bau-Lauf -- quer stehender Index (Vorfallstyp
+  // "geladene Waffe") bricht den Lauf ab, statt den Revert mitzucommitten.
+  'worktree-index-ok': (ctx, args) => {
+    const check = worktreeIndexOk(args[0] ?? '', ctx.git);
+    return check.ok ? '' : { exitCode: 1, stdout: check.reason };
   },
   // Exit 0 = gemergt bzw. Auto-Merge aktiviert, Exit 1 = gescheitert (#217 AC4).
   'pr-squash-merge': (ctx, args) => (prSquashMerge(args[0] ?? '', ctx.gh) ? '' : null),
