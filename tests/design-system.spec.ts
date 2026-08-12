@@ -171,7 +171,11 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
     await registerPasskey(page);
     await page.goto('/uebersicht');
 
-    const icon = page.locator('.app-header__icon svg');
+    // Auf /uebersicht rendern ZWEI Header: der Chrome-Header aus dem Layout
+    // (auf Mobile display:none) und der Inline-Header der Seite (sichtbar).
+    // Beide tragen `.app-header__icon svg` — auf den sichtbaren Inline-Header
+    // eingrenzen, sonst greift Playwrights Strict-Mode bei zwei Treffern.
+    const icon = page.locator('.app-header--inline .app-header__icon svg');
     const bbox = await icon.boundingBox();
     expect(bbox?.width).toBe(26);
     expect(bbox?.height).toBe(26);

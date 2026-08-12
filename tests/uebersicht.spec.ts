@@ -616,22 +616,26 @@ test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig
   expect(overflow).toBe(0);
 });
 
-test('AC6 (issue #651): kein Screen bekommt horizontalen Überlauf bei 375px', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-
-  for (const path of [
-    '/uebersicht',
-    '/einstellungen',
-    '/aufgaben',
-    '/kalender',
-    '/journal',
-    '/aktivitaeten',
-    '/routinen',
-  ]) {
+// Ein Test je Route statt einer Schleife in einem Test: jede Navigation bekommt
+// ihr eigenes 30s-Zeitbudget (im Dev-Server kompiliert jede Route beim ersten
+// Aufruf on-demand) und ein roter Screen ist sofort namentlich zuzuordnen.
+for (const path of [
+  '/uebersicht',
+  '/einstellungen',
+  '/aufgaben',
+  '/kalender',
+  '/journal',
+  '/aktivitaeten',
+  '/routinen',
+]) {
+  test(`AC6 (issue #651): ${path} bekommt keinen horizontalen Überlauf bei 375px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.goto(path);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow, `${path} hat horizontalen Überlauf`).toBe(0);
-  }
-});
+  });
+}
