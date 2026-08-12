@@ -213,7 +213,7 @@ export function dateKeyDiff(a: string, b: string): number {
 
 /**
  * `dateKey` shifted by `delta` calendar months (issue #560's ICS-abo horizon
- * window) — `setUTCMonth` clamps a day that doesn't exist in the target month
+ * window) — `setUTCMonth` rolls a day that doesn't exist in the target month
  * (e.g. 31 Jan + 1 month) forward into the month after, same "never silently
  * shift within the same call" caveat as `Date` itself; the horizon window this
  * feeds only cares about the month boundary, not the exact day.
@@ -222,6 +222,24 @@ export function addMonths(dateKey: string, delta: number): string {
   const date = parseDateKey(dateKey);
   date.setUTCMonth(date.getUTCMonth() + delta);
   return formatDateKey(date);
+}
+
+/**
+ * `dateKey` shifted by `delta` months, same day-of-month, clamped to the
+ * target month's last day — 31.01. + 1 → 28.02. (29.02. in a leap year),
+ * never rolling over into the following month, unlike `addMonths` above
+ * (issue #662, S5 of #622, the decision that #630's `‹ ›` month-buttons will
+ * reuse this same helper for).
+ */
+export function addMonthsClamped(dateKey: string, delta: number): string {
+  const date = parseDateKey(dateKey);
+  const day = date.getUTCDate();
+  const targetMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1));
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  targetMonth.setUTCDate(Math.min(day, lastDayOfTargetMonth));
+  return formatDateKey(targetMonth);
 }
 
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */

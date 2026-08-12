@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   addMonths,
+  addMonthsClamped,
   agendaForDay,
   allDayEventsForDay,
   berlinMinutesOfDay,
@@ -197,6 +198,28 @@ describe('addMonths', () => {
 
   it('rolls forward across a year boundary', () => {
     expect(addMonths('2026-12-15', 1)).toBe('2027-01-15');
+  });
+});
+
+describe('addMonthsClamped', () => {
+  it('clamps to the shorter month\'s last day when the source day-of-month overflows it', () => {
+    expect(addMonthsClamped('2026-01-31', 1)).toBe('2026-02-28');
+  });
+
+  it('lands on 29 February in a leap year instead of clamping to the 28th', () => {
+    expect(addMonthsClamped('2028-01-31', 1)).toBe('2028-02-29');
+  });
+
+  it('rolls forward across a year boundary, same day-of-month', () => {
+    expect(addMonthsClamped('2026-12-15', 1)).toBe('2027-01-15');
+  });
+
+  it('rolls backward across a year boundary, same day-of-month', () => {
+    expect(addMonthsClamped('2026-01-15', -1)).toBe('2025-12-15');
+  });
+
+  it('clamps backward too — 31 March minus one month has no 31st in February', () => {
+    expect(addMonthsClamped('2026-03-31', -1)).toBe('2026-02-28');
   });
 });
 
