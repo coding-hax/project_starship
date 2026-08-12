@@ -33,6 +33,18 @@
   --accent: var(--area-tasks);
   --accent-fg: oklch(99% 0.005 85);
 
+  /* --- free-choice swatch palette: user-picked colours (issue #658), distinct
+     from --area-* (orientation, one per area) and --cat-* (accents *within*
+     Termine). First used by the habit colour picker; #660 reuses the same
+     family for settings categories, so the ten hues and their order are
+     binding there too. Hues 12/42/75/118/148/195/228/260/305/335 (the five
+     here plus the five --area-* hues) space every neighbour 30-47° apart. --- */
+  --swatch-rose: oklch(66% 0.15 12);
+  --swatch-amber: oklch(74% 0.13 75);
+  --swatch-lime: oklch(72% 0.14 118);
+  --swatch-sky: oklch(68% 0.12 228);
+  --swatch-magenta: oklch(64% 0.16 335);
+
   /* --- event category colours: accents *within* the Termine area, not a second
      set of primaries — all clustered around --area-events' hue (195), same
      lightness/chroma as the area colours (issue #553). --- */
@@ -143,6 +155,12 @@
     --area-habits: oklch(72% 0.13 148);
     --area-activities: oklch(70% 0.14 260);
 
+    --swatch-rose: oklch(72% 0.13 12);
+    --swatch-amber: oklch(80% 0.11 75);
+    --swatch-lime: oklch(78% 0.12 118);
+    --swatch-sky: oklch(74% 0.1 228);
+    --swatch-magenta: oklch(70% 0.14 335);
+
     --cat-privat: oklch(72% 0.1 170);
     --cat-arbeit: oklch(72% 0.1 210);
     --cat-gesundheit: oklch(72% 0.1 155);
@@ -174,6 +192,12 @@
   --area-journal: oklch(70% 0.13 305);
   --area-habits: oklch(72% 0.13 148);
   --area-activities: oklch(70% 0.14 260);
+
+  --swatch-rose: oklch(72% 0.13 12);
+  --swatch-amber: oklch(80% 0.11 75);
+  --swatch-lime: oklch(78% 0.12 118);
+  --swatch-sky: oklch(74% 0.1 228);
+  --swatch-magenta: oklch(70% 0.14 335);
 
   --cat-privat: oklch(72% 0.1 170);
   --cat-arbeit: oklch(72% 0.1 210);
