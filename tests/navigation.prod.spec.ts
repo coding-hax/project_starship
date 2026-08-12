@@ -80,12 +80,27 @@ test.describe('angemeldet', () => {
     // clicks below free: Next serves those routes from its in-memory router cache.
     // They are NOT in the service worker's Cache Storage — that holds only the
     // precached shell (verified in #683) — so there is nothing to read back from
-    // `caches` here. Registered before the goto, so the prefetches belonging to the
-    // page this navigation replaces are counted too.
+    // `caches` here.
     const prefetched = new Set<string>();
+    // Cleared on every main-frame navigation, and that is the whole point: a
+    // prefetch belongs to ONE document. `registerPasskey` already loaded
+    // /uebersicht, so the goto below replaces that page and throws its router cache
+    // away with it. Counting the prefetches of the replaced page would satisfy this
+    // wait while the current page still has nothing cached — the same class of
+    // false signal as `networkidle`, only quieter. `framenavigated` commits before
+    // the new document fetches anything, so everything counted after it is the
+    // current page's.
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) prefetched.clear();
+    });
     page.on('response', (response) => {
       const url = new URL(response.url());
-      if (url.searchParams.has('_rsc') && response.ok()) prefetched.add(url.pathname);
+      // `status < 400` rather than `ok()`: the (app) segment is statically
+      // prerendered (#599), so a navigation can revalidate a prefetch it already
+      // holds and get a 304 — for which `ok()` is false, while the router does have
+      // the payload. Cancelled prefetches never reach this handler at all (no
+      // response event), which is exactly what must not count.
+      if (url.searchParams.has('_rsc') && response.status() < 400) prefetched.add(url.pathname);
     });
 
     await page.goto('/uebersicht');
