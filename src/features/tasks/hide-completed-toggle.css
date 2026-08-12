@@ -1,0 +1,31 @@
+/* No colour transition: static, token-driven colour needs no motion to begin
+   with (same call as task-list.css's priority dot/due label) — `aria-pressed`
+   flips the surface/icon colour outright. */
+.hide-completed-toggle {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.hide-completed-toggle:hover {
+  color: var(--text);
+}
+
+.hide-completed-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Aktiver Zustand: schwach deckende Akzentfläche, dasselbe
+   `color-mix`-Muster wie der Nest-Drop-Preview in task-list.css. */
+.hide-completed-toggle[aria-pressed='true'] {
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+  color: var(--accent);
+}

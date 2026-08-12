@@ -25,7 +25,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
   (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Termine →
   Aufgaben → Aktivitäten → Gewohnheiten)
-- `(app)/aufgaben/` — Aufgaben (leer bis M1)
+- `(app)/aufgaben/page.tsx` — Kopfzeile mit `<HideCompletedToggle/>` + `<TaskList/>` + `<QuickAddTask/>`
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
@@ -84,7 +84,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `task-list.tsx` / `task-list.css` / `tasks-overview-section.tsx` — Aufgabenliste (gruppiert, Drag-Drop) + `OverviewSection`
 - `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
-- `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo)
+- `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `visibleTaskNodes` filtert erledigte (issue #654)
+- `use-hide-completed-tasks.ts` / `hide-completed-toggle.tsx` / `.css` — Geräte-lokale Präferenz „erledigte ausblenden" (issue #654), Muster wie `use-capture-prefs.ts`
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
 - `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `extractDateTimeSlot`/`cleanTitle` sind die Bausteine für `src/features/capture/`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
