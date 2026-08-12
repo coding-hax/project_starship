@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SectionCard } from '@/ui/section-card';
 import { downloadExport } from './export';
 
 type Status = 'idle' | 'exporting' | 'error';
@@ -24,8 +25,7 @@ export function ExportPanel() {
   }
 
   return (
-    <section className="export">
-      <h2>Daten</h2>
+    <SectionCard title="Export" className="export">
       <p className="export__hint">
         Lädt eine JSON-Datei mit allen lokalen Datensätzen herunter, inklusive gelöschter
         Einträge. Funktioniert auch offline — die Daten liegen bereits auf diesem Gerät.
@@ -43,6 +43,6 @@ export function ExportPanel() {
           Export fehlgeschlagen. Bitte erneut versuchen.
         </p>
       )}
-    </section>
+    </SectionCard>
   );
 }

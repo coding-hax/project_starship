@@ -196,3 +196,81 @@ test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohn
   expect(['left', 'start']).toContain(textAlign);
   expect(fontSize).toBe(textTitle);
 });
+
+test('AC1 (issue #653): drei Gruppenüberschriften sind sichtbar und stehen in der erwarteten Reihenfolge', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const groupTitles = page.locator('.einstellungen__group-title');
+  await expect(groupTitles).toHaveText(['Gerät', 'Module', 'Daten']);
+});
+
+test('AC2 (issue #653): ein Kartentitel rendert kleiner als seine Gruppenüberschrift', async ({ page }) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const groupTitle = page.locator('.einstellungen__group-title').first();
+  const cardTitle = page.locator('.section-card__title').first();
+  await expect(groupTitle).toBeVisible();
+  await expect(cardTitle).toBeVisible();
+
+  const [groupSize, cardSize] = await Promise.all([
+    groupTitle.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+    cardTitle.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+  ]);
+  expect(cardSize).toBeLessThan(groupSize);
+});
+
+test('AC3 (issue #653): das Export-Panel liegt in einer .section-card', async ({ page }) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const exportCard = page.locator('.section-card.export');
+  await expect(exportCard).toBeVisible();
+  await expect(exportCard.getByRole('button', { name: 'Alles exportieren' })).toBeVisible();
+});
+
+test('AC4 (issue #653): .row trennt mit --border-faint statt --border', async ({ page }) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const { rowColor, faintColor, borderColor } = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    document.body.appendChild(probe);
+    probe.style.borderBottom = '1px solid var(--border-faint)';
+    const faintColor = getComputedStyle(probe).borderBottomColor;
+    probe.style.borderBottom = '1px solid var(--border)';
+    const borderColor = getComputedStyle(probe).borderBottomColor;
+    probe.remove();
+    const row = document.querySelector('.row');
+    return { rowColor: row ? getComputedStyle(row).borderBottomColor : null, faintColor, borderColor };
+  });
+
+  expect(rowColor).toBe(faintColor);
+  expect(rowColor).not.toBe(borderColor);
+});
+
+test('AC6 (issue #653): ein abgeschaltetes Modul verbirgt sein Panel, eine leer gewordene Gruppe verliert auch ihre Überschrift', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const groupTitles = page.locator('.einstellungen__group-title');
+  await expect(groupTitles).toHaveText(['Gerät', 'Module', 'Daten']);
+
+  // Journal ist eines von mehreren Panels der Gruppe „Module" — nur das Panel
+  // verschwindet, die Gruppenüberschrift bleibt.
+  await expect(page.getByRole('heading', { name: 'Journal', level: 2 })).toBeVisible();
+  await page.getByRole('switch', { name: 'Journal' }).click();
+  await expect(page.getByRole('heading', { name: 'Journal', level: 2 })).toHaveCount(0);
+  await expect(groupTitles).toHaveText(['Gerät', 'Module', 'Daten']);
+
+  // Export ist das einzige Panel der Gruppe „Daten" — mit ihm verschwindet auch
+  // die Gruppenüberschrift.
+  await page.getByRole('switch', { name: 'Export' }).click();
+  await expect(page.locator('.section-card.export')).toHaveCount(0);
+  await expect(groupTitles).toHaveText(['Gerät', 'Module']);
+});
