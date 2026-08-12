@@ -87,7 +87,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `visibleTaskNodes` filtert erledigte (issue #654)
 - `use-hide-completed-tasks.ts` / `hide-completed-toggle.tsx` / `.css` — Geräte-lokale Präferenz „erledigte ausblenden" (issue #654), Muster wie `use-capture-prefs.ts`
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
-- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `extractDateTimeSlot`/`cleanTitle` sind die Bausteine für `src/features/capture/`
+- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `analyzeText` (Span+Ranking, issue #687) ist der gemeinsame Baustein für `src/features/capture/`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
 - `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor` (issue #618, #619)
 - `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen` (#619)
@@ -95,8 +95,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/features/capture
 
 - `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner (#620), eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
-- `local-recognizer.ts` — Klassifikator (Punktzahl je Art) + Titelbildung, reine Funktion, kein React/Dexie
-- `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet)
+- `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText` (issue #687)
+- `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer (issue #687)
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
 - `route-capture.ts` — die eine Stelle für „wohin damit" (#619): ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
@@ -225,6 +225,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (issue #618)
 - `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Gewohnheit abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
+- `capture-parser.spec.ts` — Span+Ranking-Grammatik (issue #687, Teil 1 von 3 des Parser-Umbaus): ein Test je AK1–AK7 + Offline-Pfad
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)

@@ -189,12 +189,14 @@ export function QuickAddTask() {
     // erkannten Fälligkeit vorbefüllt und Fokus im leeren Titelfeld (Sheet-eigenes
     // `initialFocusRef`).
     if (item.title.trim() === '') {
-      setShowMore(item.dueAt !== null);
-      setNotes('');
-      setDueAt(isoToLocalInput(item.dueAt));
-      setPriority(0);
-      setParentId(NO_PARENT);
-      setOpen(true);
+      queueMicrotask(() => {
+        setShowMore(item.dueAt !== null);
+        setNotes('');
+        setDueAt(isoToLocalInput(item.dueAt));
+        setPriority(0);
+        setParentId(NO_PARENT);
+        setOpen(true);
+      });
       return;
     }
     queueMicrotask(() => void applyParsed(item));

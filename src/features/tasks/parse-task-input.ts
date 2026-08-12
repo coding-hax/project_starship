@@ -378,12 +378,3 @@ export function parseTaskInput(text: string, now: Date = new Date()): ParsedTask
   const { date, title } = analyzeText(text, now);
   return { title, dueAt: date ? date.toISOString() : null };
 }
-
-/**
- * Datum-/Uhrzeit-Slot allein, ohne Titel-Bereinigung — der Erkennungs-Baustein, den
- * issue #621 (Klassifikator) wiederverwendet statt die Grammatik zu duplizieren.
- */
-export function extractDateTimeSlot(text: string, now: Date = new Date()): DateTimeSlot {
-  const { date, hasExplicitTime } = analyzeText(text, now);
-  return { date, hasExplicitTime };
-}
