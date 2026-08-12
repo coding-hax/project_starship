@@ -49,6 +49,9 @@ in die Bottom-Nav oder auf Übersicht — nicht in ein neues Header-Element.
 ## Desktop
 
 Dieselbe App, breiter — abgeleitet aus dem Hochformat, nie ein zweiter Entwurf
-(Leitsatz, `docs/DESIGN_SYSTEM.md`). Bottom-Nav wird zur **Sidebar**, Listen
-werden mehrspaltig. Zusätzlich Tastaturkürzel (`n` = neu, `/` = suchen, `j`/`k`
-= navigieren).
+(Leitsatz, `docs/DESIGN_SYSTEM.md`). Bottom-Nav wird ab 768px zur **Sidebar**,
+dieselbe Reihenfolge, kein zweiter Entwurf.
+
+Keine eigene Tastaturebene: Kürzel bleiben lokal an der Komponente, wo ARIA
+sie verlangt — Pfeiltasten innerhalb des `segmented-control`, Escape im
+offenen Sheet.
