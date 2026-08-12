@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { consumeCaptureDraft } from '@/features/tasks/capture-draft-store';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
 import { OfflineNotice } from '@/ui/offline-notice';
@@ -62,6 +63,34 @@ export function CalendarView() {
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
+
+  // Konsumiert einen `event`-Draft, den der Capture-Router auf /uebersicht
+  // erkannt hat (issue #619) — genau einmal pro Mount, gleiches Muster wie
+  // quick-add.tsx's Task-Pendant: `queueMicrotask` schiebt `setEditorState`
+  // hinter einen echten Tick, statt synchron im Effekt-Body selbst Zustand zu
+  // setzen. Läuft unabhängig von `today`/`selectedDay` (`EventEditor` selbst
+  // rendert erst, sobald beide bekannt sind).
+  useEffect(() => {
+    const batch = consumeCaptureDraft();
+    const item = batch?.items[0];
+    if (item?.kind === 'event') {
+      queueMicrotask(() =>
+        setEditorState({
+          mode: 'create',
+          event: null,
+          occurrence: null,
+          prefill: {
+            title: item.title,
+            allDay: item.allDay,
+            startsAt: item.startsAt,
+            endsAt: item.endsAt,
+            startDate: item.startDate,
+            endDate: item.endDate,
+          },
+        }),
+      );
+    }
+  }, []);
 
   // Merged only for display (CalendarStrip/EventAgenda) — `openEdit` below keeps
   // looking up `events` alone, so a subscribed item can never resolve to an
