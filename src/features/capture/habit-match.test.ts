@@ -39,4 +39,9 @@ describe('matchHabit', () => {
     const result = matchHabit('Sport gemacht', []);
     expect(result).toEqual({ matched: false, habitId: null, confidence: 'low' });
   });
+
+  it('#687 AK6: Verneinung ("nicht") kassiert einen sonst eindeutigen Treffer', () => {
+    const result = matchHabit('Sport heute nicht gemacht', HABITS);
+    expect(result).toEqual({ matched: false, habitId: null, confidence: 'low' });
+  });
 });
