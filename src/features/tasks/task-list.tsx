@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from '@/local/outbox';
+import { OfflineNotice } from '@/ui/offline-notice';
 import { useBlockReady } from '@/ui/overview-ready';
 import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
+import { useOnline } from '@/ui/use-online';
 import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
@@ -29,29 +31,6 @@ type TaskRow =
   | { id: string; kind: 'flat'; task: TaskView }
   | { id: string; kind: 'parent'; node: TaskNode }
   | { id: string; kind: 'child'; node: TaskNode; child: TaskView };
-
-function subscribeToOnlineStatus(callback: () => void): () => void {
-  window.addEventListener('online', callback);
-  window.addEventListener('offline', callback);
-  return () => {
-    window.removeEventListener('online', callback);
-    window.removeEventListener('offline', callback);
-  };
-}
-
-/**
- * `navigator.onLine` does not exist during SSR. Assuming "online" there and letting
- * `useSyncExternalStore` correct it after mount — rather than branching on
- * `typeof window` in a `useState` initializer — is what keeps the first client
- * render identical to the server's, so hydration never has to discard and redo it.
- */
-function useOnline(): boolean {
-  return useSyncExternalStore(
-    subscribeToOnlineStatus,
-    () => navigator.onLine,
-    () => true,
-  );
-}
 
 export interface TaskListProps {
   /**
@@ -213,11 +192,10 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   return (
     <>
       {!online && (
-        // role="status" implies aria-live="polite" — a calm note, not an alert.
-        <p role="status" className="task-list__offline">
+        <OfflineNotice>
           Offline — deine Aufgaben sind lokal gespeichert und werden synchronisiert, sobald du
           wieder online bist.
-        </p>
+        </OfflineNotice>
       )}
 
       {tasks === undefined ? null : presenceRows.length === 0 ? (
