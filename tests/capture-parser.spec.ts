@@ -96,7 +96,10 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(dueToday));
-  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+  // Kein "Abbrechen"-Button im Event-Editor (event-editor.tsx) — das <dialog> schließt
+  // nativ über ESC (sheet.tsx).
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
 
   // 9 Uhr liegt bereits hinter der fixen Uhrzeit -> morgen.
   await page.goto('/uebersicht');
@@ -187,8 +190,11 @@ test('AK6: Verneinung und fehlender Habit-Treffer legen nichts an — Meldung "K
   await expect(captureTitleField(page)).toHaveValue('Wäsche erledigt');
   await expect(page.getByText('Keiner Gewohnheit zugeordnet')).toBeVisible();
 
+  // Einziger Outbox-Eintrag bleibt das Anlegen der Test-Gewohnheit selbst (seedHabit
+  // oben) — weder ein Abhaken (habit_logs) noch eine Aufgabe (tasks) kommt dazu.
   const entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries).toHaveLength(0);
+  expect(entries.some((entry) => entry.table === 'habit_logs')).toBe(false);
+  expect(entries.some((entry) => entry.table === 'tasks')).toBe(false);
 });
 
 test('AK7: Klassifikation bleibt unverändert grün — neuer Korpus-Fall "nicht vergessen" landet als Aufgabe ohne Bindewort-Verlust', async ({
