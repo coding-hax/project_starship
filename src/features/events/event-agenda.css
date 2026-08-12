@@ -118,6 +118,12 @@
   outline-offset: -2px;
 }
 
+.event-agenda__item-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
 .event-agenda__item-time {
   color: var(--text-muted);
   font-size: var(--text-meta);
