@@ -5,9 +5,6 @@ import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb
 /**
  * `OverviewBlock` (issue #652): einheitliche Modulköpfe auf /uebersicht + Ring
  * in der Titelzeile. Je Akzeptanzkriterium ein Test, wie im Ticket gefordert.
- *
- * Wetter fehlt hier bewusst (noch) — die Bereichsfarbe für dieses Modul ist
- * offen (Kommentar am Ticket), das AK2-h2 dafür kommt im Folgelauf dazu.
  */
 
 const NOW = '2026-07-18T12:00:00.000Z';
@@ -52,11 +49,14 @@ test.beforeEach(async ({ page }) => {
 /* AK2: einheitliche h2 je Modul                                              */
 /* -------------------------------------------------------------------------- */
 
-test('Aufgaben, Termine und Routinen haben auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({
+test('Wetter, Aufgaben, Termine und Routinen haben auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
+  // Wetter geht hier über den Fehlerzustand (open-meteo im beforeEach oben
+  // aborted) — die Überschrift muss auch dann stehen, nicht nur beim Erfolg.
+  await expect(page.getByRole('heading', { name: 'Wetter', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Termine', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
@@ -109,12 +109,15 @@ test('der Überschriftenpunkt trägt die Bereichsfarbe des jeweiligen Moduls (AK
   const routinenDot = page
     .getByRole('heading', { name: 'Routinen', level: 2 })
     .locator('.overview-block__dot');
+  const wetterDot = page.getByRole('heading', { name: 'Wetter', level: 2 }).locator('.overview-block__dot');
 
-  const [tasksToken, habitsToken, aufgabenColor, routinenColor] = await Promise.all([
+  const [tasksToken, habitsToken, weatherToken, aufgabenColor, routinenColor, wetterColor] = await Promise.all([
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-tasks').trim()),
     page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-habits').trim()),
+    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-weather').trim()),
     aufgabenDot.evaluate((el) => getComputedStyle(el).backgroundColor),
     routinenDot.evaluate((el) => getComputedStyle(el).backgroundColor),
+    wetterDot.evaluate((el) => getComputedStyle(el).backgroundColor),
   ]);
 
   const toRgb = async (token: string) =>
@@ -129,7 +132,9 @@ test('der Überschriftenpunkt trägt die Bereichsfarbe des jeweiligen Moduls (AK
 
   expect(aufgabenColor).toBe(await toRgb(tasksToken));
   expect(routinenColor).toBe(await toRgb(habitsToken));
+  expect(wetterColor).toBe(await toRgb(weatherToken));
   expect(aufgabenColor).not.toBe(routinenColor);
+  expect(wetterColor).not.toBe(routinenColor);
 });
 
 /* -------------------------------------------------------------------------- */

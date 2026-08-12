@@ -7,7 +7,8 @@
    * include it, so the caption's appearance/disappearance can't shift anything
    * that comes after this section (issue #155). */
   position: relative;
-  margin-bottom: var(--space-6);
+  /* Block-to-block spacing now comes from `.overview-block` (issue #652) — its
+   * own `margin-bottom` would double up with the wrapper's. */
 }
 
 .weather-forecast__location {
