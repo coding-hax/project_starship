@@ -117,19 +117,6 @@ export function CalendarView() {
             onExpandChange={setExpanded}
           />
         )}
-        {today !== null && selectedDay !== null && (
-          <div className="calendar-view__today-chip-slot">
-            {selectedDay !== today && (
-              <button
-                type="button"
-                className="calendar-view__today-chip"
-                onClick={() => setSelectedDayOverride(today)}
-              >
-                Heute
-              </button>
-            )}
-          </div>
-        )}
       </header>
       {!online && (
         <OfflineNotice>
