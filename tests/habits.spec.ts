@@ -95,6 +95,41 @@ test('ein designter Leerzustand statt eines leeren Screens', async ({ page }) =>
 });
 
 /* -------------------------------------------------------------------------- */
+/* issue #645: Offline-Notiz                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('die Routinen bleiben offline sichtbar, mit einer ruhigen Notiz statt eines Fehlers (issue #645 AC1)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Bleibt da', schedule: 'daily', color: null, archivedAt: null });
+  await expect(habitItems(page).filter({ hasText: 'Bleibt da' })).toBeVisible();
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText('Offline');
+  await expect(habitItems(page).filter({ hasText: 'Bleibt da' })).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz bei den Routinen verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #645 AC2)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/routinen');
+
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Habit mit Name + Schedule anlegen; erscheint in der Liste              */
 /* -------------------------------------------------------------------------- */
 
