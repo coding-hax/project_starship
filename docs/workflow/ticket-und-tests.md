@@ -40,7 +40,6 @@ Ein Issue darf erst nach `Ready`, wenn es enthält:
 - **Ziel** in einem Satz (was soll danach möglich sein)
 - **Akzeptanzkriterien** im Given/When/Then-Format
 - **Nicht-Ziele** (was in diesem Ticket ausdrücklich nicht passiert)
-- **Betroffener Milestone**
 
 Ein Ticket mit dem Label `plan` ist per Definition **nicht** ready — ihm fehlt
 der Plan aus dem vorherigen Abschnitt (Schrittfolge, Testplan, Risiko/Rückweg,
@@ -75,11 +74,10 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
 
 - Keine Wiederholungsregeln (eigenes Ticket)
 - Keine Anhänge
-
-## Milestone
-
-M1 – Aufgaben
 ```
+
+Kein Milestone-Feld: das Repo führt keine GitHub-Milestones. Wo ein Ticket in
+der Roadmap steht, sagt `docs/VISION.md` — und nur die.
 
 Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests**.
 Was nicht als Kriterium dasteht, wird nicht gebaut.
@@ -195,7 +193,7 @@ als Nachweisform ausgeschlossen.
 ## Nützliche Befehle
 
 ```bash
-gh issue list --milestone "M1 – Aufgaben" --state open
+gh issue list --label ready --state open
 gh issue view 42
 gh pr create --fill --title "feat(tasks): quick add — Closes #42"
 gh pr checks           # CI-Status

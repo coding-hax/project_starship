@@ -42,8 +42,3 @@ assignees: ''
 <!-- Was in diesem Ticket ausdrücklich NICHT passiert. -->
 
 -
-
-## Milestone
-
-<!-- M0 – Fundament | M1 – Aufgaben | M2 – Termine | M3 – Journal
-     | M4 – Gewohnheiten | M5 – Heute | M6 – Sprachmemo -->
