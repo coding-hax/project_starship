@@ -115,6 +115,70 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
 });
 
 /**
+ * Issue #651: h1/h2/h3 vorher ohne eigene font-size (Tailwind-Preflight setzt
+ * `inherit`, die globale Regel setzte nur line-height/weight/letter-spacing) —
+ * jede Überschrift rendert in 16px Fließtextgröße. Jetzt tragen h1/h2 die
+ * Token-Größen, h3 bleibt bei --text-body (Betonung trägt dort das Gewicht).
+ */
+test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
+  test('AC1: h1 rendert in --text-title auf /uebersicht und /einstellungen', async ({ page }) => {
+    await registerPasskey(page);
+
+    for (const path of ['/uebersicht', '/einstellungen']) {
+      await page.goto(path);
+      const h1 = page.getByRole('heading', { level: 1 });
+      const [fontSize, textTitle] = await Promise.all([
+        h1.evaluate((el) => getComputedStyle(el).fontSize),
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
+        ),
+      ]);
+      expect(fontSize).toBe(textTitle);
+    }
+  });
+
+  test('AC1: h2 rendert in --text-section auf /uebersicht', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/uebersicht');
+
+    const h2 = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+    const [fontSize, textSection] = await Promise.all([
+      h2.evaluate((el) => getComputedStyle(el).fontSize),
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--text-section').trim(),
+      ),
+    ]);
+    expect(fontSize).toBe(textSection);
+  });
+
+  test('AC3: .section-card__title rendert in --text-section auf /einstellungen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const title = page.locator('.section-card__title').first();
+    const [fontSize, textSection] = await Promise.all([
+      title.evaluate((el) => getComputedStyle(el).fontSize),
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--text-section').trim(),
+      ),
+    ]);
+    expect(fontSize).toBe(textSection);
+  });
+
+  test('AC5: das Einstellungs-Icon rendert mit 26×26px statt 24×24px', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/uebersicht');
+
+    const icon = page.locator('.app-header__icon svg');
+    const bbox = await icon.boundingBox();
+    expect(bbox?.width).toBe(26);
+    expect(bbox?.height).toBe(26);
+  });
+});
+
+/**
  * Issue #510: one named z-index scale (tokens.css) instead of scattered raw numbers,
  * so "sits above / below" is a design-system decision rather than an accident of DOM
  * order. The sheet is a modal `<dialog>` (`showModal()`), which the browser paints in

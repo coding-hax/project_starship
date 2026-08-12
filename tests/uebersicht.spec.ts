@@ -594,3 +594,44 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
     await expect(page.locator('.events-overview__empty')).toBeVisible();
   }
 });
+
+test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig, ohne Überlauf', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  const h1 = page.locator('.uebersicht__title-row h1');
+  await expect(h1).toBeVisible();
+
+  const { clientHeight, lineHeight } = await h1.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(Math.round(clientHeight / lineHeight)).toBe(1);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
+});
+
+test('AC6 (issue #651): kein Screen bekommt horizontalen Überlauf bei 375px', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  for (const path of [
+    '/uebersicht',
+    '/einstellungen',
+    '/aufgaben',
+    '/kalender',
+    '/journal',
+    '/aktivitaeten',
+    '/routinen',
+  ]) {
+    await page.goto(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `${path} hat horizontalen Überlauf`).toBe(0);
+  }
+});
