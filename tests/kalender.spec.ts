@@ -212,6 +212,46 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
 });
 
 /* -------------------------------------------------------------------------- */
+/* issue #644: Offline-Notiz                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('der Kalender bleibt offline sichtbar, mit einer ruhigen Notiz statt eines Fehlers (issue #644 AC1)', async ({
+  page,
+  context,
+}) => {
+  await seedEvent(page, {
+    title: 'Bleibt da',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText('Offline');
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz im Kalender verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #644 AC2)', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK3: spärlicher/leerer Tag                                                */
 /* -------------------------------------------------------------------------- */
 
