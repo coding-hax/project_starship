@@ -71,16 +71,33 @@ async function installProbes(page: Page, blocks: Record<string, string>): Promis
       return `${node.tagName.toLowerCase()}${className ? `.${className.trim().split(/\s+/).join('.')}` : ''}`;
     };
 
+    /**
+     * Die Layout Instability API liefert je Quelle das Rechteck vor und nach dem
+     * Sprung. Ohne sie sagt ein roter Lauf nur, WELCHES Element gesprungen ist —
+     * mit ihnen auch, ob es vertikal, horizontal, breiter oder höher wurde. Das
+     * entscheidet zwischen Ursachen, die sonst nur zu raten sind (issue #652:
+     * vier Runden gingen auf Verdacht ins Leere, weil diese Zahl fehlte).
+     */
+    const rect = (r?: DOMRectReadOnly): string =>
+      r ? `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}×${Math.round(r.height)}` : '?';
+
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as (PerformanceEntry & {
         value: number;
         hadRecentInput: boolean;
-        sources?: Array<{ node: Node | null }>;
+        sources?: Array<{
+          node: Node | null;
+          previousRect?: DOMRectReadOnly;
+          currentRect?: DOMRectReadOnly;
+        }>;
       })[]) {
         if (entry.hadRecentInput) continue;
         window.__shifts.push({
           value: entry.value,
-          sources: (entry.sources ?? []).map((source) => describe(source.node)),
+          sources: (entry.sources ?? []).map(
+            (source) =>
+              `${describe(source.node)} [${rect(source.previousRect)} → ${rect(source.currentRect)}]`,
+          ),
         });
       }
     }).observe({ type: 'layout-shift', buffered: true });
