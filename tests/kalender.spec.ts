@@ -254,10 +254,10 @@ test('die Offline-Notiz im Kalender verschwindet nach dem Onlinegehen wieder, oh
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK3: spärlicher/leerer Tag                                                */
+/* AK1-3 (Issue #638): "Danach nichts mehr geplant." ist kein Zustand mehr    */
 /* -------------------------------------------------------------------------- */
 
-test('nach dem letzten Termin des Tages steht die Meldung "Danach nichts mehr geplant." (AK3a)', async ({
+test('nach dem letzten Termin des Tages erscheint keine "Danach nichts mehr geplant."-Meldung (AK1)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -271,10 +271,38 @@ test('nach dem letzten Termin des Tages steht die Meldung "Danach nichts mehr ge
   });
 
   await expect(eventCard(page, 'Einziger Termin')).toBeVisible();
-  await expect(page.locator('.event-agenda__sparse')).toHaveText('Danach nichts mehr geplant.');
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
+  await expect(page.getByText('Danach nichts mehr geplant.')).toHaveCount(0);
 });
 
-test('ein komplett leerer Tag zeigt den Leerzustand, keine Terminkarten (AK3b)', async ({ page }) => {
+test('an einem Tag mit mehreren Terminen erscheint ebenfalls keine "Danach nichts mehr geplant."-Meldung (AK2)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Erster Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Zweiter Termin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(eventCard(page, 'Erster Termin')).toBeVisible();
+  await expect(eventCard(page, 'Zweiter Termin')).toBeVisible();
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
+});
+
+test('ein komplett leerer Tag zeigt den Leerzustand, keine Terminkarten (AK3)', async ({ page }) => {
   await expect(page.locator('.event-agenda__empty')).toHaveText('Keine Termine an diesem Tag.');
   await expect(page.locator('.event-agenda__item')).toHaveCount(0);
 });
@@ -406,10 +434,12 @@ test('zwei zeitlich getrennte Termine tragen keine Ueberschneidungs-Kennzeichnun
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK7: Trennlinien nutzen --border-faint                                     */
+/* AK7: mit der spaerlich-Meldung (Issue #638) ist auch ihre Trennlinie weg   */
 /* -------------------------------------------------------------------------- */
 
-test('die Trennlinie vor der spaerlich-Meldung nutzt --border-faint (AK7)', async ({ page }) => {
+test('die Trennlinie vor der ehemaligen spaerlich-Meldung existiert nicht mehr (AK7, Issue #638)', async ({
+  page,
+}) => {
   await seedEvent(page, {
     title: 'Fuer die Trennlinie',
     allDay: false,
@@ -420,8 +450,8 @@ test('die Trennlinie vor der spaerlich-Meldung nutzt --border-faint (AK7)', asyn
     category: null,
   });
 
-  const expected = await resolveToken(page, '--border-faint');
-  await expect(page.locator('.event-agenda__sparse')).toHaveCSS('border-top-color', expected);
+  await expect(eventCard(page, 'Fuer die Trennlinie')).toBeVisible();
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */

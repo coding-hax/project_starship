@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
+import { IconFreeze, IconStreak } from '@/ui/icons';
 import { useBlockReady } from '@/ui/overview-ready';
 import { Toast } from '@/ui/toast';
 import { metEarlierInPeriod, toDateKey } from './due-today';
@@ -160,8 +161,8 @@ export function HabitToday() {
                   style={{ color: `var(${habit.color ?? '--area-habits'})` }}
                   aria-label={`Streak: ${streak}${usesFreeze ? ', mit Joker überbrückt' : ''}`}
                 >
-                  <span aria-hidden="true">🔥</span> {streak}
-                  {usesFreeze && <span aria-hidden="true"> ❄️</span>}
+                  <IconStreak className="habit-today__streak-icon" /> {streak}
+                  {usesFreeze && <IconFreeze className="habit-today__streak-icon" />}
                 </span>
               )}
               <span className="habit-today__checkbox-wrap">

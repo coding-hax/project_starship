@@ -88,9 +88,17 @@
 }
 
 .habit-today__streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28em;
   flex-shrink: 0;
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
+}
+
+.habit-today__streak-icon {
+  width: 1.15em;
+  height: 1.15em;
 }
 
 .habit-today__checkbox-wrap {

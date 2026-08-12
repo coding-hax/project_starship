@@ -10,8 +10,7 @@
 
 .einstellungen__title {
   margin: 0;
-  font-size: var(--text-body);
-  text-align: right;
+  text-align: left;
 }
 
 .einstellungen__back {

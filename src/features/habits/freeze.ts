@@ -61,7 +61,7 @@ export function canRescue(
 
 /**
  * Whether the streak currently shown for `habit` (the same run `computeStreak`
- * counts) contains at least one frozen day — drives the ❄️ marker (issue #433
+ * counts) contains at least one frozen day — drives the Joker-Marker (issue #433
  * point 3), only a `daily` habit ever qualifies.
  */
 export function currentStreakUsesFreeze(
