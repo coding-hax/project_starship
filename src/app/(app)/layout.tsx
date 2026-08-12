@@ -1,4 +1,5 @@
 import { JournalHabitBoot } from '@/features/journal/journal-habit-boot';
+import { CategoryColorsBoot } from '@/features/settings/category-colors-boot';
 import { AppHeader } from '@/ui/app-header';
 import { E2EBridge } from '@/ui/e2e-bridge';
 import { ModuleRouteGuard } from '@/ui/module-route-guard';
@@ -25,6 +26,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
       <SyncBoot />
       <JournalHabitBoot />
+      <CategoryColorsBoot />
       <SyncStatus />
       <ToastHost />
       {process.env.NEXT_PUBLIC_E2E === '1' && <E2EBridge />}

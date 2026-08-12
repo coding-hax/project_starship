@@ -16,6 +16,7 @@ export const SYNC_TABLES = [
   'journal_keys',
   'events',
   'event_exceptions',
+  'category_colors',
 ] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
@@ -42,11 +43,18 @@ export function isReadOnlyTable(table: SyncTable): boolean {
  * shape (as in `HabitLogData`/`HabitFreezeData` above), not the Drizzle column
  * names, so both `push` (server) and `pull` (client) can key off the same map
  * without drifting apart — like `READ_ONLY_TABLES`.
+ *
+ * `category_colors` gets one too, unlike `reminder_prefs` (which has the same
+ * one-row-per-key shape but relies on the UNIQUE constraint alone): two devices
+ * choosing a color for the same category offline would otherwise mint two rows
+ * and hit `category_colors_category_idx` as a raw constraint violation (500) on
+ * whichever pushes second, instead of upserting cleanly (issue #660).
  */
 export const NATURAL_KEYS: Partial<Record<SyncTable, readonly string[]>> = {
   habit_logs: ['habitId', 'logDate'],
   habit_freezes: ['habitId', 'freezeDate'],
   event_exceptions: ['eventId', 'originalDate'],
+  category_colors: ['category'],
 };
 
 /**
@@ -189,6 +197,16 @@ export interface EventExceptionData {
   overrideEndsAt: string | null;
   overrideStartDate: string | null;
   overrideEndDate: string | null;
+}
+
+/**
+ * Same as `HabitData`, for `category_colors` (issue #660) — one row per calendar
+ * category, keyed by `category` (`NATURAL_KEYS` above). `color` is a `--swatch-*`
+ * token name (src/ui/swatch-palette.ts), never a resolved color value.
+ */
+export interface CategoryColorData {
+  category: string;
+  color: string;
 }
 
 export interface Mutation {

@@ -1,5 +1,6 @@
 import type { SyncTable } from '@/local/types';
 import {
+  categoryColors,
   eventExceptions,
   events,
   garminActivities,
@@ -107,6 +108,11 @@ export const SYNC_REGISTRY = {
       'overrideEndDate',
     ],
     required: ['eventId', 'originalDate'],
+  },
+  category_colors: {
+    table: categoryColors,
+    writable: ['category', 'color'],
+    required: ['category', 'color'],
   },
   garmin_activities: {
     table: garminActivities,
