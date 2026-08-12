@@ -76,8 +76,74 @@ test.describe('angemeldet', () => {
     page,
     context,
   }) => {
+    // The RSC prefetches the nav fires after hydration are what makes the offline
+    // clicks below free: Next serves those routes from its in-memory router cache.
+    // They are NOT in the service worker's Cache Storage — that holds only the
+    // precached shell (verified in #683) — so there is nothing to read back from
+    // `caches` here.
+    const prefetched = new Set<string>();
+    // Cleared on every main-frame navigation, and that is the whole point: a
+    // prefetch belongs to ONE document. `registerPasskey` already loaded
+    // /uebersicht, so the goto below replaces that page and throws its router cache
+    // away with it. Counting the prefetches of the replaced page would satisfy this
+    // wait while the current page still has nothing cached — the same class of
+    // false signal as `networkidle`, only quieter. `framenavigated` commits before
+    // the new document fetches anything, so everything counted after it is the
+    // current page's.
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) prefetched.clear();
+    });
+    // `requestfinished`, not `response`: the latter fires on the response HEADERS,
+    // so the wait below could pass while the payload was still in flight and the
+    // `setOffline` right after would cut it off mid-body, leaving the router cache
+    // incomplete. Cancelled prefetches reach neither handler, which is exactly what
+    // must not count.
+    page.on('requestfinished', (request) => {
+      const url = new URL(request.url());
+      if (!url.searchParams.has('_rsc')) return;
+      void request
+        .response()
+        .then((response) => {
+          // `status < 400` rather than `ok()`: the (app) segment is statically
+          // prerendered (#599), so a navigation can revalidate a prefetch it
+          // already holds and get a 304 — `ok()` is false for that, while the
+          // router does have the payload.
+          if (response && response.status() < 400) prefetched.add(url.pathname);
+        })
+        .catch(() => {});
+    });
+
     await page.goto('/uebersicht');
-    await page.waitForLoadState('networkidle');
+
+    // Deliberately NOT `networkidle` (#683). `registerPasskey` already left the page
+    // on a loaded /uebersicht, so the goto above is the SECOND navigation to it and
+    // cancels the first page's in-flight prefetches. A cancelled request never
+    // leaves Playwright's bookkeeping of open connections, so `networkidle` waited
+    // for a quiet state that could no longer occur and burned the whole 30s budget.
+    // It is bimodal, not slow: 1.9s or 30s, nothing in between. `offline-desktop` is
+    // hit and `offline-mobile` is not because 1280px shows more nav targets at once,
+    // so more prefetches are in flight for that second navigation to cancel.
+    //
+    // What the walk below actually needs, as three named conditions:
+    await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+    // A service worker that is not merely active but serving THIS page — offline,
+    // every asset the walk needs comes out of its precache. `ready` alone only
+    // proves a worker is active: `clientsClaim` (src/app/sw.ts) claims existing
+    // clients once activation finishes, which races with the navigation that
+    // triggered the registration, so reading `controller` right after `ready` found
+    // it null in 1 of 21 runs. Waiting for the claim is enough — and unlike a
+    // reload (the route offline-critical.spec.ts takes, to prove serving from the
+    // precache) it does not throw away the router cache the walk below depends on.
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect
+      .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { timeout: 10_000 })
+      .toBe(true);
+    // And the payload of every route visited offline below, in the router cache.
+    // Bounded, like the prefetch wait in AK1 above: a prefetch that genuinely never
+    // arrives has to fail the test, not hang it.
+    await expect
+      .poll(() => [...prefetched], { timeout: 15_000 })
+      .toEqual(expect.arrayContaining(['/aufgaben', '/kalender', '/routinen']));
 
     await context.setOffline(true);
 
