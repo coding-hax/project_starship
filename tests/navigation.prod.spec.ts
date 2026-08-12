@@ -119,14 +119,15 @@ test.describe('angemeldet', () => {
     // A service worker that is not merely active but serving THIS page — offline,
     // every asset the walk needs comes out of its precache. `ready` alone only
     // proves a worker is active: `clientsClaim` (src/app/sw.ts) claims existing
-    // clients after activation finishes, which races with the navigation that
-    // triggered the registration. Treating the goto above as that fresh navigation
-    // is not enough — it left `controller` null in 1 of 21 runs. So reload after
-    // `ready`, exactly as offline-critical.spec.ts does: a navigation started after
-    // an already-active worker is always served by it.
+    // clients once activation finishes, which races with the navigation that
+    // triggered the registration, so reading `controller` right after `ready` found
+    // it null in 1 of 21 runs. Waiting for the claim is enough — and unlike a
+    // reload (the route offline-critical.spec.ts takes, to prove serving from the
+    // precache) it does not throw away the router cache the walk below depends on.
     await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.reload();
-    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { timeout: 10_000 })
+      .toBe(true);
     // And the payload of every route visited offline below, in the router cache.
     // Bounded, like the prefetch wait in AK1 above: a prefetch that genuinely never
     // arrives has to fail the test, not hang it.
