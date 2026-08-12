@@ -315,6 +315,11 @@ interface ForecastFixture {
   weatherCodes?: number[];
   /** Defaults to 0 % for every day. */
   precipitationProbabilityMax?: number[];
+  /** Defaults to 12 km/h for every day — under both isWindy thresholds (issue #695),
+   * so specs outside weather.spec.ts stay windmark-free unless they opt in. */
+  windSpeedsMax?: number[];
+  /** Defaults to 20 km/h for every day — same reasoning as `windSpeedsMax`. */
+  windGustsMax?: number[];
 }
 
 /**
@@ -334,6 +339,8 @@ export function openMeteoForecastBody({
   tempsMin,
   weatherCodes = dates.map(() => 0),
   precipitationProbabilityMax = dates.map(() => 0),
+  windSpeedsMax = dates.map(() => 12),
+  windGustsMax = dates.map(() => 20),
 }: ForecastFixture) {
   const time: string[] = [];
   const temperature_2m: number[] = [];
@@ -358,8 +365,8 @@ export function openMeteoForecastBody({
       precipitation_probability_max: precipitationProbabilityMax,
       sunrise: dates.map((date) => `${date}T05:53`),
       sunset: dates.map((date) => `${date}T21:12`),
-      wind_speed_10m_max: dates.map(() => 12),
-      wind_gusts_10m_max: dates.map(() => 20),
+      wind_speed_10m_max: windSpeedsMax,
+      wind_gusts_10m_max: windGustsMax,
     },
     hourly: { time, temperature_2m, precipitation_probability, precipitation },
   };
