@@ -11,7 +11,10 @@ export function TasksOverviewSection() {
   return (
     <>
       <h2 id="uebersicht-aufgaben-heading">Aufgaben</h2>
-      <TaskList dueTodayOnly headingId="uebersicht-aufgaben-heading" />
+      {/* Embedded in /uebersicht, no scroll container of its own — the list's
+          own scroll anchor (issue #88) would scroll the document, not itself
+          (issue #647). */}
+      <TaskList dueTodayOnly headingId="uebersicht-aufgaben-heading" anchorOnMount={false} />
     </>
   );
 }
