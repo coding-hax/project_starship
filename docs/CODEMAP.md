@@ -24,10 +24,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
   (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Termine →
-  Aufgaben → Aktivitäten → Gewohnheiten)
+  Aufgaben → Aktivitäten → Routinen)
 - `(app)/aufgaben/page.tsx` — Kopfzeile mit `<HideCompletedToggle/>` + `<TaskList/>` + `<QuickAddTask/>`
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
-- `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
+- `(app)/routinen/page.tsx` / `(app)/aktivitaeten/page.tsx` — Routinen-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum (issue #469) + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
 - `(app)/einstellungen/` — Darstellung, Reihenfolge, Module, Push (rendert je aktivem Modul dessen `SettingsPanel`)
@@ -77,7 +77,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `vapid.ts` / `send.ts` — VAPID aus Env-Vars + `sendPushToAll(payload)`, löscht ungültige Abos
 - `notification.ts` / `schedule.ts` — reine `buildNotification`/`parsePushPayload`-Logik + `berlinNow`/`dueSlots` (DST-sicher)
 - `reminders/index.ts` / `reminder-kinds.ts` — Registry (`sendDueReminders`) + Kind-Metadaten
-- `reminders/tasks-due.ts` / `habits-open.ts` / `interaction-limit.ts` — feste Slots: fällige Aufgaben, offene Gewohnheiten, Ablauf
+- `reminders/tasks-due.ts` / `habits-open.ts` / `interaction-limit.ts` — feste Slots: fällige Aufgaben, offene Routinen, Ablauf
 - `reminders/events-due.ts` — reine `dueEventReminders` + DB-`collectDueEventReminders`: „15 Minuten vorher" pro Termin (S7, kein fester Slot, nutzt S6-Expansion)
 
 ### src/features/tasks
@@ -117,8 +117,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen
 - `journal-header-date.tsx` / `.css` — heutiges Datum neben dem Seitentitel, oben rechts (issue #469)
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
-- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Entarchivieren/Abhaken der Journal-Gewohnheit (issue #505)
-- `journal-habit-boot.tsx` — legt die Journal-Gewohnheit idempotent nach dem ersten Pull an (issue #505)
+- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Entarchivieren/Abhaken der Journal-Routine (issue #505)
+- `journal-habit-boot.tsx` — legt die Journal-Routine idempotent nach dem ersten Pull an (issue #505)
 
 ### src/features/habits
 
@@ -224,7 +224,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (issue #618)
-- `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Gewohnheit abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
+- `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Routine abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)

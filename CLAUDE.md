@@ -6,7 +6,7 @@ Sie hat Vorrang vor Bequemlichkeit, Geschwindigkeit und eigenen Ideen.
 ## Was das hier ist
 
 Eine persönliche Produktivitäts-Web-App (PWA) für **eine einzige Person**:
-Termine, Aufgaben, Journal, Gewohnheiten. Mobile-first, offline-fähig.
+Termine, Aufgaben, Journal, Routinen. Mobile-first, offline-fähig.
 
 Vor jeder Arbeit lesen:
 
