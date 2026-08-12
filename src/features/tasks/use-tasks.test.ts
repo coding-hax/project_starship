@@ -5,6 +5,7 @@ import {
   groupTasks,
   resolveNestTarget,
   toTaskView,
+  visibleTaskNodes,
   type TaskView,
 } from './use-tasks';
 
@@ -212,6 +213,76 @@ describe('groupTasks', () => {
     const orphan = task({ id: 'orphan', parentId: 'missing-parent' });
 
     expect(groupTasks([orphan])).toEqual([{ task: orphan, children: [], done: 0, total: 0 }]);
+  });
+});
+
+describe('visibleTaskNodes', () => {
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  it('returns the nodes unchanged when the toggle is off', () => {
+    const nodes = groupTasks([task({ id: 'a', completedAt: '2026-07-02T00:00:00.000Z' })]);
+    expect(visibleTaskNodes(nodes, false)).toBe(nodes);
+  });
+
+  it('drops a completed top-level task with no children', () => {
+    const nodes = groupTasks([task({ id: 'done', completedAt: '2026-07-02T00:00:00.000Z' })]);
+    expect(visibleTaskNodes(nodes, true)).toEqual([]);
+  });
+
+  it('keeps an open top-level task', () => {
+    const nodes = groupTasks([task({ id: 'open' })]);
+    expect(visibleTaskNodes(nodes, true)).toEqual(nodes);
+  });
+
+  it('hides a completed child but keeps its open parent (AC5)', () => {
+    const parent = task({ id: 'parent' });
+    const doneChild = task({ id: 'a', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const openChild = task({ id: 'b', parentId: 'parent' });
+    const nodes = groupTasks([parent, doneChild, openChild]);
+
+    const [node] = visibleTaskNodes(nodes, true);
+    expect(node.children.map((c) => c.id)).toEqual(['b']);
+  });
+
+  it('keeps a completed parent visible when it still guards an open child, dropping only its completed children (AC5)', () => {
+    const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const openChild = task({ id: 'open', parentId: 'parent' });
+    const doneChild = task({ id: 'done', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const nodes = groupTasks([parent, openChild, doneChild]);
+
+    const visible = visibleTaskNodes(nodes, true);
+    expect(visible).toHaveLength(1);
+    expect(visible[0].task.id).toBe('parent');
+    expect(visible[0].children.map((c) => c.id)).toEqual(['open']);
+  });
+
+  it('drops a completed parent whose children are all completed too', () => {
+    const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const doneChild = task({ id: 'child', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const nodes = groupTasks([parent, doneChild]);
+
+    expect(visibleTaskNodes(nodes, true)).toEqual([]);
+  });
+
+  it("never changes a kept node's done/total — the toggle changes display, not data (AC5)", () => {
+    const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const openChild = task({ id: 'open', parentId: 'parent' });
+    const doneChild = task({ id: 'done', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const nodes = groupTasks([parent, openChild, doneChild]);
+
+    const [node] = visibleTaskNodes(nodes, true);
+    expect(node.done).toBe(1);
+    expect(node.total).toBe(2);
   });
 });
 
