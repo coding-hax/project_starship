@@ -23,6 +23,24 @@ export function PageTransition({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const firstRender = useRef(true);
 
+  // Every page starts at its own top, never at the scroll position the previous
+  // page (or a prior visit of this same page) was left at — including browser
+  // Back/Forward (issue #647). The browser's own restoration only covers
+  // popstate, fights this rule there, and does nothing for in-app navigation —
+  // switching it off once, globally, replaces both with one rule.
+  useEffect(() => {
+    history.scrollRestoration = 'manual';
+  }, []);
+
+  // Runs on every path change, including the first — a route with its own
+  // on-mount scroll anchor (e.g. `/aufgaben`, issue #88; `/kalender`) still
+  // starts here and then self-corrects in its own later effect, exactly like a
+  // fresh direct load of that route. `window.scrollTo` never touches focus
+  // (AC6) and defaults to an instant jump (AC7).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
