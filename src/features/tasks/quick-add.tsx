@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useCapturePrefs } from '@/features/settings/use-capture-prefs';
 import { mutate } from '@/local/outbox';
 import { Fab } from '@/ui/fab';
@@ -8,10 +8,22 @@ import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
+import { localInputToIso } from './datetime-local';
 import { parseTaskInput, type ParsedTaskInput } from './parse-task-input';
+import { groupTasks, useTasks } from './use-tasks';
 
 const LABEL = 'Aufgabe erfassen';
 const UNDO_TIMEOUT_MS = 5000;
+
+/** Same three steps as the edit sheet — one vocabulary for a task's urgency. */
+const PRIORITIES: { value: number; label: string }[] = [
+  { value: 0, label: 'Normal' },
+  { value: 1, label: 'Hoch' },
+  { value: 2, label: 'Dringend' },
+];
+
+/** Sentinel for the "no parent" option — a real id can never equal this. */
+const NO_PARENT = '';
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const tag = (target as HTMLElement | null)?.tagName;
@@ -24,22 +36,66 @@ interface UndoState {
 }
 
 /**
- * FAB + bottom sheet with a single title field. The whole point (VISION.md: under
- * 5 seconds, no navigation) is that saving never leaves the "Aufgaben" view — the
- * task lands in IndexedDB directly, the outbox picks it up whenever the network does.
+ * Everything the "Mehr"-Bereich can set, as one value. Kept together so it can
+ * ride along to the confirm sheet inside the draft it belongs to, instead of
+ * sitting in a second piece of state that could drift away from it.
+ */
+interface TaskExtras {
+  notes: string | null;
+  priority: number;
+  parentId: string | null;
+}
+
+const NO_EXTRAS: TaskExtras = { notes: null, priority: 0, parentId: null };
+
+/**
+ * FAB + bottom sheet. The fast path (VISION.md: under 5 seconds, no navigation)
+ * is still one field and Enter — the task lands in IndexedDB directly, the outbox
+ * picks it up whenever the network does.
  *
  * issue #47: der Titel wird durch `parseTaskInput` geschickt. Erkennt der Text ein
  * Datum, öffnet sich ein Bestätigungs-Sheet mit dem aufgelösten Termin — außer die
  * Einstellung "ohne Bestätigung direkt anlegen" ist an, dann legt der Direkt-Pfad
  * sofort an und zeigt stattdessen einen Undo-Toast als Sicherheitsnetz (AC4).
+ *
+ * issue #650: dahinter liegt ein zugeklappter "Mehr"-Bereich mit denselben Feldern
+ * wie das Bearbeiten-Sheet. Wer sie braucht, klappt einmal auf, statt die Aufgabe
+ * erst anzulegen und dann nachzubearbeiten; wer nicht, sieht sie nie.
  */
 export function QuickAddTask() {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<CaptureConfirmDraft | null>(null);
+  const [draft, setDraft] = useState<{ confirm: CaptureConfirmDraft; extras: TaskExtras } | null>(
+    null,
+  );
   const [undo, setUndo] = useState<UndoState | null>(null);
+  const [showMore, setShowMore] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [dueAt, setDueAt] = useState('');
+  const [priority, setPriority] = useState(0);
+  const [parentId, setParentId] = useState(NO_PARENT);
   const inputRef = useRef<HTMLInputElement>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { directCapture } = useCapturePrefs();
+  const allTasks = useTasks();
+
+  // Only top-level tasks can take a child — one level of nesting, same rule as the
+  // edit sheet (issue #89). Nothing to exclude here: the task does not exist yet.
+  const nestCandidates = useMemo(
+    () => groupTasks(allTasks ?? []).map((node) => node.task),
+    [allTasks],
+  );
+
+  // A create sheet, not an editor: every open starts blank. Clearing on the way in
+  // rather than on the way out means an expanded "Mehr"-Bereich does not visibly
+  // collapse while the sheet is still animating away (sheet.css exits over 200ms).
+  const openSheet = useCallback(() => {
+    setShowMore(false);
+    setNotes('');
+    setDueAt('');
+    setPriority(0);
+    setParentId(NO_PARENT);
+    setOpen(true);
+  }, []);
 
   // Desktop shortcut (DESIGN_SYSTEM.md: `n` = neu). Ignored while typing elsewhere,
   // so it cannot hijack a keystroke in some other field.
@@ -47,11 +103,11 @@ export function QuickAddTask() {
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key !== 'n' || isTypingTarget(event.target)) return;
       event.preventDefault();
-      setOpen(true);
+      openSheet();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [openSheet]);
 
   function dismissUndo() {
     if (undoTimeoutRef.current !== null) {
@@ -61,11 +117,21 @@ export function QuickAddTask() {
     setUndo(null);
   }
 
-  async function createTask(title: string, dueAt: string | null, showUndo: boolean) {
+  async function createTask(
+    title: string,
+    dueAt: string | null,
+    extras: TaskExtras,
+    showUndo: boolean,
+  ) {
     // Anchors the chronological running list (issue #88) — set once, here, and
     // never touched again by an edit.
     const payload: Record<string, unknown> = { title, createdAt: new Date().toISOString() };
     if (dueAt) payload.dueAt = dueAt;
+    // Only fields the user actually touched go in — an untouched field must not
+    // write a default over whatever the sync engine would otherwise leave alone.
+    if (extras.notes) payload.notes = extras.notes;
+    if (extras.priority !== 0) payload.priority = extras.priority;
+    if (extras.parentId) payload.parentId = extras.parentId;
     const taskId = await mutate({ table: 'tasks', op: 'upsert', payload });
 
     if (showUndo) {
@@ -87,15 +153,25 @@ export function QuickAddTask() {
   // issue #618: derselbe Entscheidungsweg für Eingaben aus diesem Sheet und für
   // Drafts, die von der Übersicht her über den Draft-Store ankommen — ein einziger
   // Entscheidungsort statt zweier Kopien der Sheet-vs-Direkt-Logik.
-  async function applyParsed(parsed: ParsedTaskInput) {
-    if (parsed.dueAt && !directCapture) {
-      setDraft({ title: parsed.title, dueAt: parsed.dueAt });
+  async function applyParsed(
+    parsed: ParsedTaskInput,
+    explicitDueAt: string | null = null,
+    extras: TaskExtras = NO_EXTRAS,
+  ) {
+    // Ein im "Mehr"-Bereich gesetztes Datum ist eine bewusste Eingabe und schlägt
+    // das aus dem Titel geratene (issue #650 AC5) — dann gibt es auch nichts mehr
+    // zu bestätigen und keinen Undo-Toast, der ein ungeprüftes Datum absichert.
+    if (explicitDueAt === null && parsed.dueAt !== null) {
+      if (!directCapture) {
+        setDraft({ confirm: { title: parsed.title, dueAt: parsed.dueAt }, extras });
+        return;
+      }
+      // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet (AC4).
+      await createTask(parsed.title, parsed.dueAt, extras, true);
       return;
     }
 
-    // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet — nur
-    // nötig, wenn dabei tatsächlich ein Datum ohne Review gesetzt wurde (AC4).
-    await createTask(parsed.title, parsed.dueAt, parsed.dueAt !== null);
+    await createTask(parsed.title, explicitDueAt ?? parsed.dueAt, extras, false);
   }
 
   // Konsumiert einen Draft, der über die Erfassung auf /uebersicht angelegt wurde
@@ -120,21 +196,31 @@ export function QuickAddTask() {
       return;
     }
 
+    // Read the fields before closing — the create runs async, and the next open
+    // blanks them.
+    const explicitDueAt = localInputToIso(dueAt);
+    const extras: TaskExtras = {
+      notes: notes.trim() || null,
+      priority,
+      parentId: parentId || null,
+    };
+
     if (inputRef.current) inputRef.current.value = '';
     setOpen(false);
 
     const parsed = parseTaskInput(raw, new Date());
-    await applyParsed(parsed);
+    await applyParsed(parsed, explicitDueAt, extras);
   }
 
   async function handleConfirm(title: string, dueAt: string) {
+    const extras = draft?.extras ?? NO_EXTRAS;
     setDraft(null);
-    await createTask(title, dueAt, false);
+    await createTask(title, dueAt, extras, false);
   }
 
   return (
     <>
-      <Fab label={LABEL} onClick={() => setOpen(true)} />
+      <Fab label={LABEL} onClick={openSheet} />
       <Sheet open={open} onClose={() => setOpen(false)} label={LABEL} initialFocusRef={inputRef}>
         <form className="quick-add" onSubmit={handleSubmit}>
           <input
@@ -142,15 +228,88 @@ export function QuickAddTask() {
             type="text"
             name="title"
             className="quick-add__input"
-            placeholder="Sprich oder tippe: „Arzt anrufen morgen um 12“"
+            placeholder="Todo Titel"
             aria-label="Titel der Aufgabe"
           />
+          <button
+            type="button"
+            className="quick-add__more"
+            aria-expanded={showMore}
+            aria-controls="quick-add-more"
+            onClick={() => setShowMore((current) => !current)}
+          >
+            Mehr
+            <span className="quick-add__more-icon" aria-hidden="true" />
+          </button>
+          {/* Gated on `open` as well, for the same reason the edit sheet gates its
+              parent select: a closed <dialog> keeps its children in the DOM, and
+              the <option> titles are real text nodes that would make every
+              top-level task match any page-wide text query twice. */}
+          {open && showMore && (
+            <div className="quick-add__fields" id="quick-add-more">
+              <textarea
+                className="quick-add__notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Notiz"
+                aria-label="Notiz der Aufgabe"
+              />
+              <label className="quick-add__field">
+                <span>Fälligkeit</span>
+                <input
+                  type="datetime-local"
+                  className="quick-add__due"
+                  value={dueAt}
+                  onChange={(event) => setDueAt(event.target.value)}
+                  aria-label="Fälligkeit"
+                />
+              </label>
+              <label className="quick-add__field">
+                <span>Unteraufgabe von</span>
+                <select
+                  className="quick-add__parent"
+                  value={parentId}
+                  onChange={(event) => setParentId(event.target.value)}
+                  aria-label="Unteraufgabe von"
+                >
+                  <option value={NO_PARENT}>Keine (Top-Level)</option>
+                  {nestCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <fieldset className="quick-add__priority">
+                <legend>Priorität</legend>
+                {PRIORITIES.map((p) => (
+                  <label key={p.value} className="quick-add__priority-option">
+                    <input
+                      type="radio"
+                      name="quick-add-priority"
+                      checked={priority === p.value}
+                      // A tap's default action focuses the radio, stealing focus from
+                      // the title field mid-typing (#138). Suppressing it leaves focus
+                      // where it was; `onChange` still fires via the click that follows.
+                      onPointerDown={(event) => event.preventDefault()}
+                      onChange={() => setPriority(p.value)}
+                    />
+                    {p.label}
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+          )}
           <button type="submit" className="quick-add__submit">
             Hinzufügen
           </button>
         </form>
       </Sheet>
-      <CaptureConfirm draft={draft} onConfirm={handleConfirm} onClose={() => setDraft(null)} />
+      <CaptureConfirm
+        draft={draft?.confirm ?? null}
+        onConfirm={handleConfirm}
+        onClose={() => setDraft(null)}
+      />
       {undo && (
         <Toast
           message={`„${undo.title}" angelegt`}

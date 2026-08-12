@@ -196,3 +196,12 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
+
+test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await expect(captureTitleField(page)).toHaveAttribute('placeholder', 'Todo Titel');
+});

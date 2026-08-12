@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { mutate } from '@/local/outbox';
 import { Sheet } from '@/ui/sheet';
+import { isoToLocalInput, localInputToIso } from './datetime-local';
 import type { TaskView } from './use-tasks';
 
 const LABEL = 'Aufgabe bearbeiten';
@@ -12,18 +13,6 @@ const PRIORITIES: { value: number; label: string }[] = [
   { value: 1, label: 'Hoch' },
   { value: 2, label: 'Dringend' },
 ];
-
-/** `datetime-local` works in the browser's local time, with no timezone suffix. */
-function isoToLocalInput(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function localInputToIso(value: string): string | null {
-  return value ? new Date(value).toISOString() : null;
-}
 
 export interface TaskEditorProps {
   /** `null` closes the sheet. The last non-null task stays rendered during the

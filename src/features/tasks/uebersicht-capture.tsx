@@ -125,7 +125,7 @@ export function UebersichtCapture() {
             type="text"
             name="title"
             className="quick-add__input"
-            placeholder="Sprich oder tippe: „Arzt anrufen morgen um 12“"
+            placeholder="Todo Titel"
             aria-label="Titel der Aufgabe"
           />
           <button type="submit" className="quick-add__submit">
