@@ -218,6 +218,11 @@ db.version(7).stores({
   icsSubscriptions: 'id',
 });
 
+// issue #660 adds `category_colors` as a new `SyncTable` (src/local/types.ts), same
+// reasoning as `reminder_prefs`/`habit_freezes`/`events` above — it lives in the
+// generic `records` store, discriminated by `table` alone, no new store or index,
+// so no db.version() bump.
+
 export { db };
 
 /**

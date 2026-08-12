@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import {
   authChallenges,
+  categoryColors,
   credentials,
   eventExceptions,
   events,
@@ -52,6 +53,7 @@ const tables = [
   journalKeys,
   events,
   eventExceptions,
+  categoryColors,
 ];
 
 for (const table of tables) {
