@@ -176,3 +176,23 @@ for (const viewport of [
     await expect(page).toHaveURL('/uebersicht');
   });
 }
+
+test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohne eigenen font-size', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const title = page.locator('.einstellungen__title');
+  await expect(title).toBeVisible();
+
+  const [textAlign, fontSize, textTitle] = await Promise.all([
+    title.evaluate((el) => getComputedStyle(el).textAlign),
+    title.evaluate((el) => getComputedStyle(el).fontSize),
+    page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
+    ),
+  ]);
+  expect(['left', 'start']).toContain(textAlign);
+  expect(fontSize).toBe(textTitle);
+});

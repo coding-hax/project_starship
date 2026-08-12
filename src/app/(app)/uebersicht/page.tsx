@@ -14,8 +14,10 @@ export default function UebersichtPage() {
           already standing (issue #642). */}
       <div className="uebersicht__title-row">
         <h1>Übersicht</h1>
-        <UebersichtCapture />
-        <AppHeader variant="inline" />
+        <div className="uebersicht__title-actions">
+          <UebersichtCapture />
+          <AppHeader variant="inline" />
+        </div>
       </div>
       <OverviewReadyProvider>
         <DailyProgressRing />
