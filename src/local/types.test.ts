@@ -85,3 +85,22 @@ describe('events/event_exceptions (issue #552, S1 of #473)', () => {
     expect(naturalKeyOf('event_exceptions', { eventId: 'event-1' })).toBeNull();
   });
 });
+
+describe('category_colors (issue #660)', () => {
+  it('is a sync table, not read-only', () => {
+    expect(isSyncTable('category_colors')).toBe(true);
+    expect(isReadOnlyTable('category_colors')).toBe(false);
+  });
+
+  it('has the natural key (category) — two devices choosing offline collapse to one row', () => {
+    expect(NATURAL_KEYS.category_colors).toEqual(['category']);
+  });
+
+  it('naturalKeyOf reads the category', () => {
+    expect(naturalKeyOf('category_colors', { category: 'arbeit' })).toBe('arbeit');
+  });
+
+  it('naturalKeyOf is null for an incomplete payload', () => {
+    expect(naturalKeyOf('category_colors', {})).toBeNull();
+  });
+});

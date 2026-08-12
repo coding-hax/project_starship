@@ -23,13 +23,23 @@ export interface EventView {
   origin: 'local' | 'subscribed';
 }
 
-const CATEGORIES: NonNullable<EventData['category']>[] = [
-  'privat',
-  'arbeit',
-  'gesundheit',
-  'sport',
-  'familie',
+/**
+ * The five calendar categories with their German labels — single source shared
+ * by the event editor (`event-editor.tsx`) and the settings category-colours
+ * panel/hook (`use-category-colors.ts`, issue #660), so the label only lives
+ * here.
+ */
+export const EVENT_CATEGORIES: { value: NonNullable<EventData['category']>; label: string }[] = [
+  { value: 'privat', label: 'Privat' },
+  { value: 'arbeit', label: 'Arbeit' },
+  { value: 'gesundheit', label: 'Gesundheit' },
+  { value: 'sport', label: 'Sport' },
+  { value: 'familie', label: 'Familie' },
 ];
+
+const CATEGORIES: NonNullable<EventData['category']>[] = EVENT_CATEGORIES.map(
+  (category) => category.value,
+);
 
 const FREQUENCIES: NonNullable<EventData['recurrence']>['freq'][] = [
   'daily',

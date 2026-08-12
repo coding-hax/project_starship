@@ -2063,3 +2063,100 @@ test('abonnierte Termine rendern offline aus dem Cache, ohne eigenen Netzaufruf 
   await expect(allDayBar(page, 'Nationalfeiertag')).toBeVisible();
   expect(requestUrls.some((url) => url.includes('/api/ics'))).toBe(false);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #660: Kategoriefarben selbst wählen                                  */
+/* -------------------------------------------------------------------------- */
+
+/** Same path the settings panel's `setColor` takes (use-category-colors.ts). */
+async function setCategoryColor(page: Page, category: string, color: string): Promise<void> {
+  await page.evaluate(
+    ({ category, color }) =>
+      window.__starship.mutate({ table: 'category_colors', op: 'upsert', payload: { category, color } }),
+    { category, color },
+  );
+}
+
+test('eine geänderte Kategoriefarbe schlägt sofort auf die Terminkarte durch, ohne Reload (issue #660 AK4)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = eventCard(page, 'Teammeeting');
+  const defaultEdge = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  await expect
+    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .toBe(defaultEdge);
+
+  await setCategoryColor(page, 'arbeit', '--swatch-sky');
+
+  const expectedEdge = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  await expect
+    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .toBe(expectedEdge);
+  expect(expectedEdge).not.toBe(defaultEdge);
+});
+
+test('ein frisches Gerät ohne gespeicherte Kategoriefarbe setzt nichts auf <html> und zeigt weiterhin den heutigen --cat-*-Wert (issue #660 AK5)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Laufrunde',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'sport',
+  });
+
+  const card = eventCard(page, 'Laufrunde');
+  const expectedEdge = await resolveCardColor(page, '--cat-sport', 'borderInlineStartColor');
+  await expect
+    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .toBe(expectedEdge);
+
+  // CategoryColorsBoot is mounted (layout.tsx) but resetAppData left no
+  // category_colors rows — it must never have called setProperty for 'sport'.
+  const inlineOverride = await page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--cat-sport'),
+  );
+  expect(inlineOverride).toBe('');
+});
+
+test('eine Kategoriefarbe gilt im Dark Mode mit dem dunklen Wert des gewählten Tokens, nicht dem hellen (issue #660 AK7)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  await setCategoryColor(page, 'arbeit', '--swatch-sky');
+
+  const card = eventCard(page, 'Teammeeting');
+  const expectedLight = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  await expect
+    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .toBe(expectedLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const expectedDark = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  await expect
+    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .toBe(expectedDark);
+  expect(expectedDark).not.toBe(expectedLight);
+});

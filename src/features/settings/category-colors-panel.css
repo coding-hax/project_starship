@@ -1,0 +1,85 @@
+.category-colors-panel__category {
+  padding: var(--space-2) 0 var(--space-4);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.category-colors-panel__category:last-child {
+  border-bottom: none;
+}
+
+.category-colors-panel__current {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.category-colors-panel__swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: none;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+}
+
+.category-colors-panel__swatches legend {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.category-colors-panel__swatch-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+}
+
+/* Same pattern as habit-editor's `.habit-editor__color-option` — the native
+   radio stays in the a11y tree but is visually replaced by the swatch. */
+.category-colors-panel__swatch-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.category-colors-panel__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--duration-fast) var(--ease-spring);
+}
+
+.category-colors-panel__swatch-option input:checked + .category-colors-panel__swatch {
+  outline-color: var(--border-strong);
+}
+
+.category-colors-panel__swatch-option input:focus-visible + .category-colors-panel__swatch {
+  outline-color: var(--accent);
+  outline-offset: 3px;
+}
+
+.category-colors-panel__reset {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.category-colors-panel__reset:active {
+  opacity: 0.7;
+}
