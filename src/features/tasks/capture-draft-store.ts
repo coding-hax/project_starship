@@ -1,20 +1,34 @@
 /**
- * Überlebt die Navigation von `/uebersicht` nach `/aufgaben` (issue #618) — bewusst
- * In-Memory, kein `sessionStorage`: ein Store, der einen Reload überlebt, wirft Tage
- * später einen alten Draft ins Sheet. `consumeCaptureDraft` leert beim Lesen, damit
- * ein Zurück-Navigieren oder ein erneuter Mount nichts wiederholt.
+ * Überlebt die Navigation von `/uebersicht` nach `/aufgaben` bzw. `/kalender`
+ * (issue #618, um den `event`-Fall erweitert in #619) — bewusst In-Memory, kein
+ * `sessionStorage`: ein Store, der einen Reload überlebt, wirft Tage später einen
+ * alten Draft ins Sheet. `consumeCaptureDraft` leert beim Lesen, damit ein
+ * Zurück-Navigieren oder ein erneuter Mount nichts wiederholt.
  *
  * Form `{ items: CaptureDraft[] }` von Anfang an, auch mit genau einem Element —
  * S1 von #617, damit spätere Schnitte (Mehrfach-Erfassung) hier refactorbar bleiben.
  */
 
-export interface CaptureDraft {
+export interface TaskCaptureDraftItem {
+  kind: 'task';
   title: string;
   dueAt: string | null;
 }
 
+export interface EventCaptureDraftItem {
+  kind: 'event';
+  title: string;
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+export type CaptureDraftItem = TaskCaptureDraftItem | EventCaptureDraftItem;
+
 export interface CaptureDraftBatch {
-  items: CaptureDraft[];
+  items: CaptureDraftItem[];
 }
 
 let pending: CaptureDraftBatch | null = null;

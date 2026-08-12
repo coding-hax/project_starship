@@ -988,3 +988,68 @@ test('AC2 (#480): ein serverseitig zwischen zwei Zeilen vertauschtes Chiffrat is
   expect(entriesA[0]!.content.text).toBe('Eintrag vom dritten Mai');
   expect(entriesB).toHaveLength(0);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #646: Offline-Notiz                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('das entsperrte Journal bleibt offline sichtbar, mit einer ruhigen Notiz über dem Editor (issue #646 AC1/AC2)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText(
+    'Offline — dein Eintrag liegt lokal und wird verschlüsselt synchronisiert, sobald du wieder online bist.',
+  );
+  await expect(page.locator('.journal-editor')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz im Journal verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #646 AC1)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('im gesperrten Zustand erscheint offline keine Notiz — dort gibt es nichts zu synchronisieren (issue #646 AC3)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+  await page.reload();
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
+
+  await context.setOffline(true);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+
+  await context.setOffline(false);
+});
+
+test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
+  page,
+  context,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/journal');
+  await page.locator('.journal-gate[data-state="setup"]').waitFor();
+
+  await context.setOffline(true);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+
+  await context.setOffline(false);
+});
