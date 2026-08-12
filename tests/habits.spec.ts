@@ -367,6 +367,126 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async 
   expect(last.payload).toEqual({ color: '--area-tasks' });
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #658: Farbwähler von 4 auf 10 Swatches, Raster 5x2                   */
+/* -------------------------------------------------------------------------- */
+
+const COLOR_LABELS_658 = [
+  'Grün (Standard)',
+  'Koralle',
+  'Teal',
+  'Violett',
+  'Blau',
+  'Rosé',
+  'Bernstein',
+  'Limette',
+  'Himmelblau',
+  'Magenta',
+];
+
+test('der Farbwähler zeigt genau zehn Optionen in der festgelegten Reihenfolge (issue #658 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Zehn Farben', schedule: 'daily', color: null, archivedAt: null });
+
+  await tapHabit(page, 'Zehn Farben');
+  const dialog = editDialog(page);
+  const radios = dialog.locator('.habit-editor__colors').getByRole('radio');
+  await expect(radios).toHaveCount(10);
+
+  const names = await radios.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
+  expect(names).toEqual(COLOR_LABELS_658);
+});
+
+test('die Farboptionen sind per Pfeiltasten innerhalb der Radiogruppe erreichbar (issue #658 AC4)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Pfeiltasten-Farbe', schedule: 'daily', color: null, archivedAt: null });
+
+  await tapHabit(page, 'Pfeiltasten-Farbe');
+  const dialog = editDialog(page);
+  await dialog.getByRole('radio', { name: 'Grün (Standard)' }).focus();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: 'Teal' })).toBeChecked();
+});
+
+test('jede Farboption hat eine Trefferfläche von mindestens 44×44px (issue #658 AC5, 375×812)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Trefferfläche', schedule: 'daily', color: null, archivedAt: null });
+
+  await tapHabit(page, 'Trefferfläche');
+  const dialog = editDialog(page);
+  const options = dialog.locator('.habit-editor__color-option');
+  await expect(options).toHaveCount(10);
+
+  const boxes = await options.evaluateAll((els) =>
+    els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { width: rect.width, height: rect.height };
+    }),
+  );
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('eine neu gewählte Farbe (--swatch-lime) übersteht einen Reload und erscheint in der Liste (issue #658 AC7)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Limette wählen', schedule: 'daily', color: null, archivedAt: null });
+
+  await tapHabit(page, 'Limette wählen');
+  const dialog = editDialog(page);
+  await dialog.getByRole('radio', { name: 'Limette' }).check();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.reload();
+
+  const dot = colorDotFor(page, 'Limette wählen');
+  await expect(dot).toBeVisible();
+  const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(color).toBe(await resolveColorToken(page, '--swatch-lime'));
+});
+
+test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (issue #658 AC8)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Farbe offline ändern', schedule: 'daily', color: null, archivedAt: null });
+  await context.setOffline(true);
+
+  await tapHabit(page, 'Farbe offline ändern');
+  const dialog = editDialog(page);
+  await dialog.getByRole('radio', { name: 'Himmelblau' }).check();
+  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await expect(dialog).toBeHidden();
+  // One entry for the seed, one for the colour change — both queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+  // Order matters here — see the comment at the equivalent point above (#120).
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query('SELECT color FROM habits WHERE name = $1', ['Farbe offline ändern']),
+  );
+  expect(row.rows[0].color).toBe('--swatch-sky');
+});
+
 test('Archivieren entfernt die Routine aus der aktiven Liste und zeigt einen Undo-Toast', async ({
   page,
 }) => {
@@ -638,6 +758,56 @@ test('eine gewählte Eigenfarbe zeigt den passenden Bereichs-Token', async ({ pa
   const dot = colorDotFor(page, 'Eigenfarbe');
   const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(color).toBe(await resolveColorToken(page, '--area-journal'));
+});
+
+test('alle zehn Swatch-Hintergrundfarben sind paarweise verschieden und von --surface unterscheidbar, hell und dunkel (issue #658 AC3)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Farbvergleich', schedule: 'daily', color: null, archivedAt: null });
+
+  await tapHabit(page, 'Farbvergleich');
+  const dialog = editDialog(page);
+  const swatches = dialog.locator('.habit-editor__color-swatch');
+  await expect(swatches).toHaveCount(10);
+
+  async function readSwatchesAndSurface() {
+    const colors = await swatches.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+    const surface = await resolveColorToken(page, '--surface');
+    return { colors, surface };
+  }
+
+  const light = await readSwatchesAndSurface();
+  expect(new Set(light.colors).size).toBe(10);
+  for (const color of light.colors) {
+    expect(color).not.toBe('rgba(0, 0, 0, 0)');
+    expect(color).not.toBe(light.surface);
+  }
+
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dunkel'));
+  const dark = await readSwatchesAndSurface();
+  expect(new Set(dark.colors).size).toBe(10);
+  for (const color of dark.colors) {
+    expect(color).not.toBe('rgba(0, 0, 0, 0)');
+    expect(color).not.toBe(dark.surface);
+  }
+});
+
+test('eine Routine auf --area-tasks bleibt nach der Erweiterung auf zehn Farben in Koralle, Editor zeigt genau Swatch 2 ausgewählt (issue #658 AC6)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Bestandsfarbe', schedule: 'daily', color: '--area-tasks', archivedAt: null });
+
+  const dot = colorDotFor(page, 'Bestandsfarbe');
+  const rowColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(rowColor).toBe(await resolveColorToken(page, '--area-tasks'));
+
+  await tapHabit(page, 'Bestandsfarbe');
+  const dialog = editDialog(page);
+  await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
+  const checkedCount = await dialog.locator('.habit-editor__colors input:checked').count();
+  expect(checkedCount).toBe(1);
 });
 
 test('bei reduzierter Bewegung öffnet das Anlegen-Sheet nur mit einem Opacity-Übergang', async ({
