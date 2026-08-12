@@ -22,9 +22,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
-- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` + `<UebersichtSections/>`
-  (rendert je aktivem Modul dessen `OverviewSection`, Reihenfolge Wetter → Termine →
-  Aufgaben → Aktivitäten → Gewohnheiten)
+- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` in der Titelzeile neben dem
+  Erfassungsknopf + `<UebersichtSections/>` (rendert je aktivem Modul dessen
+  `OverviewSection`, Reihenfolge Wetter → Termine → Aufgaben → Aktivitäten →
+  Gewohnheiten), jede Sektion mit einheitlichem Kopf über `OverviewBlock`
 - `(app)/aufgaben/` — Aufgaben (leer bis M1)
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/gewohnheiten/page.tsx` / `(app)/aktivitaeten/page.tsx` — Gewohnheiten-Verwaltung + Garmin-Aktivitäten, je eigener Tab
@@ -206,6 +207,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
 - `row/section-card/toggle/segmented-control/slider.tsx` (+ `.css`) — Form-Primitive
+- `overview-block.tsx` / `.css` — einheitlicher Modulkopf auf /uebersicht (Punkt in Bereichsfarbe, Titel, optionaler Link), issue #652
 - `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync/Storage-Start, Fehler-Toast, Stale-Helfer
 - `e2e-bridge.tsx` — Test-Griff auf Outbox/Journal/Dexie-Dump (nur `NEXT_PUBLIC_E2E`)
 

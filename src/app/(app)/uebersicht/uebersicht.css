@@ -23,6 +23,24 @@
   flex-shrink: 0;
 }
 
+/* Erfassungsknopf + Fortschrittsring bilden ein eigenes Gespann mit engerem
+ * Abstand (issue #652 AK3) — der weitere Abstand zum Einstellungen-Link bleibt
+ * die --space-4 von `.uebersicht__title-actions`. */
+.uebersicht__capture-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
+ * der Slot selbst hält die Titelzeile stabil (issue #652, siehe
+ * daily-progress-ring.tsx). */
+.daily-progress-ring-slot {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
 .uebersicht-capture__button {
   min-width: var(--touch-target);
   min-height: var(--touch-target);

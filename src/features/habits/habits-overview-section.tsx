@@ -1,20 +1,19 @@
 'use client';
 
+import { OverviewBlock } from '@/ui/overview-block';
 import { HabitToday } from './habit-today';
-import { WeeklyRecapCard } from './weekly-recap-card';
 
 /**
  * Overview section wrapper (issue #308) — heading travels with the module, so
  * switching `routinen` off hides both in one place instead of leaving an
- * orphaned `<h2>` behind. `WeeklyRecapCard` (issue #431) sits between the
- * heading and today's check-off list — a look back before today's list.
+ * orphaned `<h2>` behind. Heading row via `OverviewBlock` (issue #652).
+ * `WeeklyRecapCard` (issue #431) moved to /routinen in the same ticket — the
+ * busy daily overview keeps only today's check-off list.
  */
 export function HabitsOverviewSection() {
   return (
-    <>
-      <h2>Routinen</h2>
-      <WeeklyRecapCard />
+    <OverviewBlock title="Routinen" area="var(--area-habits)">
       <HabitToday />
-    </>
+    </OverviewBlock>
   );
 }

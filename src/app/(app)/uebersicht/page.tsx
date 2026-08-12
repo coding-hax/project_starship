@@ -15,12 +15,19 @@ export default function UebersichtPage() {
       <div className="uebersicht__title-row">
         <h1>Übersicht</h1>
         <div className="uebersicht__title-actions">
-          <UebersichtCapture />
+          <div className="uebersicht__capture-group">
+            <UebersichtCapture />
+            {/* Fest bemessener Slot (48×48px), unabhängig vom Ladezustand des Rings
+                gerendert — er hält die Titelzeile stabil, nicht ein Beitritt zum
+                Enthüllungspunkt (issue #652, siehe daily-progress-ring.tsx). */}
+            <div className="daily-progress-ring-slot">
+              <DailyProgressRing />
+            </div>
+          </div>
           <AppHeader variant="inline" />
         </div>
       </div>
       <OverviewReadyProvider>
-        <DailyProgressRing />
         <UebersichtSections />
       </OverviewReadyProvider>
     </>
