@@ -56,30 +56,88 @@ function checkoutBack(cur: string, git: GitAdapter): void {
   }
 }
 
-// Zieht 'main' per git in einen zurueckgefallenen PR-Branch: fetch + merge +
-// push -- bewusst ueber git, nicht 'gh pr update-branch' (#160). Erwartet
-// einen sauberen Arbeitsbaum; ein dreckiger Baum wird konservativ als Fehler
-// behandelt, statt riskant drueberzumergen oder ihn per 'git stash'/'--force'
-// selbst wegzuraeumen (#171) -- was dort liegt kann unersetzlich sein.
-//
-// Scheitert der Merge an einem echten Konflikt: kein Commit, Merge wird
-// abgebrochen, der Arbeitsbaum kehrt sauber zum vorherigen Branch zurueck.
-export function prCatchUpBehind(pr: string, git: GitAdapter, gh: GhAdapter): CatchupResult {
-  const branch = prMergeState(pr, gh)?.headRefName ?? '';
-  if (!branch) return { kind: 'fetchFailed' };
-
-  let statusOut = '';
+// Ermittelt den Worktree, der `branch` aktuell haelt (#665, Ansatz A): Catch-up
+// muss DORT laufen, nicht im Prozess-cwd -- sonst bewegt `checkout -B` den Ref
+// unter einem Worktree weg, dessen Index/Arbeitsbaum nicht folgen (invertierter
+// Index, siehe Issue). `undefined` heisst: kein Worktree haelt den Branch, der
+// Fallback-Pfad (heutiges Verhalten) greift.
+export function worktreeHoldingBranch(branch: string, git: GitAdapter): string | undefined {
+  if (!branch) return undefined;
+  let raw = '';
   try {
-    statusOut = git.run(['status', '--porcelain']);
+    raw = git.run(['worktree', 'list', '--porcelain']);
   } catch {
-    statusOut = '';
+    return undefined;
   }
-  const dirtyLines = linesOf(statusOut);
-  if (dirtyLines.length > 0) {
-    const paths = dirtyLines.slice(0, 5).map((line) => line.slice(3));
-    return { kind: 'dirty', paths };
+  let current: string | undefined;
+  for (const line of raw.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      current = line.slice('worktree '.length);
+    } else if (line === `branch refs/heads/${branch}`) {
+      return current;
+    }
+  }
+  return undefined;
+}
+
+// AK3: vergleicht den gestagten Index eines Worktrees gegen seinen HEAD-Baum.
+// Ungleich heisst invertierter Index -- der Vorfallstyp aus CLAUDE.mds
+// "geladene Waffe", ein Bau-Lauf dort wuerde den Revert mitcommitten. Bewusst
+// NUR Index<->HEAD (nicht "status leer"): unstaged Arbeit hat
+// write-tree === HEAD^{tree} und loest keinen Fehlalarm aus.
+export function worktreeIndexOk(dir: string, git: GitAdapter): { ok: boolean; reason: string } {
+  let indexTree = '';
+  try {
+    indexTree = git.run(['write-tree'], dir);
+  } catch {
+    return { ok: false, reason: 'write-tree fehlgeschlagen' };
+  }
+  let headTree = '';
+  try {
+    headTree = git.run(['rev-parse', 'HEAD^{tree}'], dir);
+  } catch {
+    return { ok: false, reason: 'HEAD^{tree} nicht lesbar' };
+  }
+  if (indexTree !== headTree) {
+    return { ok: false, reason: `Index (${indexTree}) weicht vom HEAD-Baum (${headTree}) ab` };
+  }
+  return { ok: true, reason: '' };
+}
+
+// Merge + Push direkt im Worktree, der den Branch haelt -- kein `checkout -B`
+// noetig, der Branch ist dort schon ausgecheckt (#665 Ansatz A). Scheitert der
+// Merge an einem echten Konflikt: kein Commit, Merge wird abgebrochen; der
+// Worktree bleibt bewusst auf seinem Branch (kein checkoutBack -- anders als
+// im Fallback gibt es hier keinen "vorherigen Branch" im selben Checkout).
+function mergeAndPushInWorktree(worktree: string, branch: string, git: GitAdapter): CatchupResult {
+  try {
+    git.run(['merge', 'origin/main', '--no-edit', '--quiet'], worktree);
+  } catch {
+    let conflictsRaw = '';
+    try {
+      conflictsRaw = git.run(['diff', '--name-only', '--diff-filter=U'], worktree);
+    } catch {
+      conflictsRaw = '';
+    }
+    try {
+      git.run(['merge', '--abort'], worktree);
+    } catch {
+      // best effort
+    }
+    return { kind: 'conflict', files: linesOf(conflictsRaw) };
   }
 
+  try {
+    git.run(['push', 'origin', `HEAD:${branch}`, '--quiet'], worktree);
+  } catch {
+    return { kind: 'pushFailed' };
+  }
+  return { kind: 'ok' };
+}
+
+// Fallback ohne Worktree: heutiger Ablauf unveraendert, jeder Aufruf OHNE
+// cwd-Arg (#665) -- laeuft im Prozess-cwd wie vor diesem Ticket.
+function catchUpViaCheckout(branch: string, git: GitAdapter): CatchupResult {
   let cur = '';
   try {
     cur = git.run(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
@@ -87,12 +145,6 @@ export function prCatchUpBehind(pr: string, git: GitAdapter, gh: GhAdapter): Cat
     cur = '';
   }
   if (!cur || cur === 'HEAD') cur = 'main';
-
-  try {
-    git.run(['fetch', 'origin', 'main', branch, '--quiet']);
-  } catch {
-    return { kind: 'fetchFailed' };
-  }
 
   try {
     git.run(['checkout', '-B', branch, `origin/${branch}`, '--quiet']);
@@ -126,6 +178,42 @@ export function prCatchUpBehind(pr: string, git: GitAdapter, gh: GhAdapter): Cat
   }
   checkoutBack(cur, git);
   return { kind: 'ok' };
+}
+
+// Zieht 'main' per git in einen zurueckgefallenen PR-Branch: fetch + merge +
+// push -- bewusst ueber git, nicht 'gh pr update-branch' (#160). Erwartet
+// einen sauberen Arbeitsbaum; ein dreckiger Baum wird konservativ als Fehler
+// behandelt, statt riskant drueberzumergen oder ihn per 'git stash'/'--force'
+// selbst wegzuraeumen (#171) -- was dort liegt kann unersetzlich sein.
+//
+// #665: haelt ein Worktree den Branch, laeuft der ganze Ablauf DORT (Ansatz
+// A) statt im Prozess-cwd -- sonst bewacht der Dirty-Guard das falsche
+// Verzeichnis und `checkout -B` bewegt den Ref unter dem Worktree weg.
+export function prCatchUpBehind(pr: string, git: GitAdapter, gh: GhAdapter): CatchupResult {
+  const branch = prMergeState(pr, gh)?.headRefName ?? '';
+  if (!branch) return { kind: 'fetchFailed' };
+
+  const worktree = worktreeHoldingBranch(branch, git);
+
+  let statusOut = '';
+  try {
+    statusOut = git.run(['status', '--porcelain'], worktree);
+  } catch {
+    statusOut = '';
+  }
+  const dirtyLines = linesOf(statusOut);
+  if (dirtyLines.length > 0) {
+    const paths = dirtyLines.slice(0, 5).map((line) => line.slice(3));
+    return { kind: 'dirty', paths };
+  }
+
+  try {
+    git.run(['fetch', 'origin', 'main', branch, '--quiet'], worktree);
+  } catch {
+    return { kind: 'fetchFailed' };
+  }
+
+  return worktree ? mergeAndPushInWorktree(worktree, branch, git) : catchUpViaCheckout(branch, git);
 }
 
 // Klartext-Ursache je Nicht-Konflikt-Rueckgabewert von prCatchUpBehind
