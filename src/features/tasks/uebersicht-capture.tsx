@@ -2,6 +2,8 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { matchHabit } from '@/features/capture/habit-match';
+import { hasCompletionVerb } from '@/features/capture/local-recognizer';
 import { allowedCaptureKinds, decideCaptureRoute } from '@/features/capture/route-capture';
 import { toDateKey } from '@/features/habits/due-today';
 import { useHabitLogs } from '@/features/habits/use-habit-logs';
@@ -33,6 +35,7 @@ interface HabitCheckUndo {
 export function UebersichtCapture() {
   const [open, setOpen] = useState(false);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
+  const [unresolvedHabit, setUnresolvedHabit] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
@@ -71,6 +74,16 @@ export function UebersichtCapture() {
     const captureHabits = (habits ?? [])
       .filter((habit) => habit.archivedAt === null && habit.id !== JOURNAL_HABIT_ID)
       .map((habit) => ({ id: habit.id, name: habit.name }));
+
+    // AK6 (#687): ein Erledigungsverb ohne (oder mit verneintem) Habit-Treffer legt
+    // nichts an — weder Aufgabe noch Abhaken. `matchHabit` liefert bei Verneinung
+    // ("Sport heute nicht gemacht") bewusst `matched: false`, genau wie bei einem
+    // echten Nicht-Treffer ("Wäsche erledigt") — beide laufen hier zusammen.
+    if (hasCompletionVerb(raw) && !matchHabit(raw, captureHabits).matched) {
+      setUnresolvedHabit(true);
+      return;
+    }
+    setUnresolvedHabit(false);
 
     const decision = decideCaptureRoute(raw, {
       now: new Date(),
@@ -113,7 +126,10 @@ export function UebersichtCapture() {
       <button
         type="button"
         className="uebersicht-capture__button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setUnresolvedHabit(false);
+          setOpen(true);
+        }}
         aria-label={LABEL}
       >
         <span aria-hidden="true">+</span>
@@ -128,6 +144,11 @@ export function UebersichtCapture() {
             placeholder="Todo Titel"
             aria-label="Titel der Aufgabe"
           />
+          {unresolvedHabit && (
+            <p role="status" className="uebersicht-capture__notice">
+              Keiner Gewohnheit zugeordnet.
+            </p>
+          )}
           <button type="submit" className="quick-add__submit">
             Hinzufügen
           </button>

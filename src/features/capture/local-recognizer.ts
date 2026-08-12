@@ -1,4 +1,4 @@
-import { cleanTitle, extractDateTimeSlot } from '../tasks/parse-task-input';
+import { analyzeText } from '../tasks/parse-task-input';
 import { matchHabit } from './habit-match';
 import type { CaptureDraft, CaptureKind, Recognizer } from './types';
 
@@ -9,6 +9,10 @@ import type { CaptureDraft, CaptureKind, Recognizer } from './types';
  * - Die Modul-Registry filtert NACH dem Punkten, nicht davor (`applyAllowedKinds`).
  * - Erledigen schlägt Anlegen: das `habit_check`-Signal (Verb *und* Habit-Treffer) ist
  *   das mit Abstand stärkste, unabhängig davon, welches Vokabular sonst noch trifft.
+ *
+ * Der Titel kommt vollständig aus `analyzeText` (#687, R3) — Termin-/Aufgaben-Vokabular
+ * (z. B. "Meeting", "bei Dr.") bleibt im Titel stehen, auch wenn es hier die Art
+ * mitentscheidet. Keine eigene Wort-Blacklist mehr.
  */
 
 const WORD_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
@@ -26,7 +30,9 @@ const GEMACHT_PATTERN = word('gemacht');
 const HAKE_PATTERN = word('hake');
 const AB_PATTERN = word('ab');
 
-function hasCompletionVerb(text: string): boolean {
+/** Exportiert für `uebersicht-capture.tsx` (AK6, #687): erkennt einen Erledigungsverb-Versuch
+ * auch dann, wenn `matchHabit` ihn (Verneinung oder kein Treffer) zu `task` degradiert. */
+export function hasCompletionVerb(text: string): boolean {
   return (
     ABHAKEN_PATTERN.test(text) ||
     ABGEHAKT_PATTERN.test(text) ||
@@ -90,40 +96,8 @@ function classify(signals: Signals): CaptureKind {
   return winner;
 }
 
-// Nur die Signalwörter, die `cleanTitle`s FILLER_PATTERN aus parse-task-input.ts noch
-// nicht kennt (das deckt "termin"/"erstelle"/"erinnere mich an" bereits ab).
-function stripSignalTokens(text: string, signals: Signals): string {
-  let stripped = text;
-  if (signals.completionVerb) {
-    stripped = stripped
-      .replace(new RegExp(ABHAKEN_PATTERN, 'giu'), ' ')
-      .replace(new RegExp(ABGEHAKT_PATTERN, 'giu'), ' ')
-      .replace(new RegExp(ERLEDIGT_PATTERN, 'giu'), ' ')
-      .replace(new RegExp(GEMACHT_PATTERN, 'giu'), ' ')
-      .replace(new RegExp(HAKE_PATTERN, 'giu'), ' ')
-      .replace(new RegExp(AB_PATTERN, 'giu'), ' ');
-  }
-  if (signals.eventVocab) {
-    stripped = stripped
-      .replace(new RegExp(word('treffen'), 'giu'), ' ')
-      .replace(new RegExp(word('meeting'), 'giu'), ' ')
-      .replace(/\bbei\s+dr\.?/giu, ' ');
-  }
-  if (signals.taskVocab) {
-    stripped = stripped
-      .replace(new RegExp(word('nicht vergessen'), 'giu'), ' ')
-      .replace(new RegExp(word('muss noch'), 'giu'), ' ');
-  }
-  return stripped;
-}
-
-function buildTitle(rawText: string, remaining: string, signals: Signals): string {
-  const cleaned = cleanTitle(stripSignalTokens(remaining, signals));
-  return cleaned || rawText.trim();
-}
-
 export const recognizeLocally: Recognizer = (text, ctx) => {
-  const { date, hasExplicitTime, remaining } = extractDateTimeSlot(text, ctx.now);
+  const { date, hasExplicitTime, title } = analyzeText(text, ctx.now);
   const habitMatch = matchHabit(text, ctx.habits);
 
   const signals: Signals = {
@@ -142,7 +116,7 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
 
   const draft: CaptureDraft = {
     kind,
-    title: buildTitle(text, remaining, signals),
+    title,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
     habitId: kind === 'habit_check' ? habitMatch.habitId : null,
     confidence: kind === 'habit_check' ? habitMatch.confidence : 'high',

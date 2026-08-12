@@ -8,7 +8,7 @@ import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
-import { localInputToIso } from './datetime-local';
+import { isoToLocalInput, localInputToIso } from './datetime-local';
 import { parseTaskInput, type ParsedTaskInput } from './parse-task-input';
 import { groupTasks, useTasks } from './use-tasks';
 
@@ -183,7 +183,21 @@ export function QuickAddTask() {
   useEffect(() => {
     const batch = consumeCaptureDraft();
     const item = batch?.items[0];
-    if (item?.kind === 'task') queueMicrotask(() => void applyParsed(item));
+    if (item?.kind !== 'task') return;
+    // AK5 (#687): bleibt nach dem Erkennen kein Titel übrig, legt der Direkt-Pfad nicht
+    // mehr still eine Aufgabe ohne Titel an — das Sheet öffnet stattdessen mit der
+    // erkannten Fälligkeit vorbefüllt und Fokus im leeren Titelfeld (Sheet-eigenes
+    // `initialFocusRef`).
+    if (item.title.trim() === '') {
+      setShowMore(item.dueAt !== null);
+      setNotes('');
+      setDueAt(isoToLocalInput(item.dueAt));
+      setPriority(0);
+      setParentId(NO_PARENT);
+      setOpen(true);
+      return;
+    }
+    queueMicrotask(() => void applyParsed(item));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -192,6 +206,20 @@ export function QuickAddTask() {
     const raw = inputRef.current?.value.trim();
 
     if (!raw) {
+      inputRef.current?.focus();
+      return;
+    }
+
+    const parsed = parseTaskInput(raw, new Date());
+
+    // AK5 (#687): bleibt kein Titel übrig, legt der Direkt-Pfad nichts mehr an — das
+    // Sheet bleibt offen, eine erkannte Fälligkeit wandert ins "Mehr"-Feld, Fokus
+    // zurück ins Titelfeld statt eine leere Aufgabe anzulegen.
+    if (parsed.title === '') {
+      if (parsed.dueAt && !dueAt) {
+        setDueAt(isoToLocalInput(parsed.dueAt));
+        setShowMore(true);
+      }
       inputRef.current?.focus();
       return;
     }
@@ -208,7 +236,6 @@ export function QuickAddTask() {
     if (inputRef.current) inputRef.current.value = '';
     setOpen(false);
 
-    const parsed = parseTaskInput(raw, new Date());
     await applyParsed(parsed, explicitDueAt, extras);
   }
 

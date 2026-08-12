@@ -16,6 +16,12 @@ export interface HabitMatch {
 
 const NO_MATCH: HabitMatch = { matched: false, habitId: null, confidence: 'low' };
 
+// Verneinung schlägt jeden Treffer (issue #687 AK6) — "Sport heute nicht gemacht" darf
+// nie als erledigt durchgehen, das ist der teuerste Fehler im ganzen Korpus, weil er
+// still Daten verfälscht. Bewusst satzweit statt an die Verb-Nähe gebunden: ein einziges
+// "nicht" im Satz reicht, um jeden Habit-Treffer zu kassieren.
+const NEGATION_PATTERN = /(?<![\p{L}\p{N}_])nicht(?![\p{L}\p{N}_])/iu;
+
 const COMBINING_DIACRITICS_PATTERN = /[̀-ͯ]/g;
 
 function foldDiacritics(text: string): string {
@@ -32,6 +38,8 @@ function tokenize(text: string): string[] {
 type Strength = 1 | 2;
 
 export function matchHabit(text: string, habits: { id: string; name: string }[]): HabitMatch {
+  if (NEGATION_PATTERN.test(text)) return NO_MATCH;
+
   const textTokens = new Set(tokenize(text));
 
   const scored = habits

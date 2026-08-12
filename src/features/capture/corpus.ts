@@ -117,4 +117,30 @@ export const CORPUS: CorpusCase[] = [
     text: 'hake meine Routine Sport für heute ab',
     expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high' },
   },
+
+  // Verneinung kassiert den Habit-Treffer (AC6) — der teuerste Fehler im Korpus, weil er
+  // sonst still eine Gewohnheit fälschlich abhakt.
+  {
+    signal: '#687 AC6: Verneinung kassiert den Habit-Treffer -> task, kein Abhaken',
+    text: 'Sport heute nicht gemacht',
+    expect: { kind: 'task' },
+  },
+
+  // #687 AC7: zusätzliche Fälle des Span+Ranking-Umbaus
+  {
+    signal: '#687 AC7: Aufgaben-Vokabular "nicht vergessen"',
+    text: 'nicht vergessen: Pass verlängern',
+    expect: { kind: 'task' },
+  },
+  {
+    signal: '#687 AC7: Aufgaben-Vokabular "muss noch"',
+    text: 'muss noch Reifen wechseln',
+    expect: { kind: 'task' },
+  },
+  {
+    signal: '#687 AC7: konkrete Uhrzeit, aber Kalender-Modul aus -> task, Zeit bleibt erhalten',
+    text: 'Dienstag 12 Uhr Zahnarzt',
+    allowedKinds: ['task', 'habit_check'],
+    expect: { kind: 'task' },
+  },
 ];
