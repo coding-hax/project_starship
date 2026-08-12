@@ -16,6 +16,11 @@ export function createGitAdapter(exec: ExecFn = defaultExec): GitAdapter {
   return {
     // Trailing Newlines abschneiden, wie bash `$(...)` es fuer jede
     // Kommandosubstitution tut -- gleiches Muster wie gh.ts.
-    run: (args, cwd) => exec('git', args, cwd).replace(/\r?\n+$/, ''),
+    //
+    // cwd nur weiterreichen, wenn gesetzt (#665): so bleibt ein Aufruf ohne
+    // cwd ein echter 2-Argumente-Aufruf an `exec`, kein 3-Argumente-Aufruf
+    // mit explizitem `undefined` -- Test-Doubles, die auf die exakte
+    // Argumentliste pruefen, bleiben unveraendert gueltig.
+    run: (args, cwd) => (cwd === undefined ? exec('git', args) : exec('git', args, cwd)).replace(/\r?\n+$/, ''),
   };
 }
