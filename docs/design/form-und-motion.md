@@ -53,6 +53,24 @@ Bewegung erklärt Zusammenhänge — woher etwas kam, wohin es geht.
   bei jeder Nutzung erneut abgespielt wird und dann nervt.
 - **`prefers-reduced-motion: reduce` wird respektiert** — dann nur Opacity-Übergänge.
 
+### Ausnahme: Wetter-Icons (issue #661)
+
+Die sieben Wetter-Icons (`src/features/weather/weather-icon-motion.css`) tragen eine
+dauerhafte, sehr kleine Umgebungsbewegung — Sonne pulsiert, Wolken ziehen, Tropfen und
+Flocken fallen, der Blitz zuckt. Das weicht bewusst von allen drei Motion-Regeln oben
+ab: Dauern liegen zwischen 1,4 s und 7 s statt 150–250 ms, die Kurven sind
+`linear`/`ease-in-out` statt Spring, und bei `prefers-reduced-motion`/dem App-Schalter
+steht die Bewegung ganz still statt auf einen Opacity-Übergang umzuschwenken (über die
+globale Regel in `tokens.css`, die jede `animation-duration` nullt — keine eigene
+Opacity-Variante nötig).
+
+Begründung: diese Bewegung erklärt keine Herkunft (Regel „Bewegung erklärt
+Zusammenhänge" gilt hier nicht), sie ist Atmosphäre — dasselbe Argument, mit dem ein
+Wetter-Widget auf einem Sperrbildschirm ziehende Wolken zeigt. Kein Bounce, kein
+Parallax, nichts, was bei jeder Nutzung erneut nervt: die Bewegung ist so klein
+(max. 3,5 Einheiten in einer 24er-viewBox), dass sie beim Hinsehen aktiv, beim
+Vorbeischauen unauffällig ist.
+
 ## Das „Smooth"-Versprechen
 
 Diese vier Regeln sind nicht verhandelbar, sie sind das Produktversprechen:
