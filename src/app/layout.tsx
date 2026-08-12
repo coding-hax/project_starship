@@ -7,7 +7,15 @@ import { KeyboardInset } from '@/ui/keyboard-inset';
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
-  display: 'swap',
+  // 'optional' statt 'swap' (issue #652): auch mit next/fonts automatisch
+  // metrik-angepasstem Fallback bleibt bei 'swap' eine Spätladung, die den
+  // Zeilenkasten der Titelzeile minimal nachzieht — genug, dass die Layout
+  // Instability API einen Eintrag meldet (CI-Fund: „h1 +
+  // div.uebersicht__title-actions"), auch wenn er lokal, mit warmem
+  // Font-Cache, nie auftritt. 'optional' tauscht die Schrift nach dem sehr
+  // kurzen Blockfenster nicht mehr nach, sondern bleibt für diesen
+  // Seitenaufruf beim Fallback — keine Spätladung, kein Shift.
+  display: 'optional',
 });
 
 export const metadata: Metadata = {
