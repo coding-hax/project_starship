@@ -19,7 +19,7 @@ describe('decideCaptureRoute — task', () => {
     const decision = decideCaptureRoute('Wäsche waschen', ctx());
     expect(decision).toEqual({
       action: 'task',
-      draft: { kind: 'task', title: 'Wäsche waschen', dueAt: null },
+      draft: { kind: 'task', title: 'Wäsche waschen', dueAt: null, needsConfirmation: false },
     });
   });
 });

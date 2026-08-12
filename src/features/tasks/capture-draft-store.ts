@@ -13,6 +13,9 @@ export interface TaskCaptureDraftItem {
   kind: 'task';
   title: string;
   dueAt: string | null;
+  /** #688: geratene Nachtzeit oder regionale Kurzform — erzwingt das Bestätigungs-Sheet
+   * in quick-add.tsx, auch wenn "ohne Bestätigung direkt anlegen" an ist. */
+  needsConfirmation: boolean;
 }
 
 export interface EventCaptureDraftItem {
