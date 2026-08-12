@@ -878,6 +878,55 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
 });
 
 /* -------------------------------------------------------------------------- */
+/* #630 (S4): Desktop-Werkzeugleiste ‹ › Heute ab 768 px, Anordnung B         */
+/* -------------------------------------------------------------------------- */
+
+test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert Woche/Monat (AK9)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const today = page.getByRole('button', { name: 'Heute' });
+  const prevWeek = page.getByRole('button', { name: 'Vorige Woche' });
+  const nextWeek = page.getByRole('button', { name: 'Nächste Woche' });
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+
+  // Heute ist ausgewaehlt: "Heute" steht als Knopf da, disabled statt entfernt.
+  await expect(today).toHaveCount(1);
+  await expect(today).toBeVisible();
+  await expect(today).toBeDisabled();
+  await expect(prevWeek).toBeVisible();
+  await expect(nextWeek).toBeVisible();
+
+  // `>` blaettert in der Wochenansicht eine Woche weiter (Sa 18. -> Sa 25.).
+  await nextWeek.click();
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(title).toHaveText('Juli 2026');
+  await expect(today).toBeEnabled();
+
+  // In der Monatsansicht blaettert `>` stattdessen einen Monat (Titel wechselt).
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
+  await expect(nextMonth).toBeVisible();
+  await nextMonth.click();
+  await expect(title).toHaveText('August 2026');
+});
+
+test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der Ruecksprung-Chip bleibt (AK10)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+  // Heute ist ausgewaehlt: der Chip selbst ist ebenfalls nicht da (S1, #628 AK6).
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  await dayButton(page, 'So, 19.').click();
+  await expect(page.getByRole('button', { name: 'Heute' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* #554 (S3): Termin-Editor — Anlegen, Ändern, Löschen, offline, ganztägig    */
 /* -------------------------------------------------------------------------- */
 
