@@ -1,6 +1,6 @@
 .category-colors-panel__category {
   padding: var(--space-2) 0 var(--space-4);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-faint);
 }
 
 .category-colors-panel__category:last-child {

@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { expect, test, type Page } from '@playwright/test';
+import { registerPasskey, resetAppData, withDb } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -273,4 +273,133 @@ test('AC6 (issue #653): ein abgeschaltetes Modul verbirgt sein Panel, eine leer 
   await page.getByRole('switch', { name: 'Export' }).click();
   await expect(page.locator('.section-card.export')).toHaveCount(0);
   await expect(groupTitles).toHaveText(['Gerät', 'Module']);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #660: Kategoriefarben selbst wählen                                  */
+/* -------------------------------------------------------------------------- */
+
+function categoryColorsPanel(page: Page) {
+  return page.locator('.section-card').filter({ has: page.getByRole('heading', { name: 'Kategoriefarben', level: 2 } ) });
+}
+
+function categoryRow(page: Page, label: string) {
+  return categoryColorsPanel(page)
+    .locator('.category-colors-panel__category')
+    .filter({ has: page.getByText(label, { exact: true }) });
+}
+
+async function categoryColorFromDb(category: string): Promise<string | null> {
+  const result = await withDb((client) =>
+    client.query('SELECT color FROM category_colors WHERE category = $1', [category]),
+  );
+  return result.rowCount === 0 ? null : (result.rows[0].color as string);
+}
+
+test.describe('Kategoriefarben (issue #660)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Das Panel liest ausschließlich aus IndexedDB (CLAUDE.md Regel 8) — Sync
+    // gekappt beweist das, gleiche Konvention wie reminder-prefs.spec.ts.
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+  });
+
+  test('AK1: das Panel „Kategoriefarben" steht unter „Module", solange Kalender aktiv ist', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const moduleGroup = page
+      .locator('.einstellungen__group')
+      .filter({ has: page.locator('.einstellungen__group-title', { hasText: 'Module' }) });
+    await expect(moduleGroup.getByRole('heading', { name: 'Kategoriefarben', level: 2 })).toBeVisible();
+
+    await page.getByRole('switch', { name: 'Kalender' }).click();
+    await expect(page.getByRole('heading', { name: 'Kategoriefarben', level: 2 })).toHaveCount(0);
+  });
+
+  test('AK2: das Panel listet alle fünf Kategorien mit Namen und ihrer aktuellen Farbe', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const panel = categoryColorsPanel(page);
+    await expect(panel.locator('.category-colors-panel__category')).toHaveCount(5);
+    for (const label of ['Privat', 'Arbeit', 'Gesundheit', 'Sport', 'Familie']) {
+      await expect(categoryRow(page, label)).toBeVisible();
+    }
+
+    // Ohne Override zeigt die Vorschau exakt den heutigen --cat-arbeit-Wert.
+    const expected = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.background = 'var(--cat-arbeit)';
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    const preview = categoryRow(page, 'Arbeit').locator('.category-colors-panel__current');
+    await expect
+      .poll(() => preview.evaluate((el) => getComputedStyle(el).backgroundColor))
+      .toBe(expected);
+  });
+
+  test('AK3: eine Farbe aus der Zehnerpalette lässt sich je Kategorie wählen', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const swatch = categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' });
+    await swatch.check();
+    await expect(swatch).toBeChecked();
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => categoryColorFromDb('arbeit')).toBe('--swatch-amber');
+  });
+
+  test('AK6: ein Reset-Weg führt je Kategorie zurück auf den Default', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const arbeitRow = categoryRow(page, 'Arbeit');
+    await arbeitRow.getByRole('radio', { name: 'Arbeit: Bernstein' }).check();
+    const resetButton = arbeitRow.getByRole('button', { name: 'Arbeit: Standardfarbe verwenden' });
+    await expect(resetButton).toBeVisible();
+
+    await resetButton.click();
+    await expect(arbeitRow.getByRole('radio', { name: 'Arbeit: Bernstein' })).not.toBeChecked();
+    await expect(resetButton).toHaveCount(0);
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => categoryColorFromDb('arbeit')).toBeNull();
+  });
+
+  test('AK8: zwei Kategorien mit derselben Farbe zeigen das sichtbar an', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    await categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' }).check();
+    await categoryRow(page, 'Sport').getByRole('radio', { name: 'Sport: Bernstein' }).check();
+
+    await expect(categoryRow(page, 'Arbeit')).toContainText('Farbe auch bei: Sport');
+    await expect(categoryRow(page, 'Sport')).toContainText('Farbe auch bei: Arbeit');
+    // Eine Kategorie ohne geteilte Farbe zeigt keinen Hinweis.
+    await expect(categoryRow(page, 'Privat').getByText('Farbe auch bei')).toHaveCount(0);
+  });
+
+  test('AK9: offline gewählte Kategoriefarbe erreicht online die Datenbank', async ({ page, context }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+    await context.setOffline(true);
+
+    await categoryRow(page, 'Familie').getByRole('radio', { name: 'Familie: Rosé' }).check();
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+    // Reihenfolge wie in habits.spec.ts/reminder-prefs.spec.ts: erst entrouten,
+    // dann online — sonst wettläuft der App-eigene 'online'-Listener gegen das Unroute.
+    await page.unroute('**/api/sync/**');
+    await context.setOffline(false);
+    await page.evaluate(() => window.__starship.sync());
+
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+    await expect.poll(() => categoryColorFromDb('familie')).toBe('--swatch-rose');
+  });
 });
