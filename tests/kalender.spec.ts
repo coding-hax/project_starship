@@ -61,8 +61,8 @@ function dayDots(page: Page, ariaLabel: string) {
 /**
  * Drives the same Pointer Events CalendarStrip listens to (issue #556) —
  * dispatched directly on the gesture surface, same technique as tasks.spec.ts's
- * swipeRight/swipeLeft. Positive `deltaY` swipes down (opens the month),
- * negative swipes up (closes it back to the week).
+ * swipeRight/swipeLeft. A vertical swipe no longer changes `expanded` (issue
+ * #662, AK-A) — this helper now only proves the axis lock swallows it.
  */
 async function swipeVertical(locator: Locator, deltaY: number) {
   const box = await locator.boundingBox();
@@ -137,15 +137,17 @@ async function prevWeek(page: Page, times = 1): Promise<void> {
 }
 
 /**
- * Taps a day button in the strip, pulling the month open first if that day's
- * week row is collapsed (`visibility: hidden`, `isVisible()` reports that) —
- * the tap itself collapses the strip back (issue #629, replaces stepping
- * there via the "Nächster/Vorheriger Tag" buttons).
+ * Taps a day button in the strip, pulling the month open first via the
+ * Woche/Monat-Umschalter if that day's week row is collapsed (`visibility:
+ * hidden`, `isVisible()` reports that) — the tap itself collapses the strip
+ * back (issue #629, replaces stepping there via the "Nächster/Vorheriger
+ * Tag" buttons). Opening used to go through a vertical swipe; that gesture
+ * no longer does anything (issue #662, AK-A), so this uses the switcher.
  */
 async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
   const button = dayButton(page, ariaLabel);
   if (!(await button.isVisible())) {
-    await swipeVertical(calendarWeeks(page), 80);
+    await page.getByRole('radio', { name: 'Monat' }).click();
   }
   await button.click();
 }
@@ -209,6 +211,46 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
   const titles = await page.locator('.event-agenda__item').allTextContents();
   expect(titles[0]).toContain('Zahnarzt');
   expect(titles[1]).toContain('Nachmittagstermin');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #644: Offline-Notiz                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('der Kalender bleibt offline sichtbar, mit einer ruhigen Notiz statt eines Fehlers (issue #644 AC1)', async ({
+  page,
+  context,
+}) => {
+  await seedEvent(page, {
+    title: 'Bleibt da',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText('Offline');
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz im Kalender verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #644 AC2)', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -570,7 +612,7 @@ test('ein Wisch, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen
 /* S5 (#556): aufklappender Monat — Wischgeste, Punkte, reduced-motion        */
 /* -------------------------------------------------------------------------- */
 
-test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen zieht ihn zum vollen Monat auf (S5 AC1)', async ({
+test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen tut nichts (S5 AK-A)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
@@ -583,26 +625,52 @@ test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen zieht ihn zum vollen Mon
 
   await swipeVertical(calendarWeeks(page), 80);
 
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-  await expect(outsideDay).toBeVisible();
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(outsideDay).not.toBeVisible();
 });
 
-test('ein Aufwaerts-Wisch am aufgezogenen Monat zieht ihn zum Wochenstreifen zusammen (S5 AC2)', async ({
+test('ein Aufwaerts-Wisch am aufgezogenen Monat tut nichts (S5 AK-A)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
   await swipeVertical(calendarWeeks(page), -80);
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+});
+
+test('ein Links-Wisch im aufgezogenen Monat blaettert zum Folgemonat, derselbe Tag bleibt gewaehlt (S5 AK-B)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(title).toHaveText('Juli 2026');
+
+  await swipeHorizontal(calendarWeeks(page), -80);
+
+  await expect(title).toHaveText('August 2026');
+  await expect(dayButton(page, 'Di, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('ein Rechts-Wisch im aufgezogenen Monat blaettert zum Vormonat, derselbe Tag bleibt gewaehlt (S5 AK-B)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(title).toHaveText('Juli 2026');
+
+  await swipeHorizontal(calendarWeeks(page), 80);
+
+  await expect(title).toHaveText('Juni 2026');
+  await expect(dayButton(page, 'Do, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streifen zusammen (S5 AC2)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
   const outsideDay = dayButton(page, 'Mi, 22.');
@@ -821,10 +889,10 @@ test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu
   }
 
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
-  await swipeVertical(calendarWeeks(page), -80);
+  await page.getByRole('radio', { name: 'Woche' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'false');
 });
 
@@ -1534,7 +1602,7 @@ test('eine woechentliche Serie setzt an jedem Vorkommen einen Punkt, nicht nur a
   page,
 }) => {
   await seedWeeklyDotSeries(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
@@ -1559,7 +1627,7 @@ test('die Serien-Punkte ueberleben einen Reload ohne Netzwerk, kommen also aus I
   await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
     polling: 100,
   });
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
 });
@@ -1583,7 +1651,7 @@ test('ein ausgefallenes Vorkommen verliert seinen Punkt, die uebrigen behalten i
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(0);
 
   // Nur dieses eine Vorkommen ist weg — die Serie punktet weiter.
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
 });
 
@@ -1629,7 +1697,7 @@ test('Punkt und Tagesansicht stimmen ueberein: ein Punkt genau dann, wenn der Ta
   await seedWeeklyDotSeries(page);
 
   // Das Vorkommen eine Woche weiter: Punkt im Band UND Karte in der Tagesansicht.
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await dayButton(page, 'Sa, 25.').click();
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
   await expect(settledEventCard(page, 'Yoga')).toBeVisible();
@@ -1663,7 +1731,7 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
     category: 'sport',
   });
 
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
   const dots = dayDots(page, 'Sa, 25.');

@@ -148,7 +148,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   rühren nur `lastError` an)
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
   darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events` (issue #560 AK2)
-- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Wischgeste zum Monat aufklappbar (issue #556), Vor/Zurück-Tag, „Heute"-Rücksprung, Kategorie-Punkte je Tag
+- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Umschalter zum Monat auf (#628), Wisch blättert Woche/Monat (#629/#662), Vor/Zurück-Tag, „Heute"-Rücksprung, Punkte je Tag
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen
   Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar,
   öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände;
