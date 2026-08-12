@@ -1,7 +1,7 @@
 # Starship
 
 Eine persönliche Produktivitäts-PWA für **genau eine Person**: Termine, Aufgaben,
-Journal, Gewohnheiten. Mobile-first, offline-fähig, local-first.
+Journal, Routinen. Mobile-first, offline-fähig, local-first.
 
 Verbindliche Arbeitsanweisung: [CLAUDE.md](CLAUDE.md).
 Warum etwas so ist, wie es ist: [docs/](docs/) und [docs/adr/](docs/adr/).
@@ -57,7 +57,7 @@ getrennten Datenbanken.
 ## Fertig
 
 - **Aufgaben** — schnell erfassen, Fälligkeit, Priorität, Erledigen per Swipe, offline
-- **Gewohnheiten** — täglich/wöchentlich abhaken, Streaks, Wochenübersicht
+- **Routinen** — täglich/wöchentlich abhaken, Streaks, Wochenübersicht
 - **Journal** — freier Text, Stimmung, Tags, lokal durchsuchbar; **Ende-zu-Ende-verschlüsselt**
 - **Termine** — Tages-/Wochenansicht, Serien mit Ausnahmen, offline
 - **Übersicht** — Dashboard, das alles zusammenführt
