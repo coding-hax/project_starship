@@ -96,6 +96,11 @@
   display: flex;
 }
 
+.app-header__icon svg {
+  width: 26px;
+  height: 26px;
+}
+
 /* --------------------------------- nav ---------------------------------- */
 
 .nav {

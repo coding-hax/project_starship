@@ -1,12 +1,12 @@
 /* Einstellungen sits inline with the heading on mobile — Übersicht is the only
  * screen that carries it there (issue #126). Titelzeile plus Erfassungsknopf
- * (issue #618): ein echtes Raster statt flex-space-between, sonst hängt die
- * Position des mittleren Knopfs von der Breite der äußeren Kinder ab und driftet
- * sichtbar aus der Mitte. */
+ * (issue #618, umgestellt auf rechts verankert in #651): der Titel trägt die
+ * Restbreite, das Aktionsbündel (Erfassungsknopf, Einstellungs-Link) bleibt
+ * rechts verankert und driftet nicht, egal wie breit der Titel wird. */
 .uebersicht__title-row {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
 }
 
@@ -16,12 +16,14 @@
   overflow-wrap: anywhere;
 }
 
-.uebersicht__title-row .app-header--inline {
-  justify-self: end;
+.uebersicht__title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
 }
 
 .uebersicht-capture__button {
-  justify-self: center;
   min-width: var(--touch-target);
   min-height: var(--touch-target);
   border: none;
