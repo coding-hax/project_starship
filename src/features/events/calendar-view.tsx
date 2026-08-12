@@ -3,7 +3,9 @@
 import { useState, useSyncExternalStore } from 'react';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
+import { OfflineNotice } from '@/ui/offline-notice';
 import { Toast } from '@/ui/toast';
+import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
 import { EventEditor, type EventEditorState } from './event-editor';
@@ -53,6 +55,7 @@ export function CalendarView() {
   const subscribedEvents = useSubscribedEvents();
   useIcsSubscriptionsRefresh();
   const exceptions = useEventExceptions();
+  const online = useOnline();
   const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
   const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);
   const selectedDay = selectedDayOverride ?? today;
@@ -128,6 +131,12 @@ export function CalendarView() {
           </div>
         )}
       </header>
+      {!online && (
+        <OfflineNotice>
+          Offline — neue Termine liegen lokal und werden synchronisiert, sobald du wieder online
+          bist.
+        </OfflineNotice>
+      )}
       {today !== null && selectedDay !== null && (
         <EventAgenda
           events={timelineEvents}
