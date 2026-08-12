@@ -70,28 +70,36 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
       {allDayItems.length > 0 && (
         <div className="event-agenda__all-day">
           <ul className="event-agenda__all-day-list">
-            {allDayRows.map(({ key, item, status, onAnimationEnd }) => (
-              <li
-                key={key}
-                className="event-agenda__all-day-item list-motion-item"
-                data-entering={status === 'entering'}
-                data-leaving={status === 'leaving'}
-                onAnimationEnd={onAnimationEnd}
-              >
-                <button
-                  type="button"
-                  className="event-agenda__all-day-button"
-                  data-continues-before={item.continuesBefore}
-                  data-continues-after={item.continuesAfter}
-                  style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
-                  onClick={() => onEditEvent?.(item)}
+            {allDayRows.map(({ key, item, status, onAnimationEnd }) => {
+              // Subscribed items render as a plain `<div>`, never a `<button>` with
+              // `onEditEvent` wired up — the deep enforcement of ADR-0022 AK2
+              // (calendar-view.tsx's `openEdit` only resolving synced `events` is
+              // the other half). `data-origin` drives the read-only styling below.
+              const isSubscribed = item.origin === 'subscribed';
+              const AllDayTag = isSubscribed ? 'div' : 'button';
+              return (
+                <li
+                  key={key}
+                  className="event-agenda__all-day-item list-motion-item"
+                  data-entering={status === 'entering'}
+                  data-leaving={status === 'leaving'}
+                  onAnimationEnd={onAnimationEnd}
                 >
-                  {item.continuesBefore && <IconChevronLeft className="event-agenda__all-day-chevron" />}
-                  <span className="event-agenda__all-day-title">{item.title}</span>
-                  {item.continuesAfter && <IconChevronRight className="event-agenda__all-day-chevron" />}
-                </button>
-              </li>
-            ))}
+                  <AllDayTag
+                    {...(isSubscribed ? {} : { type: 'button' as const, onClick: () => onEditEvent?.(item) })}
+                    className="event-agenda__all-day-button"
+                    data-origin={item.origin}
+                    data-continues-before={item.continuesBefore}
+                    data-continues-after={item.continuesAfter}
+                    style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
+                  >
+                    {item.continuesBefore && <IconChevronLeft className="event-agenda__all-day-chevron" />}
+                    <span className="event-agenda__all-day-title">{item.title}</span>
+                    {item.continuesAfter && <IconChevronRight className="event-agenda__all-day-chevron" />}
+                  </AllDayTag>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -117,7 +125,6 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
           </li>
         ))}
       </ul>
-      {items.length > 0 && <p className="event-agenda__sparse">Danach nichts mehr geplant.</p>}
       {items.length === 0 && allDayItems.length === 0 && (
         <p className="event-agenda__empty">Keine Termine an diesem Tag.</p>
       )}

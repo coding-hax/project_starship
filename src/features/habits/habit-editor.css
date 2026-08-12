@@ -52,35 +52,62 @@
   outline-offset: 2px;
 }
 
+/* 5 columns x 2 rows (issue #658) — ten swatches no longer fit a wrapping
+   list with text labels at 375px; the grid keeps every touch target the
+   same size regardless of how many rows the labels used to take. */
 .habit-editor__colors {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   border: none;
   padding: 0;
   margin: 0;
 }
 
 .habit-editor__colors legend {
-  width: 100%;
+  grid-column: 1 / -1;
   color: var(--text-muted);
   font-size: var(--text-secondary);
   margin-bottom: var(--space-2);
 }
 
 .habit-editor__color-option {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: center;
+  min-width: var(--touch-target);
   min-height: var(--touch-target);
-  color: var(--text);
+}
+
+/* The native radio stays in the a11y tree (accessible name via `aria-label`,
+   native arrow-key roving within the shared `name="color"` group) but is
+   visually replaced by the swatch — opacity (not `display`/`visibility`) so
+   it remains hit-testable across the whole touch target. */
+.habit-editor__color-option input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .habit-editor__color-swatch {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-pill);
   flex-shrink: 0;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--duration-fast) var(--ease-spring);
+}
+
+.habit-editor__color-option input:checked + .habit-editor__color-swatch {
+  outline-color: var(--border-strong);
+}
+
+.habit-editor__color-option input:focus-visible + .habit-editor__color-swatch {
+  outline-color: var(--accent);
+  outline-offset: 3px;
 }
 
 .habit-editor__submit {

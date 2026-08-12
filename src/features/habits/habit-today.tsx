@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
+import { IconFreeze, IconStreak } from '@/ui/icons';
+import { useBlockReady } from '@/ui/overview-ready';
 import { Toast } from '@/ui/toast';
 import { metEarlierInPeriod, toDateKey } from './due-today';
 import { canRescue, currentStreakUsesFreeze, gapDay } from './freeze';
@@ -41,7 +43,7 @@ interface RescueUndo {
 
 /**
  * The daily check-off list (issue #103), on /uebersicht next to the shortcut into the
- * management screen (issue #102) — the /gewohnheiten tab (issue #123) is the
+ * management screen (issue #102) — the /routinen tab (issue #123) is the
  * other entry point.
  *
  * Unlike the task list, a checked-off row stays in place rather than
@@ -56,6 +58,8 @@ export function HabitToday() {
   const logs = useHabitLogs();
   const freezes = useHabitFreezes();
   const toggle = useToggleHabitLog(logs);
+
+  useBlockReady(habits !== undefined && logs !== undefined && freezes !== undefined);
 
   const [rescueUndo, setRescueUndo] = useState<RescueUndo | null>(null);
   const rescueTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,8 +100,8 @@ export function HabitToday() {
   if (active.length === 0) {
     return (
       <p className="habit-today__empty">
-        Noch keine Gewohnheiten.{' '}
-        <Link href="/gewohnheiten">Jetzt anlegen</Link>
+        Noch keine Routinen.{' '}
+        <Link href="/routinen">Jetzt anlegen</Link>
       </p>
     );
   }
@@ -107,7 +111,7 @@ export function HabitToday() {
 
   return (
     <>
-      <ul className="habit-today" aria-label="Gewohnheiten heute">
+      <ul className="habit-today" aria-label="Routinen heute">
         {active.map((habit) => {
           const doneToday = logs.some(
             (log) => log.habitId === habit.id && log.logDate === today && log.done,
@@ -157,8 +161,8 @@ export function HabitToday() {
                   style={{ color: `var(${habit.color ?? '--area-habits'})` }}
                   aria-label={`Streak: ${streak}${usesFreeze ? ', mit Joker überbrückt' : ''}`}
                 >
-                  <span aria-hidden="true">🔥</span> {streak}
-                  {usesFreeze && <span aria-hidden="true"> ❄️</span>}
+                  <IconStreak className="habit-today__streak-icon" /> {streak}
+                  {usesFreeze && <IconFreeze className="habit-today__streak-icon" />}
                 </span>
               )}
               <span className="habit-today__checkbox-wrap">

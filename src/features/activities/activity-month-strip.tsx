@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useBlockReady } from '@/ui/overview-ready';
 import { formatDistance } from './format';
 import { activityTypeLabel, computeMonthlySummary } from './monthly-summary';
 import { useActivities } from './use-activities';
@@ -18,9 +19,19 @@ const MONTH_FORMATTER = new Intl.DateTimeFormat('de-DE', { month: 'long' });
  * - activities this month → the breakdown by type.
  *
  * The whole area is one `<Link>`, not several tap targets next to each other.
+ *
+ * The skeleton below is why this block joins the overview's reveal point (issue
+ * #642) even though it already reserves height: at zero activities it reserves
+ * that height and then gives it back (`return null`), which shifts just as hard
+ * as popping in. Inside `OverviewReadyProvider` that swap happens while the area
+ * is still hidden. The branch stays rather than being deleted — it is the correct
+ * behaviour for a host without the provider, and `aktivitaeten.spec.ts` pins its
+ * reduced-motion contract.
  */
 export function ActivityMonthStrip() {
   const activities = useActivities();
+
+  useBlockReady(activities !== undefined);
 
   if (activities === undefined) {
     return (

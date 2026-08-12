@@ -165,13 +165,30 @@ export function formatCountdown(now: Date, startsAt: string): string {
   return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
 }
 
+const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+/**
+ * "Juli 2026" for the calendar header (issue #628, S1 of #622) — `timeZone:
+ * 'UTC'` is required, not cosmetic: `parseDateKey` anchors `dateKey` at UTC
+ * midnight, so formatting in the device's local zone would shift the day
+ * (and sometimes the month) at a month boundary.
+ */
+export function formatMonthTitle(dateKey: string): string {
+  return MONTH_TITLE_FORMATTER.format(parseDateKey(dateKey));
+}
+
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
 export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-function formatDateKey(date: Date): string {
+/** Inverse of `parseDateKey` — exported for callers that need to build a date key off UTC-field arithmetic `addDays` can't express, e.g. `addMonths` (ics-fetch's horizon window). */
+export function formatDateKey(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -192,6 +209,37 @@ export function addDays(dateKey: string, delta: number): string {
 /** Days from `a` to `b` (`b - a`) — pure date-key arithmetic, see `addDays`. */
 export function dateKeyDiff(a: string, b: string): number {
   return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
+}
+
+/**
+ * `dateKey` shifted by `delta` calendar months (issue #560's ICS-abo horizon
+ * window) — `setUTCMonth` rolls a day that doesn't exist in the target month
+ * (e.g. 31 Jan + 1 month) forward into the month after, same "never silently
+ * shift within the same call" caveat as `Date` itself; the horizon window this
+ * feeds only cares about the month boundary, not the exact day.
+ */
+export function addMonths(dateKey: string, delta: number): string {
+  const date = parseDateKey(dateKey);
+  date.setUTCMonth(date.getUTCMonth() + delta);
+  return formatDateKey(date);
+}
+
+/**
+ * `dateKey` shifted by `delta` months, same day-of-month, clamped to the
+ * target month's last day — 31.01. + 1 → 28.02. (29.02. in a leap year),
+ * never rolling over into the following month, unlike `addMonths` above
+ * (issue #662, S5 of #622, the decision that #630's `‹ ›` month-buttons will
+ * reuse this same helper for).
+ */
+export function addMonthsClamped(dateKey: string, delta: number): string {
+  const date = parseDateKey(dateKey);
+  const day = date.getUTCDate();
+  const targetMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + delta, 1));
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(targetMonth.getUTCFullYear(), targetMonth.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  targetMonth.setUTCDate(Math.min(day, lastDayOfTargetMonth));
+  return formatDateKey(targetMonth);
 }
 
 /** The Mon–Sun date keys of the week containing `dateKey`, Monday first. */

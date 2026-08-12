@@ -22,6 +22,32 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
+### Frei wählbare Nutzerfarben (`--swatch-*`, issue #658)
+
+Wo eine Person aus mehreren gleichrangigen Optionen wählt — aktuell die
+Gewohnheiten-Farbe, ab #660 auch Kategoriefarben in den Einstellungen — reichen
+die fünf Bereichsfarben nicht: sie tragen woanders schon eine feste Bedeutung
+und stünden zur Auswahl in Konkurrenz zu sich selbst. Die zehn Optionen des
+Gewohnheiten-Farbwählers sind deshalb die fünf Bereichsfarben (`--area-tasks`,
+`--area-events`, `--area-journal`, `--area-habits`, `--area-activities`) plus
+fünf neue `--swatch-*`-Tokens, die es sonst nirgends in der App gibt:
+
+| Token | Label | Farbton (hell) |
+| --- | --- | --- |
+| `--swatch-rose` | Rosé | 12 |
+| `--swatch-amber` | Bernstein | 75 |
+| `--swatch-lime` | Limette | 118 |
+| `--swatch-sky` | Himmelblau | 228 |
+| `--swatch-magenta` | Magenta | 335 |
+
+Die fünf Farbtöne füllen die Lücken zwischen den Bereichsfarben (Hue-Abstände
+30–47°, keine zwei Nachbarn verwechselbar). `--swatch-*` unterscheidet sich von
+`--area-*` (eine Farbe pro Bereich, trägt Orientierung) und von `--cat-*`
+(Akzente ausschließlich innerhalb des Bereichs Termine): eine `--swatch-*`-Farbe
+bedeutet nichts von sich aus — sie ist eine von zehn gleichwertigen Optionen,
+die eine Person einer Zeile zuweist, um sie von anderen Zeilen derselben Art zu
+unterscheiden.
+
 ### Kategoriefarben (Termine, issue #553)
 
 Innerhalb des Bereichs Termine tragen die fünf Kategorien (`privat`, `arbeit`,

@@ -87,6 +87,19 @@ h3 {
   line-height: var(--leading-heading);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+}
+
+h1 {
+  font-size: var(--text-title);
+}
+
+h2 {
+  font-size: var(--text-section);
+}
+
+h3 {
+  font-size: var(--text-body);
 }
 
 /*
@@ -114,7 +127,7 @@ h3 {
  * frame — well before `module-route-guard.tsx` mounts and redirects.
  */
 html[data-modules-off~='aufgaben'] [data-module='aufgaben'],
-html[data-modules-off~='gewohnheiten'] [data-module='gewohnheiten'],
+html[data-modules-off~='routinen'] [data-module='routinen'],
 html[data-modules-off~='kalender'] [data-module='kalender'],
 html[data-modules-off~='journal'] [data-module='journal'],
 html[data-modules-off~='aktivitaeten'] [data-module='aktivitaeten'] {

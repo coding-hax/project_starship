@@ -97,7 +97,7 @@ test('eine Erinnerungsart lässt sich einzeln abschalten, unabgeschaltete bleibe
   await openPanelGranted(page);
 
   const tasksToggle = page.getByRole('switch', { name: 'Fällige Aufgaben abschalten' });
-  const habitsToggle = page.getByRole('switch', { name: 'Offene Gewohnheiten abschalten' });
+  const habitsToggle = page.getByRole('switch', { name: 'Offene Routinen abschalten' });
   await tasksToggle.click();
   await expect(tasksToggle).toHaveAttribute('aria-checked', 'false');
   await expect(habitsToggle).toHaveAttribute('aria-checked', 'true');

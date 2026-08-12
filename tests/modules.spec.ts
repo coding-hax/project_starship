@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import {
   openMeteoForecastBody,
   registerPasskey,
@@ -63,15 +64,28 @@ test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verände
 
   await expect(nav.getByRole('link', { name: 'Journal' })).toHaveCount(0);
   await expect(nav.locator('.nav__item')).toHaveCount(5);
-  for (const label of ['Übersicht', 'Aufgaben', 'Gewohnheiten', 'Kalender', 'Aktivitäten']) {
+  for (const label of ['Übersicht', 'Aufgaben', 'Routinen', 'Kalender', 'Aktivitäten']) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible();
   }
 });
 
-test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie (issue #505 AC7)', async ({
+test('Journal aus archiviert die Journal-Routine, wieder an entarchiviert sie (issue #505 AC7)', async ({
   page,
 }) => {
   await resetAppData();
+  // beforeEach's registerPasskey already loaded /uebersicht once, so
+  // JournalHabitBoot's own boot effect may have already created+synced a local
+  // Journal-habit row before the resetAppData() wipe above ran — a race
+  // against the SQL DELETE that leaves the client believing the row still
+  // exists while Postgres just lost it (issue #650 Fund). ensureJournalHabit()
+  // below only checks local existence, so a stale local row makes it a no-op
+  // and the wiped server row never gets recreated. Clear it through Dexie's
+  // own connection first, so the ensure below always starts from a genuinely
+  // empty slate.
+  await page.evaluate(
+    ([table, id]) => window.__starship.debugDeleteRecord(table, id),
+    ['habits', JOURNAL_HABIT_ID] as [string, string],
+  );
   await page.goto('/uebersicht');
   await settleJournalHabitBoot(page);
 
@@ -84,6 +98,12 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
 
   await page.goto('/einstellungen');
   await page.getByRole('switch', { name: 'Journal' }).click();
+  // module-panel.tsx fires archiveJournalHabit() fire-and-forget (`void`), never
+  // awaited by the click handler — calling sync() right after click() can win the
+  // race against that mutation's own `readHabitRow()` + `mutate()` chain and push
+  // an empty outbox (issue #650 Fund). Wait for the queued entry to actually land
+  // before triggering the push.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
   await page.evaluate(() => window.__starship.sync());
 
   const afterOff = await withDb((client) =>
@@ -92,6 +112,7 @@ test('Journal aus archiviert die Journal-Gewohnheit, wieder an entarchiviert sie
   expect(afterOff.rows[0].archived_at).not.toBeNull();
 
   await page.getByRole('switch', { name: 'Journal' }).click();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
   await page.evaluate(() => window.__starship.sync());
 
   const afterOn = await withDb((client) =>
@@ -135,13 +156,13 @@ test('core-Module (Übersicht, Einstellungen) haben keinen Schalter, Einstellung
 
 test('der Zustand übersteht einen Reload (issue #307 AC5)', async ({ page }) => {
   await page.goto('/einstellungen');
-  await page.getByRole('switch', { name: 'Gewohnheiten' }).click();
-  await expect(page.getByRole('switch', { name: 'Gewohnheiten' })).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('switch', { name: 'Routinen' }).click();
+  await expect(page.getByRole('switch', { name: 'Routinen' })).toHaveAttribute('aria-checked', 'false');
 
   await page.reload();
-  await expect(page.getByRole('switch', { name: 'Gewohnheiten' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('switch', { name: 'Routinen' })).toHaveAttribute('aria-checked', 'false');
   await expect(
-    page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Gewohnheiten' }),
+    page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Routinen' }),
   ).toHaveCount(0);
 });
 
@@ -246,7 +267,7 @@ test('aktivitaeten aus blendet den Monatsstreifen aus, auch wenn Aktivitäten vo
   await expect(page.locator('.activity-month-strip')).toHaveCount(0);
 });
 
-test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten→Gewohnheiten, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
+test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten→Routinen, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
   page,
 }) => {
   await resetAppData();
@@ -259,20 +280,20 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   const wetter = page.locator('.weather-forecast');
   const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
   const aktivitaeten = page.locator('.activity-month-strip');
-  const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
 
   await expect(wetter).toBeVisible();
   await expect(aktivitaeten).toBeVisible();
 
-  const [wetterY, aufgabenY, aktivitaetenY, gewohnheitenY] = await Promise.all([
+  const [wetterY, aufgabenY, aktivitaetenY, routinenY] = await Promise.all([
     topOf(wetter),
     topOf(aufgaben),
     topOf(aktivitaeten),
-    topOf(gewohnheiten),
+    topOf(routinen),
   ]);
   expect(wetterY).toBeLessThan(aufgabenY);
   expect(aufgabenY).toBeLessThan(aktivitaetenY);
-  expect(aktivitaetenY).toBeLessThan(gewohnheitenY);
+  expect(aktivitaetenY).toBeLessThan(routinenY);
 
   // Aufgaben (mittendrin) abschalten — die übrigen drei behalten ihre Reihenfolge,
   // statt in der falschen Sequenz aufzurücken.
@@ -281,13 +302,13 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   await page.goto('/uebersicht');
   await expect(aufgaben).toHaveCount(0);
 
-  const [wetterY2, aktivitaetenY2, gewohnheitenY2] = await Promise.all([
+  const [wetterY2, aktivitaetenY2, routinenY2] = await Promise.all([
     topOf(wetter),
     topOf(aktivitaeten),
-    topOf(gewohnheiten),
+    topOf(routinen),
   ]);
   expect(wetterY2).toBeLessThan(aktivitaetenY2);
-  expect(aktivitaetenY2).toBeLessThan(gewohnheitenY2);
+  expect(aktivitaetenY2).toBeLessThan(routinenY2);
 });
 
 test('offline: aufgaben abschalten bleibt eine reine localStorage-Mutation, keine Outbox-Op — die Übersicht-Sektion folgt beim nächsten (Online-)Laden derselben Registry-Prüfung wie die anderen Module (issue #308, Regression zu #307 AC6)', async ({
@@ -366,7 +387,7 @@ test('ein aktives Modul bleibt über seine Route direkt erreichbar (issue #309 A
 });
 
 test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue #309 AC4)', async ({ page }) => {
-  await setModulesOff(page, ['journal', 'kalender', 'gewohnheiten', 'aufgaben', 'aktivitaeten']);
+  await setModulesOff(page, ['journal', 'kalender', 'routinen', 'aufgaben', 'aktivitaeten']);
 
   await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/uebersicht$/);

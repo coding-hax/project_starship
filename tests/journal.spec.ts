@@ -454,7 +454,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Gewohnheit ab    */
+/* issue #505 AC4: ein abgesendeter Eintrag hakt die Journal-Routine ab    */
 /* -------------------------------------------------------------------------- */
 
 async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: string; done: boolean }>> {
@@ -469,7 +469,7 @@ async function journalHabitLogRows(entryDate: string): Promise<Array<{ id: strin
   return rows.rows;
 }
 
-test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
+test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag ab, ein zweiter Eintrag erzeugt keinen zweiten Log', async ({
   page,
 }) => {
   await installClockAt(page);
@@ -507,11 +507,11 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Gewohnheit für den 
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Gewohnheit  */
+/* issue #505 AC1: das aktive Journal-Modul legt genau eine feste Routine  */
 /* an, ein zweiter Boot (Reload) keine zweite                                 */
 /* -------------------------------------------------------------------------- */
 
-test('AC1 (#505): das Journal-Modul legt genau eine Journal-Gewohnheit an, ein zweiter Boot keine zweite', async ({
+test('AC1 (#505): das Journal-Modul legt genau eine Journal-Routine an, ein zweiter Boot keine zweite', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -987,4 +987,69 @@ test('AC2 (#480): ein serverseitig zwischen zwei Zeilen vertauschtes Chiffrat is
   expect(entriesA).toHaveLength(1);
   expect(entriesA[0]!.content.text).toBe('Eintrag vom dritten Mai');
   expect(entriesB).toHaveLength(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #646: Offline-Notiz                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('das entsperrte Journal bleibt offline sichtbar, mit einer ruhigen Notiz über dem Editor (issue #646 AC1/AC2)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText(
+    'Offline — dein Eintrag liegt lokal und wird verschlüsselt synchronisiert, sobald du wieder online bist.',
+  );
+  await expect(page.locator('.journal-editor')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz im Journal verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #646 AC1)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+test('im gesperrten Zustand erscheint offline keine Notiz — dort gibt es nichts zu synchronisieren (issue #646 AC3)', async ({
+  page,
+  context,
+}) => {
+  await setUpEditor(page);
+  await page.reload();
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
+
+  await context.setOffline(true);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+
+  await context.setOffline(false);
+});
+
+test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
+  page,
+  context,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/journal');
+  await page.locator('.journal-gate[data-state="setup"]').waitFor();
+
+  await context.setOffline(true);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+
+  await context.setOffline(false);
 });

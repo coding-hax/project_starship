@@ -376,6 +376,7 @@ declare global {
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
       debugPatchRecord: (table: string, id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugDeleteRecord: (table: string, id: string) => Promise<void>;
       debugRecords: () => Promise<
         Array<{
           table: string;
@@ -426,6 +427,9 @@ declare global {
         Array<{ id: string; envelope: unknown; recoveryEnvelope?: unknown; capturedAt: string }>
       >;
       journalRecoverOrphaned: (secret: string, useRecoveryKey: boolean) => Promise<number>;
+      // issue #560: ICS-Abo (ADR-0022).
+      addIcsSubscription: (url: string, name: string) => Promise<string>;
+      refreshIcsSubscriptions: () => Promise<void>;
     };
   }
 }

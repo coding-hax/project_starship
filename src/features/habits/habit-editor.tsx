@@ -7,8 +7,8 @@ import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
 import type { HabitSchedule, HabitView } from './use-habits';
 
-const CREATE_LABEL = 'Gewohnheit anlegen';
-const EDIT_LABEL = 'Gewohnheit bearbeiten';
+const CREATE_LABEL = 'Routine anlegen';
+const EDIT_LABEL = 'Routine bearbeiten';
 
 /**
  * A vertical radio fieldset, not `SegmentedControl` (issue #509): six labels —
@@ -36,16 +36,25 @@ const TARGETS: { value: '1' | '2' | '3' | '4' | '5' | '6'; label: string }[] = [
 ];
 
 /**
- * The "kleine Token-Palette" from issue #102: the four area colours already
- * audited for contrast and dark mode (docs/DESIGN_SYSTEM.md), not a new set of
- * one-off habit colours. `''` is the sentinel for "no override" — `color: null`
- * on the row, which the list resolves to `--area-habits` (the AC's default).
+ * Ten swatches (issue #658, up from the original four of issue #102): the four
+ * area colours already audited for contrast and dark mode, `--area-activities`
+ * (the one area colour missing from the original set), and five new
+ * `--swatch-*` tokens reserved for free-choice colours (docs/DESIGN_SYSTEM.md).
+ * Order is binding — #660 reuses this exact palette for settings categories.
+ * `''` is the sentinel for "no override" — `color: null` on the row, which the
+ * list resolves to `--area-habits` (the AC's default).
  */
 const COLORS: { value: string; token: string; label: string }[] = [
   { value: '', token: '--area-habits', label: 'Grün (Standard)' },
   { value: '--area-tasks', token: '--area-tasks', label: 'Koralle' },
   { value: '--area-events', token: '--area-events', label: 'Teal' },
   { value: '--area-journal', token: '--area-journal', label: 'Violett' },
+  { value: '--area-activities', token: '--area-activities', label: 'Blau' },
+  { value: '--swatch-rose', token: '--swatch-rose', label: 'Rosé' },
+  { value: '--swatch-amber', token: '--swatch-amber', label: 'Bernstein' },
+  { value: '--swatch-lime', token: '--swatch-lime', label: 'Limette' },
+  { value: '--swatch-sky', token: '--swatch-sky', label: 'Himmelblau' },
+  { value: '--swatch-magenta', token: '--swatch-magenta', label: 'Magenta' },
 ];
 
 export interface HabitEditorProps {
@@ -202,11 +211,15 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
         {!isJournal && (
           <fieldset className="habit-editor__colors">
             <legend>Farbe</legend>
+            {/* Ten swatches don't fit a text-labelled list at 375px (issue #658)
+                — the visible label is dropped in favour of the colour itself;
+                `aria-label` carries the same text as the accessible name. */}
             {COLORS.map((option) => (
               <label key={option.value || 'default'} className="habit-editor__color-option">
                 <input
                   type="radio"
                   name="color"
+                  aria-label={option.label}
                   checked={color === option.value}
                   onChange={() => setColor(option.value)}
                 />
@@ -215,7 +228,6 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
                   style={{ background: `var(${option.token})` }}
                   aria-hidden="true"
                 />
-                {option.label}
               </label>
             ))}
           </fieldset>

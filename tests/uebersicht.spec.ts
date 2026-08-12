@@ -170,13 +170,13 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await page.goto('/uebersicht');
 
     const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
     await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
-    const emptyGap = await gapBetween(aufgaben, gewohnheiten);
+    const emptyGap = await gapBetween(aufgaben, routinen);
 
     const id = await seedTask(page, { title: 'Eine Aufgabe', dueAt: YESTERDAY_MORNING });
     await expect(dueTaskItems(page)).toHaveCount(1);
-    const filledGap = await gapBetween(aufgaben, gewohnheiten);
+    const filledGap = await gapBetween(aufgaben, routinen);
 
     // The empty state occupies one card's box, so the two gaps differ by rounding
     // at most. Anything beyond that is the hole this ticket is about — the numbers
@@ -194,44 +194,44 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
   }
 });
 
-test('kein "Gewohnheiten verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
+test('kein "Routinen verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt der Weg (issue #137 AC1+AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
-  await expect(page.getByRole('link', { name: 'Gewohnheiten verwalten' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Routinen verwalten' })).toHaveCount(0);
 
   await page
     .getByRole('navigation', { name: 'Hauptnavigation' })
-    .getByRole('link', { name: 'Gewohnheiten' })
+    .getByRole('link', { name: 'Routinen' })
     .click();
-  await expect(page).toHaveURL(/\/gewohnheiten$/);
+  await expect(page).toHaveURL(/\/routinen$/);
   await expect(
-    page.getByRole('heading', { name: 'Gewohnheiten verwalten', level: 1 }),
+    page.getByRole('heading', { name: 'Routinen verwalten', level: 1 }),
   ).toBeVisible();
 });
 
-test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Gewohnheiten" (issue #157 AC5)', async ({
+test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Routinen" (issue #157 AC5)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   const aufgabenHeading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const gewohnheitenHeading = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  const routinenHeading = page.getByRole('heading', { name: 'Routinen', level: 2 });
   await expect(aufgabenHeading).toBeVisible();
-  await expect(gewohnheitenHeading).toBeVisible();
+  await expect(routinenHeading).toBeVisible();
 
-  const [aufgabenStyle, gewohnheitenStyle] = await Promise.all([
+  const [aufgabenStyle, routinenStyle] = await Promise.all([
     aufgabenHeading.evaluate((el) => {
       const s = getComputedStyle(el);
       return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
     }),
-    gewohnheitenHeading.evaluate((el) => {
+    routinenHeading.evaluate((el) => {
       const s = getComputedStyle(el);
       return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
     }),
   ]);
-  expect(aufgabenStyle).toEqual(gewohnheitenStyle);
+  expect(aufgabenStyle).toEqual(routinenStyle);
 });
 
 test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
@@ -290,7 +290,7 @@ test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig untersc
 /* -------------------------------------------------------------------------- */
 /* issue #506: Journal-Block von der Übersicht entfernt (Nachfolge #342/#413/ */
 /* #363, deren Journal-Kachel-Verhalten hier absichtlich abgeschafft wird —   */
-/* die Journal-Zustandsabdeckung liegt seit #505 bei den Gewohnheiten-Specs). */
+/* die Journal-Zustandsabdeckung liegt seit #505 bei den Routinen-Specs). */
 /* -------------------------------------------------------------------------- */
 
 /** Top edge of `locator`'s box — the vertical anchor the order tests compare. */
@@ -314,31 +314,31 @@ test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — 
   await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
 });
 
-test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter → Aufgaben → Gewohnheiten, ohne Journal dazwischen (issue #506 AC1)', async ({
+test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter → Aufgaben → Routinen, ohne Journal dazwischen (issue #506 AC1)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
-  // Der Aktivitäten-Streifen zwischen Aufgaben und Gewohnheiten erscheint nur mit
+  // Der Aktivitäten-Streifen zwischen Aufgaben und Routinen erscheint nur mit
   // gesyncten Garmin-Daten (er rendert sonst nichts) — sein Platz in der Reihenfolge
   // ist in aktivitaeten.spec.ts abgedeckt. Hier zählen die drei Sektionen, die auf
   // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
   // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
   const wetter = page.locator('.weather-forecast');
   const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
   await expect(wetter).toBeVisible();
   await expect(aufgaben).toBeVisible();
-  await expect(gewohnheiten).toBeVisible();
+  await expect(routinen).toBeVisible();
 
-  const [yWetter, yAufgaben, yGewohnheiten] = await Promise.all([
+  const [yWetter, yAufgaben, yRoutinen] = await Promise.all([
     topOf(wetter),
     topOf(aufgaben),
-    topOf(gewohnheiten),
+    topOf(routinen),
   ]);
   expect(
-    yWetter < yAufgaben && yAufgaben < yGewohnheiten,
-    `Reihenfolge Wetter ${yWetter} → Aufgaben ${yAufgaben} → Gewohnheiten ${yGewohnheiten}`,
+    yWetter < yAufgaben && yAufgaben < yRoutinen,
+    `Reihenfolge Wetter ${yWetter} → Aufgaben ${yAufgaben} → Routinen ${yRoutinen}`,
   ).toBe(true);
 
   // Kein Journal-Block irgendwo zwischen den Sektionen.
@@ -394,7 +394,7 @@ test('auf /uebersicht hängt der Name "Journal" nicht mehr doppelt an zwei Links
   page,
 }) => {
   await page.goto('/uebersicht');
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
 
   // Vor #506 trug die Übersichts-Kachel denselben zugänglichen Namen wie der
   // Nav-Eintrag (der Fund aus #363). Ohne die Kachel bleibt genau ein "Journal"-Link:
@@ -411,11 +411,11 @@ test('kein Journal-Block auf der Übersicht — auf Mobile (375px) wie auf Deskt
 
     await expect(page.locator('.journal-today-section')).toHaveCount(0);
     const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const gewohnheiten = page.getByRole('heading', { name: 'Gewohnheiten', level: 2 });
+    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
     await expect(aufgaben).toBeVisible();
-    await expect(gewohnheiten).toBeVisible();
-    expect(await topOf(aufgaben), `Aufgaben über Gewohnheiten bei ${width}px`).toBeLessThan(
-      await topOf(gewohnheiten),
+    await expect(routinen).toBeVisible();
+    expect(await topOf(aufgaben), `Aufgaben über Routinen bei ${width}px`).toBeLessThan(
+      await topOf(routinen),
     );
   }
 });
@@ -428,7 +428,7 @@ test('die Übersicht bleibt ohne Journal-Block auch im Dark Mode mit reduzierter
 
   await expect(page.locator('.journal-today-section')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
 
   // Die Seite ist bedienbar: der Journal-Nav-Tab führt weiterhin zur Route.
   await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
@@ -439,7 +439,7 @@ test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg
   page,
 }) => {
   await page.goto('/uebersicht');
-  await expect(page.getByRole('heading', { name: 'Gewohnheiten', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
 
   // Die frühere Journal-Kachel war ein Link ins Journal *innerhalb* des
   // Seiteninhalts (main), zusätzlich zum Nav-Tab im eigenen Landmark. Ohne die
@@ -594,3 +594,48 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
     await expect(page.locator('.events-overview__empty')).toBeVisible();
   }
 });
+
+test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig, ohne Überlauf', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  const h1 = page.locator('.uebersicht__title-row h1');
+  await expect(h1).toBeVisible();
+
+  const { clientHeight, lineHeight } = await h1.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(Math.round(clientHeight / lineHeight)).toBe(1);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
+});
+
+// Ein Test je Route statt einer Schleife in einem Test: jede Navigation bekommt
+// ihr eigenes 30s-Zeitbudget (im Dev-Server kompiliert jede Route beim ersten
+// Aufruf on-demand) und ein roter Screen ist sofort namentlich zuzuordnen.
+for (const path of [
+  '/uebersicht',
+  '/einstellungen',
+  '/aufgaben',
+  '/kalender',
+  '/journal',
+  '/aktivitaeten',
+  '/routinen',
+]) {
+  test(`AC6 (issue #651): ${path} bekommt keinen horizontalen Überlauf bei 375px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `${path} hat horizontalen Überlauf`).toBe(0);
+  });
+}

@@ -2,22 +2,32 @@
 
 import { useMemo, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
-import { addDays, categoriesForDay, categoryEdgeVar, monthDaysFor } from './event-time';
+import { SegmentedControl } from '@/ui/segmented-control';
+import { addDays, addMonthsClamped, categoriesForDay, categoryEdgeVar, formatMonthTitle, monthDaysFor } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
 
+type StripView = 'woche' | 'monat';
+
+const VIEW_OPTIONS: { value: StripView; label: string }[] = [
+  { value: 'woche', label: 'Woche' },
+  { value: 'monat', label: 'Monat' },
+];
+
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-/** Past this vertical delta, releasing is a swipe, not a tap. */
+/** Past this delta on the locked axis, releasing is a swipe, not a tap — applies to both axes. */
 const SWIPE_THRESHOLD_PX = 48;
 /** Movement at or below this still counts as a tap — the day button's own click fires normally. */
 const TAP_TOLERANCE_PX = 8;
+/** Past this delta on either axis, the gesture locks to whichever axis moved further (issue #629). */
+const AXIS_LOCK_PX = 12;
 
 export interface CalendarStripProps {
   selectedDay: string;
   onSelectDay: (dateKey: string) => void;
-  /** Today's Berlin date key — marks the current day and drives the "Heute" button. */
+  /** Today's Berlin date key — marks the current day (`data-today`) in the grid. */
   today: string;
   events: EventView[];
   /** `event_exceptions` rows — same input the timeline gets, so a cancelled or
@@ -68,35 +78,67 @@ export function CalendarStrip({
     [days, events, exceptions],
   );
   const selectedMonth = selectedDay.slice(0, 7);
+  const isToday = selectedDay === today;
+  const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
+  const lockedAxisRef = useRef<'x' | 'y' | null>(null);
   const movedRef = useRef(false);
+
+  /**
+   * Pages a week in week view, a month in month view — the single source both
+   * the desktop `‹`/`›` buttons (issue #630, AK9) and the swipe gesture below
+   * call, so a keyboard/mouse page and a touch swipe can never drift apart.
+   */
+  function pageBy(delta: 1 | -1) {
+    onSelectDay(
+      expanded ? addMonthsClamped(selectedDay, delta) : addDays(selectedDay, delta * 7),
+    );
+  }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
+    startXRef.current = event.clientX;
     startYRef.current = event.clientY;
+    lockedAxisRef.current = null;
     movedRef.current = false;
   }
 
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (startYRef.current === null) return;
-    if (Math.abs(event.clientY - startYRef.current) > TAP_TOLERANCE_PX) {
+    if (startXRef.current === null || startYRef.current === null) return;
+    const dx = event.clientX - startXRef.current;
+    const dy = event.clientY - startYRef.current;
+    if (lockedAxisRef.current === null && Math.max(Math.abs(dx), Math.abs(dy)) > AXIS_LOCK_PX) {
+      lockedAxisRef.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    const guidedDelta = lockedAxisRef.current === 'x' ? dx : dy;
+    if (lockedAxisRef.current !== null && Math.abs(guidedDelta) > TAP_TOLERANCE_PX) {
       movedRef.current = true;
     }
   }
 
   function endGesture(event: ReactPointerEvent<HTMLDivElement>) {
-    if (startYRef.current === null) return;
-    const deltaY = event.clientY - startYRef.current;
+    if (startXRef.current === null || startYRef.current === null) return;
+    const dx = event.clientX - startXRef.current;
+    const axis = lockedAxisRef.current;
+    startXRef.current = null;
     startYRef.current = null;
-    if (deltaY > SWIPE_THRESHOLD_PX && !expanded) {
-      onExpandChange(true);
-    } else if (deltaY < -SWIPE_THRESHOLD_PX && expanded) {
-      onExpandChange(false);
+    lockedAxisRef.current = null;
+    if (axis === 'x' && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
+      // Left (dx<0) pages forward, right pages back — a week in week view
+      // (addDays, ±7 always lands on the same weekday, issue #629, AK3), a
+      // month in month view (addMonthsClamped, same day-of-month, clamped at
+      // the month's end, issue #662, AK-B). A vertical swipe only locks the
+      // axis so a vertically guided pointer can't accidentally page — it has
+      // no effect of its own; the segmented control is the only way to
+      // switch week/month (issue #662, AK-A).
+      pageBy(dx < 0 ? 1 : -1);
     }
   }
 
   function cancelGesture() {
+    startXRef.current = null;
     startYRef.current = null;
+    lockedAxisRef.current = null;
     movedRef.current = false;
   }
 
@@ -122,6 +164,47 @@ export function CalendarStrip({
 
   return (
     <div className="calendar-strip" data-expanded={expanded}>
+      <div className="calendar-strip__title-row">
+        {/* Same control at every width (issue #630, AK9/AK10) — a mobile-hidden
+            chip that reappears on a different day (S1, #628 AK6) below
+            768px, a disabled-not-removed toolbar button from 768px up
+            (CSS alone switches the look, `data`-attribute drives the mobile
+            hide so it never becomes two parallel elements). */}
+        <button
+          type="button"
+          className="calendar-strip__today"
+          data-today-selected={isToday ? '' : undefined}
+          disabled={isToday}
+          onClick={() => onSelectDay(today)}
+        >
+          Heute
+        </button>
+        <div className="calendar-strip__title-nav">
+          <button
+            type="button"
+            className="calendar-strip__nav"
+            aria-label={expanded ? 'Voriger Monat' : 'Vorige Woche'}
+            onClick={() => pageBy(-1)}
+          >
+            <IconChevronLeft />
+          </button>
+          <button
+            type="button"
+            className="calendar-strip__nav"
+            aria-label={expanded ? 'Nächster Monat' : 'Nächste Woche'}
+            onClick={() => pageBy(1)}
+          >
+            <IconChevronRight />
+          </button>
+        </div>
+        <p className="calendar-strip__title">{formatMonthTitle(selectedDay)}</p>
+        <SegmentedControl
+          options={VIEW_OPTIONS}
+          value={expanded ? 'monat' : 'woche'}
+          onChange={(next) => onExpandChange(next === 'monat')}
+          label="Ansicht"
+        />
+      </div>
       <div className="calendar-strip__toolbar">
         <button
           type="button"
@@ -131,16 +214,6 @@ export function CalendarStrip({
         >
           <IconChevronLeft />
         </button>
-        {selectedDay !== today && (
-          <button
-            type="button"
-            className="calendar-strip__today"
-            aria-label="Heute"
-            onClick={() => onSelectDay(today)}
-          >
-            Heute
-          </button>
-        )}
         <button
           type="button"
           className="calendar-strip__nav"

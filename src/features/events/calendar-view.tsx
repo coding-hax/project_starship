@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { consumeCaptureDraft } from '@/features/tasks/capture-draft-store';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
+import { OfflineNotice } from '@/ui/offline-notice';
 import { Toast } from '@/ui/toast';
+import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
 import { EventEditor, type EventEditorState } from './event-editor';
@@ -11,6 +14,7 @@ import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions } from './use-event-exceptions';
 import { useEvents } from './use-events';
+import { useIcsSubscriptionsRefresh, useSubscribedEvents } from './use-ics-subscriptions';
 
 const CREATE_LABEL = 'Termin erfassen';
 
@@ -49,13 +53,50 @@ function getServerTodayKey(): string | null {
  */
 export function CalendarView() {
   const events = useEvents();
+  const subscribedEvents = useSubscribedEvents();
+  useIcsSubscriptionsRefresh();
   const exceptions = useEventExceptions();
+  const online = useOnline();
   const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
   const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);
   const selectedDay = selectedDayOverride ?? today;
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
+
+  // Konsumiert einen `event`-Draft, den der Capture-Router auf /uebersicht
+  // erkannt hat (issue #619) — genau einmal pro Mount, gleiches Muster wie
+  // quick-add.tsx's Task-Pendant: `queueMicrotask` schiebt `setEditorState`
+  // hinter einen echten Tick, statt synchron im Effekt-Body selbst Zustand zu
+  // setzen. Läuft unabhängig von `today`/`selectedDay` (`EventEditor` selbst
+  // rendert erst, sobald beide bekannt sind).
+  useEffect(() => {
+    const batch = consumeCaptureDraft();
+    const item = batch?.items[0];
+    if (item?.kind === 'event') {
+      queueMicrotask(() =>
+        setEditorState({
+          mode: 'create',
+          event: null,
+          occurrence: null,
+          prefill: {
+            title: item.title,
+            allDay: item.allDay,
+            startsAt: item.startsAt,
+            endsAt: item.endsAt,
+            startDate: item.startDate,
+            endDate: item.endDate,
+          },
+        }),
+      );
+    }
+  }, []);
+
+  // Merged only for display (CalendarStrip/EventAgenda) — `openEdit` below keeps
+  // looking up `events` alone, so a subscribed item can never resolve to an
+  // editable anchor row (ADR-0022 AK2, deep enforcement beyond the read-only
+  // rendering in event-agenda.tsx).
+  const timelineEvents = [...(events ?? []), ...subscribedEvents];
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
@@ -93,22 +134,28 @@ export function CalendarView() {
           same reasoning as weather-day.tsx) — CalendarStrip's paging controls
           live in it, not just a bare heading. */}
       <header className="calendar-view__header">
-        <h1>Kalender</h1>
+        <h1 className="calendar-view__heading">Kalender</h1>
         {today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
             onSelectDay={setSelectedDayOverride}
             today={today}
-            events={events ?? []}
+            events={timelineEvents}
             exceptions={exceptions ?? []}
             expanded={expanded}
             onExpandChange={setExpanded}
           />
         )}
       </header>
+      {!online && (
+        <OfflineNotice>
+          Offline — neue Termine liegen lokal und werden synchronisiert, sobald du wieder online
+          bist.
+        </OfflineNotice>
+      )}
       {today !== null && selectedDay !== null && (
         <EventAgenda
-          events={events ?? []}
+          events={timelineEvents}
           exceptions={exceptions ?? []}
           selectedDay={selectedDay}
           today={today}

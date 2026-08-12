@@ -61,8 +61,8 @@ function dayDots(page: Page, ariaLabel: string) {
 /**
  * Drives the same Pointer Events CalendarStrip listens to (issue #556) —
  * dispatched directly on the gesture surface, same technique as tasks.spec.ts's
- * swipeRight/swipeLeft. Positive `deltaY` swipes down (opens the month),
- * negative swipes up (closes it back to the week).
+ * swipeRight/swipeLeft. A vertical swipe no longer changes `expanded` (issue
+ * #662, AK-A) — this helper now only proves the axis lock swallows it.
  */
 async function swipeVertical(locator: Locator, deltaY: number) {
   const box = await locator.boundingBox();
@@ -89,6 +89,67 @@ async function swipeVertical(locator: Locator, deltaY: number) {
     clientY: startY + deltaY,
     bubbles: true,
   });
+}
+
+/**
+ * Horizontal counterpart of swipeVertical (issue #629) — negative `deltaX`
+ * swipes left, which pages to the following week (+7 days, same weekday).
+ */
+async function swipeHorizontal(locator: Locator, deltaX: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('swipeHorizontal: target has no bounding box');
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + 10;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX + deltaX,
+    clientY,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX + deltaX,
+    clientY,
+    bubbles: true,
+  });
+}
+
+/** Pages the strip a whole week per swipe — left swipe, +7 days each (issue #629). */
+async function nextWeek(page: Page, times = 1): Promise<void> {
+  for (let i = 0; i < times; i += 1) {
+    await swipeHorizontal(calendarWeeks(page), -80);
+  }
+}
+
+/** Pages the strip a whole week back per swipe — right swipe, −7 days each (issue #629). */
+async function prevWeek(page: Page, times = 1): Promise<void> {
+  for (let i = 0; i < times; i += 1) {
+    await swipeHorizontal(calendarWeeks(page), 80);
+  }
+}
+
+/**
+ * Taps a day button in the strip, pulling the month open first via the
+ * Woche/Monat-Umschalter if that day's week row is collapsed (`visibility:
+ * hidden`, `isVisible()` reports that) — the tap itself collapses the strip
+ * back (issue #629, replaces stepping there via the "Nächster/Vorheriger
+ * Tag" buttons). Opening used to go through a vertical swipe; that gesture
+ * no longer does anything (issue #662, AK-A), so this uses the switcher.
+ */
+async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
+  const button = dayButton(page, ariaLabel);
+  if (!(await button.isVisible())) {
+    await page.getByRole('radio', { name: 'Monat' }).click();
+  }
+  await button.click();
 }
 
 /** Same probe technique as resolveCardColor, for an arbitrary background-color token. */
@@ -153,10 +214,50 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK3: spärlicher/leerer Tag                                                */
+/* issue #644: Offline-Notiz                                                  */
 /* -------------------------------------------------------------------------- */
 
-test('nach dem letzten Termin des Tages steht die Meldung "Danach nichts mehr geplant." (AK3a)', async ({
+test('der Kalender bleibt offline sichtbar, mit einer ruhigen Notiz statt eines Fehlers (issue #644 AC1)', async ({
+  page,
+  context,
+}) => {
+  await seedEvent(page, {
+    title: 'Bleibt da',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(true);
+
+  // A calm status note, not a red alert — nothing here uses role="alert".
+  await expect(page.getByRole('status')).toContainText('Offline');
+  await expect(eventCard(page, 'Bleibt da')).toBeVisible();
+
+  await context.setOffline(false);
+});
+
+test('die Offline-Notiz im Kalender verschwindet nach dem Onlinegehen wieder, ohne Neuladen (issue #644 AC2)', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+  await expect(page.getByRole('status')).toContainText('Offline');
+
+  await context.setOffline(false);
+
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1-3 (Issue #638): "Danach nichts mehr geplant." ist kein Zustand mehr    */
+/* -------------------------------------------------------------------------- */
+
+test('nach dem letzten Termin des Tages erscheint keine "Danach nichts mehr geplant."-Meldung (AK1)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -170,10 +271,38 @@ test('nach dem letzten Termin des Tages steht die Meldung "Danach nichts mehr ge
   });
 
   await expect(eventCard(page, 'Einziger Termin')).toBeVisible();
-  await expect(page.locator('.event-agenda__sparse')).toHaveText('Danach nichts mehr geplant.');
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
+  await expect(page.getByText('Danach nichts mehr geplant.')).toHaveCount(0);
 });
 
-test('ein komplett leerer Tag zeigt den Leerzustand, keine Terminkarten (AK3b)', async ({ page }) => {
+test('an einem Tag mit mehreren Terminen erscheint ebenfalls keine "Danach nichts mehr geplant."-Meldung (AK2)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Erster Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Zweiter Termin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(eventCard(page, 'Erster Termin')).toBeVisible();
+  await expect(eventCard(page, 'Zweiter Termin')).toBeVisible();
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
+});
+
+test('ein komplett leerer Tag zeigt den Leerzustand, keine Terminkarten (AK3)', async ({ page }) => {
   await expect(page.locator('.event-agenda__empty')).toHaveText('Keine Termine an diesem Tag.');
   await expect(page.locator('.event-agenda__item')).toHaveCount(0);
 });
@@ -240,7 +369,7 @@ test('an einem anderen Tag als heute steht der erste Termin des Tages im Blick (
     category: null,
   });
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
 
   await expect(eventCard(page, 'Morgen zuerst')).toHaveAttribute('data-upcoming', 'true');
   await expect(eventCard(page, 'Morgen danach')).toHaveAttribute('data-upcoming', 'false');
@@ -305,10 +434,12 @@ test('zwei zeitlich getrennte Termine tragen keine Ueberschneidungs-Kennzeichnun
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK7: Trennlinien nutzen --border-faint                                     */
+/* AK7: mit der spaerlich-Meldung (Issue #638) ist auch ihre Trennlinie weg   */
 /* -------------------------------------------------------------------------- */
 
-test('die Trennlinie vor der spaerlich-Meldung nutzt --border-faint (AK7)', async ({ page }) => {
+test('die Trennlinie vor der ehemaligen spaerlich-Meldung existiert nicht mehr (AK7, Issue #638)', async ({
+  page,
+}) => {
   await seedEvent(page, {
     title: 'Fuer die Trennlinie',
     allDay: false,
@@ -319,8 +450,8 @@ test('die Trennlinie vor der spaerlich-Meldung nutzt --border-faint (AK7)', asyn
     category: null,
   });
 
-  const expected = await resolveToken(page, '--border-faint');
-  await expect(page.locator('.event-agenda__sparse')).toHaveCSS('border-top-color', expected);
+  await expect(eventCard(page, 'Fuer die Trennlinie')).toBeVisible();
+  await expect(page.locator('.event-agenda__sparse')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -451,20 +582,67 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
   await expect(eventCard(page, 'Morgen-Termin')).toBeVisible();
   await expect(eventCard(page, 'Heute-Termin')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, 'Sa, 18.');
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* #629 (S2): Wochen-Wischen mit Achsensperre statt Tag-Pfeilen               */
+/* -------------------------------------------------------------------------- */
+
+test('ein Links-Wisch ueber die Tage zeigt die Folgewoche, ausgewaehlt ist derselbe Wochentag (AK3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Naechste-Woche-Termin',
+    allDay: false,
+    startsAt: '2026-07-25T09:00:00.000Z', // Sa, 25. — derselbe Wochentag wie TODAY
+    endsAt: '2026-07-25T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await swipeHorizontal(calendarWeeks(page), -80);
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(eventCard(page, 'Naechste-Woche-Termin')).toBeVisible();
+
+  // Zweimal zurueck (rechts) — eine Woche vor TODAY, wieder Samstag.
+  await swipeHorizontal(calendarWeeks(page), 80);
+  await swipeHorizontal(calendarWeeks(page), 80);
+  await expect(dayButton(page, 'Sa, 11.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('ein Wisch, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen Tag durch den Klick aus (AK4)', async ({
+  page,
+}) => {
+  const target = dayButton(page, 'Sa, 18.');
+  const box = await target.boundingBox();
+  if (!box) throw new Error('AK4: Tages-Knopf hat keine BoundingBox');
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  // page.mouse erzeugt echte Pointer-Events *und* den Klick, anders als
+  // dispatchEvent — genau der Fall, den AK4 gegen Klick-Schlucken absichert.
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 80, startY, { steps: 5 });
+  await page.mouse.up();
+
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'false');
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
 });
 
 /* -------------------------------------------------------------------------- */
 /* S5 (#556): aufklappender Monat — Wischgeste, Punkte, reduced-motion        */
 /* -------------------------------------------------------------------------- */
 
-test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen zieht ihn zum vollen Monat auf (S5 AC1)', async ({
+test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen tut nichts (S5 AK-A)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
@@ -477,26 +655,52 @@ test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen zieht ihn zum vollen Mon
 
   await swipeVertical(calendarWeeks(page), 80);
 
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-  await expect(outsideDay).toBeVisible();
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(outsideDay).not.toBeVisible();
 });
 
-test('ein Aufwaerts-Wisch am aufgezogenen Monat zieht ihn zum Wochenstreifen zusammen (S5 AC2)', async ({
+test('ein Aufwaerts-Wisch am aufgezogenen Monat tut nichts (S5 AK-A)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
   await swipeVertical(calendarWeeks(page), -80);
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+});
+
+test('ein Links-Wisch im aufgezogenen Monat blaettert zum Folgemonat, derselbe Tag bleibt gewaehlt (S5 AK-B)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(title).toHaveText('Juli 2026');
+
+  await swipeHorizontal(calendarWeeks(page), -80);
+
+  await expect(title).toHaveText('August 2026');
+  await expect(dayButton(page, 'Di, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('ein Rechts-Wisch im aufgezogenen Monat blaettert zum Vormonat, derselbe Tag bleibt gewaehlt (S5 AK-B)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(title).toHaveText('Juli 2026');
+
+  await swipeHorizontal(calendarWeeks(page), 80);
+
+  await expect(title).toHaveText('Juni 2026');
+  await expect(dayButton(page, 'Do, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streifen zusammen (S5 AC2)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
   const outsideDay = dayButton(page, 'Mi, 22.');
@@ -570,7 +774,7 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im 
   expect(expectedDark).not.toBe(expectedLight);
 });
 
-test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
+test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
   page,
 }) => {
   // #578 behoben, Kartenanzeige durch AC1/AC3 + Regressionstest unten abgedeckt.
@@ -581,11 +785,122 @@ test('der Heute-Button springt auf den heutigen Tag zurueck, auch aus einem ande
     await nextDay.click();
   }
 
-  const todayButton = page.getByRole('button', { name: 'Heute' });
-  await expect(todayButton).toBeVisible();
-  await todayButton.click();
+  const todayChip = page.getByRole('button', { name: 'Heute' });
+  await expect(todayChip).toBeVisible();
+  await todayChip.click();
 
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter, Ruecksprung-Chip (S1)  */
+/* -------------------------------------------------------------------------- */
+
+test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monatsgrenze (AK1)', async ({ page }) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await expect(title).toHaveText('Juli 2026');
+
+  await nextWeek(page, 2);
+
+  await expect(title).toHaveText('August 2026');
+});
+
+test('der Woche/Monat-Umschalter klappt den Streifen auf und zu, Segmente tragen den Auswahlzustand (AK2)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  const woche = page.getByRole('radio', { name: 'Woche' });
+  const monat = page.getByRole('radio', { name: 'Monat' });
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(woche).toHaveAttribute('aria-checked', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'false');
+
+  await monat.click();
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'true');
+  await expect(woche).toHaveAttribute('aria-checked', 'false');
+
+  await woche.click();
+  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(woche).toHaveAttribute('aria-checked', 'true');
+  await expect(monat).toHaveAttribute('aria-checked', 'false');
+});
+
+test('Titel und Umschalter behalten Position und Hoehe, wenn ein anderer Tag gewaehlt wird (AK5)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const switcher = page.getByRole('radiogroup', { name: 'Ansicht' });
+  const header = page.locator('.calendar-view__header');
+
+  const titleBoxBefore = await title.boundingBox();
+  const switcherBoxBefore = await switcher.boundingBox();
+  const headerHeightBefore = (await header.boundingBox())?.height;
+
+  await dayButton(page, 'So, 19.').click();
+
+  const titleBoxAfter = await title.boundingBox();
+  const switcherBoxAfter = await switcher.boundingBox();
+  const headerHeightAfter = (await header.boundingBox())?.height;
+
+  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
+  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
+  expect(switcherBoxAfter?.x).toBe(switcherBoxBefore?.x);
+  expect(switcherBoxAfter?.y).toBe(switcherBoxBefore?.y);
+  expect(headerHeightAfter).toBe(headerHeightBefore);
+});
+
+test('der Ruecksprung-Chip erscheint ohne ein Nachbar-Element zu verschieben, waehlt heute und verschwindet dann (AK6)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const titleBoxBefore = await title.boundingBox();
+
+  await dayButton(page, 'So, 19.').click();
+
+  const chip = page.getByRole('button', { name: 'Heute' });
+  await expect(chip).toBeVisible();
+  const titleBoxAfter = await title.boundingBox();
+  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
+  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
+
+  await chip.click();
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('bei reduzierter Bewegung blendet der Ruecksprung-Chip ohne Uebergang ein (AK6, Motion)', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await dayButton(page, 'So, 19.').click();
+  const chip = page.getByRole('button', { name: 'Heute' });
+  await expect(chip).toBeVisible();
+  const transitionDuration = await chip.evaluate((el) => getComputedStyle(el).transitionDuration);
+  for (const duration of transitionDuration.split(',')) {
+    expect(parseFloat(duration)).toBeLessThan(0.001);
+  }
+});
+
+test('der Ruecksprung-Chip nutzt semantische Farb-Tokens, mit eigenem Wert im Dark Mode (AK6, Dark Mode)', async ({
+  page,
+}) => {
+  await dayButton(page, 'So, 19.').click();
+  const chip = page.getByRole('button', { name: 'Heute' });
+
+  const expectedLight = await resolveToken(page, '--area-events');
+  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const expectedDark = await resolveToken(page, '--area-events');
+  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
+  expect(expectedDark).not.toBe(expectedLight);
 });
 
 test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu (S5 AC5, Motion)', async ({
@@ -604,10 +919,10 @@ test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu
   }
 
   const strip = calendarStrip(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
-  await swipeVertical(calendarWeeks(page), -80);
+  await page.getByRole('radio', { name: 'Woche' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'false');
 });
 
@@ -630,6 +945,55 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
   });
 
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* #630 (S4): Desktop-Werkzeugleiste ‹ › Heute ab 768 px, Anordnung B         */
+/* -------------------------------------------------------------------------- */
+
+test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert Woche/Monat (AK9)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const today = page.getByRole('button', { name: 'Heute' });
+  const prevWeek = page.getByRole('button', { name: 'Vorige Woche' });
+  const nextWeek = page.getByRole('button', { name: 'Nächste Woche' });
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+
+  // Heute ist ausgewaehlt: "Heute" steht als Knopf da, disabled statt entfernt.
+  await expect(today).toHaveCount(1);
+  await expect(today).toBeVisible();
+  await expect(today).toBeDisabled();
+  await expect(prevWeek).toBeVisible();
+  await expect(nextWeek).toBeVisible();
+
+  // `>` blaettert in der Wochenansicht eine Woche weiter (Sa 18. -> Sa 25.).
+  await nextWeek.click();
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(title).toHaveText('Juli 2026');
+  await expect(today).toBeEnabled();
+
+  // In der Monatsansicht blaettert `>` stattdessen einen Monat (Titel wechselt).
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
+  await expect(nextMonth).toBeVisible();
+  await nextMonth.click();
+  await expect(title).toHaveText('August 2026');
+});
+
+test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der Ruecksprung-Chip bleibt (AK10)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+  // Heute ist ausgewaehlt: der Chip selbst ist ebenfalls nicht da (S1, #628 AK6).
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  await dayButton(page, 'So, 19.').click();
+  await expect(page.getByRole('button', { name: 'Heute' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -805,13 +1169,13 @@ test('ein 3-tägiger, ganztägiger Termin steht beim Blaettern an jedem der drei
 
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'So, 19.');
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'Mo, 20.');
   await expect(allDayBar(page, 'Konferenz')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, 'Di, 21.');
   await expect(allDayBar(page, 'Konferenz')).toHaveCount(0);
 });
 
@@ -837,7 +1201,7 @@ test('ein mehrtägiger Termin ueber einen Monatswechsel bleibt an der Monatsgren
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
 
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, 'Fr, 31.');
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
 });
@@ -951,9 +1315,7 @@ test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche s
 
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 
-  for (let day = 0; day < 7; day++) {
-    await page.getByRole('button', { name: 'Nächster Tag' }).click();
-  }
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -991,18 +1353,6 @@ async function seedWeeklySeries(page: Page): Promise<void> {
   });
 }
 
-async function nextDay(page: Page, times = 1): Promise<void> {
-  for (let day = 0; day < times; day++) {
-    await page.getByRole('button', { name: 'Nächster Tag' }).click();
-  }
-}
-
-async function previousDay(page: Page, times = 1): Promise<void> {
-  for (let day = 0; day < times; day++) {
-    await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
-  }
-}
-
 test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben unveraendert (AC3)', async ({
   page,
 }) => {
@@ -1024,7 +1374,7 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A week later, the series' own occurrence still runs at the original time.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -1045,7 +1395,7 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
   await expect(eventCard(page, 'Yoga')).toHaveCount(0);
 
   // The next occurrence a week later is untouched.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -1055,7 +1405,7 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await seedWeeklySeries(page);
 
   // Edit the second occurrence (a week later), not the series' own first one.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   // Same UTC-vs-Berlin offset as the "nur dieser" test above.
@@ -1070,11 +1420,11 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A further week on, the change still applies.
-  await nextDay(page, 7);
+  await nextWeek(page, 1);
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // Back on the series' own first occurrence, the original time survives.
-  await previousDay(page, 14);
+  await prevWeek(page, 2);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -1102,11 +1452,9 @@ test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest kei
   });
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
 
-  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
-  const previousDayButton = page.getByRole('button', { name: 'Vorheriger Tag' });
   for (let i = 0; i < 6; i += 1) {
-    await nextDay.click();
-    await previousDayButton.click();
+    await selectStripDay(page, 'So, 19.');
+    await selectStripDay(page, 'Sa, 18.');
   }
 
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
@@ -1203,14 +1551,14 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   });
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 
-  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  const forward = await agendaAfterDaySwitch(page, 'So, 19.');
   expect(forward.items.map((row) => row.text)).toHaveLength(1);
   expect(forward.items[0].text).toContain('Morgen-Termin');
   expect(forward.items.filter((row) => row.leaving === 'true')).toEqual([]);
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
+  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
@@ -1239,7 +1587,7 @@ test('beim Tageswechsel raeumt auch das Ganztags-Band den vorherigen Tag sofort 
   });
   await expect(allDayBar(page, 'Heute ganztags')).toBeVisible();
 
-  const forward = await agendaAfterDaySwitch(page, 'Nächster Tag');
+  const forward = await agendaAfterDaySwitch(page, 'So, 19.');
   expect(forward.allDay.map((row) => row.text)).toHaveLength(1);
   expect(forward.allDay[0].text).toContain('Morgen ganztags');
   expect(forward.allDay.filter((row) => row.leaving === 'true')).toEqual([]);
@@ -1333,7 +1681,7 @@ test('eine woechentliche Serie setzt an jedem Vorkommen einen Punkt, nicht nur a
   page,
 }) => {
   await seedWeeklyDotSeries(page);
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
@@ -1358,7 +1706,7 @@ test('die Serien-Punkte ueberleben einen Reload ohne Netzwerk, kommen also aus I
   await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
     polling: 100,
   });
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
 });
@@ -1382,7 +1730,7 @@ test('ein ausgefallenes Vorkommen verliert seinen Punkt, die uebrigen behalten i
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(0);
 
   // Nur dieses eine Vorkommen ist weg — die Serie punktet weiter.
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
 });
 
@@ -1428,7 +1776,7 @@ test('Punkt und Tagesansicht stimmen ueberein: ein Punkt genau dann, wenn der Ta
   await seedWeeklyDotSeries(page);
 
   // Das Vorkommen eine Woche weiter: Punkt im Band UND Karte in der Tagesansicht.
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await dayButton(page, 'Sa, 25.').click();
   await expect(dayDots(page, 'Sa, 25.')).toHaveCount(1);
   await expect(settledEventCard(page, 'Yoga')).toBeVisible();
@@ -1462,7 +1810,7 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
     category: 'sport',
   });
 
-  await swipeVertical(calendarWeeks(page), 80);
+  await page.getByRole('radio', { name: 'Monat' }).click();
 
   // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
   const dots = dayDots(page, 'Sa, 25.');
@@ -1475,4 +1823,140 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
   await expect
     .poll(() => dots.nth(1).evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
+});
+
+/* -------------------------------------------------------------------------- */
+/* ICS-Abo, schreibgeschützt (issue #560, ADR-0022)                           */
+/* -------------------------------------------------------------------------- */
+
+const ICS_URL = 'https://example.com/feiertage.ics';
+
+function icsDateKey(dateKey: string): string {
+  return dateKey.replace(/-/g, '');
+}
+
+function icsFixture(events: string[]): string {
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', ...events, 'END:VCALENDAR'].join('\r\n');
+}
+
+function singleDayIcsEvent(uid: string, summary: string, dateKey: string): string[] {
+  return ['BEGIN:VEVENT', `UID:${uid}`, `SUMMARY:${summary}`, `DTSTART;VALUE=DATE:${icsDateKey(dateKey)}`, 'END:VEVENT'];
+}
+
+function seriesIcsEvent(uid: string, summary: string, startDateKey: string, rrule: string): string[] {
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `SUMMARY:${summary}`,
+    `DTSTART;VALUE=DATE:${icsDateKey(startDateKey)}`,
+    `RRULE:${rrule}`,
+    'END:VEVENT',
+  ];
+}
+
+/** Fulfils every request to the SSRF-guarded proxy route with `body`, counting how often it was actually called. */
+async function mockIcsFeed(page: Page, body: string): Promise<() => number> {
+  let calls = 0;
+  await page.route('**/api/ics**', (route) => {
+    calls += 1;
+    return route.fulfill({ status: 200, contentType: 'text/calendar', body });
+  });
+  return () => calls;
+}
+
+async function addIcsSubscription(page: Page, url: string, name: string): Promise<void> {
+  await page.evaluate(({ url, name }) => window.__starship.addIcsSubscription(url, name), { url, name });
+}
+
+async function refreshIcsSubscriptions(page: Page): Promise<void> {
+  await page.evaluate(() => window.__starship.refreshIcsSubscriptions());
+}
+
+test('ein abonnierter ganztägiger Termin erscheint schreibgeschützt und optisch abgesetzt im All-Day-Band (AK1)', async ({
+  page,
+}) => {
+  await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+
+  const bar = allDayBar(page, 'Nationalfeiertag');
+  await expect(bar).toBeVisible();
+  await expect(bar).toHaveAttribute('data-origin', 'subscribed');
+  // Editierbare Termine sind <button>, abonnierte <div> — die technische Basis
+  // von AK2 (kein Editor-Zugriff).
+  expect(await bar.evaluate((el) => el.tagName)).toBe('DIV');
+});
+
+test('ein Tap auf einen abonnierten Termin öffnet keinen Editor (AK2)', async ({ page }) => {
+  await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+
+  await allDayBar(page, 'Nationalfeiertag').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
+});
+
+test('ein Abo mit interner Zieladresse wird vom Proxy abgelehnt, kein Termin erscheint (AK3, SSRF)', async ({
+  page,
+}) => {
+  // Kein page.route-Mock hier — die echte, SSRF-abgesicherte Node-Route
+  // (src/app/api/ics/route.ts) muss selbst ablehnen, nicht ein Test-Double.
+  await addIcsSubscription(page, 'https://127.0.0.1/feiertage.ics', 'Intern');
+  await refreshIcsSubscriptions(page);
+
+  await expect(page.locator('.event-agenda__all-day-button')).toHaveCount(0);
+
+  await page.goto('/einstellungen');
+  await expect(page.locator('.ics-subscriptions-panel__error')).toHaveText(
+    'Zieladresse ist nicht öffentlich erreichbar.',
+  );
+});
+
+test('eine Serie in der fremden ICS-Datei erscheint als expandierte Einzeltermine, nicht als eigene Serie (AK4)', async ({
+  page,
+}) => {
+  await mockIcsFeed(page, icsFixture(seriesIcsEvent('daily-1', 'Aktionstag', TODAY, 'FREQ=DAILY;COUNT=3')));
+  await addIcsSubscription(page, ICS_URL, 'Aktionstage');
+  await refreshIcsSubscriptions(page);
+
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
+
+  // COUNT=3: der vierte Tag hat kein Vorkommen mehr — expandiert, nicht endlos.
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await expect(allDayBar(page, 'Aktionstag')).toHaveCount(0);
+
+  // Jedes einzelne Vorkommen bleibt schreibgeschützt, nicht nur das erste.
+  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await allDayBar(page, 'Aktionstag').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
+});
+
+test('abonnierte Termine rendern offline aus dem Cache, ohne eigenen Netzaufruf (DoD: Offline-Pfad)', async ({
+  page,
+}) => {
+  // ADR-0009: abonnierte Termine werden nie synchronisiert — die DoD-Formel
+  // "offline → online → serverseitig angekommen" ist hier N/A. Geprüft wird
+  // stattdessen "rendert offline aus dem Cache, kein Netzaufruf" (derselbe
+  // Aufbau wie weather-day.spec.ts's Offline-Test).
+  const callCount = await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', TODAY)));
+  await addIcsSubscription(page, ICS_URL, 'Feiertage');
+  await refreshIcsSubscriptions(page);
+  await expect(allDayBar(page, 'Nationalfeiertag')).toBeVisible();
+  expect(callCount()).toBe(1);
+
+  await page.unroute('**/api/ics**');
+  await page.route('**/api/ics**', (route) => route.abort('failed'));
+  const requestUrls: string[] = [];
+  page.on('request', (request) => requestUrls.push(request.url()));
+
+  await page.reload();
+
+  await expect(allDayBar(page, 'Nationalfeiertag')).toBeVisible();
+  expect(requestUrls.some((url) => url.includes('/api/ics'))).toBe(false);
 });

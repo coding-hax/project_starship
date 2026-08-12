@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { OfflineNotice } from '@/ui/offline-notice';
+import { useOnline } from '@/ui/use-online';
 import { JournalEditor } from './journal-editor';
 import { journalLockSnapshot, useJournalLock } from './lock-store';
 import './journal-gate.css';
@@ -20,6 +22,7 @@ export function JournalGate() {
     useJournalLock();
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [rewrapKey, setRewrapKey] = useState<string | null>(null);
+  const online = useOnline();
 
   if (state === 'loading') {
     return (
@@ -86,6 +89,12 @@ export function JournalGate() {
 
   return (
     <div className="journal-gate" data-state="unlocked">
+      {!online && (
+        <OfflineNotice>
+          Offline — dein Eintrag liegt lokal und wird verschlüsselt synchronisiert, sobald du
+          wieder online bist.
+        </OfflineNotice>
+      )}
       <JournalEditor />
     </div>
   );

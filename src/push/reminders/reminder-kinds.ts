@@ -12,7 +12,7 @@ export interface ReminderKindMeta {
 
 export const REMINDER_KINDS: ReminderKindMeta[] = [
   { kind: 'tasks-due', label: 'Fällige Aufgaben', defaultTimes: ['07:00'] },
-  { kind: 'habits-open', label: 'Offene Gewohnheiten', defaultTimes: ['20:00'] },
+  { kind: 'habits-open', label: 'Offene Routinen', defaultTimes: ['20:00'] },
 ];
 
 if (process.env.NEXT_PUBLIC_E2E === '1') {

@@ -4,6 +4,7 @@ import { ExportPanel } from '@/features/export/export-panel';
 import { HabitsOverviewSection } from '@/features/habits/habits-overview-section';
 import { JournalSettingsPanel } from '@/features/journal/journal-settings-panel';
 import { CapturePanel } from '@/features/settings/capture-panel';
+import { IcsSubscriptionsPanel } from '@/features/settings/ics-subscriptions-panel';
 import { WeatherPanel } from '@/features/settings/weather-panel';
 import { TasksOverviewSection } from '@/features/tasks/tasks-overview-section';
 import { WeatherForecast } from '@/features/weather/weather-forecast';
@@ -21,7 +22,9 @@ export interface NavItem {
 export interface ModuleDefinition {
   /** Stable key — the on/off exclusion list (`use-modules.ts`) and, for nav modules,
    * the stored nav order (`use-nav-order.ts`) both point at it. Never change once
-   * shipped, or every device's saved state silently drops that entry. */
+   * shipped, or every device's saved state silently drops that entry. Changing one
+   * anyway means adding a rename pair to `LEGACY_MODULE_IDS` (`module-ids.ts`) in the
+   * same commit — that is what carries stored state across, see issue #655. */
   id: string;
   label: string;
   /** `core` modules have no toggle and are always active (ADR-0012). */
@@ -64,18 +67,18 @@ export const MODULES: readonly ModuleDefinition[] = [
     routes: ['/aufgaben'],
   },
   {
-    id: 'gewohnheiten',
-    label: 'Gewohnheiten',
+    id: 'routinen',
+    label: 'Routinen',
     core: false,
     navItem: {
-      id: 'gewohnheiten',
-      href: '/gewohnheiten',
-      label: 'Gewohnheiten',
+      id: 'routinen',
+      href: '/routinen',
+      label: 'Routinen',
       accent: 'var(--area-habits)',
       Icon: IconHabits,
     },
     OverviewSection: HabitsOverviewSection,
-    routes: ['/gewohnheiten'],
+    routes: ['/routinen'],
   },
   {
     id: 'kalender',
@@ -89,6 +92,7 @@ export const MODULES: readonly ModuleDefinition[] = [
       Icon: IconCalendar,
     },
     OverviewSection: EventsOverviewSection,
+    SettingsPanel: IcsSubscriptionsPanel,
     routes: ['/kalender'],
   },
   {

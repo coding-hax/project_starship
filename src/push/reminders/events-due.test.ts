@@ -13,6 +13,7 @@ function event(overrides: Partial<EventReminderSource>): EventReminderSource {
     endDate: null,
     category: null,
     recurrence: null,
+    origin: 'local',
     reminderMinutes: 15,
     deletedAt: null,
     ...overrides,

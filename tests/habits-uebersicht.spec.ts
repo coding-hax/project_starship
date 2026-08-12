@@ -7,7 +7,7 @@ const MONDAY_THIS_WEEK = '2026-07-13';
 const LAST_MONDAY = '2026-07-06';
 
 function habitTodayItems(page: Page) {
-  return page.getByRole('list', { name: 'Gewohnheiten heute' }).getByRole('listitem');
+  return page.getByRole('list', { name: 'Routinen heute' }).getByRole('listitem');
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -64,7 +64,7 @@ test.beforeEach(async ({ page }) => {
 /* AK: Heutige Habits erscheinen; Abhaken markiert sofort erledigt            */
 /* -------------------------------------------------------------------------- */
 
-test('eine tägliche Gewohnheit erscheint in der Übersicht-Sektion und lässt sich abhaken (issue #103 AC1)', async ({
+test('eine tägliche Routine erscheint in der Übersicht-Sektion und lässt sich abhaken (issue #103 AC1)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Wasser trinken', schedule: 'daily', color: null, archivedAt: null });
@@ -96,7 +96,7 @@ test('die Journal-Zeile ist nicht antippbar, ein Tipp legt keinen Log an (issue 
   expect(await habitLogRecords(page, JOURNAL_HABIT_ID)).toHaveLength(0);
 });
 
-test('eine wöchentliche Gewohnheit ohne Log in dieser Woche erscheint ebenfalls', async ({
+test('eine wöchentliche Routine ohne Log in dieser Woche erscheint ebenfalls', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
@@ -104,7 +104,7 @@ test('eine wöchentliche Gewohnheit ohne Log in dieser Woche erscheint ebenfalls
   await expect(habitTodayItems(page).filter({ hasText: 'Joggen' })).toBeVisible();
 });
 
-test('eine wöchentliche Gewohnheit, die früher diese Woche erledigt wurde, bleibt sichtbar mit dem Hinweis "Diese Woche schon erledigt" (issue #224 AC1/AC2)', async ({
+test('eine wöchentliche Routine, die früher diese Woche erledigt wurde, bleibt sichtbar mit dem Hinweis "Diese Woche schon erledigt" (issue #224 AC1/AC2)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -122,7 +122,7 @@ test('eine wöchentliche Gewohnheit, die früher diese Woche erledigt wurde, ble
   await expect(item).not.toHaveClass(/habit-today__item--done/);
 });
 
-test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinweis bleibt (nicht durchgestrichen), und der Zustand übersteht einen Reload (issue #224 AC3, issue #288 AC5)', async ({
+test('ein Klick hakt die wöchentliche Routine für heute ab, der Wochen-Hinweis bleibt (nicht durchgestrichen), und der Zustand übersteht einen Reload (issue #224 AC3, issue #288 AC5)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -162,7 +162,7 @@ test('ein Klick hakt die wöchentliche Gewohnheit für heute ab, der Wochen-Hinw
   expect(logs.every((r) => r.data.done === true)).toBe(true);
 });
 
-test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Gewohnheit zurück, der Wochen-Hinweis kommt zurück (issue #224 AC4)', async ({
+test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Routine zurück, der Wochen-Hinweis kommt zurück (issue #224 AC4)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -190,7 +190,7 @@ test('erneutes Tippen nimmt nur das heutige Log der wöchentlichen Gewohnheit zu
   ]);
 });
 
-test('eine wöchentliche Gewohnheit ohne Log oder nur mit letzter Woche erledigt zeigt keinen Wochen-Hinweis (issue #224 AC5)', async ({
+test('eine wöchentliche Routine ohne Log oder nur mit letzter Woche erledigt zeigt keinen Wochen-Hinweis (issue #224 AC5)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
@@ -210,7 +210,7 @@ test('eine wöchentliche Gewohnheit ohne Log oder nur mit letzter Woche erledigt
   await expect(putzenItem.getByText('Diese Woche schon erledigt')).toHaveCount(0);
 });
 
-test('eine wöchentliche Gewohnheit mit Wochen-Hinweis lässt sich offline für heute abhaken, der Log erreicht online den Server (issue #224 AC6)', async ({
+test('eine wöchentliche Routine mit Wochen-Hinweis lässt sich offline für heute abhaken, der Log erreicht online den Server (issue #224 AC6)', async ({
   page,
   context,
 }) => {
@@ -248,7 +248,7 @@ test('eine wöchentliche Gewohnheit mit Wochen-Hinweis lässt sich offline für 
 /* AK: „N× pro Woche" — Zwischenstand und „schon erledigt" (issue #509 AC2/AC3) */
 /* -------------------------------------------------------------------------- */
 
-test('eine "3x pro Woche"-Gewohnheit mit 2 von 3 zeigt ihren Zwischenstand (issue #509 AC2)', async ({
+test('eine "3x pro Woche"-Routine mit 2 von 3 zeigt ihren Zwischenstand (issue #509 AC2)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -267,7 +267,7 @@ test('eine "3x pro Woche"-Gewohnheit mit 2 von 3 zeigt ihren Zwischenstand (issu
   await expect(item.getByText('Diese Woche schon erledigt')).toHaveCount(0);
 });
 
-test('eine "3x pro Woche"-Gewohnheit mit allen 3 Haken gilt als erledigt (issue #509 AC3)', async ({
+test('eine "3x pro Woche"-Routine mit allen 3 Haken gilt als erledigt (issue #509 AC3)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, {
@@ -379,13 +379,13 @@ test('offline abgehakt erreicht online den Server als habit_log (issue #103 AC4)
 /* Leerzustand, wenn keine Habits existieren (Verweis auf Verwaltung, #102)   */
 /* -------------------------------------------------------------------------- */
 
-test('ohne Gewohnheiten zeigt die Übersicht-Sektion einen Leerzustand mit Verweis auf die Verwaltung', async ({
+test('ohne Routinen zeigt die Übersicht-Sektion einen Leerzustand mit Verweis auf die Verwaltung', async ({
   page,
 }) => {
-  await expect(page.getByText('Noch keine Gewohnheiten.')).toBeVisible();
+  await expect(page.getByText('Noch keine Routinen.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Jetzt anlegen' })).toHaveAttribute(
     'href',
-    '/gewohnheiten',
+    '/routinen',
   );
 });
 
@@ -404,7 +404,7 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
-test('eine Gewohnheit ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode (issue #103 AC5)', async ({
+test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode (issue #103 AC5)', async ({
   page,
 }) => {
   await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', color: null, archivedAt: null });

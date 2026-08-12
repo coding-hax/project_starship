@@ -228,6 +228,7 @@ describe('reopenFalselyClosedIssues', () => {
         }
         if (key.startsWith('issue view 163')) return 'CLOSED';
         if (key.startsWith('issue view 155')) return 'OPEN';
+        if (key.startsWith('pr view 166')) return 'OPEN';
         return '';
       }),
     };
@@ -237,6 +238,45 @@ describe('reopenFalselyClosedIssues', () => {
     expect(gh.run).toHaveBeenCalledWith(['issue', 'reopen', '163']);
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'reopen', '155']);
     expect(gh.run).toHaveBeenCalledWith(['issue', 'comment', '163', '--body', expect.stringContaining('#166')]);
+  });
+
+  it('reopnt NICHT, wenn der gelistete PR inzwischen selbst gemergt ist (#531)', () => {
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr list')) {
+          return JSON.stringify([
+            { number: 524, title: 'fix(sync): pull is paginated with a keyset LIMIT — Closes #478' },
+          ]);
+        }
+        if (key.startsWith('issue view 478')) return 'CLOSED';
+        if (key.startsWith('pr view 524')) return 'MERGED';
+        return '';
+      }),
+    };
+
+    reopenFalselyClosedIssues(gh);
+
+    expect(gh.run).not.toHaveBeenCalledWith(['issue', 'reopen', '478']);
+    expect(gh.run).not.toHaveBeenCalledWith(['issue', 'comment', '478', expect.anything(), expect.anything()]);
+  });
+
+  it('reopnt nicht, wenn die PR-Statusabfrage scheitert (fail-safe)', () => {
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr list')) {
+          return JSON.stringify([{ number: 166, title: 'fix: x — Closes #163' }]);
+        }
+        if (key.startsWith('issue view 163')) return 'CLOSED';
+        if (key.startsWith('pr view 166')) throw new Error('gh timeout');
+        return '';
+      }),
+    };
+
+    reopenFalselyClosedIssues(gh);
+
+    expect(gh.run).not.toHaveBeenCalledWith(['issue', 'reopen', '163']);
   });
 
   it('laesst ein bereits offenes Ticket unangetastet', () => {
