@@ -1,5 +1,6 @@
 'use client';
 
+import { OverviewBlock } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { useNow } from '@/ui/use-now';
 import { categoryEdgeVar, formatCountdown, upcomingEventsToday } from './event-time';
@@ -37,8 +38,7 @@ export function EventsOverviewSection() {
   const [next, ...rest] = upcomingEventsToday(events, now);
 
   return (
-    <>
-      <h2>Termine</h2>
+    <OverviewBlock title="Termine" area="var(--area-events)">
       {next ? (
         <div
           className="events-overview__next"
@@ -63,6 +63,6 @@ export function EventsOverviewSection() {
           ))}
         </ul>
       )}
-    </>
+    </OverviewBlock>
   );
 }

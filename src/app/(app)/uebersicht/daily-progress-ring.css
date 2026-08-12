@@ -1,8 +1,5 @@
 .daily-progress-ring {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
 }
 
 .daily-progress-ring__svg {
@@ -18,7 +15,10 @@
   stroke-linecap: round;
 }
 
-.daily-progress-ring__label {
+.daily-progress-ring__count {
+  fill: var(--text);
   color: var(--text);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }

@@ -54,7 +54,9 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  await page.goto('/uebersicht');
+  // Umgezogen von /uebersicht auf /routinen (issue #652) — der Wochenrückblick
+  // sitzt jetzt bei der Verwaltung statt auf der täglichen Übersicht.
+  await page.goto('/routinen');
 });
 
 /* -------------------------------------------------------------------------- */

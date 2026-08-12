@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { OverviewBlock } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { formatDistance } from './format';
 import { activityTypeLabel, computeMonthlySummary } from './monthly-summary';
@@ -50,23 +51,27 @@ export function ActivityMonthStrip() {
 
   if (summary.totalCount === 0) {
     return (
-      <Link href="/aktivitaeten" className="activity-month-strip">
-        <p className="activity-month-strip__heading">{monthLabel}</p>
-        <p className="activity-month-strip__empty">Diesen Monat noch nichts aufgezeichnet.</p>
-      </Link>
+      <OverviewBlock title="Aktivitäten" area="var(--area-activities)">
+        <Link href="/aktivitaeten" className="activity-month-strip">
+          <p className="activity-month-strip__heading">{monthLabel}</p>
+          <p className="activity-month-strip__empty">Diesen Monat noch nichts aufgezeichnet.</p>
+        </Link>
+      </OverviewBlock>
     );
   }
 
   return (
-    <Link href="/aktivitaeten" className="activity-month-strip">
-      <p className="activity-month-strip__heading">{monthLabel}</p>
-      <ul className="activity-month-strip__list">
-        {summary.byType.map((row) => (
-          <li key={row.type} className="activity-month-strip__row">
-            {row.count}× {activityTypeLabel(row.type)} · {formatDistance(row.meters)}
-          </li>
-        ))}
-      </ul>
-    </Link>
+    <OverviewBlock title="Aktivitäten" area="var(--area-activities)">
+      <Link href="/aktivitaeten" className="activity-month-strip">
+        <p className="activity-month-strip__heading">{monthLabel}</p>
+        <ul className="activity-month-strip__list">
+          {summary.byType.map((row) => (
+            <li key={row.type} className="activity-month-strip__row">
+              {row.count}× {activityTypeLabel(row.type)} · {formatDistance(row.meters)}
+            </li>
+          ))}
+        </ul>
+      </Link>
+    </OverviewBlock>
   );
 }

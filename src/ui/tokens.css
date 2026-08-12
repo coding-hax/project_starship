@@ -28,6 +28,13 @@
   --area-journal: oklch(63% 0.14 305); /* warm violet — personal */
   --area-habits: oklch(66% 0.15 148); /* green — growth, streaks */
   --area-activities: oklch(62% 0.16 260); /* blue — Garmin activities (issue #180) */
+  /* teal-cyan, not sky blue: the naheliegende Lücke zwischen Termine (195) und
+     Aktivitäten (260) ist von --swatch-sky (228) schon fast mittig besetzt —
+     jeder Hue dort bliebe unter 20° Abstand zu einem Nachbarn, unter der
+     eigenen 30–47°-Regel dieser Datei. Größte freie Lücke ist 148→195
+     (Gewohnheiten → Termine, 47°), 171 teilt sie mit ~23° zu beiden Seiten
+     (issue #652). */
+  --area-weather: oklch(66% 0.13 171);
 
   /* The default accent is the primary area colour. */
   --accent: var(--area-tasks);
@@ -154,6 +161,7 @@
     --area-journal: oklch(70% 0.13 305);
     --area-habits: oklch(72% 0.13 148);
     --area-activities: oklch(70% 0.14 260);
+    --area-weather: oklch(72% 0.11 171);
 
     --swatch-rose: oklch(72% 0.13 12);
     --swatch-amber: oklch(80% 0.11 75);
@@ -192,6 +200,7 @@
   --area-journal: oklch(70% 0.13 305);
   --area-habits: oklch(72% 0.13 148);
   --area-activities: oklch(70% 0.14 260);
+  --area-weather: oklch(72% 0.11 171);
 
   --swatch-rose: oklch(72% 0.13 12);
   --swatch-amber: oklch(80% 0.11 75);

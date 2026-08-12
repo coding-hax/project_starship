@@ -4,7 +4,6 @@
   background: var(--surface);
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);
-  margin-bottom: var(--space-6);
   color: var(--text);
   text-decoration: none;
 }

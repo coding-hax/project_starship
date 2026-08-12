@@ -6,20 +6,63 @@
 .uebersicht__title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
 }
 
+/* `flex: 1` statt `justify-content: space-between` auf der Zeile: die Box
+ * bekommt so ihre Breite von der verfügbaren Restfläche zugewiesen, nicht vom
+ * Text-Inhalt. Mit space-between schrumpfte die h1-Box exakt auf ihren Text,
+ * und jeder — auch minimale — Font-Swap-Reflow (next/font `display: swap`)
+ * verschob dadurch das ganze Aktionsbündel mit (issue #652, CI-Fund: „h1 +
+ * div.uebersicht__title-actions" als Layout-Shift-Quelle). */
+/* `overflow-wrap: normal` statt `anywhere` — und das ist keine Kosmetik, sondern
+ * die Ursache des Sprungs, den #652 vier Runden lang gejagt hat. Der Titel hat
+ * hier nur 163px Restbreite (375 − 32 Seitenrand − 164 Aktionsbündel − 16 gap).
+ * „Übersicht" passt darin in Inter, in der Linux-Fallback-Schrift aber nicht —
+ * und `anywhere` erlaubt den Bruch MITTEN IM WORT. Ergebnis auf CI: die h1 startet
+ * zweizeilig und klappt beim Eintreffen von Inter auf eine Zeile zurück. Die vom
+ * roten Lauf gemessene Geometrie sagt es genau: `h1 163×77 → 163×39`, das
+ * Aktionsbündel dadurch `y=30 → y=16`.
+ *
+ * Auf macOS ist die Fallback-Schrift schmal genug, dass das Wort passt — deshalb
+ * war es lokal nie reproduzierbar und in CI immer rot. `font-display` (swap →
+ * optional → block, Runde 2–4) konnte daran nichts ändern: alle drei setzen das
+ * Layout zuerst mit den Fallback-Metriken, `block` verbirgt nur die Glyphen.
+ *
+ * Der Titel ist ein festes Wort, kein Nutzertext — mitten im Wort zu brechen hat
+ * hier nie einen Zweck erfüllt. Ohne Bruch bleibt die Zeilenzahl konstant, damit
+ * die Höhe, damit die Zeile. Ein in der Fallback-Phase zu breites Wort läuft
+ * stattdessen über — unsichtbar, weil `font-display: block` in genau diesem
+ * Fenster die Glyphen ohnehin nicht zeichnet. */
 .uebersicht__title-row h1 {
+  flex: 1 1 auto;
   margin: 0;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .uebersicht__title-actions {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+/* Erfassungsknopf + Fortschrittsring bilden ein eigenes Gespann mit engerem
+ * Abstand (issue #652 AK3) — der weitere Abstand zum Einstellungen-Link bleibt
+ * die --space-4 von `.uebersicht__title-actions`. */
+.uebersicht__capture-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
+ * der Slot selbst hält die Titelzeile stabil (issue #652, siehe
+ * daily-progress-ring.tsx). */
+.daily-progress-ring-slot {
+  width: 48px;
+  height: 48px;
   flex-shrink: 0;
 }
 

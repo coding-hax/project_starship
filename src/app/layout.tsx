@@ -7,7 +7,22 @@ import { KeyboardInset } from '@/ui/keyboard-inset';
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
-  display: 'swap',
+  // 'block' statt 'swap'/'optional' (issue #652). 'swap' blockte fast gar
+  // nicht, zeigte die Titelzeile also fast immer zuerst im Fallback und tauschte
+  // später sichtbar nach — genug, dass die Layout Instability API einen Eintrag
+  // meldete (CI-Fund: „h1 + div.uebersicht__title-actions"). 'optional' behob
+  // das, tauschte dafür nach seinem sehr kurzen Blockfenster gar nicht mehr
+  // nach — geriet die erste Anfrage einer CI-Shard unter Last (Dev-Server
+  // kompiliert die Route + lädt die selbstgehostete Schrift), blieb die
+  // Titelzeile für den ganzen Seitenaufruf beim (breiteren) Fallback und riss
+  // die 32px-Einzeiligkeit bei 375px (AC4, issue #651). 'block' hält die
+  // Schrift bis zu 3s unsichtbar, statt sichtbar im Fallback zu starten — ein
+  // Wechsel während dieses Fensters ist kein „Shift", weil vorher nichts zu
+  // sehen war (Layout Instability API zählt nur bereits gemaltes). Bei einer
+  // selbstgehosteten Schrift liegt das Laden weit unter 3s, auch unter
+  // CI-Last, also landet praktisch immer Inter im ersten sichtbaren Frame —
+  // nicht der Fallback.
+  display: 'block',
 });
 
 export const metadata: Metadata = {
