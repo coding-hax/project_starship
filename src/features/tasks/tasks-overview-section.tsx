@@ -11,7 +11,10 @@ import { TaskList } from './task-list';
 export function TasksOverviewSection() {
   return (
     <OverviewBlock title="Aufgaben" area="var(--area-tasks)" headingId="uebersicht-aufgaben-heading">
-      <TaskList dueTodayOnly headingId="uebersicht-aufgaben-heading" />
+      {/* Embedded in /uebersicht, no scroll container of its own — the list's
+          own scroll anchor (issue #88) would scroll the document, not itself
+          (issue #647). */}
+      <TaskList dueTodayOnly headingId="uebersicht-aufgaben-heading" anchorOnMount={false} />
     </OverviewBlock>
   );
 }

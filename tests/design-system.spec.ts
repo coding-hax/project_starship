@@ -151,20 +151,22 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
     expect(fontSize).toBe(textSection);
   });
 
-  test('AC3: .section-card__title rendert in --text-section auf /einstellungen', async ({
+  // Issue #653 AK2 stuft Kartentitel bewusst unter die Gruppenüberschrift zurück
+  // (--text-section bleibt der Gruppe vorbehalten) — löst die AC3-Vorgabe von #651 ab.
+  test('AC3 (überholt durch #653 AK2): .section-card__title rendert in --text-secondary auf /einstellungen', async ({
     page,
   }) => {
     await registerPasskey(page);
     await page.goto('/einstellungen');
 
     const title = page.locator('.section-card__title').first();
-    const [fontSize, textSection] = await Promise.all([
+    const [fontSize, textSecondary] = await Promise.all([
       title.evaluate((el) => getComputedStyle(el).fontSize),
       page.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue('--text-section').trim(),
+        getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim(),
       ),
     ]);
-    expect(fontSize).toBe(textSection);
+    expect(fontSize).toBe(textSecondary);
   });
 
   test('AC5: das Einstellungs-Icon rendert mit 26×26px statt 24×24px', async ({ page }) => {
