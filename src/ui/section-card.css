@@ -17,8 +17,12 @@
      into it. Leaving it in pushed the title ~24px below the card's top edge
      (issues #288, #344, #353, all three of which fixed the page topbar instead). */
   margin-block-start: 0;
-  font-size: var(--text-section);
+  font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
+  color: var(--text-muted);
+  /* "leicht gesperrt" (issue #653 AK2) — überschreibt die globale, enge
+     h1/h2/h3-Regel (globals.css, -0.01em). */
+  letter-spacing: 0.02em;
 }
 
 .section-card__header {

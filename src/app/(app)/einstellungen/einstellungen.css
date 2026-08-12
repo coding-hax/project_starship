@@ -27,3 +27,32 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Der Abstand vor einer neuen Gruppenüberschrift (issue #653 AK5) — der Gap sitzt
+   zwischen den Gruppen-Boxen (Überschrift + Karten), landet also genau vor dem
+   nächsten Titel. */
+.einstellungen__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Die Gruppe ist die laute Ebene, nicht mehr jede einzelne Karte (issue #653 AK1/AK2). */
+.einstellungen__group-title {
+  margin: 0 0 var(--space-3) 0;
+  font-size: var(--text-section);
+  font-weight: var(--weight-emphasis);
+}
+
+.einstellungen__group-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Der Gruppen-Gap übernimmt den Kartenabstand — section-card.css's eigener
+   margin-bottom addierte sich sonst dazu (gleiches Muster wie
+   weather-day.css .weather-day__card, issue #381). */
+.einstellungen__group-items > .section-card {
+  margin-bottom: 0;
+}

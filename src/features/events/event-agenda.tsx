@@ -116,11 +116,13 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
             style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
           >
             <button type="button" className="event-agenda__item-button" onClick={() => onEditEvent?.(item)}>
-              <span className="event-agenda__item-time">
-                {formatTime(item.startsAt)}–{formatTime(item.endsAt)}
+              <span className="event-agenda__item-header">
+                <span className="event-agenda__item-time">
+                  {formatTime(item.startsAt)}–{formatTime(item.endsAt)}
+                </span>
+                {item.overlaps && <span className="event-agenda__overlap-note">Überschneidung</span>}
               </span>
               <span className="event-agenda__item-title">{item.title}</span>
-              {item.overlaps && <span className="event-agenda__overlap-note">überschneidet sich</span>}
             </button>
           </li>
         ))}
