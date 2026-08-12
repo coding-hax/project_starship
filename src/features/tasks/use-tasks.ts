@@ -98,6 +98,27 @@ export function resolveNestTarget(
   return target.parentId !== null ? target.parentId : target.id;
 }
 
+/**
+ * Applies the "erledigte ausblenden" toggle to an already-grouped tree (issue
+ * #654 AC5) without touching `done`/`total` — those keep counting every
+ * child regardless, the toggle only changes what renders. A parent whose own
+ * row is done drops out entirely, unless it still guards an open child (that
+ * child would otherwise vanish with it); its own completed children still
+ * disappear either way.
+ */
+export function visibleTaskNodes(nodes: TaskNode[], hideCompleted: boolean): TaskNode[] {
+  if (!hideCompleted) return nodes;
+  return nodes
+    .filter(
+      (node) =>
+        node.task.completedAt === null || node.children.some((child) => child.completedAt === null),
+    )
+    .map((node) => ({
+      ...node,
+      children: node.children.filter((child) => child.completedAt === null),
+    }));
+}
+
 function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
