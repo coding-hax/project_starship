@@ -345,8 +345,12 @@ test.describe('Kategoriefarben (issue #660)', () => {
     await registerPasskey(page);
     await page.goto('/einstellungen');
 
+    // .click() statt .check(): der Radio-Status haengt am IndexedDB-Roundtrip
+    // ueber useLiveTable, .check() prueft den Haken-Status einmalig direkt
+    // nach dem Klick und wartet nicht darauf (gleiche Konvention wie
+    // reminder-prefs.spec.ts' Toggle-Klicks).
     const swatch = categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' });
-    await swatch.check();
+    await swatch.click();
     await expect(swatch).toBeChecked();
 
     await page.unroute('**/api/sync/**');
@@ -359,7 +363,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
     await page.goto('/einstellungen');
 
     const arbeitRow = categoryRow(page, 'Arbeit');
-    await arbeitRow.getByRole('radio', { name: 'Arbeit: Bernstein' }).check();
+    await arbeitRow.getByRole('radio', { name: 'Arbeit: Bernstein' }).click();
     const resetButton = arbeitRow.getByRole('button', { name: 'Arbeit: Standardfarbe verwenden' });
     await expect(resetButton).toBeVisible();
 
@@ -376,8 +380,8 @@ test.describe('Kategoriefarben (issue #660)', () => {
     await registerPasskey(page);
     await page.goto('/einstellungen');
 
-    await categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' }).check();
-    await categoryRow(page, 'Sport').getByRole('radio', { name: 'Sport: Bernstein' }).check();
+    await categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' }).click();
+    await categoryRow(page, 'Sport').getByRole('radio', { name: 'Sport: Bernstein' }).click();
 
     await expect(categoryRow(page, 'Arbeit')).toContainText('Farbe auch bei: Sport');
     await expect(categoryRow(page, 'Sport')).toContainText('Farbe auch bei: Arbeit');
@@ -390,7 +394,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
     await page.goto('/einstellungen');
     await context.setOffline(true);
 
-    await categoryRow(page, 'Familie').getByRole('radio', { name: 'Familie: Rosé' }).check();
+    await categoryRow(page, 'Familie').getByRole('radio', { name: 'Familie: Rosé' }).click();
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
     // Reihenfolge wie in habits.spec.ts/reminder-prefs.spec.ts: erst entrouten,
