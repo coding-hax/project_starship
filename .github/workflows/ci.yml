@@ -67,6 +67,7 @@ jobs:
       - run: bash scripts/tests/runner-ts.test.sh
       - run: bash scripts/tests/node-modules-preflight.test.sh
       - run: bash scripts/tests/worktree.test.sh
+      - run: bash scripts/tests/catchup-worktree.test.sh
       - run: bash scripts/tests/gen-slot-plists.test.sh
       - run: bash scripts/tests/run-lock.test.sh
       - run: bash scripts/tests/fleet-lead.test.sh
