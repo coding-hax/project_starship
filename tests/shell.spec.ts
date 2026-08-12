@@ -4,12 +4,23 @@ import { registerPasskey, resetDatabase } from './helpers';
 
 const NAV_LABELS = NAV_ITEMS.map((item) => item.label);
 
+// issue #230 — /aktivitaeten stößt beim Öffnen /api/garmin-sync an, das hier ohne echte
+// Garmin-Anbindung mit 503 antwortet. Ungemockt landet der Fehler als Next-Dev-Overlay-
+// "Issue"-Badge im DOM, das den nächsten Klick auf den ersten (linken) Nav-Tab abfängt —
+// dieselbe Klasse Leck wie bei open-meteo (siehe aktivitaeten.spec.ts).
+const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
+
 // Drives the auth UI itself and asserts the never-registered state, so it opts out of
 // the shared owner session and keeps the full reset (#115).
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
   await resetDatabase();
+  await page.route(GARMIN_SYNC_PATTERN, (route) =>
+    route.fulfill({
+      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
+    }),
+  );
 });
 
 test('an unauthenticated visitor is sent to the login', async ({ page }) => {
