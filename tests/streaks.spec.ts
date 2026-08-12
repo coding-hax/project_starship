@@ -348,3 +348,41 @@ test('J5 Offline-Pfad: ein offline eingesetzter Joker landet nach dem Sync in Po
   expect(row.rows).toHaveLength(1);
   expect(row.rows[0].freeze_date).toBe(YESTERDAY);
 });
+
+test('AK1: der Streak-Badge trägt genau ein SVG-Icon, der Text nur die Zahl (issue #640)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Icon-Streak',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: YESTERDAY, done: true });
+  await seedHabitLog(page, { habitId, logDate: TODAY, done: true });
+
+  const item = habitTodayItems(page).filter({ hasText: 'Icon-Streak' });
+  const streak = item.locator('.habit-today__streak');
+  await expect(streak.locator('svg')).toHaveCount(1);
+  await expect(streak).toHaveText('2');
+});
+
+test('AK2: ein mit Joker überbrückter Streak trägt zwei SVG-Icons, der Text weiterhin nur die Zahl (issue #640)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Icon-Joker',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: TWO_DAYS_AGO, done: true });
+  await page.reload();
+
+  const item = habitTodayItems(page).filter({ hasText: 'Icon-Joker' });
+  await item.getByRole('button', { name: 'Serie mit Joker retten' }).click();
+
+  const streak = item.locator('.habit-today__streak');
+  await expect(streak.locator('svg')).toHaveCount(2);
+  await expect(streak).toHaveText('2');
+});
