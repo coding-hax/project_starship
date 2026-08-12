@@ -12,6 +12,8 @@ import {
   catchupFailReset,
   catchupStdout,
   prCatchUpBehind,
+  worktreeHoldingBranch,
+  worktreeIndexOk,
 } from './catchup';
 
 function gh(headRefName = 'fix/1-x'): GhAdapter {
@@ -29,6 +31,11 @@ interface GitFixture {
   failMerge?: boolean;
   failPush?: boolean;
   conflictFiles?: string[];
+  // #665: haelt ein Worktree den Branch (Standard 'fix/1-x', s. gh() oben),
+  // liefert 'worktree list --porcelain' einen passenden Block -- der
+  // Worktree-Pfad landet dann als cwd-Argument in den git.run-Aufrufen.
+  worktreePath?: string;
+  worktreeBranch?: string;
 }
 
 function gitFake(fx: GitFixture = {}): GitAdapter {
@@ -56,6 +63,17 @@ function gitFake(fx: GitFixture = {}): GitAdapter {
         case 'push':
           if (fx.failPush) throw new Error('push failed');
           return '';
+        case 'worktree':
+          if (!fx.worktreePath) return '';
+          return [
+            `worktree ${fx.worktreePath}`,
+            'HEAD 0000000000000000000000000000000000000000',
+            `branch refs/heads/${fx.worktreeBranch ?? 'fix/1-x'}`,
+            '',
+            'worktree /main/checkout',
+            'HEAD 0000000000000000000000000000000000000000',
+            'branch refs/heads/main',
+          ].join('\n');
         default:
           return '';
       }
@@ -133,6 +151,108 @@ describe('prCatchUpBehind', () => {
     const result = prCatchUpBehind('55', git, gh());
     expect(result.kind).toBe('pushFailed');
     expect(git.run).toHaveBeenCalledWith(['checkout', 'main', '--quiet']);
+  });
+
+  it('#665 Fallback: kein Worktree haelt den Branch -> checkout -B wie bisher', () => {
+    const git = gitFake();
+    const result = prCatchUpBehind('55', git, gh());
+    expect(result).toEqual({ kind: 'ok' });
+    expect(git.run).toHaveBeenCalledWith(['checkout', '-B', 'fix/1-x', 'origin/fix/1-x', '--quiet']);
+  });
+
+  describe('#665 Ansatz A: Worktree haelt den Branch', () => {
+    it('AK1: merge+push laufen im Worktree, kein checkout -B/checkout main', () => {
+      const git = gitFake({ worktreePath: '/wt/issue-1' });
+      const result = prCatchUpBehind('55', git, gh());
+      expect(result).toEqual({ kind: 'ok' });
+      expect(git.run).toHaveBeenCalledWith(['merge', 'origin/main', '--no-edit', '--quiet'], '/wt/issue-1');
+      expect(git.run).toHaveBeenCalledWith(['push', 'origin', 'HEAD:fix/1-x', '--quiet'], '/wt/issue-1');
+      expect(git.run).not.toHaveBeenCalledWith(['checkout', '-B', 'fix/1-x', 'origin/fix/1-x', '--quiet']);
+      expect(git.run).not.toHaveBeenCalledWith(['checkout', 'main', '--quiet']);
+    });
+
+    it('AK2: dirty im Worktree -> dirty; status laeuft im Worktree, kein fetch/merge', () => {
+      const git = gitFake({ worktreePath: '/wt/issue-1', dirty: ['src/a.ts'] });
+      const result = prCatchUpBehind('55', git, gh());
+      expect(result.kind).toBe('dirty');
+      expect(git.run).toHaveBeenCalledWith(['status', '--porcelain'], '/wt/issue-1');
+      expect(git.run).not.toHaveBeenCalledWith(expect.arrayContaining(['fetch']));
+      expect(git.run).not.toHaveBeenCalledWith(expect.arrayContaining(['merge']));
+    });
+
+    it('AK4: zwei Nachzieh-Laeufe hintereinander im selben Worktree -> beide ok', () => {
+      const git = gitFake({ worktreePath: '/wt/issue-1' });
+      const first = prCatchUpBehind('55', git, gh());
+      const second = prCatchUpBehind('55', git, gh());
+      expect(first).toEqual({ kind: 'ok' });
+      expect(second).toEqual({ kind: 'ok' });
+    });
+
+    it('echter Merge-Konflikt im Worktree -> conflict, kein checkoutBack (Worktree bleibt auf seinem Branch)', () => {
+      const git = gitFake({ worktreePath: '/wt/issue-1', failMerge: true, conflictFiles: ['src/a.ts'] });
+      const result = prCatchUpBehind('55', git, gh());
+      expect(result).toEqual({ kind: 'conflict', files: ['src/a.ts'] });
+      expect(git.run).toHaveBeenCalledWith(['merge', '--abort'], '/wt/issue-1');
+      expect(git.run).not.toHaveBeenCalledWith(['checkout', 'main', '--quiet']);
+    });
+
+    it('Push scheitert im Worktree -> pushFailed', () => {
+      const git = gitFake({ worktreePath: '/wt/issue-1', failPush: true });
+      const result = prCatchUpBehind('55', git, gh());
+      expect(result).toEqual({ kind: 'pushFailed' });
+    });
+  });
+});
+
+describe('worktreeHoldingBranch (#665)', () => {
+  it('findet den Worktree-Pfad ueber den passenden branch-Block', () => {
+    const git = gitFake({ worktreePath: '/wt/issue-1', worktreeBranch: 'feat/9-x' });
+    expect(worktreeHoldingBranch('feat/9-x', git)).toBe('/wt/issue-1');
+  });
+
+  it('liefert undefined, wenn kein Worktree den Branch haelt', () => {
+    const git = gitFake();
+    expect(worktreeHoldingBranch('feat/9-x', git)).toBeUndefined();
+  });
+
+  it('liefert undefined bei leerem Branchnamen, ohne git anzufassen', () => {
+    const git = gitFake({ worktreePath: '/wt/issue-1' });
+    expect(worktreeHoldingBranch('', git)).toBeUndefined();
+    expect(git.run).not.toHaveBeenCalled();
+  });
+});
+
+describe('worktreeIndexOk (#665, AK3)', () => {
+  function gitTrees(indexTree: string, headTree: string, opts: { failWriteTree?: boolean } = {}): GitAdapter {
+    return {
+      run: vi.fn((args: string[]) => {
+        if (args[0] === 'write-tree') {
+          if (opts.failWriteTree) throw new Error('write-tree failed');
+          return indexTree;
+        }
+        return headTree;
+      }),
+    };
+  }
+
+  it('Index == HEAD-Baum -> ok:true', () => {
+    const git = gitTrees('sametree', 'sametree');
+    expect(worktreeIndexOk('/wt/issue-1', git)).toEqual({ ok: true, reason: '' });
+    expect(git.run).toHaveBeenCalledWith(['write-tree'], '/wt/issue-1');
+    expect(git.run).toHaveBeenCalledWith(['rev-parse', 'HEAD^{tree}'], '/wt/issue-1');
+  });
+
+  it('Index != HEAD-Baum -> ok:false mit beiden Baum-Hashes im Grund', () => {
+    const git = gitTrees('baumA', 'baumB');
+    const result = worktreeIndexOk('/wt/issue-1', git);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('baumA');
+    expect(result.reason).toContain('baumB');
+  });
+
+  it('write-tree scheitert -> ok:false', () => {
+    const git = gitTrees('x', 'x', { failWriteTree: true });
+    expect(worktreeIndexOk('/wt/issue-1', git).ok).toBe(false);
   });
 });
 

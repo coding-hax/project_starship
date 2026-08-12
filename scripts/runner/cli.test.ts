@@ -122,6 +122,9 @@ describe('dispatch', () => {
       'catchup-fail-reason',
       'catchup-fail-escalated',
       'catchup-fail-reset',
+      // AK3 (#665): Guard vor dem Bau-Lauf gegen einen quer stehenden Index
+      // im Worktree (invertierter Index nach einem Catch-up-Merge).
+      'worktree-index-ok',
       'pr-squash-merge',
       'reopen-falsely-closed-issues',
       'pr-failure-summary',
@@ -240,6 +243,38 @@ describe('dispatch', () => {
     expect(stdout).toHaveBeenCalledWith('src/a.ts,src/b.ts');
 
     stdout.mockRestore();
+  });
+
+  describe('worktree-index-ok dispatch (#665, AK3)', () => {
+    it('Index == HEAD-Baum -> Exit 0, kein stdout', () => {
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const ctx = fakeContext();
+      (ctx.git.run as ReturnType<typeof vi.fn>).mockReturnValue('sametree');
+
+      const rc = dispatch(ctx, ['worktree-index-ok', '/some/worktree']);
+
+      expect(rc).toBe(0);
+      expect(stdout).toHaveBeenCalledWith('\n');
+      expect(ctx.git.run).toHaveBeenCalledWith(['write-tree'], '/some/worktree');
+      expect(ctx.git.run).toHaveBeenCalledWith(['rev-parse', 'HEAD^{tree}'], '/some/worktree');
+
+      stdout.mockRestore();
+    });
+
+    it('Index != HEAD-Baum -> Exit 1, Grund auf stdout ohne Zeilenumbruch', () => {
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const ctx = fakeContext();
+      (ctx.git.run as ReturnType<typeof vi.fn>).mockImplementation((args: string[]) =>
+        args[0] === 'write-tree' ? 'baumA' : 'baumB',
+      );
+
+      const rc = dispatch(ctx, ['worktree-index-ok', '/some/worktree']);
+
+      expect(rc).toBe(1);
+      expect(stdout).toHaveBeenCalledWith(expect.stringContaining('baumA'));
+
+      stdout.mockRestore();
+    });
   });
 
   // #356 (B): round-recover liest ROUND_FILE + Log wie round-eval und reicht

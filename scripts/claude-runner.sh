@@ -437,7 +437,7 @@ run_round() {
     return "$(printf '%s' "$plan" | jq -r '.rc // 0')"
   fi
 
-  local model tools resume role issue run_cwd denyTools used_resume
+  local model tools resume role issue run_cwd denyTools used_resume guard_out
   model=$(printf '%s' "$plan" | jq -r '.model')
   tools=$(printf '%s' "$plan" | jq -r '.tools')
   resume=$(printf '%s' "$plan" | jq -r '.resume')
@@ -466,6 +466,20 @@ run_round() {
         CHAIN_STATUS=stop
         return 1
       fi
+    fi
+  fi
+
+  # AK3 (#665): quer stehender Index nach einem Catch-up-Merge (invertiert --
+  # HEAD zeigt auf den Merge, Index/Arbeitsbaum noch auf dem Baum davor, siehe
+  # Issue) bricht den Bau-Lauf VOR dem `claude`-Start ab, statt dass er den
+  # gestagten Revert mitcommittet. Nur fuer role=build: Lese-Rollen committen
+  # nie.
+  if [ "$role" = "build" ] && worktrees_enabled; then
+    if ! guard_out=$(ts_run worktree-index-ok "$run_cwd"); then
+      status "Index steht quer · #$issue" "🔴" \
+        "🔴 Worktree #$issue: quer stehender Index ($guard_out) -- kein Bau-Lauf, sonst würde der Revert mitcommittet (#665). Reparatur: git -C $run_cwd reset --hard HEAD."
+      CHAIN_STATUS=stop
+      return 1
     fi
   fi
 
