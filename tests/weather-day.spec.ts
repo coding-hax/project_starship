@@ -885,6 +885,28 @@ test('die Temperaturkurve bleibt beim Kalendertag, auch wenn der Nachtwert stark
   );
 });
 
+/* -------------------------------------------------------------------------- */
+/* AK: dieselbe dauerhafte Icon-Bewegung wie im Streifen (issue #661 AK3)     */
+/* -------------------------------------------------------------------------- */
+
+test('auf der Tagesdetailseite läuft dieselbe Wetter-Icon-Animation wie im Streifen (issue #661 AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-23 = CODES[3] = 61 -> Regen.
+  await page.goto('/wetter/2026-07-23');
+
+  const drop = page.locator('.weather-day__icon .weather-icon__drop').first();
+  const { name, iterationCount } = await drop.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { name: style.animationName, iterationCount: style.animationIterationCount };
+  });
+  expect(name).not.toBe('none');
+  expect(iterationCount).toBe('infinite');
+});
+
 test('der Nachtwert kommt ohne eigenen Netzaufruf aus der Ablage (issue #269 AC8)', async ({ page }) => {
   const callCount = await mockForecast(page);
   await skewClock(page, NOW);

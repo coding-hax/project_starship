@@ -22,6 +22,7 @@
 @import '../features/habits/weekly-recap-card.css';
 @import '../features/weather/weather-forecast.css';
 @import '../features/weather/weather-day.css';
+@import '../features/weather/weather-icon-motion.css';
 @import '../features/settings/weather-panel.css';
 @import '../features/settings/nav-order-panel.css';
 @import '../features/activities/activity-list.css';
