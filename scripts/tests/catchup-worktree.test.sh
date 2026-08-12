@@ -140,19 +140,22 @@ assert_eq "AK4: Worktree-Index bleibt konsistent" \
 run_index_ok "$WT"
 assert_eq "AK3: worktree-index-ok auf sauberem Worktree -> Exit 0" "0" "$?"
 
-# ...und einen quer stehenden Index (durch denselben Mechanismus, der den Bug
-# ausgeloest hat: der Branch wird VON AUSSEN -- im Haupt-Checkout -- bewegt,
-# ohne dass der Worktree je angefasst wird) als NICHT ok, mit Grund im stdout.
-git -C "$REPO_DIR" fetch -q origin main feat/1-x
-git -C "$REPO_DIR" checkout -B feat/1-x origin/feat/1-x --quiet
+# ...und einen quer stehenden Index (der Branch-Ref wird VON AUSSEN bewegt,
+# ohne dass der Worktree je angefasst wird) als NICHT ok, mit Grund im
+# stdout. Der Bug entstand urspruenglich durch `checkout -B` im
+# Haupt-Checkout, waehrend derselbe Branch in einem Worktree ausgecheckt ist
+# -- neuere Git-Versionen verweigern genau das ("already checked out",
+# gilt inzwischen auch fuer -B), was diesen Nachweis git-versionsabhaengig
+# machte (CI: git 2.54 verweigert, lokal getestet: git 2.39 erlaubt es
+# noch). Deshalb hier ueber Plumbing `update-ref`: bewegt den Branch-Ref,
+# ohne Worktree-Sicherheitschecks zu durchlaufen -- git-versionsunabhaengig
+# derselbe Effekt (invertierter Index), den jede reale Ursache erzeugen kann.
 echo "zweite main-Aenderung" > "$OTHER/from-main-2.txt"
 git -C "$OTHER" add from-main-2.txt
 git -C "$OTHER" -c user.email=test@example.com -c user.name=Test commit -q -m "main moved on again"
 git -C "$OTHER" push -q origin main
 git -C "$REPO_DIR" fetch -q origin main
-git -C "$REPO_DIR" merge -q origin/main --no-edit
-git -C "$REPO_DIR" push -q origin HEAD:feat/1-x
-git -C "$REPO_DIR" checkout -q main
+git -C "$REPO_DIR" update-ref refs/heads/feat/1-x origin/main
 
 run_index_ok "$WT"
 rc=$?
