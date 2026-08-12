@@ -15,11 +15,30 @@
  * und jeder — auch minimale — Font-Swap-Reflow (next/font `display: swap`)
  * verschob dadurch das ganze Aktionsbündel mit (issue #652, CI-Fund: „h1 +
  * div.uebersicht__title-actions" als Layout-Shift-Quelle). */
+/* `overflow-wrap: normal` statt `anywhere` — und das ist keine Kosmetik, sondern
+ * die Ursache des Sprungs, den #652 vier Runden lang gejagt hat. Der Titel hat
+ * hier nur 163px Restbreite (375 − 32 Seitenrand − 164 Aktionsbündel − 16 gap).
+ * „Übersicht" passt darin in Inter, in der Linux-Fallback-Schrift aber nicht —
+ * und `anywhere` erlaubt den Bruch MITTEN IM WORT. Ergebnis auf CI: die h1 startet
+ * zweizeilig und klappt beim Eintreffen von Inter auf eine Zeile zurück. Die vom
+ * roten Lauf gemessene Geometrie sagt es genau: `h1 163×77 → 163×39`, das
+ * Aktionsbündel dadurch `y=30 → y=16`.
+ *
+ * Auf macOS ist die Fallback-Schrift schmal genug, dass das Wort passt — deshalb
+ * war es lokal nie reproduzierbar und in CI immer rot. `font-display` (swap →
+ * optional → block, Runde 2–4) konnte daran nichts ändern: alle drei setzen das
+ * Layout zuerst mit den Fallback-Metriken, `block` verbirgt nur die Glyphen.
+ *
+ * Der Titel ist ein festes Wort, kein Nutzertext — mitten im Wort zu brechen hat
+ * hier nie einen Zweck erfüllt. Ohne Bruch bleibt die Zeilenzahl konstant, damit
+ * die Höhe, damit die Zeile. Ein in der Fallback-Phase zu breites Wort läuft
+ * stattdessen über — unsichtbar, weil `font-display: block` in genau diesem
+ * Fenster die Glyphen ohnehin nicht zeichnet. */
 .uebersicht__title-row h1 {
   flex: 1 1 auto;
   margin: 0;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .uebersicht__title-actions {
