@@ -46,9 +46,15 @@ test.describe('race-verify', () => {
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) prefetched.clear();
     });
-    page.on('response', (response) => {
-      const url = new URL(response.url());
-      if (url.searchParams.has('_rsc') && response.status() < 400) prefetched.add(url.pathname);
+    page.on('requestfinished', (request) => {
+      const url = new URL(request.url());
+      if (!url.searchParams.has('_rsc')) return;
+      void request
+        .response()
+        .then((response) => {
+          if (response && response.status() < 400) prefetched.add(url.pathname);
+        })
+        .catch(() => {});
     });
 
     await page.goto('/uebersicht');

@@ -93,14 +93,24 @@ test.describe('angemeldet', () => {
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) prefetched.clear();
     });
-    page.on('response', (response) => {
-      const url = new URL(response.url());
-      // `status < 400` rather than `ok()`: the (app) segment is statically
-      // prerendered (#599), so a navigation can revalidate a prefetch it already
-      // holds and get a 304 — for which `ok()` is false, while the router does have
-      // the payload. Cancelled prefetches never reach this handler at all (no
-      // response event), which is exactly what must not count.
-      if (url.searchParams.has('_rsc') && response.status() < 400) prefetched.add(url.pathname);
+    // `requestfinished`, not `response`: the latter fires on the response HEADERS,
+    // so the wait below could pass while the payload was still in flight and the
+    // `setOffline` right after would cut it off mid-body, leaving the router cache
+    // incomplete. Cancelled prefetches reach neither handler, which is exactly what
+    // must not count.
+    page.on('requestfinished', (request) => {
+      const url = new URL(request.url());
+      if (!url.searchParams.has('_rsc')) return;
+      void request
+        .response()
+        .then((response) => {
+          // `status < 400` rather than `ok()`: the (app) segment is statically
+          // prerendered (#599), so a navigation can revalidate a prefetch it
+          // already holds and get a 304 — `ok()` is false for that, while the
+          // router does have the payload.
+          if (response && response.status() < 400) prefetched.add(url.pathname);
+        })
+        .catch(() => {});
     });
 
     await page.goto('/uebersicht');
