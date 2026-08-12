@@ -16,7 +16,7 @@ Ein neues Icon hält sich an dieselbe Form:
 
 - **Bottom-Navigation**: fünf sichtbare Plätze, horizontal schiebbar (Karussell) sobald
   mehr Einträge existieren, Reihenfolge in den Einstellungen einstellbar (issue #205).
-  Heutige Einträge: Übersicht · Aufgaben · Gewohnheiten · Kalender · Journal ·
+  Heutige Einträge: Übersicht · Aufgaben · Routinen · Kalender · Journal ·
   Aktivitäten (sechster Eintrag, issue #180 — löst das Karussell standardmäßig aus).
   Einstellungen ist kein Tab. Ab 768px bleibt es eine vertikale Sidebar-Liste ohne
   Karussell — dieselbe Reihenfolge, kein zweites Design.
