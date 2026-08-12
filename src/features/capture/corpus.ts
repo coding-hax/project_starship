@@ -10,6 +10,10 @@ import type { CaptureConfidence, CaptureKind } from './types';
 // Montag, 15.01.2024, 10:00 lokal — fester Bezugspunkt, unabhängig vom Testlauf-Tag.
 export const NOW = new Date(2024, 0, 15, 10, 0, 0);
 
+// Zweiter Bezugspunkt für AK6 (#688): derselbe Tag, aber nachmittags gesprochen —
+// dieselbe Zeigerzeit liest sich dann als Nachmittags- statt Vormittagslesart.
+export const NOW_AFTERNOON = new Date(2024, 0, 15, 15, 0, 0);
+
 export const STANDARD_HABITS = [
   { id: 'h-sport', name: 'Sport' },
   { id: 'h-yoga', name: 'Yoga' },
@@ -22,6 +26,9 @@ export interface CorpusExpectation {
   kind: CaptureKind;
   habitId?: string | null;
   confidence?: CaptureConfidence;
+  /** Erwartete Fälligkeit/Startzeit (#688) — optional, die meisten Bestandsfälle prüfen
+   * nur kind/habitId/confidence. */
+  dueAt?: Date;
 }
 
 export interface CorpusCase {
@@ -30,6 +37,8 @@ export interface CorpusCase {
   text: string;
   habits?: { id: string; name: string }[];
   allowedKinds?: CaptureKind[];
+  /** Bezugspunkt für diesen Fall — Default `NOW`. Für AK6 (#688) auf `NOW_AFTERNOON`. */
+  now?: Date;
   expect: CorpusExpectation;
 }
 
@@ -142,5 +151,119 @@ export const CORPUS: CorpusCase[] = [
     text: 'Dienstag 12 Uhr Zahnarzt',
     allowedKinds: ['task', 'habit_check'],
     expect: { kind: 'task' },
+  },
+
+  // #688 AK1: Zeigerzeit, direkt angelegt — "halb zwölf" ist 11:30, nicht 12:30.
+  {
+    signal: '#688 AK1: "halb zwölf"',
+    text: 'morgen halb zwölf Zahnarzt',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 11, 30) },
+  },
+  {
+    signal: '#688 AK1: "um halb 12" (Ziffer statt Wort)',
+    text: 'morgen um halb 12 Zahnarzt',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 11, 30) },
+  },
+  {
+    signal: '#688 AK1: "viertel nach acht"',
+    text: 'morgen viertel nach acht Frühstück',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 8, 15) },
+  },
+  {
+    signal: '#688 AK1: "viertel vor neun"',
+    text: 'morgen viertel vor neun Zahnarzt',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 8, 45) },
+  },
+  {
+    signal: '#688 AK1: "Viertel vor 9" (Ziffer statt Wort)',
+    text: 'morgen Viertel vor 9 Zahnarzt',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 8, 45) },
+  },
+  {
+    signal: '#688 AK1: "halb acht"',
+    text: 'morgen halb acht Frühstück',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 7, 30) },
+  },
+
+  // #688 AK2: zusammengesetzt mit Minutenangabe — fällt bei Vormittagslesart ins
+  // Nachtfenster, senkt die Konfidenz (Grundlage für die erzwungene Bestätigung auf
+  // dem Aufgaben-Pfad, route-capture.ts).
+  {
+    signal: '#688 AK2: "fünf vor halb drei" fällt ins Nachtfenster -> confidence low',
+    text: 'morgen fünf vor halb drei Call',
+    expect: { kind: 'event', confidence: 'low', dueAt: new Date(2024, 0, 16, 2, 25) },
+  },
+  {
+    signal: '#688 AK2: "zehn nach halb drei" fällt ins Nachtfenster -> confidence low',
+    text: 'morgen zehn nach halb drei Call',
+    expect: { kind: 'event', confidence: 'low', dueAt: new Date(2024, 0, 16, 2, 40) },
+  },
+
+  // #688 AK3: Nachtfenster — geraten senkt die Konfidenz, ausgeschrieben (Doppelpunkt)
+  // nie, außerhalb des Fensters bleibt es beim normalen Weg.
+  {
+    signal: '#688 AK3: "halb eins" fällt ins Nachtfenster -> confidence low',
+    text: 'morgen halb eins Mittagessen',
+    expect: { kind: 'event', confidence: 'low', dueAt: new Date(2024, 0, 16, 0, 30) },
+  },
+  {
+    signal: '#688 AK3: "um 6" liegt außerhalb des Nachtfensters -> confidence high',
+    text: 'morgen um 6 Sport',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 6, 0) },
+  },
+  {
+    signal: '#688 AK3: "0:30" ist ausgeschrieben, nie geraten -> confidence high',
+    text: 'morgen 0:30 Nachtschicht',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 0, 30) },
+  },
+
+  // #688 AK4: regionale Kurzformen ("viertel H"/"dreiviertel H" ohne vor/nach) senken
+  // die Konfidenz unabhängig vom Nachtfenster — Verwechslungsgefahr mit "viertel nach H".
+  {
+    signal: '#688 AK4: "dreiviertel zwölf" (regional) -> confidence low',
+    text: 'morgen dreiviertel zwölf Abgabe',
+    expect: { kind: 'event', confidence: 'low', dueAt: new Date(2024, 0, 16, 11, 45) },
+  },
+  {
+    signal: '#688 AK4: "viertel zwölf" (regional) -> confidence low',
+    text: 'morgen viertel zwölf Abgabe',
+    expect: { kind: 'event', confidence: 'low', dueAt: new Date(2024, 0, 16, 11, 15) },
+  },
+
+  // #688 AK5: ein Tageszeitwort schlägt die Tageshälften-Heuristik immer.
+  {
+    signal: '#688 AK5: "morgens" bestätigt die Heuristik, bleibt confidence high',
+    text: 'morgen um 6 Uhr morgens Sport',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 6, 0) },
+  },
+  {
+    signal: '#688 AK5: ohne Tageszeitwort entscheidet die Heuristik',
+    text: 'morgen um 8 Standup',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 8, 0) },
+  },
+  {
+    signal: '#688 AK5: "abends" schlägt die Heuristik (sonst vormittags gelesen)',
+    text: 'morgen um 8 abends Kino',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 20, 0) },
+  },
+  {
+    signal: '#688 AK5: "nachmittags" schlägt die Heuristik, Zahlwort statt Ziffer',
+    text: 'morgen um drei nachmittags Kaffee',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 15, 0) },
+  },
+
+  // #688 AK6: dieselbe Eingabe, zweiter Bezugspunkt (nachmittags gesprochen) -> andere
+  // Tageshälfte. `now: NOW_AFTERNOON` statt einer zweiten Korpus-Datei.
+  {
+    signal: '#688 AK6: "halb acht", gesprochen um 15:00 -> Nachmittagslesart',
+    text: 'morgen halb acht Frühstück',
+    now: NOW_AFTERNOON,
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 19, 30) },
+  },
+  {
+    signal: '#688 AK6: "um 8", gesprochen um 15:00 -> Nachmittagslesart',
+    text: 'morgen um 8 Standup',
+    now: NOW_AFTERNOON,
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 20, 0) },
   },
 ];

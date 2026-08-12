@@ -22,7 +22,11 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
     it(`${testCase.signal}: "${testCase.text}" -> ${testCase.expect.kind}`, () => {
       const result = recognizeLocally(
         testCase.text,
-        ctx({ habits: testCase.habits ?? STANDARD_HABITS, allowedKinds: testCase.allowedKinds ?? ALL_KINDS }),
+        ctx({
+          habits: testCase.habits ?? STANDARD_HABITS,
+          allowedKinds: testCase.allowedKinds ?? ALL_KINDS,
+          now: testCase.now ?? NOW,
+        }),
       );
       const [draft] = result.items;
 
@@ -32,6 +36,9 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
       }
       if (testCase.expect.confidence) {
         expect(draft.confidence).toBe(testCase.expect.confidence);
+      }
+      if (testCase.expect.dueAt) {
+        expect(draft.dueAt).toBe(testCase.expect.dueAt.toISOString());
       }
     });
   }

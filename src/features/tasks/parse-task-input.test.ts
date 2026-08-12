@@ -237,3 +237,119 @@ describe('parseTaskInput — #687 AK4: Kommandopräfixe fallen, Inhalt bleibt', 
     expect(result.dueAt).toBe(iso(2024, 1, 16, 12, 0));
   });
 });
+
+describe('parseTaskInput — #688 R1: Zeigerzeit', () => {
+  it('"halb H": "halb zwölf" ist 11:30, nicht 12:30 — der klassische Fehler', () => {
+    const result = parseTaskInput('morgen halb zwölf Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 11, 30));
+  });
+
+  it('"halb H" als Ziffer, "um" fällt als Bindewort — dasselbe Ergebnis wie das Wort', () => {
+    const result = parseTaskInput('morgen um halb 12 Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 11, 30));
+  });
+
+  it('"viertel nach H"', () => {
+    const result = parseTaskInput('morgen viertel nach acht Frühstück', NOW);
+    expect(result.title).toBe('Frühstück');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 8, 15));
+  });
+
+  it('"viertel vor H" — die genannte Stunde (neun) entscheidet die Tageshälfte, nicht die aufgelöste (acht)', () => {
+    const result = parseTaskInput('morgen viertel vor neun Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 8, 45));
+  });
+
+  it('"M vor halb H": "fünf vor halb drei"', () => {
+    const result = parseTaskInput('morgen fünf vor halb drei Call', NOW);
+    expect(result.title).toBe('Call');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 2, 25));
+  });
+
+  it('"M nach halb H": "zehn nach halb drei"', () => {
+    const result = parseTaskInput('morgen zehn nach halb drei Call', NOW);
+    expect(result.title).toBe('Call');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 2, 40));
+  });
+
+  it('regionale Kurzform "dreiviertel H" ohne vor/nach', () => {
+    const result = parseTaskInput('morgen dreiviertel zwölf Abgabe', NOW);
+    expect(result.title).toBe('Abgabe');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 11, 45));
+  });
+
+  it('regionale Kurzform "viertel H" ohne vor/nach — nicht zu verwechseln mit "viertel nach H"', () => {
+    const result = parseTaskInput('morgen viertel zwölf Abgabe', NOW);
+    expect(result.title).toBe('Abgabe');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 11, 15));
+  });
+});
+
+describe('parseTaskInput — #688 R2: Tageshälften', () => {
+  it('ohne Tageszeitwort entscheidet der Sprechzeitpunkt: vor 12:00 gesprochen -> vormittags', () => {
+    const result = parseTaskInput('morgen um 8 Standup', NOW);
+    expect(result.title).toBe('Standup');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 8, 0));
+  });
+
+  it('derselbe Satz ab 12:00 gesprochen -> nachmittags', () => {
+    const afternoon = new Date(2024, 0, 15, 15, 0, 0);
+    const result = parseTaskInput('morgen um 8 Standup', afternoon);
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 20, 0));
+  });
+
+  it('ein Tageszeitwort schlägt die Heuristik, Ziffer + "Uhr"', () => {
+    const result = parseTaskInput('morgen um 8 abends Kino', NOW);
+    expect(result.title).toBe('Kino');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 20, 0));
+  });
+
+  it('ein Tageszeitwort schlägt die Heuristik, Zahlwort statt Ziffer, entfernt aus dem Titel', () => {
+    const result = parseTaskInput('morgen um drei nachmittags Kaffee', NOW);
+    expect(result.title).toBe('Kaffee');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 15, 0));
+  });
+
+  it('"morgens" bestätigt lediglich die Heuristik (schon vormittags gesprochen)', () => {
+    const result = parseTaskInput('morgen um 6 Uhr morgens Sport', NOW);
+    expect(result.title).toBe('Sport');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 6, 0));
+  });
+
+  it('eine Doppelpunkt-Uhrzeit ist immer ausgeschrieben, nie mehrdeutig', () => {
+    const result = parseTaskInput('morgen 0:30 Nachtschicht', NOW);
+    expect(result.title).toBe('Nachtschicht');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 0, 30));
+  });
+});
+
+describe('parseTaskInput — #688 needsConfirmation', () => {
+  it('bleibt false ohne erkannte Uhrzeit', () => {
+    expect(parseTaskInput('Milch kaufen', NOW).needsConfirmation).toBe(false);
+  });
+
+  it('eine geratene Zeit außerhalb des Nachtfensters bleibt false', () => {
+    expect(parseTaskInput('morgen um 6 Sport', NOW).needsConfirmation).toBe(false);
+  });
+
+  it('eine ausgeschriebene Nachtzeit (Doppelpunkt) ist nie geraten -> false, obwohl sie im Fenster liegt', () => {
+    expect(parseTaskInput('morgen 0:30 Nachtschicht', NOW).needsConfirmation).toBe(false);
+  });
+
+  it('ein Tageszeitwort macht eine Zeit nicht mehr "geraten" -> false, auch im Fenster', () => {
+    expect(parseTaskInput('morgen um 2 nachts Nachtschicht', NOW).needsConfirmation).toBe(false);
+  });
+
+  it('eine geratene Zeit im Nachtfenster (00:00-05:59) -> true', () => {
+    expect(parseTaskInput('morgen halb eins Mittagessen', NOW).needsConfirmation).toBe(true);
+  });
+
+  it('eine regionale Kurzform -> true, unabhängig vom Nachtfenster', () => {
+    const result = parseTaskInput('morgen dreiviertel zwölf Abgabe', NOW);
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 11, 45)); // außerhalb des Nachtfensters
+    expect(result.needsConfirmation).toBe(true);
+  });
+});
