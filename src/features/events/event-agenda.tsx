@@ -125,7 +125,6 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
           </li>
         ))}
       </ul>
-      {items.length > 0 && <p className="event-agenda__sparse">Danach nichts mehr geplant.</p>}
       {items.length === 0 && allDayItems.length === 0 && (
         <p className="event-agenda__empty">Keine Termine an diesem Tag.</p>
       )}

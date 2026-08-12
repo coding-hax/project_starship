@@ -135,15 +135,6 @@
   font-size: var(--text-meta);
 }
 
-.event-agenda__sparse {
-  margin: var(--space-2) 0 0;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border-faint);
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-  text-align: center;
-}
-
 .event-agenda__empty {
   margin: 0;
   padding: var(--space-2) 0;
