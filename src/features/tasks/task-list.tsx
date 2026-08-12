@@ -11,11 +11,13 @@ import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
+import { useHideCompletedTasks } from './use-hide-completed-tasks';
 import {
   belongsOnUebersicht,
   groupTasks,
   resolveNestTarget,
   useTasks,
+  visibleTaskNodes,
   type TaskNode,
   type TaskView,
 } from './use-tasks';
@@ -63,6 +65,9 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
   // it to push; on /uebersicht it joins the shared reveal point (issue #642).
   useBlockReady(allTasks !== undefined);
   const online = useOnline();
+  // Global device-local toggle (issue #654) — only applied below on /aufgaben
+  // (`!dueTodayOnly`), never on the /uebersicht subset (AC7).
+  const { hideCompleted } = useHideCompletedTasks();
   const {
     toggleComplete,
     undo: completeUndo,
@@ -103,11 +108,11 @@ export function TaskList({ dueTodayOnly = false, headingId }: TaskListProps = {}
     if (dueTodayOnly) {
       return (tasks ?? []).map((task) => ({ id: task.id, kind: 'flat' as const, task }));
     }
-    return nodes.flatMap((node) => [
+    return visibleTaskNodes(nodes, hideCompleted).flatMap((node) => [
       { id: node.task.id, kind: 'parent' as const, node },
       ...node.children.map((child) => ({ id: child.id, kind: 'child' as const, node, child })),
     ]);
-  }, [dueTodayOnly, tasks, nodes]);
+  }, [dueTodayOnly, tasks, nodes, hideCompleted]);
   const presenceRows = useListPresence(rows, (row) => row.id);
 
   /**

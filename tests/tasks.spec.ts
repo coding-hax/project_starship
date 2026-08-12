@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXED_NOW, freezeClock, registerPasskey, resetAppData, withDb } from './helpers';
+import { FIXED_NOW, freezeClock, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 /** Mirrors task-item.tsx's own LONG_PRESS_MS — how long a hold picks a row up
  * for drag-to-nest instead of starting a swipe. */
@@ -696,6 +696,20 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
     probe.remove();
     return color;
   }, token);
+}
+
+/** Same idea as `resolveColorToken`, for a `background` expression instead of a
+ * single colour var — used to prove the toggle's active state resolves to the
+ * exact same `color-mix(...)` surface the app already uses elsewhere. */
+async function resolveBackground(page: Page, css: string): Promise<string> {
+  return page.evaluate((value) => {
+    const probe = document.createElement('span');
+    probe.style.background = value;
+    document.body.appendChild(probe);
+    const background = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return background;
+  }, css);
 }
 
 test('Priorität „Normal" bleibt ohne Punkt, „Hoch" und „Dringend" zeigen einen dezenten Punkt (issue #86 AC1)', async ({
@@ -1624,4 +1638,247 @@ test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Date
   );
   expect(row.rowCount).toBe(1);
   expect(row.rows[0]).toMatchObject({ notes: 'Im Zug notiert', priority: 2 });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Erledigte ausblenden (issue #654)                                          */
+/* -------------------------------------------------------------------------- */
+
+const HIDE_COMPLETED_LABEL = 'Erledigte Aufgaben ausblenden';
+const HIDE_COMPLETED_BACKGROUND = 'color-mix(in oklch, var(--accent) 8%, var(--surface))';
+
+function hideCompletedToggle(page: Page) {
+  return page.getByRole('button', { name: HIDE_COMPLETED_LABEL });
+}
+
+test('AC1: der Knopf steht bereit — 44×44 Tippfläche, 24×24 Icon, aria-pressed=false, alles sichtbar', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Offen' });
+  await seedTask(page, { title: 'Erledigt', completedAt: new Date(FIXED_NOW).toISOString() });
+
+  const toggle = hideCompletedToggle(page);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+  const box = await toggle.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+
+  const iconBox = await toggle.locator('svg').boundingBox();
+  expect(iconBox).not.toBeNull();
+  expect(iconBox!.width).toBeCloseTo(24, 0);
+  expect(iconBox!.height).toBeCloseTo(24, 0);
+
+  await expect(taskItems(page)).toHaveCount(2);
+});
+
+test('AC2: Einschalten setzt aria-pressed, akzentuiert den Knopf und blendet jede erledigte Aufgabe ohne Ersatz aus', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Bleibt offen' });
+  await seedTask(page, { title: 'Verschwindet', completedAt: new Date(FIXED_NOW).toISOString() });
+
+  const toggle = hideCompletedToggle(page);
+  await toggle.click();
+
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(taskItems(page).filter({ hasText: 'Verschwindet' })).toHaveCount(0);
+  // No replacement — no counter, no placeholder row, no hint text: exactly the
+  // one remaining open task, nothing else.
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(taskItems(page).filter({ hasText: 'Bleibt offen' })).toBeVisible();
+
+  const bg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).toBe(await resolveBackground(page, HIDE_COMPLETED_BACKGROUND));
+  const iconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
+  expect(iconColor).toBe(await resolveColorToken(page, '--accent'));
+});
+
+test('AC3: Ausschalten zeigt die erledigten Aufgaben wieder an genau derselben Stelle', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Zuerst', createdAt: '2026-07-01T00:00:00.000Z' });
+  await seedTask(page, {
+    title: 'Erledigt in der Mitte',
+    createdAt: '2026-07-02T00:00:00.000Z',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Zuletzt', createdAt: '2026-07-03T00:00:00.000Z' });
+
+  const toggle = hideCompletedToggle(page);
+  await toggle.click();
+  await expect(taskItems(page)).toHaveCount(2);
+
+  await toggle.click();
+
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  const items = taskItems(page);
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText('Zuerst');
+  await expect(items.nth(1)).toContainText('Erledigt in der Mitte');
+  await expect(items.nth(2)).toContainText('Zuletzt');
+});
+
+test('AC4: die Präferenz überlebt das Neuladen, geräte-lokal ohne Sync-Spur', async ({ page }) => {
+  await page.goto('/aufgaben');
+
+  const before = await page.evaluate(() => window.__starship.size());
+  await hideCompletedToggle(page).click();
+  const after = await page.evaluate(() => window.__starship.size());
+  // Reines Anzeige-Flag — keine Outbox-Mutation, kein Sync (CLAUDE.md Regel 8).
+  expect(after).toBe(before);
+
+  const stored = await page.evaluate(() => localStorage.getItem('starship:tasks-hide-completed'));
+  expect(stored).toBe('true');
+
+  await page.reload();
+  await expect(hideCompletedToggle(page)).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('AC5: erledigte Unteraufgaben verschwinden einzeln, ein erledigter Elternteil mit offenem Kind bleibt, der Fortschritt zählt weiter alle Kinder', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const openParentId = await seedTask(page, { title: 'Offene Elternaufgabe' });
+  await seedTask(page, {
+    title: 'Erledigtes Kind unter offenem Elternteil',
+    parentId: openParentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  const doneParentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Offenes Kind unter erledigtem Elternteil', parentId: doneParentId });
+  await seedTask(page, {
+    title: 'Erledigtes Kind unter erledigtem Elternteil',
+    parentId: doneParentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  const fullyDoneParentId = await seedTask(page, {
+    title: 'Ganz erledigte Gruppe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Erledigtes Kind der ganz erledigten Gruppe',
+    parentId: fullyDoneParentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await hideCompletedToggle(page).click();
+
+  await expect(taskItems(page).filter({ hasText: 'Offene Elternaufgabe' })).toBeVisible();
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind unter offenem Elternteil' }),
+  ).toHaveCount(0);
+
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toBeVisible();
+  await expect(
+    taskItems(page).filter({ hasText: 'Offenes Kind unter erledigtem Elternteil' }),
+  ).toBeVisible();
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind unter erledigtem Elternteil' }),
+  ).toHaveCount(0);
+  // Fortschritt zählt unverändert beide Kinder, nicht nur das sichtbare.
+  await expect(progressFor(page, 'Erledigte Elternaufgabe')).toHaveText('1/2');
+
+  // Ganz erledigte Gruppe (Elternteil + alle Kinder erledigt) verschwindet
+  // vollständig — wie jede andere erledigte Aufgabe auch (AC2).
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind der ganz erledigten Gruppe' }),
+  ).toHaveCount(0);
+});
+
+test('AC6: sind alle Aufgaben erledigt und der Schalter an, zeigt sich der normale Leerzustand', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Erledigt A', completedAt: new Date(FIXED_NOW).toISOString() });
+  await seedTask(page, { title: 'Erledigt B', completedAt: new Date(FIXED_NOW).toISOString() });
+
+  await hideCompletedToggle(page).click();
+
+  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
+  await expect(taskItems(page)).toHaveCount(0);
+});
+
+test('AC7: die Übersicht hat weder den Knopf noch eine Wirkung des Schalters', async ({ page }) => {
+  await page.goto('/aufgaben');
+  // "heute" fixieren, damit belongsOnUebersicht (use-tasks.ts) die Aufgabe unten
+  // wirklich als "heute erledigt" zählt statt an der echten Systemzeit zu messen.
+  await skewClock(page, FIXED_NOW);
+  await seedTask(page, {
+    title: 'Heute erledigt',
+    dueAt: new Date(FIXED_NOW).toISOString(),
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await hideCompletedToggle(page).click();
+  await expect(taskItems(page).filter({ hasText: 'Heute erledigt' })).toHaveCount(0);
+
+  await page.goto('/uebersicht');
+  await expect(page.getByRole('button', { name: HIDE_COMPLETED_LABEL })).toHaveCount(0);
+  // Dieselbe Aufgabe zeigt sich hier weiter — die Übersicht kennt den
+  // Schalter gar nicht, unabhängig davon, dass er auf /aufgaben an ist.
+  await expect(taskItems(page).filter({ hasText: 'Heute erledigt' })).toBeVisible();
+});
+
+test('AC8: der Knopf bleibt in Hell und Dunkel über Tokens lesbar, nie über Rohwerte', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const toggle = hideCompletedToggle(page);
+  await toggle.click();
+
+  const lightBg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const lightIconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+
+  const darkBg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const darkIconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
+
+  // Beide Werte lösen weiterhin auf denselben semantischen Ausdruck auf —
+  // beweist, dass tokens.css' Dark-Mode-Override tatsächlich hier ankommt,
+  // nicht ein hartkodierter Wert.
+  expect(darkBg).toBe(await resolveBackground(page, HIDE_COMPLETED_BACKGROUND));
+  expect(darkIconColor).toBe(await resolveColorToken(page, '--accent'));
+  expect(darkBg).not.toBe(lightBg);
+  expect(darkIconColor).not.toBe(lightIconColor);
+});
+
+test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Blendet aus', completedAt: new Date(FIXED_NOW).toISOString() });
+  const row = taskItems(page).filter({ hasText: 'Blendet aus' });
+
+  await hideCompletedToggle(page).click();
+
+  // Dieselbe `data-leaving`/`list-exit`-Maschine wie beim Löschen (list-motion.spec.ts) —
+  // deren eigener AC3-Test beweist bereits, dass genau dieser Selektor bei
+  // reduzierter Bewegung auf die reine Opacity-Variante umschaltet.
+  await expect(row).toHaveAttribute('data-leaving', 'true');
+  expect(await row.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-exit');
+  await expect(row).toHaveCount(0);
+});
+
+test('AC8: bei reduzierter Bewegung schaltet der Filter genauso zuverlässig um', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Bleibt sichtbar' });
+  await seedTask(page, {
+    title: 'Verschwindet ruhig',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await hideCompletedToggle(page).click();
+
+  await expect(taskItems(page).filter({ hasText: 'Verschwindet ruhig' })).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: 'Bleibt sichtbar' })).toBeVisible();
 });
