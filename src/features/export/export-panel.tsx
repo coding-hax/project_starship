@@ -25,7 +25,7 @@ export function ExportPanel() {
   }
 
   return (
-    <SectionCard title="Daten" className="export">
+    <SectionCard title="Export" className="export">
       <p className="export__hint">
         Lädt eine JSON-Datei mit allen lokalen Datensätzen herunter, inklusive gelöschter
         Einträge. Funktioniert auch offline — die Daten liegen bereits auf diesem Gerät.
