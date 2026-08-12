@@ -78,10 +78,22 @@ export function CalendarStrip({
     [days, events, exceptions],
   );
   const selectedMonth = selectedDay.slice(0, 7);
+  const isToday = selectedDay === today;
   const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
   const lockedAxisRef = useRef<'x' | 'y' | null>(null);
   const movedRef = useRef(false);
+
+  /**
+   * Pages a week in week view, a month in month view — the single source both
+   * the desktop `‹`/`›` buttons (issue #630, AK9) and the swipe gesture below
+   * call, so a keyboard/mouse page and a touch swipe can never drift apart.
+   */
+  function pageBy(delta: 1 | -1) {
+    onSelectDay(
+      expanded ? addMonthsClamped(selectedDay, delta) : addDays(selectedDay, delta * 7),
+    );
+  }
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
@@ -119,11 +131,7 @@ export function CalendarStrip({
       // axis so a vertically guided pointer can't accidentally page — it has
       // no effect of its own; the segmented control is the only way to
       // switch week/month (issue #662, AK-A).
-      onSelectDay(
-        expanded
-          ? addMonthsClamped(selectedDay, dx < 0 ? 1 : -1)
-          : addDays(selectedDay, dx < 0 ? 7 : -7),
-      );
+      pageBy(dx < 0 ? 1 : -1);
     }
   }
 
@@ -157,6 +165,38 @@ export function CalendarStrip({
   return (
     <div className="calendar-strip" data-expanded={expanded}>
       <div className="calendar-strip__title-row">
+        {/* Same control at every width (issue #630, AK9/AK10) — a mobile-hidden
+            chip that reappears on a different day (S1, #628 AK6) below
+            768px, a disabled-not-removed toolbar button from 768px up
+            (CSS alone switches the look, `data`-attribute drives the mobile
+            hide so it never becomes two parallel elements). */}
+        <button
+          type="button"
+          className="calendar-strip__today"
+          data-today-selected={isToday ? '' : undefined}
+          disabled={isToday}
+          onClick={() => onSelectDay(today)}
+        >
+          Heute
+        </button>
+        <div className="calendar-strip__title-nav">
+          <button
+            type="button"
+            className="calendar-strip__nav"
+            aria-label={expanded ? 'Voriger Monat' : 'Vorige Woche'}
+            onClick={() => pageBy(-1)}
+          >
+            <IconChevronLeft />
+          </button>
+          <button
+            type="button"
+            className="calendar-strip__nav"
+            aria-label={expanded ? 'Nächster Monat' : 'Nächste Woche'}
+            onClick={() => pageBy(1)}
+          >
+            <IconChevronRight />
+          </button>
+        </div>
         <p className="calendar-strip__title">{formatMonthTitle(selectedDay)}</p>
         <SegmentedControl
           options={VIEW_OPTIONS}

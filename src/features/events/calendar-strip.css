@@ -10,20 +10,104 @@
 }
 
 /* Monat+Jahr des gewählten Tages + Woche/Monat-Umschalter, feste Höhe — Position
-   und Höhe dürfen sich beim Tageswechsel nie ändern (issue #628, AK5). */
+   und Höhe dürfen sich beim Tageswechsel nie ändern (issue #628, AK5).
+   Below 768px this wraps onto two lines (`.calendar-strip__today`'s
+   `flex-basis: 100%` forces it last), so the "Heute" chip never sits inline
+   before the title — it can only ever push the *second* line, and title/
+   switcher stay on the first regardless of the chip's visibility (issue
+   #630, AK5/AK9/AK10). From 768px up nothing wraps: `[Heute] [‹] [›] Titel
+   … [Woche|Monat]` all fit one line (issue #630, Anordnung B). */
 .calendar-strip__title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
   min-height: var(--touch-target);
 }
 
 .calendar-strip__title {
   margin: 0;
+  margin-inline-end: auto;
+  order: 2;
   font-size: var(--text-section);
   font-weight: var(--weight-emphasis);
   color: var(--text);
+}
+
+.calendar-strip__title-row .segmented {
+  order: 3;
+}
+
+/* `‹`/`›` for a week (a month in month view) — desktop-only (issue #630,
+   AK9/AK10); `.calendar-strip__nav`'s day-stepping siblings below are a
+   separate, untouched control. */
+.calendar-strip__title-nav {
+  display: none;
+}
+
+/* Same element as the mobile "Heute" chip (S1, #628) — see the title-row
+   comment above for why toggling this never moves the title. */
+.calendar-strip__today {
+  order: 4;
+  flex: 1 0 100%;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--area-events);
+  color: var(--accent-fg);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity var(--duration-fast) var(--ease-spring),
+    visibility 0s;
+}
+
+.calendar-strip__today:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Hidden (not just styled) once today is already selected — chip mode only;
+   the delayed `visibility` mirrors `.calendar-strip__week-row` below so a
+   fade-out finishes before the box leaves the a11y tree (issue #628, AK6). */
+.calendar-strip__today[data-today-selected] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--duration-fast) var(--ease-spring),
+    visibility 0s var(--duration-fast);
+}
+
+@media (min-width: 768px) {
+  .calendar-strip__title-nav {
+    display: flex;
+    order: 1;
+    gap: var(--space-1);
+  }
+
+  /* Toolbar-button look replaces the chip pill; "Heute" is never hidden here
+     — disabled instead (issue #630, AK9). */
+  .calendar-strip__today {
+    order: 0;
+    flex: 0 0 auto;
+    background: transparent;
+    color: var(--text);
+  }
+
+  .calendar-strip__today[data-today-selected] {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .calendar-strip__today:disabled {
+    color: var(--text-muted);
+    cursor: default;
+  }
 }
 
 .calendar-strip__toolbar {
