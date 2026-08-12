@@ -980,3 +980,26 @@ test('im Dark Mode ist das Windzeichen sichtbar und übernimmt --text (issue #69
   const windColor = await wind.evaluate((el) => getComputedStyle(el).color);
   expect(windColor).toBe(await resolveColorToken(page, '--text'));
 });
+
+test('offline bleibt der Windmarker aus dem Cache erhalten (issue #695, Offline-Pfad — dieses Ticket schreibt nichts, es liest nur den Wetter-Cache)', async ({
+  page,
+}) => {
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: [60, 20, 20, 20, 20, 20, 20] };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(1);
+
+  // Same "offline" reproduction as the issue #139 AC2 test above: abort only the
+  // Open-Meteo request, a full context.setOffline(true) would also block the
+  // reload's own document request against the dev server.
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await skewClock(page, NOW);
+  await page.reload();
+
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(1);
+  await expect(weatherDays(page).nth(0).getByRole('img', { name: 'windig' })).toBeVisible();
+});
