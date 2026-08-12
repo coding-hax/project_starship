@@ -89,7 +89,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`; `extractDateTimeSlot`/`cleanTitle` sind die Bausteine für `src/features/capture/`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
 - `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor` (issue #618, #619)
-- `uebersicht-capture.tsx` — Erfassungsknopf in der Titelzeile von `/uebersicht`: ruft `route-capture.ts` auf, lenkt `task`/`event` über den Draft-Store weiter, hakt `habit_check` bei hoher Konfidenz direkt ab (Undo-Toast) oder navigiert nach `/routinen` (issue #619)
+- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen` (#619)
 
 ### src/features/capture
 
@@ -97,7 +97,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art) + Titelbildung, reine Funktion, kein React/Dexie
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet)
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
-- `route-capture.ts` — die eine Stelle, die "wohin damit" entscheidet (issue #619): ruft `recognizeLocally` auf, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` leitet die erlaubten Arten aus den aktiven Modulen ab
+- `route-capture.ts` — die eine Stelle für „wohin damit" (#619): ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
 
