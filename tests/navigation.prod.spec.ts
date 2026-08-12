@@ -76,8 +76,44 @@ test.describe('angemeldet', () => {
     page,
     context,
   }) => {
+    // The RSC prefetches the nav fires after hydration are what makes the offline
+    // clicks below free: Next serves those routes from its in-memory router cache.
+    // They are NOT in the service worker's Cache Storage — that holds only the
+    // precached shell (verified in #683) — so there is nothing to read back from
+    // `caches` here. Registered before the goto, so the prefetches belonging to the
+    // page this navigation replaces are counted too.
+    const prefetched = new Set<string>();
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (url.searchParams.has('_rsc') && response.ok()) prefetched.add(url.pathname);
+    });
+
     await page.goto('/uebersicht');
-    await page.waitForLoadState('networkidle');
+
+    // Deliberately NOT `networkidle` (#683). `registerPasskey` already left the page
+    // on a loaded /uebersicht, so the goto above is the SECOND navigation to it and
+    // cancels the first page's in-flight prefetches. A cancelled request never
+    // leaves Playwright's bookkeeping of open connections, so `networkidle` waited
+    // for a quiet state that could no longer occur and burned the whole 30s budget.
+    // It is bimodal, not slow: 1.9s or 30s, nothing in between. `offline-desktop` is
+    // hit and `offline-mobile` is not because 1280px shows more nav targets at once,
+    // so more prefetches are in flight for that second navigation to cancel.
+    //
+    // What the walk below actually needs, as three named conditions:
+    await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+    // A service worker that is not merely active but serving THIS page — offline,
+    // every asset the walk needs comes from its precache. Same reasoning as
+    // offline-critical.spec.ts, which is why this spec's sister never needed
+    // `networkidle`; the goto above is already the fresh navigation after
+    // registration that makes `clientsClaim` deterministic.
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+    // And the payload of every route visited offline below, in the router cache.
+    // Bounded, like the prefetch wait in AK1 above: a prefetch that genuinely never
+    // arrives has to fail the test, not hang it.
+    await expect
+      .poll(() => [...prefetched], { timeout: 15_000 })
+      .toEqual(expect.arrayContaining(['/aufgaben', '/kalender', '/routinen']));
 
     await context.setOffline(true);
 
