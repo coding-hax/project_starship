@@ -87,7 +87,6 @@ export function CalendarView() {
         }),
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Merged only for display (CalendarStrip/EventAgenda) — `openEdit` below keeps

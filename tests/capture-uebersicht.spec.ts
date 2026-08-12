@@ -71,9 +71,12 @@ test('AC2: Freitext mit Datum navigiert nach /aufgaben und öffnet CaptureConfir
   page,
 }) => {
   await page.goto('/uebersicht');
-  const due = expectedDueAt(1, 12, 0);
+  // Kein "um 12" mehr: seit #619 macht eine explizite Uhrzeit daraus einen Termin
+  // (Router landet dann auf /kalender, siehe capture-router.spec.ts) — reines
+  // Datum ohne Uhrzeit bleibt task, genau was dieser Test hier prüfen will.
+  const due = expectedDueAt(1, 9, 0);
 
-  await submitUebersichtCapture(page, 'Arzt anrufen morgen um 12');
+  await submitUebersichtCapture(page, 'Arzt anrufen morgen');
 
   await page.waitForURL('**/aufgaben');
   const dialog = confirmDialog(page);
@@ -86,7 +89,7 @@ test('AC2: Freitext mit Datum navigiert nach /aufgaben und öffnet CaptureConfir
 
 test('AC3: Bestätigen legt die Aufgabe an, sie erscheint in der Liste', async ({ page }) => {
   await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'Arzt anrufen morgen um 12');
+  await submitUebersichtCapture(page, 'Arzt anrufen morgen');
   await page.waitForURL('**/aufgaben');
 
   const dialog = confirmDialog(page);
@@ -114,7 +117,8 @@ test('AC5: "ohne Bestätigung direkt anlegen" greift auch von der Übersicht her
   await enableDirectCapture(page);
   await page.goto('/uebersicht');
 
-  await submitUebersichtCapture(page, 'Übergabe morgen 15:00');
+  // Keine explizite Uhrzeit (siehe AC2-Kommentar oben) — bleibt task.
+  await submitUebersichtCapture(page, 'Übergabe morgen');
 
   await page.waitForURL('**/aufgaben');
   await expect(confirmDialog(page)).toBeHidden();
@@ -128,8 +132,8 @@ test('AC6: offline auf der Übersicht erfasst, bestätigt, erreicht online die D
 }) => {
   await page.goto('/uebersicht');
   // beforeEach already cut the sync endpoints — that's what a train tunnel looks
-  // like to the outbox.
-  await submitUebersichtCapture(page, 'Im Zug notiert morgen um 8');
+  // like to the outbox. Keine explizite Uhrzeit (siehe AC2-Kommentar oben) — bleibt task.
+  await submitUebersichtCapture(page, 'Im Zug notiert morgen');
   await page.waitForURL('**/aufgaben');
   await confirmDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 
@@ -178,7 +182,7 @@ test('AC9: bei 375px und erhöhter --font-scale bleibt die Titelzeile ohne horiz
   }
 });
 
-test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben einen sauberen Titel und das richtige absolute Datum', async ({
+test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben einen sauberen Titel und das richtige absolute Datum — seit #619 als Termin (explizite Uhrzeit routet nach /kalender)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -186,11 +190,9 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
 
   await submitUebersichtCapture(page, 'Zahnarzt morgen um zwölf.');
 
-  await page.waitForURL('**/aufgaben');
-  const dialog = confirmDialog(page);
+  await page.waitForURL('**/kalender');
+  const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Zahnarzt',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
