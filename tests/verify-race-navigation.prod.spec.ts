@@ -55,6 +55,7 @@ test.describe('race-verify', () => {
 
     await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
     await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
     expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
     await expect
       .poll(() => [...prefetched], { timeout: 15_000 })

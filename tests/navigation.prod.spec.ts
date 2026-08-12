@@ -117,11 +117,15 @@ test.describe('angemeldet', () => {
     // What the walk below actually needs, as three named conditions:
     await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
     // A service worker that is not merely active but serving THIS page — offline,
-    // every asset the walk needs comes from its precache. Same reasoning as
-    // offline-critical.spec.ts, which is why this spec's sister never needed
-    // `networkidle`; the goto above is already the fresh navigation after
-    // registration that makes `clientsClaim` deterministic.
+    // every asset the walk needs comes out of its precache. `ready` alone only
+    // proves a worker is active: `clientsClaim` (src/app/sw.ts) claims existing
+    // clients after activation finishes, which races with the navigation that
+    // triggered the registration. Treating the goto above as that fresh navigation
+    // is not enough — it left `controller` null in 1 of 21 runs. So reload after
+    // `ready`, exactly as offline-critical.spec.ts does: a navigation started after
+    // an already-active worker is always served by it.
     await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
     expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
     // And the payload of every route visited offline below, in the router cache.
     // Bounded, like the prefetch wait in AK1 above: a prefetch that genuinely never
