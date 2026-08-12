@@ -85,8 +85,21 @@ export interface EditedOccurrence {
   endDate: string | null;
 }
 
+/** Seed data for a freshly opened `create` sheet (issue #619: the capture
+ *  router hands this in after recognizing an `event` from free text) — same
+ *  shape the time-model fields already use, so both pairs stay consistent
+ *  with AC5 (never mixed on one row). */
+export interface EventEditorPrefill {
+  title: string;
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export type EventEditorState =
-  | { mode: 'create'; event: null; occurrence: null }
+  | { mode: 'create'; event: null; occurrence: null; prefill?: EventEditorPrefill }
   | { mode: 'edit'; event: EventView; occurrence: EditedOccurrence }
   | null;
 
@@ -173,6 +186,7 @@ export function EventEditor({
   const mode = state?.mode ?? 'create';
   const event = state?.event ?? null;
   const occurrence = state?.mode === 'edit' ? state.occurrence : null;
+  const prefill = state?.mode === 'create' ? state.prefill : undefined;
   const originalDate = occurrence?.originalDate ?? null;
   const label = mode === 'edit' ? 'Termin bearbeiten' : 'Termin erfassen';
 
@@ -200,13 +214,17 @@ export function EventEditor({
       setCountInput(recurrence?.count ? String(recurrence.count) : '1');
     }
     if (open && !wasOpenRef.current && mode === 'create') {
-      setTitle('');
+      setTitle(prefill?.title ?? '');
       setCategory(NO_CATEGORY);
-      setAllDay(false);
-      setStartsAtInput(`${selectedDay}T09:00`);
-      setEndsAtInput(`${selectedDay}T10:00`);
-      setStartDateInput(selectedDay);
-      setEndDateInput(selectedDay);
+      setAllDay(prefill?.allDay ?? false);
+      setStartsAtInput(
+        prefill && !prefill.allDay ? isoToLocalInput(prefill.startsAt) : `${selectedDay}T09:00`,
+      );
+      setEndsAtInput(
+        prefill && !prefill.allDay ? isoToLocalInput(prefill.endsAt) : `${selectedDay}T10:00`,
+      );
+      setStartDateInput(prefill?.allDay ? (prefill.startDate ?? selectedDay) : selectedDay);
+      setEndDateInput(prefill?.allDay ? (prefill.endDate ?? selectedDay) : selectedDay);
       setFreq(NO_RECURRENCE);
       setIntervalInput('1');
       setByWeekday([]);
@@ -215,7 +233,7 @@ export function EventEditor({
       setCountInput('1');
     }
     wasOpenRef.current = open;
-  }, [open, mode, event, occurrence, selectedDay]);
+  }, [open, mode, event, occurrence, prefill, selectedDay]);
 
   function toggleWeekday(day: number) {
     setByWeekday((prev) =>
