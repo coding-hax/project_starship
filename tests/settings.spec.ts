@@ -290,8 +290,12 @@ function categoryRow(page: Page, label: string) {
 }
 
 async function categoryColorFromDb(category: string): Promise<string | null> {
+  // deleted_at IS NULL: reset() soft-deletes (push/route.ts), it does not clear
+  // `color` (NOT NULL column) — the row's last color survives the tombstone, so a
+  // query without this filter would see the stale value instead of "no override"
+  // (same convention as journal.spec.ts/offline-critical.spec.ts).
   const result = await withDb((client) =>
-    client.query('SELECT color FROM category_colors WHERE category = $1', [category]),
+    client.query('SELECT color FROM category_colors WHERE category = $1 AND deleted_at IS NULL', [category]),
   );
   return result.rowCount === 0 ? null : (result.rows[0].color as string);
 }
