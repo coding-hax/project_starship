@@ -403,7 +403,7 @@ test('zwei zeitlich ueberlappende Termine tragen beide die Ueberschneidungs-Kenn
 
   await expect(eventCard(page, 'Ueberlappend A')).toHaveAttribute('data-overlap', 'true');
   await expect(eventCard(page, 'Ueberlappend B')).toHaveAttribute('data-overlap', 'true');
-  await expect(page.getByText('überschneidet sich')).toHaveCount(2);
+  await expect(page.getByText('Überschneidung')).toHaveCount(2);
 });
 
 test('zwei zeitlich getrennte Termine tragen keine Ueberschneidungs-Kennzeichnung (AK5b)', async ({
@@ -430,7 +430,110 @@ test('zwei zeitlich getrennte Termine tragen keine Ueberschneidungs-Kennzeichnun
 
   await expect(eventCard(page, 'Getrennt A')).toHaveAttribute('data-overlap', 'false');
   await expect(eventCard(page, 'Getrennt B')).toHaveAttribute('data-overlap', 'false');
+  await expect(page.getByText('Überschneidung')).toHaveCount(0);
+});
+
+test('der alte Text "überschneidet sich" kommt in der Agenda nirgends mehr vor (issue #657 AK3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ueberlappend A',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ueberlappend B',
+    allDay: false,
+    startsAt: `${TODAY}T09:30:00.000Z`,
+    endsAt: `${TODAY}T10:30:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(eventCard(page, 'Ueberlappend A')).toHaveAttribute('data-overlap', 'true');
   await expect(page.getByText('überschneidet sich')).toHaveCount(0);
+});
+
+test('das Ueberschneidungs-Label steht in der Uhrzeit-Zeile, rechts von der Uhrzeit, der Titel bleibt darunter (issue #657 AK4)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ueberlappend A',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ueberlappend B',
+    allDay: false,
+    startsAt: `${TODAY}T09:30:00.000Z`,
+    endsAt: `${TODAY}T10:30:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const card = eventCard(page, 'Ueberlappend A');
+  // Erst messen, wenn die Enter-Animation vorbei ist — sonst steckt ihr
+  // Transform mit in der BoundingBox (Fallen-Hinweis im Ticket).
+  await expect(card).toHaveAttribute('data-entering', 'false');
+
+  const timeBox = await card.locator('.event-agenda__item-time').boundingBox();
+  const labelBox = await card.locator('.event-agenda__overlap-note').boundingBox();
+  const titleBox = await card.locator('.event-agenda__item-title').boundingBox();
+  if (!timeBox || !labelBox || !titleBox) throw new Error('AK4: Karte hat keine BoundingBox');
+
+  const timeCenterY = timeBox.y + timeBox.height / 2;
+  const labelCenterY = labelBox.y + labelBox.height / 2;
+  expect(Math.abs(timeCenterY - labelCenterY)).toBeLessThanOrEqual(2);
+  expect(labelBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
+  expect(titleBox.y).toBeGreaterThanOrEqual(timeBox.y + timeBox.height);
+});
+
+test('bei langem Titel bleibt die ueberlappende Karte innerhalb der Bildschirmbreite, iPhone 12 mini (issue #657 AK5)', async ({
+  page,
+}) => {
+  const longTitle = 'Ein sehr sehr langer Terminname der eigentlich nicht in eine Zeile passen sollte';
+  await seedEvent(page, {
+    title: longTitle,
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ueberlappend B',
+    allDay: false,
+    startsAt: `${TODAY}T09:30:00.000Z`,
+    endsAt: `${TODAY}T10:30:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const card = eventCard(page, longTitle);
+  await expect(card).toHaveAttribute('data-overlap', 'true');
+  await expect(card).toHaveAttribute('data-entering', 'false');
+
+  const viewport = page.viewportSize();
+  const cardBox = await card.boundingBox();
+  if (!viewport || !cardBox) throw new Error('AK5: kein Viewport oder keine BoundingBox');
+  expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(viewport.width);
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 /* -------------------------------------------------------------------------- */
