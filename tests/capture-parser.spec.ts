@@ -101,10 +101,15 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 
-  // 9 Uhr liegt bereits hinter der fixen Uhrzeit -> morgen.
+  // 13 Uhr liegt bereits hinter der fixen Uhrzeit -> morgen. Bewusst keine Stunde <=12
+  // ("9 Uhr" o.ä.): die ist seit #688 (R2) tageshälften-mehrdeutig und wird zur
+  // Sprechzeit aufgelöst (14:00 -> nachmittags -> 21 Uhr, noch in der Zukunft, bliebe
+  // also heute) — das würde diesen Rollover-Test mit R2 vermischen, der eigenständig
+  // in capture-zeigerzeit.spec.ts abgedeckt ist. Ab 13 bleibt laut R2 Regel 3
+  // unangetastet, testet hier gezielt nur den Datums-Rollover aus AC2 (#687).
   await page.goto('/uebersicht');
-  const dueTomorrow = expectedDueAt(1, 9, 0);
-  await submitUebersichtCapture(page, 'Zahnarzt um 9 Uhr');
+  const dueTomorrow = expectedDueAt(1, 13, 0);
+  await submitUebersichtCapture(page, 'Zahnarzt um 13 Uhr');
 
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
