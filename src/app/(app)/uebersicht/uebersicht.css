@@ -6,11 +6,17 @@
 .uebersicht__title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
 }
 
+/* `flex: 1` statt `justify-content: space-between` auf der Zeile: die Box
+ * bekommt so ihre Breite von der verfügbaren Restfläche zugewiesen, nicht vom
+ * Text-Inhalt. Mit space-between schrumpfte die h1-Box exakt auf ihren Text,
+ * und jeder — auch minimale — Font-Swap-Reflow (next/font `display: swap`)
+ * verschob dadurch das ganze Aktionsbündel mit (issue #652, CI-Fund: „h1 +
+ * div.uebersicht__title-actions" als Layout-Shift-Quelle). */
 .uebersicht__title-row h1 {
+  flex: 1 1 auto;
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;

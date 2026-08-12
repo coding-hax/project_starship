@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 /**
  * `OverviewBlock` (issue #652): einheitliche Modulköpfe auf /uebersicht + Ring
@@ -33,18 +33,6 @@ async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<
   );
 }
 
-/** Minimal server-seitige Aktivität (ADR-0011), reicht für `activities.length > 0`. */
-async function seedGarminActivity(): Promise<void> {
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, started_at, fetched_at)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), 'running', '2020-01-01T00:00:00Z'],
-    ),
-  );
-}
-
 async function setModulesOff(page: Page, off: string[]): Promise<void> {
   await page.evaluate(
     ({ key, off }) => localStorage.setItem(key, JSON.stringify(off)),
@@ -64,16 +52,50 @@ test.beforeEach(async ({ page }) => {
 /* AK2: einheitliche h2 je Modul                                              */
 /* -------------------------------------------------------------------------- */
 
-test('Aufgaben, Termine, Routinen und Aktivitäten haben auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({
+test('Aufgaben, Termine und Routinen haben auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({
   page,
 }) => {
-  await seedGarminActivity();
   await page.goto('/uebersicht');
 
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Termine', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Aktivitäten', level: 2 })).toBeVisible();
+});
+
+/**
+ * Aktivitäten ist server-seitige, gesyncte Daten (ADR-0011) — anders als die
+ * übrigen Tests in dieser Datei darf `/api/sync/**` hier nicht blockiert sein,
+ * sonst kommt die per `withDb()` eingefügte Aktivität nie in die IndexedDB
+ * (gleiches Muster wie aktivitaeten.spec.ts).
+ */
+test.describe('Aktivitäten (server-seitig gesynct)', () => {
+  test.beforeEach(async ({ page }) => {
+    await resetAppData();
+    // Das äußere beforeEach oben registriert einen abortenden Handler auf
+    // demselben Muster — Playwright hängt verschachtelte Hooks an, statt sie zu
+    // ersetzen, der Handler bliebe sonst aktiv und die hier eingefügte Aktivität
+    // käme nie über den Pull in die IndexedDB.
+    await page.unroute('**/api/sync/**');
+    await page.route('https://api.open-meteo.com/**', (route) =>
+      route.fulfill({ json: openMeteoForecastBody({ dates: ['2026-07-18'], tempsMax: [20], tempsMin: [10] }) }),
+    );
+    await registerPasskey(page);
+    await skewClock(page, NOW);
+  });
+
+  test('Aktivitäten hat auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({ page }) => {
+    await withDb((client) =>
+      client.query(
+        `INSERT INTO garmin_activities
+          (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, started_at, fetched_at)
+         VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, now())`,
+        [randomUUID(), Math.floor(Math.random() * 1_000_000_000), 'running', '2020-01-01T00:00:00Z'],
+      ),
+    );
+
+    await page.goto('/uebersicht');
+    await expect(page.getByRole('heading', { name: 'Aktivitäten', level: 2 })).toBeVisible();
+  });
 });
 
 test('der Überschriftenpunkt trägt die Bereichsfarbe des jeweiligen Moduls (AK1+AK2)', async ({

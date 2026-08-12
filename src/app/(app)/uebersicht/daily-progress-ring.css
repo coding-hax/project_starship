@@ -18,7 +18,7 @@
 .daily-progress-ring__count {
   fill: var(--text);
   color: var(--text);
-  font-size: 10px;
+  font-size: var(--text-meta);
   font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }
