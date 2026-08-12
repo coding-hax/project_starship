@@ -292,7 +292,12 @@ function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate
   }
   const dayPart = findAdjacentDayPart(text, raw);
   const isPM = dayPart ? dayPart.isPM : now.getHours() * 60 + now.getMinutes() >= 12 * 60;
-  const hours = (raw.pointerHours + (isPM ? 12 : 0)) % 24;
+  // Zwölf ist der Fixpunkt des 12-Stunden-Zifferblatts, kein normaler 1-11-Wert: "zwölf
+  // Uhr"/"um 12" bleibt immer Mittag (12:00), unabhängig von der Tageshälfte — genau das
+  // vorbestehende Verhalten der einfachen Formen (#47/#618/#619). Nur "H−1"-Formen (halb/
+  // viertel vor H) erreichen hier je 12 — die liegen für H=1..12 immer bei 0-11 und sind
+  // von diesem Sonderfall nicht betroffen.
+  const hours = raw.pointerHours === 12 ? 12 : (raw.pointerHours + (isPM ? 12 : 0)) % 24;
   const isGuessed = dayPart === null;
   const needsConfirmation = raw.isRegional || (isGuessed && hours < 6);
   return {
