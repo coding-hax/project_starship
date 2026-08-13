@@ -295,11 +295,13 @@ export function TaskList({
   }, [anchorActive, tasks, presenceRows.length]);
 
   /**
-   * Which whole-list message (if any) replaces the `<ul>` (issue #705 AK9's
-   * "unverändert" empty state, plus the new "Erledigt" one). Keyed off
-   * `allTasks`/`tasks`, never off `rows` — a "Woche" window with nothing due
-   * this week is not the same thing as an app with no tasks at all; that case
-   * instead renders an empty `<ul>` plus the AK6/AK9 summary lines below it.
+   * Which whole-list message (if any) replaces the `<ul>` (issue #705). Two
+   * different things both read as "empty" here, and they must stay distinct:
+   * an account with zero tasks at all (checked via `tasks.length`, never
+   * `rows` — a "Woche" window with nothing *due this week* is not that, it
+   * renders an empty `<ul>` plus the AK6/AK9 summary lines below it instead),
+   * and "Alle" with every task hidden by the `hideCompleted` toggle (issue
+   * #654 AC6, unchanged — still keyed off `rows`, the filtered result).
    */
   const emptyMessage =
     tasks === undefined
@@ -310,9 +312,11 @@ export function TaskList({
           : null
         : tasks.length === 0
           ? 'Keine Aufgaben. Genieß die Ruhe.'
-          : view === 'erledigt' && rows.length === 0
-            ? 'Noch nichts erledigt.'
-            : null;
+          : view === 'alle' && rows.length === 0
+            ? 'Keine Aufgaben. Genieß die Ruhe.'
+            : view === 'erledigt' && rows.length === 0
+              ? 'Noch nichts erledigt.'
+              : null;
 
   return (
     <>

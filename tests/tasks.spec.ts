@@ -1,5 +1,13 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXED_NOW, freezeClock, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  freezeClock,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  skewClock,
+  withDb,
+} from './helpers';
 
 /** Mirrors task-item.tsx's own LONG_PRESS_MS — how long a hold picks a row up
  * for drag-to-nest instead of starting a swipe. */
@@ -123,6 +131,7 @@ test('a designed empty state, not a blank screen', async ({ page }) => {
 
 test('a task created locally appears without any network request', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Milch kaufen' });
 
   await expect(page.getByText('Milch kaufen')).toBeVisible();
@@ -130,6 +139,7 @@ test('a task created locally appears without any network request', async ({ page
 
 test('a soft-deleted task is not shown', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const id = await seedTask(page, { title: 'Verschwindet' });
   await expect(page.getByText('Verschwindet')).toBeVisible();
 
@@ -145,6 +155,7 @@ test('Erledigen lässt die Aufgabe an ihrer Position — sie sieht erledigt aus,
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Zuerst angelegt', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, { title: 'Danach angelegt', createdAt: '2026-07-02T00:00:00.000Z' });
 
@@ -162,6 +173,7 @@ test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Statu
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, {
     title: 'Zuerst angelegt',
     dueAt: '2026-07-20T09:00:00.000Z',
@@ -173,7 +185,10 @@ test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Statu
     createdAt: '2026-07-10T09:00:00.000Z',
     completedAt: '2026-07-11T00:00:00.000Z',
   });
-  await seedTask(page, { title: 'Zuletzt angelegt, ohne Termin', createdAt: '2026-07-10T10:00:00.000Z' });
+  await seedTask(page, {
+    title: 'Zuletzt angelegt, ohne Termin',
+    createdAt: '2026-07-10T10:00:00.000Z',
+  });
 
   const items = taskItems(page);
   await expect(items).toHaveCount(3);
@@ -187,6 +202,7 @@ test('tasks stay visible offline, with a calm notice instead of an error (issue 
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Bleibt da' });
   await expect(page.getByText('Bleibt da')).toBeVisible();
 
@@ -230,6 +246,7 @@ test('n öffnet auf Desktop dasselbe Sheet wie der FAB', async ({ page }) => {
 
 test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Wäsche aufhängen');
   await page.getByRole('button', { name: 'Hinzufügen' }).click();
@@ -253,6 +270,7 @@ test('offline gespeichert: sofort sichtbar, genau ein Eintrag in der Outbox', as
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await context.setOffline(true);
 
   await openQuickAdd(page);
@@ -267,6 +285,7 @@ test('offline gespeichert: sofort sichtbar, genau ein Eintrag in der Outbox', as
 
 test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({ page, context }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await context.setOffline(true);
 
   await openQuickAdd(page);
@@ -380,6 +399,7 @@ test('kein Layout-Shift beim Schließen des Sheets (issue #429)', async ({ page 
 
 test('Wisch nach rechts erledigt die Aufgabe und zeigt einen Undo-Toast', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Wird gewischt';
   await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -394,6 +414,7 @@ test('Wisch nach rechts erledigt die Aufgabe und zeigt einen Undo-Toast', async 
 
 test('ein zu kurzer Wisch lässt die Aufgabe offen', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Nur angetippt';
   await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -408,6 +429,7 @@ test('der Undo-Toast macht die Erledigung rückgängig, der Server landet am off
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Undo-Testfall';
   await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -438,6 +460,7 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Offline erledigen';
   await seedTask(page, { title });
   await context.setOffline(true);
@@ -462,6 +485,7 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
 
 test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Toggle-Testfall';
   await seedTask(page, { title, completedAt: new Date(FIXED_NOW).toISOString() });
   const item = taskItems(page).filter({ hasText: title });
@@ -476,6 +500,7 @@ test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', a
 
 test('ein Klick auf die Checkbox erledigt die Aufgabe genauso wie der Swipe', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Checkbox-Testfall';
   await seedTask(page, { title });
 
@@ -486,6 +511,7 @@ test('ein Klick auf die Checkbox erledigt die Aufgabe genauso wie der Swipe', as
 
 test('auf Desktop lässt sich eine Aufgabe per Tastatur erledigen', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Tastatur-Testfall';
   await seedTask(page, { title });
 
@@ -498,6 +524,7 @@ test('auf Desktop lässt sich eine Aufgabe per Tastatur erledigen', async ({ pag
 
 test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Zielgröße';
   await seedTask(page, { title });
 
@@ -516,6 +543,7 @@ test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }
 test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Ruhig bitte' });
 
   const item = taskItems(page).filter({ hasText: 'Ruhig bitte' });
@@ -546,6 +574,7 @@ test('nur die geänderte Priorität landet in der Mutation, nicht der ganze Date
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Nur Priorität ändern', priority: 0 });
 
   await tapTask(page, 'Nur Priorität ändern');
@@ -564,6 +593,7 @@ test('Tippen auf die Priorität lässt Fokus im Titelfeld, Weitertippen hängt a
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Bericht', priority: 0 });
   await tapTask(page, 'Bericht');
 
@@ -592,6 +622,7 @@ test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber ni
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Ohne Termin', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, { title: 'Früh dran', createdAt: '2026-07-02T00:00:00.000Z' });
 
@@ -610,10 +641,9 @@ test('eine gesetzte Fälligkeit zeigt die Uhrzeit im 24h-Format, ändert aber ni
   await expect(items.nth(1)).toContainText('14:30');
 });
 
-test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', async ({
-  page,
-}) => {
+test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Nur angetippt links';
   await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -625,10 +655,9 @@ test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', asyn
   await expect(editorDialog(page)).toBeHidden();
 });
 
-test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({
-  page,
-}) => {
+test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Wird gelöscht';
   const id = await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -654,6 +683,7 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Löschen rückgängig';
   await seedTask(page, { title });
   const item = taskItems(page).filter({ hasText: title });
@@ -716,14 +746,13 @@ test('Priorität „Normal" bleibt ohne Punkt, „Hoch" und „Dringend" zeigen 
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Normale Aufgabe', priority: 0 });
   await seedTask(page, { title: 'Hohe Priorität', priority: 1 });
   await seedTask(page, { title: 'Dringende Aufgabe', priority: 2 });
 
   await expect(priorityDotFor(page, 'Normale Aufgabe')).toHaveCount(0);
-  await expect(priorityDotFor(page, 'Hohe Priorität')).toHaveClass(
-    /task-list__priority-dot--hoch/,
-  );
+  await expect(priorityDotFor(page, 'Hohe Priorität')).toHaveClass(/task-list__priority-dot--hoch/);
   await expect(priorityDotFor(page, 'Dringende Aufgabe')).toHaveClass(
     /task-list__priority-dot--dringend/,
   );
@@ -742,6 +771,7 @@ test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige ode
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Überfällig', dueAt: '2020-01-01T09:00:00.000Z' });
   await seedTask(page, { title: 'Noch Zeit', dueAt: '2099-01-01T09:00:00.000Z' });
   await seedTask(page, {
@@ -770,19 +800,23 @@ test('Prioritäts-Punkt und Überfällig-Hervorhebung bleiben im Dark Mode korre
   page,
 }) => {
   await page.goto('/aufgaben');
-  await seedTask(page, { title: 'Dringend im Dunkeln', priority: 2, dueAt: '2020-01-01T09:00:00.000Z' });
+  await seedTask(page, {
+    title: 'Dringend im Dunkeln',
+    priority: 2,
+    dueAt: '2020-01-01T09:00:00.000Z',
+  });
 
   const dot = priorityDotFor(page, 'Dringend im Dunkeln');
   const due = dueLabelFor(page, 'Dringend im Dunkeln');
 
   // No transition on either element — static, token-driven colour needs no motion
   // to begin with, so `prefers-reduced-motion` has nothing to override here.
-  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
-    'none',
-  );
-  await expect.poll(() => due.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
-    'none',
-  );
+  await expect
+    .poll(() => dot.evaluate((el) => getComputedStyle(el).transitionProperty))
+    .toBe('none');
+  await expect
+    .poll(() => due.evaluate((el) => getComputedStyle(el).transitionProperty))
+    .toBe('none');
 
   const lightDotColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   const lightDueColor = await due.evaluate((el) => getComputedStyle(el).color);
@@ -805,6 +839,7 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Offline löschen';
   await seedTask(page, { title });
   await context.setOffline(true);
@@ -834,6 +869,7 @@ test('ein per Schnellerfassung angelegtes Todo erscheint unten in der Liste (iss
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Schon da', createdAt: '2026-07-01T00:00:00.000Z' });
 
   await openQuickAdd(page);
@@ -848,6 +884,7 @@ test('ein per Schnellerfassung angelegtes Todo erscheint unten in der Liste (iss
 
 test('die Position unten bleibt nach einem Reload erhalten (issue #88 AC1)', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Älter', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, { title: 'Neuer', createdAt: '2026-07-05T00:00:00.000Z' });
 
@@ -864,6 +901,7 @@ test('offline angelegt landet unten, bleibt dort nach dem Sync (issue #88 AC1)',
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Bestand', createdAt: '2026-07-01T00:00:00.000Z' });
   await context.setOffline(true);
 
@@ -897,6 +935,7 @@ test('Scroll-Anker: bei wenig Inhalt bleibt die Liste am natürlichen Seitenanfa
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, {
     title: 'Erledigt',
     createdAt: '2026-07-01T00:00:00.000Z',
@@ -916,6 +955,7 @@ test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo 
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
 
   // Enough completed history to overflow both viewports in the test matrix
   // (375×812 and 1280×800).
@@ -954,7 +994,9 @@ test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo 
 /* -------------------------------------------------------------------------- */
 
 function disclosureFor(page: Page, title: string) {
-  return taskItems(page).filter({ hasText: title }).getByRole('button', { name: /Unteraufgaben/ });
+  return taskItems(page)
+    .filter({ hasText: title })
+    .getByRole('button', { name: /Unteraufgaben/ });
 }
 
 function progressFor(page: Page, title: string) {
@@ -969,6 +1011,7 @@ test('Im Editor „Unteraufgabe von" wählen macht die Aufgabe zum Kind, die Elt
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Unteraufgabe' });
 
@@ -988,6 +1031,7 @@ test('eine Eltern-Zeile hat im Editor keinen Nest-Zweig — ein Elternteil kann 
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
 
@@ -1004,6 +1048,7 @@ test('das Nest-Ziel-Dropdown bietet nur Top-Level-Aufgaben an, nie ein bestehend
   // nicht erst als Ziel auf, sodass diese Falle über den Editor-Pfad gar nicht
   // erst entstehen kann.
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
   await seedTask(page, { title: 'Neue Unteraufgabe' });
@@ -1016,6 +1061,7 @@ test('das Nest-Ziel-Dropdown bietet nur Top-Level-Aufgaben an, nie ein bestehend
 
 test('Eltern-Zeile lässt sich auf-/zuklappen (issue #89 AK3)', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
 
@@ -1035,6 +1081,7 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblick
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
 
@@ -1049,6 +1096,7 @@ test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erl
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind A', parentId });
   await seedTask(page, { title: 'Kind B', parentId });
@@ -1065,6 +1113,7 @@ test('„Keine (Top-Level)" im Editor löst ein Kind wieder aus der Gruppe (issu
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
 
@@ -1084,6 +1133,7 @@ test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und K
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind A', parentId });
   await seedTask(page, { title: 'Kind B', parentId });
@@ -1106,6 +1156,7 @@ test('Kinder werden chronologisch nach Erstellzeit sortiert, unabhängig von der
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, {
     title: 'Kind B (später erstellt)',
@@ -1132,6 +1183,7 @@ test('Drag & Drop: eine Aufgabe per Long-Press auf eine andere ziehen macht sie 
   // wall-clock pause, which CLAUDE.md forbids as a test crutch.
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Unteraufgabe' });
 
@@ -1179,6 +1231,7 @@ test('ein Kind wird offline über den Editor zugeordnet und erreicht online die 
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Unteraufgabe' });
   await context.setOffline(true);
@@ -1291,6 +1344,7 @@ test('eine Aufgabe über die Liste zu ziehen markiert keinen Text (issue #451 AK
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Zuerst erfasst' });
   await seedTask(page, { title: 'Danach erfasst' });
 
@@ -1313,6 +1367,7 @@ test('eine angehobene Aufgabe über einer anderen zu halten markiert diese als Z
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Wanderer' });
 
@@ -1333,6 +1388,7 @@ test('über einer Unteraufgabe gehalten wird deren Elternteil als Ziel markiert,
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Bestehendes Kind', parentId });
   await seedTask(page, { title: 'Wanderer' });
@@ -1358,6 +1414,7 @@ test('eine Unteraufgabe über den freien Bereich gehalten zeigt das Herauslösen
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Bestehendes Kind', parentId });
 
@@ -1377,6 +1434,7 @@ test('eine Aufgabe, die schon auf Wurzelebene liegt, zeigt über dem freien Bere
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Wanderer' });
 
@@ -1394,6 +1452,7 @@ test('die Markierung verschwindet, sobald der Zeiger das Ziel verlässt, und bei
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Wanderer' });
 
@@ -1423,6 +1482,7 @@ test('das vertikale Ziehen einer angehobenen Karte scrollt die Seite nicht und b
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Wanderer' });
 
@@ -1446,6 +1506,7 @@ test('eine angehobene Unteraufgabe folgt dem Zeiger ohne Verzögerung, die Klapp
 }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
 
@@ -1495,6 +1556,7 @@ test('der „Mehr"-Bereich startet zugeklappt — Titel und Enter genügen (issu
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await openQuickAdd(page);
 
   await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'false');
@@ -1551,6 +1613,7 @@ test('„Unteraufgabe von" beim Anlegen macht die neue Aufgabe sofort zum Kind (
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Elternaufgabe' });
 
   await openQuickAdd(page);
@@ -1568,6 +1631,7 @@ test('eine gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await openQuickAdd(page);
 
   const dialog = quickAddDialog(page);
@@ -1588,6 +1652,7 @@ test('ein erneut geöffnetes Sheet startet wieder leer und zugeklappt (issue #65
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await openQuickAdd(page);
 
   // Kein Titel, in dem ein Füllwort aus parse-task-input.ts steckt („Aufgabe",
@@ -1614,6 +1679,7 @@ test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Date
   context,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await context.setOffline(true);
 
   await openQuickAdd(page);
@@ -1655,6 +1721,7 @@ test('AC1: der Knopf steht bereit — 44×44 Tippfläche, 24×24 Icon, aria-pres
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Offen' });
   await seedTask(page, { title: 'Erledigt', completedAt: new Date(FIXED_NOW).toISOString() });
 
@@ -1678,6 +1745,7 @@ test('AC2: Einschalten setzt aria-pressed, akzentuiert den Knopf und blendet jed
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Bleibt offen' });
   await seedTask(page, { title: 'Verschwindet', completedAt: new Date(FIXED_NOW).toISOString() });
 
@@ -1701,6 +1769,7 @@ test('AC3: Ausschalten zeigt die erledigten Aufgaben wieder an genau derselben S
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Zuerst', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, {
     title: 'Erledigt in der Mitte',
@@ -1743,6 +1812,7 @@ test('AC5: erledigte Unteraufgaben verschwinden einzeln, ein erledigter Elternte
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const openParentId = await seedTask(page, { title: 'Offene Elternaufgabe' });
   await seedTask(page, {
     title: 'Erledigtes Kind unter offenem Elternteil',
@@ -1754,7 +1824,10 @@ test('AC5: erledigte Unteraufgaben verschwinden einzeln, ein erledigter Elternte
     title: 'Erledigte Elternaufgabe',
     completedAt: new Date(FIXED_NOW).toISOString(),
   });
-  await seedTask(page, { title: 'Offenes Kind unter erledigtem Elternteil', parentId: doneParentId });
+  await seedTask(page, {
+    title: 'Offenes Kind unter erledigtem Elternteil',
+    parentId: doneParentId,
+  });
   await seedTask(page, {
     title: 'Erledigtes Kind unter erledigtem Elternteil',
     parentId: doneParentId,
@@ -1800,6 +1873,7 @@ test('AC6: sind alle Aufgaben erledigt und der Schalter an, zeigt sich der norma
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Erledigt A', completedAt: new Date(FIXED_NOW).toISOString() });
   await seedTask(page, { title: 'Erledigt B', completedAt: new Date(FIXED_NOW).toISOString() });
 
@@ -1853,8 +1927,11 @@ test('AC8: der Knopf bleibt in Hell und Dunkel über Tokens lesbar, nie über Ro
   expect(darkIconColor).not.toBe(lightIconColor);
 });
 
-test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen', async ({ page }) => {
+test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen', async ({
+  page,
+}) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Blendet aus', completedAt: new Date(FIXED_NOW).toISOString() });
   const row = taskItems(page).filter({ hasText: 'Blendet aus' });
 
@@ -1868,9 +1945,12 @@ test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen',
   await expect(row).toHaveCount(0);
 });
 
-test('AC8: bei reduzierter Bewegung schaltet der Filter genauso zuverlässig um', async ({ page }) => {
+test('AC8: bei reduzierter Bewegung schaltet der Filter genauso zuverlässig um', async ({
+  page,
+}) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Bleibt sichtbar' });
   await seedTask(page, {
     title: 'Verschwindet ruhig',
