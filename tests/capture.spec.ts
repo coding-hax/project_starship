@@ -25,7 +25,7 @@ function taskItems(page: Page) {
 async function submitQuickAdd(page: Page, text: string) {
   await openQuickAdd(page);
   await quickAddTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 /** Mirrors parse-task-input.ts's own default time (09:00) and the summary formatting

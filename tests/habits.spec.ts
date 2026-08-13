@@ -343,7 +343,7 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
   await tapHabit(page, 'Lesen');
   const dialog = editDialog(page);
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -359,7 +359,7 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async 
   await tapHabit(page, 'Dehnen');
   const dialog = editDialog(page);
   await dialog.getByRole('radio', { name: 'Koralle' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -448,7 +448,7 @@ test('eine neu gewählte Farbe (--swatch-lime) übersteht einen Reload und ersch
   await tapHabit(page, 'Limette wählen');
   const dialog = editDialog(page);
   await dialog.getByRole('radio', { name: 'Limette' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   await page.reload();
@@ -470,7 +470,7 @@ test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (i
   await tapHabit(page, 'Farbe offline ändern');
   const dialog = editDialog(page);
   await dialog.getByRole('radio', { name: 'Himmelblau' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
   // One entry for the seed, one for the colour change — both queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
@@ -585,7 +585,7 @@ test('der Editor der Journal-Routine zeigt nur den Rhythmus, kein Namens- oder F
   await expect(dialog.getByRole('radio', { name: 'Täglich' })).toBeChecked();
 
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -689,7 +689,7 @@ test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outb
   const dialog = editDialog(page);
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
   await dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '4' }).click();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   const item = habitItems(page).filter({ hasText: 'Rhythmus wechseln' });

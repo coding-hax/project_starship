@@ -99,6 +99,7 @@ export interface EventEditorPrefill {
 const HIGH_CONFIDENCE: FieldConfidence = { level: 'high' };
 const TITLE_HINT_ID = 'event-editor-title-hint';
 const START_HINT_ID = 'event-editor-start-hint';
+const FORM_ID = 'event-editor-form';
 
 export type EventEditorState =
   | { mode: 'create'; event: null; occurrence: null; prefill?: EventEditorPrefill }
@@ -194,6 +195,7 @@ export function EventEditor({
   const prefill = state?.mode === 'create' ? state.prefill : undefined;
   const originalDate = occurrence?.originalDate ?? null;
   const label = mode === 'edit' ? 'Termin bearbeiten' : 'Termin erfassen';
+  const actionLabel = mode === 'edit' ? 'Sichern' : 'Anlegen';
 
   // #691 AK3: dieselbe Markierung wie capture-confirm.tsx — nur im `create`-Modus
   // gesetzt, ein bestehender Termin ist per Definition keine Vermutung mehr.
@@ -447,8 +449,14 @@ export function EventEditor({
 
   return (
     <>
-      <Sheet open={open} onClose={onClose} label={label} initialFocusRef={titleRef}>
-        <form className="event-editor" onSubmit={handleSubmit}>
+      <Sheet
+        open={open}
+        onClose={onClose}
+        label={label}
+        initialFocusRef={titleRef}
+        header={{ actionLabel, formId: FORM_ID }}
+      >
+        <form id={FORM_ID} className="event-editor" onSubmit={handleSubmit}>
           <input
             ref={titleRef}
             type="text"
@@ -642,16 +650,13 @@ export function EventEditor({
               </fieldset>
             </>
           )}
-          <div className="event-editor__actions">
-            {mode === 'edit' && (
+          {mode === 'edit' && (
+            <div className="event-editor__actions">
               <button type="button" className="event-editor__delete" onClick={handleDelete}>
                 Löschen
               </button>
-            )}
-            <button type="submit" className="event-editor__submit">
-              Speichern
-            </button>
-          </div>
+            </div>
+          )}
         </form>
       </Sheet>
       <RecurrenceScopeSheet

@@ -2,6 +2,15 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 
+export interface SheetHeaderProps {
+  /** Label of the action button on the right (e.g. "Anlegen", "Sichern", "Eintragen"). */
+  actionLabel: string;
+  /** id of the `<form>` inside `children` the action button submits — it lives
+   * outside that form (in the header row), so the HTML `form` attribute is what
+   * associates the two. */
+  formId: string;
+}
+
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
@@ -13,6 +22,12 @@ export interface SheetProps {
    * explicitly here is what actually gets the cursor into the field.
    */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Opts into the shared header (issue #710): grip, "Abbrechen" left, `label`
+   * centered, action button right. Left out entirely by sheets that ask their own
+   * question instead of hosting a form (e.g. `RecurrenceScopeSheet`).
+   */
+  header?: SheetHeaderProps;
   children: ReactNode;
 }
 
@@ -20,7 +35,7 @@ export interface SheetProps {
  * A reusable bottom sheet built on `<dialog>`: native focus trap, ESC-to-close and a
  * backdrop come for free, so this needs no extra dependency (CLAUDE.md rule 3).
  */
-export function Sheet({ open, onClose, label, initialFocusRef, children }: SheetProps) {
+export function Sheet({ open, onClose, label, initialFocusRef, header, children }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   // Captured right before `showModal()` steals focus, so it survives the whole
   // time the sheet is open and is still there to restore once it closes.
@@ -60,7 +75,26 @@ export function Sheet({ open, onClose, label, initialFocusRef, children }: Sheet
         if (event.target === ref.current) onClose();
       }}
     >
-      <div className="sheet__content">{children}</div>
+      <div className="sheet__content">
+        {header && (
+          <div className="sheet__header">
+            <div className="sheet__grip" aria-hidden="true" />
+            <div className="sheet__header-row">
+              {/* Same `onClose` prop the backdrop click already calls (see `onClick`
+                  below) — one path into `dialog.close()`, so focus returns to the
+                  trigger exactly like ESC and the backdrop already do (AK4). */}
+              <button type="button" className="sheet__cancel" onClick={onClose}>
+                Abbrechen
+              </button>
+              <p className="sheet__title">{label}</p>
+              <button type="submit" form={header.formId} className="sheet__action">
+                {header.actionLabel}
+              </button>
+            </div>
+          </div>
+        )}
+        {children}
+      </div>
     </dialog>
   );
 }

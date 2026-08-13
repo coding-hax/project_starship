@@ -10,6 +10,7 @@ import type { HabitSchedule, HabitView } from './use-habits';
 
 const CREATE_LABEL = 'Routine anlegen';
 const EDIT_LABEL = 'Routine bearbeiten';
+const FORM_ID = 'habit-editor-form';
 
 /**
  * A vertical radio fieldset, not `SegmentedControl` (issue #509): six labels —
@@ -157,8 +158,9 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
       onClose={onClose}
       label={mode === 'create' ? CREATE_LABEL : EDIT_LABEL}
       initialFocusRef={nameRef}
+      header={{ actionLabel: mode === 'create' ? 'Anlegen' : 'Sichern', formId: FORM_ID }}
     >
-      <form className="habit-editor" onSubmit={handleSubmit}>
+      <form id={FORM_ID} className="habit-editor" onSubmit={handleSubmit}>
         {!isJournal && (
           <input
             ref={nameRef}
@@ -225,9 +227,6 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
             ))}
           </fieldset>
         )}
-        <button type="submit" className="habit-editor__submit">
-          {mode === 'create' ? 'Anlegen' : 'Speichern'}
-        </button>
       </form>
     </Sheet>
   );

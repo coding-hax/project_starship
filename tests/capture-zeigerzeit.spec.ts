@@ -41,13 +41,13 @@ function taskItems(page: Page) {
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 async function submitQuickAdd(page: Page, text: string) {
   await page.getByRole('button', { name: CAPTURE_LABEL }).click();
   await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 async function enableDirectCapture(page: Page) {

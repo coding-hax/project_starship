@@ -82,8 +82,6 @@
 .event-editor__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-4);
 }
 
 .event-editor__delete {
@@ -96,22 +94,4 @@
   font: inherit;
   font-weight: var(--weight-emphasis);
   cursor: pointer;
-  margin-inline-end: auto;
-}
-
-.event-editor__submit {
-  min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-6);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  font: inherit;
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.event-editor__submit:active {
-  opacity: 0.85;
 }

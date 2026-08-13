@@ -43,7 +43,7 @@ function taskItems(page: Page) {
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
