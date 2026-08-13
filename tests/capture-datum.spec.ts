@@ -96,13 +96,15 @@ test('AK1: Monatsname löst auf, ein kalendarisch ungültiges Datum wird verworf
   await submitUebersichtCapture(page, 'am 4. August Zahnarzt');
 
   await page.waitForURL('**/aufgaben');
-  await selectView(page, 'Alle');
   const confirm = confirmDialog(page);
   await expect(confirm).toBeVisible();
   await expect(confirm.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
   await expect(confirm.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
   await confirm.getByRole('button', { name: 'Anlegen' }).click();
   await expect(confirm).toBeHidden();
+  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
+  // only select "Alle" once the dialog is gone (issue #705).
+  await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toBeVisible();
 
   // "31.6." existiert nicht — der Kandidat wird verworfen (kein Rollover auf den 1.
@@ -144,7 +146,6 @@ test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => 
   await submitUebersichtCapture(page, 'in einer Woche nachfassen');
 
   await page.waitForURL('**/aufgaben');
-  await selectView(page, 'Alle');
   dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
@@ -152,6 +153,10 @@ test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => 
   );
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(in1Week));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
+  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
+  // only select "Alle" once the dialog is gone (issue #705).
+  await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'nachfassen' })).toBeVisible();
 });
 
@@ -178,12 +183,15 @@ test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentags
   await submitUebersichtCapture(page, 'nächsten Dienstag Zahnarzt');
 
   await page.waitForURL('**/aufgaben');
-  await selectView(page, 'Alle');
   dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(naechstenDienstag));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
+  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
+  // only select "Alle" once the dialog is gone (issue #705).
+  await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toBeVisible();
 });
 

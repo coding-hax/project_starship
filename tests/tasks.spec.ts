@@ -1203,6 +1203,9 @@ test('die Position unten bleibt nach einem Reload erhalten (issue #88 AC1)', asy
   await seedTask(page, { title: 'Neuer', createdAt: '2026-07-05T00:00:00.000Z' });
 
   await page.reload();
+  // The reload above resets the (unpersisted, issue #705) view back to its
+  // "Woche" default — these undated tasks only show in "Alle".
+  await selectView(page, 'Alle');
 
   const items = taskItems(page);
   await expect(items).toHaveCount(2);
@@ -1239,6 +1242,9 @@ test('offline angelegt landet unten, bleibt dort nach dem Sync (issue #88 AC1)',
   expect(row.rowCount).toBe(1);
 
   await page.reload();
+  // The reload above resets the (unpersisted, issue #705) view back to its
+  // "Woche" default — these undated tasks only show in "Alle".
+  await selectView(page, 'Alle');
   const itemsAfterSync = taskItems(page);
   await expect(itemsAfterSync).toHaveCount(2);
   await expect(itemsAfterSync.nth(0)).toContainText('Bestand');
@@ -1258,6 +1264,9 @@ test('Scroll-Anker: bei wenig Inhalt bleibt die Liste am natürlichen Seitenanfa
   await seedTask(page, { title: 'Offen', createdAt: '2026-07-02T00:00:00.000Z' });
 
   await page.reload();
+  // The reload above resets the (unpersisted, issue #705) view back to its
+  // "Woche" default — the #88 scroll anchor under test here only runs in "Alle".
+  await selectView(page, 'Alle');
   await expect(taskItems(page)).toHaveCount(2);
 
   // Too little content to overflow the viewport — nothing to scroll to, so the
@@ -1290,8 +1299,10 @@ test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo 
   });
 
   // The scroll anchor runs once on mount — a fresh navigation, not the live
-  // updates from seeding above.
+  // updates from seeding above. The reload also resets the (unpersisted,
+  // issue #705) view back to "Woche" — re-select "Alle" so the anchor runs.
   await page.reload();
+  await selectView(page, 'Alle');
   await expect(taskItems(page)).toHaveCount(22);
 
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
