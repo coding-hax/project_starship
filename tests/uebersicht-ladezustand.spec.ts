@@ -4,10 +4,17 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
 /**
  * Der Ladezustand der Übersicht (issue #642).
  *
- * Sechs Blöcke rendern `null`, solange ihre Live-Query läuft. Einzeln ist das die
- * dokumentierte Anti-Shift-Maßnahme, zusammen auf einem Screen klappt jeder Block
- * bei seinem eigenen Tick auf und schiebt alles darunter nach unten —
- * Smooth-Regel 3, verschoben auf die erste Sekunde nach dem Öffnen.
+ * Drei Sektionen (Termine, Aufgaben, Routinen) rendern `null`, solange ihre
+ * Live-Query läuft. Einzeln ist das die dokumentierte Anti-Shift-Maßnahme,
+ * zusammen auf einem Screen klappt jeder Block bei seinem eigenen Tick auf und
+ * schiebt alles darunter nach unten — Smooth-Regel 3, verschoben auf die erste
+ * Sekunde nach dem Öffnen.
+ *
+ * Der Fortschrittsring und der Wochenrückblick sind seit issue #652 nicht mehr
+ * Teil dieser Gruppe: der Ring sitzt jetzt in der immer sichtbaren Titelzeile
+ * (fest bemessener Slot, siehe daily-progress-ring.tsx — kein Beitrittsgrund
+ * zum gemeinsamen Enthüllungspunkt mehr), der Wochenrückblick zog auf
+ * /routinen um.
  *
  * Das Ladefenster ist ein Tick, kein Netz-Roundtrip (`aktivitaeten.spec.ts` hält
  * das schon fest: „nothing to gate it open long enough to observe on a real
@@ -22,12 +29,10 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
 const NOW = '2026-07-15T12:00:00.000Z';
 const TODAY = '2026-07-15';
 
-/** Ein Block je Zeile der Übersicht — der Selektor trifft geladenen wie leeren Zustand. */
+/** Ein Block je Sektion der Übersicht — der Selektor trifft geladenen wie leeren Zustand. */
 const BLOCKS = {
-  ring: '.daily-progress-ring',
   termine: '.events-overview__next, .events-overview__empty',
   aufgaben: '.task-list, .task-list__empty',
-  wochenrueckblick: '.weekly-recap-card',
   routinen: '.habit-today, .habit-today__empty',
 } as const;
 
@@ -66,16 +71,33 @@ async function installProbes(page: Page, blocks: Record<string, string>): Promis
       return `${node.tagName.toLowerCase()}${className ? `.${className.trim().split(/\s+/).join('.')}` : ''}`;
     };
 
+    /**
+     * Die Layout Instability API liefert je Quelle das Rechteck vor und nach dem
+     * Sprung. Ohne sie sagt ein roter Lauf nur, WELCHES Element gesprungen ist —
+     * mit ihnen auch, ob es vertikal, horizontal, breiter oder höher wurde. Das
+     * entscheidet zwischen Ursachen, die sonst nur zu raten sind (issue #652:
+     * vier Runden gingen auf Verdacht ins Leere, weil diese Zahl fehlte).
+     */
+    const rect = (r?: DOMRectReadOnly): string =>
+      r ? `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}×${Math.round(r.height)}` : '?';
+
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as (PerformanceEntry & {
         value: number;
         hadRecentInput: boolean;
-        sources?: Array<{ node: Node | null }>;
+        sources?: Array<{
+          node: Node | null;
+          previousRect?: DOMRectReadOnly;
+          currentRect?: DOMRectReadOnly;
+        }>;
       })[]) {
         if (entry.hadRecentInput) continue;
         window.__shifts.push({
           value: entry.value,
-          sources: (entry.sources ?? []).map((source) => describe(source.node)),
+          sources: (entry.sources ?? []).map(
+            (source) =>
+              `${describe(source.node)} [${rect(source.previousRect)} → ${rect(source.currentRect)}]`,
+          ),
         });
       }
     }).observe({ type: 'layout-shift', buffered: true });
@@ -188,14 +210,10 @@ test('auch die leere Übersicht öffnet ohne Layout-Shift (AC1)', async ({ page 
 test('alle Blöcke werden im selben Frame sichtbar, nicht nacheinander (AC2)', async ({ page }) => {
   await page.goto('/uebersicht');
   await seedFullOverview(page);
-  // Ein Wochenrückblick braucht Historie in der abgeschlossenen Vorwoche, sonst
-  // rendert die Karte auch geladen nichts und fiele aus der Messung.
-  await seed(page, 'habit_logs', { habitId: await firstHabitId(page), logDate: '2026-07-08', done: true });
 
   await installProbes(page, BLOCKS);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toBeVisible();
   await expect(page.locator('.habit-today')).toBeVisible();
   await expect(page.locator('.events-overview__next')).toBeVisible();
 
@@ -204,7 +222,7 @@ test('alle Blöcke werden im selben Frame sichtbar, nicht nacheinander (AC2)', a
 
   // Jeder gemessene Block muss aufgetaucht sein — sonst misst der Test nichts.
   expect(Object.keys(reveal.firstVisibleFrame).sort()).toEqual(
-    ['aufgaben', 'routinen', 'ring', 'termine', 'wochenrueckblick'].sort(),
+    ['aufgaben', 'routinen', 'termine'].sort(),
   );
   expect(new Set(frames).size).toBe(1);
 });
@@ -224,10 +242,6 @@ test('auf der leeren Übersicht erscheint kein Block, der danach wieder verschwi
 
   const reveal = await page.evaluate(() => window.__reveal);
   expect(reveal.vanished).toEqual([]);
-  // Ring und Wochenrückblick haben ohne Daten nichts zu zeigen und dürfen auch
-  // nie kurz Platz belegt haben.
-  expect(reveal.firstVisibleFrame.ring).toBeUndefined();
-  expect(reveal.firstVisibleFrame.wochenrueckblick).toBeUndefined();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -239,7 +253,7 @@ test('nach dem Laden steht der gewohnte Inhalt und aria-busy ist weg (AC4)', asy
   await seedFullOverview(page);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toHaveText('heute 0 von 2');
+  await expect(page.locator('.daily-progress-ring')).toHaveText('0/2');
   await expect(page.locator('.events-overview__next-title')).toHaveText('Zahnarzt');
   await expect(page.getByText('Heute fällig')).toBeVisible();
   await expect(page.locator('.habit-today__item')).toHaveCount(1);
@@ -290,17 +304,7 @@ test('im Dark Mode wird derselbe Inhalt enthüllt (AC7)', async ({ page }) => {
   await seedFullOverview(page);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toHaveText('heute 0 von 2');
+  await expect(page.locator('.daily-progress-ring')).toHaveText('0/2');
   await expect(page.locator('.habit-today__item')).toHaveCount(1);
   await expect(page.locator('.overview-ready')).toBeVisible();
 });
-
-/** Die id der einzigen gesäten Routine — für Logs, die auf sie zeigen müssen. */
-async function firstHabitId(page: Page): Promise<string> {
-  return page.evaluate(async () => {
-    const records = await window.__starship.debugRecords();
-    const habit = records.find((record) => record.table === 'habits');
-    if (!habit) throw new Error('keine Routine gesät');
-    return habit.id;
-  });
-}

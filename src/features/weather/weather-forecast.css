@@ -7,7 +7,8 @@
    * include it, so the caption's appearance/disappearance can't shift anything
    * that comes after this section (issue #155). */
   position: relative;
-  margin-bottom: var(--space-6);
+  /* Block-to-block spacing now comes from `.overview-block` (issue #652) — its
+   * own `margin-bottom` would double up with the wrapper's. */
 }
 
 .weather-forecast__location {
@@ -23,6 +24,10 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Anchors the `empty-error` overlay (.weather-forecast__empty) — it needs the
+   * grid's own box, not the whole section, so it doesn't cover the location line
+   * above it. */
+  position: relative;
 }
 
 /* Carries its own background too (issue #139 AC10 reads it straight off this
@@ -62,6 +67,12 @@
 
 .weather-forecast__day--skeleton {
   animation: weather-forecast-pulse 1.4s ease-in-out infinite;
+}
+
+/* Stays in the DOM at its full size instead of being removed — that's what lets
+ * .weather-forecast__empty inherit its height instead of guessing one. */
+.weather-forecast__day--error {
+  visibility: hidden;
 }
 
 /* The skeleton's own tone has to go on the same element that carries the loaded
@@ -106,9 +117,28 @@
   }
 }
 
+/* Centered so a windstill day (no icon, the common case) keeps its weekday label
+ * dead-center in the column, exactly as before this row existed (issue #695 AC8).
+ * A windy day's icon pulls the label ~8px left of that — the accepted price, see
+ * the ticket, rather than reserving icon space on every column. */
+.weather-forecast__weekday-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
 .weather-forecast__weekday {
   font-size: var(--text-meta);
   color: var(--text-muted);
+}
+
+/* `--text`, not `--text-muted`: the mark has to stand out against the already
+ * muted weekday label. Not `--warning`/`--accent` either — a windy day is
+ * information, not a warning or a task (issue #695). */
+.weather-forecast__wind {
+  flex-shrink: 0;
+  color: var(--text);
 }
 
 .weather-forecast__icon {
@@ -149,15 +179,22 @@
 }
 
 .weather-forecast__empty {
+  /* Overlays the (invisible) placeholder grid instead of replacing it, so this
+   * state inherits its real height for free — no pixel value to keep in sync by
+   * hand (issue #652 AC1: a hand-picked 88px here had silently drifted out of
+   * sync with the grid's actual height and shifted every block below it once
+   * the failure landed after first paint). */
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
-  /* Same footprint as the day grid + caption, so this state doesn't shift layout either. */
-  min-height: 88px;
+  justify-content: center;
   margin: 0;
-  padding: var(--space-2) var(--space-4);
+  padding: 0 var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   color: var(--text-muted);
   font-size: var(--text-secondary);
+  text-align: center;
 }

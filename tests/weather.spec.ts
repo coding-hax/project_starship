@@ -29,7 +29,20 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
-const DAY_SET_A = {
+interface DaySet {
+  dates: string[];
+  weekdays: string[];
+  codes: number[];
+  categories: string[];
+  tempsMax: number[];
+  tempsMin: number[];
+  /** Defaults to 12 km/h for every day — under both isWindy thresholds (issue #695). */
+  windSpeedsMax?: number[];
+  /** Defaults to 20 km/h for every day — same reasoning as `windSpeedsMax`. */
+  windGustsMax?: number[];
+}
+
+const DAY_SET_A: DaySet = {
   dates: ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'],
   weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
   codes: [0, 2, 3, 45, 63, 73, 96],
@@ -38,7 +51,7 @@ const DAY_SET_A = {
   tempsMin: [14, 12, 9, 5, 16, -2, 21],
 };
 
-const DAY_SET_B = {
+const DAY_SET_B: DaySet = {
   ...DAY_SET_A,
   tempsMax: [10, 10, 10, 10, 10, 10, 10],
   tempsMin: [1, 1, 1, 1, 1, 1, 1],
@@ -47,7 +60,7 @@ const DAY_SET_B = {
 // issue #156: parseForecast also reads `hourly` and a few more `daily` columns
 // (sunrise/sunset/wind) — present here so the fixture matches the real response
 // shape, even though this suite's own assertions stay on the 7-day strip.
-function hourlyBlock(set: typeof DAY_SET_A) {
+function hourlyBlock(set: DaySet) {
   const time: string[] = [];
   const temperature_2m: number[] = [];
   const precipitation_probability: number[] = [];
@@ -63,7 +76,7 @@ function hourlyBlock(set: typeof DAY_SET_A) {
   return { time, temperature_2m, precipitation_probability, precipitation };
 }
 
-function forecastResponseBody(set: typeof DAY_SET_A) {
+function forecastResponseBody(set: DaySet) {
   return {
     daily: {
       time: set.dates,
@@ -73,15 +86,15 @@ function forecastResponseBody(set: typeof DAY_SET_A) {
       precipitation_probability_max: set.dates.map(() => 0),
       sunrise: set.dates.map((date) => `${date}T05:53`),
       sunset: set.dates.map((date) => `${date}T21:12`),
-      wind_speed_10m_max: set.dates.map(() => 12),
-      wind_gusts_10m_max: set.dates.map(() => 20),
+      wind_speed_10m_max: set.windSpeedsMax ?? set.dates.map(() => 12),
+      wind_gusts_10m_max: set.windGustsMax ?? set.dates.map(() => 20),
     },
     hourly: hourlyBlock(set),
   };
 }
 
 /** Fulfils every Open-Meteo request with `set`, counting how often it was actually called. */
-async function mockForecast(page: Page, set: typeof DAY_SET_A): Promise<() => number> {
+async function mockForecast(page: Page, set: DaySet): Promise<() => number> {
   let calls = 0;
   await page.route(OPEN_METEO_PATTERN, (route: Route) => {
     calls += 1;
@@ -473,6 +486,30 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
   expect(loadingHeight).toBe(loadedHeight);
 });
 
+test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/ready (issue #652 AC1)', async ({
+  page,
+}) => {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(OPEN_METEO_PATTERN, async (route) => {
+    await gate;
+    await route.abort('failed');
+  });
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
+  const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+
+  release();
+  await expect(page.getByText('Vorhersage konnte nicht geladen werden.')).toBeVisible();
+  const errorHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+
+  expect(errorHeight).toBe(loadingHeight);
+});
+
 /* -------------------------------------------------------------------------- */
 /* AK: Das Auftauchen der Stand-Zeile verschiebt nichts darunter (issue #155)  */
 /* -------------------------------------------------------------------------- */
@@ -822,4 +859,171 @@ test('beide Schneeflocken sind mittig, keine Flocke steht mehr schief (issue #66
   const center2 = await flakeCenter('weather-icon__flake--2');
   expect(center2.x).toBeCloseTo(15, 1);
   expect(center2.y).toBeCloseTo(19, 1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Windmarker im 7-Tage-Streifen (issue #695)                             */
+/* -------------------------------------------------------------------------- */
+
+function windMark(page: Page) {
+  return page.locator('.weather-forecast').getByRole('img', { name: 'windig' });
+}
+
+test('ein Tag mit Böen 60 km/h trägt ein Windzeichen, die anderen sechs nicht (issue #695 AC5)', async ({
+  page,
+}) => {
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: [60, 20, 20, 20, 20, 20, 20] };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  await expect(days.nth(0).getByRole('img', { name: 'windig' })).toBeVisible();
+  for (let i = 1; i < 7; i += 1) {
+    await expect(days.nth(i).getByRole('img', { name: 'windig' })).toHaveCount(0);
+  }
+});
+
+test('ein Tag mit Mittelwind 32 km/h und Böen 40 km/h trägt ebenfalls ein Windzeichen (issue #695 AC6)', async ({
+  page,
+}) => {
+  const windySet: DaySet = {
+    ...DAY_SET_A,
+    windSpeedsMax: [12, 32, 12, 12, 12, 12, 12],
+    windGustsMax: [20, 40, 20, 20, 20, 20, 20],
+  };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+  await expect(days.nth(1).getByRole('img', { name: 'windig' })).toBeVisible();
+});
+
+test('ein Streifen ganz ohne windige Tage zeigt kein einziges Windzeichen (issue #695 AC7)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  await expect(windMark(page)).toHaveCount(0);
+});
+
+test('in einer windstillen Spalte sitzt der Wochentag exakt mittig in seiner Spalte (issue #695 AC8)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  const monday = weatherDays(page).nth(0);
+  const weekdayBox = await monday.locator('.weather-forecast__weekday').boundingBox();
+  const columnBox = await monday.boundingBox();
+  expect(weekdayBox).toBeTruthy();
+  expect(columnBox).toBeTruthy();
+
+  const weekdayCenter = weekdayBox!.x + weekdayBox!.width / 2;
+  const columnCenter = columnBox!.x + columnBox!.width / 2;
+  expect(Math.abs(weekdayCenter - columnCenter)).toBeLessThanOrEqual(1);
+});
+
+test('die Höhe des Streifens ändert sich nicht, ob null oder zwei Tage windig sind (issue #695 AC9)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+  const heightWithoutWind = await page
+    .locator('.weather-forecast__days')
+    .evaluate((el) => el.getBoundingClientRect().height);
+
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: [60, 20, 20, 20, 60, 20, 20] };
+  await page.unroute(OPEN_METEO_PATTERN);
+  await mockForecast(page, windySet);
+  await skewClock(page, '2026-07-20T13:00:00.000Z'); // past the 3h window, forces a refetch
+  await page.reload();
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(2);
+
+  const heightWithWind = await page
+    .locator('.weather-forecast__days')
+    .evaluate((el) => el.getBoundingClientRect().height);
+
+  expect(heightWithWind).toBeCloseTo(heightWithoutWind, 1);
+});
+
+test('bei 375 px bricht die Wochentagszeile in keiner Spalte um und läuft nicht über die Kartenbreite hinaus (issue #695 AC10)', async ({
+  page,
+}) => {
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: DAY_SET_A.dates.map(() => 60) };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(7);
+
+  for (let i = 0; i < 7; i += 1) {
+    const linkBox = await days.nth(i).locator('.weather-forecast__day-link').boundingBox();
+    const rowBox = await days.nth(i).locator('.weather-forecast__weekday-row').boundingBox();
+    expect(linkBox).toBeTruthy();
+    expect(rowBox).toBeTruthy();
+
+    // Wrapped onto two lines would roughly double the row's height (14.4px text
+    // line height, per the ticket) — well clear of this margin.
+    expect(rowBox!.height).toBeLessThan(20);
+    // Stays inside the card, doesn't spill past its edges.
+    expect(rowBox!.x).toBeGreaterThanOrEqual(linkBox!.x - 0.5);
+    expect(rowBox!.x + rowBox!.width).toBeLessThanOrEqual(linkBox!.x + linkBox!.width + 0.5);
+  }
+});
+
+test('im Dark Mode ist das Windzeichen sichtbar und übernimmt --text (issue #695 AC11)', async ({
+  page,
+}) => {
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: [60, 20, 20, 20, 20, 20, 20] };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.addInitScript(() => {
+    document.documentElement.setAttribute('data-theme', 'dunkel');
+  });
+  await page.goto('/uebersicht');
+
+  const wind = weatherDays(page).nth(0).locator('.weather-forecast__wind');
+  await expect(wind).toBeVisible();
+
+  const windColor = await wind.evaluate((el) => getComputedStyle(el).color);
+  expect(windColor).toBe(await resolveColorToken(page, '--text'));
+});
+
+test('offline bleibt der Windmarker aus dem Cache erhalten (issue #695, Offline-Pfad — dieses Ticket schreibt nichts, es liest nur den Wetter-Cache)', async ({
+  page,
+}) => {
+  const windySet: DaySet = { ...DAY_SET_A, windGustsMax: [60, 20, 20, 20, 20, 20, 20] };
+  await mockForecast(page, windySet);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(1);
+
+  // Same "offline" reproduction as the issue #139 AC2 test above: abort only the
+  // Open-Meteo request, a full context.setOffline(true) would also block the
+  // reload's own document request against the dev server.
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await skewClock(page, NOW);
+  await page.reload();
+
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(windMark(page)).toHaveCount(1);
+  await expect(weatherDays(page).nth(0).getByRole('img', { name: 'windig' })).toBeVisible();
 });

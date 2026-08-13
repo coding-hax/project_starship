@@ -1,0 +1,32 @@
+.overview-block {
+  margin-bottom: var(--space-6);
+}
+
+.overview-block__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.overview-block__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.overview-block__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.overview-block__more {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  text-decoration: none;
+}

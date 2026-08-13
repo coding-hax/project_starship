@@ -49,15 +49,17 @@ test.beforeEach(async ({ page }) => {
   await skewClock(page, NOW);
 });
 
-test('zeigt einen Ring in der Form "heute N von M", sobald etwas fällig ist (issue #428 AC1)', async ({
+test('zeigt einen Ring mit der Zahl "N/M" im Inneren und einem sprechenden aria-label, sobald etwas fällig ist (issue #428 AC1, issue #652 AK3+AK4)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
   await expect(ring(page)).toBeVisible();
-  await expect(ring(page)).toHaveText(/^heute \d+ von \d+$/);
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText(/^\d+\/\d+$/);
+  await expect(ring(page)).toHaveText('0/1');
+  await expect(ring(page)).toHaveAttribute('aria-label', 'heute 0 von 1 erledigt');
+  await expect(ring(page)).toHaveAttribute('role', 'status');
 });
 
 test('zählt fällige Aufgaben (dueTodayOnly-Logik) und fällige Routinen zusammen, erledigt via completedAt/isDoneOnDay (issue #428 AC2)', async ({
@@ -89,7 +91,7 @@ test('zählt fällige Aufgaben (dueTodayOnly-Logik) und fällige Routinen zusamm
   });
 
   // Tasks: 2 due (1 done), Habits: 2 due (1 done) -> 2 von 4.
-  await expect(ring(page)).toHaveText('heute 2 von 4');
+  await expect(ring(page)).toHaveText('2/4');
 });
 
 test('ein abgeschaltetes Modul trägt nichts zur Zählung bei (issue #428 AC3)', async ({ page }) => {
@@ -102,15 +104,15 @@ test('ein abgeschaltetes Modul trägt nichts zur Zählung bei (issue #428 AC3)',
     archivedAt: null,
   });
   await seedHabitLog(page, { habitId, logDate: '2026-07-15', done: true });
-  await expect(ring(page)).toHaveText('heute 1 von 2');
+  await expect(ring(page)).toHaveText('1/2');
 
   await setModulesOff(page, ['aufgaben']);
   await page.reload();
-  await expect(ring(page)).toHaveText('heute 1 von 1');
+  await expect(ring(page)).toHaveText('1/1');
 
   await setModulesOff(page, ['routinen']);
   await page.reload();
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
 });
 
 test('ohne heute Fälliges bleibt der Ring weg — kein "0 von 0" (issue #428 AC4)', async ({
@@ -142,13 +144,13 @@ test('nach einem Reload mit vorhandenen Daten erscheint der Ring direkt mit den 
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
 
   await skewClock(page, NOW);
   await page.reload();
 
   await expect(ring(page)).toBeVisible();
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
   await expect(
     ring(page).locator('[role="progressbar"], .spinner, [class*="skeleton"]'),
   ).toHaveCount(0);
@@ -164,10 +166,10 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(ring(page)).toBeVisible();
-    await expect(ring(page)).toHaveText('heute 0 von 1');
+    await expect(ring(page)).toHaveText('0/1');
   }
 
-  const label = ring(page).locator('.daily-progress-ring__label');
+  const label = ring(page).locator('.daily-progress-ring__count');
   const lightNums = await label.evaluate((el) => getComputedStyle(el).fontVariantNumeric);
   expect(lightNums).toContain('tabular-nums');
   const lightColor = await label.evaluate((el) => getComputedStyle(el).color);
@@ -199,13 +201,13 @@ test('eine wöchentliche Routine, die früher diese Woche abgehakt wurde, fällt
     color: null,
     archivedAt: null,
   });
-  await expect(ring(page)).toHaveText('heute 0 von 2');
+  await expect(ring(page)).toHaveText('0/2');
 
   // Monday of the current Mon–Sun week — earlier than today (Wednesday).
   await seedHabitLog(page, { habitId, logDate: '2026-07-13', done: true });
   await page.reload();
 
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
 });
 
 test('eine wöchentliche Routine, die heute abgehakt wurde, bleibt im Ring (kein Rückwärtssprung) (issue #503 AC2)', async ({
@@ -218,12 +220,12 @@ test('eine wöchentliche Routine, die heute abgehakt wurde, bleibt im Ring (kein
     color: null,
     archivedAt: null,
   });
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
 
   await seedHabitLog(page, { habitId, logDate: '2026-07-15', done: true });
   await page.reload();
 
-  await expect(ring(page)).toHaveText('heute 1 von 1');
+  await expect(ring(page)).toHaveText('1/1');
 });
 
 test('eine monatliche Routine, die am 3. abgehakt wurde, fällt am 4. aus dem Ring heraus (issue #509 AC4)', async ({
@@ -259,5 +261,5 @@ test('die monatliche Routine ist im neuen Monat wieder offen (issue #509 AC5)', 
   await skewClock(page, '2026-08-01T09:00:00.000Z');
   await page.reload();
 
-  await expect(ring(page)).toHaveText('heute 0 von 1');
+  await expect(ring(page)).toHaveText('0/1');
 });

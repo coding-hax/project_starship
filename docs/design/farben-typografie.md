@@ -12,13 +12,14 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 
 ### Bereichsfarben (tragen die Orientierung)
 
-| Bereich     | Farbe           | Rolle                    |
-| ----------- | --------------- | ------------------------ |
-| Aufgaben    | Koralle / Mango | Primärfarbe der App      |
-| Termine     | Teal            | ruhig, strukturiert      |
-| Journal     | Warmes Violett  | persönlich, introspektiv |
-| Routinen    | Sattes Grün     | Wachstum, Streaks        |
+| Bereich     | Farbe           | Rolle                             |
+| ----------- | --------------- | --------------------------------- |
+| Aufgaben    | Koralle / Mango | Primärfarbe der App               |
+| Termine     | Teal            | ruhig, strukturiert               |
+| Journal     | Warmes Violett  | persönlich, introspektiv          |
+| Routinen    | Sattes Grün     | Wachstum, Streaks                 |
 | Aktivitäten | Blau            | Garmin, Strecke/Puls (issue #180) |
+| Wetter      | Teal-Cyan       | Vorhersage (issue #652)           |
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.
 
@@ -41,7 +42,15 @@ fünf neue `--swatch-*`-Tokens, die es sonst nirgends in der App gibt:
 | `--swatch-magenta` | Magenta | 335 |
 
 Die fünf Farbtöne füllen die Lücken zwischen den Bereichsfarben (Hue-Abstände
-30–47°, keine zwei Nachbarn verwechselbar). `--swatch-*` unterscheidet sich von
+30–47°, keine zwei Nachbarn verwechselbar) — bezogen auf genau diese zehn
+Optionen des Farbwählers. `--area-weather` (issue #652) ist kein Teil dieser
+zehn, teilt sich den Farbkreis aber mit ihnen: die naheliegende Lücke zwischen
+Termine (195) und Aktivitäten (260) ist von `--swatch-sky` (228) schon fast
+mittig besetzt, jeder Hue dort bliebe unter 20° Abstand. `--area-weather`
+sitzt deshalb stattdessen in der größten freien Lücke, 148→195
+(Gewohnheiten → Termine), bei 171 — ~23° zu beiden Seiten, knapper als die
+30–47°-Regel der zehn Wähler-Optionen, aber die beste verfügbare Trennung.
+`--swatch-*` unterscheidet sich von
 `--area-*` (eine Farbe pro Bereich, trägt Orientierung) und von `--cat-*`
 (Akzente ausschließlich innerhalb des Bereichs Termine): eine `--swatch-*`-Farbe
 bedeutet nichts von sich aus — sie ist eine von zehn gleichwertigen Optionen,
