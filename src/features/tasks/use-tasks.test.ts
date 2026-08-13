@@ -2,10 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   belongsOnUebersicht,
   compareTasks,
+  compareWithinDay,
+  completedByDay,
+  formatDayMarker,
+  groupByDueDay,
   groupTasks,
+  localDayKey,
   resolveNestTarget,
   toTaskView,
   visibleTaskNodes,
+  weekWindowNodes,
+  type TaskNode,
   type TaskView,
 } from './use-tasks';
 
@@ -322,5 +329,293 @@ describe('resolveNestTarget', () => {
 
   it('un-nests when the drop target no longer exists', () => {
     expect(resolveNestTarget('dragged', 'gone', [])).toBeNull();
+  });
+});
+
+/** Local-time construction, never a re-parsed 'Z' instant — the same value must
+ *  read back as the same calendar day and clock time regardless of which
+ *  timezone runs the suite. */
+function localIso(year: number, month: number, day: number, hours = 0, minutes = 0): string {
+  return new Date(year, month - 1, day, hours, minutes).toISOString();
+}
+
+describe('localDayKey', () => {
+  it('formats a local calendar day as YYYY-MM-DD', () => {
+    expect(localDayKey(new Date(2026, 6, 8, 23, 30))).toBe('2026-07-08');
+  });
+
+  it('pads single-digit months and days', () => {
+    expect(localDayKey(new Date(2026, 0, 5, 0, 0))).toBe('2026-01-05');
+  });
+});
+
+describe('compareWithinDay', () => {
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  it('orders a normal day by due time ascending', () => {
+    const evening = task({ id: 'evening', dueAt: localIso(2026, 7, 18, 18, 0) });
+    const morning = task({ id: 'morning', dueAt: localIso(2026, 7, 18, 8, 0) });
+
+    expect([evening, morning].sort((a, b) => compareWithinDay(a, b))).toEqual([morning, evening]);
+  });
+
+  it('breaks a same-time tie by priority descending', () => {
+    const low = task({ id: 'low', dueAt: localIso(2026, 7, 18, 9, 0), priority: 0 });
+    const urgent = task({ id: 'urgent', dueAt: localIso(2026, 7, 18, 9, 0), priority: 2 });
+
+    expect([low, urgent].sort((a, b) => compareWithinDay(a, b))).toEqual([urgent, low]);
+  });
+
+  it('breaks a same-time-and-priority tie by createdAt ascending', () => {
+    const later = task({
+      id: 'later',
+      dueAt: localIso(2026, 7, 18, 9, 0),
+      createdAt: '2026-07-02T00:00:00.000Z',
+    });
+    const sooner = task({
+      id: 'sooner',
+      dueAt: localIso(2026, 7, 18, 9, 0),
+      createdAt: '2026-07-01T00:00:00.000Z',
+    });
+
+    expect([later, sooner].sort((a, b) => compareWithinDay(a, b))).toEqual([sooner, later]);
+  });
+
+  it('orders the Überfällig bucket by the full due date ascending, not time-of-day', () => {
+    // Due later in the day but on an earlier calendar date still sorts first —
+    // the overdue bucket spans several days, so time-of-day alone would be wrong.
+    const dueEarlierDayLateTime = task({ id: 'a', dueAt: localIso(2026, 7, 10, 20, 0) });
+    const dueLaterDayEarlyTime = task({ id: 'b', dueAt: localIso(2026, 7, 12, 6, 0) });
+
+    expect(
+      [dueLaterDayEarlyTime, dueEarlierDayLateTime].sort((a, b) =>
+        compareWithinDay(a, b, { overdue: true }),
+      ),
+    ).toEqual([dueEarlierDayLateTime, dueLaterDayEarlyTime]);
+  });
+});
+
+describe('weekWindowNodes', () => {
+  const now = new Date(2026, 6, 18, 12, 0); // Samstag, 18. Juli 2026, local
+
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  const node = (t: TaskView, children: TaskView[] = []): TaskNode => ({
+    task: t,
+    children,
+    done: children.filter((c) => c.completedAt !== null).length,
+    total: children.length,
+  });
+
+  it('keeps an open task overdue by many days', () => {
+    const nodes = [node(task({ id: 'old', dueAt: localIso(2026, 7, 1, 9, 0) }))];
+    expect(weekWindowNodes(nodes, now)).toEqual(nodes);
+  });
+
+  it('keeps a task due on the last day of the window (today + 6)', () => {
+    const nodes = [node(task({ id: 'edge', dueAt: localIso(2026, 7, 24, 23, 59) }))];
+    expect(weekWindowNodes(nodes, now)).toEqual(nodes);
+  });
+
+  it('drops a task due the day after the window closes (today + 7)', () => {
+    const nodes = [node(task({ id: 'too-far', dueAt: localIso(2026, 7, 25, 0, 0) }))];
+    expect(weekWindowNodes(nodes, now)).toEqual([]);
+  });
+
+  it('drops an undated parent, even with a dated child (v1 trade-off)', () => {
+    const child = task({ id: 'child', parentId: 'parent', dueAt: localIso(2026, 7, 19, 9, 0) });
+    const nodes = [node(task({ id: 'parent', dueAt: null }), [child])];
+    expect(weekWindowNodes(nodes, now)).toEqual([]);
+  });
+
+  it('drops a task within the window that was completed on an earlier day', () => {
+    const nodes = [
+      node(
+        task({
+          id: 'stale-done',
+          dueAt: localIso(2026, 7, 19, 9, 0),
+          completedAt: localIso(2026, 7, 17, 9, 0),
+        }),
+      ),
+    ];
+    expect(weekWindowNodes(nodes, now)).toEqual([]);
+  });
+
+  it('keeps an overdue task completed today (AK7, same rule as belongsOnUebersicht)', () => {
+    const nodes = [
+      node(
+        task({
+          id: 'done-today',
+          dueAt: localIso(2026, 7, 10, 9, 0),
+          completedAt: localIso(2026, 7, 18, 8, 0),
+        }),
+      ),
+    ];
+    expect(weekWindowNodes(nodes, now)).toEqual(nodes);
+  });
+});
+
+describe('groupByDueDay', () => {
+  const now = new Date(2026, 6, 18, 12, 0); // Samstag, 18. Juli 2026, local
+
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  const node = (t: TaskView, children: TaskView[] = []): TaskNode => ({
+    task: t,
+    children,
+    done: children.filter((c) => c.completedAt !== null).length,
+    total: children.length,
+  });
+
+  it('puts the Überfällig bucket first, then the remaining days ascending', () => {
+    const nodes = [
+      node(task({ id: 'day20', dueAt: localIso(2026, 7, 20, 9, 0) })),
+      node(task({ id: 'overdue', dueAt: localIso(2026, 7, 10, 9, 0) })),
+      node(task({ id: 'today', dueAt: localIso(2026, 7, 18, 9, 0) })),
+    ];
+
+    expect(groupByDueDay(nodes, now).map((g) => g.dayKey)).toEqual([
+      'overdue',
+      '2026-07-18',
+      '2026-07-20',
+    ]);
+  });
+
+  it('produces no group at all for a day nobody is due on', () => {
+    const nodes = [node(task({ id: 'a', dueAt: localIso(2026, 7, 18, 9, 0) }))];
+    // 19./20./21. etc. never show up — only 18. does.
+    expect(groupByDueDay(nodes, now).map((g) => g.dayKey)).toEqual(['2026-07-18']);
+  });
+
+  it('sorts nodes within a day by compareWithinDay', () => {
+    const nodes = [
+      node(task({ id: 'evening', dueAt: localIso(2026, 7, 18, 18, 0) })),
+      node(task({ id: 'morning', dueAt: localIso(2026, 7, 18, 8, 0) })),
+    ];
+
+    const [group] = groupByDueDay(nodes, now);
+    expect(group.nodes.map((n) => n.task.id)).toEqual(['morning', 'evening']);
+  });
+
+  it("keeps a node's children in their existing createdAt order, untouched by the day sort", () => {
+    const olderChild = task({
+      id: 'older-child',
+      parentId: 'parent',
+      createdAt: '2026-07-01T00:00:00.000Z',
+    });
+    const newerChild = task({
+      id: 'newer-child',
+      parentId: 'parent',
+      createdAt: '2026-07-05T00:00:00.000Z',
+    });
+    const nodes = [
+      node(task({ id: 'parent', dueAt: localIso(2026, 7, 18, 9, 0) }), [olderChild, newerChild]),
+    ];
+
+    const [group] = groupByDueDay(nodes, now);
+    expect(group.nodes[0].children.map((c) => c.id)).toEqual(['older-child', 'newer-child']);
+  });
+});
+
+describe('formatDayMarker', () => {
+  const now = new Date(2026, 6, 18, 12, 0); // Samstag, 18. Juli 2026, local
+
+  it('reads "Überfällig" for the overdue bucket, in every view', () => {
+    expect(formatDayMarker('overdue', now, 'woche')).toBe('Überfällig');
+    expect(formatDayMarker('overdue', now, 'erledigt')).toBe('Überfällig');
+  });
+
+  it('spells today out with the weekday in "woche"', () => {
+    expect(formatDayMarker('2026-07-18', now, 'woche')).toBe('Heute · Samstag, 18. Juli');
+  });
+
+  it('shortens today to just "Heute" in "erledigt"', () => {
+    expect(formatDayMarker('2026-07-18', now, 'erledigt')).toBe('Heute');
+  });
+
+  it('reads "Gestern" for yesterday, only in "erledigt"', () => {
+    expect(formatDayMarker('2026-07-17', now, 'erledigt')).toBe('Gestern');
+    expect(formatDayMarker('2026-07-17', now, 'woche')).toBe('Freitag, 17. Juli');
+  });
+
+  it('falls back to the full weekday label for any other day', () => {
+    expect(formatDayMarker('2026-07-20', now, 'woche')).toBe('Montag, 20. Juli');
+    expect(formatDayMarker('2026-07-10', now, 'erledigt')).toBe('Freitag, 10. Juli');
+  });
+});
+
+describe('completedByDay', () => {
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  it('excludes open tasks', () => {
+    expect(completedByDay([task({ id: 'open' })])).toEqual([]);
+  });
+
+  it('orders days newest-first', () => {
+    const groups = completedByDay([
+      task({ id: 'old', completedAt: localIso(2026, 7, 10, 9, 0) }),
+      task({ id: 'new', completedAt: localIso(2026, 7, 17, 9, 0) }),
+    ]);
+    expect(groups.map((g) => g.dayKey)).toEqual(['2026-07-17', '2026-07-10']);
+  });
+
+  it('orders tasks within a day by completedAt descending', () => {
+    const groups = completedByDay([
+      task({ id: 'first', completedAt: localIso(2026, 7, 18, 8, 0) }),
+      task({ id: 'last', completedAt: localIso(2026, 7, 18, 16, 0) }),
+    ]);
+    expect(groups[0].tasks.map((t) => t.id)).toEqual(['last', 'first']);
+  });
+
+  it('lists a completed child flat, alongside a completed parent, not nested', () => {
+    const parent = task({ id: 'parent', completedAt: localIso(2026, 7, 18, 8, 0) });
+    const child = task({
+      id: 'child',
+      parentId: 'parent',
+      completedAt: localIso(2026, 7, 18, 9, 0),
+    });
+
+    const [group] = completedByDay([parent, child]);
+    expect(group.tasks.map((t) => t.id)).toEqual(['child', 'parent']);
   });
 });

@@ -10,6 +10,36 @@
   color: var(--text-muted);
 }
 
+/* Woche/Alle/Erledigt (issue #705 AK2) — sits between the page heading and the
+   list, so it needs its own bottom space rather than borrowing the list's. */
+.task-list__view-switcher {
+  margin-bottom: var(--space-4);
+}
+
+/* A day heading over a group of rows (issue #705 AK3) — `role="presentation"`
+   in task-list.tsx keeps it out of `listitem` counts, this only has to look
+   like a caption, not a card: versal, muted, no border/background of its own. */
+.task-list__day-marker {
+  padding: var(--space-2) var(--space-4) var(--space-1);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* AK9's "nothing left this week" and AK6's "N undated" lines (issue #705) —
+   both sit *outside* the `<ul>`, so they read as a note about the list, not
+   as one more (unstyled, unchecked) row inside it. */
+.task-list__sparse-note,
+.task-list__undated-note {
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  text-align: center;
+}
+
 /**
  * One task card's outer height, declared where both the cards and the empty state
  * below can read it, so the two cannot drift apart (issue #228). Everything here
