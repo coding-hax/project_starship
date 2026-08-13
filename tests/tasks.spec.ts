@@ -1026,6 +1026,7 @@ test('während des Wischs trägt die Zeile eine Griff-Fläche und federt danach 
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Wird gegriffen';
   await seedTask(page, { title });
   const row = taskRowFor(page, title);
@@ -1060,6 +1061,7 @@ test('während des Wischs trägt die Zeile eine Griff-Fläche und federt danach 
 test('eine angehobene Aufgabe trägt die Griff-Fläche (issue #706 AK8)', async ({ page }) => {
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Sammelstelle' });
   await seedTask(page, { title: 'Angehoben' });
 
@@ -1078,6 +1080,7 @@ test('eine angehobene Aufgabe trägt die Griff-Fläche (issue #706 AK8)', async 
 
 test('die randlose Zeile behält die volle Trefferfläche (issue #706 AK8)', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Volle Breite' });
 
   const list = page.getByRole('list', { name: 'Aufgaben' });
@@ -1105,6 +1108,7 @@ test('unter reduzierter Bewegung erscheint die Griff-Fläche als Zustand ohne An
   await page.evaluate(() => {
     document.documentElement.dataset.reduceMotion = 'true';
   });
+  await selectView(page, 'Alle');
   const title = 'Ohne Animation';
   await seedTask(page, { title });
   const row = taskRowFor(page, title);
@@ -1125,6 +1129,7 @@ test('die Griff-Fläche nutzt im Dark Mode das dunkle --surface (issue #706 AK8,
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   const title = 'Griff im Dunkeln';
   await seedTask(page, { title });
   const row = taskRowFor(page, title);
