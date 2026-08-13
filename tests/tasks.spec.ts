@@ -970,6 +970,179 @@ test('unter reduzierter Bewegung fügen Kante, Haarlinie und Schrumpfen nichts A
   expect(doneFontSize).toBe(await resolveFontSizeToken(page, '--text-secondary'));
 });
 
+// --- Issue #706 (T3 of #699): grip feedback on the flat rows T1 introduced -----
+
+/** Presses and drags the row `dx` px horizontally without releasing, leaving the
+ * gesture mid-swipe so a grip assertion can land while the row is still
+ * displaced. Returns the point the pointer now sits at, for a later `releaseAt`. */
+async function beginSwipe(row: Locator, dx: number): Promise<{ x: number; y: number }> {
+  const box = await row.boundingBox();
+  if (!box) throw new Error('beginSwipe: target has no bounding box');
+  const clientY = box.y + box.height / 2;
+  const startX = box.x + 20;
+  await row.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY,
+    button: 0,
+    bubbles: true,
+  });
+  await row.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX + dx,
+    clientY,
+    bubbles: true,
+  });
+  return { x: startX + dx, y: clientY };
+}
+
+/** Same idea as `resolveColorToken`, for `border-radius` — so the grip-surface
+ * assertion never hardcodes the px literal of `--radius-card`. */
+async function resolveRadiusToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.borderRadius = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const radius = getComputedStyle(probe).borderRadius;
+    probe.remove();
+    return radius;
+  }, token);
+}
+
+/** Same idea, for `box-shadow` — proves the grip surface uses the semantic
+ * `--shadow-raised` token rather than a hardcoded shadow. */
+async function resolveBoxShadow(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.boxShadow = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const shadow = getComputedStyle(probe).boxShadow;
+    probe.remove();
+    return shadow;
+  }, token);
+}
+
+test('während des Wischs trägt die Zeile eine Griff-Fläche und federt danach flach zurück (issue #706 AK8)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Wird gegriffen';
+  await seedTask(page, { title });
+  const row = taskRowFor(page, title);
+
+  // Rest state after T1 (#704): flat — no grip class, no card shadow.
+  await expect(row).not.toHaveClass(/task-list__item--gripped/);
+  await expect(row).toHaveCSS('box-shadow', 'none');
+
+  // Drive the gesture inline (not `swipeRight`) so the assertion lands *mid-swipe*:
+  // +40px is past TAP_TOLERANCE_PX (8) but short of SWIPE_THRESHOLD_PX (80), so the
+  // row is displaced — gripped — without completing the swipe.
+  const releasePoint = await beginSwipe(row, 40);
+
+  // Mid-gesture reads via auto-retrying matchers, never a one-shot
+  // getComputedStyle — React 19 flushes discrete events in a microtask, so an
+  // immediate read would still see the pre-move DOM.
+  await expect(row).toHaveClass(/task-list__item--gripped/);
+  await expect(row).toHaveCSS('background-color', await resolveBackground(page, 'var(--surface)'));
+  await expect(row).toHaveCSS('border-radius', await resolveRadiusToken(page, '--radius-card'));
+  await expect(row).toHaveCSS('box-shadow', await resolveBoxShadow(page, '--shadow-raised'));
+
+  // Release short of the threshold: rebound only — no complete, no delete, no editor.
+  await releaseAt(row, releasePoint);
+
+  await expect(row).not.toHaveClass(/task-list__item--gripped/);
+  await expect(row).toHaveCSS('box-shadow', 'none');
+  await expect(row).toHaveCount(1);
+  await expect(row).not.toHaveClass(/task-list__item--done/);
+  await expect(editorDialog(page)).toHaveCount(0);
+});
+
+test('eine angehobene Aufgabe trägt die Griff-Fläche (issue #706 AK8)', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Sammelstelle' });
+  await seedTask(page, { title: 'Angehoben' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Angehoben' });
+  await liftRow(page, dragged);
+
+  await expect(dragged).toHaveClass(/task-list__item--gripped/);
+  await expect(dragged).toHaveCSS(
+    'background-color',
+    await resolveBackground(page, 'var(--surface)'),
+  );
+
+  // Drop it back onto itself (target resolves to null) — cleanup, no nesting.
+  await releaseAt(dragged, await centerOf(dragged));
+});
+
+test('die randlose Zeile behält die volle Trefferfläche (issue #706 AK8)', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Volle Breite' });
+
+  const list = page.getByRole('list', { name: 'Aufgaben' });
+  const row = taskRowFor(page, 'Volle Breite');
+  const listBox = await list.boundingBox();
+  const rowBox = await row.boundingBox();
+  if (!listBox || !rowBox) throw new Error('missing bounding box');
+
+  // Full-width grab surface — the flat row spans the whole list, no inset card.
+  expect(Math.abs(rowBox.width - listBox.width)).toBeLessThan(1);
+  // …and stays at least one touch target tall, read from the token at runtime.
+  const touchTarget = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--touch-target')),
+  );
+  expect(rowBox.height).toBeGreaterThanOrEqual(touchTarget);
+});
+
+test('unter reduzierter Bewegung erscheint die Griff-Fläche als Zustand ohne Animation (issue #706 AK8, DoD)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  // The in-app toggle (use-appearance.ts) alongside the OS media query — the DoD
+  // asks for both paths, not just whichever the browser emulates.
+  await page.evaluate(() => {
+    document.documentElement.dataset.reduceMotion = 'true';
+  });
+  const title = 'Ohne Animation';
+  await seedTask(page, { title });
+  const row = taskRowFor(page, title);
+
+  const releasePoint = await beginSwipe(row, 40);
+  await expect(row).toHaveClass(/task-list__item--gripped/);
+
+  // The grip face is a pure state change: none of these properties is in the row's
+  // transition list (only `transform` is), so it snaps in rather than animating.
+  expect(await transitionDurationFor(row, 'background-color')).toBe(0);
+  expect(await transitionDurationFor(row, 'box-shadow')).toBe(0);
+  expect(await transitionDurationFor(row, 'border-radius')).toBe(0);
+
+  await releaseAt(row, releasePoint);
+});
+
+test('die Griff-Fläche nutzt im Dark Mode das dunkle --surface (issue #706 AK8, DoD)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Griff im Dunkeln';
+  await seedTask(page, { title });
+  const row = taskRowFor(page, title);
+
+  const lightSurface = await resolveBackground(page, 'var(--surface)');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkSurface = await resolveBackground(page, 'var(--surface)');
+  // The token really changes between themes — otherwise the assertion below would
+  // pass trivially whichever mode were active.
+  expect(darkSurface).not.toBe(lightSurface);
+
+  const releasePoint = await beginSwipe(row, 40);
+  await expect(row).toHaveClass(/task-list__item--gripped/);
+  await expect(row).toHaveCSS('background-color', darkSurface);
+
+  await releaseAt(row, releasePoint);
+});
+
 test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, die Zeile bleibt bestehen', async ({
   page,
   context,

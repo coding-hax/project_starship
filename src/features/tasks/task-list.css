@@ -150,6 +150,24 @@
   z-index: 1;
 }
 
+/* Grip feedback while a row is swiped or lifted (issue #706, AK8). After T1
+   (issue #704) the resting row is flat — a hairline, no surface — so the moving
+   row needs a face of its own to read as a grabbed object. Set here as a pure
+   state, the same way `--nest-target` sets a surface: the `--surface` fill,
+   `--radius-card` corners and the soft raised shadow of the former card.
+   Deliberately *no* `border-*`: a border would overwrite the 3px colour edge
+   from T1 (overdue → `--danger`, priority → `--warning`) and collide with the
+   accent borders of `--nest-target`/`--unnest-preview`; `box-shadow` leaves both
+   untouched. Single-class specificity (like `--dragging`/`--lifted`), no
+   `!important`. None of these properties is in the item's `transition` list
+   (only `transform` is), so the face appears as a jump, not an animation —
+   nothing extra for `prefers-reduced-motion` to zero. */
+.task-list__item--gripped {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-raised);
+}
+
 /* Indented under its parent (issue #89) — width shrinks with the indent so the
    right edge still lines up with every other card. Stays mounted while its
    parent is collapsed (`--collapsed`) so the reveal can animate instead of
