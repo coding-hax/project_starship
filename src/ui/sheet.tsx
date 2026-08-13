@@ -31,7 +31,22 @@ export function Sheet({ open, onClose, label, initialFocusRef, children }: Sheet
     if (!dialog) return;
 
     if (open && !dialog.open) {
-      triggerRef.current = document.activeElement as HTMLElement | null;
+      const trigger = document.activeElement as HTMLElement | null;
+      triggerRef.current = trigger;
+      // `inert` alone doesn't keep a same-named trigger (e.g. a FAB and the
+      // sheet's own submit button, #701) from being a second match for
+      // Playwright's `getByRole` — confirmed against a real run: the trigger
+      // still resolved with `inert=""` present. `aria-hidden` is what
+      // `getByRole`'s accessible-name computation actually excludes on, so
+      // it does the disambiguating; `inert` stays alongside it to also drop
+      // real keyboard/pointer interaction with the trigger while it's
+      // visually behind the modal backdrop. Guard against `body`: that's what
+      // `activeElement` falls back to when nothing has focus, and hiding it
+      // would take the whole document — the dialog included — off the tree.
+      if (trigger && trigger !== document.body) {
+        trigger.inert = true;
+        trigger.setAttribute('aria-hidden', 'true');
+      }
       dialog.showModal();
       initialFocusRef?.current?.focus();
     }
@@ -50,6 +65,8 @@ export function Sheet({ open, onClose, label, initialFocusRef, children }: Sheet
         // Fires for all three close paths (action, ESC, backdrop) — one place
         // returns focus regardless of how the sheet was dismissed.
         if (triggerRef.current && document.contains(triggerRef.current)) {
+          triggerRef.current.inert = false;
+          triggerRef.current.removeAttribute('aria-hidden');
           triggerRef.current.focus();
         }
       }}

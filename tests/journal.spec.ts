@@ -282,8 +282,9 @@ async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise
 }
 
 /** Opens the create sheet (AK2, #701) — the FAB and the sheet's own submit
- * button share the accessible name "Eintragen"; the FAB is inert while the
- * sheet's native `<dialog>` is modal, so `exact: true` alone disambiguates. */
+ * button share the accessible name "Eintragen"; the FAB gets `aria-hidden`
+ * while the sheet's native `<dialog>` is modal (src/ui/sheet.tsx), so
+ * `exact: true` alone disambiguates. */
 async function openSheet(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
@@ -716,8 +717,8 @@ test('AC-D (#423): der Eintragen-Knopf im Sheet erscheint erst mit Mood oder Tex
   await setUpEditor(page);
   await openSheet(page);
 
-  // Die FAB trägt denselben Namen (AK2, #701) und ist im offenen, modalen
-  // Sheet inert — der `exact`-Query trifft hier nur den Sheet-eigenen Knopf.
+  // Die FAB trägt denselben Namen (AK2, #701) und bekommt `aria-hidden`, solange
+  // das Sheet modal ist — der `exact`-Query trifft hier nur den Sheet-eigenen Knopf.
   const submitButton = page.getByRole('button', { name: 'Eintragen', exact: true });
   await expect(submitButton).toHaveCount(0);
 

@@ -11,6 +11,12 @@
   max-width: 480px;
 }
 
+.journal-editor__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
 .journal-editor__day-group {
   display: flex;
   flex-direction: column;

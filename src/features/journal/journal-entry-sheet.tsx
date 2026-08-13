@@ -66,30 +66,38 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
 
   return (
     <Sheet open={open} onClose={onClose} label={JOURNAL_ENTRY_SHEET_LABEL} initialFocusRef={textRef}>
-      <form className="journal-editor__form" onSubmit={handleSubmit}>
-        <MoodScale value={mood} onChange={setMood} />
-        <textarea
-          ref={textRef}
-          className="journal-editor__text"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder="Was ist heute passiert?"
-          aria-label="Journal-Text"
-        />
-        <input
-          type="text"
-          className="journal-editor__tags"
-          value={tagsInput}
-          onChange={(event) => setTagsInput(event.target.value)}
-          placeholder="Tags, mit Komma getrennt"
-          aria-label="Tags"
-        />
-        {(mood !== null || text.trim() !== '') && (
-          <button type="submit" className="journal-editor__submit">
-            {JOURNAL_ENTRY_SHEET_LABEL}
-          </button>
-        )}
-      </form>
+      {/* Gated on `open` — same reason as quick-add.tsx's "Mehr" fields and
+          task-editor.tsx's parent select: a closed `<dialog>` keeps its
+          children in the DOM, and this form's submit button shares its
+          accessible name ("Eintragen") with the FAB that opens it (AK2,
+          #701) — left mounted while closed, that's a second permanent match
+          for every page-wide "Eintragen" query. */}
+      {open && (
+        <form className="journal-editor__form" onSubmit={handleSubmit}>
+          <MoodScale value={mood} onChange={setMood} />
+          <textarea
+            ref={textRef}
+            className="journal-editor__text"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="Was ist heute passiert?"
+            aria-label="Journal-Text"
+          />
+          <input
+            type="text"
+            className="journal-editor__tags"
+            value={tagsInput}
+            onChange={(event) => setTagsInput(event.target.value)}
+            placeholder="Tags, mit Komma getrennt"
+            aria-label="Tags"
+          />
+          {(mood !== null || text.trim() !== '') && (
+            <button type="submit" className="journal-editor__submit">
+              {JOURNAL_ENTRY_SHEET_LABEL}
+            </button>
+          )}
+        </form>
+      )}
     </Sheet>
   );
 }

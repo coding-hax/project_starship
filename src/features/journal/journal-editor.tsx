@@ -151,6 +151,14 @@ export function JournalEditor() {
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
+            {/* Same convention as habit-list.tsx/task-list.tsx's `__empty` text. Without
+                it, a fresh account renders `.journal-editor` with zero children — the
+                form used to live directly in this div and kept it non-collapsed, #701
+                moved it into the sheet, so an explicit empty state is what keeps this
+                div visible (issue #646 AC1's "bleibt sichtbar" offline note). */}
+            {dayGroups !== undefined && dayRowGroups.length === 0 && (
+              <p className="journal-editor__empty">Noch keine Einträge. Leg deinen ersten an.</p>
+            )}
             {dayRowGroups.map((group) => (
               <section key={group.dayKey} className="journal-editor__day-group" data-day={group.dayKey}>
                 <h2 className="journal-editor__day-header">{formatDayHeader(group.dayKey)}</h2>
