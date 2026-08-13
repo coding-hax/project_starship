@@ -134,6 +134,12 @@ export function TaskItem({
   // A parent cannot itself be nested — that would create a second level, which
   // the data model does not support (one level only, issue #89).
   const draggable = !isParent && onDropOnTask !== undefined;
+  // Grip feedback (issue #706, AK8): a flat row (issue #704) reads as a grabbed
+  // object exactly while it is displaced from its resting place — the same
+  // condition under which the inline transform below is applied (`lifted` or a
+  // non-zero `dragX`). A plain tap leaves both false, so the row stays flat even
+  // while the finger rests on it; `--dragging` alone would fire on that tap too.
+  const gripped = lifted || dragX !== 0;
 
   /**
    * `touch-action: pan-y` (task-list.css) is what lets a finger scroll the list
@@ -290,6 +296,7 @@ export function TaskItem({
         ' list-motion-item' +
         (dragging ? ' task-list__item--dragging' : '') +
         (lifted ? ' task-list__item--lifted' : '') +
+        (gripped ? ' task-list__item--gripped' : '') +
         (isChild ? ' task-list__item--child' : '') +
         (isChild && !visible ? ' task-list__item--collapsed' : '') +
         (isNestTarget ? ' task-list__item--nest-target' : '') +
