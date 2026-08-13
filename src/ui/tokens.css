@@ -39,6 +39,11 @@
   /* The default accent is the primary area colour. */
   --accent: var(--area-tasks);
   --accent-fg: oklch(99% 0.005 85);
+  /* Text/icon on a surface filled with --accent or an --area-* colour. Unlike
+     --accent-fg (which flips per theme), this stays dark in both: the area
+     colours are light enough at both themes' lightness that dark text clears
+     4.5:1 while --accent-fg's near-white text did not in light mode (issue #709). */
+  --on-accent: oklch(18% 0.012 60);
 
   /* --- free-choice swatch palette: user-picked colours (issue #658), distinct
      from --area-* (orientation, one per area) and --cat-* (accents *within*

@@ -116,7 +116,7 @@
   border: none;
   border-radius: var(--radius-pill);
   background: var(--accent);
-  color: var(--accent-fg);
+  color: var(--on-accent);
   font: inherit;
   font-weight: var(--weight-emphasis);
   cursor: pointer;
