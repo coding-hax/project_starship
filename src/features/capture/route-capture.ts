@@ -43,7 +43,15 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
   const [draft] = recognizeLocally(text, ctx).items;
 
   if (draft.kind === 'task') {
-    return { action: 'task', draft: { kind: 'task', title: draft.title, dueAt: draft.dueAt } };
+    return {
+      action: 'task',
+      draft: {
+        kind: 'task',
+        title: draft.title,
+        dueAt: draft.dueAt,
+        needsConfirmation: draft.confidence === 'low',
+      },
+    };
   }
 
   if (draft.kind === 'event') {

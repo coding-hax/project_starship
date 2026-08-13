@@ -101,10 +101,19 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 
-  // 9 Uhr liegt bereits hinter der fixen Uhrzeit -> morgen.
+  // Bewusst eine Doppelpunkt-Uhrzeit ("6:00"), keine Stunde <=12 als "H Uhr" (z. B.
+  // "9 Uhr"): die ist seit #688 (R2) tageshälften-mehrdeutig und zur Sprechzeit
+  // aufgelöst, das würde diesen Rollover-Test mit R2 vermischen (eigenständig in
+  // capture-zeigerzeit.spec.ts abgedeckt). Eine Doppelpunkt-Zeit ist laut R2 Regel 3
+  // nie geraten, bleibt also so oder so 6:00 — und diese Suite pinnt keine
+  // Prozess-Zeitzone (weder hier noch in CI, siehe playwright.config.ts), FIXED_NOW
+  // (12:00 UTC) liest sich je nach Host-TZ als 12:00 (CI, i. d. R. UTC) oder 14:00
+  // (lokal, meist Europe/Berlin) — 13 Uhr läge dazwischen und wäre nur in einer der
+  // beiden Lesarten schon vergangen (genau der Grund für den vorigen CI-Fehlschlag).
+  // 6:00 liegt unter beiden Lesarten sicher in der Vergangenheit -> morgen (AC2, #687).
   await page.goto('/uebersicht');
-  const dueTomorrow = expectedDueAt(1, 9, 0);
-  await submitUebersichtCapture(page, 'Zahnarzt um 9 Uhr');
+  const dueTomorrow = expectedDueAt(1, 6, 0);
+  await submitUebersichtCapture(page, 'Zahnarzt um 6:00');
 
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);

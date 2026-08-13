@@ -162,7 +162,10 @@ export function QuickAddTask() {
     // das aus dem Titel geratene (issue #650 AC5) — dann gibt es auch nichts mehr
     // zu bestätigen und keinen Undo-Toast, der ein ungeprüftes Datum absichert.
     if (explicitDueAt === null && parsed.dueAt !== null) {
-      if (!directCapture) {
+      // #688 R2 Regel 5 + AK4: eine geratene Nachtzeit oder eine regionale Kurzform
+      // schlägt die Direkt-Erfassung — das ist die einzige Stelle im Erfassungspfad,
+      // an der eine geratene Uhrzeit sonst ungeprüft in die Datenbank liefe.
+      if (!directCapture || parsed.needsConfirmation) {
         setDraft({ confirm: { title: parsed.title, dueAt: parsed.dueAt }, extras });
         return;
       }

@@ -1,7 +1,8 @@
 /**
  * Bewusst enge, deterministische Grammatik für deutsche Freiform-Eingaben (kein NLU,
  * keine Dependency) — issue #47 Schnitt 1, auf Spans umgebaut in #687 (Teil 1 von 3 des
- * Parser-Umbaus, Epic #617). Verfahren (angelehnt an chrono-node/Duckling):
+ * Parser-Umbaus, Epic #617), um Zeigerzeit + Tageshälften erweitert in #688 (Teil 2 von 3).
+ * Verfahren (angelehnt an chrono-node/Duckling):
  *
  * 1. Kandidaten mit Span `{ start, end }` erzeugen — nie `text.slice()` und auf dem Rest
  *    weiterarbeiten (das koppelte jedes weitere Ergebnis an die Zweig-Reihenfolge).
@@ -20,6 +21,16 @@
  *   "HH:MM", plus ausgeschriebene Zahlen 1-12 ("um zwölf", "drei Uhr"). Ohne Treffer:
  *   Default 09:00 lokal, außer nur eine Uhrzeit ohne Datum wurde erkannt — dann "heute",
  *   wenn die Zeit noch in der Zukunft liegt, sonst "morgen" (AC2).
+ * - Zeigerzeit (R1, #688): "halb H", "viertel nach/vor H", "M vor/nach H",
+ *   "M vor/nach halb H" sowie die regionalen Kurzformen "viertel H"/"dreiviertel H".
+ *   Jede mehrdeutige Stunde (1-12, keine Doppelpunkt-Schreibweise, keine Zahl ab 13)
+ *   bekommt danach eine Tageshälfte (R2): ein Tageszeitwort ("morgens" … "nachts")
+ *   direkt an der Uhrzeit schlägt immer; sonst entscheidet, ob `now` vor oder nach
+ *   12:00 liegt. Maßgeblich für diese Entscheidung ist die *genannte* Stunde, nicht
+ *   die aufgelöste ("viertel vor neun" richtet sich nach der Neun). Eine so geratene
+ *   Zeit zwischen 00:00 und 05:59, oder eine der beiden regionalen Kurzformen, setzt
+ *   `needsConfirmation` — die Bestätigung, die der Aufgaben-Pfad sonst per
+ *   Direkt-Erfassung überspringen würde, bleibt dann trotzdem stehen.
  * - Titel (R3): entfernt werden nur Kommandopräfixe am Satzanfang ("erstelle (einen/eine)
  *   …", "erinnere mich (an)", "neue aufgabe:", "aufgabe:", "bitte", "trag") und "Termin",
  *   wenn unmittelbar ein Datum-/Zeit-Span folgt — sowie Bindewörter ("am", "um", "für",
@@ -34,6 +45,7 @@
 export interface ParsedTaskInput {
   title: string;
   dueAt: string | null;
+  needsConfirmation: boolean;
 }
 
 export interface Span {
@@ -177,10 +189,123 @@ const WORD_NUMBER_GROUP = `(${Object.keys(WORD_NUMBERS).join('|')})`;
 interface TimeValue {
   hours: number;
   minutes: number;
+  /** R2 Regel 5 + AK4: eine in den Nachtfenster (00:00-05:59) geratene Tageshälfte oder
+   * eine regionale Kurzform — der Aufgaben-Pfad zeigt dann das Bestätigungs-Sheet, auch
+   * wenn "ohne Bestätigung direkt anlegen" an ist. */
+  needsConfirmation: boolean;
 }
 
-function timeValueFromDigits(hours: string, minutes: string | undefined): TimeValue {
-  return { hours: Number(hours), minutes: minutes ? Number(minutes) : 0 };
+// Zahlwörter für Minutenangaben in der Zeigerzeit-Grammatik (R1, #688) — bewusst eine
+// eigene, größere Tabelle statt WORD_NUMBERS zu erweitern: dessen Elf-Uhr-Grenze
+// (AC8, #47 — "13-24 ausgeschrieben bliebe sonst beim Default 09:00") gilt weiter
+// unverändert für die einfachen "um H"/"H Uhr"-Formen.
+const ZEIGERZEIT_MINUTE_WORDS: Record<string, number> = {
+  eins: 1,
+  ein: 1,
+  zwei: 2,
+  drei: 3,
+  vier: 4,
+  fünf: 5,
+  sechs: 6,
+  sieben: 7,
+  acht: 8,
+  neun: 9,
+  zehn: 10,
+  elf: 11,
+  zwölf: 12,
+  dreizehn: 13,
+  vierzehn: 14,
+  fünfzehn: 15,
+  sechzehn: 16,
+  siebzehn: 17,
+  achtzehn: 18,
+  neunzehn: 19,
+  zwanzig: 20,
+  einundzwanzig: 21,
+  zweiundzwanzig: 22,
+  dreiundzwanzig: 23,
+  vierundzwanzig: 24,
+  fünfundzwanzig: 25,
+};
+const HOUR_TOKEN = `(\\d{1,2}|${Object.keys(WORD_NUMBERS).join('|')})`;
+const MINUTE_TOKEN = `(\\d{1,2}|${Object.keys(ZEIGERZEIT_MINUTE_WORDS).join('|')})`;
+
+function resolveHourToken(token: string): number {
+  return /^\d+$/.test(token) ? Number(token) : WORD_NUMBERS[token.toLowerCase()];
+}
+
+function resolveMinuteToken(token: string): number {
+  return /^\d+$/.test(token) ? Number(token) : ZEIGERZEIT_MINUTE_WORDS[token.toLowerCase()];
+}
+
+// Tageszeitwörter (R2 Regel 1) — schlagen die Vormittags/Nachmittags-Heuristik immer,
+// unabhängig davon, welche Seite der Uhrzeit sie stehen.
+const DAY_PARTS: Record<string, boolean> = {
+  morgens: false,
+  früh: false,
+  vormittags: false,
+  mittags: true,
+  nachmittags: true,
+  abends: true,
+  nachts: false,
+};
+const DAY_PART_PATTERN = wordPattern(`(${Object.keys(DAY_PARTS).join('|')})`, 'giu');
+
+/** Ein Tageszeitwort unmittelbar vor oder nach der Uhrzeit — Satzzeichen dazwischen
+ * erlaubt, kein weiteres Wort (dieselbe Nachbarschafts-Regel wie bei Bindewörtern). */
+function findAdjacentDayPart(text: string, span: Span): { span: Span; isPM: boolean } | null {
+  for (const match of text.matchAll(DAY_PART_PATTERN)) {
+    const candidate: Span = { start: match.index!, end: match.index! + match[0].length };
+    if (overlaps(candidate, span)) continue;
+    if (isAdjacent(candidate, span, text)) {
+      return { span: candidate, isPM: DAY_PARTS[match[1].toLowerCase()] };
+    }
+  }
+  return null;
+}
+
+interface RawHourMatch extends Span {
+  /** Stunde, wie sie mehrdeutig (1-12) gesprochen wurde — entscheidet über die
+   * Tageshälfte (R2 Regel 4: die *genannte* Stunde, nicht die aufgelöste). `null`
+   * heißt: schon eindeutig (Doppelpunkt-Schreibweise oder Stunde ab 13, R2 Regel 3) —
+   * keine Tageshälften-Auflösung, nie "geraten". */
+  namedHour: number | null;
+  /** Stunde vor Anwendung der Tageshälfte — bei "vor"/"halb"-Formen schon H−1. */
+  pointerHours: number;
+  minutes: number;
+  isRegional: boolean;
+  specificity: number;
+}
+
+/** Löst die Tageshälfte auf (Tageszeitwort schlägt Heuristik, R2) und markiert eine
+ * geratene Nachtzeit bzw. eine regionale Form als bestätigungspflichtig (R2 Regel 5, AK4).
+ * Ein gefundenes Tageszeitwort wird in den Span aufgenommen — es verschwindet damit wie
+ * Bindewörter aus dem Titel, ohne einen eigenen Entfernungsweg zu brauchen. */
+function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate<TimeValue> {
+  if (raw.namedHour === null) {
+    return {
+      start: raw.start,
+      end: raw.end,
+      specificity: raw.specificity,
+      value: { hours: raw.pointerHours, minutes: raw.minutes, needsConfirmation: false },
+    };
+  }
+  const dayPart = findAdjacentDayPart(text, raw);
+  const isPM = dayPart ? dayPart.isPM : now.getHours() * 60 + now.getMinutes() >= 12 * 60;
+  // Zwölf ist der Fixpunkt des 12-Stunden-Zifferblatts, kein normaler 1-11-Wert: "zwölf
+  // Uhr"/"um 12" bleibt immer Mittag (12:00), unabhängig von der Tageshälfte — genau das
+  // vorbestehende Verhalten der einfachen Formen (#47/#618/#619). Nur "H−1"-Formen (halb/
+  // viertel vor H) erreichen hier je 12 — die liegen für H=1..12 immer bei 0-11 und sind
+  // von diesem Sonderfall nicht betroffen.
+  const hours = raw.pointerHours === 12 ? 12 : (raw.pointerHours + (isPM ? 12 : 0)) % 24;
+  const isGuessed = dayPart === null;
+  const needsConfirmation = raw.isRegional || (isGuessed && hours < 6);
+  return {
+    start: dayPart ? Math.min(raw.start, dayPart.span.start) : raw.start,
+    end: dayPart ? Math.max(raw.end, dayPart.span.end) : raw.end,
+    specificity: raw.specificity,
+    value: { hours, minutes: raw.minutes, needsConfirmation },
+  };
 }
 
 // Jede Form separat, statt einer Alternation — überlappende Treffer (z. B. "um 14" *und*
@@ -199,15 +324,107 @@ const WORD_TIME_PATTERNS: { pattern: RegExp; specificity: number }[] = [
   { pattern: new RegExp(`${WORD_BEFORE}${WORD_NUMBER_GROUP}${WORD_AFTER}\\s*uhr${WORD_AFTER}`, 'giu'), specificity: 2 },
 ];
 
-function findTimeCandidate(text: string): Candidate<TimeValue> | null {
-  const candidates: Candidate<TimeValue>[] = [];
+// --- Zeigerzeit (R1, #688) -------------------------------------------------
+
+const HALB_PATTERN = new RegExp(`${WORD_BEFORE}halb\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+const VIERTEL_NACH_PATTERN = new RegExp(`${WORD_BEFORE}viertel\\s+nach\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+const VIERTEL_VOR_PATTERN = new RegExp(`${WORD_BEFORE}viertel\\s+vor\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+// Regional (AK4): "viertel H"/"dreiviertel H" ohne "vor"/"nach" — verwechselbar mit
+// "viertel nach H", deshalb immer bestätigungspflichtig (siehe `resolveHourMatch`).
+const VIERTEL_BARE_PATTERN = new RegExp(`${WORD_BEFORE}viertel\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+const DREIVIERTEL_BARE_PATTERN = new RegExp(`${WORD_BEFORE}dreiviertel\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+const MINUTES_VOR_HALB_PATTERN = new RegExp(
+  `${WORD_BEFORE}${MINUTE_TOKEN}\\s+vor\\s+halb\\s+${HOUR_TOKEN}${WORD_AFTER}`,
+  'giu',
+);
+const MINUTES_NACH_HALB_PATTERN = new RegExp(
+  `${WORD_BEFORE}${MINUTE_TOKEN}\\s+nach\\s+halb\\s+${HOUR_TOKEN}${WORD_AFTER}`,
+  'giu',
+);
+const MINUTES_VOR_PATTERN = new RegExp(`${WORD_BEFORE}${MINUTE_TOKEN}\\s+vor\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+const MINUTES_NACH_PATTERN = new RegExp(`${WORD_BEFORE}${MINUTE_TOKEN}\\s+nach\\s+${HOUR_TOKEN}${WORD_AFTER}`, 'giu');
+
+// Länger als jede Form der einfachen Grammatik (max. Spezifität dort: 3) — bei
+// Gleichstand in der Spanne (kommt praktisch nicht vor) gewinnt trotzdem die
+// kompositionelle Form.
+const ZEIGERZEIT_SPECIFICITY = 4;
+
+function findZeigerzeitRawMatches(text: string): RawHourMatch[] {
+  const raw: RawHourMatch[] = [];
+
+  function push(match: RegExpMatchArray, pointerHours: number, minutes: number, namedHour: number, isRegional = false) {
+    raw.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      namedHour,
+      pointerHours,
+      minutes,
+      isRegional,
+      specificity: ZEIGERZEIT_SPECIFICITY,
+    });
+  }
+
+  for (const match of text.matchAll(HALB_PATTERN)) {
+    const hour = resolveHourToken(match[1]);
+    push(match, hour - 1, 30, hour);
+  }
+  for (const match of text.matchAll(VIERTEL_NACH_PATTERN)) {
+    const hour = resolveHourToken(match[1]);
+    push(match, hour, 15, hour);
+  }
+  for (const match of text.matchAll(VIERTEL_VOR_PATTERN)) {
+    const hour = resolveHourToken(match[1]);
+    push(match, hour - 1, 45, hour);
+  }
+  for (const match of text.matchAll(VIERTEL_BARE_PATTERN)) {
+    const hour = resolveHourToken(match[1]);
+    push(match, hour - 1, 15, hour, true);
+  }
+  for (const match of text.matchAll(DREIVIERTEL_BARE_PATTERN)) {
+    const hour = resolveHourToken(match[1]);
+    push(match, hour - 1, 45, hour, true);
+  }
+  for (const match of text.matchAll(MINUTES_VOR_HALB_PATTERN)) {
+    const minute = resolveMinuteToken(match[1]);
+    const hour = resolveHourToken(match[2]);
+    push(match, hour - 1, 30 - minute, hour);
+  }
+  for (const match of text.matchAll(MINUTES_NACH_HALB_PATTERN)) {
+    const minute = resolveMinuteToken(match[1]);
+    const hour = resolveHourToken(match[2]);
+    push(match, hour - 1, 30 + minute, hour);
+  }
+  for (const match of text.matchAll(MINUTES_VOR_PATTERN)) {
+    const minute = resolveMinuteToken(match[1]);
+    const hour = resolveHourToken(match[2]);
+    push(match, hour - 1, 60 - minute, hour);
+  }
+  for (const match of text.matchAll(MINUTES_NACH_PATTERN)) {
+    const minute = resolveMinuteToken(match[1]);
+    const hour = resolveHourToken(match[2]);
+    push(match, hour, minute, hour);
+  }
+
+  return raw;
+}
+
+function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null {
+  const raw: RawHourMatch[] = [];
 
   for (const { pattern, specificity } of DIGIT_TIME_PATTERNS) {
     for (const match of text.matchAll(pattern)) {
-      candidates.push({
+      const hours = Number(match[1]);
+      const minutes = match[2] ? Number(match[2]) : 0;
+      // R2 Regel 3: eine Doppelpunkt-Uhrzeit ist immer ausgeschrieben (nie geraten,
+      // egal welche Stunde), eine Stunde ab 13 bleibt so oder so unangetastet.
+      const ambiguous = match[2] === undefined && hours <= 12;
+      raw.push({
         start: match.index!,
         end: match.index! + match[0].length,
-        value: timeValueFromDigits(match[1], match[2]),
+        namedHour: ambiguous ? hours : null,
+        pointerHours: hours,
+        minutes,
+        isRegional: false,
         specificity,
       });
     }
@@ -215,15 +432,22 @@ function findTimeCandidate(text: string): Candidate<TimeValue> | null {
 
   for (const { pattern, specificity } of WORD_TIME_PATTERNS) {
     for (const match of text.matchAll(pattern)) {
-      candidates.push({
+      const hours = WORD_NUMBERS[match[1].toLowerCase()];
+      raw.push({
         start: match.index!,
         end: match.index! + match[0].length,
-        value: { hours: WORD_NUMBERS[match[1].toLowerCase()], minutes: 0 },
+        namedHour: hours,
+        pointerHours: hours,
+        minutes: 0,
+        isRegional: false,
         specificity,
       });
     }
   }
 
+  raw.push(...findZeigerzeitRawMatches(text));
+
+  const candidates = raw.map((match) => resolveHourMatch(text, match, now));
   return bestCandidate(candidates);
 }
 
@@ -324,6 +548,7 @@ export interface DateTimeSlot {
 
 export interface TextAnalysis extends DateTimeSlot {
   title: string;
+  needsConfirmation: boolean;
 }
 
 /** Uhrzeit ohne Datum: "heute", wenn sie noch in der Zukunft liegt, sonst "morgen" (AC2). */
@@ -340,7 +565,7 @@ function resolveTimeOnlyDate(time: TimeValue, now: Date): Date {
  */
 export function analyzeText(text: string, now: Date = new Date()): TextAnalysis {
   const dateCandidate = findDateCandidate(text, now);
-  const timeCandidate = findTimeCandidate(text);
+  const timeCandidate = findTimeCandidate(text, now);
 
   let date: Date | null = null;
   const hasExplicitTime = timeCandidate !== null;
@@ -355,9 +580,11 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     date = resolveTimeOnlyDate(timeCandidate.value, now);
   }
 
+  const needsConfirmation = timeCandidate?.value.needsConfirmation ?? false;
+
   const explicitTitle = findExplicitTitle(text);
   if (explicitTitle !== null) {
-    return { date, hasExplicitTime, title: explicitTitle };
+    return { date, hasExplicitTime, title: explicitTitle, needsConfirmation };
   }
 
   const dateSpan = dateCandidate ? { start: dateCandidate.start, end: dateCandidate.end } : null;
@@ -371,10 +598,10 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
 
   const removalSpans = [...prefixSpans, ...(terminSpan ? [terminSpan] : []), ...anchors, ...connectorSpans];
   const title = edgeTrim(removeSpans(text, removalSpans));
-  return { date, hasExplicitTime, title };
+  return { date, hasExplicitTime, title, needsConfirmation };
 }
 
 export function parseTaskInput(text: string, now: Date = new Date()): ParsedTaskInput {
-  const { date, title } = analyzeText(text, now);
-  return { title, dueAt: date ? date.toISOString() : null };
+  const { date, title, needsConfirmation } = analyzeText(text, now);
+  return { title, dueAt: date ? date.toISOString() : null, needsConfirmation };
 }

@@ -97,7 +97,7 @@ function classify(signals: Signals): CaptureKind {
 }
 
 export const recognizeLocally: Recognizer = (text, ctx) => {
-  const { date, hasExplicitTime, title } = analyzeText(text, ctx.now);
+  const { date, hasExplicitTime, title, needsConfirmation } = analyzeText(text, ctx.now);
   const habitMatch = matchHabit(text, ctx.habits);
 
   const signals: Signals = {
@@ -114,12 +114,15 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
   // erlaubt, degradiert das Ergebnis zu `task` — es fällt nicht weg.
   const kind: CaptureKind = ctx.allowedKinds.includes(scored) ? scored : 'task';
 
+  // R2 Regel 5 + AK4 (#688): eine geratene Nachtzeit oder eine regionale Kurzform senkt
+  // die Konfidenz auch für task/event — Grundlage für `needsConfirmation` auf dem
+  // Aufgaben-Pfad (route-capture.ts).
   const draft: CaptureDraft = {
     kind,
     title,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
     habitId: kind === 'habit_check' ? habitMatch.habitId : null,
-    confidence: kind === 'habit_check' ? habitMatch.confidence : 'high',
+    confidence: kind === 'habit_check' ? habitMatch.confidence : needsConfirmation ? 'low' : 'high',
   };
 
   return { items: [draft] };
