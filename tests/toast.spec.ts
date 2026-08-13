@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { freezeClock, resetAppData } from './helpers';
+import { freezeClock, resetAppData, selectView } from './helpers';
 
 /** Mirrors use-delete-task.ts's / use-archive-habit.ts's own UNDO_TIMEOUT_MS. */
 const UNDO_TIMEOUT_MS = 5000;
@@ -87,6 +87,7 @@ test('AC1/AC2: zwei gleichzeitige Toasts stapeln sich sichtbar über genau einer
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Wird gelöscht' });
 
   await triggerSyncErrorToast(page);
@@ -119,6 +120,7 @@ test('AC3: die Fehler-Variante behält role="alert" + --danger, die Bestätigung
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Wird gelöscht' });
 
   await triggerSyncErrorToast(page);
@@ -137,6 +139,7 @@ test('AC3: die Fehler-Variante behält role="alert" + --danger, die Bestätigung
 
 test('AC4: Rückgängig stellt die gelöschte Zeile wieder her', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Toast A' });
 
   await deleteTaskByTitle(page, 'Toast A');
@@ -150,6 +153,7 @@ test('AC4: manuelles Schließen räumt nur die Benachrichtigung ab, nicht die L�
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Toast B' });
 
   await deleteTaskByTitle(page, 'Toast B');
@@ -167,6 +171,7 @@ test('AC4: Auto-Dismiss räumt den Toast nach UNDO_TIMEOUT_MS ohne Interaktion a
   // afterwards would never intercept it (an earlier version of this test proved that).
   await page.clock.install();
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Toast C' });
 
   await deleteTaskByTitle(page, 'Toast C');
@@ -181,6 +186,7 @@ test('AC6: der Toast blendet normal per Slide+Fade ein, bei reduzierter Bewegung
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Normal' });
   await deleteTaskByTitle(page, 'Normal');
   const normalToast = toastItems(page);
@@ -202,6 +208,7 @@ test('AC7: der Toast liegt als Overlay über der Seite, kein Layout-Shift darunt
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Verschieb-Test' });
   const main = page.locator('main.shell__main');
   const before = await main.boundingBox();
@@ -217,6 +224,7 @@ test('AC8: der Toast bleibt im Viewport, überlappt die Nav nicht — 375px und 
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Viewport-Test' });
   await deleteTaskByTitle(page, 'Viewport-Test');
 
@@ -249,6 +257,7 @@ test('AC8: Dark Mode ändert die Toast-Farbe über den Surface-Token, kein Rohwe
   page,
 }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Dark-Test' });
   await deleteTaskByTitle(page, 'Dark-Test');
   const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });

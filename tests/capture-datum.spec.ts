@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import { installClockAt, registerPasskey, resetAppData, selectView, withDb } from './helpers';
 
 /**
  * Datumsvokabular, Tagesgrenze 04:00, rückwirkendes Abhaken (issue #689, Teil 3 von 3
@@ -96,6 +96,7 @@ test('AK1: Monatsname löst auf, ein kalendarisch ungültiges Datum wird verworf
   await submitUebersichtCapture(page, 'am 4. August Zahnarzt');
 
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   const confirm = confirmDialog(page);
   await expect(confirm).toBeVisible();
   await expect(confirm.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
@@ -115,7 +116,10 @@ test('AK1: Monatsname löst auf, ein kalendarisch ungültiges Datum wird verworf
   const event = eventDialog(page);
   await expect(event).toBeVisible();
   await expect(event.getByLabel('Titel')).toHaveValue('am 31.6. Termin');
-  await expect(event.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute('aria-checked', 'true');
+  await expect(event.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await expect(event.getByLabel('Von')).toHaveValue(dateKeyOf(MO));
 });
 
@@ -128,7 +132,9 @@ test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => 
   await page.waitForURL('**/aufgaben');
   let dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Rechnung zahlen');
+  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
+    'Rechnung zahlen',
+  );
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(in3Days));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
@@ -138,15 +144,20 @@ test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => 
   await submitUebersichtCapture(page, 'in einer Woche nachfassen');
 
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('nachfassen');
+  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
+    'nachfassen',
+  );
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(in1Week));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(taskItems(page).filter({ hasText: 'nachfassen' })).toBeVisible();
 });
 
-test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentagsform', async ({ page }) => {
+test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentagsform', async ({
+  page,
+}) => {
   await page.goto('/uebersicht');
   const bareDienstag = dueAt(MO, 1, 9, 0);
 
@@ -155,7 +166,9 @@ test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentags
   await page.waitForURL('**/aufgaben');
   let dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Steuer machen');
+  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
+    'Steuer machen',
+  );
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(bareDienstag));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
@@ -165,6 +178,7 @@ test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentags
   await submitUebersichtCapture(page, 'nächsten Dienstag Zahnarzt');
 
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
@@ -265,7 +279,9 @@ test('Offline-Pfad: eine Erfassung mit relativem Datum offline erreicht online d
   await page.waitForURL('**/aufgaben');
   const dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Rechnung zahlen');
+  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
+    'Rechnung zahlen',
+  );
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
 
