@@ -111,9 +111,15 @@ async function setUpEditor(page: Page): Promise<void> {
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
+/** Mirrors journal.spec.ts's own openSheet()+submit() (#701: form moved into a
+ * FAB-triggered sheet) — the FAB and the sheet's own submit button share the
+ * accessible name "Eintragen", `exact: true` disambiguates via the modal
+ * dialog's inert background rather than needing two different labels. */
 async function submitJournalEntry(page: Page, text: string): Promise<void> {
+  await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
   await page.getByLabel('Journal-Text').fill(text);
-  await page.getByRole('button', { name: 'Absenden' }).click();
+  await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
 function journalEntries(page: Page) {

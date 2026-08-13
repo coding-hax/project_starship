@@ -437,11 +437,15 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
       await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 
-      // journal-editor.tsx only renders .journal-editor__submit once the form
-      // has content (mood or text) — an empty form has nothing to submit.
+      // #701: das Formular sitzt jetzt im FAB-Sheet, nicht mehr direkt auf der
+      // Seite — die FAB trägt denselben Namen wie der Sheet-eigene Knopf, im
+      // offenen (modalen) Sheet ist die FAB dahinter aber inert.
+      await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+      // journal-entry-sheet.tsx only renders .journal-editor__submit once the
+      // form has content (mood or text) — an empty form has nothing to submit.
       await page.getByLabel('Journal-Text').fill('Kontrast-Test-709');
 
-      const submit = page.locator('.journal-editor__submit');
+      const submit = page.getByRole('dialog', { name: 'Eintragen' }).locator('.journal-editor__submit');
       await expect(submit).toBeVisible();
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });

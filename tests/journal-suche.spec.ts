@@ -256,18 +256,22 @@ test('AC-F4: Freitext + Mood verengen gemeinsam auf die Schnittmenge', async ({ 
 test('AC-P1: sobald ein Filter aktiv ist, weicht der Editor der Suche', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Ein Alltagseintrag', tags: [] });
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  // Der FAB (nicht mehr das Formular selbst, #701) ist window-unabhängig da —
+  // im offenen Sheet wäre das Formular ohnehin unsichtbar, solange niemand den
+  // FAB angetippt hat.
+  const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
+  await expect(fab).toBeVisible();
 
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('alltag');
 
-  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
-  await expect(page.locator('.journal-editor__date')).toHaveCount(0);
+  await expect(fab).toHaveCount(0);
+  await expect(page.locator('.journal-editor__day-header')).toHaveCount(0);
   await expect(page.locator('.journal-editor__entries')).toHaveCount(0);
   await expect(page.locator('.journal-search__result')).toHaveCount(1);
 
   await search.fill('');
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(fab).toBeVisible();
 });
 
 test('AC-P2: eine Treffervorschau zeigt die Stimmung des Eintrags', async ({ page }) => {
@@ -316,7 +320,7 @@ test('AC-P4: ein Treffer klicken setzt alle Filter zurück und zeigt wieder den 
   await page.locator('.journal-search__result').click();
 
   await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Eintragen', exact: true })).toBeVisible();
   await expect(page.locator('.journal-search__result')).toHaveCount(0);
 });
 
@@ -389,11 +393,12 @@ test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge, der Edito
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: [] });
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: [] });
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
+  await expect(fab).toBeVisible();
 
   await openFilters(page);
 
-  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+  await expect(fab).toHaveCount(0);
   const results = page.locator('.journal-search__result');
   await expect(results).toHaveCount(2);
   await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
@@ -401,7 +406,7 @@ test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge, der Edito
   // Filter wieder zuklappen, ohne einen Filter gesetzt zu haben — der Editor
   // kehrt zurück, die Suche ist wieder inaktiv.
   await page.getByRole('button', { name: 'Filter', exact: true }).click();
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(fab).toBeVisible();
   await expect(results).toHaveCount(0);
 });
 
@@ -416,7 +421,7 @@ test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-
   await expect(search).toHaveValue('');
   await search.press('Enter');
 
-  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Eintragen', exact: true })).toHaveCount(0);
   const results = page.locator('.journal-search__result');
   await expect(results).toHaveCount(2);
   await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
@@ -425,7 +430,7 @@ test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-
   // Filter zurück (AC-P4-Verhalten).
   await results.first().click();
   await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
-  await expect(page.locator('.journal-editor__form')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Eintragen', exact: true })).toBeVisible();
 });
 
 test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig', async ({ page }) => {
