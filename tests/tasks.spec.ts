@@ -925,6 +925,7 @@ test('unter reduzierter Bewegung fügen Kante, Haarlinie und Schrumpfen nichts A
   expect(edgeColor).toBe(await resolveColorToken(page, '--danger'));
 
   await checkboxFor(page, title).click();
+  await expect(row).toHaveClass(/task-list__item--done/);
 
   const titleSpan = row.locator('.task-list__title');
   expect(await transitionDurationFor(titleSpan, 'font-size')).toBe(0);
