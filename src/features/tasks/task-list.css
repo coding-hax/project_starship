@@ -1,7 +1,8 @@
 /**
- * Task list (docs/DESIGN_SYSTEM.md): cards, not rows, on every breakpoint until a
- * table earns its complexity. Completed tasks recede rather than disappear, so
- * "done" still reads as a small win instead of just vanishing.
+ * Task list (docs/DESIGN_SYSTEM.md): flat rows separated by a hairline, not
+ * cards (issue #704) — a 3px colour edge on the left carries overdue/priority
+ * state instead of a card surface. Completed tasks recede rather than
+ * disappear, so "done" still reads as a small win instead of just vanishing.
  */
 
 .task-list__empty {
@@ -41,11 +42,11 @@
 }
 
 /**
- * One task card's outer height, declared where both the cards and the empty state
+ * One row's outer height, declared where both the rows and the empty state
  * below can read it, so the two cannot drift apart (issue #228). Everything here
- * is border-box, so the padding and the border sit *inside* this number: what
- * makes a card as tall as it is, is the touch-target-tall checkbox column
- * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px border.
+ * is border-box, so the padding and the hairline sit *inside* this number: what
+ * makes a row as tall as it is, is the touch-target-tall checkbox column
+ * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px hairline.
  */
 .task-list__item,
 .task-list__empty--compact {
@@ -71,7 +72,7 @@
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -82,13 +83,14 @@
   align-items: center;
   gap: var(--space-3);
   /* Same number the empty state reserves — the checkbox column already makes a
-     card this tall, spelling it out is what keeps the two in step. */
+     row this tall, spelling it out is what keeps the two in step. */
   min-height: var(--task-card-height);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-card);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
+  /* Reserved edge space (issue #704, AK5) — transparent by default so a row
+     with no overdue/priority state lines up exactly with one that has an
+     edge; only the colour below ever changes. */
+  border-inline-start: 3px solid transparent;
+  border-block-end: 1px solid var(--border-faint);
   /* Only relevant while a swipe is releasing — see .task-list__item--dragging,
      which turns this off so the row follows the pointer with no lag. */
   transition: transform var(--duration-base) var(--ease-spring);
@@ -104,6 +106,21 @@
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+.task-list__item:last-child {
+  border-block-end: none;
+}
+
+/* Precedence overdue > priority > none, computed in task-item.tsx as
+   `data-edge` — decorative only, the priority itself stays reachable via
+   `title` on `.task-list__title` regardless of which edge (if any) shows. */
+.task-list__item[data-edge='overdue'] {
+  border-inline-start-color: var(--danger);
+}
+
+.task-list__item[data-edge='priority'] {
+  border-inline-start-color: var(--warning);
 }
 
 .task-list__item--dragging {
@@ -300,7 +317,6 @@
 }
 
 .task-list__item--done {
-  box-shadow: none;
   opacity: 0.6;
 }
 
@@ -312,27 +328,14 @@
   color: var(--text);
 }
 
+/* Shrinks in place, not a layout shift (issue #704, AK7) — the row's own
+   height stays pinned to min-height/--touch-target, only the title's font
+   size changes, so checking a task off never moves the rows around it
+   (issue #228, #435). */
 .task-list__item--done .task-list__title {
   color: var(--text-muted);
   text-decoration: line-through;
-}
-
-.task-list__priority-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  flex-shrink: 0;
-  /* Static, token-driven colour — no motion to begin with, so nothing for
-     prefers-reduced-motion to override. */
-  transition: none;
-}
-
-.task-list__priority-dot--hoch {
-  background: var(--warning);
-}
-
-.task-list__priority-dot--dringend {
-  background: var(--danger);
+  font-size: var(--text-secondary);
 }
 
 .task-list__due {
