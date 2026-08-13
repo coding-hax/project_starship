@@ -78,7 +78,12 @@ stattdessen `--area-events`.
 
 Komponenten benutzen **niemals** Rohfarben, sondern nur Tokens:
 `--bg`, `--surface`, `--surface-raised`, `--text`, `--text-muted`, `--border`,
-`--accent`, `--accent-fg`, `--success`, `--warning`, `--danger`.
+`--accent`, `--accent-fg`, `--on-accent`, `--success`, `--warning`, `--danger`.
+
+`--on-accent` (issue #709) ist speziell für Text/Icons auf einer mit `--accent`
+oder einer `--area-*`-Farbe gefüllten Fläche gedacht (FAB, Submit-Knöpfe) — anders
+als `--accent-fg` bleibt es in beiden Themes dunkel, weil die Bereichsfarben in
+beiden Themes hell genug für WCAG AA (4,5:1) mit dunkler Schrift sind.
 
 Dark Mode ist keine Nachrüstung: jedes Token existiert in beiden Modi von Anfang an.
 
