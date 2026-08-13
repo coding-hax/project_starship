@@ -109,9 +109,9 @@ test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das H
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Wird erledigt', dueAt: YESTERDAY_MORNING, priority: 2 });
 
-  await expect(dueTaskItems(page).locator('.task-list__priority-dot')).toHaveClass(
-    /task-list__priority-dot--dringend/,
-  );
+  // Overdue and priority 2 at once — precedence (issue #704 AK5) picks the
+  // overdue edge, not the priority one.
+  await expect(dueTaskItems(page)).toHaveAttribute('data-edge', 'overdue');
   // Overdue while open — red. After the check-off it must not shout any more.
   await expect(dueTaskItems(page).locator('.task-list__due')).toHaveClass(
     /task-list__due--overdue/,
