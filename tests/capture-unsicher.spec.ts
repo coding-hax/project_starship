@@ -155,8 +155,8 @@ test('AK5: kein Fehlerzustand — Warnfarbe statt Gefahr, kein blockierter Speic
 
   const [hintColor, warningColor, dangerColor] = await Promise.all([
     hint.evaluate((el) => getComputedStyle(el).color),
-    resolveColorToken(page, '--color-warning'),
-    resolveColorToken(page, '--color-danger'),
+    resolveColorToken(page, '--warning'),
+    resolveColorToken(page, '--danger'),
   ]);
   expect(hintColor).toBe(warningColor);
   expect(hintColor).not.toBe(dangerColor);
@@ -209,7 +209,7 @@ test('AK6: Design-Pflicht — Dark Mode, prefers-reduced-motion, iPhone 12 mini 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const [darkHintColor, darkWarningColor] = await Promise.all([
     hint.evaluate((el) => getComputedStyle(el).color),
-    resolveColorToken(page, '--color-warning'),
+    resolveColorToken(page, '--warning'),
   ]);
   expect(darkHintColor).toBe(darkWarningColor);
 });
