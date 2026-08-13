@@ -1,4 +1,5 @@
-import { analyzeText } from '../tasks/parse-task-input';
+import { toDateKey } from '../habits/due-today';
+import { analyzeText, logicalDayStart } from '../tasks/parse-task-input';
 import { matchHabit } from './habit-match';
 import type { CaptureDraft, CaptureKind, Recognizer } from './types';
 
@@ -96,6 +97,26 @@ function classify(signals: Signals): CaptureKind {
   return winner;
 }
 
+const LOG_DATE_LOOKBACK_DAYS = 7;
+const MS_PER_DAY = 86_400_000;
+
+/** R7 (#689): ein Datum im Abhaken-Satz steuert den Log-Tag, nicht eine Fälligkeit —
+ * erlaubt bis 7 Tage rückwärts. Weiter zurück oder ein Datum in der Zukunft werden
+ * ignoriert (Log-Tag bleibt der logische Heute-Tag, R6), damit kein verhörtes Datum
+ * still eine alte Streak verfälscht. `date` kommt unverändert aus `analyzeText` — für
+ * ein Datum ohne Jahr springt dessen eigene Vorwärts-Logik (Fälligkeiten sind
+ * zukunftsgerichtet) ggf. schon selbst übers Ziel hinaus ins nächste Jahr; das landet
+ * hier dann ohnehin im "Zukunft"-Zweig und damit beim gleichen Ergebnis: ignoriert. */
+function resolveLogDate(date: Date | null, now: Date): string {
+  const today = logicalDayStart(now);
+  if (date === null) return toDateKey(today);
+  const candidateDay = new Date(date);
+  candidateDay.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - candidateDay.getTime()) / MS_PER_DAY);
+  if (diffDays < 0 || diffDays > LOG_DATE_LOOKBACK_DAYS) return toDateKey(today);
+  return toDateKey(candidateDay);
+}
+
 export const recognizeLocally: Recognizer = (text, ctx) => {
   const { date, hasExplicitTime, title, needsConfirmation } = analyzeText(text, ctx.now);
   const habitMatch = matchHabit(text, ctx.habits);
@@ -122,6 +143,7 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
     title,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
     habitId: kind === 'habit_check' ? habitMatch.habitId : null,
+    logDate: kind === 'habit_check' ? resolveLogDate(date, ctx.now) : null,
     confidence: kind === 'habit_check' ? habitMatch.confidence : needsConfirmation ? 'low' : 'high',
   };
 

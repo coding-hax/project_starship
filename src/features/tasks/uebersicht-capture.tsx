@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { matchHabit } from '@/features/capture/habit-match';
 import { hasCompletionVerb } from '@/features/capture/local-recognizer';
 import { allowedCaptureKinds, decideCaptureRoute } from '@/features/capture/route-capture';
-import { toDateKey } from '@/features/habits/due-today';
 import { useHabitLogs } from '@/features/habits/use-habit-logs';
 import { useHabits } from '@/features/habits/use-habits';
 import { useToggleHabitLog } from '@/features/habits/use-toggle-habit-log';
@@ -112,9 +111,8 @@ export function UebersichtCapture() {
       return;
     }
 
-    const { habitId } = decision;
+    const { habitId, logDate } = decision;
     const habitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
-    const logDate = toDateKey(new Date());
     dismissHabitUndo();
     await toggleHabitLog(habitId, logDate);
     setHabitUndo({ habitId, habitName, logDate });

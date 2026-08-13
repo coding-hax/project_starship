@@ -40,6 +40,9 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
       if (testCase.expect.dueAt) {
         expect(draft.dueAt).toBe(testCase.expect.dueAt.toISOString());
       }
+      if (testCase.expect.logDate) {
+        expect(draft.logDate).toBe(testCase.expect.logDate);
+      }
     });
   }
 });

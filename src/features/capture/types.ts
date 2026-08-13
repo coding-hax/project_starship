@@ -22,6 +22,10 @@ export interface CaptureDraft {
   dueAt: string | null;
   /** nur bei `kind: 'habit_check'` gesetzt, sonst null. */
   habitId: string | null;
+  /** `YYYY-MM-DD` — nur bei `kind: 'habit_check'` gesetzt, sonst null. Der Log-Tag
+   * (nicht dueAt!), R6/R7 (#689): logischer Heute-Tag, außer der Satz nennt ein Datum
+   * bis 7 Tage rückwärts. */
+  logDate: string | null;
   confidence: CaptureConfidence;
 }
 

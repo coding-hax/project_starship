@@ -1,4 +1,5 @@
-import { berlinNow } from '@/push/schedule';
+import { toDateKey } from '../habits/due-today';
+import { logicalDayStart } from '../tasks/parse-task-input';
 import type { EventCaptureDraftItem, TaskCaptureDraftItem } from '../tasks/capture-draft-store';
 import { recognizeLocally } from './local-recognizer';
 import type { CaptureContext, CaptureKind } from './types';
@@ -23,7 +24,7 @@ export function allowedCaptureKinds(isActive: (id: string) => boolean): CaptureK
 export type CaptureRouteDecision =
   | { action: 'task'; draft: TaskCaptureDraftItem }
   | { action: 'event'; draft: EventCaptureDraftItem }
-  | { action: 'habit-check'; habitId: string }
+  | { action: 'habit-check'; habitId: string; logDate: string }
   | { action: 'habit-review' };
 
 /**
@@ -70,7 +71,9 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
         },
       };
     }
-    const today = berlinNow(ctx.now).dateKey;
+    // R6 (#689): der logische, nicht der reale Kalendertag — sonst bekäme ein zwischen
+    // 00:00 und 03:59 erfasster ganztägiger Termin stumm den falschen Tag.
+    const today = toDateKey(logicalDayStart(ctx.now));
     return {
       action: 'event',
       draft: {
@@ -85,8 +88,8 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
     };
   }
 
-  if (draft.confidence === 'high' && draft.habitId) {
-    return { action: 'habit-check', habitId: draft.habitId };
+  if (draft.confidence === 'high' && draft.habitId && draft.logDate) {
+    return { action: 'habit-check', habitId: draft.habitId, logDate: draft.logDate };
   }
   return { action: 'habit-review' };
 }
