@@ -230,6 +230,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Routine abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
 - `capture-parser.spec.ts` — Span+Ranking-Grammatik (issue #687, Teil 1 von 3 des Parser-Umbaus): ein Test je AK1–AK7 + Offline-Pfad
 - `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (issue #688, Teil 2 von 3 des Parser-Umbaus): ein Test je AK1–AK6 + Offline-Pfad
+- `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (issue #689, Teil 3 von 3): ein Test je AK1–AK6 + Offline-Pfad
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)

@@ -1,8 +1,9 @@
 /**
  * Bewusst enge, deterministische Grammatik für deutsche Freiform-Eingaben (kein NLU,
  * keine Dependency) — issue #47 Schnitt 1, auf Spans umgebaut in #687 (Teil 1 von 3 des
- * Parser-Umbaus, Epic #617), um Zeigerzeit + Tageshälften erweitert in #688 (Teil 2 von 3).
- * Verfahren (angelehnt an chrono-node/Duckling):
+ * Parser-Umbaus, Epic #617), um Zeigerzeit + Tageshälften erweitert in #688 (Teil 2 von 3),
+ * um Monatsnamen/Spannen/"nächsten"/"gestern" + die Tagesgrenze 04:00 erweitert in #689
+ * (Teil 3 von 3). Verfahren (angelehnt an chrono-node/Duckling):
  *
  * 1. Kandidaten mit Span `{ start, end }` erzeugen — nie `text.slice()` und auf dem Rest
  *    weiterarbeiten (das koppelte jedes weitere Ergebnis an die Zweig-Reihenfolge).
@@ -12,11 +13,18 @@
  *    Bindewörter), danach Rand-Trim. Keine Wort-Blacklist mehr.
  *
  * Erkannt wird:
- * - Relative Tage: "heute", "morgen", "übermorgen".
- * - Wochentage: "montag".."sonntag" -> nächstes zukünftiges Vorkommen (fällt der Name
- *   auf den heutigen Wochentag, zählt das als heute).
- * - Absolutes Datum: "am D.M." oder "D.M." (Jahr optional; ohne Jahr das nächste
- *   zukünftige Vorkommen).
+ * - Relative Tage: "gestern", "heute", "morgen", "übermorgen" — alle gegen den
+ *   *logischen* Tag (R6, #689): zwischen 00:00 und 03:59 zählt noch der vorherige
+ *   Kalendertag als "heute". Betrifft nur den Tag; die Tageshälfte (R2) und ob eine
+ *   Uhrzeit schon vorbei ist, bleiben an der echten Uhr.
+ * - Relative Spannen (#689): "in N Tagen"/"in einem Tag", "in N Wochen"/"in einer Woche".
+ * - Wochentage: "montag".."sonntag" -> nächstes zukünftiges Vorkommen ab dem logischen
+ *   Tag (fällt der Name auf den logischen Wochentag, zählt das als heute). Mit
+ *   Modifikator (#689): "diesen"/"kommenden" sind Synonyme der bloßen Form, "nächsten"
+ *   überspringt zusätzlich eine ganze Woche.
+ * - Absolutes Datum: "am D.M.", "D.M." oder "D. Monatsname" (Jahr optional; ohne Jahr
+ *   das nächste zukünftige Vorkommen ab dem logischen Tag). Ein kalendarisch ungültiges
+ *   Datum (#689, z. B. "31.6.") wird verworfen, nie stumm auf den Folgemonat gerollt.
  * - Uhrzeit — unabhängig von einem Datum gesucht (AC2): "um H", "um H:MM", "H Uhr",
  *   "HH:MM", plus ausgeschriebene Zahlen 1-12 ("um zwölf", "drei Uhr"). Ohne Treffer:
  *   Default 09:00 lokal, außer nur eine Uhrzeit ohne Datum wurde erkannt — dann "heute",
@@ -97,6 +105,19 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
+// R6 (#689): zwischen 00:00 und 03:59 zählt noch der vorherige Kalendertag als "heute" —
+// wer um 01:30 einen Termin "für morgen" anlegt, meint sonst den übernächsten Tag. Gilt
+// nur für den Tag: die Tageshälfte (R2) und ob eine genannte Uhrzeit schon vorbei ist,
+// bleiben an der echten Uhr (`now` unverändert), siehe `resolveHourMatch`/`resolveTimeOnlyDate`.
+const DAY_BOUNDARY_HOUR = 4;
+
+/** Start des *logischen* Tages (00:00) — der Bezugspunkt für alle relativen Tagesangaben
+ * und den Log-Tag beim Abhaken (R6/R7, #689). Exportiert für `local-recognizer.ts`. */
+export function logicalDayStart(now: Date): Date {
+  const start = startOfDay(now);
+  return now.getHours() < DAY_BOUNDARY_HOUR ? addDays(start, -1) : start;
+}
+
 // `\b` only recognizes ASCII word characters — it fails right at the leading "ü" of
 // "übermorgen" (neither side of that position counts as \w), silently refusing to
 // match the whole word. A Unicode-aware boundary via lookaround fixes that.
@@ -106,69 +127,10 @@ function wordPattern(pattern: string, flags = 'iu'): RegExp {
   return new RegExp(`${WORD_BEFORE}${pattern}${WORD_AFTER}`, flags);
 }
 
-// --- Datum -------------------------------------------------------------
-
-const RELATIVE_DAYS: Record<string, number> = { heute: 0, morgen: 1, übermorgen: 2 };
-// Date.getDay() order: 0 = Sonntag.
-const WEEKDAYS = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag'];
-
-// Kein `\b` am Ende: bei "4.8." (Standard-Schreibweise mit Punkt nach dem Monat, kein
-// Jahr) liegt der zweite Punkt direkt vor Zeilenende — zwei Nicht-Wortzeichen bilden
-// dort nie eine Wortgrenze, ein abschließendes `\b` würde diesen Fall nie treffen.
-const ABSOLUTE_DATE_PATTERN = /\b(?:am\s+)?(\d{1,2})\.(\d{1,2})\.(?:(\d{4}))?/giu;
-
-interface DateValue {
-  date: Date;
-}
-
-function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null {
-  const candidates: Candidate<DateValue>[] = [];
-
-  for (const match of text.matchAll(ABSOLUTE_DATE_PATTERN)) {
-    const day = Number(match[1]);
-    const month = Number(match[2]);
-    const year = match[3] ? Number(match[3]) : now.getFullYear();
-    const date = new Date(year, month - 1, day);
-    if (!match[3] && date < startOfDay(now)) date.setFullYear(date.getFullYear() + 1);
-    candidates.push({
-      start: match.index!,
-      end: match.index! + match[0].length,
-      value: { date },
-      specificity: 3,
-    });
-  }
-
-  const relativePattern = wordPattern(`(${Object.keys(RELATIVE_DAYS).join('|')})`, 'giu');
-  for (const match of text.matchAll(relativePattern)) {
-    const key = match[1].toLowerCase();
-    candidates.push({
-      start: match.index!,
-      end: match.index! + match[0].length,
-      value: { date: addDays(startOfDay(now), RELATIVE_DAYS[key]) },
-      specificity: 2,
-    });
-  }
-
-  const weekdayPattern = wordPattern(`(${WEEKDAYS.join('|')})`, 'giu');
-  for (const match of text.matchAll(weekdayPattern)) {
-    const targetDay = WEEKDAYS.indexOf(match[1].toLowerCase());
-    const diff = (targetDay - now.getDay() + 7) % 7;
-    candidates.push({
-      start: match.index!,
-      end: match.index! + match[0].length,
-      value: { date: addDays(startOfDay(now), diff) },
-      specificity: 1,
-    });
-  }
-
-  return bestCandidate(candidates);
-}
-
-// --- Uhrzeit -------------------------------------------------------------
-
 // Ausgeschriebene Uhrzeiten 1-12 — Diktat sagt "um zwölf", nicht "um 12". Bewusst nur
 // bis zwölf (AC8): 13-24 ausgeschrieben ist selten und bliebe sonst beim Default 09:00,
-// was dokumentiert und akzeptiert ist (kein Scope-Creep, Regel 2).
+// was dokumentiert und akzeptiert ist (kein Scope-Creep, Regel 2). Auch die Basis für
+// die Spannen-Zahlwörter in "in drei Tagen"/"in N Wochen" (#689) — dieselbe Tabelle.
 const WORD_NUMBERS: Record<string, number> = {
   eins: 1,
   ein: 1,
@@ -184,6 +146,155 @@ const WORD_NUMBERS: Record<string, number> = {
   elf: 11,
   zwölf: 12,
 };
+
+function resolveHourToken(token: string): number {
+  return /^\d+$/.test(token) ? Number(token) : WORD_NUMBERS[token.toLowerCase()];
+}
+
+// --- Datum -------------------------------------------------------------
+
+const RELATIVE_DAYS: Record<string, number> = { gestern: -1, heute: 0, morgen: 1, übermorgen: 2 };
+// Date.getDay() order: 0 = Sonntag.
+const WEEKDAYS = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag'];
+// "nächsten" überspringt zusätzlich eine Woche; "diesen"/"kommenden" sind reine
+// Synonyme der bloßen Wochentagsform (AK3, #689) — echte Bedeutungsunterscheidung,
+// kein beliebig austauschbares Vokabular.
+const WEEKDAY_MODIFIERS = ['nächsten', 'diesen', 'kommenden'];
+
+// Kein `\b` am Ende: bei "4.8." (Standard-Schreibweise mit Punkt nach dem Monat, kein
+// Jahr) liegt der zweite Punkt direkt vor Zeilenende — zwei Nicht-Wortzeichen bilden
+// dort nie eine Wortgrenze, ein abschließendes `\b` würde diesen Fall nie treffen.
+const ABSOLUTE_DATE_PATTERN = /\b(?:am\s+)?(\d{1,2})\.(\d{1,2})\.(?:(\d{4}))?/giu;
+
+const MONTH_NAMES = [
+  'januar',
+  'februar',
+  'märz',
+  'april',
+  'mai',
+  'juni',
+  'juli',
+  'august',
+  'september',
+  'oktober',
+  'november',
+  'dezember',
+];
+const MONTH_NAME_DATE_PATTERN = new RegExp(
+  String.raw`\b(?:am\s+)?(\d{1,2})\.\s*(${MONTH_NAMES.join('|')})(?:\s+(\d{4}))?\b`,
+  'giu',
+);
+
+// AK1 (#689): "31.6." existiert nicht und darf nicht stumm auf den 1. Juli rollen — ein
+// kalendarisch ungültiger Kandidat wird verworfen (kein Push), statt geraten zu werden.
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= new Date(year, month, 0).getDate();
+}
+
+// Relative Spannen (AK2, #689): "in drei Tagen"/"in einem Tag", "in einer Woche"/
+// "in N Wochen" — Diktat sagt dative Einzahl ("einem Tag"/"einer Woche"), nicht die
+// Grundform, deshalb eigene Sonderwörter statt WORD_NUMBERS' "eins/ein" zu missbrauchen.
+const DAY_SPAN_TOKEN = `(einem|\\d{1,2}|${Object.keys(WORD_NUMBERS).join('|')})`;
+const DAY_SPAN_PATTERN = new RegExp(`${WORD_BEFORE}in\\s+${DAY_SPAN_TOKEN}\\s+(?:tage?n?)${WORD_AFTER}`, 'giu');
+const WEEK_SPAN_TOKEN = `(einer|\\d{1,2}|${Object.keys(WORD_NUMBERS).join('|')})`;
+const WEEK_SPAN_PATTERN = new RegExp(`${WORD_BEFORE}in\\s+${WEEK_SPAN_TOKEN}\\s+wochen?${WORD_AFTER}`, 'giu');
+
+function resolveSpanToken(token: string, singularWord: string): number {
+  return token.toLowerCase() === singularWord ? 1 : resolveHourToken(token);
+}
+
+interface DateValue {
+  date: Date;
+}
+
+function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null {
+  const candidates: Candidate<DateValue>[] = [];
+  const logicalStart = logicalDayStart(now);
+
+  for (const match of text.matchAll(ABSOLUTE_DATE_PATTERN)) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = match[3] ? Number(match[3]) : now.getFullYear();
+    if (!isValidCalendarDate(year, month, day)) continue;
+    const date = new Date(year, month - 1, day);
+    if (!match[3] && date < logicalStart) date.setFullYear(date.getFullYear() + 1);
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date },
+      specificity: 3,
+    });
+  }
+
+  for (const match of text.matchAll(MONTH_NAME_DATE_PATTERN)) {
+    const day = Number(match[1]);
+    const month = MONTH_NAMES.indexOf(match[2].toLowerCase()) + 1;
+    const year = match[3] ? Number(match[3]) : now.getFullYear();
+    if (!isValidCalendarDate(year, month, day)) continue;
+    const date = new Date(year, month - 1, day);
+    if (!match[3] && date < logicalStart) date.setFullYear(date.getFullYear() + 1);
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date },
+      specificity: 3,
+    });
+  }
+
+  const relativePattern = wordPattern(`(${Object.keys(RELATIVE_DAYS).join('|')})`, 'giu');
+  for (const match of text.matchAll(relativePattern)) {
+    const key = match[1].toLowerCase();
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date: addDays(logicalStart, RELATIVE_DAYS[key]) },
+      specificity: 2,
+    });
+  }
+
+  for (const match of text.matchAll(DAY_SPAN_PATTERN)) {
+    const days = resolveSpanToken(match[1], 'einem');
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date: addDays(logicalStart, days) },
+      specificity: 3,
+    });
+  }
+
+  for (const match of text.matchAll(WEEK_SPAN_PATTERN)) {
+    const weeks = resolveSpanToken(match[1], 'einer');
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date: addDays(logicalStart, weeks * 7) },
+      specificity: 3,
+    });
+  }
+
+  const weekdayPattern = wordPattern(
+    `(?:(${WEEKDAY_MODIFIERS.join('|')})\\s+)?(${WEEKDAYS.join('|')})`,
+    'giu',
+  );
+  for (const match of text.matchAll(weekdayPattern)) {
+    const modifier = match[1]?.toLowerCase() ?? null;
+    const targetDay = WEEKDAYS.indexOf(match[2].toLowerCase());
+    let diff = (targetDay - logicalStart.getDay() + 7) % 7;
+    if (modifier === 'nächsten') diff += 7;
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date: addDays(logicalStart, diff) },
+      specificity: modifier ? 2 : 1,
+    });
+  }
+
+  return bestCandidate(candidates);
+}
+
+// --- Uhrzeit -------------------------------------------------------------
+
 const WORD_NUMBER_GROUP = `(${Object.keys(WORD_NUMBERS).join('|')})`;
 
 interface TimeValue {
@@ -229,10 +340,6 @@ const ZEIGERZEIT_MINUTE_WORDS: Record<string, number> = {
 };
 const HOUR_TOKEN = `(\\d{1,2}|${Object.keys(WORD_NUMBERS).join('|')})`;
 const MINUTE_TOKEN = `(\\d{1,2}|${Object.keys(ZEIGERZEIT_MINUTE_WORDS).join('|')})`;
-
-function resolveHourToken(token: string): number {
-  return /^\d+$/.test(token) ? Number(token) : WORD_NUMBERS[token.toLowerCase()];
-}
 
 function resolveMinuteToken(token: string): number {
   return /^\d+$/.test(token) ? Number(token) : ZEIGERZEIT_MINUTE_WORDS[token.toLowerCase()];
@@ -460,9 +567,23 @@ const COMMAND_PREFIXES: RegExp[] = [
   /^aufgabe\b\s*:\s*/iu,
   /^bitte\b\s+/iu,
   /^trag\b\s+/iu,
+  // AK4 (#689): der Satz aus #620, die Begründung für den Modell-Parser — muss lokal fallen.
+  /^kannst\s+du\s+mir\b\s*/iu,
 ];
 
-const CONNECTOR_WORDS = ['am', 'um', 'für', 'daran', 'beim'];
+// "einen"/"eine" dazu (AK4, #689): dieselbe Span-Grenzen-Regel wie die übrigen
+// Bindewörter, keine Sonderbehandlung nötig.
+const CONNECTOR_WORDS = ['am', 'um', 'für', 'daran', 'beim', 'einen', 'eine'];
+
+// Trailing Diktat-Verb (AK4, #689): "... einstellen" am Satzende — das Pendant zu den
+// Kommandopräfixen, nur am Ende statt am Anfang.
+const COMMAND_SUFFIX_PATTERN = /\s+einstellen\s*$/iu;
+
+function findCommandSuffixSpan(text: string): Span | null {
+  const match = text.match(COMMAND_SUFFIX_PATTERN);
+  if (!match) return null;
+  return { start: match.index!, end: match.index! + match[0].length };
+}
 
 /** Kommandopräfixe können sich am Satzanfang aneinanderreihen ("erstelle" + "neue aufgabe"). */
 function findCommandPrefixSpans(text: string): Span[] {
@@ -551,9 +672,11 @@ export interface TextAnalysis extends DateTimeSlot {
   needsConfirmation: boolean;
 }
 
-/** Uhrzeit ohne Datum: "heute", wenn sie noch in der Zukunft liegt, sonst "morgen" (AC2). */
+/** Uhrzeit ohne Datum: "heute", wenn sie noch in der Zukunft liegt, sonst "morgen" (AC2) —
+ * "heute" ist der *logische* Tag (R6, #689): ob die Zeit schon vorbei ist, entscheidet
+ * weiter die echte Uhr (`now` unverändert im Vergleich), nur der Basistag verschiebt sich. */
 function resolveTimeOnlyDate(time: TimeValue, now: Date): Date {
-  const candidate = startOfDay(now);
+  const candidate = logicalDayStart(now);
   candidate.setHours(time.hours, time.minutes, 0, 0);
   return candidate > now ? candidate : addDays(candidate, 1);
 }
@@ -595,8 +718,15 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   const terminSpan =
     prefixSpans.length === 0 ? findTerminPrefixSpan(text, dateSpan, timeSpan) : null;
   const connectorSpans = findConnectorSpans(text, anchors);
+  const suffixSpan = findCommandSuffixSpan(text);
 
-  const removalSpans = [...prefixSpans, ...(terminSpan ? [terminSpan] : []), ...anchors, ...connectorSpans];
+  const removalSpans = [
+    ...prefixSpans,
+    ...(terminSpan ? [terminSpan] : []),
+    ...(suffixSpan ? [suffixSpan] : []),
+    ...anchors,
+    ...connectorSpans,
+  ];
   const title = edgeTrim(removeSpans(text, removalSpans));
   return { date, hasExplicitTime, title, needsConfirmation };
 }

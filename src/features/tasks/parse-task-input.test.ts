@@ -353,3 +353,106 @@ describe('parseTaskInput — #688 needsConfirmation', () => {
     expect(result.needsConfirmation).toBe(true);
   });
 });
+
+describe('parseTaskInput — #689 AK1: Monatsnamen und ungültige Daten', () => {
+  it('erkennt "D. Monatsname" ohne Jahr im laufenden Jahr', () => {
+    const result = parseTaskInput('am 4. August Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 8, 4));
+  });
+
+  it('ein kalendarisch ungültiges Datum wird verworfen, nie auf den Folgemonat gerollt', () => {
+    const result = parseTaskInput('am 31.6. Termin', NOW);
+    expect(result.title).toBe('am 31.6. Termin');
+    expect(result.dueAt).toBeNull();
+  });
+});
+
+describe('parseTaskInput — #689 AK2: relative Spannen', () => {
+  it('"in drei Tagen"', () => {
+    const result = parseTaskInput('in drei Tagen Rechnung zahlen', NOW);
+    expect(result.title).toBe('Rechnung zahlen');
+    expect(result.dueAt).toBe(iso(2024, 1, 18));
+  });
+
+  it('"in einer Woche"', () => {
+    const result = parseTaskInput('in einer Woche nachfassen', NOW);
+    expect(result.title).toBe('nachfassen');
+    expect(result.dueAt).toBe(iso(2024, 1, 22));
+  });
+});
+
+describe('parseTaskInput — #689 AK3: "nächsten" überspringt eine Woche', () => {
+  it('die bloße Wochentagsform bleibt unverändert (Kontrolle)', () => {
+    const result = parseTaskInput('Dienstag Steuer machen', NOW);
+    expect(result.title).toBe('Steuer machen');
+    expect(result.dueAt).toBe(iso(2024, 1, 16));
+  });
+
+  it('"nächsten Dienstag" überspringt eine ganze Woche', () => {
+    const result = parseTaskInput('nächsten Dienstag Zahnarzt', NOW);
+    expect(result.title).toBe('Zahnarzt');
+    expect(result.dueAt).toBe(iso(2024, 1, 23));
+  });
+
+  it('"diesen" ist ein Synonym der bloßen Wochentagsform', () => {
+    const result = parseTaskInput('diesen Mittwoch Werkstatt', NOW);
+    expect(result.title).toBe('Werkstatt');
+    expect(result.dueAt).toBe(iso(2024, 1, 17));
+  });
+
+  it('"kommenden" ist ein Synonym der bloßen Wochentagsform', () => {
+    const result = parseTaskInput('kommenden Samstag wandern', NOW);
+    expect(result.title).toBe('wandern');
+    expect(result.dueAt).toBe(iso(2024, 1, 20));
+  });
+});
+
+describe('parseTaskInput — #689 AK4: der Satz aus #620 fällt lokal', () => {
+  it('"kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen"', () => {
+    const result = parseTaskInput(
+      'kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen',
+      NOW,
+    );
+    expect(result.title).toBe('Zahnarzttermin');
+    expect(result.dueAt).toBe(iso(2024, 1, 23, 8, 45));
+  });
+});
+
+describe('parseTaskInput — #689 AK5: Tagesgrenze 04:00', () => {
+  // Dienstag, 16.01.2024, 01:30 — logischer Tag ist noch Montag 15.01. (Bezugspunkt AK5).
+  const NIGHT = new Date(2024, 0, 16, 1, 30, 0);
+
+  it('"morgen 14 Uhr" bleibt derselbe reale Kalendertag', () => {
+    expect(parseTaskInput('morgen 14 Uhr Zahnarzt', NIGHT).dueAt).toBe(iso(2024, 1, 16, 14, 0));
+  });
+
+  it('"heute noch" ist der logische Tag (Montag), nicht der reale (Dienstag)', () => {
+    expect(parseTaskInput('heute noch Müll rausbringen', NIGHT).dueAt).toBe(iso(2024, 1, 15));
+  });
+
+  it('"übermorgen" zählt ab dem logischen Tag', () => {
+    expect(parseTaskInput('übermorgen Friseur anrufen', NIGHT).dueAt).toBe(iso(2024, 1, 17));
+  });
+
+  it('ein Wochentag zählt ab dem logischen Tag', () => {
+    expect(parseTaskInput('Dienstag 12 Uhr Zahnarzt', NIGHT).dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+
+  it('reine Uhrzeit ohne Datum: "sonst morgen" ab dem logischen Tag', () => {
+    expect(parseTaskInput('Zahnarzt um 8', NIGHT).dueAt).toBe(iso(2024, 1, 16, 8, 0));
+  });
+
+  it('Kontrolle: derselbe Satz am Haupt-Bezugspunkt (Mo 10:00) bleibt unverändert', () => {
+    expect(parseTaskInput('morgen 14 Uhr Zahnarzt', NOW).dueAt).toBe(iso(2024, 1, 16, 14, 0));
+    expect(parseTaskInput('Dienstag 12 Uhr Zahnarzt', NOW).dueAt).toBe(iso(2024, 1, 16, 12, 0));
+  });
+});
+
+describe('parseTaskInput — #689: "gestern"', () => {
+  it('erkennt "gestern" als relativen Tag', () => {
+    const result = parseTaskInput('Sport gestern gemacht', NOW);
+    expect(result.title).toBe('Sport gemacht');
+    expect(result.dueAt).toBe(iso(2024, 1, 14));
+  });
+});

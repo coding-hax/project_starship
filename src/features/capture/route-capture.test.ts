@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { berlinNow } from '@/push/schedule';
 import type { CaptureContext } from './types';
 import { allowedCaptureKinds, decideCaptureRoute } from './route-capture';
-import { ALL_KINDS, NOW, STANDARD_HABITS } from './corpus';
+import { ALL_KINDS, NOW, NOW_NIGHT, STANDARD_HABITS } from './corpus';
 
 function ctx(overrides: Partial<CaptureContext> = {}): CaptureContext {
   return {
@@ -50,12 +50,25 @@ describe('decideCaptureRoute — event', () => {
     expect(decision.draft.startDate).toBe(today);
     expect(decision.draft.endDate).toBe(today);
   });
+
+  it('#689 R6: ganztägig zwischen 00:00 und 03:59 landet auf dem logischen, nicht dem realen Kalendertag', () => {
+    const decision = decideCaptureRoute('Meeting mit Chef', ctx({ now: NOW_NIGHT }));
+    expect(decision.action).toBe('event');
+    if (decision.action !== 'event') throw new Error('unreachable');
+    expect(decision.draft.startDate).toBe('2024-01-15');
+    expect(decision.draft.endDate).toBe('2024-01-15');
+  });
 });
 
 describe('decideCaptureRoute — habit_check', () => {
   it('AC3: hohe Konfidenz -> direkt abhaken, keine Navigation', () => {
     const decision = decideCaptureRoute('hake Sport ab', ctx());
-    expect(decision).toEqual({ action: 'habit-check', habitId: 'h-sport' });
+    expect(decision).toEqual({ action: 'habit-check', habitId: 'h-sport', logDate: '2024-01-15' });
+  });
+
+  it('#689 R7: ein genanntes Datum im Abhaken-Satz steuert den Log-Tag, nicht heute', () => {
+    const decision = decideCaptureRoute('Sport für gestern abhaken', ctx());
+    expect(decision).toEqual({ action: 'habit-check', habitId: 'h-sport', logDate: '2024-01-14' });
   });
 
   it('AC4: mehrdeutiger Habit-Treffer (confidence low) -> Review, nichts abgehakt', () => {

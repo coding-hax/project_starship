@@ -14,6 +14,10 @@ export const NOW = new Date(2024, 0, 15, 10, 0, 0);
 // dieselbe Zeigerzeit liest sich dann als Nachmittags- statt Vormittagslesart.
 export const NOW_AFTERNOON = new Date(2024, 0, 15, 15, 0, 0);
 
+// Nacht-Bezugspunkt für AK5/AK6 (#689, R6/R7): Dienstag 01:30 — logischer Tag ist noch
+// Montag 15.01. (die Tagesgrenze 04:00).
+export const NOW_NIGHT = new Date(2024, 0, 16, 1, 30, 0);
+
 export const STANDARD_HABITS = [
   { id: 'h-sport', name: 'Sport' },
   { id: 'h-yoga', name: 'Yoga' },
@@ -29,6 +33,8 @@ export interface CorpusExpectation {
   /** Erwartete Fälligkeit/Startzeit (#688) — optional, die meisten Bestandsfälle prüfen
    * nur kind/habitId/confidence. */
   dueAt?: Date;
+  /** Erwarteter Log-Tag `YYYY-MM-DD` bei `kind: 'habit_check'` (R6/R7, #689). */
+  logDate?: string;
 }
 
 export interface CorpusCase {
@@ -265,5 +271,100 @@ export const CORPUS: CorpusCase[] = [
     text: 'morgen um 8 Standup',
     now: NOW_AFTERNOON,
     expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 20, 0) },
+  },
+
+  // #689 AK1: Monatsname -> Datum ohne Uhrzeit bleibt task (kein Vokabular/Zeit-Signal).
+  {
+    signal: '#689 AK1: Monatsname "am 4. August"',
+    text: 'am 4. August Zahnarzt',
+    expect: { kind: 'task', dueAt: new Date(2024, 7, 4, 9, 0) },
+  },
+
+  // #689 AK2: relative Spannen.
+  {
+    signal: '#689 AK2: "in drei Tagen"',
+    text: 'in drei Tagen Rechnung zahlen',
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 18, 9, 0) },
+  },
+  {
+    signal: '#689 AK2: "in einer Woche"',
+    text: 'in einer Woche nachfassen',
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 22, 9, 0) },
+  },
+
+  // #689 AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentagsform.
+  {
+    signal: '#689 AK3: "nächsten Dienstag" überspringt eine Woche',
+    text: 'nächsten Dienstag Zahnarzt',
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 23, 9, 0) },
+  },
+
+  // #689 AK4: der Satz aus #620, die Begründung für den Modell-Parser — muss lokal fallen.
+  {
+    signal: '#689 AK4: "kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen"',
+    text: 'kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen',
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 23, 8, 45) },
+  },
+
+  // #689 AK5: Tagesgrenze 04:00 — Nacht-Bezugspunkt Di 01:30, logischer Tag ist Mo.
+  {
+    signal: '#689 AK5: "morgen 14 Uhr" bleibt derselbe Kalendertag über die Tagesgrenze',
+    text: 'morgen 14 Uhr Zahnarzt',
+    now: NOW_NIGHT,
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 14, 0) },
+  },
+  {
+    signal: '#689 AK5: "heute noch" ist der logische, nicht der reale Kalendertag',
+    text: 'heute noch Müll rausbringen',
+    now: NOW_NIGHT,
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 15, 9, 0) },
+  },
+  {
+    signal: '#689 AK5: "übermorgen" zählt ab dem logischen Tag',
+    text: 'übermorgen Friseur anrufen',
+    now: NOW_NIGHT,
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 17, 9, 0) },
+  },
+  {
+    signal: '#689 AK5: Wochentag zählt ab dem logischen Tag',
+    text: 'Dienstag 12 Uhr Zahnarzt',
+    now: NOW_NIGHT,
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 12, 0) },
+  },
+  {
+    signal: '#689 AK5: reine Uhrzeit ohne Datum — "sonst morgen" ab dem logischen Tag',
+    text: 'Zahnarzt um 8',
+    now: NOW_NIGHT,
+    expect: { kind: 'event', confidence: 'high', dueAt: new Date(2024, 0, 16, 8, 0) },
+  },
+
+  // #689 AK6: Abhaken folgt dem logischen Tag (R6) bzw. dem genannten Datum, bis 7 Tage
+  // rückwärts (R7) — logDate ist der Log-Tag, nie eine Fälligkeit.
+  {
+    signal: '#689 AK6: "Sport gemacht" hakt den logischen Tag ab, nicht den realen',
+    text: 'Sport gemacht',
+    now: NOW_NIGHT,
+    expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high', logDate: '2024-01-15' },
+  },
+  {
+    signal: '#689 AK6: "gestern Sport gemacht"',
+    text: 'gestern Sport gemacht',
+    now: NOW_NIGHT,
+    expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high', logDate: '2024-01-14' },
+  },
+  {
+    signal: '#689 AK6: "Sport für gestern abhaken"',
+    text: 'Sport für gestern abhaken',
+    expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high', logDate: '2024-01-14' },
+  },
+  {
+    signal: '#689 AK6: "Sport für morgen abhaken" — Zukunft wird ignoriert',
+    text: 'Sport für morgen abhaken',
+    expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high', logDate: '2024-01-15' },
+  },
+  {
+    signal: '#689 AK6: "Sport für den 1.1. abhaken" — mehr als 7 Tage zurück wird ignoriert',
+    text: 'Sport für den 1.1. abhaken',
+    expect: { kind: 'habit_check', habitId: 'h-sport', confidence: 'high', logDate: '2024-01-15' },
   },
 ];
