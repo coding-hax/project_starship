@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   FIXED_NOW,
   freezeClock,
+  installClockAt,
   registerPasskey,
   resetAppData,
   selectView,
@@ -2096,4 +2097,220 @@ test('AC8: bei reduzierter Bewegung schaltet der Filter genauso zuverlässig um'
 
   await expect(taskItems(page).filter({ hasText: 'Verschwindet ruhig' })).toHaveCount(0);
   await expect(taskItems(page).filter({ hasText: 'Bleibt sichtbar' })).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
+/* Wochenausschnitt, Woche/Alle/Erledigt-Umschalter (issue #705)              */
+/* -------------------------------------------------------------------------- */
+
+function dayMarkers(page: Page) {
+  return page.locator('.task-list__day-marker');
+}
+
+function viewOption(page: Page, name: 'Woche' | 'Alle' | 'Erledigt') {
+  return page.getByRole('radiogroup', { name: 'Aufgaben-Ansicht' }).getByRole('radio', { name });
+}
+
+/** `FIXED_NOW` shifted by whole local-calendar days, at a fixed local clock time —
+ *  mirrors the `expectedDueAt` helpers the capture specs already use, local `Date`
+ *  methods throughout so this lines up with `weekWindowNodes`'s own local-day math
+ *  regardless of which timezone runs the suite. */
+function isoAt(daysFromNow: number, hours = 9): string {
+  const date = new Date(FIXED_NOW);
+  date.setDate(date.getDate() + daysFromNow);
+  date.setHours(hours, 0, 0, 0);
+  return date.toISOString();
+}
+
+test('AK1: der Wochenausschnitt ist beim Öffnen der Standard — überfällig, heute und die 6 folgenden Tage, kein gemerkter Zustand', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+
+  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+
+  await seedTask(page, { title: 'Überfällig', dueAt: isoAt(-8) });
+  await seedTask(page, { title: 'Heute fällig', dueAt: isoAt(0, 18) });
+  await seedTask(page, { title: 'In 2 Tagen', dueAt: isoAt(2) });
+  await seedTask(page, { title: 'In 8 Tagen — außerhalb', dueAt: isoAt(8) });
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(3);
+  await expect(items.filter({ hasText: 'Überfällig' })).toBeVisible();
+  await expect(items.filter({ hasText: 'Heute fällig' })).toBeVisible();
+  await expect(items.filter({ hasText: 'In 2 Tagen' })).toBeVisible();
+  await expect(items.filter({ hasText: 'In 8 Tagen' })).toHaveCount(0);
+  await expect(items.filter({ hasText: 'Ohne Datum' })).toHaveCount(0);
+});
+
+test('AK2: der Umschalter Woche/Alle/Erledigt ist nicht persistiert — nach einer Navigation steht wieder „Woche"', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Diese Woche fällig', dueAt: isoAt(1) });
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  await expect(taskItems(page)).toHaveCount(1);
+
+  await viewOption(page, 'Alle').click();
+  await expect(viewOption(page, 'Alle')).toHaveAttribute('aria-checked', 'true');
+  await expect(taskItems(page)).toHaveCount(2);
+
+  await page.reload();
+
+  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(taskItems(page).filter({ hasText: 'Ohne Datum' })).toHaveCount(0);
+});
+
+test('AK3: Datumsmarken gliedern die Woche — „Überfällig", „Heute · …", dann die Wochentage; ein Tag ohne Aufgaben bekommt keine Marke', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+
+  // Zwei überfällige Aufgaben an verschiedenen Tagen — teilen sich EINE
+  // "Überfällig"-Marke, keine pro Tag.
+  await seedTask(page, { title: 'Länger überfällig', dueAt: isoAt(-5) });
+  await seedTask(page, { title: 'Kürzer überfällig', dueAt: isoAt(-1) });
+  await seedTask(page, { title: 'Heute dran', dueAt: isoAt(0, 15) });
+  // Tag +1 (19. Juli) bleibt absichtlich frei — beweist die leere-Tage-Regel.
+  await seedTask(page, { title: 'Übermorgen dran', dueAt: isoAt(2) });
+
+  // Genau 3 Marken — insbesondere keine vierte für den freien Sonntag
+  // (19. Juli), sonst stünde sie zwischen "Heute" und "Montag" hier auch.
+  const markers = dayMarkers(page);
+  await expect(markers).toHaveCount(3);
+  await expect(markers.nth(0)).toHaveText('Überfällig');
+  await expect(markers.nth(1)).toHaveText('Heute · Samstag, 18. Juli');
+  await expect(markers.nth(2)).toHaveText('Montag, 20. Juli');
+
+  // Marken zählen nicht als Aufgaben-Zeile.
+  await expect(taskItems(page)).toHaveCount(4);
+});
+
+test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, sondern als ruhige Sammelzeile am Ende', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Ohne Datum A' });
+  await seedTask(page, { title: 'Ohne Datum B' });
+  // Erledigt und ohne Datum zählt nicht mit — nur offene.
+  await seedTask(page, {
+    title: 'Ohne Datum, aber erledigt',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Diese Woche fällig', dueAt: isoAt(1) });
+
+  await expect(taskItems(page)).toHaveCount(1);
+  for (const title of ['Ohne Datum A', 'Ohne Datum B', 'Ohne Datum, aber erledigt']) {
+    await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  }
+  await expect(page.getByText('2 Aufgaben ohne Datum')).toBeVisible();
+});
+
+test('AK9: liegt im Rest der Woche nichts mehr, steht darunter „Danach nichts mehr geplant."', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Nur heute', dueAt: isoAt(0, 9) });
+
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(page.getByText('Danach nichts mehr geplant.')).toBeVisible();
+
+  // Sobald etwas nach heute ansteht, verschwindet der Hinweis wieder.
+  await seedTask(page, { title: 'Morgen auch', dueAt: isoAt(1) });
+  await expect(page.getByText('Danach nichts mehr geplant.')).toHaveCount(0);
+});
+
+test('AK7: eine heute erledigte, überfällige Aufgabe bleibt bis zum Tageswechsel in ihrer Tagesgruppe — an einem früheren Tag erledigte fällt raus', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, {
+    title: 'Heute abgehakt',
+    dueAt: isoAt(-3),
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Gestern abgehakt',
+    dueAt: isoAt(-3),
+    completedAt: isoAt(-1),
+  });
+
+  await expect(taskItems(page).filter({ hasText: 'Heute abgehakt' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Gestern abgehakt' })).toHaveCount(0);
+});
+
+test('Erledigt: sortiert nach Erledigungszeit absteigend, gegliedert nach Heute/Gestern/Datum, offene Aufgaben bleiben draußen', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, {
+    title: 'Heute früh erledigt',
+    completedAt: isoAt(0, 8),
+  });
+  await seedTask(page, {
+    title: 'Heute spät erledigt',
+    completedAt: isoAt(0, 16),
+  });
+  await seedTask(page, {
+    title: 'Gestern erledigt',
+    completedAt: isoAt(-1, 10),
+  });
+  await seedTask(page, { title: 'Noch offen' });
+
+  await viewOption(page, 'Erledigt').click();
+  await expect(viewOption(page, 'Erledigt')).toHaveAttribute('aria-checked', 'true');
+
+  const markers = dayMarkers(page);
+  await expect(markers).toHaveCount(2);
+  await expect(markers.nth(0)).toHaveText('Heute');
+  await expect(markers.nth(1)).toHaveText('Gestern');
+
+  const items = taskItems(page);
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(0)).toContainText('Heute spät erledigt');
+  await expect(items.nth(1)).toContainText('Heute früh erledigt');
+  await expect(items.nth(2)).toContainText('Gestern erledigt');
+  await expect(items.filter({ hasText: 'Noch offen' })).toHaveCount(0);
+});
+
+test('Offline-Pfad: eine offline angelegte Aufgabe folgt sofort der Woche-Ansicht, erreicht online die Datenbank', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await context.setOffline(true);
+
+  await seedTask(page, { title: 'Offline diese Woche', dueAt: isoAt(3) });
+  await seedTask(page, { title: 'Offline ohne Datum' });
+
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(taskItems(page).filter({ hasText: 'Offline diese Woche' })).toBeVisible();
+
+  await viewOption(page, 'Alle').click();
+  await expect(taskItems(page)).toHaveCount(2);
+  await expect(taskItems(page).filter({ hasText: 'Offline ohne Datum' })).toBeVisible();
+
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const rows = await withDb((client) =>
+    client.query('SELECT title FROM tasks WHERE title IN ($1, $2) ORDER BY title', [
+      'Offline diese Woche',
+      'Offline ohne Datum',
+    ]),
+  );
+  expect(rows.rows.map((r) => r.title)).toEqual(['Offline diese Woche', 'Offline ohne Datum']);
 });
