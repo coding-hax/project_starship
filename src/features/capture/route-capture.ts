@@ -50,7 +50,10 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
         kind: 'task',
         title: draft.title,
         dueAt: draft.dueAt,
-        needsConfirmation: draft.confidence === 'low',
+        needsConfirmation: draft.needsConfirmation,
+        titleConfidence: draft.confidence.title,
+        dateConfidence: draft.confidence.date,
+        timeConfidence: draft.confidence.time,
       },
     };
   }
@@ -68,6 +71,9 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
           endsAt,
           startDate: null,
           endDate: null,
+          titleConfidence: draft.confidence.title,
+          dateConfidence: draft.confidence.date,
+          timeConfidence: draft.confidence.time,
         },
       };
     }
@@ -84,11 +90,14 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
         endsAt: null,
         startDate: today,
         endDate: today,
+        titleConfidence: draft.confidence.title,
+        dateConfidence: draft.confidence.date,
+        timeConfidence: draft.confidence.time,
       },
     };
   }
 
-  if (draft.confidence === 'high' && draft.habitId && draft.logDate) {
+  if (draft.confidence.habit.level === 'high' && draft.habitId && draft.logDate) {
     return { action: 'habit-check', habitId: draft.habitId, logDate: draft.logDate };
   }
   return { action: 'habit-review' };

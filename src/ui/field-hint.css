@@ -1,0 +1,8 @@
+.field-hint {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--warning);
+  /* Static, token-driven colour — no motion to begin with, so nothing for
+     prefers-reduced-motion to override (AK5/AK6, issue #691). */
+  transition: none;
+}

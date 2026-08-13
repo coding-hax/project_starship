@@ -35,7 +35,9 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
         expect(draft.habitId).toBe(testCase.expect.habitId);
       }
       if (testCase.expect.confidence) {
-        expect(draft.confidence).toBe(testCase.expect.confidence);
+        for (const [field, expected] of Object.entries(testCase.expect.confidence)) {
+          expect(draft.confidence[field as keyof typeof draft.confidence]).toEqual(expected);
+        }
       }
       if (testCase.expect.dueAt) {
         expect(draft.dueAt).toBe(testCase.expect.dueAt.toISOString());
@@ -66,14 +68,14 @@ describe('recognizeLocally — einzelne Akzeptanzkriterien', () => {
     expect(result.items[0].dueAt).toBe(iso(2024, 1, 16, 12, 0));
   });
 
-  it('AC8: mehrere gleich starke Habit-Treffer -> confidence low, keine habitId', () => {
+  it('AC8: mehrere gleich starke Habit-Treffer -> Feld-Konfidenz "Gewohnheit" guessed, keine habitId', () => {
     const result = recognizeLocally(
       'hake Yoga Lauf ab',
       ctx({ habits: STANDARD_HABITS }),
     );
     expect(result.items[0].kind).toBe('habit_check');
     expect(result.items[0].habitId).toBeNull();
-    expect(result.items[0].confidence).toBe('low');
+    expect(result.items[0].confidence.habit.level).toBe('guessed');
   });
 
   it('AC9: Rückgabe ist immer { items: [...] }, auch bei genau einem Ergebnis', () => {
