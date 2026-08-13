@@ -11,13 +11,12 @@ const TAP_TOLERANCE_PX = 8;
 const LONG_PRESS_MS = 400;
 
 /**
- * Mirrors task-editor.tsx's PRIORITIES values. `0` (Normal) renders no badge at
- * all — dezent means the common case stays quiet, only the two elevated levels
- * earn a dot.
+ * Mirrors task-editor.tsx's PRIORITIES values. `0` (Normal) has no label at all
+ * — the common case stays quiet, only the two elevated levels earn one.
  */
-const PRIORITY_META: Record<number, { label: string; className: string }> = {
-  1: { label: 'Hoch', className: 'task-list__priority-dot--hoch' },
-  2: { label: 'Dringend', className: 'task-list__priority-dot--dringend' },
+const PRIORITY_META: Record<number, string> = {
+  1: 'Hoch',
+  2: 'Dringend',
 };
 
 export interface TaskItemProps {
@@ -126,8 +125,12 @@ export function TaskItem({
   const pointerRef = useRef({ x: 0, y: 0 });
 
   const isDone = task.completedAt !== null;
-  const priorityMeta = PRIORITY_META[task.priority];
+  const priorityLabel = PRIORITY_META[task.priority] ?? null;
   const isOverdue = task.dueAt !== null && !isDone && new Date(task.dueAt) < new Date();
+  // Precedence overdue > priority > none (issue #704, AK5) — a row is never
+  // both. `undefined` (not `'none'`) so the attribute is simply absent rather
+  // than a third value to style around.
+  const edge = isOverdue ? 'overdue' : priorityLabel ? 'priority' : undefined;
   // A parent cannot itself be nested — that would create a second level, which
   // the data model does not support (one level only, issue #89).
   const draggable = !isParent && onDropOnTask !== undefined;
@@ -278,6 +281,7 @@ export function TaskItem({
     <li
       ref={itemRef}
       data-task-id={task.id}
+      data-edge={edge}
       data-entering={entering}
       data-leaving={leaving}
       inert={isChild && !visible}
@@ -328,14 +332,10 @@ export function TaskItem({
           aria-label={`${task.title} als erledigt markieren`}
         />
       </span>
-      <span className="task-list__title">
-        {priorityMeta && (
-          <span
-            className={`task-list__priority-dot ${priorityMeta.className}`}
-            role="img"
-            aria-label={`Priorität: ${priorityMeta.label}`}
-          />
-        )}
+      <span
+        className="task-list__title"
+        title={priorityLabel ? `Priorität: ${priorityLabel}` : undefined}
+      >
         {task.title}
       </span>
       {progress && (

@@ -677,8 +677,8 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   expect(row.rows[0].deleted_at).toBeNull();
 });
 
-function priorityDotFor(page: Page, title: string) {
-  return taskItems(page).filter({ hasText: title }).locator('.task-list__priority-dot');
+function taskRowFor(page: Page, title: string) {
+  return taskItems(page).filter({ hasText: title });
 }
 
 function dueLabelFor(page: Page, title: string) {
@@ -712,30 +712,66 @@ async function resolveBackground(page: Page, css: string): Promise<string> {
   }, css);
 }
 
-test('Priorität „Normal" bleibt ohne Punkt, „Hoch" und „Dringend" zeigen einen dezenten Punkt (issue #86 AC1)', async ({
+/** Same idea as `resolveColorToken`, for a `font-size` token instead of a colour —
+ * used so the done-state shrink assertion never hardcodes the 14px literal. */
+async function resolveFontSizeToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.fontSize = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const fontSize = getComputedStyle(probe).fontSize;
+    probe.remove();
+    return fontSize;
+  }, token);
+}
+
+test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, Normal bleibt transparent; Priorität bleibt über title zugänglich (issue #704 AK5, migriert von #86 AC1)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'Normale Aufgabe', priority: 0 });
   await seedTask(page, { title: 'Hohe Priorität', priority: 1 });
   await seedTask(page, { title: 'Dringende Aufgabe', priority: 2 });
+  await seedTask(page, {
+    title: 'Überfällig und dringend',
+    priority: 2,
+    dueAt: '2020-01-01T09:00:00.000Z',
+  });
 
-  await expect(priorityDotFor(page, 'Normale Aufgabe')).toHaveCount(0);
-  await expect(priorityDotFor(page, 'Hohe Priorität')).toHaveClass(
-    /task-list__priority-dot--hoch/,
+  const normalRow = taskRowFor(page, 'Normale Aufgabe');
+  await expect(normalRow).not.toHaveAttribute('data-edge');
+  const normalEdgeColor = await normalRow.evaluate(
+    (el) => getComputedStyle(el).borderInlineStartColor,
   );
-  await expect(priorityDotFor(page, 'Dringende Aufgabe')).toHaveClass(
-    /task-list__priority-dot--dringend/,
-  );
+  expect(normalEdgeColor).toBe('rgba(0, 0, 0, 0)');
+  await expect(normalRow.locator('.task-list__title')).not.toHaveAttribute('title');
 
-  const hochColor = await priorityDotFor(page, 'Hohe Priorität').evaluate(
-    (el) => getComputedStyle(el).backgroundColor,
-  );
+  const hochRow = taskRowFor(page, 'Hohe Priorität');
+  await expect(hochRow).toHaveAttribute('data-edge', 'priority');
+  const hochColor = await hochRow.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
   expect(hochColor).toBe(await resolveColorToken(page, '--warning'));
-  const dringendColor = await priorityDotFor(page, 'Dringende Aufgabe').evaluate(
-    (el) => getComputedStyle(el).backgroundColor,
+  await expect(hochRow.locator('.task-list__title')).toHaveAttribute('title', 'Priorität: Hoch');
+
+  // Dringend without an overdue due date still reads as --warning, not --danger —
+  // the edge signals priority, not urgency; only an overdue row earns danger
+  // (the one intentional colour-semantics change AK5 makes over the old dot).
+  const dringendRow = taskRowFor(page, 'Dringende Aufgabe');
+  await expect(dringendRow).toHaveAttribute('data-edge', 'priority');
+  const dringendColor = await dringendRow.evaluate(
+    (el) => getComputedStyle(el).borderInlineStartColor,
   );
-  expect(dringendColor).toBe(await resolveColorToken(page, '--danger'));
+  expect(dringendColor).toBe(await resolveColorToken(page, '--warning'));
+  await expect(dringendRow.locator('.task-list__title')).toHaveAttribute(
+    'title',
+    'Priorität: Dringend',
+  );
+
+  const overdueUrgentRow = taskRowFor(page, 'Überfällig und dringend');
+  await expect(overdueUrgentRow).toHaveAttribute('data-edge', 'overdue');
+  const overdueUrgentColor = await overdueUrgentRow.evaluate(
+    (el) => getComputedStyle(el).borderInlineStartColor,
+  );
+  expect(overdueUrgentColor).toBe(await resolveColorToken(page, '--danger'));
 });
 
 test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige oder erledigte nicht (issue #86 AC2)', async ({
@@ -766,38 +802,135 @@ test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige ode
   expect(numericFormat).toContain('tabular-nums');
 });
 
-test('Prioritäts-Punkt und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #86 AC3)', async ({
+test('Farbkante und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #704 AK5, migriert von #86 AC3)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'Dringend im Dunkeln', priority: 2, dueAt: '2020-01-01T09:00:00.000Z' });
 
-  const dot = priorityDotFor(page, 'Dringend im Dunkeln');
+  const row = taskRowFor(page, 'Dringend im Dunkeln');
   const due = dueLabelFor(page, 'Dringend im Dunkeln');
 
-  // No transition on either element — static, token-driven colour needs no motion
-  // to begin with, so `prefers-reduced-motion` has nothing to override here.
-  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
-    'none',
-  );
+  // The row's own transition stays scoped to `transform` (the swipe gesture) —
+  // border-inline-start-color is never part of it, so the edge itself never
+  // animates, in light or dark mode.
+  await expect
+    .poll(() => row.evaluate((el) => getComputedStyle(el).transitionProperty))
+    .toBe('transform');
   await expect.poll(() => due.evaluate((el) => getComputedStyle(el).transitionProperty)).toBe(
     'none',
   );
 
-  const lightDotColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const lightEdgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
   const lightDueColor = await due.evaluate((el) => getComputedStyle(el).color);
 
   await page.emulateMedia({ colorScheme: 'dark' });
 
-  const darkDotColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const darkEdgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
   const darkDueColor = await due.evaluate((el) => getComputedStyle(el).color);
 
   // Still resolve to the semantic token, just its dark-mode value — proving the
   // override in tokens.css actually reaches these elements, not a hardcoded colour.
-  expect(darkDotColor).toBe(await resolveColorToken(page, '--danger'));
+  // The seeded row is overdue *and* priority 2 — precedence picks --danger, same
+  // as light mode.
+  expect(darkEdgeColor).toBe(await resolveColorToken(page, '--danger'));
   expect(darkDueColor).toBe(await resolveColorToken(page, '--danger'));
-  expect(darkDotColor).not.toBe(lightDotColor);
+  expect(darkEdgeColor).not.toBe(lightEdgeColor);
   expect(darkDueColor).not.toBe(lightDueColor);
+});
+
+test('keine Kartenfläche mehr — Zeile auf --bg, Trennung nur über 1px Haarlinie (issue #704 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Erste Zeile' });
+  await seedTask(page, { title: 'Zweite Zeile' });
+
+  const firstRow = taskRowFor(page, 'Erste Zeile');
+  const style = await firstRow.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return {
+      boxShadow: computed.boxShadow,
+      borderRadius: computed.borderRadius,
+      backgroundColor: computed.backgroundColor,
+      borderBlockEndWidth: computed.borderBlockEndWidth,
+    };
+  });
+  expect(style.boxShadow).toBe('none');
+  expect(style.borderRadius).toBe('0px');
+  expect(style.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  expect(style.borderBlockEndWidth).toBe('1px');
+
+  const borderBlockEndColor = await firstRow.evaluate(
+    (el) => getComputedStyle(el).borderBlockEndColor,
+  );
+  expect(borderBlockEndColor).toBe(await resolveColorToken(page, '--border-faint'));
+});
+
+test('Erledigtes schrumpft an Ort und Stelle statt zu springen (issue #704 AK7)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const title = 'Wird geschrumpft';
+  await seedTask(page, { title });
+
+  const row = taskRowFor(page, title);
+  await expect
+    .poll(() => row.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')))
+    .toBe(false);
+  const heightBefore = (await row.boundingBox())?.height;
+
+  await checkboxFor(page, title).click();
+
+  await expect(row).toHaveClass(/task-list__item--done/);
+  const titleSpan = row.locator('.task-list__title');
+  const doneFontSize = await titleSpan.evaluate((el) => getComputedStyle(el).fontSize);
+  expect(doneFontSize).toBe(await resolveFontSizeToken(page, '--text-secondary'));
+  const doneTextDecoration = await titleSpan.evaluate(
+    (el) => getComputedStyle(el).textDecorationLine,
+  );
+  expect(doneTextDecoration).toContain('line-through');
+  const doneOpacity = await row.evaluate((el) => getComputedStyle(el).opacity);
+  expect(doneOpacity).toBe('0.6');
+
+  // The row's own height never moves — only the title's font size shrinks
+  // (issue #228, #435: a checked-off row must not shift its neighbours).
+  const heightAfter = (await row.boundingBox())?.height;
+  expect(heightAfter).toBe(heightBefore);
+});
+
+test('unter reduzierter Bewegung fügen Kante, Haarlinie und Schrumpfen nichts Animiertes hinzu (issue #704 AK10)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  // The explicit in-app toggle (use-appearance.ts) alongside the OS media
+  // query — AK10 asks for both paths to hold, not just whichever the
+  // browser happens to emulate.
+  await page.evaluate(() => {
+    document.documentElement.dataset.reduceMotion = 'true';
+  });
+  const title = 'Reduzierte Bewegung';
+  await seedTask(page, { title, priority: 2, dueAt: '2020-01-01T09:00:00.000Z' });
+
+  const row = taskRowFor(page, title);
+  const rowTransitionDuration = await row.evaluate(
+    (el) => getComputedStyle(el).transitionDuration,
+  );
+  // Chromium serializes very small numbers in exponential notation (e.g. "1e-05s"),
+  // so compare the parsed value rather than the exact string.
+  expect(parseFloat(rowTransitionDuration)).toBeLessThan(0.001);
+  expect(await transitionDurationFor(row, 'border-inline-start-color')).toBe(0);
+  const edgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
+  expect(edgeColor).toBe(await resolveColorToken(page, '--danger'));
+
+  await checkboxFor(page, title).click();
+  await expect(row).toHaveClass(/task-list__item--done/);
+
+  const titleSpan = row.locator('.task-list__title');
+  expect(await transitionDurationFor(titleSpan, 'font-size')).toBe(0);
+  const doneFontSize = await titleSpan.evaluate((el) => getComputedStyle(el).fontSize);
+  expect(doneFontSize).toBe(await resolveFontSizeToken(page, '--text-secondary'));
 });
 
 test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, die Zeile bleibt bestehen', async ({
