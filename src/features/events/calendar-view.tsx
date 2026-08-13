@@ -86,6 +86,9 @@ export function CalendarView() {
             endsAt: item.endsAt,
             startDate: item.startDate,
             endDate: item.endDate,
+            titleConfidence: item.titleConfidence,
+            dateConfidence: item.dateConfidence,
+            timeConfidence: item.timeConfidence,
           },
         }),
       );

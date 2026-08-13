@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { confidenceFromReason, titleConfidence } from '@/features/capture/field-confidence';
+import type { FieldConfidence } from '@/features/capture/types';
 import { useCapturePrefs } from '@/features/settings/use-capture-prefs';
 import { mutate } from '@/local/outbox';
 import { Fab } from '@/ui/fab';
@@ -9,8 +11,20 @@ import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
 import { isoToLocalInput, localInputToIso } from './datetime-local';
-import { parseTaskInput, type ParsedTaskInput } from './parse-task-input';
+import { parseTaskInput } from './parse-task-input';
 import { groupTasks, useTasks } from './use-tasks';
+
+/** Gemeinsame Form für `applyParsed` — sowohl ein frischer `parseTaskInput`-Aufruf
+ * (mit Grundtext-Strings, #691) als auch ein `TaskCaptureDraftItem` aus dem Draft-Store
+ * (schon als `FieldConfidence`) bringen diese Felder mit. */
+interface AppliedTaskInput {
+  title: string;
+  dueAt: string | null;
+  needsConfirmation: boolean;
+  titleConfidence: FieldConfidence;
+  dateConfidence: FieldConfidence;
+  timeConfidence: FieldConfidence;
+}
 
 const LABEL = 'Aufgabe erfassen';
 const UNDO_TIMEOUT_MS = 5000;
@@ -154,7 +168,7 @@ export function QuickAddTask() {
   // Drafts, die von der Übersicht her über den Draft-Store ankommen — ein einziger
   // Entscheidungsort statt zweier Kopien der Sheet-vs-Direkt-Logik.
   async function applyParsed(
-    parsed: ParsedTaskInput,
+    parsed: AppliedTaskInput,
     explicitDueAt: string | null = null,
     extras: TaskExtras = NO_EXTRAS,
   ) {
@@ -166,7 +180,16 @@ export function QuickAddTask() {
       // schlägt die Direkt-Erfassung — das ist die einzige Stelle im Erfassungspfad,
       // an der eine geratene Uhrzeit sonst ungeprüft in die Datenbank liefe.
       if (!directCapture || parsed.needsConfirmation) {
-        setDraft({ confirm: { title: parsed.title, dueAt: parsed.dueAt }, extras });
+        setDraft({
+          confirm: {
+            title: parsed.title,
+            dueAt: parsed.dueAt,
+            titleConfidence: parsed.titleConfidence,
+            dateConfidence: parsed.dateConfidence,
+            timeConfidence: parsed.timeConfidence,
+          },
+          extras,
+        });
         return;
       }
       // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet (AC4).
@@ -241,7 +264,18 @@ export function QuickAddTask() {
     if (inputRef.current) inputRef.current.value = '';
     setOpen(false);
 
-    await applyParsed(parsed, explicitDueAt, extras);
+    await applyParsed(
+      {
+        title: parsed.title,
+        dueAt: parsed.dueAt,
+        needsConfirmation: parsed.needsConfirmation,
+        titleConfidence: titleConfidence(parsed.title),
+        dateConfidence: confidenceFromReason(parsed.dateGuessReason),
+        timeConfidence: confidenceFromReason(parsed.timeGuessReason),
+      },
+      explicitDueAt,
+      extras,
+    );
   }
 
   async function handleConfirm(title: string, dueAt: string) {

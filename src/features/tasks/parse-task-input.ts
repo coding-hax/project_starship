@@ -54,6 +54,9 @@ export interface ParsedTaskInput {
   title: string;
   dueAt: string | null;
   needsConfirmation: boolean;
+  /** #691: Grundtext für die Feld-Konfidenz „Datum"/„Uhrzeit", `null` wenn nicht geraten. */
+  dateGuessReason: string | null;
+  timeGuessReason: string | null;
 }
 
 export interface Span {
@@ -206,7 +209,14 @@ function resolveSpanToken(token: string, singularWord: string): number {
 
 interface DateValue {
   date: Date;
+  /** #691: Grundtext für die Feld-Konfidenz „Datum" im Bestätigen-Dialog, `null` wenn
+   * das Datum nicht geraten ist (siehe „Was als guessed gilt" in issue #691). */
+  guessReason: string | null;
 }
+
+const WEEKDAY_ONLY_REASON = 'Wochentag ohne Datum';
+const WEEKDAY_NEXT_REASON = '„nächsten" überspringt eine Woche';
+const YEAR_COMPLETED_REASON = 'Jahr ergänzt';
 
 function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null {
   const candidates: Candidate<DateValue>[] = [];
@@ -218,11 +228,15 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     const year = match[3] ? Number(match[3]) : now.getFullYear();
     if (!isValidCalendarDate(year, month, day)) continue;
     const date = new Date(year, month - 1, day);
-    if (!match[3] && date < logicalStart) date.setFullYear(date.getFullYear() + 1);
+    let yearCompleted = false;
+    if (!match[3] && date < logicalStart) {
+      date.setFullYear(date.getFullYear() + 1);
+      yearCompleted = true;
+    }
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date },
+      value: { date, guessReason: yearCompleted ? YEAR_COMPLETED_REASON : null },
       specificity: 3,
     });
   }
@@ -233,11 +247,15 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     const year = match[3] ? Number(match[3]) : now.getFullYear();
     if (!isValidCalendarDate(year, month, day)) continue;
     const date = new Date(year, month - 1, day);
-    if (!match[3] && date < logicalStart) date.setFullYear(date.getFullYear() + 1);
+    let yearCompleted = false;
+    if (!match[3] && date < logicalStart) {
+      date.setFullYear(date.getFullYear() + 1);
+      yearCompleted = true;
+    }
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date },
+      value: { date, guessReason: yearCompleted ? YEAR_COMPLETED_REASON : null },
       specificity: 3,
     });
   }
@@ -248,7 +266,7 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date: addDays(logicalStart, RELATIVE_DAYS[key]) },
+      value: { date: addDays(logicalStart, RELATIVE_DAYS[key]), guessReason: null },
       specificity: 2,
     });
   }
@@ -258,7 +276,7 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date: addDays(logicalStart, days) },
+      value: { date: addDays(logicalStart, days), guessReason: null },
       specificity: 3,
     });
   }
@@ -268,11 +286,14 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date: addDays(logicalStart, weeks * 7) },
+      value: { date: addDays(logicalStart, weeks * 7), guessReason: null },
       specificity: 3,
     });
   }
 
+  // R3/AK1 (#691): jeder Wochentags-Treffer ist geraten — "diesen"/"kommenden" sind
+  // reine Synonyme der bloßen Form (dieselbe Ambiguität), nur "nächsten" bekommt einen
+  // eigenen Grundtext, weil der Wochensprung der überraschendere Fall ist.
   const weekdayPattern = wordPattern(
     `(?:(${WEEKDAY_MODIFIERS.join('|')})\\s+)?(${WEEKDAYS.join('|')})`,
     'giu',
@@ -285,7 +306,10 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
     candidates.push({
       start: match.index!,
       end: match.index! + match[0].length,
-      value: { date: addDays(logicalStart, diff) },
+      value: {
+        date: addDays(logicalStart, diff),
+        guessReason: modifier === 'nächsten' ? WEEKDAY_NEXT_REASON : WEEKDAY_ONLY_REASON,
+      },
       specificity: modifier ? 2 : 1,
     });
   }
@@ -304,7 +328,14 @@ interface TimeValue {
    * eine regionale Kurzform — der Aufgaben-Pfad zeigt dann das Bestätigungs-Sheet, auch
    * wenn "ohne Bestätigung direkt anlegen" an ist. */
   needsConfirmation: boolean;
+  /** #691: Grundtext für die Feld-Konfidenz „Uhrzeit" im Bestätigen-Dialog — anders als
+   * `needsConfirmation` unabhängig vom Nachtfenster, jede geratene Tageshälfte zählt. */
+  guessReason: string | null;
 }
+
+const DAY_PART_GUESSED_REASON = 'Tageshälfte geraten';
+const REGIONAL_TIME_REASON = 'regionale Zeitangabe';
+const NO_TIME_GIVEN_REASON = 'keine Uhrzeit gesagt';
 
 // Zahlwörter für Minutenangaben in der Zeigerzeit-Grammatik (R1, #688) — bewusst eine
 // eigene, größere Tabelle statt WORD_NUMBERS zu erweitern: dessen Elf-Uhr-Grenze
@@ -394,7 +425,7 @@ function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate
       start: raw.start,
       end: raw.end,
       specificity: raw.specificity,
-      value: { hours: raw.pointerHours, minutes: raw.minutes, needsConfirmation: false },
+      value: { hours: raw.pointerHours, minutes: raw.minutes, needsConfirmation: false, guessReason: null },
     };
   }
   const dayPart = findAdjacentDayPart(text, raw);
@@ -404,14 +435,21 @@ function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate
   // vorbestehende Verhalten der einfachen Formen (#47/#618/#619). Nur "H−1"-Formen (halb/
   // viertel vor H) erreichen hier je 12 — die liegen für H=1..12 immer bei 0-11 und sind
   // von diesem Sonderfall nicht betroffen.
-  const hours = raw.pointerHours === 12 ? 12 : (raw.pointerHours + (isPM ? 12 : 0)) % 24;
-  const isGuessed = dayPart === null;
+  const isFixedNoon = raw.pointerHours === 12;
+  const hours = isFixedNoon ? 12 : (raw.pointerHours + (isPM ? 12 : 0)) % 24;
+  // Der Fixpunkt braucht keine Tageshälfte, um 12:00 aufzulösen (s. o.) — für die
+  // Feld-Konfidenz ist da folglich auch nichts geraten, unabhängig von `dayPart`.
+  const isGuessed = !isFixedNoon && dayPart === null;
   const needsConfirmation = raw.isRegional || (isGuessed && hours < 6);
+  // #691: die Feld-Konfidenz ist strenger als `needsConfirmation` — jede aus dem
+  // Sprechzeitpunkt abgeleitete Tageshälfte gilt als geraten, nicht nur eine, die ins
+  // Nachtfenster fällt. Regional schlägt (Verwechslungsgefahr unabhängig von der Uhrzeit).
+  const guessReason = raw.isRegional ? REGIONAL_TIME_REASON : isGuessed ? DAY_PART_GUESSED_REASON : null;
   return {
     start: dayPart ? Math.min(raw.start, dayPart.span.start) : raw.start,
     end: dayPart ? Math.max(raw.end, dayPart.span.end) : raw.end,
     specificity: raw.specificity,
-    value: { hours, minutes: raw.minutes, needsConfirmation },
+    value: { hours, minutes: raw.minutes, needsConfirmation, guessReason },
   };
 }
 
@@ -670,6 +708,9 @@ export interface DateTimeSlot {
 export interface TextAnalysis extends DateTimeSlot {
   title: string;
   needsConfirmation: boolean;
+  /** #691: Grundtext für die Feld-Konfidenz „Datum"/„Uhrzeit", `null` wenn nicht geraten. */
+  dateGuessReason: string | null;
+  timeGuessReason: string | null;
 }
 
 /** Uhrzeit ohne Datum: "heute", wenn sie noch in der Zukunft liegt, sonst "morgen" (AC2) —
@@ -692,22 +733,31 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
 
   let date: Date | null = null;
   const hasExplicitTime = timeCandidate !== null;
+  // #691: "keine Uhrzeit gesagt" gilt nur, wenn überhaupt ein Datum gefunden wurde und
+  // dafür eine Uhrzeit fehlt (der Default 09:00 unten) — ein reiner Zeit-ohne-Datum-Fund
+  // hat sehr wohl eine gesagte Uhrzeit, nur kein Datum dazu.
+  let dateGuessReason: string | null = null;
+  let timeGuessReason: string | null = null;
   if (dateCandidate) {
     date = new Date(dateCandidate.value.date);
+    dateGuessReason = dateCandidate.value.guessReason;
     if (timeCandidate) {
       date.setHours(timeCandidate.value.hours, timeCandidate.value.minutes, 0, 0);
+      timeGuessReason = timeCandidate.value.guessReason;
     } else {
       date.setHours(9, 0, 0, 0);
+      timeGuessReason = NO_TIME_GIVEN_REASON;
     }
   } else if (timeCandidate) {
     date = resolveTimeOnlyDate(timeCandidate.value, now);
+    timeGuessReason = timeCandidate.value.guessReason;
   }
 
   const needsConfirmation = timeCandidate?.value.needsConfirmation ?? false;
 
   const explicitTitle = findExplicitTitle(text);
   if (explicitTitle !== null) {
-    return { date, hasExplicitTime, title: explicitTitle, needsConfirmation };
+    return { date, hasExplicitTime, title: explicitTitle, needsConfirmation, dateGuessReason, timeGuessReason };
   }
 
   const dateSpan = dateCandidate ? { start: dateCandidate.start, end: dateCandidate.end } : null;
@@ -728,10 +778,16 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     ...connectorSpans,
   ];
   const title = edgeTrim(removeSpans(text, removalSpans));
-  return { date, hasExplicitTime, title, needsConfirmation };
+  return { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason };
 }
 
 export function parseTaskInput(text: string, now: Date = new Date()): ParsedTaskInput {
-  const { date, title, needsConfirmation } = analyzeText(text, now);
-  return { title, dueAt: date ? date.toISOString() : null, needsConfirmation };
+  const { date, title, needsConfirmation, dateGuessReason, timeGuessReason } = analyzeText(text, now);
+  return {
+    title,
+    dueAt: date ? date.toISOString() : null,
+    needsConfirmation,
+    dateGuessReason,
+    timeGuessReason,
+  };
 }

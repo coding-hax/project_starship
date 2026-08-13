@@ -99,6 +99,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner (#620), eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText` (issue #687)
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer (issue #687)
+- `field-confidence.ts` — Helfer für `FieldConfidence` (#691), von Erkenner und `quick-add.tsx` geteilt
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
 - `route-capture.ts` — die eine Stelle für „wohin damit" (#619): ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
@@ -214,6 +215,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
 - `row/section-card/toggle/segmented-control/slider.tsx` (+ `.css`) — Form-Primitive
 - `overview-block.tsx` / `.css` — einheitlicher Modulkopf auf /uebersicht (Punkt in Bereichsfarbe, Titel, optionaler Link), issue #652
+- `field-hint.tsx` / `.css` — Warnfarbene Notiz für ein geratenes Feld, kein Icon (issue #691)
 - `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync/Storage-Start, Fehler-Toast, Stale-Helfer
 - `e2e-bridge.tsx` — Test-Griff auf Outbox/Journal/Dexie-Dump (nur `NEXT_PUBLIC_E2E`)
 
@@ -231,6 +233,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `capture-parser.spec.ts` — Span+Ranking-Grammatik (issue #687, Teil 1 von 3 des Parser-Umbaus): ein Test je AK1–AK7 + Offline-Pfad
 - `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (issue #688, Teil 2 von 3 des Parser-Umbaus): ein Test je AK1–AK6 + Offline-Pfad
 - `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (issue #689, Teil 3 von 3): ein Test je AK1–AK6 + Offline-Pfad
+- `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (issue #691, Teil 4 von 4): ein Test je AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)

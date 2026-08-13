@@ -9,6 +9,8 @@
  * S1 von #617, damit spätere Schnitte (Mehrfach-Erfassung) hier refactorbar bleiben.
  */
 
+import type { FieldConfidence } from '../capture/types';
+
 export interface TaskCaptureDraftItem {
   kind: 'task';
   title: string;
@@ -16,6 +18,10 @@ export interface TaskCaptureDraftItem {
   /** #688: geratene Nachtzeit oder regionale Kurzform — erzwingt das Bestätigungs-Sheet
    * in quick-add.tsx, auch wenn "ohne Bestätigung direkt anlegen" an ist. */
   needsConfirmation: boolean;
+  /** #691: Konfidenz je Feld — Grundlage für die Markierung im Bestätigen-Dialog. */
+  titleConfidence: FieldConfidence;
+  dateConfidence: FieldConfidence;
+  timeConfidence: FieldConfidence;
 }
 
 export interface EventCaptureDraftItem {
@@ -26,6 +32,10 @@ export interface EventCaptureDraftItem {
   endsAt: string | null;
   startDate: string | null;
   endDate: string | null;
+  /** #691: Konfidenz je Feld — Grundlage für die Markierung im Termin-Editor (AK3). */
+  titleConfidence: FieldConfidence;
+  dateConfidence: FieldConfidence;
+  timeConfidence: FieldConfidence;
 }
 
 export type CaptureDraftItem = TaskCaptureDraftItem | EventCaptureDraftItem;

@@ -1,5 +1,6 @@
 import { toDateKey } from '../habits/due-today';
 import { analyzeText, logicalDayStart } from '../tasks/parse-task-input';
+import { confidenceFromReason, titleConfidence } from './field-confidence';
 import { matchHabit } from './habit-match';
 import type { CaptureDraft, CaptureKind, Recognizer } from './types';
 
@@ -68,7 +69,16 @@ interface Signals {
   taskVocab: boolean;
 }
 
-function classify(signals: Signals): CaptureKind {
+/** #691: Abstand zwischen Sieger und Zweitem im Ranking unter dieser Schwelle ->
+ * Feld-Konfidenz „Art" gilt als geraten ("Aufgabe oder Termin unklar"). */
+const KIND_MARGIN_THRESHOLD = 20;
+
+interface ClassifyResult {
+  kind: CaptureKind;
+  ambiguous: boolean;
+}
+
+function classify(signals: Signals): ClassifyResult {
   const scores: Record<CaptureKind, number> = {
     task: SCORE.taskBaseline,
     event: 0,
@@ -94,7 +104,17 @@ function classify(signals: Signals): CaptureKind {
   for (const kind of ['habit_check', 'event', 'task'] as const) {
     if (scores[kind] > scores[winner]) winner = kind;
   }
-  return winner;
+  const runnerUp = Math.max(
+    ...(['habit_check', 'event', 'task'] as const)
+      .filter((kind) => kind !== winner)
+      .map((kind) => scores[kind]),
+  );
+  // `runnerUp === 0` heißt: kein einziges Signal hat für eine andere Art gepunktet,
+  // `task`s Baseline (SCORE.taskBaseline) gewinnt nur mangels Alternative — das ist der
+  // sichere Rückfall, keine knappe Entscheidung (sonst wäre praktisch jeder unmarkierte
+  // Satz "geraten", die Baseline liegt ja immer unter der Schwelle).
+  const ambiguous = runnerUp > 0 && scores[winner] - runnerUp < KIND_MARGIN_THRESHOLD;
+  return { kind: winner, ambiguous };
 }
 
 const LOG_DATE_LOOKBACK_DAYS = 7;
@@ -117,8 +137,12 @@ function resolveLogDate(date: Date | null, now: Date): string {
   return toDateKey(candidateDay);
 }
 
+const KIND_AMBIGUOUS_REASON = 'Aufgabe oder Termin unklar';
+const HABIT_AMBIGUOUS_REASON = 'unsicherer Gewohnheitstreffer';
+
 export const recognizeLocally: Recognizer = (text, ctx) => {
-  const { date, hasExplicitTime, title, needsConfirmation } = analyzeText(text, ctx.now);
+  const { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason } =
+    analyzeText(text, ctx.now);
   const habitMatch = matchHabit(text, ctx.habits);
 
   const signals: Signals = {
@@ -130,21 +154,34 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
     taskVocab: matchesAny(text, TASK_VOCAB_PATTERNS),
   };
 
-  const scored = classify(signals);
+  const classified = classify(signals);
   // Modul-Registry filtert NACH dem Punkten: gewinnt eine Art, die der Aufrufer nicht
   // erlaubt, degradiert das Ergebnis zu `task` — es fällt nicht weg.
-  const kind: CaptureKind = ctx.allowedKinds.includes(scored) ? scored : 'task';
+  const kind: CaptureKind = ctx.allowedKinds.includes(classified.kind) ? classified.kind : 'task';
+  // Eine Degradierung ist eine bewusste Regel (der sichere Rückfall), keine unklare
+  // Rangfolge mehr — die Feld-Konfidenz "Art" bleibt dann `high`.
+  const kindDegraded = kind !== classified.kind;
 
   // R2 Regel 5 + AK4 (#688): eine geratene Nachtzeit oder eine regionale Kurzform senkt
   // die Konfidenz auch für task/event — Grundlage für `needsConfirmation` auf dem
-  // Aufgaben-Pfad (route-capture.ts).
+  // Aufgaben-Pfad (route-capture.ts). Unverändert seit vor #691, unabhängig von der
+  // Feld-Konfidenz unten.
   const draft: CaptureDraft = {
     kind,
     title,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
     habitId: kind === 'habit_check' ? habitMatch.habitId : null,
     logDate: kind === 'habit_check' ? resolveLogDate(date, ctx.now) : null,
-    confidence: kind === 'habit_check' ? habitMatch.confidence : needsConfirmation ? 'low' : 'high',
+    needsConfirmation,
+    confidence: {
+      kind: confidenceFromReason(!kindDegraded && classified.ambiguous ? KIND_AMBIGUOUS_REASON : null),
+      title: titleConfidence(title),
+      date: confidenceFromReason(dateGuessReason),
+      time: confidenceFromReason(timeGuessReason),
+      habit: confidenceFromReason(
+        habitMatch.matched && habitMatch.confidence === 'low' ? HABIT_AMBIGUOUS_REASON : null,
+      ),
+    },
   };
 
   return { items: [draft] };

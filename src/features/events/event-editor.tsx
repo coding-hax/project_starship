@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { FieldConfidence } from '@/features/capture/types';
 import { mutate } from '@/local/outbox';
+import { FieldHint } from '@/ui/field-hint';
 import { Row } from '@/ui/row';
 import { Sheet } from '@/ui/sheet';
 import { Toggle } from '@/ui/toggle';
@@ -88,7 +90,15 @@ export interface EventEditorPrefill {
   endsAt: string | null;
   startDate: string | null;
   endDate: string | null;
+  /** #691 AK3: Konfidenz je Feld — dieselbe Markierung wie im Aufgaben-Bestätigen-Dialog. */
+  titleConfidence?: FieldConfidence;
+  dateConfidence?: FieldConfidence;
+  timeConfidence?: FieldConfidence;
 }
+
+const HIGH_CONFIDENCE: FieldConfidence = { level: 'high' };
+const TITLE_HINT_ID = 'event-editor-title-hint';
+const START_HINT_ID = 'event-editor-start-hint';
 
 export type EventEditorState =
   | { mode: 'create'; event: null; occurrence: null; prefill?: EventEditorPrefill }
@@ -173,6 +183,9 @@ export function EventEditor({
   const titleRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
   const [scopeAction, setScopeAction] = useState<ScopeAction | null>(null);
+  // #691 AK4: sobald Titel oder Von-Feld angefasst werden, verschwindet ihre Markierung.
+  const [titleEdited, setTitleEdited] = useState(false);
+  const [startEdited, setStartEdited] = useState(false);
 
   const open = state !== null;
   const mode = state?.mode ?? 'create';
@@ -182,6 +195,15 @@ export function EventEditor({
   const originalDate = occurrence?.originalDate ?? null;
   const label = mode === 'edit' ? 'Termin bearbeiten' : 'Termin erfassen';
 
+  // #691 AK3: dieselbe Markierung wie capture-confirm.tsx — nur im `create`-Modus
+  // gesetzt, ein bestehender Termin ist per Definition keine Vermutung mehr.
+  const titleConfidence = prefill?.titleConfidence ?? HIGH_CONFIDENCE;
+  const dateConfidence = prefill?.dateConfidence ?? HIGH_CONFIDENCE;
+  const timeConfidence = prefill?.timeConfidence ?? HIGH_CONFIDENCE;
+  const showTitleHint = !titleEdited && titleConfidence.level === 'guessed';
+  const showStartHint =
+    !startEdited && (dateConfidence.level === 'guessed' || timeConfidence.level === 'guessed');
+
   // Seed exactly once, on the closed->open transition (task-editor.tsx pattern)
   // — not on every re-render, or another device's sync landing mid-edit would
   // overwrite whatever the user is mid-typing here. Time fields seed from the
@@ -189,6 +211,10 @@ export function EventEditor({
   // occurrence of a series can already read differently (its own exception
   // override, or simply a later date at the anchor's own time-of-day).
   useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setTitleEdited(false);
+      setStartEdited(false);
+    }
     if (open && !wasOpenRef.current && mode === 'edit' && event && occurrence) {
       setTitle(event.title);
       setCategory(event.category ?? NO_CATEGORY);
@@ -428,9 +454,14 @@ export function EventEditor({
             type="text"
             className="event-editor__title"
             value={title}
-            onChange={(formEvent) => setTitle(formEvent.target.value)}
+            onChange={(formEvent) => {
+              setTitle(formEvent.target.value);
+              setTitleEdited(true);
+            }}
             aria-label="Titel"
+            aria-describedby={showTitleHint ? TITLE_HINT_ID : undefined}
           />
+          {showTitleHint && <FieldHint id={TITLE_HINT_ID} confidences={[titleConfidence]} />}
           <label className="event-editor__field">
             <span>Kategorie</span>
             <select
@@ -458,11 +489,16 @@ export function EventEditor({
                   type="date"
                   className="event-editor__start"
                   value={startDateInput}
-                  onChange={(formEvent) => setStartDateInput(formEvent.target.value)}
+                  onChange={(formEvent) => {
+                    setStartDateInput(formEvent.target.value);
+                    setStartEdited(true);
+                  }}
                   aria-label="Von"
+                  aria-describedby={showStartHint ? START_HINT_ID : undefined}
                   required
                 />
               </label>
+              {showStartHint && <FieldHint id={START_HINT_ID} confidences={[dateConfidence]} />}
               <label className="event-editor__field">
                 <span>Bis</span>
                 <input
@@ -483,11 +519,18 @@ export function EventEditor({
                   type="datetime-local"
                   className="event-editor__start"
                   value={startsAtInput}
-                  onChange={(formEvent) => setStartsAtInput(formEvent.target.value)}
+                  onChange={(formEvent) => {
+                    setStartsAtInput(formEvent.target.value);
+                    setStartEdited(true);
+                  }}
                   aria-label="Von"
+                  aria-describedby={showStartHint ? START_HINT_ID : undefined}
                   required
                 />
               </label>
+              {showStartHint && (
+                <FieldHint id={START_HINT_ID} confidences={[dateConfidence, timeConfidence]} />
+              )}
               <label className="event-editor__field">
                 <span>Bis</span>
                 <input
