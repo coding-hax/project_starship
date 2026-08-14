@@ -1912,6 +1912,13 @@ function quickAddNotes(page: Page) {
   return quickAddDialog(page).getByRole('textbox', { name: 'Notiz der Aufgabe' });
 }
 
+/** The Wann panel's own `datetime-local` input — `getByLabel('Fälligkeit')` is
+ * ambiguous here since the Fälligkeit chip's own button carries the identical
+ * aria-label (issue #711 AK6), so this scopes to the actual control by class. */
+function quickAddDueInput(page: Page) {
+  return quickAddDialog(page).locator('input.quick-add__due');
+}
+
 async function submitQuickAdd(page: Page) {
   await quickAddDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 }
@@ -1957,7 +1964,7 @@ test('vier Chips ersetzen den „Mehr"-Aufklapper, jeder öffnet sein eigenes Co
   await expect(quickAddNotes(page)).toBeVisible();
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await expect(dialog.getByLabel('Fälligkeit')).toBeVisible();
+  await expect(quickAddDueInput(page)).toBeVisible();
   await expect(quickAddNotes(page)).toHaveCount(0);
 
   await quickAddChip(page, 'Teil von').click();
@@ -1980,7 +1987,7 @@ test('über die Chips gesetzte Felder hängen an der neu angelegten Aufgabe (iss
   await quickAddNotes(page).fill('Eine Notiz');
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await dialog.getByLabel('Fälligkeit').fill('2026-07-20T09:00');
+  await quickAddDueInput(page).fill('2026-07-20T09:00');
 
   await quickAddChip(page, 'Priorität').click();
   await dialog.getByRole('radio', { name: 'Dringend' }).check();
@@ -2023,10 +2030,9 @@ test('eine über den Wann-Chip gesetzte Fälligkeit schlägt das aus dem Titel g
   await selectView(page, 'Alle');
   await openQuickAdd(page);
 
-  const dialog = quickAddDialog(page);
   await quickAddTitleField(page).fill('Arzt anrufen morgen um 12');
   await quickAddChip(page, 'Fälligkeit').click();
-  await dialog.getByLabel('Fälligkeit').fill('2026-07-25T08:30');
+  await quickAddDueInput(page).fill('2026-07-25T08:30');
   await submitQuickAdd(page);
 
   // Kein Bestätigungs-Sheet und kein Undo-Toast: beide sichern ein ungeprüft
@@ -2188,6 +2194,17 @@ test('AK5: kein Layout-Shift beim Öffnen eines Chip-Panels — Kopfzeile und Ti
   const header = dialog.locator('.sheet__header-row');
   const title = quickAddTitleField(page);
 
+  // The sheet's own open transition (sheet.css, ~200ms) must have settled first
+  // — otherwise "before" is measured mid-slide-up and any coordinate compared
+  // against "after" reads as a shift that has nothing to do with the panel.
+  await expect
+    .poll(() =>
+      dialog
+        .locator('.sheet__content')
+        .evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')),
+    )
+    .toBe(false);
+
   const headerBefore = await header.boundingBox();
   const titleBefore = await title.boundingBox();
 
@@ -2197,8 +2214,22 @@ test('AK5: kein Layout-Shift beim Öffnen eines Chip-Panels — Kopfzeile und Ti
   const headerAfter = await header.boundingBox();
   const titleAfter = await title.boundingBox();
 
-  expect(headerAfter).toEqual(headerBefore);
-  expect(titleAfter).toEqual(titleBefore);
+  // A hair of tolerance, not exact equality, for pure sub-pixel layout rounding
+  // — same call as list-motion.spec.ts's AC4. A real shift (the reserved panel
+  // slot failing to hold its height) would move these by several pixels, an
+  // order of magnitude past this threshold.
+  const LAYOUT_SHIFT_TOLERANCE_PX = 1;
+  for (const [before, after] of [
+    [headerBefore, headerAfter],
+    [titleBefore, titleAfter],
+  ] as const) {
+    expect(before).not.toBeNull();
+    expect(after).not.toBeNull();
+    expect(Math.abs(after!.x - before!.x)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.y - before!.y)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.width - before!.width)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.height - before!.height)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+  }
 });
 
 test('AK6: der a11y-Name eines Chips trägt Feldname und Wert', async ({ page }) => {
@@ -2206,7 +2237,7 @@ test('AK6: der a11y-Name eines Chips trägt Feldname und Wert', async ({ page })
   await openQuickAdd(page);
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await quickAddDialog(page).getByLabel('Fälligkeit').fill('2026-07-23T14:00');
+  await quickAddDueInput(page).fill('2026-07-23T14:00');
   await quickAddChip(page, 'Fälligkeit').click();
 
   const expected = `Fälligkeit, ${formatDueLabel('2026-07-23T14:00')}`;

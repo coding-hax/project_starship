@@ -25,9 +25,13 @@
   font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
 }
 
+/* A fixed `height`, not `min-height`/`resize` as before the panel slot existed
+   (issue #650): the reserved slot below is sized to fit this exactly, and a
+   textarea's own intrinsic (rows-based) sizing can otherwise render a few
+   pixels taller than a plain `min-height` asks for — the gap that broke AK5's
+   zero-shift guarantee (issue #711). */
 .quick-add__notes {
-  resize: vertical;
-  min-height: calc(var(--touch-target) * 2);
+  height: calc(var(--touch-target) * 2);
 }
 
 .quick-add__input:focus,
@@ -46,8 +50,15 @@
 
 /* Reserves room for the tallest panel (Notiz's textarea, `--touch-target * 2`) at
    all times the sheet is open — not just once a chip is tapped — so opening any
-   panel, including the very first, never changes this box's own height (AK5). */
+   panel, including the very first, never changes this box's own height (AK5).
+   `display: flex` matters here, not just cosmetics: a form control left at its
+   UA-default `inline-block` sits on an inline formatting context and picks up
+   baseline-alignment padding for text descenders (a few px, browser-dependent)
+   — a flex item skips that entirely, which is also why the four fields never
+   needed this while they lived in the old "Mehr"-Bereich's flex column. */
 .quick-add__panel-slot {
+  display: flex;
+  flex-direction: column;
   min-height: calc(var(--touch-target) * 2);
 }
 
