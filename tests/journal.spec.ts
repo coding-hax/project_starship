@@ -1158,3 +1158,170 @@ test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
 
   await context.setOffline(false);
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #703: das 14-Tage-Stimmungsband über dem Eintragsstrom               */
+/* (Tageswert = arithmetisches Mittel, #700 Q1; reiner Lesekonsument des      */
+/* Sitzungs-Caches, kein zusätzlicher Entschlüssel).                          */
+/* -------------------------------------------------------------------------- */
+
+/** Seeds a set of moods across days within the 14-day window, offline first
+ * (DoD-Offline-Pfad) — every entry runs through the outbox via
+ * `appendJournalEntry` (entry.ts → write.ts), never a direct write. FIXED_NOW
+ * is 18.07.2026, so 05.–18.07. are the fourteen days the band covers. */
+async function seedMoodBandEntries(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await window.__starship.appendJournalEntry('2026-07-10', { text: 'tief', mood: '3', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-14', { text: 'hoch', mood: '9', tags: [] });
+    // Zwei Stimmungen an einem Tag -> arithmetisches Mittel (4+9)/2 = 6,5 (#700 Q1).
+    await window.__starship.appendJournalEntry('2026-07-16', { text: 'morgens', mood: '4', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-16', { text: 'abends', mood: '9', tags: [] });
+    // Ein reiner Text-Eintrag ohne Stimmung -> graue Grundlinie, kein Balken.
+    await window.__starship.appendJournalEntry('2026-07-17', { text: 'nur Text', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '7', tags: [] });
+  });
+}
+
+test('AK1 (#703): das Band zeigt 14 Tagesplätze, Höhe spiegelt die Stimmung, Mehrfach-Stimmung als Mittel, leere/stimmungslose Tage als graue Grundlinie, heute markiert', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  // Offline-Pfad (DoD): offline geschrieben, dann online — im Band sichtbar.
+  await context.setOffline(true);
+  await seedMoodBandEntries(page);
+  await context.setOffline(false);
+
+  const band = page.locator('.journal-mood-band');
+  await expect(band).toBeVisible();
+
+  const slots = page.locator('.journal-mood-band__slot');
+  await expect(slots).toHaveCount(14);
+  // Vier Tage mit Stimmung -> vier farbige Balken; die übrigen zehn (inkl. der
+  // reine-Text-Tag) sind graue Grundlinien, kein Platz wird ausgelassen (AK1).
+  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(4);
+  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(10);
+
+  // Heute (18.07., letzter Platz) trägt den Marker.
+  const todaySlot = slots.nth(13);
+  await expect(todaySlot).toHaveAttribute('data-today', 'true');
+  await expect(todaySlot).toHaveAttribute('aria-current', 'date');
+  await expect(todaySlot.locator('.journal-mood-band__bar')).toHaveCount(1);
+
+  // Reiner Text-Eintrag (17.07., vorletzter Platz) -> graue Grundlinie, kein Balken.
+  await expect(slots.nth(12).locator('.journal-mood-band__baseline')).toHaveCount(1);
+  await expect(slots.nth(12).locator('.journal-mood-band__bar')).toHaveCount(0);
+
+  // Der Tag mit zwei Stimmungen (16.07.) zeigt das arithmetische Mittel 6,5.
+  const meanSlot = page.locator('.journal-mood-band__slot[aria-label*="6,5"]');
+  await expect(meanSlot).toHaveCount(1);
+
+  // Höhe ∝ Stimmung: Stimmung 9 (14.07.) höher als Stimmung 3 (10.07.); das
+  // Mittel 6,5 (16.07.) liegt messbar dazwischen.
+  const lowBar = slots.nth(5).locator('.journal-mood-band__bar'); // 10.07., Stimmung 3
+  const highBar = slots.nth(9).locator('.journal-mood-band__bar'); // 14.07., Stimmung 9
+  const meanBar = meanSlot.locator('.journal-mood-band__bar'); // 16.07., Mittel 6,5
+  const lowBox = await lowBar.boundingBox();
+  const highBox = await highBar.boundingBox();
+  const meanBox = await meanBar.boundingBox();
+  expect(lowBox).not.toBeNull();
+  expect(highBox).not.toBeNull();
+  expect(meanBox).not.toBeNull();
+  expect(highBox!.height).toBeGreaterThan(lowBox!.height);
+  expect(meanBox!.height).toBeGreaterThan(lowBox!.height);
+  expect(meanBox!.height).toBeLessThan(highBox!.height);
+
+  // Mobil (375px) ohne horizontalen Seiten-Scroll trotz 14 Plätze.
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+});
+
+test('AK8 (#703): frisch entsperrt ohne Einträge zeigt eine ruhige Notiz statt eines leeren Bands', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await expect(page.locator('.journal-mood-band__empty')).toBeVisible();
+  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(0);
+});
+
+test('AK8 (#703): wenige Einträge zeigen das vollständige Band (14 Plätze), kein zerbrochenes Gerüst und keine Notiz', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'einziger', mood: '5', tags: [] }),
+  );
+
+  await expect(page.locator('.journal-mood-band')).toBeVisible();
+  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(14);
+  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(1);
+  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(13);
+});
+
+test('AK6 (#703): im Suchmodus ist das Stimmungsband abwesend', async ({ page }) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '6', tags: [] }),
+  );
+  await expect(page.locator('.journal-mood-band')).toBeVisible();
+
+  // Suchmodus über die Lupe in der Titelzeile öffnen (#700 AK5).
+  await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
+  await expect(page.locator('.journal-search')).toBeVisible();
+
+  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
+});
+
+test('AK9 (#703): die Band-Säule füllt mit --area-journal, das sich im Dark Mode tatsächlich unterscheidet', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
+  );
+
+  const bar = page.locator('.journal-mood-band__bar').first();
+  await expect(bar).toBeVisible();
+
+  const lightBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(lightBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkBg).not.toBe(lightBg);
+  expect(darkBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
+});
+
+test('AK9 (#703): prefers-reduced-motion unterdrückt die Wachs-Animation der Säule', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
+  );
+
+  const bar = page.locator('.journal-mood-band__bar').first();
+  await expect(bar).toBeVisible();
+
+  // Ohne Reduce: die Säule wächst über eine benannte Keyframe-Animation.
+  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('mood-bar-grow');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
+});
