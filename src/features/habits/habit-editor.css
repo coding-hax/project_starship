@@ -109,20 +109,3 @@
   outline-color: var(--accent);
   outline-offset: 3px;
 }
-
-.habit-editor__submit {
-  min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-6);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  font: inherit;
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.habit-editor__submit:active {
-  opacity: 0.85;
-}

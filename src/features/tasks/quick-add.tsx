@@ -27,6 +27,7 @@ interface AppliedTaskInput {
 }
 
 const LABEL = 'Aufgabe erfassen';
+const FORM_ID = 'quick-add-form';
 const UNDO_TIMEOUT_MS = 5000;
 
 /** Same three steps as the edit sheet — one vocabulary for a task's urgency. */
@@ -287,8 +288,14 @@ export function QuickAddTask() {
   return (
     <>
       <Fab label={LABEL} onClick={openSheet} />
-      <Sheet open={open} onClose={() => setOpen(false)} label={LABEL} initialFocusRef={inputRef}>
-        <form className="quick-add" onSubmit={handleSubmit}>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        label={LABEL}
+        initialFocusRef={inputRef}
+        header={{ actionLabel: 'Anlegen', formId: FORM_ID }}
+      >
+        <form id={FORM_ID} className="quick-add" onSubmit={handleSubmit}>
           <input
             ref={inputRef}
             type="text"
@@ -366,9 +373,6 @@ export function QuickAddTask() {
               </fieldset>
             </div>
           )}
-          <button type="submit" className="quick-add__submit">
-            Hinzufügen
-          </button>
         </form>
       </Sheet>
       <CaptureConfirm

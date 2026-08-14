@@ -41,7 +41,7 @@ test('Ausgeliefertes Bündel: Anmeldung mit Passkey → offline Hülle nach Relo
   const title = 'Im ausgelieferten Bündel notiert';
   await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
   await page.getByRole('textbox', { name: 'Titel der Aufgabe' }).fill(title);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
   await expect(page.getByText(title)).toBeVisible();
 
   // Offline-Hülle nach Reload (AK2, Teil 2): App-Shell aus dem SW-Precache, die

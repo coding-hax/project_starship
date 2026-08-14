@@ -31,7 +31,7 @@ function eventDialog(page: Page) {
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -72,7 +72,7 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page);
 });
 
-test('AC1: "morgen 12 Uhr Zahnarzt" navigiert nach /kalender, EventEditor vorbefüllt, Speichern legt den Termin an', async ({
+test('AC1: "morgen 12 Uhr Zahnarzt" navigiert nach /kalender, EventEditor vorbefüllt, Anlegen legt den Termin an', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -90,7 +90,7 @@ test('AC1: "morgen 12 Uhr Zahnarzt" navigiert nach /kalender, EventEditor vorbef
   );
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
 
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -211,7 +211,7 @@ test('AC7: offline per Freitext erfasster Termin erreicht nach dem Onlinegehen d
   await page.waitForURL('**/kalender');
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);

@@ -84,6 +84,81 @@ dialog.sheet:not([open]) .sheet__content {
   opacity: 0;
 }
 
+/**
+ * Shared header (issue #710): grip, "Abbrechen" left, title centered, action
+ * right. The action button keeps the filled-pill look every sheet's save
+ * button already had (`--accent`/`--on-accent`, issue #709) — "Abbrechen"
+ * stays plain text, same quiet style as `recurrence-scope-sheet.css`'s cancel.
+ */
+.sheet__header {
+  margin-bottom: var(--space-4);
+}
+
+.sheet__grip {
+  width: 36px;
+  height: 4px;
+  margin: 0 auto var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+}
+
+.sheet__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sheet__cancel,
+.sheet__action {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  border: none;
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.sheet__cancel:focus-visible,
+.sheet__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sheet__cancel {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-muted);
+  text-align: start;
+}
+
+.sheet__action {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sheet__action:active {
+  opacity: 0.85;
+}
+
+.sheet__title {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Only a fade — no slide — once the user has asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
   dialog.sheet {
