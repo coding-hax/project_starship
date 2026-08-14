@@ -114,6 +114,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
 - `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Eintragsstrom + FAB (#701), im Suchmodus verborgen
+- `journal-mood-band.tsx` / `.css` — 14-Tage-Stimmungsband über dem Strom (#703), Tageswert = Mittel, graue Grundlinie ohne Stimmung, Heute markiert; nur im entsperrten Nicht-Suchmodus
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus, #700)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile (#700)
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen

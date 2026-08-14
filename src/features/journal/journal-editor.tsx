@@ -8,6 +8,7 @@ import { useListPresence, type ListPresenceRow } from '@/ui/use-list-presence';
 import { deleteJournalEntry, todayKey } from './entry';
 import { JournalEntrySheet, JOURNAL_ENTRY_SHEET_LABEL } from './journal-entry-sheet';
 import './journal-editor.css';
+import { JournalMoodBand } from './journal-mood-band';
 import { JournalSearch } from './journal-search';
 import { useJournalSearchMode } from './journal-view-mode';
 import { useJournalLock } from './lock-store';
@@ -154,6 +155,7 @@ export function JournalEditor() {
       <div className="journal-editor" ref={containerRef}>
         {!searchActive && (
           <>
+            <JournalMoodBand />
             <JournalOrphanedKeyCard />
             {/* Same convention as habit-list.tsx/task-list.tsx's `__empty` text. Without
                 it, a fresh account renders `.journal-editor` with zero children — the
