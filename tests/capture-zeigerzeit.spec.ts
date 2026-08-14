@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
@@ -32,6 +32,11 @@ function confirmDialog(page: Page) {
 
 function eventDialog(page: Page) {
   return page.getByRole('dialog', { name: EVENT_LABEL });
+}
+
+/** Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
+function wannChip(scope: Page | Locator) {
+  return scope.getByRole('button', { name: /^Wann/ });
 }
 
 function taskItems(page: Page) {
@@ -94,6 +99,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   let dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(halbZwoelf));
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -103,6 +109,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   await submitUebersichtCapture(page, 'morgen um halb 12 Zahnarzt');
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(halbZwoelf));
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -115,6 +122,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(viertelVorNeun));
 });
 
@@ -133,6 +141,7 @@ test('AK2: zusammengesetzte Minutenangabe ("M vor/nach halb H") korrekt vorbefü
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Call');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
@@ -194,6 +203,7 @@ test('AK5: ein Tageszeitwort schlägt die Vormittags/Nachmittags-Heuristik immer
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Kino');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(abends));
 });
 
@@ -204,6 +214,7 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   await submitUebersichtCapture(page, 'morgen um 8 Standup');
   await page.waitForURL('**/kalender');
   let dialog = eventDialog(page);
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(vormittags));
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -216,6 +227,7 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   await submitUebersichtCapture(page, 'morgen um 8 Standup');
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(nachmittags));
 });
 

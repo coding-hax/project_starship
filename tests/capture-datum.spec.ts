@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { installClockAt, registerPasskey, resetAppData, selectView, withDb } from './helpers';
 
 /**
@@ -34,6 +34,11 @@ function confirmDialog(page: Page) {
 
 function eventDialog(page: Page) {
   return page.getByRole('dialog', { name: EVENT_LABEL });
+}
+
+/** Ganztägig/Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
+function wannChip(scope: Page | Locator) {
+  return scope.getByRole('button', { name: /^Wann/ });
 }
 
 function taskItems(page: Page) {
@@ -118,6 +123,7 @@ test('AK1: Monatsname löst auf, ein kalendarisch ungültiges Datum wird verworf
   const event = eventDialog(page);
   await expect(event).toBeVisible();
   await expect(event.getByLabel('Titel')).toHaveValue('am 31.6. Termin');
+  await wannChip(event).click();
   await expect(event.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
     'aria-checked',
     'true',
@@ -208,6 +214,7 @@ test('AK4: der Satz aus #620 fällt lokal', async ({ page }) => {
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzttermin');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
@@ -224,6 +231,7 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
   let dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(morgen14Uhr));
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
@@ -237,6 +245,7 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
+  await wannChip(dialog).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(umAcht));
 });
 

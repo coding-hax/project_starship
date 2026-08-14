@@ -28,6 +28,11 @@ function eventDialog(page: Page) {
   return page.getByRole('dialog', { name: CREATE_LABEL });
 }
 
+/** Ganztägig/Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
+function openWannChip(dialog: ReturnType<typeof eventDialog>) {
+  return dialog.getByRole('button', { name: /^Wann/ }).click();
+}
+
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
@@ -84,6 +89,7 @@ test('AC1: "morgen 12 Uhr Zahnarzt" navigiert nach /kalender, EventEditor vorbef
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await openWannChip(dialog);
   await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
     'aria-checked',
     'false',
@@ -115,6 +121,7 @@ test('AC2: Freitext ohne erkanntes Datum ergibt einen ganztägigen Termin auf de
   // "Meeting" bleibt im Titel stehen (R3, #687 AK3): nur Datum-/Zeit-Spans und
   // angrenzende Bindewörter werden entfernt, keine Vokabular-Blacklist mehr.
   await expect(dialog.getByLabel('Titel')).toHaveValue('Meeting mit Chef');
+  await openWannChip(dialog);
   await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
     'aria-checked',
     'true',
