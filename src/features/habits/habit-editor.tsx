@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
+import { Chip } from '@/ui/chip';
 import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
 import { SWATCH_PALETTE } from '@/ui/swatch-palette';
@@ -50,6 +51,9 @@ const COLORS: { value: string; token: string; label: string }[] = SWATCH_PALETTE
       : { value: swatch.token, token: swatch.token, label: swatch.label },
 );
 
+/** Which chip's panel is open — at most one at a time (issue #711 AK3). */
+type ChipKey = 'rhythmus' | 'ziel' | 'farbe';
+
 export interface HabitEditorProps {
   open: boolean;
   mode: 'create' | 'edit';
@@ -68,6 +72,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [schedule, setSchedule] = useState<HabitSchedule>('daily');
   const [target, setTarget] = useState<'1' | '2' | '3' | '4' | '5' | '6'>('1');
   const [color, setColor] = useState('');
+  const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
   // Unique per mounted instance (not a module-level constant): habit-list.tsx and
@@ -92,12 +97,14 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
           : '1',
       );
       setColor(habit.color ?? '');
+      setOpenChip(null);
     }
     if (open && !wasOpenRef.current && mode === 'create') {
       setName('');
       setSchedule('daily');
       setTarget('1');
       setColor('');
+      setOpenChip(null);
     }
     wasOpenRef.current = open;
   }, [open, mode, habit]);
@@ -107,7 +114,17 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   // synchronize with anything external here, so no effect is warranted).
   function handleScheduleChange(next: HabitSchedule) {
     setSchedule(next);
-    if (next !== 'weekly') setTarget('1');
+    if (next !== 'weekly') {
+      setTarget('1');
+      // The Ziel-chip disappears with the schedule that gates it (AK2) — its
+      // panel would otherwise keep rendering in the slot for a chip that is
+      // no longer there.
+      setOpenChip((current) => (current === 'ziel' ? null : current));
+    }
+  }
+
+  function toggleChip(key: ChipKey) {
+    setOpenChip((current) => (current === key ? null : key));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -157,6 +174,11 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
     }
   }
 
+  const scheduleLabel = SCHEDULES.find((option) => option.value === schedule)!.label;
+  const colorLabel = COLORS.find((option) => option.value === color)!.label;
+  const showZielChip = !isJournal && schedule === 'weekly';
+  const showFarbeChip = !isJournal;
+
   return (
     <Sheet
       open={open}
@@ -177,60 +199,100 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
             placeholder="z. B. Wasser trinken"
           />
         )}
-        <fieldset className="habit-editor__schedules">
-          <legend>Rhythmus</legend>
-          {/* The Journal habit is restricted to daily/weekly (issue #505 AC3);
-              every other habit gets the full set of periods (issue #509). */}
-          {(isJournal ? SCHEDULES.slice(0, 2) : SCHEDULES).map((option) => (
-            <label key={option.value} className="habit-editor__schedule-option">
-              <input
-                type="radio"
-                name="schedule"
-                checked={schedule === option.value}
-                aria-checked={schedule === option.value}
-                onChange={() => handleScheduleChange(option.value)}
-                // A radio input's default focus-on-activation happens as part of
-                // `mousedown` (not `pointerdown`) — next to the name field (#138)
-                // that steals focus mid-typing. Suppressing `mousedown`'s default
-                // leaves focus wherever it already was; the checked-toggle is part
-                // of `click`'s own activation behaviour, so `onChange` still fires.
-                onMouseDown={(event) => event.preventDefault()}
-              />
-              {option.label}
-            </label>
-          ))}
-        </fieldset>
-        {!isJournal && schedule === 'weekly' && (
-          <SegmentedControl
-            options={TARGETS}
-            value={target}
-            onChange={setTarget}
-            label="Wie oft pro Woche"
+        <div className="habit-editor__chips">
+          <Chip
+            field="Rhythmus"
+            emptyLabel="Rhythmus?"
+            value={scheduleLabel}
+            open={openChip === 'rhythmus'}
+            panelId="habit-panel-rhythmus"
+            onOpen={() => toggleChip('rhythmus')}
           />
-        )}
-        {!isJournal && (
-          <fieldset className="habit-editor__colors">
-            <legend>Farbe</legend>
-            {/* Ten swatches don't fit a text-labelled list at 375px (issue #658)
-                — the visible label is dropped in favour of the colour itself;
-                `aria-label` carries the same text as the accessible name. */}
-            {COLORS.map((option) => (
-              <label key={option.value || 'default'} className="habit-editor__color-option">
-                <input
-                  type="radio"
-                  name="color"
-                  aria-label={option.label}
-                  checked={color === option.value}
-                  onChange={() => setColor(option.value)}
-                />
-                <span
-                  className="habit-editor__color-swatch"
-                  style={{ background: `var(${option.token})` }}
-                  aria-hidden="true"
-                />
-              </label>
-            ))}
-          </fieldset>
+          {showZielChip && (
+            <Chip
+              field="Ziel"
+              emptyLabel="Wie oft?"
+              value={`${target}×`}
+              open={openChip === 'ziel'}
+              panelId="habit-panel-ziel"
+              onOpen={() => toggleChip('ziel')}
+            />
+          )}
+          {showFarbeChip && (
+            <Chip
+              field="Farbe"
+              emptyLabel="Farbe?"
+              value={colorLabel}
+              open={openChip === 'farbe'}
+              panelId="habit-panel-farbe"
+              onOpen={() => toggleChip('farbe')}
+            />
+          )}
+        </div>
+        {/* Gated on `open` for the same reason the quick-add panel-slot is
+            (issue #711 AK5): a closed <dialog> keeps its children in the DOM,
+            and the Schedule-/Farb-Optionen would otherwise sit in it as real
+            text nodes, matching every page-wide text query twice. */}
+        {open && (
+          <div className="habit-editor__panel-slot" id={`habit-panel-${openChip ?? 'none'}`}>
+            {openChip === 'rhythmus' && (
+              <fieldset className="habit-editor__schedules">
+                <legend>Rhythmus</legend>
+                {/* The Journal habit is restricted to daily/weekly (issue #505 AC3);
+                    every other habit gets the full set of periods (issue #509). */}
+                {(isJournal ? SCHEDULES.slice(0, 2) : SCHEDULES).map((option) => (
+                  <label key={option.value} className="habit-editor__schedule-option">
+                    <input
+                      type="radio"
+                      name="schedule"
+                      checked={schedule === option.value}
+                      aria-checked={schedule === option.value}
+                      onChange={() => handleScheduleChange(option.value)}
+                      // A radio input's default focus-on-activation happens as part of
+                      // `mousedown` (not `pointerdown`) — next to the name field (#138)
+                      // that steals focus mid-typing. Suppressing `mousedown`'s default
+                      // leaves focus wherever it already was; the checked-toggle is part
+                      // of `click`'s own activation behaviour, so `onChange` still fires.
+                      onMouseDown={(event) => event.preventDefault()}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            {openChip === 'ziel' && showZielChip && (
+              <SegmentedControl
+                options={TARGETS}
+                value={target}
+                onChange={setTarget}
+                label="Wie oft pro Woche"
+              />
+            )}
+            {openChip === 'farbe' && showFarbeChip && (
+              <fieldset className="habit-editor__colors">
+                <legend>Farbe</legend>
+                {/* Ten swatches don't fit a text-labelled list at 375px (issue #658)
+                    — the visible label is dropped in favour of the colour itself;
+                    `aria-label` carries the same text as the accessible name. */}
+                {COLORS.map((option) => (
+                  <label key={option.value || 'default'} className="habit-editor__color-option">
+                    <input
+                      type="radio"
+                      name="color"
+                      aria-label={option.label}
+                      checked={color === option.value}
+                      onChange={() => setColor(option.value)}
+                    />
+                    <span
+                      className="habit-editor__color-swatch"
+                      style={{ background: `var(${option.token})` }}
+                      aria-hidden="true"
+                    />
+                  </label>
+                ))}
+              </fieldset>
+            )}
+          </div>
         )}
       </form>
     </Sheet>
