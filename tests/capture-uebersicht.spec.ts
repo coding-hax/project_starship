@@ -202,6 +202,8 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
   const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  // Von sitzt seit #712 hinter dem Wann-Chip.
+  await dialog.getByRole('button', { name: /^Wann/ }).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
