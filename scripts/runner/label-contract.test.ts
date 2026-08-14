@@ -66,7 +66,7 @@ describe('Label-Vollstaendigkeit: bootstrap <-> docs/workflow/labels.md (#266 AC
   // hier fehlten bis #266 'no-escalation' und 'opus-boost' -- der Kill-Switch
   // gegen die Opus-Eskalation und sein Gegenstueck.
   it('legt die Labels an, die der Runner-Kern tatsaechlich liest', () => {
-    for (const label of [...BLOCKING_LABELS, 'ready', 'in-progress', 'plan', 'research', 'no-escalation', 'opus-boost', 'blocked-limit', 'blocked-by', 'tests-exempt']) {
+    for (const label of [...BLOCKING_LABELS, 'ready', 'next', 'in-progress', 'plan', 'research', 'no-escalation', 'opus-boost', 'blocked-limit', 'blocked-by', 'tests-exempt']) {
       expect(bootstrapLabels(), `bootstrap-github.sh legt '${label}' nicht an`).toContain(label);
     }
   });
@@ -90,9 +90,9 @@ describe('Ausschluss-Labels greifen auf jedem Zweig (#266 AC2)', () => {
     createdAt,
   });
 
-  const branches: { name: string; labels: string[]; queueBody?: string }[] = [
+  const branches: { name: string; labels: string[] }[] = [
     { name: 'running (in-progress)', labels: ['in-progress'] },
-    { name: 'Prioritaets-Queue', labels: [], queueBody: '- #10' },
+    { name: 'next', labels: ['next'] },
     { name: 'plan', labels: ['plan'] },
     { name: 'research', labels: ['research'] },
     { name: 'ready', labels: ['ready'] },
@@ -101,13 +101,11 @@ describe('Ausschluss-Labels greifen auf jedem Zweig (#266 AC2)', () => {
   for (const label of BLOCKING_LABELS) {
     for (const branch of branches) {
       it(`'${label}' schliesst den Zweig ${branch.name} aus`, () => {
-        const body = branch.queueBody ?? '';
-
         // Kontrolle: ohne das Label wuerde genau dieses Ticket gewaehlt --
         // sonst prueft der Fall unten nichts.
-        expect(selectTicket([issue(10, branch.labels)], body)?.issue).toBe(10);
+        expect(selectTicket([issue(10, branch.labels)])?.issue).toBe(10);
 
-        expect(selectTicket([issue(10, [...branch.labels, label])], body)).toBeNull();
+        expect(selectTicket([issue(10, [...branch.labels, label])])).toBeNull();
       });
     }
 
