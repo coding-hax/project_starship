@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { installClockAt, registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -528,7 +528,7 @@ test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
           target: 1,
           color: null,
           archivedAt: null,
-          createdAt: new Date().toISOString(),
+          createdAt: FIXED_NOW,
         },
       }),
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { SegmentedControl } from '@/ui/segmented-control';
@@ -10,7 +10,6 @@ import type { HabitSchedule, HabitView } from './use-habits';
 
 const CREATE_LABEL = 'Routine anlegen';
 const EDIT_LABEL = 'Routine bearbeiten';
-const FORM_ID = 'habit-editor-form';
 
 /**
  * A vertical radio fieldset, not `SegmentedControl` (issue #509): six labels —
@@ -71,6 +70,12 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [color, setColor] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
+  // Unique per mounted instance (not a module-level constant): habit-list.tsx and
+  // add-habit-fab.tsx each mount their own HabitEditor at the same time (edit resp.
+  // create), so a shared id would duplicate the `<form id>` the header's action
+  // button targets via the HTML `form` attribute — the browser's form-owner lookup
+  // then silently binds to whichever instance happens to come first in the DOM.
+  const formId = useId();
   /** The Journal habit's name and colour are fixed (issue #505 AC3) — only its
    * rhythm can be changed here. */
   const isJournal = mode === 'edit' && habit?.id === JOURNAL_HABIT_ID;
@@ -158,9 +163,9 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
       onClose={onClose}
       label={mode === 'create' ? CREATE_LABEL : EDIT_LABEL}
       initialFocusRef={nameRef}
-      header={{ actionLabel: mode === 'create' ? 'Anlegen' : 'Sichern', formId: FORM_ID }}
+      header={{ actionLabel: mode === 'create' ? 'Anlegen' : 'Sichern', formId }}
     >
-      <form id={FORM_ID} className="habit-editor" onSubmit={handleSubmit}>
+      <form id={formId} className="habit-editor" onSubmit={handleSubmit}>
         {!isJournal && (
           <input
             ref={nameRef}
