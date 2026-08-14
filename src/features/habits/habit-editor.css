@@ -25,6 +25,21 @@
   outline-offset: 2px;
 }
 
+.habit-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* No reserved height, unlike `.quick-add__panel-slot`: #713 has no layout-shift
+   AC, and nothing below the chip row would be displaced by a panel opening —
+   the shared sheet header (issue #710) lives in the sheet chrome above this
+   form. The panel just grows downward / scrolls within the sheet. */
+.habit-editor__panel-slot {
+  display: flex;
+  flex-direction: column;
+}
+
 .habit-editor__schedules {
   display: flex;
   flex-direction: column;
