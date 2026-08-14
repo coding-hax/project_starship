@@ -300,8 +300,13 @@ export function TaskList({
    * an account with zero tasks at all (checked via `tasks.length`, never
    * `rows` — a "Woche" window with nothing *due this week* is not that, it
    * renders an empty `<ul>` plus the AK6/AK9 summary lines below it instead),
-   * and "Alle" with every task hidden by the `hideCompleted` toggle (issue
-   * #654 AC6, unchanged — still keyed off `rows`, the filtered result).
+   * and "Alle"/"Erledigt" with every row gone (issue #654 AC6). All three key
+   * off `presenceRows` too, not just `tasks`/`rows`: a row that just lost its
+   * last sibling — deleted, or filtered out by `hideCompleted` — is still in
+   * `presenceRows` mid-exit-animation (`status: 'leaving'`), and swapping the
+   * `<ul>` out from under it the instant the underlying data hits zero would
+   * cut that animation off before it ever painted (issue #430's guarantee,
+   * list-motion.spec.ts AC2).
    */
   const emptyMessage =
     tasks === undefined
@@ -310,11 +315,11 @@ export function TaskList({
         ? presenceRows.length === 0
           ? 'Nichts fällig. Genieß den Tag.'
           : null
-        : tasks.length === 0
+        : tasks.length === 0 && presenceRows.length === 0
           ? 'Keine Aufgaben. Genieß die Ruhe.'
-          : view === 'alle' && rows.length === 0
+          : view === 'alle' && presenceRows.length === 0
             ? 'Keine Aufgaben. Genieß die Ruhe.'
-            : view === 'erledigt' && rows.length === 0
+            : view === 'erledigt' && presenceRows.length === 0
               ? 'Noch nichts erledigt.'
               : null;
 
@@ -434,10 +439,14 @@ export function TaskList({
               );
             })}
           </ul>
-          {view === 'woche' && !hasFutureGroup && (
+          {/* Woche-only notes (issue #705 AK9/AK6) — `view` stays at its 'woche'
+              default on the `dueTodayOnly` instance too, since it never renders the
+              switcher that could move it away; without this guard both lines would
+              leak into /uebersicht whenever a task is due (issue #228 AC6). */}
+          {!dueTodayOnly && view === 'woche' && !hasFutureGroup && (
             <p className="task-list__sparse-note">Danach nichts mehr geplant.</p>
           )}
-          {view === 'woche' && undatedOpenCount > 0 && (
+          {!dueTodayOnly && view === 'woche' && undatedOpenCount > 0 && (
             <p className="task-list__undated-note">
               {undatedOpenCount} Aufgabe{undatedOpenCount === 1 ? '' : 'n'} ohne Datum
             </p>

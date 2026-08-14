@@ -2259,6 +2259,10 @@ test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen',
   await selectView(page, 'Alle');
   await seedTask(page, { title: 'Blendet aus', completedAt: new Date(FIXED_NOW).toISOString() });
   const row = taskItems(page).filter({ hasText: 'Blendet aus' });
+  // seedTask only awaits the write, not the live-query re-render — without this,
+  // the toggle can flip hideCompleted before the row ever mounts, so it is
+  // filtered out from the start instead of animating away (issue #705).
+  await expect(row).toBeVisible();
 
   await hideCompletedToggle(page).click();
 
