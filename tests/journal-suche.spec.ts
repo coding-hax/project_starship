@@ -41,6 +41,15 @@ async function openFilters(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Filter', exact: true }).click();
 }
 
+/** issue #700 AK5: das Suchfeld ist nicht mehr dauerhaft sichtbar — die Lupe in
+ * der Titelzeile öffnet erst den Suchmodus. Die Lupe ist ein Button mit der
+ * `aria-label` „Journal durchsuchen"; das Suchfeld trägt dieselbe Beschriftung,
+ * beide stehen aber nie gleichzeitig im DOM (die Lupe verschwindet im
+ * Suchmodus), daher bleibt der Button-Zugriff eindeutig. */
+async function openSearch(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
+}
+
 /** Seeds a real, decryptable entry via the actual unlocked session's DEK (the
  * same call the editor's submit makes) — several days of real content for the
  * search to find, without driving the UI for each one. */
@@ -61,6 +70,7 @@ test('AC1: Suchfeld findet Treffer sowohl im Text als auch in Tags', async ({ pa
   await seedEntry(page, '2026-07-11', { text: 'Nichts Besonderes', tags: ['lauf-pause'] });
   await seedEntry(page, '2026-07-12', { text: 'Ganz normaler Tag', tags: ['büro'] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('lauf');
 
@@ -77,6 +87,7 @@ test('AC2: nach einer Suche liegt kein Klartext-Fragment in IndexedDB', async ({
   const secretTag = 'geheimtag';
   await seedEntry(page, '2026-07-10', { text: secretText, tags: [secretTag] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('geheim');
   await expect(page.locator('.journal-search__result')).toHaveCount(1);
@@ -91,9 +102,16 @@ test('AC3: bei gesperrtem Journal gibt es keine Suche, sondern den Entsperr-Zust
   await page.reload();
 
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+  // Gesperrt: weder die Lupe (AK7) noch das Suchfeld stehen im DOM.
+  await expect(page.getByRole('button', { name: 'Journal durchsuchen' })).toHaveCount(0);
   await expect(page.locator('.journal-search')).toHaveCount(0);
 
   await unlockEditor(page);
+  // Entsperrt: die Lupe erscheint, das Suchfeld aber erst nach einem Klick (AK5).
+  await expect(page.getByRole('button', { name: 'Journal durchsuchen' })).toBeVisible();
+  await expect(page.locator('.journal-search')).toHaveCount(0);
+
+  await openSearch(page);
   await expect(page.locator('.journal-search')).toBeVisible();
 });
 
@@ -101,6 +119,7 @@ test('AC4: keine Ladeanzeige während der Suche', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-10', { text: 'Ein Eintrag', tags: [] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('eintrag');
   await expect(page.locator('.journal-search__result')).toHaveCount(1);
@@ -113,6 +132,7 @@ test('AC5: kein Treffer zeigt einen ruhigen Leerzustand statt einer Fehlermeldun
   await setUpEditor(page);
   await seedEntry(page, '2026-07-10', { text: 'Ein Eintrag', tags: [] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('nichtvorhandenesding');
 
@@ -129,13 +149,18 @@ test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des 
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Alter Eintrag mit Stichwort', mood: '6', tags: [] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('stichwort');
   const result = page.locator('.journal-search__result').first();
   // Datum UND Uhrzeit (issue #376 AC6) — ein Treffer ist ein Eintrag, kein Tag.
-  // Die Stimmung (issue #415 AC-P2) sitzt als eigene Span im selben Datumsblock.
+  // Seit issue #700 AK6 volles, ausgeschriebenes Datum ("Sa. 8. August · 10:12"):
+  // Wochentag kurz, Tag numerisch, Monat lang, " · ", Zeit. Intl liefert den kurzen
+  // Wochentag mit Komma ("Mi.,") — genau wie die Tagesüberschriften des Stroms; das
+  // Komma bleibt (Spezifikationswandel, keine gelockerte Zusicherung). Die Stimmung
+  // (issue #415 AC-P2) sitzt weiter als eigene Span im selben Datumsblock.
   await expect(result.locator('.journal-search__result-date')).toHaveText(
-    /^Mi\., 01\.07\.2026, \d{2}:\d{2} · Stimmung 6\/10$/,
+    /^Mi\., 1\. Juli · \d{2}:\d{2} · Stimmung 6\/10$/,
   );
   await result.click();
 
@@ -151,6 +176,7 @@ test('AC6: mehrere Einträge desselben Tages sind eigenständige Treffer', async
   await seedEntry(page, '2026-07-05', { text: 'Morgens ein ruhiger Lauf', tags: [] });
   await seedEntry(page, '2026-07-05', { text: 'Abends noch ein Lauf', tags: [] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('lauf');
 
@@ -166,6 +192,7 @@ for (const viewport of [
     await setUpEditor(page);
     await seedEntry(page, '2026-07-10', { text: 'Ein Eintrag', tags: ['sport'] });
 
+    await openSearch(page);
     const search = page.getByLabel('Journal durchsuchen');
     await search.fill('eintrag');
     // Filterzeile (Mood/Tag/Datum, issue #415) steht auch bei 375px ohne
@@ -188,6 +215,7 @@ test('AC-F1: Mood-Filter zeigt nur Einträge mit der gewählten Stimmung', async
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', mood: '7', tags: [] });
   await seedEntry(page, '2026-07-03', { text: 'Eintrag C', mood: '7', tags: [] });
 
+  await openSearch(page);
   await openFilters(page);
   const moodFilter = page.locator('.journal-search__mood-filter');
   await moodFilter.getByRole('button', { name: 'Stimmung 7 filtern', exact: true }).click();
@@ -202,6 +230,7 @@ test('AC-F2: Tag-Filter zeigt nur Einträge mit exakt diesem Tag', async ({ page
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: ['sport'] });
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: ['büro'] });
 
+  await openSearch(page);
   await openFilters(page);
   await page.getByLabel('Tag filtern').selectOption('sport');
 
@@ -216,6 +245,7 @@ test('AC-F3: Datum von/bis engt den Zeitraum inklusiv ein', async ({ page }) => 
   await seedEntry(page, '2026-07-05', { text: 'Eintrag B', tags: [] });
   await seedEntry(page, '2026-07-10', { text: 'Eintrag C', tags: [] });
 
+  await openSearch(page);
   await openFilters(page);
   const results = page.locator('.journal-search__result');
 
@@ -242,6 +272,7 @@ test('AC-F4: Freitext + Mood verengen gemeinsam auf die Schnittmenge', async ({ 
   await seedEntry(page, '2026-07-02', { text: 'Ruhiger Lauf', mood: '3', tags: [] });
   await seedEntry(page, '2026-07-03', { text: 'Büro-Tag', mood: '7', tags: [] });
 
+  await openSearch(page);
   const results = page.locator('.journal-search__result');
   await page.getByLabel('Journal durchsuchen').fill('lauf');
   await expect(results).toHaveCount(2);
@@ -253,7 +284,7 @@ test('AC-F4: Freitext + Mood verengen gemeinsam auf die Schnittmenge', async ({ 
   await expect(results).toContainText('Ruhiger Lauf');
 });
 
-test('AC-P1: sobald ein Filter aktiv ist, weicht der Editor der Suche', async ({ page }) => {
+test('AC-P1: im Suchmodus weicht der Editor der Suche, Abbrechen stellt ihn wieder her', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Ein Alltagseintrag', tags: [] });
   // Der FAB (nicht mehr das Formular selbst, #701) ist window-unabhängig da —
@@ -262,22 +293,28 @@ test('AC-P1: sobald ein Filter aktiv ist, weicht der Editor der Suche', async ({
   const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
   await expect(fab).toBeVisible();
 
-  const search = page.getByLabel('Journal durchsuchen');
-  await search.fill('alltag');
-
+  // Seit issue #700 AK6 weicht der Editor bereits beim Betreten des Suchmodus —
+  // nicht erst, wenn eine Suche Treffer hat: kein FAB, kein Strom.
+  await openSearch(page);
   await expect(fab).toHaveCount(0);
   await expect(page.locator('.journal-editor__day-header')).toHaveCount(0);
   await expect(page.locator('.journal-editor__entries')).toHaveCount(0);
+
+  const search = page.getByLabel('Journal durchsuchen');
+  await search.fill('alltag');
   await expect(page.locator('.journal-search__result')).toHaveCount(1);
 
-  await search.fill('');
+  // Rückkehr über „Abbrechen" (das Leeren des Feldes verlässt den Modus nicht).
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await expect(fab).toBeVisible();
+  await expect(page.locator('.journal-search')).toHaveCount(0);
 });
 
 test('AC-P2: eine Treffervorschau zeigt die Stimmung des Eintrags', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Eintrag mit Stimmung', mood: '6', tags: [] });
 
+  await openSearch(page);
   await page.getByLabel('Journal durchsuchen').fill('stimmung');
   await expect(page.locator('.journal-search__result')).toContainText('Stimmung 6/10');
 });
@@ -287,6 +324,7 @@ test('AC-P3: langer Text wird gekürzt und lässt sich auf- und wieder zuklappen
   const longText = 'Lauf am Fluss und noch mehr Text darüber, was heute alles passiert ist, Wort für Wort. '.repeat(3);
   await seedEntry(page, '2026-07-01', { text: longText, tags: [] });
 
+  await openSearch(page);
   await page.getByLabel('Journal durchsuchen').fill('lauf');
   const snippet = page.locator('.journal-search__result-snippet');
   await expect(snippet).toContainText('…');
@@ -304,10 +342,11 @@ test('AC-P3: langer Text wird gekürzt und lässt sich auf- und wieder zuklappen
   await expect(page.getByRole('button', { name: 'Vollständigen Text anzeigen' })).toBeVisible();
 });
 
-test('AC-P4: ein Treffer klicken setzt alle Filter zurück und zeigt wieder den Editor', async ({ page }) => {
+test('AC-P4: ein Treffer klicken verlässt den Suchmodus und zeigt wieder den Editor', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Eintrag mit Tag', mood: '5', tags: ['sport'] });
 
+  await openSearch(page);
   await page.getByLabel('Journal durchsuchen').fill('eintrag');
   await openFilters(page);
   const moodFilter = page.locator('.journal-search__mood-filter');
@@ -319,9 +358,13 @@ test('AC-P4: ein Treffer klicken setzt alle Filter zurück und zeigt wieder den 
 
   await page.locator('.journal-search__result').click();
 
-  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+  // Seit issue #700 AK5 verschwindet das Suchfeld beim Verlassen ganz — ein
+  // späteres Öffnen beginnt darum leer (die Filter sind zurückgesetzt).
+  await expect(page.locator('.journal-search')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Eintragen', exact: true })).toBeVisible();
-  await expect(page.locator('.journal-search__result')).toHaveCount(0);
+  // Die Lupe steht wieder, das erneute Öffnen zeigt ein leeres Suchfeld.
+  await openSearch(page);
+  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
 });
 
 test('AC8: eine unlesbare Zeile macht die Suche nicht blind (issue #384)', async ({ page }) => {
@@ -343,6 +386,7 @@ test('AC8: eine unlesbare Zeile macht die Suche nicht blind (issue #384)', async
     }),
   );
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await search.fill('lauf');
 
@@ -353,6 +397,7 @@ test('AC8: eine unlesbare Zeile macht die Suche nicht blind (issue #384)', async
 test('AC7: die Suche nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({ page }) => {
   await setUpEditor(page);
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   const lightBg = await search.evaluate((el) => getComputedStyle(el).backgroundColor);
 
@@ -374,6 +419,7 @@ test('AC-B: die Filter sind standardmäßig verborgen und lassen sich per Filter
 }) => {
   await setUpEditor(page);
 
+  await openSearch(page);
   const filterToggle = page.getByRole('button', { name: 'Filter', exact: true });
   await expect(page.locator('.journal-search__filters')).toHaveCount(0);
   await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
@@ -387,7 +433,7 @@ test('AC-B: die Filter sind standardmäßig verborgen und lassen sich per Filter
   await expect(filterToggle).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge, der Editor weicht (issue #456)', async ({
+test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge (issue #456)', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -396,18 +442,24 @@ test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge, der Edito
   const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
   await expect(fab).toBeVisible();
 
-  await openFilters(page);
-
+  // Seit issue #700 AK6 weicht der FAB schon beim Betreten des Suchmodus.
+  await openSearch(page);
   await expect(fab).toHaveCount(0);
+
+  await openFilters(page);
   const results = page.locator('.journal-search__result');
   await expect(results).toHaveCount(2);
   await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
 
-  // Filter wieder zuklappen, ohne einen Filter gesetzt zu haben — der Editor
-  // kehrt zurück, die Suche ist wieder inaktiv.
+  // Filter wieder zuklappen, ohne einen Filter gesetzt zu haben — die
+  // Ergebnisliste verschwindet, der Suchmodus bleibt aber offen (Rückkehr zum
+  // Editor erst über „Abbrechen", nicht durch das Schließen des Filter-Menüs).
   await page.getByRole('button', { name: 'Filter', exact: true }).click();
-  await expect(fab).toBeVisible();
   await expect(results).toHaveCount(0);
+  await expect(fab).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+  await expect(fab).toBeVisible();
 });
 
 test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-Menü offen sein muss (issue #456)', async ({
@@ -417,6 +469,7 @@ test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', tags: [] });
   await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: [] });
 
+  await openSearch(page);
   const search = page.getByLabel('Journal durchsuchen');
   await expect(search).toHaveValue('');
   await search.press('Enter');
@@ -426,10 +479,10 @@ test('AC-E: Enter im leeren Suchfeld zeigt alle Einträge, ohne dass das Filter-
   await expect(results).toHaveCount(2);
   await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
 
-  // Ein Treffer klicken setzt die "alle anzeigen"-Ansicht wie jeden anderen
-  // Filter zurück (AC-P4-Verhalten).
+  // Ein Treffer klicken verlässt den Suchmodus wie jeden anderen Filter-Zustand
+  // (AC-P4-Verhalten): das Suchfeld verschwindet, der Editor kehrt zurück.
   await results.first().click();
-  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+  await expect(page.locator('.journal-search')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Eintragen', exact: true })).toBeVisible();
 });
 
@@ -438,6 +491,7 @@ test('AC-C: der Zurücksetzen-Knopf leert alle Filter inkl. Datum zuverlässig',
   await seedEntry(page, '2026-07-01', { text: 'Eintrag A', mood: '5', tags: ['sport'] });
   await seedEntry(page, '2026-07-15', { text: 'Eintrag B', mood: '2', tags: ['büro'] });
 
+  await openSearch(page);
   await openFilters(page);
   const results = page.locator('.journal-search__result');
   await page.getByLabel('Von Datum').fill('2026-07-01');
@@ -458,6 +512,7 @@ test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darun
   page,
 }) => {
   await setUpEditor(page);
+  await openSearch(page);
   await openFilters(page);
 
   const fromDate = page.getByLabel('Von Datum');
@@ -477,4 +532,61 @@ test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darun
   // Icon statt Text (Vorschlag aus dem Ticket).
   await expect(resetButton.locator('svg')).toHaveCount(1);
   await expect(resetButton).not.toHaveText('Zurücksetzen');
+});
+
+test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfeld ist nicht dauerhaft sichtbar', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  // Standardmäßig ist kein Suchfeld auf der Seite (AK5).
+  await expect(page.locator('.journal-search')).toHaveCount(0);
+
+  // Die Lupe sitzt in der Titelzeile und ist ein 44×44-Tap-Ziel.
+  const toggle = page
+    .locator('.journal-page__title-row')
+    .getByRole('button', { name: 'Journal durchsuchen' });
+  await expect(toggle).toBeVisible();
+  const box = (await toggle.boundingBox())!;
+  expect(box).not.toBeNull();
+  expect(Math.round(box.width)).toBe(44);
+  expect(Math.round(box.height)).toBe(44);
+
+  // Klick öffnet den Suchmodus mit sichtbarem Suchfeld; die Lupe verschwindet,
+  // solange der Modus offen ist (AK6: dort nur Suchfeld, „Abbrechen", Treffer).
+  await toggle.click();
+  await expect(page.locator('.journal-search__input')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Journal durchsuchen' })).toHaveCount(0);
+});
+
+test('AK6: im Suchmodus kein FAB; jeder Treffer trägt volles Datum + Zeit und hebt das Suchwort hervor', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  // 2026-08-08 ist ein Samstag — deckt das AK6-Beispiel „Sa. 8. August" ab.
+  await seedEntry(page, '2026-08-08', { text: 'Ein Lauf am Samstag', tags: [] });
+
+  const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
+  await expect(fab).toBeVisible();
+
+  await openSearch(page);
+  // AK6: im Suchmodus gibt es keinen FAB.
+  await expect(fab).toHaveCount(0);
+
+  await page.getByLabel('Journal durchsuchen').fill('lauf');
+  const result = page.locator('.journal-search__result').first();
+
+  // Volles, ausgeschriebenes Datum + Uhrzeit (AK6): Wochentag kurz (Intl liefert
+  // ihn mit Komma), Tag numerisch, Monat lang, " · ", Zeit.
+  await expect(result.locator('.journal-search__result-date')).toHaveText(
+    /^Sa\., 8\. August · \d{2}:\d{2}$/,
+  );
+
+  // Das Suchwort ist im Snippet als eigenes Element hervorgehoben (AK6).
+  await expect(result.locator('.journal-search__hl')).toHaveText(/lauf/i);
+
+  // „Abbrechen" verlässt den Suchmodus und stellt FAB + Strom wieder her.
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+  await expect(fab).toBeVisible();
+  await expect(page.locator('.journal-search')).toHaveCount(0);
 });

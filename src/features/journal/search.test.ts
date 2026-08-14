@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { searchJournalEntries, type JournalFilters, type JournalSearchEntry } from './search';
+import {
+  searchJournalEntries,
+  splitHighlight,
+  type JournalFilters,
+  type JournalSearchEntry,
+} from './search';
 
 function entry(
   id: string,
@@ -127,5 +132,34 @@ describe('searchJournalEntries', () => {
   it('kein Filter aktiv liefert ein leeres Array', () => {
     const entries = [entry('a', '2026-07-01T09:00:00.000Z', 'Irgendwas')];
     expect(searchJournalEntries(entries, { query: '' })).toEqual([]);
+  });
+});
+
+describe('splitHighlight (issue #700 AK6)', () => {
+  it('markiert das Suchwort case-insensitiv, sonst nichts', () => {
+    expect(splitHighlight('Ein Lauf am Fluss', 'lauf')).toEqual([
+      { text: 'Ein ', highlighted: false },
+      { text: 'Lauf', highlighted: true },
+      { text: ' am Fluss', highlighted: false },
+    ]);
+  });
+
+  it('markiert jedes Vorkommen', () => {
+    expect(splitHighlight('Lauf und noch ein Lauf', 'lauf')).toEqual([
+      { text: 'Lauf', highlighted: true },
+      { text: ' und noch ein ', highlighted: false },
+      { text: 'Lauf', highlighted: true },
+    ]);
+  });
+
+  it('leere oder reine Whitespace-Anfrage markiert nichts', () => {
+    expect(splitHighlight('Ein Lauf', '')).toEqual([{ text: 'Ein Lauf', highlighted: false }]);
+    expect(splitHighlight('Ein Lauf', '   ')).toEqual([{ text: 'Ein Lauf', highlighted: false }]);
+  });
+
+  it('kein Treffer gibt den ganzen Text als eine unmarkierte Einheit zurück', () => {
+    expect(splitHighlight('Ein ruhiger Tag', 'lauf')).toEqual([
+      { text: 'Ein ruhiger Tag', highlighted: false },
+    ]);
   });
 });

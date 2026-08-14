@@ -251,6 +251,17 @@ export function IconReset({ className }: IconProps) {
   );
 }
 
+export function IconSearch({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      {/* Lupe (Journal-Suche, issue #700): Kreis-Linse + kurzer Griff, dieselbe
+          Kontur-Sprache wie die übrigen Icons. */}
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M15.8 15.8L20 20" />
+    </svg>
+  );
+}
+
 export function IconChevronLeft({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
