@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { FieldConfidence } from '@/features/capture/types';
 import { mutate } from '@/local/outbox';
+import { Chip } from '@/ui/chip';
 import { FieldHint } from '@/ui/field-hint';
 import { Row } from '@/ui/row';
 import { Sheet } from '@/ui/sheet';
@@ -48,6 +49,10 @@ const WEEKDAYS: { value: number; label: string }[] = [
 
 type RecurrenceEndMode = 'never' | 'until' | 'count';
 
+/** Which chip's panel is open — at most one at a time (issue #711 AK3, same
+ *  pattern as quick-add.tsx). */
+type ChipKey = 'wann' | 'wiederholung' | 'kategorie';
+
 function recurrenceEqual(a: EventData['recurrence'], b: EventData['recurrence']): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -62,6 +67,49 @@ function isoToLocalInput(iso: string | null): string {
 
 function localInputToIso(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
+}
+
+const WEEKDAY_SHORT_LOCAL_FORMATTER = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
+/** All-day fields hold a bare `YYYY-MM-DD` key — formatted at UTC so it reads
+ *  as the same calendar day regardless of the device's own offset, same
+ *  reasoning as `event-time.ts`'s `formatMonthTitle`. */
+const WEEKDAY_SHORT_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
+  timeZone: 'UTC',
+});
+const DAY_MONTH_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: 'UTC',
+});
+
+/** Wann-Chip's value: `"Do 09:00"` for a timed event, `"Do 14.08."` for a
+ *  single all-day one, `"14.08.–16.08."` for a multi-day span. `null` only
+ *  before the seeding effect has run once (Von/Bis are otherwise always
+ *  required, so the chip is never "empty" once the sheet is actually open). */
+function whenLabel(
+  allDay: boolean,
+  startsAtInput: string,
+  startDateInput: string,
+  endDateInput: string,
+): string | null {
+  if (allDay) {
+    if (!startDateInput) return null;
+    const start = new Date(`${startDateInput}T00:00:00Z`);
+    if (!endDateInput || endDateInput === startDateInput) {
+      return `${WEEKDAY_SHORT_UTC_FORMATTER.format(start)} ${DAY_MONTH_UTC_FORMATTER.format(start)}`;
+    }
+    const end = new Date(`${endDateInput}T00:00:00Z`);
+    return `${DAY_MONTH_UTC_FORMATTER.format(start)}–${DAY_MONTH_UTC_FORMATTER.format(end)}`;
+  }
+  if (!startsAtInput) return null;
+  const start = new Date(startsAtInput);
+  const time = start.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${WEEKDAY_SHORT_LOCAL_FORMATTER.format(start)} ${time}`;
 }
 
 /** The tapped occurrence's own displayed time (recurrence.ts's `Occurrence`,
@@ -184,6 +232,7 @@ export function EventEditor({
   const titleRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
   const [scopeAction, setScopeAction] = useState<ScopeAction | null>(null);
+  const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   // #691 AK4: sobald Titel oder Von-Feld angefasst werden, verschwindet ihre Markierung.
   const [titleEdited, setTitleEdited] = useState(false);
   const [startEdited, setStartEdited] = useState(false);
@@ -216,6 +265,7 @@ export function EventEditor({
     if (open && !wasOpenRef.current) {
       setTitleEdited(false);
       setStartEdited(false);
+      setOpenChip(null);
     }
     if (open && !wasOpenRef.current && mode === 'edit' && event && occurrence) {
       setTitle(event.title);
@@ -254,6 +304,10 @@ export function EventEditor({
     }
     wasOpenRef.current = open;
   }, [open, mode, event, occurrence, prefill, selectedDay]);
+
+  function toggleChip(key: ChipKey) {
+    setOpenChip((current) => (current === key ? null : key));
+  }
 
   function toggleWeekday(day: number) {
     setByWeekday((prev) =>
@@ -447,6 +501,12 @@ export function EventEditor({
     }
   }
 
+  const whenValue = whenLabel(allDay, startsAtInput, startDateInput, endDateInput);
+  const recurrenceLabel = freq ? FREQUENCIES.find((f) => f.value === freq)!.label : null;
+  const categoryLabel = category
+    ? EVENT_CATEGORIES.find((c) => c.value === category)!.label
+    : null;
+
   return (
     <>
       <Sheet
@@ -470,185 +530,234 @@ export function EventEditor({
             aria-describedby={showTitleHint ? TITLE_HINT_ID : undefined}
           />
           {showTitleHint && <FieldHint id={TITLE_HINT_ID} confidences={[titleConfidence]} />}
-          <label className="event-editor__field">
-            <span>Kategorie</span>
-            <select
-              className="event-editor__category"
-              value={category}
-              onChange={(formEvent) => setCategory(formEvent.target.value)}
-              aria-label="Kategorie"
+          <div className="event-editor__chips">
+            <Chip
+              field="Wann"
+              emptyLabel="Wann?"
+              value={whenValue}
+              guessed={showStartHint}
+              open={openChip === 'wann'}
+              panelId="event-editor-panel-wann"
+              onOpen={() => toggleChip('wann')}
+            />
+            <Chip
+              field="Wiederholung"
+              emptyLabel="Wiederholung?"
+              value={recurrenceLabel}
+              open={openChip === 'wiederholung'}
+              panelId="event-editor-panel-wiederholung"
+              onOpen={() => toggleChip('wiederholung')}
+            />
+            <Chip
+              field="Kategorie"
+              emptyLabel="Kategorie?"
+              value={categoryLabel}
+              open={openChip === 'kategorie'}
+              panelId="event-editor-panel-kategorie"
+              onOpen={() => toggleChip('kategorie')}
+            />
+          </div>
+          {open && (
+            <div
+              className="event-editor__panel-slot"
+              id={`event-editor-panel-${openChip ?? 'none'}`}
             >
-              <option value={NO_CATEGORY}>Keine</option>
-              {EVENT_CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Row label="Ganztägig">
-            <Toggle checked={allDay} onChange={setAllDay} label="Ganztägig" />
-          </Row>
-          {allDay ? (
-            <>
-              <label className="event-editor__field">
-                <span>Von</span>
-                <input
-                  type="date"
-                  className="event-editor__start"
-                  value={startDateInput}
-                  onChange={(formEvent) => {
-                    setStartDateInput(formEvent.target.value);
-                    setStartEdited(true);
-                  }}
-                  aria-label="Von"
-                  aria-describedby={showStartHint ? START_HINT_ID : undefined}
-                  required
-                />
-              </label>
-              {showStartHint && <FieldHint id={START_HINT_ID} confidences={[dateConfidence]} />}
-              <label className="event-editor__field">
-                <span>Bis</span>
-                <input
-                  type="date"
-                  className="event-editor__end"
-                  value={endDateInput}
-                  onChange={(formEvent) => setEndDateInput(formEvent.target.value)}
-                  aria-label="Bis"
-                  required
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <label className="event-editor__field">
-                <span>Von</span>
-                <input
-                  type="datetime-local"
-                  className="event-editor__start"
-                  value={startsAtInput}
-                  onChange={(formEvent) => {
-                    setStartsAtInput(formEvent.target.value);
-                    setStartEdited(true);
-                  }}
-                  aria-label="Von"
-                  aria-describedby={showStartHint ? START_HINT_ID : undefined}
-                  required
-                />
-              </label>
-              {showStartHint && (
-                <FieldHint id={START_HINT_ID} confidences={[dateConfidence, timeConfidence]} />
+              {openChip === 'wann' && (
+                <>
+                  <Row label="Ganztägig">
+                    <Toggle checked={allDay} onChange={setAllDay} label="Ganztägig" />
+                  </Row>
+                  {allDay ? (
+                    <>
+                      <label className="event-editor__field">
+                        <span>Von</span>
+                        <input
+                          type="date"
+                          className="event-editor__start"
+                          value={startDateInput}
+                          onChange={(formEvent) => {
+                            setStartDateInput(formEvent.target.value);
+                            setStartEdited(true);
+                          }}
+                          aria-label="Von"
+                          aria-describedby={showStartHint ? START_HINT_ID : undefined}
+                          required
+                        />
+                      </label>
+                      {showStartHint && (
+                        <FieldHint id={START_HINT_ID} confidences={[dateConfidence]} />
+                      )}
+                      <label className="event-editor__field">
+                        <span>Bis</span>
+                        <input
+                          type="date"
+                          className="event-editor__end"
+                          value={endDateInput}
+                          onChange={(formEvent) => setEndDateInput(formEvent.target.value)}
+                          aria-label="Bis"
+                          required
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label className="event-editor__field">
+                        <span>Von</span>
+                        <input
+                          type="datetime-local"
+                          className="event-editor__start"
+                          value={startsAtInput}
+                          onChange={(formEvent) => {
+                            setStartsAtInput(formEvent.target.value);
+                            setStartEdited(true);
+                          }}
+                          aria-label="Von"
+                          aria-describedby={showStartHint ? START_HINT_ID : undefined}
+                          required
+                        />
+                      </label>
+                      {showStartHint && (
+                        <FieldHint
+                          id={START_HINT_ID}
+                          confidences={[dateConfidence, timeConfidence]}
+                        />
+                      )}
+                      <label className="event-editor__field">
+                        <span>Bis</span>
+                        <input
+                          type="datetime-local"
+                          className="event-editor__end"
+                          value={endsAtInput}
+                          onChange={(formEvent) => setEndsAtInput(formEvent.target.value)}
+                          aria-label="Bis"
+                          required
+                        />
+                      </label>
+                    </>
+                  )}
+                </>
               )}
-              <label className="event-editor__field">
-                <span>Bis</span>
-                <input
-                  type="datetime-local"
-                  className="event-editor__end"
-                  value={endsAtInput}
-                  onChange={(formEvent) => setEndsAtInput(formEvent.target.value)}
-                  aria-label="Bis"
-                  required
-                />
-              </label>
-            </>
-          )}
-          <label className="event-editor__field">
-            <span>Wiederholung</span>
-            <select
-              className="event-editor__recurrence-freq"
-              value={freq}
-              onChange={(formEvent) =>
-                setFreq(formEvent.target.value as RecurrenceFreq | typeof NO_RECURRENCE)
-              }
-              aria-label="Wiederholung"
-            >
-              <option value={NO_RECURRENCE}>Nie</option>
-              {FREQUENCIES.map((f) => (
-                <option key={f.value} value={f.value}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {freq && (
-            <>
-              <label className="event-editor__field">
-                <span>Intervall</span>
-                <input
-                  type="number"
-                  min={1}
-                  className="event-editor__recurrence-interval"
-                  value={intervalInput}
-                  onChange={(formEvent) => setIntervalInput(formEvent.target.value)}
-                  aria-label="Intervall"
-                />
-              </label>
-              {freq === 'weekly' && (
-                <fieldset className="event-editor__weekdays">
-                  <legend>Wochentage</legend>
-                  {WEEKDAYS.map((day) => (
-                    <label key={day.value} className="event-editor__weekday-option">
-                      <input
-                        type="checkbox"
-                        checked={byWeekday.includes(day.value)}
-                        onChange={() => toggleWeekday(day.value)}
-                      />
-                      {day.label}
-                    </label>
-                  ))}
-                </fieldset>
+              {openChip === 'wiederholung' && (
+                <>
+                  <label className="event-editor__field">
+                    <span>Wiederholung</span>
+                    <select
+                      className="event-editor__recurrence-freq"
+                      value={freq}
+                      onChange={(formEvent) =>
+                        setFreq(formEvent.target.value as RecurrenceFreq | typeof NO_RECURRENCE)
+                      }
+                      aria-label="Wiederholung"
+                    >
+                      <option value={NO_RECURRENCE}>Nie</option>
+                      {FREQUENCIES.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {freq && (
+                    <>
+                      <label className="event-editor__field">
+                        <span>Intervall</span>
+                        <input
+                          type="number"
+                          min={1}
+                          className="event-editor__recurrence-interval"
+                          value={intervalInput}
+                          onChange={(formEvent) => setIntervalInput(formEvent.target.value)}
+                          aria-label="Intervall"
+                        />
+                      </label>
+                      {freq === 'weekly' && (
+                        <fieldset className="event-editor__weekdays">
+                          <legend>Wochentage</legend>
+                          {WEEKDAYS.map((day) => (
+                            <label key={day.value} className="event-editor__weekday-option">
+                              <input
+                                type="checkbox"
+                                checked={byWeekday.includes(day.value)}
+                                onChange={() => toggleWeekday(day.value)}
+                              />
+                              {day.label}
+                            </label>
+                          ))}
+                        </fieldset>
+                      )}
+                      <fieldset className="event-editor__recurrence-end">
+                        <legend>Ende</legend>
+                        <label className="event-editor__recurrence-end-option">
+                          <input
+                            type="radio"
+                            name="recurrence-end"
+                            checked={endMode === 'never'}
+                            onChange={() => setEndMode('never')}
+                          />
+                          Nie
+                        </label>
+                        <label className="event-editor__recurrence-end-option">
+                          <input
+                            type="radio"
+                            name="recurrence-end"
+                            checked={endMode === 'until'}
+                            onChange={() => setEndMode('until')}
+                          />
+                          Am
+                          <input
+                            type="date"
+                            value={untilInput}
+                            onChange={(formEvent) => {
+                              setUntilInput(formEvent.target.value);
+                              setEndMode('until');
+                            }}
+                            aria-label="Endet am"
+                          />
+                        </label>
+                        <label className="event-editor__recurrence-end-option">
+                          <input
+                            type="radio"
+                            name="recurrence-end"
+                            checked={endMode === 'count'}
+                            onChange={() => setEndMode('count')}
+                          />
+                          Nach
+                          <input
+                            type="number"
+                            min={1}
+                            value={countInput}
+                            onChange={(formEvent) => {
+                              setCountInput(formEvent.target.value);
+                              setEndMode('count');
+                            }}
+                            aria-label="Anzahl Wiederholungen"
+                          />
+                          ×
+                        </label>
+                      </fieldset>
+                    </>
+                  )}
+                </>
               )}
-              <fieldset className="event-editor__recurrence-end">
-                <legend>Ende</legend>
-                <label className="event-editor__recurrence-end-option">
-                  <input
-                    type="radio"
-                    name="recurrence-end"
-                    checked={endMode === 'never'}
-                    onChange={() => setEndMode('never')}
-                  />
-                  Nie
+              {openChip === 'kategorie' && (
+                <label className="event-editor__field">
+                  <span>Kategorie</span>
+                  <select
+                    className="event-editor__category"
+                    value={category}
+                    onChange={(formEvent) => setCategory(formEvent.target.value)}
+                    aria-label="Kategorie"
+                  >
+                    <option value={NO_CATEGORY}>Keine</option>
+                    {EVENT_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <label className="event-editor__recurrence-end-option">
-                  <input
-                    type="radio"
-                    name="recurrence-end"
-                    checked={endMode === 'until'}
-                    onChange={() => setEndMode('until')}
-                  />
-                  Am
-                  <input
-                    type="date"
-                    value={untilInput}
-                    onChange={(formEvent) => {
-                      setUntilInput(formEvent.target.value);
-                      setEndMode('until');
-                    }}
-                    aria-label="Endet am"
-                  />
-                </label>
-                <label className="event-editor__recurrence-end-option">
-                  <input
-                    type="radio"
-                    name="recurrence-end"
-                    checked={endMode === 'count'}
-                    onChange={() => setEndMode('count')}
-                  />
-                  Nach
-                  <input
-                    type="number"
-                    min={1}
-                    value={countInput}
-                    onChange={(formEvent) => {
-                      setCountInput(formEvent.target.value);
-                      setEndMode('count');
-                    }}
-                    aria-label="Anzahl Wiederholungen"
-                  />
-                  ×
-                </label>
-              </fieldset>
-            </>
+              )}
+            </div>
           )}
           {mode === 'edit' && (
             <div className="event-editor__actions">
