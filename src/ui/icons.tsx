@@ -304,6 +304,16 @@ export function IconHideCompleted({ className }: IconProps) {
   );
 }
 
+// --- Chip-Bauteil: Verwerfen-Ziel eines geratenen Chips (issue #711) ---
+
+export function IconClose({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={className}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function IconFreeze({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>

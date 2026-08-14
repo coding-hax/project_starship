@@ -1,0 +1,97 @@
+/**
+ * `Chip` (issue #711): a pill that costs 34px whether it is answered or not,
+ * replacing a 44px form field that costs the same whichever. Tokens only, no
+ * raw colour — states differ by border style and a `color-mix` tint (same
+ * formula as `hide-completed-toggle.css`'s pressed state), never by a second
+ * hue. `prefers-reduced-motion` needs no local rule: the global one in
+ * `tokens.css` already floors every `transition-duration` here.
+ */
+
+.chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.chip__body {
+  display: flex;
+  align-items: center;
+  max-width: 45vw;
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
+}
+
+.chip__body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Room for the overlaid "x" (chip__discard), which sits on top of the body's
+   own right edge rather than beside it — see chip__discard below. */
+.chip__body--with-discard {
+  padding-right: calc(var(--touch-target) + var(--space-1));
+}
+
+.chip[data-state='set'] .chip__body,
+.chip[data-state='guessed'] .chip__body {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}
+
+.chip[data-state='guessed'] .chip__body {
+  border: 1px dashed var(--accent);
+}
+
+.chip[data-state='disabled'] .chip__body {
+  border-color: var(--border-faint);
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Orthogonal to the value state above: a ring on top of whichever tint is
+   already showing, not a variant that replaces it (issue #711, plan §chip.css). */
+.chip[data-open='true'] .chip__body {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.chip__discard {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chip__discard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-pill);
+}
+
+.chip__discard svg {
+  width: 16px;
+  height: 16px;
+}

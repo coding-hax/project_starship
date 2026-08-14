@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { formatDueLabel } from '@/features/tasks/datetime-local';
 import {
   FIXED_NOW,
   freezeClock,
@@ -1889,19 +1890,33 @@ test('eine angehobene Unteraufgabe folgt dem Zeiger ohne Verzögerung, die Klapp
 });
 
 /* -------------------------------------------------------------------------- */
-/* Anlege-Sheet: „Mehr"-Bereich (issue #650)                                   */
+/* Anlege-Sheet: Chip-Zeile (issue #650, Chips seit issue #711)                */
 /* -------------------------------------------------------------------------- */
 
 function quickAddDialog(page: Page) {
   return page.getByRole('dialog', { name: QUICK_ADD_LABEL });
 }
 
-function moreToggle(page: Page) {
-  return quickAddDialog(page).getByRole('button', { name: 'Mehr' });
+/** A chip body's accessible name is either just the field name (leer) or
+ * `"${field}, ${value}"` (gesetzt/geraten) — anchored so it never also matches
+ * a guessed chip's `"${field} verwerfen"` discard button (issue #711 AK6). */
+function quickAddChip(page: Page, field: string) {
+  return quickAddDialog(page).getByRole('button', { name: new RegExp(`^${field}(,|$)`) });
+}
+
+function quickAddChipDiscard(page: Page, field: string) {
+  return quickAddDialog(page).getByRole('button', { name: `${field} verwerfen` });
 }
 
 function quickAddNotes(page: Page) {
   return quickAddDialog(page).getByRole('textbox', { name: 'Notiz der Aufgabe' });
+}
+
+/** The Wann panel's own `datetime-local` input — `getByLabel('Fälligkeit')` is
+ * ambiguous here since the Fälligkeit chip's own button carries the identical
+ * aria-label (issue #711 AK6), so this scopes to the actual control by class. */
+function quickAddDueInput(page: Page) {
+  return quickAddDialog(page).locator('input.quick-add__due');
 }
 
 async function submitQuickAdd(page: Page) {
@@ -1917,14 +1932,14 @@ test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK1)
   await expect(quickAddTitleField(page)).toHaveAttribute('placeholder', 'Todo Titel');
 });
 
-test('der „Mehr"-Bereich startet zugeklappt — Titel und Enter genügen (issue #650 AK3)', async ({
+test('die Chip-Zeile startet ohne offenes Panel — Titel und Enter genügen (issue #650 AK3)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await openQuickAdd(page);
 
-  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'false');
+  await expect(quickAddChip(page, 'Notiz')).toHaveAttribute('aria-expanded', 'false');
   await expect(quickAddNotes(page)).toHaveCount(0);
 
   await quickAddTitleField(page).fill('Ohne Umweg');
@@ -1934,22 +1949,32 @@ test('der „Mehr"-Bereich startet zugeklappt — Titel und Enter genügen (issu
   await expect(quickAddDialog(page)).toBeHidden();
 });
 
-test('aufgeklappt bietet der Bereich Notiz, Fälligkeit, Unteraufgabe und Priorität (issue #650 AK4)', async ({
+test('vier Chips ersetzen den „Mehr"-Aufklapper, jeder öffnet sein eigenes Control (issue #650 AK4, #711 AK4)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Elternaufgabe' });
   await openQuickAdd(page);
-  await moreToggle(page).click();
-
   const dialog = quickAddDialog(page);
-  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'true');
+
+  await expect(dialog.getByRole('button', { name: 'Mehr' })).toHaveCount(0);
+
+  await quickAddChip(page, 'Notiz').click();
+  await expect(quickAddChip(page, 'Notiz')).toHaveAttribute('aria-expanded', 'true');
   await expect(quickAddNotes(page)).toBeVisible();
-  await expect(dialog.getByLabel('Fälligkeit')).toBeVisible();
+
+  await quickAddChip(page, 'Fälligkeit').click();
+  await expect(quickAddDueInput(page)).toBeVisible();
+  await expect(quickAddNotes(page)).toHaveCount(0);
+
+  await quickAddChip(page, 'Teil von').click();
   await expect(dialog.getByRole('combobox', { name: 'Unteraufgabe von' })).toBeVisible();
+
+  await quickAddChip(page, 'Priorität').click();
   await expect(dialog.getByRole('radio', { name: 'Dringend' })).toBeVisible();
 });
 
-test('im „Mehr"-Bereich gesetzte Felder hängen an der neu angelegten Aufgabe (issue #650 AK4)', async ({
+test('über die Chips gesetzte Felder hängen an der neu angelegten Aufgabe (issue #650 AK4)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1957,10 +1982,16 @@ test('im „Mehr"-Bereich gesetzte Felder hängen an der neu angelegten Aufgabe 
 
   const dialog = quickAddDialog(page);
   await quickAddTitleField(page).fill('Mit allem');
-  await moreToggle(page).click();
+
+  await quickAddChip(page, 'Notiz').click();
   await quickAddNotes(page).fill('Eine Notiz');
-  await dialog.getByLabel('Fälligkeit').fill('2026-07-20T09:00');
+
+  await quickAddChip(page, 'Fälligkeit').click();
+  await quickAddDueInput(page).fill('2026-07-20T09:00');
+
+  await quickAddChip(page, 'Priorität').click();
   await dialog.getByRole('radio', { name: 'Dringend' }).check();
+
   await submitQuickAdd(page);
   await expect(dialog).toBeHidden();
 
@@ -1974,7 +2005,7 @@ test('im „Mehr"-Bereich gesetzte Felder hängen an der neu angelegten Aufgabe 
   await expect(editor.getByRole('radio', { name: 'Dringend' })).toBeChecked();
 });
 
-test('„Unteraufgabe von" beim Anlegen macht die neue Aufgabe sofort zum Kind (issue #650 AK4)', async ({
+test('„Teil von" beim Anlegen macht die neue Aufgabe sofort zum Kind (issue #650 AK4)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1983,7 +2014,7 @@ test('„Unteraufgabe von" beim Anlegen macht die neue Aufgabe sofort zum Kind (
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Gleich verschachtelt');
-  await moreToggle(page).click();
+  await quickAddChip(page, 'Teil von').click();
   await quickAddDialog(page)
     .getByRole('combobox', { name: 'Unteraufgabe von' })
     .selectOption({ label: 'Elternaufgabe' });
@@ -1992,17 +2023,16 @@ test('„Unteraufgabe von" beim Anlegen macht die neue Aufgabe sofort zum Kind (
   await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
 });
 
-test('eine gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue #650 AK5)', async ({
+test('eine über den Wann-Chip gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue #650 AK5)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await openQuickAdd(page);
 
-  const dialog = quickAddDialog(page);
   await quickAddTitleField(page).fill('Arzt anrufen morgen um 12');
-  await moreToggle(page).click();
-  await dialog.getByLabel('Fälligkeit').fill('2026-07-25T08:30');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await quickAddDueInput(page).fill('2026-07-25T08:30');
   await submitQuickAdd(page);
 
   // Kein Bestätigungs-Sheet und kein Undo-Toast: beide sichern ein ungeprüft
@@ -2013,7 +2043,7 @@ test('eine gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue
   await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-25T08:30');
 });
 
-test('ein erneut geöffnetes Sheet startet wieder leer und zugeklappt (issue #650 AK6)', async ({
+test('ein erneut geöffnetes Sheet startet wieder leer, ohne offenes Panel (issue #650 AK6)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -2024,22 +2054,25 @@ test('ein erneut geöffnetes Sheet startet wieder leer und zugeklappt (issue #65
   // „Termin", …) — der Parser streicht die heraus, und der Test suchte dann eine
   // Aufgabe, die so nie angelegt wurde.
   await quickAddTitleField(page).fill('Zuerst gespeichert');
-  await moreToggle(page).click();
+  await quickAddChip(page, 'Notiz').click();
   await quickAddNotes(page).fill('Bleibt nicht stehen');
+  await quickAddChip(page, 'Priorität').click();
   await quickAddDialog(page).getByRole('radio', { name: 'Hoch' }).check();
   await submitQuickAdd(page);
   await expect(page.getByText('Zuerst gespeichert')).toBeVisible();
 
   await openQuickAdd(page);
   await expect(quickAddTitleField(page)).toHaveValue('');
-  await expect(moreToggle(page)).toHaveAttribute('aria-expanded', 'false');
+  await expect(quickAddChip(page, 'Notiz')).toHaveAttribute('aria-expanded', 'false');
+  await expect(quickAddChip(page, 'Priorität')).toHaveText('Priorität?');
 
-  await moreToggle(page).click();
+  await quickAddChip(page, 'Notiz').click();
   await expect(quickAddNotes(page)).toHaveValue('');
+  await quickAddChip(page, 'Priorität').click();
   await expect(quickAddDialog(page).getByRole('radio', { name: 'Normal' })).toBeChecked();
 });
 
-test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Datenbank (issue #650 AK7)', async ({
+test('offline über die Chips gesetzt: die Werte erreichen die echte Datenbank (issue #650 AK7)', async ({
   page,
   context,
 }) => {
@@ -2049,8 +2082,9 @@ test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Date
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Offline mit Priorität');
-  await moreToggle(page).click();
+  await quickAddChip(page, 'Notiz').click();
   await quickAddNotes(page).fill('Im Zug notiert');
+  await quickAddChip(page, 'Priorität').click();
   await quickAddDialog(page).getByRole('radio', { name: 'Dringend' }).check();
   await submitQuickAdd(page);
 
@@ -2069,6 +2103,145 @@ test('offline mit gesetzten Feldern angelegt: die Werte erreichen die echte Date
   );
   expect(row.rowCount).toBe(1);
   expect(row.rows[0]).toMatchObject({ notes: 'Im Zug notiert', priority: 2 });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Chip-Bauteil (issue #711)                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: der Chip kennt fünf Zustände — leer, gesetzt, geraten, offen, deaktiviert', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  // leer: kein Wert, keine Verwerfen-Fläche.
+  await expect(quickAddChip(page, 'Fälligkeit')).toHaveText('Wann?');
+  await expect(quickAddChipDiscard(page, 'Fälligkeit')).toHaveCount(0);
+
+  // deaktiviert: keine Aufgabe in der Datenbank, also kein Nest-Kandidat.
+  await expect(quickAddChip(page, 'Teil von')).toBeDisabled();
+
+  // offen: Antippen öffnet das Panel, aria-expanded spiegelt es.
+  await quickAddChip(page, 'Notiz').click();
+  await expect(quickAddChip(page, 'Notiz')).toHaveAttribute('aria-expanded', 'true');
+  await expect(quickAddNotes(page)).toBeVisible();
+
+  // gesetzt: ein eingetragener Wert tönt den Chip und trägt ihn im a11y-Namen.
+  await quickAddNotes(page).fill('Einkaufen');
+  await expect(quickAddChip(page, 'Notiz')).toHaveAccessibleName('Notiz, Einkaufen');
+  await quickAddChip(page, 'Notiz').click();
+
+  // geraten: aus dem Titel erkanntes Datum ohne Titel — die Verwerfen-Fläche
+  // erscheint, obwohl niemand den Chip angetippt hat (AK2: angenommen, nicht offen).
+  await quickAddTitleField(page).fill('morgen um 12');
+  await quickAddTitleField(page).press('Enter');
+  await expect(quickAddChipDiscard(page, 'Fälligkeit')).toBeVisible();
+  await expect(quickAddChip(page, 'Fälligkeit')).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('AK2: ein geratener Chip bleibt ohne Antippen erhalten, das „x" verwirft ihn', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+
+  // Nichts tun heißt behalten: kein Antippen des „x", das Datum landet am Datensatz.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('morgen um 12');
+  await quickAddTitleField(page).press('Enter');
+  await quickAddTitleField(page).fill('Angenommen');
+  await submitQuickAdd(page);
+  await expect(page.getByText('Angenommen')).toBeVisible();
+  await tapTask(page, 'Angenommen');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).not.toHaveValue('');
+  await page.keyboard.press('Escape');
+
+  // Antippen des „x" verwirft: das Datum erreicht den Datensatz nicht.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('morgen um 12');
+  await quickAddTitleField(page).press('Enter');
+  await quickAddChipDiscard(page, 'Fälligkeit').click();
+  await expect(quickAddChip(page, 'Fälligkeit')).toHaveText('Wann?');
+  await quickAddTitleField(page).fill('Verworfen');
+  await submitQuickAdd(page);
+  await expect(page.getByText('Verworfen')).toBeVisible();
+  await tapTask(page, 'Verworfen');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('');
+});
+
+test('AK3: ein zweiter geöffneter Chip schließt den ersten', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await quickAddChip(page, 'Notiz').click();
+  await expect(quickAddNotes(page)).toBeVisible();
+
+  await quickAddChip(page, 'Priorität').click();
+  await expect(quickAddNotes(page)).toHaveCount(0);
+  await expect(quickAddDialog(page).getByRole('radio', { name: 'Dringend' })).toBeVisible();
+  await expect(quickAddChip(page, 'Notiz')).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('AK5: kein Layout-Shift beim Öffnen eines Chip-Panels — Kopfzeile und Titel bleiben stehen', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  const dialog = quickAddDialog(page);
+  const header = dialog.locator('.sheet__header-row');
+  const title = quickAddTitleField(page);
+
+  // The sheet's own open transition (sheet.css, ~200ms) must have settled first
+  // — otherwise "before" is measured mid-slide-up and any coordinate compared
+  // against "after" reads as a shift that has nothing to do with the panel.
+  await expect
+    .poll(() =>
+      dialog
+        .locator('.sheet__content')
+        .evaluate((el) => el.getAnimations().some((a) => a.playState === 'running')),
+    )
+    .toBe(false);
+
+  const headerBefore = await header.boundingBox();
+  const titleBefore = await title.boundingBox();
+
+  await quickAddChip(page, 'Notiz').click();
+  await expect(quickAddNotes(page)).toBeVisible();
+
+  const headerAfter = await header.boundingBox();
+  const titleAfter = await title.boundingBox();
+
+  // A hair of tolerance, not exact equality, for pure sub-pixel layout rounding
+  // — same call as list-motion.spec.ts's AC4. A real shift (the reserved panel
+  // slot failing to hold its height) would move these by several pixels, an
+  // order of magnitude past this threshold.
+  const LAYOUT_SHIFT_TOLERANCE_PX = 1;
+  for (const [before, after] of [
+    [headerBefore, headerAfter],
+    [titleBefore, titleAfter],
+  ] as const) {
+    expect(before).not.toBeNull();
+    expect(after).not.toBeNull();
+    expect(Math.abs(after!.x - before!.x)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.y - before!.y)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.width - before!.width)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+    expect(Math.abs(after!.height - before!.height)).toBeLessThan(LAYOUT_SHIFT_TOLERANCE_PX);
+  }
+});
+
+test('AK6: der a11y-Name eines Chips trägt Feldname und Wert', async ({ page }) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await quickAddChip(page, 'Fälligkeit').click();
+  await quickAddDueInput(page).fill('2026-07-23T14:00');
+  await quickAddChip(page, 'Fälligkeit').click();
+
+  const expected = `Fälligkeit, ${formatDueLabel('2026-07-23T14:00')}`;
+  await expect(quickAddChip(page, 'Fälligkeit')).toHaveAccessibleName(expected);
 });
 
 /* -------------------------------------------------------------------------- */
