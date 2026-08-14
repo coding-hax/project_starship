@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
-# Tests für die Prioritäts-Queue als FLACHE Reihenfolge (#109): das Queue-Issue
-# (QUEUE_ISSUE) listet '#NN' in Reihenfolge; wer gelistet ist, wird bearbeitet —
-# das Label ist für die AUSWAHL egal. Erhalten bleiben: 'needs-answer'/'hands-off'
-# schließen aus; die ROLLE kommt aus dem Label (plan -> Plan, research
-# -> Recherche, sonst bauen); leere Queue -> Fallback auf Label-Reihenfolge.
+# Tests für den Rang als Label (#725, S2 von ADR-0023): das Label `next` ist
+# die Prioritäts-Queue -- ein Ticket mit `next` wird bearbeitet, je ältestes
+# createdAt, unabhängig vom Rollenlabel. Ersetzt scripts/tests/queue-priority.test.sh
+# (QUEUE_ISSUE-Zeilenreihenfolge), die mit dem Queue-Issue (#92) selbst weg ist.
+#
+# Erhalten bleiben: 'needs-answer'/'hands-off' schließen aus; die ROLLE kommt
+# aus dem Label (plan -> Plan, research -> Recherche, sonst bauen); ohne
+# `next`-Ticket -> Fallback auf die Label-Kaskade (plan -> research -> ready).
 #
 # Bewiesen wird:
-#   1. Gelistetes Ticket OHNE 'ready' (kein/anderes Label) wird gebaut.
-#   2. Queue-Reihenfolge schlägt createdAt; früher Gelistetes zuerst.
-#   3. Gelistetes schlägt ungelistetes 'ready' (Queue vor Fallback).
-#   4. Gelistetes 'plan' -> Planlauf (traegt seit #387 in-progress); 'research' analog.
-#   5. 'needs-answer' schließt ein gelistetes Ticket aus (Fallback greift).
-#   6. 'hands-off' schließt ein gelistetes Ticket aus.
-#   7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt.
-#   8. Ketten aus dem Queue-Body ('- #NN nach #MM') UND aus dem Ticket-Body
-#      selbst ('Nach: #MM') greifen im selben Takt gleichzeitig (issue #724).
+#   1. Ein Ticket mit `next` (kein/anderes Label) wird gebaut.
+#   2. Mehrere `next`-Tickets: das aelteste createdAt gewinnt.
+#   3. `next` schlägt ein ungelistetes 'ready' (Rang vor Fallback).
+#   4. `next` + 'plan' -> Planlauf (traegt seit #387 in-progress); 'research' analog.
+#   5. 'needs-answer' schließt ein `next`-Ticket aus (Fallback greift).
+#   6. 'hands-off' schließt ein `next`-Ticket aus.
+#   7. Kein `next`-Ticket -> Fallback: 'ready' nach ältestem createdAt.
+#   8. Eine 'Nach:'-Zeile im eigenen Ticket-Body blockiert ein `next`-Ticket
+#      UND ein einfaches 'ready'-Ticket gleichzeitig (issue #724/#725).
 #
 # Reine Bash-Assertions, kein bats. Sourct claude-runner.sh (Source-Guard hält
 # main() an) und stubbt gh/git/claude per PATH -- analog round-snap.test.sh.
@@ -38,7 +41,6 @@ mkdir -p "$GHSTATE_DIR"
 # --- Stub 'gh' ---------------------------------------------------------------
 # 'issue list' ohne --label baut ROUND_SNAP aus den vier Ticketwahl-Fixtures
 # (die JSON bestimmt die Labels, die Datei ist nur der Sammel-Eimer).
-# 'issue view <n> --json body' liefert $G/view-<n>.json (Queue-Body).
 cat > "$FAKEBIN/gh" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -128,10 +130,6 @@ reset_state() {
 # Labels stehen im JSON, nicht im Dateinamen).
 snapshot() { printf '%s' "$1" > "$GHSTATE_DIR/list-ready.json"; }
 
-queue_body_fixture() {   # $1 = Issue-Nr, $2 = Body
-  jq -n --arg b "$2" '{body:$b}' > "$GHSTATE_DIR/view-$1.json"
-}
-
 run_main() { ( main ) >/dev/null 2>&1; }
 
 assert_session_exists() {   # $1 = Beschreibung, $2 = Issue-Nr
@@ -156,121 +154,108 @@ assert_label_not_added() {   # $1 = Beschreibung, $2 = Issue-Nr, $3 = Label
   else red "$1 (ADD:$3 unerwartet angewandt)"; fi
 }
 
-export QUEUE_ISSUE=1000
-
 # ==============================================================================
-# 1. Gelistetes Ticket OHNE 'ready' (kein Label) wird GEBAUT — Label egal.
+# 1. Ticket mit 'next' (kein weiteres Label) wird GEBAUT.
 # ==============================================================================
 reset_state
-snapshot '[{"number":77,"labels":[],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '- #77'
+snapshot '[{"number":77,"labels":[{"name":"next"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 run_main
-assert_session_exists "AC1: gelistetes #77 ohne Label wird gebaut" 77
+assert_session_exists "AC1: next-Ticket #77 ohne weiteres Label wird gebaut" 77
 assert_label_added    "AC1: #77 bekommt in-progress (Bau-Rolle)" 77 in-progress
 
 # ==============================================================================
-# 2. Queue-Reihenfolge schlägt createdAt: #10 älter, Queue listet #99 zuerst.
+# 2. Zwei next-Tickets: das aeltere createdAt gewinnt (#10 vor #99).
 # ==============================================================================
 reset_state
 snapshot '[
-  {"number":10,"labels":[],"createdAt":"2024-01-01T00:00:00Z"},
-  {"number":99,"labels":[],"createdAt":"2024-06-01T00:00:00Z"}
+  {"number":10,"labels":[{"name":"next"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":99,"labels":[{"name":"next"}],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '- #99
-- #10'
 run_main
-assert_session_exists "AC2: Queue zieht #99 vor (schlägt älteres createdAt #10)" 99
-assert_session_absent "AC2: #10 bleibt unangetastet" 10
+assert_session_exists "AC2: aelteres next-Ticket #10 gewinnt" 10
+assert_session_absent "AC2: juengeres next-Ticket #99 bleibt unangetastet" 99
 
 # ==============================================================================
-# 3. Gelistetes schlägt ungelistetes 'ready' (Queue vor Fallback).
+# 3. next schlaegt ein ungelistetes 'ready' -- Rang vor Fallback, unabhaengig
+#    vom createdAt.
 # ==============================================================================
 reset_state
 snapshot '[
   {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
-  {"number":99,"labels":[],"createdAt":"2024-06-01T00:00:00Z"}
+  {"number":99,"labels":[{"name":"next"}],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '- #99'
 run_main
-assert_session_exists "AC3: gelistetes #99 schlägt ungelistetes ready #10" 99
-assert_session_absent "AC3: ungelistetes ready #10 wartet" 10
+assert_session_exists "AC3: next-Ticket #99 schlaegt aelteres ready #10" 99
+assert_session_absent "AC3: ready #10 wartet" 10
 
 # ==============================================================================
-# 4. Rolle aus Label: gelistetes 'plan' -> Planlauf; gelistetes 'research' ->
-#    Recherche. Seit #387 (AC1) tragen Denk-Rollen waehrend des Laufs
-#    ebenfalls in-progress (Sichtbarkeit + haelt den Slot-Claim) -- vorher
-#    bekam nur die Bau-Rolle das Label, diese beiden Assertions drehten sich
-#    deshalb bewusst um, statt weiter das alte Verhalten zu verlangen.
+# 4. Rolle aus Label: next+'plan' -> Planlauf; next+'research' -> Recherche.
+#    Seit #387 (AC1) tragen Denk-Rollen waehrend des Laufs ebenfalls
+#    in-progress (Sichtbarkeit + haelt den Slot-Claim).
 # ==============================================================================
 reset_state
-snapshot '[{"number":55,"labels":[{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '- #55'
+snapshot '[{"number":55,"labels":[{"name":"next"},{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 run_main
-assert_think_session_exists  "AC4: gelistetes plan #55 läuft (Planlauf)" 55
+assert_think_session_exists  "AC4: next+plan #55 laeuft (Planlauf)" 55
 assert_label_added "AC4/#387: #55 bekommt in-progress (auch als Denk-Ticket)" 55 in-progress
 
 reset_state
-snapshot '[{"number":66,"labels":[{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
-queue_body_fixture 1000 '- #66'
+snapshot '[{"number":66,"labels":[{"name":"next"},{"name":"research"}],"createdAt":"2024-01-01T00:00:00Z"}]'
 run_main
-assert_think_session_exists  "AC4: gelistetes research #66 läuft (Recherche)" 66
+assert_think_session_exists  "AC4: next+research #66 laeuft (Recherche)" 66
 assert_label_added "AC4/#387: #66 bekommt in-progress (auch als Denk-Ticket)" 66 in-progress
 
 # ==============================================================================
-# 5. 'needs-answer' schließt ein gelistetes Ticket aus -> Fallback baut #88.
+# 5. 'needs-answer' schliesst ein next-Ticket aus -> Fallback baut #88.
 # ==============================================================================
 reset_state
 snapshot '[
-  {"number":77,"labels":[{"name":"needs-answer"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":77,"labels":[{"name":"next"},{"name":"needs-answer"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '- #77'
 run_main
-assert_session_absent "AC5: gelistetes, aber needs-answer #77 wird NICHT gewählt" 77
-assert_session_exists "AC5: Fallback wählt das ready #88" 88
+assert_session_absent "AC5: next+needs-answer #77 wird NICHT gewaehlt" 77
+assert_session_exists "AC5: Fallback waehlt das ready #88" 88
 
 # ==============================================================================
-# 6. 'hands-off' schließt ein gelistetes Ticket aus -> Fallback baut #88.
+# 6. 'hands-off' schliesst ein next-Ticket aus -> Fallback baut #88.
 # ==============================================================================
 reset_state
 snapshot '[
-  {"number":77,"labels":[{"name":"hands-off"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":77,"labels":[{"name":"next"},{"name":"hands-off"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":88,"labels":[{"name":"ready"}],"createdAt":"2024-02-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 '- #77'
 run_main
-assert_session_absent "AC6: gelistetes, aber hands-off #77 wird NICHT gewählt" 77
-assert_session_exists "AC6: Fallback wählt das ready #88" 88
+assert_session_absent "AC6: next+hands-off #77 wird NICHT gewaehlt" 77
+assert_session_exists "AC6: Fallback waehlt das ready #88" 88
 
 # ==============================================================================
-# 7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt (#10 vor #99).
+# 7. Kein next-Ticket -> Fallback: 'ready' nach aeltestem createdAt (#10 vor #99).
 # ==============================================================================
 reset_state
 snapshot '[
   {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":99,"labels":[{"name":"ready"}],"createdAt":"2024-06-01T00:00:00Z"}
 ]'
-queue_body_fixture 1000 ''
 run_main
-assert_session_exists "AC7: leere Queue -> Fallback wählt älteres createdAt #10" 10
-assert_session_absent "AC7: #99 (jünger) bleibt unangetastet" 99
+assert_session_exists "AC7: kein next-Ticket -> Fallback waehlt aelteres createdAt #10" 10
+assert_session_absent "AC7: #99 (juenger) bleibt unangetastet" 99
 
 # ==============================================================================
-# 8. Queue-Body-Kette ('- #99 nach #10') UND Ticket-Body-Kette ('Nach: #20' im
-#    Body von #30) greifen im selben Takt gleichzeitig (issue #724). #10 und
-#    #20 bleiben offen -> beide Ketten blockieren, #10 selbst ist unblockiert
-#    und gewinnt den Fallback (aeltestes createdAt unter den Unblockierten).
+# 8. Eine 'Nach:'-Zeile im eigenen Ticket-Body blockiert ein next-Ticket UND
+#    ein einfaches ready-Ticket gleichzeitig (issue #724/#725). #10 und #20
+#    bleiben offen -> beide Ketten blockieren, #10 selbst ist unblockiert und
+#    gewinnt den Fallback (aeltestes createdAt unter den Unblockierten).
 # ==============================================================================
 reset_state
 snapshot '[
   {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
   {"number":20,"labels":[{"name":"ready"}],"createdAt":"2024-01-05T00:00:00Z"},
   {"number":30,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z","body":"Nach: #20"},
-  {"number":99,"labels":[],"createdAt":"2024-01-01T00:00:00Z"}
+  {"number":99,"labels":[{"name":"next"}],"createdAt":"2024-01-01T00:00:00Z","body":"Nach: #10"}
 ]'
-queue_body_fixture 1000 '- #99 nach #10'
 run_main
-assert_session_absent "AC8: Queue-Body-Kette blockiert #99 (nach #10, offen)" 99
+assert_session_absent "AC8: Ticket-Body-Kette blockiert das next-Ticket #99 (nach #10, offen)" 99
 assert_session_absent "AC8: Ticket-Body-Kette blockiert #30 (Nach: #20, offen)" 30
 assert_session_exists "AC8: einzig unblockiertes #10 wird gebaut" 10
 assert_session_absent "AC8: #20 bleibt unangetastet (juenger als #10)" 20
@@ -278,8 +263,8 @@ assert_session_absent "AC8: #20 bleibt unangetastet (juenger als #10)" 20
 # ==============================================================================
 echo
 if [ "$FAIL" -eq 0 ]; then
-  ok "Alle Flache-Queue-Tests grün."
+  ok "Alle next-Label-Tests grün."
 else
-  red "Mindestens ein Flache-Queue-Test ist rot (siehe oben)."
+  red "Mindestens ein next-Label-Test ist rot (siehe oben)."
 fi
 exit $FAIL

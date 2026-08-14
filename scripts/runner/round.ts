@@ -23,8 +23,8 @@ import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
 import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
-import { entriesFromIssues, mergeEntries, queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
-import { queueBody, queueSnapshot, waitingIssues } from './status.js';
+import { entriesFromIssues, queueBlocked, queueCycles, queuePending, untriaged } from './queue.js';
+import { queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
@@ -69,7 +69,6 @@ export interface StatusUpdate {
 }
 
 export interface RoundPlanOptions {
-  queueIssue: number;
   /** Nr. des angepinnten Status-Issues (#357) -- schliesst sich selbst aus dem "untriagiert"-Bericht aus. */
   statusIssue: number;
   maxRuntime: number;
@@ -107,7 +106,6 @@ export interface RoundRun {
   beforeTip: string;
   /** Laufbeginn (ISO), nur fuer die Bau-Rolle befuellt, sonst '' (#499). */
   runStart: string;
-  queueBody: string;
   didWork: boolean;
   lastIssue: string;
   /** Der fertige Prompt -- Bash pipet ihn in `claude` (AK6). */
@@ -180,18 +178,6 @@ function yyyymmdd(clock: Clock): string {
   return `${now.getFullYear()}${twoDigits(now.getMonth() + 1)}${twoDigits(now.getDate())}`;
 }
 
-// #296: "Queue" ist die Prioritaets-Liste aus #92, kein Synonym fuer jedes
-// offene ready/plan/research-Ticket. `queuePending()` zaehlt bewusst auch
-// hands-off-Tickets mit (#271 AC3) -- die standen deshalb als "Queue"-Inhalt
-// im Status, obwohl #92 leer war. Das Wort faellt nur noch, wenn #92
-// tatsaechlich Eintraege hat; die Auswahl selbst bleibt unveraendert.
-function pendingWording(pending: string, queueBodyText: string): { title: string; lead: string } {
-  if (queueEntries(queueBodyText).length > 0) {
-    return { title: `Queue: ${pending}`, lead: `In der Queue liegt noch Arbeit (${pending})` };
-  }
-  return { title: `Offen: ${pending}`, lead: `Offen ist noch Arbeit (${pending})` };
-}
-
 // ---------------------------------------------------------------------------
 // Phase 1 -- alles vor dem `claude`-Aufruf
 // ---------------------------------------------------------------------------
@@ -231,8 +217,6 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // (`wip` unten, `pickTicket()`/`selectTicket()` in select.ts) und schliesst
   // dort zusaetzlich zu BLOCKING_LABELS aus.
   const elsewhere = claimedElsewhere(claims, slotId);
-
-  const body = queueBody(opts.queueIssue, gh);
 
   // #272: Hier stand die Selbstheilung (#145), die 'in-progress' gegen
   // 'parked' tauschte. Sie ist ersatzlos weg -- 'in-progress' + 'needs-answer'
@@ -288,25 +272,23 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     }
   }
 
-  // --- Queue-Bericht + 'blocked-by' nachfuehren (#265) -----------------------
-  // Der Runner schreibt Issue 92 NICHT um (Entscheidung vom 27.07.26) -- die
-  // Liste bleibt die des Menschen. Was er tut: melden, was daran erledigt ist,
-  // was auf Vorarbeit wartet, was gar nicht gelistet ist, und ob sich zwei
-  // Eintraege gegenseitig blockieren.
+  // --- Queue-Bericht + 'blocked-by' nachfuehren (#265, seit #725 ohne
+  // Queue-Issue) --------------------------------------------------------------
+  // Was der Runner meldet: was auf Vorarbeit wartet (Nach:-Ketten) und ob sich
+  // zwei Tickets gegenseitig blockieren (Zirkel).
   //
-  // 'blocked-by' setzt und entfernt er dagegen selbst (wie 'in-progress'). Von
-  // Hand gepflegt wuerde es genauso verrotten wie die Prosa bisher -- nur
-  // schlimmer: dann wuerde das Ticket nie wieder gebaut, und zwar still.
+  // 'blocked-by' setzt und entfernt er selbst (wie 'in-progress'). Von Hand
+  // gepflegt wuerde es verrotten -- und dann wuerde das Ticket nie wieder
+  // gebaut, und zwar still.
   // #204: ebenfalls nur der Leitslot -- sonst schreiben mehrere Slots
   // denselben 'blocked-by'-Zustand jeden Takt neu.
   //
-  // #724 (S1 von ADR-0023): 'blocked-by' und die Zirkel-Meldung sehen
-  // denselben vereinigten Graphen wie die Auswahl (select.ts) -- sonst waere
-  // genau das die Drift, die #271 abgeschafft hat: eine Anzeige, die einen
-  // anderen Zustand behauptet als das, was der Runner tatsaechlich baut.
+  // #725 (S2 von ADR-0023): 'blocked-by' und die Zirkel-Meldung sehen denselben
+  // Graphen wie die Auswahl (select.ts, entriesFromIssues) -- sonst waere genau
+  // das die Drift, die #271 abgeschafft hat: eine Anzeige, die einen anderen
+  // Zustand behauptet als das, was der Runner tatsaechlich baut.
   if (isLead) {
-    const queueOnlyEntries = queueEntries(body);
-    const entries = mergeEntries(queueOnlyEntries, entriesFromIssues(snapshot));
+    const entries = entriesFromIssues(snapshot);
     const openIssues = new Set(snapshot.map((issue) => issue.number));
     const blocked = queueBlocked(entries, openIssues);
     const parts: string[] = [];
@@ -335,50 +317,16 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
       parts.push(`⛔ Wartet auf Vorarbeit: ${list}.`);
     }
 
-    // #724: queueDone() bleibt bewusst auf den Queue-Body-Eintraegen -- die
-    // Meldung heisst "kannst du streichen" und meint das Streichen einer
-    // Zeile in #92. Ein Ticket, dessen Kette nur als 'Nach:' im eigenen Body
-    // steht, hat dort nichts zu streichen.
-    const done = queueDone(queueOnlyEntries, openIssues);
-    if (done.length > 0) {
-      parts.push(`✅ In der Queue erledigt, kannst du streichen: ${done.map((n) => `#${n}`).join(', ')}.`);
-    }
-
-    // Die Queue schlaegt die Label-Kaskade vollstaendig: steht ueberhaupt etwas
-    // Baubares in der Liste, kommt kein Ticket ausserhalb dran. Ohne diese
-    // Zeile wartet ein frisch auf 'ready' gesetztes Ticket beliebig lange,
-    // ohne dass es irgendwo sichtbar wird (#265, Entscheidung: immer melden,
-    // keine Schwelle).
-    // #724: bewusst queueOnlyEntries, nicht der vereinigte Graph -- "nicht
-    // gelistet" meint "steht nicht in #92", unabhaengig davon, ob das Ticket
-    // in seinem eigenen Body eine 'Nach:'-Zeile traegt.
-    const listed = new Set(queueOnlyEntries.map((entry) => entry.issue));
-    const starving = snapshot
-      .filter(
-        (issue) =>
-          !listed.has(issue.number) &&
-          issue.labels.some((label) => label.name === 'ready') &&
-          !issue.labels.some((label) => ['hands-off', 'needs-answer', 'in-progress'].includes(label.name)),
-      )
-      .map((issue) => issue.number)
-      .sort((a, b) => a - b);
-    if (listed.size > 0 && starving.length > 0) {
-      parts.push(`🟢 Nicht gelistet, wartet auf einen Platz: ${starving.map((n) => `#${n}`).join(', ')}.`);
-    }
-
     // #357, Owner-Entscheidung "C" (29.07.26): untriagierte Fund-Tickets
     // sichtbar machen -- gebaut wird davon nichts, die Auswahl-Kaskade bleibt
-    // unberuehrt. Bewusst NICHT an `entries.length > 0` gekoppelt (anders als
-    // "Nicht gelistet" oben): der ganze Zweck ist, dass Untriagiertes auch bei
-    // leerer Queue auffaellt -- #349/#351/#363 lagen unsichtbar, obwohl #92
-    // sie nie erwaehnte.
-    const meta = new Set([opts.queueIssue, opts.statusIssue].filter((n) => n > 0));
-    const loose = untriaged(snapshot, queueOnlyEntries, meta);
+    // unberuehrt.
+    const meta = new Set([opts.statusIssue].filter((n) => n > 0));
+    const loose = untriaged(snapshot, meta);
     if (loose.length > 0) {
       parts.push(
-        `🏷️ **Untriagiert** (kein Steuerlabel, nicht in der Queue): ${loose
+        `🏷️ **Untriagiert** (kein Steuerlabel): ${loose
           .map((n) => `#${n}`)
-          .join(', ')} — gib \`ready\`/\`plan\`/\`research\` oder nimm sie in die Queue #92 auf. Gebaut wird davon nichts.`,
+          .join(', ')} — gib \`ready\`/\`plan\`/\`research\`/\`next\`. Gebaut wird davon nichts.`,
       );
     }
 
@@ -516,7 +464,7 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
   }
 
   if (issue === 0) {
-    const pick = pickTicket(snapshot, body, gh, state, elsewhere);
+    const pick = pickTicket(snapshot, gh, state, elsewhere);
     switch (pick.kind) {
       case 'ticket':
         issue = pick.issue;
@@ -550,16 +498,15 @@ sonst starte ich in 60 Sekunden mit derselben offenen Frage neu.`,
         }
         const pending = queuePending(queueSnapshot(gh));
         if (pending !== '') {
-          const { title, lead } = pendingWording(pending, body);
           return {
             kind: 'done',
             rc: 0,
             status: status(
-              `wartet auf nächsten Lauf · ${title}`,
+              `wartet auf nächsten Lauf · Offen: ${pending}`,
               '🟢',
               `🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
-${lead}, aber derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**`,
+Offen ist noch Arbeit (${pending}), aber derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**`,
             ),
           };
         }
@@ -796,7 +743,6 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     labels,
     beforeTip,
     runStart,
-    queueBody: body,
     didWork: opts.didWork,
     lastIssue: opts.lastIssue,
     prompt,
@@ -1052,7 +998,7 @@ Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`*
     // Die einzige Stelle, die die Chain-Schleife fortsetzt (#61).
     const snap = queueSnapshot(gh);
     const pending = queuePending(snap);
-    const next = queueNext(snap, plan.queueBody);
+    const next = queueNext(snap);
     const done = (status: StatusUpdate): RoundEvalResult => ({
       status,
       chain: 'continue',
@@ -1062,7 +1008,6 @@ Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`*
     });
 
     if (pending !== '') {
-      const { title, lead } = pendingWording(pending, plan.queueBody);
       if (next !== null) {
         return done({
           title: `wartet auf nächsten Lauf · als Nächstes #${next}`,
@@ -1072,15 +1017,15 @@ Antworte als Kommentar am Ticket und **entferne dann das Label \`needs-answer\`*
 Zuletzt an #${issue} gearbeitet. Als Nächstes ist **#${next}** dran. Der nächste Takt
 startet automatisch (~5 Min) — **kein Eingreifen nötig.**
 
-${title}`,
+Offen: ${pending}`,
         });
       }
       return done({
-        title: `wartet auf nächsten Lauf · ${title}`,
+        title: `wartet auf nächsten Lauf · Offen: ${pending}`,
         emoji: '🟢',
         text: `🟢 **Ich warte auf den nächsten Lauf — gerade läuft kein Prozess.**
 
-Zuletzt an #${issue} gearbeitet. ${lead}, aber
+Zuletzt an #${issue} gearbeitet. Offen ist noch Arbeit (${pending}), aber
 derzeit kein baubereites Ticket (z. B. nur Recherche). **Kein Eingreifen nötig.**`,
       });
     }

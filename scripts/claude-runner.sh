@@ -20,7 +20,6 @@ RUNNER_HOME="${RUNNER_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 REPO_DIR="${REPO_DIR:-$HOME/dev/project_starship}"
 STATUS_ISSUE="${STATUS_ISSUE:-0}"       # Nr. des angepinnten Runner-Status-Issues
-QUEUE_ISSUE="${QUEUE_ISSUE:-0}"         # Nr. des Prioritäts-Queue-Issues (0 = aus)
 MAX_RUNTIME="${MAX_RUNTIME:-2700}"      # Sekunden. Notbremse gegen hängende Läufe -- PRO LAUF.
 MAX_ROUNDS="${MAX_ROUNDS:-3}"           # Ticket-Chaining (#61): max. Runden PRO TICK.
 TICK_BUDGET="${TICK_BUDGET:-$MAX_RUNTIME}"  # Sek.-Budget/Tick, vor jeder neuen Runde geprüft.
@@ -417,7 +416,7 @@ run_round() {
   # fatal, sollte STATUS_ISSUE danach je unbound werden (beobachtet in
   # waiting-label.test.sh, dessen Testblock 5 die Variable bewusst wieder
   # `unset`, um ein Slot-Setup ohne Status-Issue zu simulieren).
-  plan=$(ts_run round-plan "$QUEUE_ISSUE" "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD" "${STATUS_ISSUE:-0}")
+  plan=$(ts_run round-plan "$MAX_RUNTIME" "$DID_WORK" "$LAST_ISSUE" "$IS_LEAD" "${STATUS_ISSUE:-0}")
   plan_rc=$?
   # round-plan MUSS Exit 0 UND ein gültiges JSON-Objekt (mit .kind) liefern.
   # Jeder andere Ausgang (leeres/kaputtes plan) ist fatal: 127 hat ts_run schon

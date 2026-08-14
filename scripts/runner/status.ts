@@ -1,5 +1,7 @@
 // Statusmeldungen, portiert aus claude-runner.sh (#202, S5 von #184):
-// waitingIssues/parkedIssues/parkIssue/queueSnapshot/queueBody.
+// waitingIssues/parkedIssues/parkIssue/queueSnapshot. `queueBody()` (Body des
+// angepinnten Queue-Issues) ist mit #725 (S2 von ADR-0023) ersatzlos weg --
+// der Rang ist jetzt das Label `next` an den Tickets selbst.
 //
 // `status()`/`append_end_reason()` bleiben ABSICHTLICH bash-only: `status()`
 // liegt auf dem Fehlerpfad von `ts_run()` selbst (meldet "TS-Naht ausgefallen",
@@ -71,15 +73,5 @@ export function queueSnapshot(gh: GhAdapter): QueueSnapshotIssue[] {
     return JSON.parse(raw) as QueueSnapshotIssue[];
   } catch {
     return [];
-  }
-}
-
-// Holt den Queue-Body EINMAL pro Tick (leer, wenn kein QUEUE_ISSUE gesetzt).
-export function queueBody(queueIssue: number, gh: GhAdapter): string {
-  if (!(queueIssue > 0)) return '';
-  try {
-    return gh.run(['issue', 'view', String(queueIssue), '--json', 'body', '-q', '.body // ""']);
-  } catch {
-    return '';
   }
 }

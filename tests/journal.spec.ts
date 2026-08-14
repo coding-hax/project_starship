@@ -291,10 +291,11 @@ async function openSheet(page: Page): Promise<void> {
 
 /** Once the sheet is open, the FAB and the sheet's own submit button share the
  * accessible name "Eintragen" (Sheet, by design, leaves the trigger untouched
- * — see src/ui/sheet.tsx) — scope to the submit button's own class instead of
- * a role query that would hit both. */
+ * — see src/ui/sheet.tsx) — scope to the dialog first (issue #714: the action
+ * now lives in the shared sheet header, `.sheet__action`, not a form-local
+ * button). */
 async function submit(page: Page): Promise<void> {
-  await page.locator('.journal-editor__submit').click();
+  await page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action').click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
@@ -339,14 +340,29 @@ test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die 
   await expect(dialog.getByLabel('Tags')).toBeVisible();
 });
 
-test('AC1: die Stimmungs-Skala ist das erste Element im Formular, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+test('AK2 (#714): die Textfläche steht vor Mood/Tags in der Fußleiste und dominiert deren Höhe', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
-  const firstChild = page.locator('.journal-editor__form > *').first();
-  await expect(firstChild).toHaveClass(/mood-scale/);
+  const textBox = await page.locator('.journal-editor__text').boundingBox();
+  const moodBox = await page.locator('.journal-editor__form .mood-scale').boundingBox();
+  const tagsBox = await page.getByLabel('Tags').boundingBox();
+  expect(textBox).not.toBeNull();
+  expect(moodBox).not.toBeNull();
+  expect(tagsBox).not.toBeNull();
+
+  expect(textBox!.y).toBeLessThan(moodBox!.y);
+  expect(tagsBox!.y).toBeGreaterThan(textBox!.y);
+  expect(textBox!.height).toBeGreaterThan(moodBox!.height);
+});
+
+test('AC1: ein Tipp auf der Stimmungs-Skala setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openSheet(page);
 
   const point = page.getByRole('button', { name: '7', exact: true });
   await expect(point).toHaveAttribute('aria-pressed', 'false');
@@ -714,33 +730,37 @@ test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf 
   expect(dateBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
 });
 
-test('AC-D (#423): der Eintragen-Knopf im Sheet erscheint erst mit Mood oder Text und ist zentriert', async ({
+test('AK4 (#714, ehem. AC-D/#423): der Eintragen-Knopf in der Kopfzeile ist blass und wirkungslos, solange weder Stimmung noch Text gesetzt sind', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
   // Die FAB trägt denselben Namen (AK2, #701) und bleibt im offenen Sheet
-  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — über die
-  // Klasse statt einer Rollen-Query scopen, sonst träfe das hier auch die FAB.
-  const submitButton = page.locator('.journal-editor__submit');
-  await expect(submitButton).toHaveCount(0);
+  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — auf den
+  // Dialog scopen, sonst träfe das hier auch die FAB.
+  const action = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action');
+  await expect(action).toBeVisible();
+  await expect(action).toBeDisabled();
+
+  // Ein disabled Submit-Button submittet nicht (native Browser-Semantik) —
+  // force, weil Playwright einen disabled-Klick sonst gar nicht erst versucht.
+  await action.click({ force: true });
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
 
   await page.getByRole('button', { name: '6', exact: true }).click();
-  await expect(submitButton).toBeVisible();
+  await expect(action).toBeEnabled();
   await page.getByRole('button', { name: '6', exact: true }).click(); // zurücknehmen
-  await expect(submitButton).toHaveCount(0);
+  await expect(action).toBeDisabled();
 
   await page.getByLabel('Journal-Text').fill('Nur Text, kein Mood');
-  await expect(submitButton).toBeVisible();
+  await expect(action).toBeEnabled();
+  await page.getByLabel('Journal-Text').fill('');
+  await expect(action).toBeDisabled();
 
-  const buttonBox = await submitButton.boundingBox();
-  const formBox = await page.locator('.journal-editor__form').boundingBox();
-  expect(buttonBox).not.toBeNull();
-  expect(formBox).not.toBeNull();
-  const buttonCenter = buttonBox!.x + buttonBox!.width / 2;
-  const formCenter = formBox!.x + formBox!.width / 2;
-  expect(Math.abs(buttonCenter - formCenter)).toBeLessThan(2);
+  // Nur Tags reicht nicht (AK4).
+  await page.getByLabel('Tags').fill('privat');
+  await expect(action).toBeDisabled();
 });
 
 test('AC2/AC3: bleibt die App über Mitternacht offen, trägt ein danach abgesendeter Eintrag den neuen Kalendertag und erscheint unter „Heute · <neuer Wochentag>“', async ({
@@ -1157,4 +1177,171 @@ test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
   await expect(page.getByRole('status')).toHaveCount(0);
 
   await context.setOffline(false);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #703: das 14-Tage-Stimmungsband über dem Eintragsstrom               */
+/* (Tageswert = arithmetisches Mittel, #700 Q1; reiner Lesekonsument des      */
+/* Sitzungs-Caches, kein zusätzlicher Entschlüssel).                          */
+/* -------------------------------------------------------------------------- */
+
+/** Seeds a set of moods across days within the 14-day window, offline first
+ * (DoD-Offline-Pfad) — every entry runs through the outbox via
+ * `appendJournalEntry` (entry.ts → write.ts), never a direct write. FIXED_NOW
+ * is 18.07.2026, so 05.–18.07. are the fourteen days the band covers. */
+async function seedMoodBandEntries(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await window.__starship.appendJournalEntry('2026-07-10', { text: 'tief', mood: '3', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-14', { text: 'hoch', mood: '9', tags: [] });
+    // Zwei Stimmungen an einem Tag -> arithmetisches Mittel (4+9)/2 = 6,5 (#700 Q1).
+    await window.__starship.appendJournalEntry('2026-07-16', { text: 'morgens', mood: '4', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-16', { text: 'abends', mood: '9', tags: [] });
+    // Ein reiner Text-Eintrag ohne Stimmung -> graue Grundlinie, kein Balken.
+    await window.__starship.appendJournalEntry('2026-07-17', { text: 'nur Text', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '7', tags: [] });
+  });
+}
+
+test('AK1 (#703): das Band zeigt 14 Tagesplätze, Höhe spiegelt die Stimmung, Mehrfach-Stimmung als Mittel, leere/stimmungslose Tage als graue Grundlinie, heute markiert', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  // Offline-Pfad (DoD): offline geschrieben, dann online — im Band sichtbar.
+  await context.setOffline(true);
+  await seedMoodBandEntries(page);
+  await context.setOffline(false);
+
+  const band = page.locator('.journal-mood-band');
+  await expect(band).toBeVisible();
+
+  const slots = page.locator('.journal-mood-band__slot');
+  await expect(slots).toHaveCount(14);
+  // Vier Tage mit Stimmung -> vier farbige Balken; die übrigen zehn (inkl. der
+  // reine-Text-Tag) sind graue Grundlinien, kein Platz wird ausgelassen (AK1).
+  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(4);
+  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(10);
+
+  // Heute (18.07., letzter Platz) trägt den Marker.
+  const todaySlot = slots.nth(13);
+  await expect(todaySlot).toHaveAttribute('data-today', 'true');
+  await expect(todaySlot).toHaveAttribute('aria-current', 'date');
+  await expect(todaySlot.locator('.journal-mood-band__bar')).toHaveCount(1);
+
+  // Reiner Text-Eintrag (17.07., vorletzter Platz) -> graue Grundlinie, kein Balken.
+  await expect(slots.nth(12).locator('.journal-mood-band__baseline')).toHaveCount(1);
+  await expect(slots.nth(12).locator('.journal-mood-band__bar')).toHaveCount(0);
+
+  // Der Tag mit zwei Stimmungen (16.07.) zeigt das arithmetische Mittel 6,5.
+  const meanSlot = page.locator('.journal-mood-band__slot[aria-label*="6,5"]');
+  await expect(meanSlot).toHaveCount(1);
+
+  // Höhe ∝ Stimmung: Stimmung 9 (14.07.) höher als Stimmung 3 (10.07.); das
+  // Mittel 6,5 (16.07.) liegt messbar dazwischen.
+  const lowBar = slots.nth(5).locator('.journal-mood-band__bar'); // 10.07., Stimmung 3
+  const highBar = slots.nth(9).locator('.journal-mood-band__bar'); // 14.07., Stimmung 9
+  const meanBar = meanSlot.locator('.journal-mood-band__bar'); // 16.07., Mittel 6,5
+  const lowBox = await lowBar.boundingBox();
+  const highBox = await highBar.boundingBox();
+  const meanBox = await meanBar.boundingBox();
+  expect(lowBox).not.toBeNull();
+  expect(highBox).not.toBeNull();
+  expect(meanBox).not.toBeNull();
+  expect(highBox!.height).toBeGreaterThan(lowBox!.height);
+  expect(meanBox!.height).toBeGreaterThan(lowBox!.height);
+  expect(meanBox!.height).toBeLessThan(highBox!.height);
+
+  // Mobil (375px) ohne horizontalen Seiten-Scroll trotz 14 Plätze.
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+});
+
+test('AK8 (#703): frisch entsperrt ohne Einträge zeigt eine ruhige Notiz statt eines leeren Bands', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await expect(page.locator('.journal-mood-band__empty')).toBeVisible();
+  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(0);
+});
+
+test('AK8 (#703): wenige Einträge zeigen das vollständige Band (14 Plätze), kein zerbrochenes Gerüst und keine Notiz', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'einziger', mood: '5', tags: [] }),
+  );
+
+  await expect(page.locator('.journal-mood-band')).toBeVisible();
+  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(14);
+  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(1);
+  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(13);
+});
+
+test('AK6 (#703): im Suchmodus ist das Stimmungsband abwesend', async ({ page }) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '6', tags: [] }),
+  );
+  await expect(page.locator('.journal-mood-band')).toBeVisible();
+
+  // Suchmodus über die Lupe in der Titelzeile öffnen (#700 AK5).
+  await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
+  await expect(page.locator('.journal-search')).toBeVisible();
+
+  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
+  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
+});
+
+test('AK9 (#703): die Band-Säule füllt mit --area-journal, das sich im Dark Mode tatsächlich unterscheidet', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
+  );
+
+  const bar = page.locator('.journal-mood-band__bar').first();
+  await expect(bar).toBeVisible();
+
+  const lightBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(lightBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkBg).not.toBe(lightBg);
+  expect(darkBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
+});
+
+test('AK9 (#703): prefers-reduced-motion unterdrückt die Wachs-Animation der Säule', async ({
+  page,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+
+  await page.evaluate(() =>
+    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
+  );
+
+  const bar = page.locator('.journal-mood-band__bar').first();
+  await expect(bar).toBeVisible();
+
+  // Ohne Reduce: die Säule wächst über eine benannte Keyframe-Animation.
+  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('mood-bar-grow');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
 });
