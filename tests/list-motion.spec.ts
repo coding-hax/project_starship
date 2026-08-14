@@ -127,6 +127,73 @@ function journalEntries(page: Page) {
   return page.locator('.journal-editor__entry');
 }
 
+/**
+ * Arms a capture for the *next* `.journal-editor__entry` to mount and start
+ * its enter animation, returning a getter that resolves once that happens.
+ *
+ * Journal writes go through encryption before they land (unlike tasks'/
+ * habits' plain seed writes in the analogous AC1 tests above), so the gap
+ * between "submit resolves" and "the row is actually in the DOM" is real and
+ * variable. Polling for `data-entering`/`animationName` *after* the submit
+ * helper returns races that gap against the row's own `--duration-base`
+ * (200ms) enter animation: under load, the round trip for the polling itself
+ * can eat the whole window, so the row is already back to `entering=false`
+ * before the first poll ever runs — confirmed via a MutationObserver trace
+ * (issue #701 CI investigation) that showed the attribute going true, then
+ * false ~290ms later, with the assertion's polls landing entirely after that.
+ * Arming an in-page `animationstart` listener *before* triggering the write
+ * sidesteps the race outright — the browser fires the event synchronously as
+ * part of its own paint pipeline, independent of how long Playwright's own
+ * round trips take to get around to checking.
+ */
+async function armEnterAnimationCapture(
+  page: Page,
+): Promise<() => Promise<{ text: string; entering: string | null; animationName: string } | null>> {
+  await page.evaluate(() => {
+    const capture = new Promise<{ text: string; entering: string | null; animationName: string } | null>(
+      (resolve) => {
+        const container = document.querySelector('.journal-editor__entries');
+        if (!container) {
+          resolve(null);
+          return;
+        }
+        const observer = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            for (const node of Array.from(mutation.addedNodes)) {
+              if (!(node instanceof HTMLElement) || !node.classList.contains('journal-editor__entry')) {
+                continue;
+              }
+              node.addEventListener(
+                'animationstart',
+                () => {
+                  observer.disconnect();
+                  resolve({
+                    text: node.textContent ?? '',
+                    entering: node.getAttribute('data-entering'),
+                    animationName: getComputedStyle(node).animationName,
+                  });
+                },
+                { once: true },
+              );
+            }
+          }
+        });
+        observer.observe(container, { childList: true });
+      },
+    );
+    (window as unknown as { __enterCapture: typeof capture }).__enterCapture = capture;
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __enterCapture: Promise<{ text: string; entering: string | null; animationName: string } | null>;
+          }
+        ).__enterCapture,
+    );
+}
+
 test.beforeEach(async () => {
   await resetAppData();
 });
@@ -264,10 +331,12 @@ test.describe('Journal', () => {
     const existing = journalEntries(page).filter({ hasText: 'Erster Eintrag' });
     await expect(existing).toHaveAttribute('data-entering', 'false');
 
+    const getEnterCapture = await armEnterAnimationCapture(page);
     await submitJournalEntry(page, 'Zweiter Eintrag');
-    const created = journalEntries(page).filter({ hasText: 'Zweiter Eintrag' });
-    await expect(created).toHaveAttribute('data-entering', 'true');
-    expect(await created.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-enter');
+    const captured = await getEnterCapture();
+    expect(captured?.text).toContain('Zweiter Eintrag');
+    expect(captured?.entering).toBe('true');
+    expect(captured?.animationName).toBe('list-enter');
     await expect(existing).toHaveAttribute('data-entering', 'false');
   });
 
