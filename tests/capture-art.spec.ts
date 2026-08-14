@@ -52,6 +52,12 @@ function expectedDueAt(daysFromNow: number, hours: number, minutes: number): Dat
   return date;
 }
 
+/** `datetime-local` works in the browser's local time, with no timezone suffix. */
+function isoToLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /** Renders `var(--area-*)` on a throwaway element to read its resolved color —
  * the same value the sheet's accent-driven surfaces (action button, chips)
  * resolve to once `--accent` points at that area token (issue #715 AK2). */
@@ -69,8 +75,12 @@ async function resolvedAreaColor(
   }, areaVar);
 }
 
+/** `dialog[open]` matters since issue #715 P4: `/uebersicht` now also mounts a
+ * (usually closed) `TaskEditor`/`EventEditor`, each with their own
+ * `.sheet__action` in the DOM regardless of `open` — a bare class locator
+ * would match all of them. */
 function sheetActionButton(page: Page) {
-  return page.locator('.sheet__action');
+  return page.locator('dialog[open] .sheet__action');
 }
 
 async function actionButtonBackground(page: Page): Promise<string> {
@@ -260,4 +270,77 @@ test('AK5: ohne wählbare Gewohnheit ist die Art-Option „Routine" gesperrt', a
   await artChip(page, 'Aufgabe').click();
 
   await expect(page.getByRole('radio', { name: 'Routine' })).toBeDisabled();
+});
+
+test('AK4: "Mehr" bei Aufgabe öffnet das volle Modul-Sheet mit übernommenen Kernwerten, kein Seitenwechsel', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Wäsche waschen morgen');
+  await page.getByRole('button', { name: 'Priorität' }).click();
+  await page.getByRole('radio', { name: 'Hoch' }).click();
+
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  await expect(captureDialog(page)).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const dialog = page.getByRole('dialog', { name: 'Neue Aufgabe' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Wäsche waschen');
+  await expect(dialog.getByRole('radio', { name: 'Hoch' })).toBeChecked();
+  await expect(dialog.getByLabel('Notiz')).toBeVisible();
+  await expect(dialog.getByLabel('Unteraufgabe von')).toBeVisible();
+
+  await dialog.getByLabel('Notiz').fill('Extra Notiz');
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(dialog).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({
+    title: 'Wäsche waschen',
+    priority: 1,
+    notes: 'Extra Notiz',
+  });
+});
+
+test('AK4: "Mehr" bei Termin öffnet das volle Modul-Sheet mit übernommenen Kernwerten, kein Seitenwechsel', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const due = expectedDueAt(1, 12, 0);
+  await captureButton(page).click();
+  await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
+  await page.getByRole('button', { name: 'Kategorie' }).click();
+  // Nicht `getByLabel('Kategorie')`: das immer gemountete (meist geschlossene)
+  // `EventEditor` trägt sein eigenes gleichnamiges Feld unabhängig von `open`
+  // im DOM — `getByLabel` filtert das anders als `getByRole` nicht heraus.
+  await page.locator('#uebersicht-capture-panel-kategorie').selectOption('gesundheit');
+
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  await expect(captureDialog(page)).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
+  await expect(dialog.getByLabel('Kategorie')).toHaveValue('gesundheit');
+  await expect(dialog.getByLabel('Wiederholung')).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(dialog).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'events');
+  expect(created?.payload).toMatchObject({
+    title: 'Zahnarzt',
+    category: 'gesundheit',
+    startsAt: due.toISOString(),
+  });
 });

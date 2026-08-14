@@ -12,6 +12,12 @@ import {
   taskFieldsFromDraft,
 } from '@/features/capture/route-capture';
 import type { CaptureKind } from '@/features/capture/types';
+import {
+  EventEditor,
+  type EventEditorPrefill,
+  type EventEditorState,
+} from '@/features/events/event-editor';
+import { useEventExceptions } from '@/features/events/use-event-exceptions';
 import { EVENT_CATEGORIES } from '@/features/events/use-events';
 import { useHabitLogs } from '@/features/habits/use-habit-logs';
 import { useHabits } from '@/features/habits/use-habits';
@@ -19,11 +25,14 @@ import { useToggleHabitLog } from '@/features/habits/use-toggle-habit-log';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { useModules } from '@/features/settings/use-modules';
 import { mutate } from '@/local/outbox';
+import { berlinNow } from '@/push/schedule';
 import { Chip } from '@/ui/chip';
 import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
 import { PRIORITIES } from './quick-add';
+import { TaskEditor, type TaskEditorState } from './task-editor';
+import { groupTasks, useTasks } from './use-tasks';
 
 const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'uebersicht-capture-form';
@@ -56,6 +65,21 @@ const ART_ACCENT: Record<CaptureKind, string> = {
 type ChipKey = 'art' | 'wann' | 'prio' | 'zeit' | 'kategorie' | 'routine';
 
 const ROUTINE_UNRESOLVED_LABEL = 'Keiner Gewohnheit zugeordnet';
+
+/**
+ * Öffnet das volle Modul-Sheet (AK4) — kein Feld mit Wert/Panel wie `Chip`,
+ * deshalb die Chip-Optik ohne deren Disclosure-Semantik (`aria-expanded`/
+ * `aria-controls` wären für einen reinen Öffnen-Knopf falsch).
+ */
+function MoreChip({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="chip">
+      <button type="button" className="chip__body" onClick={onOpen}>
+        Mehr
+      </button>
+    </div>
+  );
+}
 
 interface HabitCheckUndo {
   habitId: string;
@@ -105,12 +129,25 @@ export function UebersichtCapture() {
   const [habitOverride, setHabitOverride] = useState<string | null>(null);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
+  // AK4 "Mehr": ein zweites Sheet, nie gleichzeitig mit dem Kern-Sheet offen —
+  // "Mehr" schließt dieses hier und öffnet jenes mit den bisherigen Werten.
+  const [taskEditorState, setTaskEditorState] = useState<TaskEditorState>(null);
+  const [eventEditorState, setEventEditorState] = useState<EventEditorState>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isActive } = useModules();
   const habits = useHabits();
   const logs = useHabitLogs();
   const toggleHabitLog = useToggleHabitLog(logs);
+  const allTasks = useTasks();
+  const eventExceptions = useEventExceptions();
+
+  // "Unteraufgabe von" im Mehr-Sheet: dieselbe Kandidatenliste wie quick-add.tsx
+  // (nur Top-Level-Aufgaben, die neue Aufgabe existiert ja noch gar nicht).
+  const taskNestCandidates = useMemo(
+    () => groupTasks(allTasks ?? []).map((node) => node.task),
+    [allTasks],
+  );
 
   const captureHabits = useMemo(
     () =>
@@ -156,6 +193,43 @@ export function UebersichtCapture() {
 
   function toggleChip(key: ChipKey) {
     setOpenChip((current) => (current === key ? null : key));
+  }
+
+  // AK4: "Mehr" übernimmt die bisherigen Kern-Werte und schließt dieses Sheet
+  // zugunsten des vollen Modul-Sheets — kein Seitenwechsel, ein zweites Sheet.
+  // `setOpenChip(null)` schließt ein offenes Kern-Panel (z. B. die Kategorie-
+  // Auswahl): ihr Formularelement bliebe sonst im DOM stehen (nur `openChip`
+  // steuert es, nicht `open`) und würde dem gleichnamigen Feld im Modul-Sheet
+  // in die Quere kommen.
+  function openMoreForTask() {
+    setOpen(false);
+    setOpenChip(null);
+    setTaskEditorState({
+      mode: 'create',
+      prefill: { title: taskFields.title, dueAt: localInputToIso(dueAt), priority },
+    });
+  }
+
+  function openMoreForEvent() {
+    setOpen(false);
+    setOpenChip(null);
+    const startsAt = localInputToIso(eventStart) ?? localInputToIso(defaultEventStart(now));
+    const endsAt = startsAt
+      ? new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString()
+      : null;
+    const prefill: EventEditorPrefill = {
+      title: eventFields.title,
+      allDay: false,
+      startsAt,
+      endsAt,
+      startDate: null,
+      endDate: null,
+      category: (category || null) as EventEditorPrefill['category'],
+      titleConfidence: eventFields.titleConfidence,
+      dateConfidence: eventFields.dateConfidence,
+      timeConfidence: eventFields.timeConfidence,
+    };
+    setEventEditorState({ mode: 'create', event: null, occurrence: null, prefill });
   }
 
   function dismissHabitUndo() {
@@ -338,6 +412,7 @@ export function UebersichtCapture() {
                   panelId={PRIO_PANEL_ID}
                   onOpen={() => toggleChip('prio')}
                 />
+                <MoreChip onOpen={openMoreForTask} />
               </>
             )}
             {displayedKind === 'event' && (
@@ -360,6 +435,7 @@ export function UebersichtCapture() {
                   panelId={KATEGORIE_PANEL_ID}
                   onOpen={() => toggleChip('kategorie')}
                 />
+                <MoreChip onOpen={openMoreForEvent} />
               </>
             )}
             {displayedKind === 'habit_check' && (
@@ -473,6 +549,19 @@ export function UebersichtCapture() {
           )}
         </form>
       </Sheet>
+      <TaskEditor
+        state={taskEditorState}
+        onClose={() => setTaskEditorState(null)}
+        nestCandidates={taskNestCandidates}
+        hasChildren={false}
+      />
+      <EventEditor
+        state={eventEditorState}
+        selectedDay={berlinNow(now).dateKey}
+        exceptions={eventExceptions ?? []}
+        onClose={() => setEventEditorState(null)}
+        onDelete={() => {}}
+      />
       {habitUndo && (
         <Toast
           message={`„${habitUndo.habitName}" abgehakt`}

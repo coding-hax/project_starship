@@ -90,6 +90,9 @@ export interface EventEditorPrefill {
   endsAt: string | null;
   startDate: string | null;
   endDate: string | null;
+  /** issue #715 AK4: die im Kern-Sheet bereits gewählte Kategorie — "Mehr"
+   *  öffnet dieses Sheet mit den schon getroffenen Kern-Entscheidungen. */
+  category?: EventView['category'];
   /** #691 AK3: Konfidenz je Feld — dieselbe Markierung wie im Aufgaben-Bestätigen-Dialog. */
   titleConfidence?: FieldConfidence;
   dateConfidence?: FieldConfidence;
@@ -235,7 +238,7 @@ export function EventEditor({
     }
     if (open && !wasOpenRef.current && mode === 'create') {
       setTitle(prefill?.title ?? '');
-      setCategory(NO_CATEGORY);
+      setCategory(prefill?.category ?? NO_CATEGORY);
       setAllDay(prefill?.allDay ?? false);
       setStartsAtInput(
         prefill && !prefill.allDay ? isoToLocalInput(prefill.startsAt) : `${selectedDay}T09:00`,
