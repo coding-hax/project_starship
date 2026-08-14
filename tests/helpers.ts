@@ -189,6 +189,23 @@ export async function freezeClock(page: Page) {
   await page.clock.pauseAt(browserNow + 1_000);
 }
 
+/**
+ * Switches `/aufgaben`'s Woche/Alle/Erledigt view (issue #705 AK2) via the
+ * SegmentedControl's `role="radio"` options, and waits for `aria-checked` so
+ * the caller's next assertion never races the click. Almost every existing
+ * `/aufgaben` spec was written against the flat, undated-inclusive "Alle"
+ * run (issue #88) — now that "Woche" is the default, those specs call
+ * `selectView(page, 'Alle')` right after landing on `/aufgaben` to keep
+ * testing exactly what they always tested (Entscheidung A, issue #705).
+ */
+export async function selectView(page: Page, view: 'Woche' | 'Alle' | 'Erledigt') {
+  const option = page
+    .getByRole('radiogroup', { name: 'Aufgaben-Ansicht' })
+    .getByRole('radio', { name: view });
+  await option.click();
+  await expect(option).toHaveAttribute('aria-checked', 'true');
+}
+
 /** The tests assert against the real database, not against what the UI claims. */
 export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -279,7 +296,11 @@ export async function resetReminderData() {
  * it — same columns a client upsert writes (src/db/sync-tables.ts), so the cron
  * reads a row indistinguishable from one the settings panel produced (issue #244).
  */
-export async function seedReminderPref(kind: string, enabled: boolean, times: string[]): Promise<void> {
+export async function seedReminderPref(
+  kind: string,
+  enabled: boolean,
+  times: string[],
+): Promise<void> {
   await withDb((client) =>
     client.query(
       `INSERT INTO reminder_prefs (id, updated_at, deleted_at, synced_at, sync_seq, kind, enabled, times)
@@ -397,12 +418,22 @@ declare global {
       sync: () => Promise<void>;
       size: () => Promise<number>;
       pending: () => Promise<
-        Array<{ id: string; table: string; rowId: string; op: string; payload: Record<string, unknown> }>
+        Array<{
+          id: string;
+          table: string;
+          rowId: string;
+          op: string;
+          payload: Record<string, unknown>;
+        }>
       >;
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
-      debugPatchRecord: (table: string, id: string, patch: Record<string, unknown>) => Promise<number>;
+      debugPatchRecord: (
+        table: string,
+        id: string,
+        patch: Record<string, unknown>,
+      ) => Promise<number>;
       debugDeleteRecord: (table: string, id: string) => Promise<void>;
       debugRecords: () => Promise<
         Array<{
@@ -416,7 +447,11 @@ declare global {
         }>
       >;
       debugMeta: () => Promise<Array<{ key: string; value: unknown }>>;
-      writeJournalEntry: (entryDate: string, ciphertext: number[], nonce: number[]) => Promise<string>;
+      writeJournalEntry: (
+        entryDate: string,
+        ciphertext: number[],
+        nonce: number[],
+      ) => Promise<string>;
       appendJournalEntry: (
         entryDate: string,
         content: { text: string; mood?: string; tags?: string[] },

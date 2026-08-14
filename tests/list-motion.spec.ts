@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { registerPasskey, resetAppData, selectView } from './helpers';
 
 /**
  * Enter/exit for the three lists (issue #430, #418 decision A: CSS-only).
@@ -215,6 +215,7 @@ test.describe('Aufgaben', () => {
 
   test('AC1: ein neu angelegtes Element blendet ein, das vorhandene nicht', async ({ page }) => {
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
     await seedTask(page, { title: 'Bestehende Aufgabe' });
     await expect(taskItems(page)).toHaveCount(1);
     const existing = taskItems(page).filter({ hasText: 'Bestehende Aufgabe' });
@@ -234,6 +235,7 @@ test.describe('Aufgaben', () => {
     page,
   }) => {
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
     await seedTask(page, { title: 'Wird gelöscht' });
     const item = taskItems(page).filter({ hasText: 'Wird gelöscht' });
     await expect(item).toHaveAttribute('data-entering', 'false');
@@ -250,6 +252,7 @@ test.describe('Aufgaben', () => {
     page,
   }) => {
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
     // Explicit, strictly increasing createdAt: without it both rows fall back to
     // the same epoch value (use-tasks.ts's toTaskView), and compareTasks can then
     // sort "Item B" *above* "Item A" — a real reorder that would shift Item A too,
@@ -452,6 +455,7 @@ for (const viewport of [
     await registerPasskey(page);
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
     await seedTask(page, { title: 'Baseline' });
     await expect(taskItems(page)).toHaveCount(1);
 
@@ -473,6 +477,7 @@ test('AC5: Dark Mode — die Enter-Animation läuft unverändert (reines Motion,
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await seedTask(page, { title: 'Baseline' });
   await expect(taskItems(page)).toHaveCount(1);
 

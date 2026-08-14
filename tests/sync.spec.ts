@@ -7,6 +7,7 @@ import {
   openSecondDevice,
   registerPasskey,
   resetAppData,
+  selectView,
   settleJournalHabitBoot,
   skewClock,
   withDb,
@@ -129,6 +130,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     await page.clock.install();
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
 
     const devicePage = await openSecondDevice(browser, page);
     await createTaskOnDevice(devicePage, 'Von Gerät B erstellt');
@@ -147,6 +149,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
   }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
 
     const devicePage = await openSecondDevice(browser, page);
     await createTaskOnDevice(devicePage, 'Von Gerät B, gesehen bei Fokus');
@@ -164,6 +167,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     await page.clock.install();
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
 
     // A read-only property in real browsers; overriding it is the standard way to
     // simulate backgrounding without an actual second window.
@@ -183,9 +187,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     // this would have fired it several times over.
     await page.clock.fastForward(PULL_INTERVAL_MS * 3);
 
-    await expect(
-      page.getByText('Sollte nicht erscheinen, Tab ist versteckt'),
-    ).not.toBeVisible();
+    await expect(page.getByText('Sollte nicht erscheinen, Tab ist versteckt')).not.toBeVisible();
     await devicePage.close();
   });
 
@@ -266,12 +268,16 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
       (window as unknown as { __coalesced?: boolean }).__coalesced = true;
       await p;
       const rows = await window.__starship.debugRecords();
-      return rows.some((r) => r.table === 'tasks' && (r.data as { title?: string }).title === expectedTitle);
+      return rows.some(
+        (r) => r.table === 'tasks' && (r.data as { title?: string }).title === expectedTitle,
+      );
     }, title);
 
     // Proves the dock happened before release, i.e. while the first pull was still
     // in flight — otherwise this would be racing against sync()'s own coalescing.
-    await page.waitForFunction(() => (window as unknown as { __coalesced?: boolean }).__coalesced === true);
+    await page.waitForFunction(
+      () => (window as unknown as { __coalesced?: boolean }).__coalesced === true,
+    );
     releaseFirstPull();
 
     expect(await probe).toBe(true);
@@ -287,6 +293,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     await page.clock.install();
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
 
     const pageErrors: Error[] = [];
     page.on('pageerror', (error) => pageErrors.push(error));
@@ -387,7 +394,12 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
 async function editTaskOnDevice(devicePage: Page, rowId: string, title: string) {
   await devicePage.evaluate(
     async ({ id, t }) => {
-      await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'upsert', payload: { title: t } });
+      await window.__starship.mutate({
+        table: 'tasks',
+        rowId: id,
+        op: 'upsert',
+        payload: { title: t },
+      });
       await window.__starship.sync();
     },
     { id: rowId, t: title },
@@ -512,7 +524,11 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
 
     // Case 1: delete, then restore — undo wins because it arrives last.
     const deletedRowId = await page.evaluate(async () => {
-      const id = await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'A' } });
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'A' },
+      });
       await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'delete' });
       await window.__starship.sync();
       return id;
@@ -535,7 +551,11 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
 
     // Case 2: restore, then a competing delete — the later delete wins.
     const restoredRowId = await page.evaluate(async () => {
-      const id = await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'B' } });
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'B' },
+      });
       await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'delete' });
       await window.__starship.mutate({ table: 'tasks', rowId: id, op: 'restore' });
       await window.__starship.sync();
@@ -564,15 +584,21 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
   }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
 
     // Establish a baseline so device B's cursor is not simply "start of time".
     await page.evaluate(async () => {
-      await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Normal, aktuelle Uhr' } });
+      await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Normal, aktuelle Uhr' },
+      });
       await window.__starship.sync();
     });
 
     const devicePage = await openSecondDevice(browser, page);
     await devicePage.goto('/aufgaben');
+    await selectView(devicePage, 'Alle');
     await expect(devicePage.getByText('Normal, aktuelle Uhr')).toBeVisible();
 
     // Device A's clock now looks ten years in the past. Under the old
@@ -580,7 +606,11 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
     // B's last-pulled timestamp and never be fetched.
     await skewClock(page, '2016-01-01T00:00:00Z');
     await page.evaluate(async () => {
-      await window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Rückdatiert' } });
+      await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Rückdatiert' },
+      });
       await window.__starship.sync();
     });
 
@@ -850,7 +880,18 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
     // The local record should NOT have been overwritten by the pull —
     // a queued mutation prevents the overwrite (ADR-0001).
     const localData = await page.evaluate(async (id) => {
-      const local = await (window.__starship as unknown as { debugRecords: () => Promise<Array<{ id: string; table: string; data: Record<string, unknown>; syncSeq: number | null }>> }).debugRecords();
+      const local = await (
+        window.__starship as unknown as {
+          debugRecords: () => Promise<
+            Array<{
+              id: string;
+              table: string;
+              data: Record<string, unknown>;
+              syncSeq: number | null;
+            }>
+          >;
+        }
+      ).debugRecords();
       return local.find((r) => r.id === id);
     }, taskId);
     // Critical check: the local change must not be overwritten
@@ -908,7 +949,11 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     await page.goto('/aufgaben');
 
     await page.evaluate(() =>
-      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Bleibt hängen' } }),
+      window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Bleibt hängen' },
+      }),
     );
 
     await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
@@ -930,7 +975,11 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     await settleJournalHabitBoot(page);
 
     await page.evaluate(() =>
-      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Offline hängt fest' } }),
+      window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Offline hängt fest' },
+      }),
     );
 
     await page.route('**/api/sync/push', (route) => route.abort('failed'));
@@ -1159,7 +1208,8 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     // IndexedDB too — the store never shows the same day twice.
     const records = await page.evaluate(() => window.__starship.debugRecords());
     const logRecords = records.filter(
-      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-04',
+      (r) =>
+        r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-04',
     );
     expect(logRecords).toHaveLength(1);
     expect(logRecords[0].id).toBe(idA);
@@ -1288,7 +1338,8 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     // The part AK4 above never checked: B's own local store, not just the server.
     const records = await devicePage.evaluate(() => window.__starship.debugRecords());
     const logRecords = records.filter(
-      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-05',
+      (r) =>
+        r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-05',
     );
     expect(logRecords).toHaveLength(1);
     expect(logRecords[0].id).toBe(idA);
@@ -1354,9 +1405,12 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     expect(serverRowsAfterFailedPull.rowCount).toBe(1);
     expect(serverRowsAfterFailedPull.rows[0].id).toBe(idA);
 
-    const recordsAfterFailedPull = await devicePage.evaluate(() => window.__starship.debugRecords());
+    const recordsAfterFailedPull = await devicePage.evaluate(() =>
+      window.__starship.debugRecords(),
+    );
     const logRecordsAfterFailedPull = recordsAfterFailedPull.filter(
-      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
+      (r) =>
+        r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
     );
     // B still shows two local rows for the same day — its own displaced one never
     // got swept, because the pull that does the sweeping never landed.
@@ -1369,7 +1423,8 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
 
     const recordsAfterRecovery = await devicePage.evaluate(() => window.__starship.debugRecords());
     const logRecordsAfterRecovery = recordsAfterRecovery.filter(
-      (r) => r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
+      (r) =>
+        r.table === 'habit_logs' && r.data.habitId === habitId && r.data.logDate === '2026-08-06',
     );
     expect(logRecordsAfterRecovery).toHaveLength(1);
     expect(logRecordsAfterRecovery[0].id).toBe(idA);
@@ -1460,7 +1515,9 @@ test.describe('Serientermin-Ausnahmen: Konvergenz bei paralleler Verschiebung (#
     );
     expect(rows.rowCount).toBe(1);
     expect(rows.rows[0].id).toBe(idA);
-    expect(new Date(rows.rows[0].override_starts_at).toISOString()).toBe('2026-08-10T18:00:00.000Z');
+    expect(new Date(rows.rows[0].override_starts_at).toISOString()).toBe(
+      '2026-08-10T18:00:00.000Z',
+    );
 
     // A's own local view converges to the same winner once it syncs again.
     await page.evaluate(() => window.__starship.sync());
@@ -1493,7 +1550,9 @@ test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (f
     return result.rows.map((r) => ({ id: r.id as string, syncSeq: Number(r.sync_seq) }));
   }
 
-  test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({ page }) => {
+  test('AK2/AK3: der Client blättert bis zum Ende — vollständig, mehr als eine Anfrage nötig', async ({
+    page,
+  }) => {
     await registerPasskey(page);
     // Settle the boot-created Journal habit (issue #505 AC1) first — otherwise its
     // create mutation, still pending in the outbox, gets pushed interleaved with the

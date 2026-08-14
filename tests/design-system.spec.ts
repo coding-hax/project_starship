@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { registerPasskey, resetAppData, selectView } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -378,6 +378,9 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     test(`AC3: Aufgabe-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
       await registerPasskey(page);
       await page.goto('/aufgaben');
+      // Undated (no dueAt) — invisible under the "Woche" default (issue #705),
+      // which only shows tasks due within the week window.
+      await selectView(page, 'Alle');
       await setTheme(page, theme);
       // The FAB opens quick-add.tsx (its own, unrelated submit button) — the
       // .task-editor__submit this ticket fixed only exists in the edit sheet,

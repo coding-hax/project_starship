@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  withDb,
+} from './helpers';
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
@@ -158,7 +165,9 @@ test('AC5: Kalender-Modul abgeschaltet macht aus "morgen 12 Uhr Zahnarzt" eine A
   page,
 }) => {
   await page.goto('/uebersicht');
-  await page.evaluate(() => localStorage.setItem('starship:modules-off', JSON.stringify(['kalender'])));
+  await page.evaluate(() =>
+    localStorage.setItem('starship:modules-off', JSON.stringify(['kalender'])),
+  );
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
@@ -179,9 +188,13 @@ test('AC6: der Aufgaben-Pfad aus #618 bleibt unverändert — Freitext ohne Term
   await submitUebersichtCapture(page, 'Wäsche waschen');
 
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   await expect(confirmDialog(page)).toBeHidden();
   await expect(
-    page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem').filter({ hasText: 'Wäsche waschen' }),
+    page
+      .getByRole('list', { name: 'Aufgaben' })
+      .getByRole('listitem')
+      .filter({ hasText: 'Wäsche waschen' }),
   ).toBeVisible();
 });
 
