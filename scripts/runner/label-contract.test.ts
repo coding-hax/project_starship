@@ -20,11 +20,18 @@
 // Bewusst NICHT geprueft: die Farben und Texte, die auf GitHub tatsaechlich
 // gesetzt sind. Das braeuchte einen Netzzugriff im Test und wuerde die Suite
 // von einem fremden Zustand abhaengig machen.
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BLOCKING_LABELS, selectTicket } from './select';
 import type { QueueIssue } from './queue';
+import { createFixedClock } from './clock';
+import { createStateAdapter, type StateAdapter } from './state';
+import { createClaimAdapter, type ClaimAdapter } from './claim';
+import { roundPlan, type RoundContext, type RoundRun } from './round';
+import type { GhAdapter } from './gh';
+import type { GitAdapter } from './git';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -119,6 +126,65 @@ describe('Ausschluss-Labels greifen auf jedem Zweig (#266 AC2)', () => {
     const snapshot = BLOCKING_LABELS.map((label, i) => issue(10 + i, ['ready', label]));
     expect(selectTicket(snapshot)).toBeNull();
   });
+});
+
+// --- Der Resume-Zweig in round.ts pruefte BLOCKING_LABELS nicht (#739) -----
+// #739: `round.ts` bildet 'resumable' fuer ein bereits laufendes Ticket
+// (in-progress), BEVOR selectTicket() je erreicht wird -- der Filter oben
+// haelt diesen Zweig also nicht automatisch mit. Bis #739 stand dort eine
+// eigene Literalpruefung nur gegen 'needs-answer'; ein 'hands-off'-Ticket mit
+// 'in-progress' wurde ganz normal weitergebaut. Diese Gruppe faehrt dieselben
+// BLOCKING_LABELS zusaetzlich durch roundPlan(), damit ein neuer, ungefilterter
+// Resume-Zweig kuenftig hier auffiele statt erst am 26.07.26-Vorfall.
+describe('Ausschluss-Labels greifen auch auf dem Resume-Zweig in round.ts (#739 AK1/AK4)', () => {
+  const CLOCK = createFixedClock(new Date('2026-08-14T09:00:00'));
+  const gitDouble: GitAdapter = { run: () => '' };
+  const opts = { statusIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
+
+  let dir: string;
+  let claimsDir: string;
+  let state: StateAdapter;
+  let claims: ClaimAdapter;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'label-contract-round-'));
+    claimsDir = mkdtempSync(join(tmpdir(), 'label-contract-round-claims-'));
+    state = createStateAdapter(dir);
+    claims = createClaimAdapter(claimsDir);
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(claimsDir, { recursive: true, force: true });
+  });
+
+  function ghDouble(issues: QueueIssue[]): GhAdapter {
+    return {
+      run: (args: string[]) => {
+        if (args[0] === 'issue' && args[1] === 'list' && args.includes('--limit') && !args.includes('--label')) {
+          return JSON.stringify(issues);
+        }
+        if (args[0] === 'pr' && args[1] === 'list') return '[]';
+        return '';
+      },
+    };
+  }
+
+  function ctx(gh: GhAdapter): RoundContext {
+    return { gh, git: gitDouble, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
+  }
+
+  const issue = (number: number, labels: string[]): QueueIssue => ({
+    number,
+    labels: labels.map((name) => ({ name })),
+    createdAt: '2024-01-01T00:00:00Z',
+  });
+
+  for (const label of BLOCKING_LABELS) {
+    it(`'${label}' + in-progress wird nicht als resumable aufgegriffen`, () => {
+      const result = roundPlan(ctx(ghDouble([issue(10, ['in-progress', label])])), opts);
+      expect(result.kind === 'run' ? (result as RoundRun).issue : -1).not.toBe(10);
+    });
+  }
 });
 
 // --- Workflow-Labels existieren wirklich (#485 AK3) -------------------------
