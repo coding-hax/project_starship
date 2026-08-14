@@ -13,6 +13,8 @@
 #   5. 'needs-answer' schließt ein gelistetes Ticket aus (Fallback greift).
 #   6. 'hands-off' schließt ein gelistetes Ticket aus.
 #   7. Leere Queue -> Fallback: 'ready' nach ältestem createdAt.
+#   8. Ketten aus dem Queue-Body ('- #NN nach #MM') UND aus dem Ticket-Body
+#      selbst ('Nach: #MM') greifen im selben Takt gleichzeitig (issue #724).
 #
 # Reine Bash-Assertions, kein bats. Sourct claude-runner.sh (Source-Guard hält
 # main() an) und stubbt gh/git/claude per PATH -- analog round-snap.test.sh.
@@ -252,6 +254,26 @@ queue_body_fixture 1000 ''
 run_main
 assert_session_exists "AC7: leere Queue -> Fallback wählt älteres createdAt #10" 10
 assert_session_absent "AC7: #99 (jünger) bleibt unangetastet" 99
+
+# ==============================================================================
+# 8. Queue-Body-Kette ('- #99 nach #10') UND Ticket-Body-Kette ('Nach: #20' im
+#    Body von #30) greifen im selben Takt gleichzeitig (issue #724). #10 und
+#    #20 bleiben offen -> beide Ketten blockieren, #10 selbst ist unblockiert
+#    und gewinnt den Fallback (aeltestes createdAt unter den Unblockierten).
+# ==============================================================================
+reset_state
+snapshot '[
+  {"number":10,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z"},
+  {"number":20,"labels":[{"name":"ready"}],"createdAt":"2024-01-05T00:00:00Z"},
+  {"number":30,"labels":[{"name":"ready"}],"createdAt":"2024-01-01T00:00:00Z","body":"Nach: #20"},
+  {"number":99,"labels":[],"createdAt":"2024-01-01T00:00:00Z"}
+]'
+queue_body_fixture 1000 '- #99 nach #10'
+run_main
+assert_session_absent "AC8: Queue-Body-Kette blockiert #99 (nach #10, offen)" 99
+assert_session_absent "AC8: Ticket-Body-Kette blockiert #30 (Nach: #20, offen)" 30
+assert_session_exists "AC8: einzig unblockiertes #10 wird gebaut" 10
+assert_session_absent "AC8: #20 bleibt unangetastet (juenger als #10)" 20
 
 # ==============================================================================
 echo

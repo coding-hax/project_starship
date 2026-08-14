@@ -23,7 +23,7 @@ import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
 import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
-import { queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
+import { entriesFromIssues, mergeEntries, queueBlocked, queueCycles, queueDone, queueEntries, queuePending, untriaged } from './queue.js';
 import { queueBody, queueSnapshot, waitingIssues } from './status.js';
 import { pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
@@ -299,8 +299,14 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // schlimmer: dann wuerde das Ticket nie wieder gebaut, und zwar still.
   // #204: ebenfalls nur der Leitslot -- sonst schreiben mehrere Slots
   // denselben 'blocked-by'-Zustand jeden Takt neu.
+  //
+  // #724 (S1 von ADR-0023): 'blocked-by' und die Zirkel-Meldung sehen
+  // denselben vereinigten Graphen wie die Auswahl (select.ts) -- sonst waere
+  // genau das die Drift, die #271 abgeschafft hat: eine Anzeige, die einen
+  // anderen Zustand behauptet als das, was der Runner tatsaechlich baut.
   if (isLead) {
-    const entries = queueEntries(body);
+    const queueOnlyEntries = queueEntries(body);
+    const entries = mergeEntries(queueOnlyEntries, entriesFromIssues(snapshot));
     const openIssues = new Set(snapshot.map((issue) => issue.number));
     const blocked = queueBlocked(entries, openIssues);
     const parts: string[] = [];
@@ -329,7 +335,11 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
       parts.push(`⛔ Wartet auf Vorarbeit: ${list}.`);
     }
 
-    const done = queueDone(entries, openIssues);
+    // #724: queueDone() bleibt bewusst auf den Queue-Body-Eintraegen -- die
+    // Meldung heisst "kannst du streichen" und meint das Streichen einer
+    // Zeile in #92. Ein Ticket, dessen Kette nur als 'Nach:' im eigenen Body
+    // steht, hat dort nichts zu streichen.
+    const done = queueDone(queueOnlyEntries, openIssues);
     if (done.length > 0) {
       parts.push(`✅ In der Queue erledigt, kannst du streichen: ${done.map((n) => `#${n}`).join(', ')}.`);
     }
@@ -339,7 +349,10 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     // Zeile wartet ein frisch auf 'ready' gesetztes Ticket beliebig lange,
     // ohne dass es irgendwo sichtbar wird (#265, Entscheidung: immer melden,
     // keine Schwelle).
-    const listed = new Set(entries.map((entry) => entry.issue));
+    // #724: bewusst queueOnlyEntries, nicht der vereinigte Graph -- "nicht
+    // gelistet" meint "steht nicht in #92", unabhaengig davon, ob das Ticket
+    // in seinem eigenen Body eine 'Nach:'-Zeile traegt.
+    const listed = new Set(queueOnlyEntries.map((entry) => entry.issue));
     const starving = snapshot
       .filter(
         (issue) =>
@@ -360,7 +373,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     // leerer Queue auffaellt -- #349/#351/#363 lagen unsichtbar, obwohl #92
     // sie nie erwaehnte.
     const meta = new Set([opts.queueIssue, opts.statusIssue].filter((n) => n > 0));
-    const loose = untriaged(snapshot, entries, meta);
+    const loose = untriaged(snapshot, queueOnlyEntries, meta);
     if (loose.length > 0) {
       parts.push(
         `🏷️ **Untriagiert** (kein Steuerlabel, nicht in der Queue): ${loose

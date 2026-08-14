@@ -83,6 +83,58 @@ export function queueOrderFlat(body: string): number[] {
   return queueEntries(body).map((entry) => entry.issue);
 }
 
+// #724 (S1 von ADR-0023): die Kette wandert vom Queue-Body an das Ticket
+// selbst -- eine Zeile 'Nach: #687' im TICKET-Body. Zeilenanker (kein
+// Fliesstext-Trigger, dieselbe Vorsicht wie bei ENTRY_LINE, aus demselben
+// Grund #265), mehrere Nummern je Zeile und mehrere 'Nach:'-Zeilen erlaubt,
+// Ergebnis dublettenbereinigt in Dokumentreihenfolge.
+const AFTER_LINE = /^Nach:(.*)$/gm;
+
+export function parseAfter(body: string): number[] {
+  if (!body) return [];
+  const after: number[] = [];
+  const seen = new Set<number>();
+  for (const match of body.matchAll(AFTER_LINE)) {
+    for (const raw of match[1].match(/#[0-9]+/g) ?? []) {
+      const number = Number(raw.slice(1));
+      if (seen.has(number)) continue;
+      seen.add(number);
+      after.push(number);
+    }
+  }
+  return after;
+}
+
+// Ticket-Body-Ketten als QueueEntry[] -- nur Tickets mit mindestens einer
+// 'Nach:'-Zeile zaehlen als Eintrag, ein Ticket ohne Kette bleibt ungenannt.
+export function entriesFromIssues(snapshot: QueueIssue[]): QueueEntry[] {
+  const entries: QueueEntry[] = [];
+  for (const issue of snapshot) {
+    const after = parseAfter(issue.body ?? '');
+    if (after.length > 0) entries.push({ issue: issue.number, after });
+  }
+  return entries;
+}
+
+// Vereinigt zwei Eintragslisten zum selben Abhaengigkeitsgraphen: dieselbe
+// Ticketnummer in beiden -> 'after' vereinigt (dublettenbereinigt).
+// Dokumentreihenfolge von `a` zuerst, nur in `b` vorkommende Tickets haengen
+// dahinter an.
+export function mergeEntries(a: QueueEntry[], b: QueueEntry[]): QueueEntry[] {
+  const after = new Map<number, Set<number>>();
+  const order: number[] = [];
+  for (const entry of [...a, ...b]) {
+    let set = after.get(entry.issue);
+    if (!set) {
+      set = new Set<number>();
+      after.set(entry.issue, set);
+      order.push(entry.issue);
+    }
+    for (const number of entry.after) set.add(number);
+  }
+  return order.map((issue) => ({ issue, after: [...after.get(issue)!] }));
+}
+
 // Eine Voraussetzung gilt als erfuellt, sobald ihr Ticket nicht mehr offen ist
 // -- beim Merge passiert das ueber 'Closes #' von selbst. Bewertet wird bei
 // JEDER Auswahl neu, deshalb kann der Zustand nicht veralten und niemand muss

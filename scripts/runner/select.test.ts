@@ -11,8 +11,8 @@ function label(...names: string[]) {
   return names.map((name) => ({ name }));
 }
 
-function issue(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z'): QueueIssue {
-  return { number, labels: label(...labels), createdAt };
+function issue(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z', body?: string): QueueIssue {
+  return { number, labels: label(...labels), createdAt, ...(body !== undefined ? { body } : {}) };
 }
 
 function ghDouble(): GhAdapter {
@@ -489,6 +489,51 @@ describe('Abhaengigkeiten in der Queue (#265)', () => {
   it('mehrere Voraussetzungen: eine offene genuegt zum Blockieren', () => {
     const snapshot = [issue(266, ['ready']), issue(225, ['ready'], '2024-03-01T00:00:00Z')];
     expect(selectTicket(snapshot, '- #266 nach #227 #225')?.issue).toBe(225);
+  });
+});
+
+// #724 (S1 von ADR-0023): dieselbe Kette darf jetzt auch als 'Nach:'-Zeile im
+// TICKET-Body selbst stehen, nicht nur als '- #266 nach #227' im Queue-Body.
+// Fuers Blockieren zaehlt die Vereinigung beider Quellen; der Rang bleibt
+// unveraendert allein beim Queue-Body (Nicht-Ziele von #724).
+describe('Abhaengigkeiten aus dem Ticket-Body (#724)', () => {
+  it('eine "Nach:"-Zeile im eigenen Body haelt ein ready-Ticket aus der Auswahl', () => {
+    const snapshot = [issue(266, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #227'), issue(227, ['ready'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot)).toEqual({ issue: 227, role: 'build', source: 'ready' });
+  });
+
+  it('dieselbe Sperre gilt auch auf dem in-progress-Zweig -- zentral vor allen Zweigen', () => {
+    const snapshot = [issue(266, ['in-progress'], '2024-01-01T00:00:00Z', 'Nach: #227'), issue(227, ['ready'], '2024-02-01T00:00:00Z')];
+    expect(selectTicket(snapshot)).toEqual({ issue: 227, role: 'build', source: 'ready' });
+  });
+
+  it('faellt die Voraussetzung weg (ihr Ticket nicht mehr offen), ist das Ticket sofort waehlbar', () => {
+    expect(selectTicket([issue(266, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #227')])).toEqual({
+      issue: 266,
+      role: 'build',
+      source: 'ready',
+    });
+  });
+
+  it('Queue-Body-Kette und Ticket-Body-Kette wirken gleichzeitig (Vereinigung)', () => {
+    const snapshot = [
+      issue(50, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #20'), // Ticket-Body-Kette
+      issue(20, ['ready'], '2024-02-01T00:00:00Z'),
+      issue(60, ['ready'], '2024-01-01T00:00:00Z'), // Queue-Body-Kette
+      issue(10, ['ready'], '2024-03-01T00:00:00Z'),
+    ];
+    // #50 haengt an #20 (eigener Body), #60 haengt an #10 (Queue-Body) -- beide
+    // offen, beide Abhaengigkeiten greifen gleichzeitig. Uebrig bleibt nur #20/#10.
+    expect(selectTicket(snapshot, '- #60 nach #10')?.issue).toBe(20);
+  });
+
+  it('eine Ticket-Body-Kette macht kein Ticket zu einem Queue-Eintrag -- der Rang bleibt dem Queue-Body vorbehalten', () => {
+    // #50 traegt selbst eine (laengst erfuellte) 'Nach:'-Zeile, steht aber
+    // nicht im Queue-Body ('- #99' betrifft ein anderes, hier gar nicht
+    // vorhandenes Ticket). Wuerde der Rang die vereinigten Eintraege nehmen,
+    // gewaenne #50 faelschlich den 'queue'-Zweig -- er darf nur ueber 'ready' laufen.
+    const snapshot = [issue(50, ['ready'], '2024-06-01T00:00:00Z', 'Nach: #1'), issue(10, ['ready'], '2024-01-01T00:00:00Z')];
+    expect(selectTicket(snapshot, '- #99')).toEqual({ issue: 10, role: 'build', source: 'ready' });
   });
 });
 

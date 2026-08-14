@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  entriesFromIssues,
+  mergeEntries,
+  parseAfter,
   queueBlocked,
   queueCycles,
   queueDone,
@@ -186,6 +189,83 @@ describe('untriaged (#357)', () => {
   it('excludes a ticket that already carries plan', () => {
     const snap: QueueIssue[] = [{ number: 349, labels: [label('plan')], body: 'irgendein Tickettext' }];
     expect(untriaged(snap, [], noMeta)).toEqual([]);
+  });
+});
+
+// #724 (S1 von ADR-0023): die Kette wandert vom Queue-Body an das Ticket
+// selbst -- eine 'Nach: #687'-Zeile im TICKET-Body.
+describe('parseAfter (#724)', () => {
+  it('reads a single "Nach: #687" line', () => {
+    expect(parseAfter('Nach: #687')).toEqual([687]);
+  });
+
+  it('reads multiple numbers on the same line', () => {
+    expect(parseAfter('Nach: #687 #690')).toEqual([687, 690]);
+  });
+
+  it('reads multiple "Nach:" lines', () => {
+    expect(parseAfter('Nach: #687\nsonstiger Text\nNach: #690')).toEqual([687, 690]);
+  });
+
+  it('deduplicates across lines', () => {
+    expect(parseAfter('Nach: #687\nNach: #687 #690')).toEqual([687, 690]);
+  });
+
+  // Dieselbe Vorsicht wie bei ENTRY_LINE (#265): Fliesstext triggert nicht,
+  // nur eine Zeile, die exakt mit 'Nach:' beginnt.
+  it('does not trigger on prose mentioning "nach", even mid-line "Nach: #NN"', () => {
+    expect(parseAfter('läuft erst nach #687')).toEqual([]);
+    expect(parseAfter('Startet erst Nach: #687, wenn die Sache fertig ist.')).toEqual([]);
+  });
+
+  it('an indented "Nach:" line does not count', () => {
+    expect(parseAfter('  Nach: #687')).toEqual([]);
+  });
+
+  it('returns [] for an empty or missing body', () => {
+    expect(parseAfter('')).toEqual([]);
+  });
+});
+
+describe('entriesFromIssues (#724)', () => {
+  it('reads a QueueEntry per issue that carries a "Nach:" line', () => {
+    const snap: QueueIssue[] = [
+      { number: 712, labels: [], body: 'Nach: #711' },
+      { number: 713, labels: [], body: 'Nach: #711 #712' },
+    ];
+    expect(entriesFromIssues(snap)).toEqual([
+      { issue: 712, after: [711] },
+      { issue: 713, after: [711, 712] },
+    ]);
+  });
+
+  it('omits an issue without a "Nach:" line -- no empty entry', () => {
+    const snap: QueueIssue[] = [{ number: 300, labels: [], body: 'kein Nach hier' }];
+    expect(entriesFromIssues(snap)).toEqual([]);
+  });
+
+  it('treats a missing body like an empty one', () => {
+    const snap: QueueIssue[] = [{ number: 300, labels: [] }];
+    expect(entriesFromIssues(snap)).toEqual([]);
+  });
+});
+
+describe('mergeEntries (#724)', () => {
+  it('unions the after-lists of the same ticket number, deduplicated', () => {
+    expect(mergeEntries([{ issue: 266, after: [227] }], [{ issue: 266, after: [227, 225] }])).toEqual([
+      { issue: 266, after: [227, 225] },
+    ]);
+  });
+
+  it('keeps entries that only appear on one side', () => {
+    expect(mergeEntries([{ issue: 10, after: [1] }], [{ issue: 20, after: [2] }])).toEqual([
+      { issue: 10, after: [1] },
+      { issue: 20, after: [2] },
+    ]);
+  });
+
+  it('returns [] for two empty lists', () => {
+    expect(mergeEntries([], [])).toEqual([]);
   });
 });
 

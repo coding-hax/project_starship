@@ -51,15 +51,19 @@ export interface QueueSnapshotIssue {
   number: number;
   labels: { name: string }[];
   createdAt: string;
+  /** Fuer entriesFromIssues() (#724) -- Ketten aus 'Nach:'-Zeilen im Ticket-Body. */
+  body?: string;
 }
 
 // Einmaliger Schnappschuss aller offenen Issues mit Labels. Braucht
 // 'createdAt', genau wie ROUND_SNAP -- sonst sortiert queueNext() gegen ein
-// fehlendes Feld (#149).
+// fehlendes Feld (#149). Braucht seit #724 auch 'body' -- sonst saehe die
+// Anzeige (queueNext) einen anderen Abhaengigkeitsgraphen als die echte
+// Auswahl (pickTicket in round.ts, die den vollen ROUND_SNAP-Body schon hat).
 export function queueSnapshot(gh: GhAdapter): QueueSnapshotIssue[] {
   let raw = '[]';
   try {
-    raw = gh.run(['issue', 'list', '--state', 'open', '--limit', '50', '--json', 'number,labels,createdAt']);
+    raw = gh.run(['issue', 'list', '--state', 'open', '--limit', '50', '--json', 'number,labels,createdAt,body']);
   } catch {
     return [];
   }

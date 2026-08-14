@@ -235,7 +235,10 @@ ${FILE_ACCESS_RULE}
    Ticket-Nummern im Plan-Kommentar statt sie still zu ignorieren. Nur wenn
    keine existieren, legst du sie an — und zwar mit
    'gh issue create --label plan' und einem Verweis auf #${issue} im Body
-   (Label im selben Schritt, nur selbst angelegte, nie fremde). Das ist die
+   (Label im selben Schritt, nur selbst angelegte, nie fremde). Bauen die
+   Kind-Tickets aufeinander auf: trage 'Nach: #<Vorgänger>' als eigene Zeile
+   in den Body des abhängigen Kindes ein — im selben Schritt, in dem du es
+   anlegst, nicht nachträglich. Das ist die
    einzige Stelle, an der ein Lauf noch Tickets anlegt — Funde gehören seit
    #588 in den Fortschrittskommentar, nicht in ein Ticket. So wird jedes Kind selbst geplant und
    vom Planer-Lauf am Ende auf 'ready' gesetzt, statt labellos
