@@ -1,31 +1,16 @@
 /**
- * The create sheet's form (AK2, #701) — same field styling as task-editor.css/
- * habit-editor.css so this reads as one system. The mood scale is the first
- * child (AC1).
+ * The create sheet's form (AK2, #714) — same field styling as task-editor.css/
+ * habit-editor.css so this reads as one system. The text area is the content
+ * and carries the sheet's height (AK2); mood and tags sit in a footer below
+ * it. The submit action itself lives in the shared sheet header (issue #710),
+ * not in this form.
  */
 
 .journal-editor__form {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-}
-
-.journal-editor__submit {
-  align-self: center;
-  min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-6);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  font: inherit;
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.journal-editor__submit:active {
-  opacity: 0.85;
+  min-height: 60vh;
 }
 
 .journal-editor__text,
@@ -41,7 +26,8 @@
 }
 
 .journal-editor__text {
-  resize: vertical;
+  flex: 1;
+  resize: none;
   min-height: calc(var(--touch-target) * 3);
 }
 
@@ -49,4 +35,10 @@
 .journal-editor__tags:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.journal-editor__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }

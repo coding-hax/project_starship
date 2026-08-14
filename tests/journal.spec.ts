@@ -291,10 +291,11 @@ async function openSheet(page: Page): Promise<void> {
 
 /** Once the sheet is open, the FAB and the sheet's own submit button share the
  * accessible name "Eintragen" (Sheet, by design, leaves the trigger untouched
- * — see src/ui/sheet.tsx) — scope to the submit button's own class instead of
- * a role query that would hit both. */
+ * — see src/ui/sheet.tsx) — scope to the dialog first (issue #714: the action
+ * now lives in the shared sheet header, `.sheet__action`, not a form-local
+ * button). */
 async function submit(page: Page): Promise<void> {
-  await page.locator('.journal-editor__submit').click();
+  await page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action').click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
@@ -339,14 +340,29 @@ test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die 
   await expect(dialog.getByLabel('Tags')).toBeVisible();
 });
 
-test('AC1: die Stimmungs-Skala ist das erste Element im Formular, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+test('AK2 (#714): die Textfläche steht vor Mood/Tags in der Fußleiste und dominiert deren Höhe', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
-  const firstChild = page.locator('.journal-editor__form > *').first();
-  await expect(firstChild).toHaveClass(/mood-scale/);
+  const textBox = await page.locator('.journal-editor__text').boundingBox();
+  const moodBox = await page.locator('.journal-editor__form .mood-scale').boundingBox();
+  const tagsBox = await page.getByLabel('Tags').boundingBox();
+  expect(textBox).not.toBeNull();
+  expect(moodBox).not.toBeNull();
+  expect(tagsBox).not.toBeNull();
+
+  expect(textBox!.y).toBeLessThan(moodBox!.y);
+  expect(tagsBox!.y).toBeGreaterThan(textBox!.y);
+  expect(textBox!.height).toBeGreaterThan(moodBox!.height);
+});
+
+test('AC1: ein Tipp auf der Stimmungs-Skala setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openSheet(page);
 
   const point = page.getByRole('button', { name: '7', exact: true });
   await expect(point).toHaveAttribute('aria-pressed', 'false');
@@ -714,33 +730,37 @@ test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf 
   expect(dateBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
 });
 
-test('AC-D (#423): der Eintragen-Knopf im Sheet erscheint erst mit Mood oder Text und ist zentriert', async ({
+test('AK4 (#714, ehem. AC-D/#423): der Eintragen-Knopf in der Kopfzeile ist blass und wirkungslos, solange weder Stimmung noch Text gesetzt sind', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
   // Die FAB trägt denselben Namen (AK2, #701) und bleibt im offenen Sheet
-  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — über die
-  // Klasse statt einer Rollen-Query scopen, sonst träfe das hier auch die FAB.
-  const submitButton = page.locator('.journal-editor__submit');
-  await expect(submitButton).toHaveCount(0);
+  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — auf den
+  // Dialog scopen, sonst träfe das hier auch die FAB.
+  const action = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action');
+  await expect(action).toBeVisible();
+  await expect(action).toBeDisabled();
+
+  // Ein disabled Submit-Button submittet nicht (native Browser-Semantik) —
+  // force, weil Playwright einen disabled-Klick sonst gar nicht erst versucht.
+  await action.click({ force: true });
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
 
   await page.getByRole('button', { name: '6', exact: true }).click();
-  await expect(submitButton).toBeVisible();
+  await expect(action).toBeEnabled();
   await page.getByRole('button', { name: '6', exact: true }).click(); // zurücknehmen
-  await expect(submitButton).toHaveCount(0);
+  await expect(action).toBeDisabled();
 
   await page.getByLabel('Journal-Text').fill('Nur Text, kein Mood');
-  await expect(submitButton).toBeVisible();
+  await expect(action).toBeEnabled();
+  await page.getByLabel('Journal-Text').fill('');
+  await expect(action).toBeDisabled();
 
-  const buttonBox = await submitButton.boundingBox();
-  const formBox = await page.locator('.journal-editor__form').boundingBox();
-  expect(buttonBox).not.toBeNull();
-  expect(formBox).not.toBeNull();
-  const buttonCenter = buttonBox!.x + buttonBox!.width / 2;
-  const formCenter = formBox!.x + formBox!.width / 2;
-  expect(Math.abs(buttonCenter - formCenter)).toBeLessThan(2);
+  // Nur Tags reicht nicht (AK4).
+  await page.getByLabel('Tags').fill('privat');
+  await expect(action).toBeDisabled();
 });
 
 test('AC2/AC3: bleibt die App über Mitternacht offen, trägt ein danach abgesendeter Eintrag den neuen Kalendertag und erscheint unter „Heute · <neuer Wochentag>“', async ({
