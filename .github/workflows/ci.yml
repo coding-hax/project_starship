@@ -54,6 +54,7 @@ jobs:
       - run: bash scripts/tests/shim-start-path.test.sh
       - run: bash scripts/tests/shim-drift.test.sh
       - run: bash scripts/tests/smoke.test.sh
+      - run: bash scripts/tests/supervisor.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
       - run: bash scripts/tests/test-integrity.test.sh

@@ -1,0 +1,115 @@
+name: Flotten-Totmann
+
+# Der einzige Wächter, der NICHT auf dem Mac läuft.
+#
+# Alle übrigen Aufsichten (scripts/runner-supervisor.sh, der Runner-Takt, die
+# CI-Wache) haben denselben blinden Fleck: Sie laufen auf genau der Maschine,
+# deren Ausfall sie melden sollen. Stirbt der Mac — Kernel-Panic, Stromausfall,
+# ein macOS-Update über Nacht — schweigen sie alle, und zwar exakt gleich
+# ununterscheidbar wie eine Flotte, die nichts zu tun hat.
+#
+# Dieser Job läuft bei GitHub und prüft nur eines: Bewegt sich der Herzschlag
+# im Status-Issue? Wenn nicht, wird der Mensch erwähnt — eine Erwähnung erzeugt
+# eine Push-Nachricht in der GitHub-App, und unterwegs ist das der einzige
+# Kanal, der ihn erreicht.
+#
+# Gemessen wird die `Stand:`-Zeile im BODY, nicht `updatedAt` des Issues.
+# Grund: `gh issue comment` bumpt `updatedAt` selbst. Ein Wächter, der darauf
+# hört, meldet 30 Minuten nach seinem eigenen Alarm Entwarnung — und wäre
+# damit genau dann blind, wenn er gebraucht wird. Den Body schreibt nur die
+# Flotte.
+#
+# Bewusst ohne Repo-Secrets: GITHUB_TOKEN stellt die Action selbst, und dieses
+# Repo hat keine. reminders.yml und garmin-sync.yml feuern seit jeher ins Leere,
+# weil sie welche brauchen — ausgerechnet der Wächter darf das nicht.
+on:
+  schedule:
+    # Minute 19/49: kein Gleichlauf mit reminders.yml (7/37) und garmin-sync.
+    - cron: '19,49 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  totmann:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_ISSUE: '1'
+      # Der Herzschlag wird je Takt neu geschrieben. Drei Stunden Stille heißt
+      # nicht „gerade nichts zu tun", sondern „schreibt niemand mehr".
+      STALE_HOURS: '3'
+      OWNER: coding-hax
+      MARKER: 'Totmann-Schalter'
+    steps:
+      - name: Herzschlag prüfen und melden
+        run: |
+          set -euo pipefail
+
+          body=$(gh issue view "$STATUS_ISSUE" --repo "$GITHUB_REPOSITORY" --json body -q .body)
+
+          # Erwartete Zeile: `_Stand: 14.08. 14:14_`
+          stand=$(printf '%s' "$body" \
+            | grep -oE 'Stand: [0-9]{2}\.[0-9]{2}\. [0-9]{2}:[0-9]{2}' | tail -1 || true)
+
+          if [ -z "$stand" ]; then
+            echo "::warning::Keine 'Stand:'-Zeile im Body von #$STATUS_ISSUE gefunden."
+            echo "Body-Auszug:"; printf '%s\n' "$body" | tail -5
+            exit 0
+          fi
+
+          dd=$(printf '%s' "$stand" | sed -E 's/Stand: ([0-9]{2})\..*/\1/')
+          mm=$(printf '%s' "$stand" | sed -E 's/Stand: [0-9]{2}\.([0-9]{2})\..*/\1/')
+          hhmm=$(printf '%s' "$stand" | sed -E 's/.* ([0-9]{2}:[0-9]{2})$/\1/')
+          year=$(TZ=Europe/Berlin date +%Y)
+
+          # Die Flotte schreibt lokale Zeit ohne Jahr. Liegt der so gebaute
+          # Zeitpunkt in der Zukunft, war es der Jahreswechsel.
+          stand_ts=$(TZ=Europe/Berlin date -d "$year-$mm-$dd $hhmm" +%s)
+          now_ts=$(date +%s)
+          if [ "$stand_ts" -gt $(( now_ts + 86400 )) ]; then
+            stand_ts=$(TZ=Europe/Berlin date -d "$(( year - 1 ))-$mm-$dd $hhmm" +%s)
+          fi
+
+          age_h=$(( (now_ts - stand_ts) / 3600 ))
+          echo "Herzschlag '$stand' -> vor ${age_h}h"
+
+          last=$(gh issue view "$STATUS_ISSUE" --repo "$GITHUB_REPOSITORY" \
+            --json comments -q '.comments[-1].body // ""')
+          alarm_steht=0
+          case "$last" in *"$MARKER"*) alarm_steht=1 ;; esac
+
+          if [ "$age_h" -lt "$STALE_HOURS" ]; then
+            echo "✓ Flotte lebt."
+            if [ "$alarm_steht" -eq 1 ]; then
+              gh issue comment "$STATUS_ISSUE" --repo "$GITHUB_REPOSITORY" \
+                --body "🟢 **Entwarnung** — der Herzschlag ist zurück (Stand: \`$stand\`)."
+              echo "Entwarnung gemeldet."
+            fi
+            exit 0
+          fi
+
+          # Nur EINMAL je Ausfall melden. Ohne diese Prüfung stünden nach zwei
+          # Wochen Ausfall über 600 identische Kommentare im Issue, und die
+          # Erwähnung verlöre genau die Dringlichkeit, für die sie da ist.
+          if [ "$alarm_steht" -eq 1 ]; then
+            echo "Ausfall ist bereits gemeldet — kein zweiter Kommentar."
+            exit 0
+          fi
+
+          gh issue comment "$STATUS_ISSUE" --repo "$GITHUB_REPOSITORY" --body \
+          "$(printf '%s\n' \
+            "🔴 **$MARKER: die Flotte schweigt.**" \
+            "" \
+            "Der Herzschlag steht seit **${age_h} Stunden** still (zuletzt \`Stand: $stand\`)." \
+            "Erwartet wird eine neue Zeile je Runner-Takt." \
+            "" \
+            "In aller Regel heißt das: Der Rechner ist aus, schläft, oder launchd hat die Slots nach einem Neustart nicht wieder geladen." \
+            "Die Aufsicht auf dem Mac kann das nicht melden — sie läuft auf derselben Maschine." \
+            "" \
+            "@${OWNER} — die Flotte braucht dich." \
+            "" \
+            "_Gemeldet von .github/workflows/fleet-watchdog.yml. Kommt der Herzschlag zurück, meldet sich dieser Wächter von selbst wieder ab._")"
+
+          echo "✗ Ausfall gemeldet."
