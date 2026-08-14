@@ -40,7 +40,6 @@ done
 export PATH="$FAKEBIN:$PATH"
 
 export STATUS_ISSUE=0      # status() ist damit ein No-Op, kein gh nötig
-export QUEUE_ISSUE=0
 export MAX_ROUNDS=1
 
 # ==============================================================================

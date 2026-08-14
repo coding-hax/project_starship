@@ -11,7 +11,7 @@ CLAUDE.md). Diese Datei ist nur noch das Inhaltsverzeichnis:
 | Thema | Datei |
 | --- | --- |
 | Der Zyklus: Issue → research/plan → Branch → PR → Merge, WIP-Limit, Runner-Slots, Worktree, „Wartend ist nicht in Arbeit" | `docs/workflow/zyklus.md` |
-| Die Prioritäts-Queue (angepinntes Queue-Issue, Reihenfolge, `blocked-by`) | `docs/workflow/queue.md` |
+| Die Queue (Label `next`, `Nach:`-Ketten im Ticket-Body, `blocked-by`) | `docs/workflow/queue.md` |
 | Labels — sie steuern den Runner (Tabelle, Kinder-Tickets, „Zwei Arten des Wartens") | `docs/workflow/labels.md` |
 | Modell-Eskalation beim Bauen (ADR-0007, `model:*`, Opus-Deckel) | `docs/workflow/eskalation.md` |
 | Merge: Draft-PR, Auto-Merge, Branch-Schutz, Wächter, Ticket-Schließen (#172) | `docs/workflow/merge.md` |

@@ -73,7 +73,6 @@ export PATH="$FAKEBIN:$PATH"
   export RUNNER_REF="HEAD"
   export STATE_DIR="$TMP/state-t1"
   export STATUS_ISSUE=999
-  export QUEUE_ISSUE=0
   export MAX_ROUNDS=0        # Chain-Schleife läuft nicht an, main() endet sauber
 
   # Installierte Fassung: die kanonische aus dem REF plus eine Zeile.
@@ -117,7 +116,6 @@ export PATH="$FAKEBIN:$PATH"
   export RUNNER_REF="HEAD"
   export STATE_DIR="$TMP/state-t2"
   export STATUS_ISSUE=888
-  export QUEUE_ISSUE=0
   export MAX_ROUNDS=0
   # Exakt der Ref-Stand -- unabhaengig vom Arbeitsbaum. Nebenbei deckt das die
   # Newline-Normalisierung ab: `git show` haengt ein \n an, der git-Adapter

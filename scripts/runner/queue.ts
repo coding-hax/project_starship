@@ -1,11 +1,12 @@
-// Prioritaets-Queue-Funktionen, portiert aus claude-runner.sh (#199, S2 von
-// #184). Reine Funktionen -- kein `gh`, das Snapshot-JSON und der Queue-Body
-// kommen als Parameter, genau wie auf der Bash-Seite.
+// Queue-Funktionen, portiert aus claude-runner.sh (#199, S2 von #184). Reine
+// Funktionen -- kein `gh`, das Snapshot-JSON kommt als Parameter, genau wie
+// auf der Bash-Seite.
 //
-// Leseregel seit #265 (S3 von #264): nur Zeilen, die mit '- #' beginnen,
-// zaehlen als Eintrag; die erste Nummer ist das Ticket, weitere Nummern
-// derselben Zeile sind Voraussetzungen. Bis dahin zaehlte jede Raute-Nummer im
-// Body -- auch die in Notizen (#199 Nicht-Ziele).
+// #725 (S2 von ADR-0023): der Rang ('Kommt zuerst dran?') ist jetzt das Label
+// `next` (select.ts) statt einer Zeilenreihenfolge in einem Queue-Issue. Was
+// hier bleibt, ist die zweite Frage aus #92 ('Kommt ueberhaupt dran?') --
+// Ketten aus 'Nach:'-Zeilen im TICKET-Body selbst (seit #724), Zirkel, und die
+// reine Anzeige-Logik (queuePending/untriaged).
 
 export interface QueueIssue {
   number: number;
@@ -34,59 +35,11 @@ export interface QueueEntry {
   after: number[];
 }
 
-// Was als Eintrag zaehlt: '- #266 nach #227 #225', und zwar genau am
-// Zeilenanfang. Eingeruecktes zaehlt NICHT -- damit laesst sich das Format im
-// Queue-Issue selbst dokumentieren, ohne dass die Beispiele zu Bauanweisungen
-// werden. (Genau das ist beim Umschreiben von Issue 92 passiert: die Vorlage
-// zum Kopieren stand als eingerueckte Liste da und haette drei Tickets
-// eingereiht.)
-//
-// Die Richtung des Irrtums ist Absicht: ein versehentlich eingerueckter
-// Eintrag wird NICHT gebaut, und das faellt auf -- der Status meldet das
-// Ticket dann als nicht gelistetes 'ready' oder gar nichts zu tun. Umgekehrt
-// waere ein versehentlich gebautes Ticket erst sichtbar, wenn ein PR steht.
-const ENTRY_LINE = /^-\s+#([0-9]+)(.*)$/;
-
-// Body-Text -> Eintraege in Dokumentreihenfolge, dublettenbereinigt.
-//
-// #265: Bis hierher zaehlte JEDE Raute-Nummer im Body -- auch die in Notizen.
-// Deshalb stand in Issue 92 die Warnung, in Fliesstext keine Rauten zu
-// benutzen: eine Fussangel, die nur haelt, solange jemand daran denkt, und die
-// bei Missachtung still ein fremdes Ticket einreiht. Jetzt zaehlt eine Zeile
-// nur als Eintrag, wenn sie mit '- #' beginnt; Notizen duerfen wieder normale
-// Ticketnummern enthalten.
-//
-// Die erste Nummer der Zeile ist der Eintrag, jede weitere eine Voraussetzung.
-// Das Wort dazwischen ('nach') ist reine Lesbarkeit und wird NICHT geparst --
-// sonst wuerde ein hingeschriebenes 'vor' stillschweigend das Gegenteil
-// bedeuten.
-export function queueEntries(body: string): QueueEntry[] {
-  if (!body) return [];
-  const entries: QueueEntry[] = [];
-  const seen = new Set<number>();
-  for (const line of body.split('\n')) {
-    const match = ENTRY_LINE.exec(line);
-    if (!match) continue;
-    const issue = Number(match[1]);
-    if (seen.has(issue)) continue;
-    seen.add(issue);
-    const after = (match[2].match(/#[0-9]+/g) ?? []).map((raw) => Number(raw.slice(1)));
-    entries.push({ issue, after: [...new Set(after)] });
-  }
-  return entries;
-}
-
-// Nur die Reihenfolge, ohne Abhaengigkeiten -- der Rang eines Tickets in der
-// Liste. Die Auswahl braucht beides getrennt: der Rang bestimmt, WER zuerst
-// drankommt, die Abhaengigkeit, OB ueberhaupt.
-export function queueOrderFlat(body: string): number[] {
-  return queueEntries(body).map((entry) => entry.issue);
-}
-
-// #724 (S1 von ADR-0023): die Kette wandert vom Queue-Body an das Ticket
-// selbst -- eine Zeile 'Nach: #687' im TICKET-Body. Zeilenanker (kein
-// Fliesstext-Trigger, dieselbe Vorsicht wie bei ENTRY_LINE, aus demselben
-// Grund #265), mehrere Nummern je Zeile und mehrere 'Nach:'-Zeilen erlaubt,
+// #724 (S1 von ADR-0023), seit #725 die EINZIGE Quelle: eine Zeile
+// 'Nach: #687' im TICKET-Body. Zeilenanker -- Fliesstext ("... laeuft erst
+// nach #687") triggert NICHT, dieselbe Vorsicht wie frueher bei der Queue-Zeile
+// (#265): ein versehentlich als Kette gelesener Satz wuerde ein Ticket still
+// begraben. Mehrere Nummern je Zeile und mehrere 'Nach:'-Zeilen erlaubt,
 // Ergebnis dublettenbereinigt in Dokumentreihenfolge.
 const AFTER_LINE = /^Nach:(.*)$/gm;
 
@@ -114,25 +67,6 @@ export function entriesFromIssues(snapshot: QueueIssue[]): QueueEntry[] {
     if (after.length > 0) entries.push({ issue: issue.number, after });
   }
   return entries;
-}
-
-// Vereinigt zwei Eintragslisten zum selben Abhaengigkeitsgraphen: dieselbe
-// Ticketnummer in beiden -> 'after' vereinigt (dublettenbereinigt).
-// Dokumentreihenfolge von `a` zuerst, nur in `b` vorkommende Tickets haengen
-// dahinter an.
-export function mergeEntries(a: QueueEntry[], b: QueueEntry[]): QueueEntry[] {
-  const after = new Map<number, Set<number>>();
-  const order: number[] = [];
-  for (const entry of [...a, ...b]) {
-    let set = after.get(entry.issue);
-    if (!set) {
-      set = new Set<number>();
-      after.set(entry.issue, set);
-      order.push(entry.issue);
-    }
-    for (const number of entry.after) set.add(number);
-  }
-  return order.map((issue) => ({ issue, after: [...after.get(issue)!] }));
 }
 
 // Eine Voraussetzung gilt als erfuellt, sobald ihr Ticket nicht mehr offen ist
@@ -187,13 +121,6 @@ export function queueCycles(entries: QueueEntry[]): number[] {
   return [...involved].sort((a, b) => a - b);
 }
 
-// Eintraege, deren Ticket nicht mehr offen ist -- erledigt, aber noch gelistet.
-// Der Runner schreibt Issue 92 NICHT um (Entscheidung vom 27.07.26): die Liste
-// bleibt die des Menschen, der Status weist nur aus, was gestrichen werden kann.
-export function queueDone(entries: QueueEntry[], openIssues: Set<number>): number[] {
-  return entries.filter((entry) => !openIssues.has(entry.issue)).map((entry) => entry.issue);
-}
-
 // Offene Queue-Arbeit als "#a, #b" (leer = nichts offen): ready|plan|
 // research, jeweils OHNE das Wartelabel.
 //
@@ -231,8 +158,11 @@ export function queuePending(snapshot: QueueIssue[]): string {
 // (29.07.26, "C") festnageln kann -- bewusst eine eigene Liste, NICHT dieselbe
 // wie BLOCKING_LABELS in select.ts (das ist die Auswahl-Sperre, dies die
 // Triage-Sichtbarkeit; ein Zusammenlegen beschaedigte beide Fragen).
+// #725 (AK7): 'next' dazu -- ein Ticket mit `next` ist triagiert, genau wie
+// eins mit `ready`/`plan`/`research`.
 export const TRIAGE_LABELS = [
   'in-progress',
+  'next',
   'plan',
   'research',
   'ready',
@@ -240,25 +170,20 @@ export const TRIAGE_LABELS = [
   'hands-off',
 ] as const;
 
-// Offene Issues ohne jedes Steuerlabel, die auch nicht in der Queue stehen --
-// der untriagierte Eingang aus der Owner-Entscheidung zu #357. `metaIssues`
-// schliesst Status- und Queue-Issue selbst aus: beide sind offen und tragen
-// kein Steuerlabel, waeren also ohne den Ausschluss jeden Takt faelschlich
-// als "untriagiert" gemeldet. Gebaut wird davon nichts -- nur sichtbar
-// gemacht, damit ein ausgelagertes Fund-Ticket nicht mehr still verrottet.
-export function untriaged(
-  snapshot: QueueIssue[],
-  entries: QueueEntry[],
-  metaIssues: ReadonlySet<number>,
-): number[] {
-  const listed = new Set(entries.map((entry) => entry.issue));
+// Offene Issues ohne jedes Steuerlabel -- der untriagierte Eingang aus der
+// Owner-Entscheidung zu #357. `metaIssues` schliesst das Status-Issue selbst
+// aus: es ist offen und traegt kein Steuerlabel, waere also ohne den
+// Ausschluss jeden Takt faelschlich als "untriagiert" gemeldet. Gebaut wird
+// davon nichts -- nur sichtbar gemacht, damit ein ausgelagertes Fund-Ticket
+// nicht mehr still verrottet.
+//
+// #725 (AK8): der Parameter `entries` ("gelistet in der Queue?") ist mit dem
+// Queue-Issue selbst weg -- es gibt keine Liste mehr, an der ein Ticket
+// gelistet sein koennte. Ein Ticket mit einer 'Nach:'-Zeile im eigenen Body,
+// aber ohne Steuerlabel, gilt deshalb bewusst weiterhin als untriagiert.
+export function untriaged(snapshot: QueueIssue[], metaIssues: ReadonlySet<number>): number[] {
   return snapshot
-    .filter(
-      (issue) =>
-        !metaIssues.has(issue.number) &&
-        !listed.has(issue.number) &&
-        !TRIAGE_LABELS.some((label) => hasLabel(issue, label)),
-    )
+    .filter((issue) => !metaIssues.has(issue.number) && !TRIAGE_LABELS.some((label) => hasLabel(issue, label)))
     .map((issue) => issue.number)
     .sort((a, b) => a - b);
 }
@@ -268,7 +193,7 @@ export function untriaged(
 // "e2e: aktivitaeten.spec.ts AC6 ..."), der Schluessel im Body nicht.
 //
 // Zeilenanker (multiline 'm'), damit Fliesstext ("... siehe Fund: irgendwo")
-// nicht triggert -- dieselbe Vorsicht wie bei ENTRY_LINE oben. #410 R1/AK1:
+// nicht triggert -- dieselbe Vorsicht wie bei AFTER_LINE oben. #410 R1/AK1:
 // globales Flag statt nur der ersten Zeile -- ein Ticket, das dieselbe
 // Ursache in mehreren roten Tests belegt, traegt mehrere 'Fund:'-Zeilen.
 // #588: Hier lagen 'parseFindKeys', 'foundTickets' und 'findFoundTicket' --

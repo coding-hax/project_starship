@@ -101,7 +101,6 @@ describe('dispatch', () => {
       'fmt-hm',
       'd-plus',
       'reset-epoch',
-      'queue-order-flat',
       'queue-pending',
       'queue-next',
       'sha1-of',
@@ -138,7 +137,6 @@ describe('dispatch', () => {
       'waiting-issues',
       'cleanup-state',
       'queue-snapshot',
-      'queue-body',
       // S6 (#203): das Rundenprotokoll -- drei Kommandos statt der bisherigen
       // ~40 Einzelaufrufe pro Takt, aufgeteilt am `claude`-Aufruf.
       'round-plan',

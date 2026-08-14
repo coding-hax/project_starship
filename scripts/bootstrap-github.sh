@@ -32,10 +32,15 @@ git push -u origin main 2>/dev/null || true
 echo "==> Labels"
 label() { gh label create "$1" --color "$2" --description "$3" --force >/dev/null; echo "    $1"; }
 label "ready"          "0E8A16" "Freigegeben. Claude darf das Ticket nehmen."
+# Der Rang (#725, S2 von ADR-0023): schlägt die Label-Kaskade komplett, Position
+# 2 direkt hinter einem laufenden 'in-progress'. Ersetzt die Zeilenreihenfolge
+# im früheren Queue-Issue (#92) — fällt erst mit dem Ticket selbst weg, nicht
+# schon beim Start eines Bau-Laufs.
+label "next"           "FF6B6B" "Vor allem anderen — die Queue."
 label "in-progress"    "FBCA04" "Claude arbeitet daran. Es gibt immer höchstens eins je Slot (#204)."
 label "needs-answer"   "B60205" "Es steht eine Frage im Ticket. Ohne deine geschriebene Antwort geht es nicht weiter."
 label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
-# Setzt und entfernt der Runner selbst, aus der Queue heraus ('- #266 nach #227').
+# Setzt und entfernt der Runner selbst, aus einer 'Nach:'-Zeile im Ticket-Body.
 # Von Hand gepflegt würde es verrotten — und dann nie wieder gebaut, still.
 label "blocked-by"     "D4C5F9" "Wartet auf ein anderes Ticket (siehe Queue). Der Runner pflegt es selbst."
 # Startstufe für dieses Ticket (ADR-0013). Höchstens eins davon setzen; eine
