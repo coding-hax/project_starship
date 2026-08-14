@@ -1,45 +1,33 @@
 /**
- * Same field styling as task-editor.css/habit-editor.css so this reads as one
- * system. The mood scale is the first child (AC1).
+ * The entry stream (AK3, #701) — day groups newest-first, each a header plus
+ * its entries. Field styling for the create sheet's own form now lives in
+ * journal-entry-sheet.css.
  */
 
 .journal-editor {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   max-width: 480px;
 }
 
-.journal-editor__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+.journal-editor__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
 }
 
-.journal-editor__date {
-  align-self: flex-end;
+.journal-editor__day-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.journal-editor__day-header {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
-}
-
-.journal-editor__submit {
-  align-self: center;
-  min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-6);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
-  font: inherit;
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.journal-editor__submit:active {
-  opacity: 0.85;
 }
 
 .journal-editor__entries {
@@ -93,33 +81,20 @@
   white-space: pre-wrap;
 }
 
+/* AK4: tags as pills below the entry text, not a comma line. */
 .journal-editor__entry-tags {
-  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.journal-editor__entry-tag {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-faint);
+  background: var(--surface-raised);
   color: var(--text-muted);
   font-size: var(--text-secondary);
-}
-
-.journal-editor__text,
-.journal-editor__tags {
-  min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-card);
-  border: 1px solid var(--border);
-  background: var(--surface-raised);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
-}
-
-.journal-editor__text {
-  resize: vertical;
-  min-height: calc(var(--touch-target) * 3);
-}
-
-.journal-editor__text:focus,
-.journal-editor__tags:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* issue #518: the displaced-envelope recovery card. Same calm register as

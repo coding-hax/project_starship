@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, selectView } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -378,6 +378,9 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     test(`AC3: Aufgabe-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
       await registerPasskey(page);
       await page.goto('/aufgaben');
+      // Undated (no dueAt) — invisible under the "Woche" default (issue #705),
+      // which only shows tasks due within the week window.
+      await selectView(page, 'Alle');
       await setTheme(page, theme);
       // The FAB opens quick-add.tsx (its own, unrelated submit button) — the
       // .task-editor__submit this ticket fixed only exists in the edit sheet,
@@ -437,11 +440,16 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
       await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 
-      // journal-editor.tsx only renders .journal-editor__submit once the form
-      // has content (mood or text) — an empty form has nothing to submit.
+      // #701: das Formular sitzt jetzt im FAB-Sheet, nicht mehr direkt auf der
+      // Seite — die FAB trägt denselben Namen wie der Sheet-eigene Knopf. Das
+      // Sheet ist hier noch geschlossen (dieser Klick öffnet es erst), also
+      // trifft die Rollen-Query eindeutig nur die FAB.
+      await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+      // journal-entry-sheet.tsx only renders .journal-editor__submit once the
+      // form has content (mood or text) — an empty form has nothing to submit.
       await page.getByLabel('Journal-Text').fill('Kontrast-Test-709');
 
-      const submit = page.locator('.journal-editor__submit');
+      const submit = page.getByRole('dialog', { name: 'Eintragen' }).locator('.journal-editor__submit');
       await expect(submit).toBeVisible();
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });

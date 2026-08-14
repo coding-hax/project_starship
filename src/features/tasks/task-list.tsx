@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from '@/local/outbox';
 import { OfflineNotice } from '@/ui/offline-notice';
 import { useBlockReady } from '@/ui/overview-ready';
+import { SegmentedControl, type SegmentedOption } from '@/ui/segmented-control';
 import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useOnline } from '@/ui/use-online';
@@ -14,25 +15,52 @@ import { useDeleteTask } from './use-delete-task';
 import { useHideCompletedTasks } from './use-hide-completed-tasks';
 import {
   belongsOnUebersicht,
+  completedByDay,
+  formatDayMarker,
+  groupByDueDay,
   groupTasks,
+  localDayKey,
   resolveNestTarget,
   useTasks,
   visibleTaskNodes,
+  weekWindowNodes,
   type TaskNode,
   type TaskView,
 } from './use-tasks';
+
+/** The `/aufgaben` view switcher (issue #705 AK2) — ephemeral, never persisted;
+ *  a fresh navigation always lands back on `'woche'`. Irrelevant for the
+ *  `dueTodayOnly` (/uebersicht) instance, which has no switcher and stays flat. */
+type ViewMode = 'woche' | 'alle' | 'erledigt';
+
+const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
+  { value: 'woche', label: 'Woche' },
+  { value: 'alle', label: 'Alle' },
+  { value: 'erledigt', label: 'Erledigt' },
+];
 
 /**
  * One `<li>` worth of row, flattened out of the parent/child tree (issue #430)
  * — `useListPresence` needs one flat, uniformly-keyed array to diff against;
  * grouped `Fragment`s per parent had no single key per row to track. `kind`
  * carries just enough of the originating node to rebuild the same props
- * `TaskItem` always got, nothing more.
+ * `TaskItem` always got, nothing more. `marker` (issue #705 AK3) is a day
+ * heading, never a task — rendered `role="presentation"` so it never counts as
+ * a `listitem`.
  */
 type TaskRow =
   | { id: string; kind: 'flat'; task: TaskView }
   | { id: string; kind: 'parent'; node: TaskNode }
-  | { id: string; kind: 'child'; node: TaskNode; child: TaskView };
+  | { id: string; kind: 'child'; node: TaskNode; child: TaskView }
+  | { id: string; kind: 'marker'; label: string };
+
+/** A node's parent row plus its children rows, in that order. */
+function nodeRows(node: TaskNode): TaskRow[] {
+  return [
+    { id: node.task.id, kind: 'parent' as const, node },
+    ...node.children.map((child) => ({ id: child.id, kind: 'child' as const, node, child })),
+  ];
+}
 
 export interface TaskListProps {
   /**
@@ -94,6 +122,10 @@ export function TaskList({
     dismissUndo: dismissDeleteUndo,
   } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  // Ephemeral, not persisted (issue #705 AK2) — a fresh /aufgaben navigation
+  // always starts back on "Woche". Unused on the `dueTodayOnly` instance,
+  // which never renders the switcher and never changes it away from the default.
+  const [view, setView] = useState<ViewMode>('woche');
   // Ephemeral, not persisted (per-ticket decision) — default expanded, so a
   // reload never hides subtasks the user hasn't deliberately collapsed.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -117,16 +149,58 @@ export function TaskList({
     .filter((node) => node.task.id !== editingTaskId)
     .map((node) => node.task);
 
-  const rows = useMemo<TaskRow[]>(() => {
+  /**
+   * `rows` plus the two counts AK6/AK9 need beyond what a flat row list can
+   * carry (issue #705). `now` is read once per recompute here, not on every
+   * render — the grouping only needs to reflect "now" when the underlying
+   * data or the view actually changes.
+   */
+  const viewModel = useMemo(() => {
     if (dueTodayOnly) {
-      return (tasks ?? []).map((task) => ({ id: task.id, kind: 'flat' as const, task }));
+      const flatRows = (tasks ?? []).map((task) => ({ id: task.id, kind: 'flat' as const, task }));
+      return { rows: flatRows, undatedOpenCount: 0, hasFutureGroup: false };
     }
-    return visibleTaskNodes(nodes, hideCompleted).flatMap((node) => [
-      { id: node.task.id, kind: 'parent' as const, node },
-      ...node.children.map((child) => ({ id: child.id, kind: 'child' as const, node, child })),
-    ]);
-  }, [dueTodayOnly, tasks, nodes, hideCompleted]);
-  const presenceRows = useListPresence(rows, (row) => row.id);
+
+    if (view === 'erledigt') {
+      const now = new Date();
+      const flatRows = completedByDay(allTasks ?? []).flatMap((group) => [
+        {
+          id: `marker:${group.dayKey}`,
+          kind: 'marker' as const,
+          label: formatDayMarker(group.dayKey, now, 'erledigt'),
+        },
+        ...group.tasks.map((task) => ({ id: task.id, kind: 'flat' as const, task })),
+      ]);
+      return { rows: flatRows, undatedOpenCount: 0, hasFutureGroup: false };
+    }
+
+    const visible = visibleTaskNodes(nodes, hideCompleted);
+
+    if (view === 'alle') {
+      return { rows: visible.flatMap(nodeRows), undatedOpenCount: 0, hasFutureGroup: false };
+    }
+
+    // view === 'woche'
+    const now = new Date();
+    const groups = groupByDueDay(weekWindowNodes(visible, now), now);
+    const today = localDayKey(now);
+    return {
+      rows: groups.flatMap((group) => [
+        {
+          id: `marker:${group.dayKey}`,
+          kind: 'marker' as const,
+          label: formatDayMarker(group.dayKey, now, 'woche'),
+        },
+        ...group.nodes.flatMap(nodeRows),
+      ]),
+      undatedOpenCount: nodes.filter(
+        (node) => node.task.dueAt === null && node.task.completedAt === null,
+      ).length,
+      hasFutureGroup: groups.some((group) => group.dayKey !== 'overdue' && group.dayKey > today),
+    };
+  }, [dueTodayOnly, tasks, allTasks, nodes, hideCompleted, view]);
+  const { rows, undatedOpenCount, hasFutureGroup } = viewModel;
+  const presenceRows = useListPresence(rows, (row) => row.id, dueTodayOnly ? undefined : view);
 
   /**
    * The live drop preview (issue #451), derived through the *same*
@@ -181,11 +255,24 @@ export function TaskList({
     await mutate({ table: 'tasks', rowId: draggedId, op: 'upsert', payload: { parentId } });
   }
 
+  // "Woche"/"Erledigt" (issue #705) have no running-history anchor to speak
+  // of — only "Alle" is still the old #88 flat run. `dueTodayOnly` has no
+  // switcher and keeps its old, `view`-independent behaviour.
+  const anchorActive = dueTodayOnly ? anchorOnMount : anchorOnMount && view === 'alle';
+
+  // Resets the latch on the way *out* of an anchor-eligible view/mount, so the
+  // effect below fires again on the way back *in* — "Alle" must re-anchor every
+  // time it's entered, not just on the component's first-ever mount (issue #705).
+  useEffect(() => {
+    if (!anchorActive) anchoredRef.current = false;
+  }, [anchorActive]);
+
   /**
    * Chat-style scroll anchor (issue #88): on open, land on the oldest open task
-   * instead of the very top of the history. Runs once per mount, on the first
-   * render that actually has tasks — re-anchoring on every list change (e.g.
-   * completing a task) would fight the user's own scrolling.
+   * instead of the very top of the history. Runs once per entry into an
+   * anchor-eligible view, on the first render that actually has tasks —
+   * re-anchoring on every list change (e.g. completing a task) would fight the
+   * user's own scrolling.
    *
    * `scrollIntoView` alone gets both halves of the AC for free: the browser
    * clamps to the max scroll position, so a short list (or an anchor near the
@@ -193,7 +280,7 @@ export function TaskList({
    * content allows, which for a list that fits the viewport is no scroll at all.
    */
   useEffect(() => {
-    if (!anchorOnMount || anchoredRef.current || tasks === undefined) return;
+    if (!anchorActive || anchoredRef.current || tasks === undefined) return;
     const anchorTask = tasks.find((task) => task.completedAt === null);
     const anchorEl = anchorTask
       ? listRef.current?.querySelector<HTMLElement>(`[data-task-id="${anchorTask.id}"]`)
@@ -205,7 +292,36 @@ export function TaskList({
     if (anchorTask && !anchorEl) return;
     anchoredRef.current = true;
     anchorEl?.scrollIntoView({ block: 'start' });
-  }, [anchorOnMount, tasks, presenceRows.length]);
+  }, [anchorActive, tasks, presenceRows.length]);
+
+  /**
+   * Which whole-list message (if any) replaces the `<ul>` (issue #705). Two
+   * different things both read as "empty" here, and they must stay distinct:
+   * an account with zero tasks at all (checked via `tasks.length`, never
+   * `rows` — a "Woche" window with nothing *due this week* is not that, it
+   * renders an empty `<ul>` plus the AK6/AK9 summary lines below it instead),
+   * and "Alle"/"Erledigt" with every row gone (issue #654 AC6). All three key
+   * off `presenceRows` too, not just `tasks`/`rows`: a row that just lost its
+   * last sibling — deleted, or filtered out by `hideCompleted` — is still in
+   * `presenceRows` mid-exit-animation (`status: 'leaving'`), and swapping the
+   * `<ul>` out from under it the instant the underlying data hits zero would
+   * cut that animation off before it ever painted (issue #430's guarantee,
+   * list-motion.spec.ts AC2).
+   */
+  const emptyMessage =
+    tasks === undefined
+      ? null
+      : dueTodayOnly
+        ? presenceRows.length === 0
+          ? 'Nichts fällig. Genieß den Tag.'
+          : null
+        : tasks.length === 0 && presenceRows.length === 0
+          ? 'Keine Aufgaben. Genieß die Ruhe.'
+          : view === 'alle' && presenceRows.length === 0
+            ? 'Keine Aufgaben. Genieß die Ruhe.'
+            : view === 'erledigt' && presenceRows.length === 0
+              ? 'Noch nichts erledigt.'
+              : null;
 
   return (
     <>
@@ -216,86 +332,126 @@ export function TaskList({
         </OfflineNotice>
       )}
 
-      {tasks === undefined ? null : presenceRows.length === 0 ? (
+      {!dueTodayOnly && (
+        <div className="task-list__view-switcher">
+          <SegmentedControl
+            label="Aufgaben-Ansicht"
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={setView}
+          />
+        </div>
+      )}
+
+      {tasks === undefined ? null : emptyMessage !== null ? (
         <p
           className={
             dueTodayOnly ? 'task-list__empty task-list__empty--compact' : 'task-list__empty'
           }
         >
-          {dueTodayOnly ? 'Nichts fällig. Genieß den Tag.' : 'Keine Aufgaben. Genieß die Ruhe.'}
+          {emptyMessage}
         </p>
       ) : (
-        <ul
-          ref={listRef}
-          className="task-list"
-          {...(headingId
-            ? { 'aria-labelledby': headingId }
-            : { 'aria-label': dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben' })}
-        >
-          {presenceRows.map((row) => {
-            const entering = row.status === 'entering';
-            const leaving = row.status === 'leaving';
-            const shared = { entering, leaving, onAnimationEnd: row.onAnimationEnd };
+        <>
+          <ul
+            ref={listRef}
+            className="task-list"
+            {...(headingId
+              ? { 'aria-labelledby': headingId }
+              : { 'aria-label': dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben' })}
+          >
+            {presenceRows.map((row) => {
+              const entering = row.status === 'entering';
+              const leaving = row.status === 'leaving';
+              const shared = { entering, leaving, onAnimationEnd: row.onAnimationEnd };
 
-            if (row.item.kind === 'flat') {
-              const { task } = row.item;
+              if (row.item.kind === 'marker') {
+                return (
+                  <li
+                    key={row.key}
+                    role="presentation"
+                    className="task-list__day-marker list-motion-item"
+                    data-entering={entering}
+                    data-leaving={leaving}
+                    onAnimationEnd={row.onAnimationEnd}
+                  >
+                    {row.item.label}
+                  </li>
+                );
+              }
+
+              if (row.item.kind === 'flat') {
+                const { task } = row.item;
+                return (
+                  <TaskItem
+                    key={row.key}
+                    task={task}
+                    onToggle={() => toggleComplete(task)}
+                    onEdit={() => setEditingTaskId(task.id)}
+                    onDelete={() => deleteTask(task)}
+                    {...shared}
+                  />
+                );
+              }
+
+              if (row.item.kind === 'parent') {
+                const { node } = row.item;
+                return (
+                  <TaskItem
+                    key={row.key}
+                    task={node.task}
+                    isParent={node.total > 0}
+                    progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
+                    expanded={!collapsed.has(node.task.id)}
+                    onToggleExpand={() => toggleExpanded(node.task.id)}
+                    onToggle={() => toggleComplete(node.task)}
+                    onEdit={() => setEditingTaskId(node.task.id)}
+                    onDelete={() => deleteTask(node.task, node.children)}
+                    onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
+                    onDragOverTask={(targetId) =>
+                      setDragPreview({ draggedId: node.task.id, targetId })
+                    }
+                    onDragEnd={() => setDragPreview(null)}
+                    isNestTarget={node.task.id === nestTargetId}
+                    isUnnestPreview={node.task.id === unnestingId}
+                    {...shared}
+                  />
+                );
+              }
+
+              const { node, child } = row.item;
               return (
                 <TaskItem
                   key={row.key}
-                  task={task}
-                  onToggle={() => toggleComplete(task)}
-                  onEdit={() => setEditingTaskId(task.id)}
-                  onDelete={() => deleteTask(task)}
-                  {...shared}
-                />
-              );
-            }
-
-            if (row.item.kind === 'parent') {
-              const { node } = row.item;
-              return (
-                <TaskItem
-                  key={row.key}
-                  task={node.task}
-                  isParent={node.total > 0}
-                  progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
-                  expanded={!collapsed.has(node.task.id)}
-                  onToggleExpand={() => toggleExpanded(node.task.id)}
-                  onToggle={() => toggleComplete(node.task)}
-                  onEdit={() => setEditingTaskId(node.task.id)}
-                  onDelete={() => deleteTask(node.task, node.children)}
-                  onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
-                  onDragOverTask={(targetId) =>
-                    setDragPreview({ draggedId: node.task.id, targetId })
-                  }
+                  task={child}
+                  isChild
+                  visible={!collapsed.has(node.task.id)}
+                  onToggle={() => toggleComplete(child)}
+                  onEdit={() => setEditingTaskId(child.id)}
+                  onDelete={() => deleteTask(child)}
+                  onDropOnTask={(targetId) => handleNest(child.id, targetId)}
+                  onDragOverTask={(targetId) => setDragPreview({ draggedId: child.id, targetId })}
                   onDragEnd={() => setDragPreview(null)}
-                  isNestTarget={node.task.id === nestTargetId}
-                  isUnnestPreview={node.task.id === unnestingId}
+                  isNestTarget={child.id === nestTargetId}
+                  isUnnestPreview={child.id === unnestingId}
                   {...shared}
                 />
               );
-            }
-
-            const { node, child } = row.item;
-            return (
-              <TaskItem
-                key={row.key}
-                task={child}
-                isChild
-                visible={!collapsed.has(node.task.id)}
-                onToggle={() => toggleComplete(child)}
-                onEdit={() => setEditingTaskId(child.id)}
-                onDelete={() => deleteTask(child)}
-                onDropOnTask={(targetId) => handleNest(child.id, targetId)}
-                onDragOverTask={(targetId) => setDragPreview({ draggedId: child.id, targetId })}
-                onDragEnd={() => setDragPreview(null)}
-                isNestTarget={child.id === nestTargetId}
-                isUnnestPreview={child.id === unnestingId}
-                {...shared}
-              />
-            );
-          })}
-        </ul>
+            })}
+          </ul>
+          {/* Woche-only notes (issue #705 AK9/AK6) — `view` stays at its 'woche'
+              default on the `dueTodayOnly` instance too, since it never renders the
+              switcher that could move it away; without this guard both lines would
+              leak into /uebersicht whenever a task is due (issue #228 AC6). */}
+          {!dueTodayOnly && view === 'woche' && !hasFutureGroup && (
+            <p className="task-list__sparse-note">Danach nichts mehr geplant.</p>
+          )}
+          {!dueTodayOnly && view === 'woche' && undatedOpenCount > 0 && (
+            <p className="task-list__undated-note">
+              {undatedOpenCount} Aufgabe{undatedOpenCount === 1 ? '' : 'n'} ohne Datum
+            </p>
+          )}
+        </>
       )}
 
       {/* Names the pending drop in words while a row is held (issue #451) — the

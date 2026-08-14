@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  withDb,
+} from './helpers';
 
 /**
  * Ein Test je Akzeptanzkriterium des Span+Ranking-Umbaus (issue #687, Teil 1 von 3 des
@@ -217,6 +224,7 @@ test('AK7: Klassifikation bleibt unverändert grün — neuer Korpus-Fall "nicht
   // capture-uebersicht.spec.ts AC4). "nicht vergessen" ist reines Klassifikations-
   // Vokabular (task), keine Wort-Blacklist mehr -> bleibt Teil des Titels (R3).
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   await expect(page.getByRole('dialog', { name: 'Aufgabe bestätigen' })).toBeHidden();
   await expect(
     taskItems(page).filter({ hasText: 'nicht vergessen: Pass verlängern' }),

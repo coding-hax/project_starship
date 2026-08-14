@@ -1,3 +1,11 @@
+/* AK2 (#700/#701): the journal's own FAB/focus-ring/button colour, not the
+   app-wide --accent (was the coral mismatch #700 called out) — --on-accent
+   stays dark in both themes regardless of hue (issue #709), so no separate
+   --area-journal-fg is needed here. */
+[data-module='journal'] {
+  --accent: var(--area-journal);
+}
+
 .journal-page__title-row {
   display: flex;
   align-items: baseline;

@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock } from './helpers';
+import {
+  openMeteoForecastBody,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  skewClock,
+} from './helpers';
 
 /** Same fixed "now" convention as uebersicht.spec.ts. */
 const NOW = '2026-07-18T12:00:00.000Z';
@@ -136,8 +142,11 @@ async function mockWeatherForecast(page: Page) {
   );
 }
 
+/** The #88 scroll anchor (below) only runs in "Alle" (issue #705) — every landing
+ *  on /aufgaben in this spec re-selects it, since "Woche" is the unpersisted default. */
 async function goToAufgabenAndScrollDown(page: Page) {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await expect(taskListItems(page)).toHaveCount(TASK_ROW_COUNT);
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -202,6 +211,7 @@ test('keine anker-lose Route erbt die Scrollposition der vorherigen — alle lan
   const scrollAufgabenAsSeiteA = async () => {
     await nav(page).getByRole('link', { name: 'Aufgaben', exact: true }).click();
     await expect(page).toHaveURL(/\/aufgaben$/);
+    await selectView(page, 'Alle');
     await expect(taskListItems(page)).toHaveCount(TASK_ROW_COUNT);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -227,6 +237,7 @@ test('Aufgaben und Kalender landen bei In-App-Navigation auf ihrem eigenen Start
   // agenda anchor is untouched by this ticket) — arriving via in-app navigation
   // must match a fresh direct load of the very same route, not a blanket 0.
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await expect(taskListItems(page)).toHaveCount(TASK_ROW_COUNT);
   const aufgabenReference = await page.evaluate(() => window.scrollY);
   expect(aufgabenReference).toBeGreaterThan(0);
@@ -234,6 +245,7 @@ test('Aufgaben und Kalender landen bei In-App-Navigation auf ihrem eigenen Start
   await goToUebersichtAndScrollDown(page);
   await nav(page).getByRole('link', { name: 'Aufgaben', exact: true }).click();
   await expect(page).toHaveURL(/\/aufgaben$/);
+  await selectView(page, 'Alle');
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(aufgabenReference);
 
   await page.goto('/kalender');
@@ -251,6 +263,7 @@ test('Browser-Zurück landet wieder auf dem Startpunkt der vorherigen Seite, nic
   await seedTallTaskHistory(page);
 
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await expect(taskListItems(page)).toHaveCount(TASK_ROW_COUNT);
   const aufgabenStart = await page.evaluate(() => window.scrollY);
   expect(aufgabenStart).toBeGreaterThan(0);
@@ -267,6 +280,7 @@ test('Browser-Zurück landet wieder auf dem Startpunkt der vorherigen Seite, nic
 
   await page.goBack();
   await expect(page).toHaveURL(/\/aufgaben$/);
+  await selectView(page, 'Alle');
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(aufgabenStart);
 });
 

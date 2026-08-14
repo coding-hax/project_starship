@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  withDb,
+} from './helpers';
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
@@ -110,6 +117,7 @@ test('AC1: "Abbrechen" verwirft den Entwurf, es wird nichts angelegt', async ({ 
 
 test('AC2: eine Eingabe ohne Datum legt sofort an, ohne Bestätigungs-Sheet', async ({ page }) => {
   await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
   await submitQuickAdd(page, 'Wäsche waschen');
 
   await expect(confirmDialog(page)).toBeHidden();

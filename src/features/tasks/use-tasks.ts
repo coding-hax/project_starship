@@ -148,3 +148,182 @@ export function belongsOnUebersicht(task: TaskView, now: Date = new Date()): boo
 export function useTasks(): TaskView[] | undefined {
   return useLiveTable('tasks', toTaskView, compareTasks);
 }
+
+/** Local calendar day as `YYYY-MM-DD` — the grouping key for the "Woche"/"Erledigt" views (issue #705). */
+export function localDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function minutesSinceLocalMidnight(iso: string): number {
+  const date = new Date(iso);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+/**
+ * Orders tasks that already share one day group (issue #705, Q2). Within a
+ * normal day: due time ascending, then priority descending, then `createdAt`
+ * ascending. Within the "Überfällig" bucket the callers all share *today* as
+ * their local day but not their due day, so `overdue` compares the full
+ * `dueAt` (earliest-overdue first) instead of just the time-of-day.
+ */
+export function compareWithinDay(
+  a: TaskView,
+  b: TaskView,
+  { overdue = false }: { overdue?: boolean } = {},
+): number {
+  const dueDiff = overdue
+    ? (a.dueAt ?? '').localeCompare(b.dueAt ?? '')
+    : minutesSinceLocalMidnight(a.dueAt ?? '') - minutesSinceLocalMidnight(b.dueAt ?? '');
+  if (dueDiff !== 0) return dueDiff;
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
+/** Today + the next 6 days (issue #705 AK1) — the "Woche" default's upper bound. */
+const WEEK_WINDOW_DAYS = 7;
+
+/**
+ * The "Woche" view's window (issue #705, Q3): parent-driven — a node's whole
+ * subtree moves as one, sorted into the window by the *parent's* `dueAt`. Kept
+ * if overdue (any earlier day) or due within the next `WEEK_WINDOW_DAYS` days,
+ * and still open — or completed *today* (AK7, the same "heute erledigt bleibt"
+ * rule as `belongsOnUebersicht`, generalized past just "due today or earlier").
+ * An undated parent never matches; its children never surface on their own
+ * (v1 trade-off, documented in the ticket).
+ */
+export function weekWindowNodes(nodes: TaskNode[], now: Date = new Date()): TaskNode[] {
+  const startOfToday = startOfLocalDay(now);
+  const windowEnd = new Date(startOfToday);
+  windowEnd.setDate(windowEnd.getDate() + WEEK_WINDOW_DAYS);
+
+  return nodes.filter((node) => {
+    const { dueAt, completedAt } = node.task;
+    if (dueAt === null) return false;
+    if (new Date(dueAt) >= windowEnd) return false;
+    if (completedAt === null) return true;
+    return localDayKey(new Date(completedAt)) === localDayKey(now);
+  });
+}
+
+export interface DueDayGroup {
+  /** `'overdue'` for the "Überfällig" bucket, otherwise a `localDayKey`. */
+  dayKey: string;
+  nodes: TaskNode[];
+}
+
+/**
+ * Buckets already-windowed nodes by their parent's due day (issue #705 AK3):
+ * "Überfällig" first, then the remaining days ascending. A day nobody is due on
+ * produces no group at all — there is nothing to render a marker over. Children
+ * keep the `createdAt` order `groupTasks` already gave them; only the top-level
+ * nodes within a bucket are reordered, via `compareWithinDay`.
+ */
+export function groupByDueDay(nodes: TaskNode[], now: Date = new Date()): DueDayGroup[] {
+  const startOfToday = startOfLocalDay(now);
+  const buckets = new Map<string, TaskNode[]>();
+
+  for (const node of nodes) {
+    if (node.task.dueAt === null) continue;
+    const due = new Date(node.task.dueAt);
+    const key = due < startOfToday ? 'overdue' : localDayKey(due);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.push(node);
+    } else {
+      buckets.set(key, [node]);
+    }
+  }
+
+  const overdue = buckets.get('overdue');
+  buckets.delete('overdue');
+  const dayKeys = [...buckets.keys()].sort();
+
+  const groups: DueDayGroup[] = [];
+  if (overdue) {
+    groups.push({
+      dayKey: 'overdue',
+      nodes: overdue.sort((a, b) => compareWithinDay(a.task, b.task, { overdue: true })),
+    });
+  }
+  for (const dayKey of dayKeys) {
+    groups.push({
+      dayKey,
+      nodes: buckets.get(dayKey)!.sort((a, b) => compareWithinDay(a.task, b.task)),
+    });
+  }
+  return groups;
+}
+
+const DAY_MARKER_LABEL_FORMAT: Intl.DateTimeFormatOptions = {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+};
+
+/** `"Donnerstag, 13. August"` from a `localDayKey` — TZ-robust since the key's
+ *  own parts, not a re-parsed instant, drive the `Date` passed to the formatter. */
+function formatDayLabel(dayKey: string): string {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('de-DE', DAY_MARKER_LABEL_FORMAT);
+}
+
+/**
+ * The marker text over a day group (issue #705 AK3/AK7's owner precisification).
+ * "Woche" spells the weekday out even for today (`"Heute · Donnerstag, 13.
+ * August"`) since it is one bucket among many due days; "Erledigt" only ever
+ * shows one or two relative days (`"Heute"`, `"Gestern"`) before falling back to
+ * the same long label.
+ */
+export function formatDayMarker(dayKey: string, now: Date, view: 'woche' | 'erledigt'): string {
+  if (dayKey === 'overdue') return 'Überfällig';
+
+  const today = localDayKey(now);
+  if (dayKey === today) return view === 'woche' ? `Heute · ${formatDayLabel(dayKey)}` : 'Heute';
+
+  if (view === 'erledigt') {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (dayKey === localDayKey(yesterday)) return 'Gestern';
+  }
+
+  return formatDayLabel(dayKey);
+}
+
+export interface CompletedDayGroup {
+  dayKey: string;
+  tasks: TaskView[];
+}
+
+/**
+ * The "Erledigt" view (issue #705, owner precisification): flat, not the
+ * parent/child tree — a completed child is exactly as much "done" as a
+ * completed parent, and grouping by completion day would otherwise force
+ * splitting a node across two day groups. Open tasks never appear here. Days
+ * ordered newest-first (most recently completed day on top); within a day,
+ * `completedAt` descending — last thing checked off today sits at the top.
+ */
+export function completedByDay(tasks: TaskView[]): CompletedDayGroup[] {
+  const buckets = new Map<string, TaskView[]>();
+  for (const task of tasks) {
+    if (task.completedAt === null) continue;
+    const key = localDayKey(new Date(task.completedAt));
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.push(task);
+    } else {
+      buckets.set(key, [task]);
+    }
+  }
+
+  return [...buckets.keys()]
+    .sort()
+    .reverse()
+    .map((dayKey) => ({
+      dayKey,
+      tasks: buckets
+        .get(dayKey)!
+        .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? '')),
+    }));
+}
