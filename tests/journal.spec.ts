@@ -281,8 +281,21 @@ async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
+/** Opens the create sheet (AK2, #701) — while the sheet is closed, only the
+ * FAB carries the accessible name "Eintragen" (the form is unmounted, see
+ * journal-entry-sheet.tsx), so the plain role query is still unambiguous. */
+async function openSheet(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
+}
+
+/** Once the sheet is open, the FAB and the sheet's own submit button share the
+ * accessible name "Eintragen" (Sheet, by design, leaves the trigger untouched
+ * — see src/ui/sheet.tsx) — scope to the submit button's own class instead of
+ * a role query that would hit both. */
 async function submit(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Absenden' }).click();
+  await page.locator('.journal-editor__submit').click();
+  await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
 async function entryCountInDb(entryDate: string): Promise<number> {
@@ -292,10 +305,45 @@ async function entryCountInDb(entryDate: string): Promise<number> {
   return rows.rows[0].n as number;
 }
 
+/** Same probe-element pattern as habits-week-grid.spec.ts's resolveBackgroundToken —
+ * compares against the real token value instead of a hardcoded colour string, so a
+ * later token-value change elsewhere can't silently break this assertion. */
+async function resolveBackgroundToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('div');
+    probe.style.background = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die Journal-Bereichsfarbe statt der App-Akzentfarbe, kein Formular auf der Seite selbst', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
+  const fabBg = await fab.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(fabBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
+  expect(fabBg).not.toBe(await resolveBackgroundToken(page, '--area-tasks'));
+
+  // Kein Formular sichtbar, bevor der FAB geklickt wurde.
+  await expect(page.locator('.journal-editor__form')).toHaveCount(0);
+
+  await openSheet(page);
+  const dialog = page.getByRole('dialog', { name: 'Eintragen' });
+  await expect(dialog.locator('.mood-scale')).toBeVisible();
+  await expect(dialog.getByLabel('Journal-Text')).toBeVisible();
+  await expect(dialog.getByLabel('Tags')).toBeVisible();
+});
+
 test('AC1: die Stimmungs-Skala ist das erste Element im Formular, ein Tipp setzt den Wert, ein erneuter nimmt ihn zurück', async ({
   page,
 }) => {
   await setUpEditor(page);
+  await openSheet(page);
 
   const firstChild = page.locator('.journal-editor__form > *').first();
   await expect(firstChild).toHaveClass(/mood-scale/);
@@ -308,10 +356,11 @@ test('AC1: die Stimmungs-Skala ist das erste Element im Formular, ein Tipp setzt
   await expect(point).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Absenden-Knopf legt einen Eintrag an', async ({
+test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eintragen-Knopf legt einen Eintrag an', async ({
   page,
 }) => {
   await setUpEditor(page);
+  await openSheet(page);
 
   await page.getByRole('button', { name: '8', exact: true }).click();
   // Kein Debounce mehr (ADR-0018) — ein Mood-Tap ruft nur setMood(), kein async
@@ -329,6 +378,7 @@ test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mind
 }) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await setUpEditor(page);
+  await openSheet(page);
 
   // issue #415: die Suche zeigt seither ihren eigenen Mood-Filter (ebenfalls
   // eine MoodScale) permanent oberhalb des Formulars — auf das Editor-Formular
@@ -350,21 +400,26 @@ test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mind
   for (const box of boxes) expect(box!.y).toBe(rowY);
 });
 
-test('AC2/AC3: nach dem Absenden ist das Feld leer, mehrere Einträge stehen darunter, neueste zuerst, mit Uhrzeit', async ({
+test('AC2/AC3: das Sheet schließt nach dem Absenden, ein neu geöffnetes startet leer; mehrere Einträge stehen darunter, neueste zuerst, mit Uhrzeit', async ({
   page,
 }) => {
   await setUpEditor(page);
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);
 
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('');
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  // Create-Sheet startet bei jedem Öffnen leer (#701) — das ersetzt die alte
+  // "Feld leer nach dem Absenden"-Prüfung, die ein sichtbar bleibendes
+  // Formular voraussetzte.
+  await openSheet(page);
+  await expect(page.getByLabel('Journal-Text')).toHaveValue('');
 
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
 
-  await expect(page.getByLabel('Journal-Text')).toHaveValue('');
   const entries = page.locator('.journal-editor__entry');
   await expect(entries).toHaveCount(2);
   // Neuester zuerst.
@@ -378,8 +433,10 @@ test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin d
 }) => {
   await setUpEditor(page);
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(2);
@@ -403,11 +460,13 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
     FIXED_NOW,
   );
 
+  await openSheet(page);
   await page.getByRole('button', { name: '5', exact: true }).click();
   await page.getByLabel('Journal-Text').fill('Ruhiger Moment');
   await page.getByLabel('Tags').fill('arbeit, sport');
   await submit(page);
 
+  await openSheet(page);
   await page.getByRole('button', { name: '9', exact: true }).click();
   await page.getByLabel('Journal-Text').fill('Anderer Moment, andere Stimmung');
   await page.getByLabel('Tags').fill('familie');
@@ -416,14 +475,34 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
   const entries = page.locator('.journal-editor__entry');
   await expect(entries).toHaveCount(2);
   await expect(entries.nth(0)).toContainText('Stimmung 9/10');
-  await expect(entries.nth(0)).toContainText('familie');
+  await expect(entries.nth(0).locator('.journal-editor__entry-tag')).toHaveText(['familie']);
   await expect(entries.nth(1)).toContainText('Stimmung 5/10');
-  await expect(entries.nth(1)).toContainText('arbeit, sport');
+  await expect(entries.nth(1).locator('.journal-editor__entry-tag')).toHaveText(['arbeit', 'sport']);
 
   // Server-Sync ist sonst passiv (alle 30s) — explizit anstoßen, statt auf das
   // Intervall zu warten (Muster wie jede andere withDb()-Prüfung in dieser Datei).
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => entryCountInDb(entryDate)).toBe(2);
+});
+
+test('AK4 (#700/#701): Tags erscheinen als einzelne Pillen unter dem Eintragstext, aus --surface-raised/--border-faint', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Eintrag mit drei Tags');
+  await page.getByLabel('Tags').fill('eins, zwei, drei');
+  await submit(page);
+
+  const pills = page.locator('.journal-editor__entry-tag');
+  await expect(pills).toHaveCount(3);
+  await expect(pills).toHaveText(['eins', 'zwei', 'drei']);
+
+  const pillBg = await pills.first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  const pillBorder = await pills.first().evaluate((el) => getComputedStyle(el).borderColor);
+  expect(pillBg).toBe(await resolveBackgroundToken(page, '--surface-raised'));
+  expect(pillBorder).toBe(await resolveBackgroundToken(page, '--border-faint'));
 });
 
 test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über den bestehenden Sync-Pfad, kein Hard-Delete', async ({
@@ -436,6 +515,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
     FIXED_NOW,
   );
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Wird gelöscht');
   await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
@@ -479,6 +559,7 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag
     FIXED_NOW,
   );
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);
   // submit() only clicks — appendJournalEntry (entry.ts) keeps running after the
@@ -493,6 +574,7 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag
   const [first] = await journalHabitLogRows(entryDate);
   expect(first.done).toBe(true);
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
   await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Zweiter Eintrag' })).toBeVisible();
@@ -560,41 +642,52 @@ const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   month: 'long',
 });
 
-test('AC1: über der Eintragsliste steht der aktuell sichtbare Tag, ausgeschrieben auf Deutsch', async ({
+const WEEKDAY_LONG_FORMATTER = new Intl.DateTimeFormat('de-DE', { weekday: 'long' });
+
+test('AK3 (#700/#701, Nachfolger von #374 AC1): „Heute · <Wochentag>“ steht über der Eintragsliste des heutigen Tages', async ({
   page,
 }) => {
   await installClockAt(page);
   await setUpEditor(page);
-  const today = new Date(FIXED_NOW);
 
-  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(today));
-
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Eintrag für heute');
   await submit(page);
 
-  const dateBox = await page.locator('.journal-editor__date').boundingBox();
+  const header = page.locator('.journal-editor__day-header');
+  await expect(header).toHaveText(`Heute · ${WEEKDAY_LONG_FORMATTER.format(new Date(FIXED_NOW))}`);
+
+  const headerBox = await header.boundingBox();
   const listBox = await page.locator('.journal-editor__entries').boundingBox();
-  expect(dateBox).not.toBeNull();
+  expect(headerBox).not.toBeNull();
   expect(listBox).not.toBeNull();
-  expect(dateBox!.y).toBeLessThan(listBox!.y);
+  expect(headerBox!.y).toBeLessThan(listBox!.y);
 });
 
-test('AC-A (#423): das Datum steht oben rechts, vor dem Formular', async ({ page }) => {
+test('AK3 (#700/#701, Nachfolger von #423): Tagesköpfe zeigen Heute/Gestern/Datum, Tagesgruppen absteigend sortiert', async ({
+  page,
+}) => {
+  await installClockAt(page);
   await setUpEditor(page);
 
-  const dateBox = await page.locator('.journal-editor__date').boundingBox();
-  const formBox = await page.locator('.journal-editor__form').boundingBox();
-  const containerBox = await page.locator('.journal-editor').boundingBox();
-  expect(dateBox).not.toBeNull();
-  expect(formBox).not.toBeNull();
-  expect(containerBox).not.toBeNull();
+  // FIXED_NOW ist der 18.07.2026 — vorgestern und gestern über den E2E-Bridge-Pfad
+  // geseedet (wie AC2 #480 unten), damit der Test nicht auf eine Mitternachts-
+  // Grenze der Fake-Uhr angewiesen ist.
+  await page.evaluate(async () => {
+    await window.__starship.appendJournalEntry('2026-07-16', { text: 'Vorgestern geschrieben', tags: [] });
+    await window.__starship.appendJournalEntry('2026-07-17', { text: 'Gestern geschrieben', tags: [] });
+  });
+  await expect(page.locator('.journal-editor__day-header')).toHaveCount(2);
 
-  // Oben: vor dem Formular statt danach.
-  expect(dateBox!.y).toBeLessThan(formBox!.y);
-  // Rechts: die rechte Kante des Datums liegt nahe der rechten Kante des Containers.
-  const dateRightEdge = dateBox!.x + dateBox!.width;
-  const containerRightEdge = containerBox!.x + containerBox!.width;
-  expect(containerRightEdge - dateRightEdge).toBeLessThan(2);
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Heute geschrieben');
+  await submit(page);
+
+  const headers = page.locator('.journal-editor__day-header');
+  await expect(headers).toHaveCount(3);
+  await expect(headers.nth(0)).toHaveText(`Heute · ${WEEKDAY_LONG_FORMATTER.format(new Date(FIXED_NOW))}`);
+  await expect(headers.nth(1)).toHaveText('Gestern');
+  await expect(headers.nth(2)).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(2026, 6, 16)));
 });
 
 test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf deren Höhe, oben rechts', async ({
@@ -621,10 +714,16 @@ test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf 
   expect(dateBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
 });
 
-test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist zentriert', async ({ page }) => {
+test('AC-D (#423): der Eintragen-Knopf im Sheet erscheint erst mit Mood oder Text und ist zentriert', async ({
+  page,
+}) => {
   await setUpEditor(page);
+  await openSheet(page);
 
-  const submitButton = page.getByRole('button', { name: 'Absenden' });
+  // Die FAB trägt denselben Namen (AK2, #701) und bleibt im offenen Sheet
+  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — über die
+  // Klasse statt einer Rollen-Query scopen, sonst träfe das hier auch die FAB.
+  const submitButton = page.locator('.journal-editor__submit');
   await expect(submitButton).toHaveCount(0);
 
   await page.getByRole('button', { name: '6', exact: true }).click();
@@ -644,7 +743,7 @@ test('AC-D (#423): der Absenden-Knopf erscheint erst mit Mood oder Text und ist 
   expect(Math.abs(buttonCenter - formCenter)).toBeLessThan(2);
 });
 
-test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne Neuladen auf den neuen Tag, und ein danach abgesendeter Eintrag trägt diesen neuen Kalendertag', async ({
+test('AC2/AC3: bleibt die App über Mitternacht offen, trägt ein danach abgesendeter Eintrag den neuen Kalendertag und erscheint unter „Heute · <neuer Wochentag>“', async ({
   page,
 }) => {
   const now = new Date(FIXED_NOW);
@@ -655,12 +754,8 @@ test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne 
   await installClockAt(page, beforeMidnight.toISOString());
   await setUpEditor(page);
 
-  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(now));
-
   await freezeClock(page);
   await page.clock.fastForward(5 * 60 * 1000); // über Mitternacht, ohne Neuladen
-
-  await expect(page.locator('.journal-editor__date')).toHaveText(JOURNAL_DATE_FORMATTER.format(tomorrow));
 
   // Ab hier ist der deterministische Fast-Forward erledigt. Die Uhr läuft
   // wieder in Echtzeit, damit Dexies liveQuery-Signal nach dem Absenden
@@ -669,9 +764,16 @@ test('AC2/AC3: bleibt die App über Mitternacht offen, wandert die Anzeige ohne 
   // Uhr nie — dieser Zustand ist ein reines Testartefakt.
   await page.clock.resume();
 
+  // Kein eigener Tages-State mehr, der über Mitternacht "rollen" könnte
+  // (#701 entfernt den entryDate-State + Mitternachts-Timer) — der Beweis ist
+  // der Tageskopf, unter dem der neue Eintrag tatsächlich erscheint.
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Nach Mitternacht geschrieben');
   await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-editor__day-header')).toHaveText(
+    `Heute · ${WEEKDAY_LONG_FORMATTER.format(tomorrow)}`,
+  );
 
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => entryCountInDb(tomorrowKey)).toBe(1);
@@ -826,6 +928,7 @@ test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen ni
 
   const secrets = ['TAGESEINTRAG-EINS-GEHEIM', 'TAGESEINTRAG-ZWEI-GEHEIM', 'TAGESEINTRAG-DREI-GEHEIM'];
   for (const text of secrets) {
+    await openSheet(page);
     await page.getByLabel('Journal-Text').fill(text);
     await submit(page);
   }
@@ -855,8 +958,9 @@ test('Konflikt-Banner erscheint nie und das Bridge-Handle dafür existiert nicht
 }) => {
   await setUpEditor(page);
 
+  await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Normaler Eintrag');
-  await page.getByRole('button', { name: 'Absenden' }).click();
+  await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
 
   await expect(page.locator('.journal-editor__conflict')).toHaveCount(0);
@@ -895,6 +999,7 @@ test('AC9: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich 
   page,
 }) => {
   await setUpEditor(page);
+  await openSheet(page);
   const point = page.getByRole('button', { name: '4', exact: true });
   await point.click();
 

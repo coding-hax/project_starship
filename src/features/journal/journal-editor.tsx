@@ -1,31 +1,22 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { mutate } from '@/local/outbox';
-import { MoodScale } from '@/ui/mood-scale';
+import { Fab } from '@/ui/fab';
 import { Toast } from '@/ui/toast';
-import { useListPresence } from '@/ui/use-list-presence';
-import {
-  appendJournalEntry,
-  deleteJournalEntry,
-  msUntilNextMidnight,
-  todayKey,
-  type JournalEntryView,
-} from './entry';
+import { useListPresence, type ListPresenceRow } from '@/ui/use-list-presence';
+import { deleteJournalEntry, todayKey } from './entry';
+import { JournalEntrySheet, JOURNAL_ENTRY_SHEET_LABEL } from './journal-entry-sheet';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
 import { useJournalLock } from './lock-store';
 import { useJournalEntries } from './use-journal-entries';
 import { useOrphanedKey } from './use-orphaned-key';
+import type { JournalSearchEntry } from './search';
 
-function parseTags(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
+const WEEKDAY_LONG_FORMATTER = new Intl.DateTimeFormat('de-DE', { weekday: 'long' });
 
-const ENTRY_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+const DAY_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   weekday: 'short',
   day: 'numeric',
   month: 'long',
@@ -36,11 +27,24 @@ const ENTRY_TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   minute: '2-digit',
 });
 
-/** Above the entry list (issue #374 AC1) — the day whose entries are shown,
- * spelled out in German like every other date on this page. */
-function formatEntryDate(entryDate: string): string {
-  const [year, month, day] = entryDate.split('-').map(Number);
-  return ENTRY_DATE_FORMATTER.format(new Date(year, month - 1, day));
+function dateFromDayKey(dayKey: string): Date {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function dayKeyOffset(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString('en-CA');
+}
+
+/** Above each day's entries (AK3, #701): "Heute · <Wochentag>" for today,
+ * "Gestern" for yesterday, otherwise the same spelled-out German date as
+ * before (issue #374). */
+function formatDayHeader(dayKey: string): string {
+  if (dayKey === todayKey()) return `Heute · ${WEEKDAY_LONG_FORMATTER.format(dateFromDayKey(dayKey))}`;
+  if (dayKey === dayKeyOffset(-1)) return 'Gestern';
+  return DAY_DATE_FORMATTER.format(dateFromDayKey(dayKey));
 }
 
 function formatEntryTime(createdAt: string): string {
@@ -53,46 +57,70 @@ interface UndoState {
   id: string;
 }
 
+interface DayRowGroup {
+  dayKey: string;
+  rows: ListPresenceRow<JournalSearchEntry>[];
+}
+
+/** Groups the flat, presence-tracked row list back into per-day sections for
+ * rendering — the flat shape is what `useListPresence` needs (a single stable
+ * array), the grouped shape is what AK3's day headers need. Entries of the
+ * same day stay contiguous because `useJournalEntries` already delivers them
+ * that way and `useListPresence` only ever inserts a new row next to its
+ * neighbours in that same order. */
+function groupRowsByDay(rows: ListPresenceRow<JournalSearchEntry>[]): DayRowGroup[] {
+  const groups: DayRowGroup[] = [];
+  for (const row of rows) {
+    const dayKey = row.item.entryDate;
+    const last = groups[groups.length - 1];
+    if (last && last.dayKey === dayKey) {
+      last.rows.push(row);
+    } else {
+      groups.push({ dayKey, rows: [row] });
+    }
+  }
+  return groups;
+}
+
 /**
- * A day's worth of entries (issue #376, replacing S3b's one-entry-per-day
- * autosave editor): mood, free text, tags — submitted explicitly, never
- * autosaved. Below the form, every entry of the visible day, newest first
- * (AC3), each deletable over the existing soft-delete/outbox path (AC5). Every
- * write goes through the outbox (`appendJournalEntry` → `writeJournalEntry`),
- * never a direct API call (CLAUDE.md rule 8).
+ * The entry stream (issue #376, restructured in #701/#700 T1 into a FAB +
+ * create sheet): every entry, grouped by day (AK3), newest day and newest
+ * entry within a day first. Every write goes through the outbox
+ * (`appendJournalEntry` → `writeJournalEntry`), never a direct API call
+ * (CLAUDE.md rule 8).
  */
 export function JournalEditor() {
-  const [entryDate, setEntryDate] = useState(todayKey);
-  const [mood, setMood] = useState<number | null>(null);
-  const [text, setText] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
   const [undo, setUndo] = useState<UndoState | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const entries = useJournalEntries(entryDate);
-  const entryRows = useListPresence(entries ?? [], (entry) => entry.id);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // A ref, not state (#700 AK6, T2 jump from a search hit): scrolling to the
+  // target once the stream reappears is a one-off DOM effect, not something
+  // that should itself cause a render.
+  const pendingScrollRef = useRef<string | null>(null);
+  const dayGroups = useJournalEntries();
+  const flatEntries = useMemo(() => dayGroups?.flatMap((group) => group.entries) ?? [], [dayGroups]);
+  const entryRows = useListPresence(flatEntries, (entry) => entry.id);
+  const dayRowGroups = groupRowsByDay(entryRows);
 
-  // AC2: staying open across midnight rolls the visible day forward on its
-  // own, no reload. A single timeout scheduled for the exact next midnight
-  // (not a poll) also closes the AC3 gap it used to be seeded from: a
-  // submission right after midnight always sees the day already rolled over.
-  // `trackedToday` guards against clobbering a day picked via search (AC6,
-  // #341) — the roll only applies while `entryDate` is still following
-  // "today" itself.
+  function handleSearchSelect(entryDate: string) {
+    pendingScrollRef.current = entryDate;
+  }
+
+  // The stream shows every day at once now, so "select a day" means scrolling
+  // to its already-rendered group rather than swapping which day is visible.
+  // The target only exists once `searchActive` has flipped back to false
+  // (JournalSearch's own effect does that a render behind `onSelect`), so
+  // this waits for that flip.
   useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout>;
-    let trackedToday = todayKey();
-    function scheduleNext() {
-      timeout = setTimeout(() => {
-        const previousToday = trackedToday;
-        trackedToday = todayKey();
-        setEntryDate((current) => (current === previousToday ? trackedToday : current));
-        scheduleNext();
-      }, msUntilNextMidnight());
-    }
-    scheduleNext();
-    return () => clearTimeout(timeout);
-  }, []);
+    if (searchActive || !pendingScrollRef.current) return;
+    const target = containerRef.current?.querySelector<HTMLElement>(
+      `[data-day="${pendingScrollRef.current}"]`,
+    );
+    target?.scrollIntoView({ block: 'start' });
+    pendingScrollRef.current = null;
+  }, [searchActive]);
 
   function dismissUndo() {
     if (undoTimeoutRef.current !== null) {
@@ -100,28 +128,6 @@ export function JournalEditor() {
       undoTimeoutRef.current = null;
     }
     setUndo(null);
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedText = text.trim();
-    const tags = parseTags(tagsInput);
-    const submittedMood = mood;
-    if (!trimmedText && submittedMood === null && tags.length === 0) return;
-
-    // Clear synchronously, before awaiting the write (AC2: "Nach dem Absenden
-    // ist das Feld leer"). Clearing only after the await resolved raced any
-    // typing that happened in the meantime — a fast second submit could get
-    // its just-typed text wiped by this submit's delayed clear.
-    setMood(null);
-    setText('');
-    setTagsInput('');
-
-    await appendJournalEntry(entryDate, {
-      text: trimmedText,
-      mood: submittedMood === null ? undefined : String(submittedMood),
-      tags,
-    });
   }
 
   async function handleDelete(id: string) {
@@ -140,52 +146,41 @@ export function JournalEditor() {
 
   return (
     <>
-      <JournalSearch onSelect={setEntryDate} onActiveChange={setSearchActive} />
-      <div className="journal-editor">
+      <JournalSearch onSelect={handleSearchSelect} onActiveChange={setSearchActive} />
+      <div className="journal-editor" ref={containerRef}>
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
-            <p className="journal-editor__date">{formatEntryDate(entryDate)}</p>
-            <form className="journal-editor__form" onSubmit={handleSubmit}>
-              <MoodScale value={mood} onChange={setMood} />
-              <textarea
-                className="journal-editor__text"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                placeholder="Was ist heute passiert?"
-                aria-label="Journal-Text"
-              />
-              <input
-                type="text"
-                className="journal-editor__tags"
-                value={tagsInput}
-                onChange={(event) => setTagsInput(event.target.value)}
-                placeholder="Tags, mit Komma getrennt"
-                aria-label="Tags"
-              />
-              {(mood !== null || text.trim() !== '') && (
-                <button type="submit" className="journal-editor__submit">
-                  Absenden
-                </button>
-              )}
-            </form>
-            {entryRows.length > 0 && (
-              <ul className="journal-editor__entries">
-                {entryRows.map((row) => (
-                  <JournalEntryRow
-                    key={row.key}
-                    entry={row.item}
-                    onDelete={handleDelete}
-                    entering={row.status === 'entering'}
-                    leaving={row.status === 'leaving'}
-                    onAnimationEnd={row.onAnimationEnd}
-                  />
-                ))}
-              </ul>
+            {/* Same convention as habit-list.tsx/task-list.tsx's `__empty` text. Without
+                it, a fresh account renders `.journal-editor` with zero children — the
+                form used to live directly in this div and kept it non-collapsed, #701
+                moved it into the sheet, so an explicit empty state is what keeps this
+                div visible (issue #646 AC1's "bleibt sichtbar" offline note). */}
+            {dayGroups !== undefined && dayRowGroups.length === 0 && (
+              <p className="journal-editor__empty">Noch keine Einträge. Leg deinen ersten an.</p>
             )}
+            {dayRowGroups.map((group) => (
+              <section key={group.dayKey} className="journal-editor__day-group" data-day={group.dayKey}>
+                <h2 className="journal-editor__day-header">{formatDayHeader(group.dayKey)}</h2>
+                <ul className="journal-editor__entries">
+                  {group.rows.map((row) => (
+                    <JournalEntryRow
+                      key={row.key}
+                      entry={row.item}
+                      onDelete={handleDelete}
+                      entering={row.status === 'entering'}
+                      leaving={row.status === 'leaving'}
+                      onAnimationEnd={row.onAnimationEnd}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
           </>
         )}
       </div>
+      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} onClick={() => setSheetOpen(true)} />}
+      <JournalEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
       {undo && (
         <Toast
           message="Eintrag gelöscht"
@@ -290,7 +285,7 @@ function JournalEntryRow({
   leaving,
   onAnimationEnd,
 }: {
-  entry: JournalEntryView;
+  entry: JournalSearchEntry;
   onDelete: (id: string) => void;
   entering: boolean;
   leaving: boolean;
@@ -307,9 +302,7 @@ function JournalEntryRow({
         <time className="journal-editor__entry-time" dateTime={entry.createdAt}>
           {formatEntryTime(entry.createdAt)}
         </time>
-        {entry.content.mood && (
-          <span className="journal-editor__entry-mood">Stimmung {entry.content.mood}/10</span>
-        )}
+        {entry.mood && <span className="journal-editor__entry-mood">Stimmung {entry.mood}/10</span>}
         <button
           type="button"
           className="journal-editor__entry-delete"
@@ -319,9 +312,15 @@ function JournalEntryRow({
           Löschen
         </button>
       </div>
-      {entry.content.text && <p className="journal-editor__entry-text">{entry.content.text}</p>}
-      {(entry.content.tags?.length ?? 0) > 0 && (
-        <p className="journal-editor__entry-tags">{entry.content.tags!.join(', ')}</p>
+      {entry.text && <p className="journal-editor__entry-text">{entry.text}</p>}
+      {entry.tags.length > 0 && (
+        <div className="journal-editor__entry-tags">
+          {entry.tags.map((tag) => (
+            <span key={tag} className="journal-editor__entry-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
       )}
     </li>
   );
