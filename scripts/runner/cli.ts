@@ -18,7 +18,7 @@ import { createClock, type Clock } from './clock.js';
 import { createGhAdapter, type GhAdapter } from './gh.js';
 import { createGitAdapter, type GitAdapter } from './git.js';
 import { dPlus, fmtHm, resetEpoch } from './time.js';
-import { queuePending, queueOrderFlat, type QueueIssue } from './queue.js';
+import { queuePending, type QueueIssue } from './queue.js';
 import { createStateAdapter, type StateAdapter } from './state.js';
 import { createClaimAdapter, type ClaimAdapter } from './claim.js';
 import { tierBump, tierCurrent, tierReset } from './tier.js';
@@ -45,7 +45,7 @@ import {
 } from './catchup.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { pickTicket, queueNext } from './select.js';
-import { queueBody, queueSnapshot, waitingIssues } from './status.js';
+import { queueSnapshot, waitingIssues } from './status.js';
 import { roundEval, roundPlan, roundRecover, type RoundRun } from './round.js';
 import { cleanupStateDir, cleanupSharedTicketState } from './cleanup.js';
 import { shimDriftReason } from './shim.js';
@@ -95,10 +95,9 @@ export const commands: Record<string, CommandHandler> = {
     const epoch = resetEpoch(args[0] ?? '', ctx.clock);
     return epoch === null ? null : String(epoch);
   },
-  'queue-order-flat': (_ctx, args) => JSON.stringify(queueOrderFlat(args[0] ?? '')),
   'queue-pending': (_ctx, args) => queuePending(JSON.parse(args[0] ?? '[]') as QueueIssue[]),
   'queue-next': (_ctx, args) => {
-    const next = queueNext(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '');
+    const next = queueNext(JSON.parse(args[0] ?? '[]') as QueueIssue[]);
     return next === null ? '' : String(next);
   },
   'sha1-of': (_ctx, args) => sha1Of(args[0] ?? ''),
@@ -178,7 +177,7 @@ export const commands: Record<string, CommandHandler> = {
       }),
     ),
   'pick-ticket': (ctx, args) =>
-    JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], args[1] ?? '', ctx.gh, ctx.state)),
+    JSON.stringify(pickTicket(JSON.parse(args[0] ?? '[]') as QueueIssue[], ctx.gh, ctx.state)),
   'waiting-issues': (ctx) => waitingIssues(ctx.gh),
   'cleanup-state': (ctx) => {
     cleanupStateDir(stateDir(), ctx.gh, ctx.clock.now().getTime(), ctx.claims, ctx.slotId);
@@ -186,7 +185,6 @@ export const commands: Record<string, CommandHandler> = {
     return '';
   },
   'queue-snapshot': (ctx) => JSON.stringify(queueSnapshot(ctx.gh)),
-  'queue-body': (ctx, args) => queueBody(Number(args[0]), ctx.gh),
 
   // --- Das Rundenprotokoll (#203, S6) --------------------------------------
   // Drei Kommandos statt der bisherigen ~40 Einzelaufrufe pro Takt. Die Runde
@@ -194,17 +192,16 @@ export const commands: Record<string, CommandHandler> = {
   'round-plan': (ctx, args) =>
     JSON.stringify(
       roundPlan(ctx, {
-        queueIssue: Number(args[0] ?? 0),
-        maxRuntime: Number(args[1] ?? 2700),
-        didWork: args[2] === '1',
-        lastIssue: args[3] ?? '',
+        maxRuntime: Number(args[0] ?? 2700),
+        didWork: args[1] === '1',
+        lastIssue: args[2] ?? '',
         // $IS_LEAD aus claude-runner.sh (#204) -- '1' in der Ein-Slot-Welt.
-        isLead: args[4] === '1',
+        isLead: args[3] === '1',
         // #357: '?? 0' haelt eine altere claude-runner.sh kompatibel -- ruft
-        // sie round-plan ohne das 6. Argument, faellt statusIssue auf 0 und
+        // sie round-plan ohne das 5. Argument, faellt statusIssue auf 0 und
         // das Status-Issue erschiene einmalig (kosmetisch) im eigenen
         // "untriagiert"-Bericht.
-        statusIssue: Number(args[5] ?? 0),
+        statusIssue: Number(args[4] ?? 0),
       }),
     ),
 
