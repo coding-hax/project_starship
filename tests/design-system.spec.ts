@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
 
 test.beforeEach(async () => {
@@ -307,4 +307,143 @@ test.describe('Design-System: Ebenen (z-Skala)', () => {
 
     expect(toastUnderSheet, 'Sheet liegt nicht über dem Toast, obwohl beide offen sind').toBe(true);
   });
+});
+
+/**
+ * Issue #709: --accent-fg war fast weiß und unterschritt auf allen vier
+ * Bereichsfarben WCAG AA (4,5:1) im Hellmodus. --on-accent (immer dunkel,
+ * gleicher Wert in beiden Themes) ersetzt es auf FAB und den Submit-Knöpfen
+ * der vier Editoren (Aufgabe/Termin/Routine/Journal).
+ */
+test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
+  function srgbToLinear(channel: number): number {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }
+
+  function relativeLuminance(rgb: [number, number, number]): number {
+    const [r, g, b] = rgb.map(srgbToLinear);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function contrastRatio(fg: [number, number, number], bg: [number, number, number]): number {
+    const l1 = relativeLuminance(fg);
+    const l2 = relativeLuminance(bg);
+    const [lighter, darker] = l1 > l2 ? [l1, l2] : [l2, l1];
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  /**
+   * getComputedStyle can serialize an oklch()-declared colour back as oklch()
+   * rather than rgb() (CSS Color 4) — a regex expecting "rgb(r, g, b)" would
+   * silently misparse the L/C/H numbers as R/G/B. A 1×1 canvas sidesteps that:
+   * its 2D context is always sRGB, so reading the pixel back after setting
+   * fillStyle gives real 0–255 channels regardless of the source syntax.
+   */
+  async function contrastOf(locator: Locator): Promise<number> {
+    const [fg, bg] = await locator.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const toRgb = (color: string): [number, number, number] => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        return [r, g, b];
+      };
+      return [toRgb(style.color), toRgb(style.backgroundColor)] as const;
+    });
+    return contrastRatio(fg, bg);
+  }
+
+  async function setTheme(page: Page, theme: 'hell' | 'dunkel') {
+    await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+  }
+
+  const themes = ['hell', 'dunkel'] as const;
+
+  for (const theme of themes) {
+    test(`AC3: FAB erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto('/aufgaben');
+      await setTheme(page, theme);
+
+      const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+      await expect(fab).toBeVisible();
+      expect(await contrastOf(fab)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test(`AC3: Aufgabe-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto('/aufgaben');
+      await setTheme(page, theme);
+      // The FAB opens quick-add.tsx (its own, unrelated submit button) — the
+      // .task-editor__submit this ticket fixed only exists in the edit sheet,
+      // reached by tapping an existing task (same as tests/tasks.spec.ts).
+      await page.evaluate(() =>
+        window.__starship.mutate({
+          table: 'tasks',
+          op: 'upsert',
+          payload: { title: 'Kontrast-Test-709' },
+        }),
+      );
+      await page
+        .getByRole('list', { name: 'Aufgaben' })
+        .getByRole('listitem')
+        .filter({ hasText: 'Kontrast-Test-709' })
+        .click();
+
+      const submit = page.getByRole('dialog', { name: 'Aufgabe bearbeiten' }).locator('.task-editor__submit');
+      await expect(submit).toBeVisible();
+      expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test(`AC3: Termin-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto('/kalender');
+      await setTheme(page, theme);
+      await page.getByRole('button', { name: 'Termin erfassen' }).click();
+
+      const submit = page.locator('.event-editor__submit');
+      await expect(submit).toBeVisible();
+      expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test(`AC3: Routine-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto('/routinen');
+      await setTheme(page, theme);
+      await page.getByRole('button', { name: 'Routine anlegen' }).click();
+
+      // habit-list.tsx always mounts a second (closed) HabitEditor in edit mode
+      // alongside this one — scope to the open create dialog or the bare class
+      // selector hits Playwright's strict-mode "2 elements" error.
+      const submit = page.getByRole('dialog', { name: 'Routine anlegen' }).locator('.habit-editor__submit');
+      await expect(submit).toBeVisible();
+      expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    test(`AC3: Journal-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
+      await registerPasskey(page);
+      await page.goto('/journal');
+      await setTheme(page, theme);
+
+      await page.getByLabel('Passphrase', { exact: true }).fill('Kontrast-Test-709');
+      await page.getByLabel('Passphrase wiederholen').fill('Kontrast-Test-709');
+      await page.getByRole('button', { name: 'Einrichten' }).click();
+      await page.getByTestId('journal-recovery-key').waitFor();
+      await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+      await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+
+      // journal-editor.tsx only renders .journal-editor__submit once the form
+      // has content (mood or text) — an empty form has nothing to submit.
+      await page.getByLabel('Journal-Text').fill('Kontrast-Test-709');
+
+      const submit = page.locator('.journal-editor__submit');
+      await expect(submit).toBeVisible();
+      expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
 });
