@@ -5,12 +5,13 @@ import { confidenceFromReason, titleConfidence } from '@/features/capture/field-
 import type { FieldConfidence } from '@/features/capture/types';
 import { useCapturePrefs } from '@/features/settings/use-capture-prefs';
 import { mutate } from '@/local/outbox';
+import { Chip } from '@/ui/chip';
 import { Fab } from '@/ui/fab';
 import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
-import { isoToLocalInput, localInputToIso } from './datetime-local';
+import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
 import { parseTaskInput } from './parse-task-input';
 import { groupTasks, useTasks } from './use-tasks';
 
@@ -40,6 +41,9 @@ const PRIORITIES: { value: number; label: string }[] = [
 /** Sentinel for the "no parent" option — a real id can never equal this. */
 const NO_PARENT = '';
 
+/** Which chip's panel is open — at most one at a time (issue #711 AK3). */
+type ChipKey = 'wann' | 'prio' | 'notiz' | 'parent';
+
 function isTypingTarget(target: EventTarget | null): boolean {
   const tag = (target as HTMLElement | null)?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA';
@@ -51,7 +55,7 @@ interface UndoState {
 }
 
 /**
- * Everything the "Mehr"-Bereich can set, as one value. Kept together so it can
+ * Everything the chip row can set, as one value. Kept together so it can
  * ride along to the confirm sheet inside the draft it belongs to, instead of
  * sitting in a second piece of state that could drift away from it.
  */
@@ -73,9 +77,10 @@ const NO_EXTRAS: TaskExtras = { notes: null, priority: 0, parentId: null };
  * Einstellung "ohne Bestätigung direkt anlegen" ist an, dann legt der Direkt-Pfad
  * sofort an und zeigt stattdessen einen Undo-Toast als Sicherheitsnetz (AC4).
  *
- * issue #650: dahinter liegt ein zugeklappter "Mehr"-Bereich mit denselben Feldern
- * wie das Bearbeiten-Sheet. Wer sie braucht, klappt einmal auf, statt die Aufgabe
- * erst anzulegen und dann nachzubearbeiten; wer nicht, sieht sie nie.
+ * issue #650/#711: dahinter liegt eine Chip-Zeile (Wann · Priorität · Notiz · Teil
+ * von) mit denselben Feldern wie das Bearbeiten-Sheet. Wer eins braucht, tippt
+ * seinen Chip an, statt die Aufgabe erst anzulegen und dann nachzubearbeiten; wer
+ * keins braucht, sieht nie mehr als die Chip-Zeile.
  */
 export function QuickAddTask() {
   const [open, setOpen] = useState(false);
@@ -83,9 +88,14 @@ export function QuickAddTask() {
     null,
   );
   const [undo, setUndo] = useState<UndoState | null>(null);
-  const [showMore, setShowMore] = useState(false);
+  const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   const [notes, setNotes] = useState('');
   const [dueAt, setDueAt] = useState('');
+  // Set by the two silent-prefill paths below (empty title, a date the parser
+  // recognised on its own) — a guessed Fälligkeit is accepted unless the "x" on
+  // its chip discards it (issue #711 AK2); editing the field in its panel clears
+  // the flag, since that is no longer an unreviewed guess.
+  const [dueGuessed, setDueGuessed] = useState(false);
   const [priority, setPriority] = useState(0);
   const [parentId, setParentId] = useState(NO_PARENT);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -101,12 +111,13 @@ export function QuickAddTask() {
   );
 
   // A create sheet, not an editor: every open starts blank. Clearing on the way in
-  // rather than on the way out means an expanded "Mehr"-Bereich does not visibly
-  // collapse while the sheet is still animating away (sheet.css exits over 200ms).
+  // rather than on the way out means an open chip panel does not visibly collapse
+  // while the sheet is still animating away (sheet.css exits over 200ms).
   const openSheet = useCallback(() => {
-    setShowMore(false);
+    setOpenChip(null);
     setNotes('');
     setDueAt('');
+    setDueGuessed(false);
     setPriority(0);
     setParentId(NO_PARENT);
     setOpen(true);
@@ -173,9 +184,10 @@ export function QuickAddTask() {
     explicitDueAt: string | null = null,
     extras: TaskExtras = NO_EXTRAS,
   ) {
-    // Ein im "Mehr"-Bereich gesetztes Datum ist eine bewusste Eingabe und schlägt
-    // das aus dem Titel geratene (issue #650 AC5) — dann gibt es auch nichts mehr
-    // zu bestätigen und keinen Undo-Toast, der ein ungeprüftes Datum absichert.
+    // Eine über den Wann-Chip gesetzte Fälligkeit ist eine bewusste Eingabe und
+    // schlägt die aus dem Titel geratene (issue #650 AC5) — dann gibt es auch
+    // nichts mehr zu bestätigen und keinen Undo-Toast, der ein ungeprüftes Datum
+    // absichert.
     if (explicitDueAt === null && parsed.dueAt !== null) {
       // #688 R2 Regel 5 + AK4: eine geratene Nachtzeit oder eine regionale Kurzform
       // schlägt die Direkt-Erfassung — das ist die einzige Stelle im Erfassungspfad,
@@ -213,13 +225,14 @@ export function QuickAddTask() {
     if (item?.kind !== 'task') return;
     // AK5 (#687): bleibt nach dem Erkennen kein Titel übrig, legt der Direkt-Pfad nicht
     // mehr still eine Aufgabe ohne Titel an — das Sheet öffnet stattdessen mit der
-    // erkannten Fälligkeit vorbefüllt und Fokus im leeren Titelfeld (Sheet-eigenes
-    // `initialFocusRef`).
+    // erkannten Fälligkeit vorbefüllt (Wann-Chip zeigt sie als geraten, #711 AK2) und
+    // Fokus im leeren Titelfeld (Sheet-eigenes `initialFocusRef`).
     if (item.title.trim() === '') {
       queueMicrotask(() => {
-        setShowMore(item.dueAt !== null);
+        setOpenChip(null);
         setNotes('');
         setDueAt(isoToLocalInput(item.dueAt));
+        setDueGuessed(item.dueAt !== null);
         setPriority(0);
         setParentId(NO_PARENT);
         setOpen(true);
@@ -242,12 +255,13 @@ export function QuickAddTask() {
     const parsed = parseTaskInput(raw, new Date());
 
     // AK5 (#687): bleibt kein Titel übrig, legt der Direkt-Pfad nichts mehr an — das
-    // Sheet bleibt offen, eine erkannte Fälligkeit wandert ins "Mehr"-Feld, Fokus
-    // zurück ins Titelfeld statt eine leere Aufgabe anzulegen.
+    // Sheet bleibt offen, eine erkannte Fälligkeit wandert auf den Wann-Chip als
+    // geraten (#711 AK2), Fokus zurück ins Titelfeld statt eine leere Aufgabe
+    // anzulegen.
     if (parsed.title === '') {
       if (parsed.dueAt && !dueAt) {
         setDueAt(isoToLocalInput(parsed.dueAt));
-        setShowMore(true);
+        setDueGuessed(true);
       }
       inputRef.current?.focus();
       return;
@@ -285,6 +299,15 @@ export function QuickAddTask() {
     await createTask(title, dueAt, extras, false);
   }
 
+  function toggleChip(key: ChipKey) {
+    setOpenChip((current) => (current === key ? null : key));
+  }
+
+  const priorityLabel = priority !== 0 ? PRIORITIES.find((p) => p.value === priority)!.label : null;
+  const parentLabel = parentId
+    ? (nestCandidates.find((candidate) => candidate.id === parentId)?.title ?? null)
+    : null;
+
   return (
     <>
       <Fab label={LABEL} onClick={openSheet} />
@@ -304,41 +327,97 @@ export function QuickAddTask() {
             placeholder="Todo Titel"
             aria-label="Titel der Aufgabe"
           />
-          <button
-            type="button"
-            className="quick-add__more"
-            aria-expanded={showMore}
-            aria-controls="quick-add-more"
-            onClick={() => setShowMore((current) => !current)}
-          >
-            Mehr
-            <span className="quick-add__more-icon" aria-hidden="true" />
-          </button>
-          {/* Gated on `open` as well, for the same reason the edit sheet gates its
-              parent select: a closed <dialog> keeps its children in the DOM, and
-              the <option> titles are real text nodes that would make every
-              top-level task match any page-wide text query twice. */}
-          {open && showMore && (
-            <div className="quick-add__fields" id="quick-add-more">
-              <textarea
-                className="quick-add__notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Notiz"
-                aria-label="Notiz der Aufgabe"
-              />
-              <label className="quick-add__field">
-                <span>Fälligkeit</span>
+          <div className="quick-add__chips">
+            <Chip
+              field="Fälligkeit"
+              emptyLabel="Wann?"
+              value={dueAt ? formatDueLabel(dueAt) : null}
+              guessed={dueGuessed}
+              open={openChip === 'wann'}
+              panelId="quick-add-panel-wann"
+              onOpen={() => toggleChip('wann')}
+              onDiscard={() => {
+                setDueAt('');
+                setDueGuessed(false);
+              }}
+            />
+            <Chip
+              field="Priorität"
+              emptyLabel="Priorität?"
+              value={priorityLabel}
+              open={openChip === 'prio'}
+              panelId="quick-add-panel-prio"
+              onOpen={() => toggleChip('prio')}
+            />
+            <Chip
+              field="Notiz"
+              emptyLabel="Notiz?"
+              value={notes.trim() || null}
+              open={openChip === 'notiz'}
+              panelId="quick-add-panel-notiz"
+              onOpen={() => toggleChip('notiz')}
+            />
+            <Chip
+              field="Teil von"
+              emptyLabel="Teil von?"
+              value={parentLabel}
+              disabled={nestCandidates.length === 0}
+              open={openChip === 'parent'}
+              panelId="quick-add-panel-parent"
+              onOpen={() => toggleChip('parent')}
+            />
+          </div>
+          {/* Reserves the tallest panel's height from the sheet's first paint on,
+              so opening any one of them never changes this box's own size — and
+              with it never moves the header/title above (issue #711 AK5, same
+              principle as the reserved-height fix in weather-forecast.css).
+              Gated on `open` for the same reason the edit sheet gates its parent
+              select: a closed <dialog> keeps its children in the DOM, and the
+              <option> titles are real text nodes that would make every top-level
+              task match any page-wide text query twice. */}
+          {open && (
+            <div className="quick-add__panel-slot" id={`quick-add-panel-${openChip ?? 'none'}`}>
+              {openChip === 'wann' && (
                 <input
                   type="datetime-local"
                   className="quick-add__due"
                   value={dueAt}
-                  onChange={(event) => setDueAt(event.target.value)}
+                  onChange={(event) => {
+                    setDueAt(event.target.value);
+                    setDueGuessed(false);
+                  }}
                   aria-label="Fälligkeit"
                 />
-              </label>
-              <label className="quick-add__field">
-                <span>Unteraufgabe von</span>
+              )}
+              {openChip === 'prio' && (
+                <fieldset className="quick-add__priority" aria-label="Priorität">
+                  {PRIORITIES.map((p) => (
+                    <label key={p.value} className="quick-add__priority-option">
+                      <input
+                        type="radio"
+                        name="quick-add-priority"
+                        checked={priority === p.value}
+                        // A tap's default action focuses the radio, stealing focus from
+                        // the title field mid-typing (#138). Suppressing it leaves focus
+                        // where it was; `onChange` still fires via the click that follows.
+                        onPointerDown={(event) => event.preventDefault()}
+                        onChange={() => setPriority(p.value)}
+                      />
+                      {p.label}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              {openChip === 'notiz' && (
+                <textarea
+                  className="quick-add__notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Notiz"
+                  aria-label="Notiz der Aufgabe"
+                />
+              )}
+              {openChip === 'parent' && (
                 <select
                   className="quick-add__parent"
                   value={parentId}
@@ -352,25 +431,7 @@ export function QuickAddTask() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <fieldset className="quick-add__priority">
-                <legend>Priorität</legend>
-                {PRIORITIES.map((p) => (
-                  <label key={p.value} className="quick-add__priority-option">
-                    <input
-                      type="radio"
-                      name="quick-add-priority"
-                      checked={priority === p.value}
-                      // A tap's default action focuses the radio, stealing focus from
-                      // the title field mid-typing (#138). Suppressing it leaves focus
-                      // where it was; `onChange` still fires via the click that follows.
-                      onPointerDown={(event) => event.preventDefault()}
-                      onChange={() => setPriority(p.value)}
-                    />
-                    {p.label}
-                  </label>
-                ))}
-              </fieldset>
+              )}
             </div>
           )}
         </form>
