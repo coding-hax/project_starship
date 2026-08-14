@@ -12,13 +12,12 @@ Issue (mit Akzeptanzkriterien)
                            └─► nächstes Issue
 ```
 
-**Ein offenes Issue ohne jedes Steuerlabel und nicht in der Queue #92 ist der
-untriagierte Eingang** — der Zustand ganz links im Diagramm, bevor du
-`research`/`plan`/`ready` gesetzt oder es in die Queue eingetragen hast. Der
-Runner baut es **nie**: die Auswahl-Kaskade (`scripts/runner/select.ts`)
-matcht ausschließlich Tickets mit einem Steuerlabel oder einem Queue-Eintrag,
-alles andere trifft keinen Zweig. Das ist Absicht, keine Lücke — `ready` ist
-bewusst dein Gate — außer für selbst angelegte Kinder-Tickets, die
+**Ein offenes Issue ohne jedes Steuerlabel ist der untriagierte Eingang** —
+der Zustand ganz links im Diagramm, bevor du `research`/`plan`/`ready`/`next`
+gesetzt hast. Der Runner baut es **nie**: die Auswahl-Kaskade
+(`scripts/runner/select.ts`) matcht ausschließlich Tickets mit einem
+Steuerlabel, alles andere trifft keinen Zweig. Das ist Absicht, keine Lücke —
+`ready` ist bewusst dein Gate — außer für selbst angelegte Kinder-Tickets, die
 schon mit `plan` entstehen und dieses Gate bewusst umgehen (siehe
 `docs/workflow/labels.md`).
 
@@ -110,15 +109,15 @@ ADR-0005, PR #46). Kill-Switch für beide: `hands-off`.
 
 **`hands-off` gilt für jeden Auswahlzweig (#227).** Der Schalter hält nicht nur
 Plan- und Recherche-Läufe an, sondern nimmt das Ticket aus der Auswahl heraus,
-bevor irgendein Zweig sie liest: laufendes `in-progress`, Queue, `plan`,
+bevor irgendein Zweig sie liest: laufendes `in-progress`, `next`, `plan`,
 `research`, `ready` — überall.
 Damit ist `hands-off` die verlässliche Bremse für ein Ticket, das gerade lokal
-gebaut wird. Bis zu diesem Fix prüften ihn nur Queue, `plan` und
+gebaut wird. Bis zu diesem Fix prüften ihn nur die Queue, `plan` und
 `research`; ausgerechnet der Zweig fuer laufende Tickets und `ready`
 ignorierten ihn.
 
 Reihenfolge, wenn mehrere Labels gleichzeitig offen stehen: ein laufendes
-`in-progress`-Bau-Ticket geht vor, danach `plan`, danach `research`,
-erst danach `ready`. Ein Ticket mit `research` **und** `ready` gleichzeitig
-gilt ebenso als inkonsistent wie bei `plan` — es wird über den
+`in-progress`-Bau-Ticket geht vor, danach `next`, danach `plan`, danach
+`research`, erst danach `ready`. Ein Ticket mit `research` **und** `ready`
+gleichzeitig gilt ebenso als inkonsistent wie bei `plan` — es wird über den
 Recherche-Zweig gefangen, nicht gebaut.

@@ -27,9 +27,8 @@ resume_allowed()                { ts_run resume-allowed "$1" >/dev/null; }
 blocker_sig()                   { ts_run blocker-sig "$1"; }
 opus_build_cap_reached()        { ts_run opus-cap-reached "$1" "${2:-}" >/dev/null; }
 opus_build_cap_reserve()        { ts_run opus-cap-reserve "$1" >/dev/null; }
-queue_next()                    { ts_run queue-next "$1" "${2:-}"; }
+queue_next()                    { ts_run queue-next "$1"; }
 queue_pending()                 { ts_run queue-pending "$1"; }
-queue_order_flat()              { ts_run queue-order-flat "${1:-}"; }
 pr_squash_merge()               { ts_run pr-squash-merge "$1" >/dev/null; }
 reopen_falsely_closed_issues()  { ts_run reopen-falsely-closed-issues >/dev/null; }
 

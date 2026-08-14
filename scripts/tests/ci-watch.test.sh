@@ -205,7 +205,6 @@ export MAX_ROUNDS=1
 # Flotten-Aggregationspfad und die hier geprueften Texte verschwinden (#404).
 export SLOT_ID=1 SLOT_COUNT=1 LEAD_SLOT=1
 export STATE_DIR="$REPO_DIR/.runner"
-export QUEUE_ISSUE=0
 # shellcheck source=/dev/null
 source "$RUNNER"
 

@@ -185,7 +185,6 @@ git -C "$REPO_DIR" add README.md .gitignore
 git -C "$REPO_DIR" commit -q -m init
 git -C "$REPO_DIR" push -q -u origin main
 
-export QUEUE_ISSUE=0
 export STATUS_ISSUE=555
 export MAX_ROUNDS=1
 # shellcheck source=/dev/null
