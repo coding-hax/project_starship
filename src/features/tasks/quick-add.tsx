@@ -12,6 +12,7 @@ import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
+import { DuePicker } from './due-picker';
 import { parseTaskInput } from './parse-task-input';
 import { groupTasks, useTasks } from './use-tasks';
 
@@ -378,15 +379,12 @@ export function QuickAddTask() {
           {open && (
             <div className="quick-add__panel-slot" id={`quick-add-panel-${openChip ?? 'none'}`}>
               {openChip === 'wann' && (
-                <input
-                  type="datetime-local"
-                  className="quick-add__due"
+                <DuePicker
                   value={dueAt}
-                  onChange={(event) => {
-                    setDueAt(event.target.value);
+                  onChange={(next) => {
+                    setDueAt(next);
                     setDueGuessed(false);
                   }}
-                  aria-label="Fälligkeit"
                 />
               )}
               {openChip === 'prio' && (

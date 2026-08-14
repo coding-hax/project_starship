@@ -1,0 +1,182 @@
+/**
+ * Wann-Chip-Panel (issue #722): Schnellwahl, Monatskalender, getrennte
+ * Uhrzeit — ersetzt das native `datetime-local`-Feld. Anders als die drei
+ * übrigen Chip-Panels darf dieses über die reservierte Slot-Höhe hinaus
+ * wachsen (quick-add.css, Planer-Entscheidung); nur Opacity/Farbe animieren,
+ * nie Layout (docs/design/form-und-motion.md).
+ */
+
+.due-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.due-picker__quick-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.due-picker__quick-button {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.due-picker__quick-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.due-picker__calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.due-picker__month-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.due-picker__month-title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  text-align: center;
+}
+
+.due-picker__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.due-picker__nav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.due-picker__weekday-header {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+}
+
+.due-picker__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.due-picker__day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--touch-target);
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.due-picker__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.due-picker__day[data-today] {
+  border-color: var(--accent);
+}
+
+.due-picker__day[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.due-picker__day[data-outside-month] {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.due-picker__time-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.due-picker__time {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
+}
+
+.due-picker__time:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.due-picker__no-date {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}
+
+.due-picker__no-date:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.due-picker__no-date:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
