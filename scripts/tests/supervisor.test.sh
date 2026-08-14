@@ -58,10 +58,35 @@ new_scenario() {
   echo a > "$scn/repo/a.txt"
   git -C "$scn/repo" add a.txt >/dev/null 2>&1
   git -C "$scn/repo" commit -qm init >/dev/null 2>&1
+  # Ohne origin kann die Aufsicht kein --repo bilden -- und ohne --repo
+  # scheitert jeder gh-Aufruf unter launchd (cwd ist dort /).
+  git -C "$scn/repo" remote add origin git@github.com:test/repo.git >/dev/null 2>&1
 
+  # Der Stub muss den Fehler vom 14.08. reproduzierbar machen, sonst prüft T15
+  # nichts. Dafür braucht es beides:
+  #
+  #   1. Die gesuchten Labels ZUERST -- dann steigt `grep -q` sofort aus.
+  #   2. Danach mehr Nachlauf, als in den Pipe-Puffer passt (64 KB unter
+  #      macOS). Erst dann schreibt der Stub noch, wenn grep schon weg ist,
+  #      bekommt SIGPIPE und beendet die Pipeline unter `set -o pipefail` rot.
+  #
+  # Eine frühere Fassung schrieb 400 Zeilen Rauschen VOR die Labels: ~12 KB,
+  # alles im Puffer, Stub längst fertig, kein SIGPIPE -- der Test war auch mit
+  # dem Fehler grün und damit wertlos.
+  # Die Füllmenge steht in $scn/lc-filler und ist normalerweise 0 -- der große
+  # Nachlauf kostet je Lauf spürbar Zeit und wird nur in T15 gebraucht.
+  printf '0\n' > "$scn/lc-filler"
   cat > "$scn/bin/launchctl" <<STUB
 #!/usr/bin/env bash
-[ "\${1:-}" = "list" ] && cat "$scn/loaded"
+if [ "\${1:-}" = "list" ]; then
+  cat "$scn/loaded"
+  n=\$(cat "$scn/lc-filler" 2>/dev/null || echo 0)
+  i=0
+  while [ "\$i" -lt "\$n" ]; do
+    printf -- '-\t0\tcom.apple.fueller.mit.langem.namen.%s\n' "\$i"
+    i=\$(( i + 1 ))
+  done
+fi
 exit 0
 STUB
 
@@ -99,6 +124,19 @@ STUB
   cat > "$scn/bin/gh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$scn/gh.log"
+STUB
+
+  # lsof -a -p PID -d cwd -Fn: das Arbeitsverzeichnis eines Agenten. Antwortet
+  # aus \$scn/cwd-<pid>; ohne Datei gilt der Prozess als nicht hier laufend.
+  cat > "$scn/bin/lsof" <<STUB
+#!/usr/bin/env bash
+pid=""
+while [ "\$#" -gt 0 ]; do
+  [ "\$1" = "-p" ] && { pid="\$2"; shift; }
+  shift
+done
+[ -f "$scn/cwd-\$pid" ] && printf 'n%s\n' "\$(cat "$scn/cwd-\$pid")"
+exit 0
 STUB
 
   cat > "$scn/bin/pnpm" <<'STUB'
@@ -146,7 +184,27 @@ run_sup() {
   FLEET_SH="$scn/fleet.sh" \
   PLIST_DIR="$scn/state/launchd" \
   STATUS_ISSUE=1 \
+  STALE_SLOT_MIN="${STALE_SLOT_MIN:-30}" \
+  LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}" \
     bash "$SUP" "$@" 2>&1
+}
+
+# Einen Slot-Zustand mit gegebenem Alter schreiben -- genau das Format, das
+# fleet.ts erzeugt (nur die Felder, die die Aufsicht liest).
+set_slot_age() {   # $1 = Szenario, $2 = Slot, $3 = Alter in Minuten
+  local ms
+  mkdir -p "$1/state/slots/$2"
+  ms=$(( ( $(date +%s) - $3 * 60 ) * 1000 ))
+  printf '{"slotId":"%s","emoji":"x","title":"t","text":"t","updatedAtMs":%s}\n' \
+    "$2" "$ms" > "$1/state/slots/$2/state.json"
+}
+
+# Ein Szenario, in dem der Kern benutzbar ist -- sonst überlagert der
+# Kern-Alarm alles andere.
+with_working_core() {
+  mkdir -p "$1/repo/node_modules/.bin"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$1/repo/node_modules/.bin/tsx"
+  chmod +x "$1/repo/node_modules/.bin/tsx"
 }
 
 # --- T1: ohne Reise-Modus wird nie gestartet ---------------------------------
@@ -303,6 +361,177 @@ if grep -q "issue comment 1" "$scn/gh.log"; then
   ok "T8: ein Fund wird ans Status-Issue gemeldet"
 else
   red "T8: Fund wurde nicht gemeldet -- gh.log: $(cat "$scn/gh.log")"
+fi
+# Unter launchd ist cwd `/`. Ohne --repo findet gh kein Repository und der
+# Bericht geht stumm verloren -- genau so ging der erste echte verloren.
+if grep -q -- "--repo test/repo" "$scn/gh.log"; then
+  ok "T8: der Bericht trägt sein --repo selbst"
+else
+  red "T8: kein --repo im gh-Aufruf -- unter launchd verliert das jeden Bericht"
+fi
+
+# --- T8b: Repository aus der https-Form ableiten -----------------------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+git -C "$scn/repo" remote set-url origin https://github.com/test/repo.git >/dev/null 2>&1
+printf '999999\n' > "$scn/state/lock"
+run_sup "$scn" >/dev/null
+if grep -q -- "--repo test/repo" "$scn/gh.log"; then
+  ok "T8b: auch die https-Fernadresse ergibt owner/repo"
+else
+  red "T8b: https-Form nicht abgeleitet -- gh.log: $(cat "$scn/gh.log")"
+fi
+
+# --- T9: die Takt-Zeile steht in JEDEM Lauf ----------------------------------
+# Ohne sie sieht ein gesunder Lauf aus wie eine tote Aufsicht. Sie muss auch
+# dann im Log stehen, wenn nichts zu heilen war und nichts ans Issue geht.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 0
+set_slot_age "$scn" 2 0
+run_sup "$scn" >/dev/null
+if grep -q "TAKT" "$scn/state/supervisor.log" 2>/dev/null; then
+  ok "T9: stiller Lauf schreibt trotzdem eine Takt-Zeile"
+else
+  red "T9: keine Takt-Zeile im Log"
+fi
+if grep -qE "slots=2/2 agenten=0 alter=\[1:0m,2:0m\] reise=nein" "$scn/state/supervisor.log"; then
+  ok "T9: die Takt-Zeile trägt Slots, Agenten, Puls und Reise-Modus"
+else
+  red "T9: Takt-Zeile unvollständig: $(grep TAKT "$scn/state/supervisor.log")"
+fi
+if [ -s "$scn/gh.log" ]; then
+  red "T9: die Takt-Zeile hat einen Kommentar ausgelöst — das wäre alle 10 Min. einer"
+else
+  ok "T9: die Takt-Zeile geht nur ins Log, nicht ans Issue"
+fi
+
+# --- T10: stehengebliebener Slot ohne Agent wird neu gestartet ---------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+touch "$scn/state/trip-mode"
+set_slot_age "$scn" 1 45      # steht
+set_slot_age "$scn" 2 0       # tickt
+run_sup "$scn" >/dev/null
+if grep -q "^stop 1$" "$scn/fleet.log" && grep -q "^start 1$" "$scn/fleet.log"; then
+  ok "T10: stehengebliebener Slot 1 wurde neu gestartet"
+else
+  red "T10: erwartet 'stop 1' und 'start 1', fleet.log: $(cat "$scn/fleet.log")"
+fi
+if grep -qE "^(stop|start) 2$" "$scn/fleet.log"; then
+  red "T10: der tickende Slot 2 wurde mit angefasst"
+else
+  ok "T10: der tickende Slot 2 blieb unangetastet"
+fi
+
+# --- T11: still, aber ein Agent läuft dort -> kein Eingriff ------------------
+# Ein Bau-Lauf darf 45 Minuten dauern und schreibt in dieser Zeit nichts. Wer
+# hier neu startet, schießt laufende Arbeit ab.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+touch "$scn/state/trip-mode"
+set_slot_age "$scn" 1 45
+set_slot_age "$scn" 2 0
+printf '5555\n' > "$scn/pids"
+printf '10:00 500\n' > "$scn/proc-5555"     # 10 Min. alt, ganz normal
+printf '%s\n' "$scn/repo" > "$scn/cwd-5555" # läuft im Repo dieses Slots
+out=$(run_sup "$scn")
+if grep -qE "^(stop|start) 1$" "$scn/fleet.log"; then
+  red "T11: Slot mit laufendem Agenten wurde neu gestartet — Bau-Lauf abgeschossen"
+else
+  ok "T11: Slot mit laufendem Agenten bleibt unangetastet"
+fi
+if printf '%s' "$out" | grep -q "das ist ein Bau-Lauf"; then
+  ok "T11: der Fall wird als Bau-Lauf erkannt, nicht als Stillstand"
+else
+  red "T11: kein Hinweis auf den Bau-Lauf -- Ausgabe: $out"
+fi
+
+# --- T12: ohne Reise-Modus wird gemeldet, nicht neu gestartet ----------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 45
+set_slot_age "$scn" 2 0
+out=$(run_sup "$scn")
+if grep -qE "^(stop|start) 1$" "$scn/fleet.log"; then
+  red "T12: ohne Reise-Modus wurde ein Slot neu gestartet"
+else
+  ok "T12: ohne Reise-Modus wird kein Slot angefasst"
+fi
+if printf '%s' "$out" | grep -q "ALARM"; then
+  ok "T12: der Stillstand wird stattdessen als Alarm gemeldet"
+else
+  red "T12: Stillstand ohne Reise-Modus erzeugte keinen Alarm"
+fi
+
+# --- T13: --status fasst nichts an ------------------------------------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 45     # stünde sonst zum Neustart an
+touch "$scn/state/trip-mode"
+out=$(run_sup "$scn" --status)
+if printf '%s' "$out" | grep -q "Lagebild"; then
+  ok "T13: --status gibt ein Lagebild aus"
+else
+  red "T13: kein Lagebild -- Ausgabe: $out"
+fi
+if [ -s "$scn/fleet.log" ] || [ -s "$scn/gh.log" ]; then
+  red "T13: --status hat eingegriffen (fleet: $(cat "$scn/fleet.log"), gh: $(cat "$scn/gh.log"))"
+else
+  ok "T13: --status verändert nichts und meldet nichts"
+fi
+
+# --- T14: das Log wächst nicht unbegrenzt ------------------------------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 0
+set_slot_age "$scn" 2 0
+mkdir -p "$scn/state"
+i=0; while [ "$i" -lt 60 ]; do echo "alte Zeile $i" >> "$scn/state/supervisor.log"; i=$(( i + 1 )); done
+LOG_KEEP_LINES=20 run_sup "$scn" >/dev/null
+lines=$(wc -l < "$scn/state/supervisor.log" | tr -d ' ')
+if [ "$lines" -le 20 ]; then
+  ok "T14: Log auf $lines Zeilen gekürzt (Grenze 20)"
+else
+  red "T14: Log hat $lines Zeilen, Grenze war 20"
+fi
+if tail -n 1 "$scn/state/supervisor.log" | grep -q "TAKT"; then
+  ok "T14: die jüngste Takt-Zeile hat die Kürzung überlebt"
+else
+  red "T14: die Kürzung hat die jüngste Zeile weggeschnitten"
+fi
+
+# --- T15: geladene Slots werden nicht grundlos neu gestartet -----------------
+# Regression auf den Fehler vom 14.08.: `launchctl list | grep -q "$label"`
+# stirbt unter `set -o pipefail` an SIGPIPE, sobald die Ausgabe lang genug ist.
+# Die Aufsicht hielt daraufhin JEDEN Slot für nicht geladen und "startete" alle
+# drei bei jedem Lauf. Mit 400 Zeilen Rauschen im launchctl-Stub schlägt der
+# Test ohne die Reparatur zuverlässig fehl.
+#
+# Der launchctl-Stub macht den Fehlschlag deterministisch (Labels zuerst, dann
+# Puffer-Überlauf), deshalb genügen zwei Läufe statt eines Rennens über zehn.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+touch "$scn/state/trip-mode"
+set_slot_age "$scn" 1 0
+set_slot_age "$scn" 2 0
+printf '3000\n' > "$scn/lc-filler"   # ~90 KB Nachlauf: mehr als der Pipe-Puffer
+run_sup "$scn" >/dev/null
+run_sup "$scn" >/dev/null
+if [ -s "$scn/fleet.log" ]; then
+  red "T15: geladene Slots wurden angefasst — fleet.log: $(sort -u "$scn/fleet.log" | tr '\n' ' ')"
+else
+  ok "T15: geladene Slots werden nicht grundlos neu gestartet"
+fi
+if grep -q "slots=2/2" "$scn/state/supervisor.log"; then
+  ok "T15: die Takt-Zeile zählt beide Slots als geladen"
+else
+  red "T15: Takt-Zeile zählt falsch: $(grep -o 'slots=[0-9]*/[0-9]*' "$scn/state/supervisor.log" | sort -u | tr '\n' ' ')"
+fi
+if grep -qE "slots=[01]/2" "$scn/state/supervisor.log"; then
+  red "T15: mindestens ein Lauf hat Slots verloren — das SIGPIPE-Rennen lebt noch"
+else
+  ok "T15: kein Lauf hat einen geladenen Slot übersehen"
 fi
 
 [ "$FAIL" -eq 0 ] && printf '\033[32mAlle Prüfungen grün.\033[0m\n'

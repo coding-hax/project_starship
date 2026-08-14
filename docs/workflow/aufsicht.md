@@ -22,8 +22,11 @@ Deshalb muss der letzte Wächter woanders stehen.
 ## Die Aufsicht auf dem Mac
 
 ```bash
-scripts/runner-supervisor.sh [--dry-run] [--quiet]
+scripts/runner-supervisor.sh [--dry-run] [--quiet] [--status]
 ```
+
+`--status` gibt ein Lagebild aus und fasst nichts an — Reise-Modus, Zustand des
+Runner-Kerns, je Slot launchd/Puls/Agenten, dazu die letzten Log-Zeilen.
 
 Ihr Repertoire ist eine **feste, endliche Liste** bekannter Störungen mit je
 einem bekannten Handgriff — jede davon hat die Flotte schon einmal stillgelegt:
@@ -35,14 +38,44 @@ einem bekannten Handgriff — jede davon hat die Flotte schon einmal stillgelegt
 5. **Tote `node_modules`-Links** (#606) → `pnpm install --dir <repo>`
 6. **Gestagte Änderungen** → aus dem Index nehmen, Arbeitsbaum nicht anfassen
 7. **Verwaiste Worktree-Einträge** → `git worktree prune`
-8. **Runner-Kern unbenutzbar** → nach dem dritten Lauf die Flotte **anhalten**
-9. **Platte voll, Postgres tot, Mac schläft am Netzteil** → melden
+8. **Slot steht** (kein Zustand seit 30 Min. **und** kein Agent) → neu starten
+9. **Runner-Kern unbenutzbar** → nach dem dritten Lauf die Flotte **anhalten**
+10. **Platte voll, Postgres tot, Mac schläft am Netzteil** → melden
 
 Sie ruft **kein `claude`**, schreibt keinen Code und fasst nichts unter `src/`
 an. Genau deshalb darf sie das, was der Flotte verwehrt ist: beim Login
 automatisch starten.
 
-### Warum Punkt 8 anhält statt zu reparieren
+### Sehen, dass sie arbeitet
+
+Jeder Lauf schreibt eine Zeile nach `~/.starship-runner/supervisor.log` —
+**auch wenn nichts zu tun war**:
+
+```
+2026-08-14 15:18:28  TAKT slots=3/3 agenten=2 alter=[1:0m,2:0m,3:11m] reise=ja geheilt=0 alarme=0
+```
+
+Ohne sie sieht ein gesunder Lauf exakt aus wie eine tote Aufsicht: kein
+Eintrag, keine Meldung. Genau dieser blinde Fleck ist der Grund, warum es den
+Totmann-Schalter gibt — die Aufsicht darf ihn nicht selbst wieder aufmachen.
+`tail -f ~/.starship-runner/supervisor.log` ist der Blick über die Schulter,
+`--status` das Lagebild auf Zuruf. Das Log wird bei 5000 Zeilen gekürzt.
+
+### Warum Punkt 8 zwei Bedingungen braucht
+
+Ein Bau-Lauf darf 45 Minuten dauern und schreibt in dieser Zeit keinen
+Slot-Zustand. „Lange still" allein heißt also gar nichts — wer darauf neu
+startet, schießt laufende Arbeit ab. Erst **still UND kein Agent in diesem
+Repo** heißt stehengeblieben. Der Neustart ist dann verlustfrei: Der nächste
+Lauf liest Branch, `git log` und Fortschrittskommentar und macht dort weiter.
+
+Was hier ausdrücklich **nicht** passiert: einem offenen Ticket sein
+`in-progress` oder seinen Claim wegnehmen. `claimSweep()` in
+`scripts/runner/claim.ts` lässt das bewusst stehen — „das gäbe es der Flotte
+weg, obwohl es niemand gelöst hat". Die Aufsicht widerspricht dieser
+Entscheidung nicht, sie meldet nur.
+
+### Warum Punkt 9 anhält statt zu reparieren
 
 Ein Lauf, der `scripts/runner/` kaputt gemacht hat, ist der einzige Schaden,
 den die Aufsicht nicht beheben kann — sie müsste dafür Code schreiben, und
