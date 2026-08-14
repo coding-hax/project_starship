@@ -42,7 +42,7 @@ jobs:
       - run: bash scripts/tests/round-snap.test.sh
       - run: bash scripts/tests/round-plan-guard.test.sh
       - run: bash scripts/tests/session-recover.test.sh
-      - run: bash scripts/tests/queue-priority.test.sh
+      - run: bash scripts/tests/next-priority.test.sh
       - run: bash scripts/tests/status-queue.test.sh
       - run: bash scripts/tests/resume-cap.test.sh
       - run: bash scripts/tests/limit-until.test.sh
