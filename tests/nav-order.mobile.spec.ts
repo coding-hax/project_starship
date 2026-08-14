@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { NAV_ITEMS } from '../src/ui/nav-items';
-import { registerPasskey, resetAppData } from './helpers';
+import { registerPasskey, resetAppData, selectView } from './helpers';
 
 declare global {
   interface Window {
@@ -30,7 +30,11 @@ async function trackScrollTo(page: Page) {
   await page.addInitScript(() => {
     window.__scrollToCalls = [];
     const original = Element.prototype.scrollTo;
-    Element.prototype.scrollTo = function (this: Element, arg?: ScrollToOptions | number, arg2?: number) {
+    Element.prototype.scrollTo = function (
+      this: Element,
+      arg?: ScrollToOptions | number,
+      arg2?: number,
+    ) {
       if (typeof arg === 'object' && arg !== null) window.__scrollToCalls.push(arg);
       return original.call(this, arg as number, arg2 as number);
     };
@@ -84,16 +88,24 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
   }) => {
     const list = page.locator('.nav__list');
     const clientWidth = await list.evaluate((el) => el.clientWidth);
-    const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
+    const itemWidth = await list
+      .locator('.nav__item')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width);
     // Five slots stay the visible amount regardless of how many entries exist — a
     // sixth entry scrolls past them instead of shrinking all six to fit.
     expect(itemWidth * 5).toBeCloseTo(clientWidth, 0);
     expect(await list.evaluate((el) => el.scrollWidth)).toBeGreaterThan(clientWidth + 1);
   });
 
-  test('jeder Eintrag rastet bündig ein statt am Rand abgeschnitten zu bleiben', async ({ page }) => {
+  test('jeder Eintrag rastet bündig ein statt am Rand abgeschnitten zu bleiben', async ({
+    page,
+  }) => {
     const list = page.locator('.nav__list');
-    const itemWidth = await list.locator('.nav__item').first().evaluate((el) => el.getBoundingClientRect().width);
+    const itemWidth = await list
+      .locator('.nav__item')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width);
 
     // Scroll to a deliberately "half a tab" position...
     await list.evaluate((el, left) => el.scrollTo({ left, behavior: 'auto' }), itemWidth * 1.5);
@@ -107,7 +119,9 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
       .toBeCloseTo(0, 0);
   });
 
-  test('.nav__list und .nav__item tragen die Scroll-Snap-Deklarationen fürs Karussell', async ({ page }) => {
+  test('.nav__list und .nav__item tragen die Scroll-Snap-Deklarationen fürs Karussell', async ({
+    page,
+  }) => {
     const list = page.locator('.nav__list');
     const { overflowX, scrollSnapType } = await list.evaluate((el) => {
       const style = getComputedStyle(el);
@@ -125,7 +139,9 @@ test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () 
 });
 
 test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () => {
-  test('AC1: den letzten Eintrag antippen füllt fünf Plätze, kein leerer Rand rechts', async ({ page }) => {
+  test('AC1: den letzten Eintrag antippen füllt fünf Plätze, kein leerer Rand rechts', async ({
+    page,
+  }) => {
     await registerPasskey(page);
     const list = page.locator('.nav__list');
 
@@ -188,7 +204,9 @@ test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () =>
 });
 
 test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229 AC4)', () => {
-  test('ein überlaufendes Karussell holt den aktiven Eintrag beim Navigieren selbst heran', async ({ page }) => {
+  test('ein überlaufendes Karussell holt den aktiven Eintrag beim Navigieren selbst heran', async ({
+    page,
+  }) => {
     await trackScrollTo(page);
     await registerPasskey(page);
 
@@ -198,7 +216,10 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229
     // carousel elsewhere.
     await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
 
-    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Aufgaben' })
+      .click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 
     const calls = await page.evaluate(() => window.__scrollToCalls);
@@ -211,7 +232,9 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229
     expect(activeBox.x + activeBox.width).toBeLessThanOrEqual(listBox.x + listBox.width + 1);
   });
 
-  test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({ page }) => {
+  test('ein Karussell ohne Überlauf scrollt nicht von selbst (nichts zu tun, nichts passiert)', async ({
+    page,
+  }) => {
     await trackScrollTo(page);
     // Back to the pre-#180 no-overflow baseline -- before the navigation below, so
     // Nav never sees an overflowing list, not even for the one mount-time
@@ -220,7 +243,10 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229
     await forceNoOverflow(page);
     await registerPasskey(page);
 
-    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Journal' })
+      .click();
     await expect(page).toHaveURL(/\/journal$/);
 
     const calls = await page.evaluate(() => window.__scrollToCalls);
@@ -231,11 +257,16 @@ test.describe('aktiver Eintrag beim Laden (issue #205 AC2, Regression issue #229
 test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-  test('ein überlaufendes Karussell springt ohne Scroll-Animation an die aktive Position', async ({ page }) => {
+  test('ein überlaufendes Karussell springt ohne Scroll-Animation an die aktive Position', async ({
+    page,
+  }) => {
     await trackScrollTo(page);
     await registerPasskey(page);
 
-    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Aufgaben' })
+      .click();
     await expect(page).toHaveURL(/\/aufgaben$/);
 
     const calls = await page.evaluate(() => window.__scrollToCalls);
@@ -243,7 +274,9 @@ test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)',
     expect(calls.at(-1)?.behavior).toBe('auto');
   });
 
-  test('Touch-Ziele bleiben ≥44×44px, die Home-Indicator-Aussparung bleibt erhalten', async ({ page }) => {
+  test('Touch-Ziele bleiben ≥44×44px, die Home-Indicator-Aussparung bleibt erhalten', async ({
+    page,
+  }) => {
     const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
     for (const item of NAV_ITEMS) {
       const box = await nav.getByRole('link', { name: item.label }).boundingBox();
@@ -350,7 +383,9 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     await expect(page.locator('.page-transition')).toHaveClass(/page-transition--enter/);
   }
 
-  test('AC1: elementFromPoint auf jedem sichtbaren Tab trifft die Nav, nie eine Tageskachel', async ({ page }) => {
+  test('AC1: elementFromPoint auf jedem sichtbaren Tab trifft die Nav, nie eine Tageskachel', async ({
+    page,
+  }) => {
     await seedOverflowingHabitList(page);
     await navigateToRoutinenWithEnterClass(page);
 
@@ -362,7 +397,9 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     // means every entry whose box actually falls inside the list's visible width.
     const listBox = (await page.locator('.nav__list').boundingBox())!;
     for (const item of NAV_ITEMS) {
-      const link = page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: item.label });
+      const link = page
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: item.label });
       const box = (await link.boundingBox())!;
       const centerX = box.x + box.width / 2;
       if (centerX < listBox.x || centerX > listBox.x + listBox.width) continue;
@@ -383,19 +420,28 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
 
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
-    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aufgaben' }).click();
+    await page
+      .getByRole('navigation', { name: 'Hauptnavigation' })
+      .getByRole('link', { name: 'Aufgaben' })
+      .click();
     await expect(page).toHaveURL(/\/aufgaben$/);
   });
 
-  test('AC3: FAB und Toast bleiben über der Nav (--z-fab / --z-toast, tokens.css)', async ({ page }) => {
+  test('AC3: FAB und Toast bleiben über der Nav (--z-fab / --z-toast, tokens.css)', async ({
+    page,
+  }) => {
     const title = 'Wird für den Stacking-Test gelöscht';
     await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
     await page.evaluate(
       (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
       title,
     );
 
-    const item = page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem').filter({ hasText: title });
+    const item = page
+      .getByRole('list', { name: 'Aufgaben' })
+      .getByRole('listitem')
+      .filter({ hasText: title });
 
     // FAB check first, before any toast — toast.css documents that the toast is
     // allowed to cover the FAB while it's showing ("acceptable, because it is gone
@@ -415,9 +461,25 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     const startX = box.x + box.width - 20;
     // Same synthetic swipe-to-delete gesture as tasks.spec.ts — far enough left to
     // clear the delete threshold and surface the undo toast.
-    await item.dispatchEvent('pointerdown', { pointerId: 1, clientX: startX, clientY, button: 0, bubbles: true });
-    await item.dispatchEvent('pointermove', { pointerId: 1, clientX: startX - 120, clientY, bubbles: true });
-    await item.dispatchEvent('pointerup', { pointerId: 1, clientX: startX - 120, clientY, bubbles: true });
+    await item.dispatchEvent('pointerdown', {
+      pointerId: 1,
+      clientX: startX,
+      clientY,
+      button: 0,
+      bubbles: true,
+    });
+    await item.dispatchEvent('pointermove', {
+      pointerId: 1,
+      clientX: startX - 120,
+      clientY,
+      bubbles: true,
+    });
+    await item.dispatchEvent('pointerup', {
+      pointerId: 1,
+      clientX: startX - 120,
+      clientY,
+      bubbles: true,
+    });
 
     const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });
     await expect(toast).toBeVisible();

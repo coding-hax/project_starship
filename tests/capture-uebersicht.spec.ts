@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  selectView,
+  withDb,
+} from './helpers';
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
@@ -107,6 +114,7 @@ test('AC4: Freitext ohne Datum legt die Aufgabe ohne Fälligkeit sofort an, kein
   await submitUebersichtCapture(page, 'Wäsche waschen');
 
   await page.waitForURL('**/aufgaben');
+  await selectView(page, 'Alle');
   await expect(confirmDialog(page)).toBeHidden();
   await expect(taskItems(page).filter({ hasText: 'Wäsche waschen' })).toBeVisible();
 });

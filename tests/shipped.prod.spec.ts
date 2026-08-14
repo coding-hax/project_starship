@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetDatabase, withDb } from './helpers';
+import { registerPasskey, resetDatabase, selectView, withDb } from './helpers';
 
 /**
  * Fund F23 (#497): every other prod-build spec runs against a build with
@@ -32,6 +32,9 @@ test('Ausgeliefertes Bündel: Anmeldung mit Passkey → offline Hülle nach Relo
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  // The reload above resets the (unpersisted, issue #705) view back to its
+  // "Woche" default — the undated task seeded below only shows in "Alle".
+  await selectView(page, 'Alle');
 
   await context.setOffline(true);
 
@@ -44,6 +47,7 @@ test('Ausgeliefertes Bündel: Anmeldung mit Passkey → offline Hülle nach Relo
   // Offline-Hülle nach Reload (AK2, Teil 2): App-Shell aus dem SW-Precache, die
   // Aufgabe aus IndexedDB — beides ohne Netz.
   await page.reload();
+  await selectView(page, 'Alle');
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 1 })).toBeVisible();
   await expect(page.getByText(title)).toBeVisible();
 
@@ -53,6 +57,10 @@ test('Ausgeliefertes Bündel: Anmeldung mit Passkey → offline Hülle nach Relo
   await page.reload();
 
   await expect
-    .poll(() => withDb((client) => client.query('SELECT title FROM tasks WHERE title = $1', [title])).then((r) => r.rows.length))
+    .poll(() =>
+      withDb((client) => client.query('SELECT title FROM tasks WHERE title = $1', [title])).then(
+        (r) => r.rows.length,
+      ),
+    )
     .toBe(1);
 });

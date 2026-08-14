@@ -3,6 +3,7 @@ import {
   FIXED_NOW,
   registerPasskey,
   resetAppData,
+  selectView,
   settleJournalHabitBoot,
   skewClock,
   withDb,
@@ -37,6 +38,9 @@ test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Krei
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+  // The reload above resets the (unpersisted, issue #705) view back to its
+  // "Woche" default — the undated task this test seeds below only shows in "Alle".
+  await selectView(page, 'Alle');
 
   // 2. Offline.
   await context.setOffline(true);
@@ -53,6 +57,7 @@ test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Krei
   // Stärkung: die App-Shell kommt offline weiter — aus dem Precache des Service
   // Workers, nicht vom Netz — und der Task bleibt sichtbar (aus IndexedDB).
   await page.reload();
+  await selectView(page, 'Alle');
   await expect(page.getByText(title)).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
@@ -106,7 +111,9 @@ test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Wo
   // gar nicht, er muss nur die Seite selbst (samt JS) bedienen können.
   await page.goto('/journal');
 
-  await page.evaluate(() => localStorage.setItem('starship:modules-off', JSON.stringify(['journal'])));
+  await page.evaluate(() =>
+    localStorage.setItem('starship:modules-off', JSON.stringify(['journal'])),
+  );
 
   await context.setOffline(true);
 
@@ -183,7 +190,8 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   // demselben Grund wie journalSetup oben.
   const entryText = 'Offline im Tunnel geschrieben';
   await page.evaluate(
-    ({ iso, text }) => window.__starship.appendJournalEntry(new Date(iso).toLocaleDateString('en-CA'), { text }),
+    ({ iso, text }) =>
+      window.__starship.appendJournalEntry(new Date(iso).toLocaleDateString('en-CA'), { text }),
     { iso: FIXED_NOW, text: entryText },
   );
   // Rhythmuswechsel (habits) + Eintrag (journal_entries) + Auto-Log (habit_logs).
