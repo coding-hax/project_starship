@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
 
 export interface SheetHeaderProps {
   /** Label of the action button on the right (e.g. "Anlegen", "Sichern", "Eintragen"). */
@@ -31,6 +31,13 @@ export interface SheetProps {
    * question instead of hosting a form (e.g. `RecurrenceScopeSheet`).
    */
   header?: SheetHeaderProps;
+  /**
+   * Overrides `--accent` (and everything that reads from it — chips, the header
+   * action button, focus rings) on `.sheet__content` for this one sheet, e.g. a
+   * capture sheet whose accent follows the recognized art (issue #715 AK2). Left
+   * out entirely, `.sheet__content` just inherits the page's own `--accent`.
+   */
+  accent?: string;
   children: ReactNode;
 }
 
@@ -48,7 +55,7 @@ export interface SheetProps {
  * scoping test locators to a CSS class instead of relying on this component to
  * hide the trigger for everyone.
  */
-export function Sheet({ open, onClose, label, initialFocusRef, header, children }: SheetProps) {
+export function Sheet({ open, onClose, label, initialFocusRef, header, accent, children }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   // Captured right before `showModal()` steals focus, so it survives the whole
   // time the sheet is open and is still there to restore once it closes.
@@ -88,7 +95,10 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, children 
         if (event.target === ref.current) onClose();
       }}
     >
-      <div className="sheet__content">
+      <div
+        className="sheet__content"
+        style={accent ? ({ '--accent': accent } as CSSProperties) : undefined}
+      >
         {header && (
           <div className="sheet__header">
             <div className="sheet__grip" aria-hidden="true" />

@@ -102,3 +102,14 @@ export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRo
   }
   return { action: 'habit-review' };
 }
+
+/**
+ * Die Erkennung als anzeigbare Art (issue #715 AK1): `habit-check` und
+ * `habit-review` sind auf dem Navigationspfad zwei verschiedene Aktionen, dem
+ * Nutzer gegenüber aber dieselbe Art — "Routine". Reine Ableitung aus dem
+ * bereits berechneten `CaptureRouteDecision`, kein zweiter Erkennungslauf.
+ */
+export function previewKind(decision: CaptureRouteDecision): CaptureKind {
+  if (decision.action === 'habit-check' || decision.action === 'habit-review') return 'habit_check';
+  return decision.action;
+}
