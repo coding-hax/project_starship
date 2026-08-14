@@ -181,6 +181,8 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   await journalHabit.getByRole('button', { name: /^Journal\b/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
   await expect(dialog).toBeVisible();
+  // The schedule radios live behind the Rhythmus chip's panel since #713.
+  await dialog.getByRole('button', { name: /^Rhythmus(,|$)/ }).click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
