@@ -270,6 +270,13 @@ describe('prompts', () => {
     it('gilt die Duplikat-Pruefung ausdruecklich auch bei einer fortgesetzten Session', () => {
       expect(planPrompt(7)).toContain('nicht nur beim ersten\n   Anlauf');
     });
+
+    // #724 (S1 von ADR-0023, AK6): die Kette zwischen Kind-Tickets steht ab
+    // jetzt am Kind selbst, nicht mehr nur im Queue-Issue.
+    it('verlangt eine "Nach: #<Vorgaenger>"-Zeile fuer aufeinander aufbauende Kind-Tickets', () => {
+      expect(planPrompt(7)).toContain("trage 'Nach: #<Vorgänger>' als eigene Zeile");
+      expect(planPrompt(7)).toContain('im selben Schritt, in dem du es\n   anlegst, nicht nachträglich');
+    });
   });
 
   describe('Werkzeug-Allowlisten (ADR-0005 + #63)', () => {

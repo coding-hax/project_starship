@@ -22,7 +22,7 @@
 // claude-runner.sh (S6, siehe Nicht-Ziele von #202).
 import type { GhAdapter } from './gh.js';
 import type { StateAdapter } from './state.js';
-import { byCreatedAt, hasLabel, queueBlocked, queueEntries, type QueueIssue } from './queue.js';
+import { byCreatedAt, entriesFromIssues, hasLabel, mergeEntries, queueBlocked, queueEntries, type QueueIssue } from './queue.js';
 import { sessionKey } from './session.js';
 
 export type RunRole = 'build' | 'plan' | 'research';
@@ -91,7 +91,14 @@ export function selectTicket(
   // Voraussetzung gilt als erfuellt, sobald ihr Ticket nicht mehr im Snapshot
   // offener Tickets steht -- ausgewertet bei JEDER Auswahl, damit nichts
   // veraltet.
-  const entries = queueEntries(queueBody);
+  //
+  // #724 (S1 von ADR-0023): dieselbe Kette darf jetzt auch als 'Nach:'-Zeile
+  // im TICKET-Body selbst stehen, nicht nur als '- #266 nach #227' im
+  // Queue-Body. Fuers Blockieren zaehlt die VEREINIGUNG beider Quellen. Der
+  // RANG bleibt bewusst allein beim Queue-Body (`queueEntries`) -- er faellt
+  // erst im Folgeticket (Nicht-Ziele von #724).
+  const queueOnlyEntries = queueEntries(queueBody);
+  const entries = mergeEntries(queueOnlyEntries, entriesFromIssues(snapshot));
   const openIssues = new Set(snapshot.map((issue) => issue.number));
   const blocked = queueBlocked(entries, openIssues);
   const selectable = snapshot.filter(
@@ -104,7 +111,7 @@ export function selectTicket(
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];
   if (running) return { issue: running.number, role: roleFromLabels(running), source: 'running' };
 
-  const order = entries.map((entry) => entry.issue);
+  const order = queueOnlyEntries.map((entry) => entry.issue);
   if (order.length > 0) {
     const ranked = selectable
       .filter((issue) => order.includes(issue.number))
