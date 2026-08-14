@@ -147,6 +147,15 @@ dialog.sheet:not([open]) .sheet__content {
   opacity: 0.85;
 }
 
+/* Blass statt versteckt (issue #714): der Knopf bleibt an seinem Platz, ist
+   aber inert — kein neuer Farbtoken, nur --accent/--on-accent bei reduzierter
+   Deckkraft. `:active`'s Opacity gilt nur bei :not(:disabled), disabled klickt
+   ohnehin nie. */
+.sheet__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .sheet__title {
   flex: 1;
   margin: 0;
