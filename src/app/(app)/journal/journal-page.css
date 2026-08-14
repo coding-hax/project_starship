@@ -8,11 +8,47 @@
 
 .journal-page__title-row {
   display: flex;
-  align-items: baseline;
+  /* Zentriert statt Grundlinie (wie vor #700): der 44×44-Lupe-Knopf gibt jetzt
+     die Zeilenhöhe vor, an ihm richten sich Titel und Datum mittig aus. */
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
 
 .journal-page__title-row h1 {
   margin: 0;
+}
+
+.journal-page__title-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Lupe (AK5): 44×44 Tap-Ziel, reine Kontur ohne Fläche — dieselbe ruhige
+   Register wie die übrigen Kopf-Icons. */
+.journal-page__search-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-page__search-toggle:active {
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-page__search-toggle {
+    transition: none;
+  }
 }

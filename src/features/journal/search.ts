@@ -61,3 +61,38 @@ export function searchJournalEntries(
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+
+/** One run of the snippet: `highlighted` marks a case-insensitive match of the
+ * search word (issue #700 AK6). */
+export interface HighlightSegment {
+  text: string;
+  highlighted: boolean;
+}
+
+/**
+ * Splits `text` into alternating plain and matched runs of `query`
+ * (case-insensitive), so the search word can be wrapped in `<mark>` (issue #700
+ * AK6). Pure and unit-testable; operates on whatever string the caller passes,
+ * i.e. the already-truncated snippet, not the full entry. An empty or
+ * whitespace-only query highlights nothing — the whole text comes back as a
+ * single unhighlighted run.
+ */
+export function splitHighlight(text: string, query: string): HighlightSegment[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [{ text, highlighted: false }];
+
+  const segments: HighlightSegment[] = [];
+  const haystack = text.toLowerCase();
+  let index = 0;
+  while (index < text.length) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) {
+      segments.push({ text: text.slice(index), highlighted: false });
+      break;
+    }
+    if (found > index) segments.push({ text: text.slice(index, found), highlighted: false });
+    segments.push({ text: text.slice(found, found + needle.length), highlighted: true });
+    index = found + needle.length;
+  }
+  return segments;
+}

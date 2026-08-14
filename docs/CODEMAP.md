@@ -105,22 +105,21 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/journal
 
-- `write.ts` / `entry.ts` — `writeJournalEntry` (einziger Schreibpfad) + Listen/Anhängen/Löschen
+- `write.ts` / `entry.ts` — `writeJournalEntry` (Schreibpfad) + Listen/Anhängen/Löschen
 - `journal-keys.ts` — `readEnvelope`/`writeEnvelope`/`readRecoveryEnvelope`/`writeRecoveryEnvelope`
-- `journal-key-stash.ts` — Dexie-Store `journalKeyStash` (issue #518): fängt einen beim Pull
-  verdrängten `journal_keys`-Envelope auf, statt ihn still zu verlieren
-- `recover-orphaned-entries.ts` — bergt Einträge, die nur unter einem gestashten Alt-DEK lesbar
-  sind, verschlüsselt sie unter dem aktuellen DEK neu (issue #518)
-- `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (Dexie-Store `journalSession`) + Pref
+- `journal-key-stash.ts` — Dexie-Store `journalKeyStash` (issue #518): fängt einen beim Pull verdrängten `journal_keys`-Envelope auf
+- `recover-orphaned-entries.ts` — bergt Einträge unter gestashtem Alt-DEK, verschlüsselt sie unter dem aktuellen DEK neu (issue #518)
+- `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (`journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
-- `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (eine unlesbare fällt raus) + Konflikte
+- `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
 - `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` — Formular (Stimmung/Text/Tags) + Eintragsliste + Suche
-- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche, Entschlüsselungs-Cache, Suchfeld+Ergebnisliste
-- `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-Key-Screen, Rewrap-Screen
-- `journal-header-date.tsx` / `.css` — heutiges Datum neben dem Seitentitel, oben rechts (issue #469)
+- `journal-editor.tsx` / `.css` — Eintragsstrom + FAB (#701), im Suchmodus verborgen
+- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus, #700)
+- `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile (#700)
+- `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
+- `journal-header-date.tsx` / `.css` — heutiges Datum oben rechts im Kopf (issue #469)
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
-- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Entarchivieren/Abhaken der Journal-Routine (issue #505)
+- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine (issue #505)
 - `journal-habit-boot.tsx` — legt die Journal-Routine idempotent nach dem ersten Pull an (issue #505)
 
 ### src/features/habits

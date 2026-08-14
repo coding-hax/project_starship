@@ -58,6 +58,26 @@
   opacity: 0.85;
 }
 
+/* „Abbrechen" verlässt den Suchmodus (AK6) — ruhiger als der Filter-Umschalter,
+   keine Aktivfarbe, nur Kontur. */
+.journal-search__cancel {
+  flex-shrink: 0;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-search__cancel:active {
+  opacity: 0.85;
+}
+
 .journal-search__filters {
   display: flex;
   flex-direction: column;
@@ -176,6 +196,15 @@
   white-space: pre-wrap;
 }
 
+/* Suchwort im Snippet (AK6): Bereichsfarbe des Journals als Markierung,
+   --on-accent bleibt in beiden Themes dunkel und lesbar (issue #709). */
+.journal-search__hl {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-card);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 .journal-search__result-expand {
   align-self: flex-start;
   min-height: var(--touch-target);
@@ -197,6 +226,7 @@
   .journal-search__result,
   .journal-search__result-expand,
   .journal-search__filter-toggle,
+  .journal-search__cancel,
   .journal-search__reset {
     transition: none;
   }

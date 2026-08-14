@@ -9,6 +9,7 @@ import { deleteJournalEntry, todayKey } from './entry';
 import { JournalEntrySheet, JOURNAL_ENTRY_SHEET_LABEL } from './journal-entry-sheet';
 import './journal-editor.css';
 import { JournalSearch } from './journal-search';
+import { useJournalSearchMode } from './journal-view-mode';
 import { useJournalLock } from './lock-store';
 import { useJournalEntries } from './use-journal-entries';
 import { useOrphanedKey } from './use-orphaned-key';
@@ -91,7 +92,9 @@ function groupRowsByDay(rows: ListPresenceRow<JournalSearchEntry>[]): DayRowGrou
  */
 export function JournalEditor() {
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [searchActive, setSearchActive] = useState(false);
+  // Der Suchmodus lebt seit issue #700 (AK5) im Modul-Store, geöffnet von der
+  // Lupe in der Titelzeile — nicht mehr als lokaler State hier.
+  const { active: searchActive } = useJournalSearchMode();
   const [undo, setUndo] = useState<UndoState | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,9 +113,10 @@ export function JournalEditor() {
 
   // The stream shows every day at once now, so "select a day" means scrolling
   // to its already-rendered group rather than swapping which day is visible.
-  // The target only exists once `searchActive` has flipped back to false
-  // (JournalSearch's own effect does that a render behind `onSelect`), so
-  // this waits for that flip.
+  // The target only exists once `searchActive` has flipped back to false —
+  // `JournalSearch.handleSelect` closes the search mode (store) in the same
+  // handler that calls `onSelect`, a render before this effect runs — so this
+  // waits for that flip.
   useEffect(() => {
     if (searchActive || !pendingScrollRef.current) return;
     const target = containerRef.current?.querySelector<HTMLElement>(
@@ -146,7 +150,7 @@ export function JournalEditor() {
 
   return (
     <>
-      <JournalSearch onSelect={handleSearchSelect} onActiveChange={setSearchActive} />
+      <JournalSearch onSelect={handleSearchSelect} />
       <div className="journal-editor" ref={containerRef}>
         {!searchActive && (
           <>
