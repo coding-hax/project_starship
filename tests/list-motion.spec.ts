@@ -113,12 +113,13 @@ async function setUpEditor(page: Page): Promise<void> {
 
 /** Mirrors journal.spec.ts's own openSheet()+submit() (#701: form moved into a
  * FAB-triggered sheet) — the FAB and the sheet's own submit button share the
- * accessible name "Eintragen", `exact: true` disambiguates via the modal
- * dialog's inert background rather than needing two different labels. */
+ * accessible name "Eintragen", so once the sheet is open the submit click
+ * scopes to the button's own class instead of a role query that would hit
+ * both (Sheet leaves the trigger untouched while open, see src/ui/sheet.tsx). */
 async function submitJournalEntry(page: Page, text: string): Promise<void> {
   await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
   await page.getByLabel('Journal-Text').fill(text);
-  await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+  await page.locator('.journal-editor__submit').click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 

@@ -281,17 +281,20 @@ async function unlockEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
-/** Opens the create sheet (AK2, #701) — the FAB and the sheet's own submit
- * button share the accessible name "Eintragen"; the FAB gets `aria-hidden`
- * while the sheet's native `<dialog>` is modal (src/ui/sheet.tsx), so
- * `exact: true` alone disambiguates. */
+/** Opens the create sheet (AK2, #701) — while the sheet is closed, only the
+ * FAB carries the accessible name "Eintragen" (the form is unmounted, see
+ * journal-entry-sheet.tsx), so the plain role query is still unambiguous. */
 async function openSheet(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
 }
 
+/** Once the sheet is open, the FAB and the sheet's own submit button share the
+ * accessible name "Eintragen" (Sheet, by design, leaves the trigger untouched
+ * — see src/ui/sheet.tsx) — scope to the submit button's own class instead of
+ * a role query that would hit both. */
 async function submit(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+  await page.locator('.journal-editor__submit').click();
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
@@ -717,9 +720,10 @@ test('AC-D (#423): der Eintragen-Knopf im Sheet erscheint erst mit Mood oder Tex
   await setUpEditor(page);
   await openSheet(page);
 
-  // Die FAB trägt denselben Namen (AK2, #701) und bekommt `aria-hidden`, solange
-  // das Sheet modal ist — der `exact`-Query trifft hier nur den Sheet-eigenen Knopf.
-  const submitButton = page.getByRole('button', { name: 'Eintragen', exact: true });
+  // Die FAB trägt denselben Namen (AK2, #701) und bleibt im offenen Sheet
+  // unverändert im DOM (src/ui/sheet.tsx rührt den Trigger nicht an) — über die
+  // Klasse statt einer Rollen-Query scopen, sonst träfe das hier auch die FAB.
+  const submitButton = page.locator('.journal-editor__submit');
   await expect(submitButton).toHaveCount(0);
 
   await page.getByRole('button', { name: '6', exact: true }).click();

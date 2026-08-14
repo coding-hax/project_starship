@@ -438,8 +438,9 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 
       // #701: das Formular sitzt jetzt im FAB-Sheet, nicht mehr direkt auf der
-      // Seite — die FAB trägt denselben Namen wie der Sheet-eigene Knopf, im
-      // offenen (modalen) Sheet ist die FAB dahinter aber inert.
+      // Seite — die FAB trägt denselben Namen wie der Sheet-eigene Knopf. Das
+      // Sheet ist hier noch geschlossen (dieser Klick öffnet es erst), also
+      // trifft die Rollen-Query eindeutig nur die FAB.
       await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
       // journal-entry-sheet.tsx only renders .journal-editor__submit once the
       // form has content (mood or text) — an empty form has nothing to submit.
