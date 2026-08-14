@@ -39,14 +39,20 @@ test.describe('angemeldet', () => {
       if (isRscRequest || isDocumentNavigation) kalenderRequests.push(request.url());
     });
 
+    // Deliberately NOT `networkidle` (#683, see the AK2 test below for the full
+    // story): `registerPasskey` above already leaves the page on a loaded
+    // /uebersicht, so this goto is a SECOND navigation to it and cancels the
+    // first page's in-flight prefetches. A cancelled request never leaves
+    // Playwright's bookkeeping of open connections, so `networkidle` waits for a
+    // quiet state that can no longer occur and burns the full 30s budget —
+    // bimodal, not slow, and hit only on `offline-desktop` because its wider nav
+    // shows more targets at once, so more prefetches are in flight to cancel.
     await page.goto('/uebersicht');
-    await page.waitForLoadState('networkidle');
 
-    // `networkidle` only proves no request is in flight, not that the Kalender
-    // link's own prefetch has actually gone out yet — that fires from a
-    // post-hydration router effect, which a loaded CI runner can delay past the
-    // networkidle window. Wait for the real signal (bounded, so a genuinely
-    // missing prefetch still fails the assertion below instead of hanging).
+    // The Kalender link's own prefetch fires from a post-hydration router
+    // effect, which a loaded CI runner can delay. Wait for the real signal
+    // (bounded, so a genuinely missing prefetch still fails the assertion below
+    // instead of hanging).
     if (kalenderRequests.length === 0) {
       await page
         .waitForRequest(
