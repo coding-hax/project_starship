@@ -1,8 +1,8 @@
 /**
- * The create sheet's content: a title field and a collapsed "Mehr"-Bereich — the
- * save action lives in the shared sheet header (issue #710). Same field styling
- * as task-editor.css so both sheets read as one system — the fields behind "Mehr"
- * are literally the edit sheet's fields (issue #650).
+ * The create sheet's content: a title field and a row of chips (Wann · Priorität ·
+ * Notiz · Teil von, issue #711) — the save action lives in the shared sheet header
+ * (issue #710). Same field styling as task-editor.css so both sheets read as one
+ * system — a chip's panel hosts literally the edit sheet's own field (issue #650).
  */
 
 .quick-add {
@@ -38,57 +38,17 @@
   outline-offset: 2px;
 }
 
-/* A quiet row, not a second call to action — the primary path stays title + save. */
-.quick-add__more {
+.quick-add__chips {
   display: flex;
-  align-items: center;
-  align-self: flex-start;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  min-height: var(--touch-target);
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font: inherit;
-  font-size: var(--text-secondary);
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
 }
 
-.quick-add__more:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-  border-radius: var(--radius-card);
-}
-
-/* Chevron down = "there is more below"; it flips up once the fields are out.
-   `prefers-reduced-motion` needs no extra handling: the global rule in
-   tokens.css forces transition-duration to 0.01ms for everything. */
-.quick-add__more-icon {
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  transition: transform var(--duration-spring-smooth) var(--ease-spring-smooth);
-}
-
-.quick-add__more[aria-expanded='true'] .quick-add__more-icon {
-  transform: rotate(-135deg);
-}
-
-.quick-add__fields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.quick-add__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
+/* Reserves room for the tallest panel (Notiz's textarea, `--touch-target * 2`) at
+   all times the sheet is open — not just once a chip is tapped — so opening any
+   panel, including the very first, never changes this box's own height (AK5). */
+.quick-add__panel-slot {
+  min-height: calc(var(--touch-target) * 2);
 }
 
 .quick-add__priority {
@@ -97,13 +57,6 @@
   border: none;
   padding: 0;
   margin: 0;
-}
-
-.quick-add__priority legend {
-  width: 100%;
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
-  margin-bottom: var(--space-2);
 }
 
 .quick-add__priority-option {

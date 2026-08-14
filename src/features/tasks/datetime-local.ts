@@ -14,3 +14,17 @@ export function isoToLocalInput(iso: string | null): string {
 export function localInputToIso(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
 }
+
+/** `"Donnerstag 14:00"` for the Wann-Chip's value (issue #711 AK6) — works on
+ * both an ISO instant and the bare local string `dueAt` is otherwise kept in,
+ * since neither carries an offset that would shift the parsed instant. */
+export function formatDueLabel(value: string): string {
+  const date = new Date(value);
+  const weekday = date.toLocaleDateString('de-DE', { weekday: 'long' });
+  const time = date.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${weekday} ${time}`;
+}
