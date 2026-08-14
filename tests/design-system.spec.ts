@@ -526,19 +526,21 @@ test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
     await expect(eventDialog.getByRole('button', { name: 'Speichern' })).toHaveCount(0);
     await page.keyboard.press('Escape');
 
-    await page.evaluate(() =>
-      window.__starship.mutate({
-        table: 'habits',
-        op: 'upsert',
-        payload: {
-          name: 'Kopfzeile-Test-710',
-          schedule: 'daily',
-          target: 1,
-          color: null,
-          archivedAt: null,
-          createdAt: FIXED_NOW,
-        },
-      }),
+    await page.evaluate(
+      (createdAt) =>
+        window.__starship.mutate({
+          table: 'habits',
+          op: 'upsert',
+          payload: {
+            name: 'Kopfzeile-Test-710',
+            schedule: 'daily',
+            target: 1,
+            color: null,
+            archivedAt: null,
+            createdAt,
+          },
+        }),
+      FIXED_NOW,
     );
     await page.goto('/routinen');
     await page
