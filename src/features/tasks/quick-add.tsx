@@ -31,8 +31,9 @@ const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'quick-add-form';
 const UNDO_TIMEOUT_MS = 5000;
 
-/** Same three steps as the edit sheet — one vocabulary for a task's urgency. */
-const PRIORITIES: { value: number; label: string }[] = [
+/** Same three steps as the edit sheet — one vocabulary for a task's urgency.
+ * Exported for `uebersicht-capture.tsx`'s own Priorität-Chip (issue #715 AK4). */
+export const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: 'Normal' },
   { value: 1, label: 'Hoch' },
   { value: 2, label: 'Dringend' },

@@ -1,10 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { installClockAt, registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData } from './helpers';
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
+}
+
+function captureDialog(page: Page) {
+  return page.getByRole('dialog', { name: CAPTURE_LABEL });
 }
 
 function captureTitleField(page: Page) {
@@ -13,6 +17,21 @@ function captureTitleField(page: Page) {
 
 function artChip(page: Page, label: string) {
   return page.getByRole('button', { name: `Art, ${label}` });
+}
+
+async function submitCapture(page: Page, text: string) {
+  await captureButton(page).click();
+  await captureTitleField(page).fill(text);
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+}
+
+/** Mirrors parse-task-input.ts's own default time (09:00), computed at run time —
+ * never hard-coded (helpers.ts pattern used elsewhere). */
+function expectedDueAt(daysFromNow: number, hours: number, minutes: number): Date {
+  const date = new Date(FIXED_NOW);
+  date.setDate(date.getDate() + daysFromNow);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
 }
 
 /** Renders `var(--area-*)` on a throwaway element to read its resolved color —
@@ -105,4 +124,70 @@ test('AK1: die Routine "hake Sport ab" zeigt den Art-Chip "Routine"', async ({ p
   await captureTitleField(page).fill('hake Sport ab');
 
   await expect(artChip(page, 'Routine')).toBeVisible();
+});
+
+test('AK3: "Wäsche waschen" legt die Aufgabe in-place an, kein Navigieren', async ({ page }) => {
+  await page.goto('/uebersicht');
+
+  await submitCapture(page, 'Wäsche waschen');
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({ title: 'Wäsche waschen' });
+});
+
+test('AK3: "morgen 12 Uhr Zahnarzt" legt den Termin in-place an, kein Navigieren', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const due = expectedDueAt(1, 12, 0);
+
+  await submitCapture(page, 'morgen 12 Uhr Zahnarzt');
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.filter((entry) => entry.table === 'events');
+  expect(created).toHaveLength(1);
+  expect(created[0].payload).toMatchObject({
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: due.toISOString(),
+  });
+  expect(new Date(created[0].payload.endsAt as string).getTime() - due.getTime()).toBe(
+    60 * 60 * 1000,
+  );
+});
+
+test('AK4-Kernfeld: ohne erkannte Uhrzeit bekommt der Termin 09:00 des heutigen Tages als Von', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  await submitCapture(page, 'Meeting mit Chef');
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'events');
+  expect(created?.payload).toMatchObject({ title: 'Meeting mit Chef', allDay: false });
+  const startsAt = new Date(created?.payload.startsAt as string);
+  expect(startsAt.getHours()).toBe(9);
+  expect(startsAt.getMinutes()).toBe(0);
+});
+
+test('AK4-Kernfeld: die Priorität-Chip-Auswahl übernimmt in die angelegte Aufgabe', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Müll rausbringen');
+
+  await page.getByRole('button', { name: 'Priorität' }).click();
+  await page.getByRole('radio', { name: 'Hoch' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({ title: 'Müll rausbringen', priority: 1 });
 });

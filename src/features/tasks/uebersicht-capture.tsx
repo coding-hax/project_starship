@@ -6,24 +6,36 @@ import { matchHabit } from '@/features/capture/habit-match';
 import { hasCompletionVerb } from '@/features/capture/local-recognizer';
 import {
   allowedCaptureKinds,
-  decideCaptureRoute,
-  previewKind,
+  defaultEventStart,
+  eventFieldsFromDraft,
+  previewDraft,
+  taskFieldsFromDraft,
 } from '@/features/capture/route-capture';
 import type { CaptureKind } from '@/features/capture/types';
+import { EVENT_CATEGORIES } from '@/features/events/use-events';
 import { useHabitLogs } from '@/features/habits/use-habit-logs';
 import { useHabits } from '@/features/habits/use-habits';
 import { useToggleHabitLog } from '@/features/habits/use-toggle-habit-log';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { useModules } from '@/features/settings/use-modules';
+import { mutate } from '@/local/outbox';
 import { Chip } from '@/ui/chip';
 import { Sheet } from '@/ui/sheet';
 import { Toast } from '@/ui/toast';
-import { setCaptureDraft } from './capture-draft-store';
+import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
+import { PRIORITIES } from './quick-add';
 
 const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'uebersicht-capture-form';
 const UNDO_TIMEOUT_MS = 5000;
 const ART_PANEL_ID = 'uebersicht-capture-panel-art';
+const WANN_PANEL_ID = 'uebersicht-capture-panel-wann';
+const PRIO_PANEL_ID = 'uebersicht-capture-panel-prio';
+const ZEIT_PANEL_ID = 'uebersicht-capture-panel-zeit';
+const KATEGORIE_PANEL_ID = 'uebersicht-capture-panel-kategorie';
+
+/** Sentinel for "keine Kategorie" — same convention as `event-editor.tsx`. */
+const NO_CATEGORY = '';
 
 const ART_LABELS: Record<CaptureKind, string> = {
   task: 'Aufgabe',
@@ -39,9 +51,8 @@ const ART_ACCENT: Record<CaptureKind, string> = {
   habit_check: 'var(--area-habits)',
 };
 
-/** Welche Chip-Panel gerade offen ist — bislang nur „Art", weitere Kern-Chips
- * kommen mit AK3/AK4/AK5 dazu. */
-type ChipKey = 'art';
+/** Welche Chip-Panel gerade offen ist — höchstens eine gleichzeitig. */
+type ChipKey = 'art' | 'wann' | 'prio' | 'zeit' | 'kategorie';
 
 interface HabitCheckUndo {
   habitId: string;
@@ -57,6 +68,12 @@ interface HabitCheckUndo {
  * (`kindOverridden`) — bleibt dann fest, bis die nächste Sheet-Öffnung sie
  * zurücksetzt, genau wie eine geratene Fälligkeit erst durch eine bewusste
  * Eingabe „bestätigt" wird (#711 AK2).
+ *
+ * AK3: Aufgabe und Termin legt „Anlegen" direkt über `mutate` an — kein
+ * `router.push` mehr, das Sheet schließt und bleibt auf `/uebersicht`. Der
+ * separate Bestätigen-Dialog entfällt auf diesem Pfad (anders als beim FAB in
+ * `quick-add.tsx`): eine geratene Fälligkeit/Zeit zeigt sich inline als
+ * `guessed`-Chip statt in einem Zwischenschritt.
  */
 export function UebersichtCapture() {
   const [open, setOpen] = useState(false);
@@ -64,6 +81,16 @@ export function UebersichtCapture() {
   const [now, setNow] = useState<Date>(() => new Date());
   const [kindOverridden, setKindOverridden] = useState<CaptureKind | null>(null);
   const [openChip, setOpenChip] = useState<ChipKey | null>(null);
+  // Aufgabe: Fälligkeit + Priorität. `dueOverride` ist `null`, solange der
+  // Nutzer sie nicht angefasst hat (Chip-Wert folgt dann der Erkennung) — ein
+  // leerer String zählt als bewusstes „kein Datum" (Discard), nicht als
+  // unberührt (issue #711 AK2 Muster).
+  const [dueOverride, setDueOverride] = useState<string | null>(null);
+  const [priority, setPriority] = useState(0);
+  // Termin: Zeit (Von) + Kategorie — „Bis" leitet sich beim Direkt-Anlegen aus
+  // Von + 1h ab (AK4), Ganztägig/Wiederholung liegen hinter „Mehr" (P4).
+  const [eventStartOverride, setEventStartOverride] = useState<string | null>(null);
+  const [category, setCategory] = useState(NO_CATEGORY);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,11 +112,28 @@ export function UebersichtCapture() {
 
   // Reaktiv bei jedem Tastendruck neu berechnet (AK1) — derselbe Erkenner wie
   // beim Absenden, nur ohne dass er hier schon etwas anlegt oder navigiert.
-  const decision = useMemo(
-    () => decideCaptureRoute(title, { now, tz: 'Europe/Berlin', habits: captureHabits, allowedKinds }),
+  const draft = useMemo(
+    () => previewDraft(title, { now, tz: 'Europe/Berlin', habits: captureHabits, allowedKinds }),
     [title, now, captureHabits, allowedKinds],
   );
-  const displayedKind = kindOverridden ?? previewKind(decision);
+  const displayedKind = kindOverridden ?? draft.kind;
+
+  // Kern-Kernfelder folgen der Erkennung, solange der Nutzer sie nicht selbst
+  // angefasst hat (issue #711 AK2 Muster: ein geratener Wert gilt als
+  // akzeptiert, bis er bewusst bearbeitet oder verworfen wird) — unabhängig
+  // von `draft.kind`, damit eine von Hand überschriebene Art die erkannten
+  // Felder trotzdem übernimmt. Abgeleitet statt effekt-synchronisiert: kein
+  // zweiter Render-Zyklus nötig, nur `dueOverride`/`eventStartOverride` selbst
+  // ist echter State.
+  const taskFields = useMemo(() => taskFieldsFromDraft(draft), [draft]);
+  const dueAt = dueOverride ?? isoToLocalInput(taskFields.dueAt);
+  const dueGuessed = dueOverride === null && taskFields.dueAt !== null;
+
+  const eventFields = useMemo(() => eventFieldsFromDraft(draft, now), [draft, now]);
+  const eventStart =
+    eventStartOverride ??
+    (eventFields.startsAt ? isoToLocalInput(eventFields.startsAt) : defaultEventStart(now));
+  const eventStartGuessed = eventStartOverride === null && eventFields.startsAt !== null;
 
   function toggleChip(key: ChipKey) {
     setOpenChip((current) => (current === key ? null : key));
@@ -108,6 +152,17 @@ export function UebersichtCapture() {
     const { habitId, logDate } = habitUndo;
     dismissHabitUndo();
     await toggleHabitLog(habitId, logDate);
+  }
+
+  function closeAndReset() {
+    setOpen(false);
+    setTitle('');
+    setKindOverridden(null);
+    setOpenChip(null);
+    setDueOverride(null);
+    setPriority(0);
+    setEventStartOverride(null);
+    setCategory(NO_CATEGORY);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -132,33 +187,64 @@ export function UebersichtCapture() {
     }
     setUnresolvedHabit(false);
 
-    setTitle('');
-    setOpen(false);
-
-    if (decision.action === 'task') {
-      setCaptureDraft({ items: [decision.draft] });
-      router.push('/aufgaben');
+    if (displayedKind === 'task') {
+      const trimmedTitle = taskFields.title.trim();
+      if (!trimmedTitle) {
+        inputRef.current?.focus();
+        return;
+      }
+      const payload: Record<string, unknown> = { title: trimmedTitle, createdAt: new Date().toISOString() };
+      const finalDueAt = localInputToIso(dueAt);
+      if (finalDueAt) payload.dueAt = finalDueAt;
+      if (priority !== 0) payload.priority = priority;
+      closeAndReset();
+      await mutate({ table: 'tasks', op: 'upsert', payload });
       return;
     }
 
-    if (decision.action === 'event') {
-      setCaptureDraft({ items: [decision.draft] });
-      router.push('/kalender');
+    if (displayedKind === 'event') {
+      const trimmedTitle = eventFields.title.trim();
+      if (!trimmedTitle) {
+        inputRef.current?.focus();
+        return;
+      }
+      const startsAt = localInputToIso(eventStart) ?? localInputToIso(defaultEventStart(now));
+      const endsAt = startsAt
+        ? new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString()
+        : null;
+      const payload: Record<string, unknown> = {
+        title: trimmedTitle,
+        allDay: false,
+        startsAt,
+        endsAt,
+        startDate: null,
+        endDate: null,
+        category: category || null,
+      };
+      closeAndReset();
+      await mutate({ table: 'events', op: 'upsert', payload });
       return;
     }
 
-    if (decision.action === 'habit-review') {
-      router.push('/routinen');
+    // habit_check: unverändert der bisherige Pfad (P3 macht den unklaren Fall
+    // sichtbar statt einer Navigation nach /routinen).
+    closeAndReset();
+    if (draft.confidence.habit.level === 'high' && draft.habitId && draft.logDate) {
+      const { habitId, logDate } = draft;
+      const habitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
+      dismissHabitUndo();
+      await toggleHabitLog(habitId, logDate);
+      setHabitUndo({ habitId, habitName, logDate });
+      undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
       return;
     }
-
-    const { habitId, logDate } = decision;
-    const habitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
-    dismissHabitUndo();
-    await toggleHabitLog(habitId, logDate);
-    setHabitUndo({ habitId, habitName, logDate });
-    undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
+    router.push('/routinen');
   }
+
+  const priorityLabel = priority !== 0 ? PRIORITIES.find((p) => p.value === priority)!.label : null;
+  const categoryLabel = category
+    ? (EVENT_CATEGORIES.find((c) => c.value === category)?.label ?? null)
+    : null;
 
   return (
     <>
@@ -170,6 +256,10 @@ export function UebersichtCapture() {
           setTitle('');
           setKindOverridden(null);
           setOpenChip(null);
+          setDueOverride(null);
+          setPriority(0);
+          setEventStartOverride(null);
+          setCategory(NO_CATEGORY);
           setNow(new Date());
           setOpen(true);
         }}
@@ -206,6 +296,50 @@ export function UebersichtCapture() {
               panelId={ART_PANEL_ID}
               onOpen={() => toggleChip('art')}
             />
+            {displayedKind === 'task' && (
+              <>
+                <Chip
+                  field="Fälligkeit"
+                  emptyLabel="Wann?"
+                  value={dueAt ? formatDueLabel(dueAt) : null}
+                  guessed={dueGuessed}
+                  open={openChip === 'wann'}
+                  panelId={WANN_PANEL_ID}
+                  onOpen={() => toggleChip('wann')}
+                  onDiscard={() => setDueOverride('')}
+                />
+                <Chip
+                  field="Priorität"
+                  emptyLabel="Priorität?"
+                  value={priorityLabel}
+                  open={openChip === 'prio'}
+                  panelId={PRIO_PANEL_ID}
+                  onOpen={() => toggleChip('prio')}
+                />
+              </>
+            )}
+            {displayedKind === 'event' && (
+              <>
+                <Chip
+                  field="Zeit"
+                  emptyLabel="Wann?"
+                  value={eventStart ? formatDueLabel(eventStart) : null}
+                  guessed={eventStartGuessed}
+                  open={openChip === 'zeit'}
+                  panelId={ZEIT_PANEL_ID}
+                  onOpen={() => toggleChip('zeit')}
+                  onDiscard={() => setEventStartOverride(defaultEventStart(now))}
+                />
+                <Chip
+                  field="Kategorie"
+                  emptyLabel="Kategorie?"
+                  value={categoryLabel}
+                  open={openChip === 'kategorie'}
+                  panelId={KATEGORIE_PANEL_ID}
+                  onOpen={() => toggleChip('kategorie')}
+                />
+              </>
+            )}
           </div>
           {openChip === 'art' && (
             <fieldset className="quick-add__priority" aria-label="Art" id={ART_PANEL_ID}>
@@ -222,6 +356,58 @@ export function UebersichtCapture() {
                 </label>
               ))}
             </fieldset>
+          )}
+          {openChip === 'wann' && (
+            <input
+              type="datetime-local"
+              className="quick-add__due"
+              id={WANN_PANEL_ID}
+              value={dueAt}
+              onChange={(event) => setDueOverride(event.target.value)}
+              aria-label="Fälligkeit"
+            />
+          )}
+          {openChip === 'prio' && (
+            <fieldset className="quick-add__priority" aria-label="Priorität" id={PRIO_PANEL_ID}>
+              {PRIORITIES.map((p) => (
+                <label key={p.value} className="quick-add__priority-option">
+                  <input
+                    type="radio"
+                    name="uebersicht-capture-priority"
+                    checked={priority === p.value}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onChange={() => setPriority(p.value)}
+                  />
+                  {p.label}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          {openChip === 'zeit' && (
+            <input
+              type="datetime-local"
+              className="quick-add__due"
+              id={ZEIT_PANEL_ID}
+              value={eventStart}
+              onChange={(event) => setEventStartOverride(event.target.value)}
+              aria-label="Zeit"
+            />
+          )}
+          {openChip === 'kategorie' && (
+            <select
+              className="quick-add__parent"
+              id={KATEGORIE_PANEL_ID}
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              aria-label="Kategorie"
+            >
+              <option value={NO_CATEGORY}>Keine</option>
+              {EVENT_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
           )}
           {unresolvedHabit && (
             <p role="status" className="uebersicht-capture__notice">
