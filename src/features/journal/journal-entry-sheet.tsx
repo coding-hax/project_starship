@@ -8,6 +8,8 @@ import './journal-entry-sheet.css';
 
 export const JOURNAL_ENTRY_SHEET_LABEL = 'Eintragen';
 
+const JOURNAL_FORM_ID = 'journal-entry-form';
+
 function parseTags(raw: string): string[] {
   return raw
     .split(',')
@@ -43,12 +45,16 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
     wasOpenRef.current = open;
   }, [open]);
 
+  const canSubmit = mood !== null || text.trim() !== '';
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedText = text.trim();
     const tags = parseTags(tagsInput);
     const submittedMood = mood;
-    if (!trimmedText && submittedMood === null && tags.length === 0) return;
+    // Tags allein reichen nicht (AK4) — deckt u. a. Enter im Tags-Feld ab, das
+    // sonst ohne Mood/Text einen leeren Eintrag anlegen würde.
+    if (!trimmedText && submittedMood === null) return;
 
     // Clear synchronously, before awaiting the write (same race guard as the
     // pre-#701 inline form: a fast second open must not inherit stale text).
@@ -65,16 +71,19 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
   }
 
   return (
-    <Sheet open={open} onClose={onClose} label={JOURNAL_ENTRY_SHEET_LABEL} initialFocusRef={textRef}>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      label={JOURNAL_ENTRY_SHEET_LABEL}
+      initialFocusRef={textRef}
+      header={{ actionLabel: JOURNAL_ENTRY_SHEET_LABEL, formId: JOURNAL_FORM_ID, disabled: !canSubmit }}
+    >
       {/* Gated on `open` — same reason as quick-add.tsx's "Mehr" fields and
           task-editor.tsx's parent select: a closed `<dialog>` keeps its
-          children in the DOM, and this form's submit button shares its
-          accessible name ("Eintragen") with the FAB that opens it (AK2,
-          #701) — left mounted while closed, that's a second permanent match
-          for every page-wide "Eintragen" query. */}
+          children in the DOM, and the AK1 test counts `.journal-editor__form`
+          before the sheet has ever been opened. */}
       {open && (
-        <form className="journal-editor__form" onSubmit={handleSubmit}>
-          <MoodScale value={mood} onChange={setMood} />
+        <form id={JOURNAL_FORM_ID} className="journal-editor__form" onSubmit={handleSubmit}>
           <textarea
             ref={textRef}
             className="journal-editor__text"
@@ -83,19 +92,17 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
             placeholder="Was ist heute passiert?"
             aria-label="Journal-Text"
           />
-          <input
-            type="text"
-            className="journal-editor__tags"
-            value={tagsInput}
-            onChange={(event) => setTagsInput(event.target.value)}
-            placeholder="Tags, mit Komma getrennt"
-            aria-label="Tags"
-          />
-          {(mood !== null || text.trim() !== '') && (
-            <button type="submit" className="journal-editor__submit">
-              {JOURNAL_ENTRY_SHEET_LABEL}
-            </button>
-          )}
+          <div className="journal-editor__footer">
+            <MoodScale value={mood} onChange={setMood} />
+            <input
+              type="text"
+              className="journal-editor__tags"
+              value={tagsInput}
+              onChange={(event) => setTagsInput(event.target.value)}
+              placeholder="Tags, mit Komma getrennt"
+              aria-label="Tags"
+            />
+          </div>
         </form>
       )}
     </Sheet>

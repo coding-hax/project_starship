@@ -9,6 +9,9 @@ export interface SheetHeaderProps {
    * outside that form (in the header row), so the HTML `form` attribute is what
    * associates the two. */
   formId: string;
+  /** Disables the action button (e.g. an empty form, issue #714) without hiding
+   * it — it stays in place, just visually faint and inert. */
+  disabled?: boolean;
 }
 
 export interface SheetProps {
@@ -97,7 +100,12 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, children 
                 Abbrechen
               </button>
               <p className="sheet__title">{label}</p>
-              <button type="submit" form={header.formId} className="sheet__action">
+              <button
+                type="submit"
+                form={header.formId}
+                className="sheet__action"
+                disabled={header.disabled}
+              >
                 {header.actionLabel}
               </button>
             </div>
