@@ -445,11 +445,11 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       // Sheet ist hier noch geschlossen (dieser Klick öffnet es erst), also
       // trifft die Rollen-Query eindeutig nur die FAB.
       await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
-      // journal-entry-sheet.tsx only renders .journal-editor__submit once the
-      // form has content (mood or text) — an empty form has nothing to submit.
+      // #714: die Aktion sitzt jetzt in der Kopfzeile (.sheet__action) und ist
+      // ohne Mood/Text disabled — Kontrast wird am aktiven Knopf gemessen.
       await page.getByLabel('Journal-Text').fill('Kontrast-Test-709');
 
-      const submit = page.getByRole('dialog', { name: 'Eintragen' }).locator('.journal-editor__submit');
+      const submit = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action');
       await expect(submit).toBeVisible();
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });
@@ -459,9 +459,10 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
 /**
  * Shared sheet header (issue #710, AK2/AK3): every sheet that hosts a form
  * shows the header ("Abbrechen" + centered title + action) with the
- * unified vocabulary — "Anlegen" on create, "Sichern" on edit. Journal is not
- * part of this round: journal-editor.tsx has no Sheet to host a header yet
- * (issue #701 is mid-flight on that), so it keeps its own "Absenden" for now.
+ * unified vocabulary — "Anlegen" on create, "Sichern" on edit. Journal joined
+ * the shared header in #714 (its own action label stays "Eintragen") but
+ * isn't asserted in this particular test — see the "AC3: Journal-Submit"
+ * contrast test above and journal.spec.ts's AK4 test for its header coverage.
  */
 test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
   test('AK2/AK3: Aufgabe, Übersicht-Erfassung, Termin und Routine zeigen die Kopfzeile beim Anlegen', async ({
