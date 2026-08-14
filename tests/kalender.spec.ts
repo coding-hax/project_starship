@@ -1116,7 +1116,7 @@ test('ein neu angelegter Termin erscheint sofort in der Timeline (#554 AC1)', as
   await page.getByLabel('Von').fill(`${TODAY}T12:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
   await page.getByLabel('Kategorie').selectOption('gesundheit');
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeHidden();
   await expect(eventCard(page, 'Zahnarzttermin')).toBeVisible();
@@ -1140,7 +1140,7 @@ test('das Ändern eines Termins spiegelt sich sofort in der Timeline (#554 AC2)'
   await expect(page.getByLabel('Titel')).toHaveValue('Altes Meeting');
 
   await page.getByLabel('Titel').fill('Neues Meeting');
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Sichern' }).click();
 
   await expect(eventCard(page, 'Neues Meeting')).toBeVisible();
   await expect(eventCard(page, 'Altes Meeting')).toHaveCount(0);
@@ -1187,7 +1187,7 @@ test('ein offline angelegter Termin steht sofort lokal und erreicht nach dem Onl
   await page.getByLabel('Titel').fill('Im Zug erfasst');
   await page.getByLabel('Von').fill(`${TODAY}T12:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(eventCard(page, 'Im Zug erfasst')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
@@ -1414,7 +1414,7 @@ test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche s
   await page.getByLabel('Von').fill(`${TODAY}T18:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T19:00`);
   await page.getByLabel('Wiederholung', { exact: true }).selectOption('weekly');
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 
@@ -1468,7 +1468,7 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
   // once the card renders it back in Berlin time (CEST, UTC+2).
   await page.getByLabel('Von').fill(`${TODAY}T17:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T18:00`);
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Sichern' }).click();
 
   const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
   await expect(scopeDialog).toBeVisible();
@@ -1514,7 +1514,7 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   // Same UTC-vs-Berlin offset as the "nur dieser" test above.
   await page.getByLabel('Von').fill('2026-07-25T17:00');
   await page.getByLabel('Bis').fill('2026-07-25T18:00');
-  await page.getByRole('button', { name: 'Speichern' }).click();
+  await page.getByRole('button', { name: 'Sichern' }).click();
 
   const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
   await expect(scopeDialog).toBeVisible();

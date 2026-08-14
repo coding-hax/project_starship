@@ -250,7 +250,7 @@ test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', as
   await selectView(page, 'Alle');
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Wäsche aufhängen');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByText('Wäsche aufhängen')).toBeVisible();
   await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
@@ -259,7 +259,7 @@ test('eine gespeicherte Aufgabe erscheint sofort in der Liste, ohne Spinner', as
 test('ein leerer Titel wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
   await page.goto('/aufgaben');
   await openQuickAdd(page);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeVisible();
   await expect(quickAddTitleField(page)).toBeFocused();
@@ -276,7 +276,7 @@ test('offline gespeichert: sofort sichtbar, genau ein Eintrag in der Outbox', as
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Im Zug notiert');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByText('Im Zug notiert')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
@@ -291,7 +291,7 @@ test('nach dem Onlinegehen erreicht die Aufgabe die echte Datenbank', async ({ p
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Zug-Notiz für den Server');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
   await expect(page.getByText('Zug-Notiz für den Server')).toBeVisible();
 
   // beforeEach cuts the sync endpoints so the list can only ever come from
@@ -328,7 +328,7 @@ test('Fokus kehrt nach dem Schließen per Aktion zum FAB zurück (issue #429)', 
   // No date in the title — a parsed due date would pop the capture-confirm sheet
   // instead of returning focus straight to the FAB.
   await quickAddTitleField(page).fill('Ohne Datum');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByRole('dialog', { name: QUICK_ADD_LABEL })).toBeHidden();
   await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
@@ -356,6 +356,46 @@ test('Fokus kehrt nach einem Klick auf den Backdrop zum FAB zurück (issue #429)
 
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('Fokus kehrt nach Abbrechen zum FAB zurück — derselbe Pfad wie ESC/Backdrop (issue #710 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('Kopfzeile: Griff, Abbrechen links, Titel mittig, Aktion rechts — alle Trefferflächen mindestens 44×44px (issue #710 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  await expect(dialog.locator('.sheet__grip')).toBeVisible();
+
+  const cancel = dialog.getByRole('button', { name: 'Abbrechen' });
+  const title = dialog.locator('.sheet__title');
+  const action = dialog.getByRole('button', { name: 'Anlegen' });
+  await expect(title).toHaveText(QUICK_ADD_LABEL);
+
+  const [cancelBox, titleBox, actionBox] = await Promise.all(
+    [cancel, title, action].map((locator) => locator.boundingBox()),
+  );
+  // Left→right order: Abbrechen, Titel, Aktion.
+  expect(cancelBox!.x).toBeLessThan(titleBox!.x);
+  expect(titleBox!.x).toBeLessThan(actionBox!.x);
+
+  for (const box of [cancelBox, actionBox]) {
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test('bei reduzierter Bewegung schließt das Sheet nur mit einem Opacity-Übergang (issue #429)', async ({
@@ -1188,7 +1228,7 @@ test('ein per Schnellerfassung angelegtes Todo erscheint unten in der Liste (iss
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Frisch angelegt');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   const items = taskItems(page);
   await expect(items).toHaveCount(2);
@@ -1224,7 +1264,7 @@ test('offline angelegt landet unten, bleibt dort nach dem Sync (issue #88 AC1)',
 
   await openQuickAdd(page);
   await quickAddTitleField(page).fill('Offline neu');
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   const items = taskItems(page);
   await expect(items).toHaveCount(2);
@@ -1865,7 +1905,7 @@ function quickAddNotes(page: Page) {
 }
 
 async function submitQuickAdd(page: Page) {
-  await quickAddDialog(page).getByRole('button', { name: 'Hinzufügen' }).click();
+  await quickAddDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 }
 
 test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK1)', async ({

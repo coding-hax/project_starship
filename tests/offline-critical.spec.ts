@@ -49,7 +49,7 @@ test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Krei
   const title = 'Im Tunnel notiert';
   await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
   await page.getByRole('textbox', { name: 'Titel der Aufgabe' }).fill(title);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByText(title)).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
@@ -182,7 +182,7 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
   const dialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
-  await dialog.getByRole('button', { name: 'Speichern' }).click();
+  await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   // Eintrag über die Bridge (appendJournalEntry, derselbe Aufruf wie der echte

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, selectView } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, selectView } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -409,7 +409,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       await setTheme(page, theme);
       await page.getByRole('button', { name: 'Termin erfassen' }).click();
 
-      const submit = page.locator('.event-editor__submit');
+      const submit = page.getByRole('dialog', { name: 'Termin erfassen' }).locator('.sheet__action');
       await expect(submit).toBeVisible();
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });
@@ -423,7 +423,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       // habit-list.tsx always mounts a second (closed) HabitEditor in edit mode
       // alongside this one — scope to the open create dialog or the bare class
       // selector hits Playwright's strict-mode "2 elements" error.
-      const submit = page.getByRole('dialog', { name: 'Routine anlegen' }).locator('.habit-editor__submit');
+      const submit = page.getByRole('dialog', { name: 'Routine anlegen' }).locator('.sheet__action');
       await expect(submit).toBeVisible();
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });
@@ -454,4 +454,103 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
       expect(await contrastOf(submit)).toBeGreaterThanOrEqual(4.5);
     });
   }
+});
+
+/**
+ * Shared sheet header (issue #710, AK2/AK3): every sheet that hosts a form
+ * shows the header ("Abbrechen" + centered title + action) with the
+ * unified vocabulary — "Anlegen" on create, "Sichern" on edit. Journal is not
+ * part of this round: journal-editor.tsx has no Sheet to host a header yet
+ * (issue #701 is mid-flight on that), so it keeps its own "Absenden" for now.
+ */
+test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
+  test('AK2/AK3: Aufgabe, Übersicht-Erfassung, Termin und Routine zeigen die Kopfzeile beim Anlegen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    await page.goto('/aufgaben');
+    await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
+    let dialog = page.getByRole('dialog', { name: 'Aufgabe erfassen' });
+    await expect(dialog.locator('.sheet__grip')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Anlegen' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.goto('/uebersicht');
+    await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
+    dialog = page.getByRole('dialog', { name: 'Aufgabe erfassen' });
+    await expect(dialog.locator('.sheet__grip')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Anlegen' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.goto('/kalender');
+    await page.getByRole('button', { name: 'Termin erfassen' }).click();
+    dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
+    await expect(dialog.locator('.sheet__grip')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Anlegen' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    await page.goto('/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
+    dialog = page.getByRole('dialog', { name: 'Routine anlegen' });
+    await expect(dialog.locator('.sheet__grip')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Anlegen' })).toBeVisible();
+  });
+
+  test('AK3: Termin und Routine zeigen "Sichern" (nicht "Speichern") beim Bearbeiten', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await installClockAt(page);
+
+    await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'events',
+        op: 'upsert',
+        payload: {
+          title: 'Kopfzeile-Test-710',
+          allDay: false,
+          startsAt: '2026-07-18T12:00:00.000Z',
+          endsAt: '2026-07-18T13:00:00.000Z',
+        },
+      }),
+    );
+    await page.goto('/kalender');
+    await page.locator('.event-agenda__item').filter({ hasText: 'Kopfzeile-Test-710' }).click();
+    const eventDialog = page.getByRole('dialog', { name: 'Termin bearbeiten' });
+    await expect(eventDialog.getByRole('button', { name: 'Sichern' })).toBeVisible();
+    await expect(eventDialog.getByRole('button', { name: 'Speichern' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await page.evaluate(
+      (createdAt) =>
+        window.__starship.mutate({
+          table: 'habits',
+          op: 'upsert',
+          payload: {
+            name: 'Kopfzeile-Test-710',
+            schedule: 'daily',
+            target: 1,
+            color: null,
+            archivedAt: null,
+            createdAt,
+          },
+        }),
+      FIXED_NOW,
+    );
+    await page.goto('/routinen');
+    await page
+      .getByRole('list', { name: 'Routinen', exact: true })
+      .getByRole('listitem')
+      .filter({ hasText: 'Kopfzeile-Test-710' })
+      .getByRole('button', { name: /^Kopfzeile-Test-710\b/ })
+      .click();
+    const habitDialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
+    await expect(habitDialog.getByRole('button', { name: 'Sichern' })).toBeVisible();
+    await expect(habitDialog.getByRole('button', { name: 'Speichern' })).toHaveCount(0);
+  });
 });

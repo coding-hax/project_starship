@@ -31,7 +31,7 @@ function taskItems(page: Page) {
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Hinzufügen' }).click();
+  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 /** Mirrors parse-task-input.ts's own default time (09:00), computed at run time —
