@@ -1,13 +1,37 @@
 /**
- * The event editor sheet's content: title, category, all-day toggle, Von/Bis.
- * Same field styling as task-editor.css so every sheet in the app reads as one
- * system.
+ * The event editor sheet's content: a title field and a row of chips (Wann ·
+ * Wiederholung · Kategorie, issue #712) — same field styling as
+ * task-editor.css so every sheet in the app reads as one system, a chip's
+ * panel hosting literally the previous flat form's own fields (issue #650's
+ * pattern, first applied to quick-add.tsx in issue #711).
  */
 
 .event-editor {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.event-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The sheet is flex-end-anchored and grows upward (sheet.css) — an opening
+   panel would otherwise push the title/chips row up. A fixed height range
+   avoids that: `min-height` covers the shortest panel (Wann), `max-height` +
+   `overflow-y: auto` cap the tallest and variable one (Wiederholung — weekday
+   picker only appears for "wöchentlich", the Ende group always three rows).
+   No AK in issue #712 asks for a zero-shift guarantee, so this is sized to
+   read well rather than measured pixel-exact. */
+.event-editor__panel-slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: calc(var(--touch-target) * 5);
+  max-height: calc(var(--touch-target) * 8);
+  overflow-y: auto;
 }
 
 .event-editor__title,

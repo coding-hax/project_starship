@@ -35,6 +35,11 @@ function eventDialog(page: Page) {
   return page.getByRole('dialog', { name: EVENT_LABEL });
 }
 
+/** Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
+function openWannChip(dialog: ReturnType<typeof eventDialog>) {
+  return dialog.getByRole('button', { name: /^Wann/ }).click();
+}
+
 function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
@@ -87,6 +92,7 @@ test('AK1: Schreibweise der Uhrzeit ändert das Ergebnis nicht — "um H Uhr" bl
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
@@ -102,6 +108,7 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   let dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(dueToday));
   // Kein "Abbrechen"-Button im Event-Editor (event-editor.tsx) — das <dialog> schließt
   // nativ über ESC (sheet.tsx).
@@ -125,6 +132,7 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   await page.waitForURL('**/kalender');
   dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(dueTomorrow));
 });
 
@@ -144,6 +152,7 @@ test('AK3: Titel ist der Rest, nicht das Ergebnis einer Blacklist — Bindewört
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt in der Klinik');
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
@@ -159,6 +168,7 @@ test('AK4: Kommandopräfixe fallen, Inhalt bleibt — "Termin" nur vor einem Dat
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
@@ -176,6 +186,7 @@ test('AK5: bleibt kein Titel übrig, bleibt er leer — der Editor öffnet mit F
   const titleField = dialog.getByLabel('Titel');
   await expect(titleField).toHaveValue('');
   await expect(titleField).toBeFocused();
+  await openWannChip(dialog);
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
 });
 
