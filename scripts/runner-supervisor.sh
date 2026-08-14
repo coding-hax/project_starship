@@ -43,15 +43,26 @@ MIN_DISK_GB="${MIN_DISK_GB:-10}"
 # So oft darf der TS-Kern hintereinander unbenutzbar sein, bevor die Aufsicht
 # die Flotte anhält statt sie weiterlaufen zu lassen.
 MAX_CORE_FAILS="${MAX_CORE_FAILS:-3}"
+# Ab wann ein Slot als stehengeblieben gilt. Der Runner-Takt ist 120s; wer 30
+# Minuten lang keinen Zustand geschrieben hat, tickt nicht mehr. Kein Alarm
+# ohne die zweite Bedingung: dass dort auch kein Agent läuft (ein Bau-Lauf
+# darf 45 Minuten dauern und schreibt währenddessen nichts).
+STALE_SLOT_MIN="${STALE_SLOT_MIN:-30}"
+# Zeilen, die im Log stehen bleiben. Bei einer Takt-Zeile alle 10 Minuten sind
+# 5000 Zeilen gut fünf Wochen -- lang genug für jede Abwesenheit, kurz genug,
+# dass die Datei nie jemanden interessieren muss.
+LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}"
 
 AGENT_PATTERN="claude -p --output-format json"
 
 DRY_RUN=0
 QUIET=0
+STATUS_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
     --quiet)   QUIET=1 ;;
+    --status)  STATUS_ONLY=1 ;;
     *) echo "unbekanntes Argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -78,6 +89,34 @@ act() {
 
 trip_mode() { [ -f "$TRIP_FILE" ]; }
 
+# `cmd | grep -q muster` ist unter `set -o pipefail` unbrauchbar: grep steigt
+# beim ersten Treffer aus, der Produzent stirbt an SIGPIPE, und pipefail macht
+# die Pipeline rot -- obwohl gefunden wurde. Ob das passiert, ist ein Rennen
+# gegen die Ausgabelänge, also mal so, mal so.
+#
+# Am 14.08. hat genau das die Aufsicht bei jedem Lauf melden lassen, keiner der
+# drei Slots sei geladen; sie hat alle drei "neu gestartet". Harmlos nur, weil
+# `fleet.sh start` idempotent ist. Deshalb: erst einfangen, dann prüfen --
+# ohne Pipe, ohne Rennen.
+contains() {   # $1 = Heuhaufen, $2 = Nadel
+  case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac
+}
+
+# `launchctl list` einmal je Lauf, nicht einmal je Slot.
+LC_SNAPSHOT=""
+launchctl_snapshot() {
+  [ -n "$LC_SNAPSHOT" ] && return 0
+  LC_SNAPSHOT=$(launchctl list 2>/dev/null || true)
+}
+
+# Nach einem Eingriff stimmt die Aufnahme nicht mehr. Die Takt-Zeile soll den
+# Zustand am ENDE des Laufs zeigen -- sonst meldet sie "1/3 geladen", nachdem
+# sie gerade drei Slots gestartet hat.
+launchctl_refresh() {
+  LC_SNAPSHOT=""
+  launchctl_snapshot
+}
+
 slot_labels() {
   find "$PLIST_DIR" -maxdepth 1 -name "$PREFIX.slot-*.plist" \
     -exec basename {} .plist \; 2>/dev/null | sort
@@ -94,7 +133,8 @@ repo_dir_of() {
 check_slots_loaded() {
   local label missing=0
   for label in $(slot_labels); do
-    if launchctl list 2>/dev/null | grep -q "$label"; then continue; fi
+    launchctl_snapshot
+    if contains "$LC_SNAPSHOT" "$label"; then continue; fi
     missing=1
     if ! trip_mode; then
       log "Slot $label nicht geladen — kein Reise-Modus, also nicht gestartet."
@@ -221,6 +261,68 @@ check_worktrees() {
   done
 }
 
+# --- 6b. Stehengebliebene Slots ----------------------------------------------
+# Jeder Slot schreibt je Takt seinen Zustand nach $STATE_DIR/slots/<n>/state.json
+# (fleet.ts). Das Alter dieses Eintrags ist der einzige verlässliche Puls eines
+# Slots -- ein geladener launchd-Job sagt nur, dass er starten DÜRFTE.
+#
+# Zwei Bedingungen, nie eine: Ein Bau-Lauf darf 45 Minuten laufen und schreibt
+# in dieser Zeit nichts. Erst „lange still UND kein Agent hier" heißt
+# stehengeblieben. Ein Neustart des Slots ist dann verlustfrei, weil der nächste
+# Lauf Branch, git log und Fortschrittskommentar liest und dort weitermacht.
+#
+# Was hier ausdrücklich NICHT passiert: einem offenen Ticket sein `in-progress`
+# oder seinen Claim wegnehmen. claimSweep() in scripts/runner/claim.ts lässt das
+# bewusst stehen -- „das gäbe es der Flotte weg, obwohl es niemand gelöst hat".
+# Diese Aufsicht widerspricht der Entscheidung nicht, sie meldet nur.
+slot_age_min() {   # $1 = Slot-Nummer; leer, wenn es keinen Zustand gibt
+  local f="$STATE_DIR/slots/$1/state.json" ms now_ms
+  [ -f "$f" ] || return 1
+  ms=$(sed -n 's/.*"updatedAtMs":\([0-9]*\).*/\1/p' "$f" | tail -1)
+  [ -n "$ms" ] || return 1
+  now_ms=$(( $(date +%s) * 1000 ))
+  printf '%s' $(( (now_ms - ms) / 60000 ))
+}
+
+# Läuft unter $1 (Repo-Verzeichnis eines Slots) ein Agent? Über das
+# Arbeitsverzeichnis, wie fleet.sh: die Kommandozeile trägt die Slot-Nummer
+# nicht, das cwd schon.
+agents_under() {
+  local dir="$1" pid n=0
+  [ -n "$dir" ] || { printf '0'; return; }
+  for pid in $(pgrep -f "$AGENT_PATTERN" 2>/dev/null || true); do
+    cwds=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null || true)
+    contains "$cwds" "n$dir" && n=$(( n + 1 ))
+  done
+  printf '%s' "$n"
+}
+
+check_stuck_slots() {
+  local label n age repo agents
+  for label in $(slot_labels); do
+    n="${label##*slot-}"
+    age=$(slot_age_min "$n") || { log "Slot $n hat noch keinen Zustand geschrieben."; continue; }
+    [ "$age" -ge "$STALE_SLOT_MIN" ] || continue
+
+    repo=$(repo_dir_of "$label")
+    agents=$(agents_under "$repo")
+    if [ "$agents" -gt 0 ]; then
+      log "Slot $n still seit ${age} Min., aber $agents Agent(en) laufen dort — das ist ein Bau-Lauf, kein Stillstand."
+      continue
+    fi
+
+    if ! trip_mode; then
+      alarm "Slot $n tickt seit ${age} Minuten nicht und hat keinen laufenden Agenten (kein Reise-Modus, also nicht neu gestartet)"
+      continue
+    fi
+    if act "$FLEET_SH" stop "$n" >/dev/null 2>&1 && act "$FLEET_SH" start "$n" >/dev/null 2>&1; then
+      heal "Slot $n stand seit ${age} Min. ohne Agenten — neu gestartet (Arbeitsstand bleibt: Branch und Fortschrittskommentar tragen ihn)"
+    else
+      alarm "Slot $n steht seit ${age} Minuten und ließ sich nicht neu starten"
+    fi
+  done
+}
+
 # --- 7. Ist der Runner-Kern überhaupt noch benutzbar? ------------------------
 # Der Bremsklotz gegen den einzigen Schaden, den die Aufsicht nicht reparieren
 # kann: ein Lauf, der scripts/runner/ kaputt gemacht hat. Drei Slots würden
@@ -261,8 +363,10 @@ check_environment() {
   fi
   # Schläft der Mac, tickt StartInterval nur beim Aufwachen. Im Reise-Modus ist
   # das der Unterschied zwischen einer arbeitenden und einer toten Flotte.
-  if trip_mode && pmset -g custom 2>/dev/null \
-       | sed -n '/AC Power/,$p' | grep -qE '^ sleep +[1-9]'; then
+  local ac_sleep
+  ac_sleep=$(pmset -g custom 2>/dev/null | sed -n '/AC Power/,$p' \
+    | sed -n 's/^ sleep  *\([0-9][0-9]*\).*/\1/p' | head -1)
+  if trip_mode && [ -n "$ac_sleep" ] && [ "$ac_sleep" -ne 0 ] 2>/dev/null; then
     alarm "Reise-Modus, aber der Mac schläft am Netzteil ein (pmset sleep != 0) — die Flotte tickt dann nur sporadisch"
   fi
 }
@@ -288,9 +392,23 @@ all_worktrees() {
 # Zwei Wochen Rauschen liest niemand. Gemeldet wird nur, was jemanden angeht:
 # ein Alarm immer, geheilte Störungen gesammelt. Ein stiller Lauf schreibt
 # ausschließlich ins Log.
+# `gh` bestimmt das Repository sonst aus dem Arbeitsverzeichnis -- unter launchd
+# ist das `/`, und jeder Aufruf scheitert stumm. Genau daran ging der erste
+# echte Bericht verloren ("Bericht konnte nicht ans Issue #1 geschrieben
+# werden", 14.08.). Deshalb trägt jeder gh-Aufruf hier sein --repo selbst.
+repo_slug() {
+  [ -n "${REPO_SLUG:-}" ] && { printf '%s' "$REPO_SLUG"; return 0; }
+  local url
+  url=$(git -C "$REPO_DIR" remote get-url origin 2>/dev/null) || return 1
+  printf '%s' "$url" | sed -E 's#^(git@|ssh://git@|https://)github\.com[:/]##; s#\.git$##'
+}
+
 report() {
   [ "${#HEALED[@]}" -eq 0 ] && [ "${#ALARMS[@]}" -eq 0 ] && return 0
   command -v gh >/dev/null 2>&1 || return 0
+
+  local slug
+  slug=$(repo_slug) || { log "Repository nicht bestimmbar — Bericht bleibt im Log."; return 0; }
 
   local body="" item
   if [ "${#ALARMS[@]}" -gt 0 ]; then
@@ -307,13 +425,88 @@ report() {
   fi
   body="${body}_$(date '+%d.%m. %H:%M') · $(hostname -s)_"
 
-  act gh issue comment "$STATUS_ISSUE" --body "$body" >/dev/null 2>&1 \
+  act gh issue comment "$STATUS_ISSUE" --repo "$slug" --body "$body" >/dev/null 2>&1 \
     || log "Bericht konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden."
+}
+
+# --- Takt-Zeile --------------------------------------------------------------
+# Eine Zeile je Lauf, immer -- auch wenn nichts zu tun war. Ohne sie sieht ein
+# gesunder Lauf exakt aus wie eine tote Aufsicht: kein Eintrag, keine Meldung.
+# Genau dieser blinde Fleck ist der Grund, warum es den Totmann-Schalter für die
+# Flotte gibt; die Aufsicht darf ihn nicht selbst wieder aufmachen.
+#
+# Bewusst EINE greppbare Zeile statt eines Berichts: `tail -f` soll lesbar
+# bleiben, und über zwei Wochen sind das ~2000 Zeilen.
+heartbeat_line() {
+  local label n loaded=0 total=0 ages="" age agents=0 pid
+  launchctl_refresh
+  for label in $(slot_labels); do
+    total=$(( total + 1 ))
+    contains "$LC_SNAPSHOT" "$label" && loaded=$(( loaded + 1 ))
+    n="${label##*slot-}"
+    age=$(slot_age_min "$n") || age="?"
+    ages="$ages${ages:+,}$n:${age}m"
+  done
+  for pid in $(pgrep -f "$AGENT_PATTERN" 2>/dev/null || true); do
+    agents=$(( agents + 1 ))
+  done
+
+  printf '%s  TAKT slots=%d/%d agenten=%d alter=[%s] reise=%s geheilt=%d alarme=%d\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" "$loaded" "$total" "$agents" "$ages" \
+    "$(trip_mode && echo ja || echo nein)" "${#HEALED[@]}" "${#ALARMS[@]}" \
+    >> "$LOG" 2>/dev/null || true
+}
+
+# Das Log darf über eine lange Abwesenheit nicht unbegrenzt wachsen. Gekürzt
+# wird über eine temporäre Datei und `mv` -- ein `> "$LOG"` mitten im Lauf
+# verlöre die Zeilen, die parallel geschrieben werden.
+trim_log() {
+  local lines tmp
+  [ -f "$LOG" ] || return 0
+  lines=$(wc -l < "$LOG" 2>/dev/null | tr -d ' ')
+  case "$lines" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$lines" -gt "$LOG_KEEP_LINES" ] || return 0
+  tmp="$LOG.trim.$$"
+  tail -n "$LOG_KEEP_LINES" "$LOG" > "$tmp" 2>/dev/null && mv "$tmp" "$LOG" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null || true
+}
+
+# --- Lagebild auf Zuruf ------------------------------------------------------
+# Für den Menschen am Rechner: was die Aufsicht gerade sieht, ohne dass sie
+# etwas anfasst. Verändert nichts, meldet nichts ans Issue.
+print_status() {
+  local label n age repo agents core
+  launchctl_snapshot
+  echo "Aufsicht — Lagebild $(date '+%d.%m. %H:%M')"
+  echo
+  echo "Reise-Modus:  $(trip_mode && echo "aktiv ($TRIP_FILE)" || echo 'aus — kein Slot wird nach einem Neustart gestartet')"
+  if [ -x "$REPO_DIR/node_modules/.bin/tsx" ] \
+     && "$REPO_DIR/node_modules/.bin/tsx" "$REPO_DIR/scripts/runner/cli.ts" \
+        fleet-status 1 1 1 >/dev/null 2>&1; then core="benutzbar"; else core="ROT"; fi
+  echo "Runner-Kern:  $core"
+  echo
+  printf '%-6s %-9s %-8s %-8s %s\n' "Slot" "launchd" "Puls" "Agenten" "Repo"
+  for label in $(slot_labels); do
+    n="${label##*slot-}"
+    age=$(slot_age_min "$n") || age="?"
+    repo=$(repo_dir_of "$label")
+    agents=$(agents_under "$repo")
+    printf '%-6s %-9s %-8s %-8s %s\n' "$n" \
+      "$(contains "$LC_SNAPSHOT" "$label" && echo geladen || echo FEHLT)" \
+      "${age}m" "$agents" "${repo:-?}"
+  done
+  echo
+  echo "Letzte Einträge:"
+  tail -n 8 "$LOG" 2>/dev/null | sed 's/^/  /' || echo "  (noch keine)"
 }
 
 main() {
   mkdir -p "$STATE_DIR" 2>/dev/null || true
-  trip_mode && log "Reise-Modus aktiv ($TRIP_FILE)"
+
+  if [ "$STATUS_ONLY" -eq 1 ]; then
+    print_status
+    return 0
+  fi
 
   check_slots_loaded
   check_wedged_agents
@@ -321,8 +514,15 @@ main() {
   check_node_modules
   check_dirty_index
   check_worktrees
+  check_stuck_slots
   check_runner_core
   check_environment
+
+  # Erst die Takt-Zeile, dann der Bericht: Die Zeile zählt, was dieser Lauf
+  # gefunden hat, und muss auch dann im Log stehen, wenn der Bericht ans Issue
+  # scheitert (kein Netz, gh nicht angemeldet).
+  heartbeat_line
+  trim_log
   report
 
   [ "${#ALARMS[@]}" -eq 0 ]
