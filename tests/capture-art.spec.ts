@@ -19,6 +19,24 @@ function artChip(page: Page, label: string) {
   return page.getByRole('button', { name: `Art, ${label}` });
 }
 
+/** `exact: true` matters here: "Routine" (unset) is otherwise a substring
+ * match of the Art-Chip's own "Art, Routine". */
+function routineChip(page: Page, label?: string) {
+  return page.getByRole('button', { name: label ? `Routine, ${label}` : 'Routine', exact: true });
+}
+
+async function seedHabit(page: Page, name: string): Promise<void> {
+  await page.evaluate(
+    (habitName) =>
+      window.__starship.mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: { name: habitName, schedule: 'daily', color: null, archivedAt: null },
+      }),
+    name,
+  );
+}
+
 async function submitCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
@@ -190,4 +208,56 @@ test('AK4-Kernfeld: die Priorität-Chip-Auswahl übernimmt in die angelegte Aufg
   const entries = await page.evaluate(() => window.__starship.pending());
   const created = entries.find((entry) => entry.table === 'tasks');
   expect(created?.payload).toMatchObject({ title: 'Müll rausbringen', priority: 1 });
+});
+
+test('AK5: eindeutiger Habit-Treffer zeigt den Routine-Chip vorbelegt, Anlegen hakt direkt ab', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedHabit(page, 'Sport');
+  await page.goto('/uebersicht');
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('hake Sport ab');
+  await expect(routineChip(page, 'Sport')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  await expect(page.getByRole('checkbox', { name: 'Sport für heute abhaken' })).toBeChecked();
+  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
+});
+
+test('AK5: mehrdeutiger Habit-Treffer zeigt „Keiner Gewohnheit zugeordnet" mit Auswahl statt still zu navigieren', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedHabit(page, 'Yoga');
+  await seedHabit(page, 'Lauf');
+  await page.goto('/uebersicht');
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('hake Yoga Lauf ab');
+  await expect(artChip(page, 'Routine')).toBeVisible();
+  await expect(routineChip(page)).toBeVisible();
+
+  // Ohne Wahl legt "Anlegen" nichts an — die Auswahl öffnet sich stattdessen.
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(captureDialog(page)).toBeVisible();
+  await page.getByRole('radio', { name: 'Yoga' }).click();
+  await expect(routineChip(page, 'Yoga')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(captureDialog(page)).toBeHidden();
+  await expect(page.getByRole('checkbox', { name: 'Yoga für heute abhaken' })).toBeChecked();
+});
+
+test('AK5: ohne wählbare Gewohnheit ist die Art-Option „Routine" gesperrt', async ({ page }) => {
+  await page.goto('/uebersicht');
+
+  await captureButton(page).click();
+  await artChip(page, 'Aufgabe').click();
+
+  await expect(page.getByRole('radio', { name: 'Routine' })).toBeDisabled();
 });

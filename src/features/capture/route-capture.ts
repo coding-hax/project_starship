@@ -100,31 +100,31 @@ export function defaultEventStart(now: Date): string {
   return `${toDateKey(logicalDayStart(now))}T09:00`;
 }
 
-export type CaptureRouteDecision =
-  | { action: 'task'; draft: TaskCaptureDraftItem }
-  | { action: 'event'; draft: EventCaptureDraftItem }
-  | { action: 'habit-check'; habitId: string; logDate: string }
-  | { action: 'habit-review' };
+export interface HabitCheckFields {
+  /** Nur bei eindeutigem Treffer gesetzt (`resolved`) — sonst `null`, der Fall
+   * "Keiner Gewohnheit zugeordnet" (issue #715 AK5), den der Routine-Kern-Chip
+   * dann sichtbar macht statt ihn still zu übergehen. */
+  habitId: string | null;
+  logDate: string;
+  /** `true` nur bei hoher Konfidenz und genau einem Treffer (`matchHabit`) —
+   * kein Treffer, ein mehrdeutiger oder ein bloß schwacher zählen alle als
+   * nicht aufgelöst. */
+  resolved: boolean;
+}
 
 /**
- * Die eine Stelle, die "wohin damit" entscheidet (issue #619) — ruft den
- * Recognizer (#621) auf und übersetzt sein Ergebnis in Navigation/Prefill/
- * Mutation. Nur das erste erkannte Element (`items[0]`) — Mehrfach-Erfassung
- * käme später genau hier dazu (S1 von #617).
+ * `draft` -> Routine-Kernfelder, kind-unabhängig wie `taskFieldsFromDraft`/
+ * `eventFieldsFromDraft` oben.
  */
-export function decideCaptureRoute(text: string, ctx: CaptureContext): CaptureRouteDecision {
-  const draft = previewDraft(text, ctx);
-
-  if (draft.kind === 'task') {
-    return { action: 'task', draft: taskFieldsFromDraft(draft) };
-  }
-
-  if (draft.kind === 'event') {
-    return { action: 'event', draft: eventFieldsFromDraft(draft, ctx.now) };
-  }
-
-  if (draft.confidence.habit.level === 'high' && draft.habitId && draft.logDate) {
-    return { action: 'habit-check', habitId: draft.habitId, logDate: draft.logDate };
-  }
-  return { action: 'habit-review' };
+export function habitFieldsFromDraft(draft: CaptureDraft, now: Date): HabitCheckFields {
+  const resolved = draft.confidence.habit.level === 'high' && draft.habitId !== null;
+  return {
+    habitId: resolved ? draft.habitId : null,
+    // `draft.logDate` ist nur gesetzt, wenn der Recognizer selbst schon auf
+    // `habit_check` klassifiziert hat (local-recognizer.ts) — bei einer von
+    // Hand überschriebenen Art gibt es kein erkanntes Datum mehr zu lesen,
+    // der Log-Tag fällt dann auf den logischen Heute-Tag zurück.
+    logDate: draft.logDate ?? toDateKey(logicalDayStart(now)),
+    resolved,
+  };
 }

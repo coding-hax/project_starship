@@ -1,13 +1,13 @@
 'use client';
 
 import { useMemo, useRef, useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { matchHabit } from '@/features/capture/habit-match';
 import { hasCompletionVerb } from '@/features/capture/local-recognizer';
 import {
   allowedCaptureKinds,
   defaultEventStart,
   eventFieldsFromDraft,
+  habitFieldsFromDraft,
   previewDraft,
   taskFieldsFromDraft,
 } from '@/features/capture/route-capture';
@@ -33,6 +33,7 @@ const WANN_PANEL_ID = 'uebersicht-capture-panel-wann';
 const PRIO_PANEL_ID = 'uebersicht-capture-panel-prio';
 const ZEIT_PANEL_ID = 'uebersicht-capture-panel-zeit';
 const KATEGORIE_PANEL_ID = 'uebersicht-capture-panel-kategorie';
+const ROUTINE_PANEL_ID = 'uebersicht-capture-panel-routine';
 
 /** Sentinel for "keine Kategorie" — same convention as `event-editor.tsx`. */
 const NO_CATEGORY = '';
@@ -52,7 +53,9 @@ const ART_ACCENT: Record<CaptureKind, string> = {
 };
 
 /** Welche Chip-Panel gerade offen ist — höchstens eine gleichzeitig. */
-type ChipKey = 'art' | 'wann' | 'prio' | 'zeit' | 'kategorie';
+type ChipKey = 'art' | 'wann' | 'prio' | 'zeit' | 'kategorie' | 'routine';
+
+const ROUTINE_UNRESOLVED_LABEL = 'Keiner Gewohnheit zugeordnet';
 
 interface HabitCheckUndo {
   habitId: string;
@@ -74,6 +77,11 @@ interface HabitCheckUndo {
  * separate Bestätigen-Dialog entfällt auf diesem Pfad (anders als beim FAB in
  * `quick-add.tsx`): eine geratene Fälligkeit/Zeit zeigt sich inline als
  * `guessed`-Chip statt in einem Zwischenschritt.
+ *
+ * AK5: bei Art Routine macht der Routine-Kern-Chip den bisher stillen
+ * „Keiner Gewohnheit zugeordnet"-Fall sichtbar (kein oder mehrdeutiger
+ * `matchHabit`-Treffer) — „Anlegen" öffnet dann die Auswahl statt nichts zu
+ * tun oder blind nach `/routinen` zu navigieren.
  */
 export function UebersichtCapture() {
   const [open, setOpen] = useState(false);
@@ -91,11 +99,14 @@ export function UebersichtCapture() {
   // Von + 1h ab (AK4), Ganztägig/Wiederholung liegen hinter „Mehr" (P4).
   const [eventStartOverride, setEventStartOverride] = useState<string | null>(null);
   const [category, setCategory] = useState(NO_CATEGORY);
+  // Routine: welche Gewohnheit abgehakt wird — `null` folgt der Erkennung
+  // (AK5: nur bei eindeutigem Treffer vorbelegt), `''` ist die bewusste
+  // Rücknahme auf „Keiner Gewohnheit zugeordnet".
+  const [habitOverride, setHabitOverride] = useState<string | null>(null);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const router = useRouter();
   const { isActive } = useModules();
   const habits = useHabits();
   const logs = useHabitLogs();
@@ -135,6 +146,14 @@ export function UebersichtCapture() {
     (eventFields.startsAt ? isoToLocalInput(eventFields.startsAt) : defaultEventStart(now));
   const eventStartGuessed = eventStartOverride === null && eventFields.startsAt !== null;
 
+  const habitFields = useMemo(() => habitFieldsFromDraft(draft, now), [draft, now]);
+  const resolvedHabitId =
+    habitOverride === null ? (habitFields.resolved ? habitFields.habitId : null) : habitOverride || null;
+  const habitGuessed = habitOverride === null && habitFields.resolved;
+  const habitName = resolvedHabitId
+    ? (captureHabits.find((habit) => habit.id === resolvedHabitId)?.name ?? null)
+    : null;
+
   function toggleChip(key: ChipKey) {
     setOpenChip((current) => (current === key ? null : key));
   }
@@ -163,6 +182,7 @@ export function UebersichtCapture() {
     setPriority(0);
     setEventStartOverride(null);
     setCategory(NO_CATEGORY);
+    setHabitOverride(null);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -226,19 +246,20 @@ export function UebersichtCapture() {
       return;
     }
 
-    // habit_check: unverändert der bisherige Pfad (P3 macht den unklaren Fall
-    // sichtbar statt einer Navigation nach /routinen).
-    closeAndReset();
-    if (draft.confidence.habit.level === 'high' && draft.habitId && draft.logDate) {
-      const { habitId, logDate } = draft;
-      const habitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
-      dismissHabitUndo();
-      await toggleHabitLog(habitId, logDate);
-      setHabitUndo({ habitId, habitName, logDate });
-      undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
+    // habit_check (AK5): kein oder mehrdeutiger Treffer öffnet sichtbar die
+    // Auswahl statt still nach /routinen zu navigieren — „Anlegen" verlangt
+    // erst eine bewusste Wahl.
+    if (!resolvedHabitId) {
+      setOpenChip('routine');
       return;
     }
-    router.push('/routinen');
+    const checkedHabitName = captureHabits.find((habit) => habit.id === resolvedHabitId)?.name ?? '';
+    const logDate = habitFields.logDate;
+    closeAndReset();
+    dismissHabitUndo();
+    await toggleHabitLog(resolvedHabitId, logDate);
+    setHabitUndo({ habitId: resolvedHabitId, habitName: checkedHabitName, logDate });
+    undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
   }
 
   const priorityLabel = priority !== 0 ? PRIORITIES.find((p) => p.value === priority)!.label : null;
@@ -260,6 +281,7 @@ export function UebersichtCapture() {
           setPriority(0);
           setEventStartOverride(null);
           setCategory(NO_CATEGORY);
+          setHabitOverride(null);
           setNow(new Date());
           setOpen(true);
         }}
@@ -340,21 +362,40 @@ export function UebersichtCapture() {
                 />
               </>
             )}
+            {displayedKind === 'habit_check' && (
+              <Chip
+                field="Routine"
+                emptyLabel={ROUTINE_UNRESOLVED_LABEL}
+                value={habitName}
+                guessed={habitGuessed}
+                disabled={captureHabits.length === 0}
+                open={openChip === 'routine'}
+                panelId={ROUTINE_PANEL_ID}
+                onOpen={() => toggleChip('routine')}
+                onDiscard={() => setHabitOverride('')}
+              />
+            )}
           </div>
           {openChip === 'art' && (
             <fieldset className="quick-add__priority" aria-label="Art" id={ART_PANEL_ID}>
-              {allowedKinds.map((kind) => (
-                <label key={kind} className="quick-add__priority-option">
-                  <input
-                    type="radio"
-                    name="uebersicht-capture-art"
-                    checked={displayedKind === kind}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onChange={() => setKindOverridden(kind)}
-                  />
-                  {ART_LABELS[kind]}
-                </label>
-              ))}
+              {allowedKinds.map((kind) => {
+                // Kante (AK5): keine wählbare Gewohnheit -> "Routine" führt in
+                // eine Sackgasse, deshalb hier gesperrt statt anwählbar.
+                const disabled = kind === 'habit_check' && captureHabits.length === 0;
+                return (
+                  <label key={kind} className="quick-add__priority-option">
+                    <input
+                      type="radio"
+                      name="uebersicht-capture-art"
+                      checked={displayedKind === kind}
+                      disabled={disabled}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onChange={() => setKindOverridden(kind)}
+                    />
+                    {ART_LABELS[kind]}
+                  </label>
+                );
+              })}
             </fieldset>
           )}
           {openChip === 'wann' && (
@@ -408,6 +449,22 @@ export function UebersichtCapture() {
                 </option>
               ))}
             </select>
+          )}
+          {openChip === 'routine' && (
+            <fieldset className="quick-add__priority" aria-label="Routine" id={ROUTINE_PANEL_ID}>
+              {captureHabits.map((habit) => (
+                <label key={habit.id} className="quick-add__priority-option">
+                  <input
+                    type="radio"
+                    name="uebersicht-capture-routine"
+                    checked={resolvedHabitId === habit.id}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onChange={() => setHabitOverride(habit.id)}
+                  />
+                  {habit.name}
+                </label>
+              ))}
+            </fieldset>
           )}
           {unresolvedHabit && (
             <p role="status" className="uebersicht-capture__notice">
