@@ -2298,31 +2298,34 @@ test('AK2: Schnellwahl-Zeilen setzen die Fälligkeit mit einem Tipp', async ({ p
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
 
+  // Titel bewusst ohne "heute"/"morgen"/Wochentag: parse-task-input.ts erkennt
+  // diese Wörter als Datumsangabe und entfernt sie aus dem Titel (Grammatik-Regel
+  // R3) — ein Titel, der sie enthält, käme nie unverändert in der Liste an.
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Per Schnellwahl heute');
+  await quickAddTitleField(page).fill('Schnellwahl Fall 1');
   await quickAddChip(page, 'Fälligkeit').click();
   await dueQuickSelect(page, 'Heute').click();
   await submitQuickAdd(page);
-  await tapTask(page, 'Per Schnellwahl heute');
+  await tapTask(page, 'Schnellwahl Fall 1');
   await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-18T09:00');
   await page.keyboard.press('Escape');
 
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Per Schnellwahl morgen');
+  await quickAddTitleField(page).fill('Schnellwahl Fall 2');
   await quickAddChip(page, 'Fälligkeit').click();
   await dueQuickSelect(page, 'Morgen').click();
   await submitQuickAdd(page);
-  await tapTask(page, 'Per Schnellwahl morgen');
+  await tapTask(page, 'Schnellwahl Fall 2');
   await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-19T09:00');
   await page.keyboard.press('Escape');
 
   // Nächste Woche = nächster Montag, unabhängig vom heutigen Wochentag.
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Per Schnellwahl nächste Woche');
+  await quickAddTitleField(page).fill('Schnellwahl Fall 3');
   await quickAddChip(page, 'Fälligkeit').click();
   await dueQuickSelect(page, 'Nächste Woche').click();
   await submitQuickAdd(page);
-  await tapTask(page, 'Per Schnellwahl nächste Woche');
+  await tapTask(page, 'Schnellwahl Fall 3');
   await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-20T09:00');
 });
 
@@ -2405,6 +2408,11 @@ test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die
 
   await page.emulateMedia({ colorScheme: 'dark' });
   await today.click();
+  // Same pattern as the other computed-style checks in this file (e.g. the
+  // reduced-motion test above line 1005): wait for the attribute the CSS
+  // selector keys off before reading getComputedStyle, so this doesn't race
+  // React's commit.
+  await expect(today).toHaveAttribute('aria-pressed', 'true');
   const darkSelectedBackground = await today.evaluate(
     (el) => getComputedStyle(el).backgroundColor,
   );
