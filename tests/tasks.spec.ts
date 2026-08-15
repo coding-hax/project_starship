@@ -2408,15 +2408,16 @@ test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die
 
   await page.emulateMedia({ colorScheme: 'dark' });
   await today.click();
-  // Same pattern as the other computed-style checks in this file (e.g. the
-  // reduced-motion test above line 1005): wait for the attribute the CSS
-  // selector keys off before reading getComputedStyle, so this doesn't race
-  // React's commit.
   await expect(today).toHaveAttribute('aria-pressed', 'true');
-  const darkSelectedBackground = await today.evaluate(
-    (el) => getComputedStyle(el).backgroundColor,
-  );
-  expect(darkSelectedBackground).toBe(await resolveColorToken(page, '--accent'));
+  // Same pattern as the dark-mode dot check in kalender.spec.ts ("der
+  // Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im
+  // Dark Mode"): a plain synchronous getComputedStyle read right after the
+  // color-scheme switch + click can catch Chromium mid style-recalc and
+  // still report the pre-change value — expect.poll re-evaluates until the
+  // browser has actually settled, same target value either way.
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(await resolveColorToken(page, '--accent'));
 });
 
 /* -------------------------------------------------------------------------- */
