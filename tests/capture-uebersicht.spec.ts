@@ -316,7 +316,10 @@ test('AK6: ein Artwechsel hebt Felder ohne Gegenstück aus der Anzeige und bring
   await expect(page.getByRole('status').filter({ hasText: 'Priorität entfällt' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Priorität' })).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Art, Termin', exact: true }).click();
+  // Art-Chip blieb seit Zeile 313 offen (dieselbe Radio-Panel-Semantik wie bei
+  // Priorität/Routine: Auswahl schließt das Panel nicht) — ein erneuter Klick
+  // auf den Chip-Button würde toggeln und es schließen.
+  await expect(page.getByRole('button', { name: 'Art, Termin', exact: true })).toBeVisible();
   await page.getByRole('radio', { name: 'Aufgabe' }).click();
 
   await expect(page.getByRole('button', { name: 'Priorität, Hoch', exact: true })).toBeVisible();
