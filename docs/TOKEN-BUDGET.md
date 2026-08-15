@@ -96,13 +96,23 @@ Der stabile Präfix (System-Prompt, Tool-Definitionen, CLAUDE.md) wird gecacht u
 ist dann drastisch billiger. **Jede Änderung an CLAUDE.md invalidiert den Cache.**
 Also: CLAUDE.md schlank halten und _nicht dauernd anfassen_.
 
-Aus demselben Grund kappt der Runner `--resume` beim Bauen nach **2
-Fortsetzungen** (Issue #62): Nach 20+ Minuten zwischen zwei Läufen ist der
-Prompt-Cache ohnehin kalt, und ein `--resume` spielt dann die komplette
-bisherige Konversation als frische Input-Tokens erneut ein — die Ersparnis
-existiert also gar nicht mehr. Da der Bau-Stand in Git + Fortschrittskommentar
-liegt, ist ein frischer Start nach dem Deckel sicher und meist billiger als
-das Resume.
+Aus einem verwandten, aber eigenständigen Grund ist `--resume` fürs Bauen seit
+#742 ganz abgeschaltet (zuvor #62: ein Deckel bei 2 Fortsetzungen). Die
+frühere Begründung dafür war mechanisch falsch: sie unterstellte, Resume sei
+nur bei kaltem Cache teuer. Tatsächlich wird das zusätzliche Transkript-Präfix
+auf **jeder** der N Anfragen eines Laufs erneut abgerechnet — der
+wiederkehrende Posten ist `0,1 · N · S_prior`, der einmalige Gegenposten der
+Neu-Lektüre ist `1,25 · R`. Bei N ≈ 50 heisst das grob `5 · S_prior` gegen
+`~3,75 · R`: Resume verliert, sobald das Transkript grösser ist als die
+Neu-Lektüre — und ein 45-Minuten-Transkript ist das. Die vom Doc früher
+unterstellte Kaltphase zwischen Läufen existiert hier gar nicht: der Lock
+macht Ticks während eines Laufs zum No-op, Kettenrunden starten Sekunden
+später. Läuft die Cache-TTL zwischen zwei Runden doch einmal ab, muss das
+Transkript zu 1,25× neu geschrieben statt zu 0,1× gelesen werden — das
+verstärkt den Befund nur. Da der Bau-Stand ohnehin in Git +
+Fortschrittskommentar liegt, kostet ein frischer Start nichts an Kontinuität.
+Die Denk-Rollen (`plan`, `research`) resumen unverändert weiter — dort ist
+die breite Lektüre in der Session der bewusste Auftrag.
 
 ### 6. MCP-Server sparsam einsetzen
 

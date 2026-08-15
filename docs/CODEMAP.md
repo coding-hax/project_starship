@@ -89,7 +89,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `use-hide-completed-tasks.ts` / `hide-completed-toggle.tsx` / `.css` — Geräte-lokale Präferenz „erledigte ausblenden" (issue #654), Muster wie `use-capture-prefs.ts`
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
 - `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`;
-  `analyzeText` (Span+Ranking, #687) ist der gemeinsame Baustein für `src/features/capture/`
+  `analyzeText` (Span+Ranking, #687) Baustein für `src/features/capture/`; Wann-Panel `due-picker.tsx` (#722)
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
 - `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor` (issue #618, #619)
 - `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen` (#619)
@@ -136,7 +136,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): `agendaForDay`/`nextInAgenda`/`categoryEdgeVar`/`allDayEventsForDay`,
   `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
-  (Übersicht, issue #559; Agenda issue #597)
+  (Übersicht #559; Agenda #597)
 - `recurrence.ts` — reine Serien-Expansion (issue #557): `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`

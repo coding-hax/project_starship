@@ -409,6 +409,36 @@ describe('roundPlan', () => {
     });
   });
 
+  // #742: Bau-Laeufe resumen nie -- ein 45-Minuten-Transkript wird auf jeder
+  // Anfrage erneut abgerechnet, das uebersteigt fast immer die einmalige
+  // Neu-Lektuere von Git + Fortschrittskommentar. Denk-Rollen bleiben
+  // unveraendert, weil sie ihren Kontext bewusst in der Session tragen.
+  describe('Kein Resume fuers Bauen (#742)', () => {
+    it('haengt fuer die Bau-Rolle nie --resume an, selbst mit gespeicherter Session-ID', () => {
+      const { gh } = ghDouble([openIssues(issueJson(82, ['in-progress'])), noOpenPrs, labelsAre('in-progress')]);
+      state.write('session-82', 'sid-build-alt');
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('build');
+      expect(run.resume).toBe('');
+    });
+
+    it('resumt die Planer-Rolle weiterhin mit der gespeicherten Session-ID (Rollen-Asymmetrie)', () => {
+      const { gh } = ghDouble([openIssues(issueJson(80, ['in-progress', 'plan'])), noOpenPrs, labelsAre('in-progress', 'plan')]);
+      state.write('session-think-80', 'sid-plan-alt');
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('plan');
+      expect(run.resume).toBe('sid-plan-alt');
+    });
+
+    it('resumt die Recherche-Rolle weiterhin mit der gespeicherten Session-ID (Rollen-Asymmetrie)', () => {
+      const { gh } = ghDouble([openIssues(issueJson(81, ['in-progress', 'research'])), noOpenPrs, labelsAre('in-progress', 'research')]);
+      state.write('session-think-81', 'sid-research-alt');
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.role).toBe('research');
+      expect(run.resume).toBe('sid-research-alt');
+    });
+  });
+
   // ADR-0007: 'no-escalation' friert auf der Default-Stufe ein, auch wenn
   // bereits eine hoehere Stufe gestempelt ist.
   it('friert das Modell bei no-escalation ein', () => {

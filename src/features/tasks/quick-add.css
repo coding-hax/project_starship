@@ -13,7 +13,6 @@
 
 .quick-add__input,
 .quick-add__notes,
-.quick-add__due,
 .quick-add__parent {
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
@@ -36,7 +35,6 @@
 
 .quick-add__input:focus,
 .quick-add__notes:focus,
-.quick-add__due:focus,
 .quick-add__parent:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
