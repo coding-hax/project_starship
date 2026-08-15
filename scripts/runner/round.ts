@@ -30,7 +30,7 @@ import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
-import { buildEscalationEval, resumeAllowed, type NonFailureEndReason } from './escalation.js';
+import { buildEscalationEval, type NonFailureEndReason } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
 import {
@@ -697,12 +697,15 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   const beforeTip = role === 'build' ? branchTip(issue, git) : '';
   const runStart = role === 'build' ? clock.now().toISOString() : '';
 
-  // Resume-Deckel nur fuers Bauen (#62): die Denk-Rollen tragen ihren Kontext
-  // bewusst in der Session, dort ist die breite Lektuere der Auftrag. Fuers
-  // Bauen liegt der Stand in Git + Fortschrittskommentar.
+  // Kein Resume fuers Bauen (#742): das Transkript eines 45-Minuten-Laufs
+  // wird auf JEDER Anfrage erneut abgerechnet (0,1 * N * S_prior), das
+  // uebersteigt die einmalige Neu-Lektuere (1,25 * R) fast immer. Der Stand
+  // liegt in Git + Fortschrittskommentar, nicht in der Session -- die
+  // Denk-Rollen tragen ihren Kontext dagegen bewusst in der Session, dort
+  // ist die breite Lektuere der Auftrag.
   const sid = state.read(sessionKey(issue, role)) ?? '';
   let resume = '';
-  if (mode === 'resume' && sid !== '' && (role !== 'build' || resumeAllowed(issue, sharedState).allowed)) {
+  if (role !== 'build' && mode === 'resume' && sid !== '') {
     resume = sid;
   }
 

@@ -227,9 +227,11 @@ assert_eq      "AC5: genau EIN Ticket wurde tatsaechlich gebaut" "1" "$(call_cou
 
 # ==============================================================================
 # 2. Wiederaufnahme: die Frage an #50 ist beantwortet (needs-answer weg),
-#    'in-progress' stand nie ab. Das geht vor einem frischen 'ready'-Ticket --
-#    und zwar als Resume (bestehende Session per --resume), nicht als Neustart.
-#    #272: dafuer ist KEINE Label-Mutation mehr noetig.
+#    'in-progress' stand nie ab. Das geht vor einem frischen 'ready'-Ticket.
+#    #272: dafuer ist KEINE Label-Mutation mehr noetig. #742: die Bau-Rolle
+#    haengt trotz gespeicherter Session-ID nie mehr --resume an -- die
+#    Wiederaufnahme laeuft ueber Ticket-Prioritaet (in-progress vor ready),
+#    nicht mehr ueber die Claude-Session.
 # ==============================================================================
 reset_state
 seed_issue 50 "in-progress" "2024-01-01T00:00:00Z"
@@ -238,7 +240,7 @@ printf 'sid-50' > "$STATE_DIR/session-50"
 run_main
 assert_labels "AC3: #50 wird fortgesetzt, unveraendert in-progress" 50 "in-progress"
 assert_labels "AC3: #70 bleibt unangetastet, solange #50 laeuft" 70 "ready"
-assert_contains "AC4: die bestehende Session wird per --resume fortgesetzt" \
+assert_not_contains "AC4 (#742): die Bau-Rolle nutzt trotz gespeicherter Session-ID kein --resume" \
   "$GHSTATE_DIR/claude-lastargs-1" "sid-50"
 
 # ==============================================================================
@@ -324,10 +326,11 @@ seed_issue 90 "in-progress"
 printf 'sid-90' > "$STATE_DIR/session-90"
 run_main
 assert_labels "#272: beantwortetes #90 laeuft weiter, Labels unveraendert" 90 "in-progress"
-# Die --resume-Zusicherung steht in Block 2 (AC4). Hier nicht wiederholt: nach
-# mehreren Runden startet diese Harness keinen weiteren claude-Aufruf mehr --
-# `reset_state` raeumt STATE_DIR und GHSTATE_DIR, aber nicht die Sperre in
-# REPO_DIR. Vorbestehend, unabhaengig von #272, notiert in #278.
+# Die --resume-Zusicherung (bzw. seit #742 deren Gegenteil fuer die Bau-Rolle)
+# steht in Block 2 (AC4). Hier nicht wiederholt: nach mehreren Runden startet
+# diese Harness keinen weiteren claude-Aufruf mehr -- `reset_state` raeumt
+# STATE_DIR und GHSTATE_DIR, aber nicht die Sperre in REPO_DIR. Vorbestehend,
+# unabhaengig von #272, notiert in #278.
 
 # ==============================================================================
 echo
