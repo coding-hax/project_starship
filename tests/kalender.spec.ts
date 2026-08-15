@@ -799,9 +799,19 @@ test('ein Rechts-Wisch im aufgezogenen Monat blaettert zum Vormonat, derselbe Ta
   await expect(dayButton(page, 'Do, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streifen zusammen (S5 AC2)', async ({
+test('Antippen eines Tages im aufgezogenen Monat waehlt ihn, der Monat bleibt offen und die Agenda zeigt den Tag (issue #765)', async ({
   page,
 }) => {
+  await seedEvent(page, {
+    title: 'Monatstag-Termin',
+    allDay: false,
+    startsAt: '2026-07-22T09:00:00.000Z',
+    endsAt: '2026-07-22T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
   const strip = calendarStrip(page);
   await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
@@ -809,9 +819,10 @@ test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streif
   const outsideDay = dayButton(page, 'Mi, 22.');
   await outsideDay.click();
 
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
   await expect(outsideDay).toHaveAttribute('aria-pressed', 'true');
   await expect(outsideDay).toBeVisible();
+  await expect(eventCard(page, 'Monatstag-Termin')).toBeVisible();
 });
 
 test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Tage ohne Termin keinen (S5 AC3)', async ({
@@ -1505,6 +1516,59 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
 
   // A week later, the series' own occurrence still runs at the original time.
   await nextWeek(page, 1);
+  await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
+/** Same synthetic-Pointer-Events technique as tasks.spec.ts's swipeRight/swipeLeft,
+ * straight down instead (issue #757). */
+async function pullDown(locator: Locator, distancePx: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('pullDown: target has no bounding box');
+  const clientX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX,
+    clientY: startY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+}
+
+test('Runterziehen schließt auch die Serien-Abfrage, die keine eigene Kopfzeile hat (issue #757)', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  await eventCard(page, 'Yoga').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
+  await page.getByLabel('Von').fill(`${TODAY}T17:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T18:00`);
+  await page.getByRole('button', { name: 'Sichern' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
+  await expect(scopeDialog).toBeVisible();
+  // This sheet never passes `header` (recurrence-scope-sheet.tsx) — no grip, so
+  // the pull has to work from the question text itself, proving the fix isn't
+  // scoped to sheets with the shared header.
+  await pullDown(scopeDialog.locator('.recurrence-scope-sheet__question'), 160);
+
+  await expect(scopeDialog).toBeHidden();
+  // Dismissed, not "Nur dieser" — the same as Abbrechen, the edit was never applied.
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 

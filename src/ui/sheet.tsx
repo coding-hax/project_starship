@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 
 export interface SheetHeaderProps {
   /** Label of the action button on the right (e.g. "Anlegen", "Sichern", "Eintragen"). */
@@ -41,6 +49,19 @@ export interface SheetProps {
   children: ReactNode;
 }
 
+/** Ignore jitter before committing to a pull — mirrors task-item.tsx's
+ * TAP_TOLERANCE_PX, otherwise a tap on the grip/header would read as a drag. */
+const DRAG_TOLERANCE_PX = 8;
+/** How far down counts as "let go of this" rather than "just browsing" (issue #757). */
+const DISMISS_THRESHOLD_PX = 120;
+
+/** A selection made before the pull would otherwise stay highlighted underneath
+ * it (same fix as task-item.tsx's clearTextSelection, issue #451). */
+function clearTextSelection() {
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed) selection.removeAllRanges();
+}
+
 /**
  * A reusable bottom sheet built on `<dialog>`: native focus trap, ESC-to-close and a
  * backdrop come for free, so this needs no extra dependency (CLAUDE.md rule 3).
@@ -60,6 +81,14 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
   // Captured right before `showModal()` steals focus, so it survives the whole
   // time the sheet is open and is still there to restore once it closes.
   const triggerRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number; scrollTop: number } | null>(null);
+  // Read from the native `touchmove` listener below, which is attached once on
+  // mount and would otherwise close over a stale `false` forever (same reason
+  // task-item.tsx keeps a `liftedRef` next to its `lifted` state).
+  const draggingRef = useRef(false);
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -74,6 +103,105 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
       dialog.close();
     }
   }, [open, initialFocusRef]);
+
+  /**
+   * Blocks the browser's own scroll/rubber-band on `.sheet__content` (which is
+   * itself the scrollable element) once a pull has committed — `preventDefault()`
+   * inside a React `onPointerMove`/`onTouchMove` prop doesn't reliably cancel the
+   * native touch scroll it rides on, so this needs the same natively-registered,
+   * non-passive listener task-item.tsx uses for its own vertical (lifted) drag.
+   */
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    function blockScrollWhileDragging(event: TouchEvent) {
+      if (draggingRef.current) event.preventDefault();
+    }
+    el.addEventListener('touchmove', blockScrollWhileDragging, { passive: false });
+    return () => el.removeEventListener('touchmove', blockScrollWhileDragging);
+  }, []);
+
+  function setDraggingState(next: boolean) {
+    draggingRef.current = next;
+    setDragging(next);
+  }
+
+  /**
+   * Pulling the sheet down (issue #757). Starts tracking on any non-interactive
+   * part of the card — form controls (inputs, buttons, …) keep their normal
+   * click/focus/selection behaviour untouched, only actual downward movement
+   * past `DRAG_TOLERANCE_PX` turns this into a drag (see `handlePointerMove`).
+   */
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // Left untouched, not just excluded from starting a drag: a `preventDefault()`
+    // here would also suppress the synthesized click a touch pointer relies on —
+    // breaking e.g. a `<label>` wrapping a `Toggle` elsewhere in a sheet's form.
+    if ((event.target as HTMLElement).closest('input, textarea, select, button, a, label, [contenteditable]')) {
+      return;
+    }
+    clearTextSelection();
+    dragStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollTop: contentRef.current?.scrollTop ?? 0,
+    };
+  }
+
+  /**
+   * The gesture only "wins" once it is clearly vertical, downward, past the
+   * tolerance, *and* the content had nothing above it left to scroll into at the
+   * start — otherwise this would fight normal scrolling inside a tall sheet
+   * (e.g. the journal editor).
+   */
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const start = dragStartRef.current;
+    if (!start) return;
+    const deltaY = event.clientY - start.y;
+    const deltaX = event.clientX - start.x;
+
+    if (!draggingRef.current) {
+      if (deltaY <= DRAG_TOLERANCE_PX || deltaY <= Math.abs(deltaX) || start.scrollTop > 0) return;
+      setDraggingState(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+    setDragY(Math.max(0, deltaY));
+  }
+
+  /** Past the threshold, closing goes through the same `dialog.close()` every
+   * other dismiss path already uses (see the `onClose` prop below) — one path
+   * in, focus returns to the trigger exactly like ESC/backdrop/Abbrechen. */
+  function commitOrSnapBack(event: ReactPointerEvent<HTMLDivElement>) {
+    if (draggingRef.current) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      if (dragY > DISMISS_THRESHOLD_PX) {
+        ref.current?.close();
+      }
+      setDragY(0);
+    }
+    dragStartRef.current = null;
+    setDraggingState(false);
+  }
+
+  /** A cancelled gesture (e.g. the browser takes over) never dismisses — only
+   * snaps back, same as letting go short of the threshold. */
+  function cancelDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (draggingRef.current) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setDragY(0);
+    }
+    dragStartRef.current = null;
+    setDraggingState(false);
+  }
+
+  const contentStyle: CSSProperties = accent ? ({ '--accent': accent } as CSSProperties) : {};
+  if (dragY > 0) contentStyle.transform = `translateY(${dragY}px)`;
 
   return (
     <dialog
@@ -96,8 +224,13 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
       }}
     >
       <div
-        className="sheet__content"
-        style={accent ? ({ '--accent': accent } as CSSProperties) : undefined}
+        ref={contentRef}
+        className={dragging ? 'sheet__content sheet__content--dragging' : 'sheet__content'}
+        style={contentStyle}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={commitOrSnapBack}
+        onPointerCancel={cancelDrag}
       >
         {header && (
           <div className="sheet__header">

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/server';
+import { resetRateLimits } from './helpers';
 
 /**
  * Issue #481 (Fund F8, Deep Review 02.08.26). `verifyAuthenticationResponse` /
@@ -12,7 +13,16 @@ import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/serv
  * Runs against the session `auth.setup.ts` already registered — no ceremony, no
  * `resetDatabase`, nothing here succeeds far enough to write to the DB (the register
  * cases throw before the `insert`).
+ *
+ * This is the one options-heavy spec without a `resetDatabase()` in `beforeEach`
+ * (issue #755) — without resetting the shared `unknown`-key counter too, its options
+ * calls would pile onto whatever earlier specs left behind and could sporadically
+ * trip the 429 budget.
  */
+
+test.beforeEach(async () => {
+  await resetRateLimits();
+});
 
 const garbageAuthenticationResponse = (credId: string) => ({
   id: credId,
