@@ -2,8 +2,9 @@ import withSerwistInit from '@serwist/next';
 import type { NextConfig } from 'next';
 
 /**
- * A strict, nonce-based CSP needs middleware injection in the App Router and is
- * tracked as its own ticket. These are the headers that carry no breakage risk.
+ * The nonce-based CSP (issue #753) lives in src/middleware.ts — it needs a fresh
+ * value per response, which this static list of headers() can't carry. These five
+ * are the ones with no per-request state and no breakage risk.
  */
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
