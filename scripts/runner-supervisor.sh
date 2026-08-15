@@ -52,6 +52,10 @@ STALE_SLOT_MIN="${STALE_SLOT_MIN:-30}"
 # 5000 Zeilen gut fünf Wochen -- lang genug für jede Abwesenheit, kurz genug,
 # dass die Datei nie jemanden interessieren muss.
 LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}"
+# Versuche fuer den Bericht ans Status-Issue und Pause dazwischen. Nach einem
+# Boot steht das Netz oft erst nach einer halben Minute.
+REPORT_TRIES="${REPORT_TRIES:-3}"
+REPORT_RETRY_SEC="${REPORT_RETRY_SEC:-15}"
 
 AGENT_PATTERN="claude -p --output-format json"
 
@@ -297,8 +301,35 @@ agents_under() {
   printf '%s' "$n"
 }
 
+# Minuten seit dem letzten Systemstart. Aus kern.boottime, weil `uptime` je
+# nach Dauer "mins", "hrs" oder "days" schreibt und nicht verlaesslich zu
+# parsen ist.
+uptime_min() {
+  local boot now
+  # Am Zeilenanfang verankert, nicht `.*sec = `: Die Ausgabe lautet
+  # "{ sec = 1786727457, usec = 913798 }", und ein gieriges `.*` trifft das
+  # `usec = ` am Ende. Die Bootzeit waere dann immer 913798 (also 1970), die
+  # Laufzeit gigantisch -- und die Sperre unten griffe nie.
+  boot=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ *sec = \([0-9]*\).*/\1/p')
+  [ -n "$boot" ] || return 1
+  now=$(date +%s)
+  printf '%s' $(( (now - boot) / 60 ))
+}
+
 check_stuck_slots() {
-  local label n age repo agents
+  local label n age repo agents up
+
+  # War die Maschine aus, ist JEDER Slot-Zustand alt -- die Slots haben nicht
+  # geschwiegen, es lief nur nichts. Ohne diese Sperre deutet die Aufsicht die
+  # Ausschaltzeit als Stillstand und startet nach jedem Boot alle Slots ein
+  # zweites Mal, fuenf Sekunden nachdem check_slots_loaded sie gestartet hat
+  # (beobachtet am 15.08. um 02:50: sechs Heilungsmeldungen fuer ein Ereignis).
+  up=$(uptime_min) || up=""
+  if [ -n "$up" ] && [ "$up" -lt "$STALE_SLOT_MIN" ]; then
+    log "System laeuft erst seit ${up} Min. -- Slot-Puls noch nicht aussagekraeftig, keine Stillstandspruefung."
+    return 0
+  fi
+
   for label in $(slot_labels); do
     n="${label##*slot-}"
     age=$(slot_age_min "$n") || { log "Slot $n hat noch keinen Zustand geschrieben."; continue; }
@@ -425,8 +456,19 @@ report() {
   fi
   body="${body}_$(date '+%d.%m. %H:%M') · $(hostname -s)_"
 
-  act gh issue comment "$STATUS_ISSUE" --repo "$slug" --body "$body" >/dev/null 2>&1 \
-    || log "Bericht konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden."
+  # Der wichtigste Lauf ist der direkt nach einem Boot -- und genau dort ist das
+  # Netz oft noch nicht oben. Am 15.08. ging der Bericht 20 Sekunden nach dem
+  # Start verloren. Deshalb drei Versuche mit Pause statt einem.
+  local try=1
+  while [ "$try" -le "$REPORT_TRIES" ]; do
+    if act gh issue comment "$STATUS_ISSUE" --repo "$slug" --body "$body" >/dev/null 2>&1; then
+      [ "$try" -gt 1 ] && log "Bericht im ${try}. Versuch abgesetzt."
+      return 0
+    fi
+    try=$(( try + 1 ))
+    [ "$try" -le "$REPORT_TRIES" ] && sleep "$REPORT_RETRY_SEC"
+  done
+  log "Bericht konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden ($REPORT_TRIES Versuche)."
 }
 
 # --- Takt-Zeile --------------------------------------------------------------
