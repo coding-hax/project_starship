@@ -263,13 +263,18 @@ test('AK5: mehrdeutiger Habit-Treffer zeigt „Keiner Gewohnheit zugeordnet" mit
   await expect(page.getByRole('checkbox', { name: 'Yoga für heute abhaken' })).toBeChecked();
 });
 
-test('AK5: ohne wählbare Gewohnheit ist die Art-Option „Routine" gesperrt', async ({ page }) => {
+// issue #758 AK1 löst die alte Sperre ab: ohne wählbare Gewohnheit führte "Routine"
+// früher in eine Sackgasse (deshalb gesperrt) — seit #758 bietet die Routine-Auswahl
+// in diesem Fall den "Neue Routine anlegen"-Zweig, die Art ist deshalb wählbar.
+test('AK5/#758 AK1: auch ohne wählbare Gewohnheit ist die Art-Option „Routine" wählbar', async ({
+  page,
+}) => {
   await page.goto('/uebersicht');
 
   await captureButton(page).click();
   await artChip(page, 'Aufgabe').click();
 
-  await expect(page.getByRole('radio', { name: 'Routine' })).toBeDisabled();
+  await expect(page.getByRole('radio', { name: 'Routine' })).toBeEnabled();
 });
 
 test('AK4: "Mehr" bei Aufgabe öffnet das volle Modul-Sheet mit übernommenen Kernwerten, kein Seitenwechsel', async ({

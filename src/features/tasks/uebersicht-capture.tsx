@@ -142,6 +142,10 @@ export function UebersichtCapture() {
   const [category, setCategory] = useState(NO_CATEGORY);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
+  // issue #758: "Neue Routine anlegen"-Zweig der Routine-Auswahl — trifft die
+  // Erfassung keine bestehende Gewohnheit, kann diese explizit gewählte Option
+  // eine neue anlegen statt eine bestehende abzuhaken.
+  const [newRoutine, setNewRoutine] = useState(false);
   // AK4 "Mehr": ein zweites Sheet, nie gleichzeitig mit dem Kern-Sheet offen —
   // "Mehr" schließt dieses hier und öffnet jenes mit den bisherigen Werten.
   const [taskEditorState, setTaskEditorState] = useState<TaskEditorState>(null);
@@ -269,6 +273,7 @@ export function UebersichtCapture() {
     const oldKind = base.kind;
     setAccumulated({ ...base, kind: newKind });
     if (oldKind === newKind) return;
+    if (oldKind === 'habit_check') setNewRoutine(false);
 
     const dropped = extraFieldSet(oldKind, base) ? [EXTRA_FIELD[oldKind].label] : [];
     const restored = extraFieldSet(newKind, base);
@@ -337,6 +342,7 @@ export function UebersichtCapture() {
     setStatus(null);
     setPriority(0);
     setCategory(NO_CATEGORY);
+    setNewRoutine(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -409,6 +415,31 @@ export function UebersichtCapture() {
       return;
     }
 
+    // issue #758 AK3: der explizite "Neue Routine anlegen"-Zweig — legt eine neue
+    // Gewohnheit mit den Create-Defaults aus habit-editor.tsx an (kein Rhythmus
+    // aus Spracheingabe, das verfeinert sich danach auf /routinen).
+    if (newRoutine) {
+      const name = final.title.trim();
+      if (!name) {
+        inputRef.current?.focus();
+        return;
+      }
+      closeAndReset();
+      await mutate({
+        table: 'habits',
+        op: 'upsert',
+        payload: {
+          name,
+          schedule: 'daily',
+          target: 1,
+          color: null,
+          archivedAt: null,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      return;
+    }
+
     // habit_check (issue #715 AK5): kein oder mehrdeutiger Treffer öffnet sichtbar
     // die Auswahl statt still nach /routinen zu navigieren — „Anlegen" verlangt
     // erst eine bewusste Wahl.
@@ -446,6 +477,7 @@ export function UebersichtCapture() {
           setStatus(null);
           setPriority(0);
           setCategory(NO_CATEGORY);
+          setNewRoutine(false);
           setNow(new Date());
           setOpen(true);
         }}
@@ -490,7 +522,9 @@ export function UebersichtCapture() {
               panelId={ART_PANEL_ID}
               onOpen={() => toggleChip('art')}
             />
-            {(displayedKind === 'task' || displayedKind === 'event') && (
+            {(displayedKind === 'task' ||
+              displayedKind === 'event' ||
+              (displayedKind === 'habit_check' && newRoutine)) && (
               <Chip
                 field="Titel"
                 emptyLabel="Titel?"
@@ -579,8 +613,7 @@ export function UebersichtCapture() {
               <Chip
                 field="Routine"
                 emptyLabel={ROUTINE_UNRESOLVED_LABEL}
-                value={habitName}
-                disabled={captureHabits.length === 0}
+                value={newRoutine ? `Neu: „${preview.title}"` : habitName}
                 open={openChip === 'routine'}
                 panelId={ROUTINE_PANEL_ID}
                 onOpen={() => toggleChip('routine')}
@@ -590,24 +623,18 @@ export function UebersichtCapture() {
           </div>
           {openChip === 'art' && (
             <fieldset className="quick-add__priority" aria-label="Art" id={ART_PANEL_ID}>
-              {allowedKinds.map((kind) => {
-                // Kante (AK5): keine wählbare Gewohnheit -> "Routine" führt in
-                // eine Sackgasse, deshalb hier gesperrt statt anwählbar.
-                const disabled = kind === 'habit_check' && captureHabits.length === 0;
-                return (
-                  <label key={kind} className="quick-add__priority-option">
-                    <input
-                      type="radio"
-                      name="uebersicht-capture-art"
-                      checked={displayedKind === kind}
-                      disabled={disabled}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onChange={() => changeKind(kind)}
-                    />
-                    {ART_LABELS[kind]}
-                  </label>
-                );
-              })}
+              {allowedKinds.map((kind) => (
+                <label key={kind} className="quick-add__priority-option">
+                  <input
+                    type="radio"
+                    name="uebersicht-capture-art"
+                    checked={displayedKind === kind}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onChange={() => changeKind(kind)}
+                  />
+                  {ART_LABELS[kind]}
+                </label>
+              ))}
             </fieldset>
           )}
           {openChip === 'titel' && (
@@ -702,9 +729,10 @@ export function UebersichtCapture() {
                   <input
                     type="radio"
                     name="uebersicht-capture-routine"
-                    checked={resolvedHabitId === habit.id}
+                    checked={!newRoutine && resolvedHabitId === habit.id}
                     onPointerDown={(event) => event.preventDefault()}
                     onChange={() => {
+                      setNewRoutine(false);
                       const base = accumulated ?? preview;
                       setAccumulated({
                         ...base,
@@ -716,6 +744,29 @@ export function UebersichtCapture() {
                   {habit.name}
                 </label>
               ))}
+              {/* issue #758 AK2: nur bei nicht-leerem Titel — ein leerer Name lässt sich
+                  nicht anlegen (dieselbe Regel wie bei Aufgabe/Termin, AK3 prüft es erneut
+                  bei "Anlegen"). */}
+              {preview.title.trim() && (
+                <label className="quick-add__priority-option">
+                  <input
+                    type="radio"
+                    name="uebersicht-capture-routine"
+                    checked={newRoutine}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onChange={() => {
+                      setNewRoutine(true);
+                      const base = accumulated ?? preview;
+                      setAccumulated({
+                        ...base,
+                        habitId: null,
+                        confidence: { ...base.confidence, habit: { level: 'high' } },
+                      });
+                    }}
+                  />
+                  {`Neue Routine anlegen: „${preview.title}"`}
+                </label>
+              )}
             </fieldset>
           )}
           {status && (
