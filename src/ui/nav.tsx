@@ -1,8 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+// Not part of the public `next/navigation` surface, but `router.prefetch`'s own
+// `options.kind` is typed against this enum, and there is no other way to request a
+// full prefetch imperatively (see the effect below for why that matters).
+import { PrefetchKind } from 'next/dist/client/components/router-reducer/router-reducer-types';
+import { useEffect, useMemo, useRef } from 'react';
 import { useModules } from '@/features/settings/use-modules';
 import { useNavOrder } from '@/features/settings/use-nav-order';
 
@@ -16,10 +20,27 @@ import { useNavOrder } from '@/features/settings/use-nav-order';
  */
 export function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { items } = useNavOrder();
   const { isActive } = useModules();
-  const visibleItems = items.filter((item) => isActive(item.id));
+  const visibleItems = useMemo(() => items.filter((item) => isActive(item.id)), [items, isActive]);
   const listRef = useRef<HTMLUListElement>(null);
+
+  // `<Link prefetch={true}>` below only picks the fetch STRATEGY (full vs. partial) —
+  // it does not bypass Next's IntersectionObserver-gated visibility check (see
+  // node_modules/next/dist/client/components/links.js: `rescheduleLinkPrefetch`
+  // cancels/never starts a prefetch while `isVisible` is false). On mobile the
+  // carousel (issue #205) keeps a sixth tab scrolled out of view by design, and even
+  // on-screen tabs can rack up transient visibility flips while the overview's async
+  // modules settle and shift layout. Both silently drop that tab's prefetch — the
+  // router cache stays incomplete and the offline nav walk (AK2, issue #753) regresses
+  // nondeterministically depending on which tab loses the race. `router.prefetch`
+  // schedules unconditionally, independent of DOM visibility.
+  useEffect(() => {
+    for (const tab of visibleItems) {
+      router.prefetch(tab.href, { kind: PrefetchKind.FULL });
+    }
+  }, [visibleItems, router]);
 
   // Scrolls the current tab into view on every navigation, so a carousel with more
   // entries than fit never opens on a screen whose own tab is scrolled off (AC2).
