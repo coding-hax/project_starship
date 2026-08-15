@@ -1912,11 +1912,31 @@ function quickAddNotes(page: Page) {
   return quickAddDialog(page).getByRole('textbox', { name: 'Notiz der Aufgabe' });
 }
 
-/** The Wann panel's own `datetime-local` input — `getByLabel('Fälligkeit')` is
- * ambiguous here since the Fälligkeit chip's own button carries the identical
- * aria-label (issue #711 AK6), so this scopes to the actual control by class. */
-function quickAddDueInput(page: Page) {
-  return quickAddDialog(page).locator('input.quick-add__due');
+/** The Wann panel's own picker (issue #722) — replaces the native
+ * `datetime-local` input `quickAddDueInput` used to scope to. */
+function quickAddDuePicker(page: Page) {
+  return quickAddDialog(page).locator('.due-picker');
+}
+
+function dueQuickSelect(page: Page, label: 'Heute' | 'Morgen' | 'Nächste Woche') {
+  return quickAddDuePicker(page).getByRole('button', { name: label, exact: true });
+}
+
+/** A calendar day cell by its full a11y label, e.g. `"Montag, 20."`. */
+function dueCalendarDay(page: Page, label: string) {
+  return quickAddDuePicker(page).getByRole('button', { name: label });
+}
+
+function dueTimeInput(page: Page) {
+  return quickAddDuePicker(page).getByLabel('Uhrzeit');
+}
+
+/** Sets a due date+time through the picker the same way a person would: tap
+ * the calendar day, optionally the time field — never the raw `dueAt` value,
+ * so these tests exercise the actual control (issue #722). */
+async function setDueViaCalendar(page: Page, dayLabel: string, time?: string) {
+  await dueCalendarDay(page, dayLabel).click();
+  if (time) await dueTimeInput(page).fill(time);
 }
 
 async function submitQuickAdd(page: Page) {
@@ -1964,7 +1984,7 @@ test('vier Chips ersetzen den „Mehr"-Aufklapper, jeder öffnet sein eigenes Co
   await expect(quickAddNotes(page)).toBeVisible();
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await expect(quickAddDueInput(page)).toBeVisible();
+  await expect(quickAddDuePicker(page)).toBeVisible();
   await expect(quickAddNotes(page)).toHaveCount(0);
 
   await quickAddChip(page, 'Teil von').click();
@@ -1977,6 +1997,7 @@ test('vier Chips ersetzen den „Mehr"-Aufklapper, jeder öffnet sein eigenes Co
 test('über die Chips gesetzte Felder hängen an der neu angelegten Aufgabe (issue #650 AK4)', async ({
   page,
 }) => {
+  await installClockAt(page);
   await page.goto('/aufgaben');
   await openQuickAdd(page);
 
@@ -1987,7 +2008,9 @@ test('über die Chips gesetzte Felder hängen an der neu angelegten Aufgabe (iss
   await quickAddNotes(page).fill('Eine Notiz');
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await quickAddDueInput(page).fill('2026-07-20T09:00');
+  // FIXED_NOW ist Samstag, 18.07.2026 — Montag, 20. liegt im selben
+  // Kalendermonat, ein Tag-Tipp ohne Uhrzeit landet auf DEFAULT_TIME 09:00.
+  await setDueViaCalendar(page, 'Montag, 20.');
 
   await quickAddChip(page, 'Priorität').click();
   await dialog.getByRole('radio', { name: 'Dringend' }).check();
@@ -2026,13 +2049,16 @@ test('„Teil von" beim Anlegen macht die neue Aufgabe sofort zum Kind (issue #6
 test('eine über den Wann-Chip gesetzte Fälligkeit schlägt das aus dem Titel geratene Datum (issue #650 AK5)', async ({
   page,
 }) => {
+  await installClockAt(page);
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await openQuickAdd(page);
 
   await quickAddTitleField(page).fill('Arzt anrufen morgen um 12');
   await quickAddChip(page, 'Fälligkeit').click();
-  await quickAddDueInput(page).fill('2026-07-25T08:30');
+  // FIXED_NOW ist Samstag, 18.07.2026 — Samstag, 25. liegt im selben
+  // Kalendermonat, eine Woche später.
+  await setDueViaCalendar(page, 'Samstag, 25.', '08:30');
   await submitQuickAdd(page);
 
   // Kein Bestätigungs-Sheet und kein Undo-Toast: beide sichern ein ungeprüft
@@ -2233,15 +2259,165 @@ test('AK5: kein Layout-Shift beim Öffnen eines Chip-Panels — Kopfzeile und Ti
 });
 
 test('AK6: der a11y-Name eines Chips trägt Feldname und Wert', async ({ page }) => {
+  await installClockAt(page);
   await page.goto('/aufgaben');
   await openQuickAdd(page);
 
   await quickAddChip(page, 'Fälligkeit').click();
-  await quickAddDueInput(page).fill('2026-07-23T14:00');
+  // FIXED_NOW ist Samstag, 18.07.2026 — Donnerstag, 23. liegt im selben Kalendermonat.
+  await setDueViaCalendar(page, 'Donnerstag, 23.', '14:00');
   await quickAddChip(page, 'Fälligkeit').click();
 
   const expected = `Fälligkeit, ${formatDueLabel('2026-07-23T14:00')}`;
   await expect(quickAddChip(page, 'Fälligkeit')).toHaveAccessibleName(expected);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Wann-Picker: Schnellwahl + Kalender statt datetime-local (issue #722)      */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: der Wann-Chip öffnet den eigenen Picker statt des nativen datetime-local', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  await quickAddChip(page, 'Fälligkeit').click();
+
+  await expect(quickAddDuePicker(page)).toBeVisible();
+  await expect(dueQuickSelect(page, 'Heute')).toBeVisible();
+  await expect(dueQuickSelect(page, 'Morgen')).toBeVisible();
+  await expect(dueQuickSelect(page, 'Nächste Woche')).toBeVisible();
+  await expect(dueTimeInput(page)).toBeVisible();
+  await expect(quickAddDialog(page).locator('input[type="datetime-local"]')).toHaveCount(0);
+});
+
+test('AK2: Schnellwahl-Zeilen setzen die Fälligkeit mit einem Tipp', async ({ page }) => {
+  // FIXED_NOW ist Samstag, 18.07.2026.
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+
+  // Titel bewusst ohne "heute"/"morgen"/Wochentag: parse-task-input.ts erkennt
+  // diese Wörter als Datumsangabe und entfernt sie aus dem Titel (Grammatik-Regel
+  // R3) — ein Titel, der sie enthält, käme nie unverändert in der Liste an.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Schnellwahl Fall 1');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await dueQuickSelect(page, 'Heute').click();
+  await submitQuickAdd(page);
+  await tapTask(page, 'Schnellwahl Fall 1');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-18T09:00');
+  await page.keyboard.press('Escape');
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Schnellwahl Fall 2');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await dueQuickSelect(page, 'Morgen').click();
+  await submitQuickAdd(page);
+  await tapTask(page, 'Schnellwahl Fall 2');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-19T09:00');
+  await page.keyboard.press('Escape');
+
+  // Nächste Woche = nächster Montag, unabhängig vom heutigen Wochentag.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Schnellwahl Fall 3');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await dueQuickSelect(page, 'Nächste Woche').click();
+  await submitQuickAdd(page);
+  await tapTask(page, 'Schnellwahl Fall 3');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-20T09:00');
+});
+
+test('AK3: ein gewählter Kalendertag setzt das Datum, die Uhrzeit ist getrennt wählbar', async ({
+  page,
+}) => {
+  // FIXED_NOW ist Samstag, 18.07.2026 — Mittwoch, 22. liegt im selben Kalendermonat.
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+
+  // Fall a: Tag antippen und eine eigene Uhrzeit setzen.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Tag mit eigener Uhrzeit');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await setDueViaCalendar(page, 'Mittwoch, 22.', '16:15');
+  await submitQuickAdd(page);
+  await tapTask(page, 'Tag mit eigener Uhrzeit');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-22T16:15');
+  await page.keyboard.press('Escape');
+
+  // Fall b: nur der Tag, die Uhrzeit bleibt unangetastet — Entscheidung A (09:00 Default).
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Tag ohne eigene Uhrzeit');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await dueCalendarDay(page, 'Mittwoch, 22.').click();
+  await submitQuickAdd(page);
+  await tapTask(page, 'Tag ohne eigene Uhrzeit');
+  await expect(editorDialog(page).getByLabel('Fälligkeit')).toHaveValue('2026-07-22T09:00');
+});
+
+test('AK4: der über den Picker gesetzte Wert kommt unverändert in der Datenbank an — auch offline', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await context.setOffline(true);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Offline über den Picker');
+  await quickAddChip(page, 'Fälligkeit').click();
+  await setDueViaCalendar(page, 'Montag, 20.', '11:30');
+  await submitQuickAdd(page);
+
+  await expect(page.getByText('Offline über den Picker')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach cuts the sync endpoints so the list can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT due_at FROM tasks WHERE title = $1', ['Offline über den Picker']),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(new Date(row.rows[0].due_at).toISOString()).toBe(
+    new Date('2026-07-20T11:30').toISOString(),
+  );
+});
+
+test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die Übergänge im Kalender', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await installClockAt(page);
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+  await quickAddChip(page, 'Fälligkeit').click();
+
+  const today = dueCalendarDay(page, 'Samstag, 18.');
+  const durationString = await today.evaluate((el) => getComputedStyle(el).transitionDuration);
+  // Same call as the reduced-motion assertion around line 999 — Chromium
+  // serializes the floored duration in exponential notation.
+  expect(parseFloat(durationString)).toBeLessThan(0.001);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await today.click();
+  await expect(today).toHaveAttribute('aria-pressed', 'true');
+  // Same pattern as the dark-mode dot check in kalender.spec.ts ("der
+  // Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im
+  // Dark Mode"): a plain synchronous getComputedStyle read right after the
+  // color-scheme switch + click can catch Chromium mid style-recalc and
+  // still report the pre-change value — expect.poll re-evaluates until the
+  // browser has actually settled, same target value either way.
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(await resolveColorToken(page, '--accent'));
 });
 
 /* -------------------------------------------------------------------------- */
