@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { installClockAt, registerPasskey, resetAppData, selectView, withDb } from './helpers';
 
 /**
@@ -17,8 +17,6 @@ const MO = new Date(2026, 0, 12, 10, 0, 0); // Montag, 12.01.2026, 10:00 Berlin
 const NACHT = new Date(2026, 0, 13, 1, 30, 0); // Dienstag, 13.01.2026, 01:30 Berlin — logischer Tag: Montag
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
-const CONFIRM_LABEL = 'Aufgabe bestätigen';
-const EVENT_LABEL = 'Termin erfassen';
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
@@ -26,19 +24,6 @@ function captureButton(page: Page) {
 
 function captureTitleField(page: Page) {
   return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
-}
-
-function confirmDialog(page: Page) {
-  return page.getByRole('dialog', { name: CONFIRM_LABEL });
-}
-
-function eventDialog(page: Page) {
-  return page.getByRole('dialog', { name: EVENT_LABEL });
-}
-
-/** Ganztägig/Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
-function wannChip(scope: Page | Locator) {
-  return scope.getByRole('button', { name: /^Wann/ });
 }
 
 function taskItems(page: Page) {
@@ -71,12 +56,6 @@ function dateKeyOf(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** `datetime-local` arbeitet in der lokalen Zeit des Browsers, ohne Zeitzonen-Suffix. */
-function isoToLocalInput(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 async function pendingHabitLogDates(page: Page): Promise<string[]> {
   const entries = await page.evaluate(() => window.__starship.pending());
   return entries
@@ -98,37 +77,37 @@ test('AK1: Monatsname löst auf, ein kalendarisch ungültiges Datum wird verworf
   await page.goto('/uebersicht');
   const due = new Date(2026, 7, 4, 9, 0, 0);
 
+  // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht direkt über die Outbox an,
+  // kein Bestätigen-Dialog mehr dazwischen — prüfbar ist der korrekt aufgelöste
+  // Titel + Fälligkeit in der Outbox-Payload, danach die Sichtbarkeit in der Liste.
   await submitUebersichtCapture(page, 'am 4. August Zahnarzt');
 
-  await page.waitForURL('**/aufgaben');
-  const confirm = confirmDialog(page);
-  await expect(confirm).toBeVisible();
-  await expect(confirm.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
-  await expect(confirm.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
-  await confirm.getByRole('button', { name: 'Anlegen' }).click();
-  await expect(confirm).toBeHidden();
-  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
-  // only select "Alle" once the dialog is gone (issue #705).
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    dueAt: due.toISOString(),
+  });
+  await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toBeVisible();
 
   // "31.6." existiert nicht — der Kandidat wird verworfen (kein Rollover auf den 1.
   // Juli), der Rohtext bleibt Titel. "Termin" im Satz ist reines Vokabular ohne Datum
-  // -> ganztägiger Termin auf heute, derselbe Fallback wie "Meeting mit Chef"
-  // (capture-router.spec.ts AC2).
+  // -> ein Termin auf den heutigen (logischen) Tag um 09:00, derselbe Fallback wie
+  // "Meeting mit Chef" (capture-art.spec.ts AK4-Kernfeld) — der Kern-Sheet-Pfad kennt
+  // seit P1–P4 keinen ganztägigen Fall mehr, den gibt es nur noch im "Mehr"-Editor.
   await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'am 31.6. Termin');
 
-  await page.waitForURL('**/kalender');
-  const event = eventDialog(page);
-  await expect(event).toBeVisible();
-  await expect(event.getByLabel('Titel')).toHaveValue('am 31.6. Termin');
-  await wannChip(event).click();
-  await expect(event.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await expect(event.getByLabel('Von')).toHaveValue(dateKeyOf(MO));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  entries = await page.evaluate(() => window.__starship.pending());
+  const eventEntry = entries.find((entry) => entry.table === 'events');
+  expect(eventEntry?.payload).toMatchObject({ title: 'am 31.6. Termin', allDay: false });
+  const startsAt = new Date(eventEntry?.payload.startsAt as string);
+  expect(startsAt.getHours()).toBe(9);
+  expect(startsAt.getMinutes()).toBe(0);
+  expect(dateKeyOf(startsAt)).toBe(dateKeyOf(MO));
 });
 
 test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => {
@@ -137,31 +116,23 @@ test('AK2: relative Spannen "in N Tagen"/"in einer Woche"', async ({ page }) => 
 
   await submitUebersichtCapture(page, 'in drei Tagen Rechnung zahlen');
 
-  await page.waitForURL('**/aufgaben');
-  let dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Rechnung zahlen',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(in3Days));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Rechnung zahlen',
+    dueAt: in3Days.toISOString(),
+  });
 
   await page.goto('/uebersicht');
   const in1Week = dueAt(MO, 7, 9, 0);
   await submitUebersichtCapture(page, 'in einer Woche nachfassen');
 
-  await page.waitForURL('**/aufgaben');
-  dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'nachfassen',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(in1Week));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-  await expect(dialog).toBeHidden();
-  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
-  // only select "Alle" once the dialog is gone (issue #705).
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'nachfassen',
+    dueAt: in1Week.toISOString(),
+  });
+  await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'nachfassen' })).toBeVisible();
 });
@@ -174,29 +145,23 @@ test('AK3: "nächsten" überspringt eine Woche gegenüber der bloßen Wochentags
 
   await submitUebersichtCapture(page, 'Dienstag Steuer machen');
 
-  await page.waitForURL('**/aufgaben');
-  let dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Steuer machen',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(bareDienstag));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Steuer machen',
+    dueAt: bareDienstag.toISOString(),
+  });
 
   await page.goto('/uebersicht');
   const naechstenDienstag = dueAt(MO, 8, 9, 0);
   await submitUebersichtCapture(page, 'nächsten Dienstag Zahnarzt');
 
-  await page.waitForURL('**/aufgaben');
-  dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Zahnarzt');
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(naechstenDienstag));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-  await expect(dialog).toBeHidden();
-  // The confirm dialog's backdrop blocked the SegmentedControl underneath it —
-  // only select "Alle" once the dialog is gone (issue #705).
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    dueAt: naechstenDienstag.toISOString(),
+  });
+  await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toBeVisible();
 });
@@ -210,12 +175,12 @@ test('AK4: der Satz aus #620 fällt lokal', async ({ page }) => {
     'kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen',
   );
 
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzttermin');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzttermin',
+    startsAt: due.toISOString(),
+  });
 });
 
 test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorherige Kalendertag als "heute"', async ({
@@ -227,14 +192,12 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
 
   await submitUebersichtCapture(page, 'morgen 14 Uhr Zahnarzt');
 
-  await page.waitForURL('**/kalender');
-  let dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(morgen14Uhr));
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: morgen14Uhr.toISOString(),
+  });
 
   // Reine Uhrzeit ohne Datum: "sonst morgen" rechnet ab dem logischen, nicht dem
   // realen Tag — 8 Uhr am logischen Montag ist um 01:30 Dienstag längst vorbei.
@@ -242,11 +205,11 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
   const umAcht = dueAt(MO, 1, 8, 0);
   await submitUebersichtCapture(page, 'Zahnarzt um 8');
 
-  await page.waitForURL('**/kalender');
-  dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(umAcht));
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: umAcht.toISOString(),
+  });
 });
 
 test('AK6: Abhaken folgt dem logischen Tag, nicht dem realen', async ({ page }) => {
@@ -293,16 +256,7 @@ test('Offline-Pfad: eine Erfassung mit relativem Datum offline erreicht online d
 
   await submitUebersichtCapture(page, 'in drei Tagen Rechnung zahlen');
 
-  await page.waitForURL('**/aufgaben');
-  const dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Rechnung zahlen',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-
-  await expect(taskItems(page).filter({ hasText: 'Rechnung zahlen' })).toBeVisible();
+  await expect(page).toHaveURL(/\/uebersicht$/);
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await page.unroute('**/api/sync/**');

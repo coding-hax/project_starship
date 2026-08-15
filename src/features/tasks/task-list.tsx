@@ -465,7 +465,7 @@ export function TaskList({
       )}
 
       <TaskEditor
-        task={editingTask}
+        state={editingTask ? { mode: 'edit', task: editingTask } : null}
         onClose={() => setEditingTaskId(null)}
         nestCandidates={nestCandidates}
         hasChildren={(editingNode?.total ?? 0) > 0}

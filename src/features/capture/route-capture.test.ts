@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { berlinNow } from '@/push/schedule';
 import type { CaptureContext } from './types';
-import { allowedCaptureKinds, decideCaptureRoute } from './route-capture';
+import {
+  allowedCaptureKinds,
+  eventFieldsFromDraft,
+  habitFieldsFromDraft,
+  previewDraft,
+  taskFieldsFromDraft,
+} from './route-capture';
 import { ALL_KINDS, NOW, NOW_NIGHT, STANDARD_HABITS } from './corpus';
 
 function ctx(overrides: Partial<CaptureContext> = {}): CaptureContext {
@@ -14,81 +20,103 @@ function ctx(overrides: Partial<CaptureContext> = {}): CaptureContext {
   };
 }
 
-describe('decideCaptureRoute — task', () => {
-  it('reicht einen erkannten Task unverändert als Draft-Item durch', () => {
-    const decision = decideCaptureRoute('Wäsche waschen', ctx());
-    expect(decision).toEqual({
-      action: 'task',
-      draft: {
-        kind: 'task',
-        title: 'Wäsche waschen',
-        dueAt: null,
-        needsConfirmation: false,
-        titleConfidence: { level: 'high' },
-        dateConfidence: { level: 'high' },
-        timeConfidence: { level: 'high' },
-      },
+describe('previewDraft — task', () => {
+  it('reicht einen erkannten Task unverändert als Kernfelder durch', () => {
+    const draft = previewDraft('Wäsche waschen', ctx());
+    expect(draft.kind).toBe('task');
+    expect(taskFieldsFromDraft(draft)).toEqual({
+      kind: 'task',
+      title: 'Wäsche waschen',
+      dueAt: null,
+      needsConfirmation: false,
+      titleConfidence: { level: 'high' },
+      dateConfidence: { level: 'high' },
+      timeConfidence: { level: 'high' },
     });
   });
 });
 
-describe('decideCaptureRoute — event', () => {
+describe('previewDraft — event', () => {
   it('AC1: explizite Uhrzeit -> Zeit-Termin, Ende eine Stunde nach dem Start', () => {
-    const decision = decideCaptureRoute('Dienstag 12 Uhr Zahnarzt', ctx());
-    expect(decision.action).toBe('event');
-    if (decision.action !== 'event') throw new Error('unreachable');
-    expect(decision.draft.allDay).toBe(false);
-    expect(decision.draft.startDate).toBeNull();
-    expect(decision.draft.endDate).toBeNull();
-    expect(decision.draft.startsAt).not.toBeNull();
-    expect(decision.draft.endsAt).not.toBeNull();
-    const start = new Date(decision.draft.startsAt as string);
-    const end = new Date(decision.draft.endsAt as string);
+    const draft = previewDraft('Dienstag 12 Uhr Zahnarzt', ctx());
+    expect(draft.kind).toBe('event');
+    const fields = eventFieldsFromDraft(draft, NOW);
+    expect(fields.allDay).toBe(false);
+    expect(fields.startDate).toBeNull();
+    expect(fields.endDate).toBeNull();
+    expect(fields.startsAt).not.toBeNull();
+    expect(fields.endsAt).not.toBeNull();
+    const start = new Date(fields.startsAt as string);
+    const end = new Date(fields.endsAt as string);
     expect(end.getTime() - start.getTime()).toBe(60 * 60 * 1000);
   });
 
   it('AC2: kein Datum erkannt (reines Vokabular) -> ganztägig auf den heutigen Tag', () => {
-    const decision = decideCaptureRoute('Meeting mit Chef', ctx());
-    expect(decision.action).toBe('event');
-    if (decision.action !== 'event') throw new Error('unreachable');
-    expect(decision.draft.allDay).toBe(true);
-    expect(decision.draft.startsAt).toBeNull();
-    expect(decision.draft.endsAt).toBeNull();
+    const draft = previewDraft('Meeting mit Chef', ctx());
+    expect(draft.kind).toBe('event');
+    const fields = eventFieldsFromDraft(draft, NOW);
+    expect(fields.allDay).toBe(true);
+    expect(fields.startsAt).toBeNull();
+    expect(fields.endsAt).toBeNull();
     const today = berlinNow(NOW).dateKey;
-    expect(decision.draft.startDate).toBe(today);
-    expect(decision.draft.endDate).toBe(today);
+    expect(fields.startDate).toBe(today);
+    expect(fields.endDate).toBe(today);
   });
 
   it('#689 R6: ganztägig zwischen 00:00 und 03:59 landet auf dem logischen, nicht dem realen Kalendertag', () => {
-    const decision = decideCaptureRoute('Meeting mit Chef', ctx({ now: NOW_NIGHT }));
-    expect(decision.action).toBe('event');
-    if (decision.action !== 'event') throw new Error('unreachable');
-    expect(decision.draft.startDate).toBe('2024-01-15');
-    expect(decision.draft.endDate).toBe('2024-01-15');
+    const draft = previewDraft('Meeting mit Chef', ctx({ now: NOW_NIGHT }));
+    const fields = eventFieldsFromDraft(draft, NOW_NIGHT);
+    expect(fields.startDate).toBe('2024-01-15');
+    expect(fields.endDate).toBe('2024-01-15');
+  });
+
+  it('issue #715: eine von Hand auf "Termin" überschriebene Art übernimmt trotzdem die erkannte Uhrzeit eines als task klassifizierten Satzes', () => {
+    // "Dienstag 12 Uhr" triggert zwar event, aber ein Titel ohne Zeitsignal
+    // (task-Klassifikation) muss beim Kernfeld-Mapping trotzdem funktionieren.
+    const draft = previewDraft('Wäsche waschen', ctx());
+    expect(draft.kind).toBe('task');
+    const fields = eventFieldsFromDraft(draft, NOW);
+    // Kein Datum erkannt -> derselbe ganztägig-Rückfall wie oben, unabhängig
+    // davon, dass der Recognizer selbst `task` klassifiziert hat.
+    expect(fields.allDay).toBe(true);
+    expect(fields.title).toBe('Wäsche waschen');
   });
 });
 
-describe('decideCaptureRoute — habit_check', () => {
-  it('AC3: hohe Konfidenz -> direkt abhaken, keine Navigation', () => {
-    const decision = decideCaptureRoute('hake Sport ab', ctx());
-    expect(decision).toEqual({ action: 'habit-check', habitId: 'h-sport', logDate: '2024-01-15' });
+describe('habitFieldsFromDraft', () => {
+  it('AC3: hohe Konfidenz -> aufgelöst, mit Habit-Id und Log-Tag', () => {
+    const draft = previewDraft('hake Sport ab', ctx());
+    const fields = habitFieldsFromDraft(draft, NOW);
+    expect(fields).toEqual({ resolved: true, habitId: 'h-sport', logDate: '2024-01-15' });
   });
 
   it('#689 R7: ein genanntes Datum im Abhaken-Satz steuert den Log-Tag, nicht heute', () => {
-    const decision = decideCaptureRoute('Sport für gestern abhaken', ctx());
-    expect(decision).toEqual({ action: 'habit-check', habitId: 'h-sport', logDate: '2024-01-14' });
+    const draft = previewDraft('Sport für gestern abhaken', ctx());
+    const fields = habitFieldsFromDraft(draft, NOW);
+    expect(fields).toEqual({ resolved: true, habitId: 'h-sport', logDate: '2024-01-14' });
   });
 
-  it('AC4: mehrdeutiger Habit-Treffer (confidence low) -> Review, nichts abgehakt', () => {
-    const decision = decideCaptureRoute('hake Yoga Lauf ab', ctx());
-    expect(decision).toEqual({ action: 'habit-review' });
+  it('AC4/AK5: mehrdeutiger Habit-Treffer -> nicht aufgelöst, „Keiner Gewohnheit zugeordnet"', () => {
+    const draft = previewDraft('hake Yoga Lauf ab', ctx());
+    const fields = habitFieldsFromDraft(draft, NOW);
+    expect(fields.resolved).toBe(false);
+    expect(fields.habitId).toBeNull();
   });
 
-  it('kein Habit-Treffer überhaupt -> Review, nichts abgehakt', () => {
-    const decision = decideCaptureRoute('Wäsche erledigt', ctx());
+  it('AK5: kein Habit-Treffer überhaupt -> nicht aufgelöst', () => {
     // "Wäsche erledigt" hat keinen Habit-Treffer -> local-recognizer klassifiziert
     // das schon als task (#621 Korpus), landet also gar nicht im habit_check-Zweig.
-    expect(decision.action).toBe('task');
+    const draft = previewDraft('Wäsche erledigt', ctx());
+    expect(draft.kind).toBe('task');
+    const fields = habitFieldsFromDraft(draft, NOW);
+    expect(fields.resolved).toBe(false);
+  });
+
+  it('issue #715 AK5: eine von Hand auf „Routine" überschriebene Art ohne erkanntes Datum fällt auf den logischen Heute-Tag zurück', () => {
+    const draft = previewDraft('Wäsche waschen', ctx());
+    expect(draft.kind).toBe('task');
+    const fields = habitFieldsFromDraft(draft, NOW);
+    expect(fields.logDate).toBe(berlinNow(NOW).dateKey);
   });
 });
 

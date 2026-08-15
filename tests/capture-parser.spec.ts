@@ -86,14 +86,17 @@ test('AK1: Schreibweise der Uhrzeit ändert das Ergebnis nicht — "um H Uhr" bl
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 14, 0);
 
+  // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht Termine direkt über die
+  // Outbox an, kein Bestätigen-Dialog/Editor mehr dazwischen — prüfbar ist der
+  // korrekt aufgelöste Titel + Zeitpunkt in der Outbox-Payload.
   await submitUebersichtCapture(page, 'morgen um 14 Uhr Zahnarzt');
 
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await openWannChip(dialog);
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: due.toISOString(),
+  });
 });
 
 test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukunft, sonst morgen', async ({
@@ -104,16 +107,12 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   const dueToday = expectedDueAt(0, 18, 0);
   await submitUebersichtCapture(page, 'Zahnarzt um 18 Uhr');
 
-  await page.waitForURL('**/kalender');
-  let dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await openWannChip(dialog);
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(dueToday));
-  // Kein "Abbrechen"-Button im Event-Editor (event-editor.tsx) — das <dialog> schließt
-  // nativ über ESC (sheet.tsx).
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: dueToday.toISOString(),
+  });
 
   // Bewusst eine Doppelpunkt-Uhrzeit ("6:00"), keine Stunde <=12 als "H Uhr" (z. B.
   // "9 Uhr"): die ist seit #688 (R2) tageshälften-mehrdeutig und zur Sprechzeit
@@ -129,11 +128,11 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   const dueTomorrow = expectedDueAt(1, 6, 0);
   await submitUebersichtCapture(page, 'Zahnarzt um 6:00');
 
-  await page.waitForURL('**/kalender');
-  dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await openWannChip(dialog);
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(dueTomorrow));
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: dueTomorrow.toISOString(),
+  });
 });
 
 test('AK3: Titel ist der Rest, nicht das Ergebnis einer Blacklist — Bindewörter fallen nur an der Span-Grenze', async ({
@@ -148,12 +147,12 @@ test('AK3: Titel ist der Rest, nicht das Ergebnis einer Blacklist — Bindewört
 
   await submitUebersichtCapture(page, 'Zahnarzt am Dienstag um 12 in der Klinik');
 
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt in der Klinik');
-  await openWannChip(dialog);
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt in der Klinik',
+    startsAt: due.toISOString(),
+  });
 });
 
 test('AK4: Kommandopräfixe fallen, Inhalt bleibt — "Termin" nur vor einem Datum-/Zeit-Span, "beim" als Bindewort danach', async ({
@@ -164,12 +163,12 @@ test('AK4: Kommandopräfixe fallen, Inhalt bleibt — "Termin" nur vor einem Dat
 
   await submitUebersichtCapture(page, 'Termin morgen um 12 beim Zahnarzt');
 
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await openWannChip(dialog);
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: due.toISOString(),
+  });
 });
 
 test('AK5: bleibt kein Titel übrig, bleibt er leer — der Editor öffnet mit Fokus im leeren Titelfeld', async ({
@@ -178,9 +177,14 @@ test('AK5: bleibt kein Titel übrig, bleibt er leer — der Editor öffnet mit F
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
-  await submitUebersichtCapture(page, 'morgen um 12');
+  // Ein leerer erkannter Titel legt im Kern-Sheet nichts an (Fokus geht zurück
+  // ins Titelfeld dort) — "Mehr" öffnet stattdessen den vollen Editor mit den
+  // bisherigen (leeren) Werten, dessen eigener `initialFocusRef` weiterhin aufs
+  // Titelfeld zeigt (issue #715 P4).
+  await captureButton(page).click();
+  await captureTitleField(page).fill('morgen um 12');
+  await page.getByRole('button', { name: 'Mehr' }).click();
 
-  await page.waitForURL('**/kalender');
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   const titleField = dialog.getByLabel('Titel');
@@ -234,9 +238,10 @@ test('AK7: Klassifikation bleibt unverändert grün — neuer Korpus-Fall "nicht
   // Kein Datum -> legt ohne Bestätigungs-Sheet direkt an (gleiches Muster wie
   // capture-uebersicht.spec.ts AC4). "nicht vergessen" ist reines Klassifikations-
   // Vokabular (task), keine Wort-Blacklist mehr -> bleibt Teil des Titels (R3).
-  await page.waitForURL('**/aufgaben');
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await expect(page.getByRole('dialog', { name: 'Aufgabe bestätigen' })).toBeHidden();
   await expect(
     taskItems(page).filter({ hasText: 'nicht vergessen: Pass verlängern' }),
   ).toBeVisible();
@@ -251,15 +256,7 @@ test('Offline-Pfad: eine Erfassung offline erreicht nach dem Onlinegehen die Dat
 
   await submitUebersichtCapture(page, 'Rechnung bezahlen morgen');
 
-  await page.waitForURL('**/aufgaben');
-  const dialog = page.getByRole('dialog', { name: 'Aufgabe bestätigen' });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Rechnung bezahlen',
-  );
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-
-  await expect(taskItems(page).filter({ hasText: 'Rechnung bezahlen' })).toBeVisible();
+  await expect(page).toHaveURL(/\/uebersicht$/);
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await page.unroute('**/api/sync/**');

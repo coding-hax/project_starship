@@ -396,6 +396,14 @@ test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mind
   await setUpEditor(page);
   await openSheet(page);
 
+  // Sheet.tsx's enter transition (translateY 100% -> 0) is still running right
+  // after openSheet()'s toBeVisible() resolves — boundingBox() includes the
+  // in-flight transform, so reading positions too early makes the row-Y
+  // comparison below flaky by sub-pixel amounts (same failure mode as
+  // checkoff-motion.spec.ts, issue #430). Wait for it to settle first.
+  const sheetContent = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__content');
+  await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+
   // issue #415: die Suche zeigt seither ihren eigenen Mood-Filter (ebenfalls
   // eine MoodScale) permanent oberhalb des Formulars — auf das Editor-Formular
   // scopen, sonst matchen Klassen-Locator wie hier zwei Instanzen.
