@@ -39,12 +39,6 @@ function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-async function submitUebersichtCapture(page: Page, text: string) {
-  await captureButton(page).click();
-  await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Anlegen' }).click();
-}
-
 async function submitQuickAdd(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
@@ -109,9 +103,13 @@ test('AK3: derselbe Termin markiert dieselben Felder nach denselben Regeln im Ka
 }) => {
   await page.goto('/uebersicht');
   // Explizite Uhrzeit -> event (der Pfad, über den jeder erkannte Termin läuft).
-  await submitUebersichtCapture(page, 'Dienstag um 3 Zahnarzt');
+  // Seit P4 (#715) markiert das Kern-Sheet Felder nicht mehr selbst über
+  // `.field-hint` (das lebt nur noch im vollen Editor) — "Mehr" öffnet ihn mit
+  // den bisherigen Werten, ohne den Seitenwechsel den der alte Dialog machte.
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Dienstag um 3 Zahnarzt');
+  await page.getByRole('button', { name: 'Mehr' }).click();
 
-  await page.waitForURL('**/kalender');
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
@@ -136,10 +134,16 @@ test('AK4: Anfassen eines markierten Feldes räumt seine Markierung weg', async 
 
   // Titel im Termin-Editor — "morgen um 12" hat nach Abzug aller Spans keinen Titel-Rest
   // mehr; Mittag ist der Zwölf-Fixpunkt, also bleiben Datum/Uhrzeit hier unmarkiert.
+  // "Mehr" statt "Anlegen": ein leerer erkannter Titel legt im Kern-Sheet nichts an
+  // (Fokus geht zurück ins Titelfeld), der volle Editor ist seit P4 der einzige Ort,
+  // an dem sich diese Markierung noch zeigt.
   await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'morgen um 12');
-  await page.waitForURL('**/kalender');
+  await captureButton(page).click();
+  await captureTitleField(page).fill('morgen um 12');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
   const eventDlg = eventDialog(page);
+  await expect(eventDlg).toBeVisible();
   await expect(eventDlg.locator('.field-hint')).toHaveCount(1);
   await expect(eventDlg.locator('.field-hint')).toHaveText('kein Titel erkannt');
 
