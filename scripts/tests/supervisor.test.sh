@@ -121,9 +121,25 @@ case "\$field" in
 esac
 STUB
 
+  # Die ersten $scn/gh-fail Aufrufe scheitern -- so laesst sich das Netz
+  # nachstellen, das nach einem Boot noch nicht oben ist.
+  printf '0\n' > "$scn/gh-fail"
+  printf '0\n' > "$scn/gh-attempts"
   cat > "$scn/bin/gh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$scn/gh.log"
+n=\$(cat "$scn/gh-attempts"); n=\$(( n + 1 )); printf '%s\n' "\$n" > "$scn/gh-attempts"
+[ "\$n" -le "\$(cat "$scn/gh-fail")" ] && exit 1
+exit 0
+STUB
+
+  # sysctl -n kern.boottime: Laufzeit aus $scn/uptime-min. Voreinstellung weit
+  # in der Vergangenheit, damit die Stillstandspruefung normal greift.
+  printf '999\n' > "$scn/uptime-min"
+  cat > "$scn/bin/sysctl" <<STUB
+#!/usr/bin/env bash
+up=\$(cat "$scn/uptime-min" 2>/dev/null || echo 999)
+printf '{ sec = %s, usec = 0 }\n' "\$(( \$(date +%s) - up * 60 ))"
 STUB
 
   # lsof -a -p PID -d cwd -Fn: das Arbeitsverzeichnis eines Agenten. Antwortet
@@ -186,6 +202,8 @@ run_sup() {
   STATUS_ISSUE=1 \
   STALE_SLOT_MIN="${STALE_SLOT_MIN:-30}" \
   LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}" \
+  REPORT_TRIES="${REPORT_TRIES:-3}" \
+  REPORT_RETRY_SEC="${REPORT_RETRY_SEC:-0}" \
     bash "$SUP" "$@" 2>&1
 }
 
@@ -532,6 +550,82 @@ if grep -qE "slots=[01]/2" "$scn/state/supervisor.log"; then
   red "T15: mindestens ein Lauf hat Slots verloren — das SIGPIPE-Rennen lebt noch"
 else
   ok "T15: kein Lauf hat einen geladenen Slot übersehen"
+fi
+
+# --- T16: frisch gebootet -> Slot-Puls ist noch nicht aussagekräftig --------
+# War die Maschine aus, ist jeder Slot-Zustand alt. Ohne diese Sperre deutete
+# die Aufsicht die Ausschaltzeit als Stillstand und startete nach jedem Boot
+# alle Slots ein zweites Mal, Sekunden nach dem ersten Start (15.08., 02:50).
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+touch "$scn/state/trip-mode"
+printf '3\n' > "$scn/uptime-min"    # System läuft erst 3 Minuten
+set_slot_age "$scn" 1 305           # "alt", weil die Kiste aus war
+set_slot_age "$scn" 2 307
+out=$(run_sup "$scn")
+if grep -qE "^(stop|start) [12]$" "$scn/fleet.log"; then
+  red "T16: nach dem Boot wurden Slots als stehengeblieben neu gestartet: $(cat "$scn/fleet.log")"
+else
+  ok "T16: kurz nach dem Boot wird kein Slot als stehengeblieben behandelt"
+fi
+if printf '%s' "$out" | grep -q "noch nicht aussagekr"; then
+  ok "T16: der Grund steht im Log"
+else
+  red "T16: kein Hinweis auf die junge Laufzeit -- Ausgabe: $out"
+fi
+
+# Gegenprobe: dieselbe Lage, aber die Maschine läuft lange -> der Slot gilt
+# als stehengeblieben. Sonst prüfte T16 nur, dass gar nichts passiert.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+touch "$scn/state/trip-mode"
+printf '600\n' > "$scn/uptime-min"
+set_slot_age "$scn" 1 305
+set_slot_age "$scn" 2 0
+run_sup "$scn" >/dev/null
+if grep -q "^start 1$" "$scn/fleet.log"; then
+  ok "T16: bei langer Laufzeit greift die Stillstandsprüfung weiterhin"
+else
+  red "T16: Gegenprobe fehlgeschlagen — fleet.log: $(cat "$scn/fleet.log")"
+fi
+
+# --- T17: der Bericht überlebt ein Netz, das noch nicht oben ist ------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '2\n' > "$scn/gh-fail"          # die ersten zwei Versuche scheitern
+printf '999999\n' > "$scn/state/lock"  # ein Fund, damit überhaupt gemeldet wird
+out=$(run_sup "$scn")
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "3" ]; then
+  ok "T17: der Bericht wurde bis zum Erfolg wiederholt"
+else
+  red "T17: erwartet 3 Versuche, gezählt $(grep -c 'issue comment 1' "$scn/gh.log")"
+fi
+if printf '%s' "$out" | grep -q "3. Versuch abgesetzt"; then
+  ok "T17: der geglückte Versuch wird vermerkt"
+else
+  red "T17: kein Vermerk über den geglückten Versuch -- Ausgabe: $out"
+fi
+if printf '%s' "$out" | grep -q "konnte nicht ans Issue"; then
+  red "T17: als Fehlschlag gemeldet, obwohl der dritte Versuch klappte"
+else
+  ok "T17: kein Fehlschlag gemeldet"
+fi
+
+# Und wenn das Netz gar nicht wiederkommt: sauber aufgeben, nicht endlos.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '99\n' > "$scn/gh-fail"
+printf '999999\n' > "$scn/state/lock"
+out=$(run_sup "$scn")
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "3" ]; then
+  ok "T17: bei dauerhaftem Ausfall wird nach 3 Versuchen aufgegeben"
+else
+  red "T17: erwartet genau 3 Versuche, gezählt $(grep -c 'issue comment 1' "$scn/gh.log")"
+fi
+if printf '%s' "$out" | grep -q "konnte nicht ans Issue"; then
+  ok "T17: der endgültige Fehlschlag steht im Log"
+else
+  red "T17: dauerhafter Ausfall wurde nicht vermerkt"
 fi
 
 [ "$FAIL" -eq 0 ] && printf '\033[32mAlle Prüfungen grün.\033[0m\n'
