@@ -1653,6 +1653,188 @@ test('Drag & Drop: eine Aufgabe per Long-Press auf eine andere ziehen macht sie 
   await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
 });
 
+test('Desktop: eine Aufgabe ohne Pause direkt auf eine andere zu ziehen macht sie sofort zur Unteraufgabe, ohne den Long-Press abzuwarten (issue #763)', async ({
+  page,
+}) => {
+  // Fake clock installed but never advanced — proves the pick-up fires from the drag
+  // leaving the row, not from the long-press timer quietly elapsing on its own.
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Unteraufgabe' });
+  const target = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const from = await centerOf(dragged);
+  const to = await centerOf(target);
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: from.x,
+    clientY: from.y,
+    button: 0,
+    bubbles: true,
+  });
+  // Straight to the row above in one move, no pause — the natural way a mouse drag
+  // starts, and exactly what the long-press alone used to swallow as a tap.
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+
+  await expect(taskItems(page)).toHaveCount(2);
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+});
+
+test('Desktop: eine Unteraufgabe ohne Pause in den freien Bereich zu ziehen löst sie sofort wieder aus der Elternaufgabe, selbst wenn der Zug auch seitlich geht (issue #763)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Bestehendes Kind', parentId });
+
+  const dragged = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
+  const start = await centerOf(dragged);
+  // Down into the free space *and* toward the left edge — a net-horizontal vector the
+  // old "mostly vertical" rule mistook for a swipe (and would have deleted the row).
+  const end = await pointBelowList(page);
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: start.x,
+    clientY: start.y,
+    button: 0,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: end.x,
+    clientY: end.y,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    pointerType: 'mouse',
+    clientX: end.x,
+    clientY: end.y,
+    bubbles: true,
+  });
+
+  // Local-first assertions (these specs cut the sync endpoints, so nothing reaches
+  // Postgres to query with `withDb` — the offline→server round-trip for the same
+  // outbox `upsert` is already covered by the „issue #89 AK Offline" test below).
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveCount(0);
+  // Un-nested, not deleted: the row is still here, now standing on its own at the top
+  // level rather than indented under a parent.
+  const child = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
+  await expect(child).toHaveCount(1);
+  await expect(child).not.toHaveClass(/task-list__item--child/);
+});
+
+test('Handy (Touch): erst der Long-Press hebt die Zeile an und macht sie per Ziehen zur Unteraufgabe (issue #763)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Unteraufgabe' });
+  const target = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const from = await centerOf(dragged);
+  const to = await centerOf(target);
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: from.x,
+    clientY: from.y,
+    button: 0,
+    bubbles: true,
+  });
+  // A finger's own vertical drag must stay free to scroll the list, so on touch the
+  // pick-up is the long-press alone — wait it out before moving.
+  await freezeClock(page);
+  await page.clock.fastForward(LONG_PRESS_MS + 100);
+
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/1');
+});
+
+test('Handy (Touch): ein schnelles vertikales Ziehen ohne Long-Press hebt die Zeile nicht an, damit die Liste scrollbar bleibt (issue #763)', async ({
+  page,
+}) => {
+  // Clock installed but never advanced — the long-press is deliberately not reached,
+  // so any pick-up here would be the (wrong) immediate one the mouse path uses.
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Unteraufgabe' });
+
+  const dragged = taskItems(page).filter({ hasText: 'Unteraufgabe' });
+  const target = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const from = await centerOf(dragged);
+  const to = await centerOf(target);
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: from.x,
+    clientY: from.y,
+    button: 0,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    pointerType: 'touch',
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+
+  // No pick-up, so no nesting — the finger's move stayed a would-be scroll.
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveCount(0);
+});
+
 test('ein Kind wird offline über den Editor zugeordnet und erreicht online die Datenbank mit gesetztem parent_id (issue #89 AK Offline)', async ({
   page,
   context,
