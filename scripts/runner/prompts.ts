@@ -20,6 +20,35 @@ auf macOS einen modalen TCC-Dialog aus, der den unbeaufsichtigten Lauf blockiert
 die Notbremse ihn abwürgt (siehe #38). Gezielte Einzeldatei-Reads außerhalb des Repos
 nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 
+// #767 (ADR-0024): beide Denk-Rollen duerfen ein Artifact auf claude.ai
+// veroeffentlichen -- das Werkzeug publiziert direkt nach aussen, ohne
+// vorher lokal zu schreiben, die Read-only-Zusage (ADR-0005) bleibt also
+// unberuehrt. Nur in planPrompt()/researchPrompt() eingebunden, NICHT in
+// buildPrompt()/ciFixPrompt() (AK4, Scope-Creep waere ein Bau-Lauf, der
+// nebenbei eine Seite veroeffentlicht).
+const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` steht dir zur
+Verfügung und veröffentlicht sofort nach außen — kein Repo-Write, die
+Read-only-Zusage bleibt unberührt (ADR-0024).
+
+**Wann:** nur wenn ein anzuschauendes Objekt die Entscheidung trägt (z. B. ein
+Entwurfsblatt oder eine Skizze). Reichen drei Absätze im Kommentar, bleibt es
+beim Kommentar — der Normalfall ist **kein** Artifact.
+
+**Wie:** klein — nur das Anzuschauende plus so viel Beschriftung, dass klar
+ist, was was ist. Keine Begründungs-Abschnitte, keine Trade-off-Tabellen,
+keine Code-Listings auf der Seite: die Überlegung steht im Issue-Kommentar,
+das Artifact zeigt nur das Objekt. Nicht mehr Varianten oder Zustände, als die
+Entscheidung braucht.
+
+**Nie ins Artifact:** echte Nutzerdaten (insbesondere Journal-Inhalte,
+Regel 9) oder Secrets (Regel 10) — veröffentlichen heißt, es verlässt das
+Gerät.
+
+**URL:** landet im Plan-/Rechercheergebnis-Kommentar, nicht nur in der
+Galerie — der Mensch sieht unterwegs nur GitHub. Ein Fortsetzungslauf
+aktualisiert über diese URL/ID **dasselbe** Artifact, statt ein zweites
+anzulegen.`;
+
 // #588: Der Runner legt keine Fund-Tickets mehr an.
 //
 // Bis hierher stand an dieser Stelle ein ueber #366/#397 und mehrere Vorfaelle
@@ -210,6 +239,8 @@ Code, lege KEINEN Branch an, committe NICHT.
 
 ${FILE_ACCESS_RULE}
 
+${ARTIFACT_RULE}
+
 1. Lies CLAUDE.md, docs/ (v. a. docs/adr/, docs/ARCHITECTURE.md), das Issue
    (gh issue view ${issue} --comments) und den **aktuellen Code** der betroffenen
    Dateien.
@@ -262,6 +293,8 @@ export function researchPrompt(issue: number): string {
 Ändere KEINEN Code, lege KEINEN Branch an, committe NICHT.
 
 ${FILE_ACCESS_RULE}
+
+${ARTIFACT_RULE}
 
 1. Verstehe die Idee im Issue (gh issue view ${issue} --comments).
 2. Prüfe den Fit gegen docs/VISION.md, docs/ARCHITECTURE.md, docs/DESIGN_SYSTEM.md
