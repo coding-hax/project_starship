@@ -1,8 +1,12 @@
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
+import { enforce } from '@/auth/rate-limit';
 import { listCredentials, relyingParty, storeChallenge } from '@/auth/webauthn';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const limited = await enforce(request, 'options');
+  if (limited) return limited;
+
   const rp = relyingParty();
   // Deliberately unauthenticated: this is a usernameless WebAuthn flow, so
   // allowCredentials must list the known credential IDs before login for the

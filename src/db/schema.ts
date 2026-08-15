@@ -340,6 +340,40 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 
 /**
+ * Fixed-window request counter for the unauthenticated auth endpoints (issue #755).
+ * Server-/infra-only like `sessions`/`auth_challenges` above — no `syncColumns`, never
+ * in `SYNC_TABLES`, no Dexie counterpart.
+ *
+ * One row per `(bucket, key, window_start)`, `count` incremented atomically
+ * (`onConflictDoUpdate`, see `src/auth/rate-limit.ts`) rather than one row per hit —
+ * row count stays O(keys × windows), not O(attack requests). `bucket` separates the
+ * generous `options` budget from the stricter `recovery` budget (AC3); `key` is the
+ * caller's IP (`src/auth/rate-limit.ts` `clientKey`). Pruned on every write, same
+ * pattern as `storeChallenge` for `auth_challenges`.
+ */
+export const authRateLimits = pgTable(
+  'auth_rate_limits',
+  {
+    id: uuid('id').primaryKey(),
+    bucket: text('bucket').$type<'options' | 'recovery'>().notNull(),
+    key: text('key').notNull(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('auth_rate_limits_bucket_key_window_idx').on(
+      table.bucket,
+      table.key,
+      table.windowStart,
+    ),
+    index('auth_rate_limits_window_start_idx').on(table.windowStart),
+  ],
+);
+
+export type AuthRateLimit = typeof authRateLimits.$inferSelect;
+export type NewAuthRateLimit = typeof authRateLimits.$inferInsert;
+
+/**
  * Double-send lock for the reminder cron (issue #239). Server-/cron-infrastructure
  * like `pushSubscriptions` — no `syncColumns`, no Dexie counterpart, the client never
  * reads this table.

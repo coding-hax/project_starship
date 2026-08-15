@@ -1,66 +1,15 @@
 # CLAUDE.md
 
-Dies ist die verbindliche Arbeitsanweisung für alle KI-Agenten in diesem Repo.
-Sie hat Vorrang vor Bequemlichkeit, Geschwindigkeit und eigenen Ideen.
+Verbindliche Arbeitsanweisung für alle KI-Agenten in diesem Repo. Vorrang vor
+Bequemlichkeit, Geschwindigkeit und eigenen Ideen.
+
+Gegliedert nach **Moment im Lauf**: jede Regel steht genau einmal, an der Stelle,
+an der sie greift.
 
 ## Was das hier ist
 
-Eine persönliche Produktivitäts-Web-App (PWA) für **eine einzige Person**:
-Termine, Aufgaben, Journal, Routinen. Mobile-first, offline-fähig.
-
-Vor jeder Arbeit lesen:
-
-- `docs/VISION.md` — was wir bauen und was ausdrücklich **nicht**
-- `docs/ARCHITECTURE.md` — Stack, Datenmodell, Sync-Konzept
-- `docs/DESIGN_SYSTEM.md` — Farben, Typo, Motion, Mobile-Patterns (Index, Details in `docs/design/`)
-- `docs/WORKFLOW.md` — wie ein Ticket zum Merge wird (Index, Details in `docs/workflow/`)
-- `docs/adr/` — bereits getroffene Entscheidungen. Diese werden nicht neu verhandelt.
-
-## Harte Regeln
-
-1. **Ein Ticket zur Zeit.** WIP-Limit = 1. Kein neues Issue anfassen, solange ein PR offen ist. Keine "kleinen Nebenverbesserungen" im selben Branch. Laufen mehrere Runner-Slots (#204), gilt das WIP-Limit **pro Slot** — jeder Slot ist ein eigener Arbeitsbaum und baut für sich genommen an genau einem Ticket. Details: `docs/adr/0014-mehrere-runner-slots.md`.
-2. **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien des Tickets steht. Alles andere wird **nicht** implementiert — und seit #588 auch **nicht** als Ticket angelegt: Ein Fund neben der Spur (roter Test, Auffälligkeit, Verdacht) wird als Zeile unter „## Funde nebenbei" im Fortschrittskommentar des laufenden Tickets vermerkt, mit Fundort `<pfad>:<zeile>` und Symptom in einem Satz. Kein `gh issue create`. Ein Fund ist kein Auftrag und ändert deinen Auftrag nicht. Einzige Ausnahme, bei der ein Lauf noch Tickets anlegt: der Planer, der ein Ticket in Kind-Tickets aufteilt.
-3. **Keine neue Dependency ohne ADR.** Wenn ein Paket nötig scheint: ADR-Entwurf in den PR, Begründung, Alternativen. Warten auf Freigabe.
-4. **Keine Schema-Änderung ohne Migration.** Drizzle-Migration im selben PR, Up- und Down-Pfad.
-5. **Tests werden niemals abgeschwächt, um grün zu werden.** Ein roter Test ist ein Fund, kein Hindernis. Kein `test.skip`, kein aufgeweichtes Assert, kein erhöhter Timeout als Fix. Ein Flake-Nachweis läuft über `--repeat-each`, eingegrenzt auf die betroffenen Tests (siehe `docs/workflow/ticket-und-tests.md`, „Wie ein Flake-Fix belegt wird") — **niemals** als N ganze Suiten hintereinander. Jedes Akzeptanzkriterium muss innerhalb eines Lauf-Fensters (45 Minuten) prüfbar sein — sonst ist es keine Anforderung, sondern eine Sackgasse.
-6. **Jedes Feature-Ticket liefert Playwright-Tests**, die 1:1 die Akzeptanzkriterien abbilden.
-7. **Kein Vendor-Lock-in.** Keine Vercel- oder Neon-spezifischen Primitive. DB-Zugriff ausschließlich über Drizzle gegen Standard-Postgres. Das Projekt muss jederzeit auf einen eigenen Server umziehbar sein.
-8. **Local-first ist nicht optional.** Die UI liest und schreibt gegen IndexedDB, niemals direkt gegen die API. Jede Mutation läuft durch die Outbox.
-9. **Journal-Inhalte verlassen das Gerät nur verschlüsselt.** Niemals Klartext an den Server, niemals Klartext loggen.
-10. **Niemals Secrets committen.** Keine echten Tokens in Tests, Fixtures oder Beispielen.
-11. **Bei Unklarheit: fragen, nicht raten.** Widerspricht ein Ticket der Vision, wird nicht implementiert, sondern nachgefragt.
-12. **Jeder Lauf arbeitet in einem eigenen Worktree.** Egal ob Runner oder Terminal-Sitzung: Der Haupt-Checkout `/Users/max/dev/project_starship` ist zum Lesen da, nicht zum Bauen. **Niemals** darin einen Branch wechseln, committen oder pushen — es arbeiten mehrere Läufe gleichzeitig im selben Repo. Details unten: „Ein Worktree je Lauf".
-
-## Konventionen
-
-- Code, Bezeichner, Kommentare, Commits: **Englisch**. UI-Texte: **Deutsch**.
-- Branch: `feat/<issue-nr>-<slug>`, `fix/<issue-nr>-<slug>`, `chore/…`
-- Arbeitest du aus einer Chat-Sitzung, baust du in einem eigenen Worktree unter
-  `~/dev/starship-worktrees/<branch-slug>` — nie im Haupt-Checkout, in dem
-  parallel der Runner arbeitet. **Nach dem Push räumst du ihn wieder weg**
-  (`git worktree remove`, nie `rm -rf` — sonst bleibt Gits Verwaltungseintrag
-  liegen). Der Runner räumt nur seine eigenen Worktrees ab; für deinen ist
-  sonst niemand zuständig.
-- **Nie einen Worktree mit gestagten Änderungen zurücklassen.** Ein liegen
-  gebliebener Index ist keine Unordnung, sondern eine geladene Waffe: `git
-  checkout -- .` und `git clean -fd` fassen ihn nicht an, er überlebt jedes
-  Aufräumen und macht beim nächsten Commit stillschweigend gemergte Arbeit
-  rückgängig. Vor dem Verlassen: `git status --short` — steht das `M` in der
-  **vorderen** Spalte, ist der Index dreckig.
-- Commits: Conventional Commits (`feat(tasks): add swipe to complete`)
-- PR-Titel enthält `Closes #<issue-nr>`.
-- Komplexe Tickets (mehrdeutig, architektonisch, geschützte Pfade, Migrationen, Krypto,
-  Sync) werden **vor** `ready` von Opus geplant (Label `plan`); der Runner baut
-  niemals ohne Plan. Einfache/mechanische Tickets dürfen `plan` überspringen.
-  Der Runner schaltet **von sich aus** nie auf Opus hoch — außer über die
-  Eskalation nach drei erfolglosen Läufen. Der Mensch darf die Startstufe am
-  Ticket vorgeben (`model:haiku|sonnet|opus`); `model:opus` baut dann sofort
-  auf Opus, unter denselben Deckeln. Details, Labels, Deckel:
-  `docs/workflow/eskalation.md`, `docs/adr/0005-opus-im-runner.md`,
-  `docs/adr/0007-opus-eskalation-baut.md`,
-  `docs/adr/0013-modellstufe-am-ticket.md`.
-
-## Befehle
+Persönliche Produktivitäts-PWA für **eine einzige Person**: Termine, Aufgaben,
+Journal, Routinen. Mobile-first, offline-fähig.
 
 ```bash
 pnpm dev           # Entwicklung
@@ -72,47 +21,31 @@ pnpm db:generate   # Drizzle-Migration erzeugen
 pnpm db:migrate    # Migration anwenden
 ```
 
-## Autonomer Betrieb — lies das genau
+---
 
-Du läufst über einen Runner (`scripts/claude-runner.sh`) auf einem Rechner, an dem
-**niemand sitzt**. Der Nutzer ist unterwegs und sieht nur GitHub auf dem Handy.
+## Bevor du anfängst
 
-**Fragen stellst du ausschließlich als Kommentar am Issue.** Niemals nach stdout,
-niemals ins Terminal — das liest niemand.
+**Pflichtlektüre ist diese Datei und `docs/CODEMAP.md`. Sonst nichts.** Alles
+Weitere liest du nur bei konkretem Anlass:
 
-So fragst du:
+| Anlass | Dann liest du |
+| --- | --- |
+| Schema, Migration, Sync | `docs/ARCHITECTURE.md` |
+| UI, Design, Motion | `docs/DESIGN_SYSTEM.md` |
+| Journal, Krypto | `docs/adr/0004-journal-metadaten-verschluesseln.md` |
+| Zweifel, ob ein Ticket zum Produkt passt | `docs/VISION.md` |
+| Architektur- oder Grundsatzfrage | das passende ADR unter `docs/adr/` |
 
-1. `gh issue comment <nr>` mit: was du wissen musst, **konkrete Optionen (A/B/C)**,
-   deine Empfehlung, und was passiert, wenn nicht geantwortet wird.
-2. Label `needs-answer` setzen — es steht eine Frage im Ticket, die eine
-   geschriebene Antwort braucht. Seit #272 ist das das einzige Wartelabel.
-3. Lauf beenden.
+ADRs sind getroffene Entscheidungen. Sie werden nicht neu verhandelt.
 
-Mehr brauchst du hier nicht zu tun. Das Ticket behält `in-progress` (#272) und
-wird von der Auswahl übersprungen, solange `needs-answer` hängt — es wartet
-sichtbar, belegt aber keinen Bauplatz. Sobald der Mensch antwortet und das
-Label entfernt, wird es fortgesetzt, nicht neu gestartet. Details:
-`docs/workflow/zyklus.md`, „Wartend ist nicht in Arbeit".
+**Ein Ticket zur Zeit.** WIP-Limit 1 — kein neues Issue anfassen, solange ein PR
+offen ist. Bei mehreren Runner-Slots gilt das **pro Slot**
+(`docs/adr/0014-mehrere-runner-slots.md`).
 
-Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich vorgehen?"
-ist keine brauchbare Frage. „A: Swipe nach links löscht sofort. B: Swipe nach links
-öffnet ein Menü. Ich empfehle A mit Undo-Toast." ist eine.
-
-**Rate nie.** Lieber ein Ticket steht 12 Stunden still, als dass es in die falsche
-Richtung läuft.
-
-### Ein Worktree je Lauf — vor der ersten Zeile Code
-
-Es arbeiten **mehrere Läufe gleichzeitig im selben Repo**: der Runner, parallele
-Terminal-Sitzungen, du. Ein geteilter Checkout hat genau einen `HEAD` — wer darin
-den Branch wechselt, zieht ihn allen anderen unter den Füßen weg.
-
-Das ist kein theoretisches Risiko. Am 26.07.26 baute der Runner das Ticket #196 im
-Haupt-Checkout, der auf `fix/232-fab-icon-size` stand. Die komplette Runner-Arbeit
-landete in einem Commit mit der Nachricht „increase FAB icon font-size" und wäre über
-den Icon-PR halbfertig nach `main` gemerged worden.
-
-Deshalb, **bevor du irgendetwas änderst**:
+**Eigener Worktree, vor der ersten Zeile Code.** Mehrere Läufe teilen dieses
+Repo, ein Checkout hat einen `HEAD`. Im Haupt-Checkout **niemals** den Branch
+wechseln, committen oder pushen — auch nicht, wenn du ihn auf einem
+Feature-Branch vorfindest.
 
 ```bash
 git -C /Users/max/dev/project_starship fetch origin
@@ -120,33 +53,110 @@ git -C /Users/max/dev/project_starship worktree add -b feat/42-quick-add \
   /Users/max/dev/project_starship/.claude/worktrees/issue-42 origin/main
 ```
 
-- **Absolute Pfade, immer.** Ein relativer Pfad legt den Worktree mitten ins Repo und
-  blockiert dort stumm jedes weitere `git`-Kommando.
-- `.claude/worktrees/` ist in `.gitignore` — der Worktree taucht nirgends im Diff auf.
-- Ein Worktree je Ticket, Name = Ticketnummer. Nach dem Merge:
-  `git worktree remove <pfad>`.
-- Nimmst du einen abgebrochenen Lauf wieder auf, benutzt du **denselben** Worktree
-  weiter, statt einen zweiten anzulegen.
-- Der Haupt-Checkout bleibt auf `main` und sauber. Findest du ihn auf einem
-  Feature-Branch vor: **nicht** darin weiterarbeiten, eigenen Worktree anlegen.
-- `pnpm install` läuft **nur** mit `--dir <Haupt-Checkout>`, **nie** mit cwd in
-  einem Worktree: `bootstrap_worktree()` verlinkt `worktree/node_modules` auf
-  den Haupt-Checkout, damit im Worktree kein Install nötig ist. Ein Install mit
-  cwd im Worktree schreibt dessen Top-Level-Links relativ zum Worktree-Pfad —
-  die bleiben nach `git worktree remove` tot zurück und töten den Runner still
-  (Vorfall vom 10.08.26, siehe Issue 606).
+- **Absolute Pfade, immer** — ein relativer Pfad blockiert stumm jedes
+  `git`-Kommando.
+- Ein Worktree je Ticket, Name = Ticketnummer; `.claude/worktrees/` ist in
+  `.gitignore`. Aus einer Chat-Sitzung stattdessen
+  `~/dev/starship-worktrees/<branch-slug>`.
+- Abräumen nach dem Merge: `git worktree remove <pfad>`, **nie** `rm -rf`. Der
+  Runner räumt nur seine eigenen.
+- Abgebrochenen Lauf im **selben** Worktree fortsetzen, keinen zweiten anlegen.
+- `pnpm install` **nur** mit `--dir <Haupt-Checkout>`, nie mit cwd im Worktree.
 
-### Fortschritt sichern — nach JEDEM Schritt
+Gründe — zwei echte Vorfälle: `docs/warum/worktree.md`.
 
-Dein Lauf kann jederzeit abbrechen: Usage-Limit erreicht, Stromausfall, Timeout.
-Deshalb darf dein Arbeitsstand **niemals nur in der Session leben.**
+**Branch:** `feat/<nr>-<slug>`, `fix/<nr>-<slug>`, `chore/<nr>-<slug>`.
 
-Nach jedem abgeschlossenen Schritt:
+**Plan vor Bau.** Komplexe Tickets (mehrdeutig, architektonisch, sensible Pfade,
+Migration, Krypto, Sync) plant Opus vor `ready` (Label `plan`) — ohne Plan baut
+der Runner nicht; einfache dürfen `plan` überspringen. Hochschalten auf Opus tut
+der Runner **nie von sich aus**, nur per Eskalation nach drei erfolglosen
+Läufen; der Mensch darf die Stufe vorgeben (`model:haiku|sonnet|opus`).
+`docs/workflow/eskalation.md`, `docs/adr/0013-modellstufe-am-ticket.md`.
 
-1. **Committen und pushen** (`wip:`-Commits sind auf Feature-Branches erlaubt und
-   werden beim Merge gesquasht).
-2. **Fortschrittskommentar am Issue aktualisieren** — genau _ein_ Kommentar,
-   den du editierst (`gh issue comment --edit-last`), damit keine Kommentarflut entsteht:
+---
+
+## Während du baust
+
+**Kein Scope-Creep.** Nur was in den Akzeptanzkriterien steht. Ein Fund neben der
+Spur (roter Test, Auffälligkeit, Verdacht) wird als Zeile unter „## Funde
+nebenbei" im Fortschrittskommentar vermerkt — Fundort `<pfad>:<zeile>`, Symptom
+in einem Satz. **Kein `gh issue create`.** Ein Fund ist kein Auftrag und ändert
+deinen Auftrag nicht. Einzige Ausnahme: der Planer, der ein Ticket in
+Kind-Tickets aufteilt.
+
+**Änderung an der Grundlage braucht Papier — im selben PR:**
+
+- Neue Dependency → ADR-Entwurf mit Begründung und Alternativen, auf Freigabe
+  warten.
+- Schema-Änderung → Drizzle-Migration, Up- **und** Down-Pfad.
+
+**Architektur-Invarianten** (Details `docs/ARCHITECTURE.md`):
+
+- **Local-first.** Die UI liest und schreibt gegen IndexedDB, nie direkt gegen
+  die API; jede Mutation läuft durch die Outbox. `check-sync-invariants.sh`
+  erzwingt das.
+- **Journal-Inhalte verlassen das Gerät nur verschlüsselt** — nie Klartext an
+  den Server, nie Klartext loggen.
+- **Kein Vendor-Lock-in.** DB-Zugriff nur über Drizzle gegen Standard-Postgres,
+  keine Vercel- oder Neon-Primitive. Das Projekt muss jederzeit auf einen
+  eigenen Server umziehbar sein.
+- **Niemals Secrets committen** — keine echten Tokens in Tests, Fixtures,
+  Beispielen.
+
+**Sprache:** Code, Bezeichner, Kommentare, Commits **Englisch**. UI-Texte
+**Deutsch**.
+
+### Tests sind der Auftrag, nicht das Hindernis
+
+Du schreibst Code **und** Tests — der Interessenkonflikt ist dir bewusst.
+
+- Jedes Feature-Ticket liefert Playwright-Tests, die 1:1 die Akzeptanzkriterien
+  abbilden. Code ohne begleitenden Test ist ein rotes Anwesenheits-Gate; einzige
+  Entrinnung ist das vom Menschen gesetzte Label `tests-exempt` — **nie selbst
+  setzen**.
+- **Tests werden niemals abgeschwächt, um grün zu werden** — kein `.skip`,
+  `.only`, `waitForTimeout`, aufgeweichtes Assert, erhöhter Timeout als Fix.
+  `check-test-integrity.sh` ist Required Check und fängt es ohnehin.
+- Ein roter Test ist ein Fund, kein Hindernis. Die Testanzahl darf nie sinken;
+  ist ein Test wirklich obsolet, begründest du das am Ticket und fragst nach —
+  du entscheidest das nicht selbst.
+- Ein Flake-Nachweis läuft über `--repeat-each`, eingegrenzt auf die betroffenen
+  Tests — **niemals** als N ganze Suiten hintereinander
+  (`docs/workflow/ticket-und-tests.md`, „Wie ein Flake-Fix belegt wird").
+- Jedes Akzeptanzkriterium muss innerhalb eines Lauf-Fensters (45 Minuten)
+  prüfbar sein. Sonst ist es keine Anforderung, sondern eine Sackgasse.
+
+### Token-Disziplin
+
+Verbrauch skaliert mit **Kontext**, nicht mit der Anzahl deiner Nachrichten. Was
+einmal im Kontext ist, bleibt den Rest des Laufs darin.
+
+- **Erst die Karte, dann suchen.** `docs/CODEMAP.md` gibt die Grobstruktur.
+- **Das Ticket nennt die betroffenen Dateien.** Lies die — nicht das halbe Repo.
+  Ist die Liste unvollständig, ergänze sie am Ticket.
+- **Suchen delegierst du an den Explore-Subagenten** (Haiku, eigenes
+  Kontextfenster). Sein Suchmüll landet nie bei dir.
+- **Tests führst du über den `test-runner`-Subagenten aus**, nie direkt. Lokal
+  läuft nur der Spec zum aktuellen Ticket; die volle Suite läuft in CI.
+- **Keine `@datei.ts`-Referenzen** — das injiziert die ganze Datei plus den
+  CLAUDE.md-Baum. Nenne den Pfad als normalen Text.
+- **Nichts pasten, was du auch lesen kannst.**
+- **Kein Subagenten-Wildwuchs.** Nur für lesende, klar begrenzte Aufgaben.
+
+Modellpolitik und Hebel im Detail: `docs/TOKEN-BUDGET.md`.
+
+---
+
+## Nach jedem Schritt
+
+Dein Lauf kann jederzeit abbrechen — Usage-Limit, Stromausfall, Timeout. Dein
+Arbeitsstand darf **niemals nur in der Session leben.**
+
+1. **Committen und pushen.** Conventional Commits (`feat(tasks): add swipe to
+   complete`); `wip:` ist auf Feature-Branches erlaubt und wird gesquasht.
+2. **Fortschrittskommentar am Issue aktualisieren** — genau *ein* Kommentar, den
+   du editierst, damit keine Kommentarflut entsteht.
 
 ```markdown
 ## 🤖 Fortschritt (automatisch aktualisiert)
@@ -154,186 +164,136 @@ Nach jedem abgeschlossenen Schritt:
 Branch: `feat/42-quick-add-task`
 
 - [x] Datenmodell + Migration
-- [x] Bottom-Sheet-Komponente
 - [ ] ← HIER WEITER: Outbox-Anbindung
 - [ ] Playwright-Tests
-- [ ] Offline-Pfad
 
 Zuletzt: 13.07. 14:20
 ```
 
-Der Marker `← HIER WEITER` ist die Wiederaufnahmestelle. Wenn du einen Lauf beginnst
-und dieser Kommentar existiert, **fängst du dort an — nicht von vorne.**
+`← HIER WEITER` ist die Wiederaufnahmestelle. Existiert der Kommentar, **fängst
+du dort an — nicht von vorne.**
 
-**Ab dem ersten erfolglosen Bau-Lauf** (siehe ADR-0007) gilt zusätzlich:
+**Ab dem ersten erfolglosen Bau-Lauf** zusätzlich:
 
-- Ein Abschnitt „## Was schon versucht wurde" im Fortschrittskommentar **wächst**
-  über Läufe hinweg, statt überschrieben zu werden — was versucht wurde, woran
-  es scheiterte, was damit ausgeschlossen ist, in Klartext (kein Signatur-Hash).
-  Existiert er bereits, liest du ihn **zuerst** und schlägst keinen dort als
-  ausgeschlossen vermerkten Weg erneut ein — Wiederholung ist ein Fehlschlag
-  des Tickets, nicht nur verlorene Zeit.
-- Die Checkliste wird feiner geschnitten: ein Haken **je Fehlereinheit** (je
-  rotem Test, je rotem Check) statt je Phase, mit Gruppenkopf „(N von M grün)".
-  Jede gelöste Einheit wird **einzeln** committet und gepusht, der Marker
-  `← HIER WEITER` rückt auf die nächste offene Einheit, gelöste bleiben
-  abgehakt.
+- Ein Abschnitt „## Was schon versucht wurde" **wächst** über Läufe hinweg statt
+  überschrieben zu werden: was versucht wurde, woran es scheiterte, was damit
+  ausgeschlossen ist. Existiert er, liest du ihn **zuerst** und schlägst keinen
+  dort ausgeschlossenen Weg erneut ein.
+- Die Checkliste wird feiner: ein Haken **je Fehlereinheit** (je rotem Test, je
+  rotem Check) statt je Phase, Gruppenkopf „(N von M grün)". Jede gelöste
+  Einheit **einzeln** committen und pushen, der Marker rückt auf die nächste.
 
-```markdown
-## Fortschritt
-- [x] AppHeader in Varianten chrome/inline
-- [x] Layout-Shift beim Tab-Wechsel vermieden
-- Tests (3 von 6 grün):
-  - [x] shell.spec.ts:114 Header-Aktivzustand
-  - [x] shell.spec.ts:180 mobile Platzierung
-  - [x] shell.spec.ts:195 Sidebar-Platzierung
-  - [ ] ← HIER WEITER: habits.spec.ts:247 sync-Timeout
-  - [ ] habits.spec.ts:274 sync-Timeout
-  - [ ] habits-uebersicht.spec.ts:141 sync-Timeout
-```
+**Wird dein Lauf abgebrochen, musst du nichts tun.** Der Runner hält das Ticket
+an und startet dich wieder, sobald Kontingent da ist. Dein nächster Lauf liest
+Branch, `git log` und Fortschrittskommentar und macht weiter — kein Neuanfang.
 
-### Wenn ein Lauf abgebrochen wird
+---
 
-Du musst nichts tun. Der Runner erkennt das Limit, hält das Ticket an und startet
-dich wieder, sobald Kontingent da ist. Dein nächster Lauf liest Branch, `git log`
-und Fortschrittskommentar und macht weiter. **Kein Neuanfang, kein Rollback.**
+## Wenn du nicht weiterkommst
 
-### Was du niemals tust
+Du läufst auf einem Rechner, an dem **niemand sitzt**. Der Nutzer ist unterwegs
+und sieht nur GitHub auf dem Handy. **Fragen stellst du ausschließlich als
+Kommentar am Issue** — niemals nach stdout, niemals ins Terminal.
 
-- Im Haupt-Checkout bauen: den Branch dort wechseln, dort committen oder pushen
-  (siehe „Ein Worktree je Lauf")
-- Nach `main` pushen (Branch-Schutz verhindert es ohnehin)
-- Force-Push, History umschreiben, einen Check überspringen
-- Ein zweites Ticket beginnen, während eines auf `in-progress` steht
-- Eine Frage stellen, ohne das Label `needs-answer` zu setzen (sonst startet der
-  Runner dich in 20 Minuten erneut mit derselben offenen Frage)
-- Auf CI warten (`gh pr checks --watch`) oder lokal die volle `pnpm e2e`-Suite
-  laufen lassen — dein Lauf endet beim Push, der Runner-Takt beobachtet die CI
+1. `gh issue comment <nr>`: was du wissen musst, **konkrete Optionen (A/B/C)**,
+   deine Empfehlung, und was passiert, wenn niemand antwortet.
+2. Label `needs-answer` setzen. Ohne das Label startet dich der Runner in
+   20 Minuten erneut mit derselben offenen Frage.
+3. Lauf beenden.
 
-## Token-Disziplin — das ist eine harte Regel, keine Bitte
+Das Ticket behält `in-progress` und wird von der Auswahl übersprungen, solange
+`needs-answer` hängt — es wartet sichtbar, belegt aber keinen Bauplatz. Sobald
+der Mensch antwortet und das Label entfernt, wird es **fortgesetzt, nicht neu
+gestartet** (`docs/workflow/zyklus.md`, „Wartend ist nicht in Arbeit").
 
-Der Nutzer arbeitet mit einem Plan, dessen Kontingent begrenzt ist. Verbrauch
-skaliert mit **Kontext**, nicht mit der Anzahl deiner Nachrichten. Jede Datei, die
-du unnötig liest, kostet ihn Arbeitszeit am Ende der Woche.
+Die Frage muss vom Handy aus mit einem Satz beantwortbar sein. „Wie soll ich
+vorgehen?" ist keine brauchbare Frage. „A: Swipe nach links löscht sofort.
+B: Swipe nach links öffnet ein Menü. Ich empfehle A mit Undo-Toast." ist eine.
 
-1. **Erst die Karte, dann suchen.** `docs/CODEMAP.md` gibt die Grobstruktur —
-   für Detail (Zusammenhänge, Implementierungsdetails) ist der
-   Explore-Subagent der Weg, nicht Grep im Hauptkontext.
-2. **Das Ticket nennt die betroffenen Dateien.** Lies die — und nicht das halbe Repo.
-   Wenn die Liste im Ticket unvollständig ist, ergänze sie, statt beim nächsten Mal
-   wieder zu suchen.
-3. **Suchen delegierst du an den Explore-Subagenten** (läuft auf Haiku, eigenes
-   Kontextfenster). Sein Suchmüll landet nie bei dir.
-4. **Tests führst du über den `test-runner`-Subagenten aus**, nie direkt.
-   Er gibt dir „3 rot, hier ist warum" statt 400 Zeilen Playwright-Output.
-   Und lokal läuft nur der Spec zum aktuellen Ticket — die volle Suite läuft in CI
-   und kostet dort nichts.
-5. **Keine `@datei.ts`-Referenzen.** Das injiziert die ganze Datei plus den
-   CLAUDE.md-Baum. Nenne den Pfad als normalen Text, dann liest du selektiv.
-6. **Nichts pasten, was du auch lesen kannst.** Alles, was einmal im Kontext ist,
-   bleibt für den Rest des Laufs darin.
-7. **Kein Subagenten-Wildwuchs.** Subagenten haben eigene Kontextfenster —
-   überall eingesetzt vervielfachen sie den Verbrauch. Nur für lesende, klar
-   begrenzte Aufgaben: suchen, testen, prüfen.
+**Rate nie.** Lieber steht ein Ticket 12 Stunden still, als dass es in die
+falsche Richtung läuft. Widerspricht ein Ticket der Vision, wird nicht
+implementiert, sondern nachgefragt.
 
-## Merge — du hebst deinen PR selbst aus dem Entwurf (#167)
+---
 
-Du wartest nicht mehr selbst auf CI. Dein Lauf endet, sobald der Branch
-gepusht ist. Existiert für dieses Ticket noch kein PR:
+## Am Ende
+
+Dein Lauf endet, sobald der Branch gepusht ist. **Du wartest nicht auf CI.**
 
 ```bash
 gh pr create --draft --fill --title "feat(...): … — Closes #<nr>"   # nur beim ERSTEN Push
 ```
 
-Existiert für dieses Ticket schon ein offener PR (Fortsetzung eines Laufs):
-**kein** zweiter — push einfach weiter auf denselben Branch.
+Existiert für dieses Ticket schon ein offener PR, gibt es **keinen zweiten** —
+du pushst weiter auf denselben Branch.
 
-**Endet dein Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
-gepusht — also nicht über eine offene Frage, siehe unten), hebst du den PR
-**selbst** aus dem Entwurf und aktivierst Auto-Merge, bevor du beendest:
+**Endet dein Lauf sauber** (Ticket fertig oder Fortsetzung gepusht — also nicht
+über eine offene Frage), hebst du den PR selbst aus dem Entwurf:
 
 ```bash
-gh pr ready                                     # ohne Nummer -> PR des aktuellen Branches
-gh pr merge --squash --auto --delete-branch --subject "$(gh pr view --json title -q .title)" --body ""
+gh pr ready
+gh pr merge --squash --auto --delete-branch \
+  --subject "$(gh pr view --json title -q .title)" --body ""
 ```
 
-Das `--subject` ist Pflicht, kein Stil: bei genau einem Commit auf dem Branch
-nimmt GitHub sonst dessen Commit-Nachricht statt des PR-Titels als
-Squash-Betreff — ein nur im Titel stehendes `Closes #N` ginge verloren und
-das Issue bliebe trotz sauber gemergtem PR offen (#292).
+Das `--subject` ist Pflicht, kein Stil — ohne es bleibt das Issue trotz sauber
+gemergtem PR offen (`docs/warum/merge.md`).
 
-Du musst dafür **nicht** wissen, ob CI schon grün ist — das ist der Punkt:
-Auto-Merge greift ohnehin erst, wenn alle Required Checks grün sind. Ein
-Entwurf bedeutet jetzt: **der Lauf ist nicht sauber zu Ende gekommen** — nicht
-mehr „der Runner hat noch nicht hingeschaut".
+Ob CI grün ist, musst du **nicht** wissen — Auto-Merge greift ohnehin erst bei
+grünen Required Checks. Ein Entwurf heißt ab jetzt „der Lauf ist nicht sauber zu
+Ende gekommen", nicht „der Runner hat noch nicht hingeschaut". Stellst du eine
+Frage, bleibt der PR Entwurf: Lauf beenden **vor** `gh pr ready`.
 
-**Kein `gh pr checks --watch`, kein voller `pnpm e2e` lokal.** Das ist Aufgabe
-der CI-Wache im Runner-Takt danach, nicht deine. Kurz zusammengefasst: läuft
-CI noch, passiert nichts; wird sie grün, merged GitHub von selbst; wird sie
-rot, startet dich der nächste Takt
-gezielt neu mit Job/Testname/Fehlermeldung als Auftrag — Trace zuerst lesen,
-Ursache beheben (nie Test aufweichen, Regel 5), schnelle Tore lokal grün,
-wieder auf denselben Branch pushen, kein neuer PR. Nach dem **dritten**
-vergeblichen Versuch mit derselben Ursache: aufhören, Kommentar, `needs-answer`
-(dieselbe erschöpfte Eskalation wie in „So fragst du" oben, ADR-0007) — drei
-rote Runden heißen, das Ticket ist falsch geschnitten,
-eine menschliche Entscheidung. Vollständige Zustandstabelle:
-`docs/workflow/merge.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
+**Kein `gh pr checks --watch`** — das ist Aufgabe der CI-Wache im Runner-Takt
+(die volle Suite lokal läuft ohnehin nicht, siehe Token-Disziplin). Wird CI rot,
+startet dich der nächste Takt gezielt
+mit Job, Testname und Fehlermeldung: Trace zuerst lesen, Ursache beheben (nie
+den Test aufweichen), schnelle Tore lokal grün, auf denselben Branch pushen,
+kein neuer PR. Nach dem **dritten** vergeblichen Versuch mit derselben Ursache:
+aufhören, Kommentar, `needs-answer` — drei rote Runden heißen, das Ticket ist
+falsch geschnitten.
+Zustandstabelle: `docs/workflow/merge.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
 
-Stellst du stattdessen eine Frage (`needs-answer`, siehe „Autonomer Betrieb"
-oben): der PR bleibt Entwurf — du beendest den Lauf, **bevor** du `gh pr
-ready` erreichst.
+**Bevor du den Worktree verlässt:** `git status --short`. Steht das `M` in der
+**vorderen** Spalte, ist der Index dreckig — das räumt kein `git clean` weg und
+kostet dich beim nächsten Commit gemergte Arbeit (`docs/warum/worktree.md`).
 
-### Sensible Pfade — hier fängt dich niemand mehr auf
+**Niemals:** nach `main` pushen (Branch-Schutz verhindert es ohnehin),
+force-pushen, History umschreiben, einen Check überspringen.
 
-`src/db/`, `src/crypto/`, `src/local/`, `src/app/api/sync/`, alles mit `auth` im Namen,
-`.github/` und `scripts/`. Ein Fehler ist dort kein Bug, sondern **Datenverlust**.
+---
 
-**Es gibt dort keinen Wächter mehr.** `protected-paths` blockierte seit #276
-nicht mehr und ist seit #283 ganz weg — ein Check, der nie fehlschlägt, bringt
-niemandem etwas bei. Der Mensch gibt die PRs ohnehin direkt frei (Begründung
-und der bewusst akzeptierte Preis: `docs/workflow/merge.md`, „Ein Wächter").
+## Sensible Pfade
 
-Das macht deine Sorgfalt **wichtiger**, nicht unwichtiger. Berührt dein Diff
-einen dieser Pfade, **sofort beim Öffnen des PR**:
+`src/db/`, `src/crypto/`, `src/local/`, `src/app/api/sync/`, alles mit `auth` im
+Namen, `.github/`, `scripts/`. Ein Fehler ist dort kein Bug, sondern
+**Datenverlust**. Einen Wächter gibt es hier nicht mehr — das macht deine
+Sorgfalt wichtiger, nicht unwichtiger (`docs/warum/sensible-pfade.md`).
+
+Berührt dein Diff einen dieser Pfade, **sofort beim Öffnen des PR**:
 
 1. Kommentar ans Issue: **was** du geändert hast, **warum**, was schiefgehen
-   könnte, und wie der Rückweg aussieht. Das ist jetzt die einzige Spur, die
-   ein Mensch später findet.
-2. Rührt die Änderung ein Schema an, gehört die Migration in denselben PR
-   (Regel 4) — up **und** down.
-3. Bist du dir bei einer Änderung an Krypto, Sync oder Migration **nicht
-   sicher**, ist das ein Fall für `needs-answer` und Nachfragen, nicht für
-   „läuft ja durch".
-
-Was du **nicht** tust: `needs-answer` setzen, nur weil ein Pfad in dieser Liste
-steht. Das hielte das Ticket an, ohne dass jemand etwas zu entscheiden hätte —
-und genau das war bis #283 die Vorschrift. Der Kommentar ersetzt sie.
+   könnte, wie der Rückweg aussieht. Das ist die einzige Spur, die ein Mensch
+   später findet.
+2. Schema berührt? Migration in denselben PR, up **und** down (siehe oben).
+3. Bei Krypto, Sync oder Migration **nicht sicher**? `needs-answer` — nicht
+   „läuft ja durch". Aber **nicht** `needs-answer` setzen, nur weil ein Pfad in
+   dieser Liste steht: das hielte das Ticket an, ohne dass jemand etwas zu
+   entscheiden hätte.
 
 Versuche nie, einen Wächter abzuschalten oder eine Änderung so umzuschneiden,
-dass sie an einer Prüfung vorbeirutscht. Dass es hier keinen mehr gibt, ist
-eine **Entscheidung des Menschen** — keine Einladung, es bei den übrigen Toren
-genauso zu halten.
+dass sie an einer Prüfung vorbeirutscht.
 
-### Tests sind kein Hindernis, sie sind der Auftrag
-
-Du schreibst Code **und** Tests — Interessenkonflikt, du weißt das. Kein
-`.skip`, kein `.only`, kein `waitForTimeout`, kein gelockertes Assert (Regel 5,
-mechanisch erzwungen durch `test-integrity`). Testanzahl darf nie sinken; ist
-ein Test wirklich obsolet, begründest du das am Ticket und fragst nach
-(`needs-answer`), statt selbst zu entscheiden. Code
-ohne begleitenden Test ist ein rotes Anwesenheits-Gate — einzige Entrinnung
-ist das vom Menschen gesetzte Label `tests-exempt`, nie selbst setzen.
+---
 
 ## Definition of Done
-
-Ein Ticket ist fertig, wenn **alle** Punkte erfüllt sind:
 
 - [ ] Alle Akzeptanzkriterien erfüllt
 - [ ] Playwright-Test je Akzeptanzkriterium, grün
 - [ ] Offline-Pfad getestet (Mutation offline → online → serverseitig angekommen)
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e` grün
-- [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop (1280px) läuft seit #564 nicht mehr in CI
+- [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop läuft seit
+      #564 nicht mehr in CI
 - [ ] Keine neuen Dependencies ohne ADR
 - [ ] Dark Mode funktioniert
 - [ ] `prefers-reduced-motion` respektiert

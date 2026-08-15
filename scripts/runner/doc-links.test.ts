@@ -10,6 +10,20 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(__dirname, '..', '..');
 const MAX_BYTES = 10 * 1024;
 
+// CLAUDE.md hat einen eigenen, groesseren Deckel (#768). Bis dahin war sie die
+// einzige Datei OHNE Deckel -- ausgerechnet die eine, die laut prompts.ts jeder
+// Lauf als Pflichtlektuere liest, waehrend jede nur bei Anlass gelesene Datei
+// auf 10 KB begrenzt war.
+//
+// 14 KB statt 10 KB, weil #768 gemessen hat, dass der Boden der Inhalt selbst
+// ist: 85 atomare Regeln mal ~150 B. Der Umbau hat 19,0 -> 13,1 KB gebracht,
+// indem jede Regel nur noch einmal dasteht (gegliedert nach Moment im Lauf) und
+// die Begruendungen nach docs/warum/ gewandert sind. Weiter runter geht nur,
+// indem ganze Abschnitte aus dem Erstkontakt verschwinden -- bewusst nicht
+// getan, siehe #768. Der Deckel laesst Nachtraege zu und wird rot, sobald die
+// Datei wieder in Richtung ihres alten Umfangs waechst.
+const CLAUDE_MD_MAX_BYTES = 14 * 1024;
+
 // docs/CODEMAP.md ist die bewusst grosse Ausnahme (Token-Disziplin Punkt 1,
 // CLAUDE.md): sie ist die Antwort auf "wo liegt...?" und soll im Ganzen
 // gelesen werden, nicht abschnittsweise wie WORKFLOW.md. Ihre Groesse ist ein
@@ -55,6 +69,18 @@ describe('CLAUDE.md-Verweise <-> docs/ (#446 AC1-3)', () => {
   it('jeder docs/*.md-Verweis in CLAUDE.md zeigt auf eine existierende Datei', () => {
     const missing = referencedDocs(claudeMd()).filter((path) => !existsSync(join(ROOT, path)));
     expect(missing, `Toter Verweis in CLAUDE.md: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('CLAUDE.md selbst bleibt unter ihrem eigenen Deckel (#768 AK5)', () => {
+    const size = statSync(join(ROOT, 'CLAUDE.md')).size;
+    expect(
+      size,
+      `CLAUDE.md ist ${size} B und damit ueber dem Deckel von ${CLAUDE_MD_MAX_BYTES} B. ` +
+        `Jeder Lauf liest sie als Pflichtlektuere -- Zuwachs kostet Kontingent in jedem ` +
+        `einzelnen Lauf. Neue Begruendung gehoert nach docs/warum/, neue Ablaufdetails ` +
+        `nach docs/workflow/. Steht hier wirklich eine neue REGEL, hebe den Deckel bewusst ` +
+        `und begruende es im Ticket.`,
+    ).toBeLessThan(CLAUDE_MD_MAX_BYTES);
   });
 
   it('jede referenzierte Datei ist unter 10 KB (ausser der dokumentierten Ausnahme)', () => {
