@@ -777,14 +777,42 @@ export interface RoundEvalResult {
   lastIssue: string;
 }
 
+// 'field' darf einen Punktpfad tragen ('usage.input_tokens') fuer verschachtelte
+// Objekte (#740) -- ein einzelnes Segment (bisherige Aufrufer: 'session_id',
+// 'result', 'api_error_status') verhaelt sich unveraendert wie zuvor.
 function parseField(out: string, field: string): string {
   try {
-    const parsed = JSON.parse(out) as Record<string, unknown>;
-    const value = parsed[field];
+    const parsed = JSON.parse(out) as unknown;
+    const value = field.split('.').reduce<unknown>((node, key) => {
+      if (node !== null && typeof node === 'object' && key in (node as Record<string, unknown>)) {
+        return (node as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, parsed);
     return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
   } catch {
     return '';
   }
+}
+
+// Token-Verbrauch je Lauf (#740): eine Logzeile nach STDERR, damit sie den
+// JSON-Vertrag von 'round-eval' auf STDOUT nicht anfasst (Bash liest 'eval_out'
+// per Kommandosubstitution und parst es mit jq -- eine zweite Zeile davor
+// wuerde das brechen). Faellt 'usage'/'num_turns' im Ergebnis-JSON weg (Kill vor
+// der finalen Ausgabe: Notbremse, 429), liefert parseField '' -- die Zeile
+// wird trotzdem geschrieben, nur mit leeren Feldern (AK3): kein Abbruch.
+function logUsage(plan: RoundRun, outcome: RoundOutcome): void {
+  const entry = {
+    role: plan.role,
+    model: plan.model,
+    resume: plan.resume !== '' ? 'resume' : 'fresh',
+    cache_read_input_tokens: parseField(outcome.out, 'usage.cache_read_input_tokens'),
+    cache_creation_input_tokens: parseField(outcome.out, 'usage.cache_creation_input_tokens'),
+    input_tokens: parseField(outcome.out, 'usage.input_tokens'),
+    output_tokens: parseField(outcome.out, 'usage.output_tokens'),
+    num_turns: parseField(outcome.out, 'num_turns'),
+  };
+  process.stderr.write(`runner-usage ${JSON.stringify(entry)}\n`);
 }
 
 // Textmuster duerfen nur den CLI-eigenen Anteil der Ausgabe sehen, nie die
@@ -879,6 +907,11 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
     didWork: plan.didWork,
     lastIssue: plan.lastIssue,
   });
+
+  // #740, AK1: JEDER abgeschlossene Lauf bekommt seine Verbrauchszeile --
+  // unabhaengig davon, welcher Zweig unten (Erfolg/Limit/Notbremse/Fehlschlag)
+  // greift.
+  logUsage(plan, outcome);
 
   // Session-ID sichern. Nach einem Timeout-Kill ist $OUT kein valides JSON --
   // eine leere Zeile wuerde die noch gueltige alte ID ueberschreiben, und der
