@@ -23,9 +23,9 @@ import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
 import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
 import type { QueueIssue } from './queue.js';
-import { entriesFromIssues, queueBlocked, queueCycles, queuePending, untriaged } from './queue.js';
+import { entriesFromIssues, hasLabel, queueBlocked, queueCycles, queuePending, untriaged } from './queue.js';
 import { queueSnapshot, waitingIssues } from './status.js';
-import { pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
+import { BLOCKING_LABELS, pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
 import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
@@ -333,11 +333,14 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     if (parts.length > 0) queueNote = `\n\n${parts.join('\n')}`;
   }
 
-  // 1) Laeuft schon eins? -> fortsetzen (WIP-Limit = 1). 'needs-answer'
-  //    schliesst aus: dieses Ticket wartet auf den Menschen. Es behaelt dabei
-  //    'in-progress' (#272) -- der Bauplatz gilt trotzdem als frei, weil dieser
-  //    Filter greift, und derselbe Zweig nimmt die Arbeit wieder auf, sobald
-  //    das Label faellt.
+  // 1) Laeuft schon eins? -> fortsetzen (WIP-Limit = 1). BLOCKING_LABELS
+  //    (aus select.ts, #739) schliesst aus: 'needs-answer' wartet auf den
+  //    Menschen, 'hands-off' ist der Kill-Switch fuers ganze Ticket -- beide
+  //    behalten dabei 'in-progress' (#272) -- der Bauplatz gilt trotzdem als
+  //    frei, weil dieser Filter greift, und derselbe Zweig nimmt die Arbeit
+  //    (fuer 'needs-answer') wieder auf, sobald das Label faellt. Derselbe
+  //    Import wie in select.ts, statt einer zweiten Literalliste, die man
+  //    vergessen kann (#739 AK3) -- label-contract.test.ts haelt das nach.
   // #204: ein 'in-progress'-Ticket, dessen Claim einem ANDEREN Slot gehoert
   // (z. B. von Hand gelabelt, bevor es hier je beansprucht wurde), ist fuer
   // diesen Slot kein eigenes WIP -- sonst wuerden zwei Slots dasselbe Ticket
@@ -346,7 +349,7 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     (issue) => issue.labels.some((label) => label.name === 'in-progress') && !elsewhere.has(issue.number),
   );
   const resumable = wip
-    .filter((issue) => !issue.labels.some((label) => label.name === 'needs-answer'))
+    .filter((issue) => !BLOCKING_LABELS.some((label) => hasLabel(issue, label)))
     .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
 
   let issue = resumable.length > 0 ? resumable[0]!.number : 0;
