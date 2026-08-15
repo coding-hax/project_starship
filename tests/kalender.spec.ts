@@ -1508,6 +1508,59 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
+/** Same synthetic-Pointer-Events technique as tasks.spec.ts's swipeRight/swipeLeft,
+ * straight down instead (issue #757). */
+async function pullDown(locator: Locator, distancePx: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('pullDown: target has no bounding box');
+  const clientX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX,
+    clientY: startY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+}
+
+test('Runterziehen schließt auch die Serien-Abfrage, die keine eigene Kopfzeile hat (issue #757)', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  await eventCard(page, 'Yoga').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
+  await page.getByLabel('Von').fill(`${TODAY}T17:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T18:00`);
+  await page.getByRole('button', { name: 'Sichern' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Änderung übernehmen für' });
+  await expect(scopeDialog).toBeVisible();
+  // This sheet never passes `header` (recurrence-scope-sheet.tsx) — no grip, so
+  // the pull has to work from the question text itself, proving the fix isn't
+  // scoped to sheets with the shared header.
+  await pullDown(scopeDialog.locator('.recurrence-scope-sheet__question'), 160);
+
+  await expect(scopeDialog).toBeHidden();
+  // Dismissed, not "Nur dieser" — the same as Abbrechen, the edit was never applied.
+  await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
 test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timeline (AC4)', async ({
   page,
 }) => {
