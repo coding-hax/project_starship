@@ -30,7 +30,7 @@ import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
-import { buildEscalationEval, resumeAllowed } from './escalation.js';
+import { buildEscalationEval, resumeAllowed, type NonFailureEndReason } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
 import {
@@ -985,19 +985,34 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
   if (outcome.rc === 0) {
     state.remove(transientFile);
 
+    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
+    // global gefragt (#145): ein woanders wartendes Ticket darf die
+    // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
+    // Muss VOR buildEscalationEval feststehen (#741): eine offene Frage ist
+    // kein inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen
+    // noch den F26-Waechter ausloesen.
+    const postLabels = labelsOf(issue, gh);
+    const nonFailureReason: NonFailureEndReason | undefined = hasLabelWord(postLabels, 'needs-answer')
+      ? 'needs-answer'
+      : undefined;
+
     // Ein sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein
-    // Commit) -- das entscheidet die Eskalation (ADR-0007).
+    // Commit) -- das entscheidet die Eskalation (ADR-0007). Endet der Lauf
+    // ueber eine offene Frage, zaehlt das dabei explizit NICHT (#741).
     buildEscalationEval(
-      { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model, runStart: plan.runStart },
+      {
+        issue,
+        runRole: role,
+        labels: plan.labels,
+        beforeTip: plan.beforeTip,
+        model: plan.model,
+        runStart: plan.runStart,
+        nonFailureReason,
+      },
       sharedState,
       gh,
       git,
     );
-
-    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
-    // global gefragt (#145): ein woanders wartendes Ticket darf die
-    // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
-    const postLabels = labelsOf(issue, gh);
 
     // #387 AC4: Backstop fuers Entfernen von 'in-progress' nach einem
     // Denk-Lauf. Der Prompt weist Claude an, beim Flip (plan->ready,
@@ -1012,7 +1027,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
       tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'in-progress']);
     }
 
-    if (hasLabelWord(postLabels, 'needs-answer')) {
+    if (nonFailureReason === 'needs-answer') {
       // #272: kein Umlabeln mehr. Das Ticket behaelt 'in-progress'; die
       // Auswahl ueberspringt es wegen 'needs-answer' und nimmt es ueber
       // denselben Zweig wieder auf, sobald der Mensch geantwortet hat.

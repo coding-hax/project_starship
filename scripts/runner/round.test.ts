@@ -1239,6 +1239,50 @@ describe('roundEval', () => {
     });
   });
 
+  // #741: eine offene Frage (needs-answer) ist kein Eskalations-Fehlversuch.
+  // buildEscalationEval() bekommt den Endgrund jetzt VOR seinem Aufruf
+  // (labelsOf() ist dafuer vorgezogen worden) und wertet ihn intern aus.
+  describe('needs-answer zaehlt nicht als Eskalations-Fehlversuch (#741)', () => {
+    it('AC1: laesst failcount- unangetastet, wenn der Lauf ueber needs-answer endet', () => {
+      const { gh } = ghDouble([labelsAre('ready', 'needs-answer')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.exists('failcount-77')).toBe(false);
+    });
+
+    it('AC2: drei aufeinanderfolgende Rueckfragen eskalieren die Modellstufe nicht', () => {
+      const { gh } = ghDouble([labelsAre('ready', 'needs-answer')]);
+      roundEval(ctx(gh), plan, ok, '');
+      roundEval(ctx(gh), plan, ok, '');
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.exists('tier-77')).toBe(false);
+    });
+
+    it('AC3: loest den F26-Waechter (Auffaelligkeit) nicht aus, selbst mit einem frischen Fortschrittskommentar', () => {
+      const { gh, calls } = ghDouble([
+        labelsAre('ready', 'needs-answer'),
+        {
+          match: (a) => a[0] === 'issue' && a[1] === 'view' && a.includes('comments'),
+          reply: JSON.stringify({
+            comments: [
+              {
+                body: '## 🤖 Fortschritt (automatisch aktualisiert)\n\nirgendwas',
+                createdAt: '2026-07-26T09:25:00Z',
+              },
+            ],
+          }),
+        },
+      ]);
+      roundEval(ctx(gh), { ...plan, runStart: '2026-07-26T09:20:00Z' }, ok, '');
+      expect(calls.some((args) => args.join(' ').includes('Auffälligkeit'))).toBe(false);
+    });
+
+    it('AC4: ein inhaltlicher Stillstand ohne needs-answer zaehlt weiterhin als Fehlversuch', () => {
+      const { gh } = ghDouble([labelsAre('ready')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.read('failcount-77')).toBe('1\n');
+    });
+  });
+
   // #484: failcount-/blocker-sig- (buildEscalationEval) gehoeren neben
   // limit-until in den sharedState -- sonst zaehlt die Eskalation pro Slot
   // neu, sobald ein Ticket den Slot wechselt.
