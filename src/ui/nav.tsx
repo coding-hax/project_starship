@@ -62,6 +62,14 @@ export function Nav() {
                 aria-current={active ? 'page' : undefined}
                 className="nav__link"
                 style={active ? { color: tab.accent } : undefined}
+                // The nonce-based CSP (issue #753) makes the (app) segment dynamic
+                // (layout.tsx reads headers() for the nonce), reversing the static
+                // prerendering from #599. Next's default 'auto' prefetch only fetches
+                // a dynamic route up to its nearest loading.js — this project has
+                // none — so without this, the router cache stays empty and both the
+                // "no request on click" and offline-navigation specs regress.
+                // prefetch={true} forces the full route + data regardless.
+                prefetch={true}
               >
                 <span aria-hidden="true" className="nav__icon">
                   <tab.Icon />
