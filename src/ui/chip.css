@@ -70,6 +70,35 @@
   box-shadow: 0 0 0 2px var(--accent);
 }
 
+/* issue #716 AK5: a field just overwritten by the latest Übernahme carries a small
+ * dot — opposite corner from chip__discard so both can show at once (a re-guessed
+ * value can also just have changed). Purely visual: the status line spells the
+ * change out in words. A one-shot pop, not a loop — `--duration-slow`/`--ease-spring`
+ * already floor to near-zero under the global reduced-motion rule (tokens.css). */
+@keyframes chip-changed-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.chip[data-changed='true']::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
+  animation: chip-changed-pop var(--duration-slow) var(--ease-spring);
+}
+
 .chip__discard {
   position: absolute;
   top: 0;

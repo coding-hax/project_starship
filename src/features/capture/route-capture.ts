@@ -2,7 +2,7 @@ import { toDateKey } from '../habits/due-today';
 import { logicalDayStart } from '../tasks/parse-task-input';
 import type { EventCaptureDraftItem, TaskCaptureDraftItem } from '../tasks/capture-draft-store';
 import { recognizeLocally } from './local-recognizer';
-import type { CaptureContext, CaptureDraft, CaptureKind } from './types';
+import type { CaptureContext, CaptureDraft, CaptureKind, FieldMentions } from './types';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
@@ -127,4 +127,60 @@ export function habitFieldsFromDraft(draft: CaptureDraft, now: Date): HabitCheck
     logDate: draft.logDate ?? toDateKey(logicalDayStart(now)),
     resolved,
   };
+}
+
+/**
+ * Führt den bisherigen Stand (`prev`, `null` vor der ersten Übernahme) mit einer neuen
+ * Äußerung zusammen (issue #716, „Vorschau-Merge"). `prev === null` -> die Äußerung
+ * zählt unverändert als Erstbelegung (AK1), inklusive ihrer eigenen Art-Klassifikation.
+ * Danach bleibt die Art fix (nur der Art-Chip ändert sie, Entscheidung C) — jedes
+ * andere Feld übernimmt Wert **und** Konfidenz aus der Äußerung nur, wenn `mentions`
+ * es als genannt markiert (AK2/AK4); sonst bleiben Wert und Konfidenz von `prev`
+ * unangetastet stehen (AK3).
+ */
+export function mergeDraft(
+  prev: CaptureDraft | null,
+  utterance: CaptureDraft,
+  mentions: FieldMentions,
+): CaptureDraft {
+  if (prev === null) return utterance;
+
+  return {
+    kind: prev.kind,
+    title: mentions.titleSubstantial ? utterance.title : prev.title,
+    dueAt: mentions.due ? utterance.dueAt : prev.dueAt,
+    habitId: mentions.habit ? utterance.habitId : prev.habitId,
+    logDate: mentions.habit ? utterance.logDate : prev.logDate,
+    needsConfirmation: mentions.due ? utterance.needsConfirmation : prev.needsConfirmation,
+    confidence: {
+      kind: prev.confidence.kind,
+      title: mentions.titleSubstantial ? utterance.confidence.title : prev.confidence.title,
+      date: mentions.due ? utterance.confidence.date : prev.confidence.date,
+      time: mentions.due ? utterance.confidence.time : prev.confidence.time,
+      habit: mentions.habit ? utterance.confidence.habit : prev.confidence.habit,
+    },
+  };
+}
+
+function joinGerman(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} und ${items[items.length - 1]}`;
+}
+
+/** AK5: ein deutscher Ein-Satz-Text, was eine Übernahme geändert hat — `null`, wenn
+ * nichts davon betroffen war (z. B. die erste Übernahme, dort gibt es noch keinen
+ * Vorzustand zum Vergleichen). `changed` sind bereits aufgelöste Feldnamen
+ * („Titel"/„Fälligkeit"/„Zeit"/„Routine"), die Kind-Abhängigkeit (Fälligkeit vs. Zeit)
+ * löst der Aufrufer, der `preview.kind` kennt. */
+export function summarizeChanges(changed: string[]): string | null {
+  if (changed.length === 0) return null;
+  return `${joinGerman(changed)} aktualisiert.`;
+}
+
+/** AK6: benennt, welche Kern-Felder ein Artwechsel unsichtbar macht (die Werte selbst
+ * bleiben bis zum Schließen des Sheets erhalten — nur die Anzeige verschwindet). */
+export function describeDroppedFields(fields: string[]): string | null {
+  if (fields.length === 0) return null;
+  const verb = fields.length === 1 ? 'entfällt' : 'entfallen';
+  return `${joinGerman(fields)} ${verb}.`;
 }

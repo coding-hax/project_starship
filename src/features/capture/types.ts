@@ -33,6 +33,17 @@ export interface FieldConfidence {
 
 export type CaptureConfidenceField = 'kind' | 'title' | 'date' | 'time' | 'habit';
 
+/**
+ * Was eine einzelne Äußerung nennt (issue #716) — Priorität/Kategorie kommen nie aus
+ * Text (die Grammatik parst keine Kategorie-per-Stimme), deshalb kein Feld dafür hier.
+ * `mergeDraft` (route-capture.ts) überschreibt nur, was hier `true` ist.
+ */
+export interface FieldMentions {
+  titleSubstantial: boolean;
+  due: boolean;
+  habit: boolean;
+}
+
 export interface CaptureDraft {
   kind: CaptureKind;
   title: string;

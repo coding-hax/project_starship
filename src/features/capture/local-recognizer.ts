@@ -1,8 +1,8 @@
 import { toDateKey } from '../habits/due-today';
 import { analyzeText, logicalDayStart } from '../tasks/parse-task-input';
-import { confidenceFromReason, titleConfidence } from './field-confidence';
+import { confidenceFromReason, isSubstantialTitle, titleConfidence } from './field-confidence';
 import { matchHabit } from './habit-match';
-import type { CaptureDraft, CaptureKind, Recognizer } from './types';
+import type { CaptureContext, CaptureDraft, CaptureKind, FieldMentions, Recognizer } from './types';
 
 /**
  * Lokaler Erkenner — Signale punkten statt If-Kaskade (sonst hängt das Ergebnis an der
@@ -186,3 +186,20 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
 
   return { items: [draft] };
 };
+
+/**
+ * Was eine einzelne Äußerung nennt (issue #716) — Grundlage für `mergeDraft`
+ * (route-capture.ts): welche Felder überschreibt diese Äußerung, welche bleiben
+ * unangetastet stehen. Läuft über dieselben Primitive wie `recognizeLocally` oben,
+ * unabhängig von dessen Art-Klassifikation (die bleibt nach der ersten Übernahme fix,
+ * Entscheidung C des Plans).
+ */
+export function utteranceMentions(text: string, ctx: CaptureContext): FieldMentions {
+  const { date, title } = analyzeText(text, ctx.now);
+  const habitMatch = matchHabit(text, ctx.habits);
+  return {
+    titleSubstantial: isSubstantialTitle(title),
+    due: date !== null,
+    habit: habitMatch.matched,
+  };
+}

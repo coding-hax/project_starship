@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { berlinNow } from '@/push/schedule';
+import { utteranceMentions } from './local-recognizer';
 import type { CaptureContext } from './types';
 import {
   allowedCaptureKinds,
+  describeDroppedFields,
   eventFieldsFromDraft,
   habitFieldsFromDraft,
+  mergeDraft,
   previewDraft,
+  summarizeChanges,
   taskFieldsFromDraft,
 } from './route-capture';
 import { ALL_KINDS, NOW, NOW_NIGHT, STANDARD_HABITS } from './corpus';
@@ -117,6 +121,101 @@ describe('habitFieldsFromDraft', () => {
     expect(draft.kind).toBe('task');
     const fields = habitFieldsFromDraft(draft, NOW);
     expect(fields.logDate).toBe(berlinNow(NOW).dateKey);
+  });
+});
+
+describe('mergeDraft (issue #716, „Vorschau-Merge")', () => {
+  it('AK1: Erstbelegung übernimmt die Äußerung unverändert (Passthrough, inkl. Konfidenzen und Art)', () => {
+    const utterance = previewDraft('Zahnarzt', ctx());
+    const mentions = utteranceMentions('Zahnarzt', ctx());
+    expect(mergeDraft(null, utterance, mentions)).toEqual(utterance);
+  });
+
+  it('AK3/AK4: ein nicht genanntes Feld behält Wert UND Konfidenz aus dem bisherigen Stand', () => {
+    const prev = previewDraft('Zahnarzt morgen', ctx());
+    const utterance = previewDraft('eher', ctx());
+    const mentions = utteranceMentions('eher', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.title).toBe(prev.title);
+    expect(next.confidence.title).toEqual(prev.confidence.title);
+    expect(next.dueAt).toBe(prev.dueAt);
+    expect(next.confidence.date).toEqual(prev.confidence.date);
+    expect(next.confidence.time).toEqual(prev.confidence.time);
+  });
+
+  it('AK2: ein genanntes Feld überschreibt Wert UND übernimmt die Konfidenz der neuen Äußerung', () => {
+    const prev = previewDraft('Einkaufen', ctx());
+    const utterance = previewDraft('morgen', ctx());
+    const mentions = utteranceMentions('morgen', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.dueAt).toBe(utterance.dueAt);
+    expect(next.confidence.date).toEqual(utterance.confidence.date);
+  });
+
+  it('AK2: ein erneut genannter Habit-Treffer überschreibt habitId', () => {
+    const prev = previewDraft('hake Sport ab', ctx());
+    const utterance = previewDraft('hake Yoga ab', ctx());
+    const mentions = utteranceMentions('hake Yoga ab', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.habitId).toBe('h-yoga');
+  });
+
+  it('AK4: erneutes explizites Nennen hebt eine geratene Konfidenz auf sicher', () => {
+    const prev = previewDraft('Zahnarzt morgen', ctx());
+    expect(prev.confidence.time.level).toBe('guessed');
+    const utterance = previewDraft('um 15 Uhr', ctx());
+    const mentions = utteranceMentions('um 15 Uhr', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.confidence.date.level).toBe('high');
+    expect(next.confidence.time.level).toBe('high');
+  });
+
+  it('Entscheidung C: die Art bleibt nach der ersten Übernahme fix, auch wenn die neue Äußerung für sich allein anders klassifizieren würde', () => {
+    const prev = previewDraft('Einkaufen', ctx());
+    expect(prev.kind).toBe('task');
+    const utterance = previewDraft('morgen um 15 Uhr', ctx());
+    expect(utterance.kind).toBe('event');
+    const mentions = utteranceMentions('morgen um 15 Uhr', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.kind).toBe('task');
+  });
+
+  it('Entscheidung B: ein reines Füllwort überschreibt einen gesetzten Titel nicht', () => {
+    const prev = previewDraft('Einkaufen', ctx());
+    const utterance = previewDraft('eher um 15 Uhr', ctx());
+    const mentions = utteranceMentions('eher um 15 Uhr', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.title).toBe('Einkaufen');
+  });
+});
+
+describe('summarizeChanges (AK5)', () => {
+  it('keine Änderung -> kein Text', () => {
+    expect(summarizeChanges([])).toBeNull();
+  });
+
+  it('ein geändertes Feld', () => {
+    expect(summarizeChanges(['Fälligkeit'])).toBe('Fälligkeit aktualisiert.');
+  });
+
+  it('mehrere geänderte Felder', () => {
+    expect(summarizeChanges(['Titel', 'Fälligkeit'])).toBe('Titel und Fälligkeit aktualisiert.');
+  });
+});
+
+describe('describeDroppedFields (AK6)', () => {
+  it('keine entfallenen Felder -> kein Text', () => {
+    expect(describeDroppedFields([])).toBeNull();
+  });
+
+  it('ein entfallenes Feld, Singular', () => {
+    expect(describeDroppedFields(['Priorität'])).toBe('Priorität entfällt.');
+  });
+
+  it('mehrere entfallene Felder, Plural', () => {
+    expect(describeDroppedFields(['Kategorie', 'Wiederholung'])).toBe(
+      'Kategorie und Wiederholung entfallen.',
+    );
   });
 });
 
