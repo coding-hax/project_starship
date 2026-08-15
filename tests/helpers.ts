@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { expect, type Browser, type Page } from '@playwright/test';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -215,6 +215,34 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
   } finally {
     await client.end();
   }
+}
+
+/**
+ * Mints a session row directly in Postgres (mirrors `hashToken`/`createSession` in
+ * `src/auth/session.ts`), independent of the shared `AUTH_STATE` session — for specs
+ * that need to actually log out (issue #756). Set the returned `token` as the
+ * `starship_session` cookie in a fresh context; sperren must never touch the shared
+ * session every other project's `storageState` depends on.
+ */
+export async function createThrowawaySession(): Promise<{ token: string; tokenHash: string }> {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  await withDb((client) =>
+    client.query('INSERT INTO sessions (id, token_hash, expires_at) VALUES ($1, $2, $3)', [
+      randomUUID(),
+      tokenHash,
+      expiresAt,
+    ]),
+  );
+  return { token, tokenHash };
+}
+
+export async function sessionRowExists(tokenHash: string): Promise<boolean> {
+  const result = await withDb((client) =>
+    client.query('SELECT 1 FROM sessions WHERE token_hash = $1', [tokenHash]),
+  );
+  return result.rows.length > 0;
 }
 
 /**
