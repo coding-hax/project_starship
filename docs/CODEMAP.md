@@ -30,10 +30,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
 - `(app)/routinen/page.tsx` / `(app)/aktivitaeten/page.tsx` — Routinen-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
-- `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum (issue #469) + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
+- `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
 - `(app)/einstellungen/` — Darstellung, Reihenfolge, Module, Push (rendert je aktivem Modul dessen `SettingsPanel`)
 - `anmelden/` / `offline/` — Passkey (Einrichten/Anmelden/Recovery) + Service-Worker-Fallback ohne Netz
-- `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status) + SELECT 1 + Versions-SHA (ungeschützt)
+- `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf (`credentials/`, `sessions/`) + SELECT 1 + Versions-SHA (ungeschützt)
 - `api/sync/` — `push/` und `pull/`, die einzigen Wege zu den Daten
 - `api/push/` / `api/garmin-sync/` — subscribe/unsubscribe/test+`reminders/`, holt Aktivitäten (beide Bearer-Secret)
 - `api/ics/` — SSRF-abgesicherter Proxy für abonnierte `.ics`-Feeds (issue #560, ADR-0022): `ssrf.ts`
@@ -85,42 +85,42 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `task-list.tsx` / `task-list.css` / `tasks-overview-section.tsx` — Aufgabenliste (gruppiert, Drag-Drop) + `OverviewSection`
 - `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
-- `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `visibleTaskNodes` filtert erledigte (issue #654)
-- `use-hide-completed-tasks.ts` / `hide-completed-toggle.tsx` / `.css` — Geräte-lokale Präferenz „erledigte ausblenden" (issue #654), Muster wie `use-capture-prefs.ts`
+- `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `visibleTaskNodes` filtert erledigte
+- `use-hide-completed-tasks.ts` / `hide-completed-toggle.tsx` / `.css` — Geräte-lokale Präferenz „erledigte ausblenden", Muster wie `use-capture-prefs.ts`
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
 - `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`;
   `analyzeText` (Span+Ranking, #687) Baustein für `src/features/capture/`; Wann-Panel `due-picker.tsx` (#722)
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
-- `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor` (issue #618, #619)
-- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen` (#619)
+- `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe von der Übersicht zum FAB bzw. `EventEditor`
+- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen`
 
 ### src/features/capture
 
-- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner (#620), eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
+- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner, eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText` (issue #687)
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer (issue #687)
 - `field-confidence.ts` — Helfer für `FieldConfidence` (#691), von Erkenner und `quick-add.tsx` geteilt
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
-- `route-capture.ts` — die eine Stelle für „wohin damit" (#619): ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
+- `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
 
 - `write.ts` / `entry.ts` — `writeJournalEntry` (Schreibpfad) + Listen/Anhängen/Löschen
 - `journal-keys.ts` — `readEnvelope`/`writeEnvelope`/`readRecoveryEnvelope`/`writeRecoveryEnvelope`
-- `journal-key-stash.ts` — Dexie-Store `journalKeyStash` (issue #518): fängt einen beim Pull verdrängten `journal_keys`-Envelope auf
-- `recover-orphaned-entries.ts` — bergt Einträge unter gestashtem Alt-DEK, verschlüsselt sie unter dem aktuellen DEK neu (issue #518)
+- `journal-key-stash.ts` — Dexie-Store `journalKeyStash`: fängt einen beim Pull verdrängten `journal_keys`-Envelope auf
+- `recover-orphaned-entries.ts` — bergt Einträge unter gestashtem Alt-DEK, verschlüsselt sie unter dem aktuellen DEK neu
 - `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (`journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
 - `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Eintragsstrom+FAB (#701), Stimmungsband (#703)
-- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus, #700)
+- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile (#700)
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
-- `journal-header-date.tsx` / `.css` — heutiges Datum oben rechts im Kopf (issue #469)
+- `journal-header-date.tsx` / `.css` — heutiges Datum oben rechts im Kopf
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
-- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine (issue #505)
-- `journal-habit-boot.tsx` — legt die Journal-Routine idempotent nach dem ersten Pull an (issue #505)
+- `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine
+- `journal-habit-boot.tsx` — legt die Journal-Routine idempotent nach dem ersten Pull an
 
 ### src/features/habits
 
@@ -137,7 +137,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): `agendaForDay`/`nextInAgenda`/`categoryEdgeVar`/`allDayEventsForDay`,
   `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
   (Übersicht #559; Agenda #597)
-- `recurrence.ts` — reine Serien-Expansion (issue #557): `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
+- `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
   (`'local'|'subscribed'`, View-Feld) unterscheidet synced von abonnierten Terminen (issue #560)
@@ -150,8 +150,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   (Live-Query), `refreshStaleSubscriptions`/`useIcsSubscriptionsRefresh` (Fetch nur bei Staleness, Fehler
   rühren nur `lastError` an)
 - `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
-  darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events` (issue #560 AK2)
-- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Umschalter zum Monat auf (#628), Wisch blättert Woche/Monat (#629/#662), Vor/Zurück-Tag, „Heute"-Rücksprung, Punkte je Tag
+  darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events`
+- `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Umschalter zum Monat auf, Wisch blättert Woche/Monat, Vor/Zurück-Tag, „Heute"-Rücksprung, Punkte je Tag
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen
   Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar,
   öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände;
@@ -159,7 +159,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten, schreibt über `mutate()`; bei einer Serien-Instanz öffnet Speichern/Löschen erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
-- `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin" (issue #559, S8 von #473): nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
+- `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
 
 ### src/features/export
 
@@ -196,6 +196,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `ics-subscriptions-panel.tsx` / `.css` — `.ics`-Abos hinzufügen/entfernen, zeigt `lastError` je Abo (issue #560, ADR-0022)
 - `use-nav-order.ts` / `nav-order-panel.tsx` / `.css` — Reihenfolge der Nav-Einträge, ↑/↓ je Eintrag
 - `use-push.ts` / `use-reminder-prefs.ts` / `push-panel.tsx` / `.css` — Push-Hook, Prefs-Query, Panel (an/aus)
+- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Geräte": Passkey-Liste mit Einzelwiderruf + „alle anderen Sitzungen beenden", Letztes-Credential-Schutz (issue #754)
 - `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kalender-Kategorie (issue #660), Merged-View + setColor/resetColor
 - `category-colors-boot.tsx` — setzt/entfernt `--cat-<category>` als `var()`-Referenz auf `<html>`
 - `calendar-settings-panel.tsx` — Wrapper: kalender's einziger `SettingsPanel`-Slot zeigt auf `CategoryColorsPanel` + `IcsSubscriptionsPanel`
@@ -203,9 +204,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/ui
 
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx (issue #658/#660)
+- `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
-- `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet (issue #430)
+- `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet
 - `use-now.ts` — `useNow(intervalMs)`: tickendes `Date` (Default 60s), treibt z. B. die Kalender-Jetzt-Linie (issue #553)
 - `use-online.ts` / `offline-notice.tsx` / `.css` — `useOnline()` (SSR-sicher) + geteilte
   Offline-Notiz (`role="status"`, Text als `children`), extrahiert aus den Aufgaben (issue #643)
