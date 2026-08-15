@@ -20,6 +20,10 @@ export interface ChipProps {
   /** id of the panel this chip's body controls (`aria-controls`) — the panel
    * itself only exists in the DOM while `open` is true. */
   panelId: string;
+  /** issue #716 AK5: this field was just overwritten by the latest Übernahme —
+   * purely visual (a status line spells the change out in words for screen
+   * readers, so this never touches `aria-label`). */
+  changed?: boolean;
 }
 
 /**
@@ -39,13 +43,14 @@ export function Chip({
   onOpen,
   onDiscard,
   panelId,
+  changed = false,
 }: ChipProps) {
   const state = disabled ? 'disabled' : guessed ? 'guessed' : value ? 'set' : 'empty';
   const label = value ? `${field}, ${value}` : field;
   const showDiscard = guessed && !disabled && Boolean(onDiscard);
 
   return (
-    <div className="chip" data-state={state} data-open={open}>
+    <div className="chip" data-state={state} data-open={open} data-changed={changed}>
       <button
         type="button"
         className={showDiscard ? 'chip__body chip__body--with-discard' : 'chip__body'}
