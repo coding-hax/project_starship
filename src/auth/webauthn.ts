@@ -62,6 +62,42 @@ export async function hasAnyCredential(): Promise<boolean> {
   return (await listCredentials()).length > 0;
 }
 
+/** Passkeys for the devices panel — never the key material itself. */
+export async function listCredentialsForDisplay(): Promise<
+  Array<{ id: string; label: string | null; createdAt: Date; lastUsedAt: Date | null }>
+> {
+  const rows = await db
+    .select({
+      id: credentials.id,
+      label: credentials.label,
+      createdAt: credentials.createdAt,
+      lastUsedAt: credentials.lastUsedAt,
+    })
+    .from(credentials)
+    .orderBy(credentials.createdAt);
+  return rows;
+}
+
+export type RevokeCredentialResult = 'deleted' | 'not-found' | 'last-credential';
+
+/**
+ * Revokes a passkey. `FOR UPDATE` locks every credential row for the duration of the
+ * transaction, so two concurrent revokes serialize: the second one re-reads the
+ * already-reduced set and is the one that hits `last-credential`, guaranteeing the
+ * last passkey can never be deleted out from under the caller (self-lockout guard).
+ */
+export async function revokeCredential(id: string): Promise<RevokeCredentialResult> {
+  return db.transaction(async (tx) => {
+    const rows = await tx.select({ id: credentials.id }).from(credentials).for('update');
+
+    if (!rows.some((row) => row.id === id)) return 'not-found';
+    if (rows.length <= 1) return 'last-credential';
+
+    await tx.delete(credentials).where(eq(credentials.id, id));
+    return 'deleted';
+  });
+}
+
 /* --------------------------------- recovery -------------------------------- */
 
 function hash(value: string): string {
