@@ -118,6 +118,36 @@ async function swipeLeft(locator: Locator, distancePx: number) {
   });
 }
 
+/** Same synthetic-Pointer-Events technique as `swipeRight`/`swipeLeft`, straight
+ * down instead — drags `locator` (e.g. a sheet's grip) by `distancePx` and
+ * releases (issue #757). */
+async function pullDown(locator: Locator, distancePx: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('pullDown: target has no bounding box');
+  const clientX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await locator.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX,
+    clientY: startY,
+    button: 0,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+  await locator.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX,
+    clientY: startY + distancePx,
+    bubbles: true,
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
@@ -370,6 +400,37 @@ test('Fokus kehrt nach Abbrechen zum FAB zurück — derselbe Pfad wie ESC/Backd
 
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('Runterziehen über die Schwelle schließt das Sheet — derselbe Pfad wie ESC/Backdrop/Abbrechen (issue #757)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  await pullDown(dialog.locator('.sheet__grip'), 160);
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button', { name: QUICK_ADD_LABEL })).toBeFocused();
+});
+
+test('ein zu kurzes Runterziehen schließt nicht — das Sheet bleibt bedienbar (issue #757)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await openQuickAdd(page);
+
+  const dialog = page.getByRole('dialog', { name: QUICK_ADD_LABEL });
+  await pullDown(dialog.locator('.sheet__grip'), 40); // below the 120px threshold
+  await expect(dialog).toBeVisible();
+
+  // The snap-back must leave the sheet fully interactive, not just visible —
+  // a leftover pointer capture on `.sheet__content` would otherwise swallow
+  // the click/focus this input needs.
+  const input = dialog.getByLabel('Titel der Aufgabe');
+  await input.fill('Nach kurzem Zug noch bedienbar');
+  await expect(input).toHaveValue('Nach kurzem Zug noch bedienbar');
 });
 
 test('Kopfzeile: Griff, Abbrechen links, Titel mittig, Aktion rechts — alle Trefferflächen mindestens 44×44px (issue #710 AK1)', async ({
