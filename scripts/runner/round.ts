@@ -30,7 +30,7 @@ import { sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
-import { buildEscalationEval, resumeAllowed } from './escalation.js';
+import { buildEscalationEval, resumeAllowed, type NonFailureEndReason } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
 import { fmtHm, resetEpoch } from './time.js';
 import {
@@ -777,14 +777,42 @@ export interface RoundEvalResult {
   lastIssue: string;
 }
 
+// 'field' darf einen Punktpfad tragen ('usage.input_tokens') fuer verschachtelte
+// Objekte (#740) -- ein einzelnes Segment (bisherige Aufrufer: 'session_id',
+// 'result', 'api_error_status') verhaelt sich unveraendert wie zuvor.
 function parseField(out: string, field: string): string {
   try {
-    const parsed = JSON.parse(out) as Record<string, unknown>;
-    const value = parsed[field];
+    const parsed = JSON.parse(out) as unknown;
+    const value = field.split('.').reduce<unknown>((node, key) => {
+      if (node !== null && typeof node === 'object' && key in (node as Record<string, unknown>)) {
+        return (node as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, parsed);
     return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
   } catch {
     return '';
   }
+}
+
+// Token-Verbrauch je Lauf (#740): eine Logzeile nach STDERR, damit sie den
+// JSON-Vertrag von 'round-eval' auf STDOUT nicht anfasst (Bash liest 'eval_out'
+// per Kommandosubstitution und parst es mit jq -- eine zweite Zeile davor
+// wuerde das brechen). Faellt 'usage'/'num_turns' im Ergebnis-JSON weg (Kill vor
+// der finalen Ausgabe: Notbremse, 429), liefert parseField '' -- die Zeile
+// wird trotzdem geschrieben, nur mit leeren Feldern (AK3): kein Abbruch.
+function logUsage(plan: RoundRun, outcome: RoundOutcome): void {
+  const entry = {
+    role: plan.role,
+    model: plan.model,
+    resume: plan.resume !== '' ? 'resume' : 'fresh',
+    cache_read_input_tokens: parseField(outcome.out, 'usage.cache_read_input_tokens'),
+    cache_creation_input_tokens: parseField(outcome.out, 'usage.cache_creation_input_tokens'),
+    input_tokens: parseField(outcome.out, 'usage.input_tokens'),
+    output_tokens: parseField(outcome.out, 'usage.output_tokens'),
+    num_turns: parseField(outcome.out, 'num_turns'),
+  };
+  process.stderr.write(`runner-usage ${JSON.stringify(entry)}\n`);
 }
 
 // Textmuster duerfen nur den CLI-eigenen Anteil der Ausgabe sehen, nie die
@@ -880,6 +908,11 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
     lastIssue: plan.lastIssue,
   });
 
+  // #740, AK1: JEDER abgeschlossene Lauf bekommt seine Verbrauchszeile --
+  // unabhaengig davon, welcher Zweig unten (Erfolg/Limit/Notbremse/Fehlschlag)
+  // greift.
+  logUsage(plan, outcome);
+
   // Session-ID sichern. Nach einem Timeout-Kill ist $OUT kein valides JSON --
   // eine leere Zeile wuerde die noch gueltige alte ID ueberschreiben, und der
   // naechste Lauf koennte nicht mehr fortsetzen (#64).
@@ -952,19 +985,34 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
   if (outcome.rc === 0) {
     state.remove(transientFile);
 
+    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
+    // global gefragt (#145): ein woanders wartendes Ticket darf die
+    // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
+    // Muss VOR buildEscalationEval feststehen (#741): eine offene Frage ist
+    // kein inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen
+    // noch den F26-Waechter ausloesen.
+    const postLabels = labelsOf(issue, gh);
+    const nonFailureReason: NonFailureEndReason | undefined = hasLabelWord(postLabels, 'needs-answer')
+      ? 'needs-answer'
+      : undefined;
+
     // Ein sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein
-    // Commit) -- das entscheidet die Eskalation (ADR-0007).
+    // Commit) -- das entscheidet die Eskalation (ADR-0007). Endet der Lauf
+    // ueber eine offene Frage, zaehlt das dabei explizit NICHT (#741).
     buildEscalationEval(
-      { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model, runStart: plan.runStart },
+      {
+        issue,
+        runRole: role,
+        labels: plan.labels,
+        beforeTip: plan.beforeTip,
+        model: plan.model,
+        runStart: plan.runStart,
+        nonFailureReason,
+      },
       sharedState,
       gh,
       git,
     );
-
-    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
-    // global gefragt (#145): ein woanders wartendes Ticket darf die
-    // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
-    const postLabels = labelsOf(issue, gh);
 
     // #387 AC4: Backstop fuers Entfernen von 'in-progress' nach einem
     // Denk-Lauf. Der Prompt weist Claude an, beim Flip (plan->ready,
@@ -979,7 +1027,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
       tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'in-progress']);
     }
 
-    if (hasLabelWord(postLabels, 'needs-answer')) {
+    if (nonFailureReason === 'needs-answer') {
       // #272: kein Umlabeln mehr. Das Ticket behaelt 'in-progress'; die
       // Auswahl ueberspringt es wegen 'needs-answer' und nimmt es ueber
       // denselben Zweig wieder auf, sobald der Mensch geantwortet hat.

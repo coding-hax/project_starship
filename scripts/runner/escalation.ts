@@ -100,6 +100,15 @@ export function progressCommentWrittenThisRun(issue: number, gh: GhAdapter, runS
   }
 }
 
+// Endgruende, unter denen ein rc=0-Bau-Lauf trotz stehender Branch-Spitze
+// NICHT als inhaltlicher Fehlversuch zaehlt (#741, ADR-0007 meint mit
+// "Fehlversuch" fachlichen Stillstand, keine offene Frage) -- weder
+// failcount- noch der F26-Waechter (progressCommentWrittenThisRun) greifen
+// dann. Ein UNION statt eines booleans, damit ein kuenftiger weiterer Grund
+// (z. B. eine Turn-Begrenzung) hier ergaenzt werden kann, statt 'needs-answer'
+// im Aufrufer hart zu sonderfallen.
+export type NonFailureEndReason = 'needs-answer';
+
 export interface EscalationInput {
   issue: number;
   runRole: string;
@@ -109,6 +118,10 @@ export interface EscalationInput {
   /** Laufbeginn (ISO), nur fuer die Bau-Rolle befuellt -- Basis fuer
    * progressCommentWrittenThisRun(). undefined/'' = kein Check (#499). */
   runStart?: string;
+  /** Gesetzt, wenn DIESER Lauf aus einem Grund endet, der kein inhaltlicher
+   * Fehlschlag ist (#741) -- z. B. eine offene Frage (`needs-answer`).
+   * undefined = gewoehnliche Fehlversuch-Auswertung. */
+  nonFailureReason?: NonFailureEndReason;
 }
 
 // Fortschritts-/Fehlschlag-Auswertung. Wird NUR an den inhaltlich "fertigen"
@@ -120,7 +133,7 @@ export function buildEscalationEval(
   gh: GhAdapter,
   git: GitAdapter,
 ): void {
-  const { issue, runRole, labels, beforeTip, model, runStart } = input;
+  const { issue, runRole, labels, beforeTip, model, runStart, nonFailureReason } = input;
   if (runRole !== 'build') return;
   if (labels.includes('no-escalation')) return;
 
@@ -129,6 +142,12 @@ export function buildEscalationEval(
     tierReset(issue, state); // Fortschritt -- zurueck auf die Default-Stufe.
     return;
   }
+
+  // #741: eine offene Frage ist kein Fehlversuch -- weder der F26-Waechter
+  // unten noch failcount-/die Eskalationsleiter duerfen hier greifen. Die
+  // Branch-Tip-Pruefung oben bleibt UNVERAENDERT davor: Fortschritt setzt
+  // immer zurueck, unabhaengig vom Endgrund.
+  if (nonFailureReason) return;
 
   // F26/#499: Spitze steht, aber dieser Lauf hat trotzdem einen
   // Fortschrittskommentar angelegt -- die gemeldete Arbeit ist nicht durch

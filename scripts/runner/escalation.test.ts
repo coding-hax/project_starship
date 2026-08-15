@@ -262,6 +262,75 @@ describe('buildEscalationEval', () => {
     expect(gh.run).not.toHaveBeenCalled();
   });
 
+  // #741: eine offene Frage (needs-answer) ist kein inhaltlicher Fehlversuch
+  // -- weder failcount- noch der F26-Waechter duerfen dann greifen. Die
+  // Branch-Tip-Pruefung (Fortschritt setzt zurueck) bleibt davon unberuehrt.
+  describe('#741: nonFailureReason (z. B. needs-answer) ist kein Fehlversuch', () => {
+    it('AC1/AC2: failcount- bleibt ungeschrieben, auch ueber mehrere Laeufe in Folge', () => {
+      const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
+      const git = gitTip('');
+      const input = {
+        issue: 501,
+        runRole: 'build',
+        labels: '',
+        beforeTip: 'sha-alt',
+        model: 'sonnet',
+        nonFailureReason: 'needs-answer' as const,
+      };
+
+      buildEscalationEval(input, state, gh, git);
+      buildEscalationEval(input, state, gh, git);
+      buildEscalationEval(input, state, gh, git);
+
+      expect(state.exists('failcount-501')).toBe(false);
+      expect(state.exists('tier-501')).toBe(false);
+    });
+
+    it('AC3: postet keine Auffaelligkeit, selbst bei stehender Spitze + frischem Fortschrittskommentar', () => {
+      const gh = ghWithComments([
+        {
+          body: PROGRESS_COMMENT('frage-offen, unfertig — nächster Lauf macht weiter.'),
+          createdAt: '2026-08-03T10:05:00Z',
+        },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 502,
+          runRole: 'build',
+          labels: '',
+          beforeTip: '',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+          nonFailureReason: 'needs-answer',
+        },
+        state,
+        gh,
+        gitTip(''),
+      );
+      expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
+    });
+
+    it('Fortschritt (bewegte Branch-Spitze) setzt trotzdem zurueck -- unabhaengig vom Endgrund', () => {
+      state.write('tier-503', 'opus\n');
+      state.write('failcount-503', '2\n');
+      buildEscalationEval(
+        {
+          issue: 503,
+          runRole: 'build',
+          labels: '',
+          beforeTip: 'sha-alt',
+          model: 'opus',
+          nonFailureReason: 'needs-answer',
+        },
+        state,
+        ghComments(''),
+        gitTip('sha-neu'),
+      );
+      expect(tierCurrent(503, state, ghComments(''))).toBe('sonnet');
+      expect(state.exists('failcount-503')).toBe(false);
+    });
+  });
+
   // F26/#499: Kommentar behauptet Fortschritt, Branch-Spitze steht -- der
   // #430-Fall.
   describe('F26/#499: Fortschritt ohne Commit', () => {
