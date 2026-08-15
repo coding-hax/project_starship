@@ -115,6 +115,9 @@ test('AK3: derselbe Termin markiert dieselben Felder nach denselben Regeln im Ka
   const dialog = eventDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  // Der Datum/Uhrzeit-Hinweis lebt seit #712 im Wann-Panel — der eingeklappte
+  // Chip trägt dieselbe Markierung als gestrichelte Kante (guessed).
+  await dialog.getByRole('button', { name: /^Wann/ }).click();
   await expect(dialog.locator('.field-hint')).toHaveCount(1);
   await expect(dialog.locator('.field-hint')).toHaveText('Wochentag ohne Datum · Tageshälfte geraten');
 });

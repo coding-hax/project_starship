@@ -1042,6 +1042,92 @@ describe('roundEval', () => {
     expect(state.read('session-think-77')).toBeNull();
   });
 
+  // #740: Token-Verbrauch je Lauf als Logzeile, damit Sparmassnahmen mess-
+  // statt schaetzbar werden. Muster wie cli.test.ts: Spy inline je Test, nicht
+  // ueber eine vorab typisierte Variable -- 'process.stderr.write' ist
+  // ueberladen, eine explizit typisierte Spy-Instanz passt dann nicht mehr
+  // (tsc-Fehler). Deshalb nimmt der Helfer nur die rohen 'mock.calls' entgegen.
+  function usageLine(calls: unknown[][]): Record<string, unknown> {
+    const line = calls.map((c) => String(c[0])).find((l) => l.startsWith('runner-usage '));
+    expect(line).toBeDefined();
+    return JSON.parse(line!.slice('runner-usage '.length)) as Record<string, unknown>;
+  }
+
+  describe('Verbrauchs-Logzeile (#740)', () => {
+    // AK1: usage.* + num_turns landen aus dem verschachtelten 'usage'-Objekt
+    // in der Logzeile.
+    it('schreibt usage.* und num_turns aus dem Ergebnis-JSON nach STDERR', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      roundEval(
+        ctx(gh),
+        plan,
+        {
+          rc: 0,
+          out: JSON.stringify({
+            session_id: 'sid-1',
+            result: 'ok',
+            num_turns: 12,
+            usage: {
+              cache_read_input_tokens: 4000,
+              cache_creation_input_tokens: 500,
+              input_tokens: 30,
+              output_tokens: 250,
+            },
+          }),
+          timedOut: false,
+          maxRuntime: 2700,
+        },
+        '',
+      );
+      expect(usageLine(stderr.mock.calls)).toMatchObject({
+        cache_read_input_tokens: '4000',
+        cache_creation_input_tokens: '500',
+        input_tokens: '30',
+        output_tokens: '250',
+        num_turns: '12',
+      });
+      stderr.mockRestore();
+    });
+
+    // AK2: Rolle, Modell und Resume-Modus stehen mit in der Zeile, damit
+    // Bau- gegen Denklaeufe und Resume- gegen Frischlaeufe trennbar sind.
+    it('haengt Rolle, Modell und Resume-Modus an', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      roundEval(ctx(gh), { ...plan, role: 'plan', model: 'opus', resume: 'sid-old' }, ok, '');
+      expect(usageLine(stderr.mock.calls)).toMatchObject({ role: 'plan', model: 'opus', resume: 'resume' });
+      stderr.mockRestore();
+    });
+
+    it('markiert einen frischen Lauf (kein --resume) als "fresh"', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      roundEval(ctx(gh), { ...plan, resume: '' }, ok, '');
+      expect(usageLine(stderr.mock.calls)).toMatchObject({ resume: 'fresh' });
+      stderr.mockRestore();
+    });
+
+    // AK3: Notbremsen-Kill -- $OUT ist kein valides JSON, parseField liefert
+    // ''. Der Lauf bleibt trotzdem erfolgreich (kein Abbruch), die Felder
+    // fehlen still.
+    it('bricht bei einem Ergebnis-JSON ohne usage-Objekt nicht ab -- Felder fehlen still', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      expect(() =>
+        roundEval(ctx(gh), plan, { rc: 1, out: 'kaputt (Notbremsen-Kill)', timedOut: true, maxRuntime: 2700 }, ''),
+      ).not.toThrow();
+      expect(usageLine(stderr.mock.calls)).toMatchObject({
+        cache_read_input_tokens: '',
+        cache_creation_input_tokens: '',
+        input_tokens: '',
+        output_tokens: '',
+        num_turns: '',
+      });
+      stderr.mockRestore();
+    });
+  });
+
   // Gegenstueck zum Deckel oben: 'blocked-limit' ist ein Zeit-Label, das kein
   // Mensch abnimmt. Kommt ueberhaupt ein Lauf zustande, ist die Sperre vorbei
   // -- bliebe das Label haengen, stuende das Ticket dauerhaft als blockiert im
