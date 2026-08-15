@@ -255,7 +255,9 @@ test('AK5: mehrdeutiger Habit-Treffer zeigt „Keiner Gewohnheit zugeordnet" mit
   // Ohne Wahl legt "Anlegen" nichts an — die Auswahl öffnet sich stattdessen.
   await page.getByRole('button', { name: 'Anlegen' }).click();
   await expect(captureDialog(page)).toBeVisible();
-  await page.getByRole('radio', { name: 'Yoga' }).click();
+  // issue #758: exact:true, sonst matcht auch der neue "Neue Routine anlegen: …"-
+  // Zweig, dessen Label den getippten Text (und damit "Yoga") als Teilstring enthält.
+  await page.getByRole('radio', { name: 'Yoga', exact: true }).click();
   await expect(routineChip(page, 'Yoga')).toBeVisible();
 
   await page.getByRole('button', { name: 'Anlegen' }).click();

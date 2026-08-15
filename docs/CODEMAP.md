@@ -229,6 +229,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (issue #618)
 - `capture-router.spec.ts` — Freitext auf `/uebersicht` je nach Art: Termin vorbefüllt in `/kalender`, Routine abgehakt/Review, Kalender-Modul aus -> Aufgabe (issue #619)
+- `capture-routine-neu.spec.ts` — Routine-Auswahl bietet ohne Habit-Treffer „Neue Routine anlegen" (issue #758): ein Test je AK1–AK7 + Offline-Pfad
 - `capture-parser.spec.ts` — Span+Ranking-Grammatik (issue #687, Teil 1 von 3 des Parser-Umbaus): ein Test je AK1–AK7 + Offline-Pfad
 - `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (issue #688, Teil 2 von 3 des Parser-Umbaus): ein Test je AK1–AK6 + Offline-Pfad
 - `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (issue #689, Teil 3 von 3): ein Test je AK1–AK6 + Offline-Pfad
