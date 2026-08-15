@@ -7,6 +7,15 @@
 # scripts/runner/round.ts), verwirft die Gift-Session-ID und startet GENAU
 # EINMAL ohne --resume neu, bevor der Ausgang in round-eval einfliesst.
 #
+# #742: Bau-Läufe übergeben seit diesem Ticket nie mehr --resume, also kann
+# eine Bau-Rolle das Szenario oben gar nicht mehr auslösen -- es gibt dort
+# keine Gift-Session mehr zu vergiften. Die Selbstheilung bleibt trotzdem
+# nötig, weil die Denk-Rollen (plan/research) weiter resumen (Nicht-Ziel des
+# Tickets). Deshalb zwei Szenarien: 1) ein Planer-Lauf beweist, dass die
+# Selbstheilung für Denk-Rollen unverändert greift; 2) ein Bau-Lauf beweist,
+# dass eine gespeicherte (ggf. vergiftete) Session dort seit #742 schlicht
+# ignoriert wird -- ein einziger Aufruf ohne --resume, keine Recovery nötig.
+#
 # Reine Bash-Assertions, kein bats (keine neue Dependency). Sourct
 # claude-runner.sh (Source-Guard verhindert, dass main() dabei losläuft) und
 # stubbt gh/git/claude per PATH-Shim -- analog zu round-snap.test.sh.
@@ -155,25 +164,32 @@ export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"
 
+reset_state() {   # frisches Zustands-/gh-Verzeichnis je Szenario (wie round-snap.test.sh)
+  rm -rf "$STATE_DIR/lock.d" "$STATE_DIR" "$GHSTATE_DIR"
+  mkdir -p "$STATE_DIR" "$GHSTATE_DIR"
+}
+
+assert_eq() {   # $1 = Beschreibung, $2 = erwartet, $3 = tatsaechlich
+  if [ "$2" = "$3" ]; then ok "$1"; else red "$1 (erwartet '$2', bekommen '$3')"; fi
+}
+
 # ==============================================================================
-# Ein laufendes Bau-Ticket (#70, in-progress) mit einer bereits vorhandenen,
-# aber nicht mehr fortsetzbaren Session -- genau das #353-Szenario.
+# 1. Denk-Rolle (#70, in-progress + plan) mit einer bereits vorhandenen, aber
+#    nicht mehr fortsetzbaren Session -- das #353-Szenario. Seit #742 der
+#    EINZIGE Weg dahin, weil nur Denk-Rollen noch resumen.
 # ==============================================================================
-printf '[{"number":70,"labels":[{"name":"in-progress"}],"createdAt":"2024-01-01T00:00:00Z"}]' \
+reset_state
+printf '[{"number":70,"labels":[{"name":"in-progress"},{"name":"plan"}],"createdAt":"2024-01-01T00:00:00Z"}]' \
   > "$GHSTATE_DIR/list-in-progress.json"
 printf '[]' > "$GHSTATE_DIR/list-plan.json"
 printf '[]' > "$GHSTATE_DIR/list-research.json"
 printf '[]' > "$GHSTATE_DIR/list-ready.json"
 printf '[]' > "$GHSTATE_DIR/list-needs-answer.json"
-printf '{"labels":[{"name":"in-progress"}]}' > "$GHSTATE_DIR/view-70.json"
-echo "poisoned-session-id" > "$STATE_DIR/session-70"
+printf '{"labels":[{"name":"in-progress"},{"name":"plan"}]}' > "$GHSTATE_DIR/view-70.json"
+echo "poisoned-session-id" > "$STATE_DIR/session-think-70"
 
 ( main ) >/dev/null 2>&1
 RC=$?
-
-assert_eq() {   # $1 = Beschreibung, $2 = erwartet, $3 = tatsaechlich
-  if [ "$2" = "$3" ]; then ok "$1"; else red "$1 (erwartet '$2', bekommen '$3')"; fi
-}
 
 assert_eq "AC1: claude wird genau zweimal aufgerufen (Erstversuch + genau ein Frischversuch)" \
   "2" "$(cat "$GHSTATE_DIR/claude-calls" 2>/dev/null || echo 0)"
@@ -190,8 +206,8 @@ else
   red "AC2: der Frischversuch haette ohne --resume laufen muessen"
 fi
 
-assert_eq "AC3: session-70 traegt danach die NEUE Session-ID, nicht die Gift-ID" \
-  "frische-session-nach-recovery" "$(cat "$STATE_DIR/session-70" 2>/dev/null)"
+assert_eq "AC3: session-think-70 traegt danach die NEUE Session-ID, nicht die Gift-ID" \
+  "frische-session-nach-recovery" "$(cat "$STATE_DIR/session-think-70" 2>/dev/null)"
 
 if grep -q 'No conversation found' "$GHSTATE_DIR/comments-70" 2>/dev/null; then
   ok "AC4: Sichtbarkeits-Kommentar am Ticket gepostet"
@@ -207,17 +223,73 @@ else
   ok "AC5: kein needs-answer gesetzt"
 fi
 
-# buildEscalationEval() laeuft bei JEDEM sauberen Bau-Lauf (unabhaengig von
-# Recovery) und zaehlt ohne sichtbaren Branch-Fortschritt genau EINEN
-# Fehlversuch -- das ist normales Verhalten, siehe escalation.ts. Der Punkt
-# hier ist NICHT "keine Datei", sondern "genau EINMAL gezaehlt": wuerde der
-# vergiftete Erstversuch zusaetzlich als eigener Fehlschlag durch roundEval
-# laufen (der alte Bug), stuende hier '2' statt '1', dazu ein
-# needs-answer-Kommentar (oben schon widerlegt) und RC=1 (oben schon 0).
-assert_eq "AC5: buildEscalationEval zaehlt den Erstversuch NICHT zusaetzlich mit (failcount=1, nicht 2)" \
-  "1" "$(cat "$SHARED_DIR/failcount-70" 2>/dev/null | tr -d '[:space:]')"
+# buildEscalationEval() ist seit #742 ausdruecklich ein No-op ausserhalb der
+# Bau-Rolle (escalation.ts:137, `if (runRole !== 'build') return;`) -- ein
+# Planer-Lauf darf also weder failcount- noch tier-Dateien anlegen, egal wie
+# die Recovery ausging.
+if [ -f "$SHARED_DIR/failcount-70" ]; then
+  red "AC5: buildEscalationEval haette fuer die Denk-Rolle NICHT laufen duerfen (failcount-70 existiert)"
+else
+  ok "AC5: buildEscalationEval bleibt fuer die Denk-Rolle ein No-op (keine failcount-Datei)"
+fi
 
 if [ -f "$SHARED_DIR/tier-70" ]; then
+  red "AC5: die Modellstufe haette fuer die Denk-Rolle NICHT eskalieren duerfen"
+else
+  ok "AC5: keine Modell-Eskalation ausgeloest"
+fi
+
+# ==============================================================================
+# 2. Bau-Rolle (#71, nur in-progress) mit einer gespeicherten Session --
+#    seit #742 wird sie nie gelesen: kein --resume, also auch kein
+#    "No conversation found", also keine Recovery noetig. Genau EIN Aufruf.
+# ==============================================================================
+reset_state
+printf '[{"number":71,"labels":[{"name":"in-progress"}],"createdAt":"2024-01-01T00:00:00Z"}]' \
+  > "$GHSTATE_DIR/list-in-progress.json"
+printf '[]' > "$GHSTATE_DIR/list-plan.json"
+printf '[]' > "$GHSTATE_DIR/list-research.json"
+printf '[]' > "$GHSTATE_DIR/list-ready.json"
+printf '[]' > "$GHSTATE_DIR/list-needs-answer.json"
+printf '{"labels":[{"name":"in-progress"}]}' > "$GHSTATE_DIR/view-71.json"
+echo "poisoned-session-id" > "$STATE_DIR/session-71"
+
+( main ) >/dev/null 2>&1
+RC2=$?
+
+assert_eq "AC1 (#742): claude wird fuer die Bau-Rolle nur EINMAL aufgerufen, kein Frischversuch noetig" \
+  "1" "$(cat "$GHSTATE_DIR/claude-calls" 2>/dev/null || echo 0)"
+
+if [ -f "$GHSTATE_DIR/claude-args-1" ] && ! grep -q -- '--resume' "$GHSTATE_DIR/claude-args-1"; then
+  ok "AC1 (#742): der einzige Aufruf laeuft OHNE --resume, die gespeicherte Session wird ignoriert"
+else
+  red "AC1 (#742): die Bau-Rolle haette nie --resume nutzen duerfen"
+fi
+
+assert_eq "AC3 (#742): session-71 traegt danach die neue Session-ID" \
+  "frische-session-nach-recovery" "$(cat "$STATE_DIR/session-71" 2>/dev/null)"
+
+if [ -f "$GHSTATE_DIR/comments-71" ] && grep -q 'No conversation found' "$GHSTATE_DIR/comments-71"; then
+  red "AC1 (#742): ohne --resume kann es keine Recovery-Meldung geben"
+else
+  ok "AC1 (#742): kein Recovery-Kommentar, weil keine Recovery noetig war"
+fi
+
+assert_eq "AC5: die Runde endet sauber (Exit 0)" "0" "$RC2"
+
+if grep -q 'ADD:needs-answer' "$GHSTATE_DIR/applied-71" 2>/dev/null; then
+  red "AC5: needs-answer haette NICHT gesetzt werden duerfen"
+else
+  ok "AC5: kein needs-answer gesetzt"
+fi
+
+# Die Bau-Rolle bleibt escalation-pflichtig -- #742 aendert nur das Resume,
+# nicht buildEscalationEval. Ohne sichtbaren Branch-Fortschritt zaehlt der
+# eine (und einzige) Lauf ganz normal als ein Fehlversuch.
+assert_eq "AC5: buildEscalationEval zaehlt den einzigen Lauf normal (failcount=1)" \
+  "1" "$(cat "$SHARED_DIR/failcount-71" 2>/dev/null | tr -d '[:space:]')"
+
+if [ -f "$SHARED_DIR/tier-71" ]; then
   red "AC5: die Modellstufe haette bei nur einem Fehlversuch NICHT eskalieren duerfen"
 else
   ok "AC5: keine Modell-Eskalation ausgeloest"
