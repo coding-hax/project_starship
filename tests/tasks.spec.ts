@@ -2835,7 +2835,7 @@ test('AK3: Datumsmarken gliedern die Woche — „Überfällig", „Heute · …
   await expect(taskItems(page)).toHaveCount(4);
 });
 
-test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, sondern als ruhige Sammelzeile am Ende', async ({
+test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, sondern eingeklappt in einer ausklappbaren Karte (issue #762, vormals eine reine Textzeile)', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -2853,7 +2853,15 @@ test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, 
   for (const title of ['Ohne Datum A', 'Ohne Datum B', 'Ohne Datum, aber erledigt']) {
     await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
   }
-  await expect(page.getByText('2 Aufgaben ohne Datum')).toBeVisible();
+
+  const card = page.getByRole('button', { name: '2 Aufgaben ohne Datum' });
+  await expect(card).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('Ohne Datum A')).toHaveCount(0);
+
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Ohne Datum A')).toBeVisible();
+  await expect(page.getByText('Ohne Datum B')).toBeVisible();
 });
 
 test('AK9: liegt im Rest der Woche nichts mehr, steht darunter „Danach nichts mehr geplant."', async ({

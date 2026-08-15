@@ -15,12 +15,26 @@ const TODAY_EVENING = '2026-07-18T18:00:00.000Z';
 const TOMORROW_MORNING = '2026-07-19T09:00:00.000Z';
 /** Same wall-clock moment as NOW, one day later — for the day-change assertions. */
 const TOMORROW_NOON = '2026-07-19T12:00:00.000Z';
+/** Innerhalb des 7-Tage-Fensters (heute + 2), aber weder heute noch morgen (issue #762). */
+const WITHIN_WEEK = '2026-07-20T09:00:00.000Z';
+/** Außerhalb des 7-Tage-Fensters (heute + 9) — der 25.07. (heute + 7) ist die erste
+ *  ausgeschlossene Kalendertag-Grenze, dieses Datum liegt sicher jenseits davon. */
+const BEYOND_WEEK = '2026-07-27T09:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
   // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
-  // (issue #157 AC: no double announcement).
+  // (issue #157 AC: no double announcement). Day markers render `role="presentation"`
+  // (task-list.tsx), so they never count as a `listitem` here.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
+}
+
+function dayMarkers(page: Page) {
+  return page.locator('.task-list__day-marker');
+}
+
+function undatedCard(page: Page) {
+  return page.getByRole('button', { name: /Aufgabe(n)? ohne Datum/ });
 }
 
 /** Vertical distance between the bottom of `above` and the top of `below`. */
@@ -58,14 +72,15 @@ test.beforeEach(async ({ page }) => {
   await skewClock(page, NOW);
 });
 
-test('/uebersicht listet offene Aufgaben, fällig heute oder überfällig (issue #87 AC1)', async ({
+test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folgenden Tage, mit Tagesmarken (issue #87 AC1, erweitert auf die Woche und um Tagesmarken durch issue #762)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   await seedTask(page, { title: 'Überfällig', dueAt: YESTERDAY_MORNING });
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
-  await seedTask(page, { title: 'Erst morgen', dueAt: TOMORROW_MORNING });
+  await seedTask(page, { title: 'Diese Woche fällig', dueAt: WITHIN_WEEK });
+  await seedTask(page, { title: 'Außerhalb der Woche', dueAt: BEYOND_WEEK });
   await seedTask(page, { title: 'Ohne Fälligkeit' });
   await seedTask(page, {
     title: 'Heute erledigt',
@@ -77,30 +92,78 @@ test('/uebersicht listet offene Aufgaben, fällig heute oder überfällig (issue
     dueAt: YESTERDAY_MORNING,
     completedAt: YESTERDAY_EVENING,
   });
-  // Never listed while open, so being checked off today does not pull it in
-  // (issue #228 AC4).
+  // Anders als die alte, auf "heute oder früher" begrenzte Regel (issue #228 AC4):
+  // `weekWindowNodes`s AK7-Regel (issue #705) gilt jetzt auch hier — innerhalb des
+  // Fensters fällig und heute erledigt reicht, das Fälligkeitsdatum selbst darf in
+  // der Zukunft liegen.
   await seedTask(page, {
     title: 'Morgen fällig, heute erledigt',
     dueAt: TOMORROW_MORNING,
     completedAt: NOW,
   });
 
-  await expect(page.getByText('Überfällig')).toBeVisible();
+  await expect(page.getByText('Überfällig').first()).toBeVisible();
   await expect(page.getByText('Heute fällig')).toBeVisible();
+  await expect(page.getByText('Diese Woche fällig')).toBeVisible();
   // Checked off today, so it stays for the rest of the day (issue #228 AC1).
   await expect(page.getByText('Heute erledigt')).toBeVisible();
-  await expect(dueTaskItems(page)).toHaveCount(3);
-  await expect(page.getByText('Erst morgen')).toHaveCount(0);
-  await expect(page.getByText('Ohne Fälligkeit')).toHaveCount(0);
+  await expect(page.getByText('Morgen fällig, heute erledigt')).toBeVisible();
+  await expect(dueTaskItems(page)).toHaveCount(5);
+  await expect(page.getByText('Außerhalb der Woche')).toHaveCount(0);
+  // Undatiert steht nicht in der Liste — nur in der ausklappbaren Karte (issue #762).
+  await expect(dueTaskItems(page).filter({ hasText: 'Ohne Fälligkeit' })).toHaveCount(0);
   await expect(page.getByText('Gestern erledigt')).toHaveCount(0);
-  await expect(page.getByText('Morgen fällig, heute erledigt')).toHaveCount(0);
+
+  // Tagesmarken: Überfällig zuerst, dann die Tage aufsteigend (issue #762).
+  const markers = dayMarkers(page);
+  await expect(markers.first()).toHaveText('Überfällig');
+  await expect(markers.last()).toContainText('Montag, 20. Juli');
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
   await page.goto('/uebersicht');
-  await seedTask(page, { title: 'Erst morgen', dueAt: TOMORROW_MORNING });
+  await seedTask(page, { title: 'Außerhalb der Woche', dueAt: BEYOND_WEEK });
 
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+});
+
+test('undatierte offene Aufgaben stehen nicht in der Woche-Liste, sondern in einer eingeklappten Karte darunter (issue #762)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum A' });
+  await seedTask(page, { title: 'Ohne Datum B' });
+  // Erledigt und ohne Datum zählt nicht mit — nur offene (analog zu tasks.spec.ts AK6).
+  await seedTask(page, { title: 'Ohne Datum, aber erledigt', completedAt: NOW });
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+
+  await expect(dueTaskItems(page)).toHaveCount(1);
+  for (const title of ['Ohne Datum A', 'Ohne Datum B', 'Ohne Datum, aber erledigt']) {
+    await expect(dueTaskItems(page).filter({ hasText: title })).toHaveCount(0);
+  }
+
+  const card = undatedCard(page);
+  await expect(card).toHaveText('2 Aufgaben ohne Datum');
+  await expect(card).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('Ohne Datum A')).toHaveCount(0);
+
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Ohne Datum A')).toBeVisible();
+  await expect(page.getByText('Ohne Datum B')).toBeVisible();
+});
+
+test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst nichts fällig ist (issue #762)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  const card = undatedCard(page);
+  await expect(card).toHaveText('1 Aufgabe ohne Datum');
+  await card.click();
+  await expect(page.getByText('Ohne Datum')).toBeVisible();
 });
 
 test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das Häkchen erledigt sofort, die Zeile bleibt den Tag über stehen (issue #87 AC3, issue #228 AC1+AC5)', async ({
@@ -178,9 +241,10 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await expect(dueTaskItems(page)).toHaveCount(1);
     const filledGap = await gapBetween(aufgaben, routinen);
 
-    // The empty state occupies one card's box, so the two gaps differ by rounding
-    // at most. Anything beyond that is the hole this ticket is about — the numbers
-    // travel in the message, so a red run says how far off it is.
+    // The empty state reserves a day marker's box plus one task card's (issue #762
+    // — a filled "Woche" list is never just a bare row anymore), so the two gaps
+    // differ by rounding at most. Anything beyond that is the hole issue #228 fixed
+    // reopening — the numbers travel in the message, so a red run says how far off it is.
     expect(
       Math.abs(emptyGap - filledGap),
       `leer ${emptyGap}px vs. mit Aufgabe ${filledGap}px bei ${width}px`,
