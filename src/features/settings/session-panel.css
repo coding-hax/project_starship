@@ -1,0 +1,39 @@
+.session-panel__button {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.session-panel__button:active {
+  opacity: 0.85;
+}
+
+.session-panel__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-panel__button--secondary {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.session-panel__hint {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.session-panel__confirm {
+  display: flex;
+  gap: var(--space-3);
+}
