@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from '@/local/outbox';
 import { OfflineNotice } from '@/ui/offline-notice';
 import { useBlockReady } from '@/ui/overview-ready';
+import { SectionCard } from '@/ui/section-card';
 import { SegmentedControl, type SegmentedOption } from '@/ui/segmented-control';
 import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
@@ -14,13 +15,13 @@ import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
 import { useHideCompletedTasks } from './use-hide-completed-tasks';
 import {
-  belongsOnUebersicht,
   completedByDay,
   formatDayMarker,
   groupByDueDay,
   groupTasks,
   localDayKey,
   resolveNestTarget,
+  undatedOpenNodes,
   useTasks,
   visibleTaskNodes,
   weekWindowNodes,
@@ -30,7 +31,8 @@ import {
 
 /** The `/aufgaben` view switcher (issue #705 AK2) — ephemeral, never persisted;
  *  a fresh navigation always lands back on `'woche'`. Irrelevant for the
- *  `dueTodayOnly` (/uebersicht) instance, which has no switcher and stays flat. */
+ *  `dueTodayOnly` (/uebersicht) instance, which has no switcher and always
+ *  renders the "Woche" shape (issue #762). */
 type ViewMode = 'woche' | 'alle' | 'erledigt';
 
 const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
@@ -62,12 +64,34 @@ function nodeRows(node: TaskNode): TaskRow[] {
   ];
 }
 
+/**
+ * The "Woche" shape (issue #705 AK3, reused on /uebersicht by issue #762): a day
+ * marker above every non-empty bucket, then that bucket's nodes. Shared so
+ * /uebersicht's always-"Woche" list and /aufgaben's "Woche" tab cannot drift
+ * apart — the only difference between the two call sites is which nodes go in
+ * (the full tree vs. `hideCompleted`-filtered) and whether the caller also
+ * needs `groups` itself (AK9's sparse note, /aufgaben only).
+ */
+function buildWocheRows(nodesForWindow: TaskNode[], now: Date) {
+  const groups = groupByDueDay(weekWindowNodes(nodesForWindow, now), now);
+  const rows: TaskRow[] = groups.flatMap((group) => [
+    {
+      id: `marker:${group.dayKey}`,
+      kind: 'marker' as const,
+      label: formatDayMarker(group.dayKey, now, 'woche'),
+    },
+    ...group.nodes.flatMap(nodeRows),
+  ]);
+  return { rows, groups };
+}
+
 export interface TaskListProps {
   /**
-   * Restricts the list to tasks due today or overdue, still open or checked off
-   * today — the /uebersicht dashboard subset (issue #87, issue #228). Everything
-   * else (editor, undo toasts, offline notice) stays the same so the two lists
-   * don't drift apart.
+   * The /uebersicht dashboard subset (issue #87, issue #228): the same "Woche"
+   * shape /aufgaben's "Woche" tab renders (day markers, "Überfällig" first, the
+   * 7-day window — issue #762), just without the view switcher and never
+   * `hideCompleted`-filtered (AC7). Everything else (editor, undo toasts,
+   * offline notice) stays the same so the two lists don't drift apart.
    */
   dueTodayOnly?: boolean;
   /**
@@ -93,15 +117,23 @@ export function TaskList({
   anchorOnMount = true,
 }: TaskListProps = {}) {
   const allTasks = useTasks();
-  // `useMemo`'d on `[allTasks, dueTodayOnly]` — `allTasks` is referentially
+  // Grouped from the full list (issue #89) — nesting structure, the /uebersicht
+  // week window below (issue #762), and the row-building viewModel further down
+  // all need it.
+  const nodes = useMemo(() => groupTasks(allTasks ?? []), [allTasks]);
+  // `useMemo`'d on `[allTasks, nodes, dueTodayOnly]` — `allTasks` is referentially
   // stable across renders that aren't a real live-query emission (see
   // use-live-table.ts), and `useListPresence` below needs that stability to
   // tell "the data changed" apart from "this component re-rendered for some
-  // other reason" (editingTaskId, collapsed, …).
-  const tasks = useMemo(
-    () => (dueTodayOnly ? allTasks?.filter((task) => belongsOnUebersicht(task)) : allTasks),
-    [allTasks, dueTodayOnly],
-  );
+  // other reason" (editingTaskId, collapsed, …). On /uebersicht this flattens the
+  // week-windowed nodes back out (issue #762) — only the anchor/empty-state below
+  // need the flat shape, the viewModel further down re-derives the grouped rows
+  // itself.
+  const tasks = useMemo(() => {
+    if (!dueTodayOnly) return allTasks;
+    if (allTasks === undefined) return undefined;
+    return weekWindowNodes(nodes, new Date()).flatMap((node) => [node.task, ...node.children]);
+  }, [allTasks, nodes, dueTodayOnly]);
   // Inert on /aufgaben, where this list is the whole screen and has nothing below
   // it to push; on /uebersicht it joins the shared reveal point (issue #642).
   useBlockReady(allTasks !== undefined);
@@ -141,24 +173,27 @@ export function TaskList({
   const anchoredRef = useRef(false);
 
   const editingTask = allTasks?.find((task) => task.id === editingTaskId) ?? null;
-  // Grouped from the full list, not the /uebersicht-filtered `tasks` — nesting still
-  // needs the whole task graph even when the view itself renders flat (issue #89).
-  const nodes = useMemo(() => groupTasks(allTasks ?? []), [allTasks]);
   const editingNode = nodes.find((node) => node.task.id === editingTaskId);
   const nestCandidates = nodes
     .filter((node) => node.task.id !== editingTaskId)
     .map((node) => node.task);
 
   /**
-   * `rows` plus the two counts AK6/AK9 need beyond what a flat row list can
-   * carry (issue #705). `now` is read once per recompute here, not on every
-   * render — the grouping only needs to reflect "now" when the underlying
-   * data or the view actually changes.
+   * `rows` plus what AK6/AK9 need beyond what a flat row list can carry (issue
+   * #705) — `undatedNodes` backs the expandable "ohne Datum" card (issue #762),
+   * `hasFutureGroup` the AK9 sparse note. `now` is read once per recompute here,
+   * not on every render — the grouping only needs to reflect "now" when the
+   * underlying data or the view actually changes.
    */
   const viewModel = useMemo(() => {
     if (dueTodayOnly) {
-      const flatRows = (tasks ?? []).map((task) => ({ id: task.id, kind: 'flat' as const, task }));
-      return { rows: flatRows, undatedOpenCount: 0, hasFutureGroup: false };
+      // The full tree, not `hideCompleted`-filtered — AC7, that toggle never
+      // applies to the /uebersicht subset.
+      return {
+        rows: buildWocheRows(nodes, new Date()).rows,
+        undatedNodes: undatedOpenNodes(nodes),
+        hasFutureGroup: false,
+      };
     }
 
     if (view === 'erledigt') {
@@ -171,35 +206,26 @@ export function TaskList({
         },
         ...group.tasks.map((task) => ({ id: task.id, kind: 'flat' as const, task })),
       ]);
-      return { rows: flatRows, undatedOpenCount: 0, hasFutureGroup: false };
+      return { rows: flatRows, undatedNodes: [], hasFutureGroup: false };
     }
 
     const visible = visibleTaskNodes(nodes, hideCompleted);
 
     if (view === 'alle') {
-      return { rows: visible.flatMap(nodeRows), undatedOpenCount: 0, hasFutureGroup: false };
+      return { rows: visible.flatMap(nodeRows), undatedNodes: [], hasFutureGroup: false };
     }
 
     // view === 'woche'
     const now = new Date();
-    const groups = groupByDueDay(weekWindowNodes(visible, now), now);
+    const { rows, groups } = buildWocheRows(visible, now);
     const today = localDayKey(now);
     return {
-      rows: groups.flatMap((group) => [
-        {
-          id: `marker:${group.dayKey}`,
-          kind: 'marker' as const,
-          label: formatDayMarker(group.dayKey, now, 'woche'),
-        },
-        ...group.nodes.flatMap(nodeRows),
-      ]),
-      undatedOpenCount: nodes.filter(
-        (node) => node.task.dueAt === null && node.task.completedAt === null,
-      ).length,
+      rows,
+      undatedNodes: undatedOpenNodes(nodes),
       hasFutureGroup: groups.some((group) => group.dayKey !== 'overdue' && group.dayKey > today),
     };
-  }, [dueTodayOnly, tasks, allTasks, nodes, hideCompleted, view]);
-  const { rows, undatedOpenCount, hasFutureGroup } = viewModel;
+  }, [dueTodayOnly, allTasks, nodes, hideCompleted, view]);
+  const { rows, undatedNodes, hasFutureGroup } = viewModel;
   const presenceRows = useListPresence(rows, (row) => row.id, dueTodayOnly ? undefined : view);
 
   /**
@@ -253,6 +279,96 @@ export function TaskList({
     const parentId = resolveNestTarget(draggedId, dropTargetId, allTasks ?? []);
     if (!dragged || dragged.parentId === parentId) return;
     await mutate({ table: 'tasks', rowId: draggedId, op: 'upsert', payload: { parentId } });
+  }
+
+  /**
+   * One `TaskRow` as JSX — shared by the main list and the "ohne Datum" card
+   * below it (issue #762), so the two never render a task differently. Nesting
+   * stays off on /uebersicht (`dueTodayOnly`): `TaskItem`'s long-press lift only
+   * arms when `onDropOnTask` is passed at all, so omitting the three drag props
+   * there disables it outright, same as the old flat /uebersicht rows always did.
+   */
+  function renderTaskRow(
+    row: TaskRow,
+    key: string,
+    shared: { entering: boolean; leaving: boolean; onAnimationEnd?: () => void },
+  ) {
+    if (row.kind === 'marker') {
+      return (
+        <li
+          key={key}
+          role="presentation"
+          className="task-list__day-marker list-motion-item"
+          data-entering={shared.entering}
+          data-leaving={shared.leaving}
+          onAnimationEnd={shared.onAnimationEnd}
+        >
+          {row.label}
+        </li>
+      );
+    }
+
+    if (row.kind === 'flat') {
+      const { task } = row;
+      return (
+        <TaskItem
+          key={key}
+          task={task}
+          onToggle={() => toggleComplete(task)}
+          onEdit={() => setEditingTaskId(task.id)}
+          onDelete={() => deleteTask(task)}
+          {...shared}
+        />
+      );
+    }
+
+    if (row.kind === 'parent') {
+      const { node } = row;
+      return (
+        <TaskItem
+          key={key}
+          task={node.task}
+          isParent={node.total > 0}
+          progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
+          expanded={!collapsed.has(node.task.id)}
+          onToggleExpand={() => toggleExpanded(node.task.id)}
+          onToggle={() => toggleComplete(node.task)}
+          onEdit={() => setEditingTaskId(node.task.id)}
+          onDelete={() => deleteTask(node.task, node.children)}
+          onDropOnTask={dueTodayOnly ? undefined : (targetId) => handleNest(node.task.id, targetId)}
+          onDragOverTask={
+            dueTodayOnly
+              ? undefined
+              : (targetId) => setDragPreview({ draggedId: node.task.id, targetId })
+          }
+          onDragEnd={dueTodayOnly ? undefined : () => setDragPreview(null)}
+          isNestTarget={node.task.id === nestTargetId}
+          isUnnestPreview={node.task.id === unnestingId}
+          {...shared}
+        />
+      );
+    }
+
+    const { node, child } = row;
+    return (
+      <TaskItem
+        key={key}
+        task={child}
+        isChild
+        visible={!collapsed.has(node.task.id)}
+        onToggle={() => toggleComplete(child)}
+        onEdit={() => setEditingTaskId(child.id)}
+        onDelete={() => deleteTask(child)}
+        onDropOnTask={dueTodayOnly ? undefined : (targetId) => handleNest(child.id, targetId)}
+        onDragOverTask={
+          dueTodayOnly ? undefined : (targetId) => setDragPreview({ draggedId: child.id, targetId })
+        }
+        onDragEnd={dueTodayOnly ? undefined : () => setDragPreview(null)}
+        isNestTarget={child.id === nestTargetId}
+        isUnnestPreview={child.id === unnestingId}
+        {...shared}
+      />
+    );
   }
 
   // "Woche"/"Erledigt" (issue #705) have no running-history anchor to speak
@@ -358,100 +474,46 @@ export function TaskList({
             className="task-list"
             {...(headingId
               ? { 'aria-labelledby': headingId }
-              : { 'aria-label': dueTodayOnly ? 'Fällige Aufgaben' : 'Aufgaben' })}
+              : { 'aria-label': dueTodayOnly ? 'Aufgaben der Woche' : 'Aufgaben' })}
           >
-            {presenceRows.map((row) => {
-              const entering = row.status === 'entering';
-              const leaving = row.status === 'leaving';
-              const shared = { entering, leaving, onAnimationEnd: row.onAnimationEnd };
-
-              if (row.item.kind === 'marker') {
-                return (
-                  <li
-                    key={row.key}
-                    role="presentation"
-                    className="task-list__day-marker list-motion-item"
-                    data-entering={entering}
-                    data-leaving={leaving}
-                    onAnimationEnd={row.onAnimationEnd}
-                  >
-                    {row.item.label}
-                  </li>
-                );
-              }
-
-              if (row.item.kind === 'flat') {
-                const { task } = row.item;
-                return (
-                  <TaskItem
-                    key={row.key}
-                    task={task}
-                    onToggle={() => toggleComplete(task)}
-                    onEdit={() => setEditingTaskId(task.id)}
-                    onDelete={() => deleteTask(task)}
-                    {...shared}
-                  />
-                );
-              }
-
-              if (row.item.kind === 'parent') {
-                const { node } = row.item;
-                return (
-                  <TaskItem
-                    key={row.key}
-                    task={node.task}
-                    isParent={node.total > 0}
-                    progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
-                    expanded={!collapsed.has(node.task.id)}
-                    onToggleExpand={() => toggleExpanded(node.task.id)}
-                    onToggle={() => toggleComplete(node.task)}
-                    onEdit={() => setEditingTaskId(node.task.id)}
-                    onDelete={() => deleteTask(node.task, node.children)}
-                    onDropOnTask={(targetId) => handleNest(node.task.id, targetId)}
-                    onDragOverTask={(targetId) =>
-                      setDragPreview({ draggedId: node.task.id, targetId })
-                    }
-                    onDragEnd={() => setDragPreview(null)}
-                    isNestTarget={node.task.id === nestTargetId}
-                    isUnnestPreview={node.task.id === unnestingId}
-                    {...shared}
-                  />
-                );
-              }
-
-              const { node, child } = row.item;
-              return (
-                <TaskItem
-                  key={row.key}
-                  task={child}
-                  isChild
-                  visible={!collapsed.has(node.task.id)}
-                  onToggle={() => toggleComplete(child)}
-                  onEdit={() => setEditingTaskId(child.id)}
-                  onDelete={() => deleteTask(child)}
-                  onDropOnTask={(targetId) => handleNest(child.id, targetId)}
-                  onDragOverTask={(targetId) => setDragPreview({ draggedId: child.id, targetId })}
-                  onDragEnd={() => setDragPreview(null)}
-                  isNestTarget={child.id === nestTargetId}
-                  isUnnestPreview={child.id === unnestingId}
-                  {...shared}
-                />
-              );
-            })}
+            {presenceRows.map((row) =>
+              renderTaskRow(row.item, row.key, {
+                entering: row.status === 'entering',
+                leaving: row.status === 'leaving',
+                onAnimationEnd: row.onAnimationEnd,
+              }),
+            )}
           </ul>
-          {/* Woche-only notes (issue #705 AK9/AK6) — `view` stays at its 'woche'
-              default on the `dueTodayOnly` instance too, since it never renders the
-              switcher that could move it away; without this guard both lines would
-              leak into /uebersicht whenever a task is due (issue #228 AC6). */}
+          {/* AK9's "nothing left this week" (issue #705) — /uebersicht (`dueTodayOnly`)
+              has no page of its own below the list to make this note meaningful on, so
+              it stays an /aufgaben-only line, same as before issue #762. */}
           {!dueTodayOnly && view === 'woche' && !hasFutureGroup && (
             <p className="task-list__sparse-note">Danach nichts mehr geplant.</p>
           )}
-          {!dueTodayOnly && view === 'woche' && undatedOpenCount > 0 && (
-            <p className="task-list__undated-note">
-              {undatedOpenCount} Aufgabe{undatedOpenCount === 1 ? '' : 'n'} ohne Datum
-            </p>
-          )}
         </>
+      )}
+
+      {/* AK6's "ohne Datum" card (issue #705), an expandable `SectionCard` instead of
+          the old plain note since issue #762 — undated tasks never match
+          `weekWindowNodes`'s parent-driven window, so this is the only place either
+          "Woche" view (/uebersicht, always; /aufgaben's "Woche" tab) surfaces them,
+          same collapsed-by-default pattern as "Archiviert" (habit-list.tsx). Sits
+          outside the empty/list ternary above on purpose — a week with nothing due
+          still needs to reveal this card if something is undated, so it cannot hide
+          behind that message (which only speaks to the *dated* rows). */}
+      {tasks !== undefined && (dueTodayOnly || view === 'woche') && undatedNodes.length > 0 && (
+        <SectionCard
+          title={`${undatedNodes.length} Aufgabe${undatedNodes.length === 1 ? '' : 'n'} ohne Datum`}
+          collapsible
+          defaultOpen={false}
+          className="task-list__undated-card"
+        >
+          <ul className="task-list" aria-label="Aufgaben ohne Datum">
+            {undatedNodes
+              .flatMap(nodeRows)
+              .map((item) => renderTaskRow(item, item.id, { entering: false, leaving: false }))}
+          </ul>
+        </SectionCard>
       )}
 
       {/* Names the pending drop in words while a row is held (issue #451) — the
