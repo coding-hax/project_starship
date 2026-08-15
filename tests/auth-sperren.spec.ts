@@ -4,6 +4,7 @@ import {
   registerPasskey,
   resetAppData,
   sessionRowExists,
+  settleJournalHabitBoot,
   withDb,
 } from './helpers';
 
@@ -157,6 +158,7 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
 
     const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
     await nav.getByRole('link', { name: 'Übersicht' }).click();
+    await page.waitForURL('**/uebersicht');
     await page.getByRole('link', { name: 'Einstellungen' }).click();
     await expect(page).toHaveURL(/\/einstellungen$/);
 
@@ -182,11 +184,17 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     baseURL,
   }) => {
     const { context, page } = await freshSessionContext(browser, baseURL);
+    await page.goto('/uebersicht');
+    // Drains the boot-time Journal-habit mutation (helpers.ts settleJournalHabitBoot)
+    // before the route block goes up below — otherwise JournalHabitBoot's own
+    // `ensureJournalHabit()` can land its mutation in the outbox at an
+    // unpredictable point and throw off the exact-size assertions that follow.
+    await settleJournalHabitBoot(page);
+
     // Blocks sync for the whole cycle so the outbox can only ever drain when this
     // spec explicitly asks for it — otherwise the app's own 'online' listener
     // (src/local/sync.ts:274) races the assertions below.
     await page.route('**/api/sync/**', (route) => route.abort('failed'));
-    await page.goto('/uebersicht');
 
     await context.setOffline(true);
     await page.evaluate(() =>
