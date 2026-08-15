@@ -1,8 +1,10 @@
 // Ticketauswahl aus `run_round`, portiert aus claude-runner.sh (#202, S5 von
 // #184), seit #272 (S2b von #264) ohne Park-Mechanik.
 //
-// Praezedenz: laufendes in-progress > Prioritaets-Queue (Label egal) > plan >
-// research > ready, je aeltestes createdAt.
+// Praezedenz: laufendes in-progress > next > plan > research > ready, je
+// aeltestes createdAt. Die Rolle kommt bei 'next' weiter aus dem eigenen
+// Rollenlabel (roleFromLabels()) -- 'next' selbst ist nur der Rang (#725, S2
+// von ADR-0023).
 //
 // Was hier frueher stand und warum es weg ist (#272): `selfHealPark()` nahm
 // einem wartenden Ticket `in-progress` weg und gab ihm `parked`. Genau deshalb
@@ -22,12 +24,12 @@
 // claude-runner.sh (S6, siehe Nicht-Ziele von #202).
 import type { GhAdapter } from './gh.js';
 import type { StateAdapter } from './state.js';
-import { byCreatedAt, entriesFromIssues, hasLabel, mergeEntries, queueBlocked, queueEntries, type QueueIssue } from './queue.js';
+import { byCreatedAt, entriesFromIssues, hasLabel, queueBlocked, type QueueIssue } from './queue.js';
 import { sessionKey } from './session.js';
 
 export type RunRole = 'build' | 'plan' | 'research';
 
-// Rollenableitung aus den Labels -- einzige Quelle, von running/queue (hier)
+// Rollenableitung aus den Labels -- einzige Quelle, von running/next (hier)
 // UND vom Resume-Zweig in round.ts benutzt (#387), damit alle drei Stellen
 // beweisbar synchron bleiben.
 export function roleFromLabels(issue: QueueIssue): RunRole {
@@ -61,7 +63,7 @@ export interface SelectedTicket {
   role: RunRole;
   // Herkunft der Wahl -- bestimmt in pickTicket(), welche Label-Mutation und
   // welcher MODE (start/resume) noetig sind.
-  source: 'running' | 'queue' | 'plan' | 'research' | 'ready';
+  source: 'running' | 'next' | 'plan' | 'research' | 'ready';
 }
 
 // Die reine Auswahl-Kaskade, OHNE Seiteneffekte. `claimedElsewhere` (#204):
@@ -72,7 +74,6 @@ export interface SelectedTicket {
 // faelschlich als erledigt an (siehe claimedElsewhere() in claim.ts).
 export function selectTicket(
   snapshot: QueueIssue[],
-  queueBody = '',
   claimedElsewhere: ReadonlySet<number> = new Set(),
 ): SelectedTicket | null {
   // #227: 'hands-off' ist ein Kill-Switch fuer das ganze Ticket, kein Detail
@@ -85,20 +86,13 @@ export function selectTicket(
   // vorher je Zweig wiederholt -- und ausgerechnet im Zweig, der zuerst greift,
   // stand es einmal nicht.
   //
-  // #265: Abhaengigkeiten aus der Queue ('- #266 nach #227') gehoeren aus
-  // demselben Grund hierher und nicht in den Queue-Zweig: ein wartendes Ticket
-  // darf auch nicht ueber den ready- oder plan-Zweig hereinrutschen. Die
-  // Voraussetzung gilt als erfuellt, sobald ihr Ticket nicht mehr im Snapshot
-  // offener Tickets steht -- ausgewertet bei JEDER Auswahl, damit nichts
-  // veraltet.
-  //
-  // #724 (S1 von ADR-0023): dieselbe Kette darf jetzt auch als 'Nach:'-Zeile
-  // im TICKET-Body selbst stehen, nicht nur als '- #266 nach #227' im
-  // Queue-Body. Fuers Blockieren zaehlt die VEREINIGUNG beider Quellen. Der
-  // RANG bleibt bewusst allein beim Queue-Body (`queueEntries`) -- er faellt
-  // erst im Folgeticket (Nicht-Ziele von #724).
-  const queueOnlyEntries = queueEntries(queueBody);
-  const entries = mergeEntries(queueOnlyEntries, entriesFromIssues(snapshot));
+  // #265/#724: Abhaengigkeiten ('Nach: #227' im TICKET-Body, seit #725 die
+  // einzige Quelle) gehoeren aus demselben Grund hierher und nicht in den
+  // next-Zweig: ein wartendes Ticket darf auch nicht ueber den ready- oder
+  // plan-Zweig hereinrutschen. Die Voraussetzung gilt als erfuellt, sobald ihr
+  // Ticket nicht mehr im Snapshot offener Tickets steht -- ausgewertet bei
+  // JEDER Auswahl, damit nichts veraltet.
+  const entries = entriesFromIssues(snapshot);
   const openIssues = new Set(snapshot.map((issue) => issue.number));
   const blocked = queueBlocked(entries, openIssues);
   const selectable = snapshot.filter(
@@ -111,16 +105,12 @@ export function selectTicket(
   const running = selectable.filter((issue) => hasLabel(issue, 'in-progress')).sort(byCreatedAt)[0];
   if (running) return { issue: running.number, role: roleFromLabels(running), source: 'running' };
 
-  const order = queueOnlyEntries.map((entry) => entry.issue);
-  if (order.length > 0) {
-    const ranked = selectable
-      .filter((issue) => order.includes(issue.number))
-      .sort((a, b) => order.indexOf(a.number) - order.indexOf(b.number));
-    if (ranked.length > 0) {
-      const picked = ranked[0];
-      return { issue: picked.number, role: roleFromLabels(picked), source: 'queue' };
-    }
-  }
+  // #725 (S2 von ADR-0023): die Prioritaets-Queue ist jetzt "alle Tickets mit
+  // `next`", je aeltestes createdAt -- kein Zeilenrang mehr, sondern derselbe
+  // Label-Filter wie plan/research/ready darunter. Die ROLLE kommt weiter aus
+  // dem Label (roleFromLabels()); `next` selbst sagt nichts ueber die Rolle.
+  const nextUp = selectable.filter((issue) => hasLabel(issue, 'next')).sort(byCreatedAt)[0];
+  if (nextUp) return { issue: nextUp.number, role: roleFromLabels(nextUp), source: 'next' };
 
   const nextPlan = selectable.filter((issue) => hasLabel(issue, 'plan')).sort(byCreatedAt)[0];
   if (nextPlan) return { issue: nextPlan.number, role: 'plan', source: 'plan' };
@@ -145,8 +135,8 @@ export function selectTicket(
 //
 // Nur die Nummer, keine Rolle: die Anzeige braucht nicht mehr. Wer die Rolle
 // braucht, ruft `selectTicket()` selbst.
-export function queueNext(snapshot: QueueIssue[], queueBody = ''): number | null {
-  return selectTicket(snapshot, queueBody)?.issue ?? null;
+export function queueNext(snapshot: QueueIssue[]): number | null {
+  return selectTicket(snapshot)?.issue ?? null;
 }
 
 export type SelectOutcome =
@@ -157,12 +147,11 @@ export type SelectOutcome =
 // noetige Label-Mutation aus und bestimmt MODE (start/resume).
 export function pickTicket(
   snapshot: QueueIssue[],
-  queueBody: string,
   gh: GhAdapter,
   state: StateAdapter,
   claimedElsewhere: ReadonlySet<number> = new Set(),
 ): SelectOutcome {
-  const selected = selectTicket(snapshot, queueBody, claimedElsewhere);
+  const selected = selectTicket(snapshot, claimedElsewhere);
   if (!selected) return { kind: 'none' };
 
   // `-s` in der Bash-Vorlage prueft Existenz UND Groesse > 0, nicht nur
@@ -185,13 +174,16 @@ export function pickTicket(
         role: selected.role,
         mode: selected.role === 'build' ? 'resume' : hasSession(selected.issue, selected.role) ? 'resume' : 'start',
       };
-    case 'queue':
+    case 'next':
+      // #725 AK3: 'next' faellt beim Start eines Bau-Laufs NICHT weg -- es
+      // verschwindet erst mit dem Ticket selbst (Schliessen/Merge). Nur
+      // 'ready' wird abgenommen, wie bisher im 'queue'-Zweig.
       if (selected.role === 'build') {
         gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress', '--remove-label', 'ready']);
         return { kind: 'ticket', issue: selected.issue, role: 'build', mode: 'start' };
       }
-      // #387 AC1: auch ein Denk-Ticket, das ueber die Queue kommt, bekommt
-      // in-progress -- ready bleibt unberuehrt (nur add, kein remove).
+      // #387 AC1: auch ein Denk-Ticket mit 'next' bekommt in-progress dazu --
+      // ready bleibt unberuehrt (nur add, kein remove).
       gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress']);
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
     case 'plan':

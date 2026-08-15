@@ -5,7 +5,7 @@
 # unangetastet. Ein fehlender/unlesbarer Wert pausiert NICHT dauerhaft.
 #
 # Reine Bash-Assertions, kein bats. Sourct claude-runner.sh (Source-Guard hält
-# main() an) und stubbt gh/git/claude per PATH -- analog queue-priority.test.sh.
+# main() an) und stubbt gh/git/claude per PATH -- analog next-priority.test.sh.
 set -uo pipefail
 
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -87,7 +87,6 @@ export REPO_DIR="$TMP/repo"
 export SHARED_DIR="$TMP/shared"
 mkdir -p "$REPO_DIR"
 export STATUS_ISSUE=999
-export QUEUE_ISSUE=0
 export MAX_ROUNDS=1
 # shellcheck source=/dev/null
 source "$RUNNER"

@@ -51,7 +51,6 @@ chmod +x "$FAKEBIN/gh"
 export PATH="$FAKEBIN:$PATH"
 
 export STATUS_ISSUE=999
-export QUEUE_ISSUE=0
 export MAX_ROUNDS=1
 
 # --- Wegwerf-Baeume ------------------------------------------------------

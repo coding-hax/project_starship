@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
-import { queueBody, queueSnapshot, waitingIssues } from './status';
+import { queueSnapshot, waitingIssues } from './status';
 
 function ghRouter(routes: Record<string, string>): GhAdapter {
   return {
@@ -69,22 +69,5 @@ describe('queueSnapshot', () => {
   it('leeres Array statt Absturz bei kaputtem JSON', () => {
     const gh = ghRouter({ 'issue list --state open': 'kein json' });
     expect(queueSnapshot(gh)).toEqual([]);
-  });
-});
-
-describe('queueBody', () => {
-  it('leer, wenn kein QUEUE_ISSUE gesetzt (<= 0)', () => {
-    const gh = ghRouter({});
-    expect(queueBody(0, gh)).toBe('');
-    expect(gh.run).not.toHaveBeenCalled();
-  });
-
-  it('holt den Body ueber gh issue view', () => {
-    const gh = ghRouter({ 'issue view 92': '#10\n#20' });
-    expect(queueBody(92, gh)).toBe('#10\n#20');
-  });
-
-  it('leer statt Fehler, wenn gh scheitert', () => {
-    expect(queueBody(92, throwingGh())).toBe('');
   });
 });

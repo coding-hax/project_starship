@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData, withDb } from './helpers';
 
 const ADD_LABEL = 'Routine anlegen';
@@ -18,6 +18,14 @@ function createDialog(page: Page) {
 
 function editDialog(page: Page) {
   return page.getByRole('dialog', { name: EDIT_LABEL });
+}
+
+/** A chip body's accessible name is either just the field name (leer) or
+ * `"${field}, ${value}"` (gesetzt) — anchored so a search for "Rhythmus" never
+ * also matches a radio inside its own panel (issue #711 AK6, mirrors
+ * `quickAddChip` in tasks.spec.ts). */
+function habitChip(dialog: Locator, field: string) {
+  return dialog.getByRole('button', { name: new RegExp(`^${field}(,|$)`) });
 }
 
 /** Scoped to the active list — the archived section has its own list further down. */
@@ -141,10 +149,12 @@ test('eine per FAB angelegte Routine erscheint sofort in der Liste', async ({ pa
   await expect(nameField(page)).toBeFocused();
 
   await nameField(page).fill('Wasser trinken');
-  await createDialog(page).getByRole('radio', { name: 'Wöchentlich' }).check();
-  await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
+  const dialog = createDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
 
-  await expect(createDialog(page)).toBeHidden();
+  await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
   await expect(item).toContainText('Wöchentlich');
@@ -171,6 +181,31 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK1 (issue #713): Namenszeile + Chip-Zeile, ein Chip öffnet sein Panel     */
+/* -------------------------------------------------------------------------- */
+
+test('das Sheet zeigt Namensfeld und Chip-Zeile; ein Chip öffnet sein Panel (issue #713 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await openAddHabit(page);
+  const dialog = createDialog(page);
+
+  await expect(nameField(page)).toBeVisible();
+  const rhythmChip = habitChip(dialog, 'Rhythmus');
+  const colorChip = habitChip(dialog, 'Farbe');
+  await expect(rhythmChip).toBeVisible();
+  await expect(colorChip).toBeVisible();
+  await expect(rhythmChip).toHaveAttribute('aria-expanded', 'false');
+  await expect(dialog.locator('.habit-editor__schedules')).toHaveCount(0);
+
+  await rhythmChip.click();
+
+  await expect(rhythmChip).toHaveAttribute('aria-expanded', 'true');
+  await expect(dialog.locator('.habit-editor__schedules')).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Tippen auf den Rhythmus stiehlt dem Namensfeld nicht den Fokus (#138)  */
 /* -------------------------------------------------------------------------- */
 
@@ -179,12 +214,14 @@ test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippe
 }) => {
   await page.goto('/routinen');
   await openAddHabit(page);
+  const dialog = createDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
 
   await nameField(page).pressSequentially('Wasser');
-  await createDialog(page).getByRole('radio', { name: 'Wöchentlich' }).click();
+  await dialog.getByRole('radio', { name: 'Wöchentlich' }).click();
 
   await expect(nameField(page)).toBeFocused();
-  await expect(createDialog(page).getByRole('radio', { name: 'Wöchentlich' })).toHaveAttribute(
+  await expect(dialog.getByRole('radio', { name: 'Wöchentlich' })).toHaveAttribute(
     'aria-checked',
     'true',
   );
@@ -192,25 +229,26 @@ test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippe
   await page.keyboard.type(' trinken');
   await expect(nameField(page)).toHaveValue('Wasser trinken');
 
-  await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
-  await expect(createDialog(page)).toBeHidden();
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
   await expect(item).toContainText('Wöchentlich');
 });
 
-test('Tastaturbedienung des Rhythmus bleibt unverändert: Tab erreicht die Auswahl, Pfeiltasten verschieben Fokus und Auswahl (#138)', async ({
+test('Pfeiltasten verschieben Fokus und Auswahl innerhalb der geöffneten Rhythmus-Gruppe (#138, ADR-0006)', async ({
   page,
 }) => {
   await page.goto('/routinen');
   await openAddHabit(page);
   await nameField(page).fill('Lesen');
 
-  await page.keyboard.press('Tab');
-  await expect(createDialog(page).getByRole('radio', { name: 'Täglich' })).toBeFocused();
+  const dialog = createDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
+  await dialog.getByRole('radio', { name: 'Täglich' }).focus();
 
   await page.keyboard.press('ArrowRight');
-  const weekly = createDialog(page).getByRole('radio', { name: 'Wöchentlich' });
+  const weekly = dialog.getByRole('radio', { name: 'Wöchentlich' });
   await expect(weekly).toBeFocused();
   await expect(weekly).toHaveAttribute('aria-checked', 'true');
 });
@@ -225,6 +263,7 @@ test('die Rhythmus-Auswahl bietet alle sechs Perioden an (issue #509 AC1)', asyn
   await openAddHabit(page);
 
   const dialog = createDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
   for (const label of [
     'Täglich',
     'Wöchentlich',
@@ -237,20 +276,26 @@ test('die Rhythmus-Auswahl bietet alle sechs Perioden an (issue #509 AC1)', asyn
   }
 });
 
-test('der Ziel-Zähler erscheint nur bei „Wöchentlich" und speichert den gewählten Wert (issue #509 AC1)', async ({
+test('der Ziel-Chip existiert nur bei „Wöchentlich" und speichert bzw. verwirft den Zähler (issue #713 AK2)', async ({
   page,
 }) => {
   await page.goto('/routinen');
   await openAddHabit(page);
-  const dialog = createDialog(page);
+  let dialog = createDialog(page);
 
-  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' })).toHaveCount(0);
+  await expect(habitChip(dialog, 'Ziel')).toHaveCount(0);
 
   await nameField(page).fill('Laufen');
+  await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
-  const counter = dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' });
-  await expect(counter).toBeVisible();
-  await counter.getByRole('radio', { name: '3' }).click();
+
+  const zielChip = habitChip(dialog, 'Ziel');
+  await expect(zielChip).toBeVisible();
+  await zielChip.click();
+  await dialog
+    .getByRole('radiogroup', { name: 'Wie oft pro Woche' })
+    .getByRole('radio', { name: '3' })
+    .click();
 
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
@@ -261,28 +306,30 @@ test('der Ziel-Zähler erscheint nur bei „Wöchentlich" und speichert den gew�
 
   const item = habitItems(page).filter({ hasText: 'Laufen' });
   await expect(item).toContainText('3× pro Woche');
-});
 
-test('wechselt man von „Wöchentlich" zu einer anderen Periode, verschwindet der Zähler und target bleibt 1 (issue #509)', async ({
-  page,
-}) => {
-  await page.goto('/routinen');
+  // Zweiter Durchlauf: weg von „Wöchentlich" lässt den Ziel-Chip verschwinden
+  // (nicht nur leer werden) und speichert target wieder als 1.
   await openAddHabit(page);
-  const dialog = createDialog(page);
-
+  dialog = createDialog(page);
   await nameField(page).fill('Großputz');
+  await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
-  await dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '5' }).click();
+  await habitChip(dialog, 'Ziel').click();
+  await dialog
+    .getByRole('radiogroup', { name: 'Wie oft pro Woche' })
+    .getByRole('radio', { name: '5' })
+    .click();
+  await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Monatlich' }).check();
 
-  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' })).toHaveCount(0);
+  await expect(habitChip(dialog, 'Ziel')).toHaveCount(0);
 
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
 
-  const entries = await page.evaluate(() => window.__starship.pending());
-  const last = entries[entries.length - 1];
-  expect(last.payload).toMatchObject({ schedule: 'monthly', target: 1 });
+  const entriesAfter = await page.evaluate(() => window.__starship.pending());
+  const lastAfter = entriesAfter[entriesAfter.length - 1];
+  expect(lastAfter.payload).toMatchObject({ schedule: 'monthly', target: 1 });
 });
 
 test('Tippen auf eine andere Periode lässt den Fokus im Namensfeld (Erweiterung von #138 auf issue #509)', async ({
@@ -290,12 +337,14 @@ test('Tippen auf eine andere Periode lässt den Fokus im Namensfeld (Erweiterung
 }) => {
   await page.goto('/routinen');
   await openAddHabit(page);
+  const dialog = createDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
 
   await nameField(page).pressSequentially('Vitamine');
-  await createDialog(page).getByRole('radio', { name: 'Monatlich' }).click();
+  await dialog.getByRole('radio', { name: 'Monatlich' }).click();
 
   await expect(nameField(page)).toBeFocused();
-  await expect(createDialog(page).getByRole('radio', { name: 'Monatlich' })).toBeChecked();
+  await expect(dialog.getByRole('radio', { name: 'Monatlich' })).toBeChecked();
 
   await page.keyboard.type('!');
   await expect(nameField(page)).toHaveValue('Vitamine!');
@@ -314,8 +363,8 @@ test('eine Routine ohne target-Feld aus der Zeit vor #509 zeigt sich unveränder
 
   await tapHabit(page, 'Alte Routine');
   const dialog = editDialog(page);
-  await expect(dialog.getByRole('radio', { name: 'Wöchentlich' })).toBeChecked();
-  await expect(dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '1' })).toBeChecked();
+  await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Wöchentlich');
+  await expect(habitChip(dialog, 'Ziel')).toHaveText('1×');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -331,7 +380,7 @@ test('Tippen auf eine Routine öffnet den Editor mit Name und Rhythmus', async (
   const dialog = editDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveValue('Joggen');
-  await expect(dialog.getByRole('radio', { name: 'Wöchentlich' })).toBeChecked();
+  await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Wöchentlich');
 });
 
 test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensatz', async ({
@@ -342,6 +391,7 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
 
   await tapHabit(page, 'Lesen');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
@@ -358,6 +408,7 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async 
 
   await tapHabit(page, 'Dehnen');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Koralle' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
@@ -384,7 +435,7 @@ const COLOR_LABELS_658 = [
   'Magenta',
 ];
 
-test('der Farbwähler zeigt genau zehn Optionen in der festgelegten Reihenfolge (issue #658 AC1)', async ({
+test('der Farb-Picker zeigt alle zehn Swatches aus SWATCH_PALETTE in der bindenden Reihenfolge mit ihren aria-labeln (issue #713 AK3)', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -392,6 +443,7 @@ test('der Farbwähler zeigt genau zehn Optionen in der festgelegten Reihenfolge 
 
   await tapHabit(page, 'Zehn Farben');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   const radios = dialog.locator('.habit-editor__colors').getByRole('radio');
   await expect(radios).toHaveCount(10);
 
@@ -407,6 +459,7 @@ test('die Farboptionen sind per Pfeiltasten innerhalb der Radiogruppe erreichbar
 
   await tapHabit(page, 'Pfeiltasten-Farbe');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Grün (Standard)' }).focus();
 
   await page.keyboard.press('ArrowRight');
@@ -424,6 +477,7 @@ test('jede Farboption hat eine Trefferfläche von mindestens 44×44px (issue #65
 
   await tapHabit(page, 'Trefferfläche');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   const options = dialog.locator('.habit-editor__color-option');
   await expect(options).toHaveCount(10);
 
@@ -447,6 +501,7 @@ test('eine neu gewählte Farbe (--swatch-lime) übersteht einen Reload und ersch
 
   await tapHabit(page, 'Limette wählen');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Limette' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
@@ -469,6 +524,7 @@ test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (i
 
   await tapHabit(page, 'Farbe offline ändern');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Himmelblau' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
@@ -571,7 +627,7 @@ test('die Journal-Routine hat keinen Archivieren-Button, eine normale Routine we
   await expect(joggenItem.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
 });
 
-test('der Editor der Journal-Routine zeigt nur den Rhythmus, kein Namens- oder Farbfeld (issue #505 AC3)', async ({
+test('die Journal-Routine behält ihren Sonderfall: kein Name, keine Farbe, nur Täglich/Wöchentlich als Rhythmus (issue #713 AK4)', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -581,8 +637,13 @@ test('der Editor der Journal-Routine zeigt nur den Rhythmus, kein Namens- oder F
   const dialog = editDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveCount(0);
+  await expect(habitChip(dialog, 'Farbe')).toHaveCount(0);
   await expect(dialog.locator('.habit-editor__colors')).toHaveCount(0);
+  await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Täglich');
+
+  await habitChip(dialog, 'Rhythmus').click();
   await expect(dialog.getByRole('radio', { name: 'Täglich' })).toBeChecked();
+  await expect(dialog.getByRole('radio')).toHaveCount(2);
 
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
@@ -687,7 +748,9 @@ test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outb
 
   await tapHabit(page, 'Rhythmus wechseln');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
+  await habitChip(dialog, 'Ziel').click();
   await dialog.getByRole('radiogroup', { name: 'Wie oft pro Woche' }).getByRole('radio', { name: '4' }).click();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
@@ -768,6 +831,7 @@ test('alle zehn Swatch-Hintergrundfarben sind paarweise verschieden und von --su
 
   await tapHabit(page, 'Farbvergleich');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   const swatches = dialog.locator('.habit-editor__color-swatch');
   await expect(swatches).toHaveCount(10);
 
@@ -805,6 +869,7 @@ test('eine Routine auf --area-tasks bleibt nach der Erweiterung auf zehn Farben 
 
   await tapHabit(page, 'Bestandsfarbe');
   const dialog = editDialog(page);
+  await habitChip(dialog, 'Farbe').click();
   await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
   const checkedCount = await dialog.locator('.habit-editor__colors input:checked').count();
   expect(checkedCount).toBe(1);

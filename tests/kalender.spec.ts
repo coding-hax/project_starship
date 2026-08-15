@@ -1106,6 +1106,25 @@ test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der
 const CREATE_LABEL = 'Termin erfassen';
 const EDIT_LABEL = 'Termin bearbeiten';
 
+/**
+ * Issue #712: Von/Bis/Ganztägig, Wiederholung und Kategorie sit behind a chip
+ * now — its panel must be open before a field inside it is touched. Scoped by
+ * role (not `getByLabel`), since a chip's own accessible name and its open
+ * panel's control can share the same text ("Kategorie", "Wiederholung") —
+ * `getByLabel` doesn't filter by role and would match both.
+ */
+function wannChip(scope: Page | Locator): Locator {
+  return scope.getByRole('button', { name: /^Wann/ });
+}
+
+function wiederholungChip(scope: Page | Locator): Locator {
+  return scope.getByRole('button', { name: /Wiederholung/ });
+}
+
+function kategorieChip(scope: Page | Locator): Locator {
+  return scope.getByRole('button', { name: /Kategorie/ });
+}
+
 test('ein neu angelegter Termin erscheint sofort in der Timeline (#554 AC1)', async ({ page }) => {
   await page.getByRole('button', { name: CREATE_LABEL }).click();
   await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeVisible();
@@ -1113,9 +1132,11 @@ test('ein neu angelegter Termin erscheint sofort in der Timeline (#554 AC1)', as
   await page.getByLabel('Titel').fill('Zahnarzttermin');
   // Mittags gefüllt (TZ-robust, siehe Testplan) — Sichtbarkeit ist die Aussage,
   // nicht die exakte Stundenposition (die deckt schon kalender.spec.ts's AC1 ab).
+  await wannChip(page).click();
   await page.getByLabel('Von').fill(`${TODAY}T12:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
-  await page.getByLabel('Kategorie').selectOption('gesundheit');
+  await kategorieChip(page).click();
+  await page.getByRole('combobox', { name: 'Kategorie' }).selectOption('gesundheit');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeHidden();
@@ -1185,6 +1206,7 @@ test('ein offline angelegter Termin steht sofort lokal und erreicht nach dem Onl
 
   await page.getByRole('button', { name: CREATE_LABEL }).click();
   await page.getByLabel('Titel').fill('Im Zug erfasst');
+  await wannChip(page).click();
   await page.getByLabel('Von').fill(`${TODAY}T12:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T13:00`);
   await page.getByRole('button', { name: 'Anlegen' }).click();
@@ -1211,6 +1233,7 @@ test('der ganztägig-Umschalter wechselt zwischen Uhrzeit- und reinem Datumsfeld
 }) => {
   await page.getByRole('button', { name: CREATE_LABEL }).click();
   await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeVisible();
+  await wannChip(page).click();
 
   await expect(page.getByLabel('Von')).toHaveAttribute('type', 'datetime-local');
 
@@ -1411,9 +1434,11 @@ test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche s
 }) => {
   await page.getByRole('button', { name: CREATE_LABEL }).click();
   await page.getByLabel('Titel').fill('Yoga');
+  await wannChip(page).click();
   await page.getByLabel('Von').fill(`${TODAY}T18:00`);
   await page.getByLabel('Bis').fill(`${TODAY}T19:00`);
-  await page.getByLabel('Wiederholung', { exact: true }).selectOption('weekly');
+  await wiederholungChip(page).click();
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('weekly');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
   await expect(eventCard(page, 'Yoga')).toBeVisible();
@@ -1426,16 +1451,17 @@ test('das Intervall-Feld und die Wochentage erscheinen nur, wenn eine Wiederholu
   page,
 }) => {
   await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wiederholungChip(page).click();
   await expect(page.getByLabel('Intervall')).toHaveCount(0);
 
-  await page.getByLabel('Wiederholung', { exact: true }).selectOption('weekly');
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('weekly');
   await expect(page.getByLabel('Intervall')).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Mo' })).toBeVisible();
 
-  await page.getByLabel('Wiederholung', { exact: true }).selectOption('daily');
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('daily');
   await expect(page.getByRole('checkbox', { name: 'Mo' })).toHaveCount(0);
 
-  await page.getByLabel('Wiederholung', { exact: true }).selectOption('');
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('');
   await expect(page.getByLabel('Intervall')).toHaveCount(0);
 });
 
@@ -1463,6 +1489,7 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
 
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
   // `datetime-local` is read back in the *browser's* local time (CI runs UTC,
   // no timezoneId override) — fill the UTC clock time that reads 19:00–20:00
   // once the card renders it back in Berlin time (CEST, UTC+2).
@@ -1511,6 +1538,7 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await nextWeek(page, 1);
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
   // Same UTC-vs-Berlin offset as the "nur dieser" test above.
   await page.getByLabel('Von').fill('2026-07-25T17:00');
   await page.getByLabel('Bis').fill('2026-07-25T18:00');
@@ -1529,6 +1557,118 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   // Back on the series' own first occurrence, the original time survives.
   await prevWeek(page, 2);
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #712: Termin-Sheet auf Zeile und Chips                                     */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: das Create-Sheet zeigt Titelzeile plus drei Chips, Von steht erst nach dem Öffnen des Wann-Chips im DOM', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  const dialog = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(dialog).toBeVisible();
+
+  await expect(dialog.getByLabel('Titel')).toBeVisible();
+  await expect(wannChip(dialog)).toBeVisible();
+  await expect(wiederholungChip(dialog)).toBeVisible();
+  await expect(kategorieChip(dialog)).toBeVisible();
+  await expect(dialog.getByLabel('Von')).toHaveCount(0);
+
+  await wannChip(dialog).click();
+  await expect(dialog.getByLabel('Von')).toBeVisible();
+});
+
+test('AK2: der Wann-Chip öffnet Ganztägig-Schalter sowie Von und Bis als Pflichtfelder', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  await expect(page.getByRole('switch', { name: 'Ganztägig' })).toBeVisible();
+  await expect(page.getByLabel('Von')).toHaveAttribute('required', '');
+  await expect(page.getByLabel('Bis')).toHaveAttribute('required', '');
+
+  // Ganztägig umschalten wechselt weiterhin das Zeitmodell — required bleibt.
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await expect(page.getByLabel('Von')).toHaveAttribute('type', 'date');
+  await expect(page.getByLabel('Von')).toHaveAttribute('required', '');
+  await expect(page.getByLabel('Bis')).toHaveAttribute('required', '');
+});
+
+test('AK3b: eine Serie mit Ende „Am ⟨Datum⟩" behält beim Wiederöffnen das gewählte Enddatum (Achtung: beide RRULE-Enden bleiben erreichbar)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await page.getByLabel('Titel').fill('Bis Monatsende');
+  await wannChip(page).click();
+  await page.getByLabel('Von').fill(`${TODAY}T09:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T10:00`);
+  await wiederholungChip(page).click();
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('daily');
+  await page.getByLabel('Endet am').fill('2026-08-01');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await eventCard(page, 'Bis Monatsende').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wiederholungChip(page).click();
+
+  // Reihenfolge der drei Radios im DOM: Nie / Am / Nach — stabiler als ihr
+  // accessible name, der beim "Nach"-Radio das genestete Zahlenfeld einschließt.
+  const endRadios = page.locator('input[name="recurrence-end"]');
+  await expect(endRadios.nth(1)).toBeChecked();
+  await expect(endRadios.nth(2)).not.toBeChecked();
+  await expect(page.getByLabel('Endet am')).toHaveValue('2026-08-01');
+});
+
+test('AK3c: eine Serie mit Ende „Nach ⟨N⟩ ×" behält beim Wiederöffnen die gewählte Anzahl, Endet-am bleibt leer', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await page.getByLabel('Titel').fill('Fünf Mal');
+  await wannChip(page).click();
+  await page.getByLabel('Von').fill(`${TODAY}T09:00`);
+  await page.getByLabel('Bis').fill(`${TODAY}T10:00`);
+  await wiederholungChip(page).click();
+  await page.getByRole('combobox', { name: 'Wiederholung', exact: true }).selectOption('daily');
+  await page.getByLabel('Anzahl Wiederholungen').fill('5');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await eventCard(page, 'Fünf Mal').click();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wiederholungChip(page).click();
+
+  const endRadios = page.locator('input[name="recurrence-end"]');
+  await expect(endRadios.nth(2)).toBeChecked();
+  await expect(endRadios.nth(1)).not.toBeChecked();
+  await expect(page.getByLabel('Anzahl Wiederholungen')).toHaveValue('5');
+  await expect(page.getByLabel('Endet am')).toHaveValue('');
+});
+
+test('AK4: Löschen erscheint als Textknopf im Fuß nur im Bearbeiten-, nicht im Anlegen-Modus', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  const createDialog = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(createDialog).toBeVisible();
+  await expect(createDialog.getByRole('button', { name: 'Löschen' })).toHaveCount(0);
+  await createDialog.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(createDialog).toBeHidden();
+
+  await seedEvent(page, {
+    title: 'Zu bearbeiten',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await eventCard(page, 'Zu bearbeiten').click();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await expect(editDialog.getByRole('button', { name: 'Löschen' })).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */

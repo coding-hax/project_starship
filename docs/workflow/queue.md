@@ -1,63 +1,81 @@
-# Die Prioritäts-Queue
+# Die Queue: das Label `next`
 
-**Die Prioritäts-Queue (#91, umgebaut #109) — eine flache Reihenfolge, Label egal:**
-Das angepinnte **Queue-Issue** (`QUEUE_ISSUE`) ist eine schlichte, geordnete Liste von
-`#NN`. **Wer gelistet ist, wird bearbeitet — in genau dieser Reihenfolge**, ganz ohne
-`ready` zu setzen. Das Eintragen in die Queue **ersetzt** die `ready`-Freigabe.
+**Die Regel bleibt wörtlich (#91, umgebaut #109, #725/ADR-0023): Es gibt eine
+Queue; ist sie leer, greift die Label-Kaskade.** Nur ist die Queue seit #725
+„alle Tickets mit dem Label `next`" statt einer Zeilenreihenfolge in einem
+angepinnten Queue-Issue.
 
 ```
-- #101
-- #98 nach #101
-- #104
+1. in-progress    laufender Lauf
+2. next           <- die Queue
+3. plan
+4. research
+5. ready
 ```
 
-Zahlen oben = zuerst. Wichtig:
+Ein Ticket mit `next` **wird bearbeitet, vor jedem anderen ohne `next`** —
+je ältestes `createdAt`, wenn mehrere Tickets `next` tragen. Das
+**Rollenlabel bleibt daneben bestehen** und entscheidet, was passiert:
+`plan` → Planlauf, `research` → Recherche, sonst Bau. `next` selbst sagt
+nichts über die Rolle.
 
-- **Nur Zeilen, die mit `- #` beginnen, zählen** (seit #265) — und zwar ohne
-  Einrückung, direkt am Zeilenanfang. Alles andere ist Notiz: Überschriften,
-  Fließtext, Tabellen und **eingerückte** Beispiele dürfen wieder ganz normal
-  Ticketnummern mit Raute enthalten. Vorher zählte **jede** `#NN` im Body, auch
-  die in Notizen; dagegen half nur eine Warnung im Issue, an die jemand denken
-  musste. Der Irrtum geht jetzt in die sichere Richtung: ein versehentlich
-  eingerückter Eintrag wird **nicht** gebaut, und das fällt im Status auf.
-- **Die erste Nummer der Zeile ist der Eintrag, jede weitere eine
-  Voraussetzung.** `- #98 nach #101` heißt: #98 kommt erst dran, wenn #101
-  **geschlossen** ist (beim Merge passiert das über `Closes #` von selbst).
-  Bewertet wird bei **jeder** Auswahl neu — nach einem Merge ist also nichts
-  nachzulabeln. Das Wort zwischen den Nummern (`nach`, `braucht`, …) ist reine
-  Lesbarkeit und wird nicht ausgewertet.
-- **`blocked-by` zeigt es am Ticket an** — gesetzt und wieder entfernt vom
-  Runner, nicht von dir. Eine Voraussetzung, die es gar nicht gibt (Tippfehler),
-  zählt als erfüllt: ein Zahlendreher soll ein Ticket nicht still für immer
-  begraben.
-- **Zirkel** (`- #1 nach #2` und `- #2 nach #1`) meldet der Runner im
+- **`next` fällt nicht mit dem Start eines Bau-Laufs weg** — nur `ready`
+  wird abgenommen, wie bisher. `next` verschwindet erst mit dem Ticket
+  selbst (Schließen/Merge).
+- **Weiterhin ausgeschlossen:** `needs-answer` (wartet auf dich) und
+  `hands-off` (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht
+  genommen, wenn es `next` trägt. Beide filtern **zentral, vor allen
+  Zweigen** — das gilt für `next` genauso wie für `plan`/`research`/`ready`.
+- **Sicherheit:** Ein versehentlich mit `next` markiertes, unfertiges Ticket
+  wird gebaut. Einen Merge-Schutz für geschützte Pfade gibt es nicht mehr
+  (#276, #283).
+- **Kein `next`-Ticket → reiner Fallback**, also die Label-Kaskade
+  `plan` → `research` → `ready`, je ältestes `createdAt`.
+
+## `Nach:` im Ticket-Body
+
+Die zweite Frage, die die alte Queue vermischte — „kommt dieses Ticket
+überhaupt dran, oder wartet es auf ein anderes?" —, ist von `next` getrennt
+und lebt seit #724 als eigene Zeile im TICKET-Body selbst:
+
+```
+Nach: #687
+```
+
+Zeilenanker (kein Fließtext-Trigger); mehrere Nummern je Zeile
+(`Nach: #687 #690`) und mehrere `Nach:`-Zeilen sind erlaubt. Ausgewertet wird
+bei **jeder** Auswahl gegen den offenen Bestand: Eine Voraussetzung gilt als
+erfüllt, sobald ihr Ticket nicht mehr offen ist (beim Merge passiert das über
+`Closes #` von selbst). Eine Nummer, die es gar nicht gibt, zählt ebenfalls
+als erfüllt — ein Zahlendreher darf ein Ticket nicht still für immer
+begraben.
+
+- **`blocked-by` zeigt eine offene Voraussetzung am Ticket an** — gesetzt und
+  wieder entfernt vom Runner, nicht von dir.
+- **Zirkel** (`#1` nach `#2` und `#2` nach `#1`) meldet der Runner im
   Status-Issue; keins der beteiligten Tickets wird gebaut.
-- **Das Label ist für die Auswahl egal.** Ein gelistetes Ticket wird bearbeitet, auch
-  ohne `ready`. Die **Rolle** kommt weiter aus dem Label: `plan` → Planlauf,
-  `research` → Recherche, **sonst bauen**.
-- **Weiterhin ausgeschlossen:** `needs-answer` (wartet auf dich) und `hands-off`
-  (Kill-Switch) — ein so markiertes Ticket wird auch dann nicht genommen, wenn es
-  gelistet ist.
-- **Sicherheit:** Weil die Liste das Freigabesignal ist, wird ein versehentlich
-  gelistetes, unfertiges Ticket gebaut. Einen Merge-Schutz für geschützte Pfade gibt es nicht mehr (#276, #283).
-- **Nicht Gelistetes** läuft über den Fallback: die bisherige Label-Reihenfolge
-  (`plan` → `research` → `ready`, je ältestes `createdAt`). Solange die Liste
-  etwas Baubares enthält, kommt davon allerdings nichts dran — deshalb **nennt
-  das Status-Issue jedes nicht gelistete `ready`-Ticket**, damit dir das nicht
-  wochenlang entgeht (#265).
-- **Erledigte Einträge** bleiben stehen, bis **du** sie streichst. Der Runner
-  schreibt das Queue-Issue nicht um; er weist im Status aus, was weg kann.
-- **Leeres/fehlendes Queue-Issue → reiner Fallback**, also das bisherige Verhalten.
+- **Wer `Nach:` schreibt:** der Planer, im selben Schritt, in dem er
+  Kind-Tickets anlegt — er kennt die Reihenfolge, die er gerade selbst
+  entworfen hat. Ein Mensch darf die Zeile jederzeit vom Handy aus in einen
+  Body schreiben oder streichen.
 
-Vom Handy aus editierst du dafür nur den Issue-Body — kein Commit, kein Branch.
+Vom Handy aus setzt du die Priorität dafür nur noch als Label am Ticket —
+kein Issue-Body zum Pflegen, kein Commit, kein Branch.
 
 Einfache/mechanische Tickets (klarer CSS-Fix, Doku, Umbenennung) überspringen
 `plan` und gehen direkt auf `ready` — der Planungsschritt würde hier nur
 Tokens kosten, ohne die Ausführung konkreter zu machen.
 
-**Kein extra Code-Änderungsbedarf am Runner für den Fallback:** Ohne
-Queue-Eintrag gilt weiterhin die Label-Kaskade — ein Ticket mit `plan`
-oder `research` und ohne `ready` liegt dort automatisch still, auch ohne
-eigene Guard-Logik. Ist das Ticket dagegen gelistet, entscheidet allein die
-Reihenfolge in der Queue (siehe oben); das Label ist dann nur noch für die
-**Rolle** relevant (Plan/Recherche/Bau), nicht mehr für die Auswahl.
+**Kein extra Code-Änderungsbedarf am Runner für den Fallback:** Ohne `next`
+gilt weiterhin die Label-Kaskade — ein Ticket mit `plan` oder `research` und
+ohne `ready` liegt dort automatisch still, auch ohne eigene Guard-Logik.
+Trägt das Ticket dagegen `next`, entscheidet allein dieses Label die
+Reihenfolge; das Rollenlabel ist dann nur noch für die **Rolle** relevant
+(Plan/Recherche/Bau), nicht mehr für die Auswahl.
+
+## Was mit #725 verschwunden ist
+
+Das angepinnte Queue-Issue (#92) samt Zeilenreihenfolge (`- #NN`), der
+Meldung „In der Queue erledigt, kannst du streichen" und der Meldung über
+nicht gelistete `ready`-Tickets — siehe [ADR-0023](../adr/0023-queue-verschwindet-als-ort.md)
+für die Begründung. Issue #92 selbst ist geschlossen, nicht gelöscht.

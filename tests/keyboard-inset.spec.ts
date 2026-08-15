@@ -133,6 +133,13 @@ test.describe('Rhythmus-Auswahl behält Fokus bei Zeigergeräten (#138)', () => 
     // speed. `getAnimations()` covers CSS transitions too, not just `@keyframes`.
     await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
 
+    // The schedule radios live behind the Rhythmus chip's panel since #713 —
+    // open it (and hand focus back to the name field, mirroring a real
+    // mid-typing user) before the "before" snapshot, so both snapshots see the
+    // same panel-open layout and only the guarded radio click sits between them.
+    await page.getByRole('button', { name: /^Rhythmus(,|$)/ }).click();
+    await nameField.focus();
+
     await page.evaluate(() => {
       const vv = window.visualViewport!;
       const shrunk = window.innerHeight - 300;
@@ -194,6 +201,13 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     const nameField = page.getByRole('textbox', { name: 'Name' });
     await expect(nameField).toBeFocused();
     const sheetContent = page.getByRole('dialog').locator('.sheet__content');
+    // Wait out the sheet's own opening transition (sheet.css's transform/opacity,
+    // `--duration-base`) before measuring — same reasoning as the #138 test above:
+    // reading a position before it settles races that transition, not the
+    // keyboard-inset regression this test actually guards. The shorter chip-row
+    // content (#713) settles fast enough that this race was previously masked by
+    // slower reflow of the old, taller inline field list.
+    await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
 
     await shrinkViewportForKeyboard(page);
 
@@ -226,9 +240,10 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await registerPasskey(page);
     await page.goto('/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
-    // "Wöchentlich" reveals the 1–6× target picker (issue #509) — tall enough
-    // together with the six schedule radios and four colour options to exceed
-    // the ~512px left once a 300px keyboard covers the bottom of a 812px screen.
+    // The six stacked schedule radios (behind the Rhythmus chip's panel since
+    // #713) are tall enough on their own to exceed the ~512px left once a
+    // 300px keyboard covers the bottom of a 812px screen.
+    await page.getByRole('button', { name: /^Rhythmus(,|$)/ }).click();
     await page.getByRole('radio', { name: 'Wöchentlich' }).click();
 
     await shrinkViewportForKeyboard(page);
