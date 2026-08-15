@@ -1,29 +1,23 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  FIXED_NOW,
-  installClockAt,
-  registerPasskey,
-  resetAppData,
-  selectView,
-  withDb,
-} from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
-const CONFIRM_LABEL = 'Aufgabe bestätigen';
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
+}
+
+function captureDialog(page: Page) {
+  return page.getByRole('dialog', { name: CAPTURE_LABEL });
 }
 
 function captureTitleField(page: Page) {
   return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
 }
 
-function confirmDialog(page: Page) {
-  return page.getByRole('dialog', { name: CONFIRM_LABEL });
-}
-
-/** Scoped to the task list — the undo toast's own message embeds the title too. */
+/** Scoped to the full list on `/aufgaben` — the undo toast's own message
+ * embeds the title too, and `/uebersicht`'s own Aufgaben-Sektion uses a
+ * `aria-labelledby`-Überschrift statt eines wörtlichen `aria-label`. */
 function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
@@ -74,36 +68,37 @@ test('AC1: der Erfassungsknopf ist auf /uebersicht sichtbar, öffnet das Sheet, 
   await expect(captureTitleField(page)).toBeFocused();
 });
 
-test('AC2: Freitext mit Datum navigiert nach /aufgaben und öffnet CaptureConfirm vorbefüllt', async ({
+test('AC2: Freitext mit Datum zeigt die geratene Fälligkeit inline im Kern-Sheet, kein Bestätigen-Dialog mehr (issue #715 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   // Kein "um 12" mehr: seit #619 macht eine explizite Uhrzeit daraus einen Termin
-  // (Router landet dann auf /kalender, siehe capture-router.spec.ts) — reines
-  // Datum ohne Uhrzeit bleibt task, genau was dieser Test hier prüfen will.
+  // (siehe capture-router.spec.ts) — reines Datum ohne Uhrzeit bleibt task, genau
+  // was dieser Test hier prüfen will.
   const due = expectedDueAt(1, 9, 0);
 
-  await submitUebersichtCapture(page, 'Arzt anrufen morgen');
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Arzt anrufen morgen');
 
-  await page.waitForURL('**/aufgaben');
-  const dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue(
-    'Arzt anrufen',
-  );
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(page.getByRole('dialog', { name: 'Aufgabe bestätigen' })).toHaveCount(0);
+  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
+  await expect(dueChip).toBeVisible();
+  await dueChip.click();
+  // Nicht `getByLabel('Fälligkeit')`: `/uebersicht`s eigene „Fällige Aufgaben"-
+  // Sektion (task-list.tsx) und das AK4-„Mehr"-Sheet (task-editor.tsx) tragen je
+  // ein eigenes, immer gemountetes Feld gleichen Namens im DOM.
+  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(isoToLocalInput(due));
 });
 
-test('AC3: Bestätigen legt die Aufgabe an, sie erscheint in der Liste', async ({ page }) => {
+test('AC3: "Anlegen" legt die Aufgabe direkt an, sie erscheint in der Liste', async ({ page }) => {
   await page.goto('/uebersicht');
+
   await submitUebersichtCapture(page, 'Arzt anrufen morgen');
-  await page.waitForURL('**/aufgaben');
 
-  const dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  await page.goto('/aufgaben');
   await expect(taskItems(page).filter({ hasText: 'Arzt anrufen' })).toBeVisible();
 });
 
@@ -113,13 +108,15 @@ test('AC4: Freitext ohne Datum legt die Aufgabe ohne Fälligkeit sofort an, kein
   await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'Wäsche waschen');
 
-  await page.waitForURL('**/aufgaben');
-  await selectView(page, 'Alle');
-  await expect(confirmDialog(page)).toBeHidden();
-  await expect(taskItems(page).filter({ hasText: 'Wäsche waschen' })).toBeVisible();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({ title: 'Wäsche waschen' });
+  expect(created?.payload.dueAt).toBeUndefined();
 });
 
-test('AC5: "ohne Bestätigung direkt anlegen" greift auch von der Übersicht her — kein Sheet, Undo-Toast', async ({
+test('AC5: "ohne Bestätigung direkt anlegen" hat auf der Übersicht keine Wirkung mehr — es gibt dort ohnehin nie einen Zwischenschritt (issue #715 AK3)', async ({
   page,
 }) => {
   await enableDirectCapture(page);
@@ -128,24 +125,21 @@ test('AC5: "ohne Bestätigung direkt anlegen" greift auch von der Übersicht her
   // Keine explizite Uhrzeit (siehe AC2-Kommentar oben) — bleibt task.
   await submitUebersichtCapture(page, 'Übergabe morgen');
 
-  await page.waitForURL('**/aufgaben');
-  await expect(confirmDialog(page)).toBeHidden();
-  await expect(taskItems(page).filter({ hasText: 'Übergabe' })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'angelegt' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({ title: 'Übergabe' });
 });
 
-test('AC6: offline auf der Übersicht erfasst, bestätigt, erreicht online die Datenbank', async ({
-  page,
-}) => {
+test('AC6: offline auf der Übersicht erfasst, erreicht online die Datenbank', async ({ page }) => {
   await page.goto('/uebersicht');
   // beforeEach already cut the sync endpoints — that's what a train tunnel looks
   // like to the outbox. Keine explizite Uhrzeit (siehe AC2-Kommentar oben) — bleibt task.
   await submitUebersichtCapture(page, 'Im Zug notiert morgen');
-  await page.waitForURL('**/aufgaben');
-  await confirmDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 
-  await expect(taskItems(page).filter({ hasText: 'Im Zug notiert' })).toBeVisible();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await page.unroute('**/api/sync/**');
@@ -190,7 +184,7 @@ test('AC9: bei 375px und erhöhter --font-scale bleibt die Titelzeile ohne horiz
   }
 });
 
-test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben einen sauberen Titel und das richtige absolute Datum — seit #619 als Termin (explizite Uhrzeit routet nach /kalender)', async ({
+test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben einen sauberen Titel und das richtige absolute Datum — als Termin in-place angelegt (issue #715 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -198,11 +192,11 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
 
   await submitUebersichtCapture(page, 'Zahnarzt morgen um zwölf.');
 
-  await page.waitForURL('**/kalender');
-  const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'events');
+  expect(created?.payload).toMatchObject({ title: 'Zahnarzt', startsAt: due.toISOString() });
 });
 
 test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK2)', async ({
