@@ -207,3 +207,148 @@ test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK2)
 
   await expect(captureTitleField(page)).toHaveAttribute('placeholder', 'Todo Titel');
 });
+
+/**
+ * Mehrfaches Einsprechen führt zusammen (issue #716): der Stand lebt in den Chips
+ * statt im Text, jede Äußerung ist eine eigene, vollständige Eingabe. Ein Test je
+ * Akzeptanzkriterium, plus der Offline-Pfad — die Testanzahl darf nicht sinken.
+ */
+async function typeAndCommit(page: Page, text: string) {
+  await captureTitleField(page).fill(text);
+  await captureTitleField(page).press('Enter');
+}
+
+test('AK1: die Eingabezeile leert sich nach der Übernahme, der Stand lebt im Titel-Chip', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await typeAndCommit(page, 'Zahnarzt');
+
+  await expect(captureTitleField(page)).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Titel, Zahnarzt', exact: true })).toBeVisible();
+});
+
+test('AK2: eine genannte Fälligkeit überschreibt die vorherige', async ({ page }) => {
+  await page.goto('/uebersicht');
+  const tomorrow = expectedDueAt(1, 9, 0);
+  const dayAfterTomorrow = expectedDueAt(2, 9, 0);
+
+  await captureButton(page).click();
+  await typeAndCommit(page, 'Einkaufen');
+  await typeAndCommit(page, 'morgen');
+
+  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
+  await dueChip.click();
+  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(isoToLocalInput(tomorrow));
+
+  await typeAndCommit(page, 'übermorgen');
+  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(
+    isoToLocalInput(dayAfterTomorrow),
+  );
+});
+
+test('AK3: was eine Äußerung nicht nennt, bleibt unangetastet stehen — auch der Titel (Füllwort-Schutz)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await typeAndCommit(page, 'Einkaufen morgen');
+  await expect(page.getByRole('button', { name: 'Titel, Einkaufen', exact: true })).toBeVisible();
+
+  await typeAndCommit(page, 'um 15 Uhr');
+  await expect(page.getByRole('button', { name: 'Titel, Einkaufen', exact: true })).toBeVisible();
+  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
+  await dueChip.click();
+  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(/T15:00$/);
+
+  await typeAndCommit(page, 'eher');
+  await expect(page.getByRole('button', { name: 'Titel, Einkaufen', exact: true })).toBeVisible();
+});
+
+test('AK4: ein übernommenes Feld behält seine Konfidenz, bis es erneut genannt wird', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await typeAndCommit(page, 'Zahnarzt morgen');
+  await expect(page.getByRole('button', { name: 'Fälligkeit verwerfen' })).toBeVisible();
+
+  await typeAndCommit(page, 'Titel Zahntermin');
+  await expect(page.getByRole('button', { name: 'Fälligkeit verwerfen' })).toBeVisible();
+
+  await typeAndCommit(page, 'um 15 Uhr');
+  await expect(page.getByRole('button', { name: 'Fälligkeit verwerfen' })).toHaveCount(0);
+});
+
+test('AK5: eine Übernahme markiert die geänderten Chips und sagt die Änderung in einem Satz an', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await typeAndCommit(page, 'Einkaufen');
+  await typeAndCommit(page, 'morgen um 15 Uhr');
+
+  const dueChipContainer = page
+    .locator('.chip')
+    .filter({ has: page.getByRole('button', { name: /^Fälligkeit,/ }) });
+  await expect(dueChipContainer).toHaveAttribute('data-changed', 'true');
+  await expect(page.getByRole('status').filter({ hasText: 'aktualisiert' })).toBeVisible();
+});
+
+test('AK6: ein Artwechsel hebt Felder ohne Gegenstück aus der Anzeige und bringt sie beim Zurückwechseln wieder', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+
+  await typeAndCommit(page, 'Einkaufen');
+  await page.getByRole('button', { name: 'Priorität' }).click();
+  await page.getByRole('radio', { name: 'Hoch' }).click();
+
+  await page.getByRole('button', { name: 'Art, Aufgabe', exact: true }).click();
+  await page.getByRole('radio', { name: 'Termin' }).click();
+
+  await expect(page.getByRole('status').filter({ hasText: 'Priorität entfällt' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Priorität' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Art, Termin', exact: true }).click();
+  await page.getByRole('radio', { name: 'Aufgabe' }).click();
+
+  await expect(page.getByRole('button', { name: 'Priorität, Hoch', exact: true })).toBeVisible();
+});
+
+test('Offline (DoD): über zwei Äußerungen erfasst, erreicht online die Datenbank', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const due = expectedDueAt(1, 12, 0);
+
+  await captureButton(page).click();
+  // "Termin" alleine trägt schon das Art-Vokabular (local-recognizer.ts) — die
+  // zweite Äußerung liefert Titel + Datum + Uhrzeit dazu, ohne die (seit der
+  // ersten Übernahme fixe, Entscheidung C des Plans) Art erneut zu bestimmen.
+  await typeAndCommit(page, 'Termin');
+  await typeAndCommit(page, 'Zahnarzt morgen 12 Uhr');
+  await expect(page.getByRole('button', { name: 'Art, Termin', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expect(captureDialog(page)).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query('SELECT starts_at FROM events WHERE title = $1', ['Zahnarzt']),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(new Date(row.rows[0].starts_at as string).getTime()).toBe(due.getTime());
+});
