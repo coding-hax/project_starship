@@ -293,6 +293,7 @@ export async function resetDatabase() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
+        'DELETE FROM auth_rate_limits; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         'DELETE FROM garmin_activities; ' +
@@ -316,6 +317,18 @@ export async function resetPushData() {
 export async function resetReminderData() {
   await withDb(async (client) => {
     await client.query('DELETE FROM reminder_sends; DELETE FROM reminder_prefs;');
+  });
+}
+
+/**
+ * auth_rate_limits is server infra (src/db/schema.ts, issue #755) — its own reset so
+ * specs that call the auth options routes without a full `resetDatabase()` (e.g.
+ * auth-verify.spec.ts, which keeps the shared session) don't accumulate a shared
+ * `unknown`-key counter across tests and trip a sporadic 429.
+ */
+export async function resetRateLimits() {
+  await withDb(async (client) => {
+    await client.query('DELETE FROM auth_rate_limits;');
   });
 }
 

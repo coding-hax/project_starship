@@ -141,6 +141,13 @@
       "when": 1786527435993,
       "tag": "0019_romantic_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786790926101,
+      "tag": "0020_clumsy_chimera",
+      "breakpoints": true
     }
   ]
 }

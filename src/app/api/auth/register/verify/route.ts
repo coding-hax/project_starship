@@ -1,6 +1,7 @@
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { uuidv7 } from 'uuidv7';
+import { enforce } from '@/auth/rate-limit';
 import { createSession } from '@/auth/session';
 import {
   burnRecoveryCode,
@@ -13,6 +14,11 @@ import { db } from '@/db';
 import { credentials } from '@/db/schema';
 
 export async function POST(request: Request) {
+  // Belt and suspenders — the single-use challenge from register/options is the
+  // real gate here; this is the shared options budget, not a second bucket.
+  const limited = await enforce(request, 'options');
+  if (limited) return limited;
+
   const body = await request.json().catch(() => null);
   if (!body?.response || typeof body.challenge !== 'string') {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
