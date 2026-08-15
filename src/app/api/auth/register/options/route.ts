@@ -1,5 +1,6 @@
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
+import { enforce, noteRecoveryFailure, recoveryBlocked } from '@/auth/rate-limit';
 import { getSession } from '@/auth/session';
 import {
   hasAnyCredential,
@@ -17,16 +18,26 @@ import {
  * Anything else and a stranger could enrol their own passkey.
  */
 export async function POST(request: Request) {
+  const limited = await enforce(request, 'options');
+  if (limited) return limited;
+
   const body = await request.json().catch(() => ({}));
   const recoveryCode: unknown = body?.recoveryCode;
+  const wantsRecovery = typeof recoveryCode === 'string' && recoveryCode.length > 0;
+
+  if (wantsRecovery) {
+    const recoveryLimited = await recoveryBlocked(request);
+    if (recoveryLimited) return recoveryLimited;
+  }
 
   const firstSetup = !(await hasAnyCredential());
   const authenticated = (await getSession()) !== null;
-  const recoveryCodeId =
-    typeof recoveryCode === 'string' && recoveryCode.length > 0
-      ? await verifyRecoveryCode(recoveryCode)
-      : null;
+  const recoveryCodeId = wantsRecovery ? await verifyRecoveryCode(recoveryCode as string) : null;
   const recovered = recoveryCodeId !== null;
+
+  if (wantsRecovery && !recovered) {
+    await noteRecoveryFailure(request);
+  }
 
   if (!firstSetup && !authenticated && !recovered) {
     return NextResponse.json({ error: 'Registrierung nicht erlaubt.' }, { status: 403 });
