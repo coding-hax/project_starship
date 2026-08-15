@@ -92,7 +92,14 @@ test('AK3: ein Recovery-Fehlversuch zaehlt gegen ein eigenes, strengeres Budget 
 
   // A logged-out "device" — recovery is exercised without a session, same
   // reasoning as `openRecoveryDevice` in auth-recovery-register.spec.ts.
-  const context = await browser.newContext();
+  //
+  // Plain `browser.newContext()` is NOT enough here: the `mobile` project's
+  // `use.storageState` points at the AUTH_STATE file, and `registerPasskey`
+  // above just rewrote that file with the fresh session it created. A CI trace
+  // for this test showed the "logged-out" request carrying a `starship_session`
+  // cookie matching that fresh session — an explicit empty state is required
+  // to actually get a logged-out context.
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const loggedOutPage = await context.newPage();
 
   for (let i = 0; i < 5; i += 1) {
