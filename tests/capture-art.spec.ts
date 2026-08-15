@@ -325,13 +325,20 @@ test('AK4: "Mehr" bei Termin öffnet das volle Modul-Sheet mit übernommenen Ker
   const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  // Ganztägig/Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen.
+  await dialog.getByRole('button', { name: /^Wann/ }).click();
   await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
   await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toHaveAttribute(
     'aria-checked',
     'false',
   );
-  await expect(dialog.getByLabel('Kategorie')).toHaveValue('gesundheit');
-  await expect(dialog.getByLabel('Wiederholung')).toBeVisible();
+  // Kategorie sitzt seit #712 ebenfalls hinter einem eigenen Chip (nur ein
+  // Panel gleichzeitig offen). `exact: true`: der Chip-Button selbst trägt
+  // "Kategorie, Gesundheit" als aria-label — eine Teilzeichenkette von
+  // "Kategorie" — und würde sonst zusätzlich zum echten <select> matchen.
+  await dialog.getByRole('button', { name: /^Kategorie/ }).click();
+  await expect(dialog.getByLabel('Kategorie', { exact: true })).toHaveValue('gesundheit');
+  await expect(dialog.getByRole('button', { name: /^Wiederholung/ })).toBeVisible();
 
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
 
