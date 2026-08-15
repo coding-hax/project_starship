@@ -157,11 +157,6 @@ export function CalendarStrip({
     }
   }
 
-  function selectDay(day: string) {
-    onSelectDay(day);
-    if (expanded) onExpandChange(false);
-  }
-
   return (
     <div className="calendar-strip" data-expanded={expanded}>
       <div className="calendar-strip__title-row">
@@ -264,7 +259,7 @@ export function CalendarStrip({
                         data-outside-month={isOutsideMonth ? '' : undefined}
                         aria-pressed={isSelected}
                         aria-label={`${WEEKDAY_LABELS[index]}, ${dayNumber}.`}
-                        onClick={() => selectDay(day)}
+                        onClick={() => onSelectDay(day)}
                       >
                         <span aria-hidden="true">{dayNumber}</span>
                         {dots.length > 0 && (
