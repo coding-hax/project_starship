@@ -93,14 +93,17 @@ export function Nav() {
                 aria-current={active ? 'page' : undefined}
                 className="nav__link"
                 style={active ? { color: tab.accent } : undefined}
-                // The nonce-based CSP (issue #753) makes the (app) segment dynamic
-                // (layout.tsx reads headers() for the nonce), reversing the static
-                // prerendering from #599. Next's default 'auto' prefetch only fetches
-                // a dynamic route up to its nearest loading.js — this project has
-                // none — so without this, the router cache stays empty and both the
-                // "no request on click" and offline-navigation specs regress.
-                // prefetch={true} forces the full route + data regardless.
-                prefetch={true}
+                // The imperative `router.prefetch()` effect above is the single source
+                // of truth for prefetching these routes (issue #753). Link's own
+                // prefetch, even at prefetch={true}, mounts a SEPARATE, independently
+                // scheduled prefetch task (next/dist/client/components/links.js,
+                // mountLinkInstance/observeVisibility) — running both raced two
+                // competing fetches for the same href against each other, and Next
+                // cancels one when the other supersedes it (net::ERR_ABORTED after the
+                // response headers had already arrived), intermittently losing the one
+                // this component's own effect needs to finish. prefetch={false} turns
+                // Link's mechanism off entirely so there is only ever one.
+                prefetch={false}
               >
                 <span aria-hidden="true" className="nav__icon">
                   <tab.Icon />
