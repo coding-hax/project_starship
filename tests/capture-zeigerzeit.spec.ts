@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
@@ -16,7 +16,6 @@ const ZEIGERZEIT_NOW_AFTERNOON = '2026-07-20T13:00:00.000Z'; // derselbe Montag,
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
-const EVENT_LABEL = 'Termin erfassen';
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
@@ -28,15 +27,6 @@ function captureTitleField(page: Page) {
 
 function confirmDialog(page: Page) {
   return page.getByRole('dialog', { name: CONFIRM_LABEL });
-}
-
-function eventDialog(page: Page) {
-  return page.getByRole('dialog', { name: EVENT_LABEL });
-}
-
-/** Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
-function wannChip(scope: Page | Locator) {
-  return scope.getByRole('button', { name: /^Wann/ });
 }
 
 function taskItems(page: Page) {
@@ -93,37 +83,36 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   await page.goto('/uebersicht');
   const halbZwoelf = expectedDueAt(ZEIGERZEIT_NOW, 1, 11, 30);
 
+  // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht Termine direkt über die
+  // Outbox an, kein Bestätigen-Dialog mehr dazwischen — prüfbar ist der korrekt
+  // aufgelöste Titel + Zeitpunkt in der Outbox-Payload.
   await submitUebersichtCapture(page, 'morgen halb zwölf Zahnarzt');
-
-  await page.waitForURL('**/kalender');
-  let dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(halbZwoelf));
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: halbZwoelf.toISOString(),
+  });
 
   // "um halb 12" (Ziffer statt Wort) ergibt dasselbe — "um" fällt als Bindewort.
   await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'morgen um halb 12 Zahnarzt');
-  await page.waitForURL('**/kalender');
-  dialog = eventDialog(page);
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(halbZwoelf));
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: halbZwoelf.toISOString(),
+  });
 
   // "viertel vor neun": die genannte Stunde (neun) entscheidet die Tageshälfte, nicht
   // die aufgelöste (acht) — R2 Regel 4.
-  await page.goto('/uebersicht');
   const viertelVorNeun = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 45);
+  await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'morgen viertel vor neun Zahnarzt');
-  await page.waitForURL('**/kalender');
-  dialog = eventDialog(page);
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(viertelVorNeun));
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Zahnarzt',
+    startsAt: viertelVorNeun.toISOString(),
+  });
 });
 
 test('AK2: zusammengesetzte Minutenangabe ("M vor/nach halb H") korrekt vorbefüllt, auch im Nachtfenster', async ({
@@ -134,15 +123,14 @@ test('AK2: zusammengesetzte Minutenangabe ("M vor/nach halb H") korrekt vorbefü
 
   await submitUebersichtCapture(page, 'morgen fünf vor halb drei Call');
 
-  // Der Termin-Pfad öffnet ohnehin immer den vorbefüllten Editor — "nicht direkt
-  // anlegen" ist hier trivial erfüllt (siehe Ticket); prüfbar ist der korrekt
-  // aufgelöste, vorbefüllte Zeitpunkt.
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Call');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(due));
+  // Der Termin-Pfad legt seit P1–P4 (#715) direkt an, kein Zwischenschritt mehr —
+  // prüfbar ist der korrekt aufgelöste, vorbefüllte Zeitpunkt in der Outbox-Payload.
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Call',
+    startsAt: due.toISOString(),
+  });
 });
 
 test('AK3+AK4: eine geratene Nachtzeit oder eine regionale Kurzform erzwingt das Bestätigungs-Sheet auf dem Aufgaben-Pfad, auch bei eingeschalteter Direkt-Erfassung', async ({
@@ -199,12 +187,12 @@ test('AK5: ein Tageszeitwort schlägt die Vormittags/Nachmittags-Heuristik immer
   // "abends" schlägt das.
   await submitUebersichtCapture(page, 'morgen um 8 abends Kino');
 
-  await page.waitForURL('**/kalender');
-  const dialog = eventDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Titel')).toHaveValue('Kino');
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(abends));
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Kino',
+    startsAt: abends.toISOString(),
+  });
 });
 
 test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder nachmittags', async ({ page }) => {
@@ -212,12 +200,12 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   const vormittags = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 0);
 
   await submitUebersichtCapture(page, 'morgen um 8 Standup');
-  await page.waitForURL('**/kalender');
-  let dialog = eventDialog(page);
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(vormittags));
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  let entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Standup',
+    startsAt: vormittags.toISOString(),
+  });
 
   // Derselbe Satz, aber gesprochen um 15:00 statt 10:00 — Nachmittagslesart.
   await installClockAt(page, ZEIGERZEIT_NOW_AFTERNOON);
@@ -225,10 +213,11 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   const nachmittags = expectedDueAt(ZEIGERZEIT_NOW_AFTERNOON, 1, 20, 0);
 
   await submitUebersichtCapture(page, 'morgen um 8 Standup');
-  await page.waitForURL('**/kalender');
-  dialog = eventDialog(page);
-  await wannChip(dialog).click();
-  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(nachmittags));
+  entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Standup',
+    startsAt: nachmittags.toISOString(),
+  });
 });
 
 test('Offline-Pfad: eine mit Zeigerzeit erfasste Aufgabe übersteht offline die Anlage und erreicht online die Datenbank', async ({
