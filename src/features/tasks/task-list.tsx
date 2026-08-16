@@ -158,9 +158,22 @@ export function TaskList({
   // always starts back on "Woche". Unused on the `dueTodayOnly` instance,
   // which never renders the switcher and never changes it away from the default.
   const [view, setView] = useState<ViewMode>('woche');
-  // Ephemeral, not persisted (per-ticket decision) — default expanded, so a
-  // reload never hides subtasks the user hasn't deliberately collapsed.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Ephemeral, not persisted (per-ticket decision) — holds the ids the user has
+  // expanded, default collapsed on both /aufgaben (issue #781) and /uebersicht
+  // (issue #779): a parent row shows its `done/total` and holds its children
+  // back until asked. Seeding the set instead (fill it with every parent id on
+  // the first tasks arrive) was the more obvious route but breaks on two edges
+  // this never opens: `allTasks` is `undefined` on the very first render, and a
+  // task arriving later via sync pull would land expanded while everything else
+  // stays collapsed.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const isExpanded = (taskId: string) => expandedIds.has(taskId);
+  // A task's own id -> parentId as of the last render with real data (issue
+  // #781 AK5) — lets the effect below tell "just became a child" apart from
+  // "was already one before this component ever mounted". `null` until the
+  // first real `allTasks` snapshot exists, so that snapshot itself never reads
+  // as a mass of fresh re-parentings.
+  const prevParentIdsRef = useRef<Map<string, string | null> | null>(null);
   // What a drop would do *right now* (issue #451) — set on pick-up and on every
   // move while lifted, cleared on drop and on cancel. `targetId` is still the raw
   // row under the pointer; the one-level rule is applied below, so the preview
@@ -257,7 +270,7 @@ export function TaskList({
           : null;
 
   function toggleExpanded(taskId: string) {
-    setCollapsed((prev) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) {
         next.delete(taskId);
@@ -267,6 +280,34 @@ export function TaskList({
       return next;
     });
   }
+
+  /**
+   * A task re-parented onto a collapsed parent must not go invisible (issue
+   * #781 AK5) — covers both drag-to-nest and the editor's "Unteraufgabe von"
+   * field, since both just change `parentId` through the same `allTasks` live
+   * query and land here either way. Only a task the previous snapshot already
+   * knew about counts as "just re-parented" — a brand new task created
+   * straight under a parent (`parentId` set at creation) has no previous
+   * snapshot to compare against and is excluded on purpose, same as the very
+   * first snapshot itself (`prevParentIdsRef.current === null`) is: neither is
+   * a parent actually *gaining* a child while the user is looking at the list.
+   */
+  useEffect(() => {
+    if (allTasks === undefined) return;
+    const prevParentIds = prevParentIdsRef.current;
+    prevParentIdsRef.current = new Map(allTasks.map((task) => [task.id, task.parentId]));
+    if (prevParentIds === null) return;
+    const newlyNestedParentIds = allTasks
+      .filter(
+        (task) =>
+          task.parentId !== null &&
+          prevParentIds.has(task.id) &&
+          prevParentIds.get(task.id) !== task.parentId,
+      )
+      .map((task) => task.parentId as string);
+    if (newlyNestedParentIds.length === 0) return;
+    setExpandedIds((prev) => new Set([...prev, ...newlyNestedParentIds]));
+  }, [allTasks]);
 
   /**
    * Drag-to-nest drop (issue #89) — the primary path, the editor's "Unteraufgabe
@@ -330,7 +371,7 @@ export function TaskList({
           task={node.task}
           isParent={node.total > 0}
           progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
-          expanded={!collapsed.has(node.task.id)}
+          expanded={isExpanded(node.task.id)}
           onToggleExpand={() => toggleExpanded(node.task.id)}
           onToggle={() => toggleComplete(node.task)}
           onEdit={() => setEditingTaskId(node.task.id)}
@@ -355,7 +396,7 @@ export function TaskList({
         key={key}
         task={child}
         isChild
-        visible={!collapsed.has(node.task.id)}
+        visible={isExpanded(node.task.id)}
         onToggle={() => toggleComplete(child)}
         onEdit={() => setEditingTaskId(child.id)}
         onDelete={() => deleteTask(child)}

@@ -111,24 +111,28 @@ test.describe('angemeldet', () => {
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) prefetched.clear();
     });
-    // `requestfinished`, not `response`: the latter fires on the response HEADERS,
-    // so the wait below could pass while the payload was still in flight and the
-    // `setOffline` right after would cut it off mid-body, leaving the router cache
-    // incomplete. Cancelled prefetches reach neither handler, which is exactly what
-    // must not count.
-    page.on('requestfinished', (request) => {
-      const url = new URL(request.url());
+    // `response`, not `requestfinished` (issue #753). This listened for
+    // `requestfinished` before, on the reasoning that a response event only proves the
+    // HEADERS arrived, so `setOffline` could still cut the payload off mid-body. That
+    // reasoning no longer describes what Next does: its segment cache reads the RSC
+    // payload off the stream and then aborts the underlying request, so the request
+    // ends as `net::ERR_ABORTED` and `requestfinished` never fires — for a prefetch
+    // that fully arrived and is sitting in the router cache. Measured against the prod
+    // build: 99 such aborts across eight runs, while the offline walk below passed
+    // every time, twice with this set holding a single entry or none at all. The set
+    // was reporting an empty router cache that demonstrably was not empty.
+    //
+    // It only became visible with the nonce-based CSP, which renders the (app) segment
+    // dynamically instead of statically prerendering it (#599): a prerendered answer
+    // came back in 1-2ms and was finished before anything could abort it, a dynamic one
+    // takes ~58ms. The abort was always there, it just never had a window to happen in.
+    page.on('response', (response) => {
+      const url = new URL(response.url());
       if (!url.searchParams.has('_rsc')) return;
-      void request
-        .response()
-        .then((response) => {
-          // `status < 400` rather than `ok()`: the (app) segment is statically
-          // prerendered (#599), so a navigation can revalidate a prefetch it
-          // already holds and get a 304 — `ok()` is false for that, while the
-          // router does have the payload.
-          if (response && response.status() < 400) prefetched.add(url.pathname);
-        })
-        .catch(() => {});
+      // `status < 400` rather than `ok()`: a navigation can revalidate a prefetch it
+      // already holds and get a 304 — `ok()` is false for that, while the router does
+      // have the payload.
+      if (response.status() < 400) prefetched.add(url.pathname);
     });
 
     await page.goto('/uebersicht');

@@ -2,8 +2,9 @@ import withSerwistInit from '@serwist/next';
 import type { NextConfig } from 'next';
 
 /**
- * A strict, nonce-based CSP needs middleware injection in the App Router and is
- * tracked as its own ticket. These are the headers that carry no breakage risk.
+ * The nonce-based CSP (issue #753) lives in src/middleware.ts — it needs a fresh
+ * value per response, which this static list of headers() can't carry. These five
+ * are the ones with no per-request state and no breakage risk.
  */
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -41,6 +42,16 @@ const nextConfig: NextConfig = {
   // corner in both viewports; under E2E the dev-only badge is simply turned off so it
   // can never sit on a real control.
   devIndicators: process.env.NEXT_PUBLIC_E2E === '1' ? false : { position: 'top-right' },
+  // The nonce-based CSP (#753) forces layout.tsx to read headers(), which makes the
+  // (app) segment dynamic instead of statically prerendered (#599). Next 14.2+ defaults
+  // dynamic segments' client router-cache entry to stale immediately (staleTimes.dynamic:
+  // 0), which online just means a silent refetch but offline meant the tab-switch cache
+  // from #599/#683 was discarded instead of served. 30s restores that pre-14.2 default —
+  // scoped to the router-cache TTL for the shell only, not to any fetched app data (which
+  // always comes from IndexedDB per ARCHITECTURE.md, never from RSC props).
+  experimental: {
+    staleTimes: { dynamic: 30 },
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

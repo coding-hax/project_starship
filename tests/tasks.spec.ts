@@ -1426,6 +1426,15 @@ function disclosureFor(page: Page, title: string) {
     .getByRole('button', { name: /Unteraufgaben/ });
 }
 
+/** Opens a parent's collapse branch — subtasks start collapsed (issue #781),
+ *  so a test that clicks, drags, or checks off an already-seeded child needs
+ *  this before the child row is reachable at all. */
+async function expandParent(page: Page, title: string) {
+  const disclosure = disclosureFor(page, title);
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+}
+
 function progressFor(page: Page, title: string) {
   return taskItems(page).filter({ hasText: title }).locator('.task-list__progress');
 }
@@ -1494,13 +1503,13 @@ test('Eltern-Zeile lässt sich auf-/zuklappen (issue #89 AK3)', async ({ page })
 
   const disclosure = disclosureFor(page, 'Elternaufgabe');
   const childItem = taskItems(page).filter({ hasText: 'Kind' });
-  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-  await expect(childItem).toHaveJSProperty('inert', false);
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childItem).toHaveJSProperty('inert', true);
 
   await disclosure.click();
 
-  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-  await expect(childItem).toHaveJSProperty('inert', true);
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(childItem).toHaveJSProperty('inert', false);
 });
 
 test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblicklich (issue #89 AK3)', async ({
@@ -1519,6 +1528,275 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblick
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
 
+test('„Woche" startet eingeklappt, die Eltern-Zeile zeigt trotzdem ihren Fortschritt (issue #781 AK1)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: isoAt(1) });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const childA = taskItems(page).filter({ hasText: 'Kind A' });
+  const childB = taskItems(page).filter({ hasText: 'Kind B' });
+
+  // "Woche" ist der Standard — die Fälligkeit morgen liegt im Fenster.
+  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childA).toHaveJSProperty('inert', true);
+  await expect(childB).toHaveJSProperty('inert', true);
+  expect((await childA.boundingBox())?.height).toBe(0);
+  expect((await childB.boundingBox())?.height).toBe(0);
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/2');
+});
+
+test('„Alle" startet ebenfalls eingeklappt, auch für eine Aufgabe ohne Fälligkeit (issue #781 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe ohne Fälligkeit' });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  await selectView(page, 'Alle');
+  const disclosure = disclosureFor(page, 'Elternaufgabe ohne Fälligkeit');
+  const childItem = taskItems(page).filter({ hasText: 'Kind' });
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childItem).toHaveJSProperty('inert', true);
+  expect((await childItem.boundingBox())?.height).toBe(0);
+});
+
+test('Aufklappen macht die Liste um die Höhe der Kind-Zeilen länger, Zuklappen nimmt genau diese Höhe wieder heraus (issue #781 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  const list = page.getByRole('list', { name: 'Aufgaben' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const parentRow = taskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const childA = taskItems(page).filter({ hasText: 'Kind A' });
+
+  const parentHeight = (await parentRow.boundingBox())!.height;
+  const collapsedHeight = (await list.boundingBox())!.height;
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  // Polled — die Enthüllung läuft über die `max-height`-Transition (task-list.css).
+  await expect
+    .poll(async () => (await childA.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(parentHeight - 1);
+
+  const expandedHeight = (await list.boundingBox())!.height;
+  // Zwei Kind-Zeilen Höhe, nicht die winzige Lücke, die der min-height-Bug
+  // (issue #779) hinterlassen hätte.
+  expect(expandedHeight - collapsedHeight).toBeGreaterThan(parentHeight * 1.5);
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  // Polled — der Kollaps läuft ebenfalls über die `max-height`-Transition.
+  await expect.poll(async () => (await childA.boundingBox())?.height ?? -1).toBe(0);
+  await expect.poll(async () => (await list.boundingBox())!.height).toBeLessThan(
+    collapsedHeight + 1,
+  );
+});
+
+test('Der Ansichtswechsel klappt eine aufgeklappte Aufgabe nicht wieder zu (issue #781 AK4)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: isoAt(1) });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+  await viewOption(page, 'Alle').click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+  await viewOption(page, 'Woche').click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('Drag-to-Nest auf einen eingeklappten Elternteil klappt ihn auf, das frisch zugeordnete Kind bleibt sichtbar (issue #781 AK5)', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
+  await seedTask(page, { title: 'Bestehendes Kind', parentId });
+  await seedTask(page, { title: 'Wanderer' });
+
+  const disclosure = disclosureFor(page, 'Sammelaufgabe');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+  const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
+  const target = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
+  const start = await centerOf(dragged);
+  const to = await centerOf(target);
+
+  await dragged.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: start.x,
+    clientY: start.y,
+    button: 0,
+    bubbles: true,
+  });
+  await freezeClock(page);
+  await page.clock.fastForward(LONG_PRESS_MS + 100);
+  await dragged.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+  await dragged.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: to.x,
+    clientY: to.y,
+    bubbles: true,
+  });
+
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(taskItems(page).filter({ hasText: 'Wanderer' })).toHaveJSProperty('inert', false);
+  await expect(progressFor(page, 'Sammelaufgabe')).toHaveText('0/2');
+});
+
+test('„Unteraufgabe von" im Editor klappt einen eingeklappten Elternteil ebenfalls auf (issue #781 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Bestehendes Kind', parentId });
+  await seedTask(page, { title: 'Neue Unteraufgabe' });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+  await tapTask(page, 'Neue Unteraufgabe');
+  await nestSelect(page).selectOption({ label: 'Elternaufgabe' });
+  await page.getByRole('button', { name: 'Speichern' }).click();
+
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(taskItems(page).filter({ hasText: 'Neue Unteraufgabe' })).toHaveJSProperty(
+    'inert',
+    false,
+  );
+});
+
+test('Abgehakte Unteraufgabe verschwindet vollständig beim Zuklappen der Elternaufgabe — auch die Opazität, nicht nur die Höhe (issue #782 AK1/AK2)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+  await seedTask(page, { title: 'Kind offen', parentId });
+
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
+  await checkboxFor(page, 'Kind erledigt').click();
+  await expect(checkboxFor(page, 'Kind erledigt')).toBeChecked();
+
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const openChild = taskItems(page).filter({ hasText: 'Kind offen' });
+
+  await disclosureFor(page, 'Elternaufgabe').click();
+
+  await expect(doneChild).toBeHidden();
+  await expect(openChild).toBeHidden();
+  // AK2: die zugeklappte, abgehakte Zeile deklariert sich auch selbst als
+  // unsichtbar (opacity 0) — nicht nur durch die Geometrie aus #779 verdeckt.
+  // Polled wie in checkoff-motion.spec.ts: die Opazität läuft über dieselbe
+  // Transition wie max-height, ein Sofort-Read kann sie mitten im Flug fangen.
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+});
+
+test('Aufklappen bringt die abgehakte Unteraufgabe unverändert zurück (issue #782 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
+  await checkboxFor(page, 'Kind erledigt').click();
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+
+  await disclosure.click();
+  await expect(doneChild).toBeHidden();
+
+  await disclosure.click();
+
+  await expect(doneChild).toBeVisible();
+  await expect(doneChild).toHaveClass(/task-list__item--done/);
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0.6');
+  const textDecoration = await doneChild
+    .locator('.task-list__title')
+    .evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(textDecoration).toContain('line-through');
+});
+
+test('nicht abgehakte Unteraufgabe bleibt unverändert: zugeklappt unsichtbar, aufgeklappt bei opacity 1 (issue #782 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind offen', parentId });
+
+  const openChild = taskItems(page).filter({ hasText: 'Kind offen' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+
+  // Default ist eingeklappt (issue #781) — erst aufklappen, dann zählt die
+  // Opazität-Behauptung für den sichtbaren Zustand.
+  await expandParent(page, 'Elternaufgabe');
+  await expect.poll(() => openChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+
+  await disclosure.click();
+  await expect(openChild).toBeHidden();
+
+  await disclosure.click();
+  await expect(openChild).toBeVisible();
+  await expect.poll(() => openChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+});
+
+test('bei reduzierter Bewegung bleibt das Zuklappen einer abgehakten Unteraufgabe augenblicklich, ohne sichtbaren Zwischenzustand (issue #782 AK6)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
+  await checkboxFor(page, 'Kind erledigt').click();
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const transitionDuration = await doneChild.evaluate(
+    (el) => getComputedStyle(el).transitionDuration,
+  );
+  expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
+
+  await disclosureFor(page, 'Elternaufgabe').click();
+  await expect(doneChild).toBeHidden();
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+});
+
 test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erledigen (issue #89 AK4)', async ({
   page,
 }) => {
@@ -1527,6 +1805,7 @@ test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erl
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind A', parentId });
   await seedTask(page, { title: 'Kind B', parentId });
+  await expandParent(page, 'Elternaufgabe');
 
   await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/2');
 
@@ -1543,6 +1822,7 @@ test('„Keine (Top-Level)" im Editor löst ein Kind wieder aus der Gruppe (issu
   await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
+  await expandParent(page, 'Elternaufgabe');
 
   await tapTask(page, 'Kind');
   await nestSelect(page).selectOption({ label: 'Keine (Top-Level)' });
@@ -1706,6 +1986,7 @@ test('Desktop: eine Unteraufgabe ohne Pause in den freien Bereich zu ziehen lös
   await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Bestehendes Kind', parentId });
+  await expandParent(page, 'Sammelaufgabe');
 
   const dragged = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
   const start = await centerOf(dragged);
@@ -2001,6 +2282,7 @@ test('über einer Unteraufgabe gehalten wird deren Elternteil als Ziel markiert,
   const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Bestehendes Kind', parentId });
   await seedTask(page, { title: 'Wanderer' });
+  await expandParent(page, 'Sammelaufgabe');
 
   const dragged = taskItems(page).filter({ hasText: 'Wanderer' });
   const child = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
@@ -2026,6 +2308,7 @@ test('eine Unteraufgabe über den freien Bereich gehalten zeigt das Herauslösen
   await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Sammelaufgabe' });
   await seedTask(page, { title: 'Bestehendes Kind', parentId });
+  await expandParent(page, 'Sammelaufgabe');
 
   const dragged = taskItems(page).filter({ hasText: 'Bestehendes Kind' });
   const parent = taskItems(page).filter({ hasText: 'Sammelaufgabe' });
@@ -2118,6 +2401,7 @@ test('eine angehobene Unteraufgabe folgt dem Zeiger ohne Verzögerung, die Klapp
   await selectView(page, 'Alle');
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind', parentId });
+  await expandParent(page, 'Elternaufgabe');
 
   const child = taskItems(page).filter({ hasText: 'Kind' });
 
@@ -2800,6 +3084,10 @@ test('AC5: erledigte Unteraufgaben verschwinden einzeln, ein erledigter Elternte
     parentId: fullyDoneParentId,
     completedAt: new Date(FIXED_NOW).toISOString(),
   });
+
+  // Aufklappen — Unteraufgaben starten eingeklappt (issue #781), und dieser
+  // Elternteil behält nach dem Ausblenden ein offenes, sichtbares Kind.
+  await expandParent(page, 'Erledigte Elternaufgabe');
 
   await hideCompletedToggle(page).click();
 
