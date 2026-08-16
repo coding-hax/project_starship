@@ -3038,7 +3038,13 @@ test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, 
 
   const card = page.getByRole('button', { name: '2 Aufgaben ohne Datum' });
   await expect(card).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByText('Ohne Datum A')).toHaveCount(0);
+  // `inert` (section-card.tsx) isn't respected by Playwright's role/text engine
+  // (checked empirically: getByRole still finds inert rows) — the collapsed
+  // *container* is the only element whose own box is genuinely zero-size (CSS
+  // grid-template-rows: 0fr), so that is what toBeHidden() must target, found via
+  // aria-controls rather than a hardcoded class name (mirrors uebersicht.spec.ts).
+  const contentId = await card.getAttribute('aria-controls');
+  await expect(page.locator(`[id="${contentId}"]`)).toBeHidden();
 
   await card.click();
   await expect(card).toHaveAttribute('aria-expanded', 'true');
