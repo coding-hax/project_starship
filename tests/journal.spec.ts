@@ -300,9 +300,16 @@ async function submit(page: Page): Promise<void> {
 }
 
 /** Sets (or, with '', clears) the mood via the native select (issue #785,
- * replaces the ten-point MoodScale in the create sheet). */
+ * replaces the ten-point MoodScale in the create sheet). Scoped to the open
+ * dialog — the 14-day mood band (issue #703, journal-mood-band.tsx) sits on
+ * the same page and also carries "Stimmung" in its aria-labels once at least
+ * one entry exists, which made the unscoped `page.getByLabel('Stimmung')`
+ * ambiguous as soon as a prior entry had been submitted. */
 async function setMood(page: Page, value: number | ''): Promise<void> {
-  await page.getByLabel('Stimmung').selectOption(String(value));
+  await page
+    .getByRole('dialog', { name: 'Eintragen' })
+    .getByLabel('Stimmung')
+    .selectOption(String(value));
 }
 
 async function entryCountInDb(entryDate: string): Promise<number> {
@@ -381,7 +388,9 @@ test('AC2 (#785): selectOption setzt die Stimmung, selectOption(\'\') nimmt sie 
 
   await page.getByLabel('Journal-Text').fill('Ohne Stimmung abgesendet');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).not.toContainText('Stimmung');
+  // Scoped auf das Mood-Badge (journal-editor.tsx), nicht auf den ganzen Eintrag —
+  // der eingegebene Text selbst enthält "Stimmung" als Substring.
+  await expect(page.locator('.journal-editor__entry-mood')).toHaveCount(0);
 });
 
 test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eintragen-Knopf legt einen Eintrag an', async ({

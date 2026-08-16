@@ -16,7 +16,11 @@
 .journal-editor__text,
 .journal-editor__tags {
   min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-4);
+  /* Horizontal padding only — vertical padding on top of the 44px touch
+     target would push .journal-editor__tags past the AC3 (#785) 48px
+     footer-row budget. The textarea adds its own vertical padding below,
+     since its min-height leaves room for it. */
+  padding: 0 var(--space-4);
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface-raised);
@@ -29,6 +33,7 @@
   flex: 1;
   resize: none;
   min-height: calc(var(--touch-target) * 3);
+  padding-block: var(--space-3);
 }
 
 .journal-editor__text:focus,

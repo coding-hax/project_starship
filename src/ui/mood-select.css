@@ -9,7 +9,10 @@
   flex: 0 0 auto;
   width: 4.5rem;
   min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-2);
+  /* Horizontal padding only (like chip.css's .chip__body) — vertical padding
+     on top of the 44px touch target would push the box past the AC3 (#785)
+     48px footer-row budget. */
+  padding: 0 var(--space-2);
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface-raised);
