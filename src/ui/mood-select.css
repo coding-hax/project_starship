@@ -1,0 +1,34 @@
+/**
+ * Same field optics as `.journal-editor__tags` (journal-entry-sheet.css),
+ * fixed width instead of `flex: 1` — it sits beside the tags field in one row
+ * (issue #785). No `appearance: none`: the system dropdown arrow stays, same
+ * reasoning as `task-editor.css`'s `.task-editor__parent`.
+ */
+
+.mood-select {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  min-height: var(--touch-target);
+  /* Horizontal padding only (like chip.css's .chip__body) — vertical padding
+     on top of the 44px touch target would push the box past the AC3 (#785)
+     48px footer-row budget. */
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-body); /* iOS zooms the viewport below 16px on focus */
+}
+
+.mood-select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Same tint as a set Chip (chip.css) — tokens only, no second hue. */
+.mood-select[data-state='set'] {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+  color: var(--text);
+}

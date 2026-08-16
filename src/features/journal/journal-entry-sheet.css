@@ -1,9 +1,9 @@
 /**
- * The create sheet's form (AK2, #714) — same field styling as task-editor.css/
- * habit-editor.css so this reads as one system. The text area is the content
- * and carries the sheet's height (AK2); mood and tags sit in a footer below
- * it. The submit action itself lives in the shared sheet header (issue #710),
- * not in this form.
+ * The create sheet's form (AK2, #714/#785) — same field styling as
+ * task-editor.css/habit-editor.css so this reads as one system. The text
+ * area is the content and still carries the sheet's height (AK2); mood and
+ * tags sit in a row above it. The submit action itself lives in the shared
+ * sheet header (issue #710), not in this form.
  */
 
 .journal-editor__form {
@@ -16,7 +16,11 @@
 .journal-editor__text,
 .journal-editor__tags {
   min-height: var(--touch-target);
-  padding: var(--space-3) var(--space-4);
+  /* Horizontal padding only — vertical padding on top of the 44px touch
+     target would push .journal-editor__tags past the AC3 (#785) 48px
+     footer-row budget. The textarea adds its own vertical padding below,
+     since its min-height leaves room for it. */
+  padding: 0 var(--space-4);
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface-raised);
@@ -29,6 +33,7 @@
   flex: 1;
   resize: none;
   min-height: calc(var(--touch-target) * 3);
+  padding-block: var(--space-3);
 }
 
 .journal-editor__text:focus,
@@ -39,6 +44,14 @@
 
 .journal-editor__footer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--space-3);
+}
+
+.journal-editor__footer .journal-editor__tags {
+  flex: 1;
+  /* A flex item's default min-width is its content's intrinsic width, not 0 —
+     an unstyled <input> keeps a ~170px UA minimum and refuses to shrink,
+     which overflows the 375px sheet (AC3, #785). */
+  min-width: 0;
 }
