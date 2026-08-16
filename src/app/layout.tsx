@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
+import { headers } from 'next/headers';
 import './globals.css';
 import { LEGACY_MODULE_IDS } from '@/modules/module-ids';
 import { KeyboardInset } from '@/ui/keyboard-inset';
@@ -99,11 +100,16 @@ const THEME_BOOTSTRAP_SCRIPT = `(function () {
   } catch (e) {}
 })();`;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// `headers()` makes the tree dynamic — the price of a per-response nonce (issue #753):
+// the nonce must match the one on the CSP header middleware.ts just sent, so this
+// can no longer be prerendered statically (reverses the optimisation from #599).
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+
   return (
     <html lang="de" className={inter.variable}>
       <body>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <KeyboardInset />
         {children}
       </body>
