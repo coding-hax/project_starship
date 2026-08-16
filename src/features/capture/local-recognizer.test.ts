@@ -45,6 +45,12 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
       if (testCase.expect.logDate) {
         expect(draft.logDate).toBe(testCase.expect.logDate);
       }
+      if ('newHabit' in testCase.expect) {
+        expect(draft.newHabit).toBe(testCase.expect.newHabit);
+      }
+      if (testCase.expect.title !== undefined) {
+        expect(draft.title).toBe(testCase.expect.title);
+      }
     });
   }
 });
@@ -88,5 +94,37 @@ describe('recognizeLocally — einzelne Akzeptanzkriterien', () => {
     const first = recognizeLocally('hake Sport ab', ctx());
     const second = recognizeLocally('hake Sport ab', ctx());
     expect(second).toEqual(first);
+  });
+});
+
+describe('recognizeLocally — #780 provisional (AK1/AK2)', () => {
+  it('AK1: leerer Text -> provisional, der sichere Rückfall ist task ohne Signal', () => {
+    const result = recognizeLocally('', ctx());
+    expect(result.items[0].kind).toBe('task');
+    expect(result.items[0].provisional).toBe(true);
+  });
+
+  it('AK1: ein Satz ohne jedes Art-Signal -> weiterhin provisional', () => {
+    const result = recognizeLocally('Wäsche waschen', ctx());
+    expect(result.items[0].kind).toBe('task');
+    expect(result.items[0].provisional).toBe(true);
+  });
+
+  it('AK1: sobald das erste Signal da ist (Uhrzeit) -> nicht mehr provisional', () => {
+    const result = recognizeLocally('morgen 12 Uhr Zahnarzt', ctx());
+    expect(result.items[0].kind).toBe('event');
+    expect(result.items[0].provisional).toBe(false);
+  });
+
+  it('ein Task-Vokabular-Signal ohne Datum/Zeit ist ebenfalls kein Rückfall mehr -> nicht provisional', () => {
+    const result = recognizeLocally('erinnere mich an Müll rausbringen', ctx());
+    expect(result.items[0].kind).toBe('task');
+    expect(result.items[0].provisional).toBe(false);
+  });
+
+  it('eine Degradierung (Modul aus) ist eine bewusste Entscheidung, keine provisorische', () => {
+    const result = recognizeLocally('Dienstag 12 Uhr Zahnarzt', ctx({ allowedKinds: ['task', 'habit_check'] }));
+    expect(result.items[0].kind).toBe('task');
+    expect(result.items[0].provisional).toBe(false);
   });
 });

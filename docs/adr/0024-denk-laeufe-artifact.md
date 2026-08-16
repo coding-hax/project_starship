@@ -1,8 +1,16 @@
 # ADR-0024: Denk-Läufe dürfen ein Artifact auf claude.ai veröffentlichen
 
-Status: angenommen
+Status: angenommen, in einem Punkt korrigiert durch
+[ADR-0025](0025-artifact-braucht-write.md)
 Datum: 2026-08-15
 Bezug: [ADR-0005](0005-opus-im-runner.md) (#767, Issue #722 als Anlass)
+
+> **Korrektur (16.08.26):** Die Kernannahme unten — `Artifact` publiziere ohne
+> Umweg über ein lokales `Write`, die Denyliste bleibe deshalb `Edit,Write` —
+> ist falsch. Das Werkzeug nimmt ausschließlich einen `file_path` auf eine
+> bereits geschriebene Datei. Das hier selbst vorgesehene Stop-Gate ist
+> eingetreten und vom Menschen aufgelöst worden; `READONLY_DENY` ist seither
+> `Edit`. Alles Übrige an diesem ADR gilt unverändert.
 
 ## Kontext
 

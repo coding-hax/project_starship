@@ -27,8 +27,16 @@ nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 // buildPrompt()/ciFixPrompt() (AK4, Scope-Creep waere ein Bau-Lauf, der
 // nebenbei eine Seite veroeffentlicht).
 const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` steht dir zur
-Verfügung und veröffentlicht sofort nach außen — kein Repo-Write, die
-Read-only-Zusage bleibt unberührt (ADR-0024).
+Verfügung und veröffentlicht sofort nach außen (ADR-0024, korrigiert durch
+ADR-0025).
+
+**Erst schreiben, dann veröffentlichen.** \`Artifact\` nimmt ausschließlich
+einen \`file_path\` auf eine bereits geschriebene \`.html\`/\`.md\`-Datei — es gibt
+keinen Inline-Inhalt. Schreib die Datei deshalb mit \`Write\` in dein
+**aktuelles Arbeitsverzeichnis** und gib erst dann den Pfad an \`Artifact\`.
+Dein cwd ist ein Wegwerf-Worktree, der nach dem Lauf entfernt wird; die Datei
+überlebt den Lauf nicht und gehört auch in keinen Commit. \`Edit\` hast du
+weiterhin nicht — du legst neu an, du änderst nichts Bestehendes.
 
 **Wann:** nur wenn ein anzuschauendes Objekt die Entscheidung trägt (z. B. ein
 Entwurfsblatt oder eine Skizze). Reichen drei Absätze im Kommentar, bleibt es
@@ -325,7 +333,23 @@ ${ARTIFACT_RULE}
 export const READONLY_TOOLS = 'Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)';
 export const BUILD_TOOLS = 'Read,Edit,Write,Glob,Grep,Bash';
 
-// O3 (#325): harte Zusatzgrenze neben der Allowlist -- verbietet den
-// Denk-Rollen Edit/Write explizit, statt sich allein auf die Abwesenheit in
-// READONLY_TOOLS zu verlassen.
-export const READONLY_DENY = 'Edit,Write';
+// O3 (#325): harte Zusatzgrenze neben der Allowlist. Seit ADR-0025 verbietet
+// sie nur noch `Edit`, nicht mehr `Write`.
+//
+// Grund: `Artifact` (ADR-0024) nimmt ausschliesslich einen `file_path` auf eine
+// schon geschriebene Datei -- ohne `Write` ist das Werkzeug fuer die
+// Denk-Rollen unbenutzbar. ADR-0024 hatte das Gegenteil angenommen ("publiziert
+// direkt, ohne Umweg ueber ein lokales Write") und dafuer ein Stop-Gate
+// vorgesehen; der Mensch hat es am 16.08.26 aufgeloest.
+//
+// Was `Write` hier NICHT oeffnet: Claude Code sperrt Schreibzugriffe auf den
+// Arbeitsbaum ein (empirisch geprueft -- ein Pfad ausserhalb wird mit "liegt
+// ausserhalb der erlaubten Arbeitsverzeichnisse" abgelehnt), und der cwd der
+// Denk-Rollen ist seit #325 ein Wegwerf-Worktree, den claude-runner.sh nach
+// dem Lauf entfernt. Geschrieben werden kann also nur, was ohnehin weggeworfen
+// wird. `Edit` bleibt gesperrt: neu anlegen ja, Bestehendes aendern nein.
+//
+// Pfad-gebundene Regeln (`Write(//pfad/**)`) waeren die feinere Grenze, wirken
+// aber in 2.1.202 weder ueber --allowedTools noch ueber --disallowedTools noch
+// ueber --settings -- geprueft, alle drei Wege ignorieren den Pfadteil.
+export const READONLY_DENY = 'Edit';

@@ -187,6 +187,45 @@ describe('mergeDraft (issue #716, „Vorschau-Merge")', () => {
     const next = mergeDraft(prev, utterance, mentions);
     expect(next.title).toBe('Einkaufen');
   });
+
+  it('#780: provisional bleibt nach der ersten Übernahme fix, auch ohne Signal in der Folge-Äußerung', () => {
+    const prev = previewDraft('Einkaufen', ctx());
+    expect(prev.provisional).toBe(true);
+    const utterance = previewDraft('gehen', ctx());
+    const mentions = utteranceMentions('gehen', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.provisional).toBe(true);
+  });
+
+  it('#780: provisional bleibt auch dann fix, wenn eine Folge-Äußerung für sich allein ein Signal trüge', () => {
+    const prev = previewDraft('Einkaufen', ctx());
+    expect(prev.provisional).toBe(true);
+    const utterance = previewDraft('morgen um 15 Uhr', ctx());
+    expect(utterance.provisional).toBe(false);
+    const mentions = utteranceMentions('morgen um 15 Uhr', ctx());
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.provisional).toBe(true);
+  });
+
+  it('#780: newHabit überschreibt nur, wenn die Folge-Äußerung selbst einen Habit-Treffer nennt', () => {
+    const prev = previewDraft('Routine Wasser trinken', ctx());
+    expect(prev.newHabit).toBe(true);
+    const utterance = previewDraft('trinken', ctx());
+    const mentions = utteranceMentions('trinken', ctx());
+    expect(mentions.habit).toBe(false);
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.newHabit).toBe(true);
+  });
+
+  it('#780: ein erneut genannter Habit-Treffer überschreibt newHabit auf false', () => {
+    const prev = previewDraft('Routine Sport', ctx({ habits: [] }));
+    expect(prev.newHabit).toBe(true);
+    const utterance = previewDraft('hake Sport ab', ctx());
+    const mentions = utteranceMentions('hake Sport ab', ctx());
+    expect(mentions.habit).toBe(true);
+    const next = mergeDraft(prev, utterance, mentions);
+    expect(next.newHabit).toBe(false);
+  });
 });
 
 describe('summarizeChanges (AK5)', () => {

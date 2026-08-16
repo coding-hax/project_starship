@@ -61,6 +61,16 @@ export interface CaptureDraft {
   /** #691: Konfidenz je Feld — steuert, wie ein bereits offener Dialog seine
    * Unsicherheit zeigt (capture-confirm.tsx AK1–AK6, event-editor.tsx AK3). */
   confidence: Record<CaptureConfidenceField, FieldConfidence>;
+  /** #780: `true`, solange kein einziges Art-Signal gepunktet hat und `kind` nur der
+   * sichere `task`-Rückfall ist — der Art-Chip zeigt dann seinen Leerzustand statt
+   * dieses Rückfalls als vermeintliches Ergebnis. Wird mit der ersten Übernahme fix
+   * (mergeDraft, Entscheidung C), ändert sich danach nur noch über den Art-Chip von Hand. */
+  provisional: boolean;
+  /** #780: nur bei `kind: 'habit_check'` gesetzt, sonst `false` — `true`, wenn der Satz
+   * ein Routine-Intent-Wort ("Routine …"/"Gewohnheit …") ohne Erledigungsverb trägt.
+   * Belegt den `newRoutine`-Zweig aus #758 automatisch vor, statt ihn nur von Hand
+   * erreichbar zu machen. */
+  newHabit: boolean;
 }
 
 export type Recognizer = (text: string, ctx: CaptureContext) => { items: CaptureDraft[] };
