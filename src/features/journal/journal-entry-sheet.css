@@ -1,9 +1,9 @@
 /**
- * The create sheet's form (AK2, #714) — same field styling as task-editor.css/
- * habit-editor.css so this reads as one system. The text area is the content
- * and carries the sheet's height (AK2); mood and tags sit in a footer below
- * it. The submit action itself lives in the shared sheet header (issue #710),
- * not in this form.
+ * The create sheet's form (AK2, #714/#785) — same field styling as
+ * task-editor.css/habit-editor.css so this reads as one system. The text
+ * area is the content and still carries the sheet's height (AK2); mood and
+ * tags sit in a row above it. The submit action itself lives in the shared
+ * sheet header (issue #710), not in this form.
  */
 
 .journal-editor__form {
@@ -39,6 +39,10 @@
 
 .journal-editor__footer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--space-3);
+}
+
+.journal-editor__footer .journal-editor__tags {
+  flex: 1;
 }

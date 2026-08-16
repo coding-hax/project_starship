@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { MoodScale } from '@/ui/mood-scale';
+import { MoodSelect } from '@/ui/mood-select';
 import { Sheet } from '@/ui/sheet';
 import { appendJournalEntry, todayKey } from './entry';
 import './journal-entry-sheet.css';
@@ -84,6 +84,17 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
           before the sheet has ever been opened. */}
       {open && (
         <form id={JOURNAL_FORM_ID} className="journal-editor__form" onSubmit={handleSubmit}>
+          <div className="journal-editor__footer">
+            <MoodSelect value={mood} onChange={setMood} />
+            <input
+              type="text"
+              className="journal-editor__tags"
+              value={tagsInput}
+              onChange={(event) => setTagsInput(event.target.value)}
+              placeholder="Tags, mit Komma"
+              aria-label="Tags"
+            />
+          </div>
           <textarea
             ref={textRef}
             className="journal-editor__text"
@@ -92,17 +103,6 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
             placeholder="Was ist heute passiert?"
             aria-label="Journal-Text"
           />
-          <div className="journal-editor__footer">
-            <MoodScale value={mood} onChange={setMood} />
-            <input
-              type="text"
-              className="journal-editor__tags"
-              value={tagsInput}
-              onChange={(event) => setTagsInput(event.target.value)}
-              placeholder="Tags, mit Komma getrennt"
-              aria-label="Tags"
-            />
-          </div>
         </form>
       )}
     </Sheet>

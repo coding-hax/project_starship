@@ -299,6 +299,12 @@ async function submit(page: Page): Promise<void> {
   await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
 }
 
+/** Sets (or, with '', clears) the mood via the native select (issue #785,
+ * replaces the ten-point MoodScale in the create sheet). */
+async function setMood(page: Page, value: number | ''): Promise<void> {
+  await page.getByLabel('Stimmung').selectOption(String(value));
+}
+
 async function entryCountInDb(entryDate: string): Promise<number> {
   const rows = await withDb((client) =>
     client.query('SELECT count(*)::int AS n FROM journal_entries WHERE entry_date = $1', [entryDate]),
@@ -335,41 +341,47 @@ test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die 
 
   await openSheet(page);
   const dialog = page.getByRole('dialog', { name: 'Eintragen' });
-  await expect(dialog.locator('.mood-scale')).toBeVisible();
+  await expect(dialog.getByLabel('Stimmung')).toBeVisible();
   await expect(dialog.getByLabel('Journal-Text')).toBeVisible();
   await expect(dialog.getByLabel('Tags')).toBeVisible();
 });
 
-test('AK2 (#714): die Textfläche steht vor Mood/Tags in der Fußleiste und dominiert deren Höhe', async ({
+test('AK2 (#714, seit #785 vertauscht): Stimmung und Tags stehen jetzt vor der Textfläche in der Fußleiste, die Textfläche dominiert weiterhin die Höhe', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
   const textBox = await page.locator('.journal-editor__text').boundingBox();
-  const moodBox = await page.locator('.journal-editor__form .mood-scale').boundingBox();
+  const moodBox = await page.getByLabel('Stimmung').boundingBox();
   const tagsBox = await page.getByLabel('Tags').boundingBox();
   expect(textBox).not.toBeNull();
   expect(moodBox).not.toBeNull();
   expect(tagsBox).not.toBeNull();
 
-  expect(textBox!.y).toBeLessThan(moodBox!.y);
-  expect(tagsBox!.y).toBeGreaterThan(textBox!.y);
+  expect(moodBox!.y).toBeLessThan(textBox!.y);
+  expect(tagsBox!.y).toBeLessThan(textBox!.y);
+  expect(moodBox!.y).toBe(tagsBox!.y);
   expect(textBox!.height).toBeGreaterThan(moodBox!.height);
+  expect(textBox!.height).toBeGreaterThan(tagsBox!.height);
 });
 
-test('AC1: ein Tipp auf der Stimmungs-Skala setzt den Wert, ein erneuter nimmt ihn zurück', async ({
+test('AC2 (#785): selectOption setzt die Stimmung, selectOption(\'\') nimmt sie zurück', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
 
-  const point = page.getByRole('button', { name: '7', exact: true });
-  await expect(point).toHaveAttribute('aria-pressed', 'false');
-  await point.click();
-  await expect(point).toHaveAttribute('aria-pressed', 'true');
-  await point.click();
-  await expect(point).toHaveAttribute('aria-pressed', 'false');
+  const select = page.getByLabel('Stimmung');
+  await expect(select).toHaveValue('');
+  await setMood(page, 7);
+  await expect(select).toHaveValue('7');
+  await setMood(page, '');
+  await expect(select).toHaveValue('');
+
+  await page.getByLabel('Journal-Text').fill('Ohne Stimmung abgesendet');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).not.toContainText('Stimmung');
 });
 
 test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eintragen-Knopf legt einen Eintrag an', async ({
@@ -378,18 +390,19 @@ test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eint
   await setUpEditor(page);
   await openSheet(page);
 
-  await page.getByRole('button', { name: '8', exact: true }).click();
-  // Kein Debounce mehr (ADR-0018) — ein Mood-Tap ruft nur setMood(), kein async
-  // Schreibpfad, die Prüfung braucht also keine Wartezeit. Lokal statt gegen
-  // Postgres geprüft (AC8 deckt den Server-Sync-Pfad separat ab) — kein
-  // window.__starship.sync() nötig, der ohnehin erst alle 30s automatisch liefe.
+  await setMood(page, 8);
+  // Kein Debounce mehr (ADR-0018) — ein Mood-Select-Change ruft nur setMood(),
+  // kein async Schreibpfad, die Prüfung braucht also keine Wartezeit. Lokal
+  // statt gegen Postgres geprüft (AC8 deckt den Server-Sync-Pfad separat ab)
+  // — kein window.__starship.sync() nötig, der ohnehin erst alle 30s
+  // automatisch liefe.
   await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
 
   await submit(page);
   await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
 });
 
-test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mindestens 44px hoch, ohne horizontalen Scroll', async ({
+test('AC3 (#785): Auswahlfeld und Tags-Feld bleiben bei 375px kompakt in einer Reihe, ohne horizontalen Scroll', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 667 });
@@ -398,30 +411,31 @@ test('die Stimmungs-Skala bleibt bei 375px in einer Reihe, alle zehn Punkte mind
 
   // Sheet.tsx's enter transition (translateY 100% -> 0) is still running right
   // after openSheet()'s toBeVisible() resolves — boundingBox() includes the
-  // in-flight transform, so reading positions too early makes the row-Y
-  // comparison below flaky by sub-pixel amounts (same failure mode as
+  // in-flight transform, so reading positions too early makes the height
+  // comparisons below flaky by sub-pixel amounts (same failure mode as
   // checkoff-motion.spec.ts, issue #430). Wait for it to settle first.
   const sheetContent = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__content');
   await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
 
-  // issue #415: die Suche zeigt seither ihren eigenen Mood-Filter (ebenfalls
-  // eine MoodScale) permanent oberhalb des Formulars — auf das Editor-Formular
-  // scopen, sonst matchen Klassen-Locator wie hier zwei Instanzen.
-  const scale = page.locator('.journal-editor__form .mood-scale');
-  const scrollWidth = await scale.evaluate((el) => el.scrollWidth);
-  const clientWidth = await scale.evaluate((el) => el.clientWidth);
+  const form = page.locator('.journal-editor__form');
+  const scrollWidth = await form.evaluate((el) => el.scrollWidth);
+  const clientWidth = await form.evaluate((el) => el.clientWidth);
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 
-  const points = page.locator('.journal-editor__form .mood-scale__point');
-  await expect(points).toHaveCount(10);
+  const moodBox = await page.getByLabel('Stimmung').boundingBox();
+  const tagsBox = await page.getByLabel('Tags').boundingBox();
+  expect(moodBox).not.toBeNull();
+  expect(tagsBox).not.toBeNull();
+  expect(moodBox!.height).toBeGreaterThanOrEqual(44);
+  expect(tagsBox!.height).toBeGreaterThanOrEqual(44);
 
-  const boxes = await Promise.all(Array.from({ length: 10 }, (_, i) => points.nth(i).boundingBox()));
-  for (const box of boxes) {
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(44);
-  }
-  const rowY = boxes[0]!.y;
-  for (const box of boxes) expect(box!.y).toBe(rowY);
+  const footerBox = await page.locator('.journal-editor__footer').boundingBox();
+  expect(footerBox).not.toBeNull();
+  expect(footerBox!.height).toBeLessThanOrEqual(48);
+
+  const docScrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  const docClientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(docScrollWidth).toBeLessThanOrEqual(docClientWidth);
 });
 
 test('AC2/AC3: das Sheet schließt nach dem Absenden, ein neu geöffnetes startet leer; mehrere Einträge stehen darunter, neueste zuerst, mit Uhrzeit', async ({
@@ -485,13 +499,13 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
   );
 
   await openSheet(page);
-  await page.getByRole('button', { name: '5', exact: true }).click();
+  await setMood(page, 5);
   await page.getByLabel('Journal-Text').fill('Ruhiger Moment');
   await page.getByLabel('Tags').fill('arbeit, sport');
   await submit(page);
 
   await openSheet(page);
-  await page.getByRole('button', { name: '9', exact: true }).click();
+  await setMood(page, 9);
   await page.getByLabel('Journal-Text').fill('Anderer Moment, andere Stimmung');
   await page.getByLabel('Tags').fill('familie');
   await submit(page);
@@ -509,7 +523,7 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
   await expect.poll(() => entryCountInDb(entryDate)).toBe(2);
 });
 
-test('AK4 (#700/#701): Tags erscheinen als einzelne Pillen unter dem Eintragstext, aus --surface-raised/--border-faint', async ({
+test('AK4 (#700/#701)/AC6 (#785): Tags erscheinen als einzelne Pillen unter dem Eintragstext, aus --surface-raised/--area-journal', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -526,7 +540,7 @@ test('AK4 (#700/#701): Tags erscheinen als einzelne Pillen unter dem Eintragstex
   const pillBg = await pills.first().evaluate((el) => getComputedStyle(el).backgroundColor);
   const pillBorder = await pills.first().evaluate((el) => getComputedStyle(el).borderColor);
   expect(pillBg).toBe(await resolveBackgroundToken(page, '--surface-raised'));
-  expect(pillBorder).toBe(await resolveBackgroundToken(page, '--border-faint'));
+  expect(pillBorder).toBe(await resolveBackgroundToken(page, '--area-journal'));
 });
 
 test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über den bestehenden Sync-Pfad, kein Hard-Delete', async ({
@@ -756,9 +770,9 @@ test('AK4 (#714, ehem. AC-D/#423): der Eintragen-Knopf in der Kopfzeile ist blas
   await action.click({ force: true });
   await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
 
-  await page.getByRole('button', { name: '6', exact: true }).click();
+  await setMood(page, 6);
   await expect(action).toBeEnabled();
-  await page.getByRole('button', { name: '6', exact: true }).click(); // zurücknehmen
+  await setMood(page, ''); // zurücknehmen
   await expect(action).toBeDisabled();
 
   await page.getByLabel('Journal-Text').fill('Nur Text, kein Mood');
@@ -1023,18 +1037,18 @@ for (const viewport of [
   });
 }
 
-test('AC9: die Stimmungs-Skala nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({
+test('AC7 (#785, ehem. AC9): das Auswahlfeld nutzt Tokens, die sich im Dark Mode tatsächlich unterscheiden', async ({
   page,
 }) => {
   await setUpEditor(page);
   await openSheet(page);
-  const point = page.getByRole('button', { name: '4', exact: true });
-  await point.click();
+  const select = page.getByLabel('Stimmung');
+  await setMood(page, 4);
 
-  const lightBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const lightBg = await select.evaluate((el) => getComputedStyle(el).backgroundColor);
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const darkBg = await point.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const darkBg = await select.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).not.toBe(lightBg);
 });
 
