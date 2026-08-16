@@ -36,6 +36,11 @@ export interface CorpusExpectation {
   logDate?: string;
   /** #691: erwartete Feld-Konfidenz — nur die Felder, die dieser Fall wirklich prüft. */
   confidence?: Partial<Record<CaptureConfidenceField, FieldConfidence>>;
+  /** #780: erwarteter `newHabit`-Wert — nur die Fälle, die den Routine-Intent prüfen. */
+  newHabit?: boolean;
+  /** #780: erwarteter Titel — bislang nur für den `newHabit`-Zweig relevant (E1: das
+   * führende Intent-Wort verschwindet aus dem Namen). */
+  title?: string;
 }
 
 export interface CorpusCase {
@@ -576,5 +581,45 @@ export const CORPUS: CorpusCase[] = [
       kind: 'task',
       confidence: { kind: { level: 'guessed', reason: 'Aufgabe oder Termin unklar' } },
     },
+  },
+
+  // #780 AK3/AK4: Routine-Intent-Wort ohne Erledigungsverb -> neue Gewohnheit, das
+  // Intent-Wort verschwindet aus dem Namen (E1).
+  {
+    signal: '#780 AK3/AK4: "Routine Wasser trinken" -> neue Gewohnheit, Intent-Wort nicht im Namen',
+    text: 'Routine Wasser trinken',
+    expect: { kind: 'habit_check', habitId: null, newHabit: true, title: 'Wasser trinken' },
+  },
+  {
+    signal: '#780 AK3: "Gewohnheit meditieren" -> gleichbedeutend',
+    text: 'Gewohnheit meditieren',
+    expect: { kind: 'habit_check', habitId: null, newHabit: true, title: 'meditieren' },
+  },
+  {
+    signal: '#780 AK3: "neue Routine Wasser trinken" -> gleichbedeutend',
+    text: 'neue Routine Wasser trinken',
+    expect: { kind: 'habit_check', habitId: null, newHabit: true, title: 'Wasser trinken' },
+  },
+  // Gegenfall (E3): das Intent-Wort bei einer bestehenden Gewohnheit UND einem
+  // Erledigungsverb bleibt das normale Abhaken -> keine zweite Gewohnheit.
+  {
+    signal: '#780 Gegenfall: "Routine Sport abhaken" bei vorhandener Gewohnheit -> hakt ab, legt nichts an',
+    text: 'Routine Sport abhaken',
+    expect: { kind: 'habit_check', habitId: 'h-sport', newHabit: false },
+  },
+  // E3: das Intent-Wort OHNE Erledigungsverb legt auch dann neu an, wenn eine
+  // gleichnamige Gewohnheit schon existiert -> kein Verb, kein Abhaken-Recht.
+  {
+    signal: '#780 E3: "Routine Sport" ohne Verb bei vorhandener Gewohnheit -> trotzdem neue Gewohnheit',
+    text: 'Routine Sport',
+    expect: { kind: 'habit_check', habitId: null, newHabit: true, title: 'Sport' },
+  },
+  // AK6: Routinen-Modul aus -> der sichere Rückfall bleibt task, das Intent-Wort
+  // bleibt unangetastet im Titel stehen (keine Titel-Bereinigung außerhalb von newHabit).
+  {
+    signal: '#780 AK6: "Routine Wasser trinken", Routinen-Modul aus -> bleibt Aufgabe',
+    text: 'Routine Wasser trinken',
+    allowedKinds: ['task', 'event'],
+    expect: { kind: 'task', title: 'Routine Wasser trinken' },
   },
 ];

@@ -46,14 +46,27 @@ export function hasCompletionVerb(text: string): boolean {
 
 const EVENT_VOCAB_PATTERNS = [word('termin'), word('treffen'), word('meeting'), /\bbei\s+dr\.?/iu];
 const TASK_VOCAB_PATTERNS = [word('erinnere mich'), word('nicht vergessen'), word('muss noch')];
+// #780: eigenes Vokabular fürs Routine-Intent-Wort — deckt "Routine …" und "Gewohnheit
+// …", unabhängig von einem Erledigungsverb (dessen Signal bleibt `habitCheck` oben).
+const ROUTINE_INTENT_PATTERNS = [word('routine'), word('gewohnheit')];
 
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+// #780 E1: nur das FÜHRENDE Intent-Wort (plus optionales "neue") — ein Kommandopräfix
+// wie "erstelle …", kein allgemeiner Vokabular-Filter (R3 aus #687 bleibt für den Titel
+// sonst unangetastet, greift nur im `newHabit`-Zweig unten).
+const LEADING_ROUTINE_WORD_PATTERN = /^(?:neue\s+)?(?:routine|gewohnheit)\s+/iu;
+
+function stripLeadingRoutineWord(title: string): string {
+  return title.replace(LEADING_ROUTINE_WORD_PATTERN, '').trim();
+}
+
 const SCORE = {
   habitCheck: 100,
   eventTime: 60,
+  routineIntent: 80,
   taskDateOnly: 40,
   eventVocab: 20,
   taskVocab: 20,
@@ -63,6 +76,7 @@ const SCORE = {
 interface Signals {
   completionVerb: boolean;
   habitMatched: boolean;
+  routineIntent: boolean;
   hasDate: boolean;
   hasExplicitTime: boolean;
   eventVocab: boolean;
@@ -76,6 +90,9 @@ const KIND_MARGIN_THRESHOLD = 20;
 interface ClassifyResult {
   kind: CaptureKind;
   ambiguous: boolean;
+  /** #780: `true`, wenn `task` einzig mangels jedem Signal gewinnt (die Baseline) —
+   * keine echte Entscheidung, sondern der sichere Rückfall ohne jede Grundlage. */
+  provisional: boolean;
 }
 
 function classify(signals: Signals): ClassifyResult {
@@ -87,6 +104,9 @@ function classify(signals: Signals): ClassifyResult {
 
   if (signals.completionVerb && signals.habitMatched) {
     scores.habit_check += SCORE.habitCheck;
+  }
+  if (signals.routineIntent) {
+    scores.habit_check += SCORE.routineIntent;
   }
   if (signals.hasExplicitTime) {
     scores.event += SCORE.eventTime;
@@ -114,7 +134,8 @@ function classify(signals: Signals): ClassifyResult {
   // sichere Rückfall, keine knappe Entscheidung (sonst wäre praktisch jeder unmarkierte
   // Satz "geraten", die Baseline liegt ja immer unter der Schwelle).
   const ambiguous = runnerUp > 0 && scores[winner] - runnerUp < KIND_MARGIN_THRESHOLD;
-  return { kind: winner, ambiguous };
+  const provisional = winner === 'task' && scores.task === SCORE.taskBaseline;
+  return { kind: winner, ambiguous, provisional };
 }
 
 const LOG_DATE_LOOKBACK_DAYS = 7;
@@ -148,6 +169,7 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
   const signals: Signals = {
     completionVerb: hasCompletionVerb(text),
     habitMatched: habitMatch.matched,
+    routineIntent: matchesAny(text, ROUTINE_INTENT_PATTERNS),
     hasDate: date !== null,
     hasExplicitTime,
     eventVocab: matchesAny(text, EVENT_VOCAB_PATTERNS),
@@ -161,6 +183,14 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
   // Eine Degradierung ist eine bewusste Regel (der sichere Rückfall), keine unklare
   // Rangfolge mehr — die Feld-Konfidenz "Art" bleibt dann `high`.
   const kindDegraded = kind !== classified.kind;
+  // #780: eine Degradierung ist selbst schon eine (übersteuerte) Entscheidung, kein
+  // "kein Signal" — bleibt deshalb nicht provisorisch.
+  const provisional = classified.provisional && !kindDegraded;
+  // #780 E2/E3: "Routine …" ohne Erledigungsverb ist eine neue Gewohnheit, kein Treffer
+  // auf eine bestehende — auch wenn `matchHabit` (rein textuell, ohne Verb-Kontext) eine
+  // findet. Kein Erledigungsverb heißt kein Abhaken-Recht.
+  const newHabit = kind === 'habit_check' && !signals.completionVerb;
+  const resolvedTitle = newHabit ? stripLeadingRoutineWord(title) : title;
 
   // R2 Regel 5 + AK4 (#688): eine geratene Nachtzeit oder eine regionale Kurzform senkt
   // die Konfidenz auch für task/event — Grundlage für `needsConfirmation` auf dem
@@ -168,20 +198,22 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
   // Feld-Konfidenz unten.
   const draft: CaptureDraft = {
     kind,
-    title,
+    title: resolvedTitle,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
-    habitId: kind === 'habit_check' ? habitMatch.habitId : null,
-    logDate: kind === 'habit_check' ? resolveLogDate(date, ctx.now) : null,
+    habitId: kind === 'habit_check' ? (newHabit ? null : habitMatch.habitId) : null,
+    logDate: kind === 'habit_check' && !newHabit ? resolveLogDate(date, ctx.now) : null,
     needsConfirmation,
     confidence: {
       kind: confidenceFromReason(!kindDegraded && classified.ambiguous ? KIND_AMBIGUOUS_REASON : null),
-      title: titleConfidence(title),
+      title: titleConfidence(resolvedTitle),
       date: confidenceFromReason(dateGuessReason),
       time: confidenceFromReason(timeGuessReason),
       habit: confidenceFromReason(
         habitMatch.matched && habitMatch.confidence === 'low' ? HABIT_AMBIGUOUS_REASON : null,
       ),
     },
+    provisional,
+    newHabit,
   };
 
   return { items: [draft] };

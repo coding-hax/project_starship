@@ -44,6 +44,12 @@
      colours are light enough at both themes' lightness that dark text clears
      4.5:1 while --accent-fg's near-white text did not in light mode (issue #709). */
   --on-accent: oklch(18% 0.012 60);
+  /* issue #780: `--accent` while the capture sheet has no recognized art yet
+     (`CaptureDraft.provisional`) — grey, not a fourth area colour, so it never
+     whispers a wrong art. Its own token rather than `--border-strong`: that one
+     sits at only 55% L in dark mode, under the ~58% floor `--on-accent`'s fixed
+     dark text needs to clear 4.5:1 (same guarantee the area colours give it above). */
+  --accent-neutral: oklch(70% 0.015 75);
 
   /* --- free-choice swatch palette: user-picked colours (issue #658), distinct
      from --area-* (orientation, one per area) and --cat-* (accents *within*
@@ -181,6 +187,9 @@
     --cat-familie: oklch(72% 0.1 230);
 
     --accent-fg: oklch(18% 0.012 60);
+    /* Lifted well above --border-strong's 55% L (issue #780 above): stays clearly
+       inside the same 4.5:1-with-fixed-dark-text band the area colours use. */
+    --accent-neutral: oklch(66% 0.014 60);
 
     --success: oklch(72% 0.13 148);
     --warning: oklch(80% 0.12 75);
@@ -220,6 +229,7 @@
   --cat-familie: oklch(72% 0.1 230);
 
   --accent-fg: oklch(18% 0.012 60);
+  --accent-neutral: oklch(66% 0.014 60);
 
   --success: oklch(72% 0.13 148);
   --warning: oklch(80% 0.12 75);

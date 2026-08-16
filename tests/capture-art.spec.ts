@@ -19,6 +19,12 @@ function artChip(page: Page, label: string) {
   return page.getByRole('button', { name: `Art, ${label}` });
 }
 
+/** #780 AK1: solange keine Art erkannt ist, trägt der Chip kein Wert-Suffix mehr —
+ * `exact: true`, sonst matcht "Art" auch als Substring von "Art, Aufgabe" etc. */
+function artChipEmpty(page: Page) {
+  return page.getByRole('button', { name: 'Art', exact: true });
+}
+
 /** `exact: true` matters here: "Routine" (unset) is otherwise a substring
  * match of the Art-Chip's own "Art, Routine". */
 function routineChip(page: Page, label?: string) {
@@ -100,11 +106,32 @@ test('AK1: der Art-Chip zeigt die erkannte Art, bevor angelegt wird', async ({ p
   await page.goto('/uebersicht');
   await captureButton(page).click();
 
-  // Leeres Feld: der sichere Rückfall des Erkenners ist „Aufgabe" (local-recognizer.ts).
-  await expect(artChip(page, 'Aufgabe')).toBeVisible();
+  // #780: leeres Feld -> der Art-Chip zeigt seinen Leerzustand ("Art?"), nicht den
+  // sicheren Rückfall "Aufgabe" — der ist erst mit "Anlegen" eine echte Entscheidung.
+  await expect(artChipEmpty(page)).toBeVisible();
 
   await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
   await expect(artChip(page, 'Termin')).toBeVisible();
+});
+
+test('#780 AK2: leeres Feld, nie berührt -> "Anlegen" legt trotzdem eine Aufgabe an', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  await captureButton(page).click();
+  await expect(artChipEmpty(page)).toBeVisible();
+  await captureTitleField(page).fill('Wäsche waschen');
+  // Kein Datum/Vokabular-Signal -> der Art-Chip bleibt beim Leerzustand, auch nach
+  // dem Tippen (der sichere Rückfall wird nie als vermeintliches Ergebnis gezeigt).
+  await expect(artChipEmpty(page)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(captureDialog(page)).toBeHidden();
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'tasks');
+  expect(created?.payload).toMatchObject({ title: 'Wäsche waschen' });
 });
 
 test('AK1: Antippen des Art-Chips wechselt die Art von Hand', async ({ page }) => {
@@ -127,7 +154,11 @@ test('AK2: der Akzent des Sheets folgt der erkannten Art', async ({ page }) => {
 
   await captureButton(page).click();
   await expect(sheetActionButton(page)).toBeVisible();
-  await expect.poll(() => actionButtonBackground(page)).toBe(taskColor);
+  // #780 E4: solange keine Art erkannt ist, bleibt der Akzent neutral — nicht der
+  // Aufgaben-Akzent, der sonst "Aufgabe" flüstert, bevor irgendetwas entschieden ist.
+  const initialColor = await actionButtonBackground(page);
+  expect(initialColor).not.toBe(taskColor);
+  expect(initialColor).not.toBe(eventColor);
 
   await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
   await expect.poll(() => actionButtonBackground(page)).toBe(eventColor);
@@ -274,7 +305,7 @@ test('AK5/#758 AK1: auch ohne wählbare Gewohnheit ist die Art-Option „Routine
   await page.goto('/uebersicht');
 
   await captureButton(page).click();
-  await artChip(page, 'Aufgabe').click();
+  await artChipEmpty(page).click();
 
   await expect(page.getByRole('radio', { name: 'Routine' })).toBeEnabled();
 });
