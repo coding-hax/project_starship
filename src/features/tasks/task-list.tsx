@@ -508,7 +508,11 @@ export function TaskList({
           defaultOpen={false}
           className="task-list__undated-card"
         >
-          <ul className="task-list" aria-label="Aufgaben ohne Datum">
+          {/* Not "Aufgaben ohne Datum" — `getByRole('list', { name: 'Aufgaben' })`
+              (tasks.spec.ts, uebersicht.spec.ts) matches by substring, so a label
+              containing "Aufgaben" would fold this collapsed list's rows into the
+              main list's count from every consumer of that locator. */}
+          <ul className="task-list" aria-label="Ohne Datum">
             {undatedNodes
               .flatMap(nodeRows)
               .map((item) => renderTaskRow(item, item.id, { entering: false, leaving: false }))}

@@ -106,7 +106,8 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   await expect(page.getByText('Heute fällig')).toBeVisible();
   await expect(page.getByText('Diese Woche fällig')).toBeVisible();
   // Checked off today, so it stays for the rest of the day (issue #228 AC1).
-  await expect(page.getByText('Heute erledigt')).toBeVisible();
+  // exact: true — 'Morgen fällig, heute erledigt' below is a substring match otherwise.
+  await expect(page.getByText('Heute erledigt', { exact: true })).toBeVisible();
   await expect(page.getByText('Morgen fällig, heute erledigt')).toBeVisible();
   await expect(dueTaskItems(page)).toHaveCount(5);
   await expect(page.getByText('Außerhalb der Woche')).toHaveCount(0);
@@ -145,7 +146,13 @@ test('undatierte offene Aufgaben stehen nicht in der Woche-Liste, sondern in ein
   const card = undatedCard(page);
   await expect(card).toHaveText('2 Aufgaben ohne Datum');
   await expect(card).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByText('Ohne Datum A')).toHaveCount(0);
+  // `inert` (section-card.tsx) isn't respected by Playwright's role/text engine
+  // (checked empirically: getByRole still finds inert rows) — the collapsed
+  // *container* is the only element whose own box is genuinely zero-size (CSS
+  // grid-template-rows: 0fr), so that is what toBeHidden() must target, found via
+  // aria-controls rather than a hardcoded class name.
+  const contentId = await card.getAttribute('aria-controls');
+  await expect(page.locator(`[id="${contentId}"]`)).toBeHidden();
 
   await card.click();
   await expect(card).toHaveAttribute('aria-expanded', 'true');
@@ -163,7 +170,8 @@ test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst
   const card = undatedCard(page);
   await expect(card).toHaveText('1 Aufgabe ohne Datum');
   await card.click();
-  await expect(page.getByText('Ohne Datum')).toBeVisible();
+  // exact: true — the card's own title text ("1 Aufgabe ohne Datum") is a substring match otherwise.
+  await expect(page.getByText('Ohne Datum', { exact: true })).toBeVisible();
 });
 
 test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das Häkchen erledigt sofort, die Zeile bleibt den Tag über stehen (issue #87 AC3, issue #228 AC1+AC5)', async ({
