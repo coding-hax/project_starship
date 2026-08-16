@@ -10,6 +10,7 @@ import {
   localDayKey,
   resolveNestTarget,
   toTaskView,
+  undatedOpenNodes,
   visibleTaskNodes,
   weekWindowNodes,
   type TaskNode,
@@ -253,7 +254,11 @@ describe('visibleTaskNodes', () => {
 
   it('hides a completed child but keeps its open parent (AC5)', () => {
     const parent = task({ id: 'parent' });
-    const doneChild = task({ id: 'a', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const doneChild = task({
+      id: 'a',
+      parentId: 'parent',
+      completedAt: '2026-07-02T00:00:00.000Z',
+    });
     const openChild = task({ id: 'b', parentId: 'parent' });
     const nodes = groupTasks([parent, doneChild, openChild]);
 
@@ -264,7 +269,11 @@ describe('visibleTaskNodes', () => {
   it('keeps a completed parent visible when it still guards an open child, dropping only its completed children (AC5)', () => {
     const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
     const openChild = task({ id: 'open', parentId: 'parent' });
-    const doneChild = task({ id: 'done', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const doneChild = task({
+      id: 'done',
+      parentId: 'parent',
+      completedAt: '2026-07-02T00:00:00.000Z',
+    });
     const nodes = groupTasks([parent, openChild, doneChild]);
 
     const visible = visibleTaskNodes(nodes, true);
@@ -275,7 +284,11 @@ describe('visibleTaskNodes', () => {
 
   it('drops a completed parent whose children are all completed too', () => {
     const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
-    const doneChild = task({ id: 'child', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const doneChild = task({
+      id: 'child',
+      parentId: 'parent',
+      completedAt: '2026-07-02T00:00:00.000Z',
+    });
     const nodes = groupTasks([parent, doneChild]);
 
     expect(visibleTaskNodes(nodes, true)).toEqual([]);
@@ -284,7 +297,11 @@ describe('visibleTaskNodes', () => {
   it("never changes a kept node's done/total — the toggle changes display, not data (AC5)", () => {
     const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
     const openChild = task({ id: 'open', parentId: 'parent' });
-    const doneChild = task({ id: 'done', parentId: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
+    const doneChild = task({
+      id: 'done',
+      parentId: 'parent',
+      completedAt: '2026-07-02T00:00:00.000Z',
+    });
     const nodes = groupTasks([parent, openChild, doneChild]);
 
     const [node] = visibleTaskNodes(nodes, true);
@@ -472,6 +489,48 @@ describe('weekWindowNodes', () => {
       ),
     ];
     expect(weekWindowNodes(nodes, now)).toEqual(nodes);
+  });
+});
+
+describe('undatedOpenNodes', () => {
+  const task = (overrides: Partial<TaskView>): TaskView => ({
+    id: 'id',
+    title: 'x',
+    notes: null,
+    dueAt: null,
+    priority: 0,
+    completedAt: null,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    parentId: null,
+    ...overrides,
+  });
+
+  const node = (t: TaskView, children: TaskView[] = []): TaskNode => ({
+    task: t,
+    children,
+    done: children.filter((c) => c.completedAt !== null).length,
+    total: children.length,
+  });
+
+  it('keeps an undated, open top-level task', () => {
+    const nodes = [node(task({ id: 'undated' }))];
+    expect(undatedOpenNodes(nodes)).toEqual(nodes);
+  });
+
+  it('drops a dated task, even an overdue one', () => {
+    const nodes = [node(task({ id: 'dated', dueAt: '2026-07-01T09:00:00.000Z' }))];
+    expect(undatedOpenNodes(nodes)).toEqual([]);
+  });
+
+  it('drops an undated task that is already completed', () => {
+    const nodes = [node(task({ id: 'done', completedAt: '2026-07-01T09:00:00.000Z' }))];
+    expect(undatedOpenNodes(nodes)).toEqual([]);
+  });
+
+  it('keeps an undated parent together with its (dated) children', () => {
+    const child = task({ id: 'child', parentId: 'parent', dueAt: '2026-07-19T09:00:00.000Z' });
+    const nodes = [node(task({ id: 'parent' }), [child])];
+    expect(undatedOpenNodes(nodes)).toEqual(nodes);
   });
 });
 
