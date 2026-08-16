@@ -198,8 +198,12 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
    * issue #476). A fresh context with one *seeded* (not registered) credential plus
    * its own virtual authenticator sidesteps that: `firstSetup=false` (no recovery
    * screen), but the fresh authenticator can still enrol a second credential.
+   *
+   * Clears `credentials` first (same reasoning as `deleteAllCredentials` above) —
+   * AK1 asserts an exact total, and earlier tests in this file leave rows behind.
    */
   async function freshDeviceContext(browser: Browser, baseURL: string | undefined) {
+    await deleteAllCredentials();
     const session = await createThrowawaySession();
     const context = await browser.newContext();
     await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
@@ -233,10 +237,7 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
       client.query("SELECT label FROM credentials WHERE label = 'Laptop'"),
     );
     expect(rows.rows).toHaveLength(1);
-    const total = await withDb((client) =>
-      client.query('SELECT count(*)::int AS n FROM credentials'),
-    );
-    expect(total.rows[0].n).toBe(2);
+    expect(await credentialCount()).toBe(2);
 
     await context.close();
   });
