@@ -196,7 +196,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `ics-subscriptions-panel.tsx` / `.css` — `.ics`-Abos hinzufügen/entfernen, zeigt `lastError` je Abo (issue #560, ADR-0022)
 - `use-nav-order.ts` / `nav-order-panel.tsx` / `.css` — Reihenfolge der Nav-Einträge, ↑/↓ je Eintrag
 - `use-push.ts` / `use-reminder-prefs.ts` / `push-panel.tsx` / `.css` — Push-Hook, Prefs-Query, Panel (an/aus)
-- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Geräte": Passkey-Liste mit Einzelwiderruf + „alle anderen Sitzungen beenden", Letztes-Credential-Schutz (issue #754)
+- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Geräte": Passkey-Liste mit Einzelwiderruf + „alle anderen Sitzungen beenden", Letztes-Credential-Schutz (#754, #769)
 - `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kalender-Kategorie (issue #660), Merged-View + setColor/resetColor
 - `category-colors-boot.tsx` — setzt/entfernt `--cat-<category>` als `var()`-Referenz auf `<html>`
 - `calendar-settings-panel.tsx` — Wrapper: kalender's einziger `SettingsPanel`-Slot zeigt auf `CategoryColorsPanel` + `IcsSubscriptionsPanel`
