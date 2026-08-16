@@ -215,15 +215,18 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
   }) => {
     const { context, page } = await freshDeviceContext(browser, baseURL);
     await page.goto('/einstellungen');
-    // Scoped to the "Gerät" group — the calendar module's "Abo hinzufügen" button
-    // (ics-subscriptions-panel.tsx, group "Module") also matches "Hinzufügen" by substring.
-    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
 
-    await geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' }).click();
-    await geraetGroup.getByLabel('Gerätename').fill('Laptop');
-    await geraetGroup.getByRole('button', { name: 'Hinzufügen' }).click();
+    await page.getByRole('button', { name: 'Gerät hinzufügen' }).click();
+    // Scoped to the add-device form itself — the calendar module's "Abo hinzufügen"
+    // button (ics-subscriptions-panel.tsx) also matches a bare "Hinzufügen" query by
+    // substring, and `.einstellungen__group[hasText: 'Gerät']` is not a safe enough
+    // scope either: journal-settings-panel.tsx's "Auf diesem Gerät entsperrt lassen"
+    // toggle lives in the "Module" group and matches the same hasText filter.
+    const addForm = page.locator('.devices-panel__add-form');
+    await addForm.getByLabel('Gerätename').fill('Laptop');
+    await addForm.getByRole('button', { name: 'Hinzufügen' }).click();
 
-    await expect(geraetGroup.locator('.devices-panel__item', { hasText: 'Laptop' })).toBeVisible();
+    await expect(page.locator('.devices-panel__item', { hasText: 'Laptop' })).toBeVisible();
     await expect(page.getByTestId('recovery-code')).toHaveCount(0);
 
     const rows = await withDb((client) =>
@@ -242,12 +245,11 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
     const { context, page } = await freshDeviceContext(browser, baseURL);
     await page.goto('/einstellungen');
     await context.setOffline(true);
-    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
 
     await expect(
-      geraetGroup.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
+      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
     ).toBeVisible();
-    await expect(geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Gerät hinzufügen' })).toBeDisabled();
 
     await context.setOffline(false);
     await context.close();
@@ -260,12 +262,11 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
     const { context, page } = await freshDeviceContext(browser, baseURL);
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
     await page.goto('/einstellungen');
-    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
 
-    const addButton = geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' });
+    const addButton = page.getByRole('button', { name: 'Gerät hinzufügen' });
     await expect(addButton).toBeVisible();
     await addButton.click();
-    await expect(geraetGroup.getByLabel('Gerätename')).toBeVisible();
+    await expect(page.locator('.devices-panel__add-form').getByLabel('Gerätename')).toBeVisible();
 
     await context.close();
   });
