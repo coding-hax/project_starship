@@ -1,0 +1,129 @@
+'use client';
+
+import { startRegistration } from '@simplewebauthn/browser';
+import { useCallback, useEffect, useState } from 'react';
+
+export interface DeviceCredential {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+type Phase = 'loading' | 'ready' | 'error';
+
+/**
+ * Talks to /api/auth/* directly rather than through src/local/ — auth is
+ * server-synchronous, not an outbox mutation (same as session-panel.tsx's logout).
+ */
+export function useDevices() {
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [credentials, setCredentials] = useState<DeviceCredential[]>([]);
+  const [otherCount, setOtherCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [credentialsResponse, sessionsResponse] = await Promise.all([
+      fetch('/api/auth/credentials'),
+      fetch('/api/auth/sessions'),
+    ]);
+    if (!credentialsResponse.ok || !sessionsResponse.ok) {
+      setPhase('error');
+      return;
+    }
+    const credentialsBody = await credentialsResponse.json();
+    const sessionsBody = await sessionsResponse.json();
+    setCredentials(credentialsBody.credentials);
+    setOtherCount(sessionsBody.otherCount);
+    setPhase('ready');
+  }, []);
+
+  // queueMicrotask, not a direct call: react-hooks/set-state-in-effect flags a
+  // synchronous call to a setState-calling function from the effect body itself
+  // (see quick-add.tsx for the same pattern).
+  useEffect(() => {
+    queueMicrotask(() => {
+      load();
+    });
+  }, [load]);
+
+  const revoke = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/auth/credentials/${id}`, { method: 'DELETE' });
+        if (response.status === 409) {
+          const body = await response.json().catch(() => null);
+          setError(body?.error ?? 'Das letzte Gerät kann nicht widerrufen werden.');
+          return;
+        }
+        if (!response.ok) {
+          setError('Widerrufen fehlgeschlagen.');
+          return;
+        }
+        await load();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  const endOtherSessions = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/auth/sessions', { method: 'DELETE' });
+      if (!response.ok) {
+        setError('Beenden fehlgeschlagen.');
+        return;
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }, [load]);
+
+  const addDevice = useCallback(
+    async (label: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const optionsResponse = await fetch('/api/auth/register/options', { method: 'POST' });
+        if (!optionsResponse.ok) {
+          setError('Gerät hinzufügen fehlgeschlagen.');
+          return false;
+        }
+        const options = await optionsResponse.json();
+
+        const response = await startRegistration({ optionsJSON: options });
+        const verifyResponse = await fetch('/api/auth/register/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            response,
+            challenge: options.challenge,
+            label: label.trim() || undefined,
+          }),
+        });
+        const result = await verifyResponse.json();
+        if (!verifyResponse.ok || !result.verified) {
+          setError('Gerät hinzufügen fehlgeschlagen.');
+          return false;
+        }
+        await load();
+        return true;
+      } catch {
+        setError('Gerät hinzufügen fehlgeschlagen.');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  return { phase, credentials, otherCount, busy, error, revoke, endOtherSessions, addDevice };
+}

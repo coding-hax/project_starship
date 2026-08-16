@@ -718,8 +718,15 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
           ? ciFixPrompt(issue, ciSummary)
           : buildPrompt(issue);
 
+  // Artifact fuer beide Denk-Rollen (#767, ADR-0024): veroeffentlicht direkt
+  // nach claude.ai, ohne den Umweg ueber ein lokales Write -- die harte
+  // Denyliste unten bleibt deshalb unveraendert.
   const tools =
-    role === 'plan' ? READONLY_TOOLS : role === 'research' ? `${READONLY_TOOLS},WebSearch` : BUILD_TOOLS;
+    role === 'plan'
+      ? `${READONLY_TOOLS},Artifact`
+      : role === 'research'
+        ? `${READONLY_TOOLS},WebSearch,Artifact`
+        : BUILD_TOOLS;
 
   // O2/O3 (#325): nur die Denk-Rollen laufen in einem Wegwerf-Worktree UND
   // bekommen die harte Werkzeug-Verweigerung -- die Bau-Rolle hat ihren

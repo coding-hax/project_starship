@@ -855,9 +855,19 @@ test('ein Rechts-Wisch im aufgezogenen Monat hat keine Wirkung mehr, nur senkrec
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streifen zusammen (S5 AC2)', async ({
+test('Antippen eines Tages im aufgezogenen Monat waehlt ihn, der Monat bleibt offen und die Agenda zeigt den Tag (issue #765)', async ({
   page,
 }) => {
+  await seedEvent(page, {
+    title: 'Monatstag-Termin',
+    allDay: false,
+    startsAt: '2026-07-22T09:00:00.000Z',
+    endsAt: '2026-07-22T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
   const strip = calendarStrip(page);
   await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
@@ -865,9 +875,10 @@ test('Antippen eines Tages im aufgezogenen Monat waehlt ihn und zieht den Streif
   const outsideDay = dayButton(page, 'Mi, 22.');
   await outsideDay.click();
 
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
   await expect(outsideDay).toHaveAttribute('aria-pressed', 'true');
   await expect(outsideDay).toBeVisible();
+  await expect(eventCard(page, 'Monatstag-Termin')).toBeVisible();
 });
 
 test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Tage ohne Termin keinen (S5 AC3)', async ({

@@ -21,6 +21,7 @@
    in task-list.tsx keeps it out of `listitem` counts, this only has to look
    like a caption, not a card: versal, muted, no border/background of its own. */
 .task-list__day-marker {
+  min-height: var(--day-marker-height);
   padding: var(--space-2) var(--space-4) var(--space-1);
   font-size: var(--text-meta);
   font-weight: var(--weight-emphasis);
@@ -29,11 +30,11 @@
   color: var(--text-muted);
 }
 
-/* AK9's "nothing left this week" and AK6's "N undated" lines (issue #705) —
-   both sit *outside* the `<ul>`, so they read as a note about the list, not
-   as one more (unstyled, unchecked) row inside it. */
-.task-list__sparse-note,
-.task-list__undated-note {
+/* AK9's "nothing left this week" line (issue #705) — sits *outside* the
+   `<ul>`, so it reads as a note about the list, not as one more (unstyled,
+   unchecked) row inside it. AK6's "N undated" line became the expandable
+   "ohne Datum" `SectionCard` below instead (issue #762). */
+.task-list__sparse-note {
   margin: var(--space-2) 0 0;
   padding: 0 var(--space-4);
   color: var(--text-muted);
@@ -42,30 +43,41 @@
 }
 
 /**
- * One row's outer height, declared where both the rows and the empty state
- * below can read it, so the two cannot drift apart (issue #228). Everything here
- * is border-box, so the padding and the hairline sit *inside* this number: what
- * makes a row as tall as it is, is the touch-target-tall checkbox column
- * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px hairline.
+ * One row's outer height, and a day marker's own, declared where the rows,
+ * the marker and the empty state below can all read them, so none of the
+ * three can drift apart (issue #228, extended by issue #762 once /uebersicht
+ * started rendering markers too). Everything here is border-box, so the
+ * padding and (for a row) the hairline sit *inside* these numbers: what makes
+ * a row as tall as it is, is the touch-target-tall checkbox column
+ * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px
+ * hairline; what makes a marker as tall as it is, is its one line of
+ * `--text-meta` type at the body line-height plus its own top/bottom padding.
  */
 .task-list__item,
+.task-list__day-marker,
 .task-list__empty--compact {
   --task-card-height: calc(var(--touch-target) + 2 * var(--space-3) + 2px);
+  --day-marker-height: calc(
+    var(--text-meta) * var(--leading-body) + var(--space-2) + var(--space-1)
+  );
 }
 
 /**
  * On /uebersicht the empty state sits between two section headings, where
  * space-12 tore a hole into the page — nothing due looked like a rendering bug
- * (issue #228). Exactly one task card's height instead, so the rhythm between the
- * sections is the same whether or not something is due. No border and no surface:
- * this is a note, not a card. The full /aufgaben screen keeps the roomy version:
- * there the empty state is the page.
+ * (issue #228). A filled "Woche" list is never just one row anymore, though: the
+ * shortest possible one (a single overdue-or-today task, no undated card) is a day
+ * marker plus one task card (issue #762), so the empty state reserves both, not
+ * just the row — otherwise the very case #228 fixed reopens the moment the last
+ * task of the week is checked off. No border and no surface: this is a note, not
+ * a card. The full /aufgaben screen keeps the roomy version: there the empty state
+ * is the page.
  */
 .task-list__empty--compact {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: var(--task-card-height);
+  min-height: calc(var(--task-card-height) + var(--day-marker-height));
   padding: var(--space-3) var(--space-4);
 }
 
@@ -76,6 +88,15 @@
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+/* The "ohne Datum" card (issue #762) — same spacing idea as "Archiviert"
+   (habit-list.css) between the active list and the archive below it, just not
+   adjacency-scoped: this class only ever appears in the one spot in
+   task-list.tsx, always right after either the list, the sparse note, or the
+   compact /uebersicht empty state. */
+.task-list__undated-card {
+  margin-top: var(--space-4);
 }
 
 .task-list__item {
