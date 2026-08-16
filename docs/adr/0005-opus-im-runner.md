@@ -2,6 +2,11 @@
 
 Status: **angenommen**, Eskalations-Rolle teilweise ersetzt durch ADR-0007 · Datum: 2026-07-16
 
+Ergänzt um [ADR-0024](0024-denk-laeufe-artifact.md): beide Denk-Rollen dürfen
+seit #767 zusätzlich `Artifact` benutzen, ohne dass die Read-only-Zusage unten
+fällt — `Artifact` publiziert direkt nach außen, ohne vorher lokal zu
+schreiben.
+
 ## Kontext
 
 `CLAUDE.md` und `docs/TOKEN-BUDGET.md` verbieten Opus im Runner als harte Regel:

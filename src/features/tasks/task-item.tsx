@@ -7,7 +7,11 @@ import type { TaskView } from './use-tasks';
 const SWIPE_THRESHOLD_PX = 80;
 /** Movement at or below this counts as a tap rather than a drag. */
 const TAP_TOLERANCE_PX = 8;
-/** Holding still this long picks the row up for drag-to-nest instead of a swipe. */
+/** Holding still this long picks the row up for drag-to-nest instead of a swipe.
+ *  On mouse/pen a drag that travels off the row's own height picks it up right away
+ *  (issue #763, see `handlePointerMove`); this hold is the touch-only pick-up and,
+ *  for every input, the way to nest onto an immediately adjacent row with barely
+ *  any travel. */
 const LONG_PRESS_MS = 400;
 
 /**
@@ -207,6 +211,30 @@ export function TaskItem({
     pointerRef.current = { x: event.clientX, y: event.clientY };
 
     if (lifted) {
+      setDragX(deltaX);
+      setDragY(deltaY);
+      onDragOverTask?.(resolveDropTarget(event.clientX, event.clientY));
+      return;
+    }
+
+    // Once the pointer travels off this row's own height — up onto another row, or
+    // into the free space around the list — the gesture is a reach toward a drop
+    // target, i.e. a nest or an un-nest, never a (horizontal) swipe. Pick the row up
+    // right away instead of waiting out the long-press, which a mouse user never sits
+    // still for (issue #763): before this a desktop drag either read as a swipe or,
+    // moving straight up/down with `dragX` near zero, as a tap on release — so
+    // drag-to-nest was unreachable without an unnatural hold. Leaving the *height*
+    // (not just any vertical move) is what keeps an un-nest drag that also drifts
+    // sideways toward the free space from being mistaken for a swipe. Touch is
+    // excluded on purpose: there a vertical drag must still scroll the list
+    // (`touch-action: pan-y`), so touch keeps the long-press as its only pick-up.
+    const rect = itemRef.current?.getBoundingClientRect();
+    const leftOwnRow =
+      rect !== undefined && (event.clientY < rect.top || event.clientY > rect.bottom);
+    if (draggable && event.pointerType !== 'touch' && leftOwnRow) {
+      clearLongPressTimer();
+      setLiftedState(true);
+      navigator.vibrate?.(10);
       setDragX(deltaX);
       setDragY(deltaY);
       onDragOverTask?.(resolveDropTarget(event.clientX, event.clientY));

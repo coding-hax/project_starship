@@ -1,9 +1,11 @@
 'use client';
 
 import { AppearancePanel } from '@/features/settings/appearance-panel';
+import { DevicesPanel } from '@/features/settings/devices-panel';
 import { ModulePanel } from '@/features/settings/module-panel';
 import { NavOrderPanel } from '@/features/settings/nav-order-panel';
 import { PushPanel } from '@/features/settings/push-panel';
+import { SessionPanel } from '@/features/settings/session-panel';
 import { useActiveSections } from '@/modules/module-sections';
 import type { ComponentType } from 'react';
 
@@ -38,6 +40,8 @@ const GROUPS: Array<{ id: GroupId; title: string; core: CorePanel[] }> = [
     core: [
       { id: 'darstellung', Component: AppearancePanel },
       { id: 'benachrichtigungen', Component: PushPanel },
+      { id: 'sitzung', Component: SessionPanel },
+      { id: 'geraete', Component: DevicesPanel },
     ],
   },
   {

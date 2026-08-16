@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { expect, type Browser, type Page } from '@playwright/test';
 import type {
   PublicKeyCredentialCreationOptionsJSON,
@@ -218,6 +218,60 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
 }
 
 /**
+ * Mints a session row directly in Postgres (mirrors `hashToken`/`createSession` in
+ * `src/auth/session.ts`), independent of the shared `AUTH_STATE` session — for specs
+ * that need to actually log out (issue #756). Set the returned `token` as the
+ * `starship_session` cookie in a fresh context; sperren must never touch the shared
+ * session every other project's `storageState` depends on.
+ */
+export async function createThrowawaySession(): Promise<{ token: string; tokenHash: string }> {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  await withDb((client) =>
+    client.query('INSERT INTO sessions (id, token_hash, expires_at) VALUES ($1, $2, $3)', [
+      randomUUID(),
+      tokenHash,
+      expiresAt,
+    ]),
+  );
+  return { token, tokenHash };
+}
+
+export async function sessionRowExists(tokenHash: string): Promise<boolean> {
+  const result = await withDb((client) =>
+    client.query('SELECT 1 FROM sessions WHERE token_hash = $1', [tokenHash]),
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Mints a `credentials` row directly in Postgres, independent of the real WebAuthn
+ * ceremony (issue #754) — for specs that need extra passkeys to revoke without
+ * running a second virtual-authenticator registration. `credentialId`/`publicKey`
+ * are throwaway values; nothing ever verifies a signature against them.
+ */
+export async function createThrowawayCredential({
+  label,
+}: { label?: string } = {}): Promise<string> {
+  const id = randomUUID();
+  await withDb((client) =>
+    client.query(
+      'INSERT INTO credentials (id, credential_id, public_key, label) VALUES ($1, $2, $3, $4)',
+      [id, randomUUID(), randomBytes(32).toString('base64url'), label ?? null],
+    ),
+  );
+  return id;
+}
+
+export async function credentialRowExists(id: string): Promise<boolean> {
+  const result = await withDb((client) =>
+    client.query('SELECT 1 FROM credentials WHERE id = $1', [id]),
+  );
+  return result.rows.length > 0;
+}
+
+/**
  * Clears the app's own rows but leaves the owner signed in — the default (#115).
  *
  * Wiping `sessions`/`credentials` too (what the old `resetDatabase` did everywhere)
@@ -265,6 +319,7 @@ export async function resetDatabase() {
   await withDb(async (client) => {
     await client.query(
       'DELETE FROM sessions; DELETE FROM credentials; DELETE FROM auth_challenges; ' +
+        'DELETE FROM auth_rate_limits; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
         'DELETE FROM garmin_activities; ' +
@@ -288,6 +343,18 @@ export async function resetPushData() {
 export async function resetReminderData() {
   await withDb(async (client) => {
     await client.query('DELETE FROM reminder_sends; DELETE FROM reminder_prefs;');
+  });
+}
+
+/**
+ * auth_rate_limits is server infra (src/db/schema.ts, issue #755) — its own reset so
+ * specs that call the auth options routes without a full `resetDatabase()` (e.g.
+ * auth-verify.spec.ts, which keeps the shared session) don't accumulate a shared
+ * `unknown`-key counter across tests and trip a sporadic 429.
+ */
+export async function resetRateLimits() {
+  await withDb(async (client) => {
+    await client.query('DELETE FROM auth_rate_limits;');
   });
 }
 

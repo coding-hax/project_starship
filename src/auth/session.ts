@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt, lt, ne } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
@@ -71,6 +71,35 @@ export async function destroySession(): Promise<void> {
 /** Drops expired sessions and challenges. Cheap enough to call on every login. */
 export async function pruneExpired(): Promise<void> {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
+}
+
+/** Live sessions other than the current one — the count shown before the "end all" action. */
+export async function countOtherSessions(): Promise<number> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return 0;
+
+  const rows = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(and(ne(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())));
+  return rows.length;
+}
+
+/**
+ * Ends every live session except the caller's own. Missing cookie means nothing can
+ * be identified as "own", so it deletes nothing rather than guessing.
+ */
+export async function endOtherSessions(): Promise<number> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return 0;
+
+  const deleted = await db
+    .delete(sessions)
+    .where(and(ne(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
+    .returning({ id: sessions.id });
+  return deleted.length;
 }
 
 /**

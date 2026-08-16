@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import {
   authChallenges,
+  authRateLimits,
   categoryColors,
   credentials,
   eventExceptions,
@@ -43,6 +44,7 @@ const tables = [
   credentials,
   sessions,
   authChallenges,
+  authRateLimits,
   recoveryCodes,
   pushSubscriptions,
   garminActivities,

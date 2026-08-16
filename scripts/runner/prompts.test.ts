@@ -293,5 +293,41 @@ describe('prompts', () => {
       expect(BUILD_TOOLS.split(',')).toContain('Write');
       expect(BUILD_TOOLS.split(',')).toContain('Bash');
     });
+
+    // #767 (ADR-0024): Artifact ist eine Runner-CLI-Allowlist-Zeile
+    // (round.ts), keine der beiden hier exportierten Konstanten -- die
+    // Bau-Rolle darf es nicht bekommen (AK4, Scope-Creep).
+    it('nennt Artifact nicht in BUILD_TOOLS', () => {
+      expect(BUILD_TOOLS.split(',')).not.toContain('Artifact');
+    });
+  });
+
+  // #767 (ADR-0024): beide Denk-Rollen bekommen dieselbe Artifact-Leitplanke
+  // im Prompt -- Wann/Wie/keine Nutzerdaten/URL-im-Kommentar (AK2/3/5/6/7).
+  describe('Artifact-Leitplanke fuer Denk-Rollen (#767, ADR-0024)', () => {
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt nennt Wann/Wie und verweist auf ADR-0024', (_name, prompt) => {
+      expect(prompt).toContain('**Wann:**');
+      expect(prompt).toContain('**Wie:**');
+      expect(prompt).toContain('ADR-0024');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verbietet Nutzerdaten und Secrets im Artifact', (_name, prompt) => {
+      expect(prompt).toContain('Journal-Inhalte');
+      expect(prompt).toContain('Secrets');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verlangt die URL im Kommentar und dasselbe Artifact bei Fortsetzung', (_name, prompt) => {
+      expect(prompt).toContain('landet im Plan-/Rechercheergebnis-Kommentar');
+      expect(prompt).toContain('**dasselbe** Artifact');
+    });
   });
 });

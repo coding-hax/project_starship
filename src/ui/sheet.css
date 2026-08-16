@@ -84,6 +84,15 @@ dialog.sheet:not([open]) .sheet__content {
   opacity: 0;
 }
 
+/* Pulling the sheet down (issue #757): the inline `transform` sheet.tsx sets while
+   dragging must track the finger 1:1 — the spring transition above would otherwise
+   have every pointermove chase a moving target instead of following it directly.
+   Letting go (drag or cancel) removes this class again, so the snap-back/close
+   both animate with the normal spring. */
+.sheet__content--dragging {
+  transition: none;
+}
+
 /**
  * Shared header (issue #710): grip, "Abbrechen" left, title centered, action
  * right. The action button keeps the filled-pill look every sheet's save
@@ -100,6 +109,9 @@ dialog.sheet:not([open]) .sheet__content {
   margin: 0 auto var(--space-4);
   border-radius: var(--radius-pill);
   background: var(--border-strong);
+  /* Visual affordance for the pull-to-dismiss gesture (issue #757) — the actual
+     drag handlers live on `.sheet__content`, not scoped to this element alone. */
+  cursor: grab;
 }
 
 .sheet__header-row {
