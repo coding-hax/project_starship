@@ -1691,6 +1691,100 @@ test('„Unteraufgabe von" im Editor klappt einen eingeklappten Elternteil ebenf
   );
 });
 
+test('Abgehakte Unteraufgabe verschwindet vollständig beim Zuklappen der Elternaufgabe — auch die Opazität, nicht nur die Höhe (issue #782 AK1/AK2)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+  await seedTask(page, { title: 'Kind offen', parentId });
+
+  await checkboxFor(page, 'Kind erledigt').click();
+  await expect(checkboxFor(page, 'Kind erledigt')).toBeChecked();
+
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const openChild = taskItems(page).filter({ hasText: 'Kind offen' });
+
+  await disclosureFor(page, 'Elternaufgabe').click();
+
+  await expect(doneChild).toBeHidden();
+  await expect(openChild).toBeHidden();
+  // AK2: die zugeklappte, abgehakte Zeile deklariert sich auch selbst als
+  // unsichtbar (opacity 0) — nicht nur durch die Geometrie aus #779 verdeckt.
+  // Polled wie in checkoff-motion.spec.ts: die Opazität läuft über dieselbe
+  // Transition wie max-height, ein Sofort-Read kann sie mitten im Flug fangen.
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+});
+
+test('Aufklappen bringt die abgehakte Unteraufgabe unverändert zurück (issue #782 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+
+  await checkboxFor(page, 'Kind erledigt').click();
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+
+  await disclosure.click();
+  await expect(doneChild).toBeHidden();
+
+  await disclosure.click();
+
+  await expect(doneChild).toBeVisible();
+  await expect(doneChild).toHaveClass(/task-list__item--done/);
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0.6');
+  const textDecoration = await doneChild
+    .locator('.task-list__title')
+    .evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(textDecoration).toContain('line-through');
+});
+
+test('nicht abgehakte Unteraufgabe bleibt unverändert: zugeklappt unsichtbar, aufgeklappt bei opacity 1 (issue #782 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind offen', parentId });
+
+  const openChild = taskItems(page).filter({ hasText: 'Kind offen' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+
+  await expect.poll(() => openChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+
+  await disclosure.click();
+  await expect(openChild).toBeHidden();
+
+  await disclosure.click();
+  await expect(openChild).toBeVisible();
+  await expect.poll(() => openChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+});
+
+test('bei reduzierter Bewegung bleibt das Zuklappen einer abgehakten Unteraufgabe augenblicklich, ohne sichtbaren Zwischenzustand (issue #782 AK6)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+
+  await checkboxFor(page, 'Kind erledigt').click();
+  const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
+  const transitionDuration = await doneChild.evaluate(
+    (el) => getComputedStyle(el).transitionDuration,
+  );
+  expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
+
+  await disclosureFor(page, 'Elternaufgabe').click();
+  await expect(doneChild).toBeHidden();
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+});
+
 test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erledigen (issue #89 AK4)', async ({
   page,
 }) => {

@@ -242,6 +242,32 @@ test('Klick auf den Klapp-Zweig zeigt die Kind-Zeilen mit voller Höhe, erneuter
   await expect.poll(async () => (await childB.boundingBox())?.height ?? -1).toBe(0);
 });
 
+test('abgehakte Unteraufgabe verschwindet auf der Übersicht vollständig beim Zuklappen der Elternaufgabe (issue #782 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: WITHIN_WEEK });
+  await seedTask(page, { title: 'Kind erledigt', parentId });
+  await seedTask(page, { title: 'Kind offen', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  // Startet eingeklappt (issue #779 AK1) — erst aufklappen, um die Checkbox zu erreichen.
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+  const doneChild = dueTaskItems(page).filter({ hasText: 'Kind erledigt' });
+  await page
+    .getByRole('checkbox', { name: 'Kind erledigt als erledigt markieren' })
+    .click();
+  await expect(doneChild).toHaveClass(/task-list__item--done/);
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+  await expect(doneChild).toBeHidden();
+  await expect.poll(() => doneChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+});
+
 test('Aufklappen macht die Liste um die Höhe der Kind-Zeilen länger, nicht um nichts (issue #779 AK3)', async ({
   page,
 }) => {
