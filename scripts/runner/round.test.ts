@@ -349,6 +349,20 @@ describe('roundPlan', () => {
     expect(run.tools).not.toContain('Edit');
   });
 
+  // #767 (ADR-0024): beide Denk-Rollen duerfen ein Artifact veroeffentlichen,
+  // die Bau-Rolle nicht (Scope-Creep, AK4).
+  it('gibt beiden Denk-Rollen Artifact, der Bau-Rolle nicht', () => {
+    const { gh: ghPlan } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
+    const plan = roundPlan(ctx(ghPlan), opts) as RoundRun;
+    const { gh: ghResearch } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
+    const research = roundPlan(ctx(ghResearch), opts) as RoundRun;
+    const { gh: ghBuild } = ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]);
+    const build = roundPlan(ctx(ghBuild), opts) as RoundRun;
+    expect(plan.tools).toContain('Artifact');
+    expect(research.tools).toContain('Artifact');
+    expect(build.tools).not.toContain('Artifact');
+  });
+
   // O3 (#325): harte Werkzeug-Verweigerung zusaetzlich zur Allowlist, nur
   // fuer die Denk-Rollen.
   describe('denyTools + beforeDirty (#325)', () => {
@@ -385,7 +399,7 @@ describe('roundPlan', () => {
       const run = roundPlan(ctx(gh), opts) as RoundRun;
       expect(run.role).toBe('plan');
       expect(run.model).toBe('opus');
-      expect(run.tools).toBe(READONLY_TOOLS);
+      expect(run.tools).toBe(`${READONLY_TOOLS},Artifact`);
       expect(run.denyTools).toBe('Edit,Write');
       expect(run.prompt).toContain('als **Planer**');
       expect(run.beforeTip).toBe('');
@@ -397,6 +411,7 @@ describe('roundPlan', () => {
       expect(run.role).toBe('research');
       expect(run.model).toBe('opus');
       expect(run.tools).toContain('WebSearch');
+      expect(run.tools).toContain('Artifact');
       expect(run.denyTools).toBe('Edit,Write');
     });
 
@@ -405,6 +420,7 @@ describe('roundPlan', () => {
       const run = roundPlan(ctx(gh), opts) as RoundRun;
       expect(run.role).toBe('build');
       expect(run.tools).toContain('Write');
+      expect(run.tools).not.toContain('Artifact');
       expect(run.denyTools).toBe('');
     });
   });
