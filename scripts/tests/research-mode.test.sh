@@ -220,6 +220,18 @@ assert_no_bare_bash() {   # $1 = Beschreibung, $2 = Datei
   fi
 }
 
+# Der Stub schreibt jedes Argument auf eine eigene Zeile (printf '%s\n' "$@").
+# Ein Teilstring-Test wie "--disallowedTools Edit" kann darin nie passen, und
+# ein blosses "Edit" traefe auch die Allowlist der Bau-Rolle. Deshalb
+# zeilengenau auf den Wert der Option.
+assert_arg_line() {   # $1 = Beschreibung, $2 = Datei, $3 = erwartete Zeile
+  if [ -f "$2" ] && grep -qxF -- "$3" "$2"; then
+    ok "$1"
+  else
+    red "$1 (keine Zeile '$3' in $2)"
+  fi
+}
+
 # ==============================================================================
 # 1. plan hat Vorrang vor research (auch bei niedrigerer Nummer)
 # ==============================================================================
@@ -236,7 +248,8 @@ assert_contains "AC1: Planer-Prompt läuft mit Opus" "$GHSTATE_DIR/claude-lastar
 assert_no_bare_bash "AC1/#63: Planer startet nicht mit pauschalem Bash" "$GHSTATE_DIR/claude-lastargs"
 assert_contains "AC1/#63: Planer darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
 assert_contains "AC1/#325 (O3): Planer bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
-assert_contains "AC1/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
+assert_arg_line "AC1/#325+ADR-0025: harte Verweigerung ist genau Edit" "$GHSTATE_DIR/claude-lastargs" "Edit"
+assert_contains "AC1/ADR-0025: Planer bekommt Write (Artifact braucht eine Datei)" "$GHSTATE_DIR/claude-lastargs" "Artifact,Write"
 assert_contains "AC1/#767 (ADR-0024): Planer bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
 
 # ==============================================================================
@@ -260,9 +273,13 @@ assert_contains "AC2/#63: Rechercheur darf lesende git-Inspektion" "$GHSTATE_DIR
 # #325 (O3): --disallowedTools ist die harte Zusatzgrenze neben der
 # Allowlist -- ersetzt die alte (jetzt irrefuehrende) Prüfung "kein
 # Edit,Write im Aufruf", die durch genau dieses Flag zwangsläufig verletzt
-# würde.
+# würde. Seit ADR-0025 verweigert sie nur noch `Edit`: `Artifact` nimmt nur
+# einen file_path auf eine schon geschriebene Datei, ohne `Write` ist es
+# unbenutzbar. Folgenlos, weil der cwd ein Wegwerf-Worktree ist und Claude
+# Code Schreibzugriffe auf den Arbeitsbaum einsperrt.
 assert_contains "AC2/#325 (O3): Rechercheur bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
-assert_contains "AC2/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
+assert_arg_line "AC2/#325+ADR-0025: harte Verweigerung ist genau Edit" "$GHSTATE_DIR/claude-lastargs" "Edit"
+assert_contains "AC2/ADR-0025: Rechercheur bekommt Write (Artifact braucht eine Datei)" "$GHSTATE_DIR/claude-lastargs" "Artifact,Write"
 assert_contains "AC2/#767 (ADR-0024): Rechercheur bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
 
 # ==============================================================================
