@@ -1519,6 +1519,34 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblick
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
 
+test('/aufgaben bleibt aufgeklappt — Kinder sind von Anfang an sichtbar in „Woche" und „Alle", der Platz-Fix greift dort beim Zuklappen genauso (issue #779 AK4)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: isoAt(1) });
+  await seedTask(page, { title: 'Kind', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const childItem = taskItems(page).filter({ hasText: 'Kind' });
+
+  // "Woche" ist der Standard — die Fälligkeit morgen liegt im Fenster, von Anfang an offen.
+  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(childItem).toHaveJSProperty('inert', false);
+
+  await viewOption(page, 'Alle').click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(childItem).toHaveJSProperty('inert', false);
+
+  // Der Platz-Fix (min-height: 0) ist Teil der gemeinsamen Regel, nicht auf
+  // /uebersicht beschränkt — hier greift er beim Zuklappen genauso.
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childItem).toHaveJSProperty('inert', true);
+  expect((await childItem.boundingBox())?.height).toBe(0);
+});
+
 test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erledigen (issue #89 AK4)', async ({
   page,
 }) => {

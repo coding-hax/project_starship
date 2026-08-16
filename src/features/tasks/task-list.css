@@ -275,6 +275,12 @@
 }
 
 .task-list__item--collapsed {
+  /* `.task-list__item` sets `min-height: var(--task-card-height)`, which per
+     CSS 2.1 §10.7 wins against `max-height: 0` — without this the collapsed
+     row stays 70px tall, just invisible (issue #779). Not in `--child`'s
+     `transition` list, so it snaps while the visible collapse still runs
+     over `max-height`. */
+  min-height: 0;
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;

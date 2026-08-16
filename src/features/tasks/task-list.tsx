@@ -158,9 +158,19 @@ export function TaskList({
   // always starts back on "Woche". Unused on the `dueTodayOnly` instance,
   // which never renders the switcher and never changes it away from the default.
   const [view, setView] = useState<ViewMode>('woche');
-  // Ephemeral, not persisted (per-ticket decision) — default expanded, so a
-  // reload never hides subtasks the user hasn't deliberately collapsed.
+  // Ephemeral, not persisted (per-ticket decision). On /aufgaben this holds the
+  // ids the user has collapsed — default expanded, so a reload never hides
+  // subtasks nobody asked to hide. On /uebersicht (`dueTodayOnly`, issue #779)
+  // the *meaning* flips instead: it holds the ids the user has expanded,
+  // default collapsed — a dashboard shows the parent's `done/total` and holds
+  // children back until asked. Seeding the set instead (fill it with every
+  // parent id on the first tasks arrive) was the more obvious route but breaks
+  // on two edges a meaning-flip never opens: `allTasks` is `undefined` on the
+  // very first render, and a task arriving later via sync pull would land
+  // expanded while everything else stays collapsed.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const isExpanded = (taskId: string) =>
+    dueTodayOnly ? collapsed.has(taskId) : !collapsed.has(taskId);
   // What a drop would do *right now* (issue #451) — set on pick-up and on every
   // move while lifted, cleared on drop and on cancel. `targetId` is still the raw
   // row under the pointer; the one-level rule is applied below, so the preview
@@ -330,7 +340,7 @@ export function TaskList({
           task={node.task}
           isParent={node.total > 0}
           progress={node.total > 0 ? { done: node.done, total: node.total } : undefined}
-          expanded={!collapsed.has(node.task.id)}
+          expanded={isExpanded(node.task.id)}
           onToggleExpand={() => toggleExpanded(node.task.id)}
           onToggle={() => toggleComplete(node.task)}
           onEdit={() => setEditingTaskId(node.task.id)}
@@ -355,7 +365,7 @@ export function TaskList({
         key={key}
         task={child}
         isChild
-        visible={!collapsed.has(node.task.id)}
+        visible={isExpanded(node.task.id)}
         onToggle={() => toggleComplete(child)}
         onEdit={() => setEditingTaskId(child.id)}
         onDelete={() => deleteTask(child)}
