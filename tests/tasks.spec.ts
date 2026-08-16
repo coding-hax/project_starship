@@ -1700,6 +1700,9 @@ test('Abgehakte Unteraufgabe verschwindet vollständig beim Zuklappen der Eltern
   await seedTask(page, { title: 'Kind erledigt', parentId });
   await seedTask(page, { title: 'Kind offen', parentId });
 
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
   await checkboxFor(page, 'Kind erledigt').click();
   await expect(checkboxFor(page, 'Kind erledigt')).toBeChecked();
 
@@ -1725,6 +1728,9 @@ test('Aufklappen bringt die abgehakte Unteraufgabe unverändert zurück (issue #
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind erledigt', parentId });
 
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
   await checkboxFor(page, 'Kind erledigt').click();
   const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
   const disclosure = disclosureFor(page, 'Elternaufgabe');
@@ -1754,6 +1760,9 @@ test('nicht abgehakte Unteraufgabe bleibt unverändert: zugeklappt unsichtbar, a
   const openChild = taskItems(page).filter({ hasText: 'Kind offen' });
   const disclosure = disclosureFor(page, 'Elternaufgabe');
 
+  // Default ist eingeklappt (issue #781) — erst aufklappen, dann zählt die
+  // Opazität-Behauptung für den sichtbaren Zustand.
+  await expandParent(page, 'Elternaufgabe');
   await expect.poll(() => openChild.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
 
   await disclosure.click();
@@ -1773,6 +1782,9 @@ test('bei reduzierter Bewegung bleibt das Zuklappen einer abgehakten Unteraufgab
   const parentId = await seedTask(page, { title: 'Elternaufgabe' });
   await seedTask(page, { title: 'Kind erledigt', parentId });
 
+  // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
+  // bevor ihre Checkbox überhaupt klickbar ist.
+  await expandParent(page, 'Elternaufgabe');
   await checkboxFor(page, 'Kind erledigt').click();
   const doneChild = taskItems(page).filter({ hasText: 'Kind erledigt' });
   const transitionDuration = await doneChild.evaluate(
