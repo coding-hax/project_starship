@@ -65,6 +65,10 @@ const ART_ACCENT: Record<CaptureKind, string> = {
   habit_check: 'var(--area-habits)',
 };
 
+/** issue #780 E4: solange `preview.provisional` gilt, ist noch keine Art entschieden —
+ * der Sheet-Akzent bleibt neutral statt den Aufgaben-Akzent vorwegzunehmen. */
+const NEUTRAL_ACCENT = 'var(--accent-neutral)';
+
 /** Welche Chip-Panel gerade offen ist — höchstens eine gleichzeitig. */
 type ChipKey = 'art' | 'titel' | 'wann' | 'prio' | 'zeit' | 'kategorie' | 'routine';
 
@@ -142,10 +146,6 @@ export function UebersichtCapture() {
   const [category, setCategory] = useState(NO_CATEGORY);
   const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
-  // issue #758: "Neue Routine anlegen"-Zweig der Routine-Auswahl — trifft die
-  // Erfassung keine bestehende Gewohnheit, kann diese explizit gewählte Option
-  // eine neue anlegen statt eine bestehende abzuhaken.
-  const [newRoutine, setNewRoutine] = useState(false);
   // AK4 "Mehr": ein zweites Sheet, nie gleichzeitig mit dem Kern-Sheet offen —
   // "Mehr" schließt dieses hier und öffnet jenes mit den bisherigen Werten.
   const [taskEditorState, setTaskEditorState] = useState<TaskEditorState>(null);
@@ -271,9 +271,10 @@ export function UebersichtCapture() {
     const committed = commit();
     const base = committed ?? preview;
     const oldKind = base.kind;
-    setAccumulated({ ...base, kind: newKind });
+    // issue #780: der Art-Chip trifft eine bewusste Wahl — die Art ist damit nicht
+    // mehr provisorisch, unabhängig davon, ob ein Signal je gepunktet hat.
+    setAccumulated({ ...base, kind: newKind, provisional: false });
     if (oldKind === newKind) return;
-    if (oldKind === 'habit_check') setNewRoutine(false);
 
     const dropped = extraFieldSet(oldKind, base) ? [EXTRA_FIELD[oldKind].label] : [];
     const restored = extraFieldSet(newKind, base);
@@ -342,7 +343,6 @@ export function UebersichtCapture() {
     setStatus(null);
     setPriority(0);
     setCategory(NO_CATEGORY);
-    setNewRoutine(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -415,10 +415,11 @@ export function UebersichtCapture() {
       return;
     }
 
-    // issue #758 AK3: der explizite "Neue Routine anlegen"-Zweig — legt eine neue
-    // Gewohnheit mit den Create-Defaults aus habit-editor.tsx an (kein Rhythmus
-    // aus Spracheingabe, das verfeinert sich danach auf /routinen).
-    if (newRoutine) {
+    // issue #758 AK3, seit #780 auch automatisch über den Erkenner (routineIntent):
+    // der "Neue Routine anlegen"-Zweig — legt eine neue Gewohnheit mit den
+    // Create-Defaults aus habit-editor.tsx an (kein Rhythmus aus Spracheingabe,
+    // das verfeinert sich danach auf /routinen).
+    if (final.newHabit) {
       const name = final.title.trim();
       if (!name) {
         inputRef.current?.focus();
@@ -477,7 +478,6 @@ export function UebersichtCapture() {
           setStatus(null);
           setPriority(0);
           setCategory(NO_CATEGORY);
-          setNewRoutine(false);
           setNow(new Date());
           setOpen(true);
         }}
@@ -491,7 +491,7 @@ export function UebersichtCapture() {
         label={LABEL}
         initialFocusRef={inputRef}
         header={{ actionLabel: 'Anlegen', formId: FORM_ID }}
-        accent={ART_ACCENT[displayedKind]}
+        accent={preview.provisional ? NEUTRAL_ACCENT : ART_ACCENT[displayedKind]}
       >
         <form id={FORM_ID} className="quick-add" onSubmit={handleSubmit}>
           <input
@@ -499,7 +499,7 @@ export function UebersichtCapture() {
             type="text"
             name="title"
             className="quick-add__input"
-            placeholder="Todo Titel"
+            placeholder="Aufgabe, Termin, Routine …"
             aria-label="Titel der Aufgabe"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -516,15 +516,15 @@ export function UebersichtCapture() {
             <Chip
               field="Art"
               emptyLabel="Art?"
-              value={ART_LABELS[displayedKind]}
-              guessed={accumulated === null}
+              value={preview.provisional ? null : ART_LABELS[displayedKind]}
+              guessed={false}
               open={openChip === 'art'}
               panelId={ART_PANEL_ID}
               onOpen={() => toggleChip('art')}
             />
             {(displayedKind === 'task' ||
               displayedKind === 'event' ||
-              (displayedKind === 'habit_check' && newRoutine)) && (
+              (displayedKind === 'habit_check' && preview.newHabit)) && (
               <Chip
                 field="Titel"
                 emptyLabel="Titel?"
@@ -613,7 +613,7 @@ export function UebersichtCapture() {
               <Chip
                 field="Routine"
                 emptyLabel={ROUTINE_UNRESOLVED_LABEL}
-                value={newRoutine ? `Neu: „${preview.title}"` : habitName}
+                value={preview.newHabit ? `Neu: „${preview.title}"` : habitName}
                 open={openChip === 'routine'}
                 panelId={ROUTINE_PANEL_ID}
                 onOpen={() => toggleChip('routine')}
@@ -628,7 +628,7 @@ export function UebersichtCapture() {
                   <input
                     type="radio"
                     name="uebersicht-capture-art"
-                    checked={displayedKind === kind}
+                    checked={!preview.provisional && displayedKind === kind}
                     onPointerDown={(event) => event.preventDefault()}
                     onChange={() => changeKind(kind)}
                   />
@@ -729,14 +729,14 @@ export function UebersichtCapture() {
                   <input
                     type="radio"
                     name="uebersicht-capture-routine"
-                    checked={!newRoutine && resolvedHabitId === habit.id}
+                    checked={!preview.newHabit && resolvedHabitId === habit.id}
                     onPointerDown={(event) => event.preventDefault()}
                     onChange={() => {
-                      setNewRoutine(false);
                       const base = accumulated ?? preview;
                       setAccumulated({
                         ...base,
                         habitId: habit.id,
+                        newHabit: false,
                         confidence: { ...base.confidence, habit: { level: 'high' } },
                       });
                     }}
@@ -752,14 +752,14 @@ export function UebersichtCapture() {
                   <input
                     type="radio"
                     name="uebersicht-capture-routine"
-                    checked={newRoutine}
+                    checked={preview.newHabit}
                     onPointerDown={(event) => event.preventDefault()}
                     onChange={() => {
-                      setNewRoutine(true);
                       const base = accumulated ?? preview;
                       setAccumulated({
                         ...base,
                         habitId: null,
+                        newHabit: true,
                         confidence: { ...base.confidence, habit: { level: 'high' } },
                       });
                     }}
