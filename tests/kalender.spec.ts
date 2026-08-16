@@ -141,13 +141,6 @@ async function nextWeek(page: Page, times = 1): Promise<void> {
   }
 }
 
-/** Pages a whole week back in one drag, see `nextWeek`. */
-async function prevWeek(page: Page, times = 1): Promise<void> {
-  for (let i = 0; i < times; i += 1) {
-    await swipeHorizontal(calendarWeeks(page), pxForDays(7));
-  }
-}
-
 /**
  * Taps a day button in the strip, pulling the month open first via the
  * Woche/Monat-Umschalter if that day's week row is collapsed (`visibility:
@@ -710,7 +703,7 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
 /* #629 (S2) + #764: Ziehen statt Wisch — dynamisch, mit Achsensperre         */
 /* -------------------------------------------------------------------------- */
 
-test('ein kleiner Links-Wisch verschiebt die Auswahl um einen Tag, nicht eine ganze Woche (issue #764)', async ({
+test('ein kleiner Links-Wisch verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK1)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -724,37 +717,59 @@ test('ein kleiner Links-Wisch verschiebt die Auswahl um einen Tag, nicht eine ga
   });
 
   await swipeHorizontal(calendarWeeks(page), -pxForDays(1));
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(eventCard(page, 'Morgen-Termin')).toBeVisible();
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
+  await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
 });
 
-test('ein kleiner Rechts-Wisch verschiebt die Auswahl einen Tag zurueck (issue #764)', async ({ page }) => {
+test('ein kleiner Rechts-Wisch verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK1)', async ({ page }) => {
   await swipeHorizontal(calendarWeeks(page), pxForDays(1));
-  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('ein weiter Links-Wisch verschiebt in einem Zug bis zu 20 Tage, nicht nur eine Woche (issue #764)', async ({
+test('ein weiter Links-Wisch verschiebt die Vorschau in einem Zug bis zu 20 Tage, die Auswahl bleibt (issue #784, AK1/AK5)', async ({
   page,
 }) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+
   await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
-  await expect(dayButton(page, 'Fr, 7.')).toHaveAttribute('aria-pressed', 'true');
+
+  await expect(title).toHaveText('August 2026');
+  await expect(dayButton(page, 'Fr, 7.')).toBeVisible();
+  // Die Auswahl (Sa 18.) ist so weit aus dem Fenster gewandert, dass ihr
+  // Tages-Knopf gar nicht mehr im Raster steht (AK5).
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
 });
 
-test('die Auswahl folgt dem Finger schon waehrend des Ziehens und schnappt beim Loslassen nicht zurueck (issue #764)', async ({
+test('waehrend des Ziehens folgt nur die Vorschau dem Finger, die Auswahl bleibt in Ruhe (issue #784, AK1)', async ({
   page,
 }) => {
   const release = await beginDrag(calendarWeeks(page), 'x', -pxForDays(1));
-  // Noch vor dem pointerup: die Auswahl steht schon auf dem neuen Tag (Live-Follow).
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  // Noch vor dem pointerup: die Auswahl hat sich nicht mitbewegt.
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
 
   await release();
-  // Loslassen uebernimmt den zuletzt angezeigten Tag, kein Zurueckschnappen.
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  // Auch nach dem Loslassen unveraendert.
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('ein Wisch, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen Tag durch den Klick aus (AK4)', async ({
+test('ein Zug, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen Tag durch den Klick aus (AK4)', async ({
   page,
 }) => {
+  await seedEvent(page, {
+    title: 'Heute-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
   const target = dayButton(page, 'Sa, 18.');
   const box = await target.boundingBox();
   if (!box) throw new Error('AK4: Tages-Knopf hat keine BoundingBox');
@@ -768,8 +783,11 @@ test('ein Wisch, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen
   await page.mouse.move(startX - pxForDays(2), startY, { steps: 5 });
   await page.mouse.up();
 
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'false');
-  await expect(dayButton(page, 'Mo, 20.')).toHaveAttribute('aria-pressed', 'true');
+  // Der Klick, den der Zug am Ende noch ausloesen wuerde, waehlt keinen Tag
+  // aus — die Auswahl bleibt exakt die, mit der die Seite geladen wurde
+  // (issue #784: ein Zug aendert nie die Auswahl, nur die Vorschau).
+  await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -793,7 +811,7 @@ test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen tut nichts (S5 AK-A)', a
   await expect(outsideDay).not.toBeVisible();
 });
 
-test('ein Aufwaerts-Zug im aufgezogenen Monat bewegt die Auswahl einen Tag vorwaerts (issue #764)', async ({
+test('ein Aufwaerts-Zug im aufgezogenen Monat verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK2)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
@@ -802,22 +820,24 @@ test('ein Aufwaerts-Zug im aufgezogenen Monat bewegt die Auswahl einen Tag vorwa
 
   await swipeVertical(calendarWeeks(page), -pxForDays(1));
 
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
   // Ein Zug bleibt im Monat, anders als das Antippen eines Tages.
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 });
 
-test('ein Abwaerts-Zug im aufgezogenen Monat bewegt die Auswahl einen Tag zurueck (issue #764)', async ({
+test('ein Abwaerts-Zug im aufgezogenen Monat verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK2)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
   await swipeVertical(calendarWeeks(page), pxForDays(1));
 
-  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt in einem Zug bis zu 20 Tage (issue #764)', async ({
+test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um bis zu 20 Tage, die Auswahl bleibt (issue #784, AK2/AK5)', async ({
   page,
 }) => {
   const title = calendarStrip(page).locator('.calendar-strip__title');
@@ -825,8 +845,10 @@ test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt in einem Zug bis
 
   await swipeVertical(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
 
-  await expect(dayButton(page, 'Fr, 7.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Fr, 7.')).toBeVisible();
   await expect(title).toHaveText('August 2026');
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
 });
 
 test('ein Links-Wisch im aufgezogenen Monat hat keine Wirkung mehr, nur senkrecht bewegt jetzt (issue #764)', async ({
@@ -852,6 +874,52 @@ test('ein Rechts-Wisch im aufgezogenen Monat hat keine Wirkung mehr, nur senkrec
   await swipeHorizontal(calendarWeeks(page), pxForDays(DRAG_MAX_DAYS));
 
   await expect(title).toHaveText('Juli 2026');
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #784: Anker-Zustand — AK3 (kein Zurueckschnappen), AK5 (Auswahl ausserhalb  */
+/* des Fensters), AK6 (Heute setzt Auswahl und Anker)                         */
+/* -------------------------------------------------------------------------- */
+
+test('eine losgelassene Vorschau schnappt nicht zurueck (issue #784, AK3)', async ({ page }) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const release = await beginDrag(calendarWeeks(page), 'x', -pxForDays(7));
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+
+  await release();
+
+  // Kein Nachlauf, kein Zurueckschnappen — das Fenster steht exakt da, wo losgelassen wurde.
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(title).toHaveText('Juli 2026');
+});
+
+test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
+  page,
+}) => {
+  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+
+  // Der Pfeil setzt Auswahl UND Anker neu — der Tag nach der (unsichtbaren)
+  // Auswahl ist sofort wieder sichtbar und ausgewaehlt, kein zweiter Schritt noetig.
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Zug ins Leere (issue #784, AK6)', async ({
+  page,
+}) => {
+  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
+  const todayChip = page.getByRole('button', { name: 'Heute' });
+  // Die Auswahl steht immer noch auf heute, nur das Fenster zeigt es nicht
+  // mehr — der Knopf ist deshalb aktiv, nicht entfernt (AK6).
+  await expect(todayChip).toBeVisible();
+  await expect(todayChip).toBeEnabled();
+
+  await todayChip.click();
+
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -1121,7 +1189,7 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
 /* #630 (S4): Desktop-Werkzeugleiste ‹ › Heute ab 768 px, Anordnung B         */
 /* -------------------------------------------------------------------------- */
 
-test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert Woche/Monat (AK9)', async ({
+test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert nur die Vorschau (issue #784, AK7)', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -1138,13 +1206,15 @@ test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt
   await expect(prevWeek).toBeVisible();
   await expect(nextWeek).toBeVisible();
 
-  // `>` blaettert in der Wochenansicht eine Woche weiter (Sa 18. -> Sa 25.).
+  // `>` blaettert nur die Vorschau eine Woche weiter (Sa 18. -> Sa 25.) — die
+  // Auswahl (heute) bleibt stehen und faellt damit aus dem Fenster (AK7).
   await nextWeek.click();
-  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
   await expect(title).toHaveText('Juli 2026');
   await expect(today).toBeEnabled();
 
-  // In der Monatsansicht blaettert `>` stattdessen einen Monat (Titel wechselt).
+  // In der Monatsansicht blaettert `>` einen Monat, weiterhin nur die Vorschau.
   await page.getByRole('radio', { name: 'Monat' }).click();
   const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
   await expect(nextMonth).toBeVisible();
@@ -1510,7 +1580,9 @@ test('eine woechentliche Serie ist im Editor anlegbar und erscheint eine Woche s
 
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 
-  await nextWeek(page, 1);
+  // Navigiert zur naechsten Woche (Antippen, nicht Ziehen — ein Zug bewegt
+  // seit #784 nur noch die Vorschau, nicht mehr die Auswahl).
+  await selectStripDay(page, 'Sa, 25.');
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -1571,7 +1643,8 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A week later, the series' own occurrence still runs at the original time.
-  await nextWeek(page, 1);
+  // Navigiert per Antippen (nicht Ziehen — #784) zur naechsten Woche.
+  await selectStripDay(page, 'Sa, 25.');
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -1644,8 +1717,9 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
 
   await expect(eventCard(page, 'Yoga')).toHaveCount(0);
 
-  // The next occurrence a week later is untouched.
-  await nextWeek(page, 1);
+  // The next occurrence a week later is untouched. Navigiert per Antippen
+  // (nicht Ziehen — #784) zur naechsten Woche.
+  await selectStripDay(page, 'Sa, 25.');
   await expect(eventCard(page, 'Yoga')).toBeVisible();
 });
 
@@ -1655,7 +1729,8 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await seedWeeklySeries(page);
 
   // Edit the second occurrence (a week later), not the series' own first one.
-  await nextWeek(page, 1);
+  // Navigiert per Antippen (nicht Ziehen — #784) zur naechsten Woche.
+  await selectStripDay(page, 'Sa, 25.');
   await eventCard(page, 'Yoga').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wannChip(page).click();
@@ -1671,11 +1746,13 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // A further week on, the change still applies.
-  await nextWeek(page, 1);
+  await selectStripDay(page, 'Sa, 1.');
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
-  // Back on the series' own first occurrence, the original time survives.
-  await prevWeek(page, 2);
+  // Back on the series' own first occurrence, the original time survives —
+  // "Heute" re-selects it directly (nicht Ziehen — #784), the series was
+  // seeded on TODAY.
+  await page.getByRole('button', { name: 'Heute' }).click();
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
