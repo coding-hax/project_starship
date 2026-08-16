@@ -173,7 +173,12 @@ describe('roundPlan', () => {
     const run = roundPlan(ctx(gh), opts) as RoundRun;
     expect(run.role).toBe('plan');
     expect(run.model).toBe('opus');
-    expect(run.tools).not.toContain('Write');
+    // Kein `Edit` und kein pauschales `Bash` -- das ist seit ADR-0025 der
+    // Kern der Lese-Zusage. `Write` steht bewusst drin (Artifact braucht eine
+    // Datei) und ist folgenlos: der cwd ist ein Wegwerf-Worktree, und Claude
+    // Code sperrt Schreibzugriffe ohnehin auf den Arbeitsbaum ein.
+    expect(run.tools).not.toContain('Edit');
+    expect(run.tools.split(',')).not.toContain('Bash');
     expect(run.prompt).toContain('als **Planer**');
     expect(run.status.title).toContain('plant #80');
   });
@@ -366,18 +371,45 @@ describe('roundPlan', () => {
   // O3 (#325): harte Werkzeug-Verweigerung zusaetzlich zur Allowlist, nur
   // fuer die Denk-Rollen.
   describe('denyTools + beforeDirty (#325)', () => {
-    it('liefert denyTools=Edit,Write und die Baseline fuer die Planer-Rolle', () => {
+    it('liefert denyTools=Edit und die Baseline fuer die Planer-Rolle', () => {
       const git = gitDouble({ 'status --porcelain': ' M docs/WORKFLOW.md' });
       const { gh } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
       const run = roundPlan(ctx(gh, git), opts) as RoundRun;
-      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.denyTools).toBe('Edit');
       expect(run.beforeDirty).toBe(' M docs/WORKFLOW.md');
     });
 
-    it('liefert denyTools=Edit,Write auch fuer die Recherche-Rolle', () => {
+    it('liefert denyTools=Edit auch fuer die Recherche-Rolle', () => {
       const { gh } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
       const run = roundPlan(ctx(gh), opts) as RoundRun;
-      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.denyTools).toBe('Edit');
+    });
+
+    // ADR-0025: `Write` ist bei den Denk-Rollen nicht mehr verboten, weil
+    // `Artifact` nur einen file_path auf eine schon geschriebene Datei nimmt.
+    // Ohne beides zusammen laeuft der Lauf in einen Freigabe-Dialog, den
+    // unbeaufsichtigt niemand bestaetigt (#752).
+    it.each([
+      ['plan', 80],
+      ['research', 81],
+    ])('gibt der %s-Rolle Artifact UND Write, verbietet aber weiter Edit', (label, nr) => {
+      const { gh } = ghDouble([openIssues(issueJson(nr, [label])), noOpenPrs]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.tools).toContain('Artifact');
+      expect(run.tools).toContain('Write');
+      expect(run.denyTools).toBe('Edit');
+      expect(run.denyTools).not.toContain('Write');
+    });
+
+    // Gegenprobe: Edit darf nie in die Allowlist der Denk-Rollen rutschen --
+    // neu anlegen ja, Bestehendes aendern nein.
+    it.each([
+      ['plan', 80],
+      ['research', 81],
+    ])('gibt der %s-Rolle kein Edit', (label, nr) => {
+      const { gh } = ghDouble([openIssues(issueJson(nr, [label])), noOpenPrs]);
+      const run = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(run.tools).not.toContain('Edit');
     });
 
     it('laesst denyTools und beforeDirty bei der Bau-Rolle leer', () => {
@@ -399,8 +431,8 @@ describe('roundPlan', () => {
       const run = roundPlan(ctx(gh), opts) as RoundRun;
       expect(run.role).toBe('plan');
       expect(run.model).toBe('opus');
-      expect(run.tools).toBe(`${READONLY_TOOLS},Artifact`);
-      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.tools).toBe(`${READONLY_TOOLS},Artifact,Write`);
+      expect(run.denyTools).toBe('Edit');
       expect(run.prompt).toContain('als **Planer**');
       expect(run.beforeTip).toBe('');
     });
@@ -412,7 +444,7 @@ describe('roundPlan', () => {
       expect(run.model).toBe('opus');
       expect(run.tools).toContain('WebSearch');
       expect(run.tools).toContain('Artifact');
-      expect(run.denyTools).toBe('Edit,Write');
+      expect(run.denyTools).toBe('Edit');
     });
 
     it('ein Ticket mit nur in-progress (Bau) bleibt unveraendert Bau-Rolle', () => {
