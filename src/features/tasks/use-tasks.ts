@@ -208,6 +208,18 @@ export function weekWindowNodes(nodes: TaskNode[], now: Date = new Date()): Task
   });
 }
 
+/**
+ * The top-level tasks `weekWindowNodes` always excludes (issue #762) — undated
+ * and still open. Surfaced separately by the expandable "ohne Datum" card
+ * (task-list.tsx) instead of vanishing: `weekWindowNodes`'s parent-driven rule
+ * means an undated parent's children never surface on their own either, so the
+ * card renders each returned node's whole subtree (via `nodeRows`), exactly as
+ * the "Woche" window would have shown it were the parent dated.
+ */
+export function undatedOpenNodes(nodes: TaskNode[]): TaskNode[] {
+  return nodes.filter((node) => node.task.dueAt === null && node.task.completedAt === null);
+}
+
 export interface DueDayGroup {
   /** `'overdue'` for the "Überfällig" bucket, otherwise a `localDayKey`. */
   dayKey: string;
