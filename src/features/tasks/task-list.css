@@ -379,6 +379,16 @@
   opacity: 0.6;
 }
 
+/* `--collapsed` (opacity: 0, above) and `--done` (opacity: 0.6, this rule)
+   share the same one-class specificity — an abgehakte Unteraufgabe that gets
+   zugeklappt combines both classes, and without this the later rule in file
+   order (`--done`) would win, leaving the row at 0.6 instead of 0 (issue
+   #782). Same pattern as `--child.task-list__item--dragging` above: two
+   classes outrank one regardless of source order. */
+.task-list__item--done.task-list__item--collapsed {
+  opacity: 0;
+}
+
 .task-list__title {
   display: inline-flex;
   align-items: center;
