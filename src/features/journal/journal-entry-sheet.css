@@ -50,4 +50,8 @@
 
 .journal-editor__footer .journal-editor__tags {
   flex: 1;
+  /* A flex item's default min-width is its content's intrinsic width, not 0 —
+     an unstyled <input> keeps a ~170px UA minimum and refuses to shrink,
+     which overflows the 375px sheet (AC3, #785). */
+  min-width: 0;
 }

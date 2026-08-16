@@ -359,6 +359,16 @@ test('AK2 (#714, seit #785 vertauscht): Stimmung und Tags stehen jetzt vor der T
   await setUpEditor(page);
   await openSheet(page);
 
+  // Sheet.tsx's enter transition (translateY 100% -> 0) is still running right
+  // after openSheet()'s toBeVisible() resolves — boundingBox() includes the
+  // in-flight transform, and a native <select> vs a plain <input> settle onto
+  // the final position via different paint paths, which can read a sub-pixel
+  // apart mid-transition (same failure mode as checkoff-motion.spec.ts, issue
+  // #430; already guarded this way in the AC3 test below). Wait for it to
+  // settle first.
+  const sheetContent = page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__content');
+  await sheetContent.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+
   const textBox = await page.locator('.journal-editor__text').boundingBox();
   const moodBox = await page.getByLabel('Stimmung').boundingBox();
   const tagsBox = await page.getByLabel('Tags').boundingBox();
