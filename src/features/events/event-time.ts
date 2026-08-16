@@ -211,6 +211,31 @@ export function dateKeyDiff(a: string, b: string): number {
   return Math.round((parseDateKey(b).getTime() - parseDateKey(a).getTime()) / 86_400_000);
 }
 
+/** Below this delta, a calendar-strip drag still counts as a tap — matches `TAP_TOLERANCE_PX` in calendar-strip.tsx (issue #764). */
+export const DRAG_TAP_TOLERANCE_PX = 8;
+/** Pixels per day at the start of a drag, before the curve accelerates. */
+const DRAG_SCRUB_UNIT_PX = 50;
+/** Growth rate of days-per-pixel past the tap tolerance — the gesture speeds up the further it travels. */
+const DRAG_SCRUB_EXPONENT = 1.6;
+/** A single drag, however far, never covers more than this many days in one gesture (issue #764). */
+export const DRAG_MAX_DAYS = 20;
+
+/**
+ * Maps a raw pointer-drag distance (px, signed) to a day offset for the
+ * calendar strip's live-scrub gesture (issue #764): a small movement steps
+ * one day at a time, a larger one accelerates up to `DRAG_MAX_DAYS` in a
+ * single gesture — the same curve drives the week view's horizontal drag and
+ * the month view's vertical one. Below `DRAG_TAP_TOLERANCE_PX` this is 0 so a
+ * tap never moves the selection.
+ */
+export function dragDayDelta(distancePx: number): number {
+  const magnitude = Math.abs(distancePx);
+  if (magnitude <= DRAG_TAP_TOLERANCE_PX) return 0;
+  const effective = magnitude - DRAG_TAP_TOLERANCE_PX;
+  const days = Math.round((effective / DRAG_SCRUB_UNIT_PX) ** DRAG_SCRUB_EXPONENT);
+  return Math.sign(distancePx) * Math.min(days, DRAG_MAX_DAYS);
+}
+
 /**
  * `dateKey` shifted by `delta` calendar months (issue #560's ICS-abo horizon
  * window) — `setUTCMonth` rolls a day that doesn't exist in the target month

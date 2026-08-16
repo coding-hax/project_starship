@@ -8,6 +8,9 @@ import {
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
+  DRAG_MAX_DAYS,
+  DRAG_TAP_TOLERANCE_PX,
+  dragDayDelta,
   formatCountdown,
   formatMonthTitle,
   monthDaysFor,
@@ -184,6 +187,34 @@ describe('addDays', () => {
 
   it('rolls forward across a year boundary', () => {
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+});
+
+describe('dragDayDelta', () => {
+  it('is 0 at and below the tap tolerance, in both directions', () => {
+    expect(dragDayDelta(0)).toBe(0);
+    expect(dragDayDelta(DRAG_TAP_TOLERANCE_PX)).toBe(0);
+    expect(dragDayDelta(-DRAG_TAP_TOLERANCE_PX)).toBe(0);
+  });
+
+  it('a small drag past the tolerance steps a single day', () => {
+    expect(dragDayDelta(50)).toBe(1);
+    expect(dragDayDelta(-50)).toBe(-1);
+  });
+
+  it('accelerates: a bigger drag covers disproportionately more days', () => {
+    const near = dragDayDelta(150);
+    const far = dragDayDelta(300);
+    expect(near).toBeGreaterThan(1);
+    // More than double the distance covers more than double the days —
+    // the curve accelerates rather than staying linear (issue #764).
+    expect(far).toBeGreaterThan(near * 2);
+  });
+
+  it('caps at DRAG_MAX_DAYS however far the drag goes', () => {
+    expect(dragDayDelta(330)).toBe(DRAG_MAX_DAYS);
+    expect(dragDayDelta(1000)).toBe(DRAG_MAX_DAYS);
+    expect(dragDayDelta(-1000)).toBe(-DRAG_MAX_DAYS);
   });
 });
 
