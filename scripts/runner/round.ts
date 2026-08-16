@@ -718,14 +718,17 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
           ? ciFixPrompt(issue, ciSummary)
           : buildPrompt(issue);
 
-  // Artifact fuer beide Denk-Rollen (#767, ADR-0024): veroeffentlicht direkt
-  // nach claude.ai, ohne den Umweg ueber ein lokales Write -- die harte
-  // Denyliste unten bleibt deshalb unveraendert.
+  // Artifact fuer beide Denk-Rollen (#767, ADR-0024) -- zusammen mit `Write`,
+  // weil `Artifact` nur einen `file_path` auf eine schon geschriebene Datei
+  // nimmt (ADR-0025 korrigiert die Annahme von ADR-0024, es publiziere ohne
+  // lokales Write). Ohne `Write` in der Allowlist laeuft der Denk-Lauf in einen
+  // Freigabe-Dialog, den unbeaufsichtigt niemand bestaetigt -- genau daran ist
+  // #752 dreimal gescheitert.
   const tools =
     role === 'plan'
-      ? `${READONLY_TOOLS},Artifact`
+      ? `${READONLY_TOOLS},Artifact,Write`
       : role === 'research'
-        ? `${READONLY_TOOLS},WebSearch,Artifact`
+        ? `${READONLY_TOOLS},WebSearch,Artifact,Write`
         : BUILD_TOOLS;
 
   // O2/O3 (#325): nur die Denk-Rollen laufen in einem Wegwerf-Worktree UND
