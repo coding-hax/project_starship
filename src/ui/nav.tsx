@@ -62,6 +62,13 @@ export function Nav() {
                 aria-current={active ? 'page' : undefined}
                 className="nav__link"
                 style={active ? { color: tab.accent } : undefined}
+                // Explicit, not Next's default `auto` (issue #753). The nonce-based CSP
+                // makes layout.tsx read headers(), which renders the whole (app) segment
+                // dynamically instead of statically prerendering it (#599). For a dynamic
+                // route `auto` only prefetches down to the nearest loading.js — this
+                // project has none, so it prefetched nothing usable and the tab switch
+                // stopped being free. `true` requests the full payload either way.
+                prefetch={true}
               >
                 <span aria-hidden="true" className="nav__icon">
                   <tab.Icon />
