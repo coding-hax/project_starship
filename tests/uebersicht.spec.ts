@@ -37,6 +37,16 @@ function undatedCard(page: Page) {
   return page.getByRole('button', { name: /Aufgabe(n)? ohne Datum/ });
 }
 
+function disclosureFor(page: Page, title: string) {
+  return dueTaskItems(page)
+    .filter({ hasText: title })
+    .getByRole('button', { name: /Unteraufgaben/ });
+}
+
+function progressFor(page: Page, title: string) {
+  return dueTaskItems(page).filter({ hasText: title }).locator('.task-list__progress');
+}
+
 /** Vertical distance between the bottom of `above` and the top of `below`. */
 async function gapBetween(above: Locator, below: Locator): Promise<number> {
   const top = await above.boundingBox();
@@ -172,6 +182,92 @@ test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst
   await card.click();
   // exact: true — the card's own title text ("1 Aufgabe ohne Datum") is a substring match otherwise.
   await expect(page.getByText('Ohne Datum', { exact: true })).toBeVisible();
+});
+
+test('Unteraufgaben starten auf der Übersicht eingeklappt, die Elternzeile zeigt trotzdem ihren Fortschritt (issue #779 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: WITHIN_WEEK });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+  const childA = dueTaskItems(page).filter({ hasText: 'Kind A' });
+  const childB = dueTaskItems(page).filter({ hasText: 'Kind B' });
+  await expect(childA).toHaveJSProperty('inert', true);
+  await expect(childB).toHaveJSProperty('inert', true);
+  expect((await childA.boundingBox())?.height).toBe(0);
+  expect((await childB.boundingBox())?.height).toBe(0);
+
+  await expect(progressFor(page, 'Elternaufgabe')).toHaveText('0/2');
+});
+
+test('Klick auf den Klapp-Zweig zeigt die Kind-Zeilen mit voller Höhe, erneuter Klick nimmt genau diese Höhe wieder heraus (issue #779 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: WITHIN_WEEK });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const parentRow = dueTaskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const childA = dueTaskItems(page).filter({ hasText: 'Kind A' });
+  const childB = dueTaskItems(page).filter({ hasText: 'Kind B' });
+  const parentHeight = (await parentRow.boundingBox())!.height;
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(childA).toHaveJSProperty('inert', false);
+  await expect(childB).toHaveJSProperty('inert', false);
+  // Both children share the same row height as the parent — polled since the
+  // reveal still runs a max-height transition (task-list.css).
+  await expect
+    .poll(async () => (await childA.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(parentHeight - 1);
+  await expect
+    .poll(async () => (await childB.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(parentHeight - 1);
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(childA).toHaveJSProperty('inert', true);
+  await expect(childB).toHaveJSProperty('inert', true);
+  // Polled for the same reason as the reveal above — the collapse also runs
+  // over the `max-height` transition (task-list.css), it just runs backwards.
+  await expect.poll(async () => (await childA.boundingBox())?.height ?? -1).toBe(0);
+  await expect.poll(async () => (await childB.boundingBox())?.height ?? -1).toBe(0);
+});
+
+test('Aufklappen macht die Liste um die Höhe der Kind-Zeilen länger, nicht um nichts (issue #779 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const parentId = await seedTask(page, { title: 'Elternaufgabe', dueAt: WITHIN_WEEK });
+  await seedTask(page, { title: 'Kind A', parentId });
+  await seedTask(page, { title: 'Kind B', parentId });
+
+  const list = page.getByRole('list', { name: 'Aufgaben' });
+  const disclosure = disclosureFor(page, 'Elternaufgabe');
+  const parentRow = dueTaskItems(page).filter({ hasText: 'Elternaufgabe' });
+  const childA = dueTaskItems(page).filter({ hasText: 'Kind A' });
+
+  const parentHeight = (await parentRow.boundingBox())!.height;
+  const collapsedHeight = (await list.boundingBox())!.height;
+
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect
+    .poll(async () => (await childA.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(parentHeight - 1);
+
+  const expandedHeight = (await list.boundingBox())!.height;
+  // Two child rows' worth of height, not the rounding-error-sized gap the
+  // min-height bug (issue #779) would have left.
+  expect(expandedHeight - collapsedHeight).toBeGreaterThan(parentHeight * 1.5);
 });
 
 test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das Häkchen erledigt sofort, die Zeile bleibt den Tag über stehen (issue #87 AC3, issue #228 AC1+AC5)', async ({
