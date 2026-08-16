@@ -152,6 +152,11 @@ export function mergeDraft(
     habitId: mentions.habit ? utterance.habitId : prev.habitId,
     logDate: mentions.habit ? utterance.logDate : prev.logDate,
     needsConfirmation: mentions.due ? utterance.needsConfirmation : prev.needsConfirmation,
+    // #780: die Art wird mit der ersten Übernahme fix (Entscheidung C, oben) — der
+    // Leerzustand-Status des Art-Chips zieht mit, sonst würde er nach einer zweiten,
+    // ebenso signal-losen Übernahme unerklärlich verschwinden.
+    provisional: prev.provisional,
+    newHabit: mentions.habit ? utterance.newHabit : prev.newHabit,
     confidence: {
       kind: prev.confidence.kind,
       title: mentions.titleSubstantial ? utterance.confidence.title : prev.confidence.title,
