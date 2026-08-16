@@ -199,13 +199,18 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
   expect(created?.payload).toMatchObject({ title: 'Zahnarzt', startsAt: due.toISOString() });
 });
 
-test('das Titelfeld ist schlicht mit „Todo Titel" beschriftet (issue #650 AK2)', async ({
+test('das Titelfeld trägt einen neutralen Platzhalter, keine Art vorweg (issue #650 AK2, #780 E5)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await captureButton(page).click();
 
-  await expect(captureTitleField(page)).toHaveAttribute('placeholder', 'Todo Titel');
+  // #780: "Todo Titel" sagte dieselbe vorschnelle Art wie der Art-Chip vor dem
+  // ersten Signal — der Platzhalter nennt jetzt alle drei Arten gleichrangig.
+  await expect(captureTitleField(page)).toHaveAttribute(
+    'placeholder',
+    'Aufgabe, Termin, Routine …',
+  );
 });
 
 /**
@@ -310,7 +315,9 @@ test('AK6: ein Artwechsel hebt Felder ohne Gegenstück aus der Anzeige und bring
   await page.getByRole('button', { name: 'Priorität' }).click();
   await page.getByRole('radio', { name: 'Hoch' }).click();
 
-  await page.getByRole('button', { name: 'Art, Aufgabe', exact: true }).click();
+  // #780: "Einkaufen" trägt kein Art-Signal — der Art-Chip zeigt seinen
+  // Leerzustand ("Art"), nicht den sicheren Rückfall "Aufgabe".
+  await page.getByRole('button', { name: 'Art', exact: true }).click();
   await page.getByRole('radio', { name: 'Termin' }).click();
 
   await expect(page.getByRole('status').filter({ hasText: 'Priorität entfällt' })).toBeVisible();
