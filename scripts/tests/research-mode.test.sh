@@ -237,6 +237,7 @@ assert_no_bare_bash "AC1/#63: Planer startet nicht mit pauschalem Bash" "$GHSTAT
 assert_contains "AC1/#63: Planer darf 'gh' (Allowlist)" "$GHSTATE_DIR/claude-lastargs" "Bash(gh:*)"
 assert_contains "AC1/#325 (O3): Planer bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
 assert_contains "AC1/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
+assert_contains "AC1/#767 (ADR-0024): Planer bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
 
 # ==============================================================================
 # 2. research wird gewählt, wenn kein plan ansteht -- Opus,
@@ -262,6 +263,7 @@ assert_contains "AC2/#63: Rechercheur darf lesende git-Inspektion" "$GHSTATE_DIR
 # würde.
 assert_contains "AC2/#325 (O3): Rechercheur bekommt --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
 assert_contains "AC2/#325 (O3): harte Verweigerung von Edit,Write" "$GHSTATE_DIR/claude-lastargs" "Edit,Write"
+assert_contains "AC2/#767 (ADR-0024): Rechercheur bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
 
 # ==============================================================================
 # 3. Kill-Switch hands-off überspringt das research-Ticket komplett --
@@ -279,6 +281,7 @@ assert_absent  "AC3: #47 bleibt unangetastet" "$STATE_DIR/session-think-47"
 assert_contains "AC3: #48 bekommt in-progress" "$GHSTATE_DIR/applied-48" "ADD:in-progress"
 assert_contains "AC3/#63: RUN_ROLE=build behält vollen Bash-Zugriff (unverändert)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write,Glob,Grep,Bash"
 assert_not_contains "AC3/#325 (O3): Bau-Rolle bekommt KEIN --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
+assert_not_contains "AC3/#767 (ADR-0024): Bau-Rolle bekommt KEIN Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
 
 # ==============================================================================
 # 4. Inkonsistentes Ticket (research UND ready gleichzeitig) wird über

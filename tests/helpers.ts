@@ -246,6 +246,32 @@ export async function sessionRowExists(tokenHash: string): Promise<boolean> {
 }
 
 /**
+ * Mints a `credentials` row directly in Postgres, independent of the real WebAuthn
+ * ceremony (issue #754) — for specs that need extra passkeys to revoke without
+ * running a second virtual-authenticator registration. `credentialId`/`publicKey`
+ * are throwaway values; nothing ever verifies a signature against them.
+ */
+export async function createThrowawayCredential({
+  label,
+}: { label?: string } = {}): Promise<string> {
+  const id = randomUUID();
+  await withDb((client) =>
+    client.query(
+      'INSERT INTO credentials (id, credential_id, public_key, label) VALUES ($1, $2, $3, $4)',
+      [id, randomUUID(), randomBytes(32).toString('base64url'), label ?? null],
+    ),
+  );
+  return id;
+}
+
+export async function credentialRowExists(id: string): Promise<boolean> {
+  const result = await withDb((client) =>
+    client.query('SELECT 1 FROM credentials WHERE id = $1', [id]),
+  );
+  return result.rows.length > 0;
+}
+
+/**
  * Clears the app's own rows but leaves the owner signed in — the default (#115).
  *
  * Wiping `sessions`/`credentials` too (what the old `resetDatabase` did everywhere)
