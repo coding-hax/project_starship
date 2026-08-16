@@ -3,8 +3,10 @@ import {
   createThrowawayCredential,
   createThrowawaySession,
   credentialRowExists,
+  enableVirtualAuthenticator,
   registerPasskey,
   resetAppData,
+  resetRateLimits,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -135,10 +137,11 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     browser,
     baseURL,
   }) => {
-    const { context: contextA, page: pageA, tokenHash: tokenHashA } = await freshSessionContext(
-      browser,
-      baseURL,
-    );
+    const {
+      context: contextA,
+      page: pageA,
+      tokenHash: tokenHashA,
+    } = await freshSessionContext(browser, baseURL);
     const sessionB = await createThrowawaySession();
     const contextB = await browser.newContext();
     await contextB.addCookies([{ name: 'starship_session', value: sessionB.token, url: baseURL }]);
@@ -169,12 +172,101 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     await page.goto('/einstellungen');
     await context.setOffline(true);
 
-    await expect(page.getByText('Widerrufen geht nur online.')).toBeVisible();
+    // Scoped to the panel's own hint class — session-panel.tsx shows a similarly
+    // worded "Sperren geht nur online." hint in the same "Gerät" group while offline.
+    await expect(
+      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
+    ).toBeVisible();
     const row = page.locator('.devices-panel__item', { hasText: 'Offline-Test' });
     await expect(row.getByRole('button', { name: 'Widerrufen' })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Beenden' })).toBeDisabled();
 
     await context.setOffline(false);
+    await context.close();
+  });
+});
+
+test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
+  test.beforeEach(async () => {
+    await resetRateLimits();
+  });
+
+  /**
+   * The shared authenticator (`registerPasskey`) already holds the account
+   * credential — `excludeCredentials` would match it and `create()` throws
+   * `InvalidStateError` (see `openRecoveryDevice` in auth-recovery-register.spec.ts,
+   * issue #476). A fresh context with one *seeded* (not registered) credential plus
+   * its own virtual authenticator sidesteps that: `firstSetup=false` (no recovery
+   * screen), but the fresh authenticator can still enrol a second credential.
+   */
+  async function freshDeviceContext(browser: Browser, baseURL: string | undefined) {
+    const session = await createThrowawaySession();
+    const context = await browser.newContext();
+    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+    const page = await context.newPage();
+    await createThrowawayCredential({ label: 'Bestehend' });
+    await enableVirtualAuthenticator(page);
+    return { context, page };
+  }
+
+  test('AK1: Hinzufügen legt ein zweites Credential mit Label an, kein Recovery-Code', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshDeviceContext(browser, baseURL);
+    await page.goto('/einstellungen');
+    // Scoped to the "Gerät" group — the calendar module's "Abo hinzufügen" button
+    // (ics-subscriptions-panel.tsx, group "Module") also matches "Hinzufügen" by substring.
+    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
+
+    await geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' }).click();
+    await geraetGroup.getByLabel('Gerätename').fill('Laptop');
+    await geraetGroup.getByRole('button', { name: 'Hinzufügen' }).click();
+
+    await expect(geraetGroup.locator('.devices-panel__item', { hasText: 'Laptop' })).toBeVisible();
+    await expect(page.getByTestId('recovery-code')).toHaveCount(0);
+
+    const rows = await withDb((client) =>
+      client.query("SELECT label FROM credentials WHERE label = 'Laptop'"),
+    );
+    expect(rows.rows).toHaveLength(1);
+    const total = await withDb((client) =>
+      client.query('SELECT count(*)::int AS n FROM credentials'),
+    );
+    expect(total.rows[0].n).toBe(2);
+
+    await context.close();
+  });
+
+  test('AK2: offline ist „Gerät hinzufügen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
+    const { context, page } = await freshDeviceContext(browser, baseURL);
+    await page.goto('/einstellungen');
+    await context.setOffline(true);
+    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
+
+    await expect(
+      geraetGroup.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
+    ).toBeVisible();
+    await expect(geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' })).toBeDisabled();
+
+    await context.setOffline(false);
+    await context.close();
+  });
+
+  test('AK3: Aktion bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshDeviceContext(browser, baseURL);
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await page.goto('/einstellungen');
+    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
+
+    const addButton = geraetGroup.getByRole('button', { name: 'Gerät hinzufügen' });
+    await expect(addButton).toBeVisible();
+    await addButton.click();
+    await expect(geraetGroup.getByLabel('Gerätename')).toBeVisible();
+
     await context.close();
   });
 });

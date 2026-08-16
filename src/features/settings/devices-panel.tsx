@@ -124,7 +124,6 @@ function AddDeviceRow({
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="z. B. iPhone"
-          aria-label="Gerätename"
           className="devices-panel__add-input"
           autoFocus
         />
