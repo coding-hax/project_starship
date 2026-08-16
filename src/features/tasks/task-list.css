@@ -199,14 +199,19 @@
   margin-left: var(--space-8);
   max-height: 96px;
   opacity: 1;
+  /* `border-width` deliberately not listed (like `min-height` below isn't
+     either): a row that mounts already collapsed — the /uebersicht default
+     (issue #779) — has no prior box to animate from, but Chromium still runs
+     this list's transitions once on that first mount, briefly computing the
+     base rule's 1px `border-block-end` before settling on `--collapsed`'s 0.
+     A hairline for one frame is not worth animating anyway, so it snaps. */
   transition:
     transform var(--duration-base) var(--ease-spring),
     max-height var(--duration-spring-smooth) var(--ease-spring-smooth),
     opacity var(--duration-spring-smooth) var(--ease-spring-smooth),
     padding var(--duration-spring-smooth) var(--ease-spring-smooth),
     margin var(--duration-spring-smooth) var(--ease-spring-smooth),
-    width var(--duration-spring-smooth) var(--ease-spring-smooth),
-    border-width var(--duration-spring-smooth) var(--ease-spring-smooth);
+    width var(--duration-spring-smooth) var(--ease-spring-smooth);
 }
 
 /* Live drop preview (issue #451).
@@ -286,7 +291,16 @@
   padding-bottom: 0;
   margin-top: 0;
   margin-bottom: 0;
-  border-width: 0;
+  /* Logical, not the physical `border-width: 0` shorthand — `.task-list__item`
+     sets its borders via `border-inline-start`/`border-block-end` (issue #704).
+     Resetting those via the physical shorthand instead measurably left
+     `border-bottom-width` at 3px (Chromium picking up the inline-start edge's
+     width for the wrong physical side — a logical/physical cascade interop
+     bug, not a typo here), a 3px-tall "invisible" collapsed row all over again
+     (issue #779). Resetting the same two logical longhands the base rule used
+     sidesteps that interop gap entirely. */
+  border-inline-start-width: 0;
+  border-block-end-width: 0;
   opacity: 0;
   overflow: hidden;
 }

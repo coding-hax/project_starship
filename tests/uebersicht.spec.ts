@@ -236,8 +236,10 @@ test('Klick auf den Klapp-Zweig zeigt die Kind-Zeilen mit voller Höhe, erneuter
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(childA).toHaveJSProperty('inert', true);
   await expect(childB).toHaveJSProperty('inert', true);
-  expect((await childA.boundingBox())?.height).toBe(0);
-  expect((await childB.boundingBox())?.height).toBe(0);
+  // Polled for the same reason as the reveal above — the collapse also runs
+  // over the `max-height` transition (task-list.css), it just runs backwards.
+  await expect.poll(async () => (await childA.boundingBox())?.height ?? -1).toBe(0);
+  await expect.poll(async () => (await childB.boundingBox())?.height ?? -1).toBe(0);
 });
 
 test('Aufklappen macht die Liste um die Höhe der Kind-Zeilen länger, nicht um nichts (issue #779 AK3)', async ({
