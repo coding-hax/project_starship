@@ -1544,7 +1544,10 @@ test('/aufgaben bleibt aufgeklappt — Kinder sind von Anfang an sichtbar in „
   await disclosure.click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(childItem).toHaveJSProperty('inert', true);
-  expect((await childItem.boundingBox())?.height).toBe(0);
+  // Polled, nicht sofort geprüft — der Kollaps läuft über die `max-height`-
+  // Transition (task-list.css), min-height snapt zwar, aber die Box bleibt bis
+  // zum Ende der Transition offen (wie AK2 in uebersicht.spec.ts).
+  await expect.poll(async () => (await childItem.boundingBox())?.height ?? -1).toBe(0);
 });
 
 test('Kind abhaken aktualisiert den Fortschritt live, ohne den Elternteil zu erledigen (issue #89 AK4)', async ({
