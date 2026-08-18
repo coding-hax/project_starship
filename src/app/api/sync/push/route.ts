@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       const fields = writableFields(mutation.table, mutation.payload ?? {});
 
       // Two devices offline can each mint their own uuid for the same natural key
-      // (`habit_logs`/`habit_freezes`, issue #475) — the id lookup above finds
+      // (`habit_logs`, issue #475) — the id lookup above finds
       // nothing, but a row for this (habitId, logDate) may already exist. Upsert
       // on the natural key instead of blindly inserting a second row that then
       // collides with the table's `uniqueIndex`. Only `upsert` takes this path;

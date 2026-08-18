@@ -124,10 +124,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/habits
 
-- `use-habits.ts` / `use-habit-logs.ts` / `use-habit-freezes.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
+- `use-habits.ts` / `use-habit-logs.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
 - `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
-- `streak.ts` / `freeze.ts` — `computeStreak` (berücksichtigt Freezes) + Streak-Joker: Kontingent, `canRescue`
-- `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge, Rescue-Button
+- `streak.ts` — `computeStreak` (Streak-Joker entfernt, issue #796; `habit_freezes` bleibt dormant in `src/db/schema.ts`)
+- `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge
 - `habits-overview-section.tsx` / `weekly-recap.ts` / `weekly-recap-card.tsx` / `.css` — `OverviewSection` + Wochenrückblick (Quote+Superlativ)
 - `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
 - `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
@@ -235,7 +235,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (issue #689, Teil 3 von 3): ein Test je AK1–AK6 + Offline-Pfad
 - `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (issue #691, Teil 4 von 4): ein Test je AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
-- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks/Joker, Monatsraster
+- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)
 - `scroll-position.spec.ts` — jede Seite startet oben, nie auf der Scrollposition der vorherigen, auch nicht per Zurück (issue #647)
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus

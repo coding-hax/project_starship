@@ -395,6 +395,24 @@ export async function seedCategoryColor(category: string, color: string): Promis
   );
 }
 
+/**
+ * Seeds a `habit_freezes` row directly in Postgres, bypassing the client entirely.
+ * The table is dormant since issue #796 removed the streak-joker feature (sync
+ * wiring, UI, quota logic) but kept the table itself to avoid a migration/data
+ * loss. Unlike `seedReminderPref`/`seedCategoryColor`, a row minted this way can
+ * never reach a client through the outbox — the pull no longer reads
+ * `habit_freezes` — so this only simulates a leftover row from before the removal.
+ */
+export async function seedHabitFreeze(habitId: string, freezeDate: string): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO habit_freezes (id, updated_at, deleted_at, synced_at, sync_seq, habit_id, freeze_date)
+       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3)`,
+      [randomUUID(), habitId, freezeDate],
+    ),
+  );
+}
+
 interface ForecastFixture {
   dates: string[];
   tempsMax: number[];
@@ -470,7 +488,6 @@ declare global {
           | 'tasks'
           | 'habits'
           | 'habit_logs'
-          | 'habit_freezes'
           | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'

@@ -1144,10 +1144,10 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
 
 /**
  * #475 — two devices offline each mint their own uuid for the same natural key
- * (`(habitId, logDate)` / `(habitId, freezeDate)`). The server now upserts onto the
- * row that arrived first instead of letting the second insert collide with the
- * table's `uniqueIndex` (that collision is what #474 above turns into a harmless
- * `reason: 'constraint'` rejection when it does happen elsewhere).
+ * (`(habitId, logDate)`). The server now upserts onto the row that arrived first
+ * instead of letting the second insert collide with the table's `uniqueIndex`
+ * (that collision is what #474 above turns into a harmless `reason: 'constraint'`
+ * rejection when it does happen elsewhere).
  */
 test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)', () => {
   test('AK1: zwei eigene uuids für denselben (habitId, logDate) konvergieren auf die zuerst angekommene Zeile, die spätere Ankunft gewinnt bei done', async ({
@@ -1215,7 +1215,7 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     expect(logRecords[0].id).toBe(idA);
   });
 
-  test('AK2: zwei eigene uuids für denselben (habitId, freezeDate) konvergieren auf eine Zeile mit gestiegenem sync_seq', async ({
+  test('AK2: zwei eigene uuids für denselben (habitId, logDate) konvergieren auf eine Zeile mit gestiegenem sync_seq, auch bei gleichem done', async ({
     page,
   }) => {
     await registerPasskey(page);
@@ -1233,30 +1233,33 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     const idA = await page.evaluate(
       (hId) =>
         window.__starship.mutate({
-          table: 'habit_freezes',
+          table: 'habit_logs',
           op: 'upsert',
-          payload: { habitId: hId, freezeDate: '2026-08-04' },
+          payload: { habitId: hId, logDate: '2026-08-05', done: true },
         }),
       habitId,
     );
     await page.evaluate(() => window.__starship.sync());
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
-    const freezeRowsAfterA = await withDb((c) =>
-      c.query('SELECT sync_seq FROM habit_freezes WHERE habit_id = $1 AND freeze_date = $2', [
+    const logRowsAfterA = await withDb((c) =>
+      c.query('SELECT sync_seq FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
         habitId,
-        '2026-08-04',
+        '2026-08-05',
       ]),
     );
-    expect(freezeRowsAfterA.rowCount).toBe(1);
-    const syncSeqAfterA = Number(freezeRowsAfterA.rows[0].sync_seq);
+    expect(logRowsAfterA.rowCount).toBe(1);
+    const syncSeqAfterA = Number(logRowsAfterA.rows[0].sync_seq);
 
+    // "Device B": its own, distinct uuid for the very same day, the very same
+    // `done` value — proving even an identical-looking payload still lands as
+    // a real update on A's row, not a silently dropped no-op.
     const idB = await page.evaluate(
       (hId) =>
         window.__starship.mutate({
-          table: 'habit_freezes',
+          table: 'habit_logs',
           op: 'upsert',
-          payload: { habitId: hId, freezeDate: '2026-08-04' },
+          payload: { habitId: hId, logDate: '2026-08-05', done: true },
         }),
       habitId,
     );
@@ -1266,15 +1269,15 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
 
     // Still exactly one row, same id as before — but its sync_seq climbed, proving
     // B's mutation landed as an update on A's row rather than being silently dropped.
-    const freezeRowsAfterB = await withDb((c) =>
-      c.query('SELECT id, sync_seq FROM habit_freezes WHERE habit_id = $1 AND freeze_date = $2', [
+    const logRowsAfterB = await withDb((c) =>
+      c.query('SELECT id, sync_seq FROM habit_logs WHERE habit_id = $1 AND log_date = $2', [
         habitId,
-        '2026-08-04',
+        '2026-08-05',
       ]),
     );
-    expect(freezeRowsAfterB.rowCount).toBe(1);
-    expect(freezeRowsAfterB.rows[0].id).toBe(idA);
-    expect(Number(freezeRowsAfterB.rows[0].sync_seq)).toBeGreaterThan(syncSeqAfterA);
+    expect(logRowsAfterB.rowCount).toBe(1);
+    expect(logRowsAfterB.rows[0].id).toBe(idA);
+    expect(Number(logRowsAfterB.rows[0].sync_seq)).toBeGreaterThan(syncSeqAfterA);
   });
 
   test('AK3 (#502): zwei echte Geräte konvergieren nach einem einzigen sync() auch lokal auf eine Zeile', async ({

@@ -63,30 +63,6 @@
   color: var(--text-muted);
 }
 
-.habit-today__rescue {
-  align-self: flex-start;
-  min-height: var(--touch-target);
-  margin-top: var(--space-1);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: var(--text-secondary);
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.habit-today__rescue:active {
-  opacity: 0.85;
-}
-
-.habit-today__rescue:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .habit-today__streak {
   display: inline-flex;
   align-items: center;
