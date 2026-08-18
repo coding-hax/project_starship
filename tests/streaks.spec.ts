@@ -275,7 +275,16 @@ test('Abhaken erzeugt offline keine habit_freezes-Mutation mehr (issue #796)', a
   // in the outbox, so it is the outbox itself (not Postgres) that proves no
   // habit_freezes row ever gets minted as a side effect of a plain check-off.
   const item = habitTodayItems(page).filter({ hasText: 'Ohne Joker-Spur' });
-  await item.getByRole('checkbox').check();
+  const checkbox = item.getByRole('checkbox');
+  await expect(checkbox).not.toBeChecked();
+
+  // A single unconditional click, like every other checkbox in this suite
+  // (habits-uebersicht.spec.ts) — `.check()` re-clicks itself when the checked
+  // state hasn't caught up yet, and since `toggle()` flips rather than sets,
+  // that second click landed on the just-created log and flipped it straight
+  // back to `done: false` (flaky "did not change its state").
+  await checkbox.click();
+  await expect(checkbox).toBeChecked();
 
   const pending = await page.evaluate(() => window.__starship.pending());
   expect(pending.length).toBeGreaterThan(0);
