@@ -430,18 +430,8 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
   test('AC3: FAB und Toast bleiben über der Nav (--z-fab / --z-toast, tokens.css)', async ({
     page,
   }) => {
-    const title = 'Wird für den Stacking-Test gelöscht';
     await page.goto('/aufgaben');
     await selectView(page, 'Alle');
-    await page.evaluate(
-      (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
-      title,
-    );
-
-    const item = page
-      .getByRole('list', { name: 'Aufgaben' })
-      .getByRole('listitem')
-      .filter({ hasText: title });
 
     // FAB check first, before any toast — toast.css documents that the toast is
     // allowed to cover the FAB while it's showing ("acceptable, because it is gone
@@ -456,32 +446,27 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     );
     expect(fabHit, 'FAB liegt unter der Nav statt darüber').toBe(true);
 
-    const box = (await item.boundingBox())!;
-    const clientY = box.y + box.height / 2;
-    const startX = box.x + box.width - 20;
-    // Same synthetic swipe-to-delete gesture as tasks.spec.ts — far enough left to
-    // clear the delete threshold and surface the undo toast.
-    await item.dispatchEvent('pointerdown', {
-      pointerId: 1,
-      clientX: startX,
-      clientY,
-      button: 0,
-      bubbles: true,
-    });
-    await item.dispatchEvent('pointermove', {
-      pointerId: 1,
-      clientX: startX - 120,
-      clientY,
-      bubbles: true,
-    });
-    await item.dispatchEvent('pointerup', {
-      pointerId: 1,
-      clientX: startX - 120,
-      clientY,
-      bubbles: true,
-    });
+    // Seit #797 der einzige verbleibende Toast im Produkt (der entfernte
+    // Lösch-Undo-Toast trug denselben `.toast`/`.toast-host`-Stacking-Kontext) —
+    // mirrors toast.spec.ts's triggerSyncErrorToast: fünf fehlgeschlagene Pushes
+    // in Folge über SYNC_ERROR_THRESHOLD (sync-status.tsx). Ein echter HTTP-Fehler
+    // ist Pflicht: das `**/api/sync/**` -> abort im `beforeEach` dieses
+    // Describe-Blocks sieht für sync.ts wie "offline" aus (fetch wirft), das zählt
+    // laut outbox.ts (#182) nie auf SYNC_ERROR_THRESHOLD — nur ein `!response.ok`
+    // erhöht `attempts`. Die spezifischere Route hier gewinnt vor dem Abort-all.
+    await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
+    await page.evaluate(() =>
+      window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Bleibt hängen' },
+      }),
+    );
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.__starship.sync());
+    }
 
-    const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });
+    const toast = page.locator('.toast--error');
     await expect(toast).toBeVisible();
     const toastBox = (await toast.boundingBox())!;
     const toastHit = await page.evaluate(
@@ -490,7 +475,7 @@ test.describe('die Nav bekommt eine eigene Stacking-Ebene, Seiteninhalt malt nic
     );
     expect(toastHit, 'Toast liegt unter der Nav statt darüber').toBe(true);
 
-    // The individual `<li role="status">` toast carries no z-index of its own —
+    // The individual `<li role="alert">` toast carries no z-index of its own —
     // it inherits its stacking from the `.toast-host` `<ol>` it's portaled into
     // (toast.tsx/toast-host.tsx), which is where toast.css's `--z-toast` lives.
     const [navZ, fabZ, toastZ] = await Promise.all([

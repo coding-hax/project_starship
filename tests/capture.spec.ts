@@ -23,8 +23,6 @@ function confirmDialog(page: Page) {
   return page.getByRole('dialog', { name: CONFIRM_LABEL });
 }
 
-/** Scoped to the task list — the undo toast's own message embeds the title too,
- * so a page-wide text query would still match after the row is gone. */
 function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
@@ -124,7 +122,7 @@ test('AC2: eine Eingabe ohne Datum legt sofort an, ohne Bestätigungs-Sheet', as
   await expect(taskItems(page).filter({ hasText: 'Wäsche waschen' })).toBeVisible();
 });
 
-test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die Anlage per Tombstone rückgängig macht', async ({
+test('AC3+AC4: Direkt-Pfad übergeht das Sheet und legt ohne Rückgängig-Popup an', async ({
   page,
 }) => {
   await enableDirectCapture(page);
@@ -135,9 +133,7 @@ test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die 
 
   await expect(confirmDialog(page)).toBeHidden();
   await expect(taskItems(page).filter({ hasText: 'Übergabe' })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'angelegt' })).toBeVisible();
-  const undoButton = page.getByRole('button', { name: 'Rückgängig' });
-  await expect(undoButton).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   const row = await withDb((client) =>
     client.query('SELECT title FROM tasks WHERE title = $1', ['Übergabe']),
@@ -145,12 +141,6 @@ test('AC3+AC4: Direkt-Pfad übergeht das Sheet, zeigt einen Undo-Toast, der die 
   expect(row.rowCount).toBe(0); // noch nicht synchronisiert, aber lokal schon sichtbar
   const entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({ dueAt: due.toISOString() });
-
-  await undoButton.click();
-
-  await expect(taskItems(page).filter({ hasText: 'Übergabe' })).toHaveCount(0);
-  const lastEntry = (await page.evaluate(() => window.__starship.pending())).at(-1);
-  expect(lastEntry?.op).toBe('delete');
 });
 
 test('AC5: offline im Bestätigungs-Sheet angelegt übersteht den Reload und erreicht online die Datenbank', async ({

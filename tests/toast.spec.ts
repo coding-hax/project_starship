@@ -1,8 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { freezeClock, resetAppData, selectView } from './helpers';
-
-/** Mirrors use-delete-task.ts's / use-archive-habit.ts's own UNDO_TIMEOUT_MS. */
-const UNDO_TIMEOUT_MS = 5000;
+import { resetAppData, selectView } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -49,15 +46,16 @@ async function swipeLeft(locator: Locator, distancePx: number) {
   });
 }
 
-/** Swipe-left alone tombstones the task and fires the undo toast — no inline
- * confirm step (issue #432). */
+/** Swipe-left alone tombstones the task, sofort und ohne Rückgängig-Popup
+ * (issue #432, #797). */
 async function deleteTaskByTitle(page: Page, title: string) {
   const item = taskItems(page).filter({ hasText: title });
   await swipeLeft(item, 120);
 }
 
 /** Mirrors sync.spec.ts AC2 — five failed pushes in a row cross SYNC_ERROR_THRESHOLD
- * and surface the sticky error toast via sync-status.tsx. */
+ * and surface the sticky error toast via sync-status.tsx. Seit #797 der einzige
+ * verbleibende Toast im Produkt. */
 async function triggerSyncErrorToast(page: Page) {
   await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
   await page.evaluate(() =>
@@ -83,103 +81,74 @@ function toastItems(page: Page) {
   return page.locator('.toast-host .toast');
 }
 
-test('AC1/AC2: zwei gleichzeitige Toasts stapeln sich sichtbar über genau einer aria-live-Region', async ({
-  page,
-}) => {
+test('AC2: der Fehler-Toast hängt in genau einer aria-live-Region', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Wird gelöscht' });
 
   await triggerSyncErrorToast(page);
   await expect(page.locator('.toast--error')).toBeVisible();
 
-  await deleteTaskByTitle(page, 'Wird gelöscht');
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
-
-  // AC2: genau eine aria-live-Region für die Toasts — nicht mehr eine pro
-  // Aufrufstelle —, beide hängen als Nachfahren daran. Scoped auf `.toast-host`, nicht
-  // `[aria-live]` allein: Next.js' eigener Route-Announcer trägt ebenfalls aria-live
-  // und würde die Zählung sonst verfälschen (kein Element dieses Features).
+  // Scoped auf `.toast-host`, nicht `[aria-live]` allein: Next.js' eigener
+  // Route-Announcer trägt ebenfalls aria-live und würde die Zählung sonst
+  // verfälschen (kein Element dieses Features).
   await expect(page.locator('.toast-host[aria-live]')).toHaveCount(1);
-  await expect(page.locator('.toast-host[aria-live] .toast')).toHaveCount(2);
-
-  // AC1: sichtbar gestapelt, die Bounding-Boxen überlappen sich nicht.
-  const rects = await toastItems(page).evaluateAll((els) =>
-    els.map((el) => {
-      const r = el.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom };
-    }),
-  );
-  expect(rects).toHaveLength(2);
-  const [a, b] = rects;
-  const overlapsVertically = a.top < b.bottom && b.top < a.bottom;
-  expect(overlapsVertically).toBe(false);
+  await expect(page.locator('.toast-host[aria-live] .toast')).toHaveCount(1);
 });
 
-test('AC3: die Fehler-Variante behält role="alert" + --danger, die Bestätigung role="status"', async ({
-  page,
-}) => {
+test('AC3: der Fehler-Toast trägt role="alert" und die --danger-Randfarbe', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Wird gelöscht' });
 
   await triggerSyncErrorToast(page);
   const errorToast = page.locator('.toast--error');
   await expect(errorToast).toHaveAttribute('role', 'alert');
   const errorBorder = await errorToast.evaluate((el) => getComputedStyle(el).borderColor);
   expect(errorBorder).toBe(await resolveColorToken(page, '--danger'));
-
-  // Not getByRole('alert') for the confirmation check — Next's route announcer also
-  // carries role="alert" (see sync.spec.ts AC2) and the error toast above is a second
-  // one; the confirmation toast is unambiguous via its own role and text instead.
-  await deleteTaskByTitle(page, 'Wird gelöscht');
-  const confirmationToast = page.getByRole('status').filter({ hasText: 'gelöscht' });
-  await expect(confirmationToast).toBeVisible();
 });
 
-test('AC4: Rückgängig stellt die gelöschte Zeile wieder her', async ({ page }) => {
+test('AC4: nach dem Löschen erscheint kein Rückgängig-Popup, die Zeile bleibt gelöscht', async ({
+  page,
+}) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await seedTask(page, { title: 'Toast A' });
 
   await deleteTaskByTitle(page, 'Toast A');
   await expect(taskItems(page).filter({ hasText: 'Toast A' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
-  await expect(taskItems(page).filter({ hasText: 'Toast A' })).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 });
 
-test('AC4: manuelles Schließen räumt nur die Benachrichtigung ab, nicht die Löschung', async ({
+test('AC4: manuelles Schließen räumt nur die Anzeige ab, der Sync-Fehler bleibt in der Outbox', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Toast B' });
 
-  await deleteTaskByTitle(page, 'Toast B');
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
+  await triggerSyncErrorToast(page);
+  await expect(page.locator('.toast--error')).toBeVisible();
   await page.getByRole('button', { name: 'Schließen' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeHidden();
-  await expect(taskItems(page).filter({ hasText: 'Toast B' })).toHaveCount(0);
+  await expect(page.locator('.toast--error')).toBeHidden();
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBeGreaterThan(0);
 });
 
-test('AC4: Auto-Dismiss räumt den Toast nach UNDO_TIMEOUT_MS ohne Interaktion ab', async ({
+test('AC4: der Fehler-Toast verschwindet automatisch, sobald der Sync-Fehler behoben ist', async ({
   page,
 }) => {
-  // Must be installed before the delete — the undo toast's setTimeout(UNDO_TIMEOUT_MS)
-  // is registered on whatever clock is active at that moment, so a mock installed
-  // afterwards would never intercept it (an earlier version of this test proved that).
-  await page.clock.install();
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Toast C' });
 
-  await deleteTaskByTitle(page, 'Toast C');
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
+  await triggerSyncErrorToast(page);
+  await expect(page.locator('.toast--error')).toBeVisible();
 
-  await freezeClock(page);
-  await page.clock.fastForward(UNDO_TIMEOUT_MS + 100);
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeHidden();
+  // Kein Klick auf „Schließen" — sync-status.tsx räumt sich selbst ab, sobald
+  // `overSyncErrorThreshold` wieder falsch wird (die einzige verbliebene Form
+  // von „automatisch abräumen", seit der zeitgesteuerte Undo-Toast weg ist).
+  await page.unroute('**/api/sync/push');
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect(page.locator('.toast--error')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 });
 
 test('AC6: der Toast blendet normal per Slide+Fade ein, bei reduzierter Bewegung nur per Opacity', async ({
@@ -187,16 +156,23 @@ test('AC6: der Toast blendet normal per Slide+Fade ein, bei reduzierter Bewegung
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Normal' });
-  await deleteTaskByTitle(page, 'Normal');
+
+  await triggerSyncErrorToast(page);
   const normalToast = toastItems(page);
   await expect(normalToast).toBeVisible();
   expect(await normalToast.evaluate((el) => getComputedStyle(el).animationName)).toBe('toast-in');
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
+
+  // Resolve the error first, not just dismiss it — sync-status.tsx only clears its
+  // own `dismissed` flag on a fresh rising edge (`over && !wasOverRef.current`), so
+  // a second trigger needs a real fall-below-threshold in between to remount the
+  // Toast and observe its animation from a clean start, same as the original two
+  // independent undo toasts did.
+  await page.unroute('**/api/sync/push');
+  await page.evaluate(() => window.__starship.sync());
+  await expect(page.locator('.toast--error')).toBeHidden();
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await seedTask(page, { title: 'Reduziert' });
-  await deleteTaskByTitle(page, 'Reduziert');
+  await triggerSyncErrorToast(page);
   const reducedToast = toastItems(page);
   await expect(reducedToast).toBeVisible();
   expect(await reducedToast.evaluate((el) => getComputedStyle(el).animationName)).toBe(
@@ -209,12 +185,11 @@ test('AC7: der Toast liegt als Overlay über der Seite, kein Layout-Shift darunt
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Verschieb-Test' });
   const main = page.locator('main.shell__main');
   const before = await main.boundingBox();
 
-  await deleteTaskByTitle(page, 'Verschieb-Test');
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
+  await triggerSyncErrorToast(page);
+  await expect(page.locator('.toast--error')).toBeVisible();
 
   const after = await main.boundingBox();
   expect(after).toEqual(before);
@@ -225,8 +200,7 @@ test('AC8: der Toast bleibt im Viewport, überlappt die Nav nicht — 375px und 
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Viewport-Test' });
-  await deleteTaskByTitle(page, 'Viewport-Test');
+  await triggerSyncErrorToast(page);
 
   const toast = toastItems(page);
   await expect(toast).toBeVisible();
@@ -258,9 +232,8 @@ test('AC8: Dark Mode ändert die Toast-Farbe über den Surface-Token, kein Rohwe
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Dark-Test' });
-  await deleteTaskByTitle(page, 'Dark-Test');
-  const toast = page.getByRole('status').filter({ hasText: 'gelöscht' });
+  await triggerSyncErrorToast(page);
+  const toast = page.locator('.toast--error');
   await expect(toast).toBeVisible();
   const lightBg = await toast.evaluate((el) => getComputedStyle(el).backgroundColor);
 

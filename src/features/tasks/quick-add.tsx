@@ -8,7 +8,6 @@ import { mutate } from '@/local/outbox';
 import { Chip } from '@/ui/chip';
 import { Fab } from '@/ui/fab';
 import { Sheet } from '@/ui/sheet';
-import { Toast } from '@/ui/toast';
 import { consumeCaptureDraft } from './capture-draft-store';
 import { CaptureConfirm, type CaptureConfirmDraft } from './capture-confirm';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
@@ -30,7 +29,6 @@ interface AppliedTaskInput {
 
 const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'quick-add-form';
-const UNDO_TIMEOUT_MS = 5000;
 
 /** Same three steps as the edit sheet — one vocabulary for a task's urgency.
  * Exported for `uebersicht-capture.tsx`'s own Priorität-Chip (issue #715 AK4). */
@@ -49,11 +47,6 @@ type ChipKey = 'wann' | 'prio' | 'notiz' | 'parent';
 function isTypingTarget(target: EventTarget | null): boolean {
   const tag = (target as HTMLElement | null)?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA';
-}
-
-interface UndoState {
-  taskId: string;
-  title: string;
 }
 
 /**
@@ -77,7 +70,7 @@ const NO_EXTRAS: TaskExtras = { notes: null, priority: 0, parentId: null };
  * issue #47: der Titel wird durch `parseTaskInput` geschickt. Erkennt der Text ein
  * Datum, öffnet sich ein Bestätigungs-Sheet mit dem aufgelösten Termin — außer die
  * Einstellung "ohne Bestätigung direkt anlegen" ist an, dann legt der Direkt-Pfad
- * sofort an und zeigt stattdessen einen Undo-Toast als Sicherheitsnetz (AC4).
+ * sofort an (AC4).
  *
  * issue #650/#711: dahinter liegt eine Chip-Zeile (Wann · Priorität · Notiz · Teil
  * von) mit denselben Feldern wie das Bearbeiten-Sheet. Wer eins braucht, tippt
@@ -89,7 +82,6 @@ export function QuickAddTask() {
   const [draft, setDraft] = useState<{ confirm: CaptureConfirmDraft; extras: TaskExtras } | null>(
     null,
   );
-  const [undo, setUndo] = useState<UndoState | null>(null);
   const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   const [notes, setNotes] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -101,7 +93,6 @@ export function QuickAddTask() {
   const [priority, setPriority] = useState(0);
   const [parentId, setParentId] = useState(NO_PARENT);
   const inputRef = useRef<HTMLInputElement>(null);
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { directCapture } = useCapturePrefs();
   const allTasks = useTasks();
 
@@ -137,20 +128,7 @@ export function QuickAddTask() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [openSheet]);
 
-  function dismissUndo() {
-    if (undoTimeoutRef.current !== null) {
-      clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = null;
-    }
-    setUndo(null);
-  }
-
-  async function createTask(
-    title: string,
-    dueAt: string | null,
-    extras: TaskExtras,
-    showUndo: boolean,
-  ) {
+  async function createTask(title: string, dueAt: string | null, extras: TaskExtras) {
     // Anchors the chronological running list (issue #88) — set once, here, and
     // never touched again by an edit.
     const payload: Record<string, unknown> = { title, createdAt: new Date().toISOString() };
@@ -160,22 +138,7 @@ export function QuickAddTask() {
     if (extras.notes) payload.notes = extras.notes;
     if (extras.priority !== 0) payload.priority = extras.priority;
     if (extras.parentId) payload.parentId = extras.parentId;
-    const taskId = await mutate({ table: 'tasks', op: 'upsert', payload });
-
-    if (showUndo) {
-      dismissUndo();
-      setUndo({ taskId, title });
-      undoTimeoutRef.current = setTimeout(dismissUndo, UNDO_TIMEOUT_MS);
-    }
-  }
-
-  async function handleUndo() {
-    if (!undo) return;
-    const { taskId } = undo;
-    dismissUndo();
-    // Rückgängig macht die Anlage per Tombstone, nicht per Hard-Delete (CLAUDE.md
-    // rule 8 / ADR-0001 §3) — funktioniert damit auch offline.
-    await mutate({ table: 'tasks', rowId: taskId, op: 'delete' });
+    await mutate({ table: 'tasks', op: 'upsert', payload });
   }
 
   // issue #618: derselbe Entscheidungsweg für Eingaben aus diesem Sheet und für
@@ -188,8 +151,7 @@ export function QuickAddTask() {
   ) {
     // Eine über den Wann-Chip gesetzte Fälligkeit ist eine bewusste Eingabe und
     // schlägt die aus dem Titel geratene (issue #650 AC5) — dann gibt es auch
-    // nichts mehr zu bestätigen und keinen Undo-Toast, der ein ungeprüftes Datum
-    // absichert.
+    // nichts mehr zu bestätigen.
     if (explicitDueAt === null && parsed.dueAt !== null) {
       // #688 R2 Regel 5 + AK4: eine geratene Nachtzeit oder eine regionale Kurzform
       // schlägt die Direkt-Erfassung — das ist die einzige Stelle im Erfassungspfad,
@@ -207,12 +169,11 @@ export function QuickAddTask() {
         });
         return;
       }
-      // Ein Undo-Toast ersetzt bewusst das übersprungene Bestätigungs-Sheet (AC4).
-      await createTask(parsed.title, parsed.dueAt, extras, true);
+      await createTask(parsed.title, parsed.dueAt, extras);
       return;
     }
 
-    await createTask(parsed.title, explicitDueAt ?? parsed.dueAt, extras, false);
+    await createTask(parsed.title, explicitDueAt ?? parsed.dueAt, extras);
   }
 
   // Konsumiert einen Draft, der über die Erfassung auf /uebersicht angelegt wurde
@@ -298,7 +259,7 @@ export function QuickAddTask() {
   async function handleConfirm(title: string, dueAt: string) {
     const extras = draft?.extras ?? NO_EXTRAS;
     setDraft(null);
-    await createTask(title, dueAt, extras, false);
+    await createTask(title, dueAt, extras);
   }
 
   function toggleChip(key: ChipKey) {
@@ -440,14 +401,6 @@ export function QuickAddTask() {
         onConfirm={handleConfirm}
         onClose={() => setDraft(null)}
       />
-      {undo && (
-        <Toast
-          message={`„${undo.title}" angelegt`}
-          actionLabel="Rückgängig"
-          onAction={handleUndo}
-          onDismiss={dismissUndo}
-        />
-      )}
     </>
   );
 }

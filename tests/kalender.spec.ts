@@ -1304,7 +1304,7 @@ test('das Ändern eines Termins spiegelt sich sofort in der Timeline (#554 AC2)'
   await expect(eventCard(page, 'Altes Meeting')).toHaveCount(0);
 });
 
-test('das Löschen eines Termins zeigt einen Undo-Toast, der ihn zurückholt (#554 AC3)', async ({
+test('das Löschen eines Termins bleibt ohne Rückgängig bestehen, der Server landet mit Tombstone (#554 AC3)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -1327,12 +1327,16 @@ test('das Löschen eines Termins zeigt einen Undo-Toast, der ihn zurückholt (#5
   await editDialog.getByRole('button', { name: 'Löschen' }).click();
 
   await expect(eventCard(page, 'Zu löschen')).toHaveCount(0);
-  const undoToast = page.getByRole('status').filter({ hasText: 'gelöscht' });
-  await expect(undoToast).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
-  await undoToast.getByRole('button', { name: 'Rückgängig' }).click();
-  await expect(eventCard(page, 'Zu löschen')).toBeVisible();
-  await expect(undoToast).toHaveCount(0);
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT deleted_at FROM events WHERE title = $1', ['Zu löschen']),
+  );
+  expect(row.rows[0].deleted_at).not.toBeNull();
 });
 
 test('ein offline angelegter Termin steht sofort lokal und erreicht nach dem Onlinegehen die echte Datenbank (#554 AC4)', async ({

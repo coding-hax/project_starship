@@ -579,6 +579,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 
   await page.getByRole('button', { name: 'Eintrag löschen' }).click();
   await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -587,6 +588,48 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
     client.query('SELECT deleted_at FROM journal_entries WHERE entry_date = $1', [entryDate]),
   );
   expect(row.rowCount).toBe(1); // Soft-Delete: die Zeile existiert weiterhin.
+  expect(row.rows[0].deleted_at).not.toBeNull();
+});
+
+test('AC5: offline gelöschter Eintrag bleibt ohne Rückgängig-Popup weg und erreicht online den Server als Tombstone', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+  // setUpEditor's own "Einrichten" (journal_keys envelope write) and the
+  // boot-time Journal-habit creation (issue #505 AC1, same ripple
+  // settleJournalHabitBoot documents) can both still be sitting in the
+  // outbox at this point — drain them while still online, before the
+  // offline scenario's own exact-size assertion below.
+  await settleJournalHabitBoot(page);
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Offline gelöscht');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Eintrag löschen' }).click();
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
+  // Two entries for the create (journal_entries + the auto-checked-off Journal
+  // habit, issue #505 AC4 — appendJournalEntry's logJournalHabit call), one
+  // more for the delete — all three still queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(3);
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT deleted_at FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  expect(row.rowCount).toBe(1);
   expect(row.rows[0].deleted_at).not.toBeNull();
 });
 

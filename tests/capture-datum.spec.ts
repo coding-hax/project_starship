@@ -220,11 +220,13 @@ test('AK6: Abhaken folgt dem logischen Tag, nicht dem realen', async ({ page }) 
   await submitUebersichtCapture(page, 'Sport gemacht');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
+  // Kein Toast mehr, der das Abhaken bestätigt (issue #797) — auf den
+  // tatsächlichen Outbox-Eintrag warten, statt auf seine frühere Anzeige.
+  await expect.poll(async () => (await pendingHabitLogDates(page)).length).toBe(1);
 
   await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'gestern Sport gemacht');
-  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
+  await expect.poll(async () => (await pendingHabitLogDates(page)).length).toBe(2);
 
   const logDates = (await pendingHabitLogDates(page)).sort();
   expect(logDates).toEqual([dateKeyOf(dueAt(MO, -1, 0, 0)), dateKeyOf(MO)].sort());
@@ -237,11 +239,13 @@ test('AK6/R7: ein genanntes Datum steuert bis 7 Tage rückwärts den Log-Tag, Zu
   await seedHabit(page, { name: 'Sport', schedule: 'daily', color: null, archivedAt: null });
 
   await submitUebersichtCapture(page, 'Sport für gestern abhaken');
-  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
+  // Kein Toast mehr, der das Abhaken bestätigt (issue #797) — auf den
+  // tatsächlichen Outbox-Eintrag warten, statt auf seine frühere Anzeige.
+  await expect.poll(async () => (await pendingHabitLogDates(page)).length).toBe(1);
 
   await page.goto('/uebersicht');
   await submitUebersichtCapture(page, 'Sport für morgen abhaken');
-  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
+  await expect.poll(async () => (await pendingHabitLogDates(page)).length).toBe(2);
 
   const logDates = (await pendingHabitLogDates(page)).sort();
   expect(logDates).toEqual([dateKeyOf(dueAt(MO, -1, 0, 0)), dateKeyOf(MO)].sort());

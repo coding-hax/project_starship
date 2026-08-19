@@ -99,7 +99,7 @@ test('AC2: Freitext ohne erkanntes Datum ergibt einen Termin auf den heutigen Ta
   expect(dateKeyOf(startsAt)).toBe(todayKey());
 });
 
-test('AC3: "hake Sport ab" hakt die Gewohnheit für heute direkt ab, Undo macht es rückgängig', async ({
+test('AC3: "hake Sport ab" hakt die Gewohnheit für heute direkt ab, ohne Rückgängig-Popup — der Server landet abgehakt', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -107,19 +107,26 @@ test('AC3: "hake Sport ab" hakt die Gewohnheit für heute direkt ab, Undo macht 
 
   await submitUebersichtCapture(page, 'hake Sport ab');
 
-  // Kein Editor, keine Navigation — das Abhaken ist reversibel und trivial (issue #619).
+  // Kein Editor, keine Navigation — das Abhaken ist trivial (issue #619).
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(page.getByRole('dialog', { name: CAPTURE_LABEL })).toBeHidden();
 
   const checkbox = page.getByRole('checkbox', { name: 'Sport für heute abhaken' });
   await expect(checkbox).toBeChecked();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
-  const undoToast = page.getByRole('status').filter({ hasText: 'abgehakt' });
-  await expect(undoToast).toBeVisible();
-  await undoToast.getByRole('button', { name: 'Rückgängig' }).click();
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
-  await expect(checkbox).not.toBeChecked();
-  await expect(undoToast).toHaveCount(0);
+  const row = await withDb((client) =>
+    client.query(
+      'SELECT l.done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1',
+      ['Sport'],
+    ),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0].done).toBe(true);
 });
 
 test('AC4: Gewohnheitsname ohne eindeutigen Treffer öffnet die Routine-Auswahl in-place, hakt nichts ab (issue #715 AK5)', async ({
