@@ -597,6 +597,12 @@ test('AC5: offline gelöschter Eintrag bleibt ohne Rückgängig-Popup weg und er
 }) => {
   await installClockAt(page);
   await setUpEditor(page);
+  // setUpEditor's own "Einrichten" (journal_keys envelope write) and the
+  // boot-time Journal-habit creation (issue #505 AC1, same ripple
+  // settleJournalHabitBoot documents) can both still be sitting in the
+  // outbox at this point — drain them while still online, before the
+  // offline scenario's own exact-size assertion below.
+  await settleJournalHabitBoot(page);
   const entryDate = await page.evaluate(
     (iso) => new Date(iso).toLocaleDateString('en-CA'),
     FIXED_NOW,
@@ -611,8 +617,10 @@ test('AC5: offline gelöschter Eintrag bleibt ohne Rückgängig-Popup weg und er
   await page.getByRole('button', { name: 'Eintrag löschen' }).click();
   await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
-  // One entry for the create, one for the delete — both still queued offline.
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+  // Two entries for the create (journal_entries + the auto-checked-off Journal
+  // habit, issue #505 AC4 — appendJournalEntry's logJournalHabit call), one
+  // more for the delete — all three still queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(3);
 
   await context.setOffline(false);
   await page.evaluate(() => window.__starship.sync());

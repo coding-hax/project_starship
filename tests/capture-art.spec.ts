@@ -266,8 +266,9 @@ test('AK5: eindeutiger Habit-Treffer zeigt den Routine-Chip vorbelegt, Anlegen h
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(captureDialog(page)).toBeHidden();
+  // Kein Toast mehr, der das Abhaken bestätigt (issue #797) — der Checkbox-Zustand
+  // selbst ist der Beleg.
   await expect(page.getByRole('checkbox', { name: 'Sport für heute abhaken' })).toBeChecked();
-  await expect(page.getByRole('status').filter({ hasText: 'abgehakt' })).toBeVisible();
 });
 
 test('AK5: mehrdeutiger Habit-Treffer zeigt „Keiner Gewohnheit zugeordnet" mit Auswahl statt still zu navigieren', async ({
