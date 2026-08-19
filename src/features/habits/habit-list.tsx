@@ -5,7 +5,6 @@ import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { OfflineNotice } from '@/ui/offline-notice';
 import { SectionCard } from '@/ui/section-card';
-import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useOnline } from '@/ui/use-online';
 import { addMonths, monthLabel, startOfMonth } from './due-today';
@@ -124,7 +123,7 @@ export function HabitList() {
   const habits = useHabits();
   const logs = useHabitLogs();
   const toggleLog = useToggleHabitLog(logs);
-  const { toggleArchive, undo, handleUndo, dismissUndo } = useArchiveHabit();
+  const { toggleArchive } = useArchiveHabit();
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
   const [viewedMonth, setViewedMonth] = useState<Date>(() => startOfMonth(new Date()));
   const online = useOnline();
@@ -207,15 +206,6 @@ export function HabitList() {
         habit={editingHabit}
         onClose={() => setEditingHabitId(null)}
       />
-
-      {undo && (
-        <Toast
-          message={`„${undo.name}" archiviert`}
-          actionLabel="Rückgängig"
-          onAction={handleUndo}
-          onDismiss={dismissUndo}
-        />
-      )}
     </>
   );
 }

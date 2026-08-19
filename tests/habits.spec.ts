@@ -543,7 +543,7 @@ test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (i
   expect(row.rows[0].color).toBe('--swatch-sky');
 });
 
-test('Archivieren entfernt die Routine aus der aktiven Liste und zeigt einen Undo-Toast', async ({
+test('Archivieren entfernt die Routine aus der aktiven Liste, ohne Rückgängig-Popup', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -554,14 +554,13 @@ test('Archivieren entfernt die Routine aus der aktiven Liste und zeigt einen Und
   await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
 
   await expect(item).toHaveCount(0);
-  await expect(page.getByRole('status').filter({ hasText: 'archiviert' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await expandArchived(page);
   await expect(archivedHabitItems(page).filter({ hasText: 'Tagebuch' })).toBeVisible();
 });
 
-test('der Undo-Toast beim Archivieren macht es rückgängig, die Routine ist wieder aktiv', async ({
+test('das Archivieren bleibt ohne Rückgängig bestehen, der Server landet archiviert', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -570,10 +569,6 @@ test('der Undo-Toast beim Archivieren macht es rückgängig, die Routine ist wie
 
   await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
   await expect(item).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
-
-  await expect(habitItems(page).filter({ hasText: 'Stretching' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.unroute('**/api/sync/**');
@@ -583,7 +578,7 @@ test('der Undo-Toast beim Archivieren macht es rückgängig, die Routine ist wie
   const row = await withDb((client) =>
     client.query('SELECT archived_at FROM habits WHERE name = $1', ['Stretching']),
   );
-  expect(row.rows[0].archived_at).toBeNull();
+  expect(row.rows[0].archived_at).not.toBeNull();
 });
 
 test('Reaktivieren aus dem Archiv macht die Routine ohne Undo-Angebot wieder aktiv', async ({
