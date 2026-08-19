@@ -43,9 +43,9 @@ const PLOT_H = 80;
 const PLOT_BOTTOM = PLOT_Y + PLOT_H;
 const HOUR_LABEL_Y = PLOT_BOTTOM + 16;
 const HOURS_PER_DAY = 24;
-const LAST_HOUR = HOURS_PER_DAY - 1;
-/** Every sixth hour plus the last one — enough to read the shape without crowding. */
-const HOUR_TICKS = [0, 6, 12, 18, LAST_HOUR];
+/** Every sixth hour of the day plus midnight at the far end — five evenly spaced
+ * quarter-day marks, none of them crowding the last one (issue #795). */
+const HOUR_TICKS = [0, 6, 12, 18, HOURS_PER_DAY];
 const PRECIPITATION_TICKS = [0, 50, 100];
 
 export interface WeatherDayDetailProps {
@@ -166,8 +166,9 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const points = temperatureLinePoints(day.hours, PLOT_W, PLOT_H, axis);
   const temperatureY = (value: number) =>
     PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * PLOT_H;
-  // The curve's endpoints sit on the frame's edges, so hour n is at n/23 of the width.
-  const curveX = (hour: number) => PLOT_X + (hour / LAST_HOUR) * PLOT_W;
+  // Hour n reads the axis as a full day, 0..24 — so it sits at n/24 of the width,
+  // one slot short of the right edge, matching the 24:00 tick there (issue #795).
+  const curveX = (hour: number) => PLOT_X + (hour / HOURS_PER_DAY) * PLOT_W;
   // A bar owns a slot instead, so its label belongs over that slot's centre.
   const slotWidth = PLOT_W / HOURS_PER_DAY;
   const barWidth = slotWidth * 0.6;
@@ -265,7 +266,9 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
             y: PLOT_BOTTOM - (value / 100) * PLOT_H,
             label: `${value} %`,
           }))}
-          xTicks={HOUR_TICKS.map((hour) => ({ x: slotX(hour), label: hourTickLabel(hour) }))}
+          // Ticks sit on the slot boundary (same position as curveX), not the slot
+          // centre a bar itself is drawn at — both charts share one hour grid.
+          xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
         >
           {day.hours.map((hour, i) => {
             const height = (hour.precipitationProbability / 100) * PLOT_H;

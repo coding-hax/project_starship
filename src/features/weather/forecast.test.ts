@@ -251,12 +251,12 @@ describe('formatDayHeading', () => {
 });
 
 describe('temperatureLinePoints', () => {
-  it('scales two points across the full width and height', () => {
+  it('scales two points one slot apart, height scaled to the full box', () => {
     const hours = [
       { time: '2026-07-23T00:00', temperature: 10, precipitationProbability: 0, precipitation: 0 },
       { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
     ];
-    expect(temperatureLinePoints(hours, 100, 50)).toBe('0.0,50.0 100.0,0.0');
+    expect(temperatureLinePoints(hours, 100, 50)).toBe('0.0,50.0 50.0,0.0');
   });
 
   it('is empty for no hours', () => {
@@ -268,7 +268,7 @@ describe('temperatureLinePoints', () => {
       { time: '2026-07-23T00:00', temperature: 15, precipitationProbability: 0, precipitation: 0 },
       { time: '2026-07-23T01:00', temperature: 15, precipitationProbability: 0, precipitation: 0 },
     ];
-    expect(temperatureLinePoints(hours, 100, 50)).toBe('0.0,50.0 100.0,50.0');
+    expect(temperatureLinePoints(hours, 100, 50)).toBe('0.0,50.0 50.0,50.0');
   });
 
   it('scales into a given domain instead of the raw min/max', () => {
@@ -277,7 +277,7 @@ describe('temperatureLinePoints', () => {
       { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
     ];
     // Domain twice the data's span: the curve uses the middle half of the box.
-    expect(temperatureLinePoints(hours, 100, 40, { min: 0, max: 40 })).toBe('0.0,30.0 100.0,20.0');
+    expect(temperatureLinePoints(hours, 100, 40, { min: 0, max: 40 })).toBe('0.0,30.0 50.0,20.0');
   });
 });
 
