@@ -258,7 +258,7 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
 /* Achsenbeschriftung beider Diagramme                                        */
 /* -------------------------------------------------------------------------- */
 
-test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 23:00', async ({
+test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:00, gleichmäßig verteilt (issue #795)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -275,7 +275,7 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 23:
     '06:00',
     '12:00',
     '18:00',
-    '23:00',
+    '24:00',
   ]);
   await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-tick')).toHaveText([
     '0 %',
@@ -285,18 +285,26 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 23:
     '06:00',
     '12:00',
     '18:00',
-    '23:00',
+    '24:00',
   ]);
 
-  // Der eigentliche Fehler war die Ausrichtung: „18:00" saß am rechten Rand, weil
-  // die Beschriftungen gleichmäßig über die volle Breite verteilt wurden statt
-  // über der Stunde zu stehen, zu der sie gehören.
-  const chart = await page.locator('.weather-day__chart').boundingBox();
-  const eighteen = await page.locator('.weather-day__chart .weather-day__chart-tick', { hasText: '18:00' }).boundingBox();
-  const lastHour = await page.locator('.weather-day__chart .weather-day__chart-tick', { hasText: '23:00' }).boundingBox();
-  const fraction = (box: { x: number; width: number }) => (box.x + box.width / 2 - chart!.x) / chart!.width;
-  expect(fraction(eighteen!)).toBeLessThan(0.85);
-  expect(fraction(lastHour!)).toBeGreaterThan(fraction(eighteen!));
+  // Der gemeldete Fehler: die letzten beiden Uhrzeiten saßen enger zusammen als
+  // der Rest, weil die Achse die Stunden 0..23 statt 0..24 abbildete. Jetzt
+  // müssen alle vier Lücken zwischen den fünf Stundenlabels gleich breit sein —
+  // für beide Diagramme, die sich dasselbe Stundenraster teilen.
+  for (const selector of ['.weather-day__chart', '.weather-day__precipitation-chart']) {
+    const ticks = page.locator(`${selector} .weather-day__chart-tick`, {
+      hasText: /^\d{2}:00$/,
+    });
+    const boxes = await ticks.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().x + element.getBoundingClientRect().width / 2),
+    );
+    expect(boxes).toHaveLength(5);
+    const gaps = boxes.slice(1).map((x, i) => x - boxes[i]);
+    for (const gap of gaps) {
+      expect(Math.abs(gap - gaps[0])).toBeLessThan(1);
+    }
+  }
 });
 
 test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard (issue #288 AC2)', async ({
