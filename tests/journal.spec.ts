@@ -579,6 +579,7 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
 
   await page.getByRole('button', { name: 'Eintrag löschen' }).click();
   await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -587,6 +588,40 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
     client.query('SELECT deleted_at FROM journal_entries WHERE entry_date = $1', [entryDate]),
   );
   expect(row.rowCount).toBe(1); // Soft-Delete: die Zeile existiert weiterhin.
+  expect(row.rows[0].deleted_at).not.toBeNull();
+});
+
+test('AC5: offline gelöschter Eintrag bleibt ohne Rückgängig-Popup weg und erreicht online den Server als Tombstone', async ({
+  page,
+  context,
+}) => {
+  await installClockAt(page);
+  await setUpEditor(page);
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Offline gelöscht');
+  await submit(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Eintrag löschen' }).click();
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
+  // One entry for the create, one for the delete — both still queued offline.
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT deleted_at FROM journal_entries WHERE entry_date = $1', [entryDate]),
+  );
+  expect(row.rowCount).toBe(1);
   expect(row.rows[0].deleted_at).not.toBeNull();
 });
 

@@ -1,9 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { mutate } from '@/local/outbox';
 import { Fab } from '@/ui/fab';
-import { Toast } from '@/ui/toast';
 import { useListPresence, type ListPresenceRow } from '@/ui/use-list-presence';
 import { deleteJournalEntry, todayKey } from './entry';
 import { JournalEntrySheet, JOURNAL_ENTRY_SHEET_LABEL } from './journal-entry-sheet';
@@ -53,12 +51,6 @@ function formatEntryTime(createdAt: string): string {
   return ENTRY_TIME_FORMATTER.format(new Date(createdAt));
 }
 
-const UNDO_TIMEOUT_MS = 5000;
-
-interface UndoState {
-  id: string;
-}
-
 interface DayRowGroup {
   dayKey: string;
   rows: ListPresenceRow<JournalSearchEntry>[];
@@ -96,8 +88,6 @@ export function JournalEditor() {
   // Der Suchmodus lebt seit issue #700 (AK5) im Modul-Store, geöffnet von der
   // Lupe in der Titelzeile — nicht mehr als lokaler State hier.
   const { active: searchActive } = useJournalSearchMode();
-  const [undo, setUndo] = useState<UndoState | null>(null);
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // A ref, not state (#700 AK6, T2 jump from a search hit): scrolling to the
   // target once the stream reappears is a one-off DOM effect, not something
@@ -127,26 +117,8 @@ export function JournalEditor() {
     pendingScrollRef.current = null;
   }, [searchActive]);
 
-  function dismissUndo() {
-    if (undoTimeoutRef.current !== null) {
-      clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = null;
-    }
-    setUndo(null);
-  }
-
   async function handleDelete(id: string) {
-    dismissUndo();
     await deleteJournalEntry(id);
-    setUndo({ id });
-    undoTimeoutRef.current = setTimeout(dismissUndo, UNDO_TIMEOUT_MS);
-  }
-
-  async function handleUndoDelete() {
-    if (!undo) return;
-    const { id } = undo;
-    dismissUndo();
-    await mutate({ table: 'journal_entries', rowId: id, op: 'restore' });
   }
 
   return (
@@ -187,14 +159,6 @@ export function JournalEditor() {
       </div>
       {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} onClick={() => setSheetOpen(true)} />}
       <JournalEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
-      {undo && (
-        <Toast
-          message="Eintrag gelöscht"
-          actionLabel="Rückgängig"
-          onAction={handleUndoDelete}
-          onDismiss={dismissUndo}
-        />
-      )}
     </>
   );
 }
