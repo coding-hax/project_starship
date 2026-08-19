@@ -31,7 +31,6 @@ import { mutate } from '@/local/outbox';
 import { berlinNow } from '@/push/schedule';
 import { Chip } from '@/ui/chip';
 import { Sheet } from '@/ui/sheet';
-import { Toast } from '@/ui/toast';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
 import { PRIORITIES } from './quick-add';
 import { TaskEditor, type TaskEditorState } from './task-editor';
@@ -39,7 +38,6 @@ import { groupTasks, useTasks } from './use-tasks';
 
 const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'uebersicht-capture-form';
-const UNDO_TIMEOUT_MS = 5000;
 const ART_PANEL_ID = 'uebersicht-capture-panel-art';
 const TITEL_PANEL_ID = 'uebersicht-capture-panel-titel';
 const WANN_PANEL_ID = 'uebersicht-capture-panel-wann';
@@ -100,12 +98,6 @@ function MoreChip({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-interface HabitCheckUndo {
-  habitId: string;
-  habitName: string;
-  logDate: string;
-}
-
 /**
  * Erfassungsknopf in der Titelzeile von `/uebersicht`: ein Freitextfeld, dessen
  * Ergebnis der Erkenner (`route-capture.ts`) laufend liest. Seit issue #716 lebt
@@ -144,14 +136,12 @@ export function UebersichtCapture() {
   // lässt sie einfach stehen (EXTRA_FIELD oben), `closeAndReset` räumt sie weg.
   const [priority, setPriority] = useState(0);
   const [category, setCategory] = useState(NO_CATEGORY);
-  const [habitUndo, setHabitUndo] = useState<HabitCheckUndo | null>(null);
   const [unresolvedHabit, setUnresolvedHabit] = useState(false);
   // AK4 "Mehr": ein zweites Sheet, nie gleichzeitig mit dem Kern-Sheet offen —
   // "Mehr" schließt dieses hier und öffnet jenes mit den bisherigen Werten.
   const [taskEditorState, setTaskEditorState] = useState<TaskEditorState>(null);
   const [eventEditorState, setEventEditorState] = useState<EventEditorState>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isActive } = useModules();
   const habits = useHabits();
   const logs = useHabitLogs();
@@ -319,21 +309,6 @@ export function UebersichtCapture() {
     setEventEditorState({ mode: 'create', event: null, occurrence: null, prefill });
   }
 
-  function dismissHabitUndo() {
-    if (undoTimeoutRef.current !== null) {
-      clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = null;
-    }
-    setHabitUndo(null);
-  }
-
-  async function handleHabitUndo() {
-    if (!habitUndo) return;
-    const { habitId, logDate } = habitUndo;
-    dismissHabitUndo();
-    await toggleHabitLog(habitId, logDate);
-  }
-
   function closeAndReset() {
     setOpen(false);
     setTitle('');
@@ -450,13 +425,9 @@ export function UebersichtCapture() {
       return;
     }
     const habitId = finalHabitFields.habitId;
-    const checkedHabitName = captureHabits.find((habit) => habit.id === habitId)?.name ?? '';
     const logDate = finalHabitFields.logDate;
     closeAndReset();
-    dismissHabitUndo();
     await toggleHabitLog(habitId, logDate);
-    setHabitUndo({ habitId, habitName: checkedHabitName, logDate });
-    undoTimeoutRef.current = setTimeout(dismissHabitUndo, UNDO_TIMEOUT_MS);
   }
 
   const priorityLabel = priority !== 0 ? PRIORITIES.find((p) => p.value === priority)!.label : null;
@@ -794,14 +765,6 @@ export function UebersichtCapture() {
         onClose={() => setEventEditorState(null)}
         onDelete={() => {}}
       />
-      {habitUndo && (
-        <Toast
-          message={`„${habitUndo.habitName}" abgehakt`}
-          actionLabel="Rückgängig"
-          onAction={handleHabitUndo}
-          onDismiss={dismissHabitUndo}
-        />
-      )}
     </>
   );
 }
