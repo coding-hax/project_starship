@@ -291,18 +291,22 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
   // Der gemeldete Fehler: die letzten beiden Uhrzeiten saßen enger zusammen als
   // der Rest, weil die Achse die Stunden 0..23 statt 0..24 abbildete. Jetzt
   // müssen alle vier Lücken zwischen den fünf Stundenlabels gleich breit sein —
-  // für beide Diagramme, die sich dasselbe Stundenraster teilen.
+  // für beide Diagramme, die sich dasselbe Stundenraster teilen. Geprüft wird
+  // die `x`-Koordinate im SVG-Viewport, nicht die gerenderte Bounding-Box: das
+  // letzte Label ist absichtlich rechtsbündig verankert (sonst liefe es über
+  // den Rand hinaus), was seine Glyphen-Box gegenüber ihrer wahren Tick-Position
+  // verschiebt, ohne dass die Achse selbst ungleichmäßig wäre.
   for (const selector of ['.weather-day__chart', '.weather-day__precipitation-chart']) {
     const ticks = page.locator(`${selector} .weather-day__chart-tick`, {
       hasText: /^\d{2}:00$/,
     });
-    const boxes = await ticks.evaluateAll((elements) =>
-      elements.map((element) => element.getBoundingClientRect().x + element.getBoundingClientRect().width / 2),
+    const xs = await ticks.evaluateAll((elements) =>
+      elements.map((element) => Number(element.getAttribute('x'))),
     );
-    expect(boxes).toHaveLength(5);
-    const gaps = boxes.slice(1).map((x, i) => x - boxes[i]);
+    expect(xs).toHaveLength(5);
+    const gaps = xs.slice(1).map((x, i) => x - xs[i]);
     for (const gap of gaps) {
-      expect(Math.abs(gap - gaps[0])).toBeLessThan(1);
+      expect(Math.abs(gap - gaps[0])).toBeLessThan(0.01);
     }
   }
 });
