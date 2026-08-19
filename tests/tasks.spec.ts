@@ -500,7 +500,7 @@ test('kein Layout-Shift beim Schließen des Sheets (issue #429)', async ({ page 
   expect(scrollWidthAfter).toBe(scrollWidthBefore);
 });
 
-test('Wisch nach rechts erledigt die Aufgabe und zeigt einen Undo-Toast', async ({ page }) => {
+test('Wisch nach rechts erledigt die Aufgabe sofort, ohne Rückgängig-Popup', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   const title = 'Wird gewischt';
@@ -511,8 +511,7 @@ test('Wisch nach rechts erledigt die Aufgabe und zeigt einen Undo-Toast', async 
 
   await expect(item).toHaveClass(/task-list__item--done/);
   await expect(checkboxFor(page, title)).toBeChecked();
-  await expect(page.getByRole('status').filter({ hasText: 'erledigt' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 });
 
 test('ein zu kurzer Wisch lässt die Aufgabe offen', async ({ page }) => {
@@ -528,7 +527,7 @@ test('ein zu kurzer Wisch lässt die Aufgabe offen', async ({ page }) => {
   await expect(checkboxFor(page, title)).not.toBeChecked();
 });
 
-test('der Undo-Toast macht die Erledigung rückgängig, der Server landet am offenen Zustand', async ({
+test('die Erledigung bleibt ohne Rückgängig bestehen, der Server landet am erledigten Zustand', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -539,15 +538,8 @@ test('der Undo-Toast macht die Erledigung rückgängig, der Server landet am off
 
   await swipeRight(item, 120);
   await expect(item).toHaveClass(/task-list__item--done/);
-
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
-
-  await expect(item).not.toHaveClass(/task-list__item--done/);
-  await expect(checkboxFor(page, title)).not.toBeChecked();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
-  // The complete-then-undo pair must reach the server as a coherent sequence, not
-  // leave the row stuck "completed" from a half-applied undo.
   await page.unroute('**/api/sync/**');
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
@@ -555,7 +547,7 @@ test('der Undo-Toast macht die Erledigung rückgängig, der Server landet am off
   const row = await withDb((client) =>
     client.query('SELECT completed_at FROM tasks WHERE title = $1', [title]),
   );
-  expect(row.rows[0].completed_at).toBeNull();
+  expect(row.rows[0].completed_at).not.toBeNull();
 });
 
 test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht online die Datenbank', async ({
@@ -758,7 +750,7 @@ test('ein zu kurzer Linksswipe löscht nicht und öffnet nicht den Editor', asyn
   await expect(editorDialog(page)).toBeHidden();
 });
 
-test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({ page }) => {
+test('Wisch nach links löscht sofort, ohne Rückgängig-Popup', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   const title = 'Wird gelöscht';
@@ -767,12 +759,8 @@ test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({ page
 
   await swipeLeft(item, 120);
 
-  // Scoped to the list, not `page.getByText` — the undo toast's own message
-  // ("„<title>" gelöscht") embeds the title too, so a page-wide text query would
-  // still match after the row is gone.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
-  await expect(page.getByRole('status').filter({ hasText: 'gelöscht' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   // A tombstone, never a hard DELETE (CLAUDE.md rule 8 / ADR-0001 §3) — proven by
   // the op the outbox actually queued for this row.
@@ -782,7 +770,7 @@ test('Wisch nach links löscht sofort und zeigt einen Undo-Toast', async ({ page
   expect(last.rowId).toBe(id);
 });
 
-test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server landet ohne Tombstone', async ({
+test('das Löschen bleibt ohne Rückgängig bestehen, der Server landet mit Tombstone', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -792,12 +780,7 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeLeft(item, 120);
-  // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
-
-  await expect(taskItems(page).filter({ hasText: title })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.unroute('**/api/sync/**');
@@ -807,7 +790,7 @@ test('der Undo-Toast beim Löschen stellt die Aufgabe wieder her, der Server lan
   const row = await withDb((client) =>
     client.query('SELECT deleted_at FROM tasks WHERE title = $1', [title]),
   );
-  expect(row.rows[0].deleted_at).toBeNull();
+  expect(row.rows[0].deleted_at).not.toBeNull();
 });
 
 function taskRowFor(page: Page, title: string) {
@@ -1263,7 +1246,6 @@ test('offline gelöscht erreicht nach dem Onlinegehen den Server als Tombstone, 
   const item = taskItems(page).filter({ hasText: title });
   await swipeLeft(item, 120);
 
-  // Scoped to the list — the undo toast's own message embeds the title too.
   await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
   // One entry for the seed, one for the delete — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
@@ -1836,7 +1818,7 @@ test('„Keine (Top-Level)" im Editor löst ein Kind wieder aus der Gruppe (issu
   expect(last.payload.parentId).toBeNull();
 });
 
-test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und Kinder wieder her (issue #89 AK6)', async ({
+test('Elternaufgabe löschen tombstoned die Kinder mit, ohne Rückgängig-Popup; der Server landet mit allen drei Tombstones (issue #89 AK6)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1850,13 +1832,23 @@ test('Elternaufgabe löschen tombstoned die Kinder mit, Undo stellt Eltern und K
   await swipeLeft(parentItem, 120);
 
   await expect(taskItems(page)).toHaveCount(0);
-  await expect(
-    page.getByRole('status').filter({ hasText: '2 Unteraufgaben gelöscht' }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
-  await page.getByRole('button', { name: 'Rückgängig' }).click();
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
-  await expect(taskItems(page)).toHaveCount(3);
+  const rows = await withDb((client) =>
+    client.query('SELECT deleted_at FROM tasks WHERE title IN ($1, $2, $3)', [
+      'Elternaufgabe',
+      'Kind A',
+      'Kind B',
+    ]),
+  );
+  expect(rows.rowCount).toBe(3);
+  for (const row of rows.rows) {
+    expect(row.deleted_at).not.toBeNull();
+  }
 });
 
 test('Kinder werden chronologisch nach Erstellzeit sortiert, unabhängig von der Reihenfolge des Anlegens (issue #89 AK7)', async ({

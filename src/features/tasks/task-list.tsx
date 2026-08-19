@@ -6,7 +6,6 @@ import { OfflineNotice } from '@/ui/offline-notice';
 import { useBlockReady } from '@/ui/overview-ready';
 import { SectionCard } from '@/ui/section-card';
 import { SegmentedControl, type SegmentedOption } from '@/ui/segmented-control';
-import { Toast } from '@/ui/toast';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useOnline } from '@/ui/use-online';
 import { TaskEditor } from './task-editor';
@@ -90,8 +89,8 @@ export interface TaskListProps {
    * The /uebersicht dashboard subset (issue #87, issue #228): the same "Woche"
    * shape /aufgaben's "Woche" tab renders (day markers, "Überfällig" first, the
    * 7-day window — issue #762), just without the view switcher and never
-   * `hideCompleted`-filtered (AC7). Everything else (editor, undo toasts,
-   * offline notice) stays the same so the two lists don't drift apart.
+   * `hideCompleted`-filtered (AC7). Everything else (editor, offline notice)
+   * stays the same so the two lists don't drift apart.
    */
   dueTodayOnly?: boolean;
   /**
@@ -141,18 +140,8 @@ export function TaskList({
   // Global device-local toggle (issue #654) — only applied below on /aufgaben
   // (`!dueTodayOnly`), never on the /uebersicht subset (AC7).
   const { hideCompleted } = useHideCompletedTasks();
-  const {
-    toggleComplete,
-    undo: completeUndo,
-    handleUndo: handleCompleteUndo,
-    dismissUndo: dismissCompleteUndo,
-  } = useCompleteTask();
-  const {
-    deleteTask,
-    undo: deleteUndo,
-    handleUndo: handleDeleteUndo,
-    dismissUndo: dismissDeleteUndo,
-  } = useDeleteTask();
+  const { toggleComplete } = useCompleteTask();
+  const { deleteTask } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   // Ephemeral, not persisted (issue #705 AK2) — a fresh /aufgaben navigation
   // always starts back on "Woche". Unused on the `dueTodayOnly` instance,
@@ -577,30 +566,6 @@ export function TaskList({
         nestCandidates={nestCandidates}
         hasChildren={(editingNode?.total ?? 0) > 0}
       />
-
-      {/* Only one undo action is ever in flight — completing and deleting are
-          separate gestures a user cannot trigger in the same instant. */}
-      {deleteUndo ? (
-        <Toast
-          message={
-            deleteUndo.childIds.length > 0
-              ? `„${deleteUndo.title}" + ${deleteUndo.childIds.length} Unteraufgabe${deleteUndo.childIds.length === 1 ? '' : 'n'} gelöscht`
-              : `„${deleteUndo.title}" gelöscht`
-          }
-          actionLabel="Rückgängig"
-          onAction={handleDeleteUndo}
-          onDismiss={dismissDeleteUndo}
-        />
-      ) : (
-        completeUndo && (
-          <Toast
-            message={`„${completeUndo.title}" erledigt`}
-            actionLabel="Rückgängig"
-            onAction={handleCompleteUndo}
-            onDismiss={dismissCompleteUndo}
-          />
-        )
-      )}
     </>
   );
 }
