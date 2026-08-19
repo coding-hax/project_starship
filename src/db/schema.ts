@@ -166,13 +166,12 @@ export type NewHabitLog = typeof habitLogs.$inferInsert;
 
 /**
  * A streak "joker": manually spent to bridge one missed due day instead of
- * breaking the streak (issue #433, M-3 of #416). Quota (2 per calendar month,
- * per habit) and eligibility live in src/features/habits/freeze.ts, not here —
- * this table only records that a day was frozen. `freezeDate` is a calendar
- * day (`date`, not `timestamp`) like `logDate`, same day-boundary reasoning.
- * No `onDelete` cascade on `habitId`: tombstone convention like `habitLogs`.
- * `uniqueIndex` on (habitId, freezeDate) is the second lock against a double
- * freeze — quota math in `canRescue` is the first.
+ * breaking the streak (issue #433, M-3 of #416). Dormant since issue #796 —
+ * the feature (quota math, eligibility, UI) was removed, but this table and
+ * its rows stay untouched (no migration, no data loss) in case it returns.
+ * `freezeDate` is a calendar day (`date`, not `timestamp`) like `logDate`,
+ * same day-boundary reasoning. No `onDelete` cascade on `habitId`: tombstone
+ * convention like `habitLogs`.
  */
 export const habitFreezes = pgTable(
   'habit_freezes',

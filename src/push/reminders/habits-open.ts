@@ -1,13 +1,6 @@
 import { and, isNull } from 'drizzle-orm';
 import { db } from '@/db';
-import {
-  habitFreezes,
-  habitLogs,
-  habits,
-  type Habit,
-  type HabitFreeze,
-  type HabitLog,
-} from '@/db/schema';
+import { habitLogs, habits, type Habit, type HabitLog } from '@/db/schema';
 import { addDaysToKey, isTargetMet, periodRangeFor, type WeekRange } from '@/features/habits/schedule-rules';
 import { computeStreak } from '@/features/habits/streak';
 import { berlinNow } from '@/push/schedule';
@@ -72,12 +65,7 @@ function isInReminderWindow(habit: Pick<Habit, 'schedule'>, dateKey: string, ran
  * belt-and-braces split as `selectDueTasks` (tasks-due.ts): the query below
  * already excludes archived/deleted habits, this is the belt to its braces.
  */
-export function selectOpenHabits(
-  candidates: Habit[],
-  logs: HabitLog[],
-  freezes: HabitFreeze[],
-  dateKey: string,
-): OpenHabit[] {
+export function selectOpenHabits(candidates: Habit[], logs: HabitLog[], dateKey: string): OpenHabit[] {
   return candidates
     .filter((habit) => habit.archivedAt === null && habit.deletedAt === null)
     .filter((habit) => {
@@ -88,7 +76,7 @@ export function selectOpenHabits(
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((habit) => ({
       name: habit.name,
-      streak: computeStreak(habit, logs, freezes, dateKeyAsLocalDate(dateKey)),
+      streak: computeStreak(habit, logs, dateKeyAsLocalDate(dateKey)),
     }));
 }
 
@@ -101,10 +89,9 @@ export async function build(now: Date): Promise<PushPayload | null> {
   if (activeHabits.length === 0) return null;
 
   const logs = await db.select().from(habitLogs).where(isNull(habitLogs.deletedAt));
-  const freezes = await db.select().from(habitFreezes).where(isNull(habitFreezes.deletedAt));
 
   const { dateKey } = berlinNow(now);
-  const open = selectOpenHabits(activeHabits, logs, freezes, dateKey);
+  const open = selectOpenHabits(activeHabits, logs, dateKey);
   if (open.length === 0) return null;
 
   const title = open.length === 1 ? 'Noch offen' : `${open.length} Routinen heute noch offen`;

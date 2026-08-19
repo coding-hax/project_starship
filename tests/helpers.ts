@@ -395,6 +395,38 @@ export async function seedCategoryColor(category: string, color: string): Promis
   );
 }
 
+/**
+ * Seeds a `habit_freezes` row directly in Postgres, bypassing the client entirely.
+ * The table is dormant since issue #796 removed the streak-joker feature (sync
+ * wiring, UI, quota logic) but kept the table itself to avoid a migration/data
+ * loss. Unlike `seedReminderPref`/`seedCategoryColor`, a row minted this way can
+ * never reach a client through the outbox — the pull no longer reads
+ * `habit_freezes` — so this only simulates a leftover row from before the removal.
+ *
+ * The specs that call this create the matching habit only client-side (via
+ * `mutate`, never synced — `**\/api/sync/**` is aborted). `habit_freezes.habit_id`
+ * has a foreign key to `habits.id`, so Postgres needs a row with the same id or
+ * the insert below is rejected; its content is irrelevant since the app never
+ * reads `habits` back from Postgres in these specs.
+ */
+export async function seedHabitFreeze(habitId: string, freezeDate: string): Promise<void> {
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO habits (id, sync_seq, name, schedule)
+       VALUES ($1, nextval('sync_seq'), 'Postgres-Restzeile', 'daily')
+       ON CONFLICT (id) DO NOTHING`,
+      [habitId],
+    ),
+  );
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO habit_freezes (id, updated_at, deleted_at, synced_at, sync_seq, habit_id, freeze_date)
+       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3)`,
+      [randomUUID(), habitId, freezeDate],
+    ),
+  );
+}
+
 interface ForecastFixture {
   dates: string[];
   tempsMax: number[];
@@ -470,7 +502,6 @@ declare global {
           | 'tasks'
           | 'habits'
           | 'habit_logs'
-          | 'habit_freezes'
           | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'

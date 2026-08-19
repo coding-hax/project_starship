@@ -278,7 +278,7 @@ export function IconChevronRight({ className }: IconProps) {
   );
 }
 
-// --- Gewohnheiten: Streak-Zähler und Joker in habit-today.tsx ---
+// --- Gewohnheiten: Streak-Zähler in habit-today.tsx ---
 
 export function IconStreak({ className }: IconProps) {
   return (
@@ -310,17 +310,6 @@ export function IconClose({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
       <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
-
-export function IconFreeze({ className }: IconProps) {
-  return (
-    <svg {...svgProps} className={className}>
-      {/* Schild statt Schneeflocke: der Nutzertext sagt "Serie mit Joker retten",
-          die Funktion schützt die Serie. Eine Flocke wäre zudem dieselbe Form,
-          die IconWeatherSnow schon trägt. Ersetzt das ❄️-Emoji. */}
-      <path d="M12 3.2l6.5 2.6v5.4c0 4.2-2.7 7.5-6.5 9.1-3.8-1.6-6.5-4.9-6.5-9.1V5.8z" />
     </svg>
   );
 }

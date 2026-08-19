@@ -203,7 +203,7 @@ export async function pull(): Promise<boolean> {
         });
 
         // Two devices offline can each mint their own uuid for the same natural
-        // key (`habit_logs`/`habit_freezes`, issue #475). The server upsert
+        // key (`habit_logs`, issue #475). The server upsert
         // (route.ts) already collapsed both onto one server-side row — `change`
         // above — but this device may still hold the displaced local row under
         // its own uuid. Sweep it out now so the store never shows the same
