@@ -230,7 +230,10 @@ export function temperatureAxis(hours: WeatherHour[], tickCount = 3): Temperatur
  * `width`×`height` box — kept out of the component so the scaling math is
  * unit-testable without rendering, same reasoning as `weekdayLabel`/`isWeekend`
  * (issue #139). Without `domain` the day's own min/max span the box; the chart
- * passes `temperatureAxis`'s whole-degree range so curve and labels agree.
+ * passes `temperatureAxis`'s whole-degree range so curve and labels agree. Each
+ * hour owns a slot of the box rather than spanning edge to edge — hour 23 lands
+ * one slot short of the right edge, matching the axis reading the day as 0..24
+ * (issue #795), not 0..23.
  */
 export function temperatureLinePoints(
   hours: WeatherHour[],
@@ -243,7 +246,7 @@ export function temperatureLinePoints(
   const min = domain ? domain.min : Math.min(...temps);
   const max = domain ? domain.max : Math.max(...temps);
   const range = max - min || 1;
-  const stepX = width / (hours.length - 1 || 1);
+  const stepX = width / hours.length;
   return hours
     .map((hour, i) => {
       const x = i * stepX;
