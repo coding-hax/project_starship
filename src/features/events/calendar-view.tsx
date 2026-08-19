@@ -5,7 +5,6 @@ import { consumeCaptureDraft } from '@/features/tasks/capture-draft-store';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
 import { OfflineNotice } from '@/ui/offline-notice';
-import { Toast } from '@/ui/toast';
 import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
@@ -62,7 +61,7 @@ export function CalendarView() {
   const selectedDay = selectedDayOverride ?? today;
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
-  const { deleteEvent, undo, handleUndo, dismissUndo } = useDeleteEvent();
+  const { deleteEvent } = useDeleteEvent();
 
   // Konsumiert einen `event`-Draft, den der Capture-Router auf /uebersicht
   // erkannt hat (issue #619) — genau einmal pro Mount, gleiches Muster wie
@@ -173,14 +172,6 @@ export function CalendarView() {
           exceptions={exceptions ?? []}
           onClose={() => setEditorState(null)}
           onDelete={deleteEvent}
-        />
-      )}
-      {undo && (
-        <Toast
-          message={`„${undo.title}" gelöscht`}
-          actionLabel="Rückgängig"
-          onAction={handleUndo}
-          onDismiss={dismissUndo}
         />
       )}
     </div>
