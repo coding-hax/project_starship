@@ -1,6 +1,5 @@
 import { toDateKey } from './due-today';
-import { dayBefore, isDoneOnDay, isFrozenOnDay, isTargetMet, periodRangeFor } from './schedule-rules';
-import type { HabitFreezeView } from './use-habit-freezes';
+import { dayBefore, isDoneOnDay, isTargetMet, periodRangeFor } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -8,31 +7,15 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
-/** A day counts toward a daily/custom streak if it was done, or bridged by a joker. */
-function isCoveredOnDay(
-  logs: HabitLogView[],
-  freezes: HabitFreezeView[],
-  habitId: string,
-  dateKey: string,
-): boolean {
-  return isDoneOnDay(logs, habitId, dateKey) || isFrozenOnDay(freezes, habitId, dateKey);
-}
-
 /**
- * Consecutive days with `done` (or a streak-joker freeze, issue #433) counting
- * back from today. Today being still open does not break the streak — only an
- * actually skipped, unfrozen day does — so an open today falls back to
- * counting from yesterday (issue #104).
+ * Consecutive days with `done` counting back from today. Today being still
+ * open does not break the streak — only an actually skipped day does — so an
+ * open today falls back to counting from yesterday (issue #104).
  */
-function dailyStreak(
-  habitId: string,
-  logs: HabitLogView[],
-  freezes: HabitFreezeView[],
-  now: Date,
-): number {
-  let cursor = isCoveredOnDay(logs, freezes, habitId, toDateKey(now)) ? now : addDays(now, -1);
+function dailyStreak(habitId: string, logs: HabitLogView[], now: Date): number {
+  let cursor = isDoneOnDay(logs, habitId, toDateKey(now)) ? now : addDays(now, -1);
   let streak = 0;
-  while (isCoveredOnDay(logs, freezes, habitId, toDateKey(cursor))) {
+  while (isDoneOnDay(logs, habitId, toDateKey(cursor))) {
     streak += 1;
     cursor = addDays(cursor, -1);
   }
@@ -73,18 +56,12 @@ function periodStreak(
  * no due-logic of its own yet, see due-today.ts), consecutive periods for
  * every other schedule (issue #509). Day/period boundaries are the local
  * calendar (issue #104).
- *
- * `freezes` is a required parameter (not a defaulted `[]`) so TypeScript forces
- * every caller to pass its own habit_freezes read — a silent default would hide
- * a caller that forgot to wire the streak-joker up (issue #433). Non-daily
- * schedules never receive it: freezes only bridge daily/custom gaps.
  */
 export function computeStreak(
   habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
   logs: HabitLogView[],
-  freezes: HabitFreezeView[],
   now: Date = new Date(),
 ): number {
   const isDayBased = habit.schedule === 'daily' || habit.schedule === 'custom';
-  return isDayBased ? dailyStreak(habit.id, logs, freezes, now) : periodStreak(habit, logs, now);
+  return isDayBased ? dailyStreak(habit.id, logs, now) : periodStreak(habit, logs, now);
 }

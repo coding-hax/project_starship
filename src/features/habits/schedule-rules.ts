@@ -1,4 +1,3 @@
-import type { HabitFreezeView } from './use-habit-freezes';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -196,16 +195,4 @@ export function periodStatusFor(
   const range = periodRangeFor(habit, dateKey);
   const count = doneCountInPeriod(logs, habit.id, range);
   return { count, target: habit.target, met: count >= habit.target };
-}
-
-/**
- * Whether `habitId` has a streak-joker freeze for the exact calendar day
- * `dateKey` (issue #433) — the freeze counterpart to `isDoneOnDay`.
- */
-export function isFrozenOnDay(
-  freezes: HabitFreezeView[],
-  habitId: string,
-  dateKey: string,
-): boolean {
-  return freezes.some((freeze) => freeze.habitId === habitId && freeze.freezeDate === dateKey);
 }

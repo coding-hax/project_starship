@@ -9,7 +9,6 @@ export const SYNC_TABLES = [
   'tasks',
   'habits',
   'habit_logs',
-  'habit_freezes',
   'garmin_activities',
   'reminder_prefs',
   'journal_entries',
@@ -37,12 +36,12 @@ export function isReadOnlyTable(table: SyncTable): boolean {
 
 /**
  * Tables with a natural key beyond `id` (a `uniqueIndex` in schema.ts, see
- * `habit_logs_habit_id_log_date_idx` / `habit_freezes_habit_id_freeze_date_idx`,
- * issue #475): two devices can independently mint a row with a different `id` for
- * the same `(habitId, logDate)` while offline. Field names are the wire/`data`
- * shape (as in `HabitLogData`/`HabitFreezeData` above), not the Drizzle column
- * names, so both `push` (server) and `pull` (client) can key off the same map
- * without drifting apart — like `READ_ONLY_TABLES`.
+ * `habit_logs_habit_id_log_date_idx`, issue #475): two devices can
+ * independently mint a row with a different `id` for the same `(habitId,
+ * logDate)` while offline. Field names are the wire/`data` shape (as in
+ * `HabitLogData` above), not the Drizzle column names, so both `push`
+ * (server) and `pull` (client) can key off the same map without drifting
+ * apart — like `READ_ONLY_TABLES`.
  *
  * `category_colors` gets one too, unlike `reminder_prefs` (which has the same
  * one-row-per-key shape but relies on the UNIQUE constraint alone): two devices
@@ -52,7 +51,6 @@ export function isReadOnlyTable(table: SyncTable): boolean {
  */
 export const NATURAL_KEYS: Partial<Record<SyncTable, readonly string[]>> = {
   habit_logs: ['habitId', 'logDate'],
-  habit_freezes: ['habitId', 'freezeDate'],
   event_exceptions: ['eventId', 'originalDate'],
   category_colors: ['category'],
 };
@@ -108,15 +106,6 @@ export interface HabitLogData {
   habitId: string;
   logDate: string;
   done: boolean;
-}
-
-/**
- * Same as `HabitData`, for `habit_freezes` (issue #433, M-3 of #416). `freezeDate`
- * is `YYYY-MM-DD`, like `HabitLogData.logDate` — the day the joker bridges.
- */
-export interface HabitFreezeData {
-  habitId: string;
-  freezeDate: string;
 }
 
 /**
