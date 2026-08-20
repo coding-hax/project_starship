@@ -7,6 +7,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* Height of a single day-button row (button content-box + its own vertical
+     padding) — the one number the carousel's fixed per-view heights (below)
+     are built from, so a row's own CSS can change without the carousel math
+     drifting out of sync. */
+  --calendar-strip-row-height: calc(var(--touch-target) + 2 * var(--space-1));
 }
 
 /* Monat+Jahr des gewählten Tages + Woche/Monat-Umschalter, feste Höhe — Position
@@ -73,8 +78,8 @@
 }
 
 /* Hidden (not just styled) once today is already selected — chip mode only;
-   the delayed `visibility` mirrors `.calendar-strip__week-row` below so a
-   fade-out finishes before the box leaves the a11y tree (issue #628, AK6). */
+   the delayed `visibility` lets a fade-out finish before the box leaves the
+   a11y tree (issue #628, AK6). */
 .calendar-strip__today[data-today-selected] {
   opacity: 0;
   visibility: hidden;
@@ -148,46 +153,52 @@
   color: var(--text-muted);
 }
 
-/* The gesture surface (calendar-strip.tsx's onPointer*): sits at the top of a
-   page that scrolls vertically, so a plain touchmove would be swallowed by the
-   page's own scroll before it ever reaches the swipe threshold. */
-.calendar-strip__weeks {
+/* The carousel track (issue #805, Ansatz C — replaces the pointer-scrub
+   gesture of #629/#662/#764/#802): native horizontal scroll-snap owns the
+   swipe, the momentum and the snap, calendar-strip.tsx only reacts once a
+   page has settled. `pan-x` claims just the horizontal axis — a vertical
+   drag started here still scrolls the page underneath it, unlike the old
+   gesture surface's `touch-action: none`. Scrollbar hidden the same way
+   shell.css's `.nav__list` tab carousel hides its own. */
+.calendar-strip__carousel {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  /* Fixed per view (below) so a 5- vs 6-week month never shifts the layout
+     (DESIGN_SYSTEM: "kein Layout-Shift") — the Woche/Monat switch is the only
+     thing allowed to change this height, and it does so smoothly; reduced
+     motion zeroes this transition via tokens.css's global rule. */
+  transition: height var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.calendar-strip__carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.calendar-strip[data-expanded='false'] .calendar-strip__carousel {
+  height: var(--calendar-strip-row-height);
+}
+
+/* Six rows reserved, whether the month showing needs five or six — same
+   fixed-height reasoning the old accordion's `.calendar-strip__week-row` carried. */
+.calendar-strip[data-expanded='true'] .calendar-strip__carousel {
+  height: calc(6 * var(--calendar-strip-row-height) + 5 * var(--space-1));
+}
+
+/* One page = one Mon–Sun week (week view) or one full month grid (month
+   view). `flex: 0 0 100%` plus `scroll-snap-align: start` turns a swipe into
+   a clean stop on exactly the next page, never a half-visible one — same
+   vocabulary as shell.css's `.nav__list`/`.nav__item` carousel. */
+.calendar-strip__page {
   display: flex;
   flex-direction: column;
+  flex: 0 0 100%;
+  min-width: 0;
   gap: var(--space-1);
-  touch-action: none;
-}
-
-/*
- * The accordion trick: a single-row grid track collapses to 0fr and expands to
- * 1fr, animating a property that (unlike max-height) has no "how tall is the
- * content really" guess baked in — grid-template-rows can transition to the
- * 1fr computed from the child's own intrinsic height instead.
- *
- * `visibility` rides along, inherited by every day button inside a collapsed
- * row: `overflow: hidden` on `.calendar-strip__days` only clips *painting*,
- * the buttons still report their real 44px boxes to anything that queries the
- * DOM directly (keyboard focus order, Playwright's `toBeVisible`) — without
- * this they would stay tabbable/"visible" while invisible on screen. The
- * delayed transition means a collapsing row only truly hides once the shrink
- * has finished (no pop), while an expanding one is visible immediately.
- */
-.calendar-strip__week-row {
-  display: grid;
-  grid-template-rows: 0fr;
-  visibility: hidden;
-  transition:
-    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
-    visibility 0s var(--duration-spring-smooth);
-}
-
-.calendar-strip__week-row[data-selected],
-.calendar-strip[data-expanded='true'] .calendar-strip__week-row {
-  grid-template-rows: 1fr;
-  visibility: visible;
-  transition:
-    grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth),
-    visibility 0s;
+  scroll-snap-align: start;
 }
 
 .calendar-strip__days {
@@ -197,8 +208,6 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .calendar-strip__day {
