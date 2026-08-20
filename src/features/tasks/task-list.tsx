@@ -12,17 +12,16 @@ import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
 import { useCompleteTask } from './use-complete-task';
 import { useDeleteTask } from './use-delete-task';
-import { useHideCompletedTasks } from './use-hide-completed-tasks';
 import {
   completedByDay,
   formatDayMarker,
   groupByDueDay,
   groupTasks,
   localDayKey,
+  openTaskNodes,
   resolveNestTarget,
   undatedOpenNodes,
   useTasks,
-  visibleTaskNodes,
   weekWindowNodes,
   type TaskNode,
   type TaskView,
@@ -67,9 +66,8 @@ function nodeRows(node: TaskNode): TaskRow[] {
  * The "Woche" shape (issue #705 AK3, reused on /uebersicht by issue #762): a day
  * marker above every non-empty bucket, then that bucket's nodes. Shared so
  * /uebersicht's always-"Woche" list and /aufgaben's "Woche" tab cannot drift
- * apart — the only difference between the two call sites is which nodes go in
- * (the full tree vs. `hideCompleted`-filtered) and whether the caller also
- * needs `groups` itself (AK9's sparse note, /aufgaben only).
+ * apart — the only difference between the two call sites is whether the
+ * caller also needs `groups` itself (AK9's sparse note, /aufgaben only).
  */
 function buildWocheRows(nodesForWindow: TaskNode[], now: Date) {
   const groups = groupByDueDay(weekWindowNodes(nodesForWindow, now), now);
@@ -88,9 +86,8 @@ export interface TaskListProps {
   /**
    * The /uebersicht dashboard subset (issue #87, issue #228): the same "Woche"
    * shape /aufgaben's "Woche" tab renders (day markers, "Überfällig" first, the
-   * 7-day window — issue #762), just without the view switcher and never
-   * `hideCompleted`-filtered (AC7). Everything else (editor, offline notice)
-   * stays the same so the two lists don't drift apart.
+   * 7-day window — issue #762), just without the view switcher. Everything else
+   * (editor, offline notice) stays the same so the two lists don't drift apart.
    */
   dueTodayOnly?: boolean;
   /**
@@ -137,9 +134,6 @@ export function TaskList({
   // it to push; on /uebersicht it joins the shared reveal point (issue #642).
   useBlockReady(allTasks !== undefined);
   const online = useOnline();
-  // Global device-local toggle (issue #654) — only applied below on /aufgaben
-  // (`!dueTodayOnly`), never on the /uebersicht subset (AC7).
-  const { hideCompleted } = useHideCompletedTasks();
   const { toggleComplete } = useCompleteTask();
   const { deleteTask } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -189,8 +183,6 @@ export function TaskList({
    */
   const viewModel = useMemo(() => {
     if (dueTodayOnly) {
-      // The full tree, not `hideCompleted`-filtered — AC7, that toggle never
-      // applies to the /uebersicht subset.
       return {
         rows: buildWocheRows(nodes, new Date()).rows,
         undatedNodes: undatedOpenNodes(nodes),
@@ -211,22 +203,22 @@ export function TaskList({
       return { rows: flatRows, undatedNodes: [], hasFutureGroup: false };
     }
 
-    const visible = visibleTaskNodes(nodes, hideCompleted);
-
     if (view === 'alle') {
-      return { rows: visible.flatMap(nodeRows), undatedNodes: [], hasFutureGroup: false };
+      return { rows: openTaskNodes(nodes).flatMap(nodeRows), undatedNodes: [], hasFutureGroup: false };
     }
 
-    // view === 'woche'
+    // view === 'woche' — filters completed tasks out via weekWindowNodes itself
+    // (AK7's "heute erledigt bleibt" rule), so it takes the full tree, not
+    // openTaskNodes's result.
     const now = new Date();
-    const { rows, groups } = buildWocheRows(visible, now);
+    const { rows, groups } = buildWocheRows(nodes, now);
     const today = localDayKey(now);
     return {
       rows,
       undatedNodes: undatedOpenNodes(nodes),
       hasFutureGroup: groups.some((group) => group.dayKey !== 'overdue' && group.dayKey > today),
     };
-  }, [dueTodayOnly, allTasks, nodes, hideCompleted, view]);
+  }, [dueTodayOnly, allTasks, nodes, view]);
   const { rows, undatedNodes, hasFutureGroup } = viewModel;
   const presenceRows = useListPresence(rows, (row) => row.id, dueTodayOnly ? undefined : view);
 
@@ -446,9 +438,9 @@ export function TaskList({
    * an account with zero tasks at all (checked via `tasks.length`, never
    * `rows` — a "Woche" window with nothing *due this week* is not that, it
    * renders an empty `<ul>` plus the AK6/AK9 summary lines below it instead),
-   * and "Alle"/"Erledigt" with every row gone (issue #654 AC6). All three key
+   * and "Alle"/"Erledigt" with every row gone (issue #814). All three key
    * off `presenceRows` too, not just `tasks`/`rows`: a row that just lost its
-   * last sibling — deleted, or filtered out by `hideCompleted` — is still in
+   * last sibling — deleted, or filtered out of "Alle" as completed — is still in
    * `presenceRows` mid-exit-animation (`status: 'leaving'`), and swapping the
    * `<ul>` out from under it the instant the underlying data hits zero would
    * cut that animation off before it ever painted (issue #430's guarantee,

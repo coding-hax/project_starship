@@ -7,7 +7,6 @@ import {
   registerPasskey,
   resetAppData,
   selectView,
-  skewClock,
   withDb,
 } from './helpers';
 
@@ -183,25 +182,30 @@ test('a soft-deleted task is not shown', async ({ page }) => {
   await expect(page.getByText('Verschwindet')).toHaveCount(0);
 });
 
-test('Erledigen lässt die Aufgabe an ihrer Position — sie sieht erledigt aus, springt aber nicht ans Ende (issue #88 AC2)', async ({
+test('Erledigen lässt die Aufgabe aus „Alle" gleiten statt an ihrer Position zu bleiben (issue #814, vormals #88 AC2)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await seedTask(page, { title: 'Zuerst angelegt', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, { title: 'Danach angelegt', createdAt: '2026-07-02T00:00:00.000Z' });
+  const row = taskItems(page).filter({ hasText: 'Zuerst angelegt' });
 
   await checkboxFor(page, 'Zuerst angelegt').click();
 
-  const items = taskItems(page);
-  await expect(items).toHaveCount(2);
-  await expect(items.nth(0)).toHaveText(/Zuerst angelegt/);
-  // Visually receded, not moved.
-  await expect(items.nth(0)).toHaveClass(/task-list__item--done/);
-  await expect(items.nth(1)).toHaveText(/Danach angelegt/);
+  // Dieselbe Austritts-Mechanik wie beim Löschen (list-motion.spec.ts).
+  await expect(row).toHaveAttribute('data-leaving', 'true');
+  expect(await row.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-exit');
+  await expect(row).toHaveCount(0);
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(taskItems(page)).toHaveText(/Danach angelegt/);
+
+  // … und taucht dort wieder auf, wo Erledigtes jetzt lebt.
+  await selectView(page, 'Erledigt');
+  await expect(taskItems(page).filter({ hasText: 'Zuerst angelegt' })).toBeVisible();
 });
 
-test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Status spielen keine Rolle (issue #88 AC3)', async ({
+test('Offene Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit spielt keine Rolle (issue #88 AC3)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -215,7 +219,6 @@ test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Statu
     title: 'Danach angelegt, aber früher fällig',
     dueAt: '2026-07-15T09:00:00.000Z',
     createdAt: '2026-07-10T09:00:00.000Z',
-    completedAt: '2026-07-11T00:00:00.000Z',
   });
   await seedTask(page, {
     title: 'Zuletzt angelegt, ohne Termin',
@@ -227,6 +230,182 @@ test('Aufgaben werden strikt nach Erstellzeit sortiert — Fälligkeit und Statu
   await expect(items.nth(0)).toHaveText(/Zuerst angelegt/);
   await expect(items.nth(1)).toHaveText(/Danach angelegt, aber früher fällig/);
   await expect(items.nth(2)).toHaveText(/Zuletzt angelegt, ohne Termin/);
+});
+
+test('„Alle" zeigt nur offene Aufgaben — Erledigtes bleibt außen vor (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Offene Aufgabe' });
+  await seedTask(page, {
+    title: 'Erledigte Aufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(taskItems(page)).toHaveCount(1);
+  await expect(taskItems(page).filter({ hasText: 'Offene Aufgabe' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Aufgabe' })).toHaveCount(0);
+});
+
+test('Offline-Pfad: eine offline erledigte Aufgabe gleitet sofort aus „Alle", erreicht online als completed_at die Datenbank (issue #814)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const title = 'Offline erledigt';
+  await seedTask(page, { title });
+  await context.setOffline(true);
+
+  await checkboxFor(page, title).click();
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT completed_at FROM tasks WHERE title = $1', [title]),
+  );
+  expect(row.rows[0].completed_at).not.toBeNull();
+});
+
+test('„Alle" lässt eine erledigte Elternaufgabe mit offenem Kind stehen, blendet nur das erledigte Kind aus (issue #814, vormals #654 AC5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Offenes Kind', parentId });
+  await seedTask(page, {
+    title: 'Erledigtes Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expandParent(page, 'Erledigte Elternaufgabe');
+
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Offenes Kind' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Erledigtes Kind' })).toHaveCount(0);
+});
+
+test('„Alle" zählt im Fortschritt einer sichtbaren erledigten Elternaufgabe weiterhin beide Kinder (issue #814, vormals #654 AC5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Offenes Kind', parentId });
+  await seedTask(page, {
+    title: 'Erledigtes Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(progressFor(page, 'Erledigte Elternaufgabe')).toHaveText('1/2');
+});
+
+test('„Alle" blendet eine ganz erledigte Elterngruppe komplett aus, Kind inklusive (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Ganz erledigte Gruppe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Erledigtes Kind der ganz erledigten Gruppe',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind der ganz erledigten Gruppe' }),
+  ).toHaveCount(0);
+});
+
+test('„Alle" lässt eine offene Elternaufgabe mit erledigtem Kind stehen, nur das Kind fällt weg (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Offene Elternaufgabe' });
+  await seedTask(page, {
+    title: 'Erledigtes Kind unter offenem Elternteil',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(taskItems(page).filter({ hasText: 'Offene Elternaufgabe' })).toBeVisible();
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind unter offenem Elternteil' }),
+  ).toHaveCount(0);
+});
+
+test('sind in „Alle" nur noch erledigte Aufgaben übrig, zeigt sich der normale Leerzustand (issue #814, vormals #654 AC6)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Erledigt A', completedAt: new Date(FIXED_NOW).toISOString() });
+  await seedTask(page, { title: 'Erledigt B', completedAt: new Date(FIXED_NOW).toISOString() });
+
+  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
+  await expect(taskItems(page)).toHaveCount(0);
+});
+
+test('Erledigt man das letzte offene Kind einer bereits sichtbaren erledigten Elternaufgabe, gleitet die ganze Gruppe aus „Alle" (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Letztes offenes Kind', parentId });
+  await expandParent(page, 'Erledigte Elternaufgabe');
+
+  await checkboxFor(page, 'Letztes offenes Kind').click();
+
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: 'Letztes offenes Kind' })).toHaveCount(0);
+});
+
+test('Öffnet man das einzige erledigte Kind einer aus „Alle" verschwundenen Gruppe wieder, taucht die Gruppe erneut auf (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, {
+    title: 'Ganz erledigte Gruppe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Einziges Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await selectView(page, 'Alle');
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
+
+  await selectView(page, 'Erledigt');
+  await checkboxFor(page, 'Einziges Kind').click();
+
+  await selectView(page, 'Alle');
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Einziges Kind' })).toBeVisible();
 });
 
 test('tasks stay visible offline, with a calm notice instead of an error (issue #643 AC4)', async ({
@@ -509,9 +688,13 @@ test('Wisch nach rechts erledigt die Aufgabe sofort, ohne Rückgängig-Popup', a
 
   await swipeRight(item, 120);
 
-  await expect(item).toHaveClass(/task-list__item--done/);
-  await expect(checkboxFor(page, title)).toBeChecked();
+  // Dieselbe Austritts-Mechanik wie beim Löschen — die Zeile verlässt "Alle"
+  // sofort (issue #814), keine Rückgängig-Zwischenstation.
+  await expect(item).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
+
+  await selectView(page, 'Erledigt');
+  await expect(taskItems(page).filter({ hasText: title })).toHaveClass(/task-list__item--done/);
 });
 
 test('ein zu kurzer Wisch lässt die Aufgabe offen', async ({ page }) => {
@@ -537,7 +720,7 @@ test('die Erledigung bleibt ohne Rückgängig bestehen, der Server landet am erl
   const item = taskItems(page).filter({ hasText: title });
 
   await swipeRight(item, 120);
-  await expect(item).toHaveClass(/task-list__item--done/);
+  await expect(item).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.unroute('**/api/sync/**');
@@ -563,7 +746,7 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
   const item = taskItems(page).filter({ hasText: title });
   await swipeRight(item, 120);
 
-  await expect(item).toHaveClass(/task-list__item--done/);
+  await expect(item).toHaveCount(0);
   // One entry for the seed, one for the completion — both still queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
@@ -580,7 +763,9 @@ test('offline erledigt greift sofort in der UI, liegt in der Outbox und erreicht
 
 test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', async ({ page }) => {
   await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
+  // "Erledigt" statt "Alle" (issue #814) — dort ist die erledigte Zeile
+  // überhaupt sichtbar, seit "Alle" nur noch Offenes zeigt.
+  await selectView(page, 'Erledigt');
   const title = 'Toggle-Testfall';
   await seedTask(page, { title, completedAt: new Date(FIXED_NOW).toISOString() });
   const item = taskItems(page).filter({ hasText: title });
@@ -588,7 +773,13 @@ test('erneutes Wischen nach rechts macht eine erledigte Aufgabe wieder offen', a
 
   await swipeRight(item, 120);
 
-  await expect(item).not.toHaveClass(/task-list__item--done/);
+  // Wiedergeöffnet fällt die Zeile aus "Erledigt" heraus — dieselbe
+  // Austritts-Mechanik wie beim Erledigen in "Alle" (issue #814).
+  await expect(item).toHaveCount(0);
+  await selectView(page, 'Alle');
+  await expect(taskItems(page).filter({ hasText: title })).not.toHaveClass(
+    /task-list__item--done/,
+  );
   // Toggling back open is the corrective action itself — no undo offer for it.
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 });
@@ -601,6 +792,8 @@ test('ein Klick auf die Checkbox erledigt die Aufgabe genauso wie der Swipe', as
 
   await checkboxFor(page, title).click();
 
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  await selectView(page, 'Erledigt');
   await expect(taskItems(page).filter({ hasText: title })).toHaveClass(/task-list__item--done/);
 });
 
@@ -614,7 +807,9 @@ test('auf Desktop lässt sich eine Aufgabe per Tastatur erledigen', async ({ pag
   await checkbox.focus();
   await page.keyboard.press('Space');
 
-  await expect(checkbox).toBeChecked();
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  await selectView(page, 'Erledigt');
+  await expect(checkboxFor(page, title)).toBeChecked();
 });
 
 test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }) => {
@@ -891,24 +1086,16 @@ test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, N
   expect(overdueUrgentColor).toBe(await resolveColorToken(page, '--danger'));
 });
 
-test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige oder erledigte nicht (issue #86 AC2)', async ({
+test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige nicht (issue #86 AC2)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await seedTask(page, { title: 'Überfällig', dueAt: '2020-01-01T09:00:00.000Z' });
   await seedTask(page, { title: 'Noch Zeit', dueAt: '2099-01-01T09:00:00.000Z' });
-  await seedTask(page, {
-    title: 'Erledigt trotz alter Fälligkeit',
-    dueAt: '2020-01-01T09:00:00.000Z',
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
 
   await expect(dueLabelFor(page, 'Überfällig')).toHaveClass(/task-list__due--overdue/);
   await expect(dueLabelFor(page, 'Noch Zeit')).not.toHaveClass(/task-list__due--overdue/);
-  await expect(dueLabelFor(page, 'Erledigt trotz alter Fälligkeit')).not.toHaveClass(
-    /task-list__due--overdue/,
-  );
 
   const overdueColor = await dueLabelFor(page, 'Überfällig').evaluate(
     (el) => getComputedStyle(el).color,
@@ -918,6 +1105,24 @@ test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige ode
     (el) => getComputedStyle(el).fontVariantNumeric,
   );
   expect(numericFormat).toContain('tabular-nums');
+});
+
+test('eine erledigte Aufgabe wird trotz alter Fälligkeit nie hervorgehoben (issue #86 AC2)', async ({
+  page,
+}) => {
+  // Erledigtes lebt seit #814 nicht mehr in "Alle" — die Aussage "erledigt wird
+  // nie hervorgehoben" prüft sich jetzt in "Erledigt", wo die Zeile noch steht.
+  await page.goto('/aufgaben');
+  await seedTask(page, {
+    title: 'Erledigt trotz alter Fälligkeit',
+    dueAt: '2020-01-01T09:00:00.000Z',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await selectView(page, 'Erledigt');
+  await expect(dueLabelFor(page, 'Erledigt trotz alter Fälligkeit')).not.toHaveClass(
+    /task-list__due--overdue/,
+  );
 });
 
 test('Farbkante und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #704 AK5, migriert von #86 AC3)', async ({
@@ -993,10 +1198,13 @@ test('keine Kartenfläche mehr — Zeile auf --bg, Trennung nur über 1px Haarli
 test('Erledigtes schrumpft an Ort und Stelle statt zu springen (issue #704 AK7)', async ({
   page,
 }) => {
+  // "Woche" (Standardansicht) statt "Alle": eine heute fällige, heute erledigte
+  // Aufgabe bleibt dort stehen (issue #705 AK7) — in "Alle" gleitet sie seit
+  // #814 sofort aus der Liste, bevor sich die Schrumpf-Optik prüfen ließe.
+  await installClockAt(page, FIXED_NOW);
   await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
   const title = 'Wird geschrumpft';
-  await seedTask(page, { title });
+  await seedTask(page, { title, dueAt: new Date(FIXED_NOW).toISOString() });
 
   const row = taskRowFor(page, title);
   await expect
@@ -1340,11 +1548,7 @@ test('Scroll-Anker: bei wenig Inhalt bleibt die Liste am natürlichen Seitenanfa
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
-  await seedTask(page, {
-    title: 'Erledigt',
-    createdAt: '2026-07-01T00:00:00.000Z',
-    completedAt: '2026-07-01T01:00:00.000Z',
-  });
+  await seedTask(page, { title: 'Zuerst', createdAt: '2026-07-01T00:00:00.000Z' });
   await seedTask(page, { title: 'Offen', createdAt: '2026-07-02T00:00:00.000Z' });
 
   await page.reload();
@@ -1358,14 +1562,15 @@ test('Scroll-Anker: bei wenig Inhalt bleibt die Liste am natürlichen Seitenanfa
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo oben (issue #88 AC Scroll-Anker)', async ({
+test('Scroll-Anker: erledigte Historie bleibt unsichtbar und löst deshalb keinen Sprung mehr aus (issue #814, vormals #88 AC Scroll-Anker)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
 
-  // Enough completed history to overflow both viewports in the test matrix
-  // (375×812 and 1280×800).
+  // So viel erledigte Historie, dass sie vor #814 beide Viewports der Testmatrix
+  // (375×812 und 1280×800) übers Scrollen anfahren musste — seit #814 rendert sie
+  // in "Alle" gar nicht mehr, der Anker landet also ohne Sprung direkt oben.
   for (let i = 0; i < 20; i++) {
     await seedTask(page, {
       title: `Erledigt ${i}`,
@@ -1387,15 +1592,10 @@ test('Scroll-Anker: bei viel erledigter Historie steht das älteste offene Todo 
   // issue #705) view back to "Woche" — re-select "Alle" so the anchor runs.
   await page.reload();
   await selectView(page, 'Alle');
-  await expect(taskItems(page)).toHaveCount(22);
+  await expect(taskItems(page)).toHaveCount(2);
 
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-
-  const anchor = taskItems(page).filter({ hasText: 'Ältestes offenes Todo' });
-  await expect(anchor).toBeInViewport();
-  // Scrolled well past the old history — proves this is a real jump, not a
-  // one-pixel nudge that happens to satisfy toBeInViewport.
-  await expect(taskItems(page).filter({ hasText: 'Erledigt 0' })).not.toBeInViewport();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(taskItems(page).filter({ hasText: 'Ältestes offenes Todo' })).toBeInViewport();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1677,8 +1877,13 @@ test('Abgehakte Unteraufgabe verschwindet vollständig beim Zuklappen der Eltern
   page,
 }) => {
   await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  // "Woche" (Standardansicht) statt "Alle": eine abgehakte Unteraufgabe bleibt
+  // dort im Baum, bis sie eingeklappt wird — in "Alle" verlässt sie seit #814
+  // den Baum schon beim Abhaken selbst (erledigte Kinder raus).
+  const parentId = await seedTask(page, {
+    title: 'Elternaufgabe',
+    dueAt: '2020-01-01T09:00:00.000Z',
+  });
   await seedTask(page, { title: 'Kind erledigt', parentId });
   await seedTask(page, { title: 'Kind offen', parentId });
 
@@ -1706,8 +1911,11 @@ test('Aufklappen bringt die abgehakte Unteraufgabe unverändert zurück (issue #
   page,
 }) => {
   await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  // "Woche" statt "Alle" (issue #814) — siehe AK1/AK2 oben.
+  const parentId = await seedTask(page, {
+    title: 'Elternaufgabe',
+    dueAt: '2020-01-01T09:00:00.000Z',
+  });
   await seedTask(page, { title: 'Kind erledigt', parentId });
 
   // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
@@ -1760,8 +1968,11 @@ test('bei reduzierter Bewegung bleibt das Zuklappen einer abgehakten Unteraufgab
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  const parentId = await seedTask(page, { title: 'Elternaufgabe' });
+  // "Woche" statt "Alle" (issue #814) — siehe AK1/AK2 oben.
+  const parentId = await seedTask(page, {
+    title: 'Elternaufgabe',
+    dueAt: '2020-01-01T09:00:00.000Z',
+  });
   await seedTask(page, { title: 'Kind erledigt', parentId });
 
   // Default ist eingeklappt (issue #781) — die Kinder erst sichtbar machen,
@@ -2937,271 +3148,6 @@ test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die
   await expect
     .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(await resolveColorToken(page, '--accent'));
-});
-
-/* -------------------------------------------------------------------------- */
-/* Erledigte ausblenden (issue #654)                                          */
-/* -------------------------------------------------------------------------- */
-
-const HIDE_COMPLETED_LABEL = 'Erledigte Aufgaben ausblenden';
-const HIDE_COMPLETED_BACKGROUND = 'color-mix(in oklch, var(--accent) 8%, var(--surface))';
-
-function hideCompletedToggle(page: Page) {
-  return page.getByRole('button', { name: HIDE_COMPLETED_LABEL });
-}
-
-test('AC1: der Knopf steht bereit — 44×44 Tippfläche, 24×24 Icon, aria-pressed=false, alles sichtbar', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Offen' });
-  await seedTask(page, { title: 'Erledigt', completedAt: new Date(FIXED_NOW).toISOString() });
-
-  const toggle = hideCompletedToggle(page);
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-
-  const box = await toggle.boundingBox();
-  expect(box).not.toBeNull();
-  expect(box!.width).toBeGreaterThanOrEqual(44);
-  expect(box!.height).toBeGreaterThanOrEqual(44);
-
-  const iconBox = await toggle.locator('svg').boundingBox();
-  expect(iconBox).not.toBeNull();
-  expect(iconBox!.width).toBeCloseTo(24, 0);
-  expect(iconBox!.height).toBeCloseTo(24, 0);
-
-  await expect(taskItems(page)).toHaveCount(2);
-});
-
-test('AC2: Einschalten setzt aria-pressed, akzentuiert den Knopf und blendet jede erledigte Aufgabe ohne Ersatz aus', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Bleibt offen' });
-  await seedTask(page, { title: 'Verschwindet', completedAt: new Date(FIXED_NOW).toISOString() });
-
-  const toggle = hideCompletedToggle(page);
-  await toggle.click();
-
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(taskItems(page).filter({ hasText: 'Verschwindet' })).toHaveCount(0);
-  // No replacement — no counter, no placeholder row, no hint text: exactly the
-  // one remaining open task, nothing else.
-  await expect(taskItems(page)).toHaveCount(1);
-  await expect(taskItems(page).filter({ hasText: 'Bleibt offen' })).toBeVisible();
-
-  const bg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(bg).toBe(await resolveBackground(page, HIDE_COMPLETED_BACKGROUND));
-  const iconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
-  expect(iconColor).toBe(await resolveColorToken(page, '--accent'));
-});
-
-test('AC3: Ausschalten zeigt die erledigten Aufgaben wieder an genau derselben Stelle', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Zuerst', createdAt: '2026-07-01T00:00:00.000Z' });
-  await seedTask(page, {
-    title: 'Erledigt in der Mitte',
-    createdAt: '2026-07-02T00:00:00.000Z',
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-  await seedTask(page, { title: 'Zuletzt', createdAt: '2026-07-03T00:00:00.000Z' });
-
-  const toggle = hideCompletedToggle(page);
-  await toggle.click();
-  await expect(taskItems(page)).toHaveCount(2);
-
-  await toggle.click();
-
-  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-  const items = taskItems(page);
-  await expect(items).toHaveCount(3);
-  await expect(items.nth(0)).toContainText('Zuerst');
-  await expect(items.nth(1)).toContainText('Erledigt in der Mitte');
-  await expect(items.nth(2)).toContainText('Zuletzt');
-});
-
-test('AC4: die Präferenz überlebt das Neuladen, geräte-lokal ohne Sync-Spur', async ({ page }) => {
-  await page.goto('/aufgaben');
-
-  const before = await page.evaluate(() => window.__starship.size());
-  await hideCompletedToggle(page).click();
-  const after = await page.evaluate(() => window.__starship.size());
-  // Reines Anzeige-Flag — keine Outbox-Mutation, kein Sync (CLAUDE.md Regel 8).
-  expect(after).toBe(before);
-
-  const stored = await page.evaluate(() => localStorage.getItem('starship:tasks-hide-completed'));
-  expect(stored).toBe('true');
-
-  await page.reload();
-  await expect(hideCompletedToggle(page)).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('AC5: erledigte Unteraufgaben verschwinden einzeln, ein erledigter Elternteil mit offenem Kind bleibt, der Fortschritt zählt weiter alle Kinder', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  const openParentId = await seedTask(page, { title: 'Offene Elternaufgabe' });
-  await seedTask(page, {
-    title: 'Erledigtes Kind unter offenem Elternteil',
-    parentId: openParentId,
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-
-  const doneParentId = await seedTask(page, {
-    title: 'Erledigte Elternaufgabe',
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-  await seedTask(page, {
-    title: 'Offenes Kind unter erledigtem Elternteil',
-    parentId: doneParentId,
-  });
-  await seedTask(page, {
-    title: 'Erledigtes Kind unter erledigtem Elternteil',
-    parentId: doneParentId,
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-
-  const fullyDoneParentId = await seedTask(page, {
-    title: 'Ganz erledigte Gruppe',
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-  await seedTask(page, {
-    title: 'Erledigtes Kind der ganz erledigten Gruppe',
-    parentId: fullyDoneParentId,
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-
-  // Aufklappen — Unteraufgaben starten eingeklappt (issue #781), und dieser
-  // Elternteil behält nach dem Ausblenden ein offenes, sichtbares Kind.
-  await expandParent(page, 'Erledigte Elternaufgabe');
-
-  await hideCompletedToggle(page).click();
-
-  await expect(taskItems(page).filter({ hasText: 'Offene Elternaufgabe' })).toBeVisible();
-  await expect(
-    taskItems(page).filter({ hasText: 'Erledigtes Kind unter offenem Elternteil' }),
-  ).toHaveCount(0);
-
-  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toBeVisible();
-  await expect(
-    taskItems(page).filter({ hasText: 'Offenes Kind unter erledigtem Elternteil' }),
-  ).toBeVisible();
-  await expect(
-    taskItems(page).filter({ hasText: 'Erledigtes Kind unter erledigtem Elternteil' }),
-  ).toHaveCount(0);
-  // Fortschritt zählt unverändert beide Kinder, nicht nur das sichtbare.
-  await expect(progressFor(page, 'Erledigte Elternaufgabe')).toHaveText('1/2');
-
-  // Ganz erledigte Gruppe (Elternteil + alle Kinder erledigt) verschwindet
-  // vollständig — wie jede andere erledigte Aufgabe auch (AC2).
-  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
-  await expect(
-    taskItems(page).filter({ hasText: 'Erledigtes Kind der ganz erledigten Gruppe' }),
-  ).toHaveCount(0);
-});
-
-test('AC6: sind alle Aufgaben erledigt und der Schalter an, zeigt sich der normale Leerzustand', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Erledigt A', completedAt: new Date(FIXED_NOW).toISOString() });
-  await seedTask(page, { title: 'Erledigt B', completedAt: new Date(FIXED_NOW).toISOString() });
-
-  await hideCompletedToggle(page).click();
-
-  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
-  await expect(taskItems(page)).toHaveCount(0);
-});
-
-test('AC7: die Übersicht hat weder den Knopf noch eine Wirkung des Schalters', async ({ page }) => {
-  await page.goto('/aufgaben');
-  // "heute" fixieren, damit belongsOnUebersicht (use-tasks.ts) die Aufgabe unten
-  // wirklich als "heute erledigt" zählt statt an der echten Systemzeit zu messen.
-  await skewClock(page, FIXED_NOW);
-  await seedTask(page, {
-    title: 'Heute erledigt',
-    dueAt: new Date(FIXED_NOW).toISOString(),
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-  await hideCompletedToggle(page).click();
-  await expect(taskItems(page).filter({ hasText: 'Heute erledigt' })).toHaveCount(0);
-
-  await page.goto('/uebersicht');
-  await expect(page.getByRole('button', { name: HIDE_COMPLETED_LABEL })).toHaveCount(0);
-  // Dieselbe Aufgabe zeigt sich hier weiter — die Übersicht kennt den
-  // Schalter gar nicht, unabhängig davon, dass er auf /aufgaben an ist.
-  await expect(taskItems(page).filter({ hasText: 'Heute erledigt' })).toBeVisible();
-});
-
-test('AC8: der Knopf bleibt in Hell und Dunkel über Tokens lesbar, nie über Rohwerte', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  const toggle = hideCompletedToggle(page);
-  await toggle.click();
-
-  const lightBg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const lightIconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
-
-  await page.emulateMedia({ colorScheme: 'dark' });
-
-  const darkBg = await toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const darkIconColor = await toggle.locator('svg').evaluate((el) => getComputedStyle(el).color);
-
-  // Beide Werte lösen weiterhin auf denselben semantischen Ausdruck auf —
-  // beweist, dass tokens.css' Dark-Mode-Override tatsächlich hier ankommt,
-  // nicht ein hartkodierter Wert.
-  expect(darkBg).toBe(await resolveBackground(page, HIDE_COMPLETED_BACKGROUND));
-  expect(darkIconColor).toBe(await resolveColorToken(page, '--accent'));
-  expect(darkBg).not.toBe(lightBg);
-  expect(darkIconColor).not.toBe(lightIconColor);
-});
-
-test('AC8: eine ausgeblendete Zeile nutzt dieselbe Exit-Animation wie Löschen', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Blendet aus', completedAt: new Date(FIXED_NOW).toISOString() });
-  const row = taskItems(page).filter({ hasText: 'Blendet aus' });
-  // seedTask only awaits the write, not the live-query re-render — without this,
-  // the toggle can flip hideCompleted before the row ever mounts, so it is
-  // filtered out from the start instead of animating away (issue #705).
-  await expect(row).toBeVisible();
-
-  await hideCompletedToggle(page).click();
-
-  // Dieselbe `data-leaving`/`list-exit`-Maschine wie beim Löschen (list-motion.spec.ts) —
-  // deren eigener AC3-Test beweist bereits, dass genau dieser Selektor bei
-  // reduzierter Bewegung auf die reine Opacity-Variante umschaltet.
-  await expect(row).toHaveAttribute('data-leaving', 'true');
-  expect(await row.evaluate((el) => getComputedStyle(el).animationName)).toBe('list-exit');
-  await expect(row).toHaveCount(0);
-});
-
-test('AC8: bei reduzierter Bewegung schaltet der Filter genauso zuverlässig um', async ({
-  page,
-}) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/aufgaben');
-  await selectView(page, 'Alle');
-  await seedTask(page, { title: 'Bleibt sichtbar' });
-  await seedTask(page, {
-    title: 'Verschwindet ruhig',
-    completedAt: new Date(FIXED_NOW).toISOString(),
-  });
-
-  await hideCompletedToggle(page).click();
-
-  await expect(taskItems(page).filter({ hasText: 'Verschwindet ruhig' })).toHaveCount(0);
-  await expect(taskItems(page).filter({ hasText: 'Bleibt sichtbar' })).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */

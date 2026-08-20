@@ -292,18 +292,6 @@ export function IconStreak({ className }: IconProps) {
   );
 }
 
-// --- Aufgaben: erledigte ausblenden (issue #654) ---
-
-export function IconHideCompleted({ className }: IconProps) {
-  return (
-    <svg {...svgProps} className={className}>
-      <path d="M2.75 12S6.5 6 12 6s9.25 6 9.25 6-3.75 6-9.25 6-9.25-6-9.25-6Z" />
-      <circle cx="12" cy="12" r="2.75" />
-      <path d="M5 19 19 5" />
-    </svg>
-  );
-}
-
 // --- Chip-Bauteil: Verwerfen-Ziel eines geratenen Chips (issue #711) ---
 
 export function IconClose({ className }: IconProps) {

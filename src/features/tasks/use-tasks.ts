@@ -99,15 +99,13 @@ export function resolveNestTarget(
 }
 
 /**
- * Applies the "erledigte ausblenden" toggle to an already-grouped tree (issue
- * #654 AC5) without touching `done`/`total` — those keep counting every
- * child regardless, the toggle only changes what renders. A parent whose own
- * row is done drops out entirely, unless it still guards an open child (that
- * child would otherwise vanish with it); its own completed children still
- * disappear either way.
+ * "Alle" shows only open work (issue #814) without touching `done`/`total` —
+ * those keep counting every child regardless, filtering only changes what
+ * renders. A parent whose own row is done drops out entirely, unless it still
+ * guards an open child (that child would otherwise vanish with it); its own
+ * completed children still disappear either way.
  */
-export function visibleTaskNodes(nodes: TaskNode[], hideCompleted: boolean): TaskNode[] {
-  if (!hideCompleted) return nodes;
+export function openTaskNodes(nodes: TaskNode[]): TaskNode[] {
   return nodes
     .filter(
       (node) =>
