@@ -1276,6 +1276,19 @@ const CREATE_LABEL = 'Termin erfassen';
 const EDIT_LABEL = 'Termin bearbeiten';
 
 /**
+ * Issue #806: ein Kartentipp öffnet jetzt erst das schreibgeschützte
+ * Detail-Sheet, nicht mehr direkt den Editor — dieser Helfer tippt die Karte
+ * an und dann „Bearbeiten", sodass jeder bestehende Bearbeiten-Testpfad beim
+ * selben Endzustand (Editor offen) landet. `exact` ist Pflicht: ohne sie
+ * matcht die Karte selbst mit ("11:00–12:00 Zu bearbeiten" enthält
+ * "Bearbeiten" als Teilstring) und der Klick wird zum Strict-Mode-Fehler.
+ */
+async function openEventEditor(page: Page, card: Locator): Promise<void> {
+  await card.click();
+  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click();
+}
+
+/**
  * Issue #712: Von/Bis/Ganztägig, Wiederholung und Kategorie sit behind a chip
  * now — its panel must be open before a field inside it is touched. Scoped by
  * role (not `getByLabel`), since a chip's own accessible name and its open
@@ -1325,7 +1338,7 @@ test('das Ändern eines Termins spiegelt sich sofort in der Timeline (#554 AC2)'
     category: null,
   });
 
-  await eventCard(page, 'Altes Meeting').click();
+  await openEventEditor(page, eventCard(page, 'Altes Meeting'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await expect(page.getByLabel('Titel')).toHaveValue('Altes Meeting');
 
@@ -1349,7 +1362,7 @@ test('das Löschen eines Termins bleibt ohne Rückgängig bestehen, der Server l
     category: null,
   });
 
-  await eventCard(page, 'Zu löschen').click();
+  await openEventEditor(page, eventCard(page, 'Zu löschen'));
   const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
   await expect(editDialog).toBeVisible();
   // Scoped to the dialog, not a bare page-wide query — the card itself is a
@@ -1662,7 +1675,7 @@ test('„nur dieser" verschiebt nur dieses eine Vorkommen, die uebrigen bleiben 
 }) => {
   await seedWeeklySeries(page);
 
-  await eventCard(page, 'Yoga').click();
+  await openEventEditor(page, eventCard(page, 'Yoga'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wannChip(page).click();
   // `datetime-local` is read back in the *browser's* local time (CI runs UTC,
@@ -1718,7 +1731,7 @@ test('Runterziehen schließt auch die Serien-Abfrage, die keine eigene Kopfzeile
 }) => {
   await seedWeeklySeries(page);
 
-  await eventCard(page, 'Yoga').click();
+  await openEventEditor(page, eventCard(page, 'Yoga'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wannChip(page).click();
   await page.getByLabel('Von').fill(`${TODAY}T17:00`);
@@ -1742,7 +1755,7 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
 }) => {
   await seedWeeklySeries(page);
 
-  await eventCard(page, 'Yoga').click();
+  await openEventEditor(page, eventCard(page, 'Yoga'));
   const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
   await expect(editDialog).toBeVisible();
   await editDialog.getByRole('button', { name: 'Löschen' }).click();
@@ -1767,7 +1780,7 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   // Edit the second occurrence (a week later), not the series' own first one.
   // Navigiert per Antippen (nicht Ziehen — #784) zur naechsten Woche.
   await selectStripDay(page, 'Sa, 25.');
-  await eventCard(page, 'Yoga').click();
+  await openEventEditor(page, eventCard(page, 'Yoga'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wannChip(page).click();
   // Same UTC-vs-Berlin offset as the "nur dieser" test above.
@@ -1843,7 +1856,7 @@ test('AK3b: eine Serie mit Ende „Am ⟨Datum⟩" behält beim Wiederöffnen da
   await page.getByLabel('Endet am').fill('2026-08-01');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
-  await eventCard(page, 'Bis Monatsende').click();
+  await openEventEditor(page, eventCard(page, 'Bis Monatsende'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wiederholungChip(page).click();
 
@@ -1868,7 +1881,7 @@ test('AK3c: eine Serie mit Ende „Nach ⟨N⟩ ×" behält beim Wiederöffnen d
   await page.getByLabel('Anzahl Wiederholungen').fill('5');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
-  await eventCard(page, 'Fünf Mal').click();
+  await openEventEditor(page, eventCard(page, 'Fünf Mal'));
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wiederholungChip(page).click();
 
@@ -1898,10 +1911,135 @@ test('AK4: Löschen erscheint als Textknopf im Fuß nur im Bearbeiten-, nicht im
     endDate: null,
     category: null,
   });
-  await eventCard(page, 'Zu bearbeiten').click();
+  await openEventEditor(page, eventCard(page, 'Zu bearbeiten'));
   const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
   await expect(editDialog).toBeVisible();
   await expect(editDialog.getByRole('button', { name: 'Löschen' })).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
+/* #806: Detail-Sheet vor dem Editor — kein ungewollter Tastatur-Popup        */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: ein Kartentipp auf einen getimten Termin öffnet das Detail-Sheet, nicht den Editor — kein Feld hat Fokus (#806)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Zahnarzttermin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await eventCard(page, 'Zahnarzttermin').click();
+
+  await expect(page.getByRole('dialog', { name: 'Zahnarzttermin' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toHaveCount(0);
+  // Nicht toHaveCount(0): der Editor bleibt unabhängig vom Öffnen-Zustand
+  // gemountet, sein Titelfeld steckt nur hinter einem geschlossenen <dialog>
+  // (display: none) — anders als getByRole ignoriert getByLabel das.
+  await expect(page.getByLabel('Titel')).not.toBeVisible();
+});
+
+test('AK1: ein Tipp auf einen ganztägigen (eigenen) Termin öffnet ebenfalls das Detail-Sheet, nicht den Editor (#806)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: null,
+  });
+
+  await allDayBar(page, 'Feiertag').click();
+
+  await expect(page.getByRole('dialog', { name: 'Feiertag' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toHaveCount(0);
+  // Nicht toHaveCount(0), siehe getimter Fall oben — getByLabel ignoriert
+  // das display:none des geschlossenen Editor-<dialog>.
+  await expect(page.getByLabel('Titel')).not.toBeVisible();
+});
+
+test('AK2: das Detail-Sheet zeigt Titel, Zeit und Kategorie; „Bearbeiten" schließt es und öffnet den Editor vorbefüllt (#806)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Zahnarzttermin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`, // 13:00 Berlin (CEST, UTC+2)
+    endsAt: `${TODAY}T12:00:00.000Z`, // 14:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'gesundheit',
+  });
+
+  await eventCard(page, 'Zahnarzttermin').click();
+  const detailDialog = page.getByRole('dialog', { name: 'Zahnarzttermin' });
+  await expect(detailDialog).toContainText('Zahnarzttermin');
+  await expect(detailDialog).toContainText('13:00–14:00');
+  await expect(detailDialog).toContainText('Gesundheit');
+
+  await detailDialog.getByRole('button', { name: 'Bearbeiten' }).click();
+
+  await expect(detailDialog).toBeHidden();
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await expect(page.getByLabel('Titel')).toHaveValue('Zahnarzttermin');
+});
+
+test('AK3: nach „Bearbeiten" liegt der Fokus nicht auf dem Titelfeld — keine Tastatur beim Start des Bearbeitens (#806)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Zahnarzttermin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await openEventEditor(page, eventCard(page, 'Zahnarzttermin'));
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await expect(page.getByLabel('Titel')).not.toBeFocused();
+});
+
+test('AK4: der „Bearbeiten"-Knopf existiert nur solange das Detail-Sheet offen ist (#806)', async ({ page }) => {
+  await seedEvent(page, {
+    title: 'Zahnarzttermin',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T12:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(page.getByRole('button', { name: 'Bearbeiten' })).toHaveCount(0);
+
+  await eventCard(page, 'Zahnarzttermin').click();
+  const detailDialog = page.getByRole('dialog', { name: 'Zahnarzttermin' });
+  await expect(detailDialog).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Bearbeiten' })).toBeVisible();
+
+  await detailDialog.getByRole('button', { name: 'Schließen' }).click();
+  await expect(detailDialog).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Bearbeiten' })).toHaveCount(0);
+});
+
+test('AK6: der FAB „Termin erfassen" öffnet den Editor weiterhin direkt mit Fokus im Titelfeld (#806)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await expect(page.getByRole('dialog', { name: CREATE_LABEL })).toBeVisible();
+  await expect(page.getByLabel('Titel')).toBeFocused();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -2104,7 +2242,7 @@ test('am angezeigten Tag animieren Zu- und Abgaenge weiterhin (#611 AC4, Regress
   await expect(entering).toHaveCount(1);
   await expect(entering).toContainText('Kommt dazu');
 
-  await eventCard(page, 'Bleibt erstmal').click();
+  await openEventEditor(page, eventCard(page, 'Bleibt erstmal'));
   const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
   await expect(editDialog).toBeVisible();
   await editDialog.getByRole('button', { name: 'Löschen' }).click();
@@ -2193,7 +2331,7 @@ test('ein ausgefallenes Vorkommen verliert seinen Punkt, die uebrigen behalten i
   await seedWeeklyDotSeries(page);
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
 
-  await eventCard(page, 'Yoga').click();
+  await openEventEditor(page, eventCard(page, 'Yoga'));
   const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
   await expect(editDialog).toBeVisible();
   await editDialog.getByRole('button', { name: 'Löschen' }).click();
