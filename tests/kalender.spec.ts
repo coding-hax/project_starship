@@ -2157,6 +2157,11 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
   });
 
   await expect(dayDots(page, 'So, 19.')).toHaveCount(1);
+
+  // Mo/Di/Mi liegen in der naechsten Wochen-Seite des Karussells, nicht mehr
+  // in der zentrierten (issue #805, dayButton scoped auf :not([inert])) —
+  // erst die Monatsansicht zeigt sie auf derselben, zentrierten Seite.
+  await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(dayDots(page, 'Mo, 20.')).toHaveCount(1);
   await expect(dayDots(page, 'Di, 21.')).toHaveCount(1);
   await expect(dayDots(page, 'Mi, 22.')).toHaveCount(0);
