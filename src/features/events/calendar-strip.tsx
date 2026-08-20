@@ -77,10 +77,22 @@ function weekdayIndexOf(day: string): number {
 }
 
 /** One pixel step per unit — a day-cell's width in week view, a week-row's
- *  height in month view. Both are exact by construction (`VISIBLE_DAYS`
- *  equal-width flex columns / `VISIBLE_WEEKS` fixed-height rows fill the
- *  track exactly), no measurement needed. */
+ *  height in month view. Measured off one actual rendered cell/row rather
+ *  than dividing the track's own box by `VISIBLE_DAYS`/`VISIBLE_WEEKS`: the
+ *  track's `height` transitions on the Woche/Monat switch
+ *  (calendar-strip.css), so right after that toggle `track.clientHeight` can
+ *  still read the *pre*-transition value while `useLayoutEffect` below sets
+ *  the scroll target from it — a wrong step there lands `leadIndex` on the
+ *  wrong day/week once the scroll handler re-measures against the settled
+ *  height. A cell's/row's own size never transitions, only the track's does. */
 function stepFor(track: HTMLElement, expanded: boolean): number {
+  const sample = track.querySelector<HTMLElement>(
+    expanded ? '.calendar-strip__week-row' : '.calendar-strip__cell',
+  );
+  if (sample) {
+    const rect = sample.getBoundingClientRect();
+    return expanded ? rect.height : rect.width;
+  }
   return expanded ? track.clientHeight / VISIBLE_WEEKS : track.clientWidth / VISIBLE_DAYS;
 }
 
