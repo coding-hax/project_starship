@@ -272,6 +272,142 @@ test('Offline-Pfad: eine offline erledigte Aufgabe gleitet sofort aus „Alle", 
   expect(row.rows[0].completed_at).not.toBeNull();
 });
 
+test('„Alle" lässt eine erledigte Elternaufgabe mit offenem Kind stehen, blendet nur das erledigte Kind aus (issue #814, vormals #654 AC5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Offenes Kind', parentId });
+  await seedTask(page, {
+    title: 'Erledigtes Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expandParent(page, 'Erledigte Elternaufgabe');
+
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Offenes Kind' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Erledigtes Kind' })).toHaveCount(0);
+});
+
+test('„Alle" zählt im Fortschritt einer sichtbaren erledigten Elternaufgabe weiterhin beide Kinder (issue #814, vormals #654 AC5)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Offenes Kind', parentId });
+  await seedTask(page, {
+    title: 'Erledigtes Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(progressFor(page, 'Erledigte Elternaufgabe')).toHaveText('1/2');
+});
+
+test('„Alle" blendet eine ganz erledigte Elterngruppe komplett aus, Kind inklusive (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Ganz erledigte Gruppe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Erledigtes Kind der ganz erledigten Gruppe',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind der ganz erledigten Gruppe' }),
+  ).toHaveCount(0);
+});
+
+test('„Alle" lässt eine offene Elternaufgabe mit erledigtem Kind stehen, nur das Kind fällt weg (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, { title: 'Offene Elternaufgabe' });
+  await seedTask(page, {
+    title: 'Erledigtes Kind unter offenem Elternteil',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await expect(taskItems(page).filter({ hasText: 'Offene Elternaufgabe' })).toBeVisible();
+  await expect(
+    taskItems(page).filter({ hasText: 'Erledigtes Kind unter offenem Elternteil' }),
+  ).toHaveCount(0);
+});
+
+test('sind in „Alle" nur noch erledigte Aufgaben übrig, zeigt sich der normale Leerzustand (issue #814, vormals #654 AC6)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  await seedTask(page, { title: 'Erledigt A', completedAt: new Date(FIXED_NOW).toISOString() });
+  await seedTask(page, { title: 'Erledigt B', completedAt: new Date(FIXED_NOW).toISOString() });
+
+  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
+  await expect(taskItems(page)).toHaveCount(0);
+});
+
+test('Erledigt man das letzte offene Kind einer bereits sichtbaren erledigten Elternaufgabe, gleitet die ganze Gruppe aus „Alle" (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const parentId = await seedTask(page, {
+    title: 'Erledigte Elternaufgabe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, { title: 'Letztes offenes Kind', parentId });
+  await expandParent(page, 'Erledigte Elternaufgabe');
+
+  await checkboxFor(page, 'Letztes offenes Kind').click();
+
+  await expect(taskItems(page).filter({ hasText: 'Erledigte Elternaufgabe' })).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: 'Letztes offenes Kind' })).toHaveCount(0);
+});
+
+test('Öffnet man das einzige erledigte Kind einer aus „Alle" verschwundenen Gruppe wieder, taucht die Gruppe erneut auf (issue #814)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const parentId = await seedTask(page, {
+    title: 'Ganz erledigte Gruppe',
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+  await seedTask(page, {
+    title: 'Einziges Kind',
+    parentId,
+    completedAt: new Date(FIXED_NOW).toISOString(),
+  });
+
+  await selectView(page, 'Alle');
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toHaveCount(0);
+
+  await selectView(page, 'Erledigt');
+  await checkboxFor(page, 'Einziges Kind').click();
+
+  await selectView(page, 'Alle');
+  await expect(taskItems(page).filter({ hasText: 'Ganz erledigte Gruppe' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Einziges Kind' })).toBeVisible();
+});
+
 test('tasks stay visible offline, with a calm notice instead of an error (issue #643 AC4)', async ({
   page,
   context,

@@ -303,6 +303,29 @@ describe('openTaskNodes', () => {
     expect(node.done).toBe(1);
     expect(node.total).toBe(2);
   });
+
+  it('filters multiple sibling top-level nodes independently, preserving the order of survivors', () => {
+    const openStandalone = task({ id: 'a', createdAt: '2026-07-01T00:00:00.000Z' });
+    const doneStandalone = task({
+      id: 'b',
+      createdAt: '2026-07-02T00:00:00.000Z',
+      completedAt: '2026-07-03T00:00:00.000Z',
+    });
+    const guardedParent = task({
+      id: 'c',
+      createdAt: '2026-07-03T00:00:00.000Z',
+      completedAt: '2026-07-04T00:00:00.000Z',
+    });
+    const guardedParentOpenChild = task({ id: 'c-open', parentId: 'c' });
+    const nodes = groupTasks([
+      openStandalone,
+      doneStandalone,
+      guardedParent,
+      guardedParentOpenChild,
+    ]);
+
+    expect(openTaskNodes(nodes).map((node) => node.task.id)).toEqual(['a', 'c']);
+  });
 });
 
 describe('resolveNestTarget', () => {
