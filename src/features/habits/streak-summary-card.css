@@ -1,9 +1,9 @@
 /**
- * Wochenrückblick-Karte (issue #431) — gleiche Kartenform wie
+ * "Routinen in Serie"-Karte (issue #809) — gleiche Kartenform wie
  * activity-month-strip.css, damit /uebersicht als ein System wirkt.
  */
 
-.weekly-recap-card {
+.streak-summary-card {
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
@@ -12,20 +12,20 @@
   color: var(--text);
 }
 
-.weekly-recap-card__heading {
+.streak-summary-card__heading {
   margin: 0 0 var(--space-2);
   color: var(--area-habits);
   font-weight: var(--weight-emphasis);
 }
 
-.weekly-recap-card__metric {
+.streak-summary-card__metric {
   margin: 0;
   font-size: var(--text-section);
   font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }
 
-.weekly-recap-card__superlative {
+.streak-summary-card__hint {
   margin: var(--space-1) 0 0;
   color: var(--text-muted);
 }

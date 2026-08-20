@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeStreak } from './streak';
+import { computeStreak, countHabitsOnStreak } from './streak';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -97,6 +97,46 @@ describe('computeStreak — weekly', () => {
       log('2026-07-08'),
     ];
     expect(computeStreak(weekly({ target: 3 }), logs, WEDNESDAY)).toBe(1);
+  });
+});
+
+describe('countHabitsOnStreak (issue #809)', () => {
+  it('keine Routinen → 0', () => {
+    expect(countHabitsOnStreak([], [], WEDNESDAY)).toBe(0);
+  });
+
+  it('eine mit, eine ohne laufende Serie → 1', () => {
+    const habits = [daily({ id: 'a' }), daily({ id: 'b' })];
+    const logs = [{ ...log('2026-07-15'), habitId: 'a' }];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(1);
+  });
+
+  it('archivierte Routine mit laufender Serie zählt nicht', () => {
+    const habits = [daily({ id: 'a', archivedAt: '2026-07-10T00:00:00.000Z' })];
+    const logs = [{ ...log('2026-07-15'), habitId: 'a' }];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(0);
+  });
+
+  it('gemischte Schedules mit je laufender Serie zählen alle', () => {
+    const habits = [daily({ id: 'a' }), weekly({ id: 'b' }), monthly({ id: 'c' })];
+    const logs = [
+      { ...log('2026-07-15'), habitId: 'a' }, // daily: heute erledigt
+      { ...log('2026-07-14'), habitId: 'b' }, // weekly: diese Woche erledigt
+      { ...log('2026-07-10'), habitId: 'c' }, // monthly: diesen Monat erledigt
+    ];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(3);
+  });
+
+  it('laufende, noch offene Periode zählt, wenn die Vorperiode erledigt war (Serie ≥ 1)', () => {
+    const habits = [weekly({ id: 'a' })];
+    const logs = [{ ...log('2026-07-07'), habitId: 'a' }]; // nur letzte Woche, diese Woche noch offen
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(1);
+  });
+
+  it('ein done:false-Log zählt nicht als Serie', () => {
+    const habits = [daily({ id: 'a' })];
+    const logs = [{ ...log('2026-07-15', false), habitId: 'a' }];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(0);
   });
 });
 

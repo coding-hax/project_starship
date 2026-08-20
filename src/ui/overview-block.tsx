@@ -17,7 +17,7 @@ interface OverviewBlockProps {
 /**
  * Uniform module head for /uebersicht (issue #652): a heading row on the page
  * ground, deliberately without its own card surface — Termine, Aktivitäten and
- * the (now relocated) Wochenrückblick are already cards, and wrapping those in
+ * the (now relocated) Streak-Karte are already cards, and wrapping those in
  * another one would show more scaffolding than content (R1,
  * docs/design/formwahl-und-zustaende.md).
  */

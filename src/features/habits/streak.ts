@@ -65,3 +65,13 @@ export function computeStreak(
   const isDayBased = habit.schedule === 'daily' || habit.schedule === 'custom';
   return isDayBased ? dailyStreak(habit.id, logs, now) : periodStreak(habit, logs, now);
 }
+
+/** Number of non-archived habits with a running streak (issue #809). */
+export function countHabitsOnStreak(
+  habits: HabitView[],
+  logs: HabitLogView[],
+  now: Date = new Date(),
+): number {
+  return habits.filter((habit) => habit.archivedAt === null && computeStreak(habit, logs, now) > 0)
+    .length;
+}

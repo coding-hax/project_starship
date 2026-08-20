@@ -49,9 +49,9 @@ Layout-Shift aus Smooth-Regel 3, verschoben auf die erste Sekunde nach dem
 Öffnen (issue #642).
 
 Ein Skeleton je Block heilt das nicht, sondern dreht es um: Blöcke, die geladen
-absichtlich *nichts* zeigen (Fortschrittsring bei M = 0, Wochenrückblick ohne
-Bezugswoche, Monatsstreifen ohne Aktivitäten), müssten reservierte Höhe wieder
-hergeben. Ein Kollaps schiebt so hart wie ein Pop-in.
+absichtlich *nichts* zeigen (Fortschrittsring bei M = 0, Streak-Karte ohne
+aktive Routine, Monatsstreifen ohne Aktivitäten), müssten reservierte Höhe
+wieder hergeben. Ein Kollaps schiebt so hart wie ein Pop-in.
 
 Deshalb gilt: **ein Enthüllungspunkt je Screen.** Der Inhalt bleibt verborgen,
 bis alle lokalen Blöcke einmal geantwortet haben, und erscheint dann gemeinsam
