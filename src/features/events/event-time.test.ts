@@ -208,6 +208,18 @@ describe('pageAnchors', () => {
     expect(pageAnchors('2027-01-02', false)).toEqual(['2026-12-26', '2027-01-02', '2027-01-09']);
   });
 
+  it("week view: works from a Sunday anchor too, matching weekDaysFor's own Sunday special-case", () => {
+    // 2026-07-19 is a Sunday — the last day of its own Mon-Sun week, not the
+    // first of the next (weekDaysFor's doc comment).
+    expect(pageAnchors('2026-07-19', false)).toEqual(['2026-07-12', '2026-07-19', '2026-07-26']);
+  });
+
+  it('week view: chaining two forward pages lands 14 days ahead — the carousel settles twice in a row this way', () => {
+    const [, , next] = pageAnchors('2026-07-18', false);
+    const [, , secondNext] = pageAnchors(next, false);
+    expect(secondNext).toBe('2026-08-01');
+  });
+
   it('month view: steps a whole calendar month either side, same day-of-month', () => {
     expect(pageAnchors('2026-07-15', true)).toEqual(['2026-06-15', '2026-07-15', '2026-08-15']);
   });
@@ -232,6 +244,12 @@ describe('pageAnchors', () => {
 
   it('month view: crosses a year boundary on both sides', () => {
     expect(pageAnchors('2027-01-05', true)).toEqual(['2026-12-05', '2027-01-05', '2027-02-05']);
+  });
+
+  it('month view: chaining two forward pages lands two months ahead — the carousel settles twice in a row this way', () => {
+    const [, , next] = pageAnchors('2026-07-18', true);
+    const [, , secondNext] = pageAnchors(next, true);
+    expect(secondNext).toBe('2026-09-18');
   });
 });
 
