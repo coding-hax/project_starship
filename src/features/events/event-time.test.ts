@@ -9,13 +9,14 @@ import {
   categoriesForDay,
   categoryEdgeVar,
   dateKeyDiff,
+  dayWindow,
   formatCountdown,
   formatMonthTitle,
   monthDaysFor,
   nextInAgenda,
-  pageAnchors,
   upcomingEventsToday,
   weekDaysFor,
+  weekWindow,
 } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
@@ -189,67 +190,79 @@ describe('addDays', () => {
   });
 });
 
-describe('pageAnchors', () => {
-  it('week view: steps a Mon-Sun week either side, the anchor itself stays the middle entry', () => {
-    expect(pageAnchors('2026-07-15', false)).toEqual(['2026-07-08', '2026-07-15', '2026-07-22']);
+describe('dayWindow', () => {
+  it('returns 2*radius+1 keys, the anchor itself the middle entry', () => {
+    expect(dayWindow('2026-07-18', 2)).toEqual([
+      '2026-07-16',
+      '2026-07-17',
+      '2026-07-18',
+      '2026-07-19',
+      '2026-07-20',
+    ]);
   });
 
-  it('week view: neighbours are exactly 7 days apart, not partial weeks', () => {
-    const [prev, current, next] = pageAnchors('2026-07-15', false);
-    expect(dateKeyDiff(prev, current)).toBe(7);
-    expect(dateKeyDiff(current, next)).toBe(7);
+  it('steps single days, not whole weeks', () => {
+    const days = dayWindow('2026-07-18', 3);
+    for (let i = 1; i < days.length; i += 1) {
+      expect(dateKeyDiff(days[i - 1], days[i])).toBe(1);
+    }
   });
 
-  it('week view: crosses a month boundary on both sides', () => {
-    expect(pageAnchors('2026-08-02', false)).toEqual(['2026-07-26', '2026-08-02', '2026-08-09']);
+  it('crosses a month boundary on both sides', () => {
+    expect(dayWindow('2026-08-01', 2)).toEqual([
+      '2026-07-30',
+      '2026-07-31',
+      '2026-08-01',
+      '2026-08-02',
+      '2026-08-03',
+    ]);
   });
 
-  it('week view: crosses a year boundary on both sides', () => {
-    expect(pageAnchors('2027-01-02', false)).toEqual(['2026-12-26', '2027-01-02', '2027-01-09']);
+  it('crosses a year boundary on both sides', () => {
+    expect(dayWindow('2027-01-01', 2)).toEqual([
+      '2026-12-30',
+      '2026-12-31',
+      '2027-01-01',
+      '2027-01-02',
+      '2027-01-03',
+    ]);
+  });
+});
+
+describe('weekWindow', () => {
+  it('returns 2*radius+1 Mon-Sun weeks, the anchor\'s own week the middle entry', () => {
+    // 2026-07-18 is a Saturday, so its own week starts Monday 2026-07-13.
+    const weeks = weekWindow('2026-07-18', 1);
+    expect(weeks).toHaveLength(3);
+    expect(weeks[0][0]).toBe('2026-07-06');
+    expect(weeks[1]).toEqual(weekDaysFor('2026-07-18'));
+    expect(weeks[2][0]).toBe('2026-07-20');
   });
 
-  it("week view: works from a Sunday anchor too, matching weekDaysFor's own Sunday special-case", () => {
+  it('steps whole weeks, not partial ones', () => {
+    const weeks = weekWindow('2026-07-18', 2);
+    for (let i = 1; i < weeks.length; i += 1) {
+      expect(dateKeyDiff(weeks[i - 1][0], weeks[i][0])).toBe(7);
+    }
+  });
+
+  it('crosses a month boundary on both sides', () => {
+    const weeks = weekWindow('2026-08-02', 1);
+    expect(weeks[0][0]).toBe('2026-07-20');
+    expect(weeks[2][0]).toBe('2026-08-03');
+  });
+
+  it('crosses a year boundary on both sides', () => {
+    const weeks = weekWindow('2027-01-02', 1);
+    expect(weeks[0][0]).toBe('2026-12-21');
+    expect(weeks[2][0]).toBe('2027-01-04');
+  });
+
+  it("works from a Sunday anchor too, matching weekDaysFor's own Sunday special-case", () => {
     // 2026-07-19 is a Sunday — the last day of its own Mon-Sun week, not the
     // first of the next (weekDaysFor's doc comment).
-    expect(pageAnchors('2026-07-19', false)).toEqual(['2026-07-12', '2026-07-19', '2026-07-26']);
-  });
-
-  it('week view: chaining two forward pages lands 14 days ahead — the carousel settles twice in a row this way', () => {
-    const [, , next] = pageAnchors('2026-07-18', false);
-    const [, , secondNext] = pageAnchors(next, false);
-    expect(secondNext).toBe('2026-08-01');
-  });
-
-  it('month view: steps a whole calendar month either side, same day-of-month', () => {
-    expect(pageAnchors('2026-07-15', true)).toEqual(['2026-06-15', '2026-07-15', '2026-08-15']);
-  });
-
-  it('month view: the anchor itself always stays the middle entry, unchanged', () => {
-    const [, current] = pageAnchors('2026-03-09', true);
-    expect(current).toBe('2026-03-09');
-  });
-
-  it('month view: clamps the next neighbour to the shorter month (31 Jan has no 31 Feb)', () => {
-    expect(pageAnchors('2026-01-31', true)).toEqual(['2025-12-31', '2026-01-31', '2026-02-28']);
-  });
-
-  it('month view: clamps the previous neighbour the same way (31 Mar has no 31 Feb)', () => {
-    expect(pageAnchors('2026-03-31', true)).toEqual(['2026-02-28', '2026-03-31', '2026-04-30']);
-  });
-
-  it('month view: lands on 29 February in a leap year instead of clamping to the 28th', () => {
-    const [prev] = pageAnchors('2024-03-29', true);
-    expect(prev).toBe('2024-02-29');
-  });
-
-  it('month view: crosses a year boundary on both sides', () => {
-    expect(pageAnchors('2027-01-05', true)).toEqual(['2026-12-05', '2027-01-05', '2027-02-05']);
-  });
-
-  it('month view: chaining two forward pages lands two months ahead — the carousel settles twice in a row this way', () => {
-    const [, , next] = pageAnchors('2026-07-18', true);
-    const [, , secondNext] = pageAnchors(next, true);
-    expect(secondNext).toBe('2026-09-18');
+    const weeks = weekWindow('2026-07-19', 1);
+    expect(weeks[1][0]).toBe('2026-07-13');
   });
 });
 

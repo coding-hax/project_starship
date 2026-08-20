@@ -141,6 +141,9 @@
   outline-offset: -2px;
 }
 
+/* Outside the scroller, rendered only in month view (calendar-strip.tsx) — a
+   rolling week-strip would otherwise scroll its own weekday column headings
+   along with it (issue #813). */
 .calendar-strip__weekday-header {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -153,19 +156,21 @@
   color: var(--text-muted);
 }
 
-/* The carousel track (issue #805, Ansatz C — replaces the pointer-scrub
-   gesture of #629/#662/#764/#802): native horizontal scroll-snap owns the
-   swipe, the momentum and the snap, calendar-strip.tsx only reacts once a
-   page has settled. `pan-x` claims just the horizontal axis — a vertical
-   drag started here still scrolls the page underneath it, unlike the old
-   gesture surface's `touch-action: none`. Scrollbar hidden the same way
-   shell.css's `.nav__list` tab carousel hides its own. */
+/* The carousel track (issue #813 — replaces #805's 3-page scroll-snap
+   carousel, which could only ever swipe a whole week/month at a time): a
+   generously buffered window of real days/weeks renders all at once, so
+   scrolling is native the whole way and calendar-strip.tsx only ever nudges
+   the *edges* of that buffer, never the visible position itself. Week view
+   rolls horizontally day by day (`pan-x`); month view rolls vertically week
+   by week (`pan-y`, up = later, down = earlier) — a vertical drag in week
+   view, or a horizontal one in month view, is left entirely to the page
+   scroll underneath. Scrollbar hidden the same way shell.css's `.nav__list`
+   tab carousel hides its own. */
 .calendar-strip__carousel {
   display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  touch-action: pan-x;
+  list-style: none;
+  margin: 0;
+  padding: 0;
   scrollbar-width: none;
   /* Fixed per view (below) so a 5- vs 6-week month never shifts the layout
      (DESIGN_SYSTEM: "kein Layout-Shift") — the Woche/Monat switch is the only
@@ -178,26 +183,42 @@
   display: none;
 }
 
-.calendar-strip[data-expanded='false'] .calendar-strip__carousel {
+.calendar-strip__carousel[data-expanded='false'] {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
   height: var(--calendar-strip-row-height);
 }
 
 /* Six rows reserved, whether the month showing needs five or six — same
    fixed-height reasoning the old accordion's `.calendar-strip__week-row` carried. */
-.calendar-strip[data-expanded='true'] .calendar-strip__carousel {
+.calendar-strip__carousel[data-expanded='true'] {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y proximity;
+  touch-action: pan-y;
   height: calc(6 * var(--calendar-strip-row-height) + 5 * var(--space-1));
 }
 
-/* One page = one Mon–Sun week (week view) or one full month grid (month
-   view). `flex: 0 0 100%` plus `scroll-snap-align: start` turns a swipe into
-   a clean stop on exactly the next page, never a half-visible one — same
-   vocabulary as shell.css's `.nav__list`/`.nav__item` carousel. */
-.calendar-strip__page {
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 100%;
+/* One day cell in the rolling week-strip — `flex: 0 0 calc(100% / 7)` fills
+   exactly one screen with 7 columns, the other `2 * RADIUS_DAYS` cells
+   overflow the track for native scrolling to reach (issue #813). */
+.calendar-strip__cell {
+  flex: 0 0 calc(100% / 7);
   min-width: 0;
-  gap: var(--space-1);
+  scroll-snap-align: start;
+}
+
+/* One Mon–Sun week row in the rolling month-strip — fixed height so
+   `RADIUS_WEEKS` of them stack into a track exactly `VISIBLE_WEEKS` rows
+   tall per screen, the rest overflow for native (vertical) scrolling to
+   reach (issue #813). */
+.calendar-strip__week-row {
+  flex: 0 0 var(--calendar-strip-row-height);
+  min-height: 0;
   scroll-snap-align: start;
 }
 
@@ -208,6 +229,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  height: 100%;
 }
 
 .calendar-strip__day {
@@ -217,6 +239,7 @@
   justify-content: center;
   gap: var(--space-1);
   width: 100%;
+  height: 100%;
   min-height: var(--touch-target);
   padding: var(--space-1) 0;
   border: none;
@@ -227,6 +250,15 @@
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-spring);
+}
+
+.calendar-strip__weekday {
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+}
+
+.calendar-strip__day--selected .calendar-strip__weekday {
+  color: inherit;
 }
 
 .calendar-strip__day:focus-visible {

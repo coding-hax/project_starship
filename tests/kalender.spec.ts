@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { addDays } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -46,21 +47,29 @@ function calendarStrip(page: Page) {
   return page.locator('.calendar-strip');
 }
 
-/** The carousel track calendar-strip.tsx's native scroll-snap paging lives on (issue #805). */
+/** The carousel track calendar-strip.tsx's continuous, buffered scrolling lives on (issue #813). */
 function calendarWeeks(page: Page) {
   return page.locator('.calendar-strip__carousel');
 }
 
+/** The date key the strip's leading (topmost/leftmost visible) cell/row is
+ *  currently on — a day in week view, a week's Monday in month view
+ *  (calendar-strip.tsx's `data-anchor-day`, issue #813). Drives the title and
+ *  is the most direct way to assert "rolled by exactly N days/weeks" without
+ *  depending on implementation-internal scroll pixels. */
+function anchorDay(page: Page) {
+  return calendarStrip(page).getAttribute('data-anchor-day');
+}
+
 /**
- * A day button in the *centred* carousel page — scoping to `:not([inert])`
- * matters for month view specifically: the previous/next page can carry a
- * day of the same weekday/day-of-month as the centred page near a month
- * boundary (that date shown once dimmed as a neighbour, once as the other
- * page's own day), which would otherwise make this locator ambiguous
- * (issue #805).
+ * A day button *inside the interactive band* — scoping to `:not([inert])`
+ * matters because the buffered carousel (issue #813) keeps every day/week in
+ * the DOM well beyond what's currently scrolled into view (so a swipe never
+ * runs out of days to reach); off-screen cells stay in the document but are
+ * marked `inert` (and `aria-hidden`), exactly the days this locator excludes.
  */
 function dayButton(page: Page, ariaLabel: string) {
-  return page.locator(`.calendar-strip__page:not([inert]) button[aria-label="${ariaLabel}"]`);
+  return page.locator(`.calendar-strip__day[aria-label="${ariaLabel}"]:not([inert])`);
 }
 
 function dayDots(page: Page, ariaLabel: string) {
@@ -68,10 +77,13 @@ function dayDots(page: Page, ariaLabel: string) {
 }
 
 /**
- * Pages the calendar-strip carousel exactly one page — the settle-driven
- * equivalent of a full native swipe-and-release (issue #805, replaces the old
- * pointer-scrub `swipeHorizontal`/`swipeVertical`/`beginDrag`). `dir` `1`
- * advances (a left swipe: next week/month), `-1` goes back (a right swipe).
+ * Scrolls the calendar-strip carousel by exactly one screen's worth — a week
+ * in week view (7 day-columns), a month's worth of rows in month view (6
+ * week-rows) — the settle-driven equivalent of a full native swipe-and-release.
+ * `dir` `1` advances (a left/up swipe), `-1` goes back (a right/down swipe).
+ * Axis-aware: week view scrolls horizontally, month view vertically (issue
+ * #813, the second half of this ticket — month view used to share the
+ * horizontal axis with week view).
  *
  * Scrolling the track directly, rather than dispatching touch events, is
  * deliberate: the `mobile` project (playwright.config.ts) uses `Desktop
@@ -79,19 +91,24 @@ function dayDots(page: Page, ariaLabel: string) {
  * no `hasTouch` — `page.touchscreen` isn't usable here, and a JS-dispatched
  * `TouchEvent` (tasks.spec.ts's `touchMoveWasBlocked` pattern) never reaches
  * the compositor, so it can't drive real scroll-snap physics either. Setting
- * `scrollLeft` is what's actually left to exercise the settle handler
- * end-to-end; the browser's own snap-and-momentum behaviour is native
+ * `scrollLeft`/`scrollTop` is what's actually left to exercise the scroll
+ * handler end-to-end; the browser's own snap-and-momentum behaviour is native
  * platform code, not this component's to test.
  */
 async function pageStrip(page: Page, dir: 1 | -1): Promise<void> {
   const track = calendarWeeks(page);
+  const before = await anchorDay(page);
   await track.evaluate((el, dir) => {
-    el.scrollLeft += dir * el.clientWidth;
+    const expanded = el.getAttribute('data-expanded') === 'true';
+    const step = expanded ? el.clientHeight / 6 : el.clientWidth / 7;
+    const delta = dir * (expanded ? 6 : 7) * step;
+    if (expanded) el.scrollTop += delta;
+    else el.scrollLeft += delta;
   }, dir);
-  // The settle handler re-centres the track once the new anchor lands —
-  // waiting for `scrollLeft` back at the centre is proof the page actually
-  // turned instead of stopping half-way.
-  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
+  // A silent buffer rebuild lands asynchronously (a scroll-driven state
+  // update) — waiting for the anchor to actually change is proof the strip
+  // rolled instead of stopping half-way.
+  await expect.poll(() => anchorDay(page)).not.toBe(before);
 }
 
 /** Pages the carousel forward `times` times in a row (issue #628 AK1's month-boundary test). */
@@ -103,11 +120,10 @@ async function pageStripForward(page: Page, times = 1): Promise<void> {
 
 /**
  * Taps a day button in the strip, pulling the month open first via the
- * Woche/Monat-Umschalter if that day isn't in the week view's centred
- * carousel page (`dayButton`'s `:not([inert])` scope reports it as not
- * visible then, issue #805) — the tap itself collapses the strip back
- * (issue #629, replaces stepping there via the "Nächster/Vorheriger Tag"
- * buttons).
+ * Woche/Monat-Umschalter if that day isn't currently in the interactive band
+ * (`dayButton`'s `:not([inert])` scope reports it as not visible then, issue
+ * #813) — the tap itself collapses the strip back (issue #629, replaces
+ * stepping there via the "Nächster/Vorheriger Tag" buttons).
  */
 async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
   const button = dayButton(page, ariaLabel);
@@ -664,7 +680,7 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
 /* ersetzt #629/#662/#764/#802's Pointer-Scrub                                */
 /* -------------------------------------------------------------------------- */
 
-test('Wischen bewegt nur die Vorschau — hin und zurueck zeigt die Auswahl unveraendert (issue #784 AK1, #805)', async ({
+test('Rollen bewegt nur die Vorschau — hin und zurueck zeigt die Auswahl unveraendert (issue #784 AK1, #813)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -680,9 +696,10 @@ test('Wischen bewegt nur die Vorschau — hin und zurueck zeigt die Auswahl unve
 
   await pageStrip(page, 1);
   // Die Vorschau ist eine Woche weiter, die Auswahl (18.) faellt aus dem
-  // Fenster — sauberer Zustand, kein Tag gedrueckt (AK5). Die Agenda darunter
-  // bleibt unberuehrt: ein Wisch bewegt nie die Auswahl selbst.
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  // sichtbaren Fenster — der Tag existiert weiter (die Auswahl selbst
+  // aendert sich nie durchs Rollen), ist aber inert und damit ausserhalb der
+  // dayButton-Scope (issue #813). Die Agenda darunter bleibt unberuehrt.
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 
   await pageStrip(page, -1);
@@ -690,24 +707,21 @@ test('Wischen bewegt nur die Vorschau — hin und zurueck zeigt die Auswahl unve
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 });
 
-test('ein weiter Wisch blaettert trotzdem nur eine Woche, kein Mehrfachsprung (issue #784 AK1/AK5, #805)', async ({
+test('ein Wisch rollt das Fenster tageweise — kein Sprung auf eine ganze Woche (issue #813, AK1/AK5)', async ({
   page,
 }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
   const track = calendarWeeks(page);
+  const before = await anchorDay(page);
+  expect(before).toBe(TODAY);
 
-  // So weit wie der Track ueberhaupt reicht — das Fenster hat nur drei
-  // Seiten, ein Sprung kann strukturell nie mehr als eine ueberspringen.
+  // Drei Tage, keine ganze Woche — der Anker darf trotzdem sofort mitgehen.
   await track.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
+    el.scrollLeft += (el.clientWidth / 7) * 3;
   });
-  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
-
-  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-  await expect(title).toHaveText('Juli 2026');
+  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, 3));
 });
 
-test('zwei aufeinanderfolgende Wische blaettern zwei Wochen weiter, nicht nur eine (issue #805)', async ({
+test('zwei aufeinanderfolgende Wische rollen zwei Wochen weiter, nicht nur eine (issue #813)', async ({
   page,
 }) => {
   const title = calendarStrip(page).locator('.calendar-strip__title');
@@ -716,33 +730,32 @@ test('zwei aufeinanderfolgende Wische blaettern zwei Wochen weiter, nicht nur ei
   await pageStrip(page, 1);
 
   // 18.07. + 14 Tage = 01.08. — der zweite Wisch darf nicht wirkungslos
-  // bleiben, nur weil das Fenster zwischendurch unsichtbar neu zentriert wurde.
+  // bleiben, nur weil der Puffer zwischendurch unsichtbar neu verankert wurde.
   await expect(dayButton(page, 'Sa, 1.')).toBeVisible();
   await expect(title).toHaveText('August 2026');
 });
 
-test('der Streifen erfasst nur waagerechte Gesten, senkrecht bleibt dem Seiten-Scroll ueberlassen (issue #805, ersetzt S5 AK-A)', async ({
+test('der Streifen erfasst nur waagerechte Gesten, senkrecht bleibt dem Seiten-Scroll ueberlassen (issue #813, ersetzt S5 AK-A)', async ({
   page,
 }) => {
   await expect(calendarWeeks(page)).toHaveCSS('touch-action', 'pan-x');
 });
 
-test('eine eingerastete Vorschau bleibt stehen, kein Zurueckschnappen zur alten Auswahl (issue #784, AK3)', async ({
+test('ein gerolltes Fenster bleibt stehen, kein Zurueckschnappen zur alten Auswahl (issue #784, AK3)', async ({
   page,
 }) => {
-  const track = calendarWeeks(page);
   await pageStrip(page, 1);
 
   await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
   await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(track.evaluate((el) => el.scrollLeft === el.clientWidth)).resolves.toBe(true);
+  await expect(anchorDay(page)).resolves.toBe('2026-07-25');
 });
 
 test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
   page,
 }) => {
   await pageStrip(page, 1);
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Nächster Tag' }).click();
 
@@ -767,70 +780,82 @@ test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Wisch ins
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('nur die zentrierte Karussell-Seite ist interaktiv, die Nachbarseiten sind inert und fuer Screenreader verborgen (issue #805)', async ({
+test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert und fuer Screenreader verborgen (issue #813)', async ({
   page,
 }) => {
-  const carouselPages = page.locator('.calendar-strip__page');
-  await expect(carouselPages).toHaveCount(3);
-  await expect(carouselPages.nth(0)).toHaveJSProperty('inert', true);
-  await expect(carouselPages.nth(1)).toHaveJSProperty('inert', false);
-  await expect(carouselPages.nth(2)).toHaveJSProperty('inert', true);
-  await expect(carouselPages.nth(0)).toHaveAttribute('aria-hidden', 'true');
-  await expect(carouselPages.nth(1)).not.toHaveAttribute('aria-hidden');
-  await expect(carouselPages.nth(2)).toHaveAttribute('aria-hidden', 'true');
+  const interactive = page.locator('.calendar-strip__day:not([inert])');
+  await expect(interactive).toHaveCount(7);
+  await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
+
+  // Eine Woche voraus liegt bereits im (unsichtbaren) Puffer, nicht mehr im
+  // sichtbaren Fenster.
+  const buffered = page.locator('.calendar-strip__day[aria-label="Sa, 25."]');
+  await expect(buffered).toHaveCount(1);
+  await expect(buffered).toHaveJSProperty('inert', true);
+  await expect(buffered).toHaveAttribute('aria-hidden', 'true');
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #805: Monat blaettert jetzt ganze Monate (kehrt #802 um)             */
+/* issue #813: Monat rollt jetzt senkrecht, wochenweise (kehrt #805 um)       */
 /* -------------------------------------------------------------------------- */
 
-test('im Monat blaettert ein Wisch einen ganzen Monat, die Auswahl faellt ggf. aus dem Fenster (issue #805, kehrt #802 um)', async ({
+test('im Monat rollt ein Wisch einzelne Wochen, kein Sprung auf einen ganzen Monat (issue #813, kehrt #805 um)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
-  const title = calendarStrip(page).locator('.calendar-strip__title');
   await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
+  const before = await anchorDay(page);
+  expect(before).toBe('2026-07-13'); // Montag der Woche des 18.07.
 
-  await pageStrip(page, 1);
+  const track = calendarWeeks(page);
+  await track.evaluate((el) => {
+    el.scrollTop += el.clientHeight / 6; // genau eine Wochenzeile
+  });
 
-  await expect(title).toHaveText('August 2026');
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 7));
+});
+
+test('ein weiter Wisch im Monat rollt mehrere Wochen weiter, nicht auf einen Monatssprung begrenzt (issue #813)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const before = await anchorDay(page);
+
+  const track = calendarWeeks(page);
+  await track.evaluate((el) => {
+    el.scrollTop += (el.clientHeight / 6) * 3; // drei Wochenzeilen
+  });
+
+  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 21));
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 });
 
-test('im Monat zeigt ein Wisch zurueck die Auswahl wieder, ein Wisch vor bewegt nur die Vorschau (issue #784 AK1, #805)', async ({
+test('im Monat zeigt ein Wisch zurueck die Auswahl wieder, ein Wisch vor bewegt nur die Vorschau (issue #784 AK1, #813)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
   await pageStrip(page, 1);
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
 
   await pageStrip(page, -1);
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('ein weiter Wisch im Monat blaettert trotzdem nur einen Monat, kein Mehrfachsprung (issue #805)', async ({
+test('der Streifen erfasst im Monat nur senkrechte Gesten, waagerecht bleibt dem Seiten-Scroll ueberlassen (issue #813, ersetzt #764)', async ({
   page,
 }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
   const track = calendarWeeks(page);
-  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(track).toHaveCSS('touch-action', 'pan-y');
 
+  // overflow-x: hidden im Monat — ein waagerechter Scrollversuch bleibt wirkungslos.
   await track.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth;
+    el.scrollLeft = 1000;
   });
-  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
-
-  await expect(title).toHaveText('August 2026');
-});
-
-test('der Streifen erfasst im Monat ebenfalls nur waagerechte Gesten (issue #805, ersetzt #764)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(calendarWeeks(page)).toHaveCSS('touch-action', 'pan-x');
+  await expect(track.evaluate((el) => el.scrollLeft)).resolves.toBe(0);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
@@ -895,6 +920,59 @@ test('Antippen eines Tages im aufgezogenen Monat waehlt ihn, der Monat bleibt of
   await expect(outsideDay).toHaveAttribute('aria-pressed', 'true');
   await expect(outsideDay).toBeVisible();
   await expect(eventCard(page, 'Monatstag-Termin')).toBeVisible();
+});
+
+test('in der Wochenansicht traegt jede Zelle ihr eigenes Wochentagskuerzel, die feste Kopfzeile fehlt dort (issue #813, AK2)', async ({
+  page,
+}) => {
+  await expect(page.locator('.calendar-strip__weekday-header')).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.').locator('.calendar-strip__weekday')).toHaveText('Sa');
+  await expect(dayButton(page, 'So, 19.').locator('.calendar-strip__weekday')).toHaveText('So');
+});
+
+test('im Monat bleibt die Mo-So-Kopfzeile sichtbar und ausserhalb des Scrollers, Spalte fuer Spalte derselbe Wochentag (issue #813, AK4)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const header = page.locator('.calendar-strip__weekday-header');
+  await expect(header).toBeVisible();
+  await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
+  // Kein Kind des Scrollers — rollt also nicht mit dem Streifen mit.
+  await expect(calendarWeeks(page).locator('.calendar-strip__weekday-header')).toHaveCount(0);
+});
+
+test('das Dimmen ausserhalb des Monats folgt dem rollenden Anker-Monat, nicht dem urspruenglichen (issue #813)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const augustMonday = dayButton(page, 'Mo, 3.');
+  await expect(augustMonday).toBeVisible();
+  await expect(augustMonday).toHaveAttribute('data-outside-month', '');
+
+  const track = calendarWeeks(page);
+  await track.evaluate((el) => {
+    el.scrollTop += (el.clientHeight / 6) * 3; // drei Wochen: 13.07. -> 03.08.
+  });
+
+  await expect.poll(() => anchorDay(page)).toBe('2026-08-03');
+  await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
+});
+
+test('Kopf und Umschalter behalten Position und Hoehe beim Wechsel zwischen Woche und Monat (issue #813, AK8)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const header = page.locator('.calendar-view__header');
+  const titleBoxBefore = await title.boundingBox();
+  const headerYBefore = (await header.boundingBox())?.y;
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const titleBoxAfter = await title.boundingBox();
+  const headerYAfter = (await header.boundingBox())?.y;
+  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
+  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
+  expect(headerYAfter).toBe(headerYBefore);
 });
 
 test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Tage ohne Termin keinen (S5 AC3)', async ({
@@ -1158,7 +1236,7 @@ test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt
   // Auswahl (heute) bleibt stehen und faellt damit aus dem Fenster (AK7).
   await nextWeek.click();
   await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
   await expect(title).toHaveText('Juli 2026');
   await expect(today).toBeEnabled();
 
