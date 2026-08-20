@@ -28,12 +28,13 @@ export interface EventAgendaProps {
   /** Today's Berlin date key — decides whether the agenda focuses the next
    *  upcoming item or simply the day's first (issue #597, AK4). */
   today: string;
-  /** Opens the editor on a card tap (issue #554). Hands up the full occurrence
-   *  (not just an id) so the caller can tell a series instance apart from a
-   *  plain event and build the "nur dieser"/"alle folgenden" scope (S6).
-   *  Optional — S1/S2 tests that only check visibility render this component
-   *  without it. */
-  onEditEvent?: (occurrence: Occurrence) => void;
+  /** Opens the read-only detail sheet on a card tap (issue #806 — used to open
+   *  the editor directly, issue #554). Hands up the full occurrence (not just
+   *  an id) so the caller can tell a series instance apart from a plain event
+   *  and build the "nur dieser"/"alle folgenden" scope (S6) once the detail
+   *  sheet hands off into `EventEditor`. Optional — S1/S2 tests that only
+   *  check visibility render this component without it. */
+  onOpenEvent?: (occurrence: Occurrence) => void;
 }
 
 /**
@@ -41,7 +42,7 @@ export interface EventAgendaProps {
  * replaces the 0–24h hour-axis timeline of #553; all-day band issue #555, S4;
  * recurring series issue #557, S6).
  */
-export function EventAgenda({ events, exceptions, selectedDay, today, onEditEvent }: EventAgendaProps) {
+export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEvent }: EventAgendaProps) {
   const now = useNow();
   const listRef = useRef<HTMLUListElement>(null);
   const occurrences = useMemo(
@@ -72,9 +73,10 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
           <ul className="event-agenda__all-day-list">
             {allDayRows.map(({ key, item, status, onAnimationEnd }) => {
               // Subscribed items render as a plain `<div>`, never a `<button>` with
-              // `onEditEvent` wired up — the deep enforcement of ADR-0022 AK2
-              // (calendar-view.tsx's `openEdit` only resolving synced `events` is
-              // the other half). `data-origin` drives the read-only styling below.
+              // `onOpenEvent` wired up — the deep enforcement of ADR-0022 AK2
+              // (calendar-view.tsx's `openEdit`/`openDetail` only resolving synced
+              // `events` is the other half). `data-origin` drives the read-only
+              // styling below.
               const isSubscribed = item.origin === 'subscribed';
               const AllDayTag = isSubscribed ? 'div' : 'button';
               return (
@@ -86,7 +88,7 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
                   onAnimationEnd={onAnimationEnd}
                 >
                   <AllDayTag
-                    {...(isSubscribed ? {} : { type: 'button' as const, onClick: () => onEditEvent?.(item) })}
+                    {...(isSubscribed ? {} : { type: 'button' as const, onClick: () => onOpenEvent?.(item) })}
                     className="event-agenda__all-day-button"
                     data-origin={item.origin}
                     data-continues-before={item.continuesBefore}
@@ -115,7 +117,7 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onEditEven
             onAnimationEnd={onAnimationEnd}
             style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
           >
-            <button type="button" className="event-agenda__item-button" onClick={() => onEditEvent?.(item)}>
+            <button type="button" className="event-agenda__item-button" onClick={() => onOpenEvent?.(item)}>
               <span className="event-agenda__item-header">
                 <span className="event-agenda__item-time">
                   {formatTime(item.startsAt)}–{formatTime(item.endsAt)}

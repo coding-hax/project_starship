@@ -8,6 +8,7 @@ import { OfflineNotice } from '@/ui/offline-notice';
 import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
+import { EventDetail, type EventDetailState } from './event-detail';
 import { EventEditor, type EventEditorState } from './event-editor';
 import type { Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
@@ -61,6 +62,7 @@ export function CalendarView() {
   const selectedDay = selectedDayOverride ?? today;
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
+  const [detailState, setDetailState] = useState<EventDetailState>(null);
   const { deleteEvent } = useDeleteEvent();
 
   // Konsumiert einen `event`-Draft, den der Capture-Router auf /uebersicht
@@ -102,6 +104,20 @@ export function CalendarView() {
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
+  }
+
+  /**
+   * Opens the read-only detail sheet on a card tap (issue #806) — the same
+   * anchor-row lookup as `openEdit` below, so a subscribed occurrence can
+   * never resolve here either (ADR-0022 AK2). `onEdit` on the detail sheet
+   * hands the same occurrence to `openEdit` once the anchor row is already
+   * known to exist.
+   */
+  function openDetail(occurrence: Occurrence) {
+    const event = events?.find((candidate) => candidate.id === occurrence.eventId);
+    if (event) {
+      setDetailState({ event, occurrence });
+    }
   }
 
   /**
@@ -161,7 +177,7 @@ export function CalendarView() {
           exceptions={exceptions ?? []}
           selectedDay={selectedDay}
           today={today}
-          onEditEvent={openEdit}
+          onOpenEvent={openDetail}
         />
       )}
       <Fab label={CREATE_LABEL} onClick={openCreate} />
@@ -174,6 +190,15 @@ export function CalendarView() {
           onDelete={deleteEvent}
         />
       )}
+      <EventDetail
+        state={detailState}
+        onClose={() => setDetailState(null)}
+        onEdit={() => {
+          const occurrence = detailState?.occurrence;
+          setDetailState(null);
+          if (occurrence) openEdit(occurrence);
+        }}
+      />
     </div>
   );
 }

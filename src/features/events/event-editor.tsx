@@ -516,7 +516,10 @@ export function EventEditor({
         open={open}
         onClose={onClose}
         label={label}
-        initialFocusRef={titleRef}
+        // Only autofocuses the title in `create` mode — `edit` now opens from
+        // the read-only detail sheet (issue #806), and jumping straight into
+        // the title field would still pop the keyboard on every edit start.
+        initialFocusRef={mode === 'create' ? titleRef : undefined}
         header={{ actionLabel, formId: FORM_ID }}
       >
         <form id={FORM_ID} className="event-editor" onSubmit={handleSubmit}>

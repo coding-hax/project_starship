@@ -521,7 +521,9 @@ test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
       }),
     );
     await page.goto('/kalender');
+    // issue #806: der Kartentipp öffnet erst das schreibgeschützte Detail-Sheet — "Bearbeiten" führt weiter zum Editor.
     await page.locator('.event-agenda__item').filter({ hasText: 'Kopfzeile-Test-710' }).click();
+    await page.getByRole('button', { name: 'Bearbeiten' }).click();
     const eventDialog = page.getByRole('dialog', { name: 'Termin bearbeiten' });
     await expect(eventDialog.getByRole('button', { name: 'Sichern' })).toBeVisible();
     await expect(eventDialog.getByRole('button', { name: 'Speichern' })).toHaveCount(0);

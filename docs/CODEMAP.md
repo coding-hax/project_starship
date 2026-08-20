@@ -149,14 +149,14 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `use-ics-subscriptions.ts` — Wetter-Muster (ADR-0009) für `.ics`-Abos: `useIcsSubscriptionList`/`useSubscribedEvents`
   (Live-Query), `refreshStaleSubscriptions`/`useIcsSubscriptionsRefresh` (Fetch nur bei Staleness, Fehler
   rühren nur `lastError` an)
-- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`, Header mit `<CalendarStrip/>`,
-  darunter `<EventAgenda/>`, FAB + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events`
+- `calendar-view.tsx` / `.css` — `/kalender`: hält `selectedDay`+`expanded`+`editorState`+`detailState`, Header mit `<CalendarStrip/>`,
+  darunter `<EventAgenda/>`, FAB + `<EventDetail/>` + `<EventEditor/>` + Lösch-Undo-`<Toast/>`; merged `useSubscribedEvents()` nur für die Anzeige dazu — `openEdit` sucht weiter nur in `events`
 - `calendar-strip.tsx` / `.css` — Wochenband Mo–So, per Umschalter zum Monat auf, Wisch blättert Woche/Monat, Vor/Zurück-Tag, „Heute"-Rücksprung, Punkte je Tag
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig, issue #555) über einer chronologischen
   Agenda-Liste (issue #597, ersetzt die Stundenachse 0–24h/Jetzt-Linie von #553): Terminkarten (antippbar,
-  öffnet den Editor) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände;
-  ein All-Day-Item mit `origin:'subscribed'` rendert als nicht-interaktives `<div data-origin="subscribed">`, kein Editor-Zugriff (issue #560)
-- `event-editor.tsx` / `.css` — Bottom-Sheet für Anlegen+Bearbeiten, schreibt über `mutate()`; bei einer Serien-Instanz öffnet Speichern/Löschen erst `<RecurrenceScopeSheet/>` (S6)
+  öffnet das Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten anstehenden Termin, spärlich/leer-Zustände;
+  ein All-Day-Item mit `origin:'subscribed'` rendert als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff (issue #560)
+- `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (Anlegen+Bearbeiten, `mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 - `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
