@@ -8,15 +8,12 @@ import {
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
-  DRAG_MAX_DAYS,
-  DRAG_MAX_WEEKS,
-  DRAG_TAP_TOLERANCE_PX,
-  dragDayDelta,
-  dragWeekDelta,
+  dateKeyDiff,
   formatCountdown,
   formatMonthTitle,
   monthDaysFor,
   nextInAgenda,
+  pageAnchors,
   upcomingEventsToday,
   weekDaysFor,
 } from './event-time';
@@ -192,66 +189,49 @@ describe('addDays', () => {
   });
 });
 
-describe('dragDayDelta', () => {
-  it('is 0 at and below the tap tolerance, in both directions', () => {
-    expect(dragDayDelta(0)).toBe(0);
-    expect(dragDayDelta(DRAG_TAP_TOLERANCE_PX)).toBe(0);
-    expect(dragDayDelta(-DRAG_TAP_TOLERANCE_PX)).toBe(0);
+describe('pageAnchors', () => {
+  it('week view: steps a Mon-Sun week either side, the anchor itself stays the middle entry', () => {
+    expect(pageAnchors('2026-07-15', false)).toEqual(['2026-07-08', '2026-07-15', '2026-07-22']);
   });
 
-  it('a small drag past the tolerance steps a single day', () => {
-    expect(dragDayDelta(50)).toBe(1);
-    expect(dragDayDelta(-50)).toBe(-1);
+  it('week view: neighbours are exactly 7 days apart, not partial weeks', () => {
+    const [prev, current, next] = pageAnchors('2026-07-15', false);
+    expect(dateKeyDiff(prev, current)).toBe(7);
+    expect(dateKeyDiff(current, next)).toBe(7);
   });
 
-  it('accelerates: a bigger drag covers disproportionately more days', () => {
-    const near = dragDayDelta(150);
-    const far = dragDayDelta(300);
-    expect(near).toBeGreaterThan(1);
-    // More than double the distance covers more than double the days —
-    // the curve accelerates rather than staying linear (issue #764).
-    expect(far).toBeGreaterThan(near * 2);
+  it('week view: crosses a month boundary on both sides', () => {
+    expect(pageAnchors('2026-08-02', false)).toEqual(['2026-07-26', '2026-08-02', '2026-08-09']);
   });
 
-  it('caps at DRAG_MAX_DAYS however far the drag goes', () => {
-    expect(dragDayDelta(330)).toBe(DRAG_MAX_DAYS);
-    expect(dragDayDelta(1000)).toBe(DRAG_MAX_DAYS);
-    expect(dragDayDelta(-1000)).toBe(-DRAG_MAX_DAYS);
-  });
-});
-
-describe('dragWeekDelta', () => {
-  it('is 0 at and below the tap tolerance, in both directions', () => {
-    expect(dragWeekDelta(0)).toBe(0);
-    expect(dragWeekDelta(DRAG_TAP_TOLERANCE_PX)).toBe(0);
-    expect(dragWeekDelta(-DRAG_TAP_TOLERANCE_PX)).toBe(0);
+  it('week view: crosses a year boundary on both sides', () => {
+    expect(pageAnchors('2027-01-02', false)).toEqual(['2026-12-26', '2027-01-02', '2027-01-09']);
   });
 
-  it('a day-sized drag stays at 0 weeks — a month-view drag pages weeks, not days (issue #802)', () => {
-    // 50px is exactly the distance that steps a single day in the week view
-    // (see dragDayDelta above) — in the month view the same distance must
-    // not move the preview at all.
-    expect(dragWeekDelta(50)).toBe(0);
-    expect(dragWeekDelta(-50)).toBe(0);
+  it('month view: steps a whole calendar month either side, same day-of-month', () => {
+    expect(pageAnchors('2026-07-15', true)).toEqual(['2026-06-15', '2026-07-15', '2026-08-15']);
   });
 
-  it('a week-sized drag steps a single week', () => {
-    expect(dragWeekDelta(100)).toBe(1);
-    expect(dragWeekDelta(-100)).toBe(-1);
+  it('month view: the anchor itself always stays the middle entry, unchanged', () => {
+    const [, current] = pageAnchors('2026-03-09', true);
+    expect(current).toBe('2026-03-09');
   });
 
-  it('accelerates: a bigger drag covers disproportionately more weeks', () => {
-    const near = dragWeekDelta(140);
-    const far = dragWeekDelta(260);
-    expect(near).toBeGreaterThanOrEqual(1);
-    // More than double the distance covers more than double the weeks —
-    // the curve accelerates rather than staying linear (issue #802).
-    expect(far).toBeGreaterThan(near * 2);
+  it('month view: clamps the next neighbour to the shorter month (31 Jan has no 31 Feb)', () => {
+    expect(pageAnchors('2026-01-31', true)).toEqual(['2025-12-31', '2026-01-31', '2026-02-28']);
   });
 
-  it('caps at DRAG_MAX_WEEKS however far the drag goes', () => {
-    expect(dragWeekDelta(1000)).toBe(DRAG_MAX_WEEKS);
-    expect(dragWeekDelta(-1000)).toBe(-DRAG_MAX_WEEKS);
+  it('month view: clamps the previous neighbour the same way (31 Mar has no 31 Feb)', () => {
+    expect(pageAnchors('2026-03-31', true)).toEqual(['2026-02-28', '2026-03-31', '2026-04-30']);
+  });
+
+  it('month view: lands on 29 February in a leap year instead of clamping to the 28th', () => {
+    const [prev] = pageAnchors('2024-03-29', true);
+    expect(prev).toBe('2024-02-29');
+  });
+
+  it('month view: crosses a year boundary on both sides', () => {
+    expect(pageAnchors('2027-01-05', true)).toEqual(['2026-12-05', '2027-01-05', '2027-02-05']);
   });
 });
 

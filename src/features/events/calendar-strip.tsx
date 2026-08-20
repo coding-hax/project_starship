@@ -1,24 +1,16 @@
 'use client';
 
-import {
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-} from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SegmentedControl } from '@/ui/segmented-control';
 import {
   addDays,
-  addMonthsClamped,
   categoriesForDay,
   categoryEdgeVar,
-  DRAG_TAP_TOLERANCE_PX,
-  dragDayDelta,
-  dragWeekDelta,
   formatMonthTitle,
   monthDaysFor,
+  pageAnchors,
+  weekDaysFor,
 } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
@@ -32,9 +24,6 @@ const VIEW_OPTIONS: { value: StripView; label: string }[] = [
 ];
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-
-/** Past this delta on either axis, the gesture locks to whichever axis moved further (issue #629). */
-const AXIS_LOCK_PX = 12;
 
 export interface CalendarStripProps {
   selectedDay: string;
@@ -58,19 +47,35 @@ function chunkIntoWeeks(days: string[]): string[][] {
   return weeks;
 }
 
+/** Explicit `behavior: 'smooth'` ignores CSS `scroll-behavior` (see nav.tsx) — so a
+ *  JS-driven scroll has to check both motion sources itself, same as there. */
+function prefersReducedMotion(): boolean {
+  return (
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    document.documentElement.getAttribute('data-reduce-motion') === 'true'
+  );
+}
+
 /**
  * Week strip that pulls open into a full month (issue #556, S5 of #473 — a
- * fixed Mon–Sun strip in S2/#553, then called "week-strip"). Every week of the
- * month is always rendered; `expanded` only toggles which rows are visually
- * revealed (CSS `grid-template-rows`, calendar-strip.css) — never a remount,
- * so the dots per day (`categoriesForDay`) are computed once regardless of state.
+ * fixed Mon–Sun strip in S2/#553, then called "week-strip").
+ *
+ * A native horizontal scroll-snap carousel (issue #805, Ansatz C — replaces
+ * the pointer-driven scrub of #629/#662/#764/#802): a 3-page window
+ * `[previous, current, next]` around `anchorDay`, one Mon–Sun week per page in
+ * week view, one full month grid per page in month view. Swiping is entirely
+ * native — the browser owns the drag, the momentum and the snap, this
+ * component only reacts once a page has settled (`scrollend`, or a debounced
+ * `scroll` fallback where that event doesn't exist yet). On settle it moves
+ * `anchorDay` to the page that's now centred and re-centres the track
+ * *without* animation — the classic 3-slide infinite-carousel trick, so the
+ * window always has a page to glide to on the next swipe in either direction.
  *
  * `anchorDay` (issue #784) is a second, purely local state: it drives what
  * the grid/title show, `selectedDay` (the prop) drives only `aria-pressed`
- * and — one level up in calendar-view.tsx — the agenda below. Dragging and
- * paging move only the anchor; tapping a day, the day-step arrows and "Heute"
- * move both (`selectDay` below). Before #784 there was only one state, so a
- * drag paged the agenda along with it — exactly the bug this splits apart.
+ * and — one level up in calendar-view.tsx — the agenda below. Paging moves
+ * only the anchor; tapping a day, the day-step arrows and "Heute" move both
+ * (`selectDay` below).
  */
 export function CalendarStrip({
   selectedDay,
@@ -82,36 +87,90 @@ export function CalendarStrip({
   onExpandChange,
 }: CalendarStripProps) {
   const [anchorDay, setAnchorDay] = useState(selectedDay);
-  const days = useMemo(() => monthDaysFor(anchorDay), [anchorDay]);
-  const weeks = useMemo(() => chunkIntoWeeks(days), [days]);
-  /**
-   * One `expandForDay` pass per rendered day (35 or 42) — the same call the
-   * timeline makes for the selected day, so the dots agree with it by
-   * construction instead of by a second, parallel rule (issue #612). Memoised
-   * because every row is rendered whether or not the month is expanded.
-   */
-  const dotsByDay = useMemo(
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  /** Three pages, each carrying the anchor it was built from and the week
+   *  rows to render — `weeks` is a single row in week view, five or six in
+   *  month view (`monthDaysFor` pads to full Mon–Sun weeks either way). */
+  const pages = useMemo(
     () =>
-      new Map(
-        days.map((day) => [day, categoriesForDay(expandForDay(events, exceptions, day), day)]),
-      ),
-    [days, events, exceptions],
+      pageAnchors(anchorDay, expanded).map((anchor) => ({
+        anchor,
+        weeks: chunkIntoWeeks(expanded ? monthDaysFor(anchor) : weekDaysFor(anchor)),
+      })),
+    [anchorDay, expanded],
   );
-  const anchorMonth = anchorDay.slice(0, 7);
-  // The one row the collapsed (week) view keeps expanded — always found,
-  // `days`/`weeks` are themselves built from `anchorDay`.
-  const anchorWeek = useMemo(() => weeks.find((week) => week.includes(anchorDay)) ?? [], [weeks, anchorDay]);
+  const centerDays = useMemo(() => pages[1].weeks.flat(), [pages]);
+  /**
+   * One `expandForDay` pass per day across all three pages — the same call
+   * the timeline makes for the selected day, so the dots agree with it by
+   * construction instead of by a second, parallel rule (issue #612). A day
+   * can appear in two neighbouring pages near a month boundary (once as its
+   * own page's day, once dimmed as a neighbour-month day in the other) — the
+   * map just computes the same dots twice for it, harmlessly.
+   */
+  const dotsByDay = useMemo(() => {
+    const allDays = pages.flatMap((page) => page.weeks.flat());
+    return new Map(
+      allDays.map((day) => [day, categoriesForDay(expandForDay(events, exceptions, day), day)]),
+    );
+  }, [pages, events, exceptions]);
   // "Heute" is inactive only once both states already agree with today —
   // otherwise the chip stays the only way back (issue #784, AK6).
-  const todayVisible = expanded ? days.includes(today) : anchorWeek.includes(today);
+  const todayVisible = centerDays.includes(today);
   const todayInactive = selectedDay === today && todayVisible;
-  const startXRef = useRef<number | null>(null);
-  const startYRef = useRef<number | null>(null);
-  const lockedAxisRef = useRef<'x' | 'y' | null>(null);
-  const movedRef = useRef(false);
-  const scrubStartAnchorRef = useRef<string | null>(null);
 
-  /** Sets selection *and* re-anchors the view on it — tap, day-step arrows and "Heute" all funnel through here (issue #784, AK4/AK6/AK7). */
+  /** Re-centres the track on the current page, instantly — runs after every
+   *  window rebuild (a settled swipe, a button page, a tap/"Heute" jump, or
+   *  the Woche/Monat switch), always before paint so the reset is invisible. */
+  useLayoutEffect(() => {
+    const track = scrollRef.current;
+    if (!track) return;
+    track.scrollLeft = track.clientWidth;
+  }, [pages]);
+
+  /** Settles a swipe once the browser has finished snapping: whichever page
+   *  the track landed on becomes the new anchor (the centre page settling
+   *  back onto itself is a no-op). `scrollend` is the direct signal and fires
+   *  promptly wherever it's supported; the debounced `scroll` listener is a
+   *  fallback for browsers without it yet (iOS Safari) — momentum scrolling
+   *  fires `scroll` continuously, so waiting for it to go quiet is the only
+   *  way to tell the gesture actually finished there. Both run unconditionally
+   *  rather than feature-detecting `scrollend` (its type is unconditionally
+   *  present on every DOM element, so an `in` check can't tell browsers apart
+   *  at compile time) — `settle` is idempotent, so a redundant second call
+   *  costs nothing. */
+  useEffect(() => {
+    const track = scrollRef.current;
+    if (!track) return;
+
+    function settle() {
+      const current = scrollRef.current;
+      if (!current) return;
+      const width = current.clientWidth;
+      if (width === 0) return;
+      const index = Math.round(current.scrollLeft / width);
+      if (index === 1) return;
+      const anchor = pages[index]?.anchor;
+      if (anchor) setAnchorDay(anchor);
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function onScroll() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(settle, 120);
+    }
+
+    track.addEventListener('scrollend', settle);
+    track.addEventListener('scroll', onScroll);
+    return () => {
+      track.removeEventListener('scrollend', settle);
+      track.removeEventListener('scroll', onScroll);
+      if (timer) clearTimeout(timer);
+    };
+  }, [pages]);
+
+  /** Sets selection *and* re-anchors the view on it — tap, day-step arrows and "Heute" all funnel through here (issue #784, AK4/AK6/AK7). Jumps straight there, no animation, however far the target is. */
   function selectDay(day: string) {
     onSelectDay(day);
     setAnchorDay(day);
@@ -119,93 +178,18 @@ export function CalendarStrip({
 
   /**
    * Pages a week in week view, a month in month view — the desktop `‹`/`›`
-   * buttons' own source (issue #630, AK9). Moves only the anchor, leaving
-   * the selection (and with it the agenda) untouched — the same split the
-   * drag gesture below uses, so button and gesture never disagree about
-   * what paging means (issue #784, AK7, replacing the AK9 assumption that
-   * these buttons drove the selection).
+   * buttons' own source (issue #630, AK9). Moves only the anchor, leaving the
+   * selection untouched (issue #784, AK7). Unlike `selectDay`'s instant jump,
+   * this glides to the already-rendered neighbour page — the same settle
+   * path a swipe takes picks the glide up once it lands and re-anchors.
    */
   function pageBy(delta: 1 | -1) {
-    setAnchorDay(expanded ? addMonthsClamped(anchorDay, delta) : addDays(anchorDay, delta * 7));
-  }
-
-  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0) return;
-    startXRef.current = event.clientX;
-    startYRef.current = event.clientY;
-    lockedAxisRef.current = null;
-    movedRef.current = false;
-    scrubStartAnchorRef.current = anchorDay;
-  }
-
-  /**
-   * Live-scrub (issue #764): the view anchor follows the pointer during the
-   * drag itself, no waiting for release — the selection is left alone
-   * (issue #784, AK1/AK2, the bug this ticket fixes: a drag used to move
-   * the selection along with the view). Week view scrubs on the horizontal
-   * axis in day steps, month view on the vertical one in whole-week steps
-   * (issue #802 — dragging through a month grid pages by week, not by day) —
-   * the other axis only locks (so a diagonal drag can't also page) and never
-   * moves the anchor, same as the old axis-lock-swallows-the-other-axis rule
-   * (#629/#662 AK-A). The day offset is always taken from the day the
-   * gesture *started* on (`scrubStartAnchorRef`), not the live-updated
-   * `anchorDay`, so the mapping from drag distance to day count stays
-   * absolute instead of compounding with every move event.
-   */
-  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (startXRef.current === null || startYRef.current === null || scrubStartAnchorRef.current === null) {
-      return;
-    }
-    const dx = event.clientX - startXRef.current;
-    const dy = event.clientY - startYRef.current;
-    if (lockedAxisRef.current === null && Math.max(Math.abs(dx), Math.abs(dy)) > AXIS_LOCK_PX) {
-      lockedAxisRef.current = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-    }
-    const axis = lockedAxisRef.current;
-    if (axis === null) return;
-    const guidedDelta = axis === 'x' ? dx : dy;
-    if (Math.abs(guidedDelta) > DRAG_TAP_TOLERANCE_PX) {
-      movedRef.current = true;
-    }
-    const scrubAxis = expanded ? 'y' : 'x';
-    if (axis !== scrubAxis) return;
-    // Left/up (negative delta) advances, right/down goes back — same
-    // direction as the old swipe-left-pages-forward rule, now continuous.
-    // Month view steps whole weeks (issue #802), week view steps single days.
-    const dayOffset = expanded ? -dragWeekDelta(guidedDelta) * 7 : -dragDayDelta(guidedDelta);
-    setAnchorDay(addDays(scrubStartAnchorRef.current, dayOffset));
-  }
-
-  /** Release just ends the gesture — the last live-scrubbed anchor already is the view, no snap-back (issue #764, AK3). */
-  function endGesture() {
-    startXRef.current = null;
-    startYRef.current = null;
-    lockedAxisRef.current = null;
-    scrubStartAnchorRef.current = null;
-  }
-
-  function cancelGesture() {
-    startXRef.current = null;
-    startYRef.current = null;
-    lockedAxisRef.current = null;
-    movedRef.current = false;
-    scrubStartAnchorRef.current = null;
-  }
-
-  /**
-   * Swallows the click a genuine drag would otherwise still fire on whatever
-   * day button now sits under the pointer at release — with live-scrub
-   * (issue #764) that's not necessarily the button the gesture started on,
-   * since the grid re-renders around the pointer as the anchor moves. A
-   * tap never sets `movedRef` (it stays under `DRAG_TAP_TOLERANCE_PX`), so
-   * `selectDay` still fires for a real tap.
-   */
-  function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
-    if (movedRef.current) {
-      event.preventDefault();
-      event.stopPropagation();
-      movedRef.current = false;
-    }
+    const track = scrollRef.current;
+    if (!track) return;
+    track.scrollTo({
+      left: (1 + delta) * track.clientWidth,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
   }
 
   return (
@@ -274,67 +258,63 @@ export function CalendarStrip({
           <li key={label}>{label}</li>
         ))}
       </ul>
-      <div
-        className="calendar-strip__weeks"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={endGesture}
-        onPointerCancel={cancelGesture}
-        onClickCapture={handleClickCapture}
-      >
-        {weeks.map((week) => {
-          const isAnchorWeek = week === anchorWeek;
-          // Only a day inside the currently visible row can ever read as
-          // selected — outside it (collapsed week view showing a different
-          // week, or a drag that has carried the anchor away entirely) the
-          // selection is a clean "nothing pressed" state, not a stale mark
-          // on a hidden button (issue #784, AK5).
-          const isRowVisible = expanded || isAnchorWeek;
+      <div className="calendar-strip__carousel" ref={scrollRef}>
+        {pages.map((page, index) => {
+          const isCentered = index === 1;
           return (
             <div
-              key={week[0]}
-              className="calendar-strip__week-row"
-              data-selected={isAnchorWeek ? '' : undefined}
-              inert={!expanded && !isAnchorWeek}
+              key={page.anchor}
+              className="calendar-strip__page"
+              // Off-screen pages of the carousel (issue #805) — neither
+              // focusable nor announced, replaces the old per-row `inert`
+              // the accordion trick used.
+              inert={!isCentered}
+              aria-hidden={isCentered ? undefined : true}
             >
-              <ul className="calendar-strip__days">
-                {week.map((day, index) => {
-                  const isSelected = isRowVisible && day === selectedDay;
-                  const isOutsideMonth = day.slice(0, 7) !== anchorMonth;
-                  const dayNumber = Number(day.slice(-2));
-                  const dots = dotsByDay.get(day) ?? [];
-                  return (
-                    <li key={day}>
-                      <button
-                        type="button"
-                        className={
-                          isSelected
-                            ? 'calendar-strip__day calendar-strip__day--selected'
-                            : 'calendar-strip__day'
-                        }
-                        data-today={day === today ? '' : undefined}
-                        data-outside-month={isOutsideMonth ? '' : undefined}
-                        aria-pressed={isSelected}
-                        aria-label={`${WEEKDAY_LABELS[index]}, ${dayNumber}.`}
-                        onClick={() => selectDay(day)}
-                      >
-                        <span aria-hidden="true">{dayNumber}</span>
-                        {dots.length > 0 && (
-                          <span className="calendar-strip__dots" aria-hidden="true">
-                            {dots.map((category) => (
-                              <span
-                                key={category ?? 'none'}
-                                className="calendar-strip__dot"
-                                style={{ background: categoryEdgeVar(category) }}
-                              />
-                            ))}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              {page.weeks.map((week) => (
+                <ul className="calendar-strip__days" key={week[0]}>
+                  {week.map((day, dayIndex) => {
+                    // Only the centred page can ever read as selected — a
+                    // day of the same date-of-month in a neighbour page (or
+                    // the previous/next carousel page entirely) is a clean
+                    // "nothing pressed" state, not a stale mark (issue #784, AK5).
+                    const isSelected = isCentered && day === selectedDay;
+                    const isOutsideMonth = day.slice(0, 7) !== page.anchor.slice(0, 7);
+                    const dayNumber = Number(day.slice(-2));
+                    const dots = dotsByDay.get(day) ?? [];
+                    return (
+                      <li key={day}>
+                        <button
+                          type="button"
+                          className={
+                            isSelected
+                              ? 'calendar-strip__day calendar-strip__day--selected'
+                              : 'calendar-strip__day'
+                          }
+                          data-today={day === today ? '' : undefined}
+                          data-outside-month={isOutsideMonth ? '' : undefined}
+                          aria-pressed={isSelected}
+                          aria-label={`${WEEKDAY_LABELS[dayIndex]}, ${dayNumber}.`}
+                          onClick={() => selectDay(day)}
+                        >
+                          <span aria-hidden="true">{dayNumber}</span>
+                          {dots.length > 0 && (
+                            <span className="calendar-strip__dots" aria-hidden="true">
+                              {dots.map((category) => (
+                                <span
+                                  key={category ?? 'none'}
+                                  className="calendar-strip__dot"
+                                  style={{ background: categoryEdgeVar(category) }}
+                                />
+                              ))}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ))}
             </div>
           );
         })}

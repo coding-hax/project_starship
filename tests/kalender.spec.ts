@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { DRAG_MAX_DAYS, DRAG_MAX_WEEKS, dragDayDelta, dragWeekDelta } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -47,12 +46,21 @@ function calendarStrip(page: Page) {
   return page.locator('.calendar-strip');
 }
 
+/** The carousel track calendar-strip.tsx's native scroll-snap paging lives on (issue #805). */
 function calendarWeeks(page: Page) {
-  return page.locator('.calendar-strip__weeks');
+  return page.locator('.calendar-strip__carousel');
 }
 
+/**
+ * A day button in the *centred* carousel page — scoping to `:not([inert])`
+ * matters for month view specifically: the previous/next page can carry a
+ * day of the same weekday/day-of-month as the centred page near a month
+ * boundary (that date shown once dimmed as a neighbour, once as the other
+ * page's own day), which would otherwise make this locator ambiguous
+ * (issue #805).
+ */
 function dayButton(page: Page, ariaLabel: string) {
-  return page.locator(`button[aria-label="${ariaLabel}"]`);
+  return page.locator(`.calendar-strip__page:not([inert]) button[aria-label="${ariaLabel}"]`);
 }
 
 function dayDots(page: Page, ariaLabel: string) {
@@ -60,106 +68,46 @@ function dayDots(page: Page, ariaLabel: string) {
 }
 
 /**
- * Starts a drag on the same Pointer Events CalendarStrip listens to (issue
- * #556) and leaves it open mid-gesture, so a test can read the live-scrubbed
- * selection before releasing (issue #764's live-follow). Returns a
- * `release()` that finishes the gesture at the same point it's already at —
- * proves there's no snap-back, since nothing moves between the last read and
- * the release.
+ * Pages the calendar-strip carousel exactly one page — the settle-driven
+ * equivalent of a full native swipe-and-release (issue #805, replaces the old
+ * pointer-scrub `swipeHorizontal`/`swipeVertical`/`beginDrag`). `dir` `1`
+ * advances (a left swipe: next week/month), `-1` goes back (a right swipe).
+ *
+ * Scrolling the track directly, rather than dispatching touch events, is
+ * deliberate: the `mobile` project (playwright.config.ts) uses `Desktop
+ * Chrome` with a narrow viewport, not a real touch device profile, so it has
+ * no `hasTouch` — `page.touchscreen` isn't usable here, and a JS-dispatched
+ * `TouchEvent` (tasks.spec.ts's `touchMoveWasBlocked` pattern) never reaches
+ * the compositor, so it can't drive real scroll-snap physics either. Setting
+ * `scrollLeft` is what's actually left to exercise the settle handler
+ * end-to-end; the browser's own snap-and-momentum behaviour is native
+ * platform code, not this component's to test.
  */
-async function beginDrag(locator: Locator, axis: 'x' | 'y', delta: number): Promise<() => Promise<void>> {
-  const box = await locator.boundingBox();
-  if (!box) throw new Error('beginDrag: target has no bounding box');
-  const startX = axis === 'x' ? box.x + 10 : box.x + box.width / 2;
-  const startY = axis === 'y' ? box.y + 10 : box.y + box.height / 2;
-  const endX = axis === 'x' ? startX + delta : startX;
-  const endY = axis === 'y' ? startY + delta : startY;
-
-  await locator.dispatchEvent('pointerdown', {
-    pointerId: 1,
-    clientX: startX,
-    clientY: startY,
-    button: 0,
-    bubbles: true,
-  });
-  await locator.dispatchEvent('pointermove', {
-    pointerId: 1,
-    clientX: endX,
-    clientY: endY,
-    bubbles: true,
-  });
-
-  return () =>
-    locator.dispatchEvent('pointerup', {
-      pointerId: 1,
-      clientX: endX,
-      clientY: endY,
-      bubbles: true,
-    });
+async function pageStrip(page: Page, dir: 1 | -1): Promise<void> {
+  const track = calendarWeeks(page);
+  await track.evaluate((el, dir) => {
+    el.scrollLeft += dir * el.clientWidth;
+  }, dir);
+  // The settle handler re-centres the track once the new anchor lands —
+  // waiting for `scrollLeft` back at the centre is proof the page actually
+  // turned instead of stopping half-way.
+  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
 }
 
-/** A full drag-and-release in one go — same axis/delta contract as `beginDrag`. */
-async function drag(locator: Locator, axis: 'x' | 'y', delta: number): Promise<void> {
-  const release = await beginDrag(locator, axis, delta);
-  await release();
-}
-
-/**
- * Horizontal drag (issue #629) — negative `deltaX` drags left, which
- * advances the live-scrubbed selection (issue #764); has no effect in month
- * view, where the strip scrubs vertically instead.
- */
-async function swipeHorizontal(locator: Locator, deltaX: number): Promise<void> {
-  await drag(locator, 'x', deltaX);
-}
-
-/**
- * Vertical drag — negative `deltaY` drags up, which advances the
- * live-scrubbed selection in month view (issue #764); has no effect in week
- * view, where the strip scrubs horizontally instead.
- */
-async function swipeVertical(locator: Locator, deltaY: number): Promise<void> {
-  await drag(locator, 'y', deltaY);
-}
-
-/**
- * Smallest drag magnitude that maps to exactly `days` under the strip's
- * live-scrub curve (`dragDayDelta`, issue #764) — keeps tests independent of
- * the curve's exact constants instead of hard-coding a calibrated px value.
- */
-function pxForDays(days: number): number {
-  for (let px = 0; px <= 2000; px += 1) {
-    if (dragDayDelta(px) === days) return px;
-  }
-  throw new Error(`pxForDays: no px maps to ${days} days`);
-}
-
-/**
- * Smallest drag magnitude that maps to exactly `weeks` under the month
- * view's live-scrub curve (`dragWeekDelta`, issue #802) — same idea as
- * `pxForDays`, but for the month view's week-stepped vertical drag.
- */
-function pxForWeeks(weeks: number): number {
-  for (let px = 0; px <= 2000; px += 1) {
-    if (dragWeekDelta(px) === weeks) return px;
-  }
-  throw new Error(`pxForWeeks: no px maps to ${weeks} weeks`);
-}
-
-/** Pages a whole week forward in one drag, calibrated to the live-scrub curve (issue #764 — a fixed swipe threshold pre-#764). */
-async function nextWeek(page: Page, times = 1): Promise<void> {
+/** Pages the carousel forward `times` times in a row (issue #628 AK1's month-boundary test). */
+async function pageStripForward(page: Page, times = 1): Promise<void> {
   for (let i = 0; i < times; i += 1) {
-    await swipeHorizontal(calendarWeeks(page), -pxForDays(7));
+    await pageStrip(page, 1);
   }
 }
 
 /**
  * Taps a day button in the strip, pulling the month open first via the
- * Woche/Monat-Umschalter if that day's week row is collapsed (`visibility:
- * hidden`, `isVisible()` reports that) — the tap itself collapses the strip
- * back (issue #629, replaces stepping there via the "Nächster/Vorheriger
- * Tag" buttons). Opening used to go through a vertical swipe; that gesture
- * no longer does anything (issue #662, AK-A), so this uses the switcher.
+ * Woche/Monat-Umschalter if that day isn't in the week view's centred
+ * carousel page (`dayButton`'s `:not([inert])` scope reports it as not
+ * visible then, issue #805) — the tap itself collapses the strip back
+ * (issue #629, replaces stepping there via the "Nächster/Vorheriger Tag"
+ * buttons).
  */
 async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
   const button = dayButton(page, ariaLabel);
@@ -712,64 +660,180 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
 });
 
 /* -------------------------------------------------------------------------- */
-/* #629 (S2) + #764: Ziehen statt Wisch — dynamisch, mit Achsensperre         */
+/* issue #805 (Ansatz C): Galerie-Paging statt Scrub — natives scroll-snap    */
+/* ersetzt #629/#662/#764/#802's Pointer-Scrub                                */
 /* -------------------------------------------------------------------------- */
 
-test('ein kleiner Links-Wisch verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK1)', async ({
+test('Wischen bewegt nur die Vorschau — hin und zurueck zeigt die Auswahl unveraendert (issue #784 AK1, #805)', async ({
   page,
 }) => {
   await seedEvent(page, {
-    title: 'Morgen-Termin',
+    title: 'Heute-Termin',
     allDay: false,
-    startsAt: `${TOMORROW}T09:00:00.000Z`,
-    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
     startDate: null,
     endDate: null,
     category: null,
   });
+  await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 
-  await swipeHorizontal(calendarWeeks(page), -pxForDays(1));
+  await pageStrip(page, 1);
+  // Die Vorschau ist eine Woche weiter, die Auswahl (18.) faellt aus dem
+  // Fenster — sauberer Zustand, kein Tag gedrueckt (AK5). Die Agenda darunter
+  // bleibt unberuehrt: ein Wisch bewegt nie die Auswahl selbst.
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
+
+  await pageStrip(page, -1);
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
-  await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+  await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
 });
 
-test('ein kleiner Rechts-Wisch verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK1)', async ({ page }) => {
-  await swipeHorizontal(calendarWeeks(page), pxForDays(1));
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'false');
+test('ein weiter Wisch blaettert trotzdem nur eine Woche, kein Mehrfachsprung (issue #784 AK1/AK5, #805)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const track = calendarWeeks(page);
+
+  // So weit wie der Track ueberhaupt reicht — das Fenster hat nur drei
+  // Seiten, ein Sprung kann strukturell nie mehr als eine ueberspringen.
+  await track.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
+
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(title).toHaveText('Juli 2026');
 });
 
-test('ein weiter Links-Wisch verschiebt die Vorschau in einem Zug bis zu 20 Tage, die Auswahl bleibt (issue #784, AK1/AK5)', async ({
+test('zwei aufeinanderfolgende Wische blaettern zwei Wochen weiter, nicht nur eine (issue #805)', async ({
   page,
 }) => {
   const title = calendarStrip(page).locator('.calendar-strip__title');
 
-  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
+  await pageStrip(page, 1);
+  await pageStrip(page, 1);
 
+  // 18.07. + 14 Tage = 01.08. — der zweite Wisch darf nicht wirkungslos
+  // bleiben, nur weil das Fenster zwischendurch unsichtbar neu zentriert wurde.
+  await expect(dayButton(page, 'Sa, 1.')).toBeVisible();
   await expect(title).toHaveText('August 2026');
-  await expect(dayButton(page, 'Fr, 7.')).toBeVisible();
-  // Die Auswahl (Sa 18.) ist so weit aus dem Fenster gewandert, dass ihr
-  // Tages-Knopf gar nicht mehr im Raster steht (AK5).
-  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
 });
 
-test('waehrend des Ziehens folgt nur die Vorschau dem Finger, die Auswahl bleibt in Ruhe (issue #784, AK1)', async ({
+test('der Streifen erfasst nur waagerechte Gesten, senkrecht bleibt dem Seiten-Scroll ueberlassen (issue #805, ersetzt S5 AK-A)', async ({
   page,
 }) => {
-  const release = await beginDrag(calendarWeeks(page), 'x', -pxForDays(1));
-  // Noch vor dem pointerup: die Auswahl hat sich nicht mitbewegt.
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
-
-  await release();
-  // Auch nach dem Loslassen unveraendert.
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
+  await expect(calendarWeeks(page)).toHaveCSS('touch-action', 'pan-x');
 });
 
-test('ein Zug, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen Tag durch den Klick aus (AK4)', async ({
+test('eine eingerastete Vorschau bleibt stehen, kein Zurueckschnappen zur alten Auswahl (issue #784, AK3)', async ({
+  page,
+}) => {
+  const track = calendarWeeks(page);
+  await pageStrip(page, 1);
+
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
+  await expect(track.evaluate((el) => el.scrollLeft === el.clientWidth)).resolves.toBe(true);
+});
+
+test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
+  page,
+}) => {
+  await pageStrip(page, 1);
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+
+  // Der Pfeil setzt Auswahl UND Anker neu — der Tag nach der (unsichtbaren)
+  // Auswahl ist sofort wieder sichtbar und ausgewaehlt, kein zweiter Schritt noetig.
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Wisch ins Leere (issue #784, AK6)', async ({
+  page,
+}) => {
+  await pageStrip(page, 1);
+  const todayChip = page.getByRole('button', { name: 'Heute' });
+  // Die Auswahl steht immer noch auf heute, nur das Fenster zeigt es nicht
+  // mehr — der Knopf ist deshalb aktiv, nicht entfernt (AK6).
+  await expect(todayChip).toBeVisible();
+  await expect(todayChip).toBeEnabled();
+
+  await todayChip.click();
+
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('nur die zentrierte Karussell-Seite ist interaktiv, die Nachbarseiten sind inert und fuer Screenreader verborgen (issue #805)', async ({
+  page,
+}) => {
+  const carouselPages = page.locator('.calendar-strip__page');
+  await expect(carouselPages).toHaveCount(3);
+  await expect(carouselPages.nth(0)).toHaveJSProperty('inert', true);
+  await expect(carouselPages.nth(1)).toHaveJSProperty('inert', false);
+  await expect(carouselPages.nth(2)).toHaveJSProperty('inert', true);
+  await expect(carouselPages.nth(0)).toHaveAttribute('aria-hidden', 'true');
+  await expect(carouselPages.nth(1)).not.toHaveAttribute('aria-hidden');
+  await expect(carouselPages.nth(2)).toHaveAttribute('aria-hidden', 'true');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #805: Monat blaettert jetzt ganze Monate (kehrt #802 um)             */
+/* -------------------------------------------------------------------------- */
+
+test('im Monat blaettert ein Wisch einen ganzen Monat, die Auswahl faellt ggf. aus dem Fenster (issue #805, kehrt #802 um)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+
+  await pageStrip(page, 1);
+
+  await expect(title).toHaveText('August 2026');
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+  await expect(strip).toHaveAttribute('data-expanded', 'true');
+});
+
+test('im Monat zeigt ein Wisch zurueck die Auswahl wieder, ein Wisch vor bewegt nur die Vorschau (issue #784 AK1, #805)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  await pageStrip(page, 1);
+  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
+
+  await pageStrip(page, -1);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('ein weiter Wisch im Monat blaettert trotzdem nur einen Monat, kein Mehrfachsprung (issue #805)', async ({
+  page,
+}) => {
+  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const track = calendarWeeks(page);
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  await track.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  await expect.poll(() => track.evaluate((el) => el.scrollLeft === el.clientWidth)).toBe(true);
+
+  await expect(title).toHaveText('August 2026');
+});
+
+test('der Streifen erfasst im Monat ebenfalls nur waagerechte Gesten (issue #805, ersetzt #764)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(calendarWeeks(page)).toHaveCSS('touch-action', 'pan-x');
+});
+
+test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -782,177 +846,29 @@ test('ein Zug, der auf einem Tages-Knopf beginnt, waehlt beim Loslassen keinen T
     category: null,
   });
 
+  const track = calendarWeeks(page);
+  const scrollLeftBefore = await track.evaluate((el) => el.scrollLeft);
+
   const target = dayButton(page, 'Sa, 18.');
   const box = await target.boundingBox();
   if (!box) throw new Error('AK4: Tages-Knopf hat keine BoundingBox');
   const startX = box.x + box.width / 2;
   const startY = box.y + box.height / 2;
 
-  // page.mouse erzeugt echte Pointer-Events *und* den Klick, anders als
-  // dispatchEvent — genau der Fall, den AK4 gegen Klick-Schlucken absichert.
+  // Eine Maus scrollt einen Scroll-Snap-Container nicht (anders als ein
+  // echter Touch-Wisch) — und der Browser synthetisiert `click` nur, wenn
+  // mousedown und mouseup auf demselben Element landen (UI-Events-Spec); ein
+  // Zug auf den Nachbar-Knopf loest deshalb gar keinen Klick aus, ohne dass
+  // diese Komponente das eigens verhindern muss (issue #805, ersetzt die
+  // alte movedRef/click-capture-Absicherung).
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX - pxForDays(2), startY, { steps: 5 });
+  await page.mouse.move(startX - 60, startY, { steps: 5 });
   await page.mouse.up();
 
-  // Der Klick, den der Zug am Ende noch ausloesen wuerde, waehlt keinen Tag
-  // aus — die Auswahl bleibt exakt die, mit der die Seite geladen wurde
-  // (issue #784: ein Zug aendert nie die Auswahl, nur die Vorschau).
+  await expect(track.evaluate((el) => el.scrollLeft)).resolves.toBe(scrollLeftBefore);
+  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
-});
-
-/* -------------------------------------------------------------------------- */
-/* S5 (#556) + #764: aufklappender Monat — jetzt senkrechtes Ziehen statt Wisch */
-/* -------------------------------------------------------------------------- */
-
-test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen tut nichts (S5 AK-A)', async ({
-  page,
-}) => {
-  const strip = calendarStrip(page);
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
-
-  // 2026-07-22 (Mittwoch) liegt in der Folgewoche, außerhalb der um TODAY
-  // selektierten Woche (13.–19.) — im zugeklappten Zustand nicht sichtbar.
-  const outsideDay = dayButton(page, 'Mi, 22.');
-  await expect(outsideDay).not.toBeVisible();
-
-  await swipeVertical(calendarWeeks(page), 80);
-
-  await expect(strip).toHaveAttribute('data-expanded', 'false');
-  await expect(outsideDay).not.toBeVisible();
-});
-
-/** The week row currently marked as the scrub anchor (`data-selected`). */
-function anchorWeekRow(page: Page): Locator {
-  return page.locator('.calendar-strip__week-row[data-selected]');
-}
-
-test('ein tage-grosser Zug im aufgezogenen Monat bewegt die Vorschau nicht — erst ab Wochen-Groessenordnung (issue #802)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  // 1 Tag (`pxForDays(1)`) ist die Groessenordnung, die in der Wochenansicht
-  // schon einen Schritt macht — im Monat soll dieselbe Distanz die Vorschau
-  // nicht ruecken, das Rad dreht dort in Wochen, nicht in Tagen.
-  await swipeVertical(calendarWeeks(page), -pxForDays(1));
-
-  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 18."]')).toBeVisible();
-});
-
-test('ein Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um eine Woche, die Auswahl bleibt (issue #784 AK2, #802)', async ({
-  page,
-}) => {
-  const strip = calendarStrip(page);
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-
-  await swipeVertical(calendarWeeks(page), -pxForWeeks(1));
-
-  // Die Vorschau ist eine Woche weiter (18. -> 25.), die Auswahl bleibt auf
-  // dem 18. stehen — ein Zug bewegt nie die Auswahl, nur die Vorschau.
-  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 25."]')).toBeVisible();
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-});
-
-test('ein Abwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um eine Woche zurueck, die Auswahl bleibt (issue #784 AK2, #802)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  await swipeVertical(calendarWeeks(page), pxForWeeks(1));
-
-  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 11."]')).toBeVisible();
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um bis zu DRAG_MAX_WEEKS Wochen, die Auswahl bleibt (issue #784 AK2/AK5, #802)', async ({
-  page,
-}) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  await swipeVertical(calendarWeeks(page), -pxForWeeks(DRAG_MAX_WEEKS));
-
-  // 18.07. + 4 Wochen (28 Tage) = 15.08.
-  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 15."]')).toBeVisible();
-  await expect(title).toHaveText('August 2026');
-  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
-});
-
-test('ein Links-Wisch im aufgezogenen Monat hat keine Wirkung mehr, nur senkrecht bewegt jetzt (issue #764)', async ({
-  page,
-}) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(title).toHaveText('Juli 2026');
-
-  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
-
-  await expect(title).toHaveText('Juli 2026');
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('ein Rechts-Wisch im aufgezogenen Monat hat keine Wirkung mehr, nur senkrecht bewegt jetzt (issue #764)', async ({
-  page,
-}) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(title).toHaveText('Juli 2026');
-
-  await swipeHorizontal(calendarWeeks(page), pxForDays(DRAG_MAX_DAYS));
-
-  await expect(title).toHaveText('Juli 2026');
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-/* -------------------------------------------------------------------------- */
-/* #784: Anker-Zustand — AK3 (kein Zurueckschnappen), AK5 (Auswahl ausserhalb  */
-/* des Fensters), AK6 (Heute setzt Auswahl und Anker)                         */
-/* -------------------------------------------------------------------------- */
-
-test('eine losgelassene Vorschau schnappt nicht zurueck (issue #784, AK3)', async ({ page }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
-  const release = await beginDrag(calendarWeeks(page), 'x', -pxForDays(7));
-  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-
-  await release();
-
-  // Kein Nachlauf, kein Zurueckschnappen — das Fenster steht exakt da, wo losgelassen wurde.
-  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-  await expect(title).toHaveText('Juli 2026');
-});
-
-test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
-  page,
-}) => {
-  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
-  await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
-
-  // Der Pfeil setzt Auswahl UND Anker neu — der Tag nach der (unsichtbaren)
-  // Auswahl ist sofort wieder sichtbar und ausgewaehlt, kein zweiter Schritt noetig.
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Zug ins Leere (issue #784, AK6)', async ({
-  page,
-}) => {
-  await swipeHorizontal(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
-  const todayChip = page.getByRole('button', { name: 'Heute' });
-  // Die Auswahl steht immer noch auf heute, nur das Fenster zeigt es nicht
-  // mehr — der Knopf ist deshalb aktiv, nicht entfernt (AK6).
-  await expect(todayChip).toBeVisible();
-  await expect(todayChip).toBeEnabled();
-
-  await todayChip.click();
-
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('Antippen eines Tages im aufgezogenen Monat waehlt ihn, der Monat bleibt offen und die Agenda zeigt den Tag (issue #765)', async ({
@@ -1071,7 +987,7 @@ test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monats
   const title = calendarStrip(page).locator('.calendar-strip__title');
   await expect(title).toHaveText('Juli 2026');
 
-  await nextWeek(page, 2);
+  await pageStripForward(page, 2);
 
   await expect(title).toHaveText('August 2026');
 });
@@ -1182,8 +1098,8 @@ test('bei reduzierter Bewegung klappt der Monat ohne Uebergang direkt auf und zu
     polling: 100,
   });
 
-  const weekRow = page.locator('.calendar-strip__week-row').first();
-  const transitionDuration = await weekRow.evaluate((el) => getComputedStyle(el).transitionDuration);
+  const track = calendarWeeks(page);
+  const transitionDuration = await track.evaluate((el) => getComputedStyle(el).transitionDuration);
   for (const duration of transitionDuration.split(',')) {
     expect(parseFloat(duration)).toBeLessThan(0.001);
   }
