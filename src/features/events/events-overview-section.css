@@ -1,6 +1,6 @@
 /**
  * Übersicht-Sektion „Nächster Termin" (issue #559, S8 von #473, Owner-Entscheidung 6)
- * — Kartenform wie weekly-recap-card.css, damit /uebersicht als ein System wirkt. Der
+ * — Kartenform wie streak-summary-card.css, damit /uebersicht als ein System wirkt. Der
  * nächste Termin steht groß mit Countdown, der Rest des Tages folgt als dünne Zeilen.
  */
 

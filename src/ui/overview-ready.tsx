@@ -23,7 +23,7 @@ import './overview-ready.css';
  * Smooth-Regel 3 forbids (`docs/design/form-und-motion.md`), moved from
  * "Tab-Wechsel" to "erste Sekunde nach dem Öffnen".
  *
- * The fix is not a skeleton per block. Ring, Wochenrückblick and Monatsstreifen
+ * The fix is not a skeleton per block. Ring, Streak-Karte and Monatsstreifen
  * deliberately render *nothing* once loaded when there is nothing to show (ruhiger
  * Leerzustand statt „0 von 0") — reserving height for them means giving it back,
  * which shifts just as hard in the other direction (`activity-month-strip.tsx`

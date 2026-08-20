@@ -126,9 +126,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `use-habits.ts` / `use-habit-logs.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
 - `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
-- `streak.ts` — `computeStreak` (Streak-Joker entfernt, issue #796; `habit_freezes` bleibt dormant in `src/db/schema.ts`)
+- `streak.ts` — `computeStreak` (Joker entfernt, #796; `habit_freezes` dormant) + `countHabitsOnStreak` (#809)
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge
-- `habits-overview-section.tsx` / `weekly-recap.ts` / `weekly-recap-card.tsx` / `.css` — `OverviewSection` + Wochenrückblick (Quote+Superlativ)
+- `habits-overview-section.tsx` / `streak-summary-card.tsx` / `.css` — `OverviewSection` + Karte „Routinen in Serie" (#809)
 - `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
 - `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
 

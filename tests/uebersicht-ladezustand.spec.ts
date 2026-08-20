@@ -10,10 +10,10 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
  * schiebt alles darunter nach unten — Smooth-Regel 3, verschoben auf die erste
  * Sekunde nach dem Öffnen.
  *
- * Der Fortschrittsring und der Wochenrückblick sind seit issue #652 nicht mehr
+ * Der Fortschrittsring und die Streak-Karte sind seit issue #652 nicht mehr
  * Teil dieser Gruppe: der Ring sitzt jetzt in der immer sichtbaren Titelzeile
  * (fest bemessener Slot, siehe daily-progress-ring.tsx — kein Beitrittsgrund
- * zum gemeinsamen Enthüllungspunkt mehr), der Wochenrückblick zog auf
+ * zum gemeinsamen Enthüllungspunkt mehr), die Streak-Karte zog auf
  * /routinen um.
  *
  * Das Ladefenster ist ein Tick, kein Netz-Roundtrip (`aktivitaeten.spec.ts` hält

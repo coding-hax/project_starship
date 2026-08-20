@@ -203,32 +203,31 @@ test('"heute N von M" kommt auf /uebersicht als Fließtext nicht mehr vor (AK3)'
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK5: Wochenrückblick verlässt /uebersicht, bleibt auf /routinen            */
+/* AK5: Streak-Karte verlässt /uebersicht, bleibt auf /routinen               */
 /* -------------------------------------------------------------------------- */
 
-test('der Wochenrückblick ist auf /uebersicht nicht vorhanden, auf /routinen unverändert vorhanden (AK5)', async ({
+test('die Streak-Karte ist auf /uebersicht nicht vorhanden, auf /routinen unverändert vorhanden (AK5)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
-  // Bezugswoche (Mo–So vor der laufenden Woche) mit Logs, sonst zeigt die Karte
-  // ohnehin nichts (weekly-recap.ts) — das würde den Test nicht aussagekräftig machen.
-  for (const day of ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12']) {
-    await page.evaluate(
-      ({ id, day }) =>
-        window.__starship.mutate({
-          table: 'habit_logs',
-          op: 'upsert',
-          payload: { habitId: id, logDate: day, done: true },
-        }),
-      { id: habitId, day },
-    );
-  }
+  // Log für heute erzeugt eine laufende Serie, sonst zeigt die Karte zwar die
+  // Überschrift, aber keine sinnvolle Zahl (streak.ts) — das würde den Test
+  // nicht aussagekräftig machen.
+  await page.evaluate(
+    ({ id, day }) =>
+      window.__starship.mutate({
+        table: 'habit_logs',
+        op: 'upsert',
+        payload: { habitId: id, logDate: day, done: true },
+      }),
+    { id: habitId, day: '2026-07-18' },
+  );
 
   await page.goto('/uebersicht');
-  await expect(page.locator('.weekly-recap-card')).toHaveCount(0);
+  await expect(page.locator('.streak-summary-card')).toHaveCount(0);
 
   await page.goto('/routinen');
-  await expect(page.locator('.weekly-recap-card').getByText('Wochenrückblick')).toBeVisible();
+  await expect(page.locator('.streak-summary-card').getByText('Routinen in Serie')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
