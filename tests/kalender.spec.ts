@@ -77,6 +77,33 @@ function dayDots(page: Page, ariaLabel: string) {
 }
 
 /**
+ * One row's/cell's own pixel size — a day-cell's width in week view, a
+ * week-row's height in month view — measured off an actually rendered cell
+ * (`calendar-strip.tsx`'s own `stepFor`, mirrored here) rather than dividing
+ * the track's `clientWidth`/`clientHeight` by 7/6. The track's `height`
+ * transitions on the Woche/Monat switch (calendar-strip.css), so right after
+ * that toggle `clientHeight` can read a mid-transition value for the whole
+ * 240ms `--duration-spring-smooth` window — dividing that by 6 produced a
+ * flaky per-unit step (issue #813 AK5's multi-row test saw anywhere from 0 to
+ * 3 rows' worth of movement depending on how far the transition had gotten).
+ * A cell's/row's own size never transitions, only the track's does.
+ */
+async function trackUnitPx(page: Page): Promise<number> {
+  const track = calendarWeeks(page);
+  return track.evaluate((el) => {
+    const expanded = el.getAttribute('data-expanded') === 'true';
+    const sample = el.querySelector<HTMLElement>(
+      expanded ? '.calendar-strip__week-row' : '.calendar-strip__cell',
+    );
+    if (sample) {
+      const rect = sample.getBoundingClientRect();
+      return expanded ? rect.height : rect.width;
+    }
+    return expanded ? el.clientHeight / 6 : el.clientWidth / 7;
+  });
+}
+
+/**
  * Scrolls the calendar-strip carousel by exactly one screen's worth — a week
  * in week view (7 day-columns), a month's worth of rows in month view (6
  * week-rows) — the settle-driven equivalent of a full native swipe-and-release.
@@ -98,13 +125,16 @@ function dayDots(page: Page, ariaLabel: string) {
 async function pageStrip(page: Page, dir: 1 | -1): Promise<void> {
   const track = calendarWeeks(page);
   const before = await anchorDay(page);
-  await track.evaluate((el, dir) => {
-    const expanded = el.getAttribute('data-expanded') === 'true';
-    const step = expanded ? el.clientHeight / 6 : el.clientWidth / 7;
-    const delta = dir * (expanded ? 6 : 7) * step;
-    if (expanded) el.scrollTop += delta;
-    else el.scrollLeft += delta;
-  }, dir);
+  const unit = await trackUnitPx(page);
+  await track.evaluate(
+    (el, { dir, unit }) => {
+      const expanded = el.getAttribute('data-expanded') === 'true';
+      const delta = dir * (expanded ? 6 : 7) * unit;
+      if (expanded) el.scrollTop += delta;
+      else el.scrollLeft += delta;
+    },
+    { dir, unit },
+  );
   // A silent buffer rebuild lands asynchronously (a scroll-driven state
   // update) — waiting for the anchor to actually change is proof the strip
   // rolled instead of stopping half-way.
@@ -809,9 +839,13 @@ test('im Monat rollt ein Wisch einzelne Wochen, kein Sprung auf einen ganzen Mon
   expect(before).toBe('2026-07-13'); // Montag der Woche des 18.07.
 
   const track = calendarWeeks(page);
-  await track.evaluate((el) => {
-    el.scrollTop += el.clientHeight / 6; // genau eine Wochenzeile
-  });
+  const unit = await trackUnitPx(page);
+  await track.evaluate(
+    (el, unit) => {
+      el.scrollTop += unit; // genau eine Wochenzeile
+    },
+    unit,
+  );
 
   await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 7));
 });
@@ -824,9 +858,13 @@ test('ein weiter Wisch im Monat rollt mehrere Wochen weiter, nicht auf einen Mon
   const before = await anchorDay(page);
 
   const track = calendarWeeks(page);
-  await track.evaluate((el) => {
-    el.scrollTop += (el.clientHeight / 6) * 3; // drei Wochenzeilen
-  });
+  const unit = await trackUnitPx(page);
+  await track.evaluate(
+    (el, unit) => {
+      el.scrollTop += unit * 3; // drei Wochenzeilen
+    },
+    unit,
+  );
 
   await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 21));
   await expect(strip).toHaveAttribute('data-expanded', 'true');
@@ -950,9 +988,13 @@ test('das Dimmen ausserhalb des Monats folgt dem rollenden Anker-Monat, nicht de
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 
   const track = calendarWeeks(page);
-  await track.evaluate((el) => {
-    el.scrollTop += (el.clientHeight / 6) * 3; // drei Wochen: 13.07. -> 03.08.
-  });
+  const unit = await trackUnitPx(page);
+  await track.evaluate(
+    (el, unit) => {
+      el.scrollTop += unit * 3; // drei Wochen: 13.07. -> 03.08.
+    },
+    unit,
+  );
 
   await expect.poll(() => anchorDay(page)).toBe('2026-08-03');
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
