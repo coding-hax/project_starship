@@ -1279,11 +1279,13 @@ const EDIT_LABEL = 'Termin bearbeiten';
  * Issue #806: ein Kartentipp öffnet jetzt erst das schreibgeschützte
  * Detail-Sheet, nicht mehr direkt den Editor — dieser Helfer tippt die Karte
  * an und dann „Bearbeiten", sodass jeder bestehende Bearbeiten-Testpfad beim
- * selben Endzustand (Editor offen) landet.
+ * selben Endzustand (Editor offen) landet. `exact` ist Pflicht: ohne sie
+ * matcht die Karte selbst mit ("11:00–12:00 Zu bearbeiten" enthält
+ * "Bearbeiten" als Teilstring) und der Klick wird zum Strict-Mode-Fehler.
  */
 async function openEventEditor(page: Page, card: Locator): Promise<void> {
   await card.click();
-  await page.getByRole('button', { name: 'Bearbeiten' }).click();
+  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click();
 }
 
 /**
@@ -1936,7 +1938,10 @@ test('AK1: ein Kartentipp auf einen getimten Termin öffnet das Detail-Sheet, ni
 
   await expect(page.getByRole('dialog', { name: 'Zahnarzttermin' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toHaveCount(0);
-  await expect(page.getByLabel('Titel')).toHaveCount(0);
+  // Nicht toHaveCount(0): der Editor bleibt unabhängig vom Öffnen-Zustand
+  // gemountet, sein Titelfeld steckt nur hinter einem geschlossenen <dialog>
+  // (display: none) — anders als getByRole ignoriert getByLabel das.
+  await expect(page.getByLabel('Titel')).not.toBeVisible();
 });
 
 test('AK1: ein Tipp auf einen ganztägigen (eigenen) Termin öffnet ebenfalls das Detail-Sheet, nicht den Editor (#806)', async ({
@@ -1956,7 +1961,9 @@ test('AK1: ein Tipp auf einen ganztägigen (eigenen) Termin öffnet ebenfalls da
 
   await expect(page.getByRole('dialog', { name: 'Feiertag' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toHaveCount(0);
-  await expect(page.getByLabel('Titel')).toHaveCount(0);
+  // Nicht toHaveCount(0), siehe getimter Fall oben — getByLabel ignoriert
+  // das display:none des geschlossenen Editor-<dialog>.
+  await expect(page.getByLabel('Titel')).not.toBeVisible();
 });
 
 test('AK2: das Detail-Sheet zeigt Titel, Zeit und Kategorie; „Bearbeiten" schließt es und öffnet den Editor vorbefüllt (#806)', async ({
