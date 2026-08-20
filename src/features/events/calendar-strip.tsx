@@ -16,6 +16,7 @@ import {
   categoryEdgeVar,
   DRAG_TAP_TOLERANCE_PX,
   dragDayDelta,
+  dragWeekDelta,
   formatMonthTitle,
   monthDaysFor,
 } from './event-time';
@@ -142,13 +143,14 @@ export function CalendarStrip({
    * drag itself, no waiting for release — the selection is left alone
    * (issue #784, AK1/AK2, the bug this ticket fixes: a drag used to move
    * the selection along with the view). Week view scrubs on the horizontal
-   * axis, month view on the vertical one — the other axis only locks (so a
-   * diagonal drag can't also page) and never moves the anchor, same as
-   * the old axis-lock-swallows-the-other-axis rule (#629/#662 AK-A). The day
-   * offset is always taken from the day the gesture *started* on
-   * (`scrubStartAnchorRef`), not the live-updated `anchorDay`, so the mapping
-   * from drag distance to day count stays absolute instead of compounding
-   * with every move event.
+   * axis in day steps, month view on the vertical one in whole-week steps
+   * (issue #802 — dragging through a month grid pages by week, not by day) —
+   * the other axis only locks (so a diagonal drag can't also page) and never
+   * moves the anchor, same as the old axis-lock-swallows-the-other-axis rule
+   * (#629/#662 AK-A). The day offset is always taken from the day the
+   * gesture *started* on (`scrubStartAnchorRef`), not the live-updated
+   * `anchorDay`, so the mapping from drag distance to day count stays
+   * absolute instead of compounding with every move event.
    */
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (startXRef.current === null || startYRef.current === null || scrubStartAnchorRef.current === null) {
@@ -169,7 +171,8 @@ export function CalendarStrip({
     if (axis !== scrubAxis) return;
     // Left/up (negative delta) advances, right/down goes back — same
     // direction as the old swipe-left-pages-forward rule, now continuous.
-    const dayOffset = -dragDayDelta(guidedDelta);
+    // Month view steps whole weeks (issue #802), week view steps single days.
+    const dayOffset = expanded ? -dragWeekDelta(guidedDelta) * 7 : -dragDayDelta(guidedDelta);
     setAnchorDay(addDays(scrubStartAnchorRef.current, dayOffset));
   }
 

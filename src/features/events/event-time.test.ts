@@ -9,8 +9,10 @@ import {
   categoriesForDay,
   categoryEdgeVar,
   DRAG_MAX_DAYS,
+  DRAG_MAX_WEEKS,
   DRAG_TAP_TOLERANCE_PX,
   dragDayDelta,
+  dragWeekDelta,
   formatCountdown,
   formatMonthTitle,
   monthDaysFor,
@@ -215,6 +217,41 @@ describe('dragDayDelta', () => {
     expect(dragDayDelta(330)).toBe(DRAG_MAX_DAYS);
     expect(dragDayDelta(1000)).toBe(DRAG_MAX_DAYS);
     expect(dragDayDelta(-1000)).toBe(-DRAG_MAX_DAYS);
+  });
+});
+
+describe('dragWeekDelta', () => {
+  it('is 0 at and below the tap tolerance, in both directions', () => {
+    expect(dragWeekDelta(0)).toBe(0);
+    expect(dragWeekDelta(DRAG_TAP_TOLERANCE_PX)).toBe(0);
+    expect(dragWeekDelta(-DRAG_TAP_TOLERANCE_PX)).toBe(0);
+  });
+
+  it('a day-sized drag stays at 0 weeks — a month-view drag pages weeks, not days (issue #802)', () => {
+    // 50px is exactly the distance that steps a single day in the week view
+    // (see dragDayDelta above) — in the month view the same distance must
+    // not move the preview at all.
+    expect(dragWeekDelta(50)).toBe(0);
+    expect(dragWeekDelta(-50)).toBe(0);
+  });
+
+  it('a week-sized drag steps a single week', () => {
+    expect(dragWeekDelta(100)).toBe(1);
+    expect(dragWeekDelta(-100)).toBe(-1);
+  });
+
+  it('accelerates: a bigger drag covers disproportionately more weeks', () => {
+    const near = dragWeekDelta(140);
+    const far = dragWeekDelta(260);
+    expect(near).toBeGreaterThanOrEqual(1);
+    // More than double the distance covers more than double the weeks —
+    // the curve accelerates rather than staying linear (issue #802).
+    expect(far).toBeGreaterThan(near * 2);
+  });
+
+  it('caps at DRAG_MAX_WEEKS however far the drag goes', () => {
+    expect(dragWeekDelta(1000)).toBe(DRAG_MAX_WEEKS);
+    expect(dragWeekDelta(-1000)).toBe(-DRAG_MAX_WEEKS);
   });
 });
 

@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { dragDayDelta, DRAG_MAX_DAYS } from '@/features/events/event-time';
+import { DRAG_MAX_DAYS, DRAG_MAX_WEEKS, dragDayDelta, dragWeekDelta } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -132,6 +132,18 @@ function pxForDays(days: number): number {
     if (dragDayDelta(px) === days) return px;
   }
   throw new Error(`pxForDays: no px maps to ${days} days`);
+}
+
+/**
+ * Smallest drag magnitude that maps to exactly `weeks` under the month
+ * view's live-scrub curve (`dragWeekDelta`, issue #802) — same idea as
+ * `pxForDays`, but for the month view's week-stepped vertical drag.
+ */
+function pxForWeeks(weeks: number): number {
+  for (let px = 0; px <= 2000; px += 1) {
+    if (dragWeekDelta(px) === weeks) return px;
+  }
+  throw new Error(`pxForWeeks: no px maps to ${weeks} weeks`);
 }
 
 /** Pages a whole week forward in one drag, calibrated to the live-scrub curve (issue #764 — a fixed swipe threshold pre-#764). */
@@ -811,41 +823,61 @@ test('ein Abwaerts-Wisch am zugeklappten Wochenstreifen tut nichts (S5 AK-A)', a
   await expect(outsideDay).not.toBeVisible();
 });
 
-test('ein Aufwaerts-Zug im aufgezogenen Monat verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK2)', async ({
+/** The week row currently marked as the scrub anchor (`data-selected`). */
+function anchorWeekRow(page: Page): Locator {
+  return page.locator('.calendar-strip__week-row[data-selected]');
+}
+
+test('ein tage-grosser Zug im aufgezogenen Monat bewegt die Vorschau nicht — erst ab Wochen-Groessenordnung (issue #802)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // 1 Tag (`pxForDays(1)`) ist die Groessenordnung, die in der Wochenansicht
+  // schon einen Schritt macht — im Monat soll dieselbe Distanz die Vorschau
+  // nicht ruecken, das Rad dreht dort in Wochen, nicht in Tagen.
+  await swipeVertical(calendarWeeks(page), -pxForDays(1));
+
+  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 18."]')).toBeVisible();
+});
+
+test('ein Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um eine Woche, die Auswahl bleibt (issue #784 AK2, #802)', async ({
   page,
 }) => {
   const strip = calendarStrip(page);
   await page.getByRole('radio', { name: 'Monat' }).click();
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 
-  await swipeVertical(calendarWeeks(page), -pxForDays(1));
+  await swipeVertical(calendarWeeks(page), -pxForWeeks(1));
 
+  // Die Vorschau ist eine Woche weiter (18. -> 25.), die Auswahl bleibt auf
+  // dem 18. stehen — ein Zug bewegt nie die Auswahl, nur die Vorschau.
+  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 25."]')).toBeVisible();
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'false');
-  // Ein Zug bleibt im Monat, anders als das Antippen eines Tages.
   await expect(strip).toHaveAttribute('data-expanded', 'true');
 });
 
-test('ein Abwaerts-Zug im aufgezogenen Monat verschiebt nur die Vorschau, die Auswahl bleibt (issue #784, AK2)', async ({
+test('ein Abwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um eine Woche zurueck, die Auswahl bleibt (issue #784 AK2, #802)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  await swipeVertical(calendarWeeks(page), pxForDays(1));
+  await swipeVertical(calendarWeeks(page), pxForWeeks(1));
 
+  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 11."]')).toBeVisible();
   await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-  await expect(dayButton(page, 'Fr, 17.')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um bis zu 20 Tage, die Auswahl bleibt (issue #784, AK2/AK5)', async ({
+test('ein weiter Aufwaerts-Zug im aufgezogenen Monat verschiebt die Vorschau um bis zu DRAG_MAX_WEEKS Wochen, die Auswahl bleibt (issue #784 AK2/AK5, #802)', async ({
   page,
 }) => {
   const title = calendarStrip(page).locator('.calendar-strip__title');
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  await swipeVertical(calendarWeeks(page), -pxForDays(DRAG_MAX_DAYS));
+  await swipeVertical(calendarWeeks(page), -pxForWeeks(DRAG_MAX_WEEKS));
 
-  await expect(dayButton(page, 'Fr, 7.')).toBeVisible();
+  // 18.07. + 4 Wochen (28 Tage) = 15.08.
+  await expect(anchorWeekRow(page).locator('button[aria-label="Sa, 15."]')).toBeVisible();
   await expect(title).toHaveText('August 2026');
   await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
   await expect(page.locator('.calendar-strip__day[aria-pressed="true"]')).toHaveCount(0);

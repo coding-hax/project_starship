@@ -224,16 +224,47 @@ export const DRAG_MAX_DAYS = 20;
  * Maps a raw pointer-drag distance (px, signed) to a day offset for the
  * calendar strip's live-scrub gesture (issue #764): a small movement steps
  * one day at a time, a larger one accelerates up to `DRAG_MAX_DAYS` in a
- * single gesture — the same curve drives the week view's horizontal drag and
- * the month view's vertical one. Below `DRAG_TAP_TOLERANCE_PX` this is 0 so a
- * tap never moves the selection.
+ * single gesture. Drives the week view's horizontal drag; the month view's
+ * vertical drag uses `dragWeekDelta` instead (issue #802 — a month is a grid
+ * of weeks, so its drag should step whole weeks, not days). Below
+ * `DRAG_TAP_TOLERANCE_PX` this is 0 so a tap never moves the selection.
  */
 export function dragDayDelta(distancePx: number): number {
   const magnitude = Math.abs(distancePx);
   if (magnitude <= DRAG_TAP_TOLERANCE_PX) return 0;
   const effective = magnitude - DRAG_TAP_TOLERANCE_PX;
-  const days = Math.round((effective / DRAG_SCRUB_UNIT_PX) ** DRAG_SCRUB_EXPONENT);
-  return Math.sign(distancePx) * Math.min(days, DRAG_MAX_DAYS);
+  const days = Math.min(Math.round((effective / DRAG_SCRUB_UNIT_PX) ** DRAG_SCRUB_EXPONENT), DRAG_MAX_DAYS);
+  // `days` can round to 0 just past the tap tolerance — guard instead of
+  // `Math.sign(distancePx) * days`, which would return -0 for a negative drag.
+  return days === 0 ? 0 : Math.sign(distancePx) * days;
+}
+
+/** Pixels per week at the start of a month-view drag, before the curve accelerates (issue #802). */
+const DRAG_SCRUB_UNIT_PX_WEEK = 140;
+/** Growth rate of weeks-per-pixel past the tap tolerance — same shape as the day curve. */
+const DRAG_SCRUB_EXPONENT_WEEK = 1.6;
+/** A single month-view drag, however far, never covers more than this many weeks in one gesture (issue #802). */
+export const DRAG_MAX_WEEKS = 4;
+
+/**
+ * Maps a raw pointer-drag distance (px, signed) to a *week* offset for the
+ * calendar strip's month view (issue #802): the "Rad" (wheel) the ticket asks
+ * for turns in whole weeks there, not days — a short drag doesn't nudge the
+ * preview at all, a week-sized drag steps exactly one week, a long drag
+ * accelerates up to `DRAG_MAX_WEEKS`. Same curve shape as `dragDayDelta`,
+ * scaled to a per-week unit; multiply the result by 7 to get a day offset.
+ */
+export function dragWeekDelta(distancePx: number): number {
+  const magnitude = Math.abs(distancePx);
+  if (magnitude <= DRAG_TAP_TOLERANCE_PX) return 0;
+  const effective = magnitude - DRAG_TAP_TOLERANCE_PX;
+  const weeks = Math.min(
+    Math.round((effective / DRAG_SCRUB_UNIT_PX_WEEK) ** DRAG_SCRUB_EXPONENT_WEEK),
+    DRAG_MAX_WEEKS,
+  );
+  // A day-sized drag rounds to 0 weeks — guard instead of
+  // `Math.sign(distancePx) * weeks`, which would return -0 for a negative drag.
+  return weeks === 0 ? 0 : Math.sign(distancePx) * weeks;
 }
 
 /**
