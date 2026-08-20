@@ -1,0 +1,71 @@
+/**
+ * Read-only detail sheet opened by an agenda card tap (issue #806) — small,
+ * own buttons instead of the shared `Sheet` header, same shape as
+ * `recurrence-scope-sheet.css`.
+ */
+
+.event-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.event-detail__title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-title);
+  font-weight: var(--weight-emphasis);
+}
+
+.event-detail__when,
+.event-detail__recurrence {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.event-detail__category {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-inline-start: 3px solid var(--area-events);
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+.event-detail__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block-start: var(--space-2);
+}
+
+.event-detail__edit {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  text-align: start;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.event-detail__edit:active {
+  opacity: 0.85;
+}
+
+.event-detail__close {
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+}
