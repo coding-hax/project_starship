@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, selectView } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
  * `getComputedStyle` right after `.click()` can catch the CSS transition mid-flight
@@ -99,10 +99,20 @@ const CASES: Case[] = [
     path: '/aufgaben',
     listName: 'Aufgaben',
     itemDoneClass: 'task-list__item--done',
+    // Due *today* (FIXED_NOW), not undated: "Woche" (the default view, used
+    // below) only shows dated tasks, and keeps one checked off today in place
+    // (issue #705 AK7) — in "Alle" it would glide out of the list the moment
+    // it's checked (issue #814), before this suite's checkbox-motion assertions
+    // could ever run against it.
     seed: (page, title) =>
       page.evaluate(
-        (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
-        title,
+        (args) =>
+          window.__starship.mutate({
+            table: 'tasks',
+            op: 'upsert',
+            payload: { title: args.title, dueAt: args.dueAt },
+          }),
+        { title, dueAt: FIXED_NOW },
       ),
     checkboxLabel: (title) => `${title} als erledigt markieren`,
   },
@@ -159,9 +169,6 @@ for (const c of CASES) {
       page,
     }) => {
       await page.goto(c.path);
-      // The "Aufgabe" case seeds undated tasks (issue #705) — "Woche" hides those,
-      // so this parametrized battery needs the old flat "Alle" view to see them.
-      if (c.path === '/aufgaben') await selectView(page, 'Alle');
       const name = `${c.kind} eins`;
       await c.seed(page, name);
       const checkbox = page.getByRole('checkbox', { name: c.checkboxLabel(name) });
@@ -206,9 +213,6 @@ for (const c of CASES) {
     }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto(c.path);
-      // The "Aufgabe" case seeds undated tasks (issue #705) — "Woche" hides those,
-      // so this parametrized battery needs the old flat "Alle" view to see them.
-      if (c.path === '/aufgaben') await selectView(page, 'Alle');
       const name = `${c.kind} reduziert media`;
       await c.seed(page, name);
       const checkbox = page.getByRole('checkbox', { name: c.checkboxLabel(name) });
@@ -226,9 +230,6 @@ for (const c of CASES) {
       page,
     }) => {
       await page.goto(c.path);
-      // The "Aufgabe" case seeds undated tasks (issue #705) — "Woche" hides those,
-      // so this parametrized battery needs the old flat "Alle" view to see them.
-      if (c.path === '/aufgaben') await selectView(page, 'Alle');
       await page.evaluate(() => {
         document.documentElement.dataset.reduceMotion = 'true';
       });
@@ -247,9 +248,6 @@ for (const c of CASES) {
 
     test(`${c.kind}: kein Layout-Shift beim Abhaken (AC3)`, async ({ page }) => {
       await page.goto(c.path);
-      // The "Aufgabe" case seeds undated tasks (issue #705) — "Woche" hides those,
-      // so this parametrized battery needs the old flat "Alle" view to see them.
-      if (c.path === '/aufgaben') await selectView(page, 'Alle');
       const firstName = `${c.kind} A`;
       const secondName = `${c.kind} B`;
       const firstId = await c.seed(page, firstName);
@@ -279,9 +277,6 @@ for (const c of CASES) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.emulateMedia({ colorScheme: 'dark' });
         await page.goto(c.path);
-        // The "Aufgabe" case seeds undated tasks (issue #705) — "Woche" hides those,
-        // so this parametrized battery needs the old flat "Alle" view to see them.
-        if (c.path === '/aufgaben') await selectView(page, 'Alle');
         const firstName = `${c.kind} dunkel A`;
         const secondName = `${c.kind} dunkel B`;
         const firstId = await c.seed(page, firstName);

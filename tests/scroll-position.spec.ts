@@ -12,18 +12,19 @@ const NOW = '2026-07-18T12:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 /**
- * Completed-today history seeded *above* and *below* the single open task, so the
- * open task lands in the MIDDLE of the /aufgaben list rather than at its end. That
- * placement is what AC4 needs: the #88 anchor rests the open task with real content
- * still below it, so a scroll position *past* the anchor exists and is
- * distinguishable from the anchor's own start point. With the open task last the
- * anchor would sit at the document's max scroll, and "scrolled further" could not
- * differ from "returned to start". Both counts also overflow /uebersicht and the
- * full /aufgaben list by several screenfuls on the 375×812 test viewport.
+ * Row counts for the two tall-list seed helpers below. `HISTORY_ABOVE`/
+ * `HISTORY_BELOW` used to also position `seedTallTaskHistory`'s single open task
+ * mid-list for the #88 /aufgaben anchor's own AC4 needs; since issue #814 "Alle"
+ * no longer renders completed history at all, that job now belongs to
+ * `seedTallOpenTaskList` below (see there, and `tests/tasks.spec.ts`'s "Scroll-
+ * Anker: erledigte Historie bleibt unsichtbar …" for the same fact established
+ * directly on /aufgaben). Kept here only so both helpers still overflow
+ * /uebersicht and the full /aufgaben list by several screenfuls on the 375×812
+ * test viewport.
  */
 const HISTORY_ABOVE = 5;
 const HISTORY_BELOW = 20;
-/** All seeded completed-today rows plus the one still-open task between them. */
+/** Total rows either seed helper below produces. */
 const TASK_ROW_COUNT = HISTORY_ABOVE + 1 + HISTORY_BELOW;
 
 // These tests navigate through many routes, and on the dev server every route
@@ -59,10 +60,12 @@ async function seedTask(page: Page, payload: Record<string, unknown>): Promise<s
 }
 
 /**
- * Seeds a tall running list (issue #88 orders it strictly by `createdAt`): a block
- * of completed-today history, then the single still-open task, then more completed
- * history below it. See `HISTORY_ABOVE`/`HISTORY_BELOW` for why the open task sits
- * in the middle rather than at the end.
+ * Seeds `/uebersicht`'s tall completed-today history (issue #647 AC1/AC2's own
+ * "reichlich erledigter Historie" scenario, carried by the Woche-window's "heute
+ * erledigt bleibt" rule) — completed-today rows around one open task, all still
+ * strictly `createdAt`-ordered. `/aufgaben`'s "Alle" view no longer renders any of
+ * the completed rows (issue #814); tests that also exercise `/aufgaben` seed via
+ * `seedTallOpenTaskList` instead, further below.
  */
 async function seedTallTaskHistory(page: Page) {
   let minute = 0;
@@ -80,6 +83,25 @@ async function seedTallTaskHistory(page: Page) {
     dueAt: NOW,
   });
   for (let i = 0; i < HISTORY_BELOW; i++) await seedCompleted(HISTORY_ABOVE + i);
+}
+
+/**
+ * `/aufgaben`'s "Alle" tall-list counterpart to `seedTallTaskHistory` above.
+ * Issue #814 filters "Alle" down to open tasks only, so a completed-today block
+ * would just vanish there (proven the same way in `tests/tasks.spec.ts`'s
+ * "Scroll-Anker: erledigte Historie bleibt unsichtbar …") — `TASK_ROW_COUNT` open
+ * tasks instead, all due today so /uebersicht's Woche window still carries every
+ * one of them too. Same total row count on both pages, just cleared by a
+ * different filter on each.
+ */
+async function seedTallOpenTaskList(page: Page) {
+  for (let i = 0; i < TASK_ROW_COUNT; i++) {
+    await seedTask(page, {
+      title: `Offen ${i}`,
+      createdAt: new Date(Date.UTC(2026, 6, 18, 0, i)).toISOString(),
+      dueAt: NOW,
+    });
+  }
 }
 
 /** Same accessible name on both /uebersicht (aria-labelledby the <h2>) and
@@ -175,7 +197,7 @@ test('Übersicht startet oben, auch mit reichlich erledigter Aufgaben-Historie (
 test('von einer heruntergescrollten Seite per Bottom-Nav auf die Übersicht wechseln landet oben (issue #647 AC2)', async ({
   page,
 }) => {
-  await seedTallTaskHistory(page);
+  await seedTallOpenTaskList(page);
   await goToAufgabenAndScrollDown(page);
 
   await nav(page).getByRole('link', { name: 'Übersicht', exact: true }).click();
@@ -192,7 +214,7 @@ test('von einer heruntergescrollten Seite per Bottom-Nav auf die Übersicht wech
 test('keine anker-lose Route erbt die Scrollposition der vorherigen — alle landen oben (issue #647 AC3)', async ({
   page,
 }) => {
-  await seedTallTaskHistory(page);
+  await seedTallOpenTaskList(page);
   // Reach Aktivitäten (carousel overflow) by a plain click like every other tab.
   await fitAllNavItems(page);
 
@@ -230,7 +252,7 @@ test('keine anker-lose Route erbt die Scrollposition der vorherigen — alle lan
 test('Aufgaben und Kalender landen bei In-App-Navigation auf ihrem eigenen Startpunkt, nicht auf 0 (issue #647 AC3)', async ({
   page,
 }) => {
-  await seedTallTaskHistory(page);
+  await seedTallOpenTaskList(page);
   await fitAllNavItems(page);
 
   // Aufgaben and Kalender keep their own on-mount anchor (issue #88; Kalender's
@@ -260,7 +282,7 @@ test('Aufgaben und Kalender landen bei In-App-Navigation auf ihrem eigenen Start
 test('Browser-Zurück landet wieder auf dem Startpunkt der vorherigen Seite, nicht auf der verlassenen Position (issue #647 AC4)', async ({
   page,
 }) => {
-  await seedTallTaskHistory(page);
+  await seedTallOpenTaskList(page);
 
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
