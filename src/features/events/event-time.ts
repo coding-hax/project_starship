@@ -274,17 +274,28 @@ export function monthDaysFor(dateKey: string): string[] {
 }
 
 /**
- * The three page anchors `[previous, current, next]` around `anchorDay` for
- * the calendar-strip carousel (issue #805, Ansatz C — native scroll-snap
- * paging replaces the old pointer-scrub gesture): a week either side in week
- * view, a whole calendar month (same day-of-month, clamped) either side in
- * month view — that's the swap this ticket makes, month view now pages
- * months instead of scrubbing weeks (reverses issue #802).
+ * `radiusDays` day keys either side of `anchorDay`, inclusive, ascending
+ * (`2 * radiusDays + 1` keys total, `anchorDay` itself always the middle
+ * entry) — the buffered window the week-strip carousel (calendar-strip.tsx)
+ * rolls through continuously, day by day (issue #813, replaces the 3-page
+ * `pageAnchors` whose hard page edges made a swipe snap to a whole week).
  */
-export function pageAnchors(anchorDay: string, expanded: boolean): [string, string, string] {
-  return expanded
-    ? [addMonthsClamped(anchorDay, -1), anchorDay, addMonthsClamped(anchorDay, 1)]
-    : [addDays(anchorDay, -7), anchorDay, addDays(anchorDay, 7)];
+export function dayWindow(anchorDay: string, radiusDays: number): string[] {
+  return Array.from({ length: 2 * radiusDays + 1 }, (_, index) => addDays(anchorDay, index - radiusDays));
+}
+
+/**
+ * `radiusWeeks` Mon–Sun weeks either side of the week containing `anchorDay`,
+ * inclusive, ascending (`2 * radiusWeeks + 1` weeks total, the anchor's own
+ * week always the middle entry) — the buffered window the month-strip
+ * carousel rolls through vertically, week by week (issue #813, replaces
+ * `pageAnchors`'s whole-month paging, reverses issue #805's month behaviour).
+ */
+export function weekWindow(anchorDay: string, radiusWeeks: number): string[][] {
+  const anchorMonday = weekDaysFor(anchorDay)[0];
+  return Array.from({ length: 2 * radiusWeeks + 1 }, (_, index) =>
+    weekDaysFor(addDays(anchorMonday, (index - radiusWeeks) * 7)),
+  );
 }
 
 /**
