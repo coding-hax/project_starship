@@ -1,4 +1,3 @@
-import { HideCompletedToggle } from '@/features/tasks/hide-completed-toggle';
 import { QuickAddTask } from '@/features/tasks/quick-add';
 import { TaskList } from '@/features/tasks/task-list';
 import './aufgaben-page.css';
@@ -10,7 +9,6 @@ export default function AufgabenPage() {
     <div data-module="aufgaben">
       <div className="aufgaben-page__title-row">
         <h1>Aufgaben</h1>
-        <HideCompletedToggle />
       </div>
       <TaskList />
       <QuickAddTask />

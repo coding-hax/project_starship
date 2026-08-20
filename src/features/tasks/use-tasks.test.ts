@@ -8,10 +8,10 @@ import {
   groupByDueDay,
   groupTasks,
   localDayKey,
+  openTaskNodes,
   resolveNestTarget,
   toTaskView,
   undatedOpenNodes,
-  visibleTaskNodes,
   weekWindowNodes,
   type TaskNode,
   type TaskView,
@@ -224,7 +224,7 @@ describe('groupTasks', () => {
   });
 });
 
-describe('visibleTaskNodes', () => {
+describe('openTaskNodes', () => {
   const task = (overrides: Partial<TaskView>): TaskView => ({
     id: 'id',
     title: 'x',
@@ -237,22 +237,17 @@ describe('visibleTaskNodes', () => {
     ...overrides,
   });
 
-  it('returns the nodes unchanged when the toggle is off', () => {
-    const nodes = groupTasks([task({ id: 'a', completedAt: '2026-07-02T00:00:00.000Z' })]);
-    expect(visibleTaskNodes(nodes, false)).toBe(nodes);
-  });
-
   it('drops a completed top-level task with no children', () => {
     const nodes = groupTasks([task({ id: 'done', completedAt: '2026-07-02T00:00:00.000Z' })]);
-    expect(visibleTaskNodes(nodes, true)).toEqual([]);
+    expect(openTaskNodes(nodes)).toEqual([]);
   });
 
   it('keeps an open top-level task', () => {
     const nodes = groupTasks([task({ id: 'open' })]);
-    expect(visibleTaskNodes(nodes, true)).toEqual(nodes);
+    expect(openTaskNodes(nodes)).toEqual(nodes);
   });
 
-  it('hides a completed child but keeps its open parent (AC5)', () => {
+  it('hides a completed child but keeps its open parent', () => {
     const parent = task({ id: 'parent' });
     const doneChild = task({
       id: 'a',
@@ -262,11 +257,11 @@ describe('visibleTaskNodes', () => {
     const openChild = task({ id: 'b', parentId: 'parent' });
     const nodes = groupTasks([parent, doneChild, openChild]);
 
-    const [node] = visibleTaskNodes(nodes, true);
+    const [node] = openTaskNodes(nodes);
     expect(node.children.map((c) => c.id)).toEqual(['b']);
   });
 
-  it('keeps a completed parent visible when it still guards an open child, dropping only its completed children (AC5)', () => {
+  it('keeps a completed parent visible when it still guards an open child, dropping only its completed children', () => {
     const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
     const openChild = task({ id: 'open', parentId: 'parent' });
     const doneChild = task({
@@ -276,7 +271,7 @@ describe('visibleTaskNodes', () => {
     });
     const nodes = groupTasks([parent, openChild, doneChild]);
 
-    const visible = visibleTaskNodes(nodes, true);
+    const visible = openTaskNodes(nodes);
     expect(visible).toHaveLength(1);
     expect(visible[0].task.id).toBe('parent');
     expect(visible[0].children.map((c) => c.id)).toEqual(['open']);
@@ -291,10 +286,10 @@ describe('visibleTaskNodes', () => {
     });
     const nodes = groupTasks([parent, doneChild]);
 
-    expect(visibleTaskNodes(nodes, true)).toEqual([]);
+    expect(openTaskNodes(nodes)).toEqual([]);
   });
 
-  it("never changes a kept node's done/total — the toggle changes display, not data (AC5)", () => {
+  it("never changes a kept node's done/total — filtering changes display, not data", () => {
     const parent = task({ id: 'parent', completedAt: '2026-07-02T00:00:00.000Z' });
     const openChild = task({ id: 'open', parentId: 'parent' });
     const doneChild = task({
@@ -304,9 +299,32 @@ describe('visibleTaskNodes', () => {
     });
     const nodes = groupTasks([parent, openChild, doneChild]);
 
-    const [node] = visibleTaskNodes(nodes, true);
+    const [node] = openTaskNodes(nodes);
     expect(node.done).toBe(1);
     expect(node.total).toBe(2);
+  });
+
+  it('filters multiple sibling top-level nodes independently, preserving the order of survivors', () => {
+    const openStandalone = task({ id: 'a', createdAt: '2026-07-01T00:00:00.000Z' });
+    const doneStandalone = task({
+      id: 'b',
+      createdAt: '2026-07-02T00:00:00.000Z',
+      completedAt: '2026-07-03T00:00:00.000Z',
+    });
+    const guardedParent = task({
+      id: 'c',
+      createdAt: '2026-07-03T00:00:00.000Z',
+      completedAt: '2026-07-04T00:00:00.000Z',
+    });
+    const guardedParentOpenChild = task({ id: 'c-open', parentId: 'c' });
+    const nodes = groupTasks([
+      openStandalone,
+      doneStandalone,
+      guardedParent,
+      guardedParentOpenChild,
+    ]);
+
+    expect(openTaskNodes(nodes).map((node) => node.task.id)).toEqual(['a', 'c']);
   });
 });
 

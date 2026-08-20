@@ -1,9 +1,9 @@
 /**
  * `Chip` (issue #711): a pill that costs 34px whether it is answered or not,
  * replacing a 44px form field that costs the same whichever. Tokens only, no
- * raw colour — states differ by border style and a `color-mix` tint (same
- * formula as `hide-completed-toggle.css`'s pressed state), never by a second
- * hue. `prefers-reduced-motion` needs no local rule: the global one in
+ * raw colour — states differ by border style and a `color-mix(in oklch,
+ * var(--accent) N%, var(--surface))` tint, never by a second hue.
+ * `prefers-reduced-motion` needs no local rule: the global one in
  * `tokens.css` already floors every `transition-duration` here.
  */
 
