@@ -1084,6 +1084,7 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
     browser,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
