@@ -830,6 +830,28 @@ test('das Checkbox-Touch-Ziel ist mindestens 44 × 44 px groß', async ({ page }
   expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);
 });
 
+test('Tippen in die Ecke des Checkbox-Touch-Ziels hakt ab, statt den Editor zu öffnen (issue #818)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const title = 'Eck-Tipp';
+  await seedTask(page, { title });
+
+  // Click a corner of the 44 × 44 touch target, clearly outside the visibly
+  // smaller 22px input it wraps — before issue #818 that fell through to the
+  // row's own tap-to-edit gesture instead of toggling the checkbox.
+  const wrap = checkboxFor(page, title).locator('xpath=..');
+  const box = await wrap.boundingBox();
+  if (!box) throw new Error('wrap has no bounding box');
+  await page.mouse.click(box.x + 4, box.y + 4);
+
+  await expect(editorDialog(page)).toHaveCount(0);
+  await expect(taskItems(page).filter({ hasText: title })).toHaveCount(0);
+  await selectView(page, 'Erledigt');
+  await expect(checkboxFor(page, title)).toBeChecked();
+});
+
 test('bei reduzierter Bewegung hat der Swipe-Rückstoß keine Sprung-Animation', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');

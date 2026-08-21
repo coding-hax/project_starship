@@ -179,9 +179,11 @@ export function TaskItem({
 
   function handlePointerDown(event: ReactPointerEvent<HTMLLIElement>) {
     if (event.button !== 0) return;
-    // The checkbox is its own control — capturing the pointer here would steal the
-    // click the browser is about to synthesize for it.
-    if ((event.target as HTMLElement).closest('input, button')) return;
+    // The checkbox (and its label wrap, issue #818 — the label is what makes the
+    // whole 44 × 44 touch target check off, not just the visibly smaller input)
+    // is its own control — capturing the pointer here would steal the click the
+    // browser is about to synthesize for it.
+    if ((event.target as HTMLElement).closest('input, button, label')) return;
     // Otherwise the browser starts a native text selection alongside the gesture:
     // the word under the pointer gets selected and it is *that* selection the
     // drag then moves, not the card (issue #451). Safe here because the row is
@@ -358,7 +360,11 @@ export function TaskItem({
           <span className="task-list__disclosure-icon" aria-hidden="true" />
         </button>
       )}
-      <span className="task-list__checkbox-wrap">
+      {/* A <label>, not a <span> (issue #818): wraps the input so the whole
+          44 × 44 touch target checks off, not just the visibly smaller circle —
+          otherwise a tap that lands in the padding around it falls through to
+          the row's own tap-to-edit gesture instead. */}
+      <label className="task-list__checkbox-wrap">
         <input
           type="checkbox"
           className="task-list__checkbox"
@@ -366,7 +372,7 @@ export function TaskItem({
           onChange={onToggle}
           aria-label={`${task.title} als erledigt markieren`}
         />
-      </span>
+      </label>
       <span
         className="task-list__title"
         title={priorityLabel ? `Priorität: ${priorityLabel}` : undefined}

@@ -346,6 +346,7 @@
   min-width: var(--touch-target);
   min-height: var(--touch-target);
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .task-list__checkbox {
