@@ -107,9 +107,11 @@ function stepFor(track: HTMLElement, expanded: boolean): number {
  * around `windowAnchor`, rendered all at once so a swipe is native scrolling
  * the whole way, never a hand-picked jump. `windowAnchor` only moves — and
  * only silently, compensating the scroll position in the same layout pass —
- * once the visible band drifts within `MARGIN_DAYS`/`MARGIN_WEEKS` of the
- * buffer's edge; the rest of the time the buffer just sits there while
- * `leadIndex` (the first visible cell/row) tracks the live scroll position.
+ * once scrolling settles (`scrollend`) with the visible band within
+ * `MARGIN_DAYS`/`MARGIN_WEEKS` of the buffer's edge — never mid-gesture, or
+ * the reset itself cancels the native fling still in flight (issue #820);
+ * the rest of the time the buffer just sits there while `leadIndex` (the
+ * first visible cell/row) tracks the live scroll position on every `scroll`.
  * Week view rolls horizontally, day by day; month view rolls vertically,
  * week by week — the axis switch (and the vertical direction: up = later,
  * down = earlier) is this ticket's second half.
@@ -187,12 +189,32 @@ export function CalendarStrip({
     setLeadIndex(radius);
   }, [windowAnchor, expanded, jumpToken]);
 
-  /** Tracks the live scroll position: updates `leadIndex` (drives the title,
-   *  the dimming and the interactive band) every frame, and silently rebuilds
-   *  the buffer once the visible band nears its edge. */
+  /** Tracks the live scroll position: `leadIndex` (drives the title, the
+   *  dimming and the interactive band) updates every frame, on the `scroll`
+   *  event. The buffer itself only ever rebuilds once scrolling has fully
+   *  settled — `scrollend`, never mid-gesture (issue #820). Resetting
+   *  `scrollLeft`/`scrollTop` from inside a `scroll` handler cancels the
+   *  browser's own fling outright (setting a scroll offset from script stops
+   *  native momentum dead), and if that reset lands mid rubber-band bounce
+   *  the read `pos` can sit outside the buffer's range entirely — either way
+   *  the *next* touch-move has to resync with a finger that kept moving,
+   *  which is the sudden extra-fast jump this ticket reports right where the
+   *  buffer re-anchors. Once scrolling has actually stopped there's no
+   *  ongoing motion left to cancel, so the same reset is invisible. */
   useEffect(() => {
     const track = trackRef.current;
     if (!track) return;
+
+    function readClamp(current: HTMLElement) {
+      const step = stepFor(current, expanded);
+      if (step <= 0) return null;
+      const visibleCount = expanded ? VISIBLE_WEEKS : VISIBLE_DAYS;
+      const length = expanded ? windowWeeks.length : windowDays.length;
+      const pos = expanded ? current.scrollTop : current.scrollLeft;
+      const rawIndex = Math.floor(pos / step);
+      const clamped = Math.min(Math.max(rawIndex, 0), length - visibleCount);
+      return { step, length, visibleCount, pos, clamped };
+    }
 
     function handleScroll() {
       if (rafRef.current !== null) return;
@@ -200,30 +222,33 @@ export function CalendarStrip({
         rafRef.current = null;
         const current = trackRef.current;
         if (!current) return;
-        const step = stepFor(current, expanded);
-        if (step <= 0) return;
-        const visibleCount = expanded ? VISIBLE_WEEKS : VISIBLE_DAYS;
-        const length = expanded ? windowWeeks.length : windowDays.length;
-        const margin = expanded ? MARGIN_WEEKS : MARGIN_DAYS;
-        const pos = expanded ? current.scrollTop : current.scrollLeft;
-        const rawIndex = Math.floor(pos / step);
-        const clamped = Math.min(Math.max(rawIndex, 0), length - visibleCount);
-
-        if (clamped <= margin || clamped + visibleCount >= length - margin) {
-          const newAnchor = expanded ? windowWeeks[clamped]?.[0] : windowDays[clamped];
-          if (newAnchor && newAnchor !== windowAnchor) {
-            pendingFracRef.current = pos - clamped * step;
-            setWindowAnchor(newAnchor);
-          }
-        } else {
-          setLeadIndex((prev) => (prev === clamped ? prev : clamped));
-        }
+        const result = readClamp(current);
+        if (!result) return;
+        setLeadIndex((prev) => (prev === result.clamped ? prev : result.clamped));
       });
     }
 
+    function handleScrollEnd() {
+      const current = trackRef.current;
+      if (!current) return;
+      const result = readClamp(current);
+      if (!result) return;
+      const { step, length, visibleCount, pos, clamped } = result;
+      const margin = expanded ? MARGIN_WEEKS : MARGIN_DAYS;
+      if (clamped <= margin || clamped + visibleCount >= length - margin) {
+        const newAnchor = expanded ? windowWeeks[clamped]?.[0] : windowDays[clamped];
+        if (newAnchor && newAnchor !== windowAnchor) {
+          pendingFracRef.current = pos - clamped * step;
+          setWindowAnchor(newAnchor);
+        }
+      }
+    }
+
     track.addEventListener('scroll', handleScroll, { passive: true });
+    track.addEventListener('scrollend', handleScrollEnd, { passive: true });
     return () => {
       track.removeEventListener('scroll', handleScroll);
+      track.removeEventListener('scrollend', handleScrollEnd);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [expanded, windowDays, windowWeeks, windowAnchor]);
