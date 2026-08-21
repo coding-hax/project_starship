@@ -61,6 +61,14 @@ test('a mutation made offline survives a reload and reaches Postgres', async ({ 
   await page.reload();
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
+  // The reload just remounted SyncBoot, whose mount effect fires its own sync()
+  // against the still-aborted route (see the #528 test above). Let that attempt
+  // fail and settle here, while the route is still active — unrouting while it is
+  // still in flight would let its request land exactly in the teardown window and
+  // hang forever instead of failing (issue #120: same race, a different automatic
+  // trigger).
+  await page.evaluate(() => window.__starship.sync());
+
   // Back online.
   await page.unroute('**/api/sync/**');
   await page.evaluate(() => window.__starship.sync());
