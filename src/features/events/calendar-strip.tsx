@@ -249,7 +249,18 @@ export function CalendarStrip({
     return () => {
       track.removeEventListener('scroll', handleScroll);
       track.removeEventListener('scrollend', handleScrollEnd);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) {
+        // A silent rebuild's synchronous scrollLeft/scrollTop reset (the
+        // layout effect above) fires its own `scroll` event, which this
+        // very listener — still attached, about to be torn down — can pick
+        // up and schedule a rAF for. Leaving the ref non-null after
+        // cancelling that stale rAF would permanently trip `handleScroll`'s
+        // `rafRef.current !== null` guard in the *next* effect instance,
+        // freezing `leadIndex` (and `data-anchor-day`) against every scroll
+        // from then on.
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [expanded, windowDays, windowWeeks, windowAnchor]);
 
