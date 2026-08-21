@@ -825,6 +825,30 @@ test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert
   await expect(buffered).toHaveAttribute('aria-hidden', 'true');
 });
 
+test('ein einzelner, ununterbrochener Wisch weit ueber den Rand landet trotzdem exakt richtig, der Puffer rueckt erst danach nach (issue #820)', async ({
+  page,
+}) => {
+  const track = calendarWeeks(page);
+  const firstCell = track.locator('.calendar-strip__cell').first().locator('.calendar-strip__day');
+  const firstDayBefore = await firstCell.getAttribute('aria-label');
+  const unit = await trackUnitPx(page);
+
+  // 12 Tage in einem Zug (statt zwei einzeln gewischten Wochen wie oben) —
+  // deutlich ueber MARGIN_DAYS (10) hinaus, aber noch innerhalb des Puffers
+  // (RADIUS_DAYS 21), damit die Fuehrungszelle sofort korrekt mitgeht.
+  await track.evaluate((el, unit) => {
+    el.scrollLeft += unit * 12;
+  }, unit);
+
+  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, 12));
+  await expect(dayButton(page, 'Do, 30.')).toBeVisible();
+
+  // Der Nachbau selbst (neue Fuehrungszelle am linken Pufferrand) darf
+  // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
+  // waehrend des Wischs (issue #820).
+  await expect.poll(() => firstCell.getAttribute('aria-label')).not.toBe(firstDayBefore);
+});
+
 /* -------------------------------------------------------------------------- */
 /* issue #813: Monat rollt jetzt senkrecht, wochenweise (kehrt #805 um)       */
 /* -------------------------------------------------------------------------- */
@@ -894,6 +918,34 @@ test('der Streifen erfasst im Monat nur senkrechte Gesten, waagerecht bleibt dem
     el.scrollLeft = 1000;
   });
   await expect(track.evaluate((el) => el.scrollLeft)).resolves.toBe(0);
+});
+
+test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdurchgaenge hinweg trotzdem exakt richtig (issue #820)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const before = await anchorDay(page);
+
+  const track = calendarWeeks(page);
+  const firstRow = track.locator('.calendar-strip__week-row').first().locator('.calendar-strip__day').first();
+  const firstDayBefore = await firstRow.getAttribute('aria-label');
+  const unit = await trackUnitPx(page);
+
+  // Sechs Wochenzeilen in einem Zug — deutlich ueber MARGIN_WEEKS (8) hinaus,
+  // aber noch innerhalb des Puffers (RADIUS_WEEKS 14).
+  await track.evaluate(
+    (el, unit) => {
+      el.scrollTop += unit * 6;
+    },
+    unit,
+  );
+
+  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 42));
+
+  // Der Nachbau selbst (neue Fuehrungszeile am oberen Pufferrand) darf
+  // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
+  // waehrend des Wischs (issue #820, gleiche Logik wie in der Woche).
+  await expect.poll(() => firstRow.getAttribute('aria-label')).not.toBe(firstDayBefore);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
