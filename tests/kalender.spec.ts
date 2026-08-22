@@ -834,8 +834,8 @@ test('ein einzelner, ununterbrochener Wisch weit ueber den Rand landet trotzdem 
   const unit = await trackUnitPx(page);
 
   // 12 Tage in einem Zug (statt zwei einzeln gewischten Wochen wie oben) —
-  // deutlich ueber MARGIN_DAYS (10) hinaus, aber noch innerhalb des Puffers
-  // (RADIUS_DAYS 21), damit die Fuehrungszelle sofort korrekt mitgeht.
+  // deutlich ueber MARGIN_DAYS (10) hinaus, aber weit innerhalb des Puffers
+  // (RADIUS_DAYS 365), damit die Fuehrungszelle sofort korrekt mitgeht.
   await track.evaluate((el, unit) => {
     el.scrollLeft += unit * 12;
   }, unit);
@@ -932,7 +932,7 @@ test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdu
   const unit = await trackUnitPx(page);
 
   // Sechs Wochenzeilen in einem Zug — deutlich ueber MARGIN_WEEKS (8) hinaus,
-  // aber noch innerhalb des Puffers (RADIUS_WEEKS 14).
+  // aber weit innerhalb des Puffers (RADIUS_WEEKS 52).
   await track.evaluate(
     (el, unit) => {
       el.scrollTop += unit * 6;
@@ -967,10 +967,23 @@ test('der Puffer baut auch weiter, wenn der native "scrollend"-Event nie feuert 
   await pageStripForward(page, 8);
   const after = await anchorDay(page);
 
-  // Acht volle Bildschirme (48 Wochenzeilen) liegen weit jenseits eines
-  // einzelnen Pufferradius (RADIUS_WEEKS 14 Wochen) — ohne Nachbau waere der
-  // Streifen laengst am urspruenglichen Rand haengengeblieben.
+  // Acht volle Bildschirme (48 Wochenzeilen) haetten den alten Pufferradius
+  // (14 Wochen) laengst gesprengt — ohne Nachbau waere der Streifen dort
+  // haengengeblieben. Nur eine grobe untere Schranke, kein exakter Puffervergleich:
+  // der Radius ist seit #824 ohnehin viel groesser (RADIUS_WEEKS 52).
   expect(dateKeyDiff(before as string, after as string)).toBeGreaterThan(14 * 7);
+});
+
+test('der Puffer spannt im Wochen- wie im Monatsmodus rund ein Jahr je Richtung, damit normales Blaettern den Rand nie erreicht (issue #824)', async ({
+  page,
+}) => {
+  // Woche: RADIUS_DAYS 365 je Richtung + der Ankertag selbst = 731 Zellen.
+  await expect(page.locator('.calendar-strip__cell')).toHaveCount(2 * 365 + 1);
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // Monat: RADIUS_WEEKS 52 je Richtung + die Ankerwoche selbst = 105 Zeilen.
+  await expect(page.locator('.calendar-strip__week-row')).toHaveCount(2 * 52 + 1);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
