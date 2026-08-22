@@ -72,6 +72,18 @@ function dayButton(page: Page, ariaLabel: string) {
   return page.locator(`.calendar-strip__day[aria-label="${ariaLabel}"]:not([inert])`);
 }
 
+const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/** Mirrors calendar-strip.tsx's own `weekdayIndexOf` + label lookup — lets a
+ *  test compute a day button's `aria-label` for an arbitrary offset instead
+ *  of a hand-counted weekday (issue #824's much larger buffer needs swipes
+ *  far past what's easy to count by hand). */
+function ariaLabelFor(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const weekday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+  return `${WEEKDAY_LABELS[weekday]}, ${Number(dateKey.slice(-2))}.`;
+}
+
 function dayDots(page: Page, ariaLabel: string) {
   return dayButton(page, ariaLabel).locator('.calendar-strip__dot');
 }
@@ -818,9 +830,15 @@ test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert
   await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
 
   // Eine Woche voraus liegt bereits im (unsichtbaren) Puffer, nicht mehr im
-  // sichtbaren Fenster.
-  const buffered = page.locator('.calendar-strip__day[aria-label="Sa, 25."]');
+  // sichtbaren Fenster — ueber die erste Zelle direkt hinter der
+  // interaktiven Bande ausgewaehlt statt ueber das aria-label: das
+  // wiederholt sich im ±1-Jahr-Puffer (issue #824), "Sa, 25." etwa an drei
+  // Terminen im Fenster (25.10.25, 25.04.26, 25.07.26).
+  const buffered = page.locator(
+    '.calendar-strip__cell:has(.calendar-strip__day:not([inert])) + .calendar-strip__cell:has(.calendar-strip__day[inert]) .calendar-strip__day',
+  );
   await expect(buffered).toHaveCount(1);
+  await expect(buffered).toHaveAttribute('aria-label', 'Sa, 25.');
   await expect(buffered).toHaveJSProperty('inert', true);
   await expect(buffered).toHaveAttribute('aria-hidden', 'true');
 });
@@ -833,15 +851,20 @@ test('ein einzelner, ununterbrochener Wisch weit ueber den Rand landet trotzdem 
   const firstDayBefore = await firstCell.getAttribute('aria-label');
   const unit = await trackUnitPx(page);
 
-  // 12 Tage in einem Zug (statt zwei einzeln gewischten Wochen wie oben) —
-  // deutlich ueber MARGIN_DAYS (10) hinaus, aber noch innerhalb des Puffers
-  // (RADIUS_DAYS 21), damit die Fuehrungszelle sofort korrekt mitgeht.
-  await track.evaluate((el, unit) => {
-    el.scrollLeft += unit * 12;
-  }, unit);
+  // 350 Tage in einem Zug — seit #824 muss ein Wisch bis nah an den (jetzt
+  // ±1 Jahr weiten) Pufferrand reichen, um den Nachbau ueberhaupt auszuloesen
+  // (RADIUS_DAYS 365 minus MARGIN_DAYS 10 minus VISIBLE_DAYS 7 ergibt 349 als
+  // kleinsten ausloesenden Wert).
+  const SWIPE_DAYS = 350;
+  await track.evaluate(
+    (el, { unit, days }) => {
+      el.scrollLeft += unit * days;
+    },
+    { unit, days: SWIPE_DAYS },
+  );
 
-  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, 12));
-  await expect(dayButton(page, 'Do, 30.')).toBeVisible();
+  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, SWIPE_DAYS));
+  await expect(dayButton(page, ariaLabelFor(addDays(TODAY, SWIPE_DAYS)))).toBeVisible();
 
   // Der Nachbau selbst (neue Fuehrungszelle am linken Pufferrand) darf
   // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
@@ -931,16 +954,19 @@ test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdu
   const firstDayBefore = await firstRow.getAttribute('aria-label');
   const unit = await trackUnitPx(page);
 
-  // Sechs Wochenzeilen in einem Zug — deutlich ueber MARGIN_WEEKS (8) hinaus,
-  // aber noch innerhalb des Puffers (RADIUS_WEEKS 14).
+  // 40 Wochenzeilen in einem Zug — seit #824 muss ein Wisch bis nah an den
+  // (jetzt ±1 Jahr weiten) Pufferrand reichen, um den Nachbau ueberhaupt
+  // auszuloesen (RADIUS_WEEKS 52 minus MARGIN_WEEKS 8 minus VISIBLE_WEEKS 6
+  // ergibt 39 als kleinsten ausloesenden Wert).
+  const SWIPE_WEEKS = 40;
   await track.evaluate(
-    (el, unit) => {
-      el.scrollTop += unit * 6;
+    (el, { unit, weeks }) => {
+      el.scrollTop += unit * weeks;
     },
-    unit,
+    { unit, weeks: SWIPE_WEEKS },
   );
 
-  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 42));
+  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, SWIPE_WEEKS * 7));
 
   // Der Nachbau selbst (neue Fuehrungszeile am oberen Pufferrand) darf
   // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
@@ -967,10 +993,23 @@ test('der Puffer baut auch weiter, wenn der native "scrollend"-Event nie feuert 
   await pageStripForward(page, 8);
   const after = await anchorDay(page);
 
-  // Acht volle Bildschirme (48 Wochenzeilen) liegen weit jenseits eines
-  // einzelnen Pufferradius (RADIUS_WEEKS 14 Wochen) — ohne Nachbau waere der
-  // Streifen laengst am urspruenglichen Rand haengengeblieben.
+  // Acht volle Bildschirme (48 Wochenzeilen) haetten den alten Pufferradius
+  // (14 Wochen) laengst gesprengt — ohne Nachbau waere der Streifen dort
+  // haengengeblieben. Nur eine grobe untere Schranke, kein exakter Puffervergleich:
+  // der Radius ist seit #824 ohnehin viel groesser (RADIUS_WEEKS 52).
   expect(dateKeyDiff(before as string, after as string)).toBeGreaterThan(14 * 7);
+});
+
+test('der Puffer spannt im Wochen- wie im Monatsmodus rund ein Jahr je Richtung, damit normales Blaettern den Rand nie erreicht (issue #824)', async ({
+  page,
+}) => {
+  // Woche: RADIUS_DAYS 365 je Richtung + der Ankertag selbst = 731 Zellen.
+  await expect(page.locator('.calendar-strip__cell')).toHaveCount(2 * 365 + 1);
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // Monat: RADIUS_WEEKS 52 je Richtung + die Ankerwoche selbst = 105 Zeilen.
+  await expect(page.locator('.calendar-strip__week-row')).toHaveCount(2 * 52 + 1);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
@@ -2238,7 +2277,9 @@ async function agendaAfterDaySwitch(
   navLabel: string,
 ): Promise<{ items: AgendaRowSnapshot[]; allDay: AgendaRowSnapshot[] }> {
   return page.evaluate(async (label) => {
-    const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    const button = document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${label}"]:not([inert])`,
+    );
     if (!button) throw new Error(`agendaAfterDaySwitch: no button labelled "${label}"`);
     button.click();
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -2285,7 +2326,12 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
+  // Ueber den Tag-Pfeil statt eine Streifen-Zelle: ein Tap auf eine Zelle
+  // rueckt den Anker immer auf den getippten Tag vor (issue #813) — "Sa,
+  // 18." waere als voriger Tag danach nicht mehr im interaktiven Fenster,
+  // unabhaengig vom Puffer. Der Pfeil bleibt immer erreichbar und loest
+  // denselben `selectedDay`-Wechsel aus, den diese AK prueft.
+  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);

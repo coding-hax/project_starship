@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { SegmentedControl } from '@/ui/segmented-control';
 import {
@@ -33,12 +33,17 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const VISIBLE_DAYS = 7;
 const VISIBLE_WEEKS = 6;
 
-/** Buffer radius either side of the anchor — generous enough that a desktop
- *  `‹`/`›` jump (a week or a whole calendar month) always lands inside the
- *  currently-rendered window (see `pageBy`), so it never has to wait for a
- *  rebuild before it can scroll there. */
-const RADIUS_DAYS = 21;
-const RADIUS_WEEKS = 14;
+/** Buffer radius either side of the anchor, in days/weeks — one year each way
+ *  (issue #824: at the old 21-day/14-week radius, normal paging eventually
+ *  reached the buffer edge, where the silent re-anchor's `SCROLL_IDLE_MS`
+ *  settle wait became a felt pause). A year is far enough that ordinary
+ *  paging never reaches the edge (~52 week-swipes, ~17 month-swipes), so the
+ *  re-anchor stays a safety net rather than something normal use ever hits;
+ *  memoised per-cell/per-row rendering below (`CalendarDayCell`/
+ *  `CalendarWeekRow`) keeps the resulting 731 cells / 105 rows cheap to
+ *  re-render. */
+const RADIUS_DAYS = 365;
+const RADIUS_WEEKS = 52;
 
 /** How close to a buffer edge (in cells/rows) triggers a silent re-anchor —
  *  see the `useLayoutEffect` below for the scroll-position compensation that
@@ -107,6 +112,134 @@ function stepFor(track: HTMLElement, expanded: boolean): number {
   }
   return expanded ? track.clientHeight / VISIBLE_WEEKS : track.clientWidth / VISIBLE_DAYS;
 }
+
+interface CalendarDayCellProps {
+  day: string;
+  selected: boolean;
+  interactive: boolean;
+  isToday: boolean;
+  weekdayLabel: string;
+  dayNumber: number;
+  dots: EventView['category'][];
+  onSelect: (day: string) => void;
+}
+
+/** One day button in week view, split out of the carousel's `.map` (issue
+ *  #824) so a `leadIndex` change during scroll — which only moves the
+ *  interactive band, not any cell's own data — re-renders just the ~7–14
+ *  cells crossing that band instead of all `RADIUS_DAYS * 2 + 1` of them. */
+const CalendarDayCell = memo(function CalendarDayCell({
+  day,
+  selected,
+  interactive,
+  isToday,
+  weekdayLabel,
+  dayNumber,
+  dots,
+  onSelect,
+}: CalendarDayCellProps) {
+  return (
+    <li className="calendar-strip__cell">
+      <button
+        type="button"
+        className={
+          selected ? 'calendar-strip__day calendar-strip__day--selected' : 'calendar-strip__day'
+        }
+        data-today={isToday ? '' : undefined}
+        inert={!interactive}
+        aria-hidden={interactive ? undefined : true}
+        aria-pressed={selected}
+        aria-label={`${weekdayLabel}, ${dayNumber}.`}
+        onClick={() => onSelect(day)}
+      >
+        <span className="calendar-strip__weekday" aria-hidden="true">
+          {weekdayLabel}
+        </span>
+        <span aria-hidden="true">{dayNumber}</span>
+        {dots.length > 0 && (
+          <span className="calendar-strip__dots" aria-hidden="true">
+            {dots.map((category) => (
+              <span
+                key={category ?? 'none'}
+                className="calendar-strip__dot"
+                style={{ background: categoryEdgeVar(category) }}
+              />
+            ))}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+});
+
+interface CalendarWeekRowProps {
+  week: string[];
+  selectedDay: string;
+  today: string;
+  rowInteractive: boolean;
+  focusMonth: string;
+  dotsByDay: Map<string, EventView['category'][]>;
+  onSelect: (day: string) => void;
+}
+
+/** One week row in month view, split out of the carousel's `.map` (issue
+ *  #824) — invalidates only when the *focused month* changes (~every 4–5
+ *  rows scrolled) rather than on every `leadIndex` step, since `focusMonth`
+ *  is the only per-scroll input this row's rendering depends on. */
+const CalendarWeekRow = memo(function CalendarWeekRow({
+  week,
+  selectedDay,
+  today,
+  rowInteractive,
+  focusMonth,
+  dotsByDay,
+  onSelect,
+}: CalendarWeekRowProps) {
+  return (
+    <li className="calendar-strip__week-row">
+      <ul className="calendar-strip__days">
+        {week.map((day, dayIndex) => {
+          const isSelected = day === selectedDay;
+          const isOutsideMonth = day.slice(0, 7) !== focusMonth;
+          const dayNumber = Number(day.slice(-2));
+          const dots = dotsByDay.get(day) ?? [];
+          return (
+            <li key={day}>
+              <button
+                type="button"
+                className={
+                  isSelected
+                    ? 'calendar-strip__day calendar-strip__day--selected'
+                    : 'calendar-strip__day'
+                }
+                data-today={day === today ? '' : undefined}
+                data-outside-month={isOutsideMonth ? '' : undefined}
+                inert={!rowInteractive}
+                aria-hidden={rowInteractive ? undefined : true}
+                aria-pressed={isSelected}
+                aria-label={`${WEEKDAY_LABELS[dayIndex]}, ${dayNumber}.`}
+                onClick={() => onSelect(day)}
+              >
+                <span aria-hidden="true">{dayNumber}</span>
+                {dots.length > 0 && (
+                  <span className="calendar-strip__dots" aria-hidden="true">
+                    {dots.map((category) => (
+                      <span
+                        key={category ?? 'none'}
+                        className="calendar-strip__dot"
+                        style={{ background: categoryEdgeVar(category) }}
+                      />
+                    ))}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </li>
+  );
+});
 
 /**
  * Week strip that pulls open into a full month (issue #556, S5 of #473 — a
@@ -297,13 +430,18 @@ export function CalendarStrip({
     };
   }, [expanded, windowDays, windowWeeks, windowAnchor]);
 
-  /** Sets selection *and* re-anchors the view on it — tap, day-step arrows and "Heute" all funnel through here (issue #784, AK4/AK6/AK7). Jumps straight there, no animation, however far the target is. */
-  function selectDay(day: string) {
-    onSelectDay(day);
-    pendingFracRef.current = 0;
-    setJumpToken((token) => token + 1);
-    setWindowAnchor(day);
-  }
+  /** Sets selection *and* re-anchors the view on it — tap, day-step arrows and "Heute" all funnel through here (issue #784, AK4/AK6/AK7). Jumps straight there, no animation, however far the target is.
+   *  `useCallback` so it's a stable prop for `CalendarDayCell`/`CalendarWeekRow` (issue #824) — a new
+   *  function identity every render would break their `memo` regardless of any other prop. */
+  const selectDay = useCallback(
+    (day: string) => {
+      onSelectDay(day);
+      pendingFracRef.current = 0;
+      setJumpToken((token) => token + 1);
+      setWindowAnchor(day);
+    },
+    [onSelectDay],
+  );
 
   /**
    * Pages a week in week view, a month in month view — the desktop `‹`/`›`
@@ -400,95 +538,32 @@ export function CalendarStrip({
       )}
       <ul className="calendar-strip__carousel" ref={trackRef} data-expanded={expanded}>
         {!expanded &&
-          windowDays.map((day, index) => {
-            const interactive = index >= leadIndex && index < leadIndex + VISIBLE_DAYS;
-            const isSelected = day === selectedDay;
-            const dayNumber = Number(day.slice(-2));
-            const weekdayLabel = WEEKDAY_LABELS[weekdayIndexOf(day)];
-            const dots = dotsByDay.get(day) ?? [];
-            return (
-              <li key={day} className="calendar-strip__cell">
-                <button
-                  type="button"
-                  className={
-                    isSelected
-                      ? 'calendar-strip__day calendar-strip__day--selected'
-                      : 'calendar-strip__day'
-                  }
-                  data-today={day === today ? '' : undefined}
-                  inert={!interactive}
-                  aria-hidden={interactive ? undefined : true}
-                  aria-pressed={isSelected}
-                  aria-label={`${weekdayLabel}, ${dayNumber}.`}
-                  onClick={() => selectDay(day)}
-                >
-                  <span className="calendar-strip__weekday" aria-hidden="true">
-                    {weekdayLabel}
-                  </span>
-                  <span aria-hidden="true">{dayNumber}</span>
-                  {dots.length > 0 && (
-                    <span className="calendar-strip__dots" aria-hidden="true">
-                      {dots.map((category) => (
-                        <span
-                          key={category ?? 'none'}
-                          className="calendar-strip__dot"
-                          style={{ background: categoryEdgeVar(category) }}
-                        />
-                      ))}
-                    </span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
+          windowDays.map((day, index) => (
+            <CalendarDayCell
+              key={day}
+              day={day}
+              selected={day === selectedDay}
+              interactive={index >= leadIndex && index < leadIndex + VISIBLE_DAYS}
+              isToday={day === today}
+              weekdayLabel={WEEKDAY_LABELS[weekdayIndexOf(day)]}
+              dayNumber={Number(day.slice(-2))}
+              dots={dotsByDay.get(day) ?? []}
+              onSelect={selectDay}
+            />
+          ))}
         {expanded &&
-          windowWeeks.map((week, rowIndex) => {
-            const rowInteractive = rowIndex >= leadIndex && rowIndex < leadIndex + VISIBLE_WEEKS;
-            return (
-              <li key={week[0]} className="calendar-strip__week-row">
-                <ul className="calendar-strip__days">
-                  {week.map((day, dayIndex) => {
-                    const isSelected = day === selectedDay;
-                    const isOutsideMonth = day.slice(0, 7) !== leadDay.slice(0, 7);
-                    const dayNumber = Number(day.slice(-2));
-                    const dots = dotsByDay.get(day) ?? [];
-                    return (
-                      <li key={day}>
-                        <button
-                          type="button"
-                          className={
-                            isSelected
-                              ? 'calendar-strip__day calendar-strip__day--selected'
-                              : 'calendar-strip__day'
-                          }
-                          data-today={day === today ? '' : undefined}
-                          data-outside-month={isOutsideMonth ? '' : undefined}
-                          inert={!rowInteractive}
-                          aria-hidden={rowInteractive ? undefined : true}
-                          aria-pressed={isSelected}
-                          aria-label={`${WEEKDAY_LABELS[dayIndex]}, ${dayNumber}.`}
-                          onClick={() => selectDay(day)}
-                        >
-                          <span aria-hidden="true">{dayNumber}</span>
-                          {dots.length > 0 && (
-                            <span className="calendar-strip__dots" aria-hidden="true">
-                              {dots.map((category) => (
-                                <span
-                                  key={category ?? 'none'}
-                                  className="calendar-strip__dot"
-                                  style={{ background: categoryEdgeVar(category) }}
-                                />
-                              ))}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </li>
-            );
-          })}
+          windowWeeks.map((week, rowIndex) => (
+            <CalendarWeekRow
+              key={week[0]}
+              week={week}
+              selectedDay={selectedDay}
+              today={today}
+              rowInteractive={rowIndex >= leadIndex && rowIndex < leadIndex + VISIBLE_WEEKS}
+              focusMonth={leadDay.slice(0, 7)}
+              dotsByDay={dotsByDay}
+              onSelect={selectDay}
+            />
+          ))}
       </ul>
     </div>
   );
