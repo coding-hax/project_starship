@@ -1116,6 +1116,58 @@ test('das Dimmen ausserhalb des Monats folgt dem rollenden Anker-Monat, nicht de
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
 });
 
+test('das Dimmen kippt beim Rueckwaertsrollen zurueck statt am neuen Anker haengen zu bleiben (issue #826, AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const before = await anchorDay(page);
+  const augustMonday = dayButton(page, 'Mo, 3.');
+  await expect(augustMonday).toHaveAttribute('data-outside-month', '');
+
+  const track = calendarWeeks(page);
+  const unit = await trackUnitPx(page);
+  await track.evaluate((el, unit) => {
+    el.scrollTop += unit * 3; // drei Wochen vor: 13.07. -> 03.08.
+  }, unit);
+  await expect.poll(() => anchorDay(page)).toBe('2026-08-03');
+  await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
+
+  // Zurueck (frueher) rollen: die Zeile muss ihre Dimmung wieder aufnehmen —
+  // das outsideMask-Refactor (issue #826) darf die Maske nicht auf dem Wert
+  // vom letzten Grenzuebertritt stehen lassen.
+  await track.evaluate((el, unit) => {
+    el.scrollTop -= unit * 3;
+  }, unit);
+  await expect.poll(() => anchorDay(page)).toBe(before);
+  await expect(augustMonday).toHaveAttribute('data-outside-month', '');
+});
+
+test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem Ankermonat synchron (issue #826, AK2)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // Vier volle Bildschirme (24 Wochenzeilen) durchlaufen mehrere Monatsgrenzen
+  // (Juli -> Dezember 2026) — genug Grenzuebertritte, um eine Maske zu
+  // entlarven, die nur beim allerersten Uebertritt korrekt mitzieht.
+  await pageStripForward(page, 4);
+  const after = await anchorDay(page);
+  expect(after).toBe('2026-12-28');
+
+  // Der Anker selbst (Montag der fuehrenden Zeile) liegt im fokussierten
+  // Monat (Dezember) und darf nicht gedimmt sein.
+  const anchorButton = dayButton(page, ariaLabelFor(after as string));
+  await expect(anchorButton).not.toHaveAttribute('data-outside-month', '');
+
+  // Derselbe Wochen-Zeile: der 1. Januar liegt schon im naechsten Monat und
+  // muss gedimmt sein — beweist, dass die Maske mit `focusMonth` synchron
+  // blieb, statt am Stand eines frueheren Grenzuebertritts haengen zu bleiben.
+  const neighborDay = addDays(after as string, 4);
+  expect(neighborDay).toBe('2027-01-01');
+  const neighborButton = dayButton(page, ariaLabelFor(neighborDay));
+  await expect(neighborButton).toHaveAttribute('data-outside-month', '');
+});
+
 test('Kopf und Umschalter behalten Position und Hoehe beim Wechsel zwischen Woche und Monat (issue #813, AK8)', async ({
   page,
 }) => {

@@ -177,21 +177,27 @@ interface CalendarWeekRowProps {
   selectedDay: string;
   today: string;
   rowInteractive: boolean;
-  focusMonth: string;
+  /** Per-day dimming as a value-stable string (`'x'` = outside the focused
+   *  month, `'.'` = inside) instead of the focused month itself — a row whose
+   *  dimming pattern a month change doesn't actually flip (e.g. a row fully
+   *  inside March stays `'xxxxxxx'` whether the focus is July or August) then
+   *  keeps the same prop value and `memo()` skips it, instead of every one of
+   *  the 105 buffered rows re-rendering on each crossed month boundary
+   *  (issue #826). */
+  outsideMask: string;
   dotsByDay: Map<string, EventView['category'][]>;
   onSelect: (day: string) => void;
 }
 
 /** One week row in month view, split out of the carousel's `.map` (issue
- *  #824) — invalidates only when the *focused month* changes (~every 4–5
- *  rows scrolled) rather than on every `leadIndex` step, since `focusMonth`
- *  is the only per-scroll input this row's rendering depends on. */
+ *  #824) — invalidates only when its own `outsideMask` changes, which for
+ *  most rows survives crossing a month boundary unchanged (issue #826). */
 const CalendarWeekRow = memo(function CalendarWeekRow({
   week,
   selectedDay,
   today,
   rowInteractive,
-  focusMonth,
+  outsideMask,
   dotsByDay,
   onSelect,
 }: CalendarWeekRowProps) {
@@ -200,7 +206,7 @@ const CalendarWeekRow = memo(function CalendarWeekRow({
       <ul className="calendar-strip__days">
         {week.map((day, dayIndex) => {
           const isSelected = day === selectedDay;
-          const isOutsideMonth = day.slice(0, 7) !== focusMonth;
+          const isOutsideMonth = outsideMask[dayIndex] === 'x';
           const dayNumber = Number(day.slice(-2));
           const dots = dotsByDay.get(day) ?? [];
           return (
@@ -295,6 +301,18 @@ export function CalendarStrip({
   const windowWeeks = useMemo(() => weekWindow(windowAnchor, RADIUS_WEEKS), [windowAnchor]);
 
   const leadDay = (expanded ? windowWeeks[leadIndex]?.[0] : windowDays[leadIndex]) ?? windowAnchor;
+  const focusMonth = leadDay.slice(0, 7);
+
+  /** See `CalendarWeekRowProps.outsideMask` — one string per buffered week,
+   *  recomputed only when `focusMonth` itself changes. */
+  const outsideMaskByWeek = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!expanded) return map;
+    for (const week of windowWeeks) {
+      map.set(week[0], week.map((day) => (day.slice(0, 7) === focusMonth ? '.' : 'x')).join(''));
+    }
+    return map;
+  }, [expanded, windowWeeks, focusMonth]);
 
   const visibleDays = useMemo(
     () =>
@@ -559,7 +577,7 @@ export function CalendarStrip({
               selectedDay={selectedDay}
               today={today}
               rowInteractive={rowIndex >= leadIndex && rowIndex < leadIndex + VISIBLE_WEEKS}
-              focusMonth={leadDay.slice(0, 7)}
+              outsideMask={outsideMaskByWeek.get(week[0]) ?? ''}
               dotsByDay={dotsByDay}
               onSelect={selectDay}
             />
