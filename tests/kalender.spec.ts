@@ -72,6 +72,18 @@ function dayButton(page: Page, ariaLabel: string) {
   return page.locator(`.calendar-strip__day[aria-label="${ariaLabel}"]:not([inert])`);
 }
 
+const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/** Mirrors calendar-strip.tsx's own `weekdayIndexOf` + label lookup — lets a
+ *  test compute a day button's `aria-label` for an arbitrary offset instead
+ *  of a hand-counted weekday (issue #824's much larger buffer needs swipes
+ *  far past what's easy to count by hand). */
+function ariaLabelFor(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const weekday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+  return `${WEEKDAY_LABELS[weekday]}, ${Number(dateKey.slice(-2))}.`;
+}
+
 function dayDots(page: Page, ariaLabel: string) {
   return dayButton(page, ariaLabel).locator('.calendar-strip__dot');
 }
@@ -833,15 +845,20 @@ test('ein einzelner, ununterbrochener Wisch weit ueber den Rand landet trotzdem 
   const firstDayBefore = await firstCell.getAttribute('aria-label');
   const unit = await trackUnitPx(page);
 
-  // 12 Tage in einem Zug (statt zwei einzeln gewischten Wochen wie oben) —
-  // deutlich ueber MARGIN_DAYS (10) hinaus, aber weit innerhalb des Puffers
-  // (RADIUS_DAYS 365), damit die Fuehrungszelle sofort korrekt mitgeht.
-  await track.evaluate((el, unit) => {
-    el.scrollLeft += unit * 12;
-  }, unit);
+  // 350 Tage in einem Zug — seit #824 muss ein Wisch bis nah an den (jetzt
+  // ±1 Jahr weiten) Pufferrand reichen, um den Nachbau ueberhaupt auszuloesen
+  // (RADIUS_DAYS 365 minus MARGIN_DAYS 10 minus VISIBLE_DAYS 7 ergibt 349 als
+  // kleinsten ausloesenden Wert).
+  const SWIPE_DAYS = 350;
+  await track.evaluate(
+    (el, { unit, days }) => {
+      el.scrollLeft += unit * days;
+    },
+    { unit, days: SWIPE_DAYS },
+  );
 
-  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, 12));
-  await expect(dayButton(page, 'Do, 30.')).toBeVisible();
+  await expect.poll(() => anchorDay(page)).toBe(addDays(TODAY, SWIPE_DAYS));
+  await expect(dayButton(page, ariaLabelFor(addDays(TODAY, SWIPE_DAYS)))).toBeVisible();
 
   // Der Nachbau selbst (neue Fuehrungszelle am linken Pufferrand) darf
   // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
@@ -931,16 +948,19 @@ test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdu
   const firstDayBefore = await firstRow.getAttribute('aria-label');
   const unit = await trackUnitPx(page);
 
-  // Sechs Wochenzeilen in einem Zug — deutlich ueber MARGIN_WEEKS (8) hinaus,
-  // aber weit innerhalb des Puffers (RADIUS_WEEKS 52).
+  // 40 Wochenzeilen in einem Zug — seit #824 muss ein Wisch bis nah an den
+  // (jetzt ±1 Jahr weiten) Pufferrand reichen, um den Nachbau ueberhaupt
+  // auszuloesen (RADIUS_WEEKS 52 minus MARGIN_WEEKS 8 minus VISIBLE_WEEKS 6
+  // ergibt 39 als kleinsten ausloesenden Wert).
+  const SWIPE_WEEKS = 40;
   await track.evaluate(
-    (el, unit) => {
-      el.scrollTop += unit * 6;
+    (el, { unit, weeks }) => {
+      el.scrollTop += unit * weeks;
     },
-    unit,
+    { unit, weeks: SWIPE_WEEKS },
   );
 
-  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 42));
+  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, SWIPE_WEEKS * 7));
 
   // Der Nachbau selbst (neue Fuehrungszeile am oberen Pufferrand) darf
   // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
@@ -2251,7 +2271,9 @@ async function agendaAfterDaySwitch(
   navLabel: string,
 ): Promise<{ items: AgendaRowSnapshot[]; allDay: AgendaRowSnapshot[] }> {
   return page.evaluate(async (label) => {
-    const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    const button = document.querySelector<HTMLButtonElement>(
+      `button[aria-label="${label}"]:not([inert])`,
+    );
     if (!button) throw new Error(`agendaAfterDaySwitch: no button labelled "${label}"`);
     button.click();
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
