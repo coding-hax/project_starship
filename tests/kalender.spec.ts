@@ -830,9 +830,15 @@ test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert
   await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
 
   // Eine Woche voraus liegt bereits im (unsichtbaren) Puffer, nicht mehr im
-  // sichtbaren Fenster.
-  const buffered = page.locator('.calendar-strip__day[aria-label="Sa, 25."]');
+  // sichtbaren Fenster — ueber die erste Zelle direkt hinter der
+  // interaktiven Bande ausgewaehlt statt ueber das aria-label: das
+  // wiederholt sich im ±1-Jahr-Puffer (issue #824), "Sa, 25." etwa an drei
+  // Terminen im Fenster (25.10.25, 25.04.26, 25.07.26).
+  const buffered = page.locator(
+    '.calendar-strip__cell:has(.calendar-strip__day:not([inert])) + .calendar-strip__cell:has(.calendar-strip__day[inert]) .calendar-strip__day',
+  );
   await expect(buffered).toHaveCount(1);
+  await expect(buffered).toHaveAttribute('aria-label', 'Sa, 25.');
   await expect(buffered).toHaveJSProperty('inert', true);
   await expect(buffered).toHaveAttribute('aria-hidden', 'true');
 });
@@ -2320,7 +2326,12 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
+  // Ueber den Tag-Pfeil statt eine Streifen-Zelle: ein Tap auf eine Zelle
+  // rueckt den Anker immer auf den getippten Tag vor (issue #813) — "Sa,
+  // 18." waere als voriger Tag danach nicht mehr im interaktiven Fenster,
+  // unabhaengig vom Puffer. Der Pfeil bleibt immer erreichbar und loest
+  // denselben `selectedDay`-Wechsel aus, den diese AK prueft.
+  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
