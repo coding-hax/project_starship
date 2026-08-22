@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { addDays } from '@/features/events/event-time';
+import { addDays, dateKeyDiff } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -946,6 +946,31 @@ test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdu
   // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
   // waehrend des Wischs (issue #820, gleiche Logik wie in der Woche).
   await expect.poll(() => firstRow.getAttribute('aria-label')).not.toBe(firstDayBefore);
+});
+
+test('der Puffer baut auch weiter, wenn der native "scrollend"-Event nie feuert (issue #822)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // Simuliert eine Engine, bei der `scrollend` fuer einen scroll-snap-Container
+  // ausbleibt (issue #822s vermuteter Grund fuer den begrenzten Bereich): ein
+  // Capture-Phase-Listener auf einem Vorfahren stoppt das Ereignis, bevor es
+  // den Carousel-eigenen Listener je erreicht. Haenge der Nachbau allein an
+  // `scrollend`, bliebe der Streifen jetzt dauerhaft am Rand des anfaenglichen
+  // RADIUS_WEEKS-Puffers stehen.
+  await calendarStrip(page).evaluate((el) => {
+    el.addEventListener('scrollend', (event) => event.stopPropagation(), { capture: true });
+  });
+
+  const before = await anchorDay(page);
+  await pageStripForward(page, 8);
+  const after = await anchorDay(page);
+
+  // Acht volle Bildschirme (48 Wochenzeilen) liegen weit jenseits eines
+  // einzelnen Pufferradius (RADIUS_WEEKS 14 Wochen) — ohne Nachbau waere der
+  // Streifen laengst am urspruenglichen Rand haengengeblieben.
+  expect(dateKeyDiff(before as string, after as string)).toBeGreaterThan(14 * 7);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({

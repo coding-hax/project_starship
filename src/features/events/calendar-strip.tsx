@@ -46,6 +46,18 @@ const RADIUS_WEEKS = 14;
 const MARGIN_DAYS = 10;
 const MARGIN_WEEKS = 8;
 
+/** No further `scroll` events for this long counts as "settled" — a
+ *  hand-rolled equivalent of the native `scrollend` event (issue #822: the
+ *  buffer only ever re-anchored on `scrollend`, and that event is known to
+ *  go missing on some engines once `scroll-snap-type` is in the mix — e.g. a
+ *  proximity-snap correction that lands without ever firing one. When it
+ *  silently never fires, the buffer never rebuilds and the strip is stuck
+ *  wherever the initial `RADIUS_DAYS`/`RADIUS_WEEKS` window put its edges —
+ *  a bounded few months, not "so gut wie unbegrenzt". Comfortably above a
+ *  frame gap (~16ms) so it never fires mid-fling (issue #820's fix still
+ *  holds), comfortably above a snap correction's own settle-out. */
+const SCROLL_IDLE_MS = 150;
+
 export interface CalendarStripProps {
   selectedDay: string;
   onSelectDay: (dateKey: string) => void;
@@ -144,6 +156,7 @@ export function CalendarStrip({
    *  exactly as the leading cell. */
   const pendingFracRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const windowDays = useMemo(() => dayWindow(windowAnchor, RADIUS_DAYS), [windowAnchor]);
   const windowWeeks = useMemo(() => weekWindow(windowAnchor, RADIUS_WEEKS), [windowAnchor]);
@@ -192,15 +205,24 @@ export function CalendarStrip({
   /** Tracks the live scroll position: `leadIndex` (drives the title, the
    *  dimming and the interactive band) updates every frame, on the `scroll`
    *  event. The buffer itself only ever rebuilds once scrolling has fully
-   *  settled — `scrollend`, never mid-gesture (issue #820). Resetting
-   *  `scrollLeft`/`scrollTop` from inside a `scroll` handler cancels the
-   *  browser's own fling outright (setting a scroll offset from script stops
-   *  native momentum dead), and if that reset lands mid rubber-band bounce
-   *  the read `pos` can sit outside the buffer's range entirely — either way
-   *  the *next* touch-move has to resync with a finger that kept moving,
-   *  which is the sudden extra-fast jump this ticket reports right where the
-   *  buffer re-anchors. Once scrolling has actually stopped there's no
-   *  ongoing motion left to cancel, so the same reset is invisible. */
+   *  settled — never mid-gesture (issue #820). Resetting `scrollLeft`/
+   *  `scrollTop` from inside a `scroll` handler cancels the browser's own
+   *  fling outright (setting a scroll offset from script stops native
+   *  momentum dead), and if that reset lands mid rubber-band bounce the read
+   *  `pos` can sit outside the buffer's range entirely — either way the
+   *  *next* touch-move has to resync with a finger that kept moving, which is
+   *  the sudden extra-fast jump this ticket reports right where the buffer
+   *  re-anchors. Once scrolling has actually stopped there's no ongoing
+   *  motion left to cancel, so the same reset is invisible.
+   *
+   *  "Settled" is `SCROLL_IDLE_MS` of no further `scroll` events, not the
+   *  native `scrollend` event (issue #822) — that event is the fast path
+   *  when it fires, but it isn't the only trigger: on engines where it goes
+   *  missing (see `SCROLL_IDLE_MS`'s comment), the idle timer is the one
+   *  that actually rebuilds the buffer, so scrolling never gets stuck at the
+   *  edge of the initial window. Both funnel into the same idempotent
+   *  `handleScrollEnd` — whichever fires first wins, the other is a no-op
+   *  (`newAnchor === windowAnchor` by then). */
   useEffect(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -216,19 +238,11 @@ export function CalendarStrip({
       return { step, length, visibleCount, pos, clamped };
     }
 
-    function handleScroll() {
-      if (rafRef.current !== null) return;
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        const current = trackRef.current;
-        if (!current) return;
-        const result = readClamp(current);
-        if (!result) return;
-        setLeadIndex((prev) => (prev === result.clamped ? prev : result.clamped));
-      });
-    }
-
     function handleScrollEnd() {
+      if (idleTimerRef.current !== null) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
       const current = trackRef.current;
       if (!current) return;
       const result = readClamp(current);
@@ -244,11 +258,30 @@ export function CalendarStrip({
       }
     }
 
+    function handleScroll() {
+      if (idleTimerRef.current !== null) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(handleScrollEnd, SCROLL_IDLE_MS);
+
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const current = trackRef.current;
+        if (!current) return;
+        const result = readClamp(current);
+        if (!result) return;
+        setLeadIndex((prev) => (prev === result.clamped ? prev : result.clamped));
+      });
+    }
+
     track.addEventListener('scroll', handleScroll, { passive: true });
     track.addEventListener('scrollend', handleScrollEnd, { passive: true });
     return () => {
       track.removeEventListener('scroll', handleScroll);
       track.removeEventListener('scrollend', handleScrollEnd);
+      if (idleTimerRef.current !== null) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
       if (rafRef.current !== null) {
         // A silent rebuild's synchronous scrollLeft/scrollTop reset (the
         // layout effect above) fires its own `scroll` event, which this
