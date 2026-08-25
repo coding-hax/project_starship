@@ -205,7 +205,14 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
   page,
 }) => {
   await registerPasskey(page);
-  await seedTask(page, { title: 'Grundfarbe Kontrast-Sonde' });
+  // dueAt gesetzt: ohne Fälligkeit landet der Task in der eingeklappten "ohne
+  // Datum"-SectionCard (task-list.tsx) statt flächenlos in der Hauptliste —
+  // Playwright hält ihren Titel trotz grid-template-rows:0fr für "visible"
+  // (Bounding-Box/visibility geprüft, kein Ancestor-Clipping), die Karte setzt
+  // --text laut AK5 aber korrekt auf die neutrale Kartentinte zurück. Ohne
+  // dueAt misst dieser Block also Kartentinte gegen Seitengrund statt des
+  // beabsichtigten flächenlosen Listentexts.
+  await seedTask(page, { title: 'Grundfarbe Kontrast-Sonde', dueAt: new Date().toISOString() });
 
   for (const route of ROUTES) {
     await page.goto(route.path);
