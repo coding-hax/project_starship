@@ -55,6 +55,9 @@
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   box-shadow: var(--shadow-raised);
 }
 

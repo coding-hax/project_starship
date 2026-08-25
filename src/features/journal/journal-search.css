@@ -9,6 +9,12 @@
   gap: var(--space-3);
   max-width: 480px;
   margin-bottom: var(--space-4);
+  /* Renders directly on /journal's ground, not nested inside a card — every
+     field/result below has its own --surface(-raised) and explicit `color:
+     var(--text|--text-muted)`, so resetting once here covers all of them
+     (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
 }
 
 .journal-search__bar {

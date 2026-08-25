@@ -25,6 +25,9 @@
   min-height: var(--touch-target);
   padding: var(--space-1) var(--space-2);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   border: none;
   border-inline-start: 3px solid var(--area-events);
   border-radius: var(--radius-card);
@@ -94,6 +97,9 @@
 .event-agenda__item {
   overflow: hidden;
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   border-inline-start: 3px solid var(--area-events);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-raised);

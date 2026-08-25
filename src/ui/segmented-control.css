@@ -7,6 +7,11 @@
   border-radius: var(--radius-pill);
   background: var(--surface-raised);
   min-height: var(--touch-target);
+  /* Track and active pill (--surface below) are both neutral surfaces, not
+     accent-filled — the AK3 rule (#709) doesn't apply here, so like any other
+     surface this resets the ground's ink back to neutral (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
 }
 
 .segmented__indicator {

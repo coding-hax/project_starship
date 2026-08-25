@@ -1,6 +1,13 @@
 .activity-block {
   border-radius: var(--radius-card);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5) — explicit `color`, not just the
+     custom properties: unlike --text/--text-muted, `color` inherits as an
+     already-computed value, and .activity-block__title never redeclares its
+     own `color`. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  color: var(--text);
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);
   margin-bottom: var(--space-4);

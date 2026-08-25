@@ -11,6 +11,10 @@
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);
   margin: 0 0 var(--space-2);
+  /* Own surface, own ink (issue #832 AK5) — .events-overview__rest-item below
+     stays unreset on purpose, it's flat on the ground, not this card. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   color: var(--text);
 }
 
