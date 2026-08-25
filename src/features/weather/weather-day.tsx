@@ -408,6 +408,7 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
   return (
     <div
       className="weather-day-screen"
+      data-ground="wetter"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}

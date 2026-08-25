@@ -14,8 +14,15 @@
   --bg: oklch(98.5% 0.008 85);
   --surface: oklch(100% 0 0);
   --surface-raised: oklch(96.5% 0.012 85);
-  --text: oklch(27% 0.015 60);
-  --text-muted: oklch(52% 0.015 60);
+  /* Fixed neutral ink — the anchor a surface (card, sheet, nav) resets to when
+     it sits on a page ground that has recoloured `--text` (issue #832). */
+  --text-base: oklch(27% 0.015 60);
+  --text-muted-base: oklch(52% 0.015 60);
+  /* `--text`/`--text-muted` are the *contextual* ink: components read these
+     names unchanged, but a route ground (see below) can override them for
+     everything inside it, and a surface can reset them back to -base. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   --border: oklch(90% 0.012 75);
   --border-strong: oklch(70% 0.015 75);
   /* Deutlich schwächer als --border: Raster, Achsen, Trennlinien — nie
@@ -50,6 +57,37 @@
      sits at only 55% L in dark mode, under the ~58% floor `--on-accent`'s fixed
      dark text needs to clear 4.5:1 (same guarantee the area colours give it above). */
   --accent-neutral: oklch(70% 0.015 75);
+
+  /* --- page ground: full-bleed background colour per route, S1 of #828 -----
+     Distinct from --area-* (which stays on controls, unchanged): Aufgaben's
+     ground is deliberately not --area-tasks, or it and Übersicht would both be
+     orange and the two pages indistinguishable (issue #832). `--ground` and
+     `--on-ground` are the *contextual* pair a route sets via `[data-ground]`
+     (see globals.css); every other custom property here is a plain, unrouted
+     value. `--on-ground` is chosen per route by contrast measurement, not by
+     rule: `--on-ground-light` (a warm near-white, stays light in both themes —
+     unlike --accent-fg) on the darker grounds, `--on-accent` (already dark in
+     both themes) on the ones too light for white at 4.5:1 in light mode. */
+  --ground-uebersicht: oklch(70.1% 0.201 44.8); /* #ff6a00 */
+  --ground-aufgaben: oklch(53.5% 0.088 203); /* #0e7c84 */
+  --ground-kalender: oklch(49.8% 0.211 261.7); /* #0d55d8 */
+  --ground-routinen: oklch(64.4% 0.131 165.5); /* #12a67a */
+  --ground-journal: oklch(35.1% 0.146 301.8); /* #4a1d78 */
+  --ground-aktivitaeten: oklch(80.9% 0.17 75.4); /* #ffae00 */
+  --ground-wetter: oklch(59.3% 0.13 241.3); /* #1c86c4 */
+  --ground-einstellungen: oklch(43.3% 0.025 248.4); /* #46525e */
+  --ground-anmelden: oklch(71.3% 0.195 47.9); /* #ff7300 */
+  /* Dark-mode grounds are derived, not authored: each route mixes ~62% of its
+     light ground onto this same very-dark warm base (= dark --bg) rather than
+     painting the saturated light colour at full strength, which reads as
+     neon/too grell on a dark screen (AK4). globals.css does the actual
+     `color-mix()` per route so it stays the single source of truth. */
+  --ground-base-dark: oklch(20.5% 0.012 60);
+  /* Fallback for routes outside S1's nine (e.g. /wetter/[datum] itself has no
+     ground — only its `weather-day` content does; /offline). */
+  --ground: var(--bg);
+  --on-ground: var(--text-base);
+  --on-ground-light: oklch(99% 0.005 85);
 
   /* --- free-choice swatch palette: user-picked colours (issue #658), distinct
      from --area-* (orientation, one per area) and --cat-* (accents *within*

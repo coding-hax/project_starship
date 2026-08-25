@@ -6,7 +6,7 @@ export const metadata = { title: 'Routinen verwalten · Starship' };
 
 export default function RoutinenPage() {
   return (
-    <div data-module="routinen">
+    <div data-module="routinen" data-ground="routinen">
       <h1>Routinen verwalten</h1>
       {/* Umgezogen von /uebersicht (issue #652) — die tägliche Übersicht bekommt
           fünf einheitliche Modulköpfe und wird sonst zu voll; die Karte

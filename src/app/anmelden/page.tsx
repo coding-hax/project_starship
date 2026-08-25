@@ -76,7 +76,7 @@ export default function AnmeldenPage() {
 
   if (recoveryCode) {
     return (
-      <main className="auth">
+      <main className="auth" data-ground="anmelden">
         <h1>Wiederherstellungscode</h1>
         <p>
           Speichere ihn jetzt in deinem Passwortmanager. Er wird{' '}
@@ -94,7 +94,7 @@ export default function AnmeldenPage() {
   }
 
   return (
-    <main className="auth">
+    <main className="auth" data-ground="anmelden">
       <h1>Starship</h1>
       {mode === 'loading' && <p>Einen Moment…</p>}
 
