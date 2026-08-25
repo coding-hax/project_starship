@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, registerPasskey, resetAppData } from './helpers';
 
 /**
  * Vollfarb-Seitengrund je Route (issue #832, S1 von #828). Ein Test je AK; jeder
@@ -212,7 +212,7 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
   // --text laut AK5 aber korrekt auf die neutrale Kartentinte zurück. Ohne
   // dueAt misst dieser Block also Kartentinte gegen Seitengrund statt des
   // beabsichtigten flächenlosen Listentexts.
-  await seedTask(page, { title: 'Grundfarbe Kontrast-Sonde', dueAt: new Date().toISOString() });
+  await seedTask(page, { title: 'Grundfarbe Kontrast-Sonde', dueAt: FIXED_NOW });
 
   for (const route of ROUTES) {
     await page.goto(route.path);
