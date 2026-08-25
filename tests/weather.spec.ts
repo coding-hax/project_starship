@@ -1001,8 +1001,12 @@ test('im Dark Mode ist das Windzeichen sichtbar und übernimmt --text (issue #69
   const wind = weatherDays(page).nth(0).locator('.weather-forecast__wind');
   await expect(wind).toBeVisible();
 
+  // `--text` itself is a context variable since issue #832 (the page ground
+  // overrides it, cards reset it back). `.weather-forecast__day` is a card, so
+  // its `--text` resolves to the fixed `--text-base` — that's the value this
+  // element actually renders, not whatever `--text` means at document level.
   const windColor = await wind.evaluate((el) => getComputedStyle(el).color);
-  expect(windColor).toBe(await resolveColorToken(page, '--text'));
+  expect(windColor).toBe(await resolveColorToken(page, '--text-base'));
 });
 
 test('offline bleibt der Windmarker aus dem Cache erhalten (issue #695, Offline-Pfad — dieses Ticket schreibt nichts, es liest nur den Wetter-Cache)', async ({
