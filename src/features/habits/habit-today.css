@@ -26,6 +26,13 @@
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5) — this card also renders on
+     Übersicht (habits-overview-section.tsx), not just /routinen. Explicit
+     `color`: .habit-today__streak's icon+count never redeclare their own,
+     so they need the freshly-computed value inherited from here. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  color: var(--text);
   box-shadow: var(--shadow-raised);
   transition: opacity var(--duration-base) var(--ease-spring);
 }

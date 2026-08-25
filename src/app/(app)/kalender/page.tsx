@@ -4,7 +4,7 @@ export const metadata = { title: 'Kalender · Starship' };
 
 export default function KalenderPage() {
   return (
-    <div data-module="kalender">
+    <div data-module="kalender" data-ground="kalender">
       <CalendarView />
     </div>
   );

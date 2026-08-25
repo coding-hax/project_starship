@@ -74,6 +74,9 @@
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
 }
@@ -208,6 +211,8 @@
   margin: 0;
   padding: var(--space-2) var(--space-4);
   background: var(--surface);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text-muted: var(--text-muted-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   color: var(--text-muted);

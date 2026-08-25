@@ -167,13 +167,18 @@ test('die Kennzahl nutzt tabular-nums', async ({ page }) => {
 test('der Hinweistext nutzt den gedämpften Text-Token, auch im Dark Mode', async ({ page }) => {
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' }); // keine Serie -> Hinweis sichtbar
 
+  // `--text-muted` itself is a context variable since issue #832 (the page ground
+  // overrides it, cards reset it back). `.streak-summary-card` is a card, so its
+  // `--text-muted` resolves to the fixed `--text-muted-base` — that's the value
+  // this element actually renders, not whatever `--text-muted` means at document
+  // level (which here is the route's ground ink).
   const hint = streakCard(page).locator('.streak-summary-card__hint');
   const lightColor = await hint.evaluate((el) => getComputedStyle(el).color);
-  expect(lightColor).toBe(await resolveColorToken(page, '--text-muted'));
+  expect(lightColor).toBe(await resolveColorToken(page, '--text-muted-base'));
 
   await page.emulateMedia({ colorScheme: 'dark' });
   const darkColor = await hint.evaluate((el) => getComputedStyle(el).color);
-  expect(darkColor).toBe(await resolveColorToken(page, '--text-muted'));
+  expect(darkColor).toBe(await resolveColorToken(page, '--text-muted-base'));
   expect(darkColor).not.toBe(lightColor);
 });
 

@@ -6,7 +6,7 @@ export const metadata = { title: 'Aufgaben · Starship' };
 
 export default function AufgabenPage() {
   return (
-    <div data-module="aufgaben">
+    <div data-module="aufgaben" data-ground="aufgaben">
       <div className="aufgaben-page__title-row">
         <h1>Aufgaben</h1>
       </div>

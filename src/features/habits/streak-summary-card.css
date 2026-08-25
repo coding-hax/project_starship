@@ -9,6 +9,10 @@
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
+  /* Own surface, own ink (issue #832 AK5) — renders on both /routinen and
+     Übersicht (habits-overview-section.tsx). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
   color: var(--text);
 }
 

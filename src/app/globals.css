@@ -70,14 +70,150 @@
   --font-sans: var(--font-inter), system-ui, sans-serif;
 }
 
+/*
+ * Page ground per route (S1 of #828, issue #832): the nine `[data-ground]`
+ * routes recolour `html`'s custom properties via `:has()`, so the ground is
+ * a plain CSS variable everything (html/body background, this file's own
+ * text-context reset) can read, instead of a wrapper element that would risk
+ * shifting the router's first-focused-element (CODEMAP invariant). No JS,
+ * no flash: the attribute is in the very first paint, `:has()` resolves
+ * before it. `--on-ground` is picked per route by contrast measurement, not
+ * a rule — see tokens.css. A route absent from this list (e.g. /offline,
+ * /wetter/[datum] itself before `weather-day-screen` mounts) keeps the
+ * `--ground: var(--bg)` fallback.
+ */
+html:has([data-ground='uebersicht']) {
+  --ground: var(--ground-uebersicht);
+  --on-ground: var(--on-accent);
+}
+html:has([data-ground='aufgaben']) {
+  --ground: var(--ground-aufgaben);
+  --on-ground: var(--on-ground-light);
+}
+html:has([data-ground='kalender']) {
+  --ground: var(--ground-kalender);
+  --on-ground: var(--on-ground-light);
+}
+html:has([data-ground='routinen']) {
+  --ground: var(--ground-routinen);
+  --on-ground: var(--on-accent);
+}
+html:has([data-ground='journal']) {
+  --ground: var(--ground-journal);
+  --on-ground: var(--on-ground-light);
+}
+html:has([data-ground='aktivitaeten']) {
+  --ground: var(--ground-aktivitaeten);
+  --on-ground: var(--on-accent);
+}
+html:has([data-ground='wetter']) {
+  --ground: var(--ground-wetter);
+  --on-ground: var(--on-accent);
+}
+html:has([data-ground='einstellungen']) {
+  --ground: var(--ground-einstellungen);
+  --on-ground: var(--on-ground-light);
+}
+html:has([data-ground='anmelden']) {
+  --ground: var(--ground-anmelden);
+  --on-ground: var(--on-accent);
+}
+
+/* Every surface with its own background resets --text/--text-muted back to
+   the fixed neutral ink (tokens.css); everything flat directly on the ground
+   — headings, unfilled list rows — inherits this instead (AK5).
+   `:root` rather than `html` here (same element, higher specificity): tokens.css's
+   dark-mode block sets `--text`/`--text-muted` on `:root:not([data-theme='hell'])`
+   /`:root[data-theme='dunkel']`, both (0,2,0) — an `html:has(...)` selector is only
+   (0,1,1) and silently lost that fight, so dark mode always fell back to the
+   plain dark neutral ink instead of the route's ground ink (AK4). */
+:root:has([data-ground]) {
+  --text: var(--on-ground);
+  --text-muted: var(--on-ground);
+}
+
+/*
+ * Dark mode (AK4): the ground mixes ~62% of its light colour onto a very
+ * dark warm base instead of painting the saturated colour at full strength —
+ * that reads as neon on a dark screen. Aktivitäten's gold needs a lower
+ * share (50%) to still clear 4.5:1 with the light ink below; every other
+ * route holds the ~62% the ticket names. Once darkened, every ground clears
+ * 4.5:1 with the *light* ink regardless of which ink it used in light mode —
+ * verified per route, not assumed — so the ink flips uniformly here instead
+ * of repeating each route's light-mode choice.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']):has([data-ground]) {
+    --on-ground: var(--on-ground-light);
+  }
+  :root:not([data-theme='hell']):has([data-ground='uebersicht']) {
+    --ground: color-mix(in oklab, var(--ground-uebersicht) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='aufgaben']) {
+    --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='kalender']) {
+    --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='routinen']) {
+    --ground: color-mix(in oklab, var(--ground-routinen) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='journal']) {
+    --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='aktivitaeten']) {
+    --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='wetter']) {
+    --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='einstellungen']) {
+    --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
+  }
+  :root:not([data-theme='hell']):has([data-ground='anmelden']) {
+    --ground: color-mix(in oklab, var(--ground-anmelden) 62%, var(--ground-base-dark));
+  }
+}
+
+:root[data-theme='dunkel']:has([data-ground]) {
+  --on-ground: var(--on-ground-light);
+}
+:root[data-theme='dunkel']:has([data-ground='uebersicht']) {
+  --ground: color-mix(in oklab, var(--ground-uebersicht) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='aufgaben']) {
+  --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='kalender']) {
+  --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='routinen']) {
+  --ground: color-mix(in oklab, var(--ground-routinen) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='journal']) {
+  --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='aktivitaeten']) {
+  --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='wetter']) {
+  --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='einstellungen']) {
+  --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
+}
+:root[data-theme='dunkel']:has([data-ground='anmelden']) {
+  --ground: color-mix(in oklab, var(--ground-anmelden) 62%, var(--ground-base-dark));
+}
+
 html {
   /* The nav must not sit under the home indicator. */
-  background: var(--bg);
+  background: var(--ground);
   color-scheme: light dark;
 }
 
 body {
-  background: var(--bg);
+  background: var(--ground);
   color: var(--text);
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: calc(var(--text-body) * var(--font-scale, 1));

@@ -12,7 +12,7 @@ export default function UebersichtPage() {
       {/* Stays outside the provider on purpose: it is the fixed anchor everything
           else appears below, and the reveal shifts nothing only as long as it is
           already standing (issue #642). */}
-      <div className="uebersicht__title-row">
+      <div className="uebersicht__title-row" data-ground="uebersicht">
         <h1>Übersicht</h1>
         <div className="uebersicht__title-actions">
           <div className="uebersicht__capture-group">

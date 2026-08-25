@@ -7,6 +7,15 @@
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
+  /* Own surface, own ink — resets the ground's --on-ground back to the fixed
+     neutral text (tokens.css), regardless of which page ground this card sits
+     on (issue #832 AK5). The explicit `color` (not just the custom
+     properties) matters: unlike --text/--text-muted, `color` inherits as an
+     already-computed value, so anything inside that never redeclares its own
+     `color` needs this refreshed here, not two levels down. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  color: var(--text);
 }
 
 .section-card__title {

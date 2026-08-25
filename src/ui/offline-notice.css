@@ -4,6 +4,10 @@
   border-radius: var(--radius-card);
   border: 1px solid var(--border);
   background: var(--surface-raised);
+  /* Own surface, own ink (issue #832 AK5) — renders directly on the page
+     ground (/aufgaben, /routinen, /kalender, journal-gate), not nested in a
+     card. */
+  --text-muted: var(--text-muted-base);
   color: var(--text-muted);
   font-size: var(--text-secondary);
 }

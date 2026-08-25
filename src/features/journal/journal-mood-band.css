@@ -62,6 +62,8 @@
   padding: var(--space-4);
   border-radius: var(--radius-card);
   background: var(--surface-raised);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text-muted: var(--text-muted-base);
   color: var(--text-muted);
   font-size: var(--text-secondary);
 }
