@@ -200,6 +200,11 @@
     --surface-raised: oklch(27.5% 0.014 60);
     --text: oklch(94% 0.008 85);
     --text-muted: oklch(70% 0.012 75);
+    /* Same values as --text/--text-muted above: the anchor a surface resets to
+       (issue #832) must itself be per-theme, or a card would reset to the fixed
+       light-mode ink and render dark-on-dark once --surface goes dark. */
+    --text-base: oklch(94% 0.008 85);
+    --text-muted-base: oklch(70% 0.012 75);
     --border: oklch(33% 0.014 60);
     --border-strong: oklch(55% 0.016 60);
     --border-faint: oklch(28% 0.012 60);
@@ -243,6 +248,8 @@
   --surface-raised: oklch(27.5% 0.014 60);
   --text: oklch(94% 0.008 85);
   --text-muted: oklch(70% 0.012 75);
+  --text-base: oklch(94% 0.008 85);
+  --text-muted-base: oklch(70% 0.012 75);
   --border: oklch(33% 0.014 60);
   --border-strong: oklch(55% 0.016 60);
   --border-faint: oklch(28% 0.012 60);

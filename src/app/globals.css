@@ -121,8 +121,13 @@ html:has([data-ground='anmelden']) {
 
 /* Every surface with its own background resets --text/--text-muted back to
    the fixed neutral ink (tokens.css); everything flat directly on the ground
-   — headings, unfilled list rows — inherits this instead (AK5). */
-html:has([data-ground]) {
+   — headings, unfilled list rows — inherits this instead (AK5).
+   `:root` rather than `html` here (same element, higher specificity): tokens.css's
+   dark-mode block sets `--text`/`--text-muted` on `:root:not([data-theme='hell'])`
+   /`:root[data-theme='dunkel']`, both (0,2,0) — an `html:has(...)` selector is only
+   (0,1,1) and silently lost that fight, so dark mode always fell back to the
+   plain dark neutral ink instead of the route's ground ink (AK4). */
+:root:has([data-ground]) {
   --text: var(--on-ground);
   --text-muted: var(--on-ground);
 }

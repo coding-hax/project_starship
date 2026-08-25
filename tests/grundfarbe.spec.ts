@@ -64,18 +64,33 @@ function relativeLuminance(r: number, g: number, b: number): number {
   return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
-function parseRgb(rgb: string): [number, number, number] {
-  const match = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
-  if (!match) throw new Error(`Unparseable colour: ${rgb}`);
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-/** WCAG contrast ratio (1–21) between two `rgb()`/`rgba()` computed-style strings. */
-function contrastRatio(colorA: string, colorB: string): number {
-  const [la, lb] = [relativeLuminance(...parseRgb(colorA)), relativeLuminance(...parseRgb(colorB))];
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
   const lighter = Math.max(la, lb);
   const darker = Math.min(la, lb);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * getComputedStyle can serialize an oklch()-declared colour back as oklch()
+ * rather than rgb() (CSS Color 4) — a regex expecting "rgb(r, g, b)" would
+ * silently misparse the L/C/H numbers as R/G/B. A 1×1 canvas sidesteps that:
+ * its 2D context is always sRGB, so reading the pixel back after setting
+ * fillStyle gives real 0–255 channels regardless of the source syntax (same
+ * technique as design-system.spec.ts, issue #709).
+ */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
 }
 
 async function elementColor(locator: Locator): Promise<string> {
@@ -202,7 +217,7 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
     const headingColor = await elementColor(heading);
     expect(headingColor, `Tinte auf ${route.path} kommt aus ${route.ink}`).toBe(inkToken);
     expect(
-      contrastRatio(headingColor, ground),
+      contrastRatio(await toRgb(page, headingColor), await toRgb(page, ground)),
       `Kontrast Titel/Grund auf ${route.path}`,
     ).toBeGreaterThanOrEqual(4.5);
   }
@@ -220,7 +235,9 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
   const taskGround = await htmlBackground(page);
   const taskTitle = page.getByText('Grundfarbe Kontrast-Sonde');
   await expect(taskTitle).toBeVisible();
-  expect(contrastRatio(await elementColor(taskTitle), taskGround)).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrastRatio(await toRgb(page, await elementColor(taskTitle)), await toRgb(page, taskGround)),
+  ).toBeGreaterThanOrEqual(4.5);
 });
 
 test('AK3: Bereichsflächen (FAB) tragen weiter --on-accent, unverändert seit #709', async ({
@@ -258,7 +275,7 @@ test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', asy
       onGroundLight,
     );
     expect(
-      contrastRatio(headingColor, darkGround),
+      contrastRatio(await toRgb(page, headingColor), await toRgb(page, darkGround)),
       `Dark-Mode-Kontrast auf ${route.path}`,
     ).toBeGreaterThanOrEqual(4.5);
   }
@@ -315,7 +332,9 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
     await expect(heading).toBeVisible();
     const headingColor = await elementColor(heading);
     expect(headingColor).toBe(onAccent);
-    expect(contrastRatio(headingColor, await htmlBackground(page))).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(await toRgb(page, headingColor), await toRgb(page, await htmlBackground(page))),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 
   test('AK4: Anmelden dunkelt im Dark Mode ab, Weiß bleibt ≥4,5:1', async ({ page }) => {
@@ -330,6 +349,8 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
     const heading = page.getByRole('heading', { level: 1 });
     const headingColor = await elementColor(heading);
     expect(headingColor).toBe(onGroundLight);
-    expect(contrastRatio(headingColor, darkGround)).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrastRatio(await toRgb(page, headingColor), await toRgb(page, darkGround)),
+    ).toBeGreaterThanOrEqual(4.5);
   });
 });
