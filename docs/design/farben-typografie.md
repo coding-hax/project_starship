@@ -87,6 +87,22 @@ beiden Themes hell genug für WCAG AA (4,5:1) mit dunkler Schrift sind.
 
 Dark Mode ist keine Nachrüstung: jedes Token existiert in beiden Modi von Anfang an.
 
+### Seitengrund (`--ground*`, issue #832)
+
+Jede der neun Hauptrouten steht vollflächig auf ihrer eigenen Grundfarbe
+(`--ground-uebersicht` … `--ground-anmelden`, je Route per `data-ground`-Attribut
+über `html:has([data-ground='…'])` gesetzt, `src/app/globals.css`) — orthogonal zu
+`--area-*`: der Grund trägt die Seite, die Bereichsfarbe bleibt auf den
+Bedienelementen (Aufgaben ist bewusst Petrol statt `--area-tasks`, sonst wären
+Übersicht und Aufgaben beide orange). `--text`/`--text-muted` werden dadurch zur
+**Kontext-Variable**: der Grund überschreibt sie auf `--on-accent` (dunkel) oder
+`--on-ground-light` (hell, ein warmes Fast-Weiß) — Wahl per gemessenem Kontrast,
+nie geraten. Jede Fläche mit eigenem `--surface`/`--surface-raised` setzt beide
+auf die fixen Anker `--text-base`/`--text-muted-base` zurück, damit dieselbe Klasse
+auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
+`color-mix(in oklab, …, --ground-base-dark)` ab (~62 %, Aktivitäten 50 % für den
+4,5:1-Grenzwert) statt die satte Farbe grell auf Schwarz zu zeigen.
+
 ## Typografie
 
 - Ein Font: **Inter Variable** (oder Geist). Kein zweiter Font ohne ADR.
