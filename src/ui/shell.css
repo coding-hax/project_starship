@@ -142,6 +142,15 @@
   flex: 1;
   min-width: 0;
   margin: var(--space-2) var(--space-3) 0;
+  /* Keeps the first/last tab's label clear of the pill's rounded corners. Lives
+     here, not on `.nav__list`, on purpose: `.nav__list` is the scroll container
+     the carousel geometry tests measure (issue #205 AC1, #229 AC1/AC2) — padding
+     on the scroll container itself would shrink the box those tests derive each
+     item's expected width and edge-alignment from, without changing the visible
+     five-slots-then-scroll behaviour they assert. Padding out here achieves the
+     same corner clearance while leaving `.nav__list`'s own box exactly as wide
+     as its five visible slots. */
+  padding-inline: var(--space-2);
   background: var(--surface);
   border-radius: var(--radius-pill);
   box-shadow: var(--shadow-raised);
@@ -161,8 +170,6 @@
   flex: 1;
   list-style: none;
   margin: 0;
-  /* Keeps the first/last tab's label clear of the pill's rounded corners. */
-  padding-inline: var(--space-2);
   /* Carousel past five entries (issue #205): scrollable instead of shrinking every
      tab to fit. `mandatory` plus each item's `scroll-snap-align` below is what turns
      a swipe into a clean stop on a tab, never a half-visible one at the edge. */
@@ -274,6 +281,7 @@
     flex-direction: column;
     align-items: stretch;
     margin: 0;
+    padding-inline: 0;
     background: transparent;
     border-radius: 0;
     box-shadow: none;
@@ -284,7 +292,6 @@
     flex: 0 1 auto;
     flex-direction: column;
     gap: var(--space-1);
-    padding-inline: 0;
     /* Same list, no carousel here (issue #205): a static vertical column, not a
        second design — overflow-x/scroll-snap only exist for the mobile bar above. */
     overflow-x: visible;
