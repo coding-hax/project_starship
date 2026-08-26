@@ -16,7 +16,13 @@ import { READONLY_TOOLS } from './prompts';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
 
-function issueJson(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z', body = '') {
+// #839: Der Standard-Body traegt Akzeptanzkriterien, weil das AK-Tor in
+// roundPlan() ein Ticket ohne sie gar nicht erst bauen laesst. Ein Fixture ohne
+// AK ist seit #839 kein neutraler Platzhalter mehr, sondern ein kaputtes
+// Ticket -- wer genau das pruefen will, uebergibt body explizit als ''.
+const AK_BODY = '## Akzeptanzkriterien\n\n1. Es tut, was im Titel steht.';
+
+function issueJson(number: number, labels: string[], createdAt = '2024-01-01T00:00:00Z', body = AK_BODY) {
   return { number, labels: labels.map((name) => ({ name })), createdAt, body };
 }
 
@@ -547,7 +553,7 @@ describe('roundPlan', () => {
   describe('Queue-Bericht (#265/#725)', () => {
     it('AC4: ein blockiertes Ticket bekommt blocked-by und wird nicht gebaut', () => {
       const { gh, calls } = ghDouble([
-        openIssues(issueJson(266, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #227'), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')),
+        openIssues(issueJson(266, ['ready'], '2024-01-01T00:00:00Z', `Nach: #227\n\n${AK_BODY}`), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')),
         noOpenPrs,
       ]);
       const result = roundPlan(ctx(gh), opts);
@@ -559,7 +565,7 @@ describe('roundPlan', () => {
     it('AC5: faellt die Voraussetzung weg, nimmt der Runner blocked-by von selbst ab', () => {
       // #227 ist geschlossen -> nicht mehr im Snapshot.
       const { gh, calls } = ghDouble([
-        openIssues(issueJson(266, ['ready', 'blocked-by'], '2024-01-01T00:00:00Z', 'Nach: #227')),
+        openIssues(issueJson(266, ['ready', 'blocked-by'], '2024-01-01T00:00:00Z', `Nach: #227\n\n${AK_BODY}`)),
         noOpenPrs,
         labelsAre('ready'),
       ]);
@@ -572,7 +578,7 @@ describe('roundPlan', () => {
     it('setzt blocked-by nicht doppelt, wenn es schon haengt', () => {
       const { gh, calls } = ghDouble([
         openIssues(
-          issueJson(266, ['ready', 'blocked-by'], '2024-01-01T00:00:00Z', 'Nach: #227'),
+          issueJson(266, ['ready', 'blocked-by'], '2024-01-01T00:00:00Z', `Nach: #227\n\n${AK_BODY}`),
           issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z'),
         ),
         noOpenPrs,
@@ -584,8 +590,8 @@ describe('roundPlan', () => {
     it('AC6: ein Zirkel wird gemeldet und keins der Tickets gebaut', () => {
       const { gh } = ghDouble([
         openIssues(
-          issueJson(1, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #2'),
-          issueJson(2, ['ready'], '2024-02-01T00:00:00Z', 'Nach: #1'),
+          issueJson(1, ['ready'], '2024-01-01T00:00:00Z', `Nach: #2\n\n${AK_BODY}`),
+          issueJson(2, ['ready'], '2024-02-01T00:00:00Z', `Nach: #1\n\n${AK_BODY}`),
         ),
         noOpenPrs,
       ]);
@@ -669,7 +675,7 @@ describe('roundPlan', () => {
     });
 
     it('ein blockiertes Ticket: ebenfalls "Offen", nie "Queue"', () => {
-      const issues = [issueJson(266, ['ready'], '2024-01-01T00:00:00Z', 'Nach: #227'), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')];
+      const issues = [issueJson(266, ['ready'], '2024-01-01T00:00:00Z', `Nach: #227\n\n${AK_BODY}`), issueJson(227, ['hands-off'], '2024-02-01T00:00:00Z')];
       const { gh } = ghDouble([openIssues(...issues), openIssues50(...issues), noOpenPrs]);
       const result = roundPlan(ctx(gh), opts);
       expect(result.kind).toBe('done');

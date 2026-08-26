@@ -4,7 +4,16 @@
 // Gleichheit gegen die alten Heredocs zum Portzeitpunkt, danach hier
 // festgenagelt.
 import { describe, expect, it } from 'vitest';
-import { BUILD_TOOLS, READONLY_TOOLS, buildPrompt, ciFixPrompt, planPrompt, researchPrompt } from './prompts.js';
+import {
+  BUILD_TOOLS,
+  CHECK_TOOLS,
+  READONLY_TOOLS,
+  buildPrompt,
+  checkPrompt,
+  ciFixPrompt,
+  planPrompt,
+  researchPrompt,
+} from './prompts.js';
 
 const ALL = [
   ['build', buildPrompt(42)],
@@ -52,7 +61,7 @@ describe('prompts', () => {
     it('verlangt die schnellen Tore lokal, aber kein volles e2e', () => {
       expect(prompt).toContain("'pnpm lint', 'pnpm typecheck', 'pnpm test'");
       expect(prompt).toContain("Kein voller 'pnpm e2e' lokal");
-      expect(prompt).toContain("**Kein** 'gh pr checks --watch'");
+      expect(prompt).toContain("'gh pr checks --watch'");
     });
 
     // #606: pnpm install mit cwd im Worktree schreibt dessen Top-Level-Links
@@ -95,18 +104,19 @@ describe('prompts', () => {
       expect(prompt).toContain('fragen statt raten');
     });
 
-    // #167: der Agent hebt seinen PR selbst aus dem Entwurf.
-    it('hebt den PR selbst aus dem Entwurf und aktiviert Auto-Merge', () => {
-      expect(prompt).toContain("'gh pr ready'");
-      expect(prompt).toContain("'gh pr merge --squash --auto --delete-branch'");
+    // #839: der Bau-Lauf mergt NICHT mehr selbst. Bis dahin hob er seinen
+    // eigenen PR aus dem Entwurf (#167) -- derselbe Agent, der den Code
+    // geschrieben hat, stellte damit auch fest, dass er fertig ist. Ab jetzt
+    // gibt er an den AK-Check ab; das Tor ist ein eigener, nur lesender Lauf.
+    it('gibt an den AK-Check ab, statt selbst zu mergen', () => {
+      expect(prompt).toContain("'gh issue edit 7 --add-label check'");
+      expect(prompt).toContain('bleibt Entwurf');
     });
 
-    // #292: ohne --subject nimmt GitHub bei genau einem Commit auf dem
-    // Branch dessen Commit-Nachricht statt des PR-Titels als Squash-Betreff
-    // -- ein nur im Titel stehendes 'Closes #N' geht dann verloren.
-    it('haengt --subject/--body an den Merge-Aufruf, damit Closes #N nicht verloren geht', () => {
-      expect(prompt).toContain('--subject "$(gh pr view --json title -q .title)"');
-      expect(prompt).toContain('--body ""');
+    it('verbietet dem Bau-Lauf Freigabe und Merge ausdruecklich', () => {
+      expect(prompt).toContain("**Kein** 'gh pr ready'");
+      expect(prompt).toContain("**kein** 'gh pr merge'");
+      expect(prompt).not.toContain('gh pr merge --squash --auto');
     });
 
     it('verlangt den wachsenden Abschnitt "Was schon versucht wurde"', () => {
@@ -115,6 +125,74 @@ describe('prompts', () => {
     });
   });
 
+
+  // #839: der AK-Check ist das Tor vor dem Merge. Was hier festgenagelt ist,
+  // sind genau die Zusagen, deren Verlust den Check wertlos machte: die
+  // Kriterien kommen mitgeliefert (statt "lies sie dir raus"), er aendert
+  // nichts, und die Merge-Aufrufe leben ab jetzt HIER statt im Bau-Prompt.
+  describe('AK-Check-Prompt (#839)', () => {
+    const criteria = ['Erstens tut es X.', 'Zweitens bleibt Y unberuehrt.'];
+    const prompt = checkPrompt(42, criteria, 'feat/42-quick-add');
+
+    it('nennt Ticket, Branch und die Kriterien in ihrer Nummerierung', () => {
+      expect(prompt).toContain('#42');
+      expect(prompt).toContain('feat/42-quick-add');
+      expect(prompt).toContain('1. Erstens tut es X.');
+      expect(prompt).toContain('2. Zweitens bleibt Y unberuehrt.');
+    });
+
+    it('ist nur lesend und baut ausdruecklich nicht nach', () => {
+      expect(prompt).toContain('nur lesend');
+      expect(prompt).toContain('Ändere KEINEN\nCode');
+      expect(prompt).toContain('verbesserst nicht');
+    });
+
+    it('kennt genau drei Befunde und verbietet das Raten', () => {
+      expect(prompt).toContain('**erfüllt**');
+      expect(prompt).toContain('**nicht erfüllt**');
+      expect(prompt).toContain('**nicht prüfbar**');
+      expect(prompt).toContain('Rate nie');
+    });
+
+    // Der Fortschrittskommentar des Bau-Laufs ist KEIN Beleg -- sonst prueft
+    // der Check die Selbstauskunft dessen, den er pruefen soll.
+    it('erklaert den Haken des Bau-Laufs ausdruecklich fuer keinen Beleg', () => {
+      expect(prompt).toContain('ist **kein** Beleg');
+    });
+
+    it('haelt den Diff gegen origin/main, nicht gegen den Arbeitsstand', () => {
+      expect(prompt).toContain('git diff origin/main...HEAD');
+    });
+
+    // Wandert vom Bau- in den Pruef-Prompt (#167/#292): ohne --subject nimmt
+    // GitHub bei genau einem Commit dessen Nachricht als Squash-Betreff, und
+    // ein nur im Titel stehendes 'Closes #N' geht verloren.
+    it('gibt den PR frei -- mit den Pflichtflags aus #292', () => {
+      expect(prompt).toContain('gh pr ready');
+      expect(prompt).toContain('gh pr merge --squash --auto --delete-branch');
+      expect(prompt).toContain('--subject "$(gh pr view --json title -q .title)"');
+      expect(prompt).toContain('--body ""');
+      expect(prompt).toContain('#292');
+    });
+
+    it('nimmt bei einer Luecke das Label zurueck und laesst den PR im Entwurf', () => {
+      expect(prompt).toContain('gh issue edit 42 --remove-label check');
+      expect(prompt).toContain('der PR bleibt Entwurf');
+      expect(prompt).toContain('Fortschrittskommentar');
+    });
+
+    it('endet beim zweiten vergeblichen Anlauf mit needs-answer statt einer dritten Runde', () => {
+      expect(prompt).toContain('--add-label needs-answer');
+      expect(prompt).toContain('zweite vergebliche Anlauf');
+    });
+
+    it('bekommt Lese-Werkzeuge plus git fetch, aber kein Edit und kein Artifact', () => {
+      expect(CHECK_TOOLS).toContain(READONLY_TOOLS);
+      expect(CHECK_TOOLS).toContain('Bash(git fetch:*)');
+      expect(CHECK_TOOLS).not.toContain('Edit');
+      expect(CHECK_TOOLS).not.toContain('Artifact');
+    });
+  });
 
   // #588: der Lauf legt keine Fund-Tickets mehr an. Der Prompt muss das
   // ausdruecklich verbieten UND den Ersatzweg nennen -- ein blosses Weglassen
@@ -206,11 +284,12 @@ describe('prompts', () => {
 
     // #292: derselbe Schutz wie im Bau-Prompt -- der CI-Fix-Lauf mergt
     // ebenfalls selbst und darf das Closes #N nicht verlieren.
-    it('haengt --subject/--body an den Merge-Aufruf, damit Closes #N nicht verloren geht', () => {
-      const prompt = ciFixPrompt(7, 'egal');
-      expect(prompt).toContain("'gh pr merge --squash --auto --delete-branch'");
-      expect(prompt).toContain('--subject "$(gh pr view --json title -q .title)"');
-      expect(prompt).toContain('--body ""');
+    // #839: der CI-Fix-Lauf mergt genauso wenig selbst wie der Bau-Lauf --
+    // er gibt an denselben AK-Check ab. Die Merge-Aufrufe samt --subject
+    // stehen jetzt im Pruef-Prompt.
+    it('gibt an den AK-Check ab, statt selbst zu mergen', () => {
+      expect(ciFixPrompt(7, 'egal')).toContain("'gh issue edit 7 --add-label check'");
+      expect(ciFixPrompt(7, 'egal')).not.toContain('gh pr merge --squash --auto');
     });
   });
 
