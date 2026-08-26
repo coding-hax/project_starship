@@ -1,5 +1,6 @@
 import { UebersichtCapture } from '@/features/tasks/uebersicht-capture';
 import { AppHeader } from '@/ui/app-header';
+import { PageFace } from '@/ui/faces';
 import { OverviewReadyProvider } from '@/ui/overview-ready';
 import { DailyProgressRing } from './daily-progress-ring';
 import { UebersichtSections } from './uebersicht-sections';
@@ -13,7 +14,10 @@ export default function UebersichtPage() {
           else appears below, and the reveal shifts nothing only as long as it is
           already standing (issue #642). */}
       <div className="uebersicht__title-row" data-ground="uebersicht">
-        <h1>Übersicht</h1>
+        <div className="uebersicht__title-cluster">
+          <h1>Übersicht</h1>
+          <PageFace face="uebersicht" />
+        </div>
         <div className="uebersicht__title-actions">
           <div className="uebersicht__capture-group">
             <UebersichtCapture />

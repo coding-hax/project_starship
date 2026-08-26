@@ -5,6 +5,14 @@
   margin-bottom: var(--space-4);
 }
 
+/* Die Figur sitzt über dem sichtbaren Streifen (issue #830) — der sr-only h1
+   trägt hier keine sichtbare Breite/Höhe bei (position: absolute), die Zeile
+   zeigt also effektiv nur die Figur an. */
+.calendar-view__title-row {
+  display: flex;
+  align-items: center;
+}
+
 /* Standard visually-hidden pattern — kept in the a11y tree, not `display: none`. */
 .calendar-view__heading {
   position: absolute;
