@@ -129,7 +129,9 @@
 }
 
 .weather-day__temp-max {
-  font-size: var(--text-title);
+  /* Eigene Rolle statt --text-title (issue #833): die trägt noch die
+     FAB-Glyphe und den Termin-Detail-Titel bei 32. */
+  font-size: var(--text-temp);
   color: var(--text);
 }
 

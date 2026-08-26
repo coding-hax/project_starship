@@ -1,4 +1,5 @@
 import { ActivityList } from '@/features/activities/activity-list';
+import './aktivitaeten-page.css';
 
 export const metadata = { title: 'Aktivitäten · Starship' };
 

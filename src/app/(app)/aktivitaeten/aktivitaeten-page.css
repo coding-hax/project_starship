@@ -1,0 +1,5 @@
+/* Halbhoher Seitenkopf (issue #833): Aktivitäten bekommt die einzige
+   Ausnahme von --text-page-title (22) — die Zieltabelle sieht hier 26 vor. */
+[data-module='aktivitaeten'] h1 {
+  font-size: var(--text-page-title-lg);
+}
