@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { consumeCaptureDraft } from '@/features/tasks/capture-draft-store';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
+import { PageFace } from '@/ui/faces';
 import { OfflineNotice } from '@/ui/offline-notice';
 import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
@@ -152,7 +153,10 @@ export function CalendarView() {
           same reasoning as weather-day.tsx) — CalendarStrip's paging controls
           live in it, not just a bare heading. */}
       <header className="calendar-view__header">
-        <h1 className="calendar-view__heading">Kalender</h1>
+        <div className="calendar-view__title-row">
+          <h1 className="calendar-view__heading">Kalender</h1>
+          <PageFace face="kalender" />
+        </div>
         {today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}

@@ -1,11 +1,14 @@
 /* `align-items: flex-start`, not `center`: the h1 keeps its regular
    `margin-block-end: var(--space-6)` (design-system.spec.ts's global
-   header↔content rule, #85) — centering against that trailing margin would
-   pull the button visibly below the heading's own text. Top-aligning both
-   sidesteps the margin entirely, since it never enters a start-edge layout. */
+   header↔content rule, #85, pinned to /aufgaben specifically — the h1's own
+   margin must stay untouched) — centering against that trailing margin would
+   pull the PageFace visibly below the heading's own text. Top-aligning both
+   sidesteps the margin entirely, since it never enters a start-edge layout.
+   `justify-content: space-between` dropped (issue #830): with the face as a
+   second item it would push the two ends of the row apart instead of keeping
+   the face flush next to the title. */
 .aufgaben-page__title-row {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-2);
 }

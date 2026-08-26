@@ -15,7 +15,17 @@
   gap: var(--space-4);
 }
 
-.journal-page__title-row h1 {
+/* Titel + Figur als ein Cluster (issue #830): so bleibt `justify-content:
+   space-between` bei zwei Top-Level-Kindern (Cluster, Aktionen) statt die
+   Figur zwischen Titel und Datum/Lupe zu verteilen. */
+.journal-page__title-cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.journal-page__title-cluster h1 {
   margin: 0;
 }
 
