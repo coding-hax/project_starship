@@ -121,19 +121,26 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
  * Token-Größen, h3 bleibt bei --text-body (Betonung trägt dort das Gewicht).
  */
 test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
-  test('AC1: h1 rendert in --text-title auf /uebersicht und /einstellungen', async ({ page }) => {
+  // Seit issue #833 trägt der globale h1-Stil --text-page-title (22px), nicht
+  // mehr --text-title (32px, bleibt für FAB-Glyphe/Termin-Detail) — die
+  // ursprüngliche Aussage des AC ("h1 trägt eine Token-Größe, nicht die
+  // ererbte Fließtextgröße") gilt weiter, nur die Referenzrolle hat sich
+  // verschoben.
+  test('AC1: h1 rendert in --text-page-title auf /uebersicht und /einstellungen', async ({
+    page,
+  }) => {
     await registerPasskey(page);
 
     for (const path of ['/uebersicht', '/einstellungen']) {
       await page.goto(path);
       const h1 = page.getByRole('heading', { level: 1 });
-      const [fontSize, textTitle] = await Promise.all([
+      const [fontSize, pageTitleSize] = await Promise.all([
         h1.evaluate((el) => getComputedStyle(el).fontSize),
         page.evaluate(() =>
-          getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
+          getComputedStyle(document.documentElement).getPropertyValue('--text-page-title').trim(),
         ),
       ]);
-      expect(fontSize).toBe(textTitle);
+      expect(fontSize).toBe(pageTitleSize);
     }
   });
 
