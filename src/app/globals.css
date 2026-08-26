@@ -233,7 +233,9 @@ h3 {
 }
 
 h1 {
-  font-size: var(--text-title);
+  /* Halbhoher Seitenkopf (issue #833): --text-page-title, nicht --text-title —
+     das trägt noch die FAB-Glyphe und den Termin-Detail-Titel bei 32. */
+  font-size: var(--text-page-title);
 }
 
 h2 {

@@ -160,6 +160,14 @@
   --text-body: 16px;
   --text-secondary: 14px;
   --text-meta: 12px;
+  /* Halbhoher Seitenkopf (issue #833): eigene Rollen statt --text-title zu
+     senken, weil --text-title auch die FAB-Glyphe (fab.css) und den
+     Termin-Detail-Titel (event-detail.css) trägt — die sollen bei 32 bleiben.
+     Liegen bewusst außerhalb der 12/14/16/20/24/32-Skala; siehe
+     docs/design/farben-typografie.md, "Komposition". */
+  --text-page-title: 22px;
+  --text-page-title-lg: 26px; /* nur Aktivitäten */
+  --text-temp: 40px; /* Wetter, große Tages-Temperatur */
 
   --weight-normal: 400;
   --weight-emphasis: 600;
