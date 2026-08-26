@@ -153,10 +153,6 @@ test('AK1: der Kopf ist Titelzeile + optionaler Zusatz, flach — kein Verlauf, 
 test('AK2: Titelgrad ist gegenüber --text-title halbiert, /uebersicht zeigt mehr Inhalt ohne neuen Abschnitt', async ({
   page,
 }) => {
-  const pageTitleSize = await resolvePxToken(page, '--text-page-title');
-  const titleSize = await resolvePxToken(page, '--text-title');
-  expect(pageTitleSize, '--text-page-title ist kleiner als --text-title').toBeLessThan(titleSize);
-
   await installClockAt(page, FIXED_NOW);
   await registerPasskey(page);
   await seedTask(page, { title: 'AK2 Aufgabe 1', dueAt: FIXED_NOW });
@@ -164,6 +160,12 @@ test('AK2: Titelgrad ist gegenüber --text-title halbiert, /uebersicht zeigt meh
   await seedHabit(page, { name: 'AK2 Routine 1', schedule: 'daily', color: null, archivedAt: null });
   await seedHabit(page, { name: 'AK2 Routine 2', schedule: 'daily', color: null, archivedAt: null });
   await page.goto('/uebersicht');
+
+  // Erst NACH einer echten Navigation prüfbar — die Tokens leben in
+  // tokens.css/globals.css, die about:blank (Playwright-Startseite) nicht lädt.
+  const pageTitleSize = await resolvePxToken(page, '--text-page-title');
+  const titleSize = await resolvePxToken(page, '--text-title');
+  expect(pageTitleSize, '--text-page-title ist kleiner als --text-title').toBeLessThan(titleSize);
 
   // "Ohne Abschnitt" (Plan-Revision A): der gewonnene Platz geht direkt an die
   // Liste — kein neues "mehr anzeigen"/Zusammenklappen versteckt die zweite
