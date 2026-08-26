@@ -27,7 +27,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   `OverviewSection`, Reihenfolge Wetter → Termine → Aufgaben → Aktivitäten →
   Routinen), jede Sektion mit einheitlichem Kopf über `OverviewBlock`
 - `(app)/aufgaben/page.tsx` — Kopfzeile + `<TaskList/>` + `<QuickAddTask/>`
-- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor, S2+S3 von #473, issue #553/#554); Monat/Serien folgen S4–S6
+- `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor); Monat/Serien folgen S4–S6
 - `(app)/routinen/page.tsx` / `(app)/aktivitaeten/page.tsx` — Routinen-Verwaltung + Garmin-Aktivitäten, je eigener Tab
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
@@ -98,7 +98,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht zwischen lokalem und Modell-Erkenner, eigenes `CaptureDraft` (reicher als in `tasks/capture-draft-store.ts`)
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText` (issue #687)
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer (issue #687)
-- `field-confidence.ts` — Helfer für `FieldConfidence` (#691), von Erkenner und `quick-add.tsx` geteilt
+- `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
 - `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung, Basis für #620)
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
@@ -125,9 +125,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `use-habits.ts` / `use-habit-logs.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
 - `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
-- `streak.ts` — `computeStreak` (Joker entfernt, #796; `habit_freezes` dormant) + `countHabitsOnStreak` (#809)
+- `streak.ts` — `computeStreak` (`habit_freezes` dormant) + `countHabitsOnStreak`
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge
-- `habits-overview-section.tsx` / `streak-summary-card.tsx` / `.css` — `OverviewSection` + Karte „Routinen in Serie" (#809)
+- `habits-overview-section.tsx` / `streak-summary-card.tsx` / `.css` — `OverviewSection` + Karte „Routinen in Serie"
 - `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
 - `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
 
@@ -135,7 +135,6 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): `agendaForDay`/`nextInAgenda`/`categoryEdgeVar`/`allDayEventsForDay`,
   `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
-  (Übersicht #559; Agenda #597)
 - `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
@@ -195,15 +194,15 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `ics-subscriptions-panel.tsx` / `.css` — `.ics`-Abos hinzufügen/entfernen, zeigt `lastError` je Abo (issue #560, ADR-0022)
 - `use-nav-order.ts` / `nav-order-panel.tsx` / `.css` — Reihenfolge der Nav-Einträge, ↑/↓ je Eintrag
 - `use-push.ts` / `use-reminder-prefs.ts` / `push-panel.tsx` / `.css` — Push-Hook, Prefs-Query, Panel (an/aus)
-- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Geräte": Passkey-Liste mit Einzelwiderruf + „alle anderen Sitzungen beenden", Letztes-Credential-Schutz (#754, #769)
-- `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kalender-Kategorie (issue #660), Merged-View + setColor/resetColor
+- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Geräte": Passkey-Liste mit Einzelwiderruf + „alle anderen Sitzungen beenden", Letztes-Credential-Schutz
+- `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kalender-Kategorie, Merged-View + setColor/resetColor
 - `category-colors-boot.tsx` — setzt/entfernt `--cat-<category>` als `var()`-Referenz auf `<html>`
 - `calendar-settings-panel.tsx` — Wrapper: kalender's einziger `SettingsPanel`-Slot zeigt auf `CategoryColorsPanel` + `IcsSubscriptionsPanel`
 
 ### src/ui
 
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route (#829)
+- `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
 - `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
 - `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet
@@ -214,8 +213,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
 - `row/section-card/toggle/segmented-control/slider.tsx` (+ `.css`) — Form-Primitive
-- `overview-block.tsx` / `.css` — einheitlicher Modulkopf auf /uebersicht (Punkt in Bereichsfarbe, Titel, optionaler Link), issue #652
-- `field-hint.tsx` / `.css` — Warnfarbene Notiz für ein geratenes Feld, kein Icon (issue #691)
+- `overview-block.tsx` / `.css` — einheitlicher Modulkopf auf /uebersicht (Punkt in Bereichsfarbe, Titel, optionaler Link)
+- `field-hint.tsx` / `.css` — Warnfarbene Notiz für ein geratenes Feld, kein Icon
 - `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync/Storage-Start, Fehler-Toast, Stale-Helfer
 - `e2e-bridge.tsx` — Test-Griff auf Outbox/Journal/Dexie-Dump (nur `NEXT_PUBLIC_E2E`)
 
@@ -225,6 +224,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `grundfarbe.spec.ts` — Seitengrund je Route: Vollfläche/Kontrast/Dark-Mode/Flächen-Reset, ein Test je AK (issue #832)
+- `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe (#831)
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, issue #599)
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
@@ -237,7 +237,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (issue #691, Teil 4 von 4): ein Test je AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
-- `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern (issue #553)
+- `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern
 - `scroll-position.spec.ts` — jede Seite startet oben, nie auf der Scrollposition der vorherigen, auch nicht per Zurück (issue #647)
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale

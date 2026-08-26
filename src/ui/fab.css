@@ -7,15 +7,25 @@
 .fab {
   position: fixed;
   right: var(--space-4);
-  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset));
+  /* 64px + `--space-2` = the nav bar's own content height plus the pill's
+     `margin-top` (issue #831 AK2 — `.nav__bar` sits `--space-2` below `.nav`'s
+     top edge now, taller than the flat bar this constant was tuned for). */
+  bottom: calc(
+    64px + var(--space-2) + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset)
+  );
   width: 56px;
   height: 56px;
   min-width: var(--touch-target);
   min-height: var(--touch-target);
   border: none;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
+  /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
+     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 65% Bereichsfarbe gegen
+     --text-base gemischt hält den Glyph in jedem Bereich und Theme ≥4,5:1
+     (schwächster Fall: --area-tasks hell, gemessen ~4,7:1) und bleibt an der
+     Bereichsfarbe erkennbar statt ins Neutrale zu kippen. */
+  background: var(--surface);
+  color: color-mix(in oklch, var(--accent) 65%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;

@@ -247,16 +247,27 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
   ).toBeGreaterThanOrEqual(4.5);
 });
 
-test('AK3: Bereichsflächen (FAB) tragen weiter --on-accent, unverändert seit #709', async ({
+test('AK3: bereichsgefüllte Flächen tragen weiter --on-accent, unverändert seit #709', async ({
   page,
 }) => {
+  // issue #831 AK3 kehrt die FAB bewusst um (hell auf dem Grund, Glyph in
+  // abgedunkelter Bereichsfarbe) — dieser Test war bis #831 die FAB-Sonde für
+  // die #709-Invariante "Text auf einer bereichsgefüllten Fläche = --on-accent"
+  // und wandert jetzt auf einen weiterhin bereichsgefüllten Knopf: den
+  // Speichern-Knopf im Task-Editor (task-editor.css:75-76, unverändert von #831).
   await registerPasskey(page);
   await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Kontrast-Sonde Speichern', dueAt: FIXED_NOW });
 
   const onAccent = await resolveColorToken(page, '--on-accent');
-  const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
-  await expect(fab).toBeVisible();
-  expect(await elementColor(fab)).toBe(onAccent);
+  await page
+    .getByRole('list', { name: 'Aufgaben' })
+    .getByRole('listitem')
+    .filter({ hasText: 'Kontrast-Sonde Speichern' })
+    .click();
+  const submit = page.getByRole('button', { name: 'Speichern' });
+  await expect(submit).toBeVisible();
+  expect(await elementColor(submit)).toBe(onAccent);
 });
 
 test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', async ({ page }) => {
