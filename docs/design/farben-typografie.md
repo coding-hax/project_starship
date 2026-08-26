@@ -108,6 +108,10 @@ auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
 - Ein Font: **Inter Variable** (oder Geist). Kein zweiter Font ohne ADR.
 - Zahlen immer mit `font-variant-numeric: tabular-nums` — sonst zappeln Uhrzeiten und Streaks.
 - Skala: 12 / 14 / 16 / 20 / 24 / 32. Fließtext 16px, nie kleiner als 14px auf Mobile.
+  Drei Rollen liegen bewusst außerhalb dieser Skala — `--text-page-title` (22),
+  `--text-page-title-lg` (26), `--text-temp` (40), halbhoher Seitenkopf, issue
+  #833 — weil sie einen eigenen, schmaleren Kopf tragen statt der bisherigen
+  Sprossen.
 - Zeilenhöhe großzügig (1.5 für Text, 1.2 für Überschriften).
 
 ## Komposition
@@ -118,7 +122,10 @@ issue #591):
 
 | Token | Größe | Rolle |
 |---|---|---|
-| `--text-title` | 32px | Seitentitel |
+| `--text-title` | 32px | FAB-/Erfassungs-Glyphe, Termin-Detail-Titel |
+| `--text-page-title` | 22px | Seitentitel, h1 (8 der 9 Routen — halbhoher Kopf, issue #833) |
+| `--text-page-title-lg` | 26px | Seitentitel Aktivitäten (issue #833) |
+| `--text-temp` | 40px | Wetter, große Tages-Temperatur (issue #833) |
 | `--text-section` | 20px | Abschnittsüberschrift |
 | `--text-body` | 16px | Fließtext |
 | `--text-secondary` | 14px | Sekundärtext, Labels |
