@@ -332,6 +332,15 @@
   margin-inline: auto;
 }
 
+/* Figur neben dem Titel (issue #830) — `flex-start` statt `center`: das h1
+   trägt weiter seine reguläre `margin-block-end` (globals.css), zentrieren
+   würde die Figur dagegen sichtbar unter den Titeltext ziehen. */
+.auth__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
 .auth__button {
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-6);

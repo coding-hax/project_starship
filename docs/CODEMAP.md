@@ -203,6 +203,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
 - `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
+- `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
 - `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
 - `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet
