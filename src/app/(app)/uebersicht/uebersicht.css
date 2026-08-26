@@ -44,9 +44,17 @@
  * hier nie einen Zweck erfüllt. Ohne Bruch bleibt die Zeilenzahl konstant, damit
  * die Höhe, damit die Zeile. Ein in der Fallback-Phase zu breites Wort läuft
  * stattdessen über — unsichtbar, weil `font-display: block` in genau diesem
- * Fenster die Glyphen ohnehin nicht zeichnet. */
+ * Fenster die Glyphen ohnehin nicht zeichnet.
+ *
+ * `flex: 1` (statt `0 1 auto`) auf diesem h1 selbst, aus demselben Grund wie
+ * oben an `.title-cluster`: sonst bemisst sich die h1-Box nach ihrem Text, und
+ * das PageFace-Icon direkt danach (#830) rutscht beim Font-Swap horizontal mit
+ * (CI-Fund: `svg [122,24 32×32 → 126,24 32×32]`, AC1 aus
+ * uebersicht-ladezustand.spec.ts). Mit `flex: 1` füllt die h1-Box immer den
+ * kompletten Rest des Clusters, unabhängig von den Glyphenmaßen — das Icon
+ * bleibt an fester Position. */
 .uebersicht__title-cluster h1 {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   margin: 0;
   min-width: 0;
   overflow-wrap: normal;
