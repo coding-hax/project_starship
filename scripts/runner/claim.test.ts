@@ -155,6 +155,15 @@ describe('claim.ts (#204)', () => {
       expect(claims.readSlot(211)).toBe('1');
     });
 
+    // #839: ein Ticket, das nur noch 'check' traegt, wartet auf sein Merge-Tor
+    // -- das ist laufende Arbeit, kein herrenloser Claim.
+    it('behält einen alten Claim, dessen Ticket auf den AK-Check wartet', () => {
+      claimTake(claims, 213, '1');
+      const gh = ghDouble([issueView('OPEN', 'check')]);
+      claimSweep(claims, gh, Date.now() + SWEEP_GRACE_MS + 1000);
+      expect(claims.readSlot(213)).toBe('1');
+    });
+
     it('räumt einen alten Plan-Claim weg, sobald das Label auf ready geflippt ist', () => {
       claimTake(claims, 212, '1');
       const gh = ghDouble([issueView('OPEN', 'ready')]); // 'plan' abgenommen, Planung fertig
