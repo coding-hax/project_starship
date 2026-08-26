@@ -137,6 +137,13 @@ export interface RoundRun {
    * ihn in Spalte 1) darf keinen Lese-Lauf mehr faelschlich anklagen.
    */
   beforeDirty: string;
+  /**
+   * #839: der PR-Branch, gegen den geprueft wird -- nur fuer role='check'
+   * befuellt, sonst ''. claude-runner.sh legt den Wegwerf-Worktree damit auf
+   * dem PR-Stand an statt auf origin/main; ein Pruefer auf main saehe den
+   * Diff, den er beurteilen soll, gar nicht.
+   */
+  branch: string;
   /** O3 (#325): --disallowedTools fuer den `claude`-Aufruf, '' beim Bauen. */
   denyTools: string;
 }
@@ -601,7 +608,17 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
   const ticket = snapshot.find((entry) => entry.number === issue);
   const criteria = ticket ? acceptanceCriteria(ticket.body ?? '') : [];
 
-  if (role === 'build' && ticket !== undefined && criteria.length === 0) {
+  // Das Tor greift nur, wenn der Body auch WIRKLICH bekannt ist. Zwei Faelle
+  // sehen im Code gleich aus und sind es nicht:
+  //   - `body: ''`        -> das Ticket ist leer. Tor greift.
+  //   - Feld fehlt ganz   -> wir wissen es nicht (Snapshot ohne 'body', z. B.
+  //                          ein aelterer Aufrufer). Tor greift NICHT.
+  // Dieselbe Richtung wie beim leeren Schnappschuss oben: im Zweifel laufen
+  // lassen. Ein Tor, das auf fehlende Information hin parkt, legt die Flotte
+  // still, sobald irgendwo ein Feld fehlt -- und niemand faende den Grund.
+  const bodyKnown = typeof ticket?.body === 'string';
+
+  if (role === 'build' && bodyKnown && criteria.length === 0) {
     tryGh(gh, ['issue', 'comment', String(issue), '--body', missingCriteriaComment(issue)]);
     tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
     // Anders als beim Opus-Deckel wird der Claim hier freigegeben: es gibt
@@ -626,7 +643,8 @@ fehlt, steht als Kommentar am Ticket. Trag sie nach und nimm \`needs-answer\` ab
   // das Label gesetzt, aber nie gepusht hat). Label zurueckgeben statt einen
   // Lauf zu starten, der nur einen leeren Diff sehen wuerde -- der naechste
   // Takt ist dann wieder ein Bau-Lauf.
-  if (role === 'check' && branchName(issue, git) === '') {
+  const checkBranch = role === 'check' ? branchName(issue, git) : '';
+  if (role === 'check' && checkBranch === '') {
     tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
     claimRelease(claims, issue);
     return {
@@ -814,7 +832,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
       : role === 'research'
         ? researchPrompt(issue)
         : role === 'check'
-          ? checkPrompt(issue, criteria, branchName(issue, git))
+          ? checkPrompt(issue, criteria, checkBranch)
           : ciFix
             ? ciFixPrompt(issue, ciSummary)
             : buildPrompt(issue);
@@ -866,6 +884,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     lastIssue: opts.lastIssue,
     prompt,
     beforeDirty,
+    branch: checkBranch,
     denyTools,
   };
 }

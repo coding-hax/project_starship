@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
 import { createStateAdapter, type StateAdapter } from './state';
 import { pickTicket, queueNext, selectTicket } from './select';
+import { sessionKey } from './session';
 import type { QueueIssue } from './queue';
 
 function label(...names: string[]) {
@@ -534,5 +535,66 @@ describe('claimedElsewhere (#204) -- ohne den Snapshot fuer Abhaengigkeiten zu v
     const result = pickTicket(snapshot, gh, state, new Set([70]));
     expect(result).toEqual({ kind: 'ticket', issue: 80, role: 'build', mode: 'start' });
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// #839: die vierte Rolle. Sie sitzt zwischen `next` und `plan` und ist der
+// einzige Weg, auf dem ein fertiger PR noch gemergt wird -- entsprechend
+// genau ist hier festgenagelt, wo sie greift und wo nicht.
+describe('Rolle check (#839)', () => {
+  let dir: string;
+  let state: StateAdapter;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'runner-check-'));
+    state = createStateAdapter(dir);
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('leitet die Rolle aus dem Label ab -- auch auf dem running-Zweig', () => {
+    // Der Normalweg: der Bau-Lauf setzt 'check' und laesst 'in-progress'
+    // stehen. Lieferte roleFromLabels() hier 'build', liefe der Bau einfach
+    // weiter und das Tor waere wirkungslos.
+    expect(selectTicket([issue(70, ['in-progress', 'check'])])).toEqual({
+      issue: 70,
+      role: 'check',
+      source: 'running',
+    });
+  });
+
+  it('greift auch ohne in-progress -- Netz, falls claimSweep das Label abraeumt', () => {
+    expect(selectTicket([issue(70, ['check'])])).toEqual({ issue: 70, role: 'check', source: 'check' });
+  });
+
+  it('steht vor plan und research: ein fertiger PR wartet nicht hinter der Denkarbeit', () => {
+    const snapshot = [issue(70, ['check'], '2024-03-01T00:00:00Z'), issue(50, ['plan'], '2024-01-01T00:00:00Z')];
+    expect(selectTicket(snapshot)).toEqual({ issue: 70, role: 'check', source: 'check' });
+  });
+
+  it('steht hinter next -- der Rang schlaegt weiter alles', () => {
+    const snapshot = [issue(70, ['check'], '2024-01-01T00:00:00Z'), issue(50, ['next', 'ready'], '2024-03-01T00:00:00Z')];
+    expect(selectTicket(snapshot)?.issue).toBe(50);
+  });
+
+  it('schlaegt plan, wenn ein Ticket versehentlich beide traegt', () => {
+    expect(selectTicket([issue(70, ['check', 'plan'])])?.role).toBe('check');
+  });
+
+  it('wird von den Blocker-Labels wie jede andere Rolle ausgeschlossen', () => {
+    expect(selectTicket([issue(70, ['check', 'needs-answer'])])).toBeNull();
+    expect(selectTicket([issue(70, ['check', 'hands-off'])])).toBeNull();
+  });
+
+  it('haengt in-progress an und startet IMMER frisch, nie per resume', () => {
+    const gh = ghDouble();
+    const out = pickTicket([issue(70, ['check'])], gh, state);
+    expect(out).toEqual({ kind: 'ticket', issue: 70, role: 'check', mode: 'start' });
+    expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '70', '--add-label', 'in-progress']);
+  });
+
+  it('startet auch mit vorhandener Session frisch -- ein Diff wird jedes Mal neu beurteilt', () => {
+    state.write(sessionKey(70, 'check'), 'alte-session-id');
+    const out = pickTicket([issue(70, ['check'])], ghDouble(), state);
+    expect((out as { mode: string }).mode).toBe('start');
   });
 });

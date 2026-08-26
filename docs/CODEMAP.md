@@ -256,7 +256,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `runner/{gh,git,state,clock,time}.ts` — Adapter (gh/git/State-Dateien/Zeit), injizierbar für Vitest
 - `runner/{queue,tier,escalation,cap,pr,catchup}.ts` — Queue, Modell-Eskalation, Deckel, PR-Zustand, Nachzieh-Ablauf
 - `runner/{watch,select,status}.ts` — CI-Wache, Ticketauswahl, Statusmeldungen fürs Status-Issue
-- `runner/prompts.ts` / `runner/round.ts` — vier Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
+- `runner/ak.ts` — Akzeptanzkriterien aus dem Ticket-Body (rein): AK-Tor + Rolle `check` (ADR-0026)
+- `runner/prompts.ts` / `runner/round.ts` — fünf Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session-Trennung, Shim-Drift, Aufräumen, Multi-Slot-Status
 - `runner/*.test.ts` — Vitest-Suiten der TS-Adapter, je eine Datei pro Modul
 - `git-hooks/pre-push` — Push-Netz gegen Doppelbau (ADR-0020): bricht nur ab, wenn der Claim des Tickets fremdem Slot gehört

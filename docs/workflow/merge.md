@@ -1,4 +1,15 @@
-# Merge: Claude hebt seinen PR selbst aus dem Entwurf (#147, #167)
+# Merge: der AK-Check hebt den PR aus dem Entwurf (#147, #167, #839)
+
+> **Seit #839 / ADR-0026 gilt der letzte Schritt anders.** Der Bau-Lauf
+> mergt **nicht** mehr selbst: er endet mit `gh issue edit <nr> --add-label
+> check` und lässt den PR im Entwurf. `gh pr ready` und
+> `gh pr merge --squash --auto` ruft ausschließlich der **AK-Check-Lauf**,
+> und nur, wenn kein Akzeptanzkriterium offen ist. Alles Übrige in diesem
+> Dokument — Draft-PR beim ersten Push, kein zweiter PR, das proaktive
+> Nachziehen von `main`, die `--subject`-Pflicht aus #292 — bleibt
+> unverändert gültig; es wandert nur vom Bau- in den Prüf-Lauf. Der Takt
+> steht in `zyklus.md`.
+
 
 Claude wartet nicht mehr selbst auf CI. Existiert für das Ticket noch kein
 PR, öffnet der erste Push einen **Draft**-PR (`gh pr create --draft --fill

@@ -12,6 +12,7 @@ import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
 import { createClaimAdapter, type ClaimAdapter } from './claim';
 import { roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } from './round';
+import { CHECK_TOOLS, READONLY_DENY } from './prompts';
 import { READONLY_TOOLS } from './prompts';
 
 const CLOCK = createFixedClock(new Date('2026-07-26T09:22:00'));
@@ -105,6 +106,99 @@ describe('roundPlan', () => {
   // #204 (ein Slot, das war immer der Leitslot). Die eigene Slot/Lead-Logik
   // hat ihre eigene Gruppe weiter unten.
   const opts = { statusIssue: 0, maxRuntime: 2700, didWork: false, lastIssue: '', isLead: true };
+
+  // #839: das AK-Tor und die Pruef-Rolle. Beide Richtungen sind hier teuer und
+  // deshalb einzeln festgenagelt -- ein Tor, das zu frueh zuschlaegt, parkt die
+  // Flotte; eines, das nie zuschlaegt, ist Dekoration.
+  describe('AK-Tor und Pruef-Rolle (#839)', () => {
+    const noAk = '## Ziel\n\nEin Satz, aber keine Kriterien.';
+    const lsRemote = { 'ls-remote': 'abc123\trefs/heads/feat/70-quick-add\n' };
+
+    it('startet keinen Bau-Lauf fuer ein Ticket ohne Akzeptanzkriterien', () => {
+      const { gh, calls } = ghDouble([openIssues(issueJson(70, ['ready'], '2024-01-01T00:00:00Z', noAk)), noOpenPrs]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(called(calls, 'comment', '70')).toBe(true);
+      expect(called(calls, 'edit', '70', '--add-label', 'needs-answer')).toBe(true);
+      expect(result.status?.title).toContain('keine AK');
+    });
+
+    it('baut, sobald der Abschnitt da ist', () => {
+      const { gh } = ghDouble([openIssues(issueJson(70, ['ready'])), noOpenPrs, labelsAre('ready')]);
+      expect(roundPlan(ctx(gh), opts).kind).toBe('run');
+    });
+
+    // Fail open: ein Schnappschuss ohne 'body' heisst "unbekannt", nicht "leer".
+    // Ein Tor, das auf fehlende Information hin parkt, legt die Flotte still.
+    it('greift nicht, wenn der Schnappschuss gar kein body-Feld traegt', () => {
+      // JSON.stringify wirft `undefined` weg -- die Antwort traegt also gar
+      // kein 'body'-Feld, genau wie ein aelterer Aufrufer es liefern wuerde.
+      const bodyless = { ...issueJson(70, ['ready']), body: undefined } as unknown as ReturnType<typeof issueJson>;
+      const { gh, calls } = ghDouble([openIssues(bodyless), noOpenPrs, labelsAre('ready')]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('run');
+      expect(called(calls, 'edit', '70', '--add-label', 'needs-answer')).toBe(false);
+    });
+
+    it('greift nicht bei plan -- die Denk-Rollen sollen die Kriterien erst schreiben', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(70, ['plan'], '2024-01-01T00:00:00Z', noAk)),
+        noOpenPrs,
+        labelsAre('plan'),
+      ]);
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('run');
+      expect((result as RoundRun).role).toBe('plan');
+      expect(called(calls, 'edit', '70', '--add-label', 'needs-answer')).toBe(false);
+    });
+
+    it('startet den Pruef-Lauf nur lesend, auf Sonnet, mit Kriterien und Branch', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check'])),
+        noOpenPrs,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun;
+      expect(result.kind).toBe('run');
+      expect(result.role).toBe('check');
+      expect(result.model).toBe('sonnet');
+      expect(result.tools).toBe(CHECK_TOOLS);
+      expect(result.denyTools).toBe(READONLY_DENY);
+      expect(result.branch).toBe('feat/70-quick-add');
+      expect(result.prompt).toContain('1. Es tut, was im Titel steht.');
+    });
+
+    // Die Eskalation aus ADR-0007 gilt dem Bauen, nicht dem Nachsehen.
+    it('hebt den Pruefer nicht auf die Eskalationsstufe des Bau-Tickets', () => {
+      state.write('tier-70', 'opus');
+      const { gh } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check'])),
+        noOpenPrs,
+        labelsAre('in-progress', 'check'),
+      ]);
+      expect((roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun).model).toBe('sonnet');
+    });
+
+    it('folgt aber einem model:*-Label am Ticket', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check', 'model:opus'])),
+        noOpenPrs,
+        labelsAre('in-progress', 'check', 'model:opus'),
+      ]);
+      expect((roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun).model).toBe('opus');
+    });
+
+    it('gibt das Label zurueck, wenn es zu pruefen nichts gibt', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check'])),
+        noOpenPrs,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, gitDouble()), opts);
+      expect(result.kind).toBe('done');
+      expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(true);
+    });
+  });
 
   it('meldet ⚪️ nichts zu tun, wenn kein Ticket wartet', () => {
     const { gh } = ghDouble([openIssues(), noOpenPrs]);
@@ -1068,6 +1162,7 @@ describe('roundEval', () => {
   });
 
   const plan: RoundRun = {
+    branch: '',
     kind: 'run',
     status: { title: '', emoji: '', text: '' },
     issue: 77,
