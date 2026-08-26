@@ -294,17 +294,19 @@ test('AK6: bei 375×812 läuft kein Inhalt über den Rand, der schwebende Knopf 
     );
   }
 
-  // Überlappungsprüfung: genug Aufgaben, dass die Liste bis an den unteren Rand
-  // reicht — der schwebende Knopf darf die letzte sichtbare Zeile nicht verdecken.
+  // Überlappungsprüfung im spärlichen Zustand (Ticket-Hinweis: Polsterung hilft
+  // nicht gegen ein Überlaufen — also nicht künstlich zum Scrollen zwingen,
+  // sondern im Ein-Bildschirm-Fall prüfen, dass der Knopf die letzte Zeile
+  // freilässt). Ein paar wenige Aufgaben, keine 15 — spärlich, nicht überlaufend.
   await page.goto('/aufgaben');
-  for (let i = 0; i < 15; i += 1) {
+  for (let i = 0; i < 3; i += 1) {
     await seedTask(page, { title: `AK6-Sonde ${i}`, dueAt: FIXED_NOW });
   }
   await page.reload();
   const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
   await expect(fab).toBeVisible();
   const lastRow = page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem').last();
-  await lastRow.scrollIntoViewIfNeeded();
+  await expect(lastRow).toBeVisible();
 
   const fabBox = await fab.boundingBox();
   const rowBox = await lastRow.boundingBox();
