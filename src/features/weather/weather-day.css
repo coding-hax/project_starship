@@ -35,10 +35,11 @@
 }
 
 .weather-day__date {
-  /* Ohne das griffe die globale h1-Regel (margin-block-end: var(--space-6)) und
-     schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem Zurück-Link. */
+  /* Ohne das margin: 0 griffe die globale h1-Regel (margin-block-end:
+     var(--space-6)) und schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem
+     Zurück-Link. Größe kommt jetzt von der globalen h1-Regel (issue #833,
+     --text-page-title/22px) statt vom bisherigen --text-body/16px-Override. */
   margin: 0;
-  font-size: var(--text-body);
   text-align: right;
 }
 
