@@ -71,6 +71,21 @@ Parallax, nichts, was bei jeder Nutzung erneut nervt: die Bewegung ist so klein
 (max. 3,5 Einheiten in einer 24er-viewBox), dass sie beim Hinsehen aktiv, beim
 Vorbeischauen unauffällig ist.
 
+### Ausnahme: Hintergrundkreise (S3 von #828, issue #829)
+
+Die vier Kreise hinter jeder Route (`src/ui/background-circles.css`) tragen dieselbe
+Art Ausnahme wie die Wetter-Icons oben, nur noch trägeren: Dauern liegen zwischen 7 s
+und 40 s statt 150–250 ms, die Kurven sind `linear`/`ease-in-out` statt Spring. Bei
+`prefers-reduced-motion`/dem App-Schalter steht die Bewegung ganz still (`animation:
+none !important`, eigene Regel statt der globalen Duration-Nullung — AK4 prüft
+`animationName === 'none'`, nicht nur eine Dauer nahe null).
+
+Begründung: dieselbe Atmosphäre-Ausnahme wie bei den Wetter-Icons — die Kreise
+erklären keine Herkunft, sie geben der vollflächigen Seitenfarbe (S1 von #828) Tiefe.
+Kein Bounce, kein Parallax: die Töne weichen nur wenig vom Seitengrund ab
+(`color-mix` auf `var(--ground)`), die Bewegung bleibt langsam genug, um beim
+Vorbeischauen unauffällig zu sein.
+
 ## Das „Smooth"-Versprechen
 
 Diese vier Regeln sind nicht verhandelbar, sie sind das Produktversprechen:
