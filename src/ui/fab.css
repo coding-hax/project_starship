@@ -14,8 +14,13 @@
   min-height: var(--touch-target);
   border: none;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--on-accent);
+  /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
+     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 65% Bereichsfarbe gegen
+     --text-base gemischt hält den Glyph in jedem Bereich und Theme ≥4,5:1
+     (schwächster Fall: --area-tasks hell, gemessen ~4,7:1) und bleibt an der
+     Bereichsfarbe erkennbar statt ins Neutrale zu kippen. */
+  background: var(--surface);
+  color: color-mix(in oklch, var(--accent) 65%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;

@@ -127,8 +127,11 @@
   --space-8: 32px;
   --space-12: 48px;
 
-  /* Soft, low-opacity, sits underneath. No hard edges. */
-  --shadow-raised: 0 1px 2px oklch(27% 0.015 60 / 0.04), 0 6px 20px oklch(27% 0.015 60 / 0.06);
+  /* Soft, sits underneath, no hard edges — but opaque enough to still read once
+     a card sits on a saturated route ground instead of near-white --bg (issue
+     #831 AK1): doubled from the pre-#831 opacity, blur radii untouched (60fps
+     rule, docs/design/form-und-motion.md "Smooth" R4). */
+  --shadow-raised: 0 1px 2px oklch(27% 0.015 60 / 0.08), 0 6px 20px oklch(27% 0.015 60 / 0.12);
 
   /* --- motion: 150–250 ms. Anything slower feels sluggish. ----------------- */
   --duration-fast: 150ms;

@@ -124,18 +124,36 @@
   z-index: var(--z-nav);
   display: flex;
   align-items: center;
-  /* Opaque per #444 — no glass look here, do not reintroduce the blur. */
-  background: var(--surface);
-  /* Own surface, own ink (issue #832 AK5) — one rule covers both the mobile
-     bottom bar and the desktop sidebar breakpoint below, both `background:
-     var(--surface)`. */
-  --text: var(--text-base);
-  --text-muted: var(--text-muted-base);
-  border-top: 1px solid var(--border);
+  /* `.nav` is a grid row, not a `position: fixed` overlay — its background is
+     the route's own ground, not a neutral surface, so the home-indicator strip
+     below the pill reads as page, not chrome (issue #831 AK2/AK4). The pill
+     itself (`.nav__bar` below) carries the `--surface` fill, shadow and ink
+     reset that used to live here. */
+  background: var(--ground);
   /* A bare `env()` resolves to nothing on a device without a notch, computing to
      0px — the home-indicator gap disappears entirely instead of just not growing.
      The baseline keeps a minimum gap everywhere; the inset only ever adds to it. */
   padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+}
+
+.nav__bar {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin: var(--space-2) var(--space-3) 0;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-raised);
+  /* Rounds off the carousel's scroll content along with the pill itself — the
+     items underneath have no background of their own, so this only ever clips
+     the momentary overscroll bounce, never a label at rest. */
+  overflow: hidden;
+  /* Own surface, own ink (issue #832 AK5): resets the ground's --on-ground
+     back to the fixed neutral text, regardless of which route ground `.nav`
+     sits on. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
 }
 
 .nav__list {
@@ -143,7 +161,8 @@
   flex: 1;
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Keeps the first/last tab's label clear of the pill's rounded corners. */
+  padding-inline: var(--space-2);
   /* Carousel past five entries (issue #205): scrollable instead of shrinking every
      tab to fit. `mandatory` plus each item's `scroll-snap-align` below is what turns
      a swipe into a clean stop on a tab, never a half-visible one at the edge. */
@@ -240,17 +259,32 @@
     height: 100dvh;
     flex-direction: column;
     align-items: stretch;
-    border-top: none;
     border-right: 1px solid var(--border);
     padding: var(--space-6) var(--space-3);
     backdrop-filter: none;
+    /* Sidebar stays its own opaque surface (unchanged since #444/#832) — only the
+       mobile bar switched to the route ground; the pill styling below exists
+       purely for that carousel and is neutralised back to plain flow here. */
     background: var(--surface);
+    --text: var(--text-base);
+    --text-muted: var(--text-muted-base);
+  }
+
+  .nav__bar {
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
   }
 
   .nav__list {
     flex: 0 1 auto;
     flex-direction: column;
     gap: var(--space-1);
+    padding-inline: 0;
     /* Same list, no carousel here (issue #205): a static vertical column, not a
        second design — overflow-x/scroll-snap only exist for the mobile bar above. */
     overflow-x: visible;
