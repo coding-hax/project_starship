@@ -6,6 +6,15 @@ import { registerPasskey, resetAppData } from './helpers';
  * je AK, gemessen per getComputedStyle/getBoundingClientRect statt per Augenschein.
  */
 
+// AK1/AK3 navigieren durch alle neun Routen (plus einen zweiten Browser-Kontext
+// für /anmelden); auf dem Dev-Server kompiliert jede Route beim ersten Besuch
+// (kein Turbopack, siehe CODEMAP „Bauen"). Dieselbe Ursache/Lösung wie
+// scroll-position.spec.ts — hier reichten 60s nicht: als erster Test in der
+// Datei zahlt AK1 alle neun kalten Kompilate ohne vorgewärmten Cache. 120s wie
+// journal-key-race.spec.ts, kein Flake-Versteck — die Assertions bleiben
+// unverändert und werden mit mehr Zeit grün.
+test.describe.configure({ timeout: 120_000 });
+
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
