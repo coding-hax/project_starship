@@ -11,7 +11,12 @@
   position: fixed;
   left: var(--space-4);
   right: var(--space-4);
-  bottom: calc(64px + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset));
+  /* 64px + `--space-2` = the nav bar's own content height plus the pill's
+     `margin-top` (issue #831 AK2 — `.nav__bar` sits `--space-2` below `.nav`'s
+     top edge now, taller than the flat bar this constant was tuned for). */
+  bottom: calc(
+    64px + var(--space-2) + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset)
+  );
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
