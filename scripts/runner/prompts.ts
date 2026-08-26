@@ -88,12 +88,37 @@ Unberührt bleibt, was ein Ticket ohnehin verlangt: der Fortschrittskommentar,
 der Blocker-Kommentar, der Pflichtkommentar bei sensiblen Pfaden und die Frage
 per \`needs-answer\`.`;
 
+// #842: Der Lauf sichert seinen Stand, BEVOR er auf Hintergrundarbeit wartet.
+// Belegt an #830 (26.08.26): der Fix war fertig, die schnellen Tore gruen --
+// trotzdem endete der Lauf ohne einen einzigen Commit, weil er auf einen
+// 'test-runner'-Subagenten wartete. Der Turn endete, der Lauf endete, der
+// Subagent starb mit dem naechsten Takt -- Wartezeit ist so verlorene Zeit
+// UND verlorene Arbeit. Nur in buildPrompt()/ciFixPrompt() (die Bau-Rollen
+// mit Gate+Push), NICHT in den Denk-Rollen -- die committen ohnehin nie.
+const SECURE_BEFORE_WAIT_RULE = `
+
+## Sichern geht vor Warten
+
+Sind die schnellen Tore grün ('pnpm lint', 'pnpm typecheck', 'pnpm test'),
+wird **committet und gepusht, BEVOR** du eine langlaufende Gegenprobe startest —
+ein voller 'pnpm e2e', ein \`test-runner\`-Subagent oder sonstige
+Hintergrundarbeit. Nicht danach. Dein Arbeitsstand darf nie nur in der Session
+leben: endet der Turn, endet der Lauf — und ein Subagent, auf den du „noch
+wartest", stirbt mit dem nächsten Takt. Gewartete Zeit ist dann verlorene Zeit
+UND verlorene Arbeit. Die volle Suite läuft ohnehin in CI; du musst sie nicht
+lokal abwarten.
+
+Leerlauf-Warten ist kein zulässiger Schritt. Keine Füllkommandos ('sleep',
+'jobs', 'echo waiting', ':', 'exit 0', No-op-Agenten), und beende den Turn nie
+mit der Begründung „ich warte auf einen Subagenten". Wer wartet, hat vorher
+committet und gepusht.`;
+
 export function buildPrompt(issue: number): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Arbeite an Issue #${issue} in diesem Repo.
 
-${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}
+${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}${SECURE_BEFORE_WAIT_RULE}
 
 Ablauf:
 1. Pflichtlektüre ist NUR CLAUDE.md und docs/CODEMAP.md. Nichts sonst liest du
@@ -195,7 +220,7 @@ Der Draft-PR zu Issue #${issue} hat rote CI. Der Runner-Takt hat gewartet, bis
 alle Checks durch waren, und startet dich JETZT gezielt, weil es etwas zu TUN
 gibt.
 
-${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}
+${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}${SECURE_BEFORE_WAIT_RULE}
 
 ## Was rot ist
 
