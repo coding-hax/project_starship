@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import { LEGACY_MODULE_IDS } from '@/modules/module-ids';
+import { BackgroundCircles } from '@/ui/background-circles';
 import { KeyboardInset } from '@/ui/keyboard-inset';
 
 const inter = Inter({
@@ -111,6 +112,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <KeyboardInset />
+        <BackgroundCircles />
         {children}
       </body>
     </html>
