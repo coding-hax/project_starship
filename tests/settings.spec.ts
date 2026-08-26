@@ -186,15 +186,19 @@ test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohn
   const title = page.locator('.einstellungen__title');
   await expect(title).toBeVisible();
 
-  const [textAlign, fontSize, textTitle] = await Promise.all([
+  // Seit issue #833 trägt der globale h1-Stil --text-page-title (22px), nicht
+  // mehr --text-title (32px, bleibt für FAB-Glyphe/Termin-Detail) — die
+  // ursprüngliche Aussage von AC2 ("kein eigener font-size") gilt weiter, nur
+  // die Referenzrolle hat sich verschoben.
+  const [textAlign, fontSize, pageTitleSize] = await Promise.all([
     title.evaluate((el) => getComputedStyle(el).textAlign),
     title.evaluate((el) => getComputedStyle(el).fontSize),
     page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
+      getComputedStyle(document.documentElement).getPropertyValue('--text-page-title').trim(),
     ),
   ]);
   expect(['left', 'start']).toContain(textAlign);
-  expect(fontSize).toBe(textTitle);
+  expect(fontSize).toBe(pageTitleSize);
 });
 
 test('AC1 (issue #653): drei Gruppenüberschriften sind sichtbar und stehen in der erwarteten Reihenfolge', async ({

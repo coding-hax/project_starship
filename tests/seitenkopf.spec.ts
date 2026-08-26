@@ -19,6 +19,20 @@ import {
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
+// Volle Woche statt eines einzelnen Tages: useWeatherForecast cached die erste
+// Antwort und fetcht erst nach REFRESH_INTERVAL_MS neu (ADR-0009) — ein zweiter,
+// anders gemockter /uebersicht-Besuch später im selben Test würde die alten
+// Daten trotzdem weiter anzeigen. Die Vorschau rendert ein <li> je Tag
+// (weather-forecast.tsx), der Titelgrößen-Test prüft auf 7.
+const FORECAST_WEEK = [
+  '2026-07-15',
+  '2026-07-16',
+  '2026-07-17',
+  '2026-07-18',
+  '2026-07-19',
+  '2026-07-20',
+  '2026-07-21',
+];
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
@@ -27,7 +41,11 @@ test.beforeEach(async ({ page }) => {
   await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
-      json: openMeteoForecastBody({ dates: ['2026-07-18'], tempsMax: [20], tempsMin: [10] }),
+      json: openMeteoForecastBody({
+        dates: FORECAST_WEEK,
+        tempsMax: FORECAST_WEEK.map(() => 20),
+        tempsMin: FORECAST_WEEK.map(() => 10),
+      }),
     }),
   );
 });
