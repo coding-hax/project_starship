@@ -50,6 +50,13 @@
      --text-page-title/22px) statt vom bisherigen --text-body/16px-Override. */
   margin: 0;
   text-align: right;
+  /* Seit #830 teilt sich das Cluster die Restbreite mit der PageFace (32px +
+     --space-2 Lücke) — ohne nowrap zwang die globale h1-Regel
+     (overflow-wrap: break-word) den Wochentag ("Donnerstag, …") in zwei
+     Zeilen, sobald ihm die 40px fehlten. Das vergrößerte die Kopfzeile über
+     die 44px des Zurück-Links hinaus und riss den Spalt zur ersten Box auf
+     (weather-day.spec.ts, „der Spalt … ist nach #353 noch kleiner …"). */
+  white-space: nowrap;
 }
 
 .weather-day__back {
