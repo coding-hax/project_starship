@@ -240,15 +240,19 @@ test('AC4 (issue #653): .row trennt mit --border-faint statt --border', async ({
   await registerPasskey(page);
   await page.goto('/einstellungen');
 
+  // The probe must sit inside the same card as `.row` — `.section-card` resets
+  // --border*/--border-faint back to their neutral -base anchors (issue #846), so
+  // probing at document.body would read the page ground's mixed values instead.
   const { rowColor, faintColor, borderColor } = await page.evaluate(() => {
+    const row = document.querySelector('.row');
+    const scope = row?.parentElement ?? document.body;
     const probe = document.createElement('div');
-    document.body.appendChild(probe);
+    scope.appendChild(probe);
     probe.style.borderBottom = '1px solid var(--border-faint)';
     const faintColor = getComputedStyle(probe).borderBottomColor;
     probe.style.borderBottom = '1px solid var(--border)';
     const borderColor = getComputedStyle(probe).borderBottomColor;
     probe.remove();
-    const row = document.querySelector('.row');
     return { rowColor: row ? getComputedStyle(row).borderBottomColor : null, faintColor, borderColor };
   });
 

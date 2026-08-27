@@ -163,6 +163,9 @@
      sits on. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 }
 
 .nav__list {
@@ -275,6 +278,9 @@
     background: var(--surface);
     --text: var(--text-base);
     --text-muted: var(--text-muted-base);
+    --border: var(--border-base);
+    --border-strong: var(--border-strong-base);
+    --border-faint: var(--border-faint-base);
   }
 
   .nav__bar {
@@ -368,6 +374,7 @@
      for the flächenlos recovery-code intro text; this block has its own
      background and needs the neutral ink back. */
   --text: var(--text-base);
+  --border: var(--border-base);
   color: var(--text);
   border: 1px solid var(--border);
   font-family: ui-monospace, monospace;
