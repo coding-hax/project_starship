@@ -156,17 +156,15 @@ const CalendarDayCell = memo(function CalendarDayCell({
           {weekdayLabel}
         </span>
         <span aria-hidden="true">{dayNumber}</span>
-        {dots.length > 0 && (
-          <span className="calendar-strip__dots" aria-hidden="true">
-            {dots.map((category) => (
-              <span
-                key={category ?? 'none'}
-                className="calendar-strip__dot"
-                style={{ background: categoryEdgeVar(category) }}
-              />
-            ))}
-          </span>
-        )}
+        <span className="calendar-strip__dots" aria-hidden="true">
+          {dots.map((category) => (
+            <span
+              key={category ?? 'none'}
+              className="calendar-strip__dot"
+              style={{ background: categoryEdgeVar(category) }}
+            />
+          ))}
+        </span>
       </button>
     </li>
   );
@@ -227,17 +225,15 @@ const CalendarWeekRow = memo(function CalendarWeekRow({
                 onClick={() => onSelect(day)}
               >
                 <span aria-hidden="true">{dayNumber}</span>
-                {dots.length > 0 && (
-                  <span className="calendar-strip__dots" aria-hidden="true">
-                    {dots.map((category) => (
-                      <span
-                        key={category ?? 'none'}
-                        className="calendar-strip__dot"
-                        style={{ background: categoryEdgeVar(category) }}
-                      />
-                    ))}
-                  </span>
-                )}
+                <span className="calendar-strip__dots" aria-hidden="true">
+                  {dots.map((category) => (
+                    <span
+                      key={category ?? 'none'}
+                      className="calendar-strip__dot"
+                      style={{ background: categoryEdgeVar(category) }}
+                    />
+                  ))}
+                </span>
               </button>
             </li>
           );
