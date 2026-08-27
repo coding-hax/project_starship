@@ -307,45 +307,42 @@ function clampRectToViewport(rect: CircleRect, viewport: { width: number; height
 }
 
 /**
- * First point inside `rect` where hit-testing reaches `<body>` directly — i.e.
- * nothing opaque (a card, the header, the nav) sits above it. `.bg-layer`/
- * `.bg-circle` carry `pointer-events: none`, so `elementFromPoint` sees through
- * them straight to `<body>` wherever no real content covers that pixel; the
- * colour actually painted there is whatever `.bg-layer` drew (ground or circle).
+ * Hides every direct `<body>` child except `.bg-layer` itself (`visibility:
+ * hidden`, not `display: none` — layout doesn't matter once we're only
+ * reading pixels). Busy routes like /uebersicht stack real content with no
+ * gaps down to the fold, so hunting for an "uncovered" pixel via
+ * `elementFromPoint` is a dead end — most of that content is plain
+ * transparent wrapper `<div>`s anyway, not `<body>` itself, so that hunt
+ * misidentifies them as opaque cover. Hiding the whole foreground instead
+ * leaves exactly `html`'s ground and `.bg-layer`'s circles on screen — the
+ * two things this fix is actually about — and still reproduces the bug this
+ * ticket fixes: `body`'s own background (if it regressed) still paints over
+ * the fixed `.bg-layer` regardless of whether its siblings are visible.
  */
-async function findGroundPointInRect(page: Page, rect: CircleRect): Promise<{ x: number; y: number } | null> {
-  return page.evaluate((r) => {
-    const step = 4;
-    for (let y = Math.floor(r.top); y < r.top + r.height; y += step) {
-      for (let x = Math.floor(r.left); x < r.left + r.width; x += step) {
-        if (document.elementFromPoint(x, y)?.tagName === 'BODY') return { x, y };
+async function hideForegroundContent(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Array.from(document.body.children).forEach((el) => {
+      if (el instanceof HTMLElement && !el.classList.contains('bg-layer')) {
+        el.style.setProperty('visibility', 'hidden', 'important');
       }
-    }
-    return null;
-  }, rect);
+    });
+  });
 }
 
-/** Same reasoning as above, but outside every circle's rect — a plain-ground reference. */
-async function findGroundPointOutsideCircles(
-  page: Page,
+/** First point (viewport coords) outside every rect in `rects` — pure geometry, no DOM lookup. */
+function findFreeSpotOutsideRects(
   rects: CircleRect[],
   viewport: { width: number; height: number },
-): Promise<{ x: number; y: number } | null> {
-  return page.evaluate(
-    ({ rects, width, height }) => {
-      const step = 8;
-      const inside = (x: number, y: number, r: { top: number; left: number; width: number; height: number }) =>
-        x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height;
-      for (let y = 0; y < height; y += step) {
-        for (let x = 0; x < width; x += step) {
-          if (rects.some((r) => inside(x, y, r))) continue;
-          if (document.elementFromPoint(x, y)?.tagName === 'BODY') return { x, y };
-        }
-      }
-      return null;
-    },
-    { rects, width: viewport.width, height: viewport.height },
-  );
+): { x: number; y: number } | null {
+  const inside = (x: number, y: number, r: CircleRect) =>
+    x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height;
+  const step = 8;
+  for (let y = 0; y < viewport.height; y += step) {
+    for (let x = 0; x < viewport.width; x += step) {
+      if (rects.every((r) => !inside(x, y, r))) return { x, y };
+    }
+  }
+  return null;
 }
 
 /**
@@ -395,16 +392,16 @@ async function assertCircleVisible(page: Page, label: string): Promise<void> {
   const largest = rects.reduce((a, b) => (a.width * a.height >= b.width * b.height ? a : b));
   const clamped = clampRectToViewport(largest, viewport);
   expect(clamped, `größter Kreis liegt komplett außerhalb des Viewports auf ${label}`).not.toBeNull();
-
-  const insidePoint = await findGroundPointInRect(page, clamped!);
-  expect(insidePoint, `keine unverdeckte Kreisfläche auf ${label}`).not.toBeNull();
-  const outsidePoint = await findGroundPointOutsideCircles(page, rects, viewport);
+  const outsidePoint = findFreeSpotOutsideRects(rects, viewport);
   expect(outsidePoint, `keine kreisfreie Stelle auf ${label}`).not.toBeNull();
 
-  const [insideColor, outsideColor] = await samplePixels(page, [insidePoint!, outsidePoint!]);
+  await hideForegroundContent(page);
+  const insidePoint = { x: Math.round(clamped!.left + clamped!.width / 2), y: Math.round(clamped!.top + clamped!.height / 2) };
+
+  const [insideColor, outsideColor] = await samplePixels(page, [insidePoint, outsidePoint!]);
   expect(
     maxChannelDiff(insideColor, outsideColor),
-    `Kreisfläche ${JSON.stringify(insideColor)} vs. Grund ${JSON.stringify(outsideColor)} auf ${label}`,
+    `Kreismitte ${JSON.stringify(insideColor)} vs. Grund ${JSON.stringify(outsideColor)} auf ${label}`,
   ).toBeGreaterThanOrEqual(3);
 }
 
