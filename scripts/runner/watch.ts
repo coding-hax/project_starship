@@ -265,6 +265,10 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
 export type RunningWatchResult =
   | { kind: 'pending'; escalated: boolean; minutes: number }
   | { kind: 'merged' }
+  // #839: gruen, aber das AK-Tor steht noch. Die Wache haelt still und
+  // ueberlaesst den Merge dem Pruef-Lauf -- sie hat nichts getan, der Aufrufer
+  // macht mit seinem Rollen-Dispatch weiter.
+  | { kind: 'gated' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
   | { kind: 'retry'; reason: string; paths: string[]; escalated: boolean };
@@ -272,7 +276,19 @@ export type RunningWatchResult =
 // CI-Wache fuer EIN laufendes Bau-Ticket (#147/#160/#171), jetzt ueber die
 // gemeinsame Uebergangstabelle. `issue`/`pr` sind bereits bekannt (Aufrufer
 // hat pr_for_issue() schon ausgewertet).
-export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): RunningWatchResult {
+//
+// #839: `akGate` = das Ticket traegt 'check', der Diff wartet also auf seine
+// AK-Pruefung. Dann darf gruene CI hier NICHT mehr mergen -- sonst waere das
+// Tor wirkungslos, denn dieser Takt kaeme dem Pruef-Lauf jedes Mal zuvor: der
+// Bau-Lauf endet, setzt 'check', und schon der naechste Takt saehe gruen.
+// Alles andere (rot, behind, dirty, pending) bleibt unveraendert -- das Tor
+// gilt dem Mergen, nicht dem Beobachten.
+export function watchRunningIssue(
+  issue: number,
+  pr: string,
+  deps: WatchDeps,
+  akGate = false,
+): RunningWatchResult {
   const resolved = resolveWatchState(issue, pr, false, deps);
   const reaction = watchReaction({
     state: resolved.state,
@@ -298,6 +314,7 @@ export function watchRunningIssue(issue: number, pr: string, deps: WatchDeps): R
       /* istanbul ignore next -- pending/behind-caught-up/behind-retry sind die einzigen 'wait'-Zustaende */
       return { kind: 'pending', escalated: false, minutes: 0 };
     case 'merge':
+      if (akGate) return { kind: 'gated' };
       deps.gh.run(['pr', 'ready', pr]);
       prSquashMerge(pr, deps.gh);
       return { kind: 'merged' };

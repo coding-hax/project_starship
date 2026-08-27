@@ -356,8 +356,9 @@ ensure_worktree() {   # $1 = Ticketnummer -> Worktree-Pfad auf stdout
 # Zusatz-Tripwire statt Primaerschutz. Pfad bleibt stabil je Ticket
 # (readonly-<nr>), damit --resume dieselbe Session wiederfindet, auch wenn
 # der Worktree zwischen zwei Laeufen jedes Mal neu angelegt wird.
-readonly_worktree() {   # $1 = Ticketnummer -> Wegwerf-Worktree-Pfad auf stdout
+readonly_worktree() {   # $1 = Ticketnummer, $2 = Ref (Default main) -> Pfad auf stdout
   local nr="$1"
+  local ref="${2:-main}"
   local wt="$WORKTREE_BASE/readonly-$nr"
   mkdir -p "$WORKTREE_BASE"
 
@@ -373,8 +374,19 @@ readonly_worktree() {   # $1 = Ticketnummer -> Wegwerf-Worktree-Pfad auf stdout
     git -C "$REPO_DIR" worktree prune >/dev/null 2>&1
   fi
 
+  # #839: der AK-Check braucht den PR-Stand, nicht main -- auf main saehe er
+  # den Diff, den er beurteilen soll, gar nicht. Die uebrigen Lese-Rollen
+  # bleiben auf main (Default), das ist ihr Auftrag.
+  #
+  # 'main' wird IMMER mitgeholt, auch bei einem Feature-Ref: der Pruefer
+  # rechnet 'git diff origin/main...HEAD', und ein veraltetes origin/main
+  # ergaebe einen alten Merge-Base -- fremde Aenderungen erschienen dann als
+  # Teil dieses Tickets.
   git -C "$REPO_DIR" fetch origin main >&2 || return 1
-  git -C "$REPO_DIR" worktree add --detach "$wt" origin/main >&2 || return 1
+  if [ "$ref" != "main" ]; then
+    git -C "$REPO_DIR" fetch origin "$ref" >&2 || return 1
+  fi
+  git -C "$REPO_DIR" worktree add --detach "$wt" "origin/$ref" >&2 || return 1
 
   # Kein bootstrap_worktree(): Lese-Rollen lint/typecheck/bauen nicht, nur
   # Read/Grep/Glob/`gh`/`git log|diff|show` -- kein node_modules noetig.
@@ -443,6 +455,11 @@ run_round() {
   role=$(printf '%s' "$plan" | jq -r '.role')
   issue=$(printf '%s' "$plan" | jq -r '.issue')
   denyTools=$(printf '%s' "$plan" | jq -r '.denyTools')
+  # #839: nur fuer role=check befuellt. '// empty' liefert bei fehlendem Feld
+  # (aeltere plan-JSON) und bei JSON-null denselben leeren String -- KEIN
+  # nachgeschobenes '[ ... ] && ...', das waere unter 'set -e' ein Abbruch,
+  # sobald die Bedingung einmal falsch ist.
+  branch=$(printf '%s' "$plan" | jq -r '.branch // empty')
 
   # Jede Rolle bekommt einen eigenen Worktree als cwd, nie den geteilten
   # Haupt-Checkout: Bau (#242) einen wiederverwendeten je Ticket, Lese-Rollen
@@ -455,6 +472,13 @@ run_round() {
       if ! run_cwd=$(ensure_worktree "$issue"); then
         status "Worktree-Fehler · #$issue" "🔴" \
           "🔴 Worktree für #$issue konnte nicht angelegt oder wiederverwendet werden -- kein Bau-Lauf gestartet. Details im Runner-Log."
+        CHAIN_STATUS=stop
+        return 1
+      fi
+    elif [ "$role" = "check" ] && [ -n "$branch" ]; then
+      if ! run_cwd=$(readonly_worktree "$issue" "$branch"); then
+        status "Worktree-Fehler · #$issue" "🔴" \
+          "🔴 Wegwerf-Worktree für #$issue auf \`$branch\` konnte nicht angelegt werden -- kein AK-Check gestartet. Details im Runner-Log."
         CHAIN_STATUS=stop
         return 1
       fi

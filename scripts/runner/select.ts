@@ -1,8 +1,8 @@
 // Ticketauswahl aus `run_round`, portiert aus claude-runner.sh (#202, S5 von
 // #184), seit #272 (S2b von #264) ohne Park-Mechanik.
 //
-// Praezedenz: laufendes in-progress > next > plan > research > ready, je
-// aeltestes createdAt. Die Rolle kommt bei 'next' weiter aus dem eigenen
+// Praezedenz: laufendes in-progress > next > check > plan > research > ready,
+// je aeltestes createdAt. Die Rolle kommt bei 'next' weiter aus dem eigenen
 // Rollenlabel (roleFromLabels()) -- 'next' selbst ist nur der Rang (#725, S2
 // von ADR-0023).
 //
@@ -27,12 +27,21 @@ import type { StateAdapter } from './state.js';
 import { byCreatedAt, entriesFromIssues, hasLabel, queueBlocked, type QueueIssue } from './queue.js';
 import { sessionKey } from './session.js';
 
-export type RunRole = 'build' | 'plan' | 'research';
+// #839: 'check' ist die vierte Rolle -- nur lesend wie plan/research, aber sie
+// denkt nicht ueber ein Ticket nach, sondern haelt einen fertigen Diff gegen
+// dessen Akzeptanzkriterien und ist das letzte Tor vor dem Merge.
+export type RunRole = 'build' | 'plan' | 'research' | 'check';
 
 // Rollenableitung aus den Labels -- einzige Quelle, von running/next (hier)
 // UND vom Resume-Zweig in round.ts benutzt (#387), damit alle drei Stellen
 // beweisbar synchron bleiben.
+// #839: 'check' steht VORNE. Der Normalweg dorthin ist ein Ticket, das
+// 'in-progress' behaelt und vom Bau-Lauf zusaetzlich 'check' bekommt -- es
+// kommt also ueber den running-Zweig zurueck, nicht ueber den check-Zweig.
+// Lieferte die Ableitung dort 'build', liefe der Bau einfach weiter und das
+// Tor waere wirkungslos.
 export function roleFromLabels(issue: QueueIssue): RunRole {
+  if (hasLabel(issue, 'check')) return 'check';
   return hasLabel(issue, 'plan') ? 'plan' : hasLabel(issue, 'research') ? 'research' : 'build';
 }
 
@@ -63,7 +72,7 @@ export interface SelectedTicket {
   role: RunRole;
   // Herkunft der Wahl -- bestimmt in pickTicket(), welche Label-Mutation und
   // welcher MODE (start/resume) noetig sind.
-  source: 'running' | 'next' | 'plan' | 'research' | 'ready';
+  source: 'running' | 'next' | 'check' | 'plan' | 'research' | 'ready';
 }
 
 // Die reine Auswahl-Kaskade, OHNE Seiteneffekte. `claimedElsewhere` (#204):
@@ -111,6 +120,15 @@ export function selectTicket(
   // dem Label (roleFromLabels()); `next` selbst sagt nichts ueber die Rolle.
   const nextUp = selectable.filter((issue) => hasLabel(issue, 'next')).sort(byCreatedAt)[0];
   if (nextUp) return { issue: nextUp.number, role: roleFromLabels(nextUp), source: 'next' };
+
+  // #839: vor 'plan'. Ein Ticket, dessen PR nur noch auf sein Tor wartet, ist
+  // fertige Arbeit -- es hinter einer Schlange von Planungslaeufen warten zu
+  // lassen haelt den Merge auf und mit ihm jedes Ticket, das per 'Nach:' an
+  // ihm haengt. Der Zweig greift nur, wenn 'in-progress' fehlt (sonst war der
+  // running-Zweig schon dran); er ist das Netz, falls claimSweep das Label
+  // abgeraeumt hat.
+  const nextCheck = selectable.filter((issue) => hasLabel(issue, 'check')).sort(byCreatedAt)[0];
+  if (nextCheck) return { issue: nextCheck.number, role: 'check', source: 'check' };
 
   const nextPlan = selectable.filter((issue) => hasLabel(issue, 'plan')).sort(byCreatedAt)[0];
   if (nextPlan) return { issue: nextPlan.number, role: 'plan', source: 'plan' };
@@ -186,6 +204,13 @@ export function pickTicket(
       // ready bleibt unberuehrt (nur add, kein remove).
       gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress']);
       return { kind: 'ticket', issue: selected.issue, role: selected.role, mode: hasSession(selected.issue, selected.role) ? 'resume' : 'start' };
+    case 'check':
+      // #839: wie die Denk-Rollen 'in-progress' dazu, aber IMMER 'start'.
+      // Ein Check bewertet den Diff, wie er jetzt ist -- eine fortgesetzte
+      // Sitzung brachte den Stand von vorhin mit und koennte einen laengst
+      // geschlossenen Befund erneut melden.
+      gh.run(['issue', 'edit', String(selected.issue), '--add-label', 'in-progress']);
+      return { kind: 'ticket', issue: selected.issue, role: 'check', mode: 'start' };
     case 'plan':
     case 'research':
       // #387 AC1: Denk-Rollen tragen ab jetzt in-progress, solange sie laufen

@@ -52,6 +52,7 @@ describe('Chaining-Entscheidung (#61)', () => {
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   const plan: RoundRun = {
+    branch: '',
     kind: 'run',
     status: { title: '', emoji: '', text: '' },
     issue: 70,
