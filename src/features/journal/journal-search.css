@@ -22,12 +22,18 @@
 
 .journal-search__bar {
   display: flex;
-  gap: var(--space-2);
+  /* issue #847 AK6: schmalerer Abstand als sonst üblich — das Eingabefeld
+     braucht bei 375px jeden Pixel, um 200px breit zu bleiben, ohne dass die
+     Zeile umbricht oder horizontal scrollt. */
+  gap: var(--space-1);
 }
 
 .journal-search__input {
   flex: 1;
-  min-width: 0;
+  /* issue #847 AK6: mindestens 200px bei 375px Viewportbreite, damit der
+     Platzhalter nicht mitten im Wort abschneidet — Filter/Abbrechen sind dafür
+     schmaler geworden (s.u.), nicht das Feld selbst begrenzt. */
+  min-width: 200px;
   min-height: var(--touch-target);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-pill);
@@ -46,7 +52,7 @@
 .journal-search__filter-toggle {
   flex-shrink: 0;
   min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface-raised);
@@ -67,16 +73,18 @@
   opacity: 0.85;
 }
 
-/* „Abbrechen" verlässt den Suchmodus (AK6) — ruhiger als der Filter-Umschalter,
-   keine Aktivfarbe, nur Kontur. */
+/* „Abbrechen" verlässt den Suchmodus (issue #700 AK6, Gewicht neu justiert in
+   issue #847 AK5): kein Rahmen, keine Füllfläche mehr, nur Text in --accent —
+   das Suchfeld bekommt dadurch die Breite, der Ausstieg wiegt optisch weniger
+   als das Werkzeug. Die 44px Tap-Höhe kommt allein aus Padding, nicht aus
+   sichtbarer Fläche (AK5, per boundingBox() geprüft). */
 .journal-search__cancel {
   flex-shrink: 0;
   min-height: var(--touch-target);
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  color: var(--text);
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  color: var(--accent);
   font: inherit;
   font-weight: var(--weight-emphasis);
   cursor: pointer;
