@@ -688,11 +688,13 @@ test('issue #847 AK5: „Abbrechen" ist ein randloser Textknopf in Akzentfarbe m
   expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(lightStyles.backgroundColor);
 
   // Farbe kommt aus --accent, nicht aus einer festen Farbe (probe-Element mit
-  // demselben Custom Property, gleiche Technik wie AC7 unten).
+  // demselben Custom Property, gleiche Technik wie AC7 unten) — angehängt
+  // innerhalb von .journal-search, damit es denselben [data-module='journal']
+  // -Scope erbt, der --accent auf das Journal-Violett umbiegt (journal-page.css).
   const accentColor = await page.evaluate(() => {
     const probe = document.createElement('div');
     probe.style.color = 'var(--accent)';
-    document.body.appendChild(probe);
+    document.querySelector('.journal-search')!.appendChild(probe);
     const value = getComputedStyle(probe).color;
     probe.remove();
     return value;
