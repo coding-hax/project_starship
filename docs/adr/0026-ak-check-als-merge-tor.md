@@ -46,6 +46,16 @@ lässt den PR im Entwurf. `gh pr ready` und `gh pr merge` stehen nur noch im
 Prüf-Prompt, samt der `--subject`-Pflicht aus #292. Dasselbe gilt für den
 CI-Fix-Lauf.
 
+Das genügt allein nicht: **auch der Runner-Takt mergt nicht am Tor vorbei.**
+Die CI-Wache (#147) hebt einen grünen PR bisher selbst aus dem Entwurf — sie
+käme dem Prüfer jedes Mal zuvor, denn der Bau-Lauf endet grün und setzt `check`
+erst als letzten Schritt. Trägt ein Ticket `check`, hält die Wache bei grüner
+CI still und überlässt den Merge dem Prüf-Lauf. Umgekehrt schlägt **rote CI das
+Tor**: der Takt nimmt `check` zurück und lässt erst reparieren — über einen
+Stand, dessen Checks rot sind, ist nicht zu urteilen, und der nur lesende
+Prüfer könnte daran ohnehin nichts ändern. Der Fix-Lauf setzt `check` an seinem
+sauberen Ende selbst wieder.
+
 **3. Ein Befund je Kriterium, mit Beleg.** `erfüllt` verlangt eine Stelle im
 Code *und* einen Test (außer bei `tests-exempt`). `nicht prüfbar` ist ein
 eigener Befund und zählt fürs Tor wie `nicht erfüllt` — er sagt dem nächsten
@@ -79,6 +89,12 @@ und niemand fände den Grund.
 
 **Bestehende Tickets ohne AK fallen einmalig in `needs-answer`.** Das ist der
 Preis und zugleich der Zweck.
+
+**Ohne Kriterien wird auch nicht freigegeben.** Bei einer leeren Liste wäre
+„alle erfüllt" trivial wahr — ausgerechnet der einzige Lauf, der mergen darf,
+würde ohne Maßstab durchwinken. Trägt ein Ticket `check`, hat aber keine
+Kriterien, gibt der Takt das Label zurück, statt zu prüfen; der nächste Takt
+ist ein Bau-Lauf und läuft dann selbst ins AK-Tor.
 
 **Was das nicht ist:** kein Ersatz für CI und keine Korrektheitsprüfung. Der
 Prüfer beantwortet genau eine Frage — steht im Diff, was im Ticket steht.

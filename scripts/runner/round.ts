@@ -412,7 +412,9 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
-      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
+      // #839: traegt das Ticket 'check', mergt die Wache nicht mehr selbst --
+      // sie meldet 'gated' und ueberlaesst dem Pruef-Lauf unten das Tor.
+      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock }, role === 'check');
       switch (watch.kind) {
         case 'pending':
           // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist
@@ -502,7 +504,20 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
           ciFix = true;
           ciSummary = watch.summary;
           break;
+        case 'gated':
+          // #839: gruen, aber ungeprueft. Die Wache hat nichts getan; der
+          // Rollen-Dispatch unten startet den Pruef-Lauf, der das Tor oeffnet.
+          break;
       }
+    }
+
+    // #839: rote CI schlaegt das AK-Tor. Ueber einen Stand, dessen Checks rot
+    // sind, ist nicht zu urteilen -- und der Pruefer duerfte daran ohnehin
+    // nichts aendern. Also erst reparieren: Label ab, Rolle zurueck auf 'build'.
+    // Der Fix-Lauf setzt 'check' am Ende seines sauberen Laufs selbst wieder.
+    if (ciFix && role === 'check') {
+      tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+      role = 'build';
     }
   }
 
@@ -635,6 +650,28 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
 
 Ohne sie gibt es nichts, wogegen der fertige Diff geprüft werden könnte. Was
 fehlt, steht als Kommentar am Ticket. Trag sie nach und nimm \`needs-answer\` ab.`,
+      ),
+    };
+  }
+
+  // Ein Pruef-Lauf ohne Kriterien haette nichts, wogegen er halten koennte --
+  // und "alle erfuellt" waere bei einer leeren Liste trivial wahr. Aus dem Tor
+  // wuerde damit ein Durchwinker: der einzige Lauf, der mergen darf, mergte
+  // ausgerechnet dort ohne Massstab. Solange das AK-Tor oben greift, kommt das
+  // nicht vor -- aber daran vorbei fuehren mehrere Wege (Label von Hand
+  // gesetzt, Body nach dem Bau-Lauf geleert, Schnappschuss ohne 'body').
+  // Also Label zurueck statt Merge auf Verdacht; der naechste Takt ist ein
+  // Bau-Lauf und laeuft dann selbst ins AK-Tor.
+  if (role === 'check' && criteria.length === 0) {
+    tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+    claimRelease(claims, issue);
+    return {
+      kind: 'done',
+      rc: 0,
+      status: status(
+        `keine AK zu #${issue} — Check übersprungen`,
+        '🟢',
+        `🟢 **#${issue} trägt \`check\`, hat aber keine Akzeptanzkriterien.** Ohne Prüfmaßstab wird nicht freigegeben — Label zurückgenommen, der nächste Takt baut weiter.`,
       ),
     };
   }

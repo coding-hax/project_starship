@@ -29,6 +29,12 @@ der nächste Takt ist wieder ein Bau-Lauf. Erst der **zweite** vergebliche
 Check endet mit `needs-answer`: zwei Runden am selben Kriterium heißen, dass
 das Kriterium unklar ist.
 
+**Die CI-Wache mergt nicht am Tor vorbei.** Der Runner-Takt beobachtet den PR
+weiter wie gehabt — aber solange `check` hängt, hebt er einen grünen PR nicht
+mehr selbst aus dem Entwurf, sondern startet den Prüf-Lauf. Wird die CI rot,
+schlägt das umgekehrt das Tor: der Takt nimmt `check` zurück und lässt erst
+reparieren, denn über einen Stand mit roten Checks ist nicht zu urteilen.
+
 **Ein offenes Issue ohne jedes Steuerlabel ist der untriagierte Eingang** —
 der Zustand ganz links im Diagramm, bevor du `research`/`plan`/`ready`/`next`
 gesetzt hast. Der Runner baut es **nie**: die Auswahl-Kaskade

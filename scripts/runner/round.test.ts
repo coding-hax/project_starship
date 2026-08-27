@@ -188,6 +188,61 @@ describe('roundPlan', () => {
       expect((roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun).model).toBe('opus');
     });
 
+    // Das Tor haelt nur, wenn die CI-Wache dem Pruefer nicht zuvorkommt: sie
+    // laeuft im selben Takt und mergte bis hierher JEDEN gruenen PR selbst --
+    // der Bau-Lauf endet gruen, setzt 'check', und der naechste Takt haette
+    // gemergt, bevor je ein Pruefer gelaufen waere.
+    const prRoutes = (issue: number, labels: string[], checks: string) => [
+      openIssues(issueJson(issue, labels)),
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'list',
+        reply: JSON.stringify([{ number: 5, title: 'feat: x', headRefName: `feat/${issue}-x` }]),
+      },
+      { match: (a: string[]) => a.includes('checks'), reply: checks },
+      {
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+      },
+      { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
+      labelsAre(...labels),
+    ];
+    const greenChecks = JSON.stringify([{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }]);
+    const redChecks = JSON.stringify([{ bucket: 'fail', name: 'e2e', description: '1 rot' }]);
+
+    it('mergt einen gruenen PR nicht mehr, solange das Ticket "check" traegt', () => {
+      const { gh, calls } = ghDouble(prRoutes(70, ['in-progress', 'check'], greenChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(called(calls, 'pr', 'ready')).toBe(false);
+      expect(called(calls, 'pr', 'merge')).toBe(false);
+      expect(result.kind).toBe('run');
+      expect((result as RoundRun).role).toBe('check');
+    });
+
+    // Rote CI schlaegt das Tor: ueber einen kaputten Stand ist nicht zu
+    // urteilen, und der nur lesende Pruefer koennte daran nichts aendern.
+    it('nimmt bei roter CI das Label zurueck und laesst erst fixen', () => {
+      const { gh, calls } = ghDouble(prRoutes(70, ['in-progress', 'check'], redChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(true);
+      expect(result.kind).toBe('run');
+      expect((result as RoundRun).role).toBe('build');
+      expect((result as RoundRun).prompt).toContain('Was rot ist');
+    });
+
+    // Ohne Kriterien waere "alle erfuellt" trivial wahr -- der einzige Lauf,
+    // der mergen darf, wuerde ausgerechnet dort ohne Massstab durchwinken.
+    it('prueft nicht ohne Kriterien, sondern gibt das Label zurueck', () => {
+      const { gh, calls } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check'], '2024-01-01T00:00:00Z', noAk)),
+        noOpenPrs,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(result.kind).toBe('done');
+      expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(true);
+      expect(result.status?.title).toContain('keine AK');
+    });
+
     it('gibt das Label zurueck, wenn es zu pruefen nichts gibt', () => {
       const { gh, calls } = ghDouble([
         openIssues(issueJson(70, ['in-progress', 'check'])),
