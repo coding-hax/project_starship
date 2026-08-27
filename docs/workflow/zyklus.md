@@ -7,10 +7,34 @@ Issue (mit Akzeptanzkriterien)
    └─► [nur bei Komplexität] plan → Opus plant im Chat → ready
    └─► Branch feat/<nr>-<slug>
          └─► Implementierung + Playwright-Tests
-               └─► PR (Closes #<nr>)
-                     └─► CI grün → Merge → Issue schließt automatisch
-                           └─► nächstes Issue
+               └─► Entwurfs-PR (Closes #<nr>) → Label check
+                     └─► AK-Check (eigener Lauf, nur lesend)
+                           ├─► Lücke → check ab, zurück in den Bau
+                           └─► alles erfüllt → pr ready + Auto-Merge
+                                 └─► CI grün → Merge → Issue schließt automatisch
 ```
+
+**Akzeptanzkriterien sind Pflicht, nicht Stil** (#839, ADR-0026). Ein Ticket
+ohne den Abschnitt `## Akzeptanzkriterien` mit einer Aufzählung darunter —
+nummeriert, Checkboxen oder schlichte Punkte, ein Zusatz wie „(Entwurf)" in der
+Überschrift schadet nicht — wird nicht gebaut: der Runner kommentiert, was
+fehlt, setzt `needs-answer` und startet keinen Lauf. Fließtext zählt nicht.
+
+**Der Bau-Lauf mergt nicht mehr selbst.** Er endet mit dem Label `check` und
+lässt den PR im Entwurf. Erst ein eigener, nur lesender Prüf-Lauf hält den
+fertigen Diff gegen die Kriterien — Befund je Kriterium mit Beleg, als
+Kommentar `## ✅ AK-Check` am Ticket — und hebt den PR bei vollständiger
+Erfüllung selbst aus dem Entwurf. Bei einer Lücke fällt `check` weg,
+`in-progress` bleibt, die offenen Punkte stehen im Fortschrittskommentar und
+der nächste Takt ist wieder ein Bau-Lauf. Erst der **zweite** vergebliche
+Check endet mit `needs-answer`: zwei Runden am selben Kriterium heißen, dass
+das Kriterium unklar ist.
+
+**Die CI-Wache mergt nicht am Tor vorbei.** Der Runner-Takt beobachtet den PR
+weiter wie gehabt — aber solange `check` hängt, hebt er einen grünen PR nicht
+mehr selbst aus dem Entwurf, sondern startet den Prüf-Lauf. Wird die CI rot,
+schlägt das umgekehrt das Tor: der Takt nimmt `check` zurück und lässt erst
+reparieren, denn über einen Stand mit roten Checks ist nicht zu urteilen.
 
 **Ein offenes Issue ohne jedes Steuerlabel ist der untriagierte Eingang** —
 der Zustand ganz links im Diagramm, bevor du `research`/`plan`/`ready`/`next`
