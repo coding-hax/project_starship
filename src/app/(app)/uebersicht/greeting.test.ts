@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { berlinInstant } from '@/push/schedule';
 import { greetingFor } from './greeting';
 
+// Summer date (CEST, UTC+2) — berlinInstant builds the UTC instant whose Berlin
+// wall-clock reading is the given time, so these fixtures are host-TZ-independent
+// (CI runs UTC, a dev machine might not — see greeting.ts).
 function at(hours: number, minutes: number): Date {
-  return new Date(2026, 6, 15, hours, minutes, 0, 0);
+  return berlinInstant('2026-07-15', hours * 60 + minutes);
 }
 
 describe('greetingFor', () => {
