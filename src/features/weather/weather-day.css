@@ -34,6 +34,15 @@
   margin-block-end: var(--space-1);
 }
 
+/* Titel + Figur als ein Cluster (issue #830), damit `space-between` beim
+   Zurück-Link und dem Cluster bleibt statt die Figur zwischen Datum und Rand
+   zu schieben. */
+.weather-day__title-cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .weather-day__date {
   /* Ohne das margin: 0 griffe die globale h1-Regel (margin-block-end:
      var(--space-6)) und schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem
@@ -41,6 +50,13 @@
      --text-page-title/22px) statt vom bisherigen --text-body/16px-Override. */
   margin: 0;
   text-align: right;
+  /* Seit #830 teilt sich das Cluster die Restbreite mit der PageFace (32px +
+     --space-2 Lücke) — ohne nowrap zwang die globale h1-Regel
+     (overflow-wrap: break-word) den Wochentag ("Donnerstag, …") in zwei
+     Zeilen, sobald ihm die 40px fehlten. Das vergrößerte die Kopfzeile über
+     die 44px des Zurück-Links hinaus und riss den Spalt zur ersten Box auf
+     (weather-day.spec.ts, „der Spalt … ist nach #353 noch kleiner …"). */
+  white-space: nowrap;
 }
 
 .weather-day__back {

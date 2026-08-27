@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
+import { PageFace } from '@/ui/faces';
 import { SectionCard } from '@/ui/section-card';
 import { IconChevronLeft, IconMoon, IconSunSimple } from '@/ui/icons';
 import {
@@ -421,7 +422,10 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
           <IconChevronLeft />
           Übersicht
         </Link>
-        <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
+        <div className="weather-day__title-cluster">
+          <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
+          <PageFace face="wetter" />
+        </div>
       </header>
       <div
         className={

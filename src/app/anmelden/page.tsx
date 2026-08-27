@@ -3,6 +3,7 @@
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { PageFace } from '@/ui/faces';
 
 type Mode = 'loading' | 'setup' | 'login';
 
@@ -95,7 +96,10 @@ export default function AnmeldenPage() {
 
   return (
     <main className="auth" data-ground="anmelden">
-      <h1>Starship</h1>
+      <div className="auth__title-row">
+        <h1>Starship</h1>
+        <PageFace face="anmelden" />
+      </div>
       {mode === 'loading' && <p>Einen Moment…</p>}
 
       {mode === 'setup' && (

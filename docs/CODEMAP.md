@@ -203,6 +203,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
 - `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
+- `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
 - `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
 - `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet
@@ -225,16 +226,17 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund (#832) + halbhoher Kopf (#833) je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe (#831)
+- `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor (#834)
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
-- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, issue #599)
-- `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, issue #497)
+- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, #599)
+- `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`, #497)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
-- `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (issue #618)
-- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext auf `/uebersicht`: Termin vorbefüllt, Routine abgehakt/Review/neu (issue #619, #758), sonst Aufgabe
-- `capture-parser.spec.ts` — Span+Ranking-Grammatik (issue #687, Teil 1 von 3 des Parser-Umbaus): ein Test je AK1–AK7 + Offline-Pfad
-- `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (issue #688, Teil 2 von 3 des Parser-Umbaus): ein Test je AK1–AK6 + Offline-Pfad
-- `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (issue #689, Teil 3 von 3): ein Test je AK1–AK6 + Offline-Pfad
-- `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (issue #691, Teil 4 von 4): ein Test je AK1–AK6
+- `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm` (#618)
+- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext auf `/uebersicht`: Termin vorbefüllt, Routine abgehakt/Review/neu (#619, #758), sonst Aufgabe
+- `capture-parser.spec.ts` — Span+Ranking-Grammatik (#687, Teil 1/3 Parser-Umbau): ein Test je AK1–AK7 + Offline-Pfad
+- `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (#688, Teil 2/3 Parser-Umbau): ein Test je AK1–AK6 + Offline-Pfad
+- `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (#689, Teil 3/3): ein Test je AK1–AK6 + Offline-Pfad
+- `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (#691, Teil 4/4): ein Test je AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern

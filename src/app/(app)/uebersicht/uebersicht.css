@@ -14,7 +14,18 @@
  * Text-Inhalt. Mit space-between schrumpfte die h1-Box exakt auf ihren Text,
  * und jeder — auch minimale — Font-Swap-Reflow (next/font `display: swap`)
  * verschob dadurch das ganze Aktionsbündel mit (issue #652, CI-Fund: „h1 +
- * div.uebersicht__title-actions" als Layout-Shift-Quelle). */
+ * div.uebersicht__title-actions" als Layout-Shift-Quelle). Seit #830 trägt
+ * nicht mehr das h1 selbst dieses `flex: 1`, sondern der umschließende
+ * `.uebersicht__title-cluster` (h1 + PageFace) — dieselbe stabile Restbreite,
+ * nur dass jetzt zwei Elemente sie teilen statt eines. */
+.uebersicht__title-cluster {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* `overflow-wrap: normal` statt `anywhere` — und das ist keine Kosmetik, sondern
  * die Ursache des Sprungs, den #652 vier Runden lang gejagt hat. Der Titel hat
  * hier nur 163px Restbreite (375 − 32 Seitenrand − 164 Aktionsbündel − 16 gap).
@@ -33,8 +44,16 @@
  * hier nie einen Zweck erfüllt. Ohne Bruch bleibt die Zeilenzahl konstant, damit
  * die Höhe, damit die Zeile. Ein in der Fallback-Phase zu breites Wort läuft
  * stattdessen über — unsichtbar, weil `font-display: block` in genau diesem
- * Fenster die Glyphen ohnehin nicht zeichnet. */
-.uebersicht__title-row h1 {
+ * Fenster die Glyphen ohnehin nicht zeichnet.
+ *
+ * `flex: 1` (statt `0 1 auto`) auf diesem h1 selbst, aus demselben Grund wie
+ * oben an `.title-cluster`: sonst bemisst sich die h1-Box nach ihrem Text, und
+ * das PageFace-Icon direkt danach (#830) rutscht beim Font-Swap horizontal mit
+ * (CI-Fund: `svg [122,24 32×32 → 126,24 32×32]`, AC1 aus
+ * uebersicht-ladezustand.spec.ts). Mit `flex: 1` füllt die h1-Box immer den
+ * kompletten Rest des Clusters, unabhängig von den Glyphenmaßen — das Icon
+ * bleibt an fester Position. */
+.uebersicht__title-cluster h1 {
   flex: 1 1 auto;
   margin: 0;
   min-width: 0;

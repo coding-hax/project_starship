@@ -409,4 +409,27 @@ describe('prompts', () => {
       expect(prompt).toContain('**dasselbe** Artifact');
     });
   });
+
+  // #842: der Lauf sichert seinen Stand, BEVOR er auf Hintergrundarbeit wartet.
+  // Belegt an #830: fertiger Fix, gruene Gates -- trotzdem kein Commit, weil der
+  // Lauf auf einen 'test-runner'-Subagenten wartete und der Turn endete.
+  describe('Sichern vor Warten (#842)', () => {
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verlangt Commit+Push VOR langlaufender Gegenprobe', (_name, prompt) => {
+      expect(prompt).toContain('## Sichern geht vor Warten');
+      expect(prompt).toContain('committet und gepusht, BEVOR');
+      expect(prompt).toContain('test-runner');
+    });
+
+    it.each([
+      ['build', buildPrompt(42)],
+      ['ci-fix', ciFixPrompt(42, 'egal')],
+    ] as const)('%s-Prompt verbietet Leerlauf-Warten und Fuellkommandos', (_name, prompt) => {
+      expect(prompt).toContain('Leerlauf-Warten ist kein zulässiger Schritt');
+      expect(prompt).toContain("'sleep'");
+      expect(prompt).toContain('ich warte auf einen Subagenten');
+    });
+  });
 });
