@@ -22,15 +22,24 @@ function hashToken(token: string): string {
  * throwaway/legacy paths that have no credential to bind to.
  */
 export async function createSession(credentialId: string | null = null): Promise<void> {
+  const id = uuidv7();
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   await db.insert(sessions).values({
-    id: uuidv7(),
+    id,
     tokenHash: hashToken(token),
     expiresAt,
     credentialId,
   });
+
+  if (credentialId) {
+    // One live session per device: drop this credential's login residue so the
+    // "other sessions" count reflects distinct devices, not stale logins (#857).
+    await db
+      .delete(sessions)
+      .where(and(eq(sessions.credentialId, credentialId), ne(sessions.id, id)));
+  }
 
   const store = await cookies();
   store.set(SESSION_COOKIE, token, {
