@@ -7,6 +7,7 @@ Zustandsmaschine des ganzen Setups:
 | ---------------- | -------------------------------------------------------------- | ------------ |
 | `research` | Grobe Idee, noch kein Ticket — Opus recherchiert den Fit, dann `needs-answer`. | **Du**       |
 | `plan`     | Ticket erfasst, aber noch nicht baubereit — Opus plant im Chat. | **Du** oder Runner (beim Aufteilen in Kind-Tickets) |
+| `check`    | **Rolle: das Tor vor dem Merge** (#839). Ein eigener, nur lesender Lauf hält den fertigen Diff gegen die Akzeptanzkriterien des Tickets und hebt den PR erst dann aus dem Entwurf. Setzt der Bau-Lauf am Ende selbst; der Prüf-Lauf nimmt es wieder ab — bei einer Lücke bleibt der PR Entwurf und das Ticket geht zurück in den Bau. | Runner |
 | `ready`          | Von dir freigegeben. Claude darf das Ticket nehmen.            | **Du**; der Planer-Lauf am Ende eines Kind-Ticket-Durchlaufs (#439) |
 | `next`           | **Vor allem anderen — die Queue** (#725, ADR-0023). Schlägt die Label-Kaskade komplett, je ältestes `createdAt`; das Rollenlabel bestimmt weiter `plan`/`research`/Bau. Bleibt am Ticket stehen, bis es schließt — nicht nur bis zum Start des Bau-Laufs. | **Du**; der Planer beim Aufteilen in Kind-Tickets |
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins **je Slot** (#204). Wird geschlossen (Auto-Merge oder von Hand), nimmt der nächste `claimSweep` das Label wieder ab (#498). | Runner       |

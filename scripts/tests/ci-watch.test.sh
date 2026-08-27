@@ -169,7 +169,20 @@ case "${1:-}" in
     exit 0
     ;;
   worktree)
+    # #839: 'worktree add --detach <pfad> <ref>' muss den Pfad wenigstens
+    # anlegen -- readonly_worktree() prueft ihn ([ -d ]) und bricht sonst ab,
+    # der Pruef-Lauf kaeme nie zum claude-Aufruf.
+    if [ "${2:-}" = "add" ]; then
+      for a in "$@"; do case "$a" in /*) mkdir -p "$a"; break ;; esac; done
+      exit 0
+    fi
     [ -e "$G/git-worktree-block" ] && cat "$G/git-worktree-block"
+    exit 0
+    ;;
+  ls-remote)
+    # #839: branchName() fragt hierueber nach dem PR-Branch des Tickets.
+    # Ohne Marker leer -- kein Branch, wie in allen uebrigen Faellen dieser Suite.
+    cat "$G/lsremote" 2>/dev/null
     exit 0
     ;;
   *) exit 0 ;;
@@ -228,6 +241,19 @@ setup_pr() {
   local issue="$1" pr="$2"
   printf '[{"number":%s,"headRefName":"fix/%s-runner-ci-watch"}]' "$pr" "$issue" \
     > "$GHSTATE_DIR/prlist.json"
+}
+
+# #839: $1 = Issue-Nr -> ein Ticket, das auf sein AK-Tor wartet: 'in-progress'
+# PLUS 'check', ein Body MIT Akzeptanzkriterien (ohne die gibt der Takt das
+# Label zurueck, statt zu pruefen) und ein Branch auf origin, den branchName()
+# ueber 'git ls-remote' findet.
+setup_check_issue() {
+  local issue="$1"
+  : > "$GHSTATE_DIR/labels-$issue"
+  printf 'in-progress\ncheck\n' >> "$GHSTATE_DIR/labels-$issue"
+  printf '[{"number":%s,"labels":[{"name":"in-progress"},{"name":"check"}],"createdAt":"2026-01-01T00:00:00Z","body":"## Akzeptanzkriterien\\n\\n1. Es tut, was im Titel steht.\\n"}]' \
+    "$issue" > "$GHSTATE_DIR/wip.json"
+  printf 'abc123\trefs/heads/fix/%s-runner-ci-watch\n' "$issue" > "$GHSTATE_DIR/lsremote"
 }
 
 # $1 = Issue-Nr, $2 = PR-Nr -> markiert den PR als hinter 'main' (#160),
@@ -545,21 +571,23 @@ esac
 assert_file_absent "T11: kein Auto-Merge, solange ein Check rot ist" "$GHSTATE_DIR/merged-506"
 
 # ==============================================================================
-# T12 -- Bau-Prompt (#167): weist an, den PR am sauberen Ende SELBST aus dem
-#        Entwurf zu heben und Auto-Merge zu aktivieren, ohne auf CI-Gruen zu
-#        warten -- statt auf den naechsten Wache-Takt
+# T12 -- Bau-Prompt (#839): der Bau-Lauf mergt NICHT mehr selbst. Bis hierher
+#        (#167) hob er seinen eigenen PR aus dem Entwurf und armte Auto-Merge
+#        -- derselbe Agent, der den Code geschrieben hat, stellte damit auch
+#        fest, dass er fertig ist. Jetzt gibt er mit dem Label 'check' ab; die
+#        Merge-Aufrufe leben im Pruef-Prompt (T27).
 # ==============================================================================
 reset_state
 setup_wip_issue 321
 printf '[]' > "$GHSTATE_DIR/prlist.json"   # noch kein PR -> generischer Bau-Prompt
 run_round
 PROMPT_321=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
-assert_contains "T12: Bau-Prompt weist an, 'gh pr ready' selbst auszufuehren" \
-  "gh pr ready" "$PROMPT_321"
-assert_contains "T12: Bau-Prompt weist an, Auto-Merge selbst zu aktivieren" \
-  "gh pr merge --squash --auto --delete-branch" "$PROMPT_321"
-assert_contains "T12: Bau-Prompt haengt --subject an den Merge-Aufruf (#292)" \
-  '--subject "$(gh pr view --json title -q .title)"' "$PROMPT_321"
+assert_contains "T12: Bau-Prompt gibt mit dem Label 'check' an den AK-Check ab" \
+  "--add-label check" "$PROMPT_321"
+assert_contains "T12: Bau-Prompt verbietet die Freigabe ausdruecklich" \
+  "**Kein** 'gh pr ready'" "$PROMPT_321"
+assert_not_contains "T12: Bau-Prompt armt kein Auto-Merge mehr" \
+  "gh pr merge --squash --auto" "$PROMPT_321"
 
 # ==============================================================================
 # T13 -- Bau-Prompt (#283): sensible Pfade verlangen einen KOMMENTAR am
@@ -577,9 +605,9 @@ assert_not_contains "T13: Bau-Prompt verlangt KEIN selbstgesetztes needs-answer 
   "setze SELBST" "$PROMPT_322"
 
 # ==============================================================================
-# T14 -- CI-Fix-Prompt (#167): erhaelt dieselbe Anweisung -- der Fix-Agent
-#        raeumt das Sicherheitsnetz mit auf, statt sich auf einen frueheren
-#        Lauf zu verlassen
+# T14 -- CI-Fix-Prompt (#839): erhaelt dieselbe Abgabe wie der Bau-Prompt --
+#        auch der Fix-Agent stellt seine eigene Arbeit nicht fertig, sondern
+#        reicht sie ans Tor weiter
 # ==============================================================================
 reset_state
 setup_wip_issue 323
@@ -589,12 +617,12 @@ printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","descr
 run_round
 PROMPT_523=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
 assert_contains "T14: CI-Fix-Prompt ist der richtige (Was rot ist)" "Was rot ist" "$PROMPT_523"
-assert_contains "T14: CI-Fix-Prompt weist an, 'gh pr ready' selbst auszufuehren" \
-  "gh pr ready" "$PROMPT_523"
-assert_contains "T14: CI-Fix-Prompt weist an, Auto-Merge selbst zu aktivieren" \
-  "gh pr merge --squash --auto --delete-branch" "$PROMPT_523"
-assert_contains "T14: CI-Fix-Prompt haengt --subject an den Merge-Aufruf (#292)" \
-  '--subject "$(gh pr view --json title -q .title)"' "$PROMPT_523"
+assert_contains "T14: CI-Fix-Prompt gibt mit dem Label 'check' an den AK-Check ab" \
+  "--add-label check" "$PROMPT_523"
+assert_contains "T14: CI-Fix-Prompt verbietet die Freigabe ausdruecklich" \
+  "**Kein** 'gh pr ready'" "$PROMPT_523"
+assert_not_contains "T14: CI-Fix-Prompt armt kein Auto-Merge mehr" \
+  "gh pr merge --squash --auto" "$PROMPT_523"
 
 # ==============================================================================
 # T15 -- #171 AC1: Nachziehen scheitert an einem unsauberen Arbeitsbaum -> der
@@ -825,6 +853,49 @@ assert_contains "T26: Status zeigt wieder 'CI läuft'" \
   "CI läuft" "$(cat "$GHSTATE_DIR/status-title" 2>/dev/null)"
 assert_file_absent "T26: 'checkout -B' wird NICHT aufgerufen, wenn ein Worktree den Branch haelt" \
   "$GHSTATE_DIR/git-checkout-b-called"
+
+# ==============================================================================
+# T27 (#839) -- das AK-Tor. Gruene CI an einem Ticket, das 'check' traegt: die
+# Wache mergt NICHT mehr selbst, sondern laesst den Pruef-Lauf laufen. Ohne das
+# waere das Tor wirkungslos -- dieser Takt kaeme dem Pruefer jedes Mal zuvor,
+# denn der Bau-Lauf endet gruen und setzt 'check' erst zum Schluss.
+# ==============================================================================
+reset_state
+setup_check_issue 470
+setup_pr 470 770
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+  > "$GHSTATE_DIR/checks-770.json"
+run_round
+assert_file_absent "T27: kein Auto-Merge, solange das AK-Tor offen ist" "$GHSTATE_DIR/merged-770"
+assert_file_absent "T27: der PR wird auch nicht aus dem Entwurf gehoben" "$GHSTATE_DIR/ready-770"
+assert_file_present "T27: der Pruef-Lauf startet" "$GHSTATE_DIR/claude-called"
+PROMPT_470=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T27: es ist der AK-Pruef-Prompt" "AK-Prüfer" "$PROMPT_470"
+assert_contains "T27: er kennt den PR-Branch" "fix/470-runner-ci-watch" "$PROMPT_470"
+assert_contains "T27: NUR er darf freigeben und mergen" \
+  "gh pr merge --squash --auto --delete-branch" "$PROMPT_470"
+assert_contains "T27: mit dem Pflichtflag aus #292" \
+  '--subject "$(gh pr view --json title -q .title)"' "$PROMPT_470"
+
+# ==============================================================================
+# T28 (#839) -- rote CI schlaegt das Tor: ueber einen Stand, dessen Checks rot
+# sind, ist nicht zu urteilen, und der Pruefer duerfte daran ohnehin nichts
+# aendern. Der Takt nimmt 'check' zurueck und startet den CI-Fix-Lauf.
+# ==============================================================================
+reset_state
+setup_check_issue 471
+setup_pr 471 771
+printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","description":"1 test failed"}]' \
+  > "$GHSTATE_DIR/checks-771.json"
+run_round
+LABELS_471=$(tr '\n' ' ' < "$GHSTATE_DIR/labels-471" 2>/dev/null)
+case "$LABELS_471" in
+  *check*) red "T28: 'check' bleibt trotz roter CI stehen (Labels: $LABELS_471)" ;;
+  *) ok "T28: 'check' ist zurueckgenommen" ;;
+esac
+PROMPT_471=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T28: es laeuft der CI-Fix-Prompt, kein Pruef-Lauf" "Was rot ist" "$PROMPT_471"
+assert_not_contains "T28: kein AK-Pruef-Prompt auf rotem Stand" "AK-Prüfer" "$PROMPT_471"
 
 # ==============================================================================
 echo

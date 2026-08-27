@@ -272,6 +272,19 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     expect(gh.run).toHaveBeenCalledWith(['pr', 'ready', '502']);
   });
 
+  // #839: dasselbe gruene Ergebnis, aber das Ticket wartet auf sein AK-Tor.
+  // Die Wache haelt still -- kein 'ready', kein Merge, keine Zustandsaenderung.
+  it('T2b (#839): CI grün, aber AK-Tor offen -> die Wache mergt nicht', () => {
+    const gh = ghFake({
+      checks: { '502': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN' } },
+    });
+    const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK }, true);
+    expect(result).toEqual({ kind: 'gated' });
+    expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '502']);
+    expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['pr', 'merge']));
+  });
+
   it('T3: CI rot (nicht nur protected-paths) -> Fix-Agent mit Summary', () => {
     const gh = ghFake({
       checks: {

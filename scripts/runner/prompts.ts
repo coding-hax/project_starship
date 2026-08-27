@@ -188,19 +188,17 @@ Ablauf:
    entscheiden hätte. Bist du dir inhaltlich unsicher, gilt Schritt 6 —
    fragen statt raten.
 8. Endet dein Lauf hier SAUBER — also über diesen Schritt, nicht über
-   Schritt 6 (offene Frage) —: hebe deinen PR SELBST aus dem Entwurf und
-   aktiviere Auto-Merge:
-   'gh pr ready' und 'gh pr merge --squash --auto --delete-branch' — ergänzt
-   um die Pflicht-Flags '--subject "$(gh pr view --json title -q .title)"'
-   und '--body ""' im selben Aufruf
-   (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Das
-   --subject ist Pflicht: bei einem Ein-Commit-Branch nimmt GitHub sonst die
-   Commit-Nachricht als Squash-Betreff statt des PR-Titels, ein nur im Titel
-   stehendes 'Closes #N' ginge verloren und das Issue bliebe offen (#292).
-   Du musst NICHT wissen, ob CI schon grün ist: GitHub merged automatisch nur bei
-   grünen Required Checks. Ein geschützter Pfad hält den PR nicht mehr auf —
-   den Wächter dafür gibt es seit #283 nicht mehr. Dein Lauf endet danach.
-   **Kein** 'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
+   Schritt 6 (offene Frage) —: du mergst NICHT selbst. Setze stattdessen
+   'gh issue edit ${issue} --add-label check' und beende den Lauf. Der PR
+   bleibt Entwurf.
+   Damit übernimmt der AK-Check-Lauf (#839): ein eigener, nur lesender Lauf
+   hält deinen Diff gegen die Akzeptanzkriterien des Tickets und hebt den PR
+   erst dann aus dem Entwurf. Du hast den Code geschrieben — dass er die
+   Kriterien erfüllt, ist deshalb nicht deine Feststellung. Fehlt etwas,
+   kommst du mit einer benannten Lücke zurück statt mit einem gemergten PR.
+   'in-progress' bleibt stehen, der Fortschrittskommentar bleibt dein Stand.
+   **Kein** 'gh pr ready', **kein** 'gh pr merge', **kein**
+   'gh pr checks --watch', **kein** voller 'pnpm e2e' lokal — der
    Runner-Takt beobachtet ab hier die CI und holt dich nur zurück, wenn
    dort etwas rot wird.`;
 }
@@ -245,18 +243,12 @@ ${ciSummary}
    bei erneutem Fehlschlag wächst „## Was schon versucht wurde", wird nie
    überschrieben).
 6. Endet dein Lauf hier SAUBER (Fix gepusht) — also nicht über Schritt 7
-   (offene Frage) —: 'gh pr ready' und
-   'gh pr merge --squash --auto --delete-branch' — ergänzt um die
-   Pflicht-Flags '--subject "$(gh pr view --json title -q .title)"' und
-   '--body ""' im selben Aufruf (ohne PR-Nummer — wirkt auf den PR des
-   aktuellen Branches). Das --subject ist Pflicht: bei einem
-   Ein-Commit-Branch nimmt GitHub sonst die Commit-Nachricht als
-   Squash-Betreff statt des PR-Titels, ein nur im Titel stehendes
-   'Closes #N' ginge verloren und das Issue bliebe offen (#292). Meist ist
-   der PR das schon (ein früherer sauberer Bau-Lauf hat das erledigt) — der
-   Aufruf ist folgenlos, wenn er es bereits ist, und das Sicherheitsnetz,
-   falls nicht. Dein Lauf endet danach. **Kein** 'gh pr checks --watch' —
-   das übernimmt wieder der Runner-Takt.
+   (offene Frage) —: 'gh issue edit ${issue} --add-label check' und beenden.
+   Du mergst NICHT selbst; das Tor ist der AK-Check-Lauf (#839), der deinen
+   Diff gegen die Akzeptanzkriterien hält und den PR erst dann aus dem
+   Entwurf hebt. Trägt das Ticket 'check' bereits, ist der Aufruf folgenlos.
+   **Kein** 'gh pr ready', **kein** 'gh pr merge', **kein**
+   'gh pr checks --watch' — das übernimmt wieder der Runner-Takt.
 7. Brauchst du eine Entscheidung: Kommentar am Issue mit konkreten Optionen +
    deiner Empfehlung, Label 'needs-answer' setzen, beenden. Rate niemals.`;
 }
@@ -351,12 +343,108 @@ ${ARTIFACT_RULE}
    danach, ob daraus plan wird oder die Idee verworfen wird.`;
 }
 
+/**
+ * RUN_ROLE=check (#839). Das letzte Tor vor dem Merge: haelt den fertigen Diff
+ * gegen die Akzeptanzkriterien des Tickets. Nur lesend, und bewusst ein
+ * EIGENER Lauf -- der Bau-Lauf hat den Code geschrieben und ist damit
+ * derselbe Interessenkonflikt wie bei den Tests (CLAUDE.md).
+ *
+ * Die Kriterien kommen als Liste herein, nicht als "lies sie dir aus dem
+ * Ticket": so ist die Nummerierung im Befund garantiert dieselbe, die
+ * ak.ts und das Tor in round.ts sehen. Ein Befund "AK 3 nicht erfuellt",
+ * der auf ein anderes Kriterium zeigt als das Ticket, waere schlimmer als
+ * kein Befund.
+ */
+export function checkPrompt(issue: number, criteria: string[], branch: string): string {
+  const list = criteria.map((text, index) => `${index + 1}. ${text}`).join('\n');
+
+  return `Du arbeitest UNBEAUFSICHTIGT als **AK-Prüfer** (nur lesend). Ändere KEINEN
+Code, committe NICHT, pushe NICHT.
+
+Du prüfst den fertigen Stand von Issue #${issue} (Branch \`${branch}\`) gegen die
+Akzeptanzkriterien des Tickets — sonst nichts. Du baust nicht nach, du
+verbesserst nicht, du ergänzt keine Tests. Findest du eine Lücke, benennst du
+sie; schließen wird sie der nächste Bau-Lauf.
+
+${FILE_ACCESS_RULE}
+
+## Die Kriterien (maßgeblich, in dieser Nummerierung)
+
+${list}
+
+## Ablauf
+
+1. Dein Arbeitsverzeichnis ist ein Wegwerf-Worktree **auf dem PR-Branch**. Der
+   Diff des Tickets ist \`git diff origin/main...HEAD\` — erst
+   \`--stat\` für den Überblick, dann gezielt die Dateien, die für ein Kriterium
+   zählen. Die Dateien liegst du im Zweifel direkt (\`Read\`), nicht nur als
+   Diff-Auszug: ein Kriterium kann auch von unverändertem Code erfüllt sein.
+2. Lies das Ticket (\`gh issue view ${issue} --comments\`) für den Kontext —
+   maßgeblich sind aber die oben genannten Kriterien, nicht die Prosa drumherum
+   und nicht der Fortschrittskommentar des Bau-Laufs. Dass er einen Haken
+   gesetzt hat, ist **kein** Beleg.
+3. Urteile **je Kriterium** und belege jedes Urteil:
+   - **erfüllt** — im Diff (oder im vorhandenen Code) belegt UND ein Test hält
+     es fest. Beleg: \`<pfad>:<zeile>\` und der Testname. Trägt das Ticket das
+     Label \`tests-exempt\`, entfällt der Testteil.
+   - **nicht erfüllt** — fehlt, oder der Code sagt etwas anderes als das
+     Kriterium. Beleg: die Stelle, an der es fehlt oder abweicht.
+   - **nicht prüfbar** — weder aus Diff noch aus Tests entscheidbar (z. B. rein
+     visuelle Zusagen ohne Messung). Sag in einem Satz, **was** fehlt, um es
+     prüfbar zu machen. Fürs Tor zählt das wie „nicht erfüllt" — aber der
+     Bau-Lauf weiß dann, dass ein Beleg fehlt, nicht Code.
+   Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
+4. Schreib das Ergebnis in **einen** Kommentar am Ticket, überschrieben mit
+   \`## ✅ AK-Check\`. Existiert er von einem früheren Check-Lauf bereits,
+   **editiere ihn** (\`gh api\`-PATCH auf die Kommentar-ID), statt einen zweiten
+   anzulegen. Inhalt: eine Tabelle \`Nr · Kriterium (gekürzt) · Befund · Beleg\`,
+   darunter eine Zeile \`Ergebnis: N von M erfüllt\`.
+
+## Ausgang
+
+**Alle Kriterien erfüllt** — du gibst den PR frei:
+
+\`\`\`
+gh issue edit ${issue} --remove-label check
+gh pr ready
+gh pr merge --squash --auto --delete-branch --subject "$(gh pr view --json title -q .title)" --body ""
+\`\`\`
+
+Das \`--subject\` ist Pflicht, kein Stil: bei einem Ein-Commit-Branch nähme
+GitHub sonst die Commit-Nachricht als Squash-Betreff, das \`Closes #${issue}\`
+aus dem PR-Titel ginge verloren und das Issue bliebe trotz Merge offen (#292).
+Ob CI grün ist, musst du nicht wissen — Auto-Merge greift ohnehin erst bei
+grünen Required Checks. **Kein** \`gh pr checks --watch\`.
+
+**Mindestens ein Kriterium offen** — der PR bleibt Entwurf:
+
+- \`gh issue edit ${issue} --remove-label check\` (\`in-progress\` bleibt stehen,
+  der nächste Takt ist wieder ein Bau-Lauf),
+- die offenen Kriterien als Punkte in den **Fortschrittskommentar** des
+  Tickets, mit Nummer und dem, was konkret fehlt — der Bau-Lauf liest dort
+  weiter, nicht in deinem Prüfbericht.
+
+**Zweiter Check mit demselben Ergebnis** — stand schon vor deinem Lauf ein
+\`## ✅ AK-Check\`-Kommentar mit offenen Kriterien am Ticket, dann ist das hier
+der zweite vergebliche Anlauf: setze zusätzlich \`gh issue edit ${issue}
+--add-label needs-answer\` und beende. Zwei Runden am selben Kriterium heißen,
+dass das Kriterium unklar ist — das entscheidet der Mensch, nicht eine dritte
+Runde.`;
+}
+
 // Werkzeug-Allowlist der Denk-Rollen (ADR-0005 + #63): praeventiv statt nur
 // detektiv -- genau das, was der Auftrag braucht, kein pauschaler Bash-Zugriff.
 // Das git-status-Netz in der Auswertung bleibt zusaetzlich bestehen (Netz und
 // doppelter Boden) und faengt nur noch ab, was trotz Allowlist durchrutscht.
 export const READONLY_TOOLS = 'Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*)';
 export const BUILD_TOOLS = 'Read,Edit,Write,Glob,Grep,Bash';
+
+// #839: der Pruefer liest wie die Denk-Rollen, braucht aber zusaetzlich
+// 'git fetch' -- ohne aktuelles origin/main zeigt 'git diff origin/main...HEAD'
+// auf einen veralteten Merge-Base und meldet fremde Aenderungen als Teil
+// dieses Tickets. Kein Artifact, kein Write: der Befund gehoert als Tabelle
+// ans Ticket, nicht auf eine Seite.
+export const CHECK_TOOLS = `${READONLY_TOOLS},Bash(git fetch:*)`;
 
 // O3 (#325): harte Zusatzgrenze neben der Allowlist. Seit ADR-0025 verbietet
 // sie nur noch `Edit`, nicht mehr `Write`.

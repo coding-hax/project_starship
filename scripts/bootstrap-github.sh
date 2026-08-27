@@ -53,6 +53,7 @@ label "tests-exempt"   "FEF2C0" "Testlose Änderung (Refactor/Typen) — vom Men
 label "hands-off"      "44546A" "Der Runner fasst dieses Ticket nicht an — auf keinem Zweig."
 label "plan"           "1D76DB" "Rolle: plant das Ticket, statt es zu bauen (Opus, außer ein model:*-Label sagt etwas anderes)."
 label "research"       "0052CC" "Rolle: recherchiert den Fit und schlägt vor (Opus, außer ein model:*-Label sagt etwas anderes)."
+label "check"          "2DA44E" "Rolle: prüft den fertigen Diff gegen die Akzeptanzkriterien — das Tor vor dem Merge (#839)."
 # Eskalations-Schalter (ADR-0007). Fehlten hier bis #266 -- ein frisch
 # aufgesetztes Repo hatte den Kill-Switch gegen den Opus-Bau also gar nicht.
 label "no-escalation"  "5319E7" "Friert das Ticket auf der Startstufe ein — der Runner schaltet nie selbst hoch."
