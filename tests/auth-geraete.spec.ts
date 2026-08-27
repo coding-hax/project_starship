@@ -62,6 +62,17 @@ async function deleteAllCredentials(): Promise<void> {
   await withDb((client) => client.query('DELETE FROM credentials'));
 }
 
+/**
+ * `sessions` has no scoping either. `deleteAllCredentials()` only clears sessions
+ * bound to a credential (`ON DELETE CASCADE`, #854) — throwaway sessions minted via
+ * `freshSessionContext`/`createThrowawaySession()` without a `credentialId` outlive
+ * their test (only the browser context gets closed, never the DB row). AK2 below
+ * asserts a global "no other live sessions" count, so it needs both tables clean.
+ */
+async function deleteAllSessions(): Promise<void> {
+  await withDb((client) => client.query('DELETE FROM sessions'));
+}
+
 test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   test('AK1: Gruppe "Gerät" zeigt die Karte "Geräte" mit dem registrierten Passkey', async ({
     page,
@@ -447,6 +458,7 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
     browser,
   }) => {
     await deleteAllCredentials();
+    await deleteAllSessions();
     const context = await browser.newContext();
     const page = await context.newPage();
     await enableVirtualAuthenticator(page);
