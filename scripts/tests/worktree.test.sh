@@ -198,11 +198,16 @@ reset_gh() {
   echo '[]' > "$GHSTATE_DIR/issues.json"
 }
 
-seed_issue() {   # $1 = Nr, $2 = "label1,label2", $3 = state (Default OPEN)
-  local n="$1" labels="$2" state="${3:-OPEN}" labels_json tmp
+seed_issue() {   # $1 = Nr, $2 = "label1,label2", $3 = state (Default OPEN), $4 = Body
+  local n="$1" labels="$2" state="${3:-OPEN}" body="${4:-}" labels_json tmp
   labels_json=$(printf '%s' "$labels" | tr ',' '\n' | jq -R '{name: .}' | jq -s -c '.')
-  tmp=$(jq --argjson n "$n" --argjson l "$labels_json" --arg s "$state" \
-    '. + [{number:$n, labels:$l, createdAt:"2024-01-01T00:00:00Z", state:$s}]' \
+  # #839: das 'body'-Feld entsteht nur, wenn wirklich einer uebergeben wurde --
+  # ein FEHLENDES Feld heisst fuer das AK-Tor "unbekannt" (kein Tor), ein leerer
+  # String hiesse "keine Kriterien" (Tor). Die uebrigen Faelle dieser Suite
+  # sollen weiterlaufen wie bisher, also bleibt das Feld dort weg.
+  tmp=$(jq --argjson n "$n" --argjson l "$labels_json" --arg s "$state" --arg b "$body" \
+    '. + [{number:$n, labels:$l, createdAt:"2024-01-01T00:00:00Z", state:$s}
+          + (if $b == "" then {} else {body:$b} end)]' \
     "$GHSTATE_DIR/issues.json")
   printf '%s' "$tmp" > "$GHSTATE_DIR/issues.json"
 }
@@ -321,6 +326,33 @@ assert_eq "AK7/#325: der Wegwerf-Worktree ist nach dem Lauf entfernt" "0" "$(wor
 if [ -d "$WT700" ]; then red "AK7/#325: das Verzeichnis readonly-700 existiert noch"
 else ok "AK7/#325: das Verzeichnis readonly-700 wurde entfernt"; fi
 assert_eq "AK7/#325: Haupt-Checkout bleibt unveraendert (Lese-Rolle liest nie dort)" "" "$(git -C "$REPO_DIR" status --porcelain)"
+
+# ==============================================================================
+# 7. #839 AK4: der AK-Check laeuft ebenfalls in einem Wegwerf-Worktree -- aber
+#    auf dem PR-BRANCH statt auf origin/main. Auf main saehe er genau den Diff
+#    nicht, ueber den er urteilen soll. Nachweis: eine Datei, die es NUR auf
+#    dem Branch gibt, liegt waehrend des Laufs in seinem Arbeitsverzeichnis.
+# ==============================================================================
+AK_BODY=$'## Akzeptanzkriterien\n\n1. Es tut, was im Titel steht.\n'
+git -C "$OTHER" checkout -q -b feat/701-ak-check
+echo branchonly > "$OTHER/branch-only.txt"
+git -C "$OTHER" add branch-only.txt
+git -C "$OTHER" -c user.email=test@example.com -c user.name=Test commit -q -m "branch only"
+git -C "$OTHER" push -q origin feat/701-ak-check
+
+reset_gh
+seed_issue 701 "in-progress,check" OPEN "$AK_BODY"
+run_main
+N=$(call_count)
+WT701="$REPO_DIR/.claude/worktrees/readonly-701"
+
+assert_contains "#839 AK4: der Pruef-Lauf sieht die Datei, die es nur auf dem PR-Branch gibt" \
+  "$GHSTATE_DIR/claude-listing-$N" "branch-only.txt"
+assert_eq "#839 AK4: sein Wegwerf-Worktree ist nach dem Lauf entfernt" "0" "$(worktree_count "$WT701")"
+assert_eq "#839 AK4: Haupt-Checkout bleibt unveraendert (der Pruefer liest nie dort)" \
+  "" "$(git -C "$REPO_DIR" status --porcelain)"
+assert_eq "#839 AK4: der Haupt-Checkout bleibt auf main" \
+  "main" "$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
 
 # ==============================================================================
 echo
