@@ -157,94 +157,15 @@ function CredentialRow({
   );
 }
 
-function AddDeviceRow({
-  online,
-  busy,
-  onAdd,
-}: {
-  online: boolean;
-  busy: boolean;
-  onAdd: (label: string) => Promise<boolean>;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState('');
-  const nameInputId = useId();
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const succeeded = await onAdd(name);
-    if (succeeded) {
-      setAdding(false);
-      setName('');
-    }
-  }
-
-  if (adding) {
-    return (
-      <form className="devices-panel__add-form" onSubmit={handleSubmit}>
-        <label htmlFor={nameInputId} className="devices-panel__add-label">
-          Gerätename (optional)
-        </label>
-        <input
-          id={nameInputId}
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="z. B. iPhone"
-          className="devices-panel__add-input"
-          autoFocus
-        />
-        <div className="devices-panel__confirm">
-          <button type="submit" className="devices-panel__button" disabled={busy}>
-            Hinzufügen
-          </button>
-          <button
-            type="button"
-            className="devices-panel__button devices-panel__button--secondary"
-            onClick={() => setAdding(false)}
-            disabled={busy}
-          >
-            Abbrechen
-          </button>
-        </div>
-      </form>
-    );
-  }
-
-  return (
-    <Row label="Gerät hinzufügen">
-      <button
-        type="button"
-        className="devices-panel__button devices-panel__button--secondary"
-        onClick={() => setAdding(true)}
-        disabled={!online || busy}
-      >
-        Gerät hinzufügen
-      </button>
-    </Row>
-  );
-}
-
 export function DevicesPanel() {
   const online = useOnline();
-  const {
-    phase,
-    credentials,
-    otherCount,
-    busy,
-    error,
-    revoke,
-    endOtherSessions,
-    addDevice,
-    renameDevice,
-  } = useDevices();
-  const [confirmingSessions, setConfirmingSessions] = useState(false);
+  const { phase, credentials, busy, error, revoke, renameDevice } = useDevices();
   const rows = useListPresence(credentials, (credential) => credential.id);
 
   if (phase === 'loading') return null;
 
   return (
-    <SectionCard title="Geräte">
+    <SectionCard title="Geräte" className="devices-panel">
       {!online && <p className="devices-panel__hint">Geht nur online.</p>}
       {error && <p className="devices-panel__error">{error}</p>}
       <ul className="devices-panel__list">
@@ -265,51 +186,11 @@ export function DevicesPanel() {
         ))}
       </ul>
 
-      <AddDeviceRow online={online} busy={busy} onAdd={addDevice} />
-
-      {confirmingSessions ? (
-        <Row label="Wirklich alle anderen Sitzungen beenden?">
-          <div className="devices-panel__confirm">
-            <button
-              type="button"
-              className="devices-panel__button"
-              onClick={() => {
-                setConfirmingSessions(false);
-                endOtherSessions();
-              }}
-              disabled={busy}
-            >
-              Beenden
-            </button>
-            <button
-              type="button"
-              className="devices-panel__button devices-panel__button--secondary"
-              onClick={() => setConfirmingSessions(false)}
-              disabled={busy}
-            >
-              Abbrechen
-            </button>
-          </div>
-        </Row>
-      ) : (
-        <Row
-          label="Alle anderen Sitzungen beenden"
-          description={
-            otherCount > 0
-              ? `${otherCount} weitere aktive Sitzungen`
-              : 'Keine weiteren aktiven Sitzungen'
-          }
-        >
-          <button
-            type="button"
-            className="devices-panel__button devices-panel__button--secondary"
-            onClick={() => setConfirmingSessions(true)}
-            disabled={!online || otherCount === 0}
-          >
-            Beenden
-          </button>
-        </Row>
-      )}
+      <p className="devices-panel__hint">
+        {
+          'Neues Gerät hinzufügen? Öffne die App auf dem neuen Gerät und melde es unter „Anmelden" mit deinem Recovery-Code an.'
+        }
+      </p>
     </SectionCard>
   );
 }

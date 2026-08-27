@@ -1,6 +1,5 @@
 'use client';
 
-import { startRegistration } from '@simplewebauthn/browser';
 import { useCallback, useEffect, useState } from 'react';
 
 export interface DeviceCredential {
@@ -20,23 +19,17 @@ type Phase = 'loading' | 'ready' | 'error';
 export function useDevices() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [credentials, setCredentials] = useState<DeviceCredential[]>([]);
-  const [otherCount, setOtherCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [credentialsResponse, sessionsResponse] = await Promise.all([
-      fetch('/api/auth/credentials'),
-      fetch('/api/auth/sessions'),
-    ]);
-    if (!credentialsResponse.ok || !sessionsResponse.ok) {
+    const credentialsResponse = await fetch('/api/auth/credentials');
+    if (!credentialsResponse.ok) {
       setPhase('error');
       return;
     }
     const credentialsBody = await credentialsResponse.json();
-    const sessionsBody = await sessionsResponse.json();
     setCredentials(credentialsBody.credentials);
-    setOtherCount(sessionsBody.otherCount);
     setPhase('ready');
   }, []);
 
@@ -78,21 +71,6 @@ export function useDevices() {
     [load],
   );
 
-  const endOtherSessions = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/auth/sessions', { method: 'DELETE' });
-      if (!response.ok) {
-        setError('Beenden fehlgeschlagen.');
-        return;
-      }
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }, [load]);
-
   const renameDevice = useCallback(
     async (id: string, label: string): Promise<boolean> => {
       setBusy(true);
@@ -116,54 +94,5 @@ export function useDevices() {
     [load],
   );
 
-  const addDevice = useCallback(
-    async (label: string): Promise<boolean> => {
-      setBusy(true);
-      setError(null);
-      try {
-        const optionsResponse = await fetch('/api/auth/register/options', { method: 'POST' });
-        if (!optionsResponse.ok) {
-          setError('Gerät hinzufügen fehlgeschlagen.');
-          return false;
-        }
-        const options = await optionsResponse.json();
-
-        const response = await startRegistration({ optionsJSON: options });
-        const verifyResponse = await fetch('/api/auth/register/verify', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            response,
-            challenge: options.challenge,
-            label: label.trim() || undefined,
-          }),
-        });
-        const result = await verifyResponse.json();
-        if (!verifyResponse.ok || !result.verified) {
-          setError('Gerät hinzufügen fehlgeschlagen.');
-          return false;
-        }
-        await load();
-        return true;
-      } catch {
-        setError('Gerät hinzufügen fehlgeschlagen.');
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [load],
-  );
-
-  return {
-    phase,
-    credentials,
-    otherCount,
-    busy,
-    error,
-    revoke,
-    endOtherSessions,
-    addDevice,
-    renameDevice,
-  };
+  return { phase, credentials, busy, error, revoke, renameDevice };
 }

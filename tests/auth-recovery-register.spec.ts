@@ -72,9 +72,16 @@ async function seedExistingCredential(page: Page): Promise<void> {
  * (`excludeCredentials` matches it, InvalidStateError). A fresh context with its
  * own virtual authenticator is what recovery is actually exercising: a new
  * device, no session cookie, no existing credential of its own.
+ *
+ * `browser.newContext()` alone is not enough for that last part: the `mobile`
+ * project sets `storageState: AUTH_STATE` (issue #115), and Playwright's test
+ * `browser` fixture applies a project's `use` options as defaults to *every*
+ * `newContext()` call, not just the built-in `page`/`context` fixtures — so a
+ * bare call silently signs the "new device" in as the owner. An explicit empty
+ * storage state is what actually produces a signed-out context.
  */
 async function openRecoveryDevice(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const devicePage = await context.newPage();
   await enableVirtualAuthenticator(devicePage);
   await devicePage.goto('/anmelden');
@@ -171,4 +178,125 @@ test('AK4: verify ohne vorangegangene recovery-gestuetzte options-Runde kann kei
   expect(verifyRes.status()).toBe(400);
   expect(await credentialCount()).toBe(before);
   expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
+});
+
+/**
+ * #856 (S3 von #851): der Recovery-Weg bekommt eine Oberfläche unter `/anmelden`.
+ * Die vier Tests oben bleiben (Server unverändert) — diese fahren dieselbe
+ * Zeremonie durch die UI, inklusive der beiden Fehlerpfade, die vorher gar keine
+ * eigene Meldung hatten (#851 Fund 1/8).
+ */
+test.describe('#856: Recovery-Formular unter /anmelden', () => {
+  test('AK1 (UI): ein echtes neues Gerät meldet sich über das Formular an und legt einen zweiten Passkey an', async ({
+    browser,
+  }) => {
+    const before = await credentialCount();
+    const devicePage = await openRecoveryDevice(browser);
+
+    await devicePage
+      .getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' })
+      .click();
+    await devicePage.getByLabel('Recovery-Code').fill(RECOVERY_CODE);
+    await devicePage.getByRole('button', { name: 'Gerät anmelden' }).click();
+
+    await devicePage.waitForURL('**/uebersicht');
+    expect(await credentialCount()).toBe(before + 1);
+    expect(await recoveryCodeUsedAt(RECOVERY_CODE)).not.toBeNull();
+  });
+
+  test('AK2: hält dieses Gerät den Passkey schon, erscheint die eigene Meldung, kein zweiter Passkey, Code bleibt gültig', async ({
+    page,
+  }) => {
+    const before = await credentialCount();
+    await logout(page);
+    await page.goto('/anmelden');
+
+    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
+    await page.getByLabel('Recovery-Code').fill(RECOVERY_CODE);
+    await page.getByRole('button', { name: 'Gerät anmelden' }).click();
+
+    await expect(page.locator('.auth__error')).toHaveText(
+      'Auf diesem Gerät gibt es den Passkey schon.',
+    );
+    expect(await credentialCount()).toBe(before);
+    expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
+  });
+
+  test('AK3: Abbruch der Face-ID-Abfrage erzeugt keine rote Fehlerzeile, der Code bleibt gültig', async ({
+    browser,
+  }) => {
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
+    // Simuliert den Nutzer-Abbruch (z. B. Face ID abgebrochen) — ein reines
+    // Browser-UI-Ereignis, das der virtuelle Authenticator nicht deterministisch
+    // auslöst, deshalb hier direkt am WebAuthn-Einstiegspunkt erzwungen.
+    await page.addInitScript(() => {
+      navigator.credentials.create = () =>
+        Promise.reject(new DOMException('abgebrochen', 'NotAllowedError'));
+    });
+    await page.goto('/anmelden');
+
+    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
+    await page.getByLabel('Recovery-Code').fill(RECOVERY_CODE);
+    const submit = page.locator('.auth__recovery-form button[type="submit"]');
+    await submit.click();
+
+    // Wartet auf die abgeschlossene (fehlgeschlagene) Zeremonie über den
+    // Busy-Zustand, statt auf eine feste Zeit — der Knopf ist erst wieder
+    // bedienbar, wenn der catch-Zweig durchgelaufen ist.
+    await expect(submit).toBeEnabled();
+    await expect(page.locator('.auth__error')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/anmelden$/);
+    expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
+
+    await context.close();
+  });
+
+  test('AK4: „Abbrechen" löscht eine stehengebliebene Fehlermeldung und schließt das Formular', async ({
+    browser,
+  }) => {
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
+    await page.goto('/anmelden');
+
+    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
+    await page.getByLabel('Recovery-Code').fill('UNGÜLTIGER-CODE');
+    await page.locator('.auth__recovery-form button[type="submit"]').click();
+
+    await expect(page.locator('.auth__error')).toHaveText(
+      'Recovery-Code ungültig oder bereits verbraucht.',
+    );
+
+    await page.getByRole('button', { name: 'Abbrechen' }).click();
+
+    await expect(page.locator('.auth__error')).toHaveCount(0);
+    await expect(page.getByLabel('Recovery-Code')).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test('AK6: offline ist das Formular inaktiv mit Hinweis, Dark Mode und reduzierte Bewegung bleiben bedienbar', async ({
+    browser,
+  }) => {
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const page = await context.newPage();
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await page.goto('/anmelden');
+
+    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
+    await expect(page.getByLabel('Recovery-Code')).toBeVisible();
+
+    await context.setOffline(true);
+    await expect(page.getByText('Geht nur online.')).toBeVisible();
+    await expect(page.locator('.auth__recovery-form button[type="submit"]')).toBeDisabled();
+
+    await context.setOffline(false);
+    await context.close();
+  });
 });
