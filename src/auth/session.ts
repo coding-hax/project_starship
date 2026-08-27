@@ -17,9 +17,11 @@ function hashToken(token: string): string {
 
 /**
  * Mints a session and sets the cookie. The raw token is returned to the browser
- * once, inside the cookie; the database only ever sees its hash.
+ * once, inside the cookie; the database only ever sees its hash. `credentialId`
+ * binds the session to the passkey that minted it (issue #854) — omitted for the
+ * throwaway/legacy paths that have no credential to bind to.
  */
-export async function createSession(): Promise<void> {
+export async function createSession(credentialId: string | null = null): Promise<void> {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
@@ -27,6 +29,7 @@ export async function createSession(): Promise<void> {
     id: uuidv7(),
     tokenHash: hashToken(token),
     expiresAt,
+    credentialId,
   });
 
   const store = await cookies();
@@ -40,7 +43,7 @@ export async function createSession(): Promise<void> {
 }
 
 /** Returns the owner id when the request carries a live session, otherwise null. */
-export async function getSession(): Promise<{ userId: string } | null> {
+export async function getSession(): Promise<{ userId: string; credentialId: string | null } | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -56,7 +59,12 @@ export async function getSession(): Promise<{ userId: string } | null> {
   const ownerId = process.env.OWNER_USER_ID;
   if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
 
-  return { userId: ownerId };
+  return { userId: ownerId, credentialId: row.credentialId };
+}
+
+/** The credential id of the current session, or null (no session / legacy session). */
+export async function currentCredentialId(): Promise<string | null> {
+  return (await getSession())?.credentialId ?? null;
 }
 
 export async function destroySession(): Promise<void> {

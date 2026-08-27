@@ -21,7 +21,7 @@ interface CredentialRowProps {
   isLastRemaining: boolean;
   disabled: boolean;
   busy: boolean;
-  onRevoke: (id: string) => void;
+  onRevoke: (id: string, isCurrent: boolean) => void;
   entering: boolean;
   leaving: boolean;
   onAnimationEnd: () => void;
@@ -42,6 +42,13 @@ function CredentialRow({
   const description = `Hinzugefügt am ${formatDate(credential.createdAt)} · Zuletzt genutzt ${
     credential.lastUsedAt ? formatDate(credential.lastUsedAt) : 'nie'
   }`;
+  const rowLabel = credential.current ? (
+    <>
+      {label} <span className="devices-panel__current-badge">Dieses Gerät</span>
+    </>
+  ) : (
+    label
+  );
 
   return (
     <li
@@ -51,12 +58,18 @@ function CredentialRow({
       onAnimationEnd={onAnimationEnd}
     >
       {confirming ? (
-        <Row label={`„${label}“ wirklich widerrufen?`}>
+        <Row
+          label={
+            credential.current
+              ? 'Das ist dieses Gerät — du wirst abgemeldet'
+              : `„${label}“ wirklich widerrufen?`
+          }
+        >
           <div className="devices-panel__confirm">
             <button
               type="button"
               className="devices-panel__button"
-              onClick={() => onRevoke(credential.id)}
+              onClick={() => onRevoke(credential.id, credential.current)}
               disabled={busy}
             >
               Widerrufen
@@ -72,7 +85,7 @@ function CredentialRow({
           </div>
         </Row>
       ) : (
-        <Row label={label} description={description}>
+        <Row label={rowLabel} description={description}>
           <button
             type="button"
             className="devices-panel__button devices-panel__button--secondary"

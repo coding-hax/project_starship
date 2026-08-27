@@ -289,6 +289,15 @@ export const sessions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /**
+     * Which passkey minted this session (issue #854). Nullable — sessions minted
+     * before this column existed stay `null` and are simply never matched by
+     * `ON DELETE CASCADE` or the "this device" comparison. Cascade lets revoking a
+     * credential end that device's sessions in the same transaction.
+     */
+    credentialId: uuid('credential_id').references(() => credentials.id, {
+      onDelete: 'cascade',
+    }),
   },
   (table) => [index('sessions_expires_at_idx').on(table.expiresAt)],
 );

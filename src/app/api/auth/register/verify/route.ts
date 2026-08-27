@@ -60,6 +60,7 @@ export async function POST(request: Request) {
   }
 
   const { credential } = verification.registrationInfo;
+  const newCredentialId = uuidv7();
 
   try {
     await db.transaction(async (tx) => {
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       }
 
       await tx.insert(credentials).values({
-        id: uuidv7(),
+        id: newCredentialId,
         credentialId: credential.id,
         publicKey: Buffer.from(credential.publicKey).toString('base64url'),
         counter: credential.counter,
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  await createSession();
+  await createSession(newCredentialId);
 
   // The recovery code exists once, at first setup, and is never recoverable again.
   const recoveryCode = firstCredential ? await issueRecoveryCode() : null;
