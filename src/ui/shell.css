@@ -413,6 +413,11 @@
   text-align: start;
 }
 
+.auth__recovery-label {
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+}
+
 .auth__input {
   min-height: var(--touch-target);
   padding: var(--space-2) var(--space-3);

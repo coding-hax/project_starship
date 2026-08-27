@@ -213,7 +213,9 @@ export default function AnmeldenPage() {
 
           {showRecovery && (
             <form className="auth__recovery-form" onSubmit={registerWithRecovery}>
-              <label htmlFor={recoveryInputId}>Recovery-Code</label>
+              <label htmlFor={recoveryInputId} className="auth__recovery-label">
+                Recovery-Code
+              </label>
               <input
                 id={recoveryInputId}
                 type="text"
