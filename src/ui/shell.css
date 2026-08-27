@@ -408,3 +408,45 @@
 .auth__error {
   color: var(--danger);
 }
+
+.auth__recovery-toggle {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-secondary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth__recovery-toggle:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth__recovery-form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: start;
+}
+
+.auth__recovery-label {
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+}
+
+.auth__recovery-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.auth__button--secondary {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
