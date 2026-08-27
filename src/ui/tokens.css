@@ -174,9 +174,12 @@
 
   --leading-heading: 1.2;
   --leading-body: 1.5;
-  /* Single-glyph icon/symbol centering (FAB "+", toast dismiss "×") — not a
-     prose line-height, so neither --leading-heading nor --leading-body fits;
-     forcing one of those would shift the glyph (issue #592). */
+  /* Short, non-wrapping content centering — single-glyph icons (FAB "+",
+     toast dismiss "×", issue #592) as well as 1–2-char labels stacked in a
+     fixed-height flex-centered box (calendar-strip's weekday/day-number,
+     issue #845). Not a prose line-height, so neither --leading-heading nor
+     --leading-body fits; forcing one of those would shift the content off
+     centre or overflow the box. */
   --leading-tight: 1;
 
   /* --- z-layers (issue #510, prompted by #508) ----------------------------
