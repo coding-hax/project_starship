@@ -6,8 +6,10 @@ import {
   createThrowawayCredential,
   createThrowawaySession,
   credentialRowExists,
+  enableVirtualAuthenticator,
   registerPasskey,
   resetAppData,
+  resetRateLimits,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -217,6 +219,136 @@ test.describe('#856: Gerät hinzufügen durch Recovery-Hinweis ersetzt (frischer
       ),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Gerät hinzufügen' })).toHaveCount(0);
+
+    await context.close();
+  });
+});
+
+test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
+  test('AK1: Umbenennen überlebt Reload und steht in Postgres', async ({ browser, baseURL }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    const id = await createThrowawayCredential({ label: 'Alt' });
+
+    await page.goto('/einstellungen');
+    const row = page.locator('.devices-panel__item', { hasText: 'Alt' });
+    await row.getByRole('button', { name: 'Umbenennen' }).click();
+    // Not `row.getByLabel(...)` from here — "Alt" leaves the row's text once the
+    // form replaces it, so the `hasText` filter would no longer match anything.
+    await page.getByLabel('Neuer Name').fill('Neuer Name');
+    await page.getByRole('button', { name: 'Speichern' }).click();
+
+    await expect(page.locator('.devices-panel__item', { hasText: 'Neuer Name' })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.devices-panel__item', { hasText: 'Neuer Name' })).toBeVisible();
+
+    const rows = await withDb((client) =>
+      client.query('SELECT label FROM credentials WHERE id = $1', [id]),
+    );
+    expect(rows.rows[0].label).toBe('Neuer Name');
+
+    await context.close();
+  });
+
+  test('AK2: das namenlose Erstgerät ist umbenennbar', async ({ browser, baseURL }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    const id = await createThrowawayCredential({});
+
+    await page.goto('/einstellungen');
+    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
+    await row.getByRole('button', { name: 'Umbenennen' }).click();
+    await page.getByLabel('Neuer Name').fill('Mein iPhone');
+    await page.getByRole('button', { name: 'Speichern' }).click();
+
+    await expect(page.locator('.devices-panel__item', { hasText: 'Mein iPhone' })).toBeVisible();
+    const rows = await withDb((client) =>
+      client.query('SELECT label FROM credentials WHERE id = $1', [id]),
+    );
+    expect(rows.rows[0].label).toBe('Mein iPhone');
+
+    await context.close();
+  });
+
+  test('AK3: ein neu beim Erstsetup angelegtes Gerät kann direkt benannt werden', async ({
+    browser,
+  }) => {
+    await resetRateLimits();
+    await deleteAllCredentials();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await enableVirtualAuthenticator(page);
+
+    await page.goto('/anmelden');
+    await page.getByLabel('Gerätename (optional)').fill('Erstes iPhone');
+    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
+    await page.getByTestId('recovery-code').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+    await page.waitForURL('**/uebersicht');
+
+    const rows = await withDb((client) =>
+      client.query("SELECT label FROM credentials WHERE label = 'Erstes iPhone'"),
+    );
+    expect(rows.rows).toHaveLength(1);
+
+    await page.goto('/einstellungen');
+    await expect(page.locator('.devices-panel__item', { hasText: 'Erstes iPhone' })).toBeVisible();
+
+    await context.close();
+  });
+
+  test('AK4: leerer Name setzt wieder auf „Unbenanntes Gerät" zurück', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    const id = await createThrowawayCredential({ label: 'Hat Namen' });
+
+    await page.goto('/einstellungen');
+    const row = page.locator('.devices-panel__item', { hasText: 'Hat Namen' });
+    await row.getByRole('button', { name: 'Umbenennen' }).click();
+    await page.getByLabel('Neuer Name').fill('');
+    await page.getByRole('button', { name: 'Speichern' }).click();
+
+    await expect(
+      page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' }),
+    ).toBeVisible();
+    const rows = await withDb((client) =>
+      client.query('SELECT label FROM credentials WHERE id = $1', [id]),
+    );
+    expect(rows.rows[0].label).toBeNull();
+
+    await context.close();
+  });
+
+  test('AK5a: offline ist „Umbenennen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    await createThrowawayCredential({ label: 'Offline-Test' });
+
+    await page.goto('/einstellungen');
+    await context.setOffline(true);
+
+    await expect(
+      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
+    ).toBeVisible();
+    const row = page.locator('.devices-panel__item', { hasText: 'Offline-Test' });
+    await expect(row.getByRole('button', { name: 'Umbenennen' })).toBeDisabled();
+
+    await context.setOffline(false);
+    await context.close();
+  });
+
+  test('AK5b: Umbenennen-Feld bleibt im Dark Mode mit reduzierter Bewegung bedienbar (mobiler Viewport)', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    await createThrowawayCredential({ label: 'Dark-Test' });
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await page.goto('/einstellungen');
+
+    const row = page.locator('.devices-panel__item', { hasText: 'Dark-Test' });
+    await row.getByRole('button', { name: 'Umbenennen' }).click();
+    await expect(page.getByLabel('Neuer Name')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Speichern' })).toBeVisible();
 
     await context.close();
   });

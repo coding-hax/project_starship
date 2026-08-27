@@ -32,12 +32,14 @@ export default function AnmeldenPage() {
   const router = useRouter();
   const online = useOnline();
   const recoveryInputId = useId();
+  const deviceNameInputId = useId();
   const [mode, setMode] = useState<Mode>('loading');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryInput, setRecoveryInput] = useState('');
+  const [deviceName, setDeviceName] = useState('');
 
   useEffect(() => {
     fetch('/api/auth/status')
@@ -61,7 +63,11 @@ export default function AnmeldenPage() {
       const verifyRes = await fetch('/api/auth/register/verify', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ response, challenge: options.challenge }),
+        body: JSON.stringify({
+          response,
+          challenge: options.challenge,
+          label: deviceName.trim() || undefined,
+        }),
       });
       const result = await verifyRes.json();
       if (!verifyRes.ok || !result.verified) throw new Error(result.error ?? 'Fehlgeschlagen.');
@@ -187,6 +193,18 @@ export default function AnmeldenPage() {
       {mode === 'setup' && (
         <>
           <p>Richte deinen Passkey ein. Danach genügt Face ID.</p>
+          <label htmlFor={deviceNameInputId} className="auth__label">
+            Gerätename (optional)
+          </label>
+          <input
+            id={deviceNameInputId}
+            type="text"
+            value={deviceName}
+            onChange={(event) => setDeviceName(event.target.value)}
+            placeholder="z. B. iPhone"
+            className="auth__input"
+            disabled={busy}
+          />
           <button className="auth__button" onClick={register} disabled={busy}>
             {busy ? 'Einen Moment…' : 'Passkey einrichten'}
           </button>

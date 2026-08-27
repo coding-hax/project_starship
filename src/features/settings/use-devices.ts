@@ -92,5 +92,37 @@ export function useDevices() {
     }
   }, [load]);
 
-  return { phase, credentials, otherCount, busy, error, revoke, endOtherSessions };
+  const renameDevice = useCallback(
+    async (id: string, label: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/auth/credentials/${id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ label: label.trim() || null }),
+        });
+        if (!response.ok) {
+          setError('Umbenennen fehlgeschlagen.');
+          return false;
+        }
+        await load();
+        return true;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  return {
+    phase,
+    credentials,
+    otherCount,
+    busy,
+    error,
+    revoke,
+    endOtherSessions,
+    renameDevice,
+  };
 }
