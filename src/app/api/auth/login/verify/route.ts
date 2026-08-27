@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     .where(eq(credentials.id, credential.id));
 
   await pruneExpired();
-  await createSession();
+  await createSession(credential.id);
 
   return NextResponse.json({ verified: true });
 }

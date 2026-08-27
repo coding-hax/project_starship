@@ -85,6 +85,8 @@ export type RevokeCredentialResult = 'deleted' | 'not-found' | 'last-credential'
  * transaction, so two concurrent revokes serialize: the second one re-reads the
  * already-reduced set and is the one that hits `last-credential`, guaranteeing the
  * last passkey can never be deleted out from under the caller (self-lockout guard).
+ * The delete below also ends that device's sessions atomically, in the same
+ * transaction, via `ON DELETE CASCADE` on `sessions.credential_id` (issue #854).
  */
 export async function revokeCredential(id: string): Promise<RevokeCredentialResult> {
   return db.transaction(async (tx) => {
