@@ -1,5 +1,4 @@
 .category-colors-panel__category {
-  padding: var(--space-2) 0 var(--space-4);
   border-bottom: 1px solid var(--border-faint);
 }
 
@@ -7,11 +6,85 @@
   border-bottom: none;
 }
 
+.category-colors-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-3) 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-colors-panel__row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-colors-panel__row-label {
+  font-size: var(--text-body);
+  color: var(--text);
+}
+
+.category-colors-panel__row-description {
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+}
+
+.category-colors-panel__row-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .category-colors-panel__current {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-pill);
   flex-shrink: 0;
+}
+
+/* Same 10px/rotate values as `.section-card__chevron` — one visual pattern,
+   duplicated here because this chevron is per-row, not per-card. */
+.category-colors-panel__chevron {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.category-colors-panel__chevron[data-open='true'] {
+  transform: rotate(-135deg);
+}
+
+/* grid-template-rows 1fr/0fr animates without knowing the content's height —
+   same trick as `.section-card__collapse`. */
+.category-colors-panel__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.category-colors-panel__collapse[data-open='false'] {
+  grid-template-rows: 0fr;
+}
+
+.category-colors-panel__body {
+  overflow: hidden;
+  min-height: 0;
+  padding: 0 0 var(--space-4);
 }
 
 .category-colors-panel__swatches {
@@ -22,11 +95,19 @@
   margin: var(--space-2) 0 0;
 }
 
-.category-colors-panel__swatches legend {
-  grid-column: 1 / -1;
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
-  margin-bottom: var(--space-2);
+/* Standard visually-hidden pattern (`.calendar-view__heading`) — kept in the
+   a11y tree, not `display: none`, so screen readers still announce which
+   category the swatches belong to (AC1: no visible "Farbe" caption). */
+.category-colors-panel__legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .category-colors-panel__swatch-option {
