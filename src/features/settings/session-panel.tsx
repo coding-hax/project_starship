@@ -28,7 +28,7 @@ export function SessionPanel() {
 
   return (
     <SectionCard title="Sitzung" className="session-panel">
-      {!online && <p className="session-panel__hint">Geht nur online.</p>}
+      {!online && <p className="session-panel__hint">Sperren geht nur online.</p>}
       {endError && <p className="session-panel__error">{endError}</p>}
 
       {!online ? (
