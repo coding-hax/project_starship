@@ -355,23 +355,22 @@ test('AK2: zwei Farben je Seite — Körper in --face-body, Augen/Mundlinie in -
   expect(mouthStyle.strokeLinecap).toBe('round');
 });
 
-test('AK3: dasselbe Farbpaar in Hell und Dunkel', async ({ page }) => {
+test('AK3: dasselbe Farbpaar in Hell und Dunkel', async ({ page, browser }) => {
   await registerPasskey(page);
 
-  for (const route of ROUTES) {
-    await page.goto(route.path);
-    const lightBody = await toRgb(page, await bodyFill(page));
-    const lightInk = await toRgb(page, (await inkColors(page))[0]);
+  await forEachRoute(page, browser, async (routePage, _face, path) => {
+    const lightBody = await toRgb(routePage, await bodyFill(routePage));
+    const lightInk = await toRgb(routePage, (await inkColors(routePage))[0]);
 
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto(route.path);
-    const darkBody = await toRgb(page, await bodyFill(page));
-    const darkInk = await toRgb(page, (await inkColors(page))[0]);
-    await page.emulateMedia({ colorScheme: 'light' });
+    await routePage.emulateMedia({ colorScheme: 'dark' });
+    await routePage.goto(path);
+    const darkBody = await toRgb(routePage, await bodyFill(routePage));
+    const darkInk = await toRgb(routePage, (await inkColors(routePage))[0]);
+    await routePage.emulateMedia({ colorScheme: 'light' });
 
-    expect(darkBody, `Körperfarbe hell/dunkel auf ${route.path}`).toEqual(lightBody);
-    expect(darkInk, `Tintenfarbe hell/dunkel auf ${route.path}`).toEqual(lightInk);
-  }
+    expect(darkBody, `Körperfarbe hell/dunkel auf ${path}`).toEqual(lightBody);
+    expect(darkInk, `Tintenfarbe hell/dunkel auf ${path}`).toEqual(lightInk);
+  });
 });
 
 test('AK4/AK5: die Figur blinzelt und wippt, OS-Präferenz und Schalter halten beides mit offenen Augen und ohne Versatz an', async ({
