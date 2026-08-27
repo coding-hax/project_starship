@@ -1288,8 +1288,12 @@ test('die Terminpunkte im Wochenstreifen sind auf 375x812 vollstaendig sichtbar,
 test('Wochentagskuerzel und Tageszahl stehen in allen sieben sichtbaren Zellen auf derselben Hoehe, mit und ohne Punkte (AK2, issue #845)', async ({
   page,
 }) => {
-  // Nur "Sa, 18." bekommt einen Punkt — die anderen sechs Zellen bleiben leer,
-  // genau die Situation aus dem Ticket (Tage ohne Punkte sassen tiefer).
+  // Nur "Sa, 18." (heute) bekommt einen Punkt — die anderen sechs Zellen der
+  // initial sichtbaren Woche bleiben leer, genau die Situation aus dem Ticket
+  // (Tage ohne Punkte sassen tiefer). Der Streifen rollt vorwaerts ab dem
+  // gewaehlten Tag (calendar-strip.tsx's windowAnchor, issue #813) statt an
+  // Montag auszurichten — die sichtbare Woche ist also "Sa, 18." bis "Fr, 24.",
+  // nicht die Kalenderwoche Mo–So.
   await seedEvent(page, {
     title: 'Einziger Termin der Woche',
     allDay: false,
@@ -1300,9 +1304,9 @@ test('Wochentagskuerzel und Tageszahl stehen in allen sieben sichtbaren Zellen a
     category: 'arbeit',
   });
   await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
-  await expect(dayDots(page, 'Mo, 13.')).toHaveCount(0);
+  await expect(dayDots(page, 'So, 19.')).toHaveCount(0);
 
-  const week = ['Mo, 13.', 'Di, 14.', 'Mi, 15.', 'Do, 16.', 'Fr, 17.', 'Sa, 18.', 'So, 19.'];
+  const week = ['Sa, 18.', 'So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.', 'Do, 23.', 'Fr, 24.'];
   const weekdayTops: number[] = [];
   const numberTops: number[] = [];
   for (const label of week) {
