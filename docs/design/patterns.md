@@ -12,6 +12,24 @@ Ein neues Icon hält sich an dieselbe Form:
 - Nie ein Unicode-Glyph: jedes System zeichnet die anders (Strichstärke, Grundlinie,
   auf iOS teils sogar farbig als Emoji).
 
+## Knopf-Hierarchie
+
+Ein Bereich zeigt **höchstens einen** akzentgefüllten Knopf für die Standard-Aktion
+(`background: var(--accent)`, z. B. `weather-panel__search-submit`). Jede
+Zweit-Aktion daneben ist **sekundär**: transparenter Grund, `1px solid var(--border)`,
+Text in `--text` statt `--accent-fg` (Beispiele: `push-panel__add-time-button`,
+`weather-panel__locate-button`). Ein zweiter voller Akzentknopf im selben Bereich
+konkurriert mit der eigentlichen Aktion um Aufmerksamkeit.
+
+Läuft eine Aktion, wechselt der Knopftext auf einen Wartezustand-Satz ("… wird
+ermittelt …") und der Knopf wird `disabled` — kein Spinner-Icon, der Text trägt
+die Information, und `disabled` verhindert gleichzeitig ein zweites Auslösen, ganz
+ohne eigene Debounce-Logik.
+
+`prefers-reduced-motion` braucht hier keinen Sonderfall: die `opacity`-Transition
+auf `:active` läuft über `--duration-fast`/`--ease-spring`, die globale Regel in
+`tokens.css` zieht deren Dauer bei reduzierter Bewegung ohnehin auf 0.
+
 ## Mobile-Patterns
 
 - **Bottom-Navigation**: fünf sichtbare Plätze, horizontal schiebbar (Karussell) sobald
