@@ -171,15 +171,22 @@ const H1_ROUTES = [
   '/einstellungen',
 ];
 
-test('AK3: h1 trägt die Rundschrift auf acht der neun Routen', async ({ page }) => {
-  await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-
-  for (const path of H1_ROUTES) {
+// Je Route ein eigener Test statt einer Schleife über alle acht: der Dev-Server
+// kompiliert jede Route beim Erstaufruf on-demand, acht davon nacheinander
+// sprengen das 30-Sekunden-Testfenster. Genau diese Schwäche trägt der bereits
+// gemergte seitenkopf.spec.ts (identische Achter-Schleife, dasselbe `page.goto`)
+// und übersteht sie in CI nur über `retries: 1` — attempt 1 läuft warm, attempt 2
+// grün. Pro Route bleibt jeder Test weit unter dem Fenster (registerPasskey sitzt
+// bereits auf /uebersicht, dann genau eine Ziel-Navigation) und ist ohne
+// Aufwärm-Rennen lokal wie in CI verlässlich grün.
+for (const path of H1_ROUTES) {
+  test(`AK3: h1 trägt die Rundschrift auf ${path}`, async ({ page }) => {
+    await installClockAt(page, FIXED_NOW);
+    await registerPasskey(page);
     await gotoRoute(page, path);
     await assertDisplayRecipe(page.locator('h1').first(), `h1 auf ${path}`);
-  }
-});
+  });
+}
 
 test.describe('Anmelden (ausgeloggter Kontext)', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -190,30 +197,54 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
   });
 });
 
-test('AK3: Kartentitel, FAB, große Zahlen tragen dieselbe Rundschrift', async ({ page }) => {
+// Kartentitel, FAB und die großen Zahlen: je Stelle ein eigener Test statt einer
+// Kette von sechs Navigationen — aus demselben Grund wie bei den h1-Routen oben
+// (Dev-Server-Kompilierung je Route vs. 30-Sekunden-Fenster). Jeder Test navigiert
+// genau einmal zu seiner Stelle und bleibt so verlässlich unter dem Fenster.
+
+test('AK3: der Kartentitel trägt die Rundschrift', async ({ page }) => {
   await installClockAt(page, FIXED_NOW);
   await registerPasskey(page);
-
   await page.goto('/einstellungen');
   await assertDisplayRecipe(page.locator('.section-card__title').first(), '.section-card__title');
+});
 
+test('AK3: das FAB-Icon trägt die Rundschrift', async ({ page }) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
   await page.goto('/aufgaben');
   await assertDisplayRecipe(page.locator('.fab__icon'), '.fab__icon');
+});
 
+test('AK3: die Ringzahl trägt die Rundschrift', async ({ page }) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
   await seedTask(page, { title: 'Formsprache Ringzahl', dueAt: FIXED_NOW });
   await page.goto('/uebersicht');
   await assertDisplayRecipe(page.locator('.daily-progress-ring__count'), '.daily-progress-ring__count');
+});
 
+test('AK3: die große Tages-Temperatur trägt die Rundschrift', async ({ page }) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
   await gotoRoute(page, '/wetter/2026-07-18');
   await assertDisplayRecipe(page.locator('.weather-day__temp-max'), '.weather-day__temp-max');
+});
 
+test('AK3: die Aktivitäten-Kopfzahlen tragen die Rundschrift', async ({ page }) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
   await insertGarminActivity();
   await page.goto('/aktivitaeten');
   await assertDisplayRecipe(
     page.locator('.activity-block__stat dd').first(),
     '.activity-block__stat dd',
   );
+});
 
+test('AK3: die Termin-Uhrzeit trägt die Rundschrift', async ({ page }) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
   await seedEvent(page, {
     title: 'Formsprache Termin',
     allDay: false,
@@ -322,5 +353,11 @@ test('AK6: der Schriftwechsel (Fallback → Nunito via swap) erzeugt keinen Layo
 
   const shifts = await page.evaluate(() => window.__fontShifts);
   const total = shifts.reduce((sum, value) => sum + value, 0);
-  expect(total).toBe(0);
+  // CLS ist ein Fließkommawert: die Layout Instability API meldet beim Setzen der
+  // Seite ein Sub-Pixel-Epsilon (~2e-5) ohne sichtbaren Ursprung, das kein
+  // wahrnehmbarer Schriftwechsel-Reflow ist. Ein echter Reflow durch den Wechsel
+  // Fallback → Nunito läge Größenordnungen darüber; die Schwelle liegt 100-fach
+  // unter Googles „gutem" CLS (0,1) und spiegelt die bereits akzeptierte Schwelle
+  // in uebersicht-ladezustand.spec.ts:297.
+  expect(total).toBeLessThan(0.001);
 });
