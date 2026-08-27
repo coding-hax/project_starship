@@ -12,6 +12,9 @@
      surface this resets the ground's ink back to neutral (issue #832 AK5). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 }
 
 .segmented__indicator {

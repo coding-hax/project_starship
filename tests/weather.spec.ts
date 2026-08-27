@@ -211,7 +211,18 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen (2px, dunklere Farbe),
   expect(saturdayColor).toBe(sundayColor);
 
   // Die Rahmenfarbe ist tatsächlich an --border-strong gebunden (issue #288 AC3).
-  expect(saturdayColor).toBe(await resolveColorToken(page, '--border-strong'));
+  // Muss innerhalb von .weather-forecast__day aufgelöst werden — die Karte setzt
+  // --border-strong auf ihren neutralen -base-Anker zurück (issue #846), ein
+  // resolveColorToken auf document.body läse stattdessen den Grund-Mix.
+  const saturdayBorderStrong = await saturday.evaluate((el) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--border-strong)';
+    el.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  expect(saturdayColor).toBe(saturdayBorderStrong);
 });
 
 test('Wochenend-Rahmen ist auch im Dark Mode vom Normal-Rahmen unterscheidbar (issue #223 AC3)', async ({

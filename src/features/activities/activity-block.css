@@ -7,6 +7,9 @@
      own `color`. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text);
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);

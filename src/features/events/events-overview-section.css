@@ -15,6 +15,9 @@
      stays unreset on purpose, it's flat on the ground, not this card. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text);
 }
 

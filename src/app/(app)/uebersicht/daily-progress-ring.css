@@ -6,12 +6,18 @@
   flex-shrink: 0;
 }
 
+/* Groove/structure, not meaning — decorative tier, may stay under 3:1 on the
+   ground (issue #846 AK4, docs/design/farben-typografie.md). */
 .daily-progress-ring__track {
-  stroke: var(--border);
+  stroke: var(--border-faint);
 }
 
+/* Not --accent: on /uebersicht the ground IS --area-tasks == --accent, so a
+   filled --accent stroke was invisible against it (1.01:1, issue #846 AK2).
+   --on-ground is the route's measured ink, ≥4.5:1 against its own ground in
+   both themes, so the fill always clears 3:1 too. */
 .daily-progress-ring__fill {
-  stroke: var(--accent);
+  stroke: var(--on-ground);
   stroke-linecap: round;
 }
 

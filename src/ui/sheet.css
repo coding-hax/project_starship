@@ -71,6 +71,9 @@ dialog.sheet:not([open])::backdrop {
      redeclares its own `color` needs it refreshed here. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text);
   padding: var(--space-6) var(--space-4)
     calc(var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset));

@@ -48,12 +48,15 @@
 }
 
 /* A day without a mood: a thin, muted stump at the baseline — a different shape
-   *and* a neutral token, so it never reads as "mood 0 in the area colour". */
+   *and* a neutral token, so it never reads as "mood 0 in the area colour".
+   It means something ("no mood logged today"), so it takes the meaningful
+   edge tier (--border), lifted to clear 3:1 on the ground — not --border-faint,
+   which stayed under 1.1:1 on /journal's dark ground (issue #846 AK1). */
 .journal-mood-band__baseline {
   width: 100%;
   height: 2px;
   border-radius: var(--radius-pill);
-  background: var(--border-faint);
+  background: var(--border);
 }
 
 .journal-mood-band__empty {
@@ -62,8 +65,11 @@
   padding: var(--space-4);
   border-radius: var(--radius-card);
   background: var(--surface-raised);
-  /* Own surface, own ink (issue #832 AK5). */
+  /* Own surface, own ink and edges (issue #832 AK5, issue #846). */
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text-muted);
   font-size: var(--text-secondary);
 }
