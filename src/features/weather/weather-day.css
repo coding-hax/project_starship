@@ -173,6 +173,12 @@
      FAB-Glyphe und den Termin-Detail-Titel bei 32. */
   font-size: var(--text-temp);
   color: var(--text);
+  /* Rundschrift-Rezept (issue #859, ADR-0027) — nur die große Tages-Temperatur
+     (AK3); .weather-day__temp-min bleibt Inter (sekundär/muted). */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 
 .weather-day__temp-min {

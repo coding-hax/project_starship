@@ -67,7 +67,11 @@
   --radius-card: var(--radius-card);
   --radius-pill: var(--radius-pill);
 
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+  /* `inline` ist Pflicht (issue #859, ADR-0027): ohne es emittierte Tailwind
+     `:root { --font-display: var(--font-display) }` — ein Zyklus, weil
+     tokens.css dieselbe Custom Property schon auf :root definiert. */
+  --font-sans: var(--font-ui);
+  --font-display: var(--font-display);
 }
 
 /*
@@ -282,7 +286,7 @@ body {
      of them. */
   isolation: isolate;
   color: var(--text);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: calc(var(--text-body) * var(--font-scale, 1));
   /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
@@ -303,6 +307,13 @@ h1 {
   /* Halbhoher Seitenkopf (issue #833): --text-page-title, nicht --text-title —
      das trägt noch die FAB-Glyphe und den Termin-Detail-Titel bei 32. */
   font-size: var(--text-page-title);
+  /* Rundschrift (issue #859, ADR-0027) — nur h1, nicht die h1/h2/h3-Gruppe
+     oben: h2/h3 bleiben Inter (AK4). Überschreibt deren letter-spacing/
+     line-height gezielt für h1. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 
 h2 {

@@ -205,6 +205,16 @@
   --text-page-title-lg: 26px; /* nur Aktivitäten */
   --text-temp: 40px; /* Wetter, große Tages-Temperatur */
 
+  /* Zwei Font-Rollen statt einer rohen Familie (issue #859, ADR-0027): keine
+     Datei greift `--font-inter`/`--font-nunito` roh ab, dieselbe Regel wie bei
+     den Schriftgraden (#591/#592). `--font-inter`/`--font-nunito` liegen als
+     `next/font`-Variablen auf `<html>` = `:root` (layout.tsx), hier also
+     lesbar. `ui-rounded`/`'SF Pro Rounded'` lösen nur unter Apple-Safari auf —
+     überall sonst (CI/Linux-Chromium, Android, Windows) greift der selbst
+     gehostete Web-Fallback Nunito. */
+  --font-ui: var(--font-inter), system-ui, sans-serif;
+  --font-display: ui-rounded, 'SF Pro Rounded', var(--font-nunito), system-ui, sans-serif;
+
   --weight-normal: 400;
   --weight-emphasis: 600;
 
