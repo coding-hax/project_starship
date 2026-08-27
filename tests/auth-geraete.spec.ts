@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test, type Browser } from '@playwright/test';
+import type { Client } from 'pg';
 import {
   createThrowawayCredential,
   createThrowawaySession,
@@ -22,6 +25,19 @@ test.beforeEach(async () => {
  */
 async function freshSessionContext(browser: Browser, baseURL: string | undefined) {
   const session = await createThrowawaySession();
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+  const page = await context.newPage();
+  return { context, page, tokenHash: session.tokenHash };
+}
+
+/**
+ * Same as `freshSessionContext`, but the throwaway session is bound to a given
+ * credential (issue #854) — needed for AK1–AK3 below, which distinguish "this
+ * device" from the others by that binding.
+ */
+async function sessionContextFor(browser: Browser, baseURL: string | undefined, credentialId: string) {
+  const session = await createThrowawaySession(credentialId);
   const context = await browser.newContext();
   await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
   const page = await context.newPage();
@@ -270,5 +286,139 @@ test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
     await expect(page.locator('.devices-panel__add-form').getByLabel('Gerätename')).toBeVisible();
 
     await context.close();
+  });
+});
+
+test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Context)', () => {
+  test('AK1: Widerruf eines Geräts beendet nur dessen Sitzung, andere Geräte leben weiter', async ({
+    browser,
+    baseURL,
+  }) => {
+    await deleteAllCredentials();
+    const idA = await createThrowawayCredential({ label: 'Bedienendes Gerät' });
+    const idX = await createThrowawayCredential({ label: 'Widerruf-Ziel' });
+    const idY = await createThrowawayCredential({ label: 'Weiteres Gerät' });
+
+    const { context: contextA, page: pageA } = await sessionContextFor(browser, baseURL, idA);
+    const { context: contextX, page: pageX, tokenHash: tokenHashX } = await sessionContextFor(
+      browser,
+      baseURL,
+      idX,
+    );
+    const { context: contextY, tokenHash: tokenHashY } = await sessionContextFor(
+      browser,
+      baseURL,
+      idY,
+    );
+
+    await pageA.goto('/einstellungen');
+    const row = pageA.locator('.devices-panel__item', { hasText: 'Widerruf-Ziel' });
+    await row.getByRole('button', { name: 'Widerrufen' }).click();
+    await row.getByRole('button', { name: 'Widerrufen' }).click();
+
+    await expect(
+      pageA.locator('.devices-panel__item', { hasText: 'Widerruf-Ziel' }),
+    ).toHaveCount(0);
+    expect(await credentialRowExists(idX)).toBe(false);
+    await expect.poll(() => sessionRowExists(tokenHashX)).toBe(false);
+    expect(await sessionRowExists(tokenHashY)).toBe(true);
+
+    await pageX.goto('/uebersicht');
+    await expect(pageX).toHaveURL(/\/anmelden$/);
+
+    await contextA.close();
+    await contextX.close();
+    await contextY.close();
+  });
+
+  test('AK2: „Dieses Gerät" markiert nur die Zeile der eigenen Credential', async ({
+    browser,
+    baseURL,
+  }) => {
+    await deleteAllCredentials();
+    const idOwn = await createThrowawayCredential({ label: 'Aktives Gerät' });
+    await createThrowawayCredential({ label: 'Zweitgerät' });
+    const { context, page } = await sessionContextFor(browser, baseURL, idOwn);
+
+    await page.goto('/einstellungen');
+    const rowOwn = page.locator('.devices-panel__item', { hasText: 'Aktives Gerät' });
+    const rowOther = page.locator('.devices-panel__item', { hasText: 'Zweitgerät' });
+    await expect(rowOwn.getByText('Dieses Gerät')).toBeVisible();
+    await expect(rowOther.getByText('Dieses Gerät')).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test('AK3: Selbst-Widerruf verlangt eine eigene Bestätigung und meldet ab', async ({
+    browser,
+    baseURL,
+  }) => {
+    await deleteAllCredentials();
+    const idSelf = await createThrowawayCredential({ label: 'Eigenes Gerät' });
+    await createThrowawayCredential({ label: 'Anderes Gerät' });
+    const { context, page } = await sessionContextFor(browser, baseURL, idSelf);
+
+    await page.goto('/einstellungen');
+    // Positional, not hasText: 'Eigenes Gerät' — the confirm step below swaps in copy
+    // that no longer contains the label, which would make a hasText filter stop
+    // matching mid-test. listCredentialsForDisplay orders by createdAt, so the
+    // credential created first (idSelf) is the first row.
+    const row = page.locator('.devices-panel__item').first();
+    await expect(row).toContainText('Eigenes Gerät');
+    await row.getByRole('button', { name: 'Widerrufen' }).click();
+
+    await expect(row.getByText('Das ist dieses Gerät — du wirst abgemeldet')).toBeVisible();
+    await expect(row.getByText('„Eigenes Gerät" wirklich widerrufen?')).toHaveCount(0);
+
+    await row.getByRole('button', { name: 'Widerrufen' }).click();
+
+    await expect(page).toHaveURL(/\/anmelden$/);
+    expect(await credentialRowExists(idSelf)).toBe(false);
+
+    await context.close();
+  });
+
+  test('AK4: Down-Pfad von 0021 entfernt credential_id, Up-Pfad stellt sie wieder her', async () => {
+    const downSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/down/0021_colorful_famine.down.sql'),
+      'utf8',
+    );
+    const upSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/0021_colorful_famine.sql'),
+      'utf8',
+    );
+
+    async function sessionColumns(client: Client): Promise<string[]> {
+      const { rows } = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'`,
+      );
+      return rows.map((r) => r.column_name as string);
+    }
+
+    async function credentialColumns(client: Client): Promise<string[]> {
+      const { rows } = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'credentials'`,
+      );
+      return rows.map((r) => r.column_name as string);
+    }
+
+    await withDb(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const credentialColumnsBefore = await credentialColumns(client);
+
+        await client.query(downSql);
+        expect(await sessionColumns(client)).not.toContain('credential_id');
+        expect(await credentialColumns(client)).toEqual(credentialColumnsBefore);
+
+        await client.query(upSql);
+        expect(await sessionColumns(client)).toContain('credential_id');
+        expect(await credentialColumns(client)).toEqual(credentialColumnsBefore);
+      } finally {
+        // DDL ist in Postgres transaktional — der Rollback macht auch DROP/ADD
+        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (journal.spec.ts:184).
+        await client.query('ROLLBACK');
+      }
+    });
   });
 });
