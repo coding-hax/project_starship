@@ -34,13 +34,24 @@
   margin-block-end: var(--space-1);
 }
 
+/* Nie schrumpfen (issue #850): Icon + „Übersicht" ist die einzige Möglichkeit
+   zurückzukommen, die darf nicht dem Datum weichen. */
+.weather-day__back {
+  flex-shrink: 0;
+}
+
 /* Titel + Figur als ein Cluster (issue #830), damit `space-between` beim
    Zurück-Link und dem Cluster bleibt statt die Figur zwischen Datum und Rand
-   zu schieben. */
+   zu schieben. `min-width: 0` (issue #850) erlaubt dem Cluster, unter seine
+   eigene Inhaltsbreite zu schrumpfen — sonst bleibt der Flex-Default
+   `min-width: auto` hart bei genau der Breite, die AC10 verletzt, sobald die
+   42-px-Figur (vorher 32px) plus langer Wochentag nicht mehr neben den
+   Zurück-Link passen. */
 .weather-day__title-cluster {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
 }
 
 .weather-day__date {
@@ -50,13 +61,22 @@
      --text-page-title/22px) statt vom bisherigen --text-body/16px-Override. */
   margin: 0;
   text-align: right;
-  /* Seit #830 teilt sich das Cluster die Restbreite mit der PageFace (32px +
-     --space-2 Lücke) — ohne nowrap zwang die globale h1-Regel
-     (overflow-wrap: break-word) den Wochentag ("Donnerstag, …") in zwei
-     Zeilen, sobald ihm die 40px fehlten. Das vergrößerte die Kopfzeile über
-     die 44px des Zurück-Links hinaus und riss den Spalt zur ersten Box auf
-     (weather-day.spec.ts, „der Spalt … ist nach #353 noch kleiner …"). */
+  /* Seit #830 teilt sich das Cluster die Restbreite mit der PageFace (jetzt
+     42px, issue #850 + --space-2 Lücke) — ohne nowrap zwang die globale
+     h1-Regel (overflow-wrap: break-word) den Wochentag ("Donnerstag, …") in
+     zwei Zeilen, sobald ihm die Breite fehlte. Das vergrößerte die Kopfzeile
+     über die 44px des Zurück-Links hinaus und riss den Spalt zur ersten Box
+     auf (weather-day.spec.ts, „der Spalt … ist nach #353 noch kleiner …"). */
   white-space: nowrap;
+  /* Sicherheitsnetz statt zweiter Zeile (issue #850 AC10): reicht die Breite
+     bei einem langen Wochentag (z. B. „Donnerstag") neben der 42-px-Figur
+     nicht ganz, schrumpft `.weather-day__date` (min-width: 0 s. o.) auf den
+     verbliebenen Platz und blendet den Überschuss als „…" aus, statt das
+     Dokument waagerecht scrollen zu lassen. Der textContent bleibt
+     unverändert (toHaveText-Asserts greifen weiter), nur das Gemalte kürzt. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .weather-day__back {
