@@ -98,6 +98,16 @@ export async function revokeCredential(id: string): Promise<RevokeCredentialResu
   });
 }
 
+/** Renames a passkey. `false` if no credential with that id exists. */
+export async function renameCredential(id: string, label: string | null): Promise<boolean> {
+  const updated = await db
+    .update(credentials)
+    .set({ label })
+    .where(eq(credentials.id, id))
+    .returning({ id: credentials.id });
+  return updated.length === 1;
+}
+
 /* --------------------------------- recovery -------------------------------- */
 
 function hash(value: string): string {
