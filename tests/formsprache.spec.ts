@@ -84,6 +84,23 @@ async function insertGarminActivity(): Promise<void> {
   );
 }
 
+/**
+ * /uebersicht verlinkt jeden Vorhersagetag (weather-forecast.tsx) — der Besuch dort
+ * grundiert also einen Next-Link-Prefetch für /wetter/<datum>, der auch noch einige
+ * Routen später in Flug sein kann. `page.goto` verliert das Rennen dann mit
+ * `net::ERR_ABORTED` (kein Ladefehler der Seite selbst — dieselbe Route lädt beim
+ * direkten Aufruf zuverlässig). Ein Retry klärt das; ein zweites Scheitern ist ein
+ * echtes Problem.
+ */
+async function gotoRoute(page: Page, path: string): Promise<void> {
+  try {
+    await page.goto(path);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('ERR_ABORTED')) throw error;
+    await page.goto(path);
+  }
+}
+
 /** Rundschrift-Rezept (ADR-0027): dieselben vier Zeilen an jeder AK3-Stelle. */
 async function assertDisplayRecipe(locator: Locator, label: string): Promise<void> {
   await expect(locator, label).toBeVisible();
@@ -159,7 +176,7 @@ test('AK3: h1 trägt die Rundschrift auf acht der neun Routen', async ({ page })
   await registerPasskey(page);
 
   for (const path of H1_ROUTES) {
-    await page.goto(path);
+    await gotoRoute(page, path);
     await assertDisplayRecipe(page.locator('h1').first(), `h1 auf ${path}`);
   }
 });
@@ -187,7 +204,7 @@ test('AK3: Kartentitel, FAB, große Zahlen tragen dieselbe Rundschrift', async (
   await page.goto('/uebersicht');
   await assertDisplayRecipe(page.locator('.daily-progress-ring__count'), '.daily-progress-ring__count');
 
-  await page.goto('/wetter/2026-07-18');
+  await gotoRoute(page, '/wetter/2026-07-18');
   await assertDisplayRecipe(page.locator('.weather-day__temp-max'), '.weather-day__temp-max');
 
   await insertGarminActivity();
