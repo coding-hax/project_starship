@@ -21,7 +21,9 @@ interface CredentialRowProps {
   isLastRemaining: boolean;
   disabled: boolean;
   busy: boolean;
+  online: boolean;
   onRevoke: (id: string, isCurrent: boolean) => void;
+  onRename: (id: string, label: string) => Promise<boolean>;
   entering: boolean;
   leaving: boolean;
   onAnimationEnd: () => void;
@@ -32,12 +34,17 @@ function CredentialRow({
   isLastRemaining,
   disabled,
   busy,
+  online,
   onRevoke,
+  onRename,
   entering,
   leaving,
   onAnimationEnd,
 }: CredentialRowProps) {
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(credential.label ?? '');
+  const nameInputId = useId();
   const label = credential.label || 'Unbenanntes Gerät';
   const description = `Hinzugefügt am ${formatDate(credential.createdAt)} · Zuletzt genutzt ${
     credential.lastUsedAt ? formatDate(credential.lastUsedAt) : 'nie'
@@ -49,6 +56,12 @@ function CredentialRow({
   ) : (
     label
   );
+
+  async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const succeeded = await onRename(credential.id, name);
+    if (succeeded) setRenaming(false);
+  }
 
   return (
     <li
@@ -84,16 +97,57 @@ function CredentialRow({
             </button>
           </div>
         </Row>
+      ) : renaming ? (
+        <form className="devices-panel__add-form" onSubmit={handleRenameSubmit}>
+          <label htmlFor={nameInputId} className="devices-panel__add-label">
+            Neuer Name
+          </label>
+          <input
+            id={nameInputId}
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="z. B. iPhone"
+            className="devices-panel__add-input"
+            autoFocus
+          />
+          <div className="devices-panel__confirm">
+            <button type="submit" className="devices-panel__button" disabled={busy}>
+              Speichern
+            </button>
+            <button
+              type="button"
+              className="devices-panel__button devices-panel__button--secondary"
+              onClick={() => {
+                setName(credential.label ?? '');
+                setRenaming(false);
+              }}
+              disabled={busy}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
       ) : (
         <Row label={rowLabel} description={description}>
-          <button
-            type="button"
-            className="devices-panel__button devices-panel__button--secondary"
-            onClick={() => setConfirming(true)}
-            disabled={disabled}
-          >
-            Widerrufen
-          </button>
+          <div className="devices-panel__confirm">
+            <button
+              type="button"
+              className="devices-panel__button devices-panel__button--secondary"
+              onClick={() => setRenaming(true)}
+              disabled={!online || busy}
+            >
+              Umbenennen
+            </button>
+            <button
+              type="button"
+              className="devices-panel__button devices-panel__button--secondary"
+              onClick={() => setConfirming(true)}
+              disabled={disabled}
+            >
+              Widerrufen
+            </button>
+          </div>
         </Row>
       )}
       {isLastRemaining && (
@@ -173,8 +227,17 @@ function AddDeviceRow({
 
 export function DevicesPanel() {
   const online = useOnline();
-  const { phase, credentials, otherCount, busy, error, revoke, endOtherSessions, addDevice } =
-    useDevices();
+  const {
+    phase,
+    credentials,
+    otherCount,
+    busy,
+    error,
+    revoke,
+    endOtherSessions,
+    addDevice,
+    renameDevice,
+  } = useDevices();
   const [confirmingSessions, setConfirmingSessions] = useState(false);
   const rows = useListPresence(credentials, (credential) => credential.id);
 
@@ -192,7 +255,9 @@ export function DevicesPanel() {
             isLastRemaining={credentials.length <= 1}
             disabled={credentials.length <= 1 || !online}
             busy={busy}
+            online={online}
             onRevoke={revoke}
+            onRename={renameDevice}
             entering={row.status === 'entering'}
             leaving={row.status === 'leaving'}
             onAnimationEnd={row.onAnimationEnd}

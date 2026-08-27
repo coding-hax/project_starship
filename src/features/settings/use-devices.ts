@@ -93,6 +93,29 @@ export function useDevices() {
     }
   }, [load]);
 
+  const renameDevice = useCallback(
+    async (id: string, label: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/auth/credentials/${id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ label: label.trim() || null }),
+        });
+        if (!response.ok) {
+          setError('Umbenennen fehlgeschlagen.');
+          return false;
+        }
+        await load();
+        return true;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
   const addDevice = useCallback(
     async (label: string): Promise<boolean> => {
       setBusy(true);
@@ -132,5 +155,15 @@ export function useDevices() {
     [load],
   );
 
-  return { phase, credentials, otherCount, busy, error, revoke, endOtherSessions, addDevice };
+  return {
+    phase,
+    credentials,
+    otherCount,
+    busy,
+    error,
+    revoke,
+    endOtherSessions,
+    addDevice,
+    renameDevice,
+  };
 }
