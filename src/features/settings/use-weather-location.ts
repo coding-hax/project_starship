@@ -18,6 +18,10 @@ export const DEFAULT_WEATHER_LOCATION: WeatherLocation = {
   longitude: 7.0982,
 };
 
+/** Angezeigter Name für einen per GPS gesetzten Ort (issue #853) — kein
+ * Reverse-Geocoding, siehe Ticket „Nicht-Ziele". */
+export const CURRENT_LOCATION_NAME = 'Aktueller Standort';
+
 function isWeatherLocation(value: unknown): value is WeatherLocation {
   const candidate = value as Partial<WeatherLocation> | null;
   return (

@@ -89,6 +89,17 @@ test.describe('angemeldet', () => {
     expect(n1).not.toBe(n2);
   });
 
+  test('Permissions-Policy erlaubt Geolocation für die eigene Herkunft, Kamera und Mikrofon bleiben gesperrt (issue #853 AC5)', async ({
+    page,
+  }) => {
+    const response = await page.goto('/uebersicht');
+    const policy = response?.headers()['permissions-policy'] ?? '';
+
+    expect(policy).toContain('geolocation=(self)');
+    expect(policy).toContain('camera=()');
+    expect(policy).toContain('microphone=()');
+  });
+
   test('der Theme-Bootstrap läuft weiter: gesetztes Theme greift, ohne Verstoß (AK4)', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('starship:theme', 'dunkel'));
 
