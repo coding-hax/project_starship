@@ -170,16 +170,22 @@ test.describe('angemeldet', () => {
     await context.setOffline(true);
 
     const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-    const stops: Array<[label: string, heading: string]> = [
+    // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
+    // string — null routes it to expectUebersichtLoaded below instead.
+    const stops: Array<[label: string, heading: string | null]> = [
       ['Aufgaben', 'Aufgaben'],
       ['Kalender', 'Kalender'],
       ['Routinen', 'Routinen verwalten'],
-      ['Übersicht', 'Übersicht'],
+      ['Übersicht', null],
     ];
 
     for (const [label, heading] of stops) {
       await nav.getByRole('link', { name: label }).click();
-      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+      if (heading === null) {
+        await expectUebersichtLoaded(page);
+      } else {
+        await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+      }
       await expect(page).not.toHaveURL(/\/offline$/);
     }
   });

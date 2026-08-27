@@ -50,11 +50,17 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
     ['Kalender', '/kalender', 'Kalender'],
     ['Journal', '/journal', 'Journal'],
     ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
-    ['Übersicht', '/uebersicht', 'Übersicht'],
+    // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
+    // string — checked below via expectUebersichtLoaded instead.
+    ['Übersicht', '/uebersicht', null],
   ] as const) {
     await page.getByRole('link', { name: label }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
-    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    if (heading === null) {
+      await expectUebersichtLoaded(page);
+    } else {
+      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    }
     await expect(page.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
   }
 });
