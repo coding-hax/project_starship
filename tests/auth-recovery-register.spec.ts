@@ -72,9 +72,16 @@ async function seedExistingCredential(page: Page): Promise<void> {
  * (`excludeCredentials` matches it, InvalidStateError). A fresh context with its
  * own virtual authenticator is what recovery is actually exercising: a new
  * device, no session cookie, no existing credential of its own.
+ *
+ * `browser.newContext()` alone is not enough for that last part: the `mobile`
+ * project sets `storageState: AUTH_STATE` (issue #115), and Playwright's test
+ * `browser` fixture applies a project's `use` options as defaults to *every*
+ * `newContext()` call, not just the built-in `page`/`context` fixtures — so a
+ * bare call silently signs the "new device" in as the owner. An explicit empty
+ * storage state is what actually produces a signed-out context.
  */
 async function openRecoveryDevice(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const devicePage = await context.newPage();
   await enableVirtualAuthenticator(devicePage);
   await devicePage.goto('/anmelden');
@@ -218,7 +225,9 @@ test.describe('#856: Recovery-Formular unter /anmelden', () => {
   test('AK3: Abbruch der Face-ID-Abfrage erzeugt keine rote Fehlerzeile, der Code bleibt gültig', async ({
     browser,
   }) => {
-    const context = await browser.newContext();
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     // Simuliert den Nutzer-Abbruch (z. B. Face ID abgebrochen) — ein reines
     // Browser-UI-Ereignis, das der virtuelle Authenticator nicht deterministisch
@@ -248,7 +257,9 @@ test.describe('#856: Recovery-Formular unter /anmelden', () => {
   test('AK4: „Abbrechen" löscht eine stehengebliebene Fehlermeldung und schließt das Formular', async ({
     browser,
   }) => {
-    const context = await browser.newContext();
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.goto('/anmelden');
 
@@ -271,7 +282,9 @@ test.describe('#856: Recovery-Formular unter /anmelden', () => {
   test('AK6: offline ist das Formular inaktiv mit Hinweis, Dark Mode und reduzierte Bewegung bleiben bedienbar', async ({
     browser,
   }) => {
-    const context = await browser.newContext();
+    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
+    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await context.newPage();
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
     await page.goto('/anmelden');
