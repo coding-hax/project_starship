@@ -33,6 +33,13 @@
   font-size: var(--text-secondary);
 }
 
+.session-panel__error {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--danger);
+  font-size: var(--text-secondary);
+}
+
 .session-panel__confirm {
   display: flex;
   gap: var(--space-3);

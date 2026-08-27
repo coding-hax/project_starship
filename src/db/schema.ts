@@ -288,7 +288,6 @@ export const sessions = pgTable(
     tokenHash: text('token_hash').notNull().unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     /**
      * Which passkey minted this session (issue #854). Nullable — sessions minted
      * before this column existed stay `null` and are simply never matched by
