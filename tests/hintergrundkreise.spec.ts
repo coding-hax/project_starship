@@ -4,6 +4,12 @@ import { registerPasskey, resetAppData } from './helpers';
 /**
  * Hintergrundkreise, eine Gangart je Route (S3 von #828, issue #829). Ein Test
  * je AK, gemessen per getComputedStyle/getBoundingClientRect statt per Augenschein.
+ *
+ * issue #849 (Nacharbeit): die Kreise waren auf keiner Route sichtbar — `body`
+ * malte `--ground` deckend über die Ebene, obwohl deren `zIndex`/`pointer-events`
+ * (AK2 oben) unverändert korrekt waren. Die neuen AK1/AK2/AK3-Tests unten messen
+ * deshalb den tatsächlich gemalten Screenshot-Pixel statt resolveter CSS-Werte —
+ * genau die Prüfung, die dem alten AK2 gefehlt hat.
  */
 
 // AK1/AK3 navigieren durch alle neun Routen (plus einen zweiten Browser-Kontext
@@ -286,4 +292,229 @@ test('AK5: nach dem Abschalten steht kein Kreis vergrößert oder verschoben sti
 
   const afterToggle = await circleRects(page);
   expect(afterToggle).toEqual(baseline);
+});
+
+// --- issue #849: die Kreise müssen tatsächlich gemalt werden, nicht nur einen
+// korrekten z-index/pointer-events haben (s. Dateikopf). ------------------
+
+function clampRectToViewport(rect: CircleRect, viewport: { width: number; height: number }): CircleRect | null {
+  const left = Math.max(0, rect.left);
+  const top = Math.max(0, rect.top);
+  const right = Math.min(viewport.width, rect.left + rect.width);
+  const bottom = Math.min(viewport.height, rect.top + rect.height);
+  if (right <= left || bottom <= top) return null;
+  return { left, top, width: right - left, height: bottom - top };
+}
+
+/**
+ * First point inside `rect` where hit-testing reaches `<body>` directly — i.e.
+ * nothing opaque (a card, the header, the nav) sits above it. `.bg-layer`/
+ * `.bg-circle` carry `pointer-events: none`, so `elementFromPoint` sees through
+ * them straight to `<body>` wherever no real content covers that pixel; the
+ * colour actually painted there is whatever `.bg-layer` drew (ground or circle).
+ */
+async function findGroundPointInRect(page: Page, rect: CircleRect): Promise<{ x: number; y: number } | null> {
+  return page.evaluate((r) => {
+    const step = 4;
+    for (let y = Math.floor(r.top); y < r.top + r.height; y += step) {
+      for (let x = Math.floor(r.left); x < r.left + r.width; x += step) {
+        if (document.elementFromPoint(x, y)?.tagName === 'BODY') return { x, y };
+      }
+    }
+    return null;
+  }, rect);
+}
+
+/** Same reasoning as above, but outside every circle's rect — a plain-ground reference. */
+async function findGroundPointOutsideCircles(
+  page: Page,
+  rects: CircleRect[],
+  viewport: { width: number; height: number },
+): Promise<{ x: number; y: number } | null> {
+  return page.evaluate(
+    ({ rects, width, height }) => {
+      const step = 8;
+      const inside = (x: number, y: number, r: { top: number; left: number; width: number; height: number }) =>
+        x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height;
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          if (rects.some((r) => inside(x, y, r))) continue;
+          if (document.elementFromPoint(x, y)?.tagName === 'BODY') return { x, y };
+        }
+      }
+      return null;
+    },
+    { rects, width: viewport.width, height: viewport.height },
+  );
+}
+
+/**
+ * Reads real composited pixels, not resolved CSS (issue #849's whole point):
+ * `getComputedStyle` reports an element's own declared colour regardless of
+ * whether the stacking context ever lets it reach the screen — exactly how the
+ * old AK2 above stayed green while the circles were fully painted over. A
+ * screenshot fed back in as a data URL and drawn onto a canvas sidesteps that:
+ * the pixel it returns is what the browser actually painted.
+ */
+async function samplePixels(page: Page, points: { x: number; y: number }[]): Promise<[number, number, number][]> {
+  const buffer = await page.screenshot();
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+  return page.evaluate(
+    ({ dataUrl, points }) =>
+      new Promise<[number, number, number][]>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          const scaleX = img.naturalWidth / window.innerWidth;
+          const scaleY = img.naturalHeight / window.innerHeight;
+          resolve(
+            points.map(({ x, y }) => {
+              const data = ctx.getImageData(Math.round(x * scaleX), Math.round(y * scaleY), 1, 1).data;
+              return [data[0], data[1], data[2]] as [number, number, number];
+            }),
+          );
+        };
+        img.onerror = () => reject(new Error('Screenshot ließ sich nicht als Bild laden'));
+        img.src = dataUrl;
+      }),
+    { dataUrl, points },
+  );
+}
+
+function maxChannelDiff(a: [number, number, number], b: [number, number, number]): number {
+  return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+}
+
+async function assertCircleVisible(page: Page, label: string): Promise<void> {
+  const viewport = page.viewportSize()!;
+  const rects = await circleRects(page);
+  const largest = rects.reduce((a, b) => (a.width * a.height >= b.width * b.height ? a : b));
+  const clamped = clampRectToViewport(largest, viewport);
+  expect(clamped, `größter Kreis liegt komplett außerhalb des Viewports auf ${label}`).not.toBeNull();
+
+  const insidePoint = await findGroundPointInRect(page, clamped!);
+  expect(insidePoint, `keine unverdeckte Kreisfläche auf ${label}`).not.toBeNull();
+  const outsidePoint = await findGroundPointOutsideCircles(page, rects, viewport);
+  expect(outsidePoint, `keine kreisfreie Stelle auf ${label}`).not.toBeNull();
+
+  const [insideColor, outsideColor] = await samplePixels(page, [insidePoint!, outsidePoint!]);
+  expect(
+    maxChannelDiff(insideColor, outsideColor),
+    `Kreisfläche ${JSON.stringify(insideColor)} vs. Grund ${JSON.stringify(outsideColor)} auf ${label}`,
+  ).toBeGreaterThanOrEqual(3);
+}
+
+test('AK1 (#849): auf jeder der neun Routen unterscheidet sich die Kreisfläche messbar vom Grund (Screenshot-Pixel)', async ({
+  page,
+  browser,
+}) => {
+  await registerPasskey(page);
+  // Ruhelage wie im alten AK1: eine feste Momentaufnahme statt eines
+  // Animationsfortschritts, der die Kreisrechtecke pro Lauf verschieben würde.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    await assertCircleVisible(page, route.path);
+  }
+
+  const anmeldenContext = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: page.viewportSize() ?? undefined,
+  });
+  const anmeldenPage = await anmeldenContext.newPage();
+  await anmeldenPage.emulateMedia({ reducedMotion: 'reduce' });
+  await anmeldenPage.goto('/anmelden');
+  await assertCircleVisible(anmeldenPage, '/anmelden');
+  await anmeldenContext.close();
+});
+
+test('AK2 (#849): dieselbe Messung ist in Hell und Dunkel grün', async ({ page, browser }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const route of ROUTES) {
+      await page.goto(route.path);
+      await assertCircleVisible(page, `${route.path} (${scheme})`);
+    }
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    const anmeldenContext = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+      viewport: page.viewportSize() ?? undefined,
+      colorScheme: scheme,
+    });
+    const anmeldenPage = await anmeldenContext.newPage();
+    await anmeldenPage.emulateMedia({ reducedMotion: 'reduce' });
+    await anmeldenPage.goto('/anmelden');
+    await assertCircleVisible(anmeldenPage, `/anmelden (${scheme})`);
+    await anmeldenContext.close();
+  }
+});
+
+const BLOB_PARTNERS: Record<string, string> = {
+  uebersicht: '#ffce00',
+  aufgaben: '#12a67a',
+  kalender: '#3aa7e0',
+  routinen: '#ffce00',
+  journal: '#cf49c0',
+  aktivitaeten: '#ff7300',
+  wetter: '#7cc9f0',
+  einstellungen: '#0e7c84',
+  anmelden: '#ffce00',
+};
+
+async function blobPartner(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--blob-partner').trim());
+}
+
+async function circleBackgroundColors(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bg-layer .bg-circle')).map((el) => getComputedStyle(el).backgroundColor),
+  );
+}
+
+async function groundColor(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+}
+
+async function assertFourOwnTones(page: Page, ground: string, expectedPartner: string, label: string): Promise<void> {
+  const partner = await blobPartner(page);
+  expect(partner.toLowerCase(), `--blob-partner auf ${label}`).toBe(expectedPartner);
+
+  const colors = await circleBackgroundColors(page);
+  expect(colors, `vier Kreisfarben auf ${label}`).toHaveLength(4);
+  expect(new Set(colors).size, `vier verschiedene Töne auf ${label}: ${colors.join(', ')}`).toBe(4);
+  for (const [i, color] of colors.entries()) {
+    expect(color, `Ton ${i + 1} auf ${label} entspricht unverändert dem Grund`).not.toBe(ground);
+  }
+}
+
+test('AK3 (#849): vier eigene Töne je Route, --blob-partner passt zum Entwurfsblatt', async ({ page, browser }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    const ground = await groundColor(page);
+    await assertFourOwnTones(page, ground, BLOB_PARTNERS[route.ground], route.path);
+  }
+
+  const anmeldenContext = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: page.viewportSize() ?? undefined,
+  });
+  const anmeldenPage = await anmeldenContext.newPage();
+  await anmeldenPage.emulateMedia({ reducedMotion: 'reduce' });
+  await anmeldenPage.goto('/anmelden');
+  const ground = await groundColor(anmeldenPage);
+  await assertFourOwnTones(anmeldenPage, ground, BLOB_PARTNERS.anmelden, '/anmelden');
+  await anmeldenContext.close();
 });
