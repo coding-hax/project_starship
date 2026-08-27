@@ -3,6 +3,7 @@ import { AppHeader } from '@/ui/app-header';
 import { PageFace } from '@/ui/faces';
 import { OverviewReadyProvider } from '@/ui/overview-ready';
 import { DailyProgressRing } from './daily-progress-ring';
+import { GreetingHeading } from './greeting-heading';
 import { UebersichtSections } from './uebersicht-sections';
 
 export const metadata = { title: 'Übersicht · Starship' };
@@ -15,7 +16,7 @@ export default function UebersichtPage() {
           already standing (issue #642). */}
       <div className="uebersicht__title-row" data-ground="uebersicht">
         <div className="uebersicht__title-cluster">
-          <h1>Übersicht</h1>
+          <GreetingHeading />
           <PageFace face="uebersicht" />
         </div>
         <div className="uebersicht__title-actions">

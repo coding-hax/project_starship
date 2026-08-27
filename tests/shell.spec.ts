@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { NAV_ITEMS } from '../src/ui/nav-items';
-import { registerPasskey, resetDatabase } from './helpers';
+import { expectUebersichtLoaded, registerPasskey, resetDatabase } from './helpers';
 
 const NAV_LABELS = NAV_ITEMS.map((item) => item.label);
 
@@ -31,7 +31,7 @@ test('an unauthenticated visitor is sent to the login', async ({ page }) => {
 
 test('passkey setup issues a recovery code exactly once and opens the app', async ({ page }) => {
   await registerPasskey(page);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   // Second visit: already authenticated, so no code and no second setup.
   await page.goto('/anmelden');
@@ -133,7 +133,7 @@ test('/heute permanently redirects to /uebersicht instead of 404ing (issue #161)
   const response = await page.goto('/heute');
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   const redirected = response!.request().redirectedFrom();
   expect(redirected).not.toBeNull();

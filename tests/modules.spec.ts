@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import {
+  expectUebersichtLoaded,
   openMeteoForecastBody,
   registerPasskey,
   resetAppData,
@@ -353,7 +354,7 @@ test('Direktaufruf einer Aus-Route landet auf /uebersicht, kein 404 (issue #309 
 
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
   await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toHaveCount(0);
 });
 
@@ -391,7 +392,7 @@ test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue
 
   await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   await page.goto('/einstellungen');
   await expect(page).toHaveURL(/\/einstellungen$/);
@@ -407,5 +408,5 @@ test('Dark Mode + reduzierte Bewegung: die Umleitung einer Aus-Route funktionier
   await page.goto('/journal');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 });
