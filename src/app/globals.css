@@ -65,6 +65,7 @@
   --color-habits: var(--area-habits);
 
   --radius-card: var(--radius-card);
+  --radius-surface: var(--radius-surface);
   --radius-pill: var(--radius-pill);
 
   --font-sans: var(--font-inter), system-ui, sans-serif;
