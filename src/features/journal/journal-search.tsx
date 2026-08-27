@@ -55,6 +55,12 @@ function formatEntryDateTime(entryDate: string, createdAt: string): string {
  * und „Abbrechen" verlässt ihn wieder. Der Cache-Hook läuft dennoch bei jedem
  * Render (vor dem frühen `return null`), damit das Öffnen ohne Ladepause
  * Treffer zeigt.
+ *
+ * Seit issue #847 (AK1/AK2) läuft die Suche, solange der Suchmodus offen ist,
+ * immer mit `showAllWhenEmpty: true` — ein leeres Feld zeigt darum sofort alle
+ * Einträge, statt auf Enter oder das offene Filter-Menü zu warten (der frühere
+ * `showAll`-State und der Enter-Sonderweg aus issue #456 sind damit
+ * überflüssig geworden).
  */
 export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => void }) {
   const { active, close } = useJournalSearchMode();
@@ -66,14 +72,6 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
   const [to, setTo] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
-  const [showAll, setShowAll] = useState(false);
-
-  const trimmed = query.trim();
-  const hasFilterValue = mood !== null || tag !== null || Boolean(from) || Boolean(to);
-  // issue #456: das Öffnen des Filter-Menüs und ein Enter im leeren Suchfeld
-  // zeigen sofort alle Einträge, statt eines leeren Ergebnisses — der Editor
-  // weicht in beiden Fällen genauso wie bei einem echten Treffer.
-  const isActive = Boolean(trimmed) || hasFilterValue || showFilters || showAll;
 
   const tagOptions = useMemo(() => {
     const all = new Set<string>();
@@ -83,20 +81,19 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
     return [...all].sort();
   }, [entries]);
 
-  const results =
-    entries && isActive
-      ? searchJournalEntries(
-          entries,
-          {
-            query,
-            mood: mood === null ? undefined : String(mood),
-            tag: tag ?? undefined,
-            from: from || undefined,
-            to: to || undefined,
-          },
-          { showAllWhenEmpty: showFilters || showAll },
-        )
-      : [];
+  const results = entries
+    ? searchJournalEntries(
+        entries,
+        {
+          query,
+          mood: mood === null ? undefined : String(mood),
+          tag: tag ?? undefined,
+          from: from || undefined,
+          to: to || undefined,
+        },
+        { showAllWhenEmpty: true },
+      )
+    : [];
 
   function resetFilters() {
     setMood(null);
@@ -108,10 +105,9 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
   function clearSearchState() {
     setQuery('');
     resetFilters();
-    setShowAll(false);
-    // issue #456: showFilters allein hält isActive sonst weiter offen, selbst
-    // nach dem Reset der Filterwerte — die Suche zu verlassen muss auch das
-    // offene Filter-Menü schließen (AC-P4).
+    // issue #456/#847: showFilters hält den Suchmodus zwar nicht mehr offen
+    // (der bleibt ohnehin immer aktiv), aber das Filter-Menü selbst soll beim
+    // erneuten Öffnen wieder eingeklappt starten (AK4).
     setShowFilters(false);
   }
 
@@ -153,12 +149,6 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
           className="journal-search__input"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              setShowAll(true);
-            }
-          }}
           placeholder="Journal durchsuchen …"
           aria-label="Journal durchsuchen"
           autoFocus
@@ -222,7 +212,11 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
           </div>
         </div>
       )}
-      {isActive && entries !== undefined && results.length === 0 && (
+      {/* issue #847 AK3: „Keine Treffer." beschreibt eine Eingabe/einen Filter,
+          der eine bestehende Liste auf nichts verengt — ein Journal ganz ohne
+          Einträge ist kein Treffer-Problem und behält den ruhigen Leerzustand
+          (hier: gar keine Meldung, wie schon vor dem Öffnen des Suchmodus). */}
+      {entries !== undefined && entries.length > 0 && results.length === 0 && (
         <p className="journal-search__empty">Keine Treffer.</p>
       )}
       {results.length > 0 && (

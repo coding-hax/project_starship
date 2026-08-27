@@ -451,11 +451,12 @@ test('AC-D: das Öffnen des Filter-Menüs zeigt sofort alle Einträge (issue #45
   await expect(results).toHaveCount(2);
   await expect(results).toContainText(['Eintrag B', 'Eintrag A']);
 
-  // Filter wieder zuklappen, ohne einen Filter gesetzt zu haben — die
-  // Ergebnisliste verschwindet, der Suchmodus bleibt aber offen (Rückkehr zum
-  // Editor erst über „Abbrechen", nicht durch das Schließen des Filter-Menüs).
+  // Seit issue #847 AK1 ist "alle Einträge zeigen" der Normalzustand des
+  // Suchmodus, nicht mehr an das offene Filter-Menü gebunden — die Liste
+  // bleibt darum auch nach dem Zuklappen des Filter-Menüs stehen; nur
+  // „Abbrechen" verlässt den Suchmodus.
   await page.getByRole('button', { name: 'Filter', exact: true }).click();
-  await expect(results).toHaveCount(0);
+  await expect(results).toHaveCount(2);
   await expect(fab).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
@@ -589,4 +590,150 @@ test('AK6: im Suchmodus kein FAB; jeder Treffer trägt volles Datum + Zeit und h
   await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
   await expect(fab).toBeVisible();
   await expect(page.locator('.journal-search')).toHaveCount(0);
+});
+
+test('issue #847 AK1: die Lupe zeigt ohne jede Eingabe sofort alle Einträge, neuester zuerst', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Alter Eintrag', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Neuerer Eintrag', tags: [] });
+
+  await openSearch(page);
+  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+
+  // Weder Enter noch das Filter-Menü nötig — die Liste steht sofort.
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Neuerer Eintrag', 'Alter Eintrag']);
+});
+
+test('issue #847 AK2: Leeren des Suchfelds stellt die volle Liste wieder her statt in die leere Ansicht zurückzufallen', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Ruhiger Lauf', tags: [] });
+  await seedEntry(page, '2026-07-02', { text: 'Büro-Tag', tags: [] });
+
+  await openSearch(page);
+  const search = page.getByLabel('Journal durchsuchen');
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+
+  await search.fill('lauf');
+  await expect(results).toHaveCount(1);
+
+  await search.fill('');
+  await expect(results).toHaveCount(2);
+  await expect(results).toContainText(['Büro-Tag', 'Ruhiger Lauf']);
+});
+
+test('issue #847 AK3: „Keine Treffer." erscheint nur bei einer echten Nulltreffer-Suche, nie bei leerem Feld', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Ein Eintrag', tags: [] });
+
+  await openSearch(page);
+  await expect(page.locator('.journal-search__empty')).toHaveCount(0);
+
+  await page.getByLabel('Journal durchsuchen').fill('nichtvorhandenesding');
+  await expect(page.locator('.journal-search__empty')).toBeVisible();
+});
+
+test('issue #847 AK3: ein Journal ganz ohne Einträge zeigt beim Öffnen der Suche kein „Keine Treffer."', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await openSearch(page);
+  await expect(page.locator('.journal-search__result')).toHaveCount(0);
+  await expect(page.locator('.journal-search__empty')).toHaveCount(0);
+});
+
+test('issue #847 AK4: „Abbrechen" und erneutes Öffnen zeigen ein zurückgesetztes, geschlossenes Suchfeld mit voller Liste', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await seedEntry(page, '2026-07-01', { text: 'Eintrag A', mood: '5', tags: ['sport'] });
+  await seedEntry(page, '2026-07-02', { text: 'Eintrag B', tags: [] });
+
+  await openSearch(page);
+  await page.getByLabel('Journal durchsuchen').fill('eintrag a');
+  await openFilters(page);
+  const moodFilter = page.locator('.journal-search__mood-filter');
+  await moodFilter.getByRole('button', { name: 'Stimmung 5 filtern', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+  await openSearch(page);
+
+  await expect(page.getByLabel('Journal durchsuchen')).toHaveValue('');
+  await expect(page.locator('.journal-search__filters')).toHaveCount(0);
+  const results = page.locator('.journal-search__result');
+  await expect(results).toHaveCount(2);
+});
+
+test('issue #847 AK5: „Abbrechen" ist ein randloser Textknopf in Akzentfarbe mit 44px Tap-Ziel', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openSearch(page);
+
+  const cancel = page.getByRole('button', { name: 'Abbrechen', exact: true });
+  const lightStyles = await cancel.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { borderWidth: computed.borderWidth, backgroundColor: computed.backgroundColor, color: computed.color };
+  });
+  expect(lightStyles.borderWidth).toBe('0px');
+  expect(['rgba(0, 0, 0, 0)', 'transparent']).toContain(lightStyles.backgroundColor);
+
+  // Farbe kommt aus --accent, nicht aus einer festen Farbe (probe-Element mit
+  // demselben Custom Property, gleiche Technik wie AC7 unten) — angehängt
+  // innerhalb von .journal-search, damit es denselben [data-module='journal']
+  // -Scope erbt, der --accent auf das Journal-Violett umbiegt (journal-page.css).
+  const accentColor = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.color = 'var(--accent)';
+    document.querySelector('.journal-search')!.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  expect(lightStyles.color).toBe(accentColor);
+
+  const box = (await cancel.boundingBox())!;
+  expect(box).not.toBeNull();
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+
+  // Dark Mode (AK8): --accent ändert sich zwischen den Themes (tokens.css),
+  // die Textfarbe des Knopfs folgt.
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  const darkColor = await cancel.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).not.toBe(lightStyles.color);
+});
+
+test('issue #847 AK6: bei 375px bleibt das Suchfeld mindestens 200px breit und die Zeile einzeilig', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await setUpEditor(page);
+  await openSearch(page);
+
+  const input = page.locator('.journal-search__input');
+  const filterToggle = page.getByRole('button', { name: 'Filter', exact: true });
+  const cancel = page.getByRole('button', { name: 'Abbrechen', exact: true });
+
+  const inputBox = (await input.boundingBox())!;
+  const filterBox = (await filterToggle.boundingBox())!;
+  const cancelBox = (await cancel.boundingBox())!;
+  expect(inputBox.width).toBeGreaterThanOrEqual(200);
+
+  // Einzeilig: alle drei Elemente liegen auf derselben Höhe, kein Umbruch.
+  expect(Math.abs(inputBox.y - filterBox.y)).toBeLessThan(2);
+  expect(Math.abs(inputBox.y - cancelBox.y)).toBeLessThan(2);
+
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 });
