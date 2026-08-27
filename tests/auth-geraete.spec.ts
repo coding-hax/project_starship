@@ -359,7 +359,12 @@ test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Contex
     const { context, page } = await sessionContextFor(browser, baseURL, idSelf);
 
     await page.goto('/einstellungen');
-    const row = page.locator('.devices-panel__item', { hasText: 'Eigenes Gerät' });
+    // Positional, not hasText: 'Eigenes Gerät' — the confirm step below swaps in copy
+    // that no longer contains the label, which would make a hasText filter stop
+    // matching mid-test. listCredentialsForDisplay orders by createdAt, so the
+    // credential created first (idSelf) is the first row.
+    const row = page.locator('.devices-panel__item').first();
+    await expect(row).toContainText('Eigenes Gerät');
     await row.getByRole('button', { name: 'Widerrufen' }).click();
 
     await expect(row.getByText('Das ist dieses Gerät — du wirst abgemeldet')).toBeVisible();
