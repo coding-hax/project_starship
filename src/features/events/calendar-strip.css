@@ -247,6 +247,7 @@
   background: transparent;
   color: var(--text);
   font-size: var(--text-secondary);
+  line-height: var(--leading-tight);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-spring);
@@ -285,9 +286,14 @@
   opacity: 0.5;
 }
 
+/* Always rendered, even for a day with no events (calendar-strip.tsx) — an
+   empty placeholder holds the row's own height (`min-height`) so a dot-less
+   day's weekday/number sit at the same offset as a day with dots instead of
+   the whole cell content re-centring by the dot row's height (issue #845). */
 .calendar-strip__dots {
   display: flex;
   gap: var(--space-1);
+  min-height: var(--space-2);
 }
 
 .calendar-strip__dot {
