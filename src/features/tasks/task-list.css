@@ -111,6 +111,9 @@
      with no overdue/priority state lines up exactly with one that has an
      edge; only the colour below ever changes. */
   border-inline-start: 3px solid transparent;
+  /* Flat rows sit directly on the route ground (T1, issue #704) — a decorative
+     divider, may stay under 3:1 there (issue #846 AK4,
+     docs/design/farben-typografie.md). */
   border-block-end: 1px solid var(--border-faint);
   /* Only relevant while a swipe is releasing — see .task-list__item--dragging,
      which turns this off so the row follows the pointer with no lag. */
@@ -190,6 +193,9 @@
      text on this near-white face while gripped. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-raised);
 }
@@ -237,6 +243,9 @@
   /* Same near-white face as --gripped above — same reset (issue #832 AK5). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 }
 
 .task-list__item--nest-target::after {
@@ -282,6 +291,9 @@
   background: var(--surface-raised);
   /* Own surface, own ink (issue #832 AK5). */
   --text: var(--text-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text);
   box-shadow: var(--shadow-raised);
   font-size: var(--text-secondary);

@@ -23,11 +23,20 @@
      everything inside it, and a surface can reset them back to -base. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
-  --border: oklch(90% 0.012 75);
-  --border-strong: oklch(70% 0.015 75);
+  /* Fixed neutral edges — same anchor role as --text-base above: the value a
+     surface resets to when it sits on a page ground that has recoloured
+     --border* (issue #846). */
+  --border-base: oklch(90% 0.012 75);
+  --border-strong-base: oklch(70% 0.015 75);
   /* Deutlich schwächer als --border: Raster, Achsen, Trennlinien — nie
      bedeutungstragende Kanten, die bleiben --border vorbehalten (issue #591). */
-  --border-faint: oklch(95% 0.008 75);
+  --border-faint-base: oklch(95% 0.008 75);
+  /* `--border`/`--border-strong`/`--border-faint` are the *contextual* edges,
+     analogous to --text/--text-muted: a route ground can override them, a
+     surface resets them back to -base (issue #846). */
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 
   /* --- area colours: they carry the orientation --------------------------- */
   --area-tasks: oklch(70% 0.17 42); /* coral / mango — the app's primary */
@@ -219,9 +228,12 @@
        light-mode ink and render dark-on-dark once --surface goes dark. */
     --text-base: oklch(94% 0.008 85);
     --text-muted-base: oklch(70% 0.012 75);
-    --border: oklch(33% 0.014 60);
-    --border-strong: oklch(55% 0.016 60);
-    --border-faint: oklch(28% 0.012 60);
+    --border-base: oklch(33% 0.014 60);
+    --border-strong-base: oklch(55% 0.016 60);
+    --border-faint-base: oklch(28% 0.012 60);
+    --border: var(--border-base);
+    --border-strong: var(--border-strong-base);
+    --border-faint: var(--border-faint-base);
 
     /* Lifted and slightly desaturated: on a dark ground the same chroma reads as neon. */
     --area-tasks: oklch(75% 0.15 42);
@@ -264,9 +276,12 @@
   --text-muted: oklch(70% 0.012 75);
   --text-base: oklch(94% 0.008 85);
   --text-muted-base: oklch(70% 0.012 75);
-  --border: oklch(33% 0.014 60);
-  --border-strong: oklch(55% 0.016 60);
-  --border-faint: oklch(28% 0.012 60);
+  --border-base: oklch(33% 0.014 60);
+  --border-strong-base: oklch(55% 0.016 60);
+  --border-faint-base: oklch(28% 0.012 60);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 
   --area-tasks: oklch(75% 0.15 42);
   --area-events: oklch(72% 0.1 195);

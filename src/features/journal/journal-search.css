@@ -15,6 +15,9 @@
      (issue #832 AK5). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
 }
 
 .journal-search__bar {

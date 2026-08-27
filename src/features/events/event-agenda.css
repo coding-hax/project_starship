@@ -28,6 +28,9 @@
   /* Own surface, own ink (issue #832 AK5). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border: none;
   border-inline-start: 3px solid var(--area-events);
   border-radius: var(--radius-card);
@@ -100,6 +103,9 @@
   /* Own surface, own ink (issue #832 AK5). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border-inline-start: 3px solid var(--area-events);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-raised);

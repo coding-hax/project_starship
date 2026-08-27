@@ -32,6 +32,9 @@
      so they need the freshly-computed value inherited from here. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   color: var(--text);
   box-shadow: var(--shadow-raised);
   transition: opacity var(--duration-base) var(--ease-spring);
