@@ -281,8 +281,10 @@ test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
     await page.goto('/einstellungen');
     const row = page.locator('.devices-panel__item', { hasText: 'Alt' });
     await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await row.getByLabel('Neuer Name').fill('Neuer Name');
-    await row.getByRole('button', { name: 'Speichern' }).click();
+    // Not `row.getByLabel(...)` from here — "Alt" leaves the row's text once the
+    // form replaces it, so the `hasText` filter would no longer match anything.
+    await page.getByLabel('Neuer Name').fill('Neuer Name');
+    await page.getByRole('button', { name: 'Speichern' }).click();
 
     await expect(page.locator('.devices-panel__item', { hasText: 'Neuer Name' })).toBeVisible();
     await page.reload();
@@ -303,8 +305,8 @@ test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
     await page.goto('/einstellungen');
     const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
     await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await row.getByLabel('Neuer Name').fill('Mein iPhone');
-    await row.getByRole('button', { name: 'Speichern' }).click();
+    await page.getByLabel('Neuer Name').fill('Mein iPhone');
+    await page.getByRole('button', { name: 'Speichern' }).click();
 
     await expect(page.locator('.devices-panel__item', { hasText: 'Mein iPhone' })).toBeVisible();
     const rows = await withDb((client) =>
@@ -352,8 +354,8 @@ test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
     await page.goto('/einstellungen');
     const row = page.locator('.devices-panel__item', { hasText: 'Hat Namen' });
     await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await row.getByLabel('Neuer Name').fill('');
-    await row.getByRole('button', { name: 'Speichern' }).click();
+    await page.getByLabel('Neuer Name').fill('');
+    await page.getByRole('button', { name: 'Speichern' }).click();
 
     await expect(
       page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' }),
@@ -394,8 +396,8 @@ test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
 
     const row = page.locator('.devices-panel__item', { hasText: 'Dark-Test' });
     await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await expect(row.getByLabel('Neuer Name')).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Speichern' })).toBeVisible();
+    await expect(page.getByLabel('Neuer Name')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Speichern' })).toBeVisible();
 
     await context.close();
   });
