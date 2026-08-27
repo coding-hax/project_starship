@@ -15,9 +15,10 @@ Issue (mit Akzeptanzkriterien)
 ```
 
 **Akzeptanzkriterien sind Pflicht, nicht Stil** (#839, ADR-0026). Ein Ticket
-ohne den Abschnitt `## Akzeptanzkriterien` mit nummerierten Punkten oder
-Checkboxen wird nicht gebaut: der Runner kommentiert, was fehlt, setzt
-`needs-answer` und startet keinen Lauf. Fließtext zählt nicht.
+ohne den Abschnitt `## Akzeptanzkriterien` mit einer Aufzählung darunter —
+nummeriert, Checkboxen oder schlichte Punkte, ein Zusatz wie „(Entwurf)" in der
+Überschrift schadet nicht — wird nicht gebaut: der Runner kommentiert, was
+fehlt, setzt `needs-answer` und startet keinen Lauf. Fließtext zählt nicht.
 
 **Der Bau-Lauf mergt nicht mehr selbst.** Er endet mit dem Label `check` und
 lässt den PR im Entwurf. Erst ein eigener, nur lesender Prüf-Lauf hält den

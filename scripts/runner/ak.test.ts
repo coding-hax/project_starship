@@ -50,6 +50,22 @@ describe('acceptanceCriteria', () => {
     expect(acceptanceCriteria('#### Akzeptanzkriterium\n1. Eins')).toEqual(['Eins']);
   });
 
+  // Gemessen an den offenen Tickets: #854, #855 und #856 schreiben
+  // '## Akzeptanzkriterien (Entwurf)' und haben darunter saubere Listen. Ohne
+  // diese Toleranz parkte das Tor sie wegen eines Klammerzusatzes.
+  it('accepts a suffix after the heading word', () => {
+    expect(acceptanceCriteria('## Akzeptanzkriterien (Entwurf)\n1. Eins')).toEqual(['Eins']);
+    expect(acceptanceCriteria('## Akzeptanzkriterien (Entwurf, der Plan-Lauf schaerft)\n1. Eins')).toEqual(['Eins']);
+  });
+
+  // #847 fuehrt seine Kriterien als schlichte Punkte ('- **AK1** ...'). Das
+  // ist eine Aufzaehlung, kein Fliesstext -- ausgeschlossen sein soll das
+  // zweite, nicht das erste.
+  it('reads plain bullets, not only checkboxes and numbers', () => {
+    const body = '## Akzeptanzkriterien\n\n- **AK1** Die Lupe oeffnet die Suche.\n* AK2 Eine Eingabe verengt die Liste.';
+    expect(acceptanceCriteria(body)).toEqual(['**AK1** Die Lupe oeffnet die Suche.', 'AK2 Eine Eingabe verengt die Liste.']);
+  });
+
   // Kernaussage von AK1: Prosa ist keine Spezifikation.
   it('ignores prose without a list', () => {
     expect(acceptanceCriteria('## Akzeptanzkriterien\n\nDas Ding soll schnell sein.')).toEqual([]);

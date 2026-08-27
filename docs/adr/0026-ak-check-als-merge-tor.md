@@ -72,6 +72,15 @@ mechanisch aus dem Ticket-Body. Findet es keine, startet kein Bau-Lauf: ein
 Kommentar ans Ticket, `needs-answer`, Ende. Denselben Parser benutzt der
 Prüf-Lauf — die Nummerierung im Befund ist damit garantiert die des Tickets.
 
+Der Parser ist bewusst großzügig bei der **Form** und streng beim **Inhalt**:
+Überschrift auf jeder Ebene und mit Zusatz („(Entwurf)"), Kriterien als
+nummerierte Punkte, Checkboxen **oder** schlichte Aufzählungspunkte. Was nicht
+zählt, ist Fließtext. Der Grund steht in den offenen Tickets: von elf
+bau-relevanten wären beim ersten Zuschnitt vier geparkt worden — dreimal wegen
+eines Klammerzusatzes in der Überschrift, einmal wegen fehlender `[ ]`. Ein Tor,
+das an der Formatierung greift statt an der Sache, erzieht niemanden, es hält
+nur die Flotte an.
+
 ## Konsequenzen
 
 **Ein Ticket kostet ab jetzt mindestens einen Lauf mehr.** Bewusst: der Prüfer

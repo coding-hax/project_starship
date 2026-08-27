@@ -13,22 +13,33 @@
 // Singularform -- der Abschnitt heisst in ~40 offenen und geschlossenen
 // Tickets dieses Repos immer 'Akzeptanzkriterien', aber die Toleranz kostet
 // nichts und ein verfehlter Abschnitt kostet ein geparktes Ticket.
-const HEADING = /^#{1,6}[ \t]*Akzeptanzkriteri(?:en|um)[ \t]*:?[ \t]*$/i;
+//
+// Ein Zusatz hinter dem Wort zaehlt mit: '## Akzeptanzkriterien (Entwurf)'
+// steht so in #854, #855 und #856 -- alle drei mit sauberer Liste darunter.
+// Ohne diese Toleranz haette das Tor sie als "keine Kriterien" geparkt, und
+// zwar wegen eines Klammerzusatzes in der Ueberschrift.
+const HEADING = /^#{1,6}[ \t]*Akzeptanzkriteri(?:en|um)\b.*$/i;
 
 // Ende des Abschnitts: die naechste Ueberschrift, egal welcher Ebene.
 const ANY_HEADING = /^#{1,6}[ \t]+\S/;
 
-// Ein Kriterium beginnt am ZEILENANFANG -- ohne Einrueckung. Zwei Formen, weil
-// das Repo beide fuehrt: nummeriert ('1.' / '1)') wie in den Tickets zu #828,
-// und Checkboxen ('- [ ]' / '* [x]') wie im Issue-Template
-// .github/ISSUE_TEMPLATE/feature.md.
+// Ein Kriterium beginnt am ZEILENANFANG -- ohne Einrueckung. Drei Formen, weil
+// das Repo alle drei fuehrt: nummeriert ('1.' / '1)') wie in den Tickets zu
+// #828, Checkboxen ('- [ ]' / '* [x]') wie im Issue-Template
+// .github/ISSUE_TEMPLATE/feature.md, und der schlichte Aufzaehlungspunkt
+// ('- **AK1** ...') wie in #847.
+//
+// Der schlichte Punkt gehoert dazu, auch wenn AK1 von #839 nur die ersten
+// beiden nennt: ausgeschlossen sein soll Fliesstext, nicht die Aufzaehlung.
+// Ein Ticket wegen eines fehlenden '[ ]' zu parken, waere genau die
+// Formstrenge, die das Tor nicht meint.
 //
 // Die fehlende Einrueckung ist die Abgrenzung, nicht Kosmetik: ein
 // eingerueckter Aufzaehlungspunkt unter einem Kriterium ist dessen
 // Fortsetzung ("AK4 ... - davon betroffen: x, y"), kein eigenes Kriterium.
 // Zaehlte er mit, verschoebe sich die Nummerierung gegenueber dem, was im
 // Ticket steht -- und der Befund zeigte auf das falsche Kriterium.
-const ITEM = /^(?:[-*][ \t]+\[[ xX]\][ \t]*|\d+[.)][ \t]+)(.*)$/;
+const ITEM = /^(?:[-*][ \t]+\[[ xX]\][ \t]*|[-*][ \t]+|\d+[.)][ \t]+)(.*)$/;
 
 // Reiner Text ohne Aufzaehlung zaehlt NICHT als Kriterium (AK1 von #839). Ein
 // Abschnitt "## Akzeptanzkriterien\n\nDas Ding soll schnell sein." ist keine
@@ -80,8 +91,9 @@ Ich habe #${issue} für einen Bau-Lauf gezogen und im Body keinen Abschnitt
 nicht — ohne Kriterien gibt es nichts, wogegen der fertige Diff gehalten
 werden könnte, und „fertig" wäre dann meine Meinung statt deine Vorgabe.
 
-**Was fehlt:** ein Abschnitt genau so überschrieben, darunter nummerierte
-Punkte oder Checkboxen, jeder einzeln prüfbar:
+**Was fehlt:** ein Abschnitt so überschrieben (ein Zusatz wie „(Entwurf)"
+schadet nicht), darunter eine Aufzählung — nummeriert, Checkboxen oder
+schlichte Punkte —, jeder Punkt einzeln prüfbar:
 
 \`\`\`markdown
 ## Akzeptanzkriterien

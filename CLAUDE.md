@@ -79,9 +79,9 @@ Läufen; der Mensch darf die Stufe vorgeben (`model:haiku|sonnet|opus`).
 ## Während du baust
 
 **Ohne Akzeptanzkriterien wird nicht gebaut** (ADR-0026). Findet der Runner im
-Ticket-Body keinen Abschnitt `## Akzeptanzkriterien` mit nummerierten Punkten
-oder Checkboxen, startet er dich gar nicht erst: Kommentar ans Ticket,
-`needs-answer`, Ende. Fließtext zählt nicht.
+Ticket-Body keinen Abschnitt `## Akzeptanzkriterien` mit einer Aufzählung
+darunter — nummeriert, Checkboxen oder schlichte Punkte —, startet er dich gar
+nicht erst: Kommentar ans Ticket, `needs-answer`, Ende. Fließtext zählt nicht.
 
 **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien steht. Ein Fund neben der
 Spur (roter Test, Auffälligkeit, Verdacht) wird als Zeile unter „## Funde
