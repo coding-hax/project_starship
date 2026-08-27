@@ -257,15 +257,14 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `claude-runner.sh` / `runner/cli.ts` — autonomer Runner, Einstiegspunkt (Bash) + TS-Kern-Dispatcher (`argv[2]`)
 - `runner/{gh,git,state,clock,time}.ts` — Adapter (gh/git/State-Dateien/Zeit), injizierbar für Vitest
 - `runner/{queue,tier,escalation,cap,pr,catchup}.ts` — Queue, Modell-Eskalation, Deckel, PR-Zustand, Nachzieh-Ablauf
-- `runner/{watch,select,status}.ts` — CI-Wache, Ticketauswahl, Statusmeldungen fürs Status-Issue
-- `runner/ak.ts` — Akzeptanzkriterien aus dem Ticket-Body (rein): AK-Tor + Rolle `check` (ADR-0026)
-- `runner/prompts.ts` / `runner/round.ts` — fünf Agenten-Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
+- `runner/{watch,select,status,ak}.ts` — CI-Wache, Ticketauswahl, Status-Issue, AK-Parser (ADR-0026)
+- `runner/prompts.ts` / `runner/round.ts` — fünf Prompts + eine Runde (`roundPlan`/`roundEval`/`roundRecover`)
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session-Trennung, Shim-Drift, Aufräumen, Multi-Slot-Status
 - `runner/*.test.ts` — Vitest-Suiten der TS-Adapter, je eine Datei pro Modul
 - `git-hooks/pre-push` — Push-Netz gegen Doppelbau (ADR-0020): bricht nur ab, wenn der Claim des Tickets fremdem Slot gehört
 - `check-test-integrity.sh` / `check-sync-invariants.sh` — Wächter: abgeschwächte Tests, `fetch(/api/)` außerhalb der Outbox
-- `check-dexie-bump.sh` / `check-codemap.sh` — fehlender Dexie-Bump-Hinweis, Wächter für diese Karte (schlank)
-- `tests/*.test.sh` — Bash-Fixture-Suiten, je eine Datei pro Guard/Runner-Baustein (Namen wie das geprüfte Skript)
+- `check-dexie-bump.sh` / `check-codemap.sh` — fehlender Dexie-Bump-Hinweis, Wächter für diese Karte
+- `tests/*.test.sh` — Bash-Fixture-Suiten, je eine Datei pro Guard/Runner-Baustein
 - `starship-runner` — Shim, den launchd/systemd startet
 - `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — GitHub-Setup, Migration vor Build, Post-Deploy-Smoke
 - `launchd-setup.md` / `systemd-setup.md` / `gen-slot-plists.sh` — Runner als Dienst, Plist-Generator je Slot
