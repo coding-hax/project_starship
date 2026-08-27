@@ -22,7 +22,7 @@ interface CredentialRowProps {
   disabled: boolean;
   busy: boolean;
   online: boolean;
-  onRevoke: (id: string) => void;
+  onRevoke: (id: string, isCurrent: boolean) => void;
   onRename: (id: string, label: string) => Promise<boolean>;
   entering: boolean;
   leaving: boolean;
@@ -49,6 +49,13 @@ function CredentialRow({
   const description = `Hinzugefügt am ${formatDate(credential.createdAt)} · Zuletzt genutzt ${
     credential.lastUsedAt ? formatDate(credential.lastUsedAt) : 'nie'
   }`;
+  const rowLabel = credential.current ? (
+    <>
+      {label} <span className="devices-panel__current-badge">Dieses Gerät</span>
+    </>
+  ) : (
+    label
+  );
 
   async function handleRenameSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,12 +71,18 @@ function CredentialRow({
       onAnimationEnd={onAnimationEnd}
     >
       {confirming ? (
-        <Row label={`„${label}“ wirklich widerrufen?`}>
+        <Row
+          label={
+            credential.current
+              ? 'Das ist dieses Gerät — du wirst abgemeldet'
+              : `„${label}“ wirklich widerrufen?`
+          }
+        >
           <div className="devices-panel__confirm">
             <button
               type="button"
               className="devices-panel__button"
-              onClick={() => onRevoke(credential.id)}
+              onClick={() => onRevoke(credential.id, credential.current)}
               disabled={busy}
             >
               Widerrufen
@@ -116,7 +129,7 @@ function CredentialRow({
           </div>
         </form>
       ) : (
-        <Row label={label} description={description}>
+        <Row label={rowLabel} description={description}>
           <div className="devices-panel__confirm">
             <button
               type="button"

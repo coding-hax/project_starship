@@ -222,18 +222,21 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
  * `src/auth/session.ts`), independent of the shared `AUTH_STATE` session — for specs
  * that need to actually log out (issue #756). Set the returned `token` as the
  * `starship_session` cookie in a fresh context; sperren must never touch the shared
- * session every other project's `storageState` depends on.
+ * session every other project's `storageState` depends on. Optional `credentialId`
+ * binds the session the way a real login/register does (issue #854) — omitted, it
+ * stays `null` like a pre-#854 session.
  */
-export async function createThrowawaySession(): Promise<{ token: string; tokenHash: string }> {
+export async function createThrowawaySession(
+  credentialId?: string,
+): Promise<{ token: string; tokenHash: string }> {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   await withDb((client) =>
-    client.query('INSERT INTO sessions (id, token_hash, expires_at) VALUES ($1, $2, $3)', [
-      randomUUID(),
-      tokenHash,
-      expiresAt,
-    ]),
+    client.query(
+      'INSERT INTO sessions (id, token_hash, expires_at, credential_id) VALUES ($1, $2, $3, $4)',
+      [randomUUID(), tokenHash, expiresAt, credentialId ?? null],
+    ),
   );
   return { token, tokenHash };
 }

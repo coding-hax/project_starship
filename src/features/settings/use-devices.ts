@@ -8,6 +8,7 @@ export interface DeviceCredential {
   label: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  current: boolean;
 }
 
 type Phase = 'loading' | 'ready' | 'error';
@@ -49,7 +50,7 @@ export function useDevices() {
   }, [load]);
 
   const revoke = useCallback(
-    async (id: string) => {
+    async (id: string, isCurrent: boolean) => {
       setBusy(true);
       setError(null);
       try {
@@ -61,6 +62,12 @@ export function useDevices() {
         }
         if (!response.ok) {
           setError('Widerrufen fehlgeschlagen.');
+          return;
+        }
+        if (isCurrent) {
+          // The cascade already ended this device's own session — a load() would
+          // just run into a 401. Send it straight to the login screen instead.
+          window.location.assign('/anmelden');
           return;
         }
         await load();

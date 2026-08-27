@@ -40,6 +40,17 @@
   border: 1px solid var(--border);
 }
 
+.devices-panel__current-badge {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  white-space: nowrap;
+}
+
 .devices-panel__hint {
   margin: 0;
   padding: var(--space-2) 0;
