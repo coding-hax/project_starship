@@ -1,5 +1,5 @@
 import { toDateKey } from './due-today';
-import { dayBefore, isDoneOnDay, isTargetMet, periodRangeFor } from './schedule-rules';
+import { addDaysToKey, dayBefore, isDoneOnDay, isTargetMet, periodRangeFor } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -64,6 +64,78 @@ export function computeStreak(
 ): number {
   const isDayBased = habit.schedule === 'daily' || habit.schedule === 'custom';
   return isDayBased ? dailyStreak(habit.id, logs, now) : periodStreak(habit, logs, now);
+}
+
+/** Longest run of consecutive done days ever logged, up to `now` (issue #863). */
+function longestDailyStreak(habitId: string, logs: HabitLogView[], now: Date): number {
+  const today = toDateKey(now);
+  const doneDays = Array.from(
+    new Set(
+      logs
+        .filter((log) => log.habitId === habitId && log.done && log.logDate <= today)
+        .map((log) => log.logDate),
+    ),
+  ).sort();
+
+  let longest = 0;
+  let run = 0;
+  let previous: string | null = null;
+  for (const day of doneDays) {
+    run = previous !== null && addDaysToKey(previous, 1) === day ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    previous = day;
+  }
+  return longest;
+}
+
+/**
+ * Longest run of consecutive met periods ever, up to and including the period
+ * containing `now` (issue #863). Walks every period from the one containing
+ * the first-ever done log through to today's, in chronological order — unlike
+ * `periodStreak` (which only counts backward from the most recent run),
+ * because an earlier, already-ended run can be longer than the current one.
+ * The period containing `now` gets `periodStreak`'s same grace: still open
+ * and not yet met doesn't break the run, it just isn't counted yet.
+ */
+function longestPeriodStreak(
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
+  logs: HabitLogView[],
+  now: Date,
+): number {
+  const today = toDateKey(now);
+  const doneDays = logs.filter((log) => log.habitId === habit.id && log.done && log.logDate <= today);
+  if (doneDays.length === 0) return 0;
+  const earliest = doneDays.reduce((min, log) => (log.logDate < min ? log.logDate : min), today);
+
+  let range = periodRangeFor(habit, earliest);
+  let longest = 0;
+  let run = 0;
+  while (range.start <= today) {
+    const isCurrentPeriod = today <= range.end;
+    if (isTargetMet(habit, logs, range)) {
+      run += 1;
+      longest = Math.max(longest, run);
+    } else if (!isCurrentPeriod) {
+      run = 0;
+    }
+    range = periodRangeFor(habit, addDaysToKey(range.end, 1));
+  }
+  return longest;
+}
+
+/**
+ * Longest streak `habit` ever reached (days for daily/custom, periods for
+ * everything else) — the inner ring's denominator (issue #863), since a
+ * streak ring measured against its own current value would always read
+ * either empty or full.
+ */
+export function longestEverStreak(
+  habit: Pick<HabitView, 'id' | 'schedule' | 'target'>,
+  logs: HabitLogView[],
+  now: Date = new Date(),
+): number {
+  const isDayBased = habit.schedule === 'daily' || habit.schedule === 'custom';
+  return isDayBased ? longestDailyStreak(habit.id, logs, now) : longestPeriodStreak(habit, logs, now);
 }
 
 /** Number of non-archived habits with a running streak (issue #809). */

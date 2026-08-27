@@ -227,7 +227,9 @@ test('die Streak-Karte ist auf /uebersicht nicht vorhanden, auf /routinen unver�
   await expect(page.locator('.streak-summary-card')).toHaveCount(0);
 
   await page.goto('/routinen');
-  await expect(page.locator('.streak-summary-card').getByText('Routinen in Serie')).toBeVisible();
+  // Statusblock statt Ein-Zahl-Karte (issue #863) — die alte Kennzahl lebt als
+  // Tabellenfuß weiter.
+  await expect(page.locator('.streak-summary-card tfoot')).toContainText('Routinen in Serie');
 });
 
 /* -------------------------------------------------------------------------- */

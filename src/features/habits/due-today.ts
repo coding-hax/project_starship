@@ -1,4 +1,4 @@
-import { isTargetMet, periodRangeFor } from './schedule-rules';
+import { isDoneOnDay, isTargetMet, periodRangeFor } from './schedule-rules';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -99,6 +99,37 @@ export function weekDays(date: Date): string[] {
   return Array.from({ length: 7 }, (_, offset) =>
     toDateKey(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + offset)),
   );
+}
+
+export interface DueToday {
+  done: number;
+  due: number;
+}
+
+/**
+ * "heute N von M" für Routinen allein (issue #863) — die einzige Stelle, die
+ * "heute fällig"/"heute erledigt" für Routinen entscheidet; sowohl
+ * `computeDailyProgress` (daily-progress.ts, modulübergreifend mit Aufgaben)
+ * als auch der Statusblock-Ring auf /routinen rufen sie auf, statt die Regel
+ * zweimal zu bauen (AK5). Archivierte Routinen zählen nie mit; eine Routine,
+ * deren `target` an einem früheren Tag ihrer laufenden Periode schon erreicht
+ * wurde, fällt ganz aus Zähler und Nenner heraus (issue #503, #509), damit
+ * eine heute abgehakte Routine im Ring stehen bleibt statt rückwärts zu
+ * springen.
+ */
+export function habitsDueToday(
+  habits: HabitView[],
+  logs: HabitLogView[],
+  now: Date = new Date(),
+): DueToday {
+  const dateKey = toDateKey(now);
+  const dueHabits = habits.filter(
+    (habit) => habit.archivedAt === null && !metEarlierInPeriod(habit, logs, now),
+  );
+  return {
+    due: dueHabits.length,
+    done: dueHabits.filter((habit) => isDoneOnDay(logs, habit.id, dateKey)).length,
+  };
 }
 
 /**

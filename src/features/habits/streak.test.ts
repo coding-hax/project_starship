@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeStreak, countHabitsOnStreak } from './streak';
+import { computeStreak, countHabitsOnStreak, longestEverStreak } from './streak';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -137,6 +137,53 @@ describe('countHabitsOnStreak (issue #809)', () => {
     const habits = [daily({ id: 'a' })];
     const logs = [{ ...log('2026-07-15', false), habitId: 'a' }];
     expect(countHabitsOnStreak(habits, logs, WEDNESDAY)).toBe(0);
+  });
+});
+
+describe('longestEverStreak (issue #863)', () => {
+  it('daily: eine beendete 5er-Serie überlebt einen späteren Bruch und eine kürzere laufende Serie', () => {
+    const logs = [
+      // Eine 5er-Serie, dann Lücke, dann eine laufende 2er-Serie bis heute.
+      log('2026-07-01'),
+      log('2026-07-02'),
+      log('2026-07-03'),
+      log('2026-07-04'),
+      log('2026-07-05'),
+      log('2026-07-14'),
+      log('2026-07-15'),
+    ];
+    expect(computeStreak(daily(), logs, WEDNESDAY)).toBe(2);
+    expect(longestEverStreak(daily(), logs, WEDNESDAY)).toBe(5);
+  });
+
+  it('daily: ein untouched habit hat longestEverStreak 0', () => {
+    expect(longestEverStreak(daily(), [], WEDNESDAY)).toBe(0);
+  });
+
+  it('weekly: eine beendete 3er-Serie überlebt einen späteren Bruch und eine kürzere laufende Serie', () => {
+    const logs = [
+      log('2026-06-02'), // KW vom 01.–07.06.
+      log('2026-06-09'), // KW vom 08.–14.06.
+      log('2026-06-16'), // KW vom 15.–21.06.
+      // KW 22.–28.06. ausgelassen -> Bruch
+      log('2026-07-14'), // laufende Woche
+    ];
+    expect(computeStreak(weekly(), logs, WEDNESDAY)).toBe(1);
+    expect(longestEverStreak(weekly(), logs, WEDNESDAY)).toBe(3);
+  });
+
+  it('je erreichte Serie ist mindestens so lang wie die laufende', () => {
+    const habits = [daily({ id: 'a' }), weekly({ id: 'b' }), monthly({ id: 'c' })];
+    const logs = [
+      { ...log('2026-07-15'), habitId: 'a' },
+      { ...log('2026-07-14'), habitId: 'b' },
+      { ...log('2026-07-10'), habitId: 'c' },
+    ];
+    for (const habit of habits) {
+      expect(longestEverStreak(habit, logs, WEDNESDAY)).toBeGreaterThanOrEqual(
+        computeStreak(habit, logs, WEDNESDAY),
+      );
+    }
   });
 });
 

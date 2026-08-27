@@ -1,38 +1,169 @@
 /**
- * "Routinen in Serie"-Karte (issue #809) — gleiche Kartenform wie
- * activity-month-strip.css, damit /uebersicht als ein System wirkt.
+ * Statusblock auf /routinen (issue #863, löst die "Routinen in Serie"-Karte
+ * aus #809 ab). Rendert nicht mehr auf /uebersicht — seit #809 zeigt
+ * `habits-overview-section.tsx` dort nur `HabitToday`.
+ *
+ * Eigene dunkle Fläche statt der üblichen `--surface`/Grund-Tinte (issue #863
+ * "Offen 1"): drei farblich unterscheidbare Ringe sind auf dem grünen
+ * `--ground-routinen` nicht mit ausreichend Kontrast zu bekommen (gemessen:
+ * maximal 3,11:1 mit reinem Weiß). `--ground-base-dark`/`--on-ground-light`
+ * sind beide fixe Anker (nirgends unter einem Dark-Mode-Selector neu
+ * gesetzt, tokens.css), die Fläche bleibt deshalb in hell und dunkel
+ * identisch dunkel — kein zweiter Kontrastfall zu pflegen, kein
+ * dark-mode-Media-Query nötig (AK8).
  */
 
 .streak-summary-card {
+  --panel-bg: var(--ground-base-dark);
+  --panel-ink: var(--on-ground-light);
+  /* 62% Anteil auf der fixen dunklen Fläche misst 7,26:1 (>= 4,5:1, AK3). */
+  --panel-ink-muted: color-mix(in oklab, var(--on-ground-light) 62%, var(--panel-bg));
+  /* Spur der Ringe: absichtlich sehr nah an --panel-bg, damit jede Ringfarbe
+     (mindestens 6,1:1 gegen --panel-bg) klar über 3:1 gegen die eigene Spur
+     bleibt (AK3, gemessen in contrastRatio-Helfern von
+     tests/streaks-statusblock.spec.ts). */
+  --panel-track: color-mix(in oklab, var(--on-ground-light) 14%, var(--panel-bg));
+  --panel-border: color-mix(in oklab, var(--on-ground-light) 28%, var(--panel-bg));
+
   border-radius: var(--radius-card);
-  background: var(--surface);
+  background: var(--panel-bg);
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
-  /* Own surface, own ink (issue #832 AK5) — renders on both /routinen and
-     Übersicht (habits-overview-section.tsx). */
-  --text: var(--text-base);
-  --text-muted: var(--text-muted-base);
-  --border: var(--border-base);
-  --border-strong: var(--border-strong-base);
-  --border-faint: var(--border-faint-base);
-  color: var(--text);
+  color: var(--panel-ink);
+  overflow-x: hidden;
 }
 
-.streak-summary-card__heading {
-  margin: 0 0 var(--space-2);
-  color: var(--area-habits);
-  font-weight: var(--weight-emphasis);
+.streak-summary-card__rings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
-.streak-summary-card__metric {
+.streak-summary-card__svg {
+  flex-shrink: 0;
+}
+
+.streak-summary-card__ring-track {
+  stroke: var(--panel-track);
+}
+
+.streak-summary-card__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
   margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.streak-summary-card__legend-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.streak-summary-card__legend-label {
+  font-size: 11px;
+  font-weight: var(--weight-emphasis);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.streak-summary-card__legend-value {
   font-size: var(--text-section);
+  font-weight: var(--weight-emphasis);
+  font-variant-numeric: tabular-nums;
+  color: var(--panel-ink);
+}
+
+.streak-summary-card__legend-denom {
+  font-size: var(--text-meta);
+  font-weight: var(--weight-normal);
+  color: var(--panel-ink-muted);
+}
+
+.streak-summary-card__sentence {
+  margin: var(--space-4) 0 0;
+  text-align: center;
+  color: var(--panel-ink-muted);
+}
+
+.streak-summary-card__sentence-strong {
+  color: var(--panel-ink);
   font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
 }
 
-.streak-summary-card__hint {
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
+.streak-summary-card__table {
+  width: 100%;
+  margin-top: var(--space-4);
+  border-collapse: collapse;
+  table-layout: fixed;
 }
+
+.streak-summary-card__table th {
+  font-family: ui-monospace, 'SF Mono', 'Menlo', monospace;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-normal);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--panel-ink-muted);
+  text-align: left;
+  padding: 0 0 var(--space-2);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.streak-summary-card__table th:last-child,
+.streak-summary-card__table td:last-child {
+  text-align: right;
+}
+
+.streak-summary-card__table td {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--panel-border);
+  vertical-align: middle;
+}
+
+.streak-summary-card__habit-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streak-summary-card__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+  width: 64px;
+}
+
+.streak-summary-card__bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 1px;
+}
+
+.streak-summary-card__serie {
+  font-variant-numeric: tabular-nums;
+}
+
+.streak-summary-card__footer {
+  padding-top: var(--space-3);
+  border-bottom: none;
+  color: var(--panel-ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.streak-summary-card__footer-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Ringe sind statisch (keine Füll-Transition) — `prefers-reduced-motion`
+   ist damit ohne Sonderfall grün (AK8), es gibt nichts zu deaktivieren. */

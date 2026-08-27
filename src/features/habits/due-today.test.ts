@@ -3,6 +3,7 @@ import {
   addMonths,
   currentWeekRange,
   dayLabel,
+  habitsDueToday,
   metEarlierInPeriod,
   monthDays,
   monthLabel,
@@ -131,6 +132,27 @@ describe('metEarlierInPeriod', () => {
     const logs = [log({ logDate: '2026-07-03', done: true })];
     const nextMonth = new Date(2026, 7, 1, 12, 0, 0);
     expect(metEarlierInPeriod(habit({ schedule: 'monthly' }), logs, nextMonth)).toBe(false);
+  });
+});
+
+describe('habitsDueToday (issue #863)', () => {
+  it('keine Routinen → {0, 0}', () => {
+    expect(habitsDueToday([], [], WEDNESDAY)).toEqual({ done: 0, due: 0 });
+  });
+
+  it('zählt nur nicht-archivierte Routinen, die heute noch nicht früher in der Periode erledigt wurden', () => {
+    const habits = [
+      habit({ id: 'a', schedule: 'daily' }),
+      habit({ id: 'b', schedule: 'daily', archivedAt: '2026-07-01T00:00:00.000Z' }),
+    ];
+    const logs = [log({ habitId: 'a', logDate: '2026-07-15', done: true })];
+    expect(habitsDueToday(habits, logs, WEDNESDAY)).toEqual({ done: 1, due: 1 });
+  });
+
+  it('eine Routine, deren Wochenziel schon früher erreicht wurde, fällt aus Zähler und Nenner', () => {
+    const habits = [habit({ id: 'a', schedule: 'weekly', target: 1 })];
+    const logs = [log({ habitId: 'a', logDate: '2026-07-13', done: true })]; // schon diese Woche erledigt
+    expect(habitsDueToday(habits, logs, WEDNESDAY)).toEqual({ done: 0, due: 0 });
   });
 });
 
