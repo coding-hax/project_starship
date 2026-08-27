@@ -21,7 +21,8 @@ import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
 import type { ClaimAdapter } from './claim.js';
-import { claimSweep, claimTake, claimedElsewhere } from './claim.js';
+import { claimSweep, claimTake, claimRelease, claimedElsewhere } from './claim.js';
+import { acceptanceCriteria, missingCriteriaComment } from './ak.js';
 import type { QueueIssue } from './queue.js';
 import { entriesFromIssues, hasLabel, queueBlocked, queueCycles, queuePending, untriaged } from './queue.js';
 import { queueSnapshot, waitingIssues } from './status.js';
@@ -35,13 +36,31 @@ import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingC
 import { fmtHm, resetEpoch } from './time.js';
 import {
   BUILD_TOOLS,
+  CHECK_TOOLS,
   READONLY_DENY,
   READONLY_TOOLS,
   buildPrompt,
+  checkPrompt,
   ciFixPrompt,
   planPrompt,
   researchPrompt,
 } from './prompts.js';
+
+// #839: 'check' liest wie plan/research -- gleicher Wegwerf-Worktree, gleiche
+// harte Werkzeug-Verweigerung, gleiches Read-only-Netz. Was es NICHT teilt:
+// Opus als Modell und den Denk-Rollen-Tagesdeckel. Beides bewusst -- der
+// Pruefer urteilt ueber einen fertigen Diff statt ueber ein offenes Problem,
+// und ein erschoepfter Deckel duerfte keine Merges anhalten.
+function isReadOnlyRole(role: RunRole): boolean {
+  return role === 'plan' || role === 'research' || role === 'check';
+}
+
+const ROLE_LABEL: Record<RunRole, string> = {
+  build: 'Bau-Lauf',
+  plan: 'Planer-Lauf',
+  research: 'Recherche-Lauf',
+  check: 'AK-Check-Lauf',
+};
 
 export interface RoundContext {
   gh: GhAdapter;
@@ -118,6 +137,13 @@ export interface RoundRun {
    * ihn in Spalte 1) darf keinen Lese-Lauf mehr faelschlich anklagen.
    */
   beforeDirty: string;
+  /**
+   * #839: der PR-Branch, gegen den geprueft wird -- nur fuer role='check'
+   * befuellt, sonst ''. claude-runner.sh legt den Wegwerf-Worktree damit auf
+   * dem PR-Stand an statt auf origin/main; ein Pruefer auf main saehe den
+   * Diff, den er beurteilen soll, gar nicht.
+   */
+  branch: string;
   /** O3 (#325): --disallowedTools fuer den `claude`-Aufruf, '' beim Bauen. */
   denyTools: string;
 }
@@ -154,6 +180,20 @@ function branchTip(issue: number, git: GitAdapter): string {
     const out = git.run(['ls-remote', '--heads', 'origin', `feat/${issue}-*`, `fix/${issue}-*`, `chore/${issue}-*`]);
     const first = out.split('\n').find((line) => line.trim() !== '');
     return first ? (first.split(/\s+/)[0] ?? '') : '';
+  } catch {
+    return '';
+  }
+}
+
+// #839: der Name des Feature-Branches, nicht seine Spitze -- der Pruef-Prompt
+// nennt ihn, damit der Lauf seine gh-Aufrufe nicht raten muss. Gleiche Quelle
+// wie branchTip(), damit beide nie auseinanderlaufen koennen.
+function branchName(issue: number, git: GitAdapter): string {
+  try {
+    const out = git.run(['ls-remote', '--heads', 'origin', `feat/${issue}-*`, `fix/${issue}-*`, `chore/${issue}-*`]);
+    const first = out.split('\n').find((line) => line.trim() !== '');
+    const ref = first ? (first.split(/\s+/)[1] ?? '') : '';
+    return ref.replace(/^refs\/heads\//, '');
   } catch {
     return '';
   }
@@ -372,7 +412,9 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
-      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
+      // #839: traegt das Ticket 'check', mergt die Wache nicht mehr selbst --
+      // sie meldet 'gated' und ueberlaesst dem Pruef-Lauf unten das Tor.
+      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock }, role === 'check');
       switch (watch.kind) {
         case 'pending':
           // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist
@@ -462,7 +504,20 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
           ciFix = true;
           ciSummary = watch.summary;
           break;
+        case 'gated':
+          // #839: gruen, aber ungeprueft. Die Wache hat nichts getan; der
+          // Rollen-Dispatch unten startet den Pruef-Lauf, der das Tor oeffnet.
+          break;
       }
+    }
+
+    // #839: rote CI schlaegt das AK-Tor. Ueber einen Stand, dessen Checks rot
+    // sind, ist nicht zu urteilen -- und der Pruefer duerfte daran ohnehin
+    // nichts aendern. Also erst reparieren: Label ab, Rolle zurueck auf 'build'.
+    // Der Fix-Lauf setzt 'check' am Ende seines sauberen Laufs selbst wieder.
+    if (ciFix && role === 'check') {
+      tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+      role = 'build';
     }
   }
 
@@ -555,6 +610,91 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
     return lostClaim();
   }
 
+  // --- AK-Tor (#839) ---------------------------------------------------------
+  // Ohne Akzeptanzkriterien wird nicht gebaut. Nicht als Ermahnung, sondern
+  // mechanisch: was hier keine Liste hat, hat spaeter nichts, wogegen der
+  // fertige Diff gehalten werden koennte -- "fertig" waere dann die Meinung
+  // des Bau-Laufs statt die Vorgabe des Menschen.
+  //
+  // Der Body kommt aus dem Schnappschuss oben, kein zusaetzlicher gh-Aufruf.
+  // WICHTIG ist das Offenlassen im Fehlerfall: findet sich das Ticket gar
+  // nicht im Schnappschuss (leere Liste, weil `gh issue list` gescheitert
+  // ist), greift das Tor NICHT. Ein Netzfehler darf keine Tickets parken.
+  const ticket = snapshot.find((entry) => entry.number === issue);
+  const criteria = ticket ? acceptanceCriteria(ticket.body ?? '') : [];
+
+  // Das Tor greift nur, wenn der Body auch WIRKLICH bekannt ist. Zwei Faelle
+  // sehen im Code gleich aus und sind es nicht:
+  //   - `body: ''`        -> das Ticket ist leer. Tor greift.
+  //   - Feld fehlt ganz   -> wir wissen es nicht (Snapshot ohne 'body', z. B.
+  //                          ein aelterer Aufrufer). Tor greift NICHT.
+  // Dieselbe Richtung wie beim leeren Schnappschuss oben: im Zweifel laufen
+  // lassen. Ein Tor, das auf fehlende Information hin parkt, legt die Flotte
+  // still, sobald irgendwo ein Feld fehlt -- und niemand faende den Grund.
+  const bodyKnown = typeof ticket?.body === 'string';
+
+  if (role === 'build' && bodyKnown && criteria.length === 0) {
+    tryGh(gh, ['issue', 'comment', String(issue), '--body', missingCriteriaComment(issue)]);
+    tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
+    // Anders als beim Opus-Deckel wird der Claim hier freigegeben: es gibt
+    // keinen angefangenen Worktree, an den dieser Slot gebunden waere, und
+    // das Ticket wartet auf einen Menschen, nicht auf morgen.
+    claimRelease(claims, issue);
+    return {
+      kind: 'done',
+      rc: 0,
+      status: status(
+        `wartet auf dich (#${issue}: keine AK)`,
+        '🟡',
+        `🟡 **#${issue} hat keine Akzeptanzkriterien** — kein Bau-Lauf gestartet.
+
+Ohne sie gibt es nichts, wogegen der fertige Diff geprüft werden könnte. Was
+fehlt, steht als Kommentar am Ticket. Trag sie nach und nimm \`needs-answer\` ab.`,
+      ),
+    };
+  }
+
+  // Ein Pruef-Lauf ohne Kriterien haette nichts, wogegen er halten koennte --
+  // und "alle erfuellt" waere bei einer leeren Liste trivial wahr. Aus dem Tor
+  // wuerde damit ein Durchwinker: der einzige Lauf, der mergen darf, mergte
+  // ausgerechnet dort ohne Massstab. Solange das AK-Tor oben greift, kommt das
+  // nicht vor -- aber daran vorbei fuehren mehrere Wege (Label von Hand
+  // gesetzt, Body nach dem Bau-Lauf geleert, Schnappschuss ohne 'body').
+  // Also Label zurueck statt Merge auf Verdacht; der naechste Takt ist ein
+  // Bau-Lauf und laeuft dann selbst ins AK-Tor.
+  if (role === 'check' && criteria.length === 0) {
+    tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+    claimRelease(claims, issue);
+    return {
+      kind: 'done',
+      rc: 0,
+      status: status(
+        `keine AK zu #${issue} — Check übersprungen`,
+        '🟢',
+        `🟢 **#${issue} trägt \`check\`, hat aber keine Akzeptanzkriterien.** Ohne Prüfmaßstab wird nicht freigegeben — Label zurückgenommen, der nächste Takt baut weiter.`,
+      ),
+    };
+  }
+
+  // Ein Pruef-Lauf ohne Branch hat nichts zu pruefen (z. B. weil der Bau-Lauf
+  // das Label gesetzt, aber nie gepusht hat). Label zurueckgeben statt einen
+  // Lauf zu starten, der nur einen leeren Diff sehen wuerde -- der naechste
+  // Takt ist dann wieder ein Bau-Lauf.
+  const checkBranch = role === 'check' ? branchName(issue, git) : '';
+  if (role === 'check' && checkBranch === '') {
+    tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+    claimRelease(claims, issue);
+    return {
+      kind: 'done',
+      rc: 0,
+      status: status(
+        `kein Branch zu #${issue} — Check übersprungen`,
+        '🟢',
+        `🟢 **#${issue} trägt \`check\`, hat aber keinen Branch auf origin.** Label zurückgenommen, der nächste Takt baut weiter.`,
+      ),
+    };
+  }
+
   // Ab hier ist das Ticket fest und der `claude`-Aufruf steht kurz bevor.
   // Genau das war die Luecke aus #19: zwischen Ticketwahl und Rueckkehr des
   // Laufs stand im Status noch der Stand des LETZTEN Laufs.
@@ -597,6 +737,11 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
     model = labelTier ?? 'sonnet';
   } else if (role === 'plan' || role === 'research') {
     model = labelTier ?? 'opus';
+  } else if (role === 'check') {
+    // Bewusst NICHT tierCurrent(): ein Ticket, das nach drei erfolglosen
+    // Bau-Laeufen auf Opus eskaliert ist, wuerde sonst auch seinen Pruefer auf
+    // Opus heben. Die Eskalation gilt dem Bauen, nicht dem Nachsehen.
+    model = labelTier ?? 'sonnet';
   } else {
     model = tierCurrent(issue, sharedState, gh);
   }
@@ -633,8 +778,17 @@ Gib ein Ticket frei, indem du ihm das Label \`ready\` gibst.`,
 Laeuft bis zu ${minutes} Minuten. **Kein Eingreifen noetig**, solange
 hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
         )
-      : role === 'research'
+      : role === 'check'
         ? status(
+            `prüft #${issue} gegen die AK (${model}, seit ${startHm})`,
+            '🟠',
+            `🟠 **Prüft gerade #${issue} gegen die Akzeptanzkriterien** (${model}, nur lesend), seit ${startHm}.
+
+Laeuft bis zu ${minutes} Minuten. **Kein Eingreifen noetig**, solange
+hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
+          )
+        : role === 'research'
+          ? status(
             `recherchiert #${issue} (${model}, seit ${startHm})`,
             '🟠',
             `🟠 **Recherchiert gerade #${issue}** (${model}, nur lesend), seit ${startHm}.
@@ -714,9 +868,11 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
       ? planPrompt(issue)
       : role === 'research'
         ? researchPrompt(issue)
-        : ciFix
-          ? ciFixPrompt(issue, ciSummary)
-          : buildPrompt(issue);
+        : role === 'check'
+          ? checkPrompt(issue, criteria, checkBranch)
+          : ciFix
+            ? ciFixPrompt(issue, ciSummary)
+            : buildPrompt(issue);
 
   // Artifact fuer beide Denk-Rollen (#767, ADR-0024) -- zusammen mit `Write`,
   // weil `Artifact` nur einen `file_path` auf eine schon geschriebene Datei
@@ -729,18 +885,20 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
       ? `${READONLY_TOOLS},Artifact,Write`
       : role === 'research'
         ? `${READONLY_TOOLS},WebSearch,Artifact,Write`
-        : BUILD_TOOLS;
+        : role === 'check'
+          ? CHECK_TOOLS
+          : BUILD_TOOLS;
 
   // O2/O3 (#325): nur die Denk-Rollen laufen in einem Wegwerf-Worktree UND
   // bekommen die harte Werkzeug-Verweigerung -- die Bau-Rolle hat ihren
   // eigenen Worktree bereits (#242) und braucht Edit/Write.
-  const denyTools = role === 'plan' || role === 'research' ? READONLY_DENY : '';
+  const denyTools = isReadOnlyRole(role) ? READONLY_DENY : '';
 
   // Baseline VOR dem Lauf, ausschliesslich fuer das Read-only-Netz unten in
   // roundEval() -- der Wegwerf-Worktree macht das eigentlich ueberfluessig,
   // bleibt aber als zweite Absicherung (Guertel und Hosentraeger, #325).
   let beforeDirty = '';
-  if (role === 'plan' || role === 'research') {
+  if (isReadOnlyRole(role)) {
     try {
       beforeDirty = git.run(['status', '--porcelain']);
     } catch {
@@ -763,6 +921,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     lastIssue: opts.lastIssue,
     prompt,
     beforeDirty,
+    branch: checkBranch,
     denyTools,
   };
 }
@@ -951,7 +1110,7 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
   // JETZT und beanstandet nur die DIFFERENZ. Fremd-Dirt (vor dem Lauf schon
   // da, danach unveraendert) bleibt unangetastet liegen und wird nicht
   // gemeldet -- nur echte NEUE Zeilen loesen die Anklage aus.
-  if (role === 'plan' || role === 'research') {
+  if (isReadOnlyRole(role)) {
     let after = '';
     try {
       after = git.run(['status', '--porcelain']);
@@ -962,7 +1121,7 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
     const newLines = after.split('\n').filter((l) => l !== '' && !before.has(l));
 
     if (newLines.length > 0) {
-      const roleLabel = role === 'research' ? 'Recherche-Lauf' : 'Planer-Lauf';
+      const roleLabel = ROLE_LABEL[role];
       const paths = newLines.join('\n');
       tryGh(gh, [
         'issue',

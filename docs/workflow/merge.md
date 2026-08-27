@@ -1,4 +1,15 @@
-# Merge: Claude hebt seinen PR selbst aus dem Entwurf (#147, #167)
+# Merge: der AK-Check hebt den PR aus dem Entwurf (#147, #167, #839)
+
+> **Seit #839 / ADR-0026 gilt der letzte Schritt anders.** Der Bau-Lauf
+> mergt **nicht** mehr selbst: er endet mit `gh issue edit <nr> --add-label
+> check` und lässt den PR im Entwurf. `gh pr ready` und
+> `gh pr merge --squash --auto` ruft ausschließlich der **AK-Check-Lauf**,
+> und nur, wenn kein Akzeptanzkriterium offen ist. Alles Übrige in diesem
+> Dokument — Draft-PR beim ersten Push, kein zweiter PR, das proaktive
+> Nachziehen von `main`, die `--subject`-Pflicht aus #292 — bleibt
+> unverändert gültig; es wandert nur vom Bau- in den Prüf-Lauf. Der Takt
+> steht in `zyklus.md`.
+
 
 Claude wartet nicht mehr selbst auf CI. Existiert für das Ticket noch kein
 PR, öffnet der erste Push einen **Draft**-PR (`gh pr create --draft --fill
@@ -20,21 +31,30 @@ bleibt unverändert als Netz bestehen: merged ein anderer PR erst in den
 Sekunden nach diesem Push, greift der Runner-Takt wie gehabt nach.
 
 **Endet der Bau-Lauf sauber** (Ticket fertig oder Fortsetzung erfolgreich
-gepusht — nicht über eine offene Frage), hebt Claude den PR **selbst** aus
-dem Entwurf und aktiviert Auto-Merge, bevor der Lauf endet:
-`gh pr ready` + `gh pr merge --squash --auto --delete-branch --subject
-"$(gh pr view --json title -q .title)" --body ""` (ohne PR-Nummer — wirkt
-auf den PR des aktuellen Branches). Das `--subject` ist Pflicht: bei genau
-einem Commit auf dem Branch nimmt GitHub sonst dessen Commit-Nachricht statt
-des PR-Titels als Squash-Betreff — ein nur im Titel stehendes `Closes #N`
-ginge verloren und das Issue bliebe trotz sauber gemergtem PR offen (#292).
-Das setzt nicht
+gepusht — nicht über eine offene Frage), setzt Claude `gh issue edit <nr>
+--add-label check` und beendet den Lauf; der PR bleibt Entwurf. Freigabe und
+Auto-Merge macht seit #839 ausschließlich der **AK-Check-Lauf**, und nur wenn
+kein Kriterium offen ist: `gh pr ready` + `gh pr merge --squash --auto
+--delete-branch --subject "$(gh pr view --json title -q .title)" --body ""`
+(ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Das `--subject`
+ist Pflicht: bei genau einem Commit auf dem Branch nimmt GitHub sonst dessen
+Commit-Nachricht statt des PR-Titels als Squash-Betreff — ein nur im Titel
+stehendes `Closes #N` ginge verloren und das Issue bliebe trotz sauber
+gemergtem PR offen (#292). Das setzt nicht
 voraus, dass CI schon grün ist: Auto-Merge greift ohnehin erst, wenn alle
 Required Checks durch sind, GitHub liefert diese Zusicherung, nicht Claudes
-Einschätzung. **Ein Entwurf bedeutet ab jetzt: der Lauf ist nicht sauber zu
-Ende gekommen** (Notbremse, Limit, harter Fehler) — nicht mehr „es hat noch
-niemand hingeschaut". Bei einer offenen Frage (`needs-answer`) endet der Lauf
-bewusst **vor** diesem Schritt, der PR bleibt Entwurf.
+Einschätzung. **Ein Entwurf bedeutet: der Lauf ist nicht sauber zu Ende
+gekommen** (Notbremse, Limit, harter Fehler) — oder das AK-Tor steht noch
+offen; nicht „es hat noch niemand hingeschaut". Bei einer offenen Frage
+(`needs-answer`) endet der Lauf bewusst **vor** der Abgabe an den Check, der
+PR bleibt Entwurf.
+
+**Auch der Runner-Takt mergt nicht am Tor vorbei.** Die CI-Wache unten hebt
+einen grünen PR sonst selbst aus dem Entwurf und käme dem Prüfer damit jedes
+Mal zuvor. Trägt das Ticket `check`, hält sie bei grüner CI still und startet
+stattdessen den Prüf-Lauf. Wird die CI rot, während `check` hängt, nimmt der
+Takt das Label zurück und lässt erst reparieren — der Fix-Lauf gibt es an
+seinem sauberen Ende selbst wieder ab.
 
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**

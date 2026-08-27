@@ -173,7 +173,11 @@ export function claimedElsewhere(claims: ClaimAdapter, slotId: string): Set<numb
 // riss der Sweep ihn weg, obwohl der Lauf noch arbeitete, und ein zweiter Slot
 // konnte dieselbe Rolle fuer dasselbe Ticket ein zweites Mal starten (Anlass:
 // #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an).
-const ACTIVE_ROLE_LABELS = ['in-progress', 'plan', 'research'];
+// #839: 'check' gehoert aus demselben Grund dazu. Der Normalweg dorthin
+// behaelt zwar 'in-progress' und traegt den Claim ohnehin -- aber ein Ticket,
+// das nur noch 'check' traegt, wartet auf sein Merge-Tor und ist damit
+// laufende Arbeit, nicht herrenlos.
+const ACTIVE_ROLE_LABELS = ['in-progress', 'plan', 'research', 'check'];
 
 const GH_FAILED = 'gh-failed';
 

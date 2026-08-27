@@ -78,6 +78,11 @@ Läufen; der Mensch darf die Stufe vorgeben (`model:haiku|sonnet|opus`).
 
 ## Während du baust
 
+**Ohne Akzeptanzkriterien wird nicht gebaut** (ADR-0026). Findet der Runner im
+Ticket-Body keinen Abschnitt `## Akzeptanzkriterien` mit einer Aufzählung
+darunter — nummeriert, Checkboxen oder schlichte Punkte —, startet er dich gar
+nicht erst: Kommentar ans Ticket, `needs-answer`, Ende. Fließtext zählt nicht.
+
 **Kein Scope-Creep.** Nur was in den Akzeptanzkriterien steht. Ein Fund neben der
 Spur (roter Test, Auffälligkeit, Verdacht) wird als Zeile unter „## Funde
 nebenbei" im Fortschrittskommentar vermerkt — Fundort `<pfad>:<zeile>`, Symptom
@@ -228,21 +233,24 @@ Existiert für dieses Ticket schon ein offener PR, gibt es **keinen zweiten** �
 du pushst weiter auf denselben Branch.
 
 **Endet dein Lauf sauber** (Ticket fertig oder Fortsetzung gepusht — also nicht
-über eine offene Frage), hebst du den PR selbst aus dem Entwurf:
+über eine offene Frage), gibst du an den AK-Check ab. **Du mergst nicht selbst:**
 
 ```bash
-gh pr ready
-gh pr merge --squash --auto --delete-branch \
-  --subject "$(gh pr view --json title -q .title)" --body ""
+gh issue edit <nr> --add-label check
 ```
 
-Das `--subject` ist Pflicht, kein Stil — ohne es bleibt das Issue trotz sauber
-gemergtem PR offen (`docs/warum/merge.md`).
+Der PR bleibt Entwurf, `in-progress` bleibt stehen, dein Lauf endet. Den Rest
+macht ein eigener, nur lesender Prüf-Lauf (ADR-0026): er hält deinen Diff gegen
+die Akzeptanzkriterien des Tickets und hebt den PR erst dann aus dem Entwurf.
+**Du hast den Code geschrieben — dass er die Kriterien erfüllt, ist deshalb
+nicht deine Feststellung.** Derselbe Interessenkonflikt wie bei den Tests.
 
-Ob CI grün ist, musst du **nicht** wissen — Auto-Merge greift ohnehin erst bei
-grünen Required Checks. Ein Entwurf heißt ab jetzt „der Lauf ist nicht sauber zu
-Ende gekommen", nicht „der Runner hat noch nicht hingeschaut". Stellst du eine
-Frage, bleibt der PR Entwurf: Lauf beenden **vor** `gh pr ready`.
+Fehlt etwas, nimmt der Prüfer `check` wieder ab und schreibt die offenen
+Kriterien in den Fortschrittskommentar; der nächste Takt bist wieder du, mit
+einer benannten Lücke statt einem gemergten PR.
+
+`gh pr ready` und `gh pr merge` rufst du **nicht** — die stehen nur noch im
+Prüf-Lauf. Ob CI grün ist, musst du ohnehin **nicht** wissen.
 
 **Kein `gh pr checks --watch`** — das ist Aufgabe der CI-Wache im Runner-Takt
 (die volle Suite lokal läuft ohnehin nicht, siehe Token-Disziplin). Wird CI rot,
@@ -252,7 +260,8 @@ den Test aufweichen), schnelle Tore lokal grün, auf denselben Branch pushen,
 kein neuer PR. Nach dem **dritten** vergeblichen Versuch mit derselben Ursache:
 aufhören, Kommentar, `needs-answer` — drei rote Runden heißen, das Ticket ist
 falsch geschnitten.
-Zustandstabelle: `docs/workflow/merge.md`, „Merge: Claude hebt seinen PR selbst aus dem Entwurf".
+Zustandstabelle: `docs/workflow/merge.md`; der neue Takt steht in
+`docs/workflow/zyklus.md`.
 
 **Bevor du den Worktree verlässt:** `git status --short`. Steht das `M` in der
 **vorderen** Spalte, ist der Index dreckig — das räumt kein `git clean` weg und
