@@ -1,6 +1,5 @@
 'use client';
 
-import { startRegistration } from '@simplewebauthn/browser';
 import { useCallback, useEffect, useState } from 'react';
 
 export interface DeviceCredential {
@@ -116,45 +115,6 @@ export function useDevices() {
     [load],
   );
 
-  const addDevice = useCallback(
-    async (label: string): Promise<boolean> => {
-      setBusy(true);
-      setError(null);
-      try {
-        const optionsResponse = await fetch('/api/auth/register/options', { method: 'POST' });
-        if (!optionsResponse.ok) {
-          setError('Gerät hinzufügen fehlgeschlagen.');
-          return false;
-        }
-        const options = await optionsResponse.json();
-
-        const response = await startRegistration({ optionsJSON: options });
-        const verifyResponse = await fetch('/api/auth/register/verify', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            response,
-            challenge: options.challenge,
-            label: label.trim() || undefined,
-          }),
-        });
-        const result = await verifyResponse.json();
-        if (!verifyResponse.ok || !result.verified) {
-          setError('Gerät hinzufügen fehlgeschlagen.');
-          return false;
-        }
-        await load();
-        return true;
-      } catch {
-        setError('Gerät hinzufügen fehlgeschlagen.');
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [load],
-  );
-
   return {
     phase,
     credentials,
@@ -163,7 +123,6 @@ export function useDevices() {
     error,
     revoke,
     endOtherSessions,
-    addDevice,
     renameDevice,
   };
 }
