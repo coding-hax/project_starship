@@ -163,9 +163,11 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     await contextB.addCookies([{ name: 'starship_session', value: sessionB.token, url: baseURL }]);
     const pageB = await contextB.newPage();
 
+    // "Beenden" lebt seit #857 in der Sitzung-Karte, nicht mehr in der Geräte-Karte.
+    const sessionPanel = pageA.locator('.session-panel');
     await pageA.goto('/einstellungen');
-    await pageA.getByRole('button', { name: 'Beenden' }).click();
-    await pageA.getByRole('button', { name: 'Beenden' }).click();
+    await sessionPanel.getByRole('button', { name: 'Beenden' }).click();
+    await sessionPanel.getByRole('button', { name: 'Beenden' }).click();
 
     await expect.poll(() => sessionRowExists(sessionB.tokenHash)).toBe(false);
     expect(await sessionRowExists(tokenHashA)).toBe(true);
@@ -177,25 +179,20 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     await contextB.close();
   });
 
-  test('AK5: offline sind „Widerrufen" und „Alle anderen Sitzungen beenden" inaktiv mit Hinweis', async ({
-    browser,
-    baseURL,
-  }) => {
+  test('AK5: offline ist „Widerrufen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
     const { context, page } = await freshSessionContext(browser, baseURL);
     await createThrowawayCredential({ label: 'Offline-Test' });
-    await createThrowawaySession();
 
     await page.goto('/einstellungen');
     await context.setOffline(true);
 
     // Scoped to the panel's own hint class — session-panel.tsx shows a similarly
-    // worded "Sperren geht nur online." hint in the same "Gerät" group while offline.
+    // worded hint in the same "Gerät" group while offline (own #857 AK5 test).
     await expect(
       page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
     ).toBeVisible();
     const row = page.locator('.devices-panel__item', { hasText: 'Offline-Test' });
     await expect(row.getByRole('button', { name: 'Widerrufen' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Beenden' })).toBeDisabled();
 
     await context.setOffline(false);
     await context.close();
@@ -420,5 +417,183 @@ test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Contex
         await client.query('ROLLBACK');
       }
     });
+  });
+});
+
+test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frischer Context)', () => {
+  test('AK1: „App sperren" und „Alle anderen Sitzungen beenden" stehen zusammen in der Sitzung-Karte, kein „Beenden" mehr in der Geräte-Karte', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    await createThrowawaySession();
+
+    await page.goto('/einstellungen');
+
+    const sessionPanel = page.locator('.session-panel');
+    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeVisible();
+    await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeVisible();
+    const endRow = sessionPanel.locator('.row', { hasText: 'Alle anderen Sitzungen beenden' });
+    await expect(endRow).toContainText('App sperren');
+
+    await expect(
+      page.locator('.devices-panel').getByRole('button', { name: 'Beenden' }),
+    ).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test('AK2: ein echter Login coalesct die Alt-Sitzungen desselben Passkeys — die Zahl entspricht anderen Geräten', async ({
+    browser,
+  }) => {
+    await deleteAllCredentials();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await enableVirtualAuthenticator(page);
+
+    // Registrierung mintet Credential C und (No-op-Coalescing) Sitzung S1.
+    await page.goto('/anmelden');
+    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
+    await page.getByTestId('recovery-code').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+    await page.waitForURL('**/uebersicht');
+
+    const { rows: credentialRows } = await withDb((client) =>
+      client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
+    );
+    const credentialId = credentialRows[0].id as string;
+
+    async function sessionCountFor(id: string): Promise<number> {
+      const result = await withDb((client) =>
+        client.query('SELECT count(*)::int AS n FROM sessions WHERE credential_id = $1', [id]),
+      );
+      return result.rows[0].n as number;
+    }
+
+    // Zwei direkt geseedete Alt-Sitzungen desselben Passkeys — Anmelde-Rückstand,
+    // der createSession() nie zu sehen bekam und darum nie coalescte (Rest-Altlast
+    // aus der Zeit vor #857).
+    await createThrowawaySession(credentialId);
+    await createThrowawaySession(credentialId);
+    expect(await sessionCountFor(credentialId)).toBe(3);
+
+    // "App sperren" beendet nur die aktuelle Sitzung serverseitig (S1).
+    await page.goto('/einstellungen');
+    const sessionPanel = page.locator('.session-panel');
+    await sessionPanel.getByRole('button', { name: 'App sperren' }).click();
+    await sessionPanel.getByRole('button', { name: 'Sperren' }).click();
+    await page.waitForURL('**/anmelden');
+
+    // Nur der echte Login-Pfad ruft createSession(C) und coalesct damit die beiden
+    // geseedeten Alt-Sitzungen weg — direkt geseedete Sitzungen umgehen das.
+    await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
+    await page.waitForURL('**/uebersicht');
+
+    expect(await sessionCountFor(credentialId)).toBe(1);
+
+    await page.goto('/einstellungen');
+    await expect(
+      page.locator('.session-panel').getByText('Keine weiteren aktiven Sitzungen'),
+    ).toBeVisible();
+
+    await context.close();
+  });
+
+  test('AK3: Down-Pfad von 0022 stellt last_seen_at wieder her, Up-Pfad entfernt sie erneut', async () => {
+    const downSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/down/0022_melted_zarda.down.sql'),
+      'utf8',
+    );
+    const upSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/0022_melted_zarda.sql'),
+      'utf8',
+    );
+
+    async function sessionColumns(client: Client): Promise<string[]> {
+      const { rows } = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'`,
+      );
+      return rows.map((r) => r.column_name as string);
+    }
+
+    await withDb(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const columnsBefore = await sessionColumns(client);
+        expect(columnsBefore).not.toContain('last_seen_at');
+
+        await client.query(downSql);
+        expect(await sessionColumns(client)).toContain('last_seen_at');
+
+        await client.query(upSql);
+        expect(await sessionColumns(client)).toEqual(columnsBefore);
+      } finally {
+        // DDL ist in Postgres transaktional — der Rollback macht auch ADD/DROP
+        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (journal.spec.ts:184).
+        await client.query('ROLLBACK');
+      }
+    });
+  });
+
+  test('AK4: „Alle anderen Sitzungen beenden" lässt die eigene weiterleben, der Bezug zu „App sperren" ist erklärt', async ({
+    browser,
+    baseURL,
+  }) => {
+    const {
+      context: contextA,
+      page: pageA,
+      tokenHash: tokenHashA,
+    } = await freshSessionContext(browser, baseURL);
+    const sessionB = await createThrowawaySession();
+
+    await pageA.goto('/einstellungen');
+    const sessionPanel = pageA.locator('.session-panel');
+    const endRow = sessionPanel.locator('.row', { hasText: 'Alle anderen Sitzungen beenden' });
+    await expect(endRow).toContainText('App sperren');
+
+    await sessionPanel.getByRole('button', { name: 'Beenden' }).click();
+    await sessionPanel.getByRole('button', { name: 'Beenden' }).click();
+
+    await expect.poll(() => sessionRowExists(sessionB.tokenHash)).toBe(false);
+    expect(await sessionRowExists(tokenHashA)).toBe(true);
+
+    await contextA.close();
+  });
+
+  test('AK5: offline sind „App sperren" und „Alle anderen Sitzungen beenden" inaktiv mit Hinweis', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    await createThrowawaySession();
+
+    await page.goto('/einstellungen');
+    await context.setOffline(true);
+
+    const sessionPanel = page.locator('.session-panel');
+    await expect(
+      sessionPanel.locator('.session-panel__hint', { hasText: 'Geht nur online.' }),
+    ).toBeVisible();
+    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeDisabled();
+    await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeDisabled();
+
+    await context.setOffline(false);
+    await context.close();
+  });
+
+  test('AK6: Karte bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+    await createThrowawaySession();
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+
+    await page.goto('/einstellungen');
+    const sessionPanel = page.locator('.session-panel');
+    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeVisible();
+    await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeVisible();
+
+    await context.close();
   });
 });
