@@ -1,3 +1,30 @@
+.weather-panel__locate {
+  padding: var(--space-2) 0 var(--space-3);
+}
+
+/* Sekundär, kein zweiter voller Akzentknopf neben "Suchen" (Ticket #853). */
+.weather-panel__locate-button {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.weather-panel__locate-button:active {
+  opacity: 0.7;
+}
+
+.weather-panel__locate-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .weather-panel__search {
   display: flex;
   flex-direction: column;

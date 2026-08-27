@@ -85,6 +85,63 @@ async function weatherCacheKeys(page: Page): Promise<string[]> {
   );
 }
 
+/** Stubs `navigator.geolocation` to resolve `coords` after `delayMs` — the real
+ * CDP `setGeolocation` has no delay knob, and the waiting-state AK (#853 AC3)
+ * needs a window in which the request is deterministically still in flight. */
+async function stubDelayedGeolocation(
+  page: Page,
+  coords: { latitude: number; longitude: number },
+  delayMs: number,
+) {
+  await page.addInitScript(
+    ({ coords, delayMs }) => {
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: {
+          getCurrentPosition: (success: (position: GeolocationPosition) => void) => {
+            setTimeout(() => {
+              success({
+                coords: {
+                  ...coords,
+                  accuracy: 1,
+                  altitude: null,
+                  altitudeAccuracy: null,
+                  heading: null,
+                  speed: null,
+                },
+                timestamp: Date.now(),
+              } as GeolocationPosition);
+            }, delayMs);
+          },
+        },
+      });
+    },
+    { coords, delayMs },
+  );
+}
+
+/** Stubs `navigator.geolocation` to fail immediately with the given error code
+ * (1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT) — #853 AC4
+ * covers both "abgelehnt" and "keine Position", which need the same hint. */
+async function stubGeolocationError(page: Page, code: 1 | 2 | 3) {
+  await page.addInitScript((code) => {
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (
+          _success: (position: GeolocationPosition) => void,
+          error: (positionError: GeolocationPositionError) => void,
+        ) => {
+          error({ code, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3, message: 'stub' });
+        },
+      },
+    });
+  }, code);
+}
+
+const LOCATE_ERROR_HINT =
+  'Standort ist für diese Seite gesperrt. In den iOS-Einstellungen unter Safari › Ort wieder erlauben — oder den Ort hier suchen.';
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // Default: abort both Open-Meteo endpoints. Tests register a later, more specific
@@ -256,4 +313,158 @@ test('der Suchen-Button nutzt den --accent-Token, auch im Dark Mode (issue #159 
   const darkBg = await button.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).toBe(await resolveToken());
   expect(darkBg).not.toBe(lightBg);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1 (#853): Knopf „Aktuellen Standort verwenden" zwischen Ort und Suche     */
+/* -------------------------------------------------------------------------- */
+
+test('zwischen „Aktueller Ort" und dem Suchfeld steht der Knopf „Aktuellen Standort verwenden" (issue #853 AC1)', async ({
+  page,
+}) => {
+  await page.goto('/einstellungen');
+
+  const locateButton = page.getByRole('button', { name: 'Aktuellen Standort verwenden' });
+  await expect(locateButton).toBeVisible();
+
+  const isBetween = await page.evaluate(() => {
+    const ortRow = document.querySelector('.row');
+    const button = document.querySelector('.weather-panel__locate-button');
+    const searchInput = document.querySelector('.weather-panel__search-input');
+    if (!ortRow || !button || !searchInput) return false;
+    const afterOrt = !!(ortRow.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const beforeSearch = !!(button.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return afterOrt && beforeSearch;
+  });
+  expect(isBetween).toBe(true);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2 (#853): Standortfreigabe erteilt -> „Aktueller Standort" + GPS-Koordinaten */
+/* -------------------------------------------------------------------------- */
+
+test('nach erteilter Standortfreigabe steht „Aktueller Standort" da und der Forecast-Request trägt die GPS-Koordinaten, nicht Bonn (issue #853 AC2)', async ({
+  page,
+  context,
+}) => {
+  const GPS = { latitude: 48.1351, longitude: 11.582 };
+  const GPS_FORECAST = forecastBody([18, 18, 18, 18, 18, 18, 18], [9, 9, 9, 9, 9, 9, 9]);
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation(GPS);
+  await mockForecastByLocation(page, [{ ...GPS, body: GPS_FORECAST }]);
+
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Aktuellen Standort verwenden' }).click();
+  await expect(currentPlace(page)).toHaveText('Aktueller Standort');
+
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText('18°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK3 (#853): Während die Abfrage läuft, zeigt der Knopf einen Wartezustand   */
+/* -------------------------------------------------------------------------- */
+
+test('während die Standortabfrage läuft, zeigt der Knopf einen Wartezustand und ist dabei deaktiviert (issue #853 AC3)', async ({
+  page,
+}) => {
+  await stubDelayedGeolocation(page, { latitude: 48.1351, longitude: 11.582 }, 3000);
+  await page.goto('/einstellungen');
+
+  const idleButton = page.getByRole('button', { name: 'Aktuellen Standort verwenden' });
+  await idleButton.click();
+
+  const busyButton = page.getByRole('button', { name: 'Standort wird ermittelt …' });
+  await expect(busyButton).toBeVisible();
+  await expect(busyButton).toBeDisabled();
+  // A disabled button cannot receive a real click — the browser itself is the
+  // guard against triggering the request a second time while it is in flight.
+
+  await expect(page.getByRole('button', { name: 'Aktuellen Standort verwenden' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Aktuellen Standort verwenden' })).toBeEnabled();
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4 (#853): Verweigert oder keine Position -> Ort bleibt, Hinweis erklärt   */
+/* -------------------------------------------------------------------------- */
+
+test('lehne ich die Standortfreigabe ab, bleibt der Ort unverändert und ein Hinweis erklärt den Rückweg (issue #853 AC4)', async ({
+  page,
+}) => {
+  // No context.grantPermissions() call — Chromium under automation denies the
+  // request outright instead of hanging on an unresolvable prompt.
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Aktuellen Standort verwenden' }).click();
+
+  await expect(page.getByText(LOCATE_ERROR_HINT)).toBeVisible();
+  await expect(currentPlace(page)).toHaveText('Bonn');
+});
+
+test('liefert das Gerät keine Position, bleibt der Ort unverändert und derselbe Hinweis erscheint (issue #853 AC4)', async ({
+  page,
+}) => {
+  await stubGeolocationError(page, 2); // POSITION_UNAVAILABLE
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Aktuellen Standort verwenden' }).click();
+
+  await expect(page.getByText(LOCATE_ERROR_HINT)).toBeVisible();
+  await expect(currentPlace(page)).toHaveText('Bonn');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK6 (#853): GPS-Ort bleibt nach Reload erhalten, ohne erneute Standortabfrage */
+/* -------------------------------------------------------------------------- */
+
+test('der GPS-Ort bleibt nach einem Reload erhalten, die Vorhersage lädt ohne erneute Standortabfrage (issue #853 AC6)', async ({
+  page,
+  context,
+}) => {
+  const GPS = { latitude: 41.9028, longitude: 12.4964 };
+  const GPS_FORECAST = forecastBody([25, 25, 25, 25, 25, 25, 25], [15, 15, 15, 15, 15, 15, 15]);
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation(GPS);
+  await mockForecastByLocation(page, [{ ...GPS, body: GPS_FORECAST }]);
+
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Aktuellen Standort verwenden' }).click();
+  await expect(currentPlace(page)).toHaveText('Aktueller Standort');
+
+  // Revoking permission before the reload proves persistence does not depend on
+  // asking again: a re-prompt on load would surface as the denied hint below,
+  // not as a working forecast for the same coordinates.
+  await context.clearPermissions();
+
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+  await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText('25°');
+
+  await page.goto('/einstellungen');
+  await expect(currentPlace(page)).toHaveText('Aktueller Standort');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK7 (#853): Suche „Berlin" ersetzt den GPS-Ort                              */
+/* -------------------------------------------------------------------------- */
+
+test('eine anschließend über die Suche gewählte Stadt ersetzt den GPS-Ort (issue #853 AC7)', async ({
+  page,
+  context,
+}) => {
+  const GPS = { latitude: 52.0, longitude: 8.5 };
+  const GPS_FORECAST = forecastBody([12, 12, 12, 12, 12, 12, 12], [4, 4, 4, 4, 4, 4, 4]);
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation(GPS);
+  await mockForecastByLocation(page, [{ ...GPS, body: GPS_FORECAST }]);
+
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Aktuellen Standort verwenden' }).click();
+  await expect(currentPlace(page)).toHaveText('Aktueller Standort');
+
+  await mockGeocoding(page, { Berlin: [BERLIN] });
+  await page.getByLabel('Ort suchen').fill('Berlin');
+  await page.getByRole('button', { name: 'Suchen' }).click();
+  await page.getByRole('button', { name: 'Berlin, Berlin, Deutschland' }).click();
+
+  await expect(currentPlace(page)).toHaveText('Berlin');
 });

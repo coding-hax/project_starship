@@ -181,7 +181,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/features/weather
 
 - `forecast.ts` — Open-Meteo: `fetchForecast`/`parseForecast`, `isStale`, Tagesdetail-Helfer
-- `geocoding.ts` / `wmo-icon.ts` / `weather-category-labels.ts` — Ortssuche (flüchtig) + Wettercode → Icon/Label
+- `geocoding.ts` / `geolocation.ts` / `wmo-icon.ts` / `weather-category-labels.ts` — Ortssuche + GPS-Kapsel + Wettercode → Icon/Label
 - `use-weather-cache.ts` / `use-weather-forecast.ts` / `use-weather-day.ts` — Lese-Hook, Refresh-Trigger, Tagesdetail
 - `weather-forecast.tsx` / `.css` / `weather-day.tsx` / `.css` — 7-Tage-Streifen + Tagesdetail (Kurve/Niederschlag als `<svg>`)
 
