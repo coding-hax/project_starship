@@ -162,15 +162,20 @@ test('AK2: der neue Kartenschatten liegt auf einer schwebenden Fläche (.section
   expect(await elementShadow(surfaceCard)).toBe(shadowToken);
 });
 
-test('AK-Ü: kein Überlauf nach dem Radien-/Schattenwechsel, Hell und Dunkel, alle neun Routen', async ({
-  page,
-  browser,
-}) => {
-  await registerPasskey(page);
+// Zwei Tests statt einem gemeinsamen: ein Durchlauf über alle neun Routen inklusive
+// eigenem Anmelden-Kontext braucht bereits einen Teil des Standard-Testtimeouts (30s);
+// Hell und Dunkel im selben Test hintereinander lief unter CI-Last in den Timeout
+// (net::ERR_ABORTED beim Goto mitten im zweiten Durchlauf).
+for (const scheme of ['light', 'dark'] as const) {
+  const label = scheme === 'light' ? 'Hell' : 'Dunkel';
+  test(`AK-Ü: kein Überlauf nach dem Radien-/Schattenwechsel, ${label}, alle neun Routen`, async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page);
 
-  for (const scheme of ['light', 'dark'] as const) {
     await forEachRoute(page, browser, scheme, async (routePage, path, header) => {
       await assertNoOverflow(routePage, header, `${path} (${scheme})`);
     });
-  }
-});
+  });
+}
