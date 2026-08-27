@@ -81,10 +81,17 @@
   grid-template-rows: 0fr;
 }
 
+/* No padding here on purpose: a fixed padding on the overflow-hidden grid item
+   itself isn't zeroed out by the 0fr collapse (only content-based sizing is) —
+   it would keep the row 16px tall even fully closed. The trailing space lives
+   on the last child's margin instead, which IS content and collapses with it. */
 .category-colors-panel__body {
   overflow: hidden;
   min-height: 0;
-  padding: 0 0 var(--space-4);
+}
+
+.category-colors-panel__body > *:last-child {
+  margin-bottom: var(--space-4);
 }
 
 .category-colors-panel__swatches {
