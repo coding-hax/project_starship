@@ -4,7 +4,7 @@
   max-width: 480px;
   margin-bottom: var(--space-6);
   padding: var(--space-4);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
   /* Own surface, own ink — resets the ground's --on-ground back to the fixed
