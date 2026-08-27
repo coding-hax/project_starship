@@ -6,10 +6,8 @@ import {
   createThrowawayCredential,
   createThrowawaySession,
   credentialRowExists,
-  enableVirtualAuthenticator,
   registerPasskey,
   resetAppData,
-  resetRateLimits,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -202,88 +200,23 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
   });
 });
 
-test.describe('Gerät hinzufügen (destruktiv, frischer Context)', () => {
-  test.beforeEach(async () => {
-    await resetRateLimits();
-  });
-
-  /**
-   * The shared authenticator (`registerPasskey`) already holds the account
-   * credential — `excludeCredentials` would match it and `create()` throws
-   * `InvalidStateError` (see `openRecoveryDevice` in auth-recovery-register.spec.ts,
-   * issue #476). A fresh context with one *seeded* (not registered) credential plus
-   * its own virtual authenticator sidesteps that: `firstSetup=false` (no recovery
-   * screen), but the fresh authenticator can still enrol a second credential.
-   *
-   * Clears `credentials` first (same reasoning as `deleteAllCredentials` above) —
-   * AK1 asserts an exact total, and earlier tests in this file leave rows behind.
-   */
-  async function freshDeviceContext(browser: Browser, baseURL: string | undefined) {
-    await deleteAllCredentials();
-    const session = await createThrowawaySession();
-    const context = await browser.newContext();
-    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
-    const page = await context.newPage();
-    await createThrowawayCredential({ label: 'Bestehend' });
-    await enableVirtualAuthenticator(page);
-    return { context, page };
-  }
-
-  test('AK1: Hinzufügen legt ein zweites Credential mit Label an, kein Recovery-Code', async ({
+test.describe('#856: Gerät hinzufügen durch Recovery-Hinweis ersetzt (frischer Context)', () => {
+  test('AK5: Panel zeigt Recovery-Hinweis statt „Gerät hinzufügen"-Knopf', async ({
     browser,
     baseURL,
   }) => {
-    const { context, page } = await freshDeviceContext(browser, baseURL);
+    await deleteAllCredentials();
+    await createThrowawayCredential({ label: 'Bestehend' });
+    const { context, page } = await freshSessionContext(browser, baseURL);
+
     await page.goto('/einstellungen');
-
-    await page.getByRole('button', { name: 'Gerät hinzufügen' }).click();
-    // Scoped to the add-device form itself — the calendar module's "Abo hinzufügen"
-    // button (ics-subscriptions-panel.tsx) also matches a bare "Hinzufügen" query by
-    // substring, and `.einstellungen__group[hasText: 'Gerät']` is not a safe enough
-    // scope either: journal-settings-panel.tsx's "Auf diesem Gerät entsperrt lassen"
-    // toggle lives in the "Module" group and matches the same hasText filter.
-    const addForm = page.locator('.devices-panel__add-form');
-    await addForm.getByLabel('Gerätename').fill('Laptop');
-    await addForm.getByRole('button', { name: 'Hinzufügen' }).click();
-
-    await expect(page.locator('.devices-panel__item', { hasText: 'Laptop' })).toBeVisible();
-    await expect(page.getByTestId('recovery-code')).toHaveCount(0);
-
-    const rows = await withDb((client) =>
-      client.query("SELECT label FROM credentials WHERE label = 'Laptop'"),
-    );
-    expect(rows.rows).toHaveLength(1);
-    expect(await credentialCount()).toBe(2);
-
-    await context.close();
-  });
-
-  test('AK2: offline ist „Gerät hinzufügen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
-    const { context, page } = await freshDeviceContext(browser, baseURL);
-    await page.goto('/einstellungen');
-    await context.setOffline(true);
 
     await expect(
-      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
+      page.getByText(
+        'Neues Gerät hinzufügen? Öffne die App auf dem neuen Gerät und melde es unter „Anmelden" mit deinem Recovery-Code an.',
+      ),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Gerät hinzufügen' })).toBeDisabled();
-
-    await context.setOffline(false);
-    await context.close();
-  });
-
-  test('AK3: Aktion bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
-    browser,
-    baseURL,
-  }) => {
-    const { context, page } = await freshDeviceContext(browser, baseURL);
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/einstellungen');
-
-    const addButton = page.getByRole('button', { name: 'Gerät hinzufügen' });
-    await expect(addButton).toBeVisible();
-    await addButton.click();
-    await expect(page.locator('.devices-panel__add-form').getByLabel('Gerätename')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Gerät hinzufügen' })).toHaveCount(0);
 
     await context.close();
   });
