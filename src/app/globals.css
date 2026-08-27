@@ -84,57 +84,69 @@
  * `--face-ink` (issue #850) — the design sheet's own colour pair, unrelated
  * to the --ground/--on-ground contrast rule.
  */
+/* `--blob-partner` (issue #849, AK3): the background circles' `--b3` tone
+   mixes this in instead of white/black, so one of the four circles per route
+   carries its own colour stitch instead of a plain tint of `--ground`. */
 html:has([data-ground='uebersicht']) {
   --ground: var(--ground-uebersicht);
   --on-ground: var(--on-accent);
+  --blob-partner: #ffce00;
   --face-body: var(--face-body-uebersicht);
   --face-ink: var(--face-ink-uebersicht);
 }
 html:has([data-ground='aufgaben']) {
   --ground: var(--ground-aufgaben);
   --on-ground: var(--on-ground-light);
+  --blob-partner: #12a67a;
   --face-body: var(--face-body-aufgaben);
   --face-ink: var(--face-ink-aufgaben);
 }
 html:has([data-ground='kalender']) {
   --ground: var(--ground-kalender);
   --on-ground: var(--on-ground-light);
+  --blob-partner: #3aa7e0;
   --face-body: var(--face-body-kalender);
   --face-ink: var(--face-ink-kalender);
 }
 html:has([data-ground='routinen']) {
   --ground: var(--ground-routinen);
   --on-ground: var(--on-accent);
+  --blob-partner: #ffce00;
   --face-body: var(--face-body-routinen);
   --face-ink: var(--face-ink-routinen);
 }
 html:has([data-ground='journal']) {
   --ground: var(--ground-journal);
   --on-ground: var(--on-ground-light);
+  --blob-partner: #cf49c0;
   --face-body: var(--face-body-journal);
   --face-ink: var(--face-ink-journal);
 }
 html:has([data-ground='aktivitaeten']) {
   --ground: var(--ground-aktivitaeten);
   --on-ground: var(--on-accent);
+  --blob-partner: #ff7300;
   --face-body: var(--face-body-aktivitaeten);
   --face-ink: var(--face-ink-aktivitaeten);
 }
 html:has([data-ground='wetter']) {
   --ground: var(--ground-wetter);
   --on-ground: var(--on-accent);
+  --blob-partner: #7cc9f0;
   --face-body: var(--face-body-wetter);
   --face-ink: var(--face-ink-wetter);
 }
 html:has([data-ground='einstellungen']) {
   --ground: var(--ground-einstellungen);
   --on-ground: var(--on-ground-light);
+  --blob-partner: #0e7c84;
   --face-body: var(--face-body-einstellungen);
   --face-ink: var(--face-ink-einstellungen);
 }
 html:has([data-ground='anmelden']) {
   --ground: var(--ground-anmelden);
   --on-ground: var(--on-accent);
+  --blob-partner: #ffce00;
   --face-body: var(--face-body-anmelden);
   --face-ink: var(--face-ink-anmelden);
 }
@@ -254,6 +266,21 @@ html {
 
 body {
   background: var(--ground);
+  /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
+     OWN stacking context (issue #849). Without this, body has no position/
+     z-index of its own, so that negative z-index escapes past it straight to
+     the root stacking context — where paint order is: html's canvas
+     background, then negative-z descendants (`.bg-layer`), then body's own
+     in-flow box (background included). Painted last, body's background ends
+     up on top, hiding the circles despite their correct z-index. `isolation:
+     isolate` makes body itself a stacking-context root: within its own local
+     order, body's background paints first and its negative-z children paint
+     second — on top of that background, still behind every later sibling
+     (the real page content). Doesn't affect `.bg-layer`'s viewport-relative
+     `position: fixed` sizing — only `transform`/`filter`/`contain` etc.
+     change the containing block for fixed descendants, `isolation` isn't one
+     of them. */
+  isolation: isolate;
   color: var(--text);
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: calc(var(--text-body) * var(--font-scale, 1));

@@ -13,8 +13,18 @@
   overflow: hidden;
   pointer-events: none;
   /* -1, not 0: a positioned z-index:0 layer would still paint over flat text
-     in DOM order — -1 sits behind the ground itself (AK2). */
+     in DOM order — -1 sits behind the ground itself (AK2). That only shows
+     the ground and not a plain body background because `body` isolates its
+     own stacking context (issue #849) — see the `body` rule in globals.css. */
   z-index: -1;
+  /* Four tones per route (issue #849, AK3, matches the design sheet): `--b3`
+     mixes in `--blob-partner` (set per `[data-ground]` route in globals.css)
+     instead of white/black, so one circle carries the route's own colour
+     stitch instead of a plain tint of `--ground`. */
+  --b1: color-mix(in oklab, var(--ground) 84%, #ffffff);
+  --b2: color-mix(in oklab, var(--ground) 88%, #000000);
+  --b3: color-mix(in oklab, var(--ground) 74%, var(--blob-partner));
+  --b4: color-mix(in oklab, var(--ground) 91%, #ffffff);
 }
 
 html:has([data-ground]) .bg-layer {
@@ -24,23 +34,22 @@ html:has([data-ground]) .bg-layer {
 .bg-circle {
   position: absolute;
   border-radius: 50%;
-  background: var(--circle-tone);
   /* Rest state carries no translate/scale/transform (AK5): the gait
      keyframes only add deltas around this point, so `animation: none` always
      falls back to a circle sitting exactly here, never mid-flight. */
 }
 
 .bg-circle:nth-child(1) {
-  --circle-tone: color-mix(in oklab, var(--ground) 90%, white);
+  background: var(--b1);
 }
 .bg-circle:nth-child(2) {
-  --circle-tone: color-mix(in oklab, var(--ground) 88%, black);
+  background: var(--b2);
 }
 .bg-circle:nth-child(3) {
-  --circle-tone: color-mix(in oklab, var(--ground) 92%, white);
+  background: var(--b3);
 }
 .bg-circle:nth-child(4) {
-  --circle-tone: color-mix(in oklab, var(--ground) 85%, black);
+  background: var(--b4);
 }
 
 /* --- gaits, one keyframe set per route (Übersicht: Aufsteigen) ----------- */
