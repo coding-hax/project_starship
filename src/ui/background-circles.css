@@ -13,9 +13,9 @@
   overflow: hidden;
   pointer-events: none;
   /* -1, not 0: a positioned z-index:0 layer would still paint over flat text
-     in DOM order — -1 sits behind the ground itself (AK2). Sitting behind
-     only works if nothing between `html` and this layer paints its own
-     opaque background — see the `body` rule in globals.css (issue #849). */
+     in DOM order — -1 sits behind the ground itself (AK2). That only shows
+     the ground and not a plain body background because `body` isolates its
+     own stacking context (issue #849) — see the `body` rule in globals.css. */
   z-index: -1;
   /* Four tones per route (issue #849, AK3, matches the design sheet): `--b3`
      mixes in `--blob-partner` (set per `[data-ground]` route in globals.css)

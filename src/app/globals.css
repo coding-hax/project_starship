@@ -225,11 +225,22 @@ html {
 }
 
 body {
-  /* No own background (issue #849): `html` already paints `--ground` above,
-     and `body` sits between it and `.bg-layer` (position: fixed, z-index: -1,
-     mounted right after `<body>`) — an opaque body background here would
-     paint over that layer in the root stacking context's paint order and
-     hide the circles again, exactly as it did before this fix. */
+  background: var(--ground);
+  /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
+     OWN stacking context (issue #849). Without this, body has no position/
+     z-index of its own, so that negative z-index escapes past it straight to
+     the root stacking context — where paint order is: html's canvas
+     background, then negative-z descendants (`.bg-layer`), then body's own
+     in-flow box (background included). Painted last, body's background ends
+     up on top, hiding the circles despite their correct z-index. `isolation:
+     isolate` makes body itself a stacking-context root: within its own local
+     order, body's background paints first and its negative-z children paint
+     second — on top of that background, still behind every later sibling
+     (the real page content). Doesn't affect `.bg-layer`'s viewport-relative
+     `position: fixed` sizing — only `transform`/`filter`/`contain` etc.
+     change the containing block for fixed descendants, `isolation` isn't one
+     of them. */
+  isolation: isolate;
   color: var(--text);
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: calc(var(--text-body) * var(--font-scale, 1));
