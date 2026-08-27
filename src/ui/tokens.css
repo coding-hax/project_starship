@@ -77,6 +77,33 @@
   --ground-wetter: oklch(59.3% 0.13 241.3); /* #1c86c4 */
   --ground-einstellungen: oklch(43.3% 0.025 248.4); /* #46525e */
   --ground-anmelden: oklch(71.3% 0.195 47.9); /* #ff7300 */
+
+  /* --- page face: two-colour pair per route for `<PageFace/>` (issue #850) -
+     Raw hex, not oklch — these are lifted verbatim from the design sheet's
+     measured pairs (e.g. Übersicht's gold-on-orange is a deliberate 1.93:1,
+     not 3:1+ like --ground/--on-ground), so converting would risk drifting
+     off the sheet's exact values. Same value in light AND dark mode (AK3) —
+     unlike --ground/--on-ground, nothing here is redeclared under a
+     dark-mode selector. */
+  --face-body-uebersicht: #ffce00;
+  --face-ink-uebersicht: #b84600;
+  --face-body-aufgaben: #ffb020;
+  --face-ink-aufgaben: #6b3200;
+  --face-body-kalender: #9ad2ff;
+  --face-ink-kalender: #093a90;
+  --face-body-routinen: #ff7300;
+  --face-ink-routinen: #7a2e00;
+  --face-body-journal: #ffce00;
+  --face-ink-journal: #4a1d78;
+  --face-body-aktivitaeten: #ffffff;
+  --face-ink-aktivitaeten: #a86a00;
+  --face-body-wetter: #ffffff;
+  --face-ink-wetter: #14638f;
+  --face-body-einstellungen: #ffc44d;
+  --face-ink-einstellungen: #333d47;
+  --face-body-anmelden: #ffffff;
+  --face-ink-anmelden: #ff7300;
+
   /* Dark-mode grounds are derived, not authored: each route mixes ~62% of its
      light ground onto this same very-dark warm base (= dark --bg) rather than
      painting the saturated light colour at full strength, which reads as

@@ -1,162 +1,76 @@
 /*
- * Page faces, one per route (S4 of #828, issue #830). Fixed 32px so a
- * halbhoher Seitenkopf (22px h1, --text-page-title) never grows past its own
- * line — seitenkopf.spec.ts AK5 (`scrollHeight <= clientHeight`) is the guard.
+ * Page faces, one per route (S4 of #828, issue #830; redrawn against the
+ * design sheet in issue #850). 42px so a halbhoher Seitenkopf (22px h1,
+ * --text-page-title) never grows past its own line — seitenkopf.spec.ts AK5
+ * and figuren.spec.ts's own regression gate (`scrollHeight <= clientHeight`)
+ * are the guards.
  */
 
-.page-face {
-  inline-size: 32px;
-  block-size: 32px;
+.face {
+  inline-size: 42px;
+  block-size: 42px;
+  overflow: visible;
   flex: 0 0 auto;
+  animation: pf-bob 4.2s ease-in-out infinite alternate;
 }
 
-/* Shared flush-left title row for the two routes that only had a bare <h1>
-   (Routinen, Aktivitäten) — no new per-route CSS file for that alone. */
-.page-face-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+.face--slow {
+  animation-duration: 6s;
 }
 
-.page-face__body {
-  fill: var(--on-ground);
+.face__body {
+  fill: var(--face-body);
 }
 
-/* Aussparung: liest als Loch gegen den Körper, weil --ground/--on-ground ein
-   Kontrastpaar sind (grundfarbe.spec.ts). Dünne Linien (Lächeln, geschlossene
-   Augen) nehmen dieselbe Farbe als Kontur statt Fläche. */
-.page-face__eye,
-.page-face__mouth {
+.face__eyes {
+  fill: var(--face-ink);
+  transform-origin: 32px 30px;
+  animation: pf-blink 5.5s ease-in-out infinite;
+}
+
+.face__eyes--late {
+  animation-duration: 7.2s;
+  animation-delay: -2s;
+}
+
+.face__line {
   fill: none;
-  stroke: var(--ground);
-  stroke-width: 1.8;
+  stroke: var(--face-ink);
+  stroke-width: 4;
   stroke-linecap: round;
 }
 
-circle.page-face__eye {
-  fill: var(--ground);
-  stroke: none;
-}
-
-.page-face__mouth--grin {
-  fill: var(--ground);
-  stroke: none;
-}
-
-/* Blinzeln (AK4): Ruhelage (0 %/100 %) trägt keinen Transform — die Identität —
-   sodass `animation: none` das Auge immer offen anhält, nie mitten im Blink.
-   Drei Blinks an ungleichen Prozentpunkten pro Zyklus, plus je Auge eine eigene
-   Dauer + negativer Delay (wie background-circles.css), damit kein Augenpaar
-   im Takt bleibt. */
+/* Beide Ruhelagen sind die Identität (AK4/AK5): `animation: none` hält Augen
+   offen und die Figur ohne Versatz an, nie mitten in der Bewegung. */
 @keyframes pf-blink {
   0%,
-  7%,
+  91%,
   100% {
-    transform: scaleY(1);
+    scale: 1 1;
   }
-  4% {
-    transform: scaleY(0.1);
-  }
-  38%,
-  44% {
-    transform: scaleY(1);
-  }
-  41% {
-    transform: scaleY(0.1);
-  }
-  76%,
-  82% {
-    transform: scaleY(1);
-  }
-  79% {
-    transform: scaleY(0.15);
+  94%,
+  96% {
+    scale: 1 0.08;
   }
 }
 
-/* Nur offene Rundaugen blinzeln (Übersicht, Aufgaben-rechts, Routinen,
-   Aktivitäten, Wetter, Anmelden) — Kalender/Einstellungen (lachende Augen) und
-   Journal (Augen zu) sind gezeichnete Bögen ohne Bewegung. */
-[data-face='uebersicht'] .page-face__eye {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-}
-[data-face='uebersicht'] .page-face__eye--l {
-  animation: pf-blink 9.4s linear infinite;
-  animation-delay: -1.3s;
-}
-[data-face='uebersicht'] .page-face__eye--r {
-  animation: pf-blink 10.7s linear infinite;
-  animation-delay: -4.6s;
+@keyframes pf-bob {
+  from {
+    translate: 0 -3px;
+  }
+  to {
+    translate: 0 3px;
+  }
 }
 
-[data-face='aufgaben'] .page-face__eye--r {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-  animation: pf-blink 11.3s linear infinite;
-  animation-delay: -2.1s;
-}
-
-[data-face='routinen'] .page-face__eye {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-}
-[data-face='routinen'] .page-face__eye--l {
-  animation: pf-blink 12.1s linear infinite;
-  animation-delay: -5.4s;
-}
-[data-face='routinen'] .page-face__eye--r {
-  animation: pf-blink 13.6s linear infinite;
-  animation-delay: -0.8s;
-}
-
-[data-face='aktivitaeten'] .page-face__eye {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-}
-[data-face='aktivitaeten'] .page-face__eye--l {
-  animation: pf-blink 8.9s linear infinite;
-  animation-delay: -3.2s;
-}
-[data-face='aktivitaeten'] .page-face__eye--r {
-  animation: pf-blink 14.3s linear infinite;
-  animation-delay: -6.7s;
-}
-
-[data-face='wetter'] .page-face__eye {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-}
-[data-face='wetter'] .page-face__eye--l {
-  animation: pf-blink 10.3s linear infinite;
-  animation-delay: -1.9s;
-}
-[data-face='wetter'] .page-face__eye--r {
-  animation: pf-blink 12.8s linear infinite;
-  animation-delay: -7.4s;
-}
-
-[data-face='anmelden'] .page-face__eye {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-}
-[data-face='anmelden'] .page-face__eye--l {
-  animation: pf-blink 9.7s linear infinite;
-  animation-delay: -3.6s;
-}
-[data-face='anmelden'] .page-face__eye--r {
-  animation: pf-blink 11.9s linear infinite;
-  animation-delay: -5.1s;
-}
-
-/* Reduce motion (AK4), wortgleiches Muster zu background-circles.css:
-   `animation: none` statt Dauer≈0 — sonst friert das Auge mitten im Blink ein
-   statt offen. Ruhelage ist das offene Auge, also hält `none` es offen an. */
 @media (prefers-reduced-motion: reduce) {
-  .page-face__eye {
+  .face,
+  .face__eyes {
     animation: none !important;
   }
 }
 
-:root[data-reduce-motion='true'] .page-face__eye {
+:root[data-reduce-motion='true'] .face,
+:root[data-reduce-motion='true'] .face__eyes {
   animation: none !important;
 }
