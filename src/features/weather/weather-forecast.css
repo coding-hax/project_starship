@@ -41,6 +41,9 @@
      nests inside and inherits this. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border-radius: var(--radius-card);
 }
 
@@ -198,6 +201,9 @@
   background: var(--surface);
   /* Own surface, own ink (issue #832 AK5). */
   --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   color: var(--text-muted);

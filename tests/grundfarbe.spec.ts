@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { FIXED_NOW, registerPasskey, resetAppData } from './helpers';
+import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, skewClock } from './helpers';
 
 /**
  * Vollfarb-Seitengrund je Route (issue #832, S1 von #828). Ein Test je AK; jeder
@@ -329,6 +329,130 @@ test('AK5: Karten setzen den Textkontext zurück, dieselbe Klasse liegt auf Grun
   expect(navColor).not.toBe(onAccent);
 });
 
+test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
+  test('AK3/AK5 hell: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen acht Routen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    for (const route of ROUTES) {
+      await page.goto(route.path);
+      const ground = await htmlBackground(page);
+      const border = await resolveColorToken(page, '--border');
+      const borderStrong = await resolveColorToken(page, '--border-strong');
+      expect(
+        contrastRatio(await toRgb(page, border), await toRgb(page, ground)),
+        `--border auf ${route.path}`,
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrastRatio(await toRgb(page, borderStrong), await toRgb(page, ground)),
+        `--border-strong auf ${route.path}`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test('AK3/AK5 dunkel: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen acht Routen', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.emulateMedia({ colorScheme: 'dark' });
+
+    for (const route of ROUTES) {
+      await page.goto(route.path);
+      const ground = await htmlBackground(page);
+      const border = await resolveColorToken(page, '--border');
+      const borderStrong = await resolveColorToken(page, '--border-strong');
+      expect(
+        contrastRatio(await toRgb(page, border), await toRgb(page, ground)),
+        `--border auf ${route.path} (dunkel)`,
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrastRatio(await toRgb(page, borderStrong), await toRgb(page, ground)),
+        `--border-strong auf ${route.path} (dunkel)`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  test('AK1: Stimmungsband-Grundlinie (kein Mood) erfüllt 3:1 gegen den Journal-Grund im Dunkelmodus. Heute 1,02:1', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await installClockAt(page);
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/journal');
+
+    const passphrase = '846 kontrast passphrase';
+    await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+    await page.getByLabel('Passphrase wiederholen').fill(passphrase);
+    await page.getByRole('button', { name: 'Einrichten' }).click();
+    await page.getByTestId('journal-recovery-key').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+    await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+
+    // Ein reiner Text-Eintrag ohne Stimmung -> die anderen 13 Tagesplätze zeigen
+    // die graue Grundlinie (journal.spec.ts's "wenige Einträge"-Fall).
+    await page.evaluate(() =>
+      window.__starship.appendJournalEntry('2026-07-18', { text: 'nur Text', tags: [] }),
+    );
+
+    const baseline = page.locator('.journal-mood-band__baseline').first();
+    await expect(baseline).toBeVisible();
+    const baselineColor = await baseline.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const ground = await htmlBackground(page);
+    expect(
+      contrastRatio(await toRgb(page, baselineColor), await toRgb(page, ground)),
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  test('AK2: gefüllte Ring-Spur erfüllt 3:1 gegen den Übersicht-Grund im Hellmodus, Füllung ≠ Spur. Heute 1,01:1', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    const now = '2026-07-18T12:00:00.000Z';
+    const dueToday = '2026-07-18T18:00:00.000Z';
+    await skewClock(page, now);
+    await page.goto('/uebersicht');
+    await seedTask(page, { title: 'Kanten-Sonde Ring', dueAt: dueToday });
+
+    const ring = page.locator('.daily-progress-ring');
+    await expect(ring).toBeVisible();
+    const fillColor = await ring
+      .locator('.daily-progress-ring__fill')
+      .evaluate((el) => getComputedStyle(el).stroke);
+    const trackColor = await ring
+      .locator('.daily-progress-ring__track')
+      .evaluate((el) => getComputedStyle(el).stroke);
+    const ground = await htmlBackground(page);
+
+    expect(
+      contrastRatio(await toRgb(page, fillColor), await toRgb(page, ground)),
+    ).toBeGreaterThanOrEqual(3);
+    expect(await toRgb(page, fillColor)).not.toEqual(await toRgb(page, trackColor));
+  });
+
+  test('Karten-Reset: eine Karte auf dem Grund setzt --border auf den fixen Anker zurück, nicht den Grund-Mix', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/routinen');
+    await seedHabit(page, {
+      name: 'Kanten-Sonde',
+      schedule: 'daily',
+      color: null,
+      archivedAt: null,
+    });
+
+    const card = page.locator('.habit-list__item').first();
+    await expect(card).toBeVisible();
+    const cardBorder = await card.evaluate((el) => getComputedStyle(el).borderTopColor);
+    const borderBase = await resolveColorToken(page, '--border-base');
+    const groundBorder = await resolveColorToken(page, '--border');
+
+    expect(await toRgb(page, cardBorder)).toEqual(await toRgb(page, borderBase));
+    expect(await toRgb(page, cardBorder)).not.toEqual(await toRgb(page, groundBorder));
+  });
+});
+
 test.describe('Anmelden (ausgeloggter Kontext)', () => {
   // Eingeloggt leitet /anmelden sofort auf /uebersicht um (shell.spec.ts) — dieser
   // Block braucht einen frischen, ausgeloggten Context statt der geteilten Sitzung.
@@ -370,5 +494,25 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
     expect(
       contrastRatio(await toRgb(page, headingColor), await toRgb(page, darkGround)),
     ).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('#846 AK3/AK5: --border und --border-strong erfüllen 3:1 gegen den Anmelden-Grund, in beiden Themes', async ({
+    page,
+  }) => {
+    for (const theme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.goto('/anmelden');
+      const ground = await htmlBackground(page);
+      const border = await resolveColorToken(page, '--border');
+      const borderStrong = await resolveColorToken(page, '--border-strong');
+      expect(
+        contrastRatio(await toRgb(page, border), await toRgb(page, ground)),
+        `--border auf /anmelden (${theme})`,
+      ).toBeGreaterThanOrEqual(3);
+      expect(
+        contrastRatio(await toRgb(page, borderStrong), await toRgb(page, ground)),
+        `--border-strong auf /anmelden (${theme})`,
+      ).toBeGreaterThanOrEqual(3);
+    }
   });
 });

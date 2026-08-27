@@ -103,6 +103,21 @@ auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
 `color-mix(in oklab, …, --ground-base-dark)` ab (~62 %, Aktivitäten 50 % für den
 4,5:1-Grenzwert) statt die satte Farbe grell auf Schwarz zu zeigen.
 
+Neutrale Kanten (`--border`/`--border-strong`/`--border-faint`) sind gegen `--bg`
+abgestimmt und kollabieren auf einem farbigen Grund flach — teils unter 1,1:1
+(issue #846). Auf dem Grund werden sie deshalb aus dem Grund selbst gemischt
+(`color-mix(in oklab, var(--on-ground) N%, var(--ground))`), über dieselben fixen
+Anker `--border-base`/`--border-strong-base`/`--border-faint-base`, auf die eine
+Fläche mit eigenem `--surface` zurücksetzt — analog zu `--text-base` oben.
+
+**Regel:** *bedeutungstragende* Nicht-Text-Elemente (`--border`/`--border-strong`;
+z. B. die „kein Mood erfasst"-Grundlinie im Stimmungsband, ein gefüllter Ring)
+erreichen ≥ 3:1 gegen ihren Grund (WCAG 1.4.11). *Dekorative* Linien
+(`--border-faint`; Zeilentrenner, Kartenraster) ordnen nur und **dürfen** darunter
+bleiben — „Struktur ist leiser als Inhalt" gilt auch auf dem Grund. Jede
+Dekor-Ausnahme, die flach auf einem Grund liegt und unter 3:1 bleibt, trägt im CSS
+einen kurzen Kommentar mit dieser Begründung.
+
 ## Typografie
 
 - Ein Font: **Inter Variable** (oder Geist). Kein zweiter Font ohne ADR.

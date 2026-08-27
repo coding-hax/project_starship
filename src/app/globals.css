@@ -162,6 +162,26 @@ html:has([data-ground='anmelden']) {
 :root:has([data-ground]) {
   --text: var(--on-ground);
   --text-muted: var(--on-ground);
+  /*
+   * Neutral edges (tokens.css) are tuned against --bg (a near-white or a warm
+   * anthracite) and collapse flat against a saturated route ground — issue
+   * #846 measured ratios as low as 1.02:1. On the ground they're mixed from
+   * the ground itself instead, the same anchor-and-override pattern --text
+   * uses above. One mix here covers both themes: it reads --on-ground/--ground,
+   * which the dark blocks above already retarget per route.
+   *
+   * Two tiers, not one: --border/--border-strong carry meaning (a baseline
+   * that reads "no entry today", a filled ring) and are lifted to clear 3:1
+   * (WCAG 1.4.11) on every route in both themes — 70% is light mode's floor
+   * (Aufgaben, 3.21:1), dark mode needs only ~60% but 70% still clears it
+   * (Anmelden, 3.86:1 measured). --border-faint stays decorative (row/list
+   * dividers) and is lifted only moderately, so it stays visible without
+   * competing with the meaningful tier — it may stay under 3:1 (AK4,
+   * docs/design/farben-typografie.md).
+   */
+  --border: color-mix(in oklab, var(--on-ground) 70%, var(--ground));
+  --border-strong: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+  --border-faint: color-mix(in oklab, var(--on-ground) 40%, var(--ground));
 }
 
 /*
