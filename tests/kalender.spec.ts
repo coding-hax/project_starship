@@ -1248,6 +1248,163 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im 
   expect(expectedDark).not.toBe(expectedLight);
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #845: Termin-Punkte im Wochenstreifen werden unten abgeschnitten     */
+/* -------------------------------------------------------------------------- */
+
+test('die Terminpunkte im Wochenstreifen sind auf 375x812 vollstaendig sichtbar, kein Punkt wird vom Streifen beschnitten (AK1, issue #845)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Termin A',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Termin B',
+    allDay: false,
+    startsAt: `${TOMORROW}T09:00:00.000Z`,
+    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'sport',
+  });
+
+  const carouselBox = await calendarWeeks(page).boundingBox();
+  if (!carouselBox) throw new Error('AK1: Streifen hat keine BoundingBox');
+
+  for (const label of ['Sa, 18.', 'So, 19.']) {
+    const dotBox = await dayDots(page, label).first().boundingBox();
+    if (!dotBox) throw new Error(`AK1: ${label} hat keinen Punkt`);
+    expect(dotBox.y).toBeGreaterThanOrEqual(carouselBox.y);
+    expect(dotBox.y + dotBox.height).toBeLessThanOrEqual(carouselBox.y + carouselBox.height);
+  }
+});
+
+test('Wochentagskuerzel und Tageszahl stehen in allen sieben sichtbaren Zellen auf derselben Hoehe, mit und ohne Punkte (AK2, issue #845)', async ({
+  page,
+}) => {
+  // Nur "Sa, 18." (heute) bekommt einen Punkt — die anderen sechs Zellen der
+  // initial sichtbaren Woche bleiben leer, genau die Situation aus dem Ticket
+  // (Tage ohne Punkte sassen tiefer). Der Streifen rollt vorwaerts ab dem
+  // gewaehlten Tag (calendar-strip.tsx's windowAnchor, issue #813) statt an
+  // Montag auszurichten — die sichtbare Woche ist also "Sa, 18." bis "Fr, 24.",
+  // nicht die Kalenderwoche Mo–So.
+  await seedEvent(page, {
+    title: 'Einziger Termin der Woche',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+  await expect(dayDots(page, 'So, 19.')).toHaveCount(0);
+
+  const week = ['Sa, 18.', 'So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.', 'Do, 23.', 'Fr, 24.'];
+  const weekdayTops: number[] = [];
+  const numberTops: number[] = [];
+  for (const label of week) {
+    const button = dayButton(page, label);
+    const weekdayBox = await button.locator('.calendar-strip__weekday').boundingBox();
+    // Die Tageszahl traegt keine eigene Klasse — zweites <span> im Knopf,
+    // nach dem Wochentagskuerzel, vor der (immer gerenderten) Punktzeile.
+    const numberBox = await button.locator('span').nth(1).boundingBox();
+    if (!weekdayBox || !numberBox) throw new Error(`AK2: ${label} hat keine BoundingBox`);
+    weekdayTops.push(weekdayBox.y);
+    numberTops.push(numberBox.y);
+  }
+
+  for (const y of weekdayTops) {
+    expect(Math.abs(y - weekdayTops[0])).toBeLessThanOrEqual(1);
+  }
+  for (const y of numberTops) {
+    expect(Math.abs(y - numberTops[0])).toBeLessThanOrEqual(1);
+  }
+});
+
+test('auch beim ausgewaehlten Tag liegen die Punkte innerhalb seiner farbigen Flaeche, nicht auf deren Kante (AK3, issue #845)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ausgewaehlter Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const selected = dayButton(page, 'Sa, 18.');
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+
+  const dayBox = await selected.boundingBox();
+  const dotBox = await dayDots(page, 'Sa, 18.').first().boundingBox();
+  if (!dayBox || !dotBox) throw new Error('AK3: Tag oder Punkt hat keine BoundingBox');
+
+  expect(dotBox.x).toBeGreaterThanOrEqual(dayBox.x);
+  expect(dotBox.y).toBeGreaterThanOrEqual(dayBox.y);
+  expect(dotBox.x + dotBox.width).toBeLessThanOrEqual(dayBox.x + dayBox.width);
+  expect(dotBox.y + dotBox.height).toBeLessThanOrEqual(dayBox.y + dayBox.height);
+});
+
+test('in der Monatsansicht bleiben die Mo-So-Kopfzeile ausserhalb des Scrollers, sechs sichtbare Zeilen und vollstaendig sichtbare Punkte erhalten (AK4, issue #845)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Monats-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const header = page.locator('.calendar-strip__weekday-header');
+  await expect(header).toBeVisible();
+  await expect(calendarWeeks(page).locator('.calendar-strip__weekday-header')).toHaveCount(0);
+
+  const visibleRows = page.locator('.calendar-strip__week-row:has(.calendar-strip__day:not([inert]))');
+  await expect(visibleRows).toHaveCount(6);
+
+  const trackBox = await calendarWeeks(page).boundingBox();
+  const dotBox = await dayDots(page, 'Sa, 18.').first().boundingBox();
+  if (!trackBox || !dotBox) throw new Error('AK4: Streifen oder Punkt hat keine BoundingBox');
+  expect(dotBox.y).toBeGreaterThanOrEqual(trackBox.y);
+  expect(dotBox.y + dotBox.height).toBeLessThanOrEqual(trackBox.y + trackBox.height);
+});
+
+test('die Streifenhoehe bleibt gleich, wenn ein Punkt fuer den sichtbaren Tag hinzukommt oder ein anderer Tag gewaehlt wird — kein Layout-Shift (AK5, issue #845)', async ({
+  page,
+}) => {
+  const track = calendarWeeks(page);
+  const heightBefore = (await track.boundingBox())?.height;
+
+  await seedEvent(page, {
+    title: 'Frischer Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(1);
+  expect((await track.boundingBox())?.height).toBe(heightBefore);
+
+  await dayButton(page, 'So, 19.').click();
+  expect((await track.boundingBox())?.height).toBe(heightBefore);
+});
+
 test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
   page,
 }) => {
