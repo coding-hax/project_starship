@@ -2,11 +2,20 @@
 
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { formatGeocodingResult, searchLocations, type GeocodingResult } from '@/features/weather/geocoding';
+import { getCurrentCoordinates, GeolocationRequestError } from '@/features/weather/geolocation';
 import { Row } from '@/ui/row';
 import { SectionCard } from '@/ui/section-card';
-import { useWeatherLocation } from './use-weather-location';
+import { CURRENT_LOCATION_NAME, useWeatherLocation } from './use-weather-location';
 
 type SearchPhase = 'idle' | 'loading' | 'results' | 'empty' | 'error';
+
+type LocatePhase = 'idle' | 'locating' | 'error';
+
+// Sinngemäß aus dem Ticket (#853 AK4): iOS merkt sich ein einmal erteiltes
+// "Nicht erlauben" und fragt nie wieder — ohne den Weg zurück in die
+// Einstellungen wirkt der Knopf beim zweiten Mal einfach kaputt.
+const LOCATE_ERROR_HINT =
+  'Standort ist für diese Seite gesperrt. In den iOS-Einstellungen unter Safari › Ort wieder erlauben — oder den Ort hier suchen.';
 
 /**
  * Ort für die Wettervorhersage (issue #159) + Open-Meteo-Quellenangabe (issue #155
@@ -21,8 +30,21 @@ export function WeatherPanel() {
   const [phase, setPhase] = useState<SearchPhase>('idle');
   const [results, setResults] = useState<GeocodingResult[]>([]);
   const [lastQuery, setLastQuery] = useState('');
+  const [locatePhase, setLocatePhase] = useState<LocatePhase>('idle');
   const requestIdRef = useRef(0);
   const inputId = useId();
+
+  async function handleLocate() {
+    setLocatePhase('locating');
+    try {
+      const { latitude, longitude } = await getCurrentCoordinates();
+      setLocation({ name: CURRENT_LOCATION_NAME, latitude, longitude });
+      setLocatePhase('idle');
+    } catch (error) {
+      if (!(error instanceof GeolocationRequestError)) throw error;
+      setLocatePhase('error');
+    }
+  }
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,6 +80,19 @@ export function WeatherPanel() {
       <Row label="Aktueller Ort">
         <span>{location.name}</span>
       </Row>
+
+      <div className="weather-panel__locate">
+        <button
+          type="button"
+          className="weather-panel__locate-button"
+          onClick={handleLocate}
+          disabled={locatePhase === 'locating'}
+          aria-busy={locatePhase === 'locating'}
+        >
+          {locatePhase === 'locating' ? 'Standort wird ermittelt …' : 'Aktuellen Standort verwenden'}
+        </button>
+        {locatePhase === 'error' && <p className="weather-panel__status">{LOCATE_ERROR_HINT}</p>}
+      </div>
 
       <form className="weather-panel__search" onSubmit={handleSearch}>
         <label htmlFor={inputId} className="weather-panel__search-label">
