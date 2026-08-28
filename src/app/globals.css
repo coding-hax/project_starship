@@ -314,6 +314,15 @@ h1 {
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   line-height: 1.1;
+  /* Rundschrift-Metrik gegen den Kopf-Überlauf (seitenkopf.spec.ts, „läuft nicht
+     über"): Nunito (CI/Linux-Fallback) trägt eine tiefere Unterlänge als Inter und
+     sprengt bei line-height 1.1 die Zeilenbox nach unten — gemessen 3px bei 22px,
+     also die h1-Box läuft über sich selbst (scrollHeight > clientHeight). Die
+     Unterlänge skaliert mit dem Schriftgrad, deshalb em, nicht px; 0.2em fasst die
+     ~0.14em Überlänge mit Reserve gegen CI-Rundung. Auf Apple (ui-rounded/SF Pro
+     Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden — das zählt der
+     verborgene Inhalt weiter zur scrollHeight, der Test bliebe rot. */
+  padding-block-end: 0.2em;
 }
 
 h2 {
