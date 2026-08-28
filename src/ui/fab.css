@@ -35,10 +35,30 @@
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-spring);
   z-index: var(--z-fab);
-  /* Ruhelage = Identität, damit `animation: none` (reduced motion) auf den
-     ungetransformten Zustand zurückfällt statt auf ein Zwischenbild
-     einzufrieren (Falle dokumentiert in docs/design/form-und-motion.md,
-     siehe auch background-circles.css). */
+}
+
+.fab:hover {
+  transform: scale(1.05);
+}
+
+.fab:active {
+  transform: scale(0.95);
+}
+
+/* Der Skalenhub sitzt auf Icon + Label statt auf `.fab` selbst: ein
+   `transform` direkt am Button ändert dessen eigene getBoundingClientRect in
+   jedem Frame, und Playwright's Klick-Stabilitätscheck — jeder bestehende
+   `fab.click()` im Rest der Suite — wartet dann bis zum 30s-Timeout auf ein
+   Element, das nie zur Ruhe kommt (issue #867: eine `infinite`-Animation
+   direkt auf `.fab` machte e2e-main rot). Icon/Label liegen als Kinder
+   außerhalb der eigenen Layout-Box von `.fab` — ihr Skalenhub bleibt rein
+   visuell, `.fab`s Box (Höhe/Padding/Radius/Grund/Gap, AK1) rührt sich nicht.
+   Ruhelage = Identität, damit `animation: none` (reduced motion) auf den
+   ungetransformten Zustand zurückfällt statt auf ein Zwischenbild
+   einzufrieren (Falle dokumentiert in docs/design/form-und-motion.md, siehe
+   auch background-circles.css). */
+.fab__icon,
+.fab__label {
   animation: breathe 3.6s ease-in-out infinite alternate;
 }
 
@@ -52,25 +72,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fab {
+  .fab__icon,
+  .fab__label {
     animation: none !important;
   }
 }
 
-:root[data-reduce-motion='true'] .fab {
+:root[data-reduce-motion='true'] .fab__icon,
+:root[data-reduce-motion='true'] .fab__label {
   animation: none !important;
 }
 
-.fab:hover {
-  transform: scale(1.05);
-}
-
-.fab:active {
-  transform: scale(0.95);
-}
-
 .fab__icon {
-  font-size: 20px;
+  font-size: var(--text-section);
   line-height: var(--leading-tight);
 }
 

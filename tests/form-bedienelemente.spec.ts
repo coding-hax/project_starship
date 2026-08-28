@@ -182,8 +182,15 @@ test('AK1: der FAB ist eine beschriftete Pille, der volle aria-Name bleibt unver
   }
 });
 
+/**
+ * Der Skalenhub sitzt auf `.fab__icon`/`.fab__label`, nicht auf `.fab` selbst
+ * (issue #867: ein `transform` direkt am Button ließ dessen eigene
+ * getBoundingClientRect nie zur Ruhe kommen — Playwright's Klick-Stabilitäts-
+ * check auf jedem bestehenden `fab.click()` im Rest der Suite lief in den
+ * 30s-Timeout). Beide Kinder teilen sich dieselbe `animation-name`.
+ */
 async function fabAnimationName(page: Page): Promise<string> {
-  return page.evaluate(() => getComputedStyle(document.querySelector('.fab')!).animationName);
+  return page.evaluate(() => getComputedStyle(document.querySelector('.fab__icon')!).animationName);
 }
 
 test('AK2: der FAB atmet, OS-Präferenz und der App-Schalter halten ihn an', async ({ page }) => {
