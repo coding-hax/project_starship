@@ -1,0 +1,60 @@
+/**
+ * PageHead (issue #868, T1 von #861): drei Zonen — Augenbraue, Titelzeile,
+ * Zusatz. `border-radius: 0` + kein Hintergrund-Verlauf hält
+ * `seitenkopf.spec.ts` AK1 (`assertFlatHeader`) grün.
+ */
+
+.page-head {
+  background: none;
+  border-radius: 0;
+}
+
+.page-head__eyebrow {
+  margin: 0 0 3px;
+  font-size: var(--text-eyebrow);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-ground-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nur die Grund-Flexbox — Ausrichtung/Abstand setzt jede Route vollständig
+   selbst über ihren eigenen, per `rowClassName` mitgetragenen Klassennamen
+   (uebersicht.css/aufgaben-page.css/journal-page.css), damit die Reihenfolge
+   zwischen diesem globalen Import und dem routeneigenen CSS-Import nie über
+   `align-items`/`gap` entscheiden muss. */
+.page-head__title-row {
+  display: flex;
+}
+
+.page-head__extra {
+  margin-block-start: var(--space-1);
+}
+
+/* Unterzeile-Variante des Zusatz-Slots — gedämpft, nie beide Varianten
+   gleichzeitig im selben Slot. */
+.page-head__subline {
+  margin: 0;
+  font-size: var(--text-subline);
+  color: var(--on-ground-muted);
+}
+
+/* Chip-Reihen-Variante des Zusatz-Slots (in T1 ungenutzt, Bauteil für
+   #869/#870 angelegt). */
+.page-head__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.page-head__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, white 20%, transparent);
+  color: var(--on-ground);
+  font-size: var(--text-chip);
+  font-variant-numeric: tabular-nums;
+}

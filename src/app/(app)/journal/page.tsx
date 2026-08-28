@@ -1,8 +1,10 @@
 import type { Viewport } from 'next';
 import { JournalGate } from '@/features/journal/journal-gate';
-import { JournalHeaderDate } from '@/features/journal/journal-header-date';
+import { JournalHeadMood } from '@/features/journal/journal-head-mood';
 import { JournalSearchToggle } from '@/features/journal/journal-search-toggle';
 import { PageFace } from '@/ui/faces';
+import { PageHead } from '@/ui/page-head';
+import { TodayLongDate } from '@/ui/today-long-date';
 import './journal-page.css';
 
 export const metadata = { title: 'Journal · Starship' };
@@ -18,16 +20,19 @@ export const viewport: Viewport = {
 export default function JournalPage() {
   return (
     <div data-module="journal" data-ground="journal">
-      <div className="journal-page__title-row">
+      <PageHead
+        rowClassName="journal-page__title-row"
+        eyebrow={<TodayLongDate />}
+        extra={<JournalHeadMood />}
+      >
         <div className="journal-page__title-cluster">
-          <h1>Journal</h1>
+          <h1>Wie war dein Tag?</h1>
           <PageFace face="journal" />
         </div>
         <div className="journal-page__title-actions">
-          <JournalHeaderDate />
           <JournalSearchToggle />
         </div>
-      </div>
+      </PageHead>
       <JournalGate />
     </div>
   );

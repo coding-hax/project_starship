@@ -13,6 +13,7 @@
 @import '../ui/slider.css';
 @import '../ui/field-hint.css';
 @import '../ui/chip.css';
+@import '../ui/page-head.css';
 @import '../features/tasks/task-list.css';
 @import '../features/tasks/quick-add.css';
 @import '../features/tasks/due-picker.css';
@@ -88,9 +89,23 @@
 /* `--blob-partner` (issue #849, AK3): the background circles' `--b3` tone
    mixes this in instead of white/black, so one of the four circles per route
    carries its own colour stitch instead of a plain tint of `--ground`. */
+/*
+ * `--on-ground-muted` (issue #868, AK3): gedämpfte Textstufe auf dem Grund,
+ * je Route gemessen (getComputedStyle → Canvas-Pixel, wie die grundfarbe.spec.ts-
+ * Helfer) statt geraten. 85 % `--on-ground`-Anteil hält alle neun Routen in
+ * BEIDEN Themes ≥ 4,5:1 (kleiner Text) — außer Aufgaben und Wetter im
+ * Hellmodus (gemessen 3,96:1 / 4,10:1 bei 85 %, und keine Zwischenstufe
+ * zwischen 85 % und 100 % reißt die Lücke; erst 95 % genügt, was von „voll
+ * deckend" kaum noch zu unterscheiden wäre). Beide fallen dort auf
+ * `--on-ground` zurück (Kontrast vor Dämpfung, wie #846) — im Dunkelmodus
+ * liegen beide bei 85 % klar über 4,5:1 (6,44:1 / 5,73:1), siehe die
+ * `@media (prefers-color-scheme: dark)`- bzw. `[data-theme='dunkel']`-Blöcke
+ * unten, die für diese zwei Routen `--on-ground-muted` erneut gedämpft setzen.
+ */
 html:has([data-ground='uebersicht']) {
   --ground: var(--ground-uebersicht);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-uebersicht);
   --face-ink: var(--face-ink-uebersicht);
@@ -98,6 +113,8 @@ html:has([data-ground='uebersicht']) {
 html:has([data-ground='aufgaben']) {
   --ground: var(--ground-aufgaben);
   --on-ground: var(--on-ground-light);
+  /* Gemessen 3,96:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
   --blob-partner: #12a67a;
   --face-body: var(--face-body-aufgaben);
   --face-ink: var(--face-ink-aufgaben);
@@ -105,6 +122,7 @@ html:has([data-ground='aufgaben']) {
 html:has([data-ground='kalender']) {
   --ground: var(--ground-kalender);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #3aa7e0;
   --face-body: var(--face-body-kalender);
   --face-ink: var(--face-ink-kalender);
@@ -112,6 +130,7 @@ html:has([data-ground='kalender']) {
 html:has([data-ground='routinen']) {
   --ground: var(--ground-routinen);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-routinen);
   --face-ink: var(--face-ink-routinen);
@@ -119,6 +138,7 @@ html:has([data-ground='routinen']) {
 html:has([data-ground='journal']) {
   --ground: var(--ground-journal);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #cf49c0;
   --face-body: var(--face-body-journal);
   --face-ink: var(--face-ink-journal);
@@ -126,6 +146,7 @@ html:has([data-ground='journal']) {
 html:has([data-ground='aktivitaeten']) {
   --ground: var(--ground-aktivitaeten);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ff7300;
   --face-body: var(--face-body-aktivitaeten);
   --face-ink: var(--face-ink-aktivitaeten);
@@ -133,6 +154,8 @@ html:has([data-ground='aktivitaeten']) {
 html:has([data-ground='wetter']) {
   --ground: var(--ground-wetter);
   --on-ground: var(--on-accent);
+  /* Gemessen 4,10:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
   --blob-partner: #7cc9f0;
   --face-body: var(--face-body-wetter);
   --face-ink: var(--face-ink-wetter);
@@ -140,6 +163,7 @@ html:has([data-ground='wetter']) {
 html:has([data-ground='einstellungen']) {
   --ground: var(--ground-einstellungen);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #0e7c84;
   --face-body: var(--face-body-einstellungen);
   --face-ink: var(--face-ink-einstellungen);
@@ -147,6 +171,7 @@ html:has([data-ground='einstellungen']) {
 html:has([data-ground='anmelden']) {
   --ground: var(--ground-anmelden);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-anmelden);
   --face-ink: var(--face-ink-anmelden);
@@ -162,7 +187,7 @@ html:has([data-ground='anmelden']) {
    plain dark neutral ink instead of the route's ground ink (AK4). */
 :root:has([data-ground]) {
   --text: var(--on-ground);
-  --text-muted: var(--on-ground);
+  --text-muted: var(--on-ground-muted);
   /*
    * Safe-area status bar band (issue #882): darkened per-route so white iOS
    * status bar glyphs (statusBarStyle: black-translucent, always white, not
@@ -214,6 +239,9 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='aufgaben']) {
     --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+    /* Anders als im Hellmodus (oben, 3,96:1 bei 85 %): hier gemessen 6,44:1 bei
+       85 % — genug Spielraum für die gedämpfte Stufe. */
+    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
   :root:not([data-theme='hell']):has([data-ground='kalender']) {
     --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
@@ -229,6 +257,9 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='wetter']) {
     --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+    /* Anders als im Hellmodus (oben, 4,10:1 bei 85 %): hier gemessen 5,73:1 bei
+       85 % — genug Spielraum für die gedämpfte Stufe. */
+    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
   :root:not([data-theme='hell']):has([data-ground='einstellungen']) {
     --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
@@ -246,6 +277,7 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='aufgaben']) {
   --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='kalender']) {
   --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
@@ -261,6 +293,7 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='wetter']) {
   --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='einstellungen']) {
   --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));

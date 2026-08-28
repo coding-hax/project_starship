@@ -123,6 +123,12 @@
      ground — only its `weather-day` content does; /offline). */
   --ground: var(--bg);
   --on-ground: var(--text-base);
+  /* Gedämpfte Stufe auf dem Grund (issue #868, AK3) — Fallback für Routen
+     außerhalb der neun `[data-ground]`-Blöcke (globals.css), die ihn je Route
+     gemessen setzen. `--text-muted-base` statt `--on-ground`, weil dieser
+     Fallback denselben gedämpften Ton wie jede Fläche mit eigenem --surface
+     trägt, nicht den vollen Kontrastwert. */
+  --on-ground-muted: var(--text-muted-base);
   --on-ground-light: oklch(99% 0.005 85);
   /* Safe-area status bar band (issue #882): fixed dark fallback, not a mix of
      `--bg` — `--bg` is cream in light mode, which would leave the iOS status
@@ -216,6 +222,12 @@
   --text-page-title: 22px;
   --text-page-title-lg: 26px; /* nur Aktivitäten */
   --text-temp: 40px; /* Wetter, große Tages-Temperatur */
+  /* PageHead-Zonen (issue #868): Augenbraue/Unterzeile/Chip, ebenfalls bewusst
+     außerhalb der 12/14/16/20/24/32-Skala — eigener, schmalerer Kopf statt
+     einer bestehenden Rolle. */
+  --text-eyebrow: 11.5px;
+  --text-subline: 13.5px;
+  --text-chip: 12.5px;
 
   --weight-normal: 400;
   --weight-emphasis: 600;

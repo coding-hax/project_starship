@@ -9,7 +9,8 @@
 .journal-page__title-row {
   display: flex;
   /* Zentriert statt Grundlinie (wie vor #700): der 44×44-Lupe-Knopf gibt jetzt
-     die Zeilenhöhe vor, an ihm richten sich Titel und Datum mittig aus. */
+     die Zeilenhöhe vor, an ihm richtet sich der Titel mittig aus. Das Datum
+     sitzt seit issue #868 als Augenbraue über der Zeile, nicht mehr hier. */
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
@@ -17,7 +18,7 @@
 
 /* Titel + Figur als ein Cluster (issue #830): so bleibt `justify-content:
    space-between` bei zwei Top-Level-Kindern (Cluster, Aktionen) statt die
-   Figur zwischen Titel und Datum/Lupe zu verteilen. */
+   Figur zwischen Titel und Lupe zu verteilen. */
 .journal-page__title-cluster {
   display: flex;
   align-items: center;
