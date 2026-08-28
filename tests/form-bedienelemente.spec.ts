@@ -366,7 +366,16 @@ for (const scheme of ['light', 'dark'] as const) {
   const label = scheme === 'light' ? 'Hell' : 'Dunkel';
   test(`AK-Ü: kein Überlauf nach FAB/Reiter/Häkchen, ${label}`, async ({ page }) => {
     await registerPasskey(page);
-    await page.emulateMedia({ colorScheme: scheme });
+    // reducedMotion friert u. a. `.face`s endlose `pf-bob`-translate (faces.css,
+    // #830/#850, außerhalb dieses Tickets) auf ihrer Ruhelage ein: die Figur
+    // trägt bewusst `overflow: visible` und bobt planmäßig über ihre 42px-Box
+    // hinaus. Ohne Einfrieren ist scrollHeight vs. clientHeight vom Zufalls-
+    // zeitpunkt der Messung im 4,2s-Zyklus abhängig — /journal (per AK1 hier
+    // entsperrt, seine 44px-Lupe strafft die Kopfzeile enger als im
+    // gesperrten Zustand von figuren.spec.ts AK6/form-radien.spec.ts) kippt
+    // dadurch gelegentlich in 1-3px "Überlauf", der keiner ist. Diese Prüfung
+    // gilt der **Layout**-Passform, nicht der Bewegung.
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
 
     for (const route of OVERFLOW_ROUTES) {
       await gotoRoute(page, route.path);
