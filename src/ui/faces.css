@@ -41,11 +41,25 @@
   animation-delay: -2s;
 }
 
+/* Gezeichnete Lider (issue #864, AK6) — Kontur statt gefüllter Kreise, blinzelt nie. */
+.face__eyes--drawn {
+  fill: none;
+  stroke: var(--face-ink);
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  animation: none;
+}
+
 .face__line {
   fill: none;
   stroke: var(--face-ink);
   stroke-width: 4;
   stroke-linecap: round;
+}
+
+/* Zubehör/Mund-Flächen in Tintenfarbe (issue #864): Schlafmaske, Mütze, Funken, runder/offener Mund. */
+.face__ink {
+  fill: var(--face-ink);
 }
 
 /* Beide Ruhelagen sind die Identität (AK4/AK5): `animation: none` hält Augen

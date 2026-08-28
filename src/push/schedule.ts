@@ -30,7 +30,8 @@ export function berlinNow(now: Date): BerlinTime {
   return { dateKey, minutesOfDay };
 }
 
-function epochDay(dateKey: string): number {
+/** Tage seit der Unix-Epoche für einen `berlinNow`-`dateKey` — exportiert für #864 (Tagesnummer der Ziehung). */
+export function epochDay(dateKey: string): number {
   const [year, month, day] = dateKey.split('-').map(Number);
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
 }
