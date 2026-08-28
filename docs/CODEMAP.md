@@ -32,8 +32,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
 - `(app)/einstellungen/` — Darstellung, Reihenfolge, Module, Push (rendert je aktivem Modul dessen `SettingsPanel`)
-- `anmelden/` (`layout.tsx`: `viewport`) / `offline/` — Passkey (Einrichten/Anmelden/Recovery)
-  + Service-Worker-Fallback ohne Netz
+- `anmelden/` (`layout.tsx`: `viewport`) / `offline/` — Passkey (Einrichten/Anmelden/Recovery) + SW-Fallback ohne Netz
 - `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf (`credentials/`, `sessions/`) + SELECT 1 + Versions-SHA (ungeschützt)
 - `api/sync/` — `push/` und `pull/`, die einzigen Wege zu den Daten
 - `api/push/` / `api/garmin-sync/` — subscribe/unsubscribe/test+`reminders/`, holt Aktivitäten (beide Bearer-Secret)
