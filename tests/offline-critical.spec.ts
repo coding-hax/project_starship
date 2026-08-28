@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+  expectUebersichtLoaded,
   FIXED_NOW,
   registerPasskey,
   resetAppData,
@@ -91,7 +92,7 @@ test('ein bereits installiertes /heute (start_url, offener Tab) leitet auch offl
   const response = await page.goto('/heute');
   expect(response?.fromServiceWorker()).toBe(true);
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 });
 
 test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Worker-Cache um, weil der Guard clientseitig ist (issue #309 AC2)', async ({
@@ -120,7 +121,7 @@ test('ein direkter Aufruf einer Aus-Route leitet auch offline aus dem Service-Wo
   const response = await page.goto('/journal');
   expect(response?.fromServiceWorker()).toBe(true);
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 });
 
 /* -------------------------------------------------------------------------- */

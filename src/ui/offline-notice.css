@@ -1,7 +1,7 @@
 .offline-notice {
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   border: 1px solid var(--border);
   background: var(--surface-raised);
   /* Own surface, own ink (issue #832 AK5) — renders directly on the page

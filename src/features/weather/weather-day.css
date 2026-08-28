@@ -118,7 +118,7 @@
   --border-strong: var(--border-strong-base);
   --border-faint: var(--border-faint-base);
   border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
 }
 
 .weather-day__headline {
@@ -249,7 +249,7 @@
   height: 88px;
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
 }
 
 .weather-day__empty {
@@ -265,7 +265,7 @@
   --border-strong: var(--border-strong-base);
   --border-faint: var(--border-faint-base);
   border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   color: var(--text-muted);
   font-size: var(--text-secondary);
 }

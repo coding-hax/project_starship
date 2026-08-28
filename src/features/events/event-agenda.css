@@ -107,7 +107,7 @@
   --border-strong: var(--border-strong-base);
   --border-faint: var(--border-faint-base);
   border-inline-start: 3px solid var(--area-events);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   box-shadow: var(--shadow-raised);
 }
 

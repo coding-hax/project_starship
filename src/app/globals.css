@@ -65,6 +65,7 @@
   --color-habits: var(--area-habits);
 
   --radius-card: var(--radius-card);
+  --radius-surface: var(--radius-surface);
   --radius-pill: var(--radius-pill);
 
   /* `inline` ist Pflicht (issue #859, ADR-0027): ohne es emittierte Tailwind
@@ -166,6 +167,16 @@ html:has([data-ground='anmelden']) {
 :root:has([data-ground]) {
   --text: var(--on-ground);
   --text-muted: var(--on-ground);
+  /*
+   * Safe-area status bar band (issue #882): darkened per-route so white iOS
+   * status bar glyphs (statusBarStyle: black-translucent, always white, not
+   * themeable) clear 4.5:1 against it. 70% covers the worst measured case
+   * (Aktivitäten, #ffae00) with margin; every other route clears further —
+   * see the ticket's measured table. One value for all nine routes rather
+   * than per-route minimums (issue's option A): the gradient into --ground
+   * hides the difference anyway.
+   */
+  --ground-notch: color-mix(in oklab, var(--ground) 70%, black);
   /*
    * Neutral edges (tokens.css) are tuned against --bg (a near-white or a warm
    * anthracite) and collapse flat against a saturated route ground — issue
@@ -269,7 +280,19 @@ html {
 }
 
 body {
-  background: var(--ground);
+  /* Safe-area status bar band (issue #882): a gradient layer painted on top
+     of the flat --ground colour, confined to exactly `env(safe-area-inset-top)`
+     — 0 on devices/CI without a notch (no regression, `--ground` alone shows
+     through), the real inset height on iPhones with black-translucent. Lives
+     on body (not html, despite the ticket's wording) because body paints
+     opaquely over the whole viewport including the safe area (#849) — a band
+     under it would never be visible. Holds the notch tone through the first
+     half so the glyphs don't sit on an already-fading tint, then eases into
+     --ground. */
+  background:
+    linear-gradient(to bottom, var(--ground-notch) 0%, var(--ground-notch) 55%, var(--ground) 100%)
+      left top / 100% env(safe-area-inset-top) no-repeat,
+    var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
      z-index of its own, so that negative z-index escapes past it straight to

@@ -2,7 +2,9 @@
 
 ## Form & Raum
 
-- Radien: **großzügig** (12–16px für Karten, 999px für Pills). Nichts wirkt kantig.
+- Radien: **28px** für schwebende Flächen (`--radius-surface`), **14px** für
+  innenliegende Elemente (`--radius-card`: Zeilen, Eingaben, Tageszellen), **999px**
+  für Pills. Nichts wirkt kantig.
 - Schatten: weich, tief liegend, niedrige Deckkraft. Keine harten Ränder.
 - Spacing-Skala: 4 / 8 / 12 / 16 / 24 / 32 / 48. Nichts dazwischen.
 - Karten statt Tabellen auf Mobile. Tabellen erst ab Desktop-Breakpoint.

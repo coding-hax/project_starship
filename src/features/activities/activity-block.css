@@ -1,5 +1,5 @@
 .activity-block {
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   background: var(--surface);
   /* Own surface, own ink (issue #832 AK5) — explicit `color`, not just the
      custom properties: unlike --text/--text-muted, `color` inherits as an
