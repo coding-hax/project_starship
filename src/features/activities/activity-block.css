@@ -47,6 +47,11 @@
   margin: 0;
   font-size: var(--text-section);
   font-variant-numeric: tabular-nums;
+  /* Rundschrift-Rezept (issue #859, ADR-0027): die Kopfzahlen der Aktivität. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
 }
 
 .activity-block--skeleton {

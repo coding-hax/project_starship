@@ -69,7 +69,11 @@
   --radius-surface: var(--radius-surface);
   --radius-pill: var(--radius-pill);
 
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+  /* `inline` ist Pflicht (issue #859, ADR-0027): ohne es emittierte Tailwind
+     `:root { --font-display: var(--font-display) }` — ein Zyklus, weil
+     tokens.css dieselbe Custom Property schon auf :root definiert. */
+  --font-sans: var(--font-ui);
+  --font-display: var(--font-display);
 }
 
 /*
@@ -338,7 +342,7 @@ body {
      of them. */
   isolation: isolate;
   color: var(--text);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: calc(var(--text-body) * var(--font-scale, 1));
   /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
@@ -359,6 +363,26 @@ h1 {
   /* Halbhoher Seitenkopf (issue #833): --text-page-title, nicht --text-title —
      das trägt noch die FAB-Glyphe und den Termin-Detail-Titel bei 32. */
   font-size: var(--text-page-title);
+  /* Rundschrift (issue #859, ADR-0027) — nur h1, nicht die h1/h2/h3-Gruppe
+     oben: h2/h3 bleiben Inter (AK4). Überschreibt deren letter-spacing/
+     line-height gezielt für h1. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
+  /* Rundschrift-Metrik gegen den Kopf-Überlauf (seitenkopf.spec.ts, „läuft nicht
+     über"): Nunito (CI/Linux-Fallback) hat eine größere Inhaltsfläche als Inter
+     (~30px bei 22px) und sprengt bei line-height 1.1 die Zeilenbox (24.2px) nach
+     OBEN wie UNTEN um je ~2.9px. Nach unten läuft schon die h1-Box über sich selbst
+     (scrollHeight > clientHeight, gemessen 3px auf /aufgaben, /anmelden); die obere
+     Überlänge bleibt unsichtbar, bis die h1 in einer zentrierten Kopf-Zeile neben
+     einem höheren Element sitzt (/journal: h1 mittig neben der 42px-PageFace-Figur),
+     wo sie die Zeilen-scrollHeight um 1–2px kippt. Deshalb symmetrisch, nicht nur
+     unten: padding-block fasst die Inhaltsfläche oben und unten mit Reserve. em, nicht
+     px — die Metrik skaliert mit dem Grad (26px auf /aktivitaeten). Auf Apple
+     (ui-rounded/SF Pro Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden
+     — verborgener Inhalt zählt weiter zur scrollHeight, der Test bliebe rot. */
+  padding-block: 0.2em;
 }
 
 h2 {
