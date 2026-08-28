@@ -153,7 +153,7 @@
   padding-inline: var(--space-2);
   background: var(--surface);
   border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-raised);
+  box-shadow: var(--shadow-float);
   /* Rounds off the carousel's scroll content along with the pill itself — the
      items underneath have no background of their own, so this only ever clips
      the momentary overscroll bounce, never a label at rest. */
@@ -218,6 +218,30 @@
 
 .nav__icon {
   display: flex;
+}
+
+/* Aktive Pille hinter dem Icon (issue #867 AK3): Pseudo-Element statt DOM-Eingriff,
+   damit die Karussell-Geometrie (#205/#229) unangetastet bleibt. */
+.nav__link[aria-current='page'] .nav__icon {
+  position: relative;
+}
+
+.nav__link[aria-current='page'] .nav__icon::before {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  /* hinter die Glyphe; ein absolut positioniertes ::before läge sonst über
+     dem statischen SVG-Icon. */
+  z-index: -1;
+}
+
+.nav__link[aria-current='page'] .nav__label {
+  font-weight: var(--weight-emphasis);
 }
 
 .nav__label {

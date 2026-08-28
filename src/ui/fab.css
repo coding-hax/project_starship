@@ -13,19 +13,21 @@
   bottom: calc(
     64px + var(--space-2) + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset)
   );
-  width: 56px;
-  height: 56px;
+  height: 58px;
+  width: auto;
   min-width: var(--touch-target);
   min-height: var(--touch-target);
+  padding-inline: var(--space-6);
+  gap: 10px;
   border: none;
   border-radius: var(--radius-pill);
   /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
-     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 65% Bereichsfarbe gegen
-     --text-base gemischt hält den Glyph in jedem Bereich und Theme ≥4,5:1
-     (schwächster Fall: --area-tasks hell, gemessen ~4,7:1) und bleibt an der
-     Bereichsfarbe erkennbar statt ins Neutrale zu kippen. */
+     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 76% Bereichsfarbe gegen
+     --text-base gemischt (oklab) hält Glyphe **und** das 16px/600-Label in
+     jedem Bereich und Theme ≥4,5:1 und bleibt an der Bereichsfarbe erkennbar
+     statt ins Neutrale zu kippen (#867 AK1). */
   background: var(--surface);
-  color: color-mix(in oklch, var(--accent) 65%, var(--text-base));
+  color: color-mix(in oklab, var(--accent) 76%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;
@@ -33,6 +35,30 @@
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-spring);
   z-index: var(--z-fab);
+  /* Ruhelage = Identität, damit `animation: none` (reduced motion) auf den
+     ungetransformten Zustand zurückfällt statt auf ein Zwischenbild
+     einzufrieren (Falle dokumentiert in docs/design/form-und-motion.md,
+     siehe auch background-circles.css). */
+  animation: breathe 3.6s ease-in-out infinite alternate;
+}
+
+@keyframes breathe {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab {
+    animation: none !important;
+  }
+}
+
+:root[data-reduce-motion='true'] .fab {
+  animation: none !important;
 }
 
 .fab:hover {
@@ -44,8 +70,19 @@
 }
 
 .fab__icon {
-  font-size: var(--text-title);
+  font-size: 20px;
   line-height: var(--leading-tight);
+}
+
+.fab__label {
+  /* Fallback, weil --font-display erst #859 einführt (weiche Abhängigkeit,
+     kein "Nach: #859") — bis dahin erbt das Label --font-ui/inherit. */
+  font-family: var(--font-display, var(--font-ui, inherit));
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
+  line-height: var(--leading-tight);
+  white-space: nowrap;
+  color: inherit;
 }
 
 @media (min-width: 768px) {
