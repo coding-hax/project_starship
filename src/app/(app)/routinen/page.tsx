@@ -1,9 +1,18 @@
+import type { Viewport } from 'next';
 import { AddHabitFab } from '@/features/habits/add-habit-fab';
 import { HabitList } from '@/features/habits/habit-list';
 import { StreakSummaryCard } from '@/features/habits/streak-summary-card';
 import { PageFace } from '@/ui/faces';
 
 export const metadata = { title: 'Routinen verwalten · Starship' };
+
+// Android status bar colour (issue #882, AK4) — see uebersicht/page.tsx.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#12a67a' },
+    { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
+  ],
+};
 
 export default function RoutinenPage() {
   return (

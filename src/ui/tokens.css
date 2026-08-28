@@ -124,6 +124,12 @@
   --ground: var(--bg);
   --on-ground: var(--text-base);
   --on-ground-light: oklch(99% 0.005 85);
+  /* Safe-area status bar band (issue #882): fixed dark fallback, not a mix of
+     `--bg` — `--bg` is cream in light mode, which would leave the iOS status
+     bar glyphs (always white under black-translucent) unreadable on ground-less
+     routes (/offline). globals.css overrides this per `[data-ground]` route
+     with a mix of that route's own `--ground`. */
+  --ground-notch: var(--ground-base-dark);
 
   /* --- free-choice swatch palette: user-picked colours (issue #658), distinct
      from --area-* (orientation, one per area) and --cat-* (accents *within*
