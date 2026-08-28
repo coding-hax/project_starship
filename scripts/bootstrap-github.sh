@@ -39,7 +39,7 @@ label "ready"          "0E8A16" "Freigegeben. Claude darf das Ticket nehmen."
 label "next"           "FF6B6B" "Vor allem anderen — die Queue."
 label "in-progress"    "FBCA04" "Claude arbeitet daran. Es gibt immer höchstens eins je Slot (#204)."
 label "needs-answer"   "B60205" "Es steht eine Frage im Ticket. Ohne deine geschriebene Antwort geht es nicht weiter."
-label "blocked-limit"  "C5DEF5" "Usage-Limit erreicht. Wird automatisch fortgesetzt."
+label "blocked-limit"  "C5DEF5" "Opus-Tagesbudget für dieses Ticket erschöpft. Läuft morgen von selbst weiter."
 # Setzt und entfernt der Runner selbst, aus einer 'Nach:'-Zeile im Ticket-Body.
 # Von Hand gepflegt würde es verrotten — und dann nie wieder gebaut, still.
 label "blocked-by"     "D4C5F9" "Wartet auf ein anderes Ticket (siehe Queue). Der Runner pflegt es selbst."

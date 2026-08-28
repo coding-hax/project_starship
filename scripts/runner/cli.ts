@@ -287,7 +287,22 @@ export const commands: Record<string, CommandHandler> = {
     const slotCount = Math.max(1, Number(args[0] ?? 1));
     const leadSlot = args[1] ?? '1';
     const effectiveLeadSlot = args[2] ?? leadSlot;
-    const result = aggregateStatus(ctx.fleet.readAll(), slotCount, leadSlot, effectiveLeadSlot, ctx.clock.now().getTime());
+    // #891, AK3: die Kontingent-Pause ist ein Flotten-Zustand -- das geteilte
+    // 'limit-until' traegt sie in den Flotten-Titel. Ein kaputter Wert darf
+    // nicht werfen: Number('nicht…') -> NaN faengt der Finite-Guard -> null
+    // (= kein Limit).
+    const rawLimit = ctx.sharedState.read('limit-until');
+    const parsedLimit = rawLimit === null ? Number.NaN : Number(rawLimit);
+    const limitUntil = Number.isFinite(parsedLimit) ? parsedLimit : null;
+    const result = aggregateStatus(
+      ctx.fleet.readAll(),
+      slotCount,
+      leadSlot,
+      effectiveLeadSlot,
+      ctx.clock.now().getTime(),
+      STALE_MS,
+      limitUntil,
+    );
     return JSON.stringify(result);
   },
 };

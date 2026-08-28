@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { aggregateStatus, createFleetAdapter, effectiveLead, STALE_MS, type FleetAdapter } from './fleet';
+import { fmtClock } from './time';
 
 const NOW = new Date('2026-07-28T12:00:00Z').getTime();
 
@@ -166,5 +167,49 @@ describe('aggregateStatus (#204 AK4/AK9)', () => {
     const states = [{ slotId: '1', emoji: '🟢', title: 'x', text: '', updatedAtMs: NOW - 125 * 60_000 }];
     const result = aggregateStatus(states, 2, '1', '1', NOW);
     expect(result?.text).toContain('_(vor 2 Std. 5 Min.)_');
+  });
+
+  // #891, AK3: liegt das geteilte 'limit-until' in der Zukunft, traegt der
+  // Flotten-Header die Kontingent-Pause -- Titel ohne Ticketnummer (gilt allen),
+  // Emoji 🔵, Pausenzeile VOR den unveraenderten Slot-Zeilen.
+  describe('#891, AK3: Kontingent-Pause im Flotten-Header', () => {
+    const states = [
+      { slotId: '1', emoji: '🟠', title: 'arbeitet an #70', text: '', updatedAtMs: NOW },
+      { slotId: '2', emoji: '🟢', title: 'CI läuft für #186', text: '', updatedAtMs: NOW },
+    ];
+    const limitEpoch = Math.floor(NOW / 1000) + 3600; // eine Stunde voraus
+
+    it('aktives limit-until: Titel "Kontingent leer bis HH:MM" ohne Ticketnummer, Emoji 🔵', () => {
+      const result = aggregateStatus(states, 2, '1', '1', NOW, STALE_MS, limitEpoch);
+      expect(result?.title).toBe(`Kontingent leer bis ${fmtClock(limitEpoch)}`);
+      expect(result?.title).not.toContain('#');
+      expect(result?.emoji).toBe('🔵');
+    });
+
+    it('die Pausenzeile steht VOR den Slot-Zeilen, die unveraendert bleiben', () => {
+      const text = aggregateStatus(states, 2, '1', '1', NOW, STALE_MS, limitEpoch)!.text;
+      expect(text).toContain('Token-Kontingent aufgebraucht');
+      expect(text).toContain('Slot 1:** arbeitet an #70');
+      expect(text).toContain('Slot 2:** CI läuft für #186');
+      expect(text.indexOf('Token-Kontingent aufgebraucht')).toBeLessThan(text.indexOf('Slot 1:**'));
+    });
+
+    it('abgelaufenes limit-until: unveraenderter "N von M aktiv"-Titel (AK5-Selbstheilung)', () => {
+      const past = Math.floor(NOW / 1000) - 60;
+      expect(aggregateStatus(states, 2, '1', '1', NOW, STALE_MS, past)?.title).toBe('Runner-Flotte · 2 von 2 aktiv');
+    });
+
+    it('null limit-until (Default): unveraenderter Flotten-Titel', () => {
+      expect(aggregateStatus(states, 2, '1', '1', NOW)?.title).toBe('Runner-Flotte · 2 von 2 aktiv');
+    });
+
+    it('AK9: Ein-Slot-Durchreichen bleibt auch mit aktivem Limit unveraendert', () => {
+      const one = [{ slotId: '1', emoji: '🔵', title: 'Kontingent leer bis 13:00 · #70', text: 'Pause', updatedAtMs: NOW }];
+      expect(aggregateStatus(one, 1, '1', '1', NOW, STALE_MS, limitEpoch)).toEqual({
+        title: 'Kontingent leer bis 13:00 · #70',
+        emoji: '🔵',
+        text: 'Pause',
+      });
+    });
   });
 });
