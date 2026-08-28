@@ -25,6 +25,11 @@
   fill: var(--text);
   color: var(--text);
   font-size: var(--text-meta);
-  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
+  /* Rundschrift-Rezept (issue #859, ADR-0027). `line-height` wirkt auf
+     SVG-`<text>` nicht, schadet aber nicht — bleibt Teil des Rezepts. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
 }

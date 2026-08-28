@@ -102,7 +102,8 @@ test('the router still focuses the first segment element, not the transition wra
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await nav.getByRole('link', { name: 'Journal' }).click();
-  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+  // Titel „Wie war dein Tag?“ seit issue #868 — der Nav-Tab heißt weiterhin „Journal“.
+  await expect(page.getByRole('heading', { name: 'Wie war dein Tag?', level: 1 })).toBeVisible();
 
   const wrapperIsFocused = await page.evaluate(
     () => document.activeElement?.classList.contains('page-transition') ?? false,
