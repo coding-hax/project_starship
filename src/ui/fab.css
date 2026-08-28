@@ -101,9 +101,17 @@
 }
 
 .fab__label {
-  /* Fallback, weil --font-display erst #859 einführt (weiche Abhängigkeit,
-     kein "Nach: #859") — bis dahin erbt das Label --font-ui/inherit. */
-  font-family: var(--font-display, var(--font-ui, inherit));
+  /* Bewusst --font-ui (Inter), nicht --font-display (issue #867, CI-Fund nach
+     dem #859-Merge): anders als die Einzelglyphe in .fab__icon (dort seit
+     #859 unverändert, dort unproblematisch) hängt hier ein ganzes Wort an
+     `.fab`s `width: auto` — die Pille ist rechts fixiert und wächst/schrumpft
+     mit dem Label. Nunito lädt über `display: swap` (layout.tsx), der
+     Wechsel Fallback→Nunito ändert die Wortbreite geringfügig und verschob
+     dadurch die gesamte Pille (gemessen in CI: AK6 aus formsprache.spec.ts,
+     ~0,0023 CLS statt < 0,001). Inters `display: block` (layout.tsx, #652)
+     malt nie sichtbar im Fallback, also nie ein Breitenwechsel nach dem
+     ersten Paint. */
+  font-family: var(--font-ui);
   font-size: var(--text-body);
   font-weight: var(--weight-emphasis);
   line-height: var(--leading-tight);
