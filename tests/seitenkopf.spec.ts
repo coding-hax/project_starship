@@ -455,6 +455,35 @@ test('AK6 (#868): die Augenbraue erfüllt 4,5:1 gegen den Grund, Hell und Dunkel
   }
 });
 
+test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, Hell und Dunkel', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  // Genügt für den "befüllten" Kopf: der Zustand hängt an activities.length, nicht
+  // am 30-Tage-Fenster -- die Augenbraue rendert auch, wenn die eine Aktivität aus
+  // dem Recap-Fenster fällt (siehe activity-list.tsx).
+  await insertGarminActivity();
+  await page.goto('/aktivitaeten');
+
+  const eyebrow = page.locator('[data-module="aktivitaeten"] .page-head__eyebrow');
+  await expect(eyebrow).toBeVisible();
+
+  const lightColor = await elementColor(eyebrow);
+  const lightGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+    'Augenbraue auf /aktivitaeten (hell)',
+  ).toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await elementColor(eyebrow);
+  const darkGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+    'Augenbraue auf /aktivitaeten (dunkel)',
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
 test.describe('Anmelden (ausgeloggter Kontext)', () => {
   // Eingeloggt leitet /anmelden sofort auf /uebersicht um (shell.spec.ts) — dieser
   // Block braucht einen frischen, ausgeloggten Context statt der geteilten Sitzung.
