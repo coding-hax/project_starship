@@ -146,7 +146,10 @@ interface Check {
 
 interface GhFixture {
   checks?: Record<string, Check[]>;
-  mergeState?: Record<string, { headRefName: string; mergeStateStatus: string }>;
+  // #880: `isDraft` reist im selben `pr view` mit (kein zusaetzlicher gh-Aufruf).
+  // Fehlt es (wie in den meisten Alt-Fixtures), gilt der PR als NICHT-Entwurf --
+  // die Wache mergt ihn dann wie bisher.
+  mergeState?: Record<string, { headRefName: string; mergeStateStatus: string; isDraft?: boolean }>;
   prList?: { number: number; headRefName: string }[];
 }
 
@@ -262,24 +265,30 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     expect(result).toEqual({ kind: 'pending', escalated: false, minutes: 0 });
   });
 
-  it('T2: CI grün -> ready + Squash-Merge', () => {
+  // #880/AC3: ein PR, der NICHT im Entwurf ist (Alt-PR aus der Zeit vor #839
+  // oder von Hand/vom Pruef-Lauf freigegeben), wird weiterhin gemergt -- aber
+  // die Wache ruft dabei NIE selbst `gh pr ready` (das gehoert dem Pruef-Lauf).
+  it('T2 (#880 AC3): CI grün + kein Entwurf -> Squash-Merge, aber NIE selbst `gh pr ready`', () => {
     const gh = ghFake({
       checks: { '502': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
-      mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN' } },
+      mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN', isDraft: false } },
     });
     const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
     expect(result).toEqual({ kind: 'merged' });
-    expect(gh.run).toHaveBeenCalledWith(['pr', 'ready', '502']);
+    expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '502']);
+    expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['pr', 'merge']));
   });
 
-  // #839: dasselbe gruene Ergebnis, aber das Ticket wartet auf sein AK-Tor.
-  // Die Wache haelt still -- kein 'ready', kein Merge, keine Zustandsaenderung.
-  it('T2b (#839): CI grün, aber AK-Tor offen -> die Wache mergt nicht', () => {
+  // #880/AC1: derselbe gruene Stand, aber der PR ist noch Entwurf -- kein
+  // Pruefer hat ihn je freigegeben. Die Wache haelt still ('gated'): kein
+  // 'ready', kein Merge. Das haengt am ENTWURFSSTATUS, nicht mehr am Label
+  // 'check' (das die Wache hier ohnehin nie sieht -- sie kennt nur den PR).
+  it('T2b (#880 AC1): CI grün, aber PR im Entwurf -> gated, kein ready, kein Merge', () => {
     const gh = ghFake({
       checks: { '502': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
-      mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN' } },
+      mergeState: { '502': { headRefName: 'fix/302-x', mergeStateStatus: 'CLEAN', isDraft: true } },
     });
-    const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK }, true);
+    const result = watchRunningIssue(302, '502', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
     expect(result).toEqual({ kind: 'gated' });
     expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '502']);
     expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['pr', 'merge']));
@@ -479,20 +488,39 @@ describe('watchWaitingIssues (Parität zu scripts/tests/parked-ci-watch.test.sh)
     expect(edits).toEqual([['issue', 'edit', '401', '--remove-label', 'needs-answer']]);
   });
 
-  // #167: der Entwurfsstatus heißt "der Lauf ist nicht sauber zu Ende
-  // gekommen". Auto-Merge auf einem Draft greift nicht -- die Reihenfolge
-  // ready -> merge -> Label ist deshalb Bedingung, keine Kosmetik.
-  it('#167: erst aus dem Entwurf heben, dann mergen, dann das Wartelabel abnehmen', () => {
+  // #880/AC6: die Wache ruft NIE selbst `gh pr ready` (auch nicht fuer ein
+  // wartendes Ticket) -- das gehoert seit #839 ausschliesslich dem Pruef-Lauf.
+  // Ein bereits freigegebener (nicht-Entwurfs-)PR wird direkt gemergt, dann das
+  // Wartelabel abgenommen. Bis #880 stand hier die Reihenfolge ready -> merge ->
+  // Label; das 'ready' faellt jetzt weg (der PR ist schon frei).
+  it('#880 AC6: kein Entwurf -> mergen, dann Wartelabel abnehmen, NIE selbst `gh pr ready`', () => {
     const gh = ghFake({
       prList: [{ number: 601, headRefName: 'fix/401-x' }],
       checks: { '601': [{ bucket: 'pass', name: 'quality' }] },
+      mergeState: { '601': { headRefName: 'fix/401-x', mergeStateStatus: 'CLEAN', isDraft: false } },
     });
     watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
     const sequence = (gh.run as unknown as { mock: { calls: [string[]][] } }).mock.calls
       .map((c) => c[0])
       .filter((args) => (args[0] === 'pr' && (args[1] === 'ready' || args[1] === 'merge')) || args[1] === 'edit')
       .map((args) => `${args[0]} ${args[1]}`);
-    expect(sequence).toEqual(['pr ready', 'pr merge', 'issue edit']);
+    expect(sequence).toEqual(['pr merge', 'issue edit']);
+  });
+
+  // #880/AC5: ein wartendes Ticket, dessen PR noch Entwurf ist, wird NICHT
+  // gemergt -- dieselbe Regel wie fuer laufende Tickets. Der PR bleibt Entwurf,
+  // bis der Pruef-Lauf ihn freigibt; das Wartelabel bleibt haengen.
+  it('#880 AC5: wartendes Ticket mit Entwurfs-PR -> kein Merge, kein ready, Wartelabel bleibt', () => {
+    const gh = ghFake({
+      prList: [{ number: 601, headRefName: 'fix/401-x' }],
+      checks: { '601': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }] },
+      mergeState: { '601': { headRefName: 'fix/401-x', mergeStateStatus: 'CLEAN', isDraft: true } },
+    });
+    const outcome = watchWaitingIssues([issue(401)], { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    expect(outcome.released).toEqual([]);
+    expect(gh.run).not.toHaveBeenCalledWith(['pr', 'ready', '601']);
+    expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['pr', 'merge']));
+    expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['--remove-label', 'needs-answer']));
   });
 
   it('T2/T3: PR pending -> bleibt unverändert wartend', () => {
