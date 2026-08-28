@@ -140,6 +140,13 @@
   color: var(--text-muted);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
+  /* Rundschrift-Rezept (issue #859, ADR-0027): AK3 nennt die Uhrzeit in der
+     Kalender-Agenda ausdrücklich, das Gewicht hebt sich damit auf 600 (vorher
+     normal) — siehe ADR-0027, Risiko „zwei Betonungen je Zeile". */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
 }
 
 .event-agenda__item-title {

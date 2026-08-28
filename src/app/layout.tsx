@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Nunito } from 'next/font/google';
 import { headers } from 'next/headers';
 import './globals.css';
 import { LEGACY_MODULE_IDS } from '@/modules/module-ids';
@@ -27,6 +27,19 @@ const inter = Inter({
   display: 'block',
 });
 
+// Web-Fallback für `--font-display` (issue #859, ADR-0027): trägt nur, wo
+// `ui-rounded`/`'SF Pro Rounded'` nicht auflösen (CI/Linux-Chromium, Android,
+// Windows) — auf dem Prüfgerät (Apple, Safari/PWA) wird diese Datei nie
+// angefragt. `swap` statt `block`: anders als Inter (oben, #652) ist dieser
+// Font nie die einzig sichtbare Schrift, `next/font`s Fallback-Metriken
+// (`adjustFontFallback`, Default an) halten den Wechsel shift-frei (AK6).
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['400', '600'],
+  variable: '--font-nunito',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'Starship',
   description: 'Termine, Aufgaben, Journal und Routinen an einem Ort.',
@@ -37,7 +50,13 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Starship',
-    statusBarStyle: 'default',
+    // 'black-translucent' (issue #882): lets the body's own background paint
+    // under the status bar instead of iOS drawing an opaque bar of its own —
+    // the only way to colour that strip at all. Trade-off iOS forces: the
+    // glyphs (clock/battery/signal) are then always white and not themeable
+    // per route, which is why globals.css darkens the safe-area band under
+    // them (`--ground-notch`) instead of leaving the raw route colour there.
+    statusBarStyle: 'black-translucent',
   },
   icons: {
     icon: [
@@ -108,7 +127,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const nonce = (await headers()).get('x-nonce') ?? undefined;
 
   return (
-    <html lang="de" className={inter.variable}>
+    <html lang="de" className={`${inter.variable} ${nunito.variable}`}>
       <body>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <KeyboardInset />

@@ -297,10 +297,17 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
    * `oklab(... / a)`). Painting it into a canvas and reading the pixel back is
    * source-agnostic and catches a `color-mix(..., transparent)` regression
    * (alpha < 255) regardless of how the color string itself is serialized.
+   *
+   * Measured on `.nav__bar`, not the outer `<nav>` (issue #889): `.nav` itself
+   * is now intentionally transparent so the ambient background circles show
+   * through everywhere except the pill — only `.nav__bar` carries the opaque
+   * `--surface` fill the carousel's labels sit on, which is what #444's
+   * "no frosted glass over nav content" regression actually guards. The same
+   * distinction is already made in grundfarbe-vollfarbe.spec.ts AK2/AK4.
    */
   async function backgroundAlpha(page: Page) {
-    const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-    return nav.evaluate((el) => {
+    const navBar = page.getByRole('navigation', { name: 'Hauptnavigation' }).locator('.nav__bar');
+    return navBar.evaluate((el) => {
       const color = getComputedStyle(el).backgroundColor;
       const canvas = document.createElement('canvas');
       canvas.width = 1;
@@ -313,13 +320,14 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
   }
 
   for (const path of ['/routinen', '/aufgaben', '/uebersicht']) {
-    test(`${path}: die Nav ist voll deckend, kein Blur`, async ({ page }) => {
+    test(`${path}: die Nav-Pille ist voll deckend, kein Blur`, async ({ page }) => {
       await registerPasskey(page);
       await page.goto(path);
 
       expect(await backgroundAlpha(page)).toBe(255);
       const backdropFilter = await page
         .getByRole('navigation', { name: 'Hauptnavigation' })
+        .locator('.nav__bar')
         .evaluate((el) => getComputedStyle(el).backdropFilter);
       expect(backdropFilter).toBe('none');
     });

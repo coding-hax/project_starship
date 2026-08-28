@@ -21,7 +21,7 @@ const NBSP = ' ';
 /**
  * Titel-Überschrift von /uebersicht (issue #862): eine Begrüßung nach Ortszeit
  * statt „Übersicht". Der Server kennt die Ortszeit des Geräts nicht — dasselbe
- * Hydration-Muster wie `JournalHeaderDate` (`useSyncExternalStore` mit `false`
+ * Hydration-Muster wie `TodayLongDate` (`useSyncExternalStore` mit `false`
  * als Server-Snapshot, `true` erst nach der Hydration), nur dass hier nicht der
  * Wert selbst, sondern nur die Hydration-Flanke darüberläuft; der Wert kommt aus
  * `useNow`, das per `setInterval` tickt und von Playwrights `page.clock` normal

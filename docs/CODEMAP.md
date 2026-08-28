@@ -32,7 +32,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/wetter/[datum]/page.tsx` — Tagesdetails: Stundenverlauf, Niederschlag, Wind, Sonnenauf-/-untergang
 - `(app)/journal/page.tsx` — Titelzeile mit heutigem Datum + rendert `<JournalGate/>`, kein Editor-Inhalt direkt
 - `(app)/einstellungen/` — Darstellung, Reihenfolge, Module, Push (rendert je aktivem Modul dessen `SettingsPanel`)
-- `anmelden/` / `offline/` — Passkey (Einrichten/Anmelden/Recovery) + Service-Worker-Fallback ohne Netz
+- `anmelden/` (`layout.tsx`: `viewport`) / `offline/` — Passkey (Einrichten/Anmelden/Recovery)
+  + Service-Worker-Fallback ohne Netz
 - `api/auth/` / `api/health/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf (`credentials/`, `sessions/`) + SELECT 1 + Versions-SHA (ungeschützt)
 - `api/sync/` — `push/` und `pull/`, die einzigen Wege zu den Daten
 - `api/push/` / `api/garmin-sync/` — subscribe/unsubscribe/test+`reminders/`, holt Aktivitäten (beide Bearer-Secret)
@@ -112,11 +113,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
 - `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` — Eintragsstrom+FAB (#701), Stimmungsband (#703)
+- `journal-editor.tsx` / `.css` — Eintragsstrom+FAB (#701)
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile (#700)
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
-- `journal-header-date.tsx` / `.css` — heutiges Datum oben rechts im Kopf
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
 - `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine
 - `journal-habit-boot.tsx` — legt die Journal-Routine idempotent nach dem ersten Pull an
@@ -202,6 +202,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/ui
 
+- `page-head.tsx` / `.css` — Dreizonen-Kopf (Augenbraue/Titel/Zusatz), drei Routen (#868)
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
 - `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
 - `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln

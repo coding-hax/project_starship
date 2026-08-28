@@ -13,6 +13,7 @@
 @import '../ui/slider.css';
 @import '../ui/field-hint.css';
 @import '../ui/chip.css';
+@import '../ui/page-head.css';
 @import '../features/tasks/task-list.css';
 @import '../features/tasks/quick-add.css';
 @import '../features/tasks/due-picker.css';
@@ -68,7 +69,11 @@
   --radius-surface: var(--radius-surface);
   --radius-pill: var(--radius-pill);
 
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+  /* `inline` ist Pflicht (issue #859, ADR-0027): ohne es emittierte Tailwind
+     `:root { --font-display: var(--font-display) }` — ein Zyklus, weil
+     tokens.css dieselbe Custom Property schon auf :root definiert. */
+  --font-sans: var(--font-ui);
+  --font-display: var(--font-display);
 }
 
 /*
@@ -88,9 +93,23 @@
 /* `--blob-partner` (issue #849, AK3): the background circles' `--b3` tone
    mixes this in instead of white/black, so one of the four circles per route
    carries its own colour stitch instead of a plain tint of `--ground`. */
+/*
+ * `--on-ground-muted` (issue #868, AK3): gedämpfte Textstufe auf dem Grund,
+ * je Route gemessen (getComputedStyle → Canvas-Pixel, wie die grundfarbe.spec.ts-
+ * Helfer) statt geraten. 85 % `--on-ground`-Anteil hält alle neun Routen in
+ * BEIDEN Themes ≥ 4,5:1 (kleiner Text) — außer Aufgaben und Wetter im
+ * Hellmodus (gemessen 3,96:1 / 4,10:1 bei 85 %, und keine Zwischenstufe
+ * zwischen 85 % und 100 % reißt die Lücke; erst 95 % genügt, was von „voll
+ * deckend" kaum noch zu unterscheiden wäre). Beide fallen dort auf
+ * `--on-ground` zurück (Kontrast vor Dämpfung, wie #846) — im Dunkelmodus
+ * liegen beide bei 85 % klar über 4,5:1 (6,44:1 / 5,73:1), siehe die
+ * `@media (prefers-color-scheme: dark)`- bzw. `[data-theme='dunkel']`-Blöcke
+ * unten, die für diese zwei Routen `--on-ground-muted` erneut gedämpft setzen.
+ */
 html:has([data-ground='uebersicht']) {
   --ground: var(--ground-uebersicht);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-uebersicht);
   --face-ink: var(--face-ink-uebersicht);
@@ -98,6 +117,8 @@ html:has([data-ground='uebersicht']) {
 html:has([data-ground='aufgaben']) {
   --ground: var(--ground-aufgaben);
   --on-ground: var(--on-ground-light);
+  /* Gemessen 3,96:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
   --blob-partner: #12a67a;
   --face-body: var(--face-body-aufgaben);
   --face-ink: var(--face-ink-aufgaben);
@@ -105,6 +126,7 @@ html:has([data-ground='aufgaben']) {
 html:has([data-ground='kalender']) {
   --ground: var(--ground-kalender);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #3aa7e0;
   --face-body: var(--face-body-kalender);
   --face-ink: var(--face-ink-kalender);
@@ -112,6 +134,7 @@ html:has([data-ground='kalender']) {
 html:has([data-ground='routinen']) {
   --ground: var(--ground-routinen);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-routinen);
   --face-ink: var(--face-ink-routinen);
@@ -119,6 +142,7 @@ html:has([data-ground='routinen']) {
 html:has([data-ground='journal']) {
   --ground: var(--ground-journal);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #cf49c0;
   --face-body: var(--face-body-journal);
   --face-ink: var(--face-ink-journal);
@@ -126,6 +150,7 @@ html:has([data-ground='journal']) {
 html:has([data-ground='aktivitaeten']) {
   --ground: var(--ground-aktivitaeten);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ff7300;
   --face-body: var(--face-body-aktivitaeten);
   --face-ink: var(--face-ink-aktivitaeten);
@@ -133,6 +158,8 @@ html:has([data-ground='aktivitaeten']) {
 html:has([data-ground='wetter']) {
   --ground: var(--ground-wetter);
   --on-ground: var(--on-accent);
+  /* Gemessen 4,10:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
   --blob-partner: #7cc9f0;
   --face-body: var(--face-body-wetter);
   --face-ink: var(--face-ink-wetter);
@@ -140,6 +167,7 @@ html:has([data-ground='wetter']) {
 html:has([data-ground='einstellungen']) {
   --ground: var(--ground-einstellungen);
   --on-ground: var(--on-ground-light);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #0e7c84;
   --face-body: var(--face-body-einstellungen);
   --face-ink: var(--face-ink-einstellungen);
@@ -147,6 +175,7 @@ html:has([data-ground='einstellungen']) {
 html:has([data-ground='anmelden']) {
   --ground: var(--ground-anmelden);
   --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --blob-partner: #ffce00;
   --face-body: var(--face-body-anmelden);
   --face-ink: var(--face-ink-anmelden);
@@ -162,7 +191,17 @@ html:has([data-ground='anmelden']) {
    plain dark neutral ink instead of the route's ground ink (AK4). */
 :root:has([data-ground]) {
   --text: var(--on-ground);
-  --text-muted: var(--on-ground);
+  --text-muted: var(--on-ground-muted);
+  /*
+   * Safe-area status bar band (issue #882): darkened per-route so white iOS
+   * status bar glyphs (statusBarStyle: black-translucent, always white, not
+   * themeable) clear 4.5:1 against it. 70% covers the worst measured case
+   * (Aktivitäten, #ffae00) with margin; every other route clears further —
+   * see the ticket's measured table. One value for all nine routes rather
+   * than per-route minimums (issue's option A): the gradient into --ground
+   * hides the difference anyway.
+   */
+  --ground-notch: color-mix(in oklab, var(--ground) 70%, black);
   /*
    * Neutral edges (tokens.css) are tuned against --bg (a near-white or a warm
    * anthracite) and collapse flat against a saturated route ground — issue
@@ -204,6 +243,9 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='aufgaben']) {
     --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+    /* Anders als im Hellmodus (oben, 3,96:1 bei 85 %): hier gemessen 6,44:1 bei
+       85 % — genug Spielraum für die gedämpfte Stufe. */
+    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
   :root:not([data-theme='hell']):has([data-ground='kalender']) {
     --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
@@ -219,6 +261,9 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='wetter']) {
     --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+    /* Anders als im Hellmodus (oben, 4,10:1 bei 85 %): hier gemessen 5,73:1 bei
+       85 % — genug Spielraum für die gedämpfte Stufe. */
+    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
   :root:not([data-theme='hell']):has([data-ground='einstellungen']) {
     --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
@@ -236,6 +281,7 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='aufgaben']) {
   --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='kalender']) {
   --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
@@ -251,6 +297,7 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='wetter']) {
   --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='einstellungen']) {
   --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
@@ -266,7 +313,19 @@ html {
 }
 
 body {
-  background: var(--ground);
+  /* Safe-area status bar band (issue #882): a gradient layer painted on top
+     of the flat --ground colour, confined to exactly `env(safe-area-inset-top)`
+     — 0 on devices/CI without a notch (no regression, `--ground` alone shows
+     through), the real inset height on iPhones with black-translucent. Lives
+     on body (not html, despite the ticket's wording) because body paints
+     opaquely over the whole viewport including the safe area (#849) — a band
+     under it would never be visible. Holds the notch tone through the first
+     half so the glyphs don't sit on an already-fading tint, then eases into
+     --ground. */
+  background:
+    linear-gradient(to bottom, var(--ground-notch) 0%, var(--ground-notch) 55%, var(--ground) 100%)
+      left top / 100% env(safe-area-inset-top) no-repeat,
+    var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
      z-index of its own, so that negative z-index escapes past it straight to
@@ -283,7 +342,7 @@ body {
      of them. */
   isolation: isolate;
   color: var(--text);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: calc(var(--text-body) * var(--font-scale, 1));
   /* Times and streaks must not jitter as the digits change. */
   font-variant-numeric: tabular-nums;
@@ -304,6 +363,26 @@ h1 {
   /* Halbhoher Seitenkopf (issue #833): --text-page-title, nicht --text-title —
      das trägt noch die FAB-Glyphe und den Termin-Detail-Titel bei 32. */
   font-size: var(--text-page-title);
+  /* Rundschrift (issue #859, ADR-0027) — nur h1, nicht die h1/h2/h3-Gruppe
+     oben: h2/h3 bleiben Inter (AK4). Überschreibt deren letter-spacing/
+     line-height gezielt für h1. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
+  /* Rundschrift-Metrik gegen den Kopf-Überlauf (seitenkopf.spec.ts, „läuft nicht
+     über"): Nunito (CI/Linux-Fallback) hat eine größere Inhaltsfläche als Inter
+     (~30px bei 22px) und sprengt bei line-height 1.1 die Zeilenbox (24.2px) nach
+     OBEN wie UNTEN um je ~2.9px. Nach unten läuft schon die h1-Box über sich selbst
+     (scrollHeight > clientHeight, gemessen 3px auf /aufgaben, /anmelden); die obere
+     Überlänge bleibt unsichtbar, bis die h1 in einer zentrierten Kopf-Zeile neben
+     einem höheren Element sitzt (/journal: h1 mittig neben der 42px-PageFace-Figur),
+     wo sie die Zeilen-scrollHeight um 1–2px kippt. Deshalb symmetrisch, nicht nur
+     unten: padding-block fasst die Inhaltsfläche oben und unten mit Reserve. em, nicht
+     px — die Metrik skaliert mit dem Grad (26px auf /aktivitaeten). Auf Apple
+     (ui-rounded/SF Pro Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden
+     — verborgener Inhalt zählt weiter zur scrollHeight, der Test bliebe rot. */
+  padding-block: 0.2em;
 }
 
 h2 {
