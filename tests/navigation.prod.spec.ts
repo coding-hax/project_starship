@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { expectUebersichtLoaded, registerPasskey, resetAppData } from './helpers';
 
 /**
  * Issue #599: the (app) segment is statically prerendered now that the auth gate
@@ -147,7 +147,7 @@ test.describe('angemeldet', () => {
     // so more prefetches are in flight for that second navigation to cancel.
     //
     // What the walk below actually needs, as three named conditions:
-    await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+    await expectUebersichtLoaded(page);
     // A service worker that is not merely active but serving THIS page — offline,
     // every asset the walk needs comes out of its precache. `ready` alone only
     // proves a worker is active: `clientsClaim` (src/app/sw.ts) claims existing
@@ -170,16 +170,22 @@ test.describe('angemeldet', () => {
     await context.setOffline(true);
 
     const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-    const stops: Array<[label: string, heading: string]> = [
+    // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
+    // string — null routes it to expectUebersichtLoaded below instead.
+    const stops: Array<[label: string, heading: string | null]> = [
       ['Aufgaben', 'Aufgaben'],
       ['Kalender', 'Kalender'],
       ['Routinen', 'Routinen verwalten'],
-      ['Übersicht', 'Übersicht'],
+      ['Übersicht', null],
     ];
 
     for (const [label, heading] of stops) {
       await nav.getByRole('link', { name: label }).click();
-      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+      if (heading === null) {
+        await expectUebersichtLoaded(page);
+      } else {
+        await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+      }
       await expect(page).not.toHaveURL(/\/offline$/);
     }
   });
