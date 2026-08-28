@@ -56,6 +56,22 @@ describe('prMergeState / prIsBehind', () => {
     expect(prIsBehind('55', gh)).toBe(true);
   });
 
+  // #880: der Entwurfsstatus reist auf demselben `gh pr view` mit -- `isDraft`
+  // steht in der Feldliste, kein zusaetzlicher gh-Aufruf. Daran haengt die
+  // CI-Wache ihren Riegel (statt ans Label 'check').
+  it('#880: liest isDraft aus demselben pr view mit -- isDraft in der Feldliste', () => {
+    const gh = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN', isDraft: true }) });
+    expect(prMergeState('55', gh)?.isDraft).toBe(true);
+    // Genau EIN `pr view`, und es fragt isDraft ab (nicht ueber einen zweiten Aufruf).
+    expect(gh.run).toHaveBeenCalledTimes(1);
+    expect(gh.run).toHaveBeenCalledWith(['pr', 'view', '55', '--json', 'headRefName,mergeStateStatus,isDraft']);
+  });
+
+  it('#880: ein nicht-Entwurf meldet isDraft:false', () => {
+    const gh = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN', isDraft: false }) });
+    expect(prMergeState('55', gh)?.isDraft).toBe(false);
+  });
+
   it('CLEAN ist nicht behind', () => {
     const gh = ghRouter({ 'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN' }) });
     expect(prIsBehind('55', gh)).toBe(false);

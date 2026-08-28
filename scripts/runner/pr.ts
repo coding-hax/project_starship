@@ -23,6 +23,11 @@ interface PrCheck {
 export interface PrMergeStateInfo {
   headRefName: string;
   mergeStateStatus: string;
+  // #880: der Entwurfsstatus reist auf demselben `gh pr view` mit, das ohnehin
+  // fuer BEHIND/DIRTY geholt wird -- kein zusaetzlicher gh-Aufruf, nur ein Feld
+  // mehr in der Liste. Die CI-Wache haengt ihren Riegel daran (nicht mehr ans
+  // Label 'check'), damit sie einen Entwurf nie selbst aus dem Entwurf hebt.
+  isDraft: boolean;
 }
 
 function tryParseJson<T>(raw: string): T | null {
@@ -53,7 +58,7 @@ export function prForIssue(issue: number, gh: GhAdapter): string {
 export function prMergeState(pr: string, gh: GhAdapter): PrMergeStateInfo | null {
   let raw = '';
   try {
-    raw = gh.run(['pr', 'view', pr, '--json', 'headRefName,mergeStateStatus']);
+    raw = gh.run(['pr', 'view', pr, '--json', 'headRefName,mergeStateStatus,isDraft']);
   } catch {
     return null;
   }
@@ -98,8 +103,13 @@ export function prCiState(pr: string, gh: GhAdapter): PrState {
   if (checks.length === 0) return 'pending';
   if (checks.some((c) => c.bucket === 'pending')) return 'pending';
   if (checks.some((c) => c.bucket === 'fail' || c.bucket === 'cancel')) return 'failing';
-  if (prIsDirty(pr, gh)) return 'conflict';
-  if (prIsBehind(pr, gh)) return 'behind';
+  // #880: EIN `prMergeState` fuer DIRTY UND BEHIND statt zweier (`prIsDirty`
+  // dann `prIsBehind`) -- so bleibt die Zahl der `gh pr view`-Aufrufe gleich,
+  // wenn `resolveWatchState` fuer den Entwurfsstatus denselben Aufruf noch
+  // einmal spricht. Die Reihenfolge (DIRTY vor BEHIND) ist unveraendert.
+  const status = prMergeState(pr, gh)?.mergeStateStatus;
+  if (status === 'DIRTY') return 'conflict';
+  if (status === 'BEHIND') return 'behind';
   return 'success';
 }
 
