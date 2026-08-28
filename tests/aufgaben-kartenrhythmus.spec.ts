@@ -250,7 +250,31 @@ test('AK2 (Locator-Erhalt): die Zeile bleibt unter der einen "Aufgaben"-Liste er
   expect(await row.evaluate((el) => el.closest('.task-list__group-card') !== null)).toBe(true);
 });
 
-test('AK-Ü: kein Überlauf auf /aufgaben und /uebersicht, Hell und Dunkel', async ({ page }) => {
+/**
+ * "Kopf" in AK-Ü meint den Seitenkopf, nicht das Dokument (issue #865s eigene
+ * AK8: "scrollHeight <= clientHeight für den Kopfbereich"; dasselbe Muster wie
+ * `assertHeaderFitsItself` in seitenkopf.spec.ts). /uebersicht ist eine volle
+ * Dashboard-Seite (Wetter, Kalender, Aufgaben, Aktivitäten, Routinen) und
+ * scrollt legitim über 812px hinaus (siehe scroll-position.spec.ts) — nur der
+ * `.page-head` selbst darf nicht über sich selbst laufen, unabhängig davon,
+ * wie hoch die Aufgabenliste darunter wird.
+ */
+async function assertHeaderFitsItself(page: Page, path: string, scheme: string) {
+  const header = page.locator('.page-head');
+  await expect(header).toBeVisible();
+  const { scrollHeight, clientHeight } = await header.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(
+    scrollHeight,
+    `${path} (${scheme}): Kopf läuft nicht über sich selbst`,
+  ).toBeLessThanOrEqual(clientHeight);
+}
+
+test('AK-Ü: der Seitenkopf läuft auf /aufgaben und /uebersicht nicht über sich selbst, kein horizontaler Überlauf, Hell und Dunkel', async ({
+  page,
+}) => {
   await installClockAt(page, FIXED_NOW);
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'AK-Ü Überfällig', dueAt: isoAt(-1) });
@@ -262,19 +286,16 @@ test('AK-Ü: kein Überlauf auf /aufgaben und /uebersicht, Hell und Dunkel', asy
     for (const path of ['/aufgaben', '/uebersicht']) {
       await page.goto(path);
       await expect(groupCards(page).first()).toBeVisible();
-      const overflow = await page.evaluate(() => ({
-        scrollHeight: document.documentElement.scrollHeight,
-        clientHeight: document.documentElement.clientHeight,
+      await assertHeaderFitsItself(page, path, scheme);
+
+      const overflowWidth = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       }));
       expect(
-        overflow.scrollHeight,
-        `${path} (${scheme}): kein vertikaler Überlauf`,
-      ).toBeLessThanOrEqual(overflow.clientHeight);
-      expect(overflow.scrollWidth, `${path} (${scheme}): kein horizontaler Überlauf`).toBeLessThanOrEqual(
-        overflow.clientWidth,
-      );
+        overflowWidth.scrollWidth,
+        `${path} (${scheme}): kein horizontaler Überlauf`,
+      ).toBeLessThanOrEqual(overflowWidth.clientWidth);
     }
   }
 });
