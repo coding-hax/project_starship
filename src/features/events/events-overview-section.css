@@ -6,7 +6,7 @@
 
 .events-overview__next,
 .events-overview__empty {
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-surface);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
   padding: var(--space-4);

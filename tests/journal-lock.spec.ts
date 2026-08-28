@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
+  expectUebersichtLoaded,
   freezeClock,
   installClockAt,
   openSecondDevice,
@@ -58,7 +59,7 @@ test('gesperrt bleibt Uebersicht/Aufgaben/Routinen voll bedienbar (AC2)', async 
 
   await nav.getByRole('link', { name: 'Übersicht' }).click();
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   await nav.getByRole('link', { name: 'Aufgaben' }).click();
   await expect(page).toHaveURL(/\/aufgaben$/);

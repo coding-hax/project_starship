@@ -205,7 +205,10 @@ test('AK3: der Fortschrittsring steht im Fluss neben dem Titel, nicht absolut da
   const position = await ring.evaluate((el) => getComputedStyle(el).position);
   expect(['absolute', 'fixed'], 'Ring ist kein positionierter Overlay').not.toContain(position);
 
-  const heading = page.getByRole('heading', { level: 1, name: 'Übersicht' });
+  // Nicht nach Name filtern: der h1-Text ist seit issue #862 eine tageszeitabhängige
+  // Begrüßung, nicht mehr fest „Übersicht" — `[data-ground="uebersicht"] h1` ist
+  // hier eindeutig, es gibt genau eine h1 auf dieser Seite.
+  const heading = page.locator('[data-ground="uebersicht"] h1');
   const [headingBox, ringBox] = await Promise.all([heading.boundingBox(), ring.boundingBox()]);
   expect(headingBox).not.toBeNull();
   expect(ringBox).not.toBeNull();
@@ -282,7 +285,8 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
       path: '/einstellungen',
       heading: (p) => p.getByRole('heading', { level: 1, name: 'Einstellungen' }),
     },
-    { path: '/uebersicht', heading: (p) => p.getByRole('heading', { level: 1, name: 'Übersicht' }) },
+    // Kein Name-Filter (issue #862): der Titel ist eine tageszeitabhängige Begrüßung.
+    { path: '/uebersicht', heading: (p) => p.locator('[data-ground="uebersicht"] h1') },
   ];
   for (const { path, heading } of routesAt22) {
     await page.goto(path);

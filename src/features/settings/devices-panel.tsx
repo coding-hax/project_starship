@@ -159,15 +159,13 @@ function CredentialRow({
 
 export function DevicesPanel() {
   const online = useOnline();
-  const { phase, credentials, otherCount, busy, error, revoke, endOtherSessions, renameDevice } =
-    useDevices();
-  const [confirmingSessions, setConfirmingSessions] = useState(false);
+  const { phase, credentials, busy, error, revoke, renameDevice } = useDevices();
   const rows = useListPresence(credentials, (credential) => credential.id);
 
   if (phase === 'loading') return null;
 
   return (
-    <SectionCard title="Geräte">
+    <SectionCard title="Geräte" className="devices-panel">
       {!online && <p className="devices-panel__hint">Geht nur online.</p>}
       {error && <p className="devices-panel__error">{error}</p>}
       <ul className="devices-panel__list">
@@ -193,50 +191,6 @@ export function DevicesPanel() {
           'Neues Gerät hinzufügen? Öffne die App auf dem neuen Gerät und melde es unter „Anmelden" mit deinem Recovery-Code an.'
         }
       </p>
-
-      {confirmingSessions ? (
-        <Row label="Wirklich alle anderen Sitzungen beenden?">
-          <div className="devices-panel__confirm">
-            <button
-              type="button"
-              className="devices-panel__button"
-              onClick={() => {
-                setConfirmingSessions(false);
-                endOtherSessions();
-              }}
-              disabled={busy}
-            >
-              Beenden
-            </button>
-            <button
-              type="button"
-              className="devices-panel__button devices-panel__button--secondary"
-              onClick={() => setConfirmingSessions(false)}
-              disabled={busy}
-            >
-              Abbrechen
-            </button>
-          </div>
-        </Row>
-      ) : (
-        <Row
-          label="Alle anderen Sitzungen beenden"
-          description={
-            otherCount > 0
-              ? `${otherCount} weitere aktive Sitzungen`
-              : 'Keine weiteren aktiven Sitzungen'
-          }
-        >
-          <button
-            type="button"
-            className="devices-panel__button devices-panel__button--secondary"
-            onClick={() => setConfirmingSessions(true)}
-            disabled={!online || otherCount === 0}
-          >
-            Beenden
-          </button>
-        </Row>
-      )}
     </SectionCard>
   );
 }

@@ -52,12 +52,25 @@
  * (CI-Fund: `svg [122,24 32×32 → 126,24 32×32]`, AC1 aus
  * uebersicht-ladezustand.spec.ts). Mit `flex: 1` füllt die h1-Box immer den
  * kompletten Rest des Clusters, unabhängig von den Glyphenmaßen — das Icon
- * bleibt an fester Position. */
+ * bleibt an fester Position.
+ *
+ * `white-space: nowrap` statt `overflow-wrap: normal` (issue #862): seit die
+ * h1 hier eine Begrüßung nach Tageszeit statt des festen Worts „Übersicht"
+ * trägt, reicht ein Schutz vor Brüchen MITTEN im Wort nicht mehr — „Guten
+ * Mittag"/„Guten Morgen" haben ein Leerzeichen, also einen ganz regulären
+ * Umbruchpunkt, und der 42px-Slot (siehe faces.css: „nie höher als die eigene
+ * Zeile") wuchs auf zwei Zeilen (CI-Fund: `div.uebersicht__title-cluster
+ * [16,19 163×42 → 16,16 163×53]`, derselbe AC1-Test). `nowrap` verbietet jeden
+ * Umbruch, `overflow: hidden` + `text-overflow: ellipsis` fangen den Fall auf,
+ * dass eine Begrüßung selbst einzeilig nicht in die verbliebene Breite passt —
+ * lieber „Guten Mit…" als ein zweites, höheres Zeilenpaar. */
 .uebersicht__title-cluster h1 {
   flex: 1 1 auto;
   margin: 0;
   min-width: 0;
-  overflow-wrap: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .uebersicht__title-actions {
