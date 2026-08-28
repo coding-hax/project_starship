@@ -41,6 +41,13 @@ const ANY_HEADING = /^#{1,6}[ \t]+\S/;
 // Ticket steht -- und der Befund zeigte auf das falsche Kriterium.
 const ITEM = /^(?:[-*][ \t]+\[[ xX]\][ \t]*|[-*][ \t]+|\d+[.)][ \t]+)(.*)$/;
 
+// #839 kannte drei Marker-Formen; #891 fuehrt eine vierte: die fette Marke
+// OHNE Aufzaehlungszeichen -- '**AK1** ...' (nicht '- **AK1** ...', das das
+// Bullet-Muster oben schon faengt). Das '\d' hinter der Marke haelt Fliesstext
+// wie '**Wichtig:** ...' oder '**Achtung**' draussen: grosszuegig bei der
+// Form, streng beim Inhalt.
+const BOLD_AK = /^\*\*[ \t]*AK[ \t]*\d/i;
+
 // Reiner Text ohne Aufzaehlung zaehlt NICHT als Kriterium (AK1 von #839). Ein
 // Abschnitt "## Akzeptanzkriterien\n\nDas Ding soll schnell sein." ist keine
 // Spezifikation, sondern ein Wunsch -- und genau der Fall, den das Tor fangen
@@ -59,6 +66,11 @@ export function acceptanceCriteria(body: string): string[] {
     const item = ITEM.exec(line);
     if (item) {
       items.push(item[1]!.trim());
+      continue;
+    }
+
+    if (BOLD_AK.test(line)) {
+      items.push(line.trim());
       continue;
     }
 
