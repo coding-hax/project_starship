@@ -813,28 +813,35 @@ test('AK3 (#700/#701, Nachfolger von #423): Tagesköpfe zeigen Heute/Gestern/Dat
   await expect(headers.nth(2)).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(2026, 6, 16)));
 });
 
-test('issue #469: das heutige Datum steht neben der Überschrift "Journal", auf deren Höhe, oben rechts', async ({
+/** Langes Datumsformat der Augenbraue (`TodayLongDate`, issue #868) — anders
+ * als `JOURNAL_DATE_FORMATTER` oben (Tagesköpfe im Eintragsstrom), das den
+ * Wochentag abgekürzt zeigt. */
+const EYEBROW_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+test('issue #469/#868: das heutige Datum steht als Augenbraue über der Überschrift „Wie war dein Tag?“', async ({
   page,
 }) => {
   await installClockAt(page);
   await registerPasskey(page);
   await page.goto('/journal');
 
-  const heading = page.getByRole('heading', { name: 'Journal', exact: true });
-  const headerDate = page.locator('.journal-header-date');
+  const heading = page.getByRole('heading', { name: 'Wie war dein Tag?', exact: true });
+  const eyebrow = page.locator('[data-ground="journal"] .page-head__eyebrow');
   await expect(heading).toBeVisible();
-  await expect(headerDate).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
 
   const headingBox = await heading.boundingBox();
-  const dateBox = await headerDate.boundingBox();
+  const eyebrowBox = await eyebrow.boundingBox();
   expect(headingBox).not.toBeNull();
-  expect(dateBox).not.toBeNull();
+  expect(eyebrowBox).not.toBeNull();
 
-  // Auf Höhe: vertikale Ausdehnung von Datum und Überschrift überlappt.
-  expect(dateBox!.y).toBeLessThan(headingBox!.y + headingBox!.height);
-  expect(dateBox!.y + dateBox!.height).toBeGreaterThan(headingBox!.y);
-  // Rechts: das Datum liegt rechts von der Überschrift.
-  expect(dateBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+  // Über dem Titel, nicht mehr daneben (issue #868): die Augenbraue endet,
+  // bevor die Titelzeile beginnt.
+  expect(eyebrowBox!.y + eyebrowBox!.height).toBeLessThanOrEqual(headingBox!.y);
 });
 
 test('AK4 (#714, ehem. AC-D/#423): der Eintragen-Knopf in der Kopfzeile ist blass und wirkungslos, solange weder Stimmung noch Text gesetzt sind', async ({

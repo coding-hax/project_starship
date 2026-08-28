@@ -505,7 +505,8 @@ test('/uebersicht zeigt bei aktivem Journal-Modul keinen Journal-Block mehr — 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await nav.getByRole('link', { name: 'Journal' }).click();
   await expect(page).toHaveURL(/\/journal$/);
-  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+  // Titel „Wie war dein Tag?“ seit issue #868 — der Nav-Tab heißt weiterhin „Journal“.
+  await expect(page.getByRole('heading', { name: 'Wie war dein Tag?', level: 1 })).toBeVisible();
 });
 
 test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter → Aufgaben → Routinen, ohne Journal dazwischen (issue #506 AC1)', async ({
@@ -549,7 +550,8 @@ test('das Journal-Modul behält seinen Nav-Tab und seine Route — /journal rend
   // Direkter Aufruf der Route (kein Klick) — die Route gehört weiterhin dem Modul.
   await page.goto('/journal');
   await expect(page).toHaveURL(/\/journal$/);
-  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+  // Titel „Wie war dein Tag?“ seit issue #868 — der Nav-Tab heißt weiterhin „Journal“.
+  await expect(page.getByRole('heading', { name: 'Wie war dein Tag?', level: 1 })).toBeVisible();
 });
 
 test('das Journal-Modul behält sein Einstellungen-Panel (issue #506 AC2)', async ({ page }) => {

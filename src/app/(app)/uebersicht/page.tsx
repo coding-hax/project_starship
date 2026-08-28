@@ -3,9 +3,12 @@ import { UebersichtCapture } from '@/features/tasks/uebersicht-capture';
 import { AppHeader } from '@/ui/app-header';
 import { PageFace } from '@/ui/faces';
 import { OverviewReadyProvider } from '@/ui/overview-ready';
+import { PageHead } from '@/ui/page-head';
+import { TodayLongDate } from '@/ui/today-long-date';
 import { DailyProgressRing } from './daily-progress-ring';
 import { GreetingHeading } from './greeting-heading';
 import { UebersichtSections } from './uebersicht-sections';
+import { UebersichtSubline } from './uebersicht-subline';
 
 export const metadata = { title: 'Übersicht · Starship' };
 
@@ -25,7 +28,12 @@ export default function UebersichtPage() {
       {/* Stays outside the provider on purpose: it is the fixed anchor everything
           else appears below, and the reveal shifts nothing only as long as it is
           already standing (issue #642). */}
-      <div className="uebersicht__title-row" data-ground="uebersicht">
+      <PageHead
+        rowClassName="uebersicht__title-row"
+        dataGround="uebersicht"
+        eyebrow={<TodayLongDate />}
+        extra={<UebersichtSubline />}
+      >
         <div className="uebersicht__title-cluster">
           <GreetingHeading />
           <PageFace face="uebersicht" />
@@ -42,7 +50,7 @@ export default function UebersichtPage() {
           </div>
           <AppHeader variant="inline" />
         </div>
-      </div>
+      </PageHead>
       <OverviewReadyProvider>
         <UebersichtSections />
       </OverviewReadyProvider>

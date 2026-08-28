@@ -44,7 +44,7 @@ function getServerTodayKey(): string | null {
  * `berlinNow` reads the client clock, which at that point differs from the
  * Node process's clock (and, in Playwright, from the faked browser clock) —
  * computing it directly in the render body produced a hydration mismatch. The
- * same fix as `JournalHeaderDate` (`useSyncExternalStore` with a `null`
+ * same fix as `TodayLongDate` (`useSyncExternalStore` with a `null`
  * server snapshot) fills it in only once the client has taken over.
  * `selectedDay` falls back to `today` until the user picks a day of their
  * own, so it is `null` under the exact same condition. The date-dependent
