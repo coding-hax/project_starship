@@ -66,6 +66,27 @@ describe('acceptanceCriteria', () => {
     expect(acceptanceCriteria(body)).toEqual(['**AK1** Die Lupe oeffnet die Suche.', 'AK2 Eine Eingabe verengt die Liste.']);
   });
 
+  // #891 fuehrt eine vierte Form: die fette Marke OHNE Aufzaehlungszeichen.
+  // Der Parser erkannte bisher nur '- **AK1** ...' (siehe oben), nicht
+  // '**AK1** ...' -- genau das Format von #891, das das Tor faelschlich in
+  // needs-answer schickte.
+  it('reads bold markers without a leading bullet', () => {
+    const body = '## Akzeptanzkriterien\n\n**AK1** Erstens.\n**AK2** Zweitens.';
+    expect(acceptanceCriteria(body)).toEqual(['**AK1** Erstens.', '**AK2** Zweitens.']);
+  });
+
+  it('joins continuation lines under a bullet-less bold marker', () => {
+    const body = '## Akzeptanzkriterien\n\n**AK1** Kopf\nzweite Zeile\n**AK2** Zweitens.';
+    expect(acceptanceCriteria(body)).toEqual(['**AK1** Kopf zweite Zeile', '**AK2** Zweitens.']);
+  });
+
+  // Streng beim Inhalt: fette Zeilen, die keine AK-Marke sind, bleiben
+  // Fliesstext -- sonst zaehlte jedes '**Wichtig:** ...' als Kriterium.
+  it('does not treat arbitrary bold prose as a bullet-less marker', () => {
+    const body = '## Akzeptanzkriterien\n\n**Wichtig:** Das Ding soll schnell sein.';
+    expect(acceptanceCriteria(body)).toEqual([]);
+  });
+
   // Kernaussage von AK1: Prosa ist keine Spezifikation.
   it('ignores prose without a list', () => {
     expect(acceptanceCriteria('## Akzeptanzkriterien\n\nDas Ding soll schnell sein.')).toEqual([]);
@@ -90,6 +111,11 @@ describe('hasAcceptanceCriteria', () => {
     expect(hasAcceptanceCriteria('## Akzeptanzkriterien\n1. Eins')).toBe(true);
     expect(hasAcceptanceCriteria('## Akzeptanzkriterien\n\nProsa.')).toBe(false);
     expect(hasAcceptanceCriteria('')).toBe(false);
+  });
+
+  // #891 haette das Tor sonst weiterhin faelschlich sperren lassen.
+  it('recognizes a bullet-less **AKn** body like #891', () => {
+    expect(hasAcceptanceCriteria('## Akzeptanzkriterien\n\n**AK1** Erstens.')).toBe(true);
   });
 });
 
