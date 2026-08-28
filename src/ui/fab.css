@@ -101,20 +101,20 @@
 }
 
 .fab__label {
-  /* Bewusst --font-ui (Inter), nicht --font-display (issue #867, CI-Fund nach
-     dem #859-Merge): anders als die Einzelglyphe in .fab__icon (dort seit
-     #859 unverändert, dort unproblematisch) hängt hier ein ganzes Wort an
-     `.fab`s `width: auto` — die Pille ist rechts fixiert und wächst/schrumpft
-     mit dem Label. Nunito lädt über `display: swap` (layout.tsx), der
-     Wechsel Fallback→Nunito ändert die Wortbreite geringfügig und verschob
-     dadurch die gesamte Pille (gemessen in CI: AK6 aus formsprache.spec.ts,
-     ~0,0023 CLS statt < 0,001). Inters `display: block` (layout.tsx, #652)
-     malt nie sichtbar im Fallback, also nie ein Breitenwechsel nach dem
-     ersten Paint. */
-  font-family: var(--font-ui);
-  font-size: var(--text-body);
+  /* --font-display (ADR-0027 nennt "die Beschriftung des FAB" ausdrücklich als
+     Rundschrift-Stelle) — NICHT --font-ui, trotz eines früheren Laufs, der
+     hier versuchsweise auf Inter umgestellt hatte: der eigentliche CI-Fund
+     (AK6 aus formsprache.spec.ts, Layout-Shift beim Schriftwechsel) lag am
+     `.aufgaben-page__title-row`-h1 (siehe aufgaben-page.css), nicht an dieser
+     Regel — ein lokaler Repro mit erzwungenem Fallback→Nunito-Wechsel zeigte
+     für Icon+Label der Pille keine messbare Verschiebung. Die Inter-Umstellung
+     hätte diesen Test also gar nicht gefixt (bestätigt: CI blieb rot auf genau
+     diesem Commit) und widersprach nur unnötig der ADR. */
+  font-family: var(--font-display);
   font-weight: var(--weight-emphasis);
-  line-height: var(--leading-tight);
+  letter-spacing: -0.025em;
+  font-size: var(--text-body);
+  line-height: var(--leading-display);
   white-space: nowrap;
   color: inherit;
 }
