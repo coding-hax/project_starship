@@ -49,12 +49,22 @@ offen; nicht „es hat noch niemand hingeschaut". Bei einer offenen Frage
 (`needs-answer`) endet der Lauf bewusst **vor** der Abgabe an den Check, der
 PR bleibt Entwurf.
 
-**Auch der Runner-Takt mergt nicht am Tor vorbei.** Die CI-Wache unten hebt
-einen grünen PR sonst selbst aus dem Entwurf und käme dem Prüfer damit jedes
-Mal zuvor. Trägt das Ticket `check`, hält sie bei grüner CI still und startet
-stattdessen den Prüf-Lauf. Wird die CI rot, während `check` hängt, nimmt der
-Takt das Label zurück und lässt erst reparieren — der Fix-Lauf gibt es an
-seinem sauberen Ende selbst wieder ab.
+**Auch der Runner-Takt mergt nicht am Tor vorbei (#880).** Die CI-Wache unten
+hebt einen grünen PR sonst selbst aus dem Entwurf und käme dem Prüfer damit
+jedes Mal zuvor. Der Riegel hängt am **Entwurfsstatus**, nicht am Label
+`check`: `gh pr ready` ruft seit #839 ausschließlich der Prüf-Lauf — steht ein
+PR also noch im Entwurf, hat ihn kein Prüfer je freigegeben, und **die Wache
+hebt ihn nie selbst aus dem Entwurf**. Sie hält bei grüner CI still (meldet
+grün „wartet auf das AK-Tor") und überlässt Freigabe und Merge dem Prüf-Lauf;
+das gilt für laufende (`check`) wie für wartende (`needs-answer`) Tickets
+gleichermaßen. Ein PR, der **nicht** im Entwurf ist (Alt-PR aus der Zeit vor
+#839 oder von Hand freigegeben), wird weiterhin gemergt. Warum am
+Entwurfsstatus und nicht am Label: der Prüf-Lauf nimmt `check` ab, wenn er eine
+Lücke findet — das ist sein vorgesehener Rückweg in den Bau. Am Label
+festgemacht sähe der nächste Takt einen grünen PR ohne Label und mergte den
+ungeprüften Entwurf (beobachtet an #850). Wird die CI rot, während `check`
+hängt, nimmt der Takt das Label zurück und lässt erst reparieren — der Fix-Lauf
+gibt es an seinem sauberen Ende selbst wieder ab.
 
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**

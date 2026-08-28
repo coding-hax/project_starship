@@ -56,6 +56,21 @@ Stand, dessen Checks rot sind, ist nicht zu urteilen, und der nur lesende
 Prüfer könnte daran ohnehin nichts ändern. Der Fix-Lauf setzt `check` an seinem
 sauberen Ende selbst wieder.
 
+> **Nachtrag #880 — der Riegel hängt am Entwurfsstatus, nicht am Label.**
+> Ursprünglich (oben) machte die Wache ihr Stillhalten am Label `check` fest.
+> Das entwaffnete das Tor über seinen eigenen Rückweg: Punkt 4 lässt den Prüfer
+> bei einer Lücke `check` abnehmen — der PR bleibt aber **Entwurf**. Der nächste
+> Takt sah dann einen grünen PR ohne Label und mergte den ungeprüften Entwurf
+> wie vor #839 (beobachtet an #850: gemergt vier Sekunden nach dem „6 von 7
+> erfüllt"-Urteil des Prüfers). Seither gilt: **`gh pr ready` ruft
+> ausschließlich der Prüf-Lauf, die Wache hebt nie selbst einen Entwurf aus dem
+> Entwurf** — unabhängig von Labels. Ein noch im Entwurf stehender PR ist per
+> Definition ungeprüft; ein bereits freigegebener (nicht mehr im Entwurf
+> stehender) PR wird weiterhin gemergt (Netz für Alt-PRs und für von Hand
+> Freigegebene). Dieselbe Regel und dieselbe Quelle (`isDraft` aus dem `gh pr
+> view`, das die Wache ohnehin für den Merge-Zustand holt) gelten für die Wache
+> der wartenden Tickets (`needs-answer`).
+
 **3. Ein Befund je Kriterium, mit Beleg.** `erfüllt` verlangt eine Stelle im
 Code *und* einen Test (außer bei `tests-exempt`). `nicht prüfbar` ist ein
 eigener Befund und zählt fürs Tor wie `nicht erfüllt` — er sagt dem nächsten
