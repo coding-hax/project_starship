@@ -190,6 +190,20 @@ export async function freezeClock(page: Page) {
 }
 
 /**
+ * Replaces `getByRole('heading', { name: 'Übersicht', level: 1 })` as the
+ * "/uebersicht is loaded" marker (issue #862 AK5): since the heading text is
+ * now a time-of-day greeting (`GreetingHeading`), asserting on a fixed name
+ * would be a ticking clock baked into the test. `[data-ground="uebersicht"]`
+ * is the stable anchor, the `h1`'s mere presence stands in for "the heading
+ * rendered", regardless of which greeting it holds.
+ */
+export async function expectUebersichtLoaded(page: Page) {
+  const ground = page.locator('[data-ground="uebersicht"]');
+  await expect(ground).toBeVisible();
+  await expect(ground.locator('h1')).toBeVisible();
+}
+
+/**
  * Switches `/aufgaben`'s Woche/Alle/Erledigt view (issue #705 AK2) via the
  * SegmentedControl's `role="radio"` options, and waits for `aria-checked` so
  * the caller's next assertion never races the click. Almost every existing

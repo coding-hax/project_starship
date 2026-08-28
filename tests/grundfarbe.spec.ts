@@ -135,7 +135,8 @@ const ROUTES: RouteCase[] = [
     ground: 'uebersicht',
     path: '/uebersicht',
     ink: '--on-accent',
-    heading: (page) => page.getByRole('heading', { level: 1, name: 'Übersicht' }),
+    // Kein Name-Filter (issue #862): der Titel ist eine tageszeitabhängige Begrüßung.
+    heading: (page) => page.locator('[data-ground="uebersicht"] h1'),
   },
   {
     ground: 'aufgaben',

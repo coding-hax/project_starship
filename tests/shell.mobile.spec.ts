@@ -56,7 +56,8 @@ test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit "Übers
   await registerPasskey(page);
   await page.goto('/uebersicht');
 
-  const heading = page.getByRole('heading', { name: 'Übersicht', level: 1 });
+  // Kein Name-Filter (issue #862): der Titel ist eine tageszeitabhängige Begrüßung.
+  const heading = page.locator('[data-ground="uebersicht"] h1');
   const settings = page.getByRole('link', { name: 'Einstellungen' });
   const main = page.locator('main.shell__main');
   const [headingBox, settingsBox, mainBox, mainPaddingRight] = await Promise.all([

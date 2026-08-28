@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { NAV_ITEMS } from '../src/ui/nav-items';
-import { registerPasskey, resetDatabase } from './helpers';
+import { expectUebersichtLoaded, registerPasskey, resetDatabase } from './helpers';
 
 const NAV_LABELS = NAV_ITEMS.map((item) => item.label);
 
@@ -31,7 +31,7 @@ test('an unauthenticated visitor is sent to the login', async ({ page }) => {
 
 test('passkey setup issues a recovery code exactly once and opens the app', async ({ page }) => {
   await registerPasskey(page);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   // Second visit: already authenticated, so no code and no second setup.
   await page.goto('/anmelden');
@@ -50,11 +50,17 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
     ['Kalender', '/kalender', 'Kalender'],
     ['Journal', '/journal', 'Journal'],
     ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
-    ['Übersicht', '/uebersicht', 'Übersicht'],
+    // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
+    // string — checked below via expectUebersichtLoaded instead.
+    ['Übersicht', '/uebersicht', null],
   ] as const) {
     await page.getByRole('link', { name: label }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
-    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    if (heading === null) {
+      await expectUebersichtLoaded(page);
+    } else {
+      await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    }
     await expect(page.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
   }
 });
@@ -133,7 +139,7 @@ test('/heute permanently redirects to /uebersicht instead of 404ing (issue #161)
   const response = await page.goto('/heute');
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('heading', { name: 'Übersicht', level: 1 })).toBeVisible();
+  await expectUebersichtLoaded(page);
 
   const redirected = response!.request().redirectedFrom();
   expect(redirected).not.toBeNull();
