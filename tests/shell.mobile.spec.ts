@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { registerPasskey, resetDatabase } from './helpers';
 
 /**
@@ -19,9 +19,125 @@ import { registerPasskey, resetDatabase } from './helpers';
 // the shared owner session and keeps the full reset (#115).
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test.beforeEach(async () => {
+const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
+
+test.beforeEach(async ({ page }) => {
   await resetDatabase();
+  // issue #230/memory: /aktivitaeten stößt beim Öffnen /api/garmin-sync an, ungemockt
+  // 503 landet als Dev-Overlay-Badge im DOM. /uebersicht holt Wetter — ungemockt
+  // leckt der echte Fetch in jeden Test, der diese Route besucht (beide unten besucht).
+  await page.route(GARMIN_SYNC_PATTERN, (route) =>
+    route.fulfill({
+      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
+    }),
+  );
+  await page.route(OPEN_METEO_PATTERN, (route) =>
+    route.fulfill({
+      json: {
+        daily: {
+          time: ['2026-07-18'],
+          weather_code: [0],
+          temperature_2m_max: [20],
+          temperature_2m_min: [10],
+          precipitation_probability_max: [0],
+          sunrise: ['2026-07-18T05:00'],
+          sunset: ['2026-07-18T21:00'],
+          wind_speed_10m_max: [10],
+          wind_gusts_10m_max: [15],
+        },
+        hourly: {
+          time: Array.from({ length: 24 }, (_, h) => `2026-07-18T${String(h).padStart(2, '0')}:00`),
+          temperature_2m: Array.from({ length: 24 }, () => 15),
+          precipitation_probability: Array.from({ length: 24 }, () => 0),
+          precipitation: Array.from({ length: 24 }, () => 0),
+        },
+      },
+    }),
+  );
 });
+
+/** Mirrors grundfarbe.spec.ts's own probe-span technique (issue #846). */
+async function resolveColorToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * getComputedStyle can serialize an oklch()-declared colour back as oklch() rather than
+ * rgb() — a 1×1 canvas sidesteps that, see grundfarbe.spec.ts.
+ */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+async function metaThemeColor(page: Page, media: string): Promise<string | null> {
+  return page.evaluate(
+    (m) => document.querySelector(`meta[name="theme-color"][media="${m}"]`)?.getAttribute('content') ?? null,
+    media,
+  );
+}
+
+/** The top-level (not the ≥768px media-query override) authored rule, not the resolved style. */
+async function authoredShellMainPaddingTop(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (rule instanceof CSSStyleRule && rule.selectorText === '.shell__main') {
+          return rule.style.paddingTop;
+        }
+      }
+    }
+    return '';
+  });
+}
+
+const WHITE: [number, number, number] = [255, 255, 255];
+
+// The eight authenticated ground routes (issue #882) — same ground token names as
+// grundfarbe.spec.ts's ROUTES. Anmelden needs a logged-out context and is covered
+// separately as the ninth.
+const GROUND_ROUTES: { ground: string; path: string }[] = [
+  { ground: 'uebersicht', path: '/uebersicht' },
+  { ground: 'aufgaben', path: '/aufgaben' },
+  { ground: 'kalender', path: '/kalender' },
+  { ground: 'routinen', path: '/routinen' },
+  { ground: 'journal', path: '/journal' },
+  { ground: 'aktivitaeten', path: '/aktivitaeten' },
+  { ground: 'wetter', path: '/wetter/2026-07-18' },
+  { ground: 'einstellungen', path: '/einstellungen' },
+];
 
 test('the settings entry point sits inline on Übersicht and on none of the other four screens (issue #126 AC1+AC2)', async ({
   page,
@@ -80,4 +196,91 @@ test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit "Übers
   expect(Math.abs(settingsBox!.x + settingsBox!.width - contentRightEdge)).toBeLessThan(2);
   expect(settingsBox!.width).toBeGreaterThanOrEqual(44);
   expect(settingsBox!.height).toBeGreaterThanOrEqual(44);
+});
+
+test('AK2/AK3: --ground-notch erfüllt 4,5:1 gegen Weiß auf allen acht Routen und dem /offline-Fallback, hell und dunkel (issue #882)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    for (const route of GROUND_ROUTES) {
+      await page.goto(route.path);
+      const notch = await resolveColorToken(page, '--ground-notch');
+      expect(
+        contrastRatio(await toRgb(page, notch), WHITE),
+        `--ground-notch auf ${route.path} (${scheme})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+
+    // AK3: eine Route ohne data-ground (kein Login nötig) hängt am :root-Fallback,
+    // nicht an einer der neun Grundfarben.
+    await page.goto('/offline');
+    const offlineNotch = await resolveColorToken(page, '--ground-notch');
+    expect(
+      contrastRatio(await toRgb(page, offlineNotch), WHITE),
+      `--ground-notch auf /offline (${scheme})`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('AK2: --ground-notch auf /anmelden (ausgeloggt, neunte Route) erfüllt 4,5:1 gegen Weiß, hell und dunkel (issue #882)', async ({
+  page,
+}) => {
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/anmelden');
+    const notch = await resolveColorToken(page, '--ground-notch');
+    expect(
+      contrastRatio(await toRgb(page, notch), WHITE),
+      `--ground-notch auf /anmelden (${scheme})`,
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+/**
+ * ±2 je Kanal: oklch-Token vs. authored Hex runden über den Canvas-Umweg (toRgb)
+ * minimal unterschiedlich, exakte Gleichheit ist nicht das Ziel.
+ */
+async function assertThemeColorMatchesGround(page: Page, ground: string, routeLabel: string) {
+  const content = await metaThemeColor(page, '(prefers-color-scheme: light)');
+  expect(content, `theme-color auf ${routeLabel}`).not.toBeNull();
+
+  const groundToken = await resolveColorToken(page, `--ground-${ground}`);
+  const [groundRgb, metaRgb] = await Promise.all([toRgb(page, groundToken), toRgb(page, content!)]);
+  for (let channel = 0; channel < 3; channel += 1) {
+    expect(
+      Math.abs(groundRgb[channel] - metaRgb[channel]),
+      `theme-color-Kanal ${channel} auf ${routeLabel}`,
+    ).toBeLessThanOrEqual(2);
+  }
+}
+
+test('AK4: jede der acht Routen gibt ihre Grundfarbe als theme-color für Android aus (issue #882)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  for (const route of GROUND_ROUTES) {
+    await page.goto(route.path);
+    await assertThemeColorMatchesGround(page, route.ground, route.path);
+  }
+});
+
+test('AK4: /anmelden (ausgeloggt, neunte Route) gibt seine Grundfarbe als theme-color aus (issue #882)', async ({
+  page,
+}) => {
+  await page.goto('/anmelden');
+  await assertThemeColorMatchesGround(page, 'anmelden', '/anmelden');
+});
+
+test('AK5: die authored Regel für .shell__main führt env(safe-area-inset-top) in ihrer padding-top-Rechnung (issue #882)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+  const paddingTop = await authoredShellMainPaddingTop(page);
+  expect(paddingTop).toContain('env(safe-area-inset-top)');
 });
