@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
-import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap';
+import { opusBuildCapClear, opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap';
 
 describe('opusBuildCapReached / opusBuildCapReserve', () => {
   let dir: string;
@@ -44,6 +44,30 @@ describe('opusBuildCapReached / opusBuildCapReserve', () => {
     expect(state.read('opus-build-20260726-205')?.trim()).toBe('1');
     opusBuildCapReserve(205, state, clock);
     expect(state.read('opus-build-20260726-205')?.trim()).toBe('2');
+  });
+
+  // #900 AK3: opusBuildCapClear loescht nur den heutigen Zaehler dieses Tickets.
+  it('clear removes only today\'s counter for the given issue', () => {
+    state.write('opus-build-20260726-206', '2\n');
+    opusBuildCapClear(206, state, clock);
+    expect(state.exists('opus-build-20260726-206')).toBe(false);
+  });
+
+  it('clear leaves a counter for a different day untouched', () => {
+    state.write('opus-build-20260725-207', '2\n');
+    opusBuildCapClear(207, state, clock);
+    expect(state.read('opus-build-20260725-207')?.trim()).toBe('2');
+  });
+
+  it('clear leaves a counter for a different issue untouched', () => {
+    state.write('opus-build-20260726-208', '2\n');
+    opusBuildCapClear(209, state, clock);
+    expect(state.read('opus-build-20260726-208')?.trim()).toBe('2');
+  });
+
+  it('clear on a missing counter is a no-op', () => {
+    expect(() => opusBuildCapClear(210, state, clock)).not.toThrow();
+    expect(state.exists('opus-build-20260726-210')).toBe(false);
   });
 });
 

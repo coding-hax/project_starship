@@ -36,6 +36,14 @@ export function opusBuildCapReserve(issue: number, state: StateAdapter, clock: C
   state.write(key, `${count + 1}\n`);
 }
 
+// Loescht den heutigen Opus-Bau-Zaehler -- nach Fortschritt (ADR-0007). Nur der
+// Tages-Key; ein aelterer ist irrelevant, der Deckel liest immer heute. Den
+// opus-cap-msg-Stempel (Erschoepfungsmeldung hoechstens einmal/Tag) fasst das
+// bewusst nicht an (#900 AK4).
+export function opusBuildCapClear(issue: number, state: StateAdapter, clock: Clock): void {
+  state.remove(`opus-build-${todayStamp(clock)}-${issue}`);
+}
+
 // Flottenweiter Denk-Rollen-Deckel (#492, Nachtrag zu ADR-0005): begrenzt die
 // Laeufe der Rollen plan+research in Summe -- ticketuebergreifend (ein
 // Zaehler, kein `-${issue}`-Suffix wie beim Opus-Bau-Deckel) und unabhaengig

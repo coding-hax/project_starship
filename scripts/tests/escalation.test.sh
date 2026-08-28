@@ -285,6 +285,18 @@ esac
 assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$SHARED_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
 
 # ==============================================================================
+# 6b. #900 AK1: Fortschritt loescht den Opus-Tageszaehler (Bash->TS-Shim-Pfad)
+# ==============================================================================
+reset_state
+ISSUE=109 RUN_ROLE=build LABELS="" MODEL=opus BEFORE_TIP="sha-alt"
+setup_issue "$ISSUE"
+TODAY=$(date +%Y%m%d)
+echo 2 > "$SHARED_DIR/opus-build-$TODAY-$ISSUE"
+echo "sha-neu" > "$GHSTATE_DIR/tip-$ISSUE"   # Branch hat sich bewegt
+build_escalation_eval
+assert_file_absent "#900 AK1: Fortschritt löscht den Opus-Tageszähler" "$SHARED_DIR/opus-build-$TODAY-$ISSUE"
+
+# ==============================================================================
 # 7. Abweichende Blocker-Signatur -> failcount zurück auf 0
 # ==============================================================================
 reset_state
