@@ -1,23 +1,44 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { consumeCaptureDraft } from '@/features/tasks/capture-draft-store';
 import { berlinNow } from '@/push/schedule';
 import { Fab } from '@/ui/fab';
 import { PageFace } from '@/ui/faces';
 import { OfflineNotice } from '@/ui/offline-notice';
+import { SegmentedControl } from '@/ui/segmented-control';
 import { useOnline } from '@/ui/use-online';
 import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
 import { EventDetail, type EventDetailState } from './event-detail';
 import { EventEditor, type EventEditorState } from './event-editor';
-import type { Occurrence } from './recurrence';
+import { formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
+import { expandForDay, type Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
-import { useEventExceptions } from './use-event-exceptions';
+import { useEventExceptions, type EventExceptionView } from './use-event-exceptions';
 import { useEvents } from './use-events';
 import { useIcsSubscriptionsRefresh, useSubscribedEvents } from './use-ics-subscriptions';
 
 const CREATE_LABEL = 'Termin erfassen';
+
+/** Steht vor der Hydration statt der Augenbraue/des Titels (`leadDay` kennt
+ *  „heute" noch nicht, siehe `today`) — ein wirklich leeres Element hätte
+ *  Höhe 0 und der Kopf spränge beim Hydration-Flip (gleiches Muster wie
+ *  `TodayLongDate`/`GreetingHeading`). */
+const NBSP = ' ';
+
+type StripView = 'woche' | 'monat';
+
+const VIEW_OPTIONS: { value: StripView; label: string }[] = [
+  { value: 'woche', label: 'Woche' },
+  { value: 'monat', label: 'Monat' },
+];
+
+/** Stabile Leer-Array-Identität für `exceptions ?? EMPTY_EXCEPTIONS` — sonst
+ *  bekäme `CalendarStrip`s `dotsByDay`-Memo bei jedem `calendar-view`-Render
+ *  ein neues Array und würde alle 731 gepufferten Tage neu berechnen, seit
+ *  `leadDay` (issue #898) das Hochrollen dorthin überträgt. */
+const EMPTY_EXCEPTIONS: EventExceptionView[] = [];
 
 function subscribeNever() {
   return () => {};
@@ -61,6 +82,11 @@ export function CalendarView() {
   const today = useSyncExternalStore(subscribeNever, getTodayKey, getServerTodayKey);
   const [selectedDayOverride, setSelectedDayOverride] = useState<string | null>(null);
   const selectedDay = selectedDayOverride ?? today;
+  /** Die führende Zelle/Zeile des Streifens (issue #898) — treibt Augenbraue +
+   *  Titel. Aus `CalendarStrip` hochgemeldet über `onLeadDayChange`; fällt bis
+   *  zum ersten Bericht auf `today` zurück, gleiches Muster wie `selectedDay`. */
+  const [leadDayOverride, setLeadDayOverride] = useState<string | null>(null);
+  const leadDay = leadDayOverride ?? today;
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const [detailState, setDetailState] = useState<EventDetailState>(null);
@@ -100,8 +126,26 @@ export function CalendarView() {
   // Merged only for display (CalendarStrip/EventAgenda) — `openEdit` below keeps
   // looking up `events` alone, so a subscribed item can never resolve to an
   // editable anchor row (ADR-0022 AK2, deep enforcement beyond the read-only
-  // rendering in event-agenda.tsx).
-  const timelineEvents = [...(events ?? []), ...subscribedEvents];
+  // rendering in event-agenda.tsx). Memoised (issue #898): `leadDay` now
+  // re-renders this component on every crossed cell/row boundary while
+  // rolling the strip, and a fresh array identity here would thrash
+  // `CalendarStrip`'s own `dotsByDay` memo on each of those re-renders.
+  const timelineEvents = useMemo(
+    () => [...(events ?? []), ...subscribedEvents],
+    [events, subscribedEvents],
+  );
+  const eventExceptions = exceptions ?? EMPTY_EXCEPTIONS;
+
+  const focusMonth = leadDay === null ? null : leadDay.slice(0, 7);
+  const period = leadDay === null ? NBSP : expanded ? yearLabel(leadDay) : formatMonthTitle(leadDay);
+  const title = leadDay === null ? NBSP : expanded ? monthName(leadDay) : 'Diese Woche';
+
+  // Nur im Monat berechnet (#834, „nur was die Daten hergeben") — die Woche
+  // zeigt den Streifen selbst als Zusatz, keine Chips.
+  const counts = useMemo(() => {
+    if (!expanded || focusMonth === null) return null;
+    return monthEventCounts(focusMonth, (day) => expandForDay(timelineEvents, eventExceptions, day));
+  }, [expanded, focusMonth, timelineEvents, eventExceptions]);
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
@@ -153,19 +197,38 @@ export function CalendarView() {
           same reasoning as weather-day.tsx) — CalendarStrip's paging controls
           live in it, not just a bare heading. */}
       <header className="calendar-view__header">
+        <div className="calendar-view__eyebrow">
+          <p className="calendar-view__period page-head__eyebrow">{period}</p>
+          <SegmentedControl
+            options={VIEW_OPTIONS}
+            value={expanded ? 'monat' : 'woche'}
+            onChange={(next) => setExpanded(next === 'monat')}
+            label="Ansicht"
+          />
+        </div>
         <div className="calendar-view__title-row">
-          <h1 className="calendar-view__heading">Kalender</h1>
+          <h1 className="calendar-view__heading">{title}</h1>
           <PageFace face="kalender" />
         </div>
+        {counts !== null && (
+          <div className="page-head__extra">
+            <div className="page-head__chips">
+              <span className="page-head__chip">
+                {counts.total} {counts.total === 1 ? 'Termin' : 'Termine'}
+              </span>
+              <span className="page-head__chip">{counts.allDay} ganztägig</span>
+            </div>
+          </div>
+        )}
         {today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
             onSelectDay={setSelectedDayOverride}
             today={today}
             events={timelineEvents}
-            exceptions={exceptions ?? []}
+            exceptions={eventExceptions}
             expanded={expanded}
-            onExpandChange={setExpanded}
+            onLeadDayChange={setLeadDayOverride}
           />
         )}
       </header>
@@ -178,7 +241,7 @@ export function CalendarView() {
       {today !== null && selectedDay !== null && (
         <EventAgenda
           events={timelineEvents}
-          exceptions={exceptions ?? []}
+          exceptions={eventExceptions}
           selectedDay={selectedDay}
           today={today}
           onOpenEvent={openDetail}
@@ -189,7 +252,7 @@ export function CalendarView() {
         <EventEditor
           state={editorState}
           selectedDay={selectedDay}
-          exceptions={exceptions ?? []}
+          exceptions={eventExceptions}
           onClose={() => setEditorState(null)}
           onDelete={deleteEvent}
         />

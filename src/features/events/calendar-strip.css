@@ -14,14 +14,12 @@
   --calendar-strip-row-height: calc(var(--touch-target) + 2 * var(--space-1));
 }
 
-/* Monat+Jahr des gewählten Tages + Woche/Monat-Umschalter, feste Höhe — Position
-   und Höhe dürfen sich beim Tageswechsel nie ändern (issue #628, AK5).
-   Below 768px this wraps onto two lines (`.calendar-strip__today`'s
-   `flex-basis: 100%` forces it last), so the "Heute" chip never sits inline
-   before the title — it can only ever push the *second* line, and title/
-   switcher stay on the first regardless of the chip's visibility (issue
-   #630, AK5/AK9/AK10). From 768px up nothing wraps: `[Heute] [‹] [›] Titel
-   … [Woche|Monat]` all fit one line (issue #630, Anordnung B). */
+/* "Heute"-Rücksprung-Chip + Desktop-`‹ ›` (issue #628/#630) — Titel und
+   Woche/Monat-Umschalter zogen in calendar-view.tsx's Augenbraue um (issue
+   #898). Feste Höhe, Position darf sich beim Tageswechsel nie ändern (issue
+   #628, AK5). Below 768px the desktop toolbar (`.calendar-strip__title-nav`)
+   is hidden, so only the "Heute" chip ever shows here (issue #630, AK9/AK10).
+   From 768px up nothing wraps: `[Heute] [‹] [›]` fit one line. */
 .calendar-strip__title-row {
   display: flex;
   flex-wrap: wrap;
@@ -31,19 +29,6 @@
   min-height: var(--touch-target);
 }
 
-.calendar-strip__title {
-  margin: 0;
-  margin-inline-end: auto;
-  order: 2;
-  font-size: var(--text-section);
-  font-weight: var(--weight-emphasis);
-  color: var(--text);
-}
-
-.calendar-strip__title-row .segmented {
-  order: 3;
-}
-
 /* `‹`/`›` for a week (a month in month view) — desktop-only (issue #630,
    AK9/AK10); `.calendar-strip__nav`'s day-stepping siblings below are a
    separate, untouched control. */
@@ -51,8 +36,9 @@
   display: none;
 }
 
-/* Same element as the mobile "Heute" chip (S1, #628) — see the title-row
-   comment above for why toggling this never moves the title. */
+/* Same element as the mobile "Heute" chip (S1, #628) — reserved row height
+   (`.calendar-strip__title-row`'s `min-height`) keeps toggling this from
+   moving anything below it. */
 .calendar-strip__today {
   order: 4;
   flex: 1 0 100%;
