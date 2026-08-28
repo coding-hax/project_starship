@@ -24,13 +24,15 @@ const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
   // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
-  // (issue #157 AC: no double announcement). Day markers render `role="presentation"`
-  // (task-list.tsx), so they never count as a `listitem` here.
+  // (issue #157 AC: no double announcement). A group card's outer `<li>` renders
+  // `role="presentation"` (task-list.tsx, issue #866), so it never counts as a
+  // `listitem` here — only the task rows nested inside it do.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-function dayMarkers(page: Page) {
-  return page.locator('.task-list__day-marker');
+/** A group card's title (issue #866) — "Überfällig"/"Heute"/"Diese Woche". */
+function groupTitles(page: Page) {
+  return page.locator('.task-list__group-title');
 }
 
 function undatedCard(page: Page) {
@@ -82,7 +84,7 @@ test.beforeEach(async ({ page }) => {
   await skewClock(page, NOW);
 });
 
-test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folgenden Tage, mit Tagesmarken (issue #87 AC1, erweitert auf die Woche und um Tagesmarken durch issue #762)', async ({
+test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folgenden Tage, in Karten gebündelt (issue #87 AC1, erweitert auf die Woche durch issue #762, drei feste Bucket-Karten seit issue #866)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -125,10 +127,11 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   await expect(dueTaskItems(page).filter({ hasText: 'Ohne Fälligkeit' })).toHaveCount(0);
   await expect(page.getByText('Gestern erledigt')).toHaveCount(0);
 
-  // Tagesmarken: Überfällig zuerst, dann die Tage aufsteigend (issue #762).
-  const markers = dayMarkers(page);
-  await expect(markers.first()).toHaveText('Überfällig');
-  await expect(markers.last()).toContainText('Montag, 20. Juli');
+  // Karten: Überfällig zuerst, dann Heute/Diese Woche (issue #762, drei feste
+  // Buckets statt einer Marke je Tag seit issue #866).
+  const titles = groupTitles(page);
+  await expect(titles.first()).toHaveText('Überfällig');
+  await expect(titles.last()).toHaveText('Diese Woche');
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
@@ -371,9 +374,10 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await expect(dueTaskItems(page)).toHaveCount(1);
     const filledGap = await gapBetween(aufgaben, routinen);
 
-    // The empty state reserves a day marker's box plus one task card's (issue #762
-    // — a filled "Woche" list is never just a bare row anymore), so the two gaps
-    // differ by rounding at most. Anything beyond that is the hole issue #228 fixed
+    // The empty state reserves one group card's worth of box — its own padding, a
+    // header line, one task row (issue #762, card since issue #866) — so a filled
+    // "Woche" list is never just a bare row anymore, and the two gaps differ by
+    // rounding at most. Anything beyond that is the hole issue #228 fixed
     // reopening — the numbers travel in the message, so a red run says how far off it is.
     expect(
       Math.abs(emptyGap - filledGap),

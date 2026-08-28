@@ -1398,14 +1398,16 @@ test('die randlose Zeile behält die volle Trefferfläche (issue #706 AK8)', asy
   await selectView(page, 'Alle');
   await seedTask(page, { title: 'Volle Breite' });
 
-  const list = page.getByRole('list', { name: 'Aufgaben' });
   const row = taskRowFor(page, 'Volle Breite');
-  const listBox = await list.boundingBox();
   const rowBox = await row.boundingBox();
-  if (!listBox || !rowBox) throw new Error('missing bounding box');
+  // Full-width grab surface within its own card (issue #866 moved the card
+  // surface up to `.task-list__group-card` — the row itself still has no
+  // inset of its own, so it fills exactly its immediate parent's width, not
+  // the outer `<ul>`'s, which is now wider by the card's own padding).
+  const parentWidth = await row.evaluate((el) => el.parentElement!.getBoundingClientRect().width);
+  if (!rowBox) throw new Error('missing bounding box');
 
-  // Full-width grab surface — the flat row spans the whole list, no inset card.
-  expect(Math.abs(rowBox.width - listBox.width)).toBeLessThan(1);
+  expect(Math.abs(rowBox.width - parentWidth)).toBeLessThan(1);
   // …and stays at least one touch target tall, read from the token at runtime.
   const touchTarget = await page.evaluate(() =>
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--touch-target')),
@@ -3176,8 +3178,15 @@ test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die
 /* Wochenausschnitt, Woche/Alle/Erledigt-Umschalter (issue #705)              */
 /* -------------------------------------------------------------------------- */
 
-function dayMarkers(page: Page) {
-  return page.locator('.task-list__day-marker');
+/** A group card's title (issue #866) — "Überfällig"/"Heute"/"Diese Woche" in
+ *  "Woche", one per completed day in "Erledigt". */
+function groupTitles(page: Page) {
+  return page.locator('.task-list__group-title');
+}
+
+/** The count next to a group card's title (issue #866 AK1). */
+function groupCounts(page: Page) {
+  return page.locator('.task-list__group-count');
 }
 
 function viewOption(page: Page, name: 'Woche' | 'Alle' | 'Erledigt') {
@@ -3239,30 +3248,37 @@ test('AK2: der Umschalter Woche/Alle/Erledigt ist nicht persistiert — nach ein
   await expect(taskItems(page).filter({ hasText: 'Ohne Datum' })).toHaveCount(0);
 });
 
-test('AK3: Datumsmarken gliedern die Woche — „Überfällig", „Heute · …", dann die Wochentage; ein Tag ohne Aufgaben bekommt keine Marke', async ({
+test('AK1 (T2/#866): „Woche" bündelt in drei feste Karten — „Überfällig", „Heute", „Diese Woche" — statt einer Marke je Tag', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
   await page.goto('/aufgaben');
 
   // Zwei überfällige Aufgaben an verschiedenen Tagen — teilen sich EINE
-  // "Überfällig"-Marke, keine pro Tag.
+  // "Überfällig"-Karte, keine pro Tag.
   await seedTask(page, { title: 'Länger überfällig', dueAt: isoAt(-5) });
   await seedTask(page, { title: 'Kürzer überfällig', dueAt: isoAt(-1) });
   await seedTask(page, { title: 'Heute dran', dueAt: isoAt(0, 15) });
-  // Tag +1 (19. Juli) bleibt absichtlich frei — beweist die leere-Tage-Regel.
+  // Zwei an verschiedenen Wochentagen fällige Aufgaben — fallen unter
+  // Variante A in DIESELBE "Diese Woche"-Karte, nicht in eine je Tag.
   await seedTask(page, { title: 'Übermorgen dran', dueAt: isoAt(2) });
+  await seedTask(page, { title: 'In 5 Tagen dran', dueAt: isoAt(5) });
 
-  // Genau 3 Marken — insbesondere keine vierte für den freien Sonntag
-  // (19. Juli), sonst stünde sie zwischen "Heute" und "Montag" hier auch.
-  const markers = dayMarkers(page);
-  await expect(markers).toHaveCount(3);
-  await expect(markers.nth(0)).toHaveText('Überfällig');
-  await expect(markers.nth(1)).toHaveText('Heute · Samstag, 18. Juli');
-  await expect(markers.nth(2)).toHaveText('Montag, 20. Juli');
+  // Genau 3 Karten — eine pro Bucket, keine vierte, keine pro Wochentag.
+  const titles = groupTitles(page);
+  await expect(titles).toHaveCount(3);
+  await expect(titles.nth(0)).toHaveText('Überfällig');
+  await expect(titles.nth(1)).toHaveText('Heute');
+  await expect(titles.nth(2)).toHaveText('Diese Woche');
 
-  // Marken zählen nicht als Aufgaben-Zeile.
-  await expect(taskItems(page)).toHaveCount(4);
+  // Anzahl rechts = Top-Level-Zeilen der Karte (AK1).
+  const counts = groupCounts(page);
+  await expect(counts.nth(0)).toHaveText('2');
+  await expect(counts.nth(1)).toHaveText('1');
+  await expect(counts.nth(2)).toHaveText('2');
+
+  // Karten-Titel/Anzahl zählen nicht als Aufgaben-Zeile.
+  await expect(taskItems(page)).toHaveCount(5);
 });
 
 test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, sondern eingeklappt in einer ausklappbaren Karte (issue #762, vormals eine reine Textzeile)', async ({
@@ -3357,10 +3373,10 @@ test('Erledigt: sortiert nach Erledigungszeit absteigend, gegliedert nach Heute/
   await viewOption(page, 'Erledigt').click();
   await expect(viewOption(page, 'Erledigt')).toHaveAttribute('aria-checked', 'true');
 
-  const markers = dayMarkers(page);
-  await expect(markers).toHaveCount(2);
-  await expect(markers.nth(0)).toHaveText('Heute');
-  await expect(markers.nth(1)).toHaveText('Gestern');
+  const titles = groupTitles(page);
+  await expect(titles).toHaveCount(2);
+  await expect(titles.nth(0)).toHaveText('Heute');
+  await expect(titles.nth(1)).toHaveText('Gestern');
 
   const items = taskItems(page);
   await expect(items).toHaveCount(3);
