@@ -87,8 +87,17 @@
 }
 
 .fab__icon {
+  /* --text-section (20px) statt --text-title (issue #867 AK1) — die FAB-
+     Glyphe ist jetzt kleiner als andere --text-title-Verbraucher. */
   font-size: var(--text-section);
-  line-height: var(--leading-tight);
+  /* Rundschrift-Rezept (issue #859, ADR-0027): `--leading-display` statt
+     `--leading-tight` (1) — die Zentrierung hält die Flex-Box auf `.fab`,
+     nicht diese Zeile. `letter-spacing` ist bei der Einzelglyphe "+" ein
+     No-op, bleibt aber Teil des Rezepts. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
 }
 
 .fab__label {

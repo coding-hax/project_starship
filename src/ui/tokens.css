@@ -217,6 +217,16 @@
   --text-page-title-lg: 26px; /* nur Aktivitäten */
   --text-temp: 40px; /* Wetter, große Tages-Temperatur */
 
+  /* Zwei Font-Rollen statt einer rohen Familie (issue #859, ADR-0027): keine
+     Datei greift `--font-inter`/`--font-nunito` roh ab, dieselbe Regel wie bei
+     den Schriftgraden (#591/#592). `--font-inter`/`--font-nunito` liegen als
+     `next/font`-Variablen auf `<html>` = `:root` (layout.tsx), hier also
+     lesbar. `ui-rounded`/`'SF Pro Rounded'` lösen nur unter Apple-Safari auf —
+     überall sonst (CI/Linux-Chromium, Android, Windows) greift der selbst
+     gehostete Web-Fallback Nunito. */
+  --font-ui: var(--font-inter), system-ui, sans-serif;
+  --font-display: ui-rounded, 'SF Pro Rounded', var(--font-nunito), system-ui, sans-serif;
+
   --weight-normal: 400;
   --weight-emphasis: 600;
 
@@ -229,6 +239,11 @@
      --leading-body fits; forcing one of those would shift the content off
      centre or overflow the box. */
   --leading-tight: 1;
+  /* Rundschrift-Rezept (issue #859, ADR-0027): tighter than --leading-heading
+     because the display font (h1, card titles, big numbers) never wraps to a
+     second line — this is the one raw line-height check-design-tokens.sh
+     (issue #591/#593) allows, referenced everywhere the recipe applies. */
+  --leading-display: 1.1;
 
   /* --- z-layers (issue #510, prompted by #508) ----------------------------
      One named scale for everything that floats, so "sits above / below" is a
