@@ -128,8 +128,8 @@ einen kurzen Kommentar mit dieser Begründung.
   Wetter-Temperatur, Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda) und
   die FAB-Beschriftung). Rezept dort überall dieselben vier Zeilen:
   `font-family: var(--font-display)`, `font-weight: var(--weight-emphasis)`,
-  `letter-spacing: -0.025em`, `line-height: 1.1`. Kein zweiter/dritter Font
-  ohne weiteres ADR.
+  `letter-spacing: -0.025em`, `line-height: var(--leading-display)`. Kein
+  zweiter/dritter Font ohne weiteres ADR.
 - Keine Datei greift eine Schriftfamilie roh ab (`var(--font-inter)` o. Ä.) —
   immer über `--font-ui`/`--font-display`, dieselbe Regel wie bei den
   Schriftgraden (#591/#592).
@@ -160,7 +160,8 @@ issue #591):
 
 Dazu `--weight-normal` (400) / `--weight-emphasis` (600) und je eine
 Zeilenhöhe: `--leading-heading` (1.2) für Überschriften, `--leading-body`
-(1.5) für Fließtext.
+(1.5) für Fließtext, `--leading-display` (1.1) für das Rundschrift-Rezept
+(issue #859, ADR-0027) — enger, weil dort nie umbricht.
 
 Font-Rollen (issue #859, ADR-0027):
 

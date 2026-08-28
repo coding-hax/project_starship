@@ -45,14 +45,14 @@
 
 .fab__icon {
   font-size: var(--text-title);
-  /* Rundschrift-Rezept (issue #859, ADR-0027): `line-height: 1.1` statt
+  /* Rundschrift-Rezept (issue #859, ADR-0027): `--leading-display` statt
      `--leading-tight` (1) — die Zentrierung hält die Flex-Box auf `.fab`,
      nicht diese Zeile. `letter-spacing` ist bei der Einzelglyphe "+" ein
      No-op, bleibt aber Teil des Rezepts. */
   font-family: var(--font-display);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
-  line-height: 1.1;
+  line-height: var(--leading-display);
 }
 
 @media (min-width: 768px) {

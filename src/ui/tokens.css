@@ -227,6 +227,11 @@
      --leading-body fits; forcing one of those would shift the content off
      centre or overflow the box. */
   --leading-tight: 1;
+  /* Rundschrift-Rezept (issue #859, ADR-0027): tighter than --leading-heading
+     because the display font (h1, card titles, big numbers) never wraps to a
+     second line — this is the one raw line-height check-design-tokens.sh
+     (issue #591/#593) allows, referenced everywhere the recipe applies. */
+  --leading-display: 1.1;
 
   /* --- z-layers (issue #510, prompted by #508) ----------------------------
      One named scale for everything that floats, so "sits above / below" is a

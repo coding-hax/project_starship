@@ -31,5 +31,5 @@
   font-family: var(--font-display);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
-  line-height: 1.1;
+  line-height: var(--leading-display);
 }

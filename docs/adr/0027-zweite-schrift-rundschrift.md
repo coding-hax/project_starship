@@ -37,8 +37,9 @@ neue npm-Abhängigkeit). Latin-Subset, Gewichte 400/600, ~30 KB.
 Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda), die Beschriftung des
 FAB. Rezept überall dieselben vier Zeilen: `font-family: var(--font-display)`,
 `font-weight: var(--weight-emphasis)` (600), `letter-spacing: -0.025em`,
-`line-height: 1.1`. Fließtext, Listenzeilen, Nav-Labels, Eingabefelder,
-Journal-Einträge, `h2`/`h3` bleiben `--font-ui` (AK4).
+`line-height: var(--leading-display)` (1.1). Fließtext, Listenzeilen,
+Nav-Labels, Eingabefelder, Journal-Einträge, `h2`/`h3` bleiben `--font-ui`
+(AK4).
 
 ## Alternativen, die wir nicht genommen haben
 
