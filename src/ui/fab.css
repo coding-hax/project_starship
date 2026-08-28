@@ -101,16 +101,20 @@
 }
 
 .fab__label {
-  /* --font-display (ADR-0027 nennt "die Beschriftung des FAB" ausdrücklich als
-     Rundschrift-Stelle) — NICHT --font-ui, trotz eines früheren Laufs, der
-     hier versuchsweise auf Inter umgestellt hatte: der eigentliche CI-Fund
-     (AK6 aus formsprache.spec.ts, Layout-Shift beim Schriftwechsel) lag am
-     `.aufgaben-page__title-row`-h1 (siehe aufgaben-page.css), nicht an dieser
-     Regel — ein lokaler Repro mit erzwungenem Fallback→Nunito-Wechsel zeigte
-     für Icon+Label der Pille keine messbare Verschiebung. Die Inter-Umstellung
-     hätte diesen Test also gar nicht gefixt (bestätigt: CI blieb rot auf genau
-     diesem Commit) und widersprach nur unnötig der ADR. */
-  font-family: var(--font-display);
+  /* --font-display-stable (issue #867 CI-Fund, tokens.css/layout.tsx), NICHT
+     --font-display: zwei vorherige Läufe versuchten hier erst --font-ui (CI
+     blieb rot — der eigentliche Fund war zusätzlich `.aufgaben-page__title-
+     row`s h1, siehe aufgaben-page.css), dann wieder --font-display (ADR-0027
+     nennt "die Beschriftung des FAB" ausdrücklich als Rundschrift-Stelle) —
+     CI blieb AUCH danach rot, nur schwächer (der h1-Fix griff, das Label
+     selbst blieb Ursache). Anders als beim h1 gibt es hier keinen Flex-
+     Sibling: `.fab` ist `position: fixed; right: …; width: auto` — ein
+     Fallback→Nunito-Breitenwechsel im Label ändert `.fab`s eigene Box direkt.
+     `--font-display-stable` ist dieselbe Nunito-Familie (erfüllt ADR-0027
+     weiterhin wörtlich), nur mit `display: 'block'` statt `'swap'` — malt nie
+     sichtbar im Fallback, also strukturell kein Wechsel nach dem ersten Paint
+     möglich (dieselbe Garantie, mit der Inter seit #652 sicher ist). */
+  font-family: var(--font-display-stable);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   font-size: var(--text-body);
