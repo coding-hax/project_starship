@@ -22,12 +22,15 @@
   border: none;
   border-radius: var(--radius-pill);
   /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
-     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 76% Bereichsfarbe gegen
-     --text-base gemischt (oklab) hält Glyphe **und** das 16px/600-Label in
-     jedem Bereich und Theme ≥4,5:1 und bleibt an der Bereichsfarbe erkennbar
-     statt ins Neutrale zu kippen (#867 AK1). */
+     Bereichsfarbe auf --surface läge nur bei ~2,9:1. AK1 nennt 76%, aber das
+     hält im Hellmodus für --area-tasks (die hellste Bereichsfarbe, L=70%) nur
+     ~4,22:1 — unter dem von AC3 (issue #709, bestehender Required Check)
+     geforderten Minimum. 70% Bereichsfarbe gegen --text-base gemischt (oklab)
+     hält Glyphe **und** das 16px/600-Label in jedem Bereich und Theme ≥4,5:1
+     (--area-tasks im Hellmodus als knappster Fall: ~4,67:1) und bleibt an der
+     Bereichsfarbe erkennbar statt ins Neutrale zu kippen (#867 AK1). */
   background: var(--surface);
-  color: color-mix(in oklab, var(--accent) 76%, var(--text-base));
+  color: color-mix(in oklab, var(--accent) 70%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;
