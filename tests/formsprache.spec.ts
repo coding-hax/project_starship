@@ -282,7 +282,10 @@ test('AK4: ein Journal-Titel hat die Rundschrift, ein Journal-Absatz nicht', asy
   await dialog.locator('.sheet__action').click();
   await expect(dialog).toBeHidden();
 
-  await assertDisplayRecipe(page.locator('h1', { hasText: 'Journal' }), 'h1 "Journal"');
+  await assertDisplayRecipe(
+    page.locator('h1', { hasText: 'Wie war dein Tag?' }),
+    'h1 "Wie war dein Tag?"',
+  );
   await assertUiFamily(page.locator('.journal-editor__entry-text').first(), '.journal-editor__entry-text');
 });
 

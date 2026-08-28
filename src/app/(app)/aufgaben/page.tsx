@@ -1,7 +1,9 @@
 import type { Viewport } from 'next';
+import { AufgabenCount } from '@/features/tasks/aufgaben-count';
 import { QuickAddTask } from '@/features/tasks/quick-add';
 import { TaskList } from '@/features/tasks/task-list';
 import { PageFace } from '@/ui/faces';
+import { PageHead } from '@/ui/page-head';
 import './aufgaben-page.css';
 
 export const metadata = { title: 'Aufgaben · Starship' };
@@ -17,10 +19,10 @@ export const viewport: Viewport = {
 export default function AufgabenPage() {
   return (
     <div data-module="aufgaben" data-ground="aufgaben">
-      <div className="aufgaben-page__title-row">
+      <PageHead rowClassName="aufgaben-page__title-row" eyebrow={<AufgabenCount />}>
         <h1>Aufgaben</h1>
         <PageFace face="aufgaben" />
-      </div>
+      </PageHead>
       <TaskList />
       <QuickAddTask />
     </div>

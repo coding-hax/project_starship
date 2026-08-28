@@ -162,7 +162,8 @@ const ROUTES: RouteCase[] = [
     ground: 'journal',
     path: '/journal',
     ink: '--on-ground-light',
-    heading: (page) => page.getByRole('heading', { level: 1, name: 'Journal' }),
+    // Titel „Wie war dein Tag?“ seit issue #868.
+    heading: (page) => page.getByRole('heading', { level: 1, name: 'Wie war dein Tag?' }),
   },
   {
     ground: 'aktivitaeten',
