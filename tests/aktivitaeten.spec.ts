@@ -109,7 +109,10 @@ async function insertGarminActivity(overrides: ActivityOverrides = {}): Promise<
 
 async function goToAktivitaeten(page: Page) {
   await page.goto('/aktivitaeten');
-  await expect(page.getByRole('heading', { name: 'Aktivitäten', level: 1 })).toBeVisible();
+  // Textunabhängig (issue #897): im befüllten Zustand ist der Titel die
+  // Gesamtstrecke, nicht mehr "Aktivitäten" -- die h1 selbst ist in allen drei
+  // Zuständen (Skelett/leer/befüllt) sofort da.
+  await expect(page.locator('[data-module="aktivitaeten"] h1')).toBeVisible();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -146,7 +149,7 @@ test.beforeEach(async ({ page }) => {
 /* AC1: Recap, Reihenfolge, Kopfzahlen inkl. Pausen                           */
 /* -------------------------------------------------------------------------- */
 
-test('Recap und zwei Blöcke, neueste zuerst, Kopfzahlen inkl. gerechneter Pausen (issue #180 AC1)', async ({
+test('Recap im Kopf: Augenbraue, Gesamtstrecke als Titel, Count-Chip -- und zwei Blöcke, neueste zuerst, Kopfzahlen inkl. gerechneter Pausen (issue #180 AC1, #861 AK2)', async ({
   page,
 }) => {
   await insertGarminActivity({
@@ -166,7 +169,11 @@ test('Recap und zwei Blöcke, neueste zuerst, Kopfzahlen inkl. gerechneter Pause
 
   await goToAktivitaeten(page);
 
-  await expect(page.locator('.activity-list__recap')).toHaveText('Letzte 30 Tage: 2 Aktivitäten · 8.0 km');
+  // #861 AK2: der Titel-Locator "Aktivitäten" wandert mit -- im befüllten
+  // Zustand ist die h1 die Gesamtstrecke.
+  await expect(page.locator('.page-head__eyebrow')).toHaveText('Letzte 30 Tage');
+  await expect(page.locator('[data-module="aktivitaeten"] h1')).toHaveText('8.0 km');
+  await expect(page.locator('.page-head__chip')).toHaveText('2 Aktivitäten');
 
   const blocks = page.locator('.activity-block');
   await expect(blocks).toHaveCount(2);
@@ -185,7 +192,7 @@ test('Recap und zwei Blöcke, neueste zuerst, Kopfzahlen inkl. gerechneter Pause
 /* AC2: drei Kurven mit nichtleerem Pfad                                      */
 /* -------------------------------------------------------------------------- */
 
-test('ein Block zeigt drei Kurven mit nichtleerem Pfad (issue #180 AC2)', async ({ page }) => {
+test('ein Block zeigt drei Kurven mit nichtleerem Pfad (issue #180 AC2, #861 AK4)', async ({ page }) => {
   await insertGarminActivity();
   await goToAktivitaeten(page);
 
@@ -195,6 +202,33 @@ test('ein Block zeigt drei Kurven mit nichtleerem Pfad (issue #180 AC2)', async 
     expect(d).toBeTruthy();
     expect(d!.length).toBeGreaterThan(0);
   }
+
+  // #861 AK4: der Rückblick geht nicht verloren, er steht jetzt im Kopf.
+  await expect(page.locator('.page-head__eyebrow')).toHaveText('Letzte 30 Tage');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #861 AK5: befüllter Kopf läuft auf 375×812 nicht über, Chip bricht um       */
+/* -------------------------------------------------------------------------- */
+
+test('AK5 (#861): der befüllte Kopf läuft auf 375×812 nicht über', async ({ page }) => {
+  await insertGarminActivity();
+  await goToAktivitaeten(page);
+
+  const head = page.locator('.page-head');
+  const { scrollHeight, clientHeight } = await head.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(scrollHeight, `Kopf: scrollHeight ${scrollHeight} vs. clientHeight ${clientHeight}`).toBeLessThanOrEqual(
+    clientHeight,
+  );
+
+  const overflow = await page.evaluate(() => {
+    const main = document.querySelector('main');
+    return main ? main.scrollWidth - main.clientWidth : 0;
+  });
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -600,9 +634,9 @@ test('die Liste rendert weiter aus der lokalen Ablage, nicht aus der Sync-Antwor
   await expect.poll(calls).toBe(1);
 
   await expect(page.locator('.activity-block', { hasText: 'Nur-in-Postgres' })).toBeVisible();
-  await expect(page.locator('.activity-list__recap')).toHaveText(
-    'Letzte 30 Tage: 1 Aktivität · 5.0 km',
-  );
+  await expect(page.locator('.page-head__eyebrow')).toHaveText('Letzte 30 Tage');
+  await expect(page.locator('[data-module="aktivitaeten"] h1')).toHaveText('5.0 km');
+  await expect(page.locator('.page-head__chip')).toHaveText('1 Aktivität');
 });
 
 test('der Stand-Hinweis bleibt auf 375px und 1280px in der Seite und folgt dem Dark Mode (issue #230 AC6)', async ({
