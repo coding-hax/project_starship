@@ -532,8 +532,19 @@ interface Box {
 function findSpotInNavBandUnderCircle(navBox: Box, navBarBox: Box, rects: CircleRect[]): { x: number; y: number } | null {
   const insideNavBar = (x: number, y: number) =>
     x >= navBarBox.x && x <= navBarBox.x + navBarBox.width && y >= navBarBox.y && y <= navBarBox.y + navBarBox.height;
+  // `.bg-circle` is a true circle (`border-radius: 50%`), not its square bounding
+  // rect — a point near a corner of `r` sits outside the painted disc and reads as
+  // flat ground, exactly the false match this test chased in CI (band vs. ground
+  // diff of 2, then 0, both below the required 3). Checking actual distance from
+  // the circle's centre, kept at 90% of the radius to clear the anti-aliased edge
+  // too, guarantees the chosen point is really painted by the circle.
   const insideAnyCircle = (x: number, y: number) =>
-    rects.some((r) => x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height);
+    rects.some((r) => {
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const radius = (Math.min(r.width, r.height) / 2) * 0.9;
+      return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2;
+    });
   const step = 4;
   for (let y = Math.ceil(navBox.y); y < navBox.y + navBox.height; y += step) {
     for (let x = Math.ceil(navBox.x); x < navBox.x + navBox.width; x += step) {
