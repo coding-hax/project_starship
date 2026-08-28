@@ -196,7 +196,7 @@ apply_status() {   # $1 = JSON mit optionalem .status, $2 = Force-Publish (#891,
   # state.json; der naechste Takt des Leitslots wird vom Limit-Gate (~695)
   # weggeschnitten, bevor er je aggregiert -- der Header bliebe in "N von M
   # aktiv" stehen.
-  if [ -z "$2" ]; then
+  if [ -z "${2:-}" ]; then
     # #488 (F14): frische Pruefung statt des bei Rundenbeginn festgehaltenen
     # IS_LEAD -- der Hintergrund-Publisher (start_fleet_publisher) ruft
     # apply_status() bis zu FLEET_PUBLISH_INTERVAL lang erneut auf, waehrend
