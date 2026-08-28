@@ -120,7 +120,19 @@ einen kurzen Kommentar mit dieser Begründung.
 
 ## Typografie
 
-- Ein Font: **Inter Variable** (oder Geist). Kein zweiter Font ohne ADR.
+- **Zwei Rollen, nicht ein Font** (issue #859, ADR-0027): `--font-ui` (Inter
+  Variable, trägt Fließtext, Listenzeilen, Nav-Labels, Eingabefelder,
+  Journal-Einträge, `h2`/`h3`) und `--font-display` (`ui-rounded`/`'SF Pro
+  Rounded'` mit Nunito als selbst gehostetem Web-Fallback — trägt `h1` aller
+  neun Routen, `.section-card__title`, die großen Zahlen (Fortschrittsring,
+  Wetter-Temperatur, Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda) und
+  die FAB-Beschriftung). Rezept dort überall dieselben vier Zeilen:
+  `font-family: var(--font-display)`, `font-weight: var(--weight-emphasis)`,
+  `letter-spacing: -0.025em`, `line-height: var(--leading-display)`. Kein
+  zweiter/dritter Font ohne weiteres ADR.
+- Keine Datei greift eine Schriftfamilie roh ab (`var(--font-inter)` o. Ä.) —
+  immer über `--font-ui`/`--font-display`, dieselbe Regel wie bei den
+  Schriftgraden (#591/#592).
 - Zahlen immer mit `font-variant-numeric: tabular-nums` — sonst zappeln Uhrzeiten und Streaks.
 - Skala: 12 / 14 / 16 / 20 / 24 / 32. Fließtext 16px, nie kleiner als 14px auf Mobile.
   Drei Rollen liegen bewusst außerhalb dieser Skala — `--text-page-title` (22),
@@ -148,7 +160,15 @@ issue #591):
 
 Dazu `--weight-normal` (400) / `--weight-emphasis` (600) und je eine
 Zeilenhöhe: `--leading-heading` (1.2) für Überschriften, `--leading-body`
-(1.5) für Fließtext.
+(1.5) für Fließtext, `--leading-display` (1.1) für das Rundschrift-Rezept
+(issue #859, ADR-0027) — enger, weil dort nie umbricht.
+
+Font-Rollen (issue #859, ADR-0027):
+
+| Token | Wert | Rolle |
+|---|---|---|
+| `--font-ui` | Inter Variable | Fließtext, Listenzeilen, Nav-Labels, Eingabefelder, Journal-Einträge, `h2`/`h3` |
+| `--font-display` | `ui-rounded`/`'SF Pro Rounded'`, Nunito als Web-Fallback | `h1` (9 Routen), `.section-card__title`, große Zahlen (Fortschrittsring, Wetter-Temperatur, Aktivitäten-Kennzahl, Agenda-Uhrzeit), FAB-Beschriftung |
 
 **Struktur ist immer leiser als Inhalt.** Ein Raster, eine Achse, eine
 Trennlinie transportiert keine Bedeutung — sie ordnet nur. Solche Elemente
