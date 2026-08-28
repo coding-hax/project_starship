@@ -321,6 +321,11 @@ test('AK4: die Aufgaben-Checkbox ist ein gezeichneter Kreis mit Häkchen', async
   expect(await toRgba(page, borderColor), 'Rand in gemischter Bereichsfarbe').toEqual(expectedBorder);
 
   await checkbox.click();
+  // "Alle" zeigt seit #814 nur noch Offenes — die abgehakte Zeile verlässt die
+  // Ansicht sofort. "Erledigt" macht sie für die Optik-Prüfung unten wieder
+  // sichtbar (Vorlage: tasks.spec.ts:787 "ein Klick auf die Checkbox erledigt
+  // die Aufgabe genauso wie der Swipe").
+  await selectView(page, 'Erledigt');
   await expect(checkbox).toBeChecked();
 
   const accentToken = await resolveColorToken(page, '--accent');
