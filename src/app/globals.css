@@ -315,14 +315,18 @@ h1 {
   letter-spacing: -0.025em;
   line-height: 1.1;
   /* Rundschrift-Metrik gegen den Kopf-Überlauf (seitenkopf.spec.ts, „läuft nicht
-     über"): Nunito (CI/Linux-Fallback) trägt eine tiefere Unterlänge als Inter und
-     sprengt bei line-height 1.1 die Zeilenbox nach unten — gemessen 3px bei 22px,
-     also die h1-Box läuft über sich selbst (scrollHeight > clientHeight). Die
-     Unterlänge skaliert mit dem Schriftgrad, deshalb em, nicht px; 0.2em fasst die
-     ~0.14em Überlänge mit Reserve gegen CI-Rundung. Auf Apple (ui-rounded/SF Pro
-     Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden — das zählt der
-     verborgene Inhalt weiter zur scrollHeight, der Test bliebe rot. */
-  padding-block-end: 0.2em;
+     über"): Nunito (CI/Linux-Fallback) hat eine größere Inhaltsfläche als Inter
+     (~30px bei 22px) und sprengt bei line-height 1.1 die Zeilenbox (24.2px) nach
+     OBEN wie UNTEN um je ~2.9px. Nach unten läuft schon die h1-Box über sich selbst
+     (scrollHeight > clientHeight, gemessen 3px auf /aufgaben, /anmelden); die obere
+     Überlänge bleibt unsichtbar, bis die h1 in einer zentrierten Kopf-Zeile neben
+     einem höheren Element sitzt (/journal: h1 mittig neben der 42px-PageFace-Figur),
+     wo sie die Zeilen-scrollHeight um 1–2px kippt. Deshalb symmetrisch, nicht nur
+     unten: padding-block fasst die Inhaltsfläche oben und unten mit Reserve. em, nicht
+     px — die Metrik skaliert mit dem Grad (26px auf /aktivitaeten). Auf Apple
+     (ui-rounded/SF Pro Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden
+     — verborgener Inhalt zählt weiter zur scrollHeight, der Test bliebe rot. */
+  padding-block: 0.2em;
 }
 
 h2 {
