@@ -1,7 +1,0 @@
-.journal-header-date {
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
-  font-weight: var(--weight-emphasis);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}

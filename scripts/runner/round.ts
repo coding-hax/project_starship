@@ -308,7 +308,9 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
           : issue,
       );
       const list = watched.released.map((n) => `#${n}`).join(', ');
-      releasedNote += `\n\n🔓 **Wartendes Ticket freigegeben:** CI komplett grün — Draft auf \`ready\`, Auto-Merge aktiviert: ${list}.`;
+      // #880: die Wache mergt hier nur einen bereits freigegebenen (nicht mehr im
+      // Entwurf stehenden) PR -- `gh pr ready` ruft sie nie selbst.
+      releasedNote += `\n\n🔓 **Wartendes Ticket freigegeben:** CI komplett grün — Auto-Merge aktiviert: ${list}.`;
     }
   }
 
@@ -412,9 +414,12 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     if (!claimTake(claims, issue, slotId)) return lostClaim();
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
-      // #839: traegt das Ticket 'check', mergt die Wache nicht mehr selbst --
-      // sie meldet 'gated' und ueberlaesst dem Pruef-Lauf unten das Tor.
-      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock }, role === 'check');
+      // #880: ist der PR noch Entwurf, mergt die Wache ihn nicht selbst -- sie
+      // meldet 'gated' und ueberlaesst Freigabe+Merge dem Pruef-Lauf unten. Der
+      // Riegel haengt am Entwurfsstatus, nicht mehr am Label 'check' (das nahm
+      // der Pruefer bei einer Luecke ab, worauf die Wache den Entwurf wie vor
+      // #839 mergte -- die Luecke aus #850).
+      const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
       switch (watch.kind) {
         case 'pending':
           // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist
@@ -451,7 +456,11 @@ Der nächste Takt prüft erneut, sobald die Checks durch sind. **Kein Eingreifen
             status: status(
               `wartet auf Merge · #${issue}`,
               '🟢',
-              `🟢 **CI grün für #${issue}** (PR #${prNum}) — als \`ready\` markiert, Auto-Merge aktiviert.
+              // #880: die Wache mergt hier nur noch einen bereits freigegebenen
+              // (nicht mehr im Entwurf stehenden) PR -- `gh pr ready` ruft sie
+              // nie selbst, das gehoert dem Pruef-Lauf. Ein Entwurf landet gar
+              // nicht in diesem Zweig, sondern in 'gated'.
+              `🟢 **CI grün für #${issue}** (PR #${prNum}) — bereits freigegeben, Auto-Merge aktiviert.
 
 GitHub mergt, sobald alle Required Checks final durch sind. **Kein Eingreifen nötig.**`,
             ),
@@ -505,8 +514,13 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
           ciSummary = watch.summary;
           break;
         case 'gated':
-          // #839: gruen, aber ungeprueft. Die Wache hat nichts getan; der
-          // Rollen-Dispatch unten startet den Pruef-Lauf, der das Tor oeffnet.
+          // #839/#880: gruen, aber der PR ist noch Entwurf -- kein Pruefer hat
+          // ihn je freigegeben (`gh pr ready` ruft nur der Pruef-Lauf). Die
+          // Wache hat nichts getan; der Rollen-Dispatch unten startet den
+          // passenden Lauf: den Pruef-Lauf, wenn 'check' haengt (er oeffnet das
+          // Tor), sonst den Bau-Lauf (Rueckweg aus #850: Pruefer nahm 'check'
+          // bei einer Luecke ab, der Entwurf bleibt -- der naechste Takt baut
+          // weiter statt zu mergen).
           break;
       }
     }

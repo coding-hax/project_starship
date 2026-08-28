@@ -31,7 +31,7 @@ import type { Clock } from './clock.js';
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
-import { prCiState, prFailureSummary, prForIssue, prSquashMerge } from './pr.js';
+import { prCiState, prFailureSummary, prForIssue, prMergeState, prSquashMerge } from './pr.js';
 import { catchupFailEscalated, catchupFailReason, catchupFailReset, prCatchUpBehind } from './catchup.js';
 
 // #324: ab dieser Schwelle (Minuten) gilt ein 'pending' als haengen geblieben
@@ -166,6 +166,11 @@ interface ResolvedWatchState {
   retryPaths?: string[];
   retryEscalated?: boolean;
   failSummary?: string;
+  // #880: nur fuer 'success' gesetzt -- ist der gruene PR noch ein Entwurf? Die
+  // Wache mergt ihn dann nie selbst (der Riegel haengt am Entwurfsstatus, nicht
+  // mehr am Label 'check'). Quelle: derselbe `prMergeState`, den `prCiState` fuer
+  // BEHIND/DIRTY ohnehin holt (kein zusaetzlicher gh-Aufruf).
+  isDraft?: boolean;
   // Nur fuer 'pending', nur bei laufenden Tickets berechnet (#324).
   pendingMinutes?: number;
   pendingEscalated?: boolean;
@@ -219,7 +224,12 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   // wartende Tickets wurde ohnehin nie ein Zeitstempel angelegt.
   if (!parked) pendingReset(issue, deps.state);
 
-  if (ciState === 'success') return { state: 'success' };
+  if (ciState === 'success') {
+    // #880: Entwurfsstatus aus demselben `gh pr view`, das prCiState fuer die
+    // BEHIND/DIRTY-Entscheidung ohnehin gesprochen hat -- nur ein Feld mehr.
+    const isDraft = prMergeState(pr, deps.gh)?.isDraft === true;
+    return { state: 'success', isDraft };
+  }
 
   if (ciState === 'failing') return { state: 'failing-fix', failSummary: prFailureSummary(pr, deps.gh) };
 
@@ -265,9 +275,9 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
 export type RunningWatchResult =
   | { kind: 'pending'; escalated: boolean; minutes: number }
   | { kind: 'merged' }
-  // #839: gruen, aber das AK-Tor steht noch. Die Wache haelt still und
-  // ueberlaesst den Merge dem Pruef-Lauf -- sie hat nichts getan, der Aufrufer
-  // macht mit seinem Rollen-Dispatch weiter.
+  // #839/#880: gruen, aber der PR ist noch Entwurf. Die Wache haelt still und
+  // ueberlaesst Freigabe+Merge dem Pruef-Lauf -- sie hat nichts getan, der
+  // Aufrufer macht mit seinem Rollen-Dispatch weiter.
   | { kind: 'gated' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
@@ -277,17 +287,19 @@ export type RunningWatchResult =
 // gemeinsame Uebergangstabelle. `issue`/`pr` sind bereits bekannt (Aufrufer
 // hat pr_for_issue() schon ausgewertet).
 //
-// #839: `akGate` = das Ticket traegt 'check', der Diff wartet also auf seine
-// AK-Pruefung. Dann darf gruene CI hier NICHT mehr mergen -- sonst waere das
-// Tor wirkungslos, denn dieser Takt kaeme dem Pruef-Lauf jedes Mal zuvor: der
-// Bau-Lauf endet, setzt 'check', und schon der naechste Takt saehe gruen.
-// Alles andere (rot, behind, dirty, pending) bleibt unveraendert -- das Tor
-// gilt dem Mergen, nicht dem Beobachten.
+// #880: der Riegel haengt am ENTWURFSSTATUS des PR, nicht mehr am Label 'check'.
+// Seit #839 ruft `gh pr ready` ausschliesslich der Pruef-Lauf -- ist der PR also
+// noch Entwurf, hat ihn kein Pruefer je freigegeben, und die Wache darf ihn nie
+// selbst aus dem Entwurf heben. Das schliesst die Luecke aus #850: der Pruefer
+// nimmt bei einer Luecke 'check' ab (sein Rueckweg in den Bau), der PR bleibt
+// aber Entwurf -- am Label festgemacht saehe der naechste Takt einen gruenen PR
+// ohne Label und mergte ihn wie vor #839. Alles andere (rot, behind, dirty,
+// pending) bleibt unveraendert -- der Riegel gilt dem Mergen, nicht dem
+// Beobachten.
 export function watchRunningIssue(
   issue: number,
   pr: string,
   deps: WatchDeps,
-  akGate = false,
 ): RunningWatchResult {
   const resolved = resolveWatchState(issue, pr, false, deps);
   const reaction = watchReaction({
@@ -314,8 +326,11 @@ export function watchRunningIssue(
       /* istanbul ignore next -- pending/behind-caught-up/behind-retry sind die einzigen 'wait'-Zustaende */
       return { kind: 'pending', escalated: false, minutes: 0 };
     case 'merge':
-      if (akGate) return { kind: 'gated' };
-      deps.gh.run(['pr', 'ready', pr]);
+      // #880: Entwurf -> nie selbst freigeben oder mergen; das AK-Tor gehoert
+      // dem Pruef-Lauf. Der Aufrufer macht mit seinem Rollen-Dispatch weiter.
+      if (resolved.isDraft) return { kind: 'gated' };
+      // Schon aus dem Entwurf (Alt-PR aus der Zeit vor #839 oder von Pruef-Lauf/
+      // Hand freigegeben): nur noch mergen, NIE selbst `gh pr ready` (AC3/AC6).
       prSquashMerge(pr, deps.gh);
       return { kind: 'merged' };
     case 'build-fix':
@@ -351,9 +366,12 @@ export interface WaitingWatchOutcome {
 // mit `waiting: true`.
 //
 // Ein wartendes Ticket kennt nur noch einen Ausgang, der etwas tut: sein PR
-// wird gruen und damit gemerged. Alles andere bleibt still, bis der Mensch
-// antwortet -- es wartet auf eine Antwort, nicht auf einen freien Bauplatz.
-// Deshalb gibt es hier kein `wipSlotFree` und kein Entparken mehr.
+// wird gruen und ist bereits freigegeben (kein Entwurf mehr) und damit gemerged.
+// Alles andere bleibt still, bis der Mensch antwortet -- es wartet auf eine
+// Antwort, nicht auf einen freien Bauplatz. Deshalb gibt es hier kein
+// `wipSlotFree` und kein Entparken mehr. #880: einen Entwurf mergt auch diese
+// Wache nicht mehr -- der PR eines wartenden Tickets ist in aller Regel Entwurf
+// und bleibt es, bis der Pruef-Lauf ihn freigibt.
 export function watchWaitingIssues(waitingIssues: WaitingIssueInput[], deps: WatchDeps): WaitingWatchOutcome {
   const sorted = [...waitingIssues].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const outcome: WaitingWatchOutcome = { released: [] };
@@ -367,12 +385,16 @@ export function watchWaitingIssues(waitingIssues: WaitingIssueInput[], deps: Wat
 
     if (reaction.kind !== 'merge') continue;
 
-    deps.gh.run(['pr', 'ready', pr]);
+    // #880: dieselbe Regel wie fuer laufende Tickets -- einen Entwurf hebt die
+    // Wache nie selbst aus dem Entwurf, also mergt sie ihn auch nicht. Ein
+    // bereits freigegebener (nicht-Entwurfs-)PR wird weiterhin gemergt: genau
+    // das war der Zweck von #217 AC4 (die Frage ist mit dem Merge gegenstandslos).
+    if (resolved.isDraft) continue;
     // #217 AC4: 'needs-answer' darf nur weg, wenn der Merge bzw. das Aktivieren
     // von Auto-Merge tatsaechlich geklappt hat -- sonst faellt das Ticket aus
     // jeder Wache heraus, waehrend der PR offen und unbeobachtet liegen bleibt.
     // Schlaegt es fehl, bleibt das Ticket wartend, der naechste Takt versucht
-    // es erneut.
+    // es erneut. Kein `gh pr ready` mehr (#880/AC6): der PR ist bereits frei.
     if (!prSquashMerge(pr, deps.gh)) continue;
     deps.gh.run(['issue', 'edit', String(issue.number), '--remove-label', 'needs-answer']);
     outcome.released.push(issue.number);

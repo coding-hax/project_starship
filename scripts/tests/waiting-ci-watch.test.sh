@@ -257,9 +257,27 @@ seed_behind() {
     "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
 }
 
+# #880: $1 = Issue-Nr, $2 = PR-Nr -> markiert den PR als ENTWURF (isDraft:true),
+# alle Checks grün. Genau der Zustand eines wartenden PR, den noch kein Prüf-Lauf
+# aus dem Entwurf gehoben hat: die Wache hängt ihren Riegel an isDraft, nicht
+# mehr ans Label. Ohne diese Datei liefert der 'pr view'-Stub den
+# Default-Nicht-Entwurf (isDraft fehlt -> false) -- den mergt die Wache weiter
+# (T1). Spiegelbild zu ci-watch.test.sh's setup_draft.
+seed_draft() {
+  local issue="$1" pr="$2"
+  printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+    > "$GHSTATE_DIR/checks-$pr.json"
+  printf '{"headRefName":"fix/%s-parked-ci-watch","mergeStateStatus":"CLEAN","isDraft":true}' \
+    "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
+}
+
 # ==============================================================================
-# T1 -- geparktes Ticket, PR komplett grün -> freigegeben, ohne Agentenlauf
-#       (deckt AC1 "grün, aber geparkt" + AC2 "kein Agentenlauf")
+# T1 -- wartendes Ticket, PR komplett grün und NICHT (mehr) im Entwurf (Alt-PR
+#       aus der Zeit vor #839 oder vom Prüf-Lauf/von Hand freigegeben) ->
+#       gemergt, needs-answer ab, ohne Agentenlauf. Der 'pr view'-Stub liefert
+#       per Default isDraft-frei -> kein Entwurf. #880/AC6: die Wache ruft dabei
+#       NIE selbst 'gh pr ready' (das gehört seit #839 nur dem Prüf-Lauf); ein
+#       Entwurf bliebe stattdessen liegen (T13).
 # ==============================================================================
 reset_state
 seed_issue 401 "in-progress,needs-answer"
@@ -268,7 +286,7 @@ printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
   > "$GHSTATE_DIR/checks-601.json"
 run_round
 assert_labels "T1: #401 verliert needs-answer, behaelt in-progress" 401 "in-progress"
-assert_file_present "T1: Draft #601 wird auf 'ready' gesetzt" "$GHSTATE_DIR/ready-601"
+assert_file_absent "T1 (#880): die Wache ruft NIE selbst 'gh pr ready'" "$GHSTATE_DIR/ready-601"
 assert_file_present "T1: Auto-Merge für #601 wird aktiviert" "$GHSTATE_DIR/merged-601"
 assert_file_absent "T1: kein Agentenlauf ausgelöst" "$GHSTATE_DIR/claude-called"
 
@@ -459,6 +477,25 @@ printf '[{"bucket":"pass","name":"quality"},{"bucket":"fail","name":"e2e","descr
 run_round
 assert_labels "T12 (#272): auch das ältere #426 bleibt wartend" 426 "in-progress,needs-answer"
 assert_labels "T12: das jüngere #427 ebenso" 427 "in-progress,needs-answer"
+
+# ==============================================================================
+# T13 (#880 AC5) -- ein wartendes Ticket, dessen grüner PR noch ENTWURF ist:
+#       die Wache mergt ihn NICHT und hebt ihn nicht aus dem Entwurf. Der Riegel
+#       hängt am Entwurfsstatus (isDraft), nicht mehr am Label -- solange kein
+#       Prüf-Lauf den PR freigegeben hat, bleibt er Entwurf und das Wartelabel
+#       hängt. Ein bereits freigegebener (nicht-Entwurfs-)PR mergt weiter (T1).
+#       Spiegelbild zu ci-watch.test.sh T27/T29 für die laufende Wache.
+# ==============================================================================
+reset_state
+seed_issue 430 "in-progress,needs-answer"
+seed_pr 430 830
+seed_draft 430 830
+run_round
+assert_labels "T13 (#880 AC5): #430 bleibt wartend, der Entwurf wird nicht gemergt" \
+  430 "in-progress,needs-answer"
+assert_file_absent "T13 (#880 AC5): kein Auto-Merge eines Entwurfs" "$GHSTATE_DIR/merged-830"
+assert_file_absent "T13 (#880 AC6): die Wache ruft NIE selbst 'gh pr ready'" "$GHSTATE_DIR/ready-830"
+assert_file_absent "T13: kein Agentenlauf für ein wartendes Ticket" "$GHSTATE_DIR/claude-called"
 
 # ==============================================================================
 echo

@@ -783,6 +783,7 @@ test.describe('Routinen: Datenmodell + Sync (#101)', () => {
 
   test('habit_logs enforces UNIQUE(habit_id, log_date) at the database level', async ({ page }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
@@ -1015,6 +1016,7 @@ test.describe('eine DB-Constraint-Verletzung wedged die Outbox nicht (#474)', ()
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
@@ -1163,6 +1165,7 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
@@ -1365,6 +1368,7 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     browser,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
