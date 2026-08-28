@@ -225,6 +225,10 @@ export function TaskList({
   // first real `allTasks` snapshot exists, so that snapshot itself never reads
   // as a mass of fresh re-parentings.
   const prevParentIdsRef = useRef<Map<string, string | null> | null>(null);
+  // Same idea, keyed on `completedAt` instead of `parentId` (issue #814): lets
+  // the effect below tell "just reopened" apart from "was already open before
+  // this component ever mounted".
+  const prevCompletedAtRef = useRef<Map<string, string | null> | null>(null);
   // What a drop would do *right now* (issue #451) — set on pick-up and on every
   // move while lifted, cleared on drop and on cancel. `targetId` is still the raw
   // row under the pointer; the one-level rule is applied below, so the preview
@@ -339,12 +343,20 @@ export function TaskList({
    * snapshot to compare against and is excluded on purpose, same as the very
    * first snapshot itself (`prevParentIdsRef.current === null`) is: neither is
    * a parent actually *gaining* a child while the user is looking at the list.
+   *
+   * The same rule applies to a completed child reopened while its parent was
+   * collapsed — or the whole group was hidden from "Alle" outright, e.g. a
+   * fully-completed parent+child pair reappearing once its only child is
+   * unchecked from the "Erledigt" view (issue #814): the child that was just
+   * reopened must not stay invisible behind a parent nobody has expanded yet.
    */
   useEffect(() => {
     if (allTasks === undefined) return;
     const prevParentIds = prevParentIdsRef.current;
+    const prevCompletedAt = prevCompletedAtRef.current;
     prevParentIdsRef.current = new Map(allTasks.map((task) => [task.id, task.parentId]));
-    if (prevParentIds === null) return;
+    prevCompletedAtRef.current = new Map(allTasks.map((task) => [task.id, task.completedAt]));
+    if (prevParentIds === null || prevCompletedAt === null) return;
     const newlyNestedParentIds = allTasks
       .filter(
         (task) =>
@@ -353,8 +365,19 @@ export function TaskList({
           prevParentIds.get(task.id) !== task.parentId,
       )
       .map((task) => task.parentId as string);
-    if (newlyNestedParentIds.length === 0) return;
-    setExpandedIds((prev) => new Set([...prev, ...newlyNestedParentIds]));
+    const newlyReopenedParentIds = allTasks
+      .filter(
+        (task) =>
+          task.parentId !== null &&
+          task.completedAt === null &&
+          prevCompletedAt.has(task.id) &&
+          prevCompletedAt.get(task.id) !== null,
+      )
+      .map((task) => task.parentId as string);
+    if (newlyNestedParentIds.length === 0 && newlyReopenedParentIds.length === 0) return;
+    setExpandedIds(
+      (prev) => new Set([...prev, ...newlyNestedParentIds, ...newlyReopenedParentIds]),
+    );
   }, [allTasks]);
 
   /**
