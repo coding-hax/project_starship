@@ -103,6 +103,13 @@ auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
 `color-mix(in oklab, …, --ground-base-dark)` ab (~62 %, Aktivitäten 50 % für den
 4,5:1-Grenzwert) statt die satte Farbe grell auf Schwarz zu zeigen.
 
+`--text-muted` liest auf dem Grund nicht mehr `--on-ground` selbst, sondern die
+gedämpfte Stufe `--on-ground-muted` (issue #868): je Route gemessen, `color-mix(in
+oklab, var(--on-ground) 85%, var(--ground))`, ≥ 4,5:1 in BEIDEN Themes — reicht die
+Dämpfung bei 85 % nicht (Aufgaben/Wetter im Hellmodus), fällt die Route auf das volle
+`--on-ground` zurück statt unter den Grenzwert zu rutschen (Kontrast vor Dämpfung,
+wie unten bei den Kanten).
+
 Neutrale Kanten (`--border`/`--border-strong`/`--border-faint`) sind gegen `--bg`
 abgestimmt und kollabieren auf einem farbigen Grund flach — teils unter 1,1:1
 (issue #846). Auf dem Grund werden sie deshalb aus dem Grund selbst gemischt
@@ -126,7 +133,8 @@ einen kurzen Kommentar mit dieser Begründung.
   Drei Rollen liegen bewusst außerhalb dieser Skala — `--text-page-title` (22),
   `--text-page-title-lg` (26), `--text-temp` (40), halbhoher Seitenkopf, issue
   #833 — weil sie einen eigenen, schmaleren Kopf tragen statt der bisherigen
-  Sprossen.
+  Sprossen. Dasselbe gilt für die drei `PageHead`-Zonen (issue #868):
+  `--text-eyebrow` (11,5), `--text-subline` (13,5), `--text-chip` (12,5).
 - Zeilenhöhe großzügig (1.5 für Text, 1.2 für Überschriften).
 
 ## Komposition
@@ -145,6 +153,9 @@ issue #591):
 | `--text-body` | 16px | Fließtext |
 | `--text-secondary` | 14px | Sekundärtext, Labels |
 | `--text-meta` | 12px | Metadaten (Zeitstempel, Zähler) |
+| `--text-subline` | 13,5px | `PageHead`-Zusatz-Slot, Unterzeile (issue #868) |
+| `--text-chip` | 12,5px | `PageHead`-Zusatz-Slot, Chip-Reihe (issue #868) |
+| `--text-eyebrow` | 11,5px | `PageHead`-Augenbraue (issue #868) |
 
 Dazu `--weight-normal` (400) / `--weight-emphasis` (600) und je eine
 Zeilenhöhe: `--leading-heading` (1.2) für Überschriften, `--leading-body`
