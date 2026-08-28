@@ -148,9 +148,10 @@ const ROUTES: RouteCase[] = [
     ground: 'kalender',
     path: '/kalender',
     ink: '--on-ground-light',
-    // .calendar-view__heading (h1) is visually hidden (sr-only) — the visible,
-    // flächenlos "Monat Jahr" title is what a person actually reads on the ground.
-    heading: (page) => page.locator('.calendar-strip__title'),
+    // .calendar-view__heading (h1) is the visible "Diese Woche" title since
+    // issue #898 (used to be sr-only, with .calendar-strip__title as the
+    // visible stand-in — that element moved into the header's own eyebrow).
+    heading: (page) => page.locator('.calendar-view__heading'),
   },
   {
     ground: 'routinen',
