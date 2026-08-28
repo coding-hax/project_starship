@@ -1,8 +1,10 @@
 /**
- * Task list (docs/DESIGN_SYSTEM.md): flat rows separated by a hairline, not
- * cards (issue #704) — a 3px colour edge on the left carries overdue/priority
- * state instead of a card surface. Completed tasks recede rather than
- * disappear, so "done" still reads as a small win instead of just vanishing.
+ * Task list (docs/DESIGN_SYSTEM.md): one group is one floating card
+ * (`.task-list__group-card`, issue #866 — reverses the flat-rows-on-a-hairline
+ * look issue #704 introduced). Rows inside a card stay flat, bündig, no surface
+ * or shadow of their own; a 3px colour edge on the left still carries
+ * overdue/priority state. Completed tasks recede rather than disappear, so
+ * "done" still reads as a small win instead of just vanishing.
  */
 
 .task-list__empty {
@@ -17,17 +19,55 @@
   margin-bottom: var(--space-4);
 }
 
-/* A day heading over a group of rows (issue #705 AK3) — `role="presentation"`
-   in task-list.tsx keeps it out of `listitem` counts, this only has to look
-   like a caption, not a card: versal, muted, no border/background of its own. */
-.task-list__day-marker {
-  min-height: var(--day-marker-height);
-  padding: var(--space-2) var(--space-4) var(--space-1);
+/**
+ * A group's card (issue #866 AK1) — the floating surface every row inside it
+ * sits on, replacing the flat-list hairline look from issue #704. The outer
+ * `<li role="presentation">` (task-list.tsx) keeps it out of `listitem`
+ * counts; `.list-motion-item` drives the same enter/exit as every row
+ * (motion.css), inherited from the group's marker so the whole card fades in
+ * or out together instead of each row animating on its own.
+ */
+.task-list__group-card {
+  background: var(--surface);
+  border-radius: var(--radius-surface);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-4);
+  /* Own surface, own ink (issue #832 AK5) — same reset every other floating
+     surface in this app uses (section-card.css, habit-today.css), otherwise a
+     route whose ground ink is white reads white text on this near-white card. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+/* Title + count, in that order (AK1: "Anzahl rechts"). A card without a
+   header (the "Alle" view's one, anonymous card) simply omits this element —
+   task-list.tsx only renders it when a group actually has a label. */
+.task-list__group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.task-list__group-title {
   font-size: var(--text-meta);
   font-weight: var(--weight-emphasis);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.task-list__group-count {
+  flex-shrink: 0;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* AK9's "nothing left this week" line (issue #705) — sits *outside* the
@@ -43,31 +83,31 @@
 }
 
 /**
- * One row's outer height, and a day marker's own, declared where the rows,
- * the marker and the empty state below can all read them, so none of the
+ * One row's outer height, and a group header's own, declared where the rows,
+ * the header and the empty state below can all read them, so none of the
  * three can drift apart (issue #228, extended by issue #762 once /uebersicht
- * started rendering markers too). Everything here is border-box, so the
- * padding and (for a row) the hairline sit *inside* these numbers: what makes
- * a row as tall as it is, is the touch-target-tall checkbox column
- * (`.task-list__checkbox-wrap`) plus space-3 above and below plus the 1px
- * hairline; what makes a marker as tall as it is, is its one line of
- * `--text-meta` type at the body line-height plus its own top/bottom padding.
+ * started rendering group headers too, and by issue #866 once headers moved
+ * into a card). Everything here is border-box, so the padding and (for a row)
+ * the hairline sit *inside* these numbers: what makes a row as tall as it is,
+ * is the touch-target-tall checkbox column (`.task-list__checkbox-wrap`) plus
+ * space-3 above and below plus the 1px hairline; what makes a header as tall
+ * as it is, is its one line of `--text-meta` type at the body line-height plus
+ * its own bottom margin.
  */
 .task-list__item,
-.task-list__day-marker,
+.task-list__group-header,
 .task-list__empty--compact {
   --task-card-height: calc(var(--touch-target) + 2 * var(--space-3) + 2px);
-  --day-marker-height: calc(
-    var(--text-meta) * var(--leading-body) + var(--space-2) + var(--space-1)
-  );
+  --group-header-height: calc(var(--text-meta) * var(--leading-body) + var(--space-2));
 }
 
 /**
  * On /uebersicht the empty state sits between two section headings, where
  * space-12 tore a hole into the page — nothing due looked like a rendering bug
  * (issue #228). A filled "Woche" list is never just one row anymore, though: the
- * shortest possible one (a single overdue-or-today task, no undated card) is a day
- * marker plus one task card (issue #762), so the empty state reserves both, not
+ * shortest possible one (a single overdue-or-today task, no undated card) is one
+ * group card — its own top/bottom padding, a header line, one task row (issue
+ * #762, card since issue #866) — so the empty state reserves all of that, not
  * just the row — otherwise the very case #228 fixed reopens the moment the last
  * task of the week is checked off. No border and no surface: this is a note, not
  * a card. The full /aufgaben screen keeps the roomy version: there the empty state
@@ -77,11 +117,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(var(--task-card-height) + var(--day-marker-height));
+  min-height: calc(
+    var(--task-card-height) + var(--group-header-height) + 2 * var(--space-4)
+  );
   padding: var(--space-3) var(--space-4);
 }
 
+/* The outer list of group cards (issue #866) — `--space-3` between cards is
+   what carries AK1's "Abstand zwischen den Karten"; the rows *inside* a card
+   stay bündig via `.task-list__group-list` below, which does not use this gap. */
 .task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A group card's own row list (issue #866) — also reused, unchanged, by the
+   "ohne Datum" `SectionCard`'s rows: both are just a flat, bündig stack of
+   task rows with no gap of their own, the spacing between *cards* lives on
+   `.task-list` above instead. */
+.task-list__group-list {
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -94,9 +152,10 @@
    (habit-list.css) between the active list and the archive below it, just not
    adjacency-scoped: this class only ever appears in the one spot in
    task-list.tsx, always right after either the list, the sparse note, or the
-   compact /uebersicht empty state. */
+   compact /uebersicht empty state. `--space-3`, not `--space-4` (issue #866) —
+   the same rhythm the group cards above it now use. */
 .task-list__undated-card {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
 }
 
 .task-list__item {
@@ -111,8 +170,9 @@
      with no overdue/priority state lines up exactly with one that has an
      edge; only the colour below ever changes. */
   border-inline-start: 3px solid transparent;
-  /* Flat rows sit directly on the route ground (T1, issue #704) — a decorative
-     divider, may stay under 3:1 there (issue #846 AK4,
+  /* A row's own hairline, between rows inside the same card (issue #866,
+     narrowed from T1/issue #704's page-wide divider once the card itself
+     became the row's floor) — may stay under 3:1 there (issue #846 AK4,
      docs/design/farben-typografie.md). */
   border-block-end: 1px solid var(--border-faint);
   /* Only relevant while a swipe is releasing — see .task-list__item--dragging,
