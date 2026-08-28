@@ -515,3 +515,113 @@ test('AK3 (#849): vier eigene Töne je Route, --blob-partner passt zum Entwurfsb
   await assertFourOwnTones(anmeldenPage, ground, BLOB_PARTNERS.anmelden, '/anmelden');
   await anmeldenContext.close();
 });
+
+// --- issue #889: die Kreise dürfen nicht mehr an der Oberkante der Nav-Zeile
+// abbrechen — nur die Pille (`.nav__bar`) darf sie verdecken, der Rest der Zeile
+// zeigt sie wie jede andere Stelle der Seite. ---------------------------------
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** First point (viewport coords) that lies inside `navBox` but outside `navBarBox`
+ * (the band around the pill) AND inside at least one circle rect. */
+function findSpotInNavBandUnderCircle(navBox: Box, navBarBox: Box, rects: CircleRect[]): { x: number; y: number } | null {
+  const insideNavBar = (x: number, y: number) =>
+    x >= navBarBox.x && x <= navBarBox.x + navBarBox.width && y >= navBarBox.y && y <= navBarBox.y + navBarBox.height;
+  // `.bg-circle` is a true circle (`border-radius: 50%`), not its square bounding
+  // rect — a point near a corner of `r` sits outside the painted disc and reads as
+  // flat ground, exactly the false match this test chased in CI (band vs. ground
+  // diff of 2, then 0, both below the required 3). Checking actual distance from
+  // the circle's centre, kept at 90% of the radius to clear the anti-aliased edge
+  // too, guarantees the chosen point is really painted by the circle.
+  const insideAnyCircle = (x: number, y: number) =>
+    rects.some((r) => {
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const radius = (Math.min(r.width, r.height) / 2) * 0.9;
+      return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2;
+    });
+  const step = 4;
+  for (let y = Math.ceil(navBox.y); y < navBox.y + navBox.height; y += step) {
+    for (let x = Math.ceil(navBox.x); x < navBox.x + navBox.width; x += step) {
+      if (insideNavBar(x, y)) continue;
+      if (insideAnyCircle(x, y)) return { x, y };
+    }
+  }
+  return null;
+}
+
+/** Resolves `--surface` the same way `resolveColorToken`/`toRgb` do in
+ * grundfarbe-vollfarbe.spec.ts, as sRGB bytes comparable to a sampled screenshot pixel. */
+async function resolveSurfaceRgb(page: Page): Promise<[number, number, number]> {
+  return page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--surface)';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const data = ctx.getImageData(0, 0, 1, 1).data;
+    return [data[0], data[1], data[2]] as [number, number, number];
+  });
+}
+
+test('AK2/AK3 (#889): Kreisbogen läuft in der Nav-Zeile außerhalb der Pille durch, die Pille bleibt --surface', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  // Ruhelage wie bei den anderen Pixel-Tests oben: eine feste Momentaufnahme,
+  // damit die Kreisrechtecke pro Lauf nicht verschieben.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+
+  const navBar = page.locator('.nav__bar');
+  const navBarBox = await navBar.boundingBox();
+  expect(navBarBox, '.nav__bar hat eine Bounding-Box').not.toBeNull();
+
+  // AK3: die Pille selbst bleibt --surface, unabhängig von einem darunterliegenden
+  // Kreis — gemessen am tatsächlich gemalten Pixel, solange sie noch sichtbar ist.
+  const surfaceRgb = await resolveSurfaceRgb(page);
+  const navBarCenter = {
+    x: Math.round(navBarBox!.x + navBarBox!.width / 2),
+    y: Math.round(navBarBox!.y + navBarBox!.height / 2),
+  };
+  const [navBarColor] = await samplePixels(page, [navBarCenter]);
+  expect(
+    maxChannelDiff(navBarColor, surfaceRgb),
+    `Pillen-Mitte ${JSON.stringify(navBarColor)} vs. --surface ${JSON.stringify(surfaceRgb)}`,
+  ).toBeLessThan(3);
+
+  // AK2: außerhalb der Pille, innerhalb der Nav-Zeile, läuft der Kreisbogen durch —
+  // an einer Stelle, an der tatsächlich ein Kreis liegt, unterscheidet sich der
+  // gemalte Pixel messbar vom flachen Grund.
+  const nav = page.locator('.nav');
+  const navBox = await nav.boundingBox();
+  expect(navBox, '.nav hat eine Bounding-Box').not.toBeNull();
+  const viewport = page.viewportSize()!;
+  const rects = await circleRects(page);
+  const bandPoint = findSpotInNavBandUnderCircle(navBox!, navBarBox!, rects);
+  expect(
+    bandPoint,
+    'Testvoraussetzung: auf /uebersicht liegt ein Kreis in der Nav-Zeile außerhalb der Pille',
+  ).not.toBeNull();
+
+  await hideForegroundContent(page);
+  const groundPoint = findFreeSpotOutsideRects(rects, viewport);
+  expect(groundPoint, 'keine kreisfreie Stelle für den Grund-Vergleich').not.toBeNull();
+
+  const [bandColor, groundColor] = await samplePixels(page, [bandPoint!, groundPoint!]);
+  expect(
+    maxChannelDiff(bandColor, groundColor),
+    `Nav-Band-Pixel ${JSON.stringify(bandColor)} vs. Grund ${JSON.stringify(groundColor)}`,
+  ).toBeGreaterThanOrEqual(3);
+});

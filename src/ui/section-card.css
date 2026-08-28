@@ -30,11 +30,15 @@
      (issues #288, #344, #353, all three of which fixed the page topbar instead). */
   margin-block-start: 0;
   font-size: var(--text-secondary);
-  font-weight: var(--weight-emphasis);
   color: var(--text-muted);
-  /* "leicht gesperrt" (issue #653 AK2) — überschreibt die globale, enge
-     h1/h2/h3-Regel (globals.css, -0.01em). */
-  letter-spacing: 0.02em;
+  /* Rundschrift-Rezept (issue #859, ADR-0027) — kehrt "leicht gesperrt"
+     (issue #653 AK2, `0.02em`) bewusst um: AK3 nennt diesen Selektor
+     ausdrücklich. Ersetzt auch die globale h1/h2/h3-Regel (globals.css,
+     -0.01em), die hier ohnehin schon überschrieben wurde. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
 }
 
 .section-card__header {

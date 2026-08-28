@@ -355,7 +355,8 @@ test('Direktaufruf einer Aus-Route landet auf /uebersicht, kein 404 (issue #309 
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expectUebersichtLoaded(page);
-  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toHaveCount(0);
+  // Titel „Wie war dein Tag?“ seit issue #868.
+  await expect(page.getByRole('heading', { name: 'Wie war dein Tag?', level: 1 })).toHaveCount(0);
 });
 
 test('kein Aufblitzen: der Seiten-Wrapper einer Aus-Route ist schon vor der Hydration unsichtbar (issue #309 AC1)', async ({
@@ -384,7 +385,8 @@ test('ein aktives Modul bleibt über seine Route direkt erreichbar (issue #309 A
   await page.goto('/journal');
 
   await expect(page).toHaveURL(/\/journal$/);
-  await expect(page.getByRole('heading', { name: 'Journal', level: 1 })).toBeVisible();
+  // Titel „Wie war dein Tag?“ seit issue #868.
+  await expect(page.getByRole('heading', { name: 'Wie war dein Tag?', level: 1 })).toBeVisible();
 });
 
 test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue #309 AC4)', async ({ page }) => {

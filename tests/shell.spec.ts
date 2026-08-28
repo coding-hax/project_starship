@@ -48,7 +48,7 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
     ['Aufgaben', '/aufgaben', 'Aufgaben'],
     ['Routinen', '/routinen', 'Routinen verwalten'],
     ['Kalender', '/kalender', 'Kalender'],
-    ['Journal', '/journal', 'Journal'],
+    ['Journal', '/journal', 'Wie war dein Tag?'],
     ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
     // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
     // string — checked below via expectUebersichtLoaded instead.

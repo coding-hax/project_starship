@@ -182,8 +182,20 @@ test('AK2: die Reiterleiste schwimmt als Pille über dem Grund, der aktive Reite
     '.nav__bar schwimmt über dem Grund',
   ).not.toBe('none');
 
+  // .nav selbst malt keine eigene Fläche mehr (issue #889): der Routen-Grund
+  // kommt von `body` darunter, damit die Hintergrundkreise nicht an der
+  // Nav-Zeile abgeschnitten werden. Die alte Prüfung maß hier die Deklaration
+  // von .nav statt deren Wirkung — geprüft wird deshalb, dass .nav
+  // transparent ist und insbesondere nicht die Pillen-Fläche trägt.
   const navContainer = page.locator('.nav');
-  expect(await elementBackground(navContainer), '.nav zeigt den Routen-Grund').toBe(groundToken);
+  expect(await elementBackground(navContainer), '.nav trägt keine eigene Fläche mehr').toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+  expect(await elementBackground(navContainer), '.nav ist keine Neutralfläche').not.toBe(
+    surfaceToken,
+  );
+  const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(bodyBg, 'body trägt weiterhin den Routen-Grund').toBe(groundToken);
 
   const activeTab = page
     .getByRole('navigation', { name: 'Hauptnavigation' })
@@ -233,8 +245,13 @@ test('AK4: der Home-Balken/die Statuszeile zeigen den Routen-Grund, keine Neutra
     const navContainer = page.locator('.nav');
     const navBg = await elementBackground(navContainer);
 
-    expect(navBg, `.nav-Hintergrund (${scheme}) entspricht dem Routen-Grund`).toBe(groundToken);
+    // Wie AK2 oben (issue #889): .nav malt keine eigene Fläche mehr — der
+    // Home-Balken/die Statuszeile lesen als Seite, weil `body` weiterhin den
+    // Routen-Grund trägt, nicht weil `.nav` ihn selbst noch einmal aufmalt.
+    expect(navBg, `.nav trägt keine eigene Fläche mehr (${scheme})`).toBe('rgba(0, 0, 0, 0)');
     expect(navBg, `.nav-Hintergrund (${scheme}) ist keine Neutralfläche`).not.toBe(surfaceToken);
+    const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    expect(bodyBg, `body trägt weiterhin den Routen-Grund (${scheme})`).toBe(groundToken);
   }
 });
 

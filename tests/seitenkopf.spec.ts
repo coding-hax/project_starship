@@ -34,6 +34,13 @@ const FORECAST_WEEK = [
   '2026-07-21',
 ];
 
+/** Langes Datumsformat der `PageHead`-Augenbraue (`TodayLongDate`, issue #868). */
+const EYEBROW_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // Wie grundfarbe.spec.ts: /uebersicht und /aktivitaeten lösen beim Laden echte
@@ -109,6 +116,46 @@ async function resolvePxToken(page: Page, token: string): Promise<number> {
 
 async function fontSizeOf(locator: Locator): Promise<number> {
   return locator.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+}
+
+/** Mirrors grundfarbe.spec.ts's own canvas-pixel technique — a regex against
+ * getComputedStyle's serialized colour would misparse an oklch()/color-mix()
+ * string as if it were rgb(). */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function elementColor(locator: Locator): Promise<string> {
+  return locator.evaluate((el) => getComputedStyle(el).color);
+}
+
+async function htmlBackground(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 }
 
 interface HeaderCase {
@@ -280,7 +327,11 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
       path: '/routinen',
       heading: (p) => p.getByRole('heading', { level: 1, name: 'Routinen verwalten' }),
     },
-    { path: '/journal', heading: (p) => p.getByRole('heading', { level: 1, name: 'Journal' }) },
+    {
+      path: '/journal',
+      // Titel „Wie war dein Tag?“ seit issue #868.
+      heading: (p) => p.getByRole('heading', { level: 1, name: 'Wie war dein Tag?' }),
+    },
     {
       path: '/einstellungen',
       heading: (p) => p.getByRole('heading', { level: 1, name: 'Einstellungen' }),
@@ -309,6 +360,99 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
     await fontSizeOf(page.locator('.weather-day__temp-max')),
     'Titelgröße Wetter-Temperatur',
   ).toBe(40);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #868 (T1 von #861): gemeinsames PageHead-Bauteil für Übersicht/       */
+/* Aufgaben/Journal — Augenbraue, Zusatz-Slot, Kontrast.                     */
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#868): Übersicht zeigt die Augenbraue (langes Datum) und die Unterzeile (was heute offen ist)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await seedTask(page, { title: 'AK2 868 Aufgabe', dueAt: FIXED_NOW });
+  await seedHabit(page, { name: 'AK2 868 Routine', schedule: 'daily', color: null, archivedAt: null });
+  await page.goto('/uebersicht');
+
+  const eyebrow = page.locator('[data-ground="uebersicht"] .page-head__eyebrow');
+  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  await expect(page.locator('[data-ground="uebersicht"] h1')).toBeVisible();
+
+  // Eine Aufgabe + eine Routine, keine erledigt -> "Noch 2 von 2 offen".
+  const subline = page.locator('[data-ground="uebersicht"] .page-head__subline');
+  await expect(subline).toHaveText('Noch 2 von 2 offen');
+});
+
+test('AK2 (#868): Aufgaben zeigt die Augenbraue „N offen · M erledigt" und bleibt ohne Zusatz-Slot', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await seedTask(page, { title: 'AK2 868 erledigt', dueAt: null, completedAt: FIXED_NOW });
+  await seedTask(page, { title: 'AK2 868 offen', dueAt: null });
+  await page.goto('/aufgaben');
+
+  const eyebrow = page.locator('[data-ground="aufgaben"] .page-head__eyebrow');
+  await expect(eyebrow).toHaveText('1 offen · 1 erledigt');
+  await expect(page.getByRole('heading', { level: 1, name: 'Aufgaben' })).toBeVisible();
+
+  // Die #861-Tabelle sagt "—" für Aufgaben — kein Zusatz-Slot im DOM.
+  await expect(page.locator('[data-ground="aufgaben"] .page-head__extra')).toHaveCount(0);
+});
+
+test('AK2 (#868): Journal zeigt die Augenbraue (langes Datum) über dem Titel „Wie war dein Tag?"', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/journal');
+
+  const eyebrow = page.locator('[data-ground="journal"] .page-head__eyebrow');
+  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  await expect(page.getByRole('heading', { level: 1, name: 'Wie war dein Tag?' })).toBeVisible();
+});
+
+test('AK5 (#868): der PageHead läuft auf Übersicht/Aufgaben/Journal mit Inhalt nicht über (375×812)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await seedTask(page, { title: 'AK5 868 Aufgabe', dueAt: FIXED_NOW });
+  await seedHabit(page, { name: 'AK5 868 Routine', schedule: 'daily', color: null, archivedAt: null });
+
+  for (const path of ['/uebersicht', '/aufgaben', '/journal']) {
+    await page.goto(path);
+    await assertHeaderFitsItself(page.locator('.page-head'), path);
+  }
+});
+
+test('AK6 (#868): die Augenbraue erfüllt 4,5:1 gegen den Grund, Hell und Dunkel, auf Übersicht/Aufgaben/Journal', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  for (const path of ['/uebersicht', '/aufgaben', '/journal']) {
+    await page.goto(path);
+    const eyebrow = page.locator('.page-head__eyebrow');
+    await expect(eyebrow).toBeVisible();
+
+    const lightColor = await elementColor(eyebrow);
+    const lightGround = await htmlBackground(page);
+    expect(
+      contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+      `Augenbraue auf ${path} (hell)`,
+    ).toBeGreaterThanOrEqual(4.5);
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const darkColor = await elementColor(eyebrow);
+    const darkGround = await htmlBackground(page);
+    expect(
+      contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+      `Augenbraue auf ${path} (dunkel)`,
+    ).toBeGreaterThanOrEqual(4.5);
+    await page.emulateMedia({ colorScheme: 'light' });
+  }
 });
 
 test.describe('Anmelden (ausgeloggter Kontext)', () => {

@@ -124,12 +124,18 @@
   z-index: var(--z-nav);
   display: flex;
   align-items: center;
-  /* `.nav` is a grid row, not a `position: fixed` overlay — its background is
-     the route's own ground, not a neutral surface, so the home-indicator strip
-     below the pill reads as page, not chrome (issue #831 AK2/AK4). The pill
-     itself (`.nav__bar` below) carries the `--surface` fill, shadow and ink
-     reset that used to live here. */
-  background: var(--ground);
+  /* `.nav` is a grid row, not a `position: fixed` overlay — the home-indicator
+     strip below the pill still needs to read as page, not chrome (issue #831
+     AK2/AK4), but `.nav` itself must not paint a layer to get there: `body`
+     already carries `background: var(--ground)` (globals.css), and an opaque
+     fill here would sit on top of `.bg-layer`'s ambient circles (z-index -1
+     inside body's isolated stacking context) for the full height of the row,
+     cutting them off at the nav's top edge instead of only where the pill
+     actually sits (issue #889). Transparent lets both the ground and the
+     circles painted behind `.nav` show through everywhere except the pill
+     itself (`.nav__bar` below), which keeps its own opaque `--surface` fill,
+     shadow and ink reset. */
+  background: transparent;
   /* A bare `env()` resolves to nothing on a device without a notch, computing to
      0px — the home-indicator gap disappears entirely instead of just not growing.
      The baseline keeps a minimum gap everywhere; the inset only ever adds to it. */
