@@ -1031,6 +1031,24 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
+/** Same probe technique as `resolveColorToken`, but the probe is a child of
+ *  `selector` — resolves the custom property from that element's own cascade
+ *  context (mirrors grundfarbe-vollfarbe.spec.ts's `resolveColorTokenIn`, issue #831). */
+async function resolveColorTokenIn(page: Page, selector: string, token: string): Promise<string> {
+  return page.evaluate(
+    ({ selector, token }) => {
+      const container = document.querySelector(selector)!;
+      const probe = document.createElement('span');
+      probe.style.color = `var(${token})`;
+      container.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    },
+    { selector, token },
+  );
+}
+
 /** Same idea as `resolveColorToken`, for a `background` expression instead of a
  * single colour var — used to prove the toggle's active state resolves to the
  * exact same `color-mix(...)` surface the app already uses elsewhere. */
@@ -1188,7 +1206,7 @@ test('Farbkante und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und f
   expect(darkDueColor).not.toBe(lightDueColor);
 });
 
-test('keine Kartenfläche mehr — Zeile auf --bg, Trennung nur über 1px Haarlinie (issue #704 AK4)', async ({
+test('keine eigene Kartenfläche mehr — Zeile flächenlos in ihrer Gruppen-Karte, Trennung nur über 1px Haarlinie (issue #704 AK4, Kartenkontext seit #866)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1214,7 +1232,14 @@ test('keine Kartenfläche mehr — Zeile auf --bg, Trennung nur über 1px Haarli
   const borderBlockEndColor = await firstRow.evaluate(
     (el) => getComputedStyle(el).borderBlockEndColor,
   );
-  expect(borderBlockEndColor).toBe(await resolveColorToken(page, '--border-faint'));
+  // Since #866 the row sits inside `.task-list__group-card`, which resets
+  // `--border-faint` to its context-free `-base` value (same Ink-Reset every
+  // other floating surface uses) — resolving the token against the page ground
+  // (as before #866) would pick up globals.css's ground-relative override
+  // instead, so the probe must live inside the card, not on document.body.
+  expect(borderBlockEndColor).toBe(
+    await resolveColorTokenIn(page, '.task-list__group-card', '--border-faint'),
+  );
 });
 
 test('Erledigtes schrumpft an Ort und Stelle statt zu springen (issue #704 AK7)', async ({

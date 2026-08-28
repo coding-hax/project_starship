@@ -31,7 +31,13 @@
   background: var(--surface);
   border-radius: var(--radius-surface);
   box-shadow: var(--shadow-raised);
-  padding: var(--space-4);
+  /* Block only (AK1: "Polsterung der Karte --space-4") — a row already carries
+     its own `--space-4` inline padding (`.task-list__item`), so an inline
+     padding here as well would double the inset every row (and the header,
+     see below) sits at, squeezing the available title width enough to wrap
+     text that fit before issue #866 and throw off row height/position
+     (issues found via #866 CI: checkoff-motion AC5, tasks.spec.ts AK7). */
+  padding-block: var(--space-4);
   /* Own surface, own ink (issue #832 AK5) — same reset every other floating
      surface in this app uses (section-card.css, habit-today.css), otherwise a
      route whose ground ink is white reads white text on this near-white card. */
@@ -45,12 +51,15 @@
 
 /* Title + count, in that order (AK1: "Anzahl rechts"). A card without a
    header (the "Alle" view's one, anonymous card) simply omits this element —
-   task-list.tsx only renders it when a group actually has a label. */
+   task-list.tsx only renders it when a group actually has a label. Carries its
+   own `--space-4` inline padding since the card itself no longer does (see
+   above) — this is what keeps the header lined up with the rows below it. */
 .task-list__group-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
+  padding-inline: var(--space-4);
   margin-bottom: var(--space-2);
 }
 
