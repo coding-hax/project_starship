@@ -1,18 +1,3 @@
-.activity-list__recap {
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
-  margin: 0 0 var(--space-4);
-}
-
-.activity-list__recap--skeleton {
-  border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  color: transparent;
-  width: 60%;
-  height: 1.2em;
-  animation: activity-pulse 1.4s ease-in-out infinite;
-}
-
 /* Unlike the weather caption (weather-forecast.css), this one is in normal flow:
    it sits at the very end of the page's content, so nothing exists below it that
    its appearance could shift. Absolute positioning would only risk overlapping the
