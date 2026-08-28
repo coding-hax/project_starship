@@ -26,9 +26,25 @@ nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 // unberuehrt. Nur in planPrompt()/researchPrompt() eingebunden, NICHT in
 // buildPrompt()/ciFixPrompt() (AK4, Scope-Creep waere ein Bau-Lauf, der
 // nebenbei eine Seite veroeffentlicht).
-const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` steht dir zur
-Verfügung und veröffentlicht sofort nach außen (ADR-0024, korrigiert durch
-ADR-0025).
+//
+// #907: die Allowlist stimmt (round.ts haengt Artifact,Write an), der
+// unbeaufsichtigte Kontext liess den Aufruf in #807 trotzdem zweimal
+// woertlich mit "Artifact exists but is not enabled in this context"
+// scheitern. Die Regel darf das Werkzeug seither nicht mehr bedingungslos
+// versprechen -- sie nennt den Ersatz UND verbietet den zweiten Versuch im
+// selben Lauf (kein drittes #807).
+const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` kann dir zur
+Verfügung stehen und veröffentlicht sofort nach außen (ADR-0024, korrigiert
+durch ADR-0025) — verlässlich ist das aber nicht. In #807 scheiterte der
+Aufruf im unbeaufsichtigten Kontext zweimal wörtlich mit „Artifact exists but
+is not enabled in this context", obwohl die Allowlist \`Artifact,Write\`
+enthielt. **Ersatz, falls abgelehnt:** eine Text-Skizze im Monospace-Block
+(dreifache Backticks) direkt im Issue-Kommentar — die rendert auch auf dem
+Handy.
+
+**Bei einer Ablehnung:** die **wörtliche** Fehlermeldung in deinen
+Ergebnis-Kommentar übernehmen und \`Artifact\` in diesem Lauf **kein zweites
+Mal** versuchen — der Ersatz aus dem vorigen Absatz reicht.
 
 **Erst schreiben, dann veröffentlichen.** \`Artifact\` nimmt ausschließlich
 einen \`file_path\` auf eine bereits geschriebene \`.html\`/\`.md\`-Datei — es gibt
@@ -40,13 +56,17 @@ weiterhin nicht — du legst neu an, du änderst nichts Bestehendes.
 
 **Wann:** nur wenn ein anzuschauendes Objekt die Entscheidung trägt (z. B. ein
 Entwurfsblatt oder eine Skizze). Reichen drei Absätze im Kommentar, bleibt es
-beim Kommentar — der Normalfall ist **kein** Artifact.
+beim Kommentar — der Normalfall ist **kein** Artifact. Reines Backend-,
+Sync-, Schema- oder Migrations-Ticket: **kein** Entwurfsblatt — ausdrücklich,
+nicht nur als Umkehrschluss aus diesem Absatz.
 
 **Wie:** klein — nur das Anzuschauende plus so viel Beschriftung, dass klar
 ist, was was ist. Keine Begründungs-Abschnitte, keine Trade-off-Tabellen,
 keine Code-Listings auf der Seite: die Überlegung steht im Issue-Kommentar,
-das Artifact zeigt nur das Objekt. Nicht mehr Varianten oder Zustände, als die
-Entscheidung braucht.
+das Artifact zeigt nur das Objekt. Zeigt das Entwurfsblatt eine UI: **ein
+Artboard je sichtbarem Zustand** (Grundzustand, Overlay/Popover/Sheet, Laden,
+Fehler, leer) statt einer Sammelskizze — und nur die Zustände, die die
+Entscheidung tatsächlich braucht, nicht alle denkbaren.
 
 **Nie ins Artifact:** echte Nutzerdaten (insbesondere Journal-Inhalte,
 Regel 9) oder Secrets (Regel 10) — veröffentlichen heißt, es verlässt das
@@ -55,7 +75,17 @@ Gerät.
 **URL:** landet im Plan-/Rechercheergebnis-Kommentar, nicht nur in der
 Galerie — der Mensch sieht unterwegs nur GitHub. Ein Fortsetzungslauf
 aktualisiert über diese URL/ID **dasselbe** Artifact, statt ein zweites
-anzulegen.`;
+anzulegen.
+
+**Kommentare als Rückkanal.** Steht im Issue bereits eine Artifact-URL, liest
+du **vor** dem Planen bzw. Recherchieren ihre Kommentar-Threads (\`Artifact\`
+mit \`action: "comments"\` und der URL) — das zählt als Rückmeldung des
+Menschen, gleichrangig mit einem Issue-Kommentar. Steht keine URL im Issue,
+entfällt dieser Schritt ersatzlos, kein zusätzlicher Aufruf. Einen für Claude
+freigeschalteten Thread beantwortest du (\`action: "reply"\`) und löst ihn auf
+(\`action: "resolve"\`), sobald du ihn abgearbeitet hast, bevor dein Lauf
+endet; einen **nicht** freigeschalteten Thread liest du nur, ohne zu
+antworten oder aufzulösen.`;
 
 // #588: Der Runner legt keine Fund-Tickets mehr an.
 //

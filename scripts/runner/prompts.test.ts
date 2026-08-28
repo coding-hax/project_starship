@@ -410,6 +410,69 @@ describe('prompts', () => {
     });
   });
 
+  // #907: die alte ARTIFACT_RULE versprach das Werkzeug bedingungslos --
+  // #807 widerlegte das zweimal woertlich im unbeaufsichtigten Kontext,
+  // obwohl die Allowlist stimmte. Die Regel kennt seither den beobachteten
+  // Zustand, verlangt einen Artboard je Zustand statt einer Sammelskizze,
+  // sagt Backend-Tickets ausdruecklich kein Entwurfsblatt zu und macht die
+  // Artifact-Kommentare zum Rueckkanal.
+  describe('Artifact: ehrliche Verfuegbarkeit + Artboard je Zustand + Rueckkanal (#907)', () => {
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verspricht das Werkzeug nicht mehr bedingungslos und nennt den Ersatz', (_name, prompt) => {
+      expect(prompt).toContain('kann dir zur\nVerfügung stehen');
+      expect(prompt).not.toContain('steht dir zur\nVerfügung');
+      expect(prompt).toContain('#807');
+      expect(prompt).toContain('Artifact exists but\nis not enabled in this context');
+      expect(prompt).toContain('Text-Skizze im Monospace-Block');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verbietet den zweiten Versuch nach einer Ablehnung', (_name, prompt) => {
+      expect(prompt).toContain('Bei einer Ablehnung');
+      expect(prompt).toContain('die **wörtliche** Fehlermeldung');
+      expect(prompt).toContain('**kein zweites\nMal** versuchen');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verlangt ein Artboard je sichtbarem Zustand statt einer Sammelskizze', (_name, prompt) => {
+      expect(prompt).toContain('**ein\nArtboard je sichtbarem Zustand**');
+      expect(prompt).toContain('Grundzustand, Overlay/Popover/Sheet, Laden,\nFehler, leer');
+      expect(prompt).toContain('nur die Zustände, die die\nEntscheidung tatsächlich braucht');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt sagt Backend-/Sync-/Schema-/Migrations-Tickets ausdruecklich kein Entwurfsblatt zu', (_name, prompt) => {
+      expect(prompt).toContain('Reines Backend-,\nSync-, Schema- oder Migrations-Ticket: **kein** Entwurfsblatt');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt macht Artifact-Kommentare zum Rueckkanal, bedingt auf eine vorhandene URL', (_name, prompt) => {
+      expect(prompt).toContain('Kommentare als Rückkanal');
+      expect(prompt).toContain('action: "comments"');
+      expect(prompt).toContain('gleichrangig mit einem Issue-Kommentar');
+      expect(prompt).toContain('kein zusätzlicher Aufruf');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt beantwortet und loest nur freigeschaltete Threads auf', (_name, prompt) => {
+      expect(prompt).toContain('action: "reply"');
+      expect(prompt).toContain('action: "resolve"');
+      expect(prompt).toContain('**nicht** freigeschalteten Thread liest du nur, ohne zu\nantworten oder aufzulösen');
+    });
+  });
+
   // #842: der Lauf sichert seinen Stand, BEVOR er auf Hintergrundarbeit wartet.
   // Belegt an #830: fertiger Fix, gruene Gates -- trotzdem kein Commit, weil der
   // Lauf auf einen 'test-runner'-Subagenten wartete und der Turn endete.
