@@ -352,7 +352,7 @@ const OVERFLOW_ROUTES: OverflowRoute[] = [
   { path: '/aufgaben', header: (page) => page.getByRole('heading', { level: 1, name: 'Aufgaben' }) },
   {
     path: '/routinen',
-    header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen verwalten' }),
+    header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen' }),
   },
   { path: '/kalender', header: (page) => page.locator('.calendar-view__header') },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },

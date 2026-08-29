@@ -151,12 +151,12 @@ test('AK1: Karten stehen als volle Fläche mit tragendem Schatten auf dem Grund'
   // Eigene Karten-Klasse (kein SectionCard) auf /routinen.
   await seedHabit(page, { name: 'AK1-Sonde', schedule: 'daily', color: null, archivedAt: null });
   await page.goto('/routinen');
-  const habitCard = page.locator('.habit-list__item').first();
+  const habitCard = page.locator('.habit-table').first();
   await expect(habitCard).toBeVisible();
-  expect(await elementBackground(habitCard), '.habit-list__item-Fläche').toBe(surfaceToken);
+  expect(await elementBackground(habitCard), '.habit-table-Fläche').toBe(surfaceToken);
   expect(
     await habitCard.evaluate((el) => getComputedStyle(el).boxShadow),
-    '.habit-list__item trägt einen Schatten',
+    '.habit-table trägt einen Schatten',
   ).not.toBe('none');
 });
 

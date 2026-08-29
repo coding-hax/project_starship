@@ -176,7 +176,7 @@ test.describe('angemeldet', () => {
       ['Aufgaben', 'Aufgaben'],
       // Titel „Diese Woche" seit issue #898 — der Nav-Tab heißt weiterhin „Kalender".
       ['Kalender', 'Diese Woche'],
-      ['Routinen', 'Routinen verwalten'],
+      ['Routinen', 'Routinen'],
       ['Übersicht', null],
     ];
 

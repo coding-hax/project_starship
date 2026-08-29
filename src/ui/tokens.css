@@ -237,7 +237,7 @@
      Liegen bewusst außerhalb der 12/14/16/20/24/32-Skala; siehe
      docs/design/farben-typografie.md, "Komposition". */
   --text-page-title: 22px;
-  --text-page-title-lg: 26px; /* nur Aktivitäten */
+  --text-page-title-lg: 26px; /* Aktivitäten-Seitentitel + große Zahlen (Routinen-Kacheln, Routinen-Verlauf, issue #905) */
   --text-temp: 40px; /* Wetter, große Tages-Temperatur */
   /* PageHead-Zonen (issue #868): Augenbraue/Unterzeile/Chip, ebenfalls bewusst
      außerhalb der 12/14/16/20/24/32-Skala — eigener, schmalerer Kopf statt

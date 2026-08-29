@@ -75,7 +75,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
-  // Unique per mounted instance (not a module-level constant): habit-list.tsx and
+  // Unique per mounted instance (not a module-level constant): habit-table.tsx and
   // add-habit-fab.tsx each mount their own HabitEditor at the same time (edit resp.
   // create), so a shared id would duplicate the `<form id>` the header's action
   // button targets via the HTML `form` attribute — the browser's form-owner lookup

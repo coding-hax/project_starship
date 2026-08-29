@@ -127,7 +127,7 @@ export function JournalEditor() {
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
-            {/* Same convention as habit-list.tsx/task-list.tsx's `__empty` text. Without
+            {/* Same convention as habit-table.tsx/task-list.tsx's `__empty` text. Without
                 it, a fresh account renders `.journal-editor` with zero children — the
                 form used to live directly in this div and kept it non-collapsed, #701
                 moved it into the sheet, so an explicit empty state is what keeps this

@@ -212,10 +212,10 @@ test('"heute N von M" kommt auf /uebersicht als Fließtext nicht mehr vor (AK3)'
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK5: Streak-Karte verlässt /uebersicht, bleibt auf /routinen               */
+/* AK5: Verlaufskarte ist nicht auf /uebersicht, bleibt auf /routinen         */
 /* -------------------------------------------------------------------------- */
 
-test('die Streak-Karte ist auf /uebersicht nicht vorhanden, auf /routinen unverändert vorhanden (AK5)', async ({
+test('die Verlaufskarte "Routinen in Serie" ist auf /uebersicht nicht vorhanden, auf /routinen unverändert vorhanden (AK5)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
@@ -233,10 +233,10 @@ test('die Streak-Karte ist auf /uebersicht nicht vorhanden, auf /routinen unver�
   );
 
   await page.goto('/uebersicht');
-  await expect(page.locator('.streak-summary-card')).toHaveCount(0);
+  await expect(page.locator('.habit-history-card')).toHaveCount(0);
 
   await page.goto('/routinen');
-  await expect(page.locator('.streak-summary-card').getByText('Routinen in Serie')).toBeVisible();
+  await expect(page.locator('.habit-history-card').getByText('Routinen in Serie')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */

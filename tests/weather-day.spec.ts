@@ -173,7 +173,7 @@ test('Tippen auf eine Tagesspalte öffnet die Detailseite mit den Daten genau di
   await weatherDays(page).nth(3).getByRole('link').click();
 
   await expect(page).toHaveURL('/wetter/2026-07-23');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Donnerstag, 23. Juli');
+  await expect(page.locator('.weather-day__date')).toHaveText('Donnerstag, 23. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
   // Nachtwert (issue #269), nicht mehr der Tages-Tiefstwert (der wäre 5°) — dass er
   // hier zufällig auf denselben Wert wie der Höchstwert rundet, ist Zufall der
@@ -400,9 +400,13 @@ test('der Spalt zwischen Kopfzeile und Box ist nach #353 noch kleiner als nach #
   const maxGapPx = await page.evaluate(() =>
     parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-1')),
   );
-  const back = await page.locator('.weather-day__back').boundingBox();
+  // Seit issue #870 (T3) ist der Kopf drei Zonen hoch (Augenbraue/Titel/Zusatz)
+  // statt einer flachen Zeile — der Zurück-Link sitzt jetzt oben, nicht mehr am
+  // unteren Rand des Kopfes. Der Spalt gilt deshalb dem ganzen Kopf-Container,
+  // nicht mehr nur dem Zurück-Link (dessen eigenes margin-bottom das Maß trägt).
+  const topbar = await page.locator('.weather-day__topbar').boundingBox();
   const summary = await page.locator('.weather-day__summary').boundingBox();
-  const gap = summary!.y - back!.y - back!.height;
+  const gap = summary!.y - topbar!.y - topbar!.height;
   expect(gap).toBeLessThanOrEqual(maxGapPx);
 });
 
@@ -525,7 +529,7 @@ test('das Datum steht oben rechts auf Höhe des Zurück-Links (issue #156 AC7)',
   await page.goto('/wetter/2026-07-23');
 
   const back = await page.locator('.weather-day__back').boundingBox();
-  const date = await page.getByRole('heading', { level: 1 }).boundingBox();
+  const date = await page.locator('.weather-day__date').boundingBox();
   expect(date!.x).toBeGreaterThan(back!.x + back!.width);
   // „auf gleicher Höhe" heißt: die Mitten liegen übereinander, nicht untereinander.
   expect(Math.abs(date!.y + date!.height / 2 - (back!.y + back!.height / 2))).toBeLessThan(8);
@@ -610,7 +614,7 @@ test('Wisch nach links zeigt den nächsten Tag, Inhalt und Datumskopfzeile wechs
   await swipeLeft(page, 120);
 
   await expect(page).toHaveURL('/wetter/2026-07-24');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Freitag, 24. Juli');
+  await expect(page.locator('.weather-day__date')).toHaveText('Freitag, 24. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('26°');
   // Nachtwert (issue #269): das Fenster reicht bis in die Frühstunden des 25. Juli
   // hinein, dessen Tagesminimum (-2°) weit unter dem 24.7. eigenem Tiefstwert
@@ -628,7 +632,7 @@ test('Wisch nach rechts zeigt den vorherigen Tag (issue #267 AC1)', async ({ pag
   await swipeRight(page, 120);
 
   await expect(page).toHaveURL('/wetter/2026-07-22');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Mittwoch, 22. Juli');
+  await expect(page.locator('.weather-day__date')).toHaveText('Mittwoch, 22. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('19°');
 });
 
@@ -650,7 +654,7 @@ test('der Browser-Zurück-Schritt führt zurück auf den vorher gezeigten Tag (i
   await page.goBack();
 
   await expect(page).toHaveURL('/wetter/2026-07-23');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Donnerstag, 23. Juli');
+  await expect(page.locator('.weather-day__date')).toHaveText('Donnerstag, 23. Juli');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
 });
 

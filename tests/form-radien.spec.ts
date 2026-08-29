@@ -73,7 +73,7 @@ const ROUTES: RouteCase[] = [
   { path: '/kalender', header: (page) => page.locator('.calendar-view__header') },
   {
     path: '/routinen',
-    header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen verwalten' }),
+    header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen' }),
   },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },
   {

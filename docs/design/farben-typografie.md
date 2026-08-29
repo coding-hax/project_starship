@@ -132,8 +132,9 @@ einen kurzen Kommentar mit dieser Begründung.
   Journal-Einträge, `h2`/`h3`) und `--font-display` (`ui-rounded`/`'SF Pro
   Rounded'` mit Nunito als selbst gehostetem Web-Fallback — trägt `h1` aller
   neun Routen, `.section-card__title`, die großen Zahlen (Fortschrittsring,
-  Wetter-Temperatur, Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda) und
-  die FAB-Beschriftung). Rezept dort überall dieselben vier Zeilen:
+  Wetter-Temperatur, Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda,
+  Routinen-Kachelwerte und Routinen-Verlaufswert, issue #905) und die
+  FAB-Beschriftung). Rezept dort überall dieselben vier Zeilen:
   `font-family: var(--font-display)`, `font-weight: var(--weight-emphasis)`,
   `letter-spacing: -0.025em`, `line-height: var(--leading-display)`. Kein
   zweiter/dritter Font ohne weiteres ADR.
@@ -159,7 +160,7 @@ issue #591):
 |---|---|---|
 | `--text-title` | 32px | FAB-/Erfassungs-Glyphe, Termin-Detail-Titel |
 | `--text-page-title` | 22px | Seitentitel, h1 (8 der 9 Routen — halbhoher Kopf, issue #833) |
-| `--text-page-title-lg` | 26px | Seitentitel Aktivitäten (issue #833) |
+| `--text-page-title-lg` | 26px | Seitentitel Aktivitäten (issue #833), Routinen-Kachelwerte + Routinen-Verlaufswert (issue #905) |
 | `--text-temp` | 40px | Wetter, große Tages-Temperatur (issue #833) |
 | `--text-section` | 20px | Abschnittsüberschrift |
 | `--text-body` | 16px | Fließtext |
