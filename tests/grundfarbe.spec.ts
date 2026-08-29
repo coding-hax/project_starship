@@ -93,6 +93,46 @@ async function toRgb(page: Page, color: string): Promise<[number, number, number
   }, color);
 }
 
+/**
+ * resolveColorToken + toRgb in one round trip instead of two. The #846 loop
+ * below visits all eight routes in a single 30s test budget; on a loaded CI
+ * runner the extra CDP round trip per colour was enough to occasionally miss
+ * that deadline mid-navigation (observed on issue #905's PR, beforeEach
+ * looked unrelated but the actual timeout hit page.goto several routes in).
+ */
+async function resolveColorTokenRgb(page: Page, token: string): Promise<[number, number, number]> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, token);
+}
+
+/** htmlBackground + toRgb in one round trip — see resolveColorTokenRgb above. */
+async function htmlBackgroundRgb(page: Page): Promise<[number, number, number]> {
+  return page.evaluate(() => {
+    const color = getComputedStyle(document.documentElement).backgroundColor;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  });
+}
+
 async function elementColor(locator: Locator): Promise<string> {
   return locator.evaluate((el) => getComputedStyle(el).color);
 }
@@ -343,15 +383,14 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
 
     for (const route of ROUTES) {
       await page.goto(route.path);
-      const ground = await htmlBackground(page);
-      const border = await resolveColorToken(page, '--border');
-      const borderStrong = await resolveColorToken(page, '--border-strong');
+      const ground = await htmlBackgroundRgb(page);
+      const border = await resolveColorTokenRgb(page, '--border');
+      const borderStrong = await resolveColorTokenRgb(page, '--border-strong');
+      expect(contrastRatio(border, ground), `--border auf ${route.path}`).toBeGreaterThanOrEqual(
+        3,
+      );
       expect(
-        contrastRatio(await toRgb(page, border), await toRgb(page, ground)),
-        `--border auf ${route.path}`,
-      ).toBeGreaterThanOrEqual(3);
-      expect(
-        contrastRatio(await toRgb(page, borderStrong), await toRgb(page, ground)),
+        contrastRatio(borderStrong, ground),
         `--border-strong auf ${route.path}`,
       ).toBeGreaterThanOrEqual(3);
     }
@@ -365,15 +404,15 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
 
     for (const route of ROUTES) {
       await page.goto(route.path);
-      const ground = await htmlBackground(page);
-      const border = await resolveColorToken(page, '--border');
-      const borderStrong = await resolveColorToken(page, '--border-strong');
+      const ground = await htmlBackgroundRgb(page);
+      const border = await resolveColorTokenRgb(page, '--border');
+      const borderStrong = await resolveColorTokenRgb(page, '--border-strong');
       expect(
-        contrastRatio(await toRgb(page, border), await toRgb(page, ground)),
+        contrastRatio(border, ground),
         `--border auf ${route.path} (dunkel)`,
       ).toBeGreaterThanOrEqual(3);
       expect(
-        contrastRatio(await toRgb(page, borderStrong), await toRgb(page, ground)),
+        contrastRatio(borderStrong, ground),
         `--border-strong auf ${route.path} (dunkel)`,
       ).toBeGreaterThanOrEqual(3);
     }
