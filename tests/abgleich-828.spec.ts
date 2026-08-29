@@ -21,6 +21,18 @@ import {
 const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
+// Umschließt FIXED_NOW (Samstag, 2026-07-18) — für den Wetter-Kopf unten
+// (issue #870 T3), der eine echte Vorhersage statt der leeren beforeEach-
+// Antwort braucht (dieselbe Woche wie seitenkopf.spec.ts's FORECAST_WEEK).
+const FORECAST_WEEK = [
+  '2026-07-15',
+  '2026-07-16',
+  '2026-07-17',
+  '2026-07-18',
+  '2026-07-19',
+  '2026-07-20',
+  '2026-07-21',
+];
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
@@ -93,10 +105,25 @@ for (const mode of MODES) {
     await registerPasskey(page);
     await page.emulateMedia({ colorScheme: mode.colorScheme, reducedMotion: mode.reducedMotion });
 
+    // issue #870 (T3): echte Vorhersage statt der leeren beforeEach-Antwort —
+    // der Wetter-Kopf unten braucht Daten, um Titel + Unterzeile zu zeigen.
+    await page.unroute(OPEN_METEO_PATTERN);
+    await page.route(OPEN_METEO_PATTERN, (route) =>
+      route.fulfill({
+        json: openMeteoForecastBody({
+          dates: FORECAST_WEEK,
+          tempsMax: FORECAST_WEEK.map(() => 20),
+          tempsMin: FORECAST_WEEK.map(() => 10),
+        }),
+      }),
+    );
+
     // Aufgaben: „Danach nichts mehr geplant." (task-list.tsx:513).
     await seedTask(page, { title: 'Abgleich Nur heute', dueAt: FIXED_NOW });
     await page.goto('/aufgaben');
     await expect(page.getByText('Danach nichts mehr geplant.')).toBeInViewport();
+    // issue #870 (T3): Augenbraue „N offen · M erledigt" (T1 von #861).
+    await expect(page.locator('[data-ground="aufgaben"] .page-head__eyebrow')).toBeInViewport();
 
     // Aktivitäten: die drei Kurven (Herzfrequenz/Pace/Höhenprofil).
     await insertGarminActivity();
@@ -106,6 +133,9 @@ for (const mode of MODES) {
     for (let i = 0; i < 3; i += 1) {
       await expect(curves.nth(i)).toBeInViewport();
     }
+    // issue #870 (T3): Augenbraue „Letzte 30 Tage" + Distanz-Titel (T2a von #861, #897).
+    await expect(page.locator('[data-module="aktivitaeten"] .page-head__eyebrow')).toBeInViewport();
+    await expect(page.locator('[data-module="aktivitaeten"] h1')).toBeInViewport();
 
     // Routinen-Zwischenstand lebt in der Übersicht-Habit-Sektion + Fortschrittsring.
     const habitId = await seedHabit(page, {
@@ -123,9 +153,38 @@ for (const mode of MODES) {
       .filter({ hasText: 'Abgleich Krafttraining' });
     await expect(habitItem.getByText('1 von 3 diese Woche')).toBeInViewport();
     await expect(page.locator('.daily-progress-ring-slot')).toBeInViewport();
+    // issue #870 (T3): Augenbraue (langes Datum) + Unterzeile (T1 von #861, #868).
+    await expect(page.locator('[data-ground="uebersicht"] .page-head__eyebrow')).toBeInViewport();
+    await expect(page.locator('[data-ground="uebersicht"] .page-head__subline')).toBeInViewport();
 
     // Kalender: eigener Leerzustand (issue #638).
     await page.goto('/kalender');
     await expect(page.getByText('Keine Termine an diesem Tag.')).toBeInViewport();
+    // issue #870 (T3): Augenbraue (Periode) + Chips, Monatsansicht (T2b von #861, #898).
+    await expect(page.locator('.calendar-view__period')).toBeInViewport();
+    await page.getByRole('radio', { name: 'Monat' }).click();
+    await expect(page.locator('.page-head__chip').first()).toBeInViewport();
+
+    // Journal: Titel „Wie war dein Tag?" (T1 von #861, #868).
+    await page.goto('/journal');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Wie war dein Tag?' }),
+    ).toBeInViewport();
+
+    // Wetter: Augenbraue (Datum) + Titel (Temperatur) + Unterzeile (Kategorie),
+    // issue #870 T3.
+    await page.goto('/wetter/2026-07-18');
+    await expect(page.locator('.weather-day__date')).toBeInViewport();
+    await expect(page.locator('.weather-day__temp-max')).toBeInViewport();
+    await expect(page.locator('.page-head__subline')).toBeInViewport();
+
+    // Einstellungen: Augenbraue (Zurück) + Titel, kein Zusatz-Slot (issue #870 T3).
+    await page.goto('/einstellungen');
+    await expect(page.locator('.einstellungen__back')).toBeInViewport();
+    await expect(page.getByRole('heading', { level: 1, name: 'Einstellungen' })).toBeInViewport();
+
+    // Anmelden (ausgeloggt) passt nicht in diese eingeloggte Suite — seine
+    // Sichtbarkeit deckt der eigene "Anmelden (ausgeloggter Kontext)"-Block in
+    // seitenkopf.spec.ts ab.
   });
 }
