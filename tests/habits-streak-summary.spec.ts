@@ -6,8 +6,8 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
 const NOW = '2026-07-15T12:00:00.000Z';
 const TODAY = '2026-07-15';
 
-function streakCard(page: Page) {
-  return page.locator('.streak-summary-card');
+function historyCard(page: Page) {
+  return page.locator('.habit-history-card');
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -39,8 +39,8 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await registerPasskey(page);
   await skewClock(page, NOW);
-  // Umgezogen von /uebersicht auf /routinen (issue #652) — die Karte sitzt
-  // bei der Verwaltung statt auf der täglichen Übersicht.
+  // Umgezogen von /uebersicht auf /routinen (issue #652), jetzt die Verlaufskarte
+  // statt der Ein-Zahl-Karte (issue #905, T4).
   await page.goto('/routinen');
 });
 
@@ -53,14 +53,16 @@ test('die Karte "Routinen in Serie" erscheint, sobald es eine aktive Routine gib
 }) => {
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
-  await expect(streakCard(page).getByText('Routinen in Serie')).toBeVisible();
+  await expect(historyCard(page).getByText('Routinen in Serie')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
-/* Zahl = Anzahl Routinen mit laufender Serie                                 */
+/* Kopf-Wert = aktueller Tag / Anzahl aktiver Routinen                        */
 /* -------------------------------------------------------------------------- */
 
-test('die Zahl zählt nur Routinen mit laufender Serie', async ({ page }) => {
+test('der Kopf-Wert zählt nur Routinen mit laufender Serie, gegen alle aktiven', async ({
+  page,
+}) => {
   const withStreak = await seedHabit(page, {
     name: 'Wasser trinken',
     schedule: 'daily',
@@ -80,14 +82,16 @@ test('die Zahl zählt nur Routinen mit laufender Serie', async ({ page }) => {
   await seedHabitLog(page, withStreak, TODAY);
   await seedHabitLog(page, weeklyWithStreak, '2026-07-14'); // diese Woche
 
-  await expect(streakCard(page).locator('.streak-summary-card__metric')).toHaveText('2');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('2/3');
 });
 
 /* -------------------------------------------------------------------------- */
-/* Archivierte Routine mit Serie zählt nicht                                  */
+/* Archivierte Routine mit Serie zählt nicht, auch nicht im Nenner            */
 /* -------------------------------------------------------------------------- */
 
-test('eine archivierte Routine mit laufender Serie zählt nicht mit', async ({ page }) => {
+test('eine archivierte Routine mit laufender Serie zählt weder mit noch im Nenner', async ({
+  page,
+}) => {
   const archived = await seedHabit(page, {
     createdAt: '2026-06-01T00:00:00.000Z',
     archivedAt: '2026-07-14T00:00:00.000Z',
@@ -96,19 +100,21 @@ test('eine archivierte Routine mit laufender Serie zählt nicht mit', async ({ p
   // Eine zweite, aktive Routine ohne Serie hält die Karte sichtbar.
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
-  await expect(streakCard(page).locator('.streak-summary-card__metric')).toHaveText('0');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('0/1');
 });
 
 /* -------------------------------------------------------------------------- */
-/* 0 laufende Serien → "0" + gedämpfter Hinweis                               */
+/* 0 laufende Serien → Kopf-Wert "0/N", Kurve rendert trotzdem                */
 /* -------------------------------------------------------------------------- */
 
-test('ohne laufende Serie zeigt die Karte "0" und einen Hinweis', async ({ page }) => {
+test('ohne laufende Serie zeigt die Karte "0/N" und die Kurve bleibt sichtbar', async ({
+  page,
+}) => {
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
-  const card = streakCard(page);
-  await expect(card.locator('.streak-summary-card__metric')).toHaveText('0');
-  await expect(card.getByText('Gerade läuft keine Serie')).toBeVisible();
+  const card = historyCard(page);
+  await expect(card.locator('.habit-history-card__value')).toHaveText('0/1');
+  await expect(card.locator('.habit-history-card__svg')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -116,7 +122,7 @@ test('ohne laufende Serie zeigt die Karte "0" und einen Hinweis', async ({ page 
 /* -------------------------------------------------------------------------- */
 
 test('ohne jede Routine erscheint die Karte nicht', async ({ page }) => {
-  await expect(streakCard(page)).toHaveCount(0);
+  await expect(historyCard(page)).toHaveCount(0);
 });
 
 test('nur archivierte Routinen lassen die Karte ebenfalls weg', async ({ page }) => {
@@ -125,7 +131,7 @@ test('nur archivierte Routinen lassen die Karte ebenfalls weg', async ({ page })
     archivedAt: '2026-07-01T00:00:00.000Z',
   });
 
-  await expect(streakCard(page)).toHaveCount(0);
+  await expect(historyCard(page)).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -138,7 +144,7 @@ test('die Karte berechnet sich vollständig offline aus IndexedDB', async ({ pag
   const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
   await seedHabitLog(page, habitId, TODAY);
 
-  await expect(streakCard(page).locator('.streak-summary-card__metric')).toHaveText('1');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('1/1');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -156,28 +162,30 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
-test('die Kennzahl nutzt tabular-nums', async ({ page }) => {
+test('der Kopf-Wert nutzt tabular-nums', async ({ page }) => {
   const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
   await seedHabitLog(page, habitId, TODAY);
 
-  const metric = streakCard(page).locator('.streak-summary-card__metric');
-  await expect(metric).toHaveCSS('font-variant-numeric', 'tabular-nums');
+  const value = historyCard(page).locator('.habit-history-card__value');
+  await expect(value).toHaveCSS('font-variant-numeric', 'tabular-nums');
 });
 
-test('der Hinweistext nutzt den gedämpften Text-Token, auch im Dark Mode', async ({ page }) => {
-  await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' }); // keine Serie -> Hinweis sichtbar
+test('die Achsenbeschriftung nutzt den gedämpften Text-Token, auch im Dark Mode', async ({
+  page,
+}) => {
+  await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
   // `--text-muted` itself is a context variable since issue #832 (the page ground
-  // overrides it, cards reset it back). `.streak-summary-card` is a card, so its
+  // overrides it, cards reset it back). `.habit-history-card` is a card, so its
   // `--text-muted` resolves to the fixed `--text-muted-base` — that's the value
   // this element actually renders, not whatever `--text-muted` means at document
   // level (which here is the route's ground ink).
-  const hint = streakCard(page).locator('.streak-summary-card__hint');
-  const lightColor = await hint.evaluate((el) => getComputedStyle(el).color);
+  const axisLabel = historyCard(page).locator('.habit-history-card__axis span').first();
+  const lightColor = await axisLabel.evaluate((el) => getComputedStyle(el).color);
   expect(lightColor).toBe(await resolveColorToken(page, '--text-muted-base'));
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const darkColor = await hint.evaluate((el) => getComputedStyle(el).color);
+  const darkColor = await axisLabel.evaluate((el) => getComputedStyle(el).color);
   expect(darkColor).toBe(await resolveColorToken(page, '--text-muted-base'));
   expect(darkColor).not.toBe(lightColor);
 });
@@ -191,6 +199,6 @@ for (const viewport of [
     const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
     await seedHabitLog(page, habitId, TODAY);
 
-    await expect(streakCard(page)).toBeVisible();
+    await expect(historyCard(page)).toBeVisible();
   });
 }

@@ -315,6 +315,11 @@ test.describe('Routinen', () => {
     const item = habitItems(page).filter({ hasText: 'Tagebuch' });
     await expect(item).toHaveAttribute('data-entering', 'false');
 
+    // Row starts collapsed (issue #905) — "Archivieren" sits in the `inert`
+    // expanded content, unreachable until the header is tapped open. The name
+    // regex, not an exact match, because the header's accessible name is
+    // "Tagebuch" plus the trailing streak count (e.g. "Tagebuch 0").
+    await item.getByRole('button', { name: /^Tagebuch\b/ }).click();
     await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
 
     await expect(item).toHaveAttribute('data-leaving', 'true');
