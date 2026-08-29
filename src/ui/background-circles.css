@@ -1,7 +1,9 @@
 /*
- * Ambient background circles, one gait per route (S3 of #828, issue #829).
- * Mounted once at the root layout; `:has()` drives the per-route arrangement
- * and gait exactly like the ground colours themselves (S1, globals.css).
+ * Ambient background circles, one gait per route (S3 of #828, issue #829),
+ * plus three ambient lights shared by every route (issue #904). Mounted once
+ * at the root layout; `:has()` drives the per-route arrangement/gait exactly
+ * like the ground colours themselves (S1, globals.css) — the lights carry no
+ * such routing on purpose (#904 AK2).
  */
 
 .bg-layer {
@@ -30,10 +32,86 @@
   --b2: color-mix(in oklab, var(--ground) 88%, #000000);
   --b3: color-mix(in oklab, var(--ground) 74%, var(--blob-partner));
   --b4: color-mix(in oklab, var(--ground) 91%, #ffffff);
+  /* Depth (issue #904): a slight vignette towards the bottom edge, painted
+     under the lights/circles below (DOM order = paint order at equal
+     z-index). */
+  background: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
 }
 
 html:has([data-ground]) .bg-layer {
   display: block;
+}
+
+/* --- lights, one gait shared by every route (issue #904) -----------------
+   Unlike the circles above (one arrangement/gait per route, AK2/AK3 of
+   #829), the three lights carry no per-route distinction at all (AK2 of
+   #904): same three rectangles, same three keyframes, on every route. */
+
+.bg-light {
+  position: absolute;
+  border-radius: 50%;
+  --sky-strength: 34%;
+  background: radial-gradient(
+    circle closest-side,
+    color-mix(in srgb, #ffffff var(--sky-strength), transparent) 0%,
+    color-mix(in srgb, #ffffff calc(var(--sky-strength) * 0.42), transparent) 48%,
+    transparent 74%
+  );
+  /* Rest state (AK3): `animation: none` (reduced motion, below) must land on
+     the VISIBLE moment, not the keyframe's dim/small 0%/100% edges — a light
+     resting at those would all but disappear under "Ruhe reduzieren". */
+  opacity: 1;
+  scale: 1;
+}
+
+@keyframes bg-light-appear {
+  0%,
+  100% {
+    opacity: 0.16;
+    scale: 0.74;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.06;
+  }
+}
+
+/* 13/17/21s are pairwise coprime and the delays are hard-picked: the three
+   never land on the same phase together. */
+.bg-light:nth-child(1) {
+  width: 520px;
+  height: 520px;
+  right: -160px;
+  top: -190px;
+  animation: bg-light-appear 13s ease-in-out infinite;
+}
+.bg-light:nth-child(2) {
+  width: 380px;
+  height: 380px;
+  left: -140px;
+  top: 300px;
+  animation: bg-light-appear 17s ease-in-out infinite;
+  animation-delay: -6s;
+}
+.bg-light:nth-child(3) {
+  width: 300px;
+  height: 300px;
+  right: 30px;
+  bottom: 170px;
+  animation: bg-light-appear 21s ease-in-out infinite;
+  animation-delay: -13s;
+}
+
+/* Dark mode (AK5): the ground already sits at ~62% strength on a dark base
+   (globals.css) — 34% white on top of that reads as a floodlight, not
+   ambient light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']) .bg-light {
+    --sky-strength: 22%;
+  }
+}
+:root[data-theme='dunkel'] .bg-light {
+  --sky-strength: 22%;
 }
 
 .bg-circle {
@@ -486,21 +564,26 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
 }
 
 /*
- * Reduce motion (AK4/AK5): the global rule in tokens.css only nulls
- * `animation-duration`/`animation-iteration-count`, so `animationName` would
- * still report the gait's keyframe name — not good enough for AK4, which
- * checks `animationName === 'none'`. `animation: none` also drops every
- * animated property (translate/scale/transform/opacity) back to its
- * identity value, satisfying AK5 without a separate rest-state rule.
- * `!important` (matching the global rule's own specificity) makes the
- * outcome independent of rule order against the per-route blocks above.
+ * Reduce motion (AK4/AK5 of #829, AK3 of #904): the global rule in tokens.css
+ * only nulls `animation-duration`/`animation-iteration-count`, so
+ * `animationName` would still report the gait's keyframe name — not good
+ * enough for AK4, which checks `animationName === 'none'`. `animation: none`
+ * also drops every animated property back to its identity value: for
+ * `.bg-circle` that's the implicit default (no separate rest rule needed,
+ * see the comment on `.bg-circle` above); `.bg-light` sets `opacity`/`scale`
+ * explicitly (above) precisely so this identity value is the VISIBLE moment,
+ * not the keyframe's dim 0%/100% edge (#904 AK3). `!important` (matching the
+ * global rule's own specificity) makes the outcome independent of rule order
+ * against the per-route blocks above.
  */
 @media (prefers-reduced-motion: reduce) {
-  .bg-circle {
+  .bg-circle,
+  .bg-light {
     animation: none !important;
   }
 }
 
-:root[data-reduce-motion='true'] .bg-circle {
+:root[data-reduce-motion='true'] .bg-circle,
+:root[data-reduce-motion='true'] .bg-light {
   animation: none !important;
 }
