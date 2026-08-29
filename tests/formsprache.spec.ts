@@ -359,8 +359,13 @@ test('AK6: der Schriftwechsel (Fallback → Nunito via swap) erzeugt keinen Layo
   // CLS ist ein Fließkommawert: die Layout Instability API meldet beim Setzen der
   // Seite ein Sub-Pixel-Epsilon (~2e-5) ohne sichtbaren Ursprung, das kein
   // wahrnehmbarer Schriftwechsel-Reflow ist. Ein echter Reflow durch den Wechsel
-  // Fallback → Nunito läge Größenordnungen darüber; die Schwelle liegt 100-fach
-  // unter Googles „gutem" CLS (0,1) und spiegelt die bereits akzeptierte Schwelle
-  // in uebersicht-ladezustand.spec.ts:297.
-  expect(total).toBeLessThan(0.001);
+  // Fallback → Nunito läge Größenordnungen darüber.
+  // Schwelle 0,002 statt 0,001 (menschlich freigegeben, #867): auf /aufgaben
+  // liefert Linux-Fontconfig für die rechts verankerte, inhaltsbreite FAB-Pille
+  // (.fab__label, #867 AK1) ein Plattform-Font-Fallback-Artefakt von konstant
+  // ~0,00178, das auf dem Zielgerät (Apple/SF Pro Rounded, keine Nunito-Ladung)
+  // nachweislich nie auftritt. 0,002 bleibt 50-fach unter Googles „gutem" CLS
+  // (0,1) und spiegelt weiterhin die Größenordnung von
+  // uebersicht-ladezustand.spec.ts:297.
+  expect(total).toBeLessThan(0.002);
 });
