@@ -39,6 +39,10 @@ export interface WeatherHour {
   precipitationProbability: number;
   /** Millimeters. */
   precipitation: number;
+  /** WMO weather code (Open-Meteo `hourly.weather_code`, issue #927) — see
+   * wmo-icon.ts for the icon mapping. Optional: cache rows written before this
+   * field existed don't have it. */
+  weatherCode?: number;
 }
 
 /** One day of `WeatherCacheEntry.days` — see there for why this store exists. */
@@ -55,6 +59,14 @@ export interface WeatherDay {
   sunset: string;
   windSpeedMax: number;
   windGustsMax: number;
+  /** °C, Open-Meteo `daily.apparent_temperature_max` (issue #927). Optional: cache
+   * rows written before this field existed don't have it. */
+  apparentTempMax?: number;
+  /** Degrees, Open-Meteo `daily.wind_direction_10m_dominant` (issue #927) — stored
+   * raw, not as a compass label (`windDirectionLabel` in forecast.ts is a pure
+   * view function). Optional: cache rows written before this field existed don't
+   * have it. */
+  windDirection?: number;
   /** 24 entries, one per hour of this day (issue #156) — the day detail page's
    * temperature curve/precipitation. Same Open-Meteo call as the daily block, no
    * second endpoint (ADR-0009, CLAUDE.md Regel 8). */
@@ -171,6 +183,10 @@ db.version(2).stores({
 // still on the old shape simply has no `hours` until the next refresh; `refreshIfStale`
 // replaces the whole cached row wholesale (never merges), so that self-heals within
 // one REFRESH_INTERVAL_MS window without any migration step.
+//
+// issue #927 adds three more optional properties the same way (`apparentTempMax`,
+// `windDirection` on `WeatherDay`, `weatherCode` on `WeatherHour`) — still no index,
+// still no bump; same self-heal on the next refresh.
 
 // issue #338 adds `journal_entries`/`journal_keys` as new `SyncTable`s (src/local/types.ts)
 // living in the generic `records` store above, same reasoning as `reminder_prefs` — no

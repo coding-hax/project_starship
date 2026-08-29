@@ -41,6 +41,19 @@
   line-height: var(--leading-display);
 }
 
+.section-card__header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.section-card__title-accessory {
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .section-card__header {
   display: flex;
   align-items: center;
