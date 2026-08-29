@@ -25,6 +25,14 @@
   gap: var(--space-2);
   flex: 1 1 auto;
   min-width: 0;
+  /* `padding-block` reserviert Platz für PageFace's eigene Bounce-Animation
+   * (faces.css `pf-bob`, ±3px per `translate`) — ohne Reserve zählt Chromium
+   * die verschobene Malfläche zur `scrollHeight` des Elternelements, sobald sie
+   * über die unanimierte 42px-Höhe hinausragt. Bei `--font-scale: 1.25` reicht
+   * die vorherige Toleranz nicht mehr aus (CI-Fund AC9, capture-uebersicht.spec.ts:
+   * `.page-head` scrollHeight 90 vs. clientHeight 89) — dasselbe Muster wie
+   * `.einstellungen__title-cluster` (Endabgleich #870). */
+  padding-block: var(--space-1);
 }
 
 /* `overflow-wrap: normal` statt `anywhere` — und das ist keine Kosmetik, sondern
