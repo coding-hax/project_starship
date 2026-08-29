@@ -21,7 +21,10 @@
   margin: 0;
 }
 
-/* Titel + Figur im selben Fluss (issue #830/#833). */
+/* Titel + Figur auf der vollen Breite verteilt (issue #830/#833, #921 AK4):
+   der Titel trägt `flex: 1` (auf `.calendar-view__heading` unten) und
+   schiebt die Figur damit an den rechten Rand — `.face` selbst trägt bereits
+   `flex: 0 0 auto` (faces.css), kein zusätzliches `flex: none` hier nötig. */
 .calendar-view__title-row {
   display: flex;
   align-items: center;
@@ -31,7 +34,12 @@
    Monat: Monatsname) statt einer sr-only-„Kalender" — Grad/Familie kommen
    von der globalen h1-Regel (globals.css), hier nur der Zeilenabstand
    zurückgesetzt, sonst schöbe `margin-block-end` die Zeile in der
-   Titel-Flex-Reihe höher als die Figur daneben. */
+   Titel-Flex-Reihe höher als die Figur daneben. `flex: 1 1 auto` +
+   `min-width: 0` (issue #921 AK4): die Titel-Box trägt die Restbreite der
+   Zeile, statt auf ihren Text zu schrumpfen — dieselbe Technik wie
+   `.uebersicht__title-cluster`. */
 .calendar-view__heading {
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
