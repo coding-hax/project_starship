@@ -766,7 +766,7 @@ test('ein Wisch rollt das Fenster tageweise — kein Sprung auf eine ganze Woche
 test('zwei aufeinanderfolgende Wische rollen zwei Wochen weiter, nicht nur eine (issue #813)', async ({
   page,
 }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const period = page.locator('.calendar-view__period');
 
   await pageStrip(page, 1);
   await pageStrip(page, 1);
@@ -774,7 +774,7 @@ test('zwei aufeinanderfolgende Wische rollen zwei Wochen weiter, nicht nur eine 
   // 18.07. + 14 Tage = 01.08. — der zweite Wisch darf nicht wirkungslos
   // bleiben, nur weil der Puffer zwischendurch unsichtbar neu verankert wurde.
   await expect(dayButton(page, 'Sa, 1.')).toBeVisible();
-  await expect(title).toHaveText('August 2026');
+  await expect(period).toHaveText('August 2026');
 });
 
 test('der Streifen erfasst nur waagerechte Gesten, senkrecht bleibt dem Seiten-Scroll ueberlassen (issue #813, ersetzt S5 AK-A)', async ({
@@ -1171,14 +1171,14 @@ test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem Ankermonat s
 test('Kopf und Umschalter behalten Position und Hoehe beim Wechsel zwischen Woche und Monat (issue #813, AK8)', async ({
   page,
 }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const period = page.locator('.calendar-view__period');
   const header = page.locator('.calendar-view__header');
-  const titleBoxBefore = await title.boundingBox();
+  const titleBoxBefore = await period.boundingBox();
   const headerYBefore = (await header.boundingBox())?.y;
 
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  const titleBoxAfter = await title.boundingBox();
+  const titleBoxAfter = await period.boundingBox();
   const headerYAfter = (await header.boundingBox())?.y;
   expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
   expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
@@ -1429,12 +1429,12 @@ test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem 
 /* -------------------------------------------------------------------------- */
 
 test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monatsgrenze (AK1)', async ({ page }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
-  await expect(title).toHaveText('Juli 2026');
+  const period = page.locator('.calendar-view__period');
+  await expect(period).toHaveText('Juli 2026');
 
   await pageStripForward(page, 2);
 
-  await expect(title).toHaveText('August 2026');
+  await expect(period).toHaveText('August 2026');
 });
 
 test('der Woche/Monat-Umschalter klappt den Streifen auf und zu, Segmente tragen den Auswahlzustand (AK2)', async ({
@@ -1461,7 +1461,7 @@ test('der Woche/Monat-Umschalter klappt den Streifen auf und zu, Segmente tragen
 test('Titel und Umschalter behalten Position und Hoehe, wenn ein anderer Tag gewaehlt wird (AK5)', async ({
   page,
 }) => {
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const title = page.locator('.calendar-view__period');
   const switcher = page.getByRole('radiogroup', { name: 'Ansicht' });
   const header = page.locator('.calendar-view__header');
 
@@ -1487,7 +1487,7 @@ test('der Ruecksprung-Chip erscheint ohne ein Nachbar-Element zu verschieben, wa
 }) => {
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
 
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const title = page.locator('.calendar-view__period');
   const titleBoxBefore = await title.boundingBox();
 
   await dayButton(page, 'So, 19.').click();
@@ -1590,7 +1590,7 @@ test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt
   const today = page.getByRole('button', { name: 'Heute' });
   const prevWeek = page.getByRole('button', { name: 'Vorige Woche' });
   const nextWeek = page.getByRole('button', { name: 'Nächste Woche' });
-  const title = calendarStrip(page).locator('.calendar-strip__title');
+  const period = page.locator('.calendar-view__period');
 
   // Heute ist ausgewaehlt: "Heute" steht als Knopf da, disabled statt entfernt.
   await expect(today).toHaveCount(1);
@@ -1604,15 +1604,17 @@ test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt
   await nextWeek.click();
   await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
   await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(title).toHaveText('Juli 2026');
+  await expect(period).toHaveText('Juli 2026');
   await expect(today).toBeEnabled();
 
   // In der Monatsansicht blaettert `>` einen Monat, weiterhin nur die Vorschau.
+  // Die Augenbraue zeigt dort nur noch das Jahr, der Monatsname steht in der h1
+  // (issue #898 — die kombinierte "Monat Jahr"-Zeichenkette existiert dort nicht mehr).
   await page.getByRole('radio', { name: 'Monat' }).click();
   const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
   await expect(nextMonth).toBeVisible();
   await nextMonth.click();
-  await expect(title).toHaveText('August 2026');
+  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
 });
 
 test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der Ruecksprung-Chip bleibt (AK10)', async ({
