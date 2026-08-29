@@ -122,7 +122,8 @@ test('dark mode: the fade mechanic still applies without layout shift (issue #43
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await nav.getByRole('link', { name: 'Kalender' }).click();
-  await expect(page.getByRole('heading', { name: 'Kalender', level: 1 })).toBeVisible();
+  // Titel „Diese Woche“ seit issue #898 — der Nav-Tab heißt weiterhin „Kalender“.
+  await expect(page.getByRole('heading', { name: 'Diese Woche', level: 1 })).toBeVisible();
 
   const box = await main.boundingBox();
   expect(box).not.toBeNull();

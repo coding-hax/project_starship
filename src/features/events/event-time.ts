@@ -181,6 +181,21 @@ export function formatMonthTitle(dateKey: string): string {
   return MONTH_TITLE_FORMATTER.format(parseDateKey(dateKey));
 }
 
+const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat('de-DE', { month: 'long', timeZone: 'UTC' });
+const YEAR_LABEL_FORMATTER = new Intl.DateTimeFormat('de-DE', { year: 'numeric', timeZone: 'UTC' });
+
+/** "August" for the calendar header's month view title (issue #898) — same
+ *  UTC-anchoring caveat as `formatMonthTitle`. */
+export function monthName(dateKey: string): string {
+  return MONTH_NAME_FORMATTER.format(parseDateKey(dateKey));
+}
+
+/** "2026" for the calendar header's month view eyebrow (issue #898) — same
+ *  UTC-anchoring caveat as `formatMonthTitle`. */
+export function yearLabel(dateKey: string): string {
+  return YEAR_LABEL_FORMATTER.format(parseDateKey(dateKey));
+}
+
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
 export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);
@@ -326,4 +341,44 @@ export function categoriesForDay<T extends TimelineSource>(
     ),
   );
   return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, MAX_DOTS_PER_DAY);
+}
+
+/**
+ * Days of the calendar month `focusMonth` (`YYYY-MM`) itself, excluding the
+ * dimmed neighbour-month days `monthDaysFor`'s grid also carries.
+ */
+function daysOfMonth(focusMonth: string): string[] {
+  return monthDaysFor(`${focusMonth}-01`).filter((day) => day.slice(0, 7) === focusMonth);
+}
+
+/**
+ * Chip counts for the calendar header's month view (issue #898): how many
+ * distinct events touch `focusMonth` (`YYYY-MM`), and how many of those are
+ * all-day — "nur was die Daten hergeben" (#834), not a slot-by-slot tally.
+ *
+ * Takes a per-day occurrence lookup rather than raw `events` (same one-way
+ * import direction as `categoriesForDay` — this file cannot call
+ * `expandForDay` itself, recurrence.ts imports from here). Reuses
+ * `agendaForDay`/`allDayEventsForDay` rather than `occurrencesForDay`'s raw
+ * result: `expandForDay` pushes every non-recurring event for every day it's
+ * asked about (recurrence.ts), so day membership only comes from those two
+ * filters. Deduped by `Occurrence.id` — a multi-day event shares one id
+ * across every day it covers, so it counts once; a weekly series gets a
+ * fresh id per occurrence (`${eventId}:${date}`), so it counts once per
+ * occurrence in the month.
+ */
+export function monthEventCounts<T extends TimelineSource>(
+  focusMonth: string,
+  occurrencesForDay: (day: string) => T[],
+): { total: number; allDay: number } {
+  const seen = new Map<string, boolean>();
+  for (const day of daysOfMonth(focusMonth)) {
+    const occurrences = occurrencesForDay(day);
+    for (const item of [...agendaForDay(occurrences, day), ...allDayEventsForDay(occurrences, day)]) {
+      if (!seen.has(item.id)) seen.set(item.id, item.allDay);
+    }
+  }
+  const total = seen.size;
+  const allDay = [...seen.values()].filter(Boolean).length;
+  return { total, allDay };
 }

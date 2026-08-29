@@ -174,7 +174,8 @@ test.describe('angemeldet', () => {
     // string — null routes it to expectUebersichtLoaded below instead.
     const stops: Array<[label: string, heading: string | null]> = [
       ['Aufgaben', 'Aufgaben'],
-      ['Kalender', 'Kalender'],
+      // Titel „Diese Woche" seit issue #898 — der Nav-Tab heißt weiterhin „Kalender".
+      ['Kalender', 'Diese Woche'],
       ['Routinen', 'Routinen verwalten'],
       ['Übersicht', null],
     ];

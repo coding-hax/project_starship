@@ -23,7 +23,8 @@ fehlt, setzt `needs-answer` und startet keinen Lauf. Fließtext zählt nicht.
 **Der Bau-Lauf mergt nicht mehr selbst.** Er endet mit dem Label `check` und
 lässt den PR im Entwurf. Erst ein eigener, nur lesender Prüf-Lauf hält den
 fertigen Diff gegen die Kriterien — Befund je Kriterium mit Beleg, als
-Kommentar `## ✅ AK-Check` am Ticket — und hebt den PR bei vollständiger
+Kommentar `## ✅ AK-Check` am Ticket **(in jedem Ausgang, auch bei voller
+Erfüllung, und vor dem Merge)** — und hebt den PR bei vollständiger
 Erfüllung selbst aus dem Entwurf. Bei einer Lücke fällt `check` weg,
 `in-progress` bleibt, die offenen Punkte stehen im Fortschrittskommentar und
 der nächste Takt ist wieder ein Bau-Lauf. Erst der **zweite** vergebliche

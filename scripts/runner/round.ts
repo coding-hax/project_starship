@@ -1198,6 +1198,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
       sharedState,
       gh,
       git,
+      clock,
     );
 
     // #387 AC4: Backstop fuers Entfernen von 'in-progress' nach einem
@@ -1390,6 +1391,7 @@ solange das Label \`needs-answer\` hängt.`,
     sharedState,
     gh,
     git,
+    clock,
   );
   tryGh(gh, [
     'issue',
