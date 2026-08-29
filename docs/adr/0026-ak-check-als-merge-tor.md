@@ -96,6 +96,15 @@ eines Klammerzusatzes in der Überschrift, einmal wegen fehlender `[ ]`. Ein Tor
 das an der Formatierung greift statt an der Sache, erzieht niemanden, es hält
 nur die Flotte an.
 
+> **Nachtrag #901 — der Prüfer unterschreibt sichtbar, immer und vor dem Merge.**
+> Der Befund steht als Kommentar `## ✅ AK-Check` am Ticket in **jedem** Ausgang
+> — auch wenn alle Kriterien erfüllt sind und der PR direkt freigegeben wird —
+> und wird **vor** der Label-Änderung und dem Merge geschrieben. Erste Zeile: eine
+> menschenlesbare Kopfzeile („Alle N Kriterien erfüllt — PR freigegeben"), damit
+> ein Blick aufs nach dem Merge geschlossene Ticket das Urteil sofort zeigt. Das
+> schärft die schon in Punkt 3 angelegte Kommentar-Pflicht, es verhandelt sie
+> nicht neu.
+
 ## Konsequenzen
 
 **Ein Ticket kostet ab jetzt mindestens einen Lauf mehr.** Bewusst: der Prüfer
