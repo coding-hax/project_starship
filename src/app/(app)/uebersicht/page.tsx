@@ -53,7 +53,9 @@ export default function UebersichtPage() {
         </div>
       </PageHead>
       <OverviewReadyProvider>
-        <UebersichtSections />
+        <div className="uebersicht__sections">
+          <UebersichtSections />
+        </div>
       </OverviewReadyProvider>
       {/* Schwebender FAB unten rechts statt eines Titelzeilen-Knopfes (issue #920,
           hebt die #618-Entscheidung auf) — dieselbe `Fab`-Komponente wie

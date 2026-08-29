@@ -107,6 +107,21 @@
   flex-shrink: 0;
 }
 
+/* Seit issue #920 ist der Erfassungsknopf ein `position: fixed`-Fab statt eines
+ * Titelzeilen-Knopfes (siehe uebersicht-capture.tsx) — die letzte Sektion
+ * (Routinen) braucht deshalb Abstand zu ihm, sonst überdeckt der Fab bei hohem
+ * `--font-scale` deren letzte Zeile (CI-Fund AC9, capture-uebersicht.spec.ts).
+ * Rechnet `.shell__main`s eigenes `padding-bottom` (space-6 + safe-area, shell.css)
+ * auf denselben Bodenabstand hoch, den fab.css für den Fab selbst reserviert
+ * (Nav-Höhe 64px + Pillenversatz space-2 + safe-area + Fabs eigener Abstand
+ * space-4 + Tastatur-Inset) plus die Fab-Höhe (58px) — die safe-area kürzt sich
+ * dabei heraus, weil `.shell__main` sie bereits einmal trägt. */
+.uebersicht__sections {
+  padding-bottom: calc(
+    64px + var(--space-2) + var(--space-4) + var(--keyboard-inset) + 58px - var(--space-6)
+  );
+}
+
 /* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe
  * absichtlich im Feld stehen bleibt, statt das Sheet zu schließen. */
 .uebersicht-capture__notice {
