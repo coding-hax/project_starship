@@ -378,12 +378,20 @@
 }
 
 /* Große Figur über dem Titel (issue #870 T3, ersetzt die 42px-Zeile aus #830) —
-   Anmelden hat keinen Zusatz-Slot, die Figur trägt hier die volle Bühne. */
+   Anmelden hat keinen Zusatz-Slot, die Figur trägt hier die volle Bühne.
+   `padding-block` reserviert Platz für `.face`s eigene Bounce-Animation
+   (faces.css `pf-bob`, ±3px per `translate`, unabhängig von der Figurgröße):
+   ohne Reserve zählt Chromium die verschobene Malfläche zur `scrollHeight`
+   des Elternelements, sobald sie über die unanimierte Höhe hinausragt —
+   selbes Muster wie `.einstellungen__title-cluster` (Endabgleich #870,
+   Commit bfa9fe4). `--space-1` (4px) > 3px Amplitude hält beide Ausschläge
+   innerhalb der Box. */
 .auth__title-row {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
+  padding-block: var(--space-1);
 }
 
 /* Zwei Klassen schlagen die eine `.face` (faces.css, 42px) — Bob-Keyframe und

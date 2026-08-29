@@ -678,7 +678,10 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
     await page.goto('/anmelden');
     const header = page.getByRole('heading', { level: 1 });
     await assertFlatHeader(header, '/anmelden');
-    await assertHeaderFitsItself(header, '/anmelden');
+    // Die 136px-Figur (#870) ist Geschwister des <h1>, nicht sein Kind — ihr
+    // Bounce-Überlauf (faces.css pf-bob, ±3px translate) zeigt sich nur am
+    // gemeinsamen Container .auth__title-row, nie am <h1> allein.
+    await assertHeaderFitsItself(page.locator('.auth__title-row'), '/anmelden');
     expect(await fontSizeOf(header), 'Titelgröße Anmelden').toBe(22);
   });
 
