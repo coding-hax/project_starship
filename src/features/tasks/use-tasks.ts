@@ -218,53 +218,78 @@ export function undatedOpenNodes(nodes: TaskNode[]): TaskNode[] {
   return nodes.filter((node) => node.task.dueAt === null && node.task.completedAt === null);
 }
 
-export interface DueDayGroup {
-  /** `'overdue'` for the "Überfällig" bucket, otherwise a `localDayKey`. */
-  dayKey: string;
+/**
+ * The "Woche" view's three fixed buckets (issue #866, variant A) — supersedes
+ * the former one-marker-per-due-day layout (`groupByDueDay`, issue #705 AK3):
+ * every weekday inside the 7-day window now collapses into a single "Diese
+ * Woche" bucket instead of a marker per day.
+ */
+export type WeekBucketKey = 'overdue' | 'today' | 'week';
+
+export interface WeekBucket {
+  key: WeekBucketKey;
+  label: string;
   nodes: TaskNode[];
 }
 
+const WEEK_BUCKET_LABELS: Record<WeekBucketKey, string> = {
+  overdue: 'Überfällig',
+  today: 'Heute',
+  week: 'Diese Woche',
+};
+
 /**
- * Buckets already-windowed nodes by their parent's due day (issue #705 AK3):
- * "Überfällig" first, then the remaining days ascending. A day nobody is due on
- * produces no group at all — there is nothing to render a marker over. Children
- * keep the `createdAt` order `groupTasks` already gave them; only the top-level
- * nodes within a bucket are reordered, via `compareWithinDay`.
+ * Buckets already-windowed nodes into "Überfällig" / "Heute" / "Diese Woche"
+ * (issue #866, variant A) — a bucket nobody is due in produces no group at all,
+ * the same "no marker for nothing" rule `groupByDueDay` had. "Überfällig" and
+ * "Diese Woche" each span several days, so they sort by the full `dueAt`
+ * (earliest first); "Heute" sorts by time-of-day. Children keep the
+ * `createdAt` order `groupTasks` already gave them; only the top-level nodes
+ * within a bucket are reordered.
  */
-export function groupByDueDay(nodes: TaskNode[], now: Date = new Date()): DueDayGroup[] {
+export function weekBuckets(nodes: TaskNode[], now: Date = new Date()): WeekBucket[] {
   const startOfToday = startOfLocalDay(now);
-  const buckets = new Map<string, TaskNode[]>();
+  const today = localDayKey(now);
+
+  const overdue: TaskNode[] = [];
+  const dueToday: TaskNode[] = [];
+  const week: TaskNode[] = [];
 
   for (const node of nodes) {
     if (node.task.dueAt === null) continue;
     const due = new Date(node.task.dueAt);
-    const key = due < startOfToday ? 'overdue' : localDayKey(due);
-    const bucket = buckets.get(key);
-    if (bucket) {
-      bucket.push(node);
+    if (due < startOfToday) {
+      overdue.push(node);
+    } else if (localDayKey(due) === today) {
+      dueToday.push(node);
     } else {
-      buckets.set(key, [node]);
+      week.push(node);
     }
   }
 
-  const overdue = buckets.get('overdue');
-  buckets.delete('overdue');
-  const dayKeys = [...buckets.keys()].sort();
-
-  const groups: DueDayGroup[] = [];
-  if (overdue) {
-    groups.push({
-      dayKey: 'overdue',
+  const buckets: WeekBucket[] = [];
+  if (overdue.length > 0) {
+    buckets.push({
+      key: 'overdue',
+      label: WEEK_BUCKET_LABELS.overdue,
       nodes: overdue.sort((a, b) => compareWithinDay(a.task, b.task, { overdue: true })),
     });
   }
-  for (const dayKey of dayKeys) {
-    groups.push({
-      dayKey,
-      nodes: buckets.get(dayKey)!.sort((a, b) => compareWithinDay(a.task, b.task)),
+  if (dueToday.length > 0) {
+    buckets.push({
+      key: 'today',
+      label: WEEK_BUCKET_LABELS.today,
+      nodes: dueToday.sort((a, b) => compareWithinDay(a.task, b.task)),
     });
   }
-  return groups;
+  if (week.length > 0) {
+    buckets.push({
+      key: 'week',
+      label: WEEK_BUCKET_LABELS.week,
+      nodes: week.sort((a, b) => compareWithinDay(a.task, b.task, { overdue: true })),
+    });
+  }
+  return buckets;
 }
 
 const DAY_MARKER_LABEL_FORMAT: Intl.DateTimeFormatOptions = {
@@ -281,22 +306,19 @@ function formatDayLabel(dayKey: string): string {
 }
 
 /**
- * The marker text over a day group (issue #705 AK3/AK7's owner precisification).
- * "Woche" spells the weekday out even for today (`"Heute · Donnerstag, 13.
- * August"`) since it is one bucket among many due days; "Erledigt" only ever
- * shows one or two relative days (`"Heute"`, `"Gestern"`) before falling back to
- * the same long label.
+ * The marker text over an "Erledigt" day group (issue #705 AK3/AK7's owner
+ * precisification) — narrowed to that one view since "Woche" moved to
+ * `weekBuckets`'s three fixed labels (issue #866). Only ever shows one or two
+ * relative days (`"Heute"`, `"Gestern"`) before falling back to the long label.
  */
-export function formatDayMarker(dayKey: string, now: Date, view: 'woche' | 'erledigt'): string {
+export function formatDayMarker(dayKey: string, now: Date): string {
   if (dayKey === 'overdue') return 'Überfällig';
 
   const today = localDayKey(now);
-  if (dayKey === today) return view === 'woche' ? `Heute · ${formatDayLabel(dayKey)}` : 'Heute';
+  if (dayKey === today) return 'Heute';
 
-  if (view === 'erledigt') {
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    if (dayKey === localDayKey(yesterday)) return 'Gestern';
-  }
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (dayKey === localDayKey(yesterday)) return 'Gestern';
 
   return formatDayLabel(dayKey);
 }

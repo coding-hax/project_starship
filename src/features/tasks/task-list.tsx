@@ -6,7 +6,7 @@ import { OfflineNotice } from '@/ui/offline-notice';
 import { useBlockReady } from '@/ui/overview-ready';
 import { SectionCard } from '@/ui/section-card';
 import { SegmentedControl, type SegmentedOption } from '@/ui/segmented-control';
-import { useListPresence } from '@/ui/use-list-presence';
+import { useListPresence, type ListPresenceRow } from '@/ui/use-list-presence';
 import { useOnline } from '@/ui/use-online';
 import { TaskEditor } from './task-editor';
 import { TaskItem } from './task-item';
@@ -15,13 +15,12 @@ import { useDeleteTask } from './use-delete-task';
 import {
   completedByDay,
   formatDayMarker,
-  groupByDueDay,
   groupTasks,
-  localDayKey,
   openTaskNodes,
   resolveNestTarget,
   undatedOpenNodes,
   useTasks,
+  weekBuckets,
   weekWindowNodes,
   type TaskNode,
   type TaskView,
@@ -44,18 +43,19 @@ const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
  * — `useListPresence` needs one flat, uniformly-keyed array to diff against;
  * grouped `Fragment`s per parent had no single key per row to track. `kind`
  * carries just enough of the originating node to rebuild the same props
- * `TaskItem` always got, nothing more. `marker` (issue #705 AK3) is a day
- * heading, never a task — rendered `role="presentation"` so it never counts as
- * a `listitem`.
+ * `TaskItem` always got, nothing more. `marker` is a group heading, never a
+ * task — `foldRowsIntoCards` below folds it (plus every row up to the next
+ * marker) into one `.task-list__group-card`, so it never renders as a row or
+ * counts as a `listitem` itself (issue #866).
  */
 type TaskRow =
   | { id: string; kind: 'flat'; task: TaskView }
   | { id: string; kind: 'parent'; node: TaskNode }
   | { id: string; kind: 'child'; node: TaskNode; child: TaskView }
-  | { id: string; kind: 'marker'; label: string };
+  | { id: string; kind: 'marker'; label: string; count: number };
 
 /** A node's parent row plus its children rows, in that order. */
-function nodeRows(node: TaskNode): TaskRow[] {
+function nodeRows(node: TaskNode): Exclude<TaskRow, { kind: 'marker' }>[] {
   return [
     { id: node.task.id, kind: 'parent' as const, node },
     ...node.children.map((child) => ({ id: child.id, kind: 'child' as const, node, child })),
@@ -63,31 +63,99 @@ function nodeRows(node: TaskNode): TaskRow[] {
 }
 
 /**
- * The "Woche" shape (issue #705 AK3, reused on /uebersicht by issue #762): a day
- * marker above every non-empty bucket, then that bucket's nodes. Shared so
- * /uebersicht's always-"Woche" list and /aufgaben's "Woche" tab cannot drift
- * apart — the only difference between the two call sites is whether the
- * caller also needs `groups` itself (AK9's sparse note, /aufgaben only).
+ * The "Woche" shape (issue #705 AK3, reused on /uebersicht by issue #762; the
+ * grouping itself moved from a marker per due day to `weekBuckets`'s three
+ * fixed buckets in issue #866): a marker above every non-empty bucket, then
+ * that bucket's nodes. Shared so /uebersicht's always-"Woche" list and
+ * /aufgaben's "Woche" tab cannot drift apart — the only difference between the
+ * two call sites is whether the caller also needs `buckets` itself (AK9's
+ * sparse note, /aufgaben only).
  */
 function buildWocheRows(nodesForWindow: TaskNode[], now: Date) {
-  const groups = groupByDueDay(weekWindowNodes(nodesForWindow, now), now);
-  const rows: TaskRow[] = groups.flatMap((group) => [
+  const buckets = weekBuckets(weekWindowNodes(nodesForWindow, now), now);
+  const rows: TaskRow[] = buckets.flatMap((bucket) => [
     {
-      id: `marker:${group.dayKey}`,
+      id: `marker:${bucket.key}`,
       kind: 'marker' as const,
-      label: formatDayMarker(group.dayKey, now, 'woche'),
+      label: bucket.label,
+      count: bucket.nodes.length,
     },
-    ...group.nodes.flatMap(nodeRows),
+    ...bucket.nodes.flatMap(nodeRows),
   ]);
-  return { rows, groups };
+  return { rows, buckets };
+}
+
+/** One `.task-list__group-card` worth of rows (issue #866) — `header` is `null`
+ *  for a view with no groups of its own ("Alle"), which still gets a card, just
+ *  without a title/count line above its rows. */
+interface RowCard {
+  key: string;
+  header: { label: string; count: number } | null;
+  entering: boolean;
+  leaving: boolean;
+  onAnimationEnd?: () => void;
+  rows: Array<{
+    row: Exclude<TaskRow, { kind: 'marker' }>;
+    key: string;
+    entering: boolean;
+    leaving: boolean;
+    onAnimationEnd: () => void;
+  }>;
+}
+
+/**
+ * Folds the flat, presence-diffed row list into cards (issue #866 AK1) — a
+ * `marker` row opens a new card (its label/count become the card's header) and
+ * every row after it, up to the next marker, joins that card's body. Rows
+ * before the first marker (or the whole list, if there is none at all — the
+ * "Alle" view has no groups) fold into one leading, headerless card instead of
+ * being dropped. The card wrapper inherits its own enter/exit from the marker
+ * row's presence status, so the whole group fades in/out together; a plain
+ * row's own status still drives its individual animation inside the card,
+ * unaffected by this folding (`useListPresence` itself is untouched — this is
+ * a render-time regrouping of its flat output, not a second presence store).
+ */
+function foldRowsIntoCards(presenceRows: ListPresenceRow<TaskRow>[]): RowCard[] {
+  const cards: RowCard[] = [];
+  let current: RowCard | null = null;
+
+  for (const presenceRow of presenceRows) {
+    const { item } = presenceRow;
+    if (item.kind === 'marker') {
+      current = {
+        key: `card:${presenceRow.key}`,
+        header: { label: item.label, count: item.count },
+        entering: presenceRow.status === 'entering',
+        leaving: presenceRow.status === 'leaving',
+        onAnimationEnd: presenceRow.onAnimationEnd,
+        rows: [],
+      };
+      cards.push(current);
+      continue;
+    }
+    if (current === null) {
+      current = { key: 'card:leading', header: null, entering: false, leaving: false, rows: [] };
+      cards.push(current);
+    }
+    current.rows.push({
+      row: item,
+      key: presenceRow.key,
+      entering: presenceRow.status === 'entering',
+      leaving: presenceRow.status === 'leaving',
+      onAnimationEnd: presenceRow.onAnimationEnd,
+    });
+  }
+
+  return cards;
 }
 
 export interface TaskListProps {
   /**
    * The /uebersicht dashboard subset (issue #87, issue #228): the same "Woche"
-   * shape /aufgaben's "Woche" tab renders (day markers, "Überfällig" first, the
-   * 7-day window — issue #762), just without the view switcher. Everything else
-   * (editor, offline notice) stays the same so the two lists don't drift apart.
+   * shape /aufgaben's "Woche" tab renders (bucket cards, "Überfällig" first, the
+   * 7-day window — issue #762, buckets since issue #866), just without the view
+   * switcher. Everything else (editor, offline notice) stays the same so the two
+   * lists don't drift apart.
    */
   dueTodayOnly?: boolean;
   /**
@@ -157,6 +225,10 @@ export function TaskList({
   // first real `allTasks` snapshot exists, so that snapshot itself never reads
   // as a mass of fresh re-parentings.
   const prevParentIdsRef = useRef<Map<string, string | null> | null>(null);
+  // Same idea, keyed on `completedAt` instead of `parentId` (issue #814): lets
+  // the effect below tell "just reopened" apart from "was already open before
+  // this component ever mounted".
+  const prevCompletedAtRef = useRef<Map<string, string | null> | null>(null);
   // What a drop would do *right now* (issue #451) — set on pick-up and on every
   // move while lifted, cleared on drop and on cancel. `targetId` is still the raw
   // row under the pointer; the one-level rule is applied below, so the preview
@@ -196,7 +268,8 @@ export function TaskList({
         {
           id: `marker:${group.dayKey}`,
           kind: 'marker' as const,
-          label: formatDayMarker(group.dayKey, now, 'erledigt'),
+          label: formatDayMarker(group.dayKey, now),
+          count: group.tasks.length,
         },
         ...group.tasks.map((task) => ({ id: task.id, kind: 'flat' as const, task })),
       ]);
@@ -210,13 +283,11 @@ export function TaskList({
     // view === 'woche' — filters completed tasks out via weekWindowNodes itself
     // (AK7's "heute erledigt bleibt" rule), so it takes the full tree, not
     // openTaskNodes's result.
-    const now = new Date();
-    const { rows, groups } = buildWocheRows(nodes, now);
-    const today = localDayKey(now);
+    const { rows, buckets } = buildWocheRows(nodes, new Date());
     return {
       rows,
       undatedNodes: undatedOpenNodes(nodes),
-      hasFutureGroup: groups.some((group) => group.dayKey !== 'overdue' && group.dayKey > today),
+      hasFutureGroup: buckets.some((bucket) => bucket.key === 'week'),
     };
   }, [dueTodayOnly, allTasks, nodes, view]);
   const { rows, undatedNodes, hasFutureGroup } = viewModel;
@@ -272,12 +343,20 @@ export function TaskList({
    * snapshot to compare against and is excluded on purpose, same as the very
    * first snapshot itself (`prevParentIdsRef.current === null`) is: neither is
    * a parent actually *gaining* a child while the user is looking at the list.
+   *
+   * The same rule applies to a completed child reopened while its parent was
+   * collapsed — or the whole group was hidden from "Alle" outright, e.g. a
+   * fully-completed parent+child pair reappearing once its only child is
+   * unchecked from the "Erledigt" view (issue #814): the child that was just
+   * reopened must not stay invisible behind a parent nobody has expanded yet.
    */
   useEffect(() => {
     if (allTasks === undefined) return;
     const prevParentIds = prevParentIdsRef.current;
+    const prevCompletedAt = prevCompletedAtRef.current;
     prevParentIdsRef.current = new Map(allTasks.map((task) => [task.id, task.parentId]));
-    if (prevParentIds === null) return;
+    prevCompletedAtRef.current = new Map(allTasks.map((task) => [task.id, task.completedAt]));
+    if (prevParentIds === null || prevCompletedAt === null) return;
     const newlyNestedParentIds = allTasks
       .filter(
         (task) =>
@@ -286,8 +365,19 @@ export function TaskList({
           prevParentIds.get(task.id) !== task.parentId,
       )
       .map((task) => task.parentId as string);
-    if (newlyNestedParentIds.length === 0) return;
-    setExpandedIds((prev) => new Set([...prev, ...newlyNestedParentIds]));
+    const newlyReopenedParentIds = allTasks
+      .filter(
+        (task) =>
+          task.parentId !== null &&
+          task.completedAt === null &&
+          prevCompletedAt.has(task.id) &&
+          prevCompletedAt.get(task.id) !== null,
+      )
+      .map((task) => task.parentId as string);
+    if (newlyNestedParentIds.length === 0 && newlyReopenedParentIds.length === 0) return;
+    setExpandedIds(
+      (prev) => new Set([...prev, ...newlyNestedParentIds, ...newlyReopenedParentIds]),
+    );
   }, [allTasks]);
 
   /**
@@ -304,32 +394,19 @@ export function TaskList({
   }
 
   /**
-   * One `TaskRow` as JSX — shared by the main list and the "ohne Datum" card
-   * below it (issue #762), so the two never render a task differently. Nesting
-   * stays off on /uebersicht (`dueTodayOnly`): `TaskItem`'s long-press lift only
-   * arms when `onDropOnTask` is passed at all, so omitting the three drag props
-   * there disables it outright, same as the old flat /uebersicht rows always did.
+   * One non-marker `TaskRow` as JSX — shared by the main list and the "ohne
+   * Datum" card below it (issue #762), so the two never render a task
+   * differently. A `marker` row never reaches here — `foldRowsIntoCards` turns
+   * it into a card header instead (issue #866). Nesting stays off on
+   * /uebersicht (`dueTodayOnly`): `TaskItem`'s long-press lift only arms when
+   * `onDropOnTask` is passed at all, so omitting the three drag props there
+   * disables it outright, same as the old flat /uebersicht rows always did.
    */
   function renderTaskRow(
-    row: TaskRow,
+    row: Exclude<TaskRow, { kind: 'marker' }>,
     key: string,
     shared: { entering: boolean; leaving: boolean; onAnimationEnd?: () => void },
   ) {
-    if (row.kind === 'marker') {
-      return (
-        <li
-          key={key}
-          role="presentation"
-          className="task-list__day-marker list-motion-item"
-          data-entering={shared.entering}
-          data-leaving={shared.leaving}
-          onAnimationEnd={shared.onAnimationEnd}
-        >
-          {row.label}
-        </li>
-      );
-    }
-
     if (row.kind === 'flat') {
       const { task } = row;
       return (
@@ -498,13 +575,32 @@ export function TaskList({
               ? { 'aria-labelledby': headingId }
               : { 'aria-label': dueTodayOnly ? 'Aufgaben der Woche' : 'Aufgaben' })}
           >
-            {presenceRows.map((row) =>
-              renderTaskRow(row.item, row.key, {
-                entering: row.status === 'entering',
-                leaving: row.status === 'leaving',
-                onAnimationEnd: row.onAnimationEnd,
-              }),
-            )}
+            {foldRowsIntoCards(presenceRows).map((card) => (
+              <li
+                key={card.key}
+                role="presentation"
+                className="task-list__group-card list-motion-item"
+                data-entering={card.entering}
+                data-leaving={card.leaving}
+                onAnimationEnd={card.onAnimationEnd}
+              >
+                {card.header && (
+                  <div className="task-list__group-header">
+                    <span className="task-list__group-title">{card.header.label}</span>
+                    <span className="task-list__group-count">{card.header.count}</span>
+                  </div>
+                )}
+                <ul className="task-list__group-list">
+                  {card.rows.map((row) =>
+                    renderTaskRow(row.row, row.key, {
+                      entering: row.entering,
+                      leaving: row.leaving,
+                      onAnimationEnd: row.onAnimationEnd,
+                    }),
+                  )}
+                </ul>
+              </li>
+            ))}
           </ul>
           {/* AK9's "nothing left this week" (issue #705) — /uebersicht (`dueTodayOnly`)
               has no page of its own below the list to make this note meaningful on, so
@@ -534,7 +630,7 @@ export function TaskList({
               (tasks.spec.ts, uebersicht.spec.ts) matches by substring, so a label
               containing "Aufgaben" would fold this collapsed list's rows into the
               main list's count from every consumer of that locator. */}
-          <ul className="task-list" aria-label="Ohne Datum">
+          <ul className="task-list__group-list" aria-label="Ohne Datum">
             {undatedNodes
               .flatMap(nodeRows)
               .map((item) => renderTaskRow(item, item.id, { entering: false, leaving: false }))}
