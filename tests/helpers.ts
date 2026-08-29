@@ -5,6 +5,7 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 import { Client } from 'pg';
+import type { WeatherDay } from '@/local/dexie';
 import { AUTH_STATE } from './run-lock';
 
 export { AUTH_STATE };
@@ -607,6 +608,9 @@ declare global {
       // issue #560: ICS-Abo (ADR-0022).
       addIcsSubscription: (url: string, name: string) => Promise<string>;
       refreshIcsSubscriptions: () => Promise<void>;
+      // issue #870 (Endabgleich): seeds the forecast cache directly, bypassing the
+      // fetch effect (see e2e-bridge.tsx's doc comment on this method).
+      debugSeedWeather: (days: WeatherDay[]) => Promise<string>;
     };
   }
 }

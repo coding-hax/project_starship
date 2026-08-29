@@ -185,8 +185,8 @@ export default function AnmeldenPage() {
   return (
     <main className="auth" data-ground="anmelden">
       <div className="auth__title-row">
-        <h1>Starship</h1>
         <PageFace face="anmelden" />
+        <h1>Willkommen zurück</h1>
       </div>
       {mode === 'loading' && <p>Einen Moment…</p>}
 
