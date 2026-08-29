@@ -283,6 +283,29 @@ ${ciSummary}
    deiner Empfehlung, Label 'needs-answer' setzen, beenden. Rate niemals.`;
 }
 
+// #906: zwei Regeln aus dem `/visual-plan`-Skill von Builder.io
+// (https://github.com/BuilderIO/skills/tree/main/skills/visual-plan), so weit
+// uebernehmbar, wie sie ohne dessen Apparat auskommen -- der Skill selbst
+// scheidet aus (MCP-Connector/npx nicht in der Denk-Rollen-Allowlist,
+// Review-Link vom Handy nicht erreichbar, ~88 KB Skill-Text auf Opus-high).
+// Nur in planPrompt(): der dateiweise Plan ist die Stelle, an der
+// Wiederverwendung und Unumkehrbarkeit ueberhaupt sichtbar werden --
+// researchPrompt() bleibt auf Idee-/Feature-Ebene ohne dateiweisen Plan.
+const PLAN_REUSE_AND_COMMITMENT_RULE = `**Wiederverwendung zuerst.** Jeder Schritt im Plan nennt zuerst, was er
+wiederverwendet — bestehende Komponente, Hook, Outbox-Pfad, Schema-Feld,
+Helper — und erst danach das genuin Neue. Der Plan beschreibt das Delta,
+nicht was ohnehin schon da ist.
+
+**Unumkehrbares zuerst entscheiden.** Bevor der Rest geplant wird, legst du
+die unumkehrbaren Festlegungen fest und nennst sie samt Begründung im Plan —
+nicht nur die Entscheidung: Datenform (Drizzle/Dexie), IDs und Wire-Format
+der Sync-Nutzlast, Ownership-/Auth-Grenze, Krypto-Hülle.
+
+**Kleinster Schnitt, der die Richtung belegt.** Der erste Schritt ist der
+kleinste, der die Richtung belegt, ohne eine dieser Festlegungen zu
+verbauen. Nenn ausdrücklich, was drin ist und was bewusst vertagt wird —
+„was ist drin" und „was ist ausdrücklich vertagt".`;
+
 /**
  * RUN_ROLE=plan (ADR-0005). Nur lesend: kein Edit/Write, kein Branch, kein
  * Commit. Schreibt den Plan inkrementell in EINEN Kommentar und flippt
@@ -295,6 +318,8 @@ Code, lege KEINEN Branch an, committe NICHT.
 ${FILE_ACCESS_RULE}
 
 ${ARTIFACT_RULE}
+
+${PLAN_REUSE_AND_COMMITMENT_RULE}
 
 1. Lies CLAUDE.md, docs/ (v. a. docs/adr/, docs/ARCHITECTURE.md), das Issue
    (gh issue view ${issue} --comments) und den **aktuellen Code** der betroffenen

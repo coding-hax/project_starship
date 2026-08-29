@@ -493,6 +493,32 @@ describe('prompts', () => {
     });
   });
 
+  // #906: zwei Regeln aus dem `/visual-plan`-Skill (Builder.io), nur im
+  // Plan-Prompt -- der dateiweise Plan ist die Stelle, an der Wiederverwendung
+  // und Unumkehrbarkeit ueberhaupt sichtbar werden.
+  describe('Wiederverwendung + Unumkehrbares zuerst (#906)', () => {
+    const prompt = planPrompt(42);
+
+    it('verlangt, dass jeder Schritt zuerst die Wiederverwendung nennt und danach das Neue', () => {
+      expect(prompt).toContain('Wiederverwendung zuerst');
+      expect(prompt).toContain('bestehende Komponente, Hook, Outbox-Pfad, Schema-Feld,\nHelper');
+      expect(prompt).toContain('genuin Neue');
+    });
+
+    it('verlangt, unumkehrbare Festlegungen vor dem Rest zu entscheiden und zu begruenden', () => {
+      expect(prompt).toContain('Unumkehrbares zuerst entscheiden');
+      expect(prompt).toContain('Datenform (Drizzle/Dexie)');
+      expect(prompt).toContain('Ownership-/Auth-Grenze, Krypto-Hülle');
+      expect(prompt).toContain('samt Begründung im Plan');
+    });
+
+    it('verlangt den kleinsten ersten Schnitt, der die Richtung belegt, ohne Festlegungen zu verbauen', () => {
+      expect(prompt).toContain('Kleinster Schnitt, der die Richtung belegt');
+      expect(prompt).toContain('ohne eine dieser Festlegungen zu\nverbauen');
+      expect(prompt).toContain('was drin ist und was bewusst vertagt wird');
+    });
+  });
+
   // #842: der Lauf sichert seinen Stand, BEVOR er auf Hintergrundarbeit wartet.
   // Belegt an #830: fertiger Fix, gruene Gates -- trotzdem kein Commit, weil der
   // Lauf auf einen 'test-runner'-Subagenten wartete und der Turn endete.
