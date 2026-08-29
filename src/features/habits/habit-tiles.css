@@ -1,0 +1,78 @@
+/**
+ * Three stat tiles atop /routinen (issue #905) — same "own surface, own ink"
+ * card as habit-table.css/habit-history-card.css, `dl`/`dt`/`dd` stat shape
+ * from activity-block.css's Kopfzahlen.
+ */
+
+.habit-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.habit-tiles__tile {
+  min-width: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.habit-tiles__stat {
+  margin: 0;
+}
+
+.habit-tiles__label {
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.habit-tiles__value-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+
+.habit-tiles__value {
+  font-size: var(--text-page-title-lg);
+  font-variant-numeric: tabular-nums;
+  /* Rundschrift-Rezept (issue #859, ADR-0027) — "große Zahl" wie
+     Fortschrittsring/Wetter-Temperatur/Aktivitäten-Kennzahl. */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
+}
+
+.habit-tiles__denominator {
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+}
+
+.habit-tiles__bar {
+  height: 4px;
+  margin-top: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--border-faint);
+  overflow: hidden;
+}
+
+.habit-tiles__bar-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  /* Gleiche Mischung wie der FAB-Glyph auf --surface (fab.css, issue #831) —
+     hält ≥ 4,5:1 in jedem Bereich/Theme, deutlich über dem 3:1-Minimum für
+     bedeutungstragende Grafik (docs/design/farben-typografie.md). */
+  background: color-mix(in oklch, var(--area-habits) 65%, var(--text-base));
+}

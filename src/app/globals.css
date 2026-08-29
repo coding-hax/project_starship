@@ -20,11 +20,12 @@
 @import '../features/tasks/task-editor.css';
 @import '../features/tasks/capture-confirm.css';
 @import '../features/export/export.css';
-@import '../features/habits/habit-list.css';
+@import '../features/habits/habit-tiles.css';
+@import '../features/habits/habit-table.css';
+@import '../features/habits/habit-history-card.css';
 @import '../features/habits/habit-editor.css';
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';
-@import '../features/habits/streak-summary-card.css';
 @import '../features/weather/weather-forecast.css';
 @import '../features/weather/weather-day.css';
 @import '../features/weather/weather-icon-motion.css';

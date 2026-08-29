@@ -1,0 +1,202 @@
+/**
+ * Habit table (issue #905) — one `--surface` card, replaces the per-habit
+ * cards from habit-list.css. Row collapse uses the same `grid-template-rows`
+ * trick as section-card.css; `prefers-reduced-motion` needs no extra rule
+ * here either — tokens.css's global rule already zeroes every transition.
+ */
+
+.habit-table__empty {
+  padding: var(--space-12) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.habit-table {
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-surface);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.habit-table__head {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.habit-table__rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.habit-table__row {
+  border-block-start: 1px solid var(--border-faint);
+}
+
+.habit-table__row-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.habit-table__color {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.habit-table__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* 12 weekly bars, bottom-aligned — height is set inline per bar (issue #905). */
+.habit-table__weeks {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.habit-table__week-bar {
+  width: 3px;
+  min-height: 2px;
+  border-radius: 1px;
+  /* The 11 trailing weeks read as history, the running week stands out
+     (issue #905) — opacity only, the bar's own colour never changes. */
+  opacity: 0.38;
+}
+
+.habit-table__week-bar[data-current] {
+  opacity: 1;
+}
+
+.habit-table__streak {
+  flex-shrink: 0;
+  min-width: 3ch;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-table__chevron {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.habit-table__chevron[data-open='true'] {
+  transform: rotate(-135deg);
+}
+
+/* grid-template-rows 1fr/0fr animates without knowing the content's height —
+   same technique as section-card.css. */
+.habit-table__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+.habit-table__collapse[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+
+.habit-table__body {
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.habit-table__body > * {
+  margin: 0;
+}
+
+.habit-table__meta {
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.habit-table__month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.habit-table__month-nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.habit-table__month-nav-label {
+  min-width: 10ch;
+  text-align: center;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-table__progress {
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.habit-table__actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.habit-table__action {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}

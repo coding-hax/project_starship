@@ -1,10 +1,13 @@
 import type { Viewport } from 'next';
 import { AddHabitFab } from '@/features/habits/add-habit-fab';
-import { HabitList } from '@/features/habits/habit-list';
-import { StreakSummaryCard } from '@/features/habits/streak-summary-card';
+import { HabitHistoryCard } from '@/features/habits/habit-history-card';
+import { HabitTable } from '@/features/habits/habit-table';
+import { HabitTiles } from '@/features/habits/habit-tiles';
 import { PageFace } from '@/ui/faces';
+import { PageHead } from '@/ui/page-head';
+import { TodayLongDate } from '@/ui/today-long-date';
 
-export const metadata = { title: 'Routinen verwalten · Starship' };
+export const metadata = { title: 'Routinen · Starship' };
 
 // Android status bar colour (issue #882, AK4) — see uebersicht/page.tsx.
 export const viewport: Viewport = {
@@ -17,15 +20,13 @@ export const viewport: Viewport = {
 export default function RoutinenPage() {
   return (
     <div data-module="routinen" data-ground="routinen">
-      <div className="page-face-row">
-        <h1>Routinen verwalten</h1>
+      <PageHead rowClassName="page-face-row" eyebrow={<TodayLongDate />}>
+        <h1>Routinen</h1>
         <PageFace face="routinen" />
-      </div>
-      {/* Umgezogen von /uebersicht (issue #652) — die tägliche Übersicht bekommt
-          fünf einheitliche Modulköpfe und wird sonst zu voll; die Karte
-          bleibt hier direkt bei der Verwaltung erreichbar. */}
-      <StreakSummaryCard />
-      <HabitList />
+      </PageHead>
+      <HabitTiles />
+      <HabitTable />
+      <HabitHistoryCard />
       <AddHabitFab />
     </div>
   );
