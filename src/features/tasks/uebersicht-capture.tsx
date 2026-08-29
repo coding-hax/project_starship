@@ -30,6 +30,7 @@ import { useModules } from '@/features/settings/use-modules';
 import { mutate } from '@/local/outbox';
 import { berlinNow } from '@/push/schedule';
 import { Chip } from '@/ui/chip';
+import { Fab } from '@/ui/fab';
 import { Sheet } from '@/ui/sheet';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
 import { PRIORITIES } from './quick-add';
@@ -99,7 +100,9 @@ function MoreChip({ onOpen }: { onOpen: () => void }) {
 }
 
 /**
- * Erfassungsknopf in der Titelzeile von `/uebersicht`: ein Freitextfeld, dessen
+ * Erfassungsknopf auf `/uebersicht`: seit issue #920 ein schwebender `Fab`
+ * unten rechts (wie auf /aufgaben, /routinen, /journal, /kalender) statt eines
+ * Knopfes in der Titelzeile — hebt die #618-Entscheidung auf. Ein Freitextfeld, dessen
  * Ergebnis der Erkenner (`route-capture.ts`) laufend liest. Seit issue #716 lebt
  * der Stand nicht mehr nur in dieser einen Zeile, sondern in `accumulated` — jede
  * Übernahme (Enter, ein Chip-Öffnen oder „Anlegen") faltet die Zeile hinein und
@@ -437,9 +440,9 @@ export function UebersichtCapture() {
 
   return (
     <>
-      <button
-        type="button"
-        className="uebersicht-capture__button"
+      <Fab
+        label={LABEL}
+        text="Erfassen"
         onClick={() => {
           setUnresolvedHabit(false);
           setTitle('');
@@ -452,10 +455,7 @@ export function UebersichtCapture() {
           setNow(new Date());
           setOpen(true);
         }}
-        aria-label={LABEL}
-      >
-        <span aria-hidden="true">+</span>
-      </button>
+      />
       <Sheet
         open={open}
         onClose={() => setOpen(false)}

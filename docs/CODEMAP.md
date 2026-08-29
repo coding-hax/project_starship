@@ -22,8 +22,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
-- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` in der Titelzeile neben dem
-  Erfassungsknopf + `<UebersichtSections/>` (rendert je aktivem Modul dessen
+- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` in der Augenbrauenzeile neben
+  dem Einstellungs-Einstieg (#920, zuvor #652), `UebersichtCapture` als eigener FAB
+  unten rechts (#920) + `<UebersichtSections/>` (rendert je aktivem Modul dessen
   `OverviewSection`, Reihenfolge Wetter → Termine → Aufgaben → Aktivitäten →
   Routinen), jede Sektion mit einheitlichem Kopf über `OverviewBlock`
 - `(app)/aufgaben/page.tsx` — Kopfzeile + `<TaskList/>` + `<QuickAddTask/>`

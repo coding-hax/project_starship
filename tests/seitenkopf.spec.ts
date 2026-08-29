@@ -374,7 +374,7 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
 /* Aufgaben/Journal — Augenbraue, Zusatz-Slot, Kontrast.                     */
 /* -------------------------------------------------------------------------- */
 
-test('AK2 (#868): Übersicht zeigt die Augenbraue (langes Datum) und die Unterzeile (was heute offen ist)', async ({
+test('AK2 (#868, Unterzeile seit #920 entfernt): Übersicht zeigt die Augenbraue (langes Datum), keine Unterzeile mehr', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -383,13 +383,17 @@ test('AK2 (#868): Übersicht zeigt die Augenbraue (langes Datum) und die Unterze
   await seedHabit(page, { name: 'AK2 868 Routine', schedule: 'daily', color: null, archivedAt: null });
   await page.goto('/uebersicht');
 
-  const eyebrow = page.locator('[data-ground="uebersicht"] .page-head__eyebrow');
-  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  // Die Augenbraue trägt seit #920 Datum UND das Aktionsbündel (Ring,
+  // Einstellungen) im selben `.page-head__eyebrow`-Wrapper — die exakte
+  // Textprüfung greift deshalb auf `.uebersicht__eyebrow-date` ein, nicht mehr
+  // auf den ganzen Wrapper (dessen textContent sonst auch die Ring-Ziffern trüge).
+  const eyebrowDate = page.locator('[data-ground="uebersicht"] .uebersicht__eyebrow-date');
+  await expect(eyebrowDate).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
   await expect(page.locator('[data-ground="uebersicht"] h1')).toBeVisible();
 
-  // Eine Aufgabe + eine Routine, keine erledigt -> "Noch 2 von 2 offen".
-  const subline = page.locator('[data-ground="uebersicht"] .page-head__subline');
-  await expect(subline).toHaveText('Noch 2 von 2 offen');
+  // issue #920 AK4: die Unterzeile ("Noch N von M offen") entfällt ersatzlos —
+  // derselbe Zählstand steht bereits im Fortschrittsring daneben.
+  await expect(page.locator('[data-ground="uebersicht"] .page-head__subline')).toHaveCount(0);
 });
 
 test('AK2 (#868): Aufgaben zeigt die Augenbraue „N offen · M erledigt" und bleibt ohne Zusatz-Slot', async ({

@@ -1,8 +1,9 @@
-/* Einstellungen sits inline with the heading on mobile — Übersicht is the only
- * screen that carries it there (issue #126). Titelzeile plus Erfassungsknopf
- * (issue #618, umgestellt auf rechts verankert in #651): der Titel trägt die
- * Restbreite, das Aktionsbündel (Erfassungsknopf, Einstellungs-Link) bleibt
- * rechts verankert und driftet nicht, egal wie breit der Titel wird. */
+/* Titelzeile trägt nur noch Begrüßung + Figur (issue #920 hebt die #618-
+ * Entscheidung auf): der Erfassungsknopf ist ein schwebender `Fab` (AK1), Ring
+ * und Einstellungen-Einstieg ziehen in die Augenbrauenzeile (AK3, siehe unten).
+ * Einstellungen war zuvor die mobile Ausnahme, die inline in dieser Zeile saß
+ * (issue #126) — die Ausnahme bleibt bestehen, nur die Zeile ist jetzt die
+ * Augenbraue statt der Titelzeile. */
 .uebersicht__title-row {
   display: flex;
   align-items: center;
@@ -73,49 +74,37 @@
   text-overflow: ellipsis;
 }
 
-.uebersicht__title-actions {
+/* Augenbraue in zwei Hälften (issue #920, Vorbild Kalender-Kopf #921/#898):
+ * Datum links, Fortschrittsring + Einstellungen-Einstieg rechts. Anders als
+ * beim Kalender läuft das hier durch `PageHead`s `eyebrow`-Slot statt eines
+ * handgebauten `<header>` — dieser Wrapper trägt deshalb selbst die
+ * zweiseitige Flex-Verteilung, `.page-head__eyebrow` bleibt die reine
+ * Typografie-Hülle drumherum. */
+.uebersicht__eyebrow-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  flex-shrink: 0;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-/* Erfassungsknopf + Fortschrittsring bilden ein eigenes Gespann mit engerem
- * Abstand (issue #652 AK3) — der weitere Abstand zum Einstellungen-Link bleibt
- * die --space-4 von `.uebersicht__title-actions`. */
-.uebersicht__capture-group {
+.uebersicht__eyebrow-date {
+  margin: 0;
+}
+
+.uebersicht__eyebrow-actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-
-/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
- * der Slot selbst hält die Titelzeile stabil (issue #652, siehe
- * daily-progress-ring.tsx). */
-.daily-progress-ring-slot {
-  width: 48px;
-  height: 48px;
   flex-shrink: 0;
 }
 
-.uebersicht-capture__button {
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: var(--text-title);
-  line-height: var(--leading-tight);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
-}
-
-.uebersicht-capture__button:active {
-  opacity: 0.85;
+/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
+ * der Slot selbst hält die Augenbrauenzeile stabil (issue #652, verkleinert
+ * in #920, siehe daily-progress-ring.tsx). */
+.daily-progress-ring-slot {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
 }
 
 /* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe
