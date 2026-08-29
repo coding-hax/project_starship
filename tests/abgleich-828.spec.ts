@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
+import { parseForecast } from '@/features/weather/forecast';
 import {
   FIXED_NOW,
   installClockAt,
@@ -102,24 +103,6 @@ for (const mode of MODES) {
     page,
   }) => {
     await installClockAt(page, FIXED_NOW); // Saturday, 2026-07-18
-
-    // issue #870 (T3): echte Vorhersage statt der leeren beforeEach-Antwort, VOR
-    // registerPasskey — das landet bereits auf /uebersicht, wo WeatherForecast den
-    // damals aktiven Mock in den Dexie-Cache schreibt (fetchedAt = eingefrorene
-    // Zeit). Ein Umbiegen erst danach bliebe wirkungslos: REFRESH_INTERVAL_MS
-    // (3h) hält den leeren Eintrag "frisch", der Wetter-Kopf unten bliebe ohne
-    // Daten für Titel + Unterzeile.
-    await page.unroute(OPEN_METEO_PATTERN);
-    await page.route(OPEN_METEO_PATTERN, (route) =>
-      route.fulfill({
-        json: openMeteoForecastBody({
-          dates: FORECAST_WEEK,
-          tempsMax: FORECAST_WEEK.map(() => 20),
-          tempsMin: FORECAST_WEEK.map(() => 10),
-        }),
-      }),
-    );
-
     await registerPasskey(page);
     await page.emulateMedia({ colorScheme: mode.colorScheme, reducedMotion: mode.reducedMotion });
 
@@ -177,7 +160,21 @@ for (const mode of MODES) {
     ).toBeInViewport();
 
     // Wetter: Augenbraue (Datum) + Titel (Temperatur) + Unterzeile (Kategorie),
-    // issue #870 T3.
+    // issue #870 T3. Vorhersage direkt in den Dexie-Cache geschrieben (statt über
+    // die beforeEach-Route umgebogen) — die trägt der Wetter-Kopf unten, ohne dass
+    // /uebersichts eigener Wetter-Streifen (oben in dieser Suite bereits geprüft)
+    // dadurch von leer auf sieben echte Tage wächst (CI-Fund Runde 4: schob die
+    // Routinen-Sektion aus dem 812px-Bild).
+    await page.evaluate(
+      (days) => window.__starship.debugSeedWeather(days),
+      parseForecast(
+        openMeteoForecastBody({
+          dates: FORECAST_WEEK,
+          tempsMax: FORECAST_WEEK.map(() => 20),
+          tempsMin: FORECAST_WEEK.map(() => 10),
+        }),
+      ),
+    );
     await page.goto('/wetter/2026-07-18');
     await expect(page.locator('.weather-day__date')).toBeInViewport();
     await expect(page.locator('.weather-day__temp-max')).toBeInViewport();
