@@ -13,10 +13,13 @@ import {
   formatCountdown,
   formatMonthTitle,
   monthDaysFor,
+  monthEventCounts,
+  monthName,
   nextInAgenda,
   upcomingEventsToday,
   weekDaysFor,
   weekWindow,
+  yearLabel,
 } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
@@ -511,6 +514,67 @@ describe('categoriesForDay over expandForDay', () => {
   });
 });
 
+/**
+ * Same expandForDay composition as "categoriesForDay over expandForDay" above
+ * — the chip counts read the same rendered occurrences the strip's dots do.
+ */
+describe('monthEventCounts', () => {
+  function countsFor(events: EventView[], exceptions: EventExceptionView[], focusMonth: string) {
+    return monthEventCounts(focusMonth, (day) => expandForDay(events, exceptions, day));
+  }
+
+  it('reports 0/0 for an empty month', () => {
+    expect(countsFor([], [], '2026-07')).toEqual({ total: 0, allDay: 0 });
+  });
+
+  it('counts a single scheduled event once', () => {
+    const single = event({
+      startsAt: '2026-07-18T09:00:00.000Z',
+      endsAt: '2026-07-18T10:00:00.000Z',
+    });
+
+    expect(countsFor([single], [], '2026-07')).toEqual({ total: 1, allDay: 0 });
+  });
+
+  it('counts a multi-day all-day event once, not once per day it spans', () => {
+    const trip = event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-20' });
+
+    expect(countsFor([trip], [], '2026-07')).toEqual({ total: 1, allDay: 1 });
+  });
+
+  it('counts a weekly series once per occurrence in the month', () => {
+    const weekly = event({
+      // Every Monday in July 2026: 6, 13, 20, 27.
+      startsAt: '2026-07-06T07:00:00.000Z',
+      endsAt: '2026-07-06T08:00:00.000Z',
+      recurrence: { freq: 'weekly', interval: 1 },
+    });
+
+    expect(countsFor([weekly], [], '2026-07')).toEqual({ total: 4, allDay: 0 });
+  });
+
+  it('separates all-day from timed in the allDay subset', () => {
+    const timed = event({
+      id: 'timed-1',
+      startsAt: '2026-07-10T09:00:00.000Z',
+      endsAt: '2026-07-10T10:00:00.000Z',
+    });
+    const allDay = event({ id: 'allday-1', allDay: true, startDate: '2026-07-11', endDate: '2026-07-11' });
+
+    expect(countsFor([timed, allDay], [], '2026-07')).toEqual({ total: 2, allDay: 1 });
+  });
+
+  it('excludes a neighbour-month day even though monthDaysFor grids it in', () => {
+    // 2026-07-01 is a Wednesday — the grid's leading week reaches back into June.
+    const juneEdge = event({
+      startsAt: '2026-06-29T09:00:00.000Z',
+      endsAt: '2026-06-29T10:00:00.000Z',
+    });
+
+    expect(countsFor([juneEdge], [], '2026-07')).toEqual({ total: 0, allDay: 0 });
+  });
+});
+
 describe('allDayEventsForDay', () => {
   it('places a single-day all-day event on its own day, not continuing either side', () => {
     const events = [event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-18' })];
@@ -640,6 +704,26 @@ describe('formatMonthTitle', () => {
 
   it('does not shift the year for the last day of the year', () => {
     expect(formatMonthTitle('2026-12-31')).toBe('Dezember 2026');
+  });
+});
+
+describe('monthName', () => {
+  it('formats only the month, German', () => {
+    expect(monthName('2026-07-18')).toBe('Juli');
+  });
+
+  it('does not shift the month for the first day, UTC-anchored', () => {
+    expect(monthName('2026-08-01')).toBe('August');
+  });
+});
+
+describe('yearLabel', () => {
+  it('formats only the year', () => {
+    expect(yearLabel('2026-07-18')).toBe('2026');
+  });
+
+  it('does not shift the year for the last day of the year', () => {
+    expect(yearLabel('2026-12-31')).toBe('2026');
   });
 });
 

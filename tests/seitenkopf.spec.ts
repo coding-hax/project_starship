@@ -78,6 +78,13 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
   );
 }
 
+async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
 /** Trimmed one-off of aktivitaeten.spec.ts's insertGarminActivity — genug Track-Punkte
  * für alle drei Kurven (HF/Pace/Höhe), Rest bewusst minimal. */
 async function insertGarminActivity(): Promise<void> {
@@ -481,6 +488,93 @@ test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, He
   expect(
     contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
     'Augenbraue auf /aktivitaeten (dunkel)',
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #898 (T2b von #861/#869): Kalender-Kopf — Augenbraue + „Diese Woche"/ */
+/* Monat + Chips, dieselben drei Zonen/Tokens wie PageHead, kein PageHead-     */
+/* Bauteil selbst (der `<header>` bleibt handgebaut, Streifen bleibt darin).   */
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#898): Kalender zeigt Woche „<Monat Jahr>"/„Diese Woche" und Monat „<Jahr>"/Monatsname + Chips', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW); // Samstag, 2026-07-18
+  await registerPasskey(page);
+  await seedEvent(page, {
+    title: 'AK2 898 getimt',
+    allDay: false,
+    startsAt: '2026-07-10T09:00:00.000Z',
+    endsAt: '2026-07-10T10:00:00.000Z',
+  });
+  await seedEvent(page, {
+    title: 'AK2 898 ganztägig',
+    allDay: true,
+    startDate: '2026-07-15',
+    endDate: '2026-07-15',
+  });
+  await page.goto('/kalender');
+
+  const period = page.locator('.calendar-view__period');
+  await expect(period).toHaveText('Juli 2026');
+  await expect(page.getByRole('heading', { level: 1, name: 'Diese Woche' })).toBeVisible();
+  await expect(page.locator('.page-head__chips')).toHaveCount(0);
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  await expect(period).toHaveText('2026');
+  await expect(page.getByRole('heading', { level: 1, name: 'Juli' })).toBeVisible();
+  const chips = page.locator('.page-head__chip');
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toHaveText('2 Termine');
+  await expect(chips.nth(1)).toHaveText('1 ganztägig');
+});
+
+test('AK5 (#898): der Kalender-Kopf läuft in Woche und Monat nicht über (375×812), Chips brechen um', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await seedEvent(page, {
+    title: 'AK5 898 getimt',
+    allDay: false,
+    startsAt: '2026-07-10T09:00:00.000Z',
+    endsAt: '2026-07-10T10:00:00.000Z',
+  });
+  await page.goto('/kalender');
+
+  const header = page.locator('.calendar-view__header');
+  await assertHeaderFitsItself(header, '/kalender (Woche)');
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await assertHeaderFitsItself(header, '/kalender (Monat)');
+  await expect(page.locator('.page-head__chips')).toHaveCSS('flex-wrap', 'wrap');
+});
+
+test('AK6 (#898): die Kalender-Augenbraue erfüllt 4,5:1 gegen den Kalender-Grund, Hell und Dunkel', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/kalender');
+
+  const eyebrow = page.locator('.calendar-view__period');
+  await expect(eyebrow).toBeVisible();
+
+  const lightColor = await elementColor(eyebrow);
+  const lightGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+    'Augenbraue auf /kalender (hell)',
+  ).toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await elementColor(eyebrow);
+  const darkGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+    'Augenbraue auf /kalender (dunkel)',
   ).toBeGreaterThanOrEqual(4.5);
 });
 
