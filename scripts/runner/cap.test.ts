@@ -69,6 +69,17 @@ describe('opusBuildCapReached / opusBuildCapReserve', () => {
     expect(() => opusBuildCapClear(210, state, clock)).not.toThrow();
     expect(state.exists('opus-build-20260726-210')).toBe(false);
   });
+
+  // #900 AK4: der opus-cap-msg-Stempel (Erschoepfungsmeldung hoechstens
+  // einmal/Tag) darf einen Fortschritts-Clear nicht ueberleben-loeschen --
+  // er gehoert nicht zum Deckel-Zaehler und wird bewusst nicht angefasst.
+  it('clear leaves the opus-cap-msg exhaustion stamp for the same issue untouched', () => {
+    state.write('opus-build-20260726-211', '2\n');
+    state.write('opus-cap-msg-20260726-211', '');
+    opusBuildCapClear(211, state, clock);
+    expect(state.exists('opus-build-20260726-211')).toBe(false);
+    expect(state.exists('opus-cap-msg-20260726-211')).toBe(true);
+  });
 });
 
 describe('thinkingCapReached / thinkingCapReserve (#492)', () => {

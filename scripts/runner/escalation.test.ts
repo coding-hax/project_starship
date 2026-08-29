@@ -193,6 +193,22 @@ describe('buildEscalationEval', () => {
     expect(state.read('opus-build-20260726-109')?.trim()).toBe('2');
   });
 
+  it('#900 AK4: a moved branch tip does not reset the opus-cap-msg exhaustion stamp', () => {
+    state.write('opus-build-20260726-110', '2\n');
+    state.write('opus-cap-msg-20260726-110', '');
+
+    buildEscalationEval(
+      { issue: 110, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' },
+      state,
+      ghComments(''),
+      gitTip('sha-neu'), // Branch hat sich bewegt
+      clock,
+    );
+
+    expect(state.exists('opus-build-20260726-110')).toBe(false);
+    expect(state.exists('opus-cap-msg-20260726-110')).toBe(true);
+  });
+
   it('AC5: no-escalation prevents any tier bump, even after three failed runs', () => {
     const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
     const git = gitTip('');
