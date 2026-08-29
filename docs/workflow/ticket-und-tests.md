@@ -17,7 +17,7 @@ der Issue-Liste auf dem Handy und musst nicht hineinklicken:
 | 🟢 `Runner · nichts offen · zuletzt #42` | idle, Queue leer | nein |
 | 🟡 `Runner · wartet auf dich (#42)` | Frage offen oder Freigabe nötig — der Text im Ticket trennt beides: „wartet auf deine Antwort" (`needs-answer`) vs. „wartet auf eine Freigabe" (#196) | **ja** |
 | 🔴 `Runner · Fehler bei #42` | abgebrochen, Details am Ticket | **ja** |
-| 🔵 `Runner · Limit erreicht · #42 pausiert` | macht von selbst weiter | nein |
+| 🔵 `Runner · Kontingent leer bis HH:MM · #42` | Token-Kontingent aufgebraucht, alle Slots warten bis HH:MM, macht von selbst weiter (#891) | nein |
 | ⚪️ `Runner · nichts zu tun` | kein Ticket auf `ready`, `plan` oder `research` | nein (außer du willst was) |
 
 🟢 heißt jetzt ausdrücklich **idle**: kein laufender Prozess, egal ob noch Arbeit

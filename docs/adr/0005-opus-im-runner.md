@@ -41,7 +41,9 @@ Produktionscode.
   wie sie brauchen. Ein komplexer Plan kann mehrere Opus-Läufe kosten, und ihn nach
   einer festen Zahl für einen Tag zu parken widerspräche dem Ziel unbeaufsichtigten
   Fortschritts. Die Obergrenze ist das echte Nutzungs-/Session-Limit des Plans
-  (429 → `blocked-limit`, automatische Fortsetzung), nicht ein fester Zähler.
+  (429 → geteiltes `limit-until`, **kein** Label, automatische Fortsetzung; der
+  Flotten-Header trägt die Pause `Kontingent leer bis HH:MM`, #891), nicht ein
+  fester Zähler. `blocked-limit` bleibt allein dem Opus-Tagesdeckel.
 - **Kill-Switch:** Label `hands-off` am Ticket unterbindet jede Opus-Nutzung —
   der Planer überspringt das Ticket vollständig, weder Planung noch Bau durch Opus.
 - **Strikt nur-lesend, präventiv erzwungen (#63):** Opus läuft mit
