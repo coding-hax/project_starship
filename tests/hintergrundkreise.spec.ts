@@ -531,29 +531,34 @@ interface Box {
   height: number;
 }
 
+// `.bg-circle` is a true circle (`border-radius: 50%`), not its square bounding
+// rect — a point near a corner of `r` sits outside the painted disc and reads as
+// flat ground, exactly the false match a nav-band test once chased in CI (band
+// vs. ground diff of 2, then 0, both below the required 3). Checking actual
+// distance from the circle's centre, kept at 90% of the radius to clear the
+// anti-aliased edge too, guarantees the chosen point is really painted by the
+// circle. Shared by every helper below that needs to find or avoid a circle.
+function pointInsideCircle(r: CircleRect, x: number, y: number): boolean {
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const radius = (Math.min(r.width, r.height) / 2) * 0.9;
+  return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2;
+}
+
+function pointInsideAnyCircle(rects: CircleRect[], x: number, y: number): boolean {
+  return rects.some((r) => pointInsideCircle(r, x, y));
+}
+
 /** First point (viewport coords) that lies inside `navBox` but outside `navBarBox`
  * (the band around the pill) AND inside at least one circle rect. */
 function findSpotInNavBandUnderCircle(navBox: Box, navBarBox: Box, rects: CircleRect[]): { x: number; y: number } | null {
   const insideNavBar = (x: number, y: number) =>
     x >= navBarBox.x && x <= navBarBox.x + navBarBox.width && y >= navBarBox.y && y <= navBarBox.y + navBarBox.height;
-  // `.bg-circle` is a true circle (`border-radius: 50%`), not its square bounding
-  // rect — a point near a corner of `r` sits outside the painted disc and reads as
-  // flat ground, exactly the false match this test chased in CI (band vs. ground
-  // diff of 2, then 0, both below the required 3). Checking actual distance from
-  // the circle's centre, kept at 90% of the radius to clear the anti-aliased edge
-  // too, guarantees the chosen point is really painted by the circle.
-  const insideAnyCircle = (x: number, y: number) =>
-    rects.some((r) => {
-      const cx = r.left + r.width / 2;
-      const cy = r.top + r.height / 2;
-      const radius = (Math.min(r.width, r.height) / 2) * 0.9;
-      return (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2;
-    });
   const step = 4;
   for (let y = Math.ceil(navBox.y); y < navBox.y + navBox.height; y += step) {
     for (let x = Math.ceil(navBox.x); x < navBox.x + navBox.width; x += step) {
       if (insideNavBar(x, y)) continue;
-      if (insideAnyCircle(x, y)) return { x, y };
+      if (pointInsideAnyCircle(rects, x, y)) return { x, y };
     }
   }
   return null;
@@ -627,5 +632,135 @@ test('AK2/AK3 (#889): Kreisbogen läuft in der Nav-Zeile außerhalb der Pille du
   expect(
     maxChannelDiff(bandColor, groundColor),
     `Nav-Band-Pixel ${JSON.stringify(bandColor)} vs. Grund ${JSON.stringify(groundColor)}`,
+  ).toBeGreaterThanOrEqual(3);
+});
+
+// --- issue #919: die Kreisebene wurde bislang genau an der Safe-Area-Kante
+// abgeschnitten (`inset: env(safe-area-inset-top) 0 0 0`) — der Kreisbogen
+// bricht dort hart ab, obwohl die Entwurfs-Vorlage ihn bis zur Oberkante
+// durchlaufen lässt. `.bg-layer` bekommt jetzt `inset: 0`, ein eigener
+// Schleier (`.bg-layer__veil`, letztes Kind) dunkelt die Statusleisten-Zone
+// stattdessen durchscheinend ab. CI/Playwright kennen keinen Notch
+// (`env(safe-area-inset-top)` = 0) — deshalb erzwingen die Tests unten
+// `--safe-top` (tokens.css) per `addStyleTag` auf einen echten Wert (AK4). --
+
+test('AK1 (#919): .bg-layer bekommt inset:0, kein Schnitt mehr an der Safe-Area', async ({ page }) => {
+  await registerPasskey(page);
+  await page.goto('/aufgaben');
+
+  const layerTop = await page.locator('.bg-layer').evaluate((el) => getComputedStyle(el).top);
+  expect(layerTop).toBe('0px');
+});
+
+/** First point (viewport coords, y < bandHeight) that lies inside at least one circle rect. */
+function findSpotInBandUnderCircle(
+  rects: CircleRect[],
+  bandHeight: number,
+  viewportWidth: number,
+): { x: number; y: number } | null {
+  const step = 4;
+  for (let y = 0; y < bandHeight; y += step) {
+    for (let x = 0; x < viewportWidth; x += step) {
+      if (pointInsideAnyCircle(rects, x, y)) return { x, y };
+    }
+  }
+  return null;
+}
+
+/** Same x as `matched`, first y at or below `bandHeight` still inside the same circle `matched` sits in. */
+function findSpotInSameCircleBelowBand(
+  rects: CircleRect[],
+  matched: { x: number; y: number },
+  bandHeight: number,
+  viewportHeight: number,
+): { x: number; y: number } | null {
+  const rect = rects.find((r) => pointInsideCircle(r, matched.x, matched.y));
+  if (!rect) return null;
+  const step = 4;
+  for (let y = bandHeight; y < viewportHeight; y += step) {
+    if (pointInsideCircle(rect, matched.x, y)) return { x: matched.x, y };
+  }
+  return null;
+}
+
+test('AK2 (#919): der Schleier liegt über den Kreisen, durchscheinend statt deckend', async ({ page }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+  await page.addStyleTag({ content: ':root { --safe-top: 60px; }' });
+
+  // Letztes Kind, kein eigener z-index — DOM-Reihenfolge allein entscheidet (AK2).
+  const isLastChild = await page.evaluate(
+    () => document.querySelector('.bg-layer')?.lastElementChild?.classList.contains('bg-layer__veil') ?? false,
+  );
+  expect(isLastChild, '.bg-layer__veil ist das letzte Kind von .bg-layer').toBe(true);
+  const veilZIndex = await page.locator('.bg-layer__veil').evaluate((el) => getComputedStyle(el).zIndex);
+  expect(veilZIndex).toBe('auto');
+
+  await hideForegroundContent(page);
+  const viewport = page.viewportSize()!;
+  const rects = await circleRects(page);
+
+  const inBand = findSpotInBandUnderCircle(rects, 60, viewport.width);
+  expect(inBand, 'Testvoraussetzung: ein Kreis auf /aufgaben liegt in der erzwungenen Safe-Area-Zone').not.toBeNull();
+  const belowBandSameCircle = findSpotInSameCircleBelowBand(rects, inBand!, 60, viewport.height);
+  expect(belowBandSameCircle, 'derselbe Kreis reicht auch unter die Zone').not.toBeNull();
+  const inBandNoCircle = findFreeSpotOutsideRects(rects, { width: viewport.width, height: 60 });
+  expect(inBandNoCircle, 'eine kreisfreie Stelle innerhalb der Zone').not.toBeNull();
+
+  const [inBandColor, belowBandColor, inBandGroundColor] = await samplePixels(page, [
+    inBand!,
+    belowBandSameCircle!,
+    inBandNoCircle!,
+  ]);
+
+  // Der Schleier liegt tatsächlich über dem Kreis: derselbe Kreis sieht in der
+  // Zone anders aus als knapp darunter, wo kein Schleier mehr liegt.
+  expect(
+    maxChannelDiff(inBandColor, belowBandColor),
+    `Kreis in der Zone ${JSON.stringify(inBandColor)} vs. derselbe Kreis darunter ${JSON.stringify(belowBandColor)}`,
+  ).toBeGreaterThanOrEqual(3);
+
+  // Durchscheinend, nicht deckend: der Kreis unter dem Schleier unterscheidet
+  // sich noch vom flachen Grund unter demselben Schleier — eine deckende
+  // Fläche (das alte Band) hätte beide auf dieselbe Farbe gebracht.
+  expect(
+    maxChannelDiff(inBandColor, inBandGroundColor),
+    `Kreis unterm Schleier ${JSON.stringify(inBandColor)} vs. Grund unterm Schleier ${JSON.stringify(inBandGroundColor)}`,
+  ).toBeGreaterThanOrEqual(3);
+});
+
+test('AK4 (#919): --safe-top ist ein eigener Anker, Standard 0, per addStyleTag auf einen echten Wert erzwingbar', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/aufgaben');
+
+  // CI/Playwright-Browser haben keinen Notch: env(safe-area-inset-top) = 0.
+  const defaultTop = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim(),
+  );
+  expect(defaultTop).toBe('0px');
+
+  await page.addStyleTag({ content: ':root { --safe-top: 47px; }' });
+  const veilHeight = await page.locator('.bg-layer__veil').evaluate((el) => getComputedStyle(el).height);
+  expect(veilHeight, '--safe-top treibt tatsächlich die Schleier-Höhe, kein toter Anker').toBe('47px');
+
+  await hideForegroundContent(page);
+  const viewport = page.viewportSize()!;
+  const rects = await circleRects(page);
+  const inBand = findFreeSpotOutsideRects(rects, { width: viewport.width, height: 47 });
+  expect(inBand, 'eine kreisfreie Stelle innerhalb der erzwungenen Zone').not.toBeNull();
+  const belowBand = { x: inBand!.x, y: inBand!.y + 47 };
+  expect(
+    pointInsideAnyCircle(rects, belowBand.x, belowBand.y),
+    'Vergleichsstelle liegt außerhalb jedes Kreises',
+  ).toBe(false);
+
+  const [bandColor, groundColor] = await samplePixels(page, [inBand!, belowBand]);
+  expect(
+    maxChannelDiff(bandColor, groundColor),
+    `erzwungene Zone ${JSON.stringify(bandColor)} vs. flacher Grund ${JSON.stringify(groundColor)}`,
   ).toBeGreaterThanOrEqual(3);
 });
