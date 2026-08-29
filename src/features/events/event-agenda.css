@@ -106,15 +106,16 @@
   --border: var(--border-base);
   --border-strong: var(--border-strong-base);
   --border-faint: var(--border-faint-base);
-  border-inline-start: 3px solid var(--area-events);
+  border-inline-start: 6px solid var(--agenda-edge, var(--area-events));
   border-radius: var(--radius-surface);
   box-shadow: var(--shadow-raised);
 }
 
 .event-agenda__item-button {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: var(--space-2);
   width: 100%;
   padding: var(--space-2);
   border: none;
@@ -130,15 +131,9 @@
   outline-offset: -2px;
 }
 
-.event-agenda__item-header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1);
-}
-
 .event-agenda__item-time {
-  color: var(--text-muted);
-  font-size: var(--text-meta);
+  color: var(--agenda-edge, var(--area-events));
+  font-size: var(--text-agenda-time);
   font-variant-numeric: tabular-nums;
   /* Rundschrift-Rezept (issue #859, ADR-0027): AK3 nennt die Uhrzeit in der
      Kalender-Agenda ausdrücklich, das Gewicht hebt sich damit auf 600 (vorher
@@ -149,10 +144,24 @@
   line-height: var(--leading-display);
 }
 
+/* Titel + Zweitzeile, rechts neben der Uhrzeit-Spalte (issue #923) —
+   min-width:0 ist der Hebel gegen Grid-Überlauf bei langem Titel (AK6). */
+.event-agenda__item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
 .event-agenda__item-title {
   color: var(--text);
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
+}
+
+.event-agenda__item-subline {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 .event-agenda__overlap-note {

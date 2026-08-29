@@ -11,6 +11,7 @@ import {
   dateKeyDiff,
   dayWindow,
   formatCountdown,
+  formatDuration,
   formatMonthTitle,
   monthDaysFor,
   monthEventCounts,
@@ -744,5 +745,31 @@ describe('formatCountdown', () => {
 
   it('reads "Jetzt" once the event has started', () => {
     expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 11, 0)))).toBe('Jetzt');
+  });
+});
+
+describe('formatDuration', () => {
+  it('reports whole minutes under an hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 9, 30)))).toBe(
+      '30 Min',
+    );
+  });
+
+  it('omits minutes on an exact hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 10, 0)))).toBe(
+      '1 Std',
+    );
+  });
+
+  it('reports hours and minutes over an hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 10, 30)))).toBe(
+      '1 Std 30 Min',
+    );
+  });
+
+  it('reports multiple whole hours', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 12, 0)))).toBe(
+      '3 Std',
+    );
   });
 });

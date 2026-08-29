@@ -299,12 +299,61 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
 
   const card = eventCard(page, 'Zahnarzt');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('09:00–10:00');
+  await expect(card.locator('.event-agenda__item-time')).toHaveText('09:00');
+  // Die Endzeit steht nicht mehr in der Kopfzeile, sondern als Dauer in der
+  // Zweitzeile (AK2) — ohne Kategorie steht dort nur die Dauer.
+  await expect(card.locator('.event-agenda__item-subline')).toHaveText('1 Std');
+  await expect(card).not.toContainText('09:00–10:00');
 
   // Chronological order in the DOM, not insertion order (AK1).
   const titles = await page.locator('.event-agenda__item').allTextContents();
   expect(titles[0]).toContain('Zahnarzt');
   expect(titles[1]).toContain('Nachmittagstermin');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1/AK3 (issue #923): Blatt-Aufbau der getakteten Agenda-Zeile             */
+/* -------------------------------------------------------------------------- */
+
+test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit traegt die Kategoriefarbe (issue #923 AK1)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T07:30:00.000Z`, // 09:30 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = eventCard(page, 'Teammeeting');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.event-agenda__item-subline')).toHaveText('30 Min · Arbeit');
+
+  const expectedColor = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  const timeColor = await card
+    .locator('.event-agenda__item-time')
+    .evaluate((el) => getComputedStyle(el).color);
+  expect(timeColor).toBe(expectedColor);
+});
+
+test('die Farbkante einer Terminkarte ist 6px breit (issue #923 AK3)', async ({ page }) => {
+  await seedEvent(page, {
+    title: 'Kantenprobe',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const card = eventCard(page, 'Kantenprobe');
+  await expect(card).toBeVisible();
+  const borderWidth = await card.evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
+  expect(borderWidth).toBe('6px');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -553,7 +602,7 @@ test('der alte Text "überschneidet sich" kommt in der Agenda nirgends mehr vor 
   await expect(page.getByText('überschneidet sich')).toHaveCount(0);
 });
 
-test('das Ueberschneidungs-Label steht in der Uhrzeit-Zeile, rechts von der Uhrzeit, der Titel bleibt darunter (issue #657 AK4)', async ({
+test('der Titel steht rechts von der Uhrzeit-Spalte, das Ueberschneidungs-Label in der Zweitzeile darunter (issue #657 AK4, umgezogen für #923)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -581,15 +630,14 @@ test('das Ueberschneidungs-Label steht in der Uhrzeit-Zeile, rechts von der Uhrz
   await expect(card).toHaveAttribute('data-entering', 'false');
 
   const timeBox = await card.locator('.event-agenda__item-time').boundingBox();
-  const labelBox = await card.locator('.event-agenda__overlap-note').boundingBox();
   const titleBox = await card.locator('.event-agenda__item-title').boundingBox();
-  if (!timeBox || !labelBox || !titleBox) throw new Error('AK4: Karte hat keine BoundingBox');
+  const labelBox = await card.locator('.event-agenda__overlap-note').boundingBox();
+  if (!timeBox || !titleBox || !labelBox) throw new Error('AK4: Karte hat keine BoundingBox');
 
-  const timeCenterY = timeBox.y + timeBox.height / 2;
-  const labelCenterY = labelBox.y + labelBox.height / 2;
-  expect(Math.abs(timeCenterY - labelCenterY)).toBeLessThanOrEqual(2);
-  expect(labelBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
-  expect(titleBox.y).toBeGreaterThanOrEqual(timeBox.y + timeBox.height);
+  // Uhrzeit-Spalte links, Titel in der Text-Spalte rechts davon.
+  expect(titleBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
+  // Die Zweitzeile mit dem Ueberschneidungs-Label steht unter dem Titel.
+  expect(labelBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
 });
 
 test('bei langem Titel bleibt die ueberlappende Karte innerhalb der Bildschirmbreite, iPhone 12 mini (issue #657 AK5)', async ({
