@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { StatusUpdate } from './round.js';
+import { fmtClock } from './time.js';
 
 export interface SlotState {
   slotId: string;
@@ -149,16 +150,19 @@ export function aggregateStatus(
   effectiveLeadSlot: string,
   nowMs: number,
   staleMs = STALE_MS,
+  // #891, AK3: geteiltes 'limit-until' (Unix-Sekunden) -- cli.ts liest es und
+  // reicht es hier durch. Default null haelt alle bestehenden Aufrufe gueltig.
+  limitUntilEpochSeconds: number | null = null,
 ): StatusUpdate | null {
   if (states.length === 0) return null;
   if (states.length === 1 && slotCount <= 1) {
+    // AK9 (#204) + #891 AK3: der eine Slot traegt den Runden-Titel schon selbst
+    // (im 429-Fall den AK2-Wortlaut) -- unveraendert durchreichen.
     const only = states[0]!;
     return { title: only.title, emoji: only.emoji, text: only.text };
   }
 
   const activeCount = states.filter((s) => isFresh(s, nowMs, staleMs)).length;
-  const emoji = worstEmoji(states.filter((s) => isFresh(s, nowMs, staleMs)));
-  const title = `Runner-Flotte · ${activeCount} von ${slotCount} aktiv`;
 
   const lines = states.map((s) => {
     const fresh = isFresh(s, nowMs, staleMs);
@@ -171,6 +175,23 @@ export function aggregateStatus(
     effectiveLeadSlot !== configuredLeadSlot
       ? `\n\n⚠️ **Leitslot übernommen:** Slot ${configuredLeadSlot} antwortet nicht mehr, Slot ${effectiveLeadSlot} führt Status und globale Wächter.`
       : '';
+
+  // #891, AK3: liegt die Kontingent-Pause noch in der Zukunft, traegt der
+  // Flotten-Titel sie (OHNE Ticketnummer -- die Pause gilt allen), Emoji 🔵,
+  // und die Pausenzeile steht VOR den Slot-Zeilen. Die Slot-Zeilen bleiben
+  // unveraendert. Ist 'limit-until' abgelaufen/null (AK5), faellt es auf den
+  // regulaeren "N von M aktiv"-Titel unten zurueck.
+  if (limitUntilEpochSeconds !== null && limitUntilEpochSeconds * 1000 > nowMs) {
+    const hhmm = fmtClock(limitUntilEpochSeconds);
+    return {
+      title: `Kontingent leer bis ${hhmm}`,
+      emoji: '🔵',
+      text: `🔵 **Token-Kontingent aufgebraucht.** Alle Slots warten bis ${hhmm} Uhr und laufen dann von selbst weiter.\n\n${lines.join('\n')}${takeoverNote}`,
+    };
+  }
+
+  const emoji = worstEmoji(states.filter((s) => isFresh(s, nowMs, staleMs)));
+  const title = `Runner-Flotte · ${activeCount} von ${slotCount} aktiv`;
 
   return {
     title,

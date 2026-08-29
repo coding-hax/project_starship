@@ -278,6 +278,19 @@ setup_conflict() {
     "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
 }
 
+# #880: $1 = Issue-Nr, $2 = PR-Nr -> markiert den PR als ENTWURF (isDraft:true),
+# alle Checks gruen. Genau der Zustand eines PR, den noch kein Pruef-Lauf aus
+# dem Entwurf gehoben hat: die Wache haengt ihren Riegel an isDraft, nicht mehr
+# ans Label 'check'. Ohne diese Datei liefert der 'pr view'-Stub den
+# Default-Nicht-Entwurf (isDraft fehlt -> false) -- den mergt die Wache weiter.
+setup_draft() {
+  local issue="$1" pr="$2"
+  printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
+    > "$GHSTATE_DIR/checks-$pr.json"
+  printf '{"headRefName":"fix/%s-runner-ci-watch","mergeStateStatus":"CLEAN","isDraft":true}' \
+    "$issue" > "$GHSTATE_DIR/mergestate-$pr.json"
+}
+
 # $1 = Branchname -> laesst 'git worktree list --porcelain' im Stub so
 # antworten, als hielte ein Worktree unter /wt/issue diesen Branch (#665,
 # T26). Ohne diesen Aufruf bleibt die Antwort leer (Fallback-Pfad).
@@ -320,7 +333,11 @@ case "$IN_PROGRESS_301" in
 esac
 
 # ==============================================================================
-# T2 -- CI grün -> ready + Auto-Merge, ohne Agentenlauf
+# T2 (#880) -- CI grün an einem PR, der NICHT (mehr) im Entwurf ist (Alt-PR aus
+# der Zeit vor #839 oder von Hand/vom Pruef-Lauf freigegeben): Auto-Merge, ohne
+# Agentenlauf. Der 'pr view'-Stub liefert per Default isDraft-frei -> kein
+# Entwurf. Die Wache ruft dabei NIE selbst 'gh pr ready' (das gehoert seit #839
+# ausschliesslich dem Pruef-Lauf, #880/AC3/AC6).
 # ==============================================================================
 reset_state
 setup_wip_issue 302
@@ -329,8 +346,8 @@ printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"},{"buc
   > "$GHSTATE_DIR/checks-502.json"
 run_round
 assert_file_absent "T2: kein Agentenlauf bei grüner CI" "$GHSTATE_DIR/claude-called"
-assert_file_present "T2: Draft wird auf 'ready' gesetzt" "$GHSTATE_DIR/ready-502"
-assert_file_present "T2: Auto-Merge wird aktiviert" "$GHSTATE_DIR/merged-502"
+assert_file_absent "T2 (#880): die Wache ruft NIE selbst 'gh pr ready'" "$GHSTATE_DIR/ready-502"
+assert_file_present "T2: ein freigegebener PR wird weiterhin gemergt" "$GHSTATE_DIR/merged-502"
 
 # ==============================================================================
 # T3 -- CI rot (nicht nur protected-paths) -> gezielter Fix-Agent mit Summary
@@ -863,8 +880,9 @@ assert_file_absent "T26: 'checkout -B' wird NICHT aufgerufen, wenn ein Worktree 
 reset_state
 setup_check_issue 470
 setup_pr 470 770
-printf '[{"bucket":"pass","name":"quality"},{"bucket":"pass","name":"e2e"}]' \
-  > "$GHSTATE_DIR/checks-770.json"
+# #880: der PR wartet auf sein AK-Tor -> er ist ein Entwurf. Genau daran haengt
+# der Riegel jetzt (nicht mehr am Label 'check').
+setup_draft 470 770
 run_round
 assert_file_absent "T27: kein Auto-Merge, solange das AK-Tor offen ist" "$GHSTATE_DIR/merged-770"
 assert_file_absent "T27: der PR wird auch nicht aus dem Entwurf gehoben" "$GHSTATE_DIR/ready-770"
@@ -896,6 +914,30 @@ esac
 PROMPT_471=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
 assert_contains "T28: es laeuft der CI-Fix-Prompt, kein Pruef-Lauf" "Was rot ist" "$PROMPT_471"
 assert_not_contains "T28: kein AK-Pruef-Prompt auf rotem Stand" "AK-Prüfer" "$PROMPT_471"
+
+# ==============================================================================
+# T29 (#880) -- der eigentliche Fund des Tickets, Ende-zu-Ende. Der Pruefer nimmt
+# bei einer Luecke 'check' ab (sein Rueckweg in den Bau), der PR bleibt aber
+# ENTWURF. Am Label festgemacht saehe der naechste Takt einen gruenen PR ohne
+# Label und mergte ihn wie vor #839 (die Luecke aus #850). Jetzt haengt der
+# Riegel am Entwurfsstatus: kein Merge, kein 'ready' -- stattdessen startet der
+# BAU-Lauf. Das Ticket traegt hier bewusst KEIN 'check' (AC1: unabhaengig vom
+# Label; AC4: der Rueckweg ist dicht).
+# ==============================================================================
+reset_state
+setup_wip_issue 480
+setup_pr 480 780
+setup_draft 480 780
+run_round
+assert_file_absent "T29 (#880 AC1): kein Auto-Merge eines Entwurfs, auch ohne 'check'" \
+  "$GHSTATE_DIR/merged-780"
+assert_file_absent "T29 (#880 AC1): der Entwurf wird nicht aus dem Entwurf gehoben" \
+  "$GHSTATE_DIR/ready-780"
+assert_file_present "T29 (#880 AC4): stattdessen laeuft der Bau-Lauf" "$GHSTATE_DIR/claude-called"
+PROMPT_480=$(cat "$GHSTATE_DIR/last-prompt" 2>/dev/null)
+assert_contains "T29: es ist der generische Bau-Prompt" \
+  "Pflichtlektüre ist NUR CLAUDE.md" "$PROMPT_480"
+assert_not_contains "T29: NICHT der AK-Pruef-Prompt" "AK-Prüfer" "$PROMPT_480"
 
 # ==============================================================================
 echo

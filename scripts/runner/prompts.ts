@@ -26,9 +26,25 @@ nur, wenn ein Ticket sie ausdrücklich verlangt.`;
 // unberuehrt. Nur in planPrompt()/researchPrompt() eingebunden, NICHT in
 // buildPrompt()/ciFixPrompt() (AK4, Scope-Creep waere ein Bau-Lauf, der
 // nebenbei eine Seite veroeffentlicht).
-const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` steht dir zur
-Verfügung und veröffentlicht sofort nach außen (ADR-0024, korrigiert durch
-ADR-0025).
+//
+// #907: die Allowlist stimmt (round.ts haengt Artifact,Write an), der
+// unbeaufsichtigte Kontext liess den Aufruf in #807 trotzdem zweimal
+// woertlich mit "Artifact exists but is not enabled in this context"
+// scheitern. Die Regel darf das Werkzeug seither nicht mehr bedingungslos
+// versprechen -- sie nennt den Ersatz UND verbietet den zweiten Versuch im
+// selben Lauf (kein drittes #807).
+const ARTIFACT_RULE = `**Artifact (optional, claude.ai).** Das Werkzeug \`Artifact\` kann dir zur
+Verfügung stehen und veröffentlicht sofort nach außen (ADR-0024, korrigiert
+durch ADR-0025) — verlässlich ist das aber nicht. In #807 scheiterte der
+Aufruf im unbeaufsichtigten Kontext zweimal wörtlich mit „Artifact exists but
+is not enabled in this context", obwohl die Allowlist \`Artifact,Write\`
+enthielt. **Ersatz, falls abgelehnt:** eine Text-Skizze im Monospace-Block
+(dreifache Backticks) direkt im Issue-Kommentar — die rendert auch auf dem
+Handy.
+
+**Bei einer Ablehnung:** die **wörtliche** Fehlermeldung in deinen
+Ergebnis-Kommentar übernehmen und \`Artifact\` in diesem Lauf **kein zweites
+Mal** versuchen — der Ersatz aus dem vorigen Absatz reicht.
 
 **Erst schreiben, dann veröffentlichen.** \`Artifact\` nimmt ausschließlich
 einen \`file_path\` auf eine bereits geschriebene \`.html\`/\`.md\`-Datei — es gibt
@@ -40,13 +56,17 @@ weiterhin nicht — du legst neu an, du änderst nichts Bestehendes.
 
 **Wann:** nur wenn ein anzuschauendes Objekt die Entscheidung trägt (z. B. ein
 Entwurfsblatt oder eine Skizze). Reichen drei Absätze im Kommentar, bleibt es
-beim Kommentar — der Normalfall ist **kein** Artifact.
+beim Kommentar — der Normalfall ist **kein** Artifact. Reines Backend-,
+Sync-, Schema- oder Migrations-Ticket: **kein** Entwurfsblatt — ausdrücklich,
+nicht nur als Umkehrschluss aus diesem Absatz.
 
 **Wie:** klein — nur das Anzuschauende plus so viel Beschriftung, dass klar
 ist, was was ist. Keine Begründungs-Abschnitte, keine Trade-off-Tabellen,
 keine Code-Listings auf der Seite: die Überlegung steht im Issue-Kommentar,
-das Artifact zeigt nur das Objekt. Nicht mehr Varianten oder Zustände, als die
-Entscheidung braucht.
+das Artifact zeigt nur das Objekt. Zeigt das Entwurfsblatt eine UI: **ein
+Artboard je sichtbarem Zustand** (Grundzustand, Overlay/Popover/Sheet, Laden,
+Fehler, leer) statt einer Sammelskizze — und nur die Zustände, die die
+Entscheidung tatsächlich braucht, nicht alle denkbaren.
 
 **Nie ins Artifact:** echte Nutzerdaten (insbesondere Journal-Inhalte,
 Regel 9) oder Secrets (Regel 10) — veröffentlichen heißt, es verlässt das
@@ -55,7 +75,17 @@ Gerät.
 **URL:** landet im Plan-/Rechercheergebnis-Kommentar, nicht nur in der
 Galerie — der Mensch sieht unterwegs nur GitHub. Ein Fortsetzungslauf
 aktualisiert über diese URL/ID **dasselbe** Artifact, statt ein zweites
-anzulegen.`;
+anzulegen.
+
+**Kommentare als Rückkanal.** Steht im Issue bereits eine Artifact-URL, liest
+du **vor** dem Planen bzw. Recherchieren ihre Kommentar-Threads (\`Artifact\`
+mit \`action: "comments"\` und der URL) — das zählt als Rückmeldung des
+Menschen, gleichrangig mit einem Issue-Kommentar. Steht keine URL im Issue,
+entfällt dieser Schritt ersatzlos, kein zusätzlicher Aufruf. Einen für Claude
+freigeschalteten Thread beantwortest du (\`action: "reply"\`) und löst ihn auf
+(\`action: "resolve"\`), sobald du ihn abgearbeitet hast, bevor dein Lauf
+endet; einen **nicht** freigeschalteten Thread liest du nur, ohne zu
+antworten oder aufzulösen.`;
 
 // #588: Der Runner legt keine Fund-Tickets mehr an.
 //
@@ -253,6 +283,29 @@ ${ciSummary}
    deiner Empfehlung, Label 'needs-answer' setzen, beenden. Rate niemals.`;
 }
 
+// #906: zwei Regeln aus dem `/visual-plan`-Skill von Builder.io
+// (https://github.com/BuilderIO/skills/tree/main/skills/visual-plan), so weit
+// uebernehmbar, wie sie ohne dessen Apparat auskommen -- der Skill selbst
+// scheidet aus (MCP-Connector/npx nicht in der Denk-Rollen-Allowlist,
+// Review-Link vom Handy nicht erreichbar, ~88 KB Skill-Text auf Opus-high).
+// Nur in planPrompt(): der dateiweise Plan ist die Stelle, an der
+// Wiederverwendung und Unumkehrbarkeit ueberhaupt sichtbar werden --
+// researchPrompt() bleibt auf Idee-/Feature-Ebene ohne dateiweisen Plan.
+const PLAN_REUSE_AND_COMMITMENT_RULE = `**Wiederverwendung zuerst.** Jeder Schritt im Plan nennt zuerst, was er
+wiederverwendet — bestehende Komponente, Hook, Outbox-Pfad, Schema-Feld,
+Helper — und erst danach das genuin Neue. Der Plan beschreibt das Delta,
+nicht was ohnehin schon da ist.
+
+**Unumkehrbares zuerst entscheiden.** Bevor der Rest geplant wird, legst du
+die unumkehrbaren Festlegungen fest und nennst sie samt Begründung im Plan —
+nicht nur die Entscheidung: Datenform (Drizzle/Dexie), IDs und Wire-Format
+der Sync-Nutzlast, Ownership-/Auth-Grenze, Krypto-Hülle.
+
+**Kleinster Schnitt, der die Richtung belegt.** Der erste Schritt ist der
+kleinste, der die Richtung belegt, ohne eine dieser Festlegungen zu
+verbauen. Nenn ausdrücklich, was drin ist und was bewusst vertagt wird —
+„was ist drin" und „was ist ausdrücklich vertagt".`;
+
 /**
  * RUN_ROLE=plan (ADR-0005). Nur lesend: kein Edit/Write, kein Branch, kein
  * Commit. Schreibt den Plan inkrementell in EINEN Kommentar und flippt
@@ -265,6 +318,8 @@ Code, lege KEINEN Branch an, committe NICHT.
 ${FILE_ACCESS_RULE}
 
 ${ARTIFACT_RULE}
+
+${PLAN_REUSE_AND_COMMITMENT_RULE}
 
 1. Lies CLAUDE.md, docs/ (v. a. docs/adr/, docs/ARCHITECTURE.md), das Issue
    (gh issue view ${issue} --comments) und den **aktuellen Code** der betroffenen
@@ -394,15 +449,28 @@ ${list}
      prüfbar zu machen. Fürs Tor zählt das wie „nicht erfüllt" — aber der
      Bau-Lauf weiß dann, dass ein Beleg fehlt, nicht Code.
    Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
-4. Schreib das Ergebnis in **einen** Kommentar am Ticket, überschrieben mit
-   \`## ✅ AK-Check\`. Existiert er von einem früheren Check-Lauf bereits,
-   **editiere ihn** (\`gh api\`-PATCH auf die Kommentar-ID), statt einen zweiten
-   anzulegen. Inhalt: eine Tabelle \`Nr · Kriterium (gekürzt) · Befund · Beleg\`,
-   darunter eine Zeile \`Ergebnis: N von M erfüllt\`.
+4. **Schreib deinen Befund in jedem Ausgang zuerst — auch bei voller Erfüllung.**
+   In **einen** Kommentar am Ticket, überschrieben mit \`## ✅ AK-Check\`, und zwar
+   **vor jeder Label-Änderung und vor dem Merge**. Der Kommentar ist die
+   einzige Spur, die ein Mensch später findet; der Merge schließt das Ticket,
+   ein danach nachgereichter Kommentar käme zu spät.
+   - **Erste Zeile: eine menschenlesbare Kopfzeile**, die schon beim
+     flüchtigen Blick aufs (nach dem Merge geschlossene) Ticket das Urteil
+     zeigt — bei voller Erfüllung \`**Alle N Kriterien erfüllt — PR freigegeben.**\`,
+     bei einer Lücke \`**N von M erfüllt — zurück in den Bau.**\`.
+   - Darunter eine Tabelle \`Nr · Kriterium (gekürzt) · Befund · Beleg\` und
+     eine Zeile \`Ergebnis: N von M erfüllt\`.
+   Existiert der \`## ✅ AK-Check\`-Kommentar von einem früheren Check-Lauf
+   bereits, **editiere ihn** (\`gh api\`-PATCH auf die Kommentar-ID), statt
+   einen zweiten anzulegen.
 
 ## Ausgang
 
-**Alle Kriterien erfüllt** — du gibst den PR frei:
+In **jedem** dieser Fälle steht der \`## ✅ AK-Check\`-Kommentar aus Schritt 4
+bereits — er geht der Label-Änderung und dem Merge immer voraus.
+
+**Alle Kriterien erfüllt** — erst steht dein \`## ✅ AK-Check\`-Kommentar
+(Schritt 4), dann gibst du den PR frei:
 
 \`\`\`
 gh issue edit ${issue} --remove-label check

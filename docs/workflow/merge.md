@@ -34,7 +34,10 @@ Sekunden nach diesem Push, greift der Runner-Takt wie gehabt nach.
 gepusht — nicht über eine offene Frage), setzt Claude `gh issue edit <nr>
 --add-label check` und beendet den Lauf; der PR bleibt Entwurf. Freigabe und
 Auto-Merge macht seit #839 ausschließlich der **AK-Check-Lauf**, und nur wenn
-kein Kriterium offen ist: `gh pr ready` + `gh pr merge --squash --auto
+kein Kriterium offen ist. Seit #901 schreibt der Prüf-Lauf seinen Befund als
+Kommentar `## ✅ AK-Check` immer zuerst, in jedem Ausgang und vor jeder
+Label-Änderung — er geht dem Freigeben also in jedem Fall voraus:
+`gh pr ready` + `gh pr merge --squash --auto
 --delete-branch --subject "$(gh pr view --json title -q .title)" --body ""`
 (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Das `--subject`
 ist Pflicht: bei genau einem Commit auf dem Branch nimmt GitHub sonst dessen
@@ -49,12 +52,22 @@ offen; nicht „es hat noch niemand hingeschaut". Bei einer offenen Frage
 (`needs-answer`) endet der Lauf bewusst **vor** der Abgabe an den Check, der
 PR bleibt Entwurf.
 
-**Auch der Runner-Takt mergt nicht am Tor vorbei.** Die CI-Wache unten hebt
-einen grünen PR sonst selbst aus dem Entwurf und käme dem Prüfer damit jedes
-Mal zuvor. Trägt das Ticket `check`, hält sie bei grüner CI still und startet
-stattdessen den Prüf-Lauf. Wird die CI rot, während `check` hängt, nimmt der
-Takt das Label zurück und lässt erst reparieren — der Fix-Lauf gibt es an
-seinem sauberen Ende selbst wieder ab.
+**Auch der Runner-Takt mergt nicht am Tor vorbei (#880).** Die CI-Wache unten
+hebt einen grünen PR sonst selbst aus dem Entwurf und käme dem Prüfer damit
+jedes Mal zuvor. Der Riegel hängt am **Entwurfsstatus**, nicht am Label
+`check`: `gh pr ready` ruft seit #839 ausschließlich der Prüf-Lauf — steht ein
+PR also noch im Entwurf, hat ihn kein Prüfer je freigegeben, und **die Wache
+hebt ihn nie selbst aus dem Entwurf**. Sie hält bei grüner CI still (meldet
+grün „wartet auf das AK-Tor") und überlässt Freigabe und Merge dem Prüf-Lauf;
+das gilt für laufende (`check`) wie für wartende (`needs-answer`) Tickets
+gleichermaßen. Ein PR, der **nicht** im Entwurf ist (Alt-PR aus der Zeit vor
+#839 oder von Hand freigegeben), wird weiterhin gemergt. Warum am
+Entwurfsstatus und nicht am Label: der Prüf-Lauf nimmt `check` ab, wenn er eine
+Lücke findet — das ist sein vorgesehener Rückweg in den Bau. Am Label
+festgemacht sähe der nächste Takt einen grünen PR ohne Label und mergte den
+ungeprüften Entwurf (beobachtet an #850). Wird die CI rot, während `check`
+hängt, nimmt der Takt das Label zurück und lässt erst reparieren — der Fix-Lauf
+gibt es an seinem sauberen Ende selbst wieder ab.
 
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**

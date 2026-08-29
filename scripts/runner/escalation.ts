@@ -3,6 +3,8 @@
 // `state`-Adapter, GitHub-Zugriff ausschliesslich ueber `gh`/`git` -- nie
 // direkt `execFileSync`, damit Vitest sie durch Doubles ersetzen kann.
 import { createHash } from 'node:crypto';
+import { opusBuildCapClear } from './cap.js';
+import type { Clock } from './clock.js';
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
@@ -132,6 +134,7 @@ export function buildEscalationEval(
   state: StateAdapter,
   gh: GhAdapter,
   git: GitAdapter,
+  clock: Clock,
 ): void {
   const { issue, runRole, labels, beforeTip, model, runStart, nonFailureReason } = input;
   if (runRole !== 'build') return;
@@ -140,6 +143,10 @@ export function buildEscalationEval(
   const after = branchTip(issue, git);
   if (after && after !== beforeTip) {
     tierReset(issue, state); // Fortschritt -- zurueck auf die Default-Stufe.
+    // ADR-0007/#900: Fortschritt "verbraucht" keinen dauerhaften Opus-Slot --
+    // der Opus-Tageszaehler zaehlt effektiv ergebnislose Opus-Bau-Laeufe seit
+    // dem letzten Fortschritt. Der opus-cap-msg-Stempel bleibt unangetastet.
+    opusBuildCapClear(issue, state, clock);
     return;
   }
 

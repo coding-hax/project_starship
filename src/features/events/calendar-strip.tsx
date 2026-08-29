@@ -2,7 +2,6 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
-import { SegmentedControl } from '@/ui/segmented-control';
 import {
   addDays,
   addMonthsClamped,
@@ -10,7 +9,6 @@ import {
   categoryEdgeVar,
   dateKeyDiff,
   dayWindow,
-  formatMonthTitle,
   parseDateKey,
   weekDaysFor,
   weekWindow,
@@ -18,13 +16,6 @@ import {
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
-
-type StripView = 'woche' | 'monat';
-
-const VIEW_OPTIONS: { value: StripView; label: string }[] = [
-  { value: 'woche', label: 'Woche' },
-  { value: 'monat', label: 'Monat' },
-];
 
 const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
@@ -72,9 +63,14 @@ export interface CalendarStripProps {
   /** `event_exceptions` rows — same input the timeline gets, so a cancelled or
    *  moved instance drops out of the dots too (issue #612). */
   exceptions: EventExceptionView[];
-  /** Auf (Monat) oder zu (Wochenstreifen) — issue #556, S5. */
+  /** Auf (Monat) oder zu (Wochenstreifen) — issue #556, S5; der Umschalter selbst
+   *  lebt seit issue #898 in calendar-view.tsx's Augenbraue. */
   expanded: boolean;
-  onExpandChange: (next: boolean) => void;
+  /** Meldet die fuehrende Zelle/Zeile nach oben (issue #898) — treibt dort
+   *  Augenbraue + Titel. Aendert sich nur beim Ueberqueren einer Zell-/
+   *  Zeilengrenze (der Scroll-Handler setzt `leadIndex` nur bei Wechsel), nicht
+   *  jeden Frame. */
+  onLeadDayChange: (day: string) => void;
 }
 
 /** Explicit `behavior: 'smooth'` ignores CSS `scroll-behavior` (see nav.tsx) — so a
@@ -278,7 +274,7 @@ export function CalendarStrip({
   events,
   exceptions,
   expanded,
-  onExpandChange,
+  onLeadDayChange,
 }: CalendarStripProps) {
   const [windowAnchor, setWindowAnchor] = useState(selectedDay);
   const [leadIndex, setLeadIndex] = useState(() => (expanded ? RADIUS_WEEKS : RADIUS_DAYS));
@@ -298,6 +294,10 @@ export function CalendarStrip({
 
   const leadDay = (expanded ? windowWeeks[leadIndex]?.[0] : windowDays[leadIndex]) ?? windowAnchor;
   const focusMonth = leadDay.slice(0, 7);
+
+  useEffect(() => {
+    onLeadDayChange(leadDay);
+  }, [leadDay, onLeadDayChange]);
 
   /** See `CalendarWeekRowProps.outsideMask` — one string per buffered week,
    *  recomputed only when `focusMonth` itself changes. */
@@ -332,6 +332,18 @@ export function CalendarStrip({
   // otherwise the chip stays the only way back (issue #784, AK6).
   const todayVisible = visibleDays.includes(today);
   const todayInactive = selectedDay === today && todayVisible;
+
+  /** Nulls a carried-over sub-cell fraction on a Woche/Monat switch (issue
+   *  #898 — the switcher itself moved up into calendar-view.tsx, this used to
+   *  run inline in its `onChange`) so the new view's anchor lands exactly as
+   *  the leading cell/row instead of keeping a fraction measured in the
+   *  other axis's step size. Declared before the layout effect below so it
+   *  runs first on an `expanded` change and its zero is what that effect
+   *  reads; a silent re-anchor (only `windowAnchor` changes) leaves this
+   *  effect's own deps untouched and keeps its fraction. */
+  useLayoutEffect(() => {
+    pendingFracRef.current = 0;
+  }, [expanded]);
 
   /** Places `windowAnchor` as the leading cell/row, instantly — runs after
    *  every buffer rebuild (silent re-anchor near the edge, or an explicit
@@ -514,16 +526,6 @@ export function CalendarStrip({
             <IconChevronRight />
           </button>
         </div>
-        <p className="calendar-strip__title">{formatMonthTitle(leadDay)}</p>
-        <SegmentedControl
-          options={VIEW_OPTIONS}
-          value={expanded ? 'monat' : 'woche'}
-          onChange={(next) => {
-            pendingFracRef.current = 0;
-            onExpandChange(next === 'monat');
-          }}
-          label="Ansicht"
-        />
       </div>
       <div className="calendar-strip__toolbar">
         <button

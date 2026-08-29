@@ -44,6 +44,15 @@ export function fmtHm(epochSeconds: number): string | null {
   return formatDate(new Date(epochSeconds * 1000), '%a %H:%M');
 }
 
+// Wie fmtHm, aber nur "HH:MM" -- OHNE Wochentag (%a). Der Kontingent-Titel
+// (#891, AK2/AK3: "Kontingent leer bis 14:51") schreibt die Uhrzeit woertlich
+// ohne Tageskuerzel; fmtHm liefe hier vom AK-Wortlaut ab. `null` bei
+// nicht-numerischer Eingabe, exakt wie fmtHm.
+export function fmtClock(epochSeconds: number): string | null {
+  if (!Number.isFinite(epochSeconds)) return null;
+  return formatDate(new Date(epochSeconds * 1000), '%H:%M');
+}
+
 // Heute + $1 Tage, formatiert nach $2 -- entspricht `date -v+"$1"d "+$2"` bzw.
 // `date -d "+$1 day" "+$2"`. "Heute" kommt aus dem Clock-Adapter, nicht aus
 // der Systemuhr direkt.

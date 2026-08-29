@@ -134,12 +134,39 @@
      actually sits (issue #889). Transparent lets both the ground and the
      circles painted behind `.nav` show through everywhere except the pill
      itself (`.nav__bar` below), which keeps its own opaque `--surface` fill,
-     shadow and ink reset. */
+     shadow and ink reset. Since #908, `.nav::before` (below) adds a gradient
+     veil to the route ground that fades in toward the bottom of this row —
+     `.nav` itself still carries no fill of its own. */
   background: transparent;
   /* A bare `env()` resolves to nothing on a device without a notch, computing to
      0px — the home-indicator gap disappears entirely instead of just not growing.
      The baseline keeps a minimum gap everywhere; the inset only ever adds to it. */
   padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+}
+
+.nav::before {
+  /* Since #908: scrolled page content that slides behind the transparent bar
+     (see above) used to reach the pill at full card contrast. A veil fades it
+     out to the route ground before it gets there. Lives on `::before`, not on
+     `.nav` itself, so `.nav`'s own `background-color` stays `transparent` —
+     `grundfarbe-vollfarbe.spec.ts` AK2/AK4 assert exactly that. `z-index: -1`
+     keeps it behind `.nav__bar` (in-flow, no stacking context of its own) but
+     the veil is still painted inside `.nav`'s own stacking context (`--z-nav`),
+     so it stays above `main` and above the ambient circles in `.bg-layer`. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* Top edge stays transparent — the #889 circle test samples a pixel in the
+     nav row outside the pill and expects it to differ measurably from the
+     ground, which only holds if the veil hasn't gone opaque by the top yet. */
+  background: linear-gradient(
+    to top,
+    var(--ground) 0%,
+    var(--ground) 72%,
+    transparent 100%
+  );
 }
 
 .nav__bar {
@@ -311,6 +338,12 @@
     --border: var(--border-base);
     --border-strong: var(--border-strong-base);
     --border-faint: var(--border-faint-base);
+  }
+
+  .nav::before {
+    /* Sidebar carries its own opaque `--surface` fill (above) — no scrolled
+       page content ever slides behind it, so there's nothing to veil. */
+    content: none;
   }
 
   .nav__bar {

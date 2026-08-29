@@ -194,6 +194,26 @@ describe('prompts', () => {
     });
   });
 
+  // #901: der Pruefer hinterlaesst IMMER eine sichtbare Anmerkung -- auch wenn
+  // alles passt und er direkt freigibt -- und postet sie VOR dem Merge, sonst
+  // laege sie auf einem bereits geschlossenen Ticket (oder gar nicht) vor.
+  describe('AK-Check-Kommentar: immer, vor dem Merge, mit Kopfzeile (#901)', () => {
+    const prompt = checkPrompt(42, ['A tut X', 'B bleibt Y'], 'feat/42-x');
+
+    it('verlangt den Befund in jedem Ausgang, auch bei voller Erfuellung', () => {
+      expect(prompt).toContain('in jedem Ausgang zuerst — auch bei voller Erfüllung');
+    });
+
+    it('verlangt den Kommentar vor Label-Aenderung und Merge', () => {
+      expect(prompt).toContain('vor jeder Label-Änderung und vor dem Merge');
+    });
+
+    it('verlangt eine menschenlesbare Kopfzeile fuer den Happy Path', () => {
+      expect(prompt).toContain('menschenlesbare Kopfzeile');
+      expect(prompt).toContain('PR freigegeben');
+    });
+  });
+
   // #588: der Lauf legt keine Fund-Tickets mehr an. Der Prompt muss das
   // ausdruecklich verbieten UND den Ersatzweg nennen -- ein blosses Weglassen
   // der alten Anleitung wuerde den Agenten raten lassen, und "gh issue create"
@@ -407,6 +427,95 @@ describe('prompts', () => {
     ] as const)('%s-Prompt verlangt die URL im Kommentar und dasselbe Artifact bei Fortsetzung', (_name, prompt) => {
       expect(prompt).toContain('landet im Plan-/Rechercheergebnis-Kommentar');
       expect(prompt).toContain('**dasselbe** Artifact');
+    });
+  });
+
+  // #907: die alte ARTIFACT_RULE versprach das Werkzeug bedingungslos --
+  // #807 widerlegte das zweimal woertlich im unbeaufsichtigten Kontext,
+  // obwohl die Allowlist stimmte. Die Regel kennt seither den beobachteten
+  // Zustand, verlangt einen Artboard je Zustand statt einer Sammelskizze,
+  // sagt Backend-Tickets ausdruecklich kein Entwurfsblatt zu und macht die
+  // Artifact-Kommentare zum Rueckkanal.
+  describe('Artifact: ehrliche Verfuegbarkeit + Artboard je Zustand + Rueckkanal (#907)', () => {
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verspricht das Werkzeug nicht mehr bedingungslos und nennt den Ersatz', (_name, prompt) => {
+      expect(prompt).toContain('kann dir zur\nVerfügung stehen');
+      expect(prompt).not.toContain('steht dir zur\nVerfügung');
+      expect(prompt).toContain('#807');
+      expect(prompt).toContain('Artifact exists but\nis not enabled in this context');
+      expect(prompt).toContain('Text-Skizze im Monospace-Block');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verbietet den zweiten Versuch nach einer Ablehnung', (_name, prompt) => {
+      expect(prompt).toContain('Bei einer Ablehnung');
+      expect(prompt).toContain('die **wörtliche** Fehlermeldung');
+      expect(prompt).toContain('**kein zweites\nMal** versuchen');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt verlangt ein Artboard je sichtbarem Zustand statt einer Sammelskizze', (_name, prompt) => {
+      expect(prompt).toContain('**ein\nArtboard je sichtbarem Zustand**');
+      expect(prompt).toContain('Grundzustand, Overlay/Popover/Sheet, Laden,\nFehler, leer');
+      expect(prompt).toContain('nur die Zustände, die die\nEntscheidung tatsächlich braucht');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt sagt Backend-/Sync-/Schema-/Migrations-Tickets ausdruecklich kein Entwurfsblatt zu', (_name, prompt) => {
+      expect(prompt).toContain('Reines Backend-,\nSync-, Schema- oder Migrations-Ticket: **kein** Entwurfsblatt');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt macht Artifact-Kommentare zum Rueckkanal, bedingt auf eine vorhandene URL', (_name, prompt) => {
+      expect(prompt).toContain('Kommentare als Rückkanal');
+      expect(prompt).toContain('action: "comments"');
+      expect(prompt).toContain('gleichrangig mit einem Issue-Kommentar');
+      expect(prompt).toContain('kein zusätzlicher Aufruf');
+    });
+
+    it.each([
+      ['plan', planPrompt(7)],
+      ['research', researchPrompt(7)],
+    ] as const)('%s-Prompt beantwortet und loest nur freigeschaltete Threads auf', (_name, prompt) => {
+      expect(prompt).toContain('action: "reply"');
+      expect(prompt).toContain('action: "resolve"');
+      expect(prompt).toContain('**nicht** freigeschalteten Thread liest du nur, ohne zu\nantworten oder aufzulösen');
+    });
+  });
+
+  // #906: zwei Regeln aus dem `/visual-plan`-Skill (Builder.io), nur im
+  // Plan-Prompt -- der dateiweise Plan ist die Stelle, an der Wiederverwendung
+  // und Unumkehrbarkeit ueberhaupt sichtbar werden.
+  describe('Wiederverwendung + Unumkehrbares zuerst (#906)', () => {
+    const prompt = planPrompt(42);
+
+    it('verlangt, dass jeder Schritt zuerst die Wiederverwendung nennt und danach das Neue', () => {
+      expect(prompt).toContain('Wiederverwendung zuerst');
+      expect(prompt).toContain('bestehende Komponente, Hook, Outbox-Pfad, Schema-Feld,\nHelper');
+      expect(prompt).toContain('genuin Neue');
+    });
+
+    it('verlangt, unumkehrbare Festlegungen vor dem Rest zu entscheiden und zu begruenden', () => {
+      expect(prompt).toContain('Unumkehrbares zuerst entscheiden');
+      expect(prompt).toContain('Datenform (Drizzle/Dexie)');
+      expect(prompt).toContain('Ownership-/Auth-Grenze, Krypto-Hülle');
+      expect(prompt).toContain('samt Begründung im Plan');
+    });
+
+    it('verlangt den kleinsten ersten Schnitt, der die Richtung belegt, ohne Festlegungen zu verbauen', () => {
+      expect(prompt).toContain('Kleinster Schnitt, der die Richtung belegt');
+      expect(prompt).toContain('ohne eine dieser Festlegungen zu\nverbauen');
+      expect(prompt).toContain('was drin ist und was bewusst vertagt wird');
     });
   });
 

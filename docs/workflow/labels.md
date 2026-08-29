@@ -13,7 +13,7 @@ Zustandsmaschine des ganzen Setups:
 | `in-progress`    | Claude arbeitet daran. Es gibt immer höchstens eins **je Slot** (#204). Wird geschlossen (Auto-Merge oder von Hand), nimmt der nächste `claimSweep` das Label wieder ab (#498). | Runner       |
 | `needs-answer`    | **Wartet auf dich: Antwort oder Freigabe.** Das mechanische Tor — schließt das Ticket aus der Auswahl aus und parkt es. | Claude / Runner |
 | `hands-off`      | **Der Runner fasst das Ticket nicht an — auf keinem Zweig.** Auch nicht, wenn es `next` oder `ready` trägt. Für alles, woran gerade von Hand gearbeitet wird. | **Du**       |
-| `blocked-limit`  | Usage-Limit erreicht. Wird automatisch fortgesetzt.            | Runner       |
+| `blocked-limit`  | Opus-Tagesbudget für dieses Ticket erschöpft. Läuft morgen von selbst weiter. (Nur noch der Opus-Tagesdeckel — das Session-/Token-Kontingent trägt seit #891 kein Label mehr.) | Runner       |
 | `blocked-by`     | Wartet auf ein anderes Ticket — die Abhängigkeit steht als `Nach: #227` im Body des wartenden Tickets. Setzt und entfernt der **Runner** selbst; von Hand angefasst richtest du nur Schaden an. | Runner       |
 | `model:haiku` `model:sonnet` `model:opus` | **Startstufe** für dieses Ticket (ADR-0013). Höchstens eins setzen. `model:opus` baut sofort auf Opus, ohne die drei erfolglosen Läufe. Bei `plan`/`research` schlägt das Label die Rolle. | **Du**       |
 | `no-escalation`  | Kill-Switch: der Runner schaltet nie selbst hoch. Es gilt die Startstufe aus dem Label (ohne Label: Sonnet). | **Du**       |
@@ -61,10 +61,13 @@ liegen — per Label.
   Das Ticket **behält** `in-progress`, wird von der Auswahl aber übersprungen —
   der Runner baut in der Zwischenzeit etwas anderes. Nimmst du das Label ab,
   läuft es weiter, ohne dass irgendetwas umgelabelt werden muss.
-- **Wartet auf die Zeit** (`blocked-limit`, und — sobald gebaut — CI-Wartezeit):
-  löst sich von selbst in Minuten. Das Ticket bleibt `in-progress` **ohne**
-  Wartelabel, der Runner fängt nichts Neues an, weil es ohnehin gleich
-  weitergeht.
+- **Wartet auf die Zeit** (`blocked-limit` = Opus-Tagesdeckel, läuft morgen
+  weiter; sowie — sobald gebaut — CI-Wartezeit, Minuten): löst sich von selbst.
+  Das Ticket bleibt `in-progress`, der Runner fängt nichts Neues an, weil es
+  ohnehin gleich weitergeht. Das **Session-/Token-Kontingent** (429) gehört seit
+  #891 **nicht** mehr hierher: es ist ein Zustand der Flotte, nicht des Tickets,
+  trägt **kein** Label und wird allein über das geteilte `limit-until` gesteuert
+  — der Flotten-Header trägt die Pause (`Kontingent leer bis HH:MM`).
 
 Beide behalten `in-progress`; der Unterschied liegt allein im Wartelabel. Genau
 das ist seit #272 der Punkt: nicht ein zweites Zustandslabel entscheidet, ob ein

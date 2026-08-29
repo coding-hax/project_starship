@@ -5,13 +5,13 @@ import {
   compareWithinDay,
   completedByDay,
   formatDayMarker,
-  groupByDueDay,
   groupTasks,
   localDayKey,
   openTaskNodes,
   resolveNestTarget,
   toTaskView,
   undatedOpenNodes,
+  weekBuckets,
   weekWindowNodes,
   type TaskNode,
   type TaskView,
@@ -552,7 +552,7 @@ describe('undatedOpenNodes', () => {
   });
 });
 
-describe('groupByDueDay', () => {
+describe('weekBuckets', () => {
   const now = new Date(2026, 6, 18, 12, 0); // Samstag, 18. Juli 2026, local
 
   const task = (overrides: Partial<TaskView>): TaskView => ({
@@ -574,37 +574,47 @@ describe('groupByDueDay', () => {
     total: children.length,
   });
 
-  it('puts the Überfällig bucket first, then the remaining days ascending', () => {
+  it('puts Überfällig first, then Heute, then Diese Woche — all other weekdays folded into one bucket (issue #866, Variante A)', () => {
     const nodes = [
       node(task({ id: 'day20', dueAt: localIso(2026, 7, 20, 9, 0) })),
       node(task({ id: 'overdue', dueAt: localIso(2026, 7, 10, 9, 0) })),
       node(task({ id: 'today', dueAt: localIso(2026, 7, 18, 9, 0) })),
+      node(task({ id: 'day22', dueAt: localIso(2026, 7, 22, 9, 0) })),
     ];
 
-    expect(groupByDueDay(nodes, now).map((g) => g.dayKey)).toEqual([
-      'overdue',
-      '2026-07-18',
-      '2026-07-20',
-    ]);
+    const buckets = weekBuckets(nodes, now);
+    expect(buckets.map((b) => b.key)).toEqual(['overdue', 'today', 'week']);
+    expect(buckets.map((b) => b.label)).toEqual(['Überfällig', 'Heute', 'Diese Woche']);
+    // day20 and day22 fall on different weekdays but share ONE "Diese Woche" bucket.
+    expect(buckets[2].nodes.map((n) => n.task.id)).toEqual(['day20', 'day22']);
   });
 
-  it('produces no group at all for a day nobody is due on', () => {
+  it('produces no bucket at all for one nobody is due in', () => {
     const nodes = [node(task({ id: 'a', dueAt: localIso(2026, 7, 18, 9, 0) }))];
-    // 19./20./21. etc. never show up — only 18. does.
-    expect(groupByDueDay(nodes, now).map((g) => g.dayKey)).toEqual(['2026-07-18']);
+    expect(weekBuckets(nodes, now).map((b) => b.key)).toEqual(['today']);
   });
 
-  it('sorts nodes within a day by compareWithinDay', () => {
+  it('sorts the Heute bucket by compareWithinDay (time-of-day)', () => {
     const nodes = [
       node(task({ id: 'evening', dueAt: localIso(2026, 7, 18, 18, 0) })),
       node(task({ id: 'morning', dueAt: localIso(2026, 7, 18, 8, 0) })),
     ];
 
-    const [group] = groupByDueDay(nodes, now);
-    expect(group.nodes.map((n) => n.task.id)).toEqual(['morning', 'evening']);
+    const [bucket] = weekBuckets(nodes, now);
+    expect(bucket.nodes.map((n) => n.task.id)).toEqual(['morning', 'evening']);
   });
 
-  it("keeps a node's children in their existing createdAt order, untouched by the day sort", () => {
+  it('sorts the Diese Woche bucket by the full due date, not time-of-day', () => {
+    const nodes = [
+      node(task({ id: 'later-day-early-time', dueAt: localIso(2026, 7, 22, 6, 0) })),
+      node(task({ id: 'earlier-day-late-time', dueAt: localIso(2026, 7, 20, 20, 0) })),
+    ];
+
+    const [bucket] = weekBuckets(nodes, now);
+    expect(bucket.nodes.map((n) => n.task.id)).toEqual(['earlier-day-late-time', 'later-day-early-time']);
+  });
+
+  it("keeps a node's children in their existing createdAt order, untouched by the bucket sort", () => {
     const olderChild = task({
       id: 'older-child',
       parentId: 'parent',
@@ -619,35 +629,32 @@ describe('groupByDueDay', () => {
       node(task({ id: 'parent', dueAt: localIso(2026, 7, 18, 9, 0) }), [olderChild, newerChild]),
     ];
 
-    const [group] = groupByDueDay(nodes, now);
-    expect(group.nodes[0].children.map((c) => c.id)).toEqual(['older-child', 'newer-child']);
+    const [bucket] = weekBuckets(nodes, now);
+    expect(bucket.nodes[0].children.map((c) => c.id)).toEqual(['older-child', 'newer-child']);
   });
 });
 
 describe('formatDayMarker', () => {
   const now = new Date(2026, 6, 18, 12, 0); // Samstag, 18. Juli 2026, local
 
-  it('reads "Überfällig" for the overdue bucket, in every view', () => {
-    expect(formatDayMarker('overdue', now, 'woche')).toBe('Überfällig');
-    expect(formatDayMarker('overdue', now, 'erledigt')).toBe('Überfällig');
+  it('reads "Überfällig" for the overdue bucket', () => {
+    expect(formatDayMarker('overdue', now)).toBe('Überfällig');
   });
 
-  it('spells today out with the weekday in "woche"', () => {
-    expect(formatDayMarker('2026-07-18', now, 'woche')).toBe('Heute · Samstag, 18. Juli');
+  it('shortens today to just "Heute"', () => {
+    expect(formatDayMarker('2026-07-18', now)).toBe('Heute');
   });
 
-  it('shortens today to just "Heute" in "erledigt"', () => {
-    expect(formatDayMarker('2026-07-18', now, 'erledigt')).toBe('Heute');
-  });
-
-  it('reads "Gestern" for yesterday, only in "erledigt"', () => {
-    expect(formatDayMarker('2026-07-17', now, 'erledigt')).toBe('Gestern');
-    expect(formatDayMarker('2026-07-17', now, 'woche')).toBe('Freitag, 17. Juli');
+  it('reads "Gestern" for yesterday', () => {
+    expect(formatDayMarker('2026-07-17', now)).toBe('Gestern');
   });
 
   it('falls back to the full weekday label for any other day', () => {
-    expect(formatDayMarker('2026-07-20', now, 'woche')).toBe('Montag, 20. Juli');
-    expect(formatDayMarker('2026-07-10', now, 'erledigt')).toBe('Freitag, 10. Juli');
+    expect(formatDayMarker('2026-07-10', now)).toBe('Freitag, 10. Juli');
+  });
+
+  it('falls back to the full weekday label for a day further in the future too', () => {
+    expect(formatDayMarker('2026-07-20', now)).toBe('Montag, 20. Juli');
   });
 });
 

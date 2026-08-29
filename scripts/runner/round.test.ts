@@ -192,7 +192,10 @@ describe('roundPlan', () => {
     // laeuft im selben Takt und mergte bis hierher JEDEN gruenen PR selbst --
     // der Bau-Lauf endet gruen, setzt 'check', und der naechste Takt haette
     // gemergt, bevor je ein Pruefer gelaufen waere.
-    const prRoutes = (issue: number, labels: string[], checks: string) => [
+    // #880: der PR eines Tickets, das auf sein AK-Tor wartet, ist ein Entwurf
+    // (`isDraft: true`) -- kein Pruefer hat ihn je freigegeben. Genau daran
+    // haengt der Riegel jetzt, nicht mehr am Label 'check'.
+    const prRoutes = (issue: number, labels: string[], checks: string, isDraft = true) => [
       openIssues(issueJson(issue, labels)),
       {
         match: (a: string[]) => a[0] === 'pr' && a[1] === 'list',
@@ -200,8 +203,8 @@ describe('roundPlan', () => {
       },
       { match: (a: string[]) => a.includes('checks'), reply: checks },
       {
-        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
-        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus,isDraft'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN', isDraft }),
       },
       { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
       labelsAre(...labels),
@@ -209,13 +212,27 @@ describe('roundPlan', () => {
     const greenChecks = JSON.stringify([{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }]);
     const redChecks = JSON.stringify([{ bucket: 'fail', name: 'e2e', description: '1 rot' }]);
 
-    it('mergt einen gruenen PR nicht mehr, solange das Ticket "check" traegt', () => {
+    it('mergt einen gruenen Entwurfs-PR nicht, sondern startet den Pruef-Lauf (#880)', () => {
       const { gh, calls } = ghDouble(prRoutes(70, ['in-progress', 'check'], greenChecks));
       const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
       expect(called(calls, 'pr', 'ready')).toBe(false);
       expect(called(calls, 'pr', 'merge')).toBe(false);
       expect(result.kind).toBe('run');
       expect((result as RoundRun).role).toBe('check');
+    });
+
+    // #880 AC1/AC4: der Rueckweg aus dem Check ist dicht. Der Pruefer nahm bei
+    // einer Luecke 'check' ab -- der PR bleibt aber Entwurf. Ohne Label sah die
+    // alte Wache einen gruenen PR und mergte ihn (die Luecke aus #850). Jetzt
+    // greift der Riegel am Entwurfsstatus: kein Merge, kein 'ready' -- der
+    // naechste Takt startet stattdessen den BAU-Lauf.
+    it('mergt den gruenen Entwurfs-PR ohne "check" nicht, sondern startet den Bau-Lauf (#880 AC4)', () => {
+      const { gh, calls } = ghDouble(prRoutes(70, ['in-progress'], greenChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(called(calls, 'pr', 'ready')).toBe(false);
+      expect(called(calls, 'pr', 'merge')).toBe(false);
+      expect(result.kind).toBe('run');
+      expect((result as RoundRun).role).toBe('build');
     });
 
     // Rote CI schlaegt das Tor: ueber einen kaputten Stand ist nicht zu
@@ -848,8 +865,10 @@ describe('roundPlan', () => {
         reply: JSON.stringify(checks),
       },
       {
-        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
-        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+        // #880: bereits freigegeben (isDraft:false) -- ein wartendes Ticket, das
+        // ein Mensch schon aus dem Entwurf gehoben hat, darf die Wache mergen.
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus,isDraft'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN', isDraft: false }),
       },
       { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
     ];
@@ -913,8 +932,8 @@ describe('roundPlan', () => {
         },
         { match: (a: string[]) => a[0] === 'pr' && a[1] === 'checks', reply: JSON.stringify(green) },
         {
-          match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
-          reply: JSON.stringify({ headRefName: 'feat/92-a', mergeStateStatus: 'CLEAN' }),
+          match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus,isDraft'),
+          reply: JSON.stringify({ headRefName: 'feat/92-a', mergeStateStatus: 'CLEAN', isDraft: false }),
         },
         { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: a' },
         labelsAre('in-progress'),
@@ -992,11 +1011,13 @@ describe('roundPlan', () => {
     const green = JSON.stringify([{ bucket: 'pass', name: 'quality' }, { bucket: 'pass', name: 'e2e' }]);
     const failing = JSON.stringify([{ bucket: 'fail', name: 'e2e' }]);
 
+    // #880: `isDraft: false` -- ein bereits freigegebener PR (Alt-PR/von Hand),
+    // den die Wache noch mergen darf. Ein Entwurf landete in 'gated'.
     const withMergeState = (issue: number, extra: { match: (a: string[]) => boolean; reply: string }[] = []) => [
       ...withPr(issue, ['in-progress'], green),
       {
-        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus'),
-        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN' }),
+        match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('headRefName,mergeStateStatus,isDraft'),
+        reply: JSON.stringify({ headRefName: `feat/${issue}-x`, mergeStateStatus: 'CLEAN', isDraft: false }),
       },
       { match: (a: string[]) => a[0] === 'pr' && a[1] === 'view' && a.includes('.title'), reply: 'feat: x' },
       ...extra,
@@ -1043,13 +1064,16 @@ describe('roundPlan', () => {
       expect(claims.readSlot(77)).toBe('1');
     });
 
-    // AK3 merged: gruener PR -- die Wache merged UND behaelt den Claim (er
-    // verfaellt am Label 'in-progress', nicht am Ausgang des Bau-Laufs).
-    it('AK3: gruener PR -- ready+merge laufen, Claim bleibt gehalten', () => {
+    // AK3 merged: gruener, bereits freigegebener (nicht-Entwurfs-)PR -- die
+    // Wache merged UND behaelt den Claim (er verfaellt am Label 'in-progress',
+    // nicht am Ausgang des Bau-Laufs). #880: sie ruft dabei NIE selbst
+    // `gh pr ready` -- das gehoert dem Pruef-Lauf.
+    it('AK3 (#880): kein Entwurf -- Merge laeuft ohne selbst `gh pr ready`, Claim bleibt gehalten', () => {
       const { gh, calls } = ghDouble(withMergeState(77));
       const result = roundPlan(ctx(gh), opts);
-      expect(result.status?.text).toContain('als `ready` markiert');
-      expect(called(calls, 'pr', 'ready')).toBe(true);
+      expect(result.status?.text).toContain('bereits freigegeben');
+      expect(called(calls, 'pr', 'ready')).toBe(false);
+      expect(called(calls, 'pr', 'merge')).toBe(true);
       expect(claims.readSlot(77)).toBe('1');
     });
 
@@ -1430,13 +1454,19 @@ describe('roundEval', () => {
       maxRuntime: 2700,
     };
 
-    it('pausiert blau, setzt blocked-limit und schreibt limit-until ins sharedState, NICHT ins slot-lokale state', () => {
+    it('pausiert blau, setzt KEIN blocked-limit mehr, trägt den Kontingent-Titel und schreibt limit-until ins sharedState, NICHT ins slot-lokale state (#891)', () => {
       const { gh, calls } = ghDouble();
       const result = roundEval(ctx(gh), plan, limited, '');
       expect(result.status?.emoji).toBe('🔵');
+      // AK2: neuer Wortlaut mit deutbarer Reset-Zeit (15:01) + Ticketnummer.
+      expect(result.status?.title).toContain('Kontingent leer bis');
+      expect(result.status?.title).toContain('#77');
+      // AK4: das Limit gilt flottenweit -> dieser Slot publiziert den Status selbst.
+      expect(result.forcePublishStatus).toBe(true);
       expect(result.rc).toBe(0); // kein Fehler -- der Timer probiert es wieder
       expect(result.chain).toBe('stop');
-      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      // AK1: kein Label mehr am Bau-Ticket -- die Pause ist ein Flotten-Zustand.
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
       expect(sharedState.read('limit-until')).not.toBeNull();
       expect(state.read('limit-until')).toBeNull();
     });
@@ -1470,6 +1500,19 @@ describe('roundEval', () => {
       expect(sharedState.read('limit-until')).toBeNull();
       expect(state.read('unparsed-limits.log')).toContain('nicht deutbar');
       expect(result.status?.text).toContain('in ~5 Minuten');
+      // AK2: ohne deutbare Reset-Zeit trägt der Titel keine Uhrzeit.
+      expect(result.status?.title).toBe('Kontingent leer · #77');
+      // AK4: auch der undeutbare Zweig ist ein flottenweites Limit.
+      expect(result.forcePublishStatus).toBe(true);
+    });
+
+    // AK4-Abgrenzung: NUR der 429-Zweig publiziert selbst. Ein sauberer Lauf
+    // (Erfolg) und die Notbremse lassen forcePublishStatus falsch/leer.
+    it('setzt forcePublishStatus nur im Limit-Zweig, nicht bei Erfolg oder Notbremse (#891, AK4)', () => {
+      const { gh } = ghDouble();
+      expect(roundEval(ctx(gh), plan, ok, '').forcePublishStatus).toBeFalsy();
+      const timedOut = roundEval(ctx(gh), plan, { ...ok, rc: 1, timedOut: true }, '');
+      expect(timedOut.forcePublishStatus).toBe(false);
     });
   });
 
@@ -1659,7 +1702,11 @@ describe('roundEval', () => {
         '',
       );
       expect(result.status?.emoji).toBe('🔵');
-      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      // #891, AK1: kein Label mehr; ohne deutbares 'result' (kein JSON) trägt der
+      // Titel den labellosen Kontingent-Wortlaut, und der Slot publiziert selbst.
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(result.status?.title).toBe('Kontingent leer · #77');
+      expect(result.forcePublishStatus).toBe(true);
     });
 
     it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON wird weiterhin als Uebergang erkannt', () => {
