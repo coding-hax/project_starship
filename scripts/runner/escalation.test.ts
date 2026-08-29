@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFixedClock } from './clock';
 import type { GhAdapter } from './gh';
 import type { GitAdapter } from './git';
 import { createStateAdapter, type StateAdapter } from './state';
@@ -104,6 +105,7 @@ describe('resumeAllowed', () => {
 describe('buildEscalationEval', () => {
   let dir: string;
   let state: StateAdapter;
+  const clock = createFixedClock(new Date(2026, 6, 26, 10, 0, 0));
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'runner-escalation-'));
@@ -126,6 +128,7 @@ describe('buildEscalationEval', () => {
       state,
       ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.')),
       gitTip(''), // kein Branch -> kein Fortschritt
+      clock,
     );
     expect(state.read('failcount-101')?.trim()).toBe('1');
   });
@@ -135,9 +138,9 @@ describe('buildEscalationEval', () => {
     const git = gitTip('');
     const input = { issue: 103, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'sonnet' };
 
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
 
     expect(tierCurrent(103, state, gh)).toBe('opus');
     expect(state.read('failcount-103')?.trim()).toBe('0');
@@ -153,10 +156,57 @@ describe('buildEscalationEval', () => {
       state,
       ghComments(''),
       gitTip('sha-neu'), // Branch hat sich bewegt
+      clock,
     );
 
     expect(tierCurrent(104, state, ghComments(''))).toBe('sonnet');
     expect(state.exists('failcount-104')).toBe(false);
+  });
+
+  // #900 AK1/AK2: Fortschritt loescht den Opus-Tageszaehler, ausbleibender
+  // Fortschritt laesst ihn unangetastet.
+  it('#900 AK1: a moved branch tip clears the opus daily build cap counter', () => {
+    state.write('opus-build-20260726-108', '2\n');
+
+    buildEscalationEval(
+      { issue: 108, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' },
+      state,
+      ghComments(''),
+      gitTip('sha-neu'), // Branch hat sich bewegt
+      clock,
+    );
+
+    expect(state.exists('opus-build-20260726-108')).toBe(false);
+  });
+
+  it('#900 AK2: no progress leaves the opus daily build cap counter untouched', () => {
+    state.write('opus-build-20260726-109', '2\n');
+
+    buildEscalationEval(
+      { issue: 109, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' },
+      state,
+      ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.')),
+      gitTip(''), // kein Branch -> kein Fortschritt
+      clock,
+    );
+
+    expect(state.read('opus-build-20260726-109')?.trim()).toBe('2');
+  });
+
+  it('#900 AK4: a moved branch tip does not reset the opus-cap-msg exhaustion stamp', () => {
+    state.write('opus-build-20260726-110', '2\n');
+    state.write('opus-cap-msg-20260726-110', '');
+
+    buildEscalationEval(
+      { issue: 110, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' },
+      state,
+      ghComments(''),
+      gitTip('sha-neu'), // Branch hat sich bewegt
+      clock,
+    );
+
+    expect(state.exists('opus-build-20260726-110')).toBe(false);
+    expect(state.exists('opus-cap-msg-20260726-110')).toBe(true);
   });
 
   it('AC5: no-escalation prevents any tier bump, even after three failed runs', () => {
@@ -170,9 +220,9 @@ describe('buildEscalationEval', () => {
       model: 'sonnet',
     };
 
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
 
     expect(state.exists('tier-105')).toBe(false);
   });
@@ -186,6 +236,7 @@ describe('buildEscalationEval', () => {
       state,
       ghComments(PROGRESS_COMMENT('gate-rot — ein ANDERER Test schlägt jetzt fehl.')),
       gitTip(''),
+      clock,
     );
 
     expect(state.read('failcount-107')?.trim()).toBe('0');
@@ -198,6 +249,7 @@ describe('buildEscalationEval', () => {
       state,
       gh,
       gitTip(''),
+      clock,
     );
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '203', '--remove-label', 'opus-boost']);
   });
@@ -210,6 +262,7 @@ describe('buildEscalationEval', () => {
       state,
       gh,
       gitTip('sha-neu'),
+      clock,
     );
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '204', '--remove-label', 'opus-boost']);
     expect(tierCurrent(204, state, gh)).toBe('sonnet');
@@ -226,9 +279,9 @@ describe('buildEscalationEval', () => {
       model: 'opus',
     };
 
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
 
     expect(state.exists('tier-205')).toBe(false);
     expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '205', '--remove-label', 'opus-boost']);
@@ -242,9 +295,9 @@ describe('buildEscalationEval', () => {
     const git = gitTip('');
     const input = { issue: 206, runRole: 'build', labels: '', beforeTip: 'sha-alt', model: 'opus' };
 
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
-    buildEscalationEval(input, state, gh, git);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
+    buildEscalationEval(input, state, gh, git, clock);
 
     expect(gh.run).toHaveBeenCalledWith(['issue', 'edit', '206', '--add-label', 'needs-answer']);
     expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining(['needs-input']));
@@ -257,6 +310,7 @@ describe('buildEscalationEval', () => {
       state,
       gh,
       gitTip(''),
+      clock,
     );
     expect(state.exists('failcount-300')).toBe(false);
     expect(gh.run).not.toHaveBeenCalled();
@@ -278,9 +332,9 @@ describe('buildEscalationEval', () => {
         nonFailureReason: 'needs-answer' as const,
       };
 
-      buildEscalationEval(input, state, gh, git);
-      buildEscalationEval(input, state, gh, git);
-      buildEscalationEval(input, state, gh, git);
+      buildEscalationEval(input, state, gh, git, clock);
+      buildEscalationEval(input, state, gh, git, clock);
+      buildEscalationEval(input, state, gh, git, clock);
 
       expect(state.exists('failcount-501')).toBe(false);
       expect(state.exists('tier-501')).toBe(false);
@@ -306,6 +360,7 @@ describe('buildEscalationEval', () => {
         state,
         gh,
         gitTip(''),
+        clock,
       );
       expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
     });
@@ -325,6 +380,7 @@ describe('buildEscalationEval', () => {
         state,
         ghComments(''),
         gitTip('sha-neu'),
+        clock,
       );
       expect(tierCurrent(503, state, ghComments(''))).toBe('sonnet');
       expect(state.exists('failcount-503')).toBe(false);
@@ -350,6 +406,7 @@ describe('buildEscalationEval', () => {
         state,
         gh,
         gitTip(''), // kein Branch -> Spitze steht
+        clock,
       );
       expect(gh.run).toHaveBeenCalledWith(['issue', 'comment', '401', '--body', expect.stringContaining('Auffälligkeit')]);
     });
@@ -370,6 +427,7 @@ describe('buildEscalationEval', () => {
         state,
         gh,
         gitTip('sha-neu'),
+        clock,
       );
       expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
     });
@@ -390,6 +448,7 @@ describe('buildEscalationEval', () => {
         state,
         gh,
         gitTip(''),
+        clock,
       );
       expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
       expect(state.read('failcount-403')?.trim()).toBe('1');
@@ -411,6 +470,7 @@ describe('buildEscalationEval', () => {
         state,
         gh,
         gitTip(''),
+        clock,
       );
       const calls = (gh.run as ReturnType<typeof vi.fn>).mock.calls as string[][];
       expect(calls.some((call) => call.includes('--edit-last'))).toBe(false);

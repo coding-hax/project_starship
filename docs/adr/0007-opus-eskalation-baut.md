@@ -106,3 +106,21 @@ Eine Folge, die man kennen muss: Ein Ticket, das mit `model:opus` startet, hat
 die Leiter schon oben betreten. `tierBump()` hat von dort keinen Sprung mehr,
 drei erfolglose Läufe führen also direkt zu „Eskalation erschöpft" +
 `needs-answer`.
+
+## Nachtrag 29.08.2026 — Opus-Tageszähler wird bei Fortschritt tatsächlich gelöscht (#900)
+
+„Erfolg setzt zurück" oben versprach seit Einführung dieser ADR, dass Fortschritt
+neben Stufe und Fehlversuchs-Zähler auch den Opus-Tageszähler löscht — der Code
+tat das bis hierhin nur für Stufe und Fehlversuchs-Zähler
+(`buildEscalationEval`/`tierReset`), nicht für `opus-build-<datum>-<nr>`. Ein
+Ticket auf `model:opus`, das jede Runde voranging (z. B. weil der AK-Check aus
+ADR-0026 mehrere Bau-Runden erzwang), lief so trotzdem in den 2/Tag-Deckel.
+
+Der Code ist jetzt an die hier schon beschriebene Absicht angeglichen:
+`buildEscalationEval` löscht im Fortschritts-Zweig (`opusBuildCapClear` in
+`scripts/runner/cap.ts`) zusätzlich zu `tierReset` den heutigen
+Opus-Tageszähler des Tickets. Der `opus-cap-msg-<datum>-<nr>`-Stempel (Erschöpfungsmeldung
+höchstens einmal je Ticket und Tag) bleibt davon unberührt. Effektiv zählt der
+Deckel damit **ergebnislose** Opus-Bau-Läufe seit dem letzten Fortschritt,
+gedeckelt bei 2 — keine Politik-Änderung, sondern ein Bugfix gegenüber dieser
+ADR.
