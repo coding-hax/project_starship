@@ -155,7 +155,7 @@ export function JournalEditor() {
           </>
         )}
       </div>
-      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} onClick={() => setSheetOpen(true)} />}
+      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} text="Eintrag" onClick={() => setSheetOpen(true)} />}
       <JournalEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
     </>
   );

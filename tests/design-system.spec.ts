@@ -25,26 +25,31 @@ test.describe('Design-System: Heading↔Content-Abstand', () => {
 });
 
 test.describe('Design-System: FAB-Glyphengröße', () => {
-  test('FAB-Icon folgt --text-title (AC1)', async ({ page }) => {
+  // issue #867 AK1 löst die Kopplung an --text-title: die Glyphe trägt jetzt ein
+  // rohes 20px (wie app-header__icon svg), unabhängig von der Überschriften-Skala.
+  test('AC1 (überholt durch #867 AK1): FAB-Icon ist 20px, nicht mehr an --text-title gekoppelt', async ({
+    page,
+  }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
 
     const fabIcon = page.locator('.fab__icon');
     const fontSize = await fabIcon.evaluate((el) => getComputedStyle(el).fontSize);
-    const textTitle = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--text-title').trim(),
-    );
-    expect(fontSize).toBe(textTitle);
+    expect(fontSize).toBe('20px');
   });
 
-  test('FAB-Button ist exakt 56×56px (AC2)', async ({ page }) => {
+  // issue #867 AK1 macht aus dem quadratischen Knopf eine beschriftete Pille:
+  // feste Höhe 58px, Breite wächst mit Icon + sichtbarem Kurztext + Innenabstand.
+  test('AC2 (überholt durch #867 AK1): FAB ist eine 58px hohe Pille, breiter als hoch', async ({
+    page,
+  }) => {
     await registerPasskey(page);
     await page.goto('/aufgaben');
 
     const fab = page.locator('.fab');
     const bbox = await fab.boundingBox();
-    expect(bbox?.width).toBe(56);
-    expect(bbox?.height).toBe(56);
+    expect(bbox?.height).toBe(58);
+    expect(bbox?.width).toBeGreaterThan(58);
   });
 
   test('FAB-Icon liegt innerhalb des FAB-Buttons (AC4) — 375px', async ({ page }) => {

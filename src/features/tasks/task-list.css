@@ -441,10 +441,16 @@
 }
 
 .task-list__checkbox {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+  background: transparent;
   cursor: pointer;
+  position: relative;
   /* Same check-off scale as .habit-today__checkbox (issue #435) — kept in
      step so the two feel like one interaction, not two. */
   transition: transform var(--duration-fast) var(--ease-spring);
@@ -452,6 +458,20 @@
 
 .task-list__checkbox:checked {
   transform: scale(1.12);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.task-list__checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 12px;
+  border-right: 2px solid var(--surface);
+  border-bottom: 2px solid var(--surface);
+  transform: translate(-50%, -60%) rotate(45deg);
 }
 
 /* tokens.css's global reduced-motion rule only zeroes transition-duration,

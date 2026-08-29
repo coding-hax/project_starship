@@ -248,7 +248,7 @@ export function CalendarView() {
           onOpenEvent={openDetail}
         />
       )}
-      <Fab label={CREATE_LABEL} onClick={openCreate} />
+      <Fab label={CREATE_LABEL} text="Termin" onClick={openCreate} />
       {today !== null && selectedDay !== null && (
         <EventEditor
           state={editorState}

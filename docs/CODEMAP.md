@@ -235,10 +235,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm`
 - `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext auf `/uebersicht`: Termin vorbefüllt, Routine abgehakt/Review/neu, sonst Aufgabe
-- `capture-parser.spec.ts` — Span+Ranking-Grammatik (Teil 1/3 Parser-Umbau): ein Test je AK1–AK7 + Offline-Pfad
-- `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit + Tageshälften (Teil 2/3 Parser-Umbau): ein Test je AK1–AK6 + Offline-Pfad
-- `capture-datum.spec.ts` — Monatsnamen, Spannen, "nächsten/diesen/kommenden", Tagesgrenze 04:00, Abhaken rückwirkend (Teil 3/3): ein Test je AK1–AK6 + Offline-Pfad
-- `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (Teil 4/4): ein Test je AK1–AK6
+- `capture-parser.spec.ts` (Teil 1/4) — Span+Ranking-Grammatik, je Test AK1–AK7 + Offline
+- `capture-zeigerzeit.spec.ts` (Teil 2/4) — deutsche Zeigerzeit + Tageshälften, je Test AK1–AK6 + Offline
+- `capture-datum.spec.ts` (Teil 3/4) — Monatsnamen, Spannen, Tagesgrenze 04:00, rückw. Abhaken, je Test AK1–AK6 + Offline
+- `capture-unsicher.spec.ts` (Teil 4/4) — unsichere Felder markieren, je Test AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
 - `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen (Kopf+Kacheln+Tabelle+Verlauf, Kontrast, 375×812, Dark/reduced-motion) + 30-Tage-Verlaufskarte im Detail
@@ -252,6 +252,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes, Bergung der Alt-Einträge (AK1–AK7)
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull ins IndexedDB, Reminder-Versand, Panel „Benachrichtigungen"
 - `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
+- `form-bedienelemente.spec.ts` — FAB-Pille/Atem, aktiver Reiter, Häkchen (#867), je AK + Überlauf hell/dunkel
 
 ### scripts/ — Runner & CI-Hilfen
 
