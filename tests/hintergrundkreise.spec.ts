@@ -526,7 +526,11 @@ test('AK3 (#849): vier eigene Töne je Route, --blob-partner passt zum Entwurfsb
 
 // --- issue #889: die Kreise dürfen nicht mehr an der Oberkante der Nav-Zeile
 // abbrechen — nur die Pille (`.nav__bar`) darf sie verdecken, der Rest der Zeile
-// zeigt sie wie jede andere Stelle der Seite. ---------------------------------
+// zeigt sie wie jede andere Stelle der Seite. Seit #908 blendet ein
+// `::before`-Schleier die Zeile zusätzlich zum unteren Rand hin zum Routen-Grund
+// aus (tests/nav-schleier.spec.ts) — die Messung unten versteckt `.shell` (und
+// damit `.nav` selbst) vor dem Pixel-Sampling ohnehin komplett
+// (hideForegroundContent), der Schleier berührt sie also nicht. -------------
 
 interface Box {
   x: number;
