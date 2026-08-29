@@ -122,6 +122,7 @@ export const commands: Record<string, CommandHandler> = {
       ctx.sharedState,
       ctx.gh,
       ctx.git,
+      ctx.clock,
     );
     return '';
   },
