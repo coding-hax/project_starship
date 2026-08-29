@@ -57,3 +57,84 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Grund-Variante (issue #921): der Woche/Monat-Umschalter im Kalender-Kopf
+   steht direkt auf dem Routen-Grund statt auf einer Karte — schmaler, dünner
+   gezeichnet, mit demselben Chip-Schleier wie page-head__chip statt
+   --surface-raised als Untergrund. Übersteuert nur diese eine Instanz per
+   zweiter Klasse; .segmented selbst bleibt für die vier Karten-Stellen
+   (habit-editor.tsx, appearance-panel.tsx, task-editor.tsx, task-list.tsx)
+   unverändert. Fest auf /kalender bezogen (aktuell die einzige Stelle mit
+   dieser Variante) — bei Wiederverwendung auf einer anderen Route die
+   Kontrastwerte unten neu messen. */
+.segmented--ground {
+  width: 148px;
+  flex: none;
+  min-height: 0;
+  gap: 3px;
+  padding: 3px;
+  background: color-mix(in oklab, white 20%, transparent);
+  /* Gemessen (Canvas-Pixel-Kompositierung, wie grundfarbe.spec.ts) gegen den
+     Kalender-Grund: --on-ground-muted/--on-ground reichen für den gedämpften
+     Optionstext auf diesem hellen Schleier im Hellmodus nicht (3,33:1 /
+     4,16:1, beide unter 4,5:1) — der Schleier ist heller als der volle Grund,
+     für den die beiden kalibriert sind. Dunkle Tinte schlägt hier den Test
+     (4,65:1), nicht helle (AK3, „Kontrast schlägt Dämpfung"). Im Dunkelmodus
+     dreht sich das Bild um: Grund + Schleier ist dort dunkel genug, dass
+     --on-ground trägt (5,61:1). */
+  --segmented-ground-muted-ink: color-mix(in oklab, var(--on-accent) 80%, black);
+  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe), 6,35:1
+     gegen --surface im Hellmodus. */
+  --segmented-ground-active-ink: var(--ground);
+  --segmented-ground-pill-bg: var(--surface);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']) .segmented--ground {
+    --segmented-ground-muted-ink: var(--on-ground);
+    /* Fixer Routenton statt des kontextuellen --ground: der ist im
+       Dunkelmodus schon so weit abgedunkelt, dass er auf der ebenfalls
+       abgedunkelten Pille kaum noch trägt (1,66:1 gemessen) — die feste
+       Kalender-Grundfarbe, aufgehellt, bleibt erkennbar blau UND lesbar
+       (4,75:1). */
+    --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
+    /* --surface allein trägt die aktive Pille im Dunkelmodus nur 2,86:1 gegen
+       den Schleier-Grund (unter 3:1) — leicht abgedunkelt sind es 3,33:1. */
+    --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 70%, black);
+  }
+}
+:root[data-theme='dunkel'] .segmented--ground {
+  --segmented-ground-muted-ink: var(--on-ground);
+  --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
+  --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 70%, black);
+}
+
+.segmented--ground .segmented__indicator {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px) / var(--segmented-count, 1));
+  background: var(--segmented-ground-pill-bg);
+}
+
+.segmented--ground .segmented__option {
+  min-height: 27px; /* 3+27+3 = 33px gezeichnete Höhe (AK2) */
+  font-size: var(--text-chip);
+  color: var(--segmented-ground-muted-ink);
+}
+
+/* Trefferfläche bleibt ≥44×44 (AK2, #818/#867 AK4: dieselbe Trennung von
+   gezeichnet und anfassbar) — die Pille selbst zeichnet nur 27px hoch, ein
+   unsichtbares Pseudo-Element weitet die Trefferfläche vertikal darüber
+   hinaus. `position: absolute` nimmt es aus dem Fluss, es beeinflusst die
+   gezeichnete Höhe des Umschalters also nicht. Waagerecht schon ausreichend
+   (zwei Optionen auf 148px Breite, weit über 44px je Option). */
+.segmented--ground .segmented__option::before {
+  content: '';
+  position: absolute;
+  inset: -8.5px 0;
+}
+
+.segmented--ground .segmented__option[aria-checked='true'] {
+  color: var(--segmented-ground-active-ink);
+}

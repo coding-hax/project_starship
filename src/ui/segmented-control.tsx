@@ -14,6 +14,9 @@ export interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   /** Accessible name for the whole group (each option's name is its label). */
   label: string;
+  /** `'ground'` renders the thinner, on-ground variant (issue #921) instead of
+   *  the default card variant — CSS/class only, no behavioural difference. */
+  variant?: 'card' | 'ground';
 }
 
 /**
@@ -27,6 +30,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   label,
+  variant = 'card',
 }: SegmentedControlProps<T>) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = options.findIndex((option) => option.value === value);
@@ -61,7 +65,7 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
-      className="segmented"
+      className={variant === 'ground' ? 'segmented segmented--ground' : 'segmented'}
       role="radiogroup"
       aria-label={label}
       style={{ '--segmented-count': options.length } as CSSProperties}
