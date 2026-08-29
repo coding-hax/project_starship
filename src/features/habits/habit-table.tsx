@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useId, useMemo, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { OfflineNotice } from '@/ui/offline-notice';
@@ -101,10 +102,12 @@ function HabitRow({
               key={index}
               className="habit-table__week-bar"
               data-current={index === weeks.length - 1 ? '' : undefined}
-              style={{
-                height: `${week.due > 0 ? Math.max(0.08, Math.min(1, week.done / week.due)) * 100 : 8}%`,
-                background: `color-mix(in oklch, ${colorVar} 70%, var(--text-base))`,
-              }}
+              style={
+                {
+                  height: `${week.due > 0 ? Math.max(0.08, Math.min(1, week.done / week.due)) * 100 : 8}%`,
+                  '--week-bar-color': colorVar,
+                } as CSSProperties
+              }
             />
           ))}
         </span>

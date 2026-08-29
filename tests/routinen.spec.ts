@@ -213,7 +213,18 @@ test('AK6/AK10: Wochenbalken, Kachel-Balken und Verlaufslinie/-punkt erreichen 3
     const weekBarColor = await toRgb(page, await elementBackground(weekBar));
     expect(
       contrastRatio(weekBarColor, surface),
-      `Wochenbalken (${scheme}) gegen die Tabellenfläche`,
+      `Wochenbalken, laufende Woche (${scheme}) gegen die Tabellenfläche`,
+    ).toBeGreaterThanOrEqual(3);
+
+    // Die 11 zurückliegenden Wochen sind gedämpft — als Farbmischung, nicht
+    // als Deckkraft (Deckkraft mischt gegen --surface und reißt den Kontrast
+    // unter 3:1, AK-Check 29.08.). Eigene Messung, weil `backgroundColor`
+    // eine `opacity`-Dämpfung nicht mit einschlösse.
+    const pastWeekBar = page.locator('.habit-table__week-bar:not([data-current])').first();
+    const pastWeekBarColor = await toRgb(page, await elementBackground(pastWeekBar));
+    expect(
+      contrastRatio(pastWeekBarColor, surface),
+      `Wochenbalken, vergangene Woche (${scheme}) gegen die Tabellenfläche`,
     ).toBeGreaterThanOrEqual(3);
 
     const barFill = page.locator('.habit-tiles__bar-fill').first();

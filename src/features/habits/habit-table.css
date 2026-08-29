@@ -100,12 +100,15 @@
   min-height: 2px;
   border-radius: 1px;
   /* The 11 trailing weeks read as history, the running week stands out
-     (issue #905) — opacity only, the bar's own colour never changes. */
-  opacity: 0.38;
+     (issue #905). A flat, muted mix rather than opacity: opacity composites
+     toward --surface and craters contrast (measured ~1.7:1 light / ~2.4:1
+     dark, AK6) — this mix stays >=3:1 against --surface for every palette
+     colour in both themes (worst case measured ~3.5:1, amber/light). */
+  background: color-mix(in oklch, var(--week-bar-color) 50%, var(--text-muted-base) 50%);
 }
 
 .habit-table__week-bar[data-current] {
-  opacity: 1;
+  background: color-mix(in oklch, var(--week-bar-color) 70%, var(--text-base));
 }
 
 .habit-table__streak {
