@@ -13,19 +13,24 @@
   bottom: calc(
     64px + var(--space-2) + env(safe-area-inset-bottom) + var(--space-4) + var(--keyboard-inset)
   );
-  width: 56px;
-  height: 56px;
+  height: 58px;
+  width: auto;
   min-width: var(--touch-target);
   min-height: var(--touch-target);
+  padding-inline: var(--space-6);
+  gap: 10px;
   border: none;
   border-radius: var(--radius-pill);
   /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
-     Bereichsfarbe auf --surface läge nur bei ~2,9:1. 65% Bereichsfarbe gegen
-     --text-base gemischt hält den Glyph in jedem Bereich und Theme ≥4,5:1
-     (schwächster Fall: --area-tasks hell, gemessen ~4,7:1) und bleibt an der
-     Bereichsfarbe erkennbar statt ins Neutrale zu kippen. */
+     Bereichsfarbe auf --surface läge nur bei ~2,9:1. AK1 nennt 76%, aber das
+     hält im Hellmodus für --area-tasks (die hellste Bereichsfarbe, L=70%) nur
+     ~4,22:1 — unter dem von AC3 (issue #709, bestehender Required Check)
+     geforderten Minimum. 70% Bereichsfarbe gegen --text-base gemischt (oklab)
+     hält Glyphe **und** das 16px/600-Label in jedem Bereich und Theme ≥4,5:1
+     (--area-tasks im Hellmodus als knappster Fall: ~4,67:1) und bleibt an der
+     Bereichsfarbe erkennbar statt ins Neutrale zu kippen (#867 AK1). */
   background: var(--surface);
-  color: color-mix(in oklch, var(--accent) 65%, var(--text-base));
+  color: color-mix(in oklab, var(--accent) 70%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;
@@ -43,16 +48,83 @@
   transform: scale(0.95);
 }
 
+/* Der Skalenhub sitzt auf Icon + Label statt auf `.fab` selbst: ein
+   `transform` direkt am Button ändert dessen eigene getBoundingClientRect in
+   jedem Frame, und Playwright's Klick-Stabilitätscheck — jeder bestehende
+   `fab.click()` im Rest der Suite — wartet dann bis zum 30s-Timeout auf ein
+   Element, das nie zur Ruhe kommt (issue #867: eine `infinite`-Animation
+   direkt auf `.fab` machte e2e-main rot). Icon/Label liegen als Kinder
+   außerhalb der eigenen Layout-Box von `.fab` — ihr Skalenhub bleibt rein
+   visuell, `.fab`s Box (Höhe/Padding/Radius/Grund/Gap, AK1) rührt sich nicht.
+   Ruhelage = Identität, damit `animation: none` (reduced motion) auf den
+   ungetransformten Zustand zurückfällt statt auf ein Zwischenbild
+   einzufrieren (Falle dokumentiert in docs/design/form-und-motion.md, siehe
+   auch background-circles.css). */
+.fab__icon,
+.fab__label {
+  animation: breathe 3.6s ease-in-out infinite alternate;
+}
+
+@keyframes breathe {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fab__icon,
+  .fab__label {
+    animation: none !important;
+  }
+}
+
+:root[data-reduce-motion='true'] .fab__icon,
+:root[data-reduce-motion='true'] .fab__label {
+  animation: none !important;
+}
+
 .fab__icon {
-  font-size: var(--text-title);
+  /* --text-section (20px) statt --text-title (issue #867 AK1) — die FAB-
+     Glyphe ist jetzt kleiner als andere --text-title-Verbraucher. */
+  font-size: var(--text-section);
   /* Rundschrift-Rezept (issue #859, ADR-0027): `--leading-display` statt
      `--leading-tight` (1) — die Zentrierung hält die Flex-Box auf `.fab`,
      nicht diese Zeile. `letter-spacing` ist bei der Einzelglyphe "+" ein
-     No-op, bleibt aber Teil des Rezepts. */
-  font-family: var(--font-display);
+     No-op, bleibt aber Teil des Rezepts. --font-display-stable statt
+     --font-display (issue #867, dieselbe Begründung wie bei .fab__label
+     unten): lädt via `block` statt `swap`, kein sichtbarer Fallback-Wechsel
+     mehr möglich. Auf Apple-Geräten (ADR-0027) bleibt das Ergebnis
+     unverändert SF Pro Rounded, dort lädt Nunito ohnehin nie. */
+  font-family: var(--font-display-stable);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   line-height: var(--leading-display);
+}
+
+.fab__label {
+  /* --font-display-stable (issue #867 CI-Fund, tokens.css/layout.tsx), NICHT
+     --font-display: zwei vorherige Läufe versuchten hier erst --font-ui (CI
+     blieb rot — der eigentliche Fund war zusätzlich `.aufgaben-page__title-
+     row`s h1, siehe aufgaben-page.css), dann wieder --font-display (ADR-0027
+     nennt "die Beschriftung des FAB" ausdrücklich als Rundschrift-Stelle) —
+     CI blieb AUCH danach rot, nur schwächer (der h1-Fix griff, das Label
+     selbst blieb Ursache). Anders als beim h1 gibt es hier keinen Flex-
+     Sibling: `.fab` ist `position: fixed; right: …; width: auto` — ein
+     Fallback→Nunito-Breitenwechsel im Label ändert `.fab`s eigene Box direkt.
+     `--font-display-stable` ist dieselbe Nunito-Familie (erfüllt ADR-0027
+     weiterhin wörtlich), nur mit `display: 'block'` statt `'swap'` — malt nie
+     sichtbar im Fallback, also strukturell kein Wechsel nach dem ersten Paint
+     möglich (dieselbe Garantie, mit der Inter seit #652 sicher ist). */
+  font-family: var(--font-display-stable);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  font-size: var(--text-body);
+  line-height: var(--leading-display);
+  white-space: nowrap;
+  color: inherit;
 }
 
 @media (min-width: 768px) {

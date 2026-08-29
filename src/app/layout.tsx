@@ -40,6 +40,25 @@ const nunito = Nunito({
   display: 'swap',
 });
 
+// Zweite Instanz derselben Familie, nur für Stellen, an denen ein Fallback→
+// Nunito-Breitenwechsel eine fixe, rechts verankerte Box verschieben würde
+// (issue #867 CI-Fund: `.fab__label` hängt an `.fab`s `width: auto` +
+// `right`-Anchor — anders als ein Fließtext-h1 gibt es hier keinen Flex-
+// Sibling, dessen Box die Restfläche aufsaugen könnte). `block` statt `swap`
+// (wie Inter oben, #652) hält diese eine Nunito-Gewichtsstufe bis zu 3s
+// unsichtbar statt sichtbar im Fallback zu starten — dieselbe Garantie,
+// nur auf `--weight-emphasis` (600, das einzige Gewicht, das der FAB-Label-
+// Anwendungsfall braucht) statt global. Die übrigen Rundschrift-Stellen
+// (h1, `.section-card__title`, Zahlen) bleiben unverändert bei `--font-
+// display`/`swap` (ADR-0027) — dort sorgt ein Flex-Sibling oder eine block-
+// level-Box ohnehin dafür, dass der Breitenwechsel niemand daneben schiebt.
+const nunitoStable = Nunito({
+  subsets: ['latin'],
+  weight: ['600'],
+  variable: '--font-nunito-stable',
+  display: 'block',
+});
+
 export const metadata: Metadata = {
   title: 'Starship',
   description: 'Termine, Aufgaben, Journal und Routinen an einem Ort.',
@@ -127,7 +146,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const nonce = (await headers()).get('x-nonce') ?? undefined;
 
   return (
-    <html lang="de" className={`${inter.variable} ${nunito.variable}`}>
+    <html lang="de" className={`${inter.variable} ${nunito.variable} ${nunitoStable.variable}`}>
       <body>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <KeyboardInset />

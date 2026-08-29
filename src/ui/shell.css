@@ -186,7 +186,19 @@
   padding-inline: var(--space-2);
   background: var(--surface);
   border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-raised);
+  box-shadow: var(--shadow-float);
+  /* `overflow: hidden` (below) never clips an element's own box-shadow, only its
+     descendants' overflow — so `--shadow-float`'s 8px offset/30px blur (tokens.css)
+     bleeds straight down into the empty home-indicator strip below the pill
+     (`.nav`'s bottom padding, issue #831 AK2/AK4), which `nav-schleier.spec.ts`
+     AK4 (#908) samples and expects to read as flat `--ground` — no shadow at all,
+     since there is no scrolled content down there for a "floating above content"
+     shadow to mean anything. `clip-path`, unlike `overflow`, clips an element's
+     own shadow too: 0 on the bottom edge cuts the downward bleed off exactly at
+     the pill's own border, while -40px (> the 30px blur radius) on the other three
+     sides leaves the shadow fully visible above and beside the pill, where it
+     still reads as floating over content sliding up from below. */
+  clip-path: inset(-40px -40px 0 -40px);
   /* Rounds off the carousel's scroll content along with the pill itself — the
      items underneath have no background of their own, so this only ever clips
      the momentary overscroll bounce, never a label at rest. */
@@ -251,6 +263,30 @@
 
 .nav__icon {
   display: flex;
+}
+
+/* Aktive Pille hinter dem Icon (issue #867 AK3): Pseudo-Element statt DOM-Eingriff,
+   damit die Karussell-Geometrie (#205/#229) unangetastet bleibt. */
+.nav__link[aria-current='page'] .nav__icon {
+  position: relative;
+}
+
+.nav__link[aria-current='page'] .nav__icon::before {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  /* hinter die Glyphe; ein absolut positioniertes ::before läge sonst über
+     dem statischen SVG-Icon. */
+  z-index: -1;
+}
+
+.nav__link[aria-current='page'] .nav__label {
+  font-weight: var(--weight-emphasis);
 }
 
 .nav__label {
