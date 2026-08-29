@@ -122,16 +122,16 @@ html:has([data-ground]) .bg-layer {
      falls back to a circle sitting exactly here, never mid-flight. */
 }
 
-.bg-circle:nth-child(1) {
+.bg-circle:nth-child(4) {
   background: var(--b1);
 }
-.bg-circle:nth-child(2) {
+.bg-circle:nth-child(5) {
   background: var(--b2);
 }
-.bg-circle:nth-child(3) {
+.bg-circle:nth-child(6) {
   background: var(--b3);
 }
-.bg-circle:nth-child(4) {
+.bg-circle:nth-child(7) {
   background: var(--b4);
 }
 
@@ -146,14 +146,14 @@ html:has([data-ground]) .bg-layer {
   }
 }
 
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(1) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
   top: 620px;
   left: 140px;
   width: 480px;
   height: 480px;
   animation: bgc-aufsteigen 22s ease-in-out infinite alternate;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(2) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(5) {
   top: 60px;
   left: 260px;
   width: 220px;
@@ -161,7 +161,7 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(2) {
   animation: bgc-aufsteigen 25s ease-in-out infinite alternate;
   animation-delay: -13s;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(3) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(6) {
   top: 420px;
   left: 200px;
   width: 160px;
@@ -169,7 +169,7 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(3) {
   animation: bgc-aufsteigen 20s ease-in-out infinite alternate;
   animation-delay: -7s;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(7) {
   top: 720px;
   left: 40px;
   width: 140px;
@@ -189,14 +189,14 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(1) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
   top: -300px;
   left: -320px;
   width: 460px;
   height: 460px;
   animation: bgc-wandern 26s ease-in-out infinite alternate;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(2) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(5) {
   top: 300px;
   left: 190px;
   width: 200px;
@@ -204,7 +204,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(2) {
   animation: bgc-wandern 29s ease-in-out infinite alternate;
   animation-delay: -14s;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(3) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(6) {
   top: 560px;
   left: 20px;
   width: 170px;
@@ -212,7 +212,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(3) {
   animation: bgc-wandern 24s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(7) {
   top: 100px;
   left: 90px;
   width: 130px;
@@ -257,7 +257,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='kalender']) .bg-circle:nth-child(1) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
   top: 260px;
   left: 215px;
   width: 500px;
@@ -266,7 +266,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(1) {
     bgc-kreisen-x 23s linear infinite,
     bgc-kreisen-y 31s linear infinite;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(2) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(5) {
   top: -60px;
   left: -40px;
   width: 190px;
@@ -276,7 +276,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(2) {
     bgc-kreisen-y 29s linear infinite;
   animation-delay: -11s, -19s;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(3) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(6) {
   top: 640px;
   left: 260px;
   width: 150px;
@@ -286,7 +286,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(3) {
     bgc-kreisen-y 33s linear infinite;
   animation-delay: -16s, -4s;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(7) {
   top: 40px;
   left: 300px;
   width: 120px;
@@ -308,14 +308,14 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='routinen']) .bg-circle:nth-child(1) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
   top: 500px;
   left: -300px;
   width: 440px;
   height: 440px;
   animation: bgc-atmen 18s ease-in-out infinite alternate;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(2) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(5) {
   top: -100px;
   left: 200px;
   width: 210px;
@@ -323,7 +323,7 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(2) {
   animation: bgc-atmen 20s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(3) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(6) {
   top: 300px;
   left: 40px;
   width: 180px;
@@ -331,7 +331,7 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(3) {
   animation: bgc-atmen 16s ease-in-out infinite alternate;
   animation-delay: -13s;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(7) {
   top: 700px;
   left: 260px;
   width: 100px;
@@ -354,14 +354,14 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='journal']) .bg-circle:nth-child(1) {
+html:has([data-ground='journal']) .bg-circle:nth-child(4) {
   top: -180px;
   left: -100px;
   width: 420px;
   height: 420px;
   animation: bgc-pulsieren 8s ease-in-out infinite alternate;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(2) {
+html:has([data-ground='journal']) .bg-circle:nth-child(5) {
   top: 380px;
   left: 240px;
   width: 230px;
@@ -369,7 +369,7 @@ html:has([data-ground='journal']) .bg-circle:nth-child(2) {
   animation: bgc-pulsieren 9s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(3) {
+html:has([data-ground='journal']) .bg-circle:nth-child(6) {
   top: 640px;
   left: -60px;
   width: 160px;
@@ -377,7 +377,7 @@ html:has([data-ground='journal']) .bg-circle:nth-child(3) {
   animation: bgc-pulsieren 7.5s ease-in-out infinite alternate;
   animation-delay: -6s;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(4) {
+html:has([data-ground='journal']) .bg-circle:nth-child(7) {
   top: 160px;
   left: 160px;
   width: 90px;
@@ -397,14 +397,14 @@ html:has([data-ground='journal']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(1) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
   top: 340px;
   left: 260px;
   width: 560px;
   height: 560px;
   animation: bgc-schraeg-treiben 34s ease-in-out infinite alternate;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(2) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(5) {
   top: 40px;
   left: -140px;
   width: 240px;
@@ -412,7 +412,7 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(2) {
   animation: bgc-schraeg-treiben 31s ease-in-out infinite alternate;
   animation-delay: -19s;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(3) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(6) {
   top: 600px;
   left: 80px;
   width: 140px;
@@ -420,7 +420,7 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(3) {
   animation: bgc-schraeg-treiben 29s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(7) {
   top: -80px;
   left: 120px;
   width: 110px;
@@ -440,14 +440,14 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='wetter']) .bg-circle:nth-child(1) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
   top: 660px;
   left: 160px;
   width: 500px;
   height: 500px;
   animation: bgc-ziehen 40s linear infinite alternate;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(2) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(5) {
   top: 20px;
   left: 40px;
   width: 200px;
@@ -455,7 +455,7 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(2) {
   animation: bgc-ziehen 37s linear infinite alternate;
   animation-delay: -22s;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(3) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(6) {
   top: 380px;
   left: -100px;
   width: 170px;
@@ -463,7 +463,7 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(3) {
   animation: bgc-ziehen 35s linear infinite alternate;
   animation-delay: -5s;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(7) {
   top: 200px;
   left: 280px;
   width: 100px;
@@ -486,14 +486,14 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(1) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
   top: -160px;
   left: 60px;
   width: 440px;
   height: 440px;
   animation: bgc-wogen 28s ease-in-out infinite;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(2) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(5) {
   top: 500px;
   left: 260px;
   width: 220px;
@@ -501,7 +501,7 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(2) {
   animation: bgc-wogen 25s ease-in-out infinite;
   animation-delay: -15s;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(3) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(6) {
   top: 700px;
   left: -80px;
   width: 150px;
@@ -509,7 +509,7 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(3) {
   animation: bgc-wogen 30s ease-in-out infinite;
   animation-delay: -3s;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(7) {
   top: 240px;
   left: 200px;
   width: 90px;
@@ -531,14 +531,14 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='anmelden']) .bg-circle:nth-child(1) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
   top: 480px;
   left: 180px;
   width: 520px;
   height: 520px;
   animation: bgc-schweben 20s ease-in-out infinite alternate;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(2) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(5) {
   top: -120px;
   left: -60px;
   width: 210px;
@@ -546,7 +546,7 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(2) {
   animation: bgc-schweben 23s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(3) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(6) {
   top: 260px;
   left: 260px;
   width: 160px;
@@ -554,7 +554,7 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(3) {
   animation: bgc-schweben 18s ease-in-out infinite alternate;
   animation-delay: -14s;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(7) {
   top: 660px;
   left: 40px;
   width: 110px;

@@ -839,14 +839,12 @@ test('AK4 (#904): Kontrastdeckel — mit Licht bleibt jede Route bei ≥ 3:1 und
     const brightest = sampled.reduce((a, b) => (relativeLuminance(a) >= relativeLuminance(b) ? a : b));
     const withLight = wcagContrast(brightest, ink);
 
-    expect(
-      withLight,
-      `Kontrast mit Licht auf ${route.path}: ${withLight.toFixed(2)}:1 (Grund ohne Licht: ${baseline.toFixed(2)}:1)`,
-    ).toBeGreaterThanOrEqual(3.0);
-    expect(
-      baseline - withLight,
-      `Kontrastverlust auf ${route.path}: ${baseline.toFixed(2)}:1 → ${withLight.toFixed(2)}:1`,
-    ).toBeLessThanOrEqual(1.5);
+    const detail = `${route.path}: Grund ${JSON.stringify(baselineGround)} → ${baseline.toFixed(2)}:1, mit Licht ${JSON.stringify(brightest)} → ${withLight.toFixed(2)}:1, Tinte ${JSON.stringify(ink)}`;
+    // .soft, nicht hart: ein Bericht über alle fünf Routen in einem Lauf statt
+    // Abbruch bei der ersten — das macht das Nachschärfen des Kontrastdeckels
+    // (AK4) in einer Runde möglich statt route-weise.
+    expect.soft(withLight, `Kontrast mit Licht ≥ 3.0 — ${detail}`).toBeGreaterThanOrEqual(3.0);
+    expect.soft(baseline - withLight, `Kontrastverlust ≤ 1.5 — ${detail}`).toBeLessThanOrEqual(1.5);
   }
 });
 
