@@ -131,13 +131,14 @@ function maxChannelDiff(a: [number, number, number], b: [number, number, number]
 
 /**
  * The strip sampled below the pill (relY=0.95) sits inside `.nav__bar`'s own
- * `--shadow-raised` (0 10px 26px, shell.css) — a real, pre-existing soft shadow
+ * `--shadow-raised` (0 10px 26px, tokens.css) — a real, pre-existing soft shadow
  * that tints even a plain-ground pixel a few channel steps darker, not something
- * this ticket introduces or the veil can avoid. 20 comfortably absorbs that
- * shadow bleed while staying an order of magnitude below the gap to `--surface`
- * (a near-white card colour vs. a saturated route ground, easily 100+ per channel).
+ * this ticket introduces or the veil can avoid. Dark mode's shadow alpha is over
+ * 3× light mode's (0.4 vs. 0.12), measured up to 23 there — 30 comfortably absorbs
+ * both while staying an order of magnitude below the gap to `--surface` (a
+ * near-white card colour vs. a saturated route ground, easily 100+ per channel).
  */
-const GROUND_WITH_SHADOW_TOLERANCE = 20;
+const GROUND_WITH_SHADOW_TOLERANCE = 30;
 
 /** Reads a real composited pixel from `locator`'s own painted box (issue #849's
  * screenshot-not-getComputedStyle technique, scoped to one element) — `relX`/`relY`
