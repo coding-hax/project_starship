@@ -535,7 +535,7 @@ test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darun
   await expect(resetButton).not.toHaveText('Zurücksetzen');
 });
 
-test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfeld ist nicht dauerhaft sichtbar', async ({
+test('AK5: die Lupe (44×44) in der Augenbrauenzeile öffnet den Suchmodus, das Suchfeld ist nicht dauerhaft sichtbar', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -543,9 +543,10 @@ test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfe
   // Standardmäßig ist kein Suchfeld auf der Seite (AK5).
   await expect(page.locator('.journal-search')).toHaveCount(0);
 
-  // Die Lupe sitzt in der Titelzeile und ist ein 44×44-Tap-Ziel.
+  // Die Lupe sitzt in der Augenbrauenzeile (issue #928 AK1, zuvor in der
+  // Titelzeile) und ist ein 44×44-Tap-Ziel.
   const toggle = page
-    .locator('.journal-page__title-row')
+    .locator('.journal-page__eyebrow-row')
     .getByRole('button', { name: 'Journal durchsuchen' });
   await expect(toggle).toBeVisible();
   const box = (await toggle.boundingBox())!;
@@ -558,6 +559,23 @@ test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfe
   await toggle.click();
   await expect(page.locator('.journal-search__input')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Journal durchsuchen' })).toHaveCount(0);
+});
+
+test('issue #928 AK4: die Augenbrauenzeile behält ihre Höhe, wenn die Lupe im Suchmodus verschwindet', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const eyebrowRow = page.locator('.journal-page__eyebrow-row');
+  const beforeBox = (await eyebrowRow.boundingBox())!;
+  expect(beforeBox).not.toBeNull();
+
+  await openSearch(page);
+  await expect(page.locator('.journal-search__input')).toBeVisible();
+
+  const afterBox = (await eyebrowRow.boundingBox())!;
+  expect(afterBox).not.toBeNull();
+  expect(afterBox.height).toBe(beforeBox.height);
 });
 
 test('AK6: im Suchmodus kein FAB; jeder Treffer trägt volles Datum + Zeit und hebt das Suchwort hervor', async ({

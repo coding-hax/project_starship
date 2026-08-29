@@ -6,45 +6,32 @@
   --accent: var(--area-journal);
 }
 
-.journal-page__title-row {
+/* Augenbraue: Datum links, Lupe rechts (issue #928 AK1) — dieselbe Anordnung
+   wie der Kalender-Umschalter (calendar-view.css `.calendar-view__eyebrow`).
+   Mindesthöhe der 44×44-Lupe sitzt seit #928 hier statt auf der Titelzeile
+   (AK4): die Lupe verschwindet im Suchmodus (journal-search-toggle.tsx), die
+   feste Höhe hält die Zeile dabei stabil, statt beim Umschalten zu schrumpfen. */
+.journal-page__eyebrow-row {
   display: flex;
-  /* Zentriert statt Grundlinie (wie vor #700): der 44×44-Lupe-Knopf gibt jetzt
-     die Zeilenhöhe vor, an ihm richtet sich der Titel mittig aus. Das Datum
-     sitzt seit issue #868 als Augenbraue über der Zeile, nicht mehr hier. */
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  /* Explizite Mindesthöhe statt aus den Kindern abgeleitet (issue #868,
-     CI-Fund AK5 „.page-head läuft nicht über"): die Lupe rendert erst nach dem
-     Journal-Setup — davor bestimmt allein der Titel-Cluster (h1 neben der
-     42px-PageFace) die Zeilenhöhe. `align-items: center` zentriert dort einen
-     h1 mit gebrochener Rundschrift-Zeilenhöhe (24,2px × --leading-display)
-     neben der ganzzahligen SVG-Figur — Chromium rundet beide Kanten beim
-     Berechnen von scrollHeight einzeln und meldet 1–2px „Überlauf", obwohl
-     h1 (scrollHeight === clientHeight, gemessen) für sich allein gar nicht
-     überläuft. Eine feste Mindesthöhe macht die Zeile unabhängig von dieser
-     Rundung — 44px ist ohnehin die Lupen-Größe, kein neuer Wert. */
+  gap: var(--space-2);
   min-height: var(--touch-target);
 }
 
-/* Titel + Figur als ein Cluster (issue #830): so bleibt `justify-content:
-   space-between` bei zwei Top-Level-Kindern (Cluster, Aktionen) statt die
-   Figur zwischen Titel und Lupe zu verteilen. */
-.journal-page__title-cluster {
+/* Titel + Figur auf der vollen Breite verteilt (issue #928 AK2, wie
+   calendar-view.css `.calendar-view__title-row`/`__heading`): der Titel trägt
+   `flex: 1` und schiebt die Figur an den rechten Rand — `.face` selbst trägt
+   bereits `flex: 0 0 auto` (faces.css). */
+.journal-page__title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
 }
 
-.journal-page__title-cluster h1 {
+.journal-page__heading {
   margin: 0;
-}
-
-.journal-page__title-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Lupe (AK5): 44×44 Tap-Ziel, reine Kontur ohne Fläche — dieselbe ruhige

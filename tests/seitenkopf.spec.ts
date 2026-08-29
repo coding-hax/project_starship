@@ -165,6 +165,38 @@ async function htmlBackground(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 }
 
+/** Text-node-tight bounding box (not the flex item's own, possibly grown, box) —
+ *  issue #928 AK2 compares the gap to the *visible* end of the title text, not
+ *  to the heading's own box (`flex: 1` stretches it to fill the row's
+ *  remaining width, so its own edge always sits flush next to the figure
+ *  regardless of how short the text is). Same technique as kalender.spec.ts's
+ *  `textBoundingBox` (issue #921 AK4). */
+async function textBoundingBox(locator: Locator): Promise<{ x: number; right: number }> {
+  return locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
+}
+
+/** Bounding box of the raw date text node inside `.journal-page__eyebrow-row`
+ *  (issue #928 AK1) — `TodayLongDate` renders bare text, not its own element,
+ *  so there is no locator to target directly; same range-based technique as
+ *  `textBoundingBox` above, applied to the row's first text node. */
+async function eyebrowDateBox(row: Locator): Promise<{ x: number; right: number }> {
+  return row.evaluate((el) => {
+    const textNode = Array.from(el.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim().length > 0,
+    );
+    if (!textNode) throw new Error('no date text node found in eyebrow row');
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
+}
+
 interface HeaderCase {
   path: string;
   /** Der Kopf-Container: Titelzeile + optionaler Zusatz (Ring, Datum, Suchknopf). */
@@ -460,6 +492,52 @@ test('AK6 (#868): die Augenbraue erfüllt 4,5:1 gegen den Grund, Hell und Dunkel
     ).toBeGreaterThanOrEqual(4.5);
     await page.emulateMedia({ colorScheme: 'light' });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #928: Journal-Kopf — Lupe in die Augenbrauenzeile, Figur rechts außen */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#928): die Journal-Augenbraue zeigt das Datum links und die Lupe rechts', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/journal');
+
+  const row = page.locator('.journal-page__eyebrow-row');
+  const toggle = row.getByRole('button', { name: 'Journal durchsuchen' });
+  const rowBox = await row.boundingBox();
+  const toggleBox = await toggle.boundingBox();
+  const dateBox = await eyebrowDateBox(row);
+  if (!rowBox || !toggleBox) throw new Error('missing bounding box');
+
+  // Datum links: die Lupe beginnt rechts vom Datumstext.
+  expect(toggleBox.x).toBeGreaterThan(dateBox.right);
+
+  // Lupe rechts außen: ihr rechter Rand liegt an der Augenbrauenzeile an.
+  expect(rowBox.x + rowBox.width - (toggleBox.x + toggleBox.width)).toBeLessThan(2);
+});
+
+test('AK2 (#928): die Figur steht rechts außen in der Journal-Titelzeile, der Titel wächst nach links', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/journal');
+
+  const row = page.locator('.journal-page__title-row');
+  const heading = page.locator('.journal-page__heading');
+  const face = row.locator('.face');
+  const rowBox = await row.boundingBox();
+  const textBox = await textBoundingBox(heading);
+  const faceBox = await face.boundingBox();
+  if (!rowBox || !faceBox) throw new Error('missing bounding box');
+
+  const faceToRightEdge = rowBox.x + rowBox.width - (faceBox.x + faceBox.width);
+  const textToFace = faceBox.x - textBox.right;
+  expect(faceToRightEdge).toBeLessThan(2);
+  expect(textToFace).toBeGreaterThan(faceToRightEdge + 10);
 });
 
 test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, Hell und Dunkel', async ({
