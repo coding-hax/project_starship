@@ -2274,7 +2274,11 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(scopeDialog).toBeVisible();
   await scopeDialog.getByRole('button', { name: 'Alle folgenden' }).click();
 
-  await expect(eventCard(page, 'Yoga')).toContainText('19:00');
+  // `splitSeries` inserts a new `events` row for the tail, so this occurrence's
+  // id changes — the old (18:00) card is still mid-exit-animation right after
+  // the click, `settledEventCard` (see its doc comment) is needed here or
+  // `eventCard` hits the same title on both and violates Strict Mode.
+  await expect(settledEventCard(page, 'Yoga')).toContainText('19:00');
 
   // A further week on, the change still applies.
   await selectStripDay(page, 'Sa, 1.');
@@ -2758,8 +2762,11 @@ test('am angezeigten Tag animieren Zu- und Abgaenge weiterhin (#611 AC4, Regress
  * einem Klick von einem Vorkommen direkt zum nächsten, hält `useListPresence`
  * die alte Karte bis zum Ende ihrer Exit-Animation im DOM — beide tragen
  * denselben Titel, und `eventCard` verletzt dann Playwrights Strict Mode.
- * (Die bestehenden S6-Tests laufen über Tage ohne Vorkommen und treffen das
- * nicht.)
+ * (Die S6-Tests für "nur dieser"/"ausfallen lassen" laufen über
+ * `event_exceptions`-Overrides mit gleichbleibender Occurrence-id und treffen
+ * das nicht. "Alle folgenden" (AC5) schon — `splitSeries` legt für den
+ * abgespaltenen Teil eine neue `events`-Zeile an, die Occurrence-id wechselt
+ * also mit.)
  */
 function settledEventCard(page: Page, title: string) {
   return page
