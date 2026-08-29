@@ -307,23 +307,31 @@ function clampRectToViewport(rect: CircleRect, viewport: { width: number; height
 }
 
 /**
- * Hides every direct `<body>` child except `.bg-layer` itself (`visibility:
- * hidden`, not `display: none` — layout doesn't matter once we're only
- * reading pixels). Busy routes like /uebersicht stack real content with no
- * gaps down to the fold, so hunting for an "uncovered" pixel via
- * `elementFromPoint` is a dead end — most of that content is plain
- * transparent wrapper `<div>`s anyway, not `<body>` itself, so that hunt
- * misidentifies them as opaque cover. Hiding the whole foreground instead
- * leaves exactly `html`'s ground and `.bg-layer`'s circles on screen — the
- * two things this fix is actually about — and still reproduces the bug this
- * ticket fixes: `body`'s own background (if it regressed) still paints over
- * the fixed `.bg-layer` regardless of whether its siblings are visible.
+ * Hides every direct `<body>` child except `.bg-layer` itself (`display:
+ * none` — layout doesn't matter once we're only reading pixels). Busy routes
+ * like /uebersicht stack real content with no gaps down to the fold, so
+ * hunting for an "uncovered" pixel via `elementFromPoint` is a dead end —
+ * most of that content is plain transparent wrapper `<div>`s anyway, not
+ * `<body>` itself, so that hunt misidentifies them as opaque cover. Hiding
+ * the whole foreground instead leaves exactly `html`'s ground and
+ * `.bg-layer`'s circles on screen — the two things this fix is actually
+ * about — and still reproduces the bug this ticket fixes: `body`'s own
+ * background (if it regressed) still paints over the fixed `.bg-layer`
+ * regardless of whether its siblings are visible.
+ *
+ * `visibility: hidden` (tried first, #904 AK4) doesn't hold up: a descendant
+ * several levels down (e.g. `.section-card` under `/einstellungen`) painted
+ * opaque again despite every ancestor up to `<body>` carrying `visibility:
+ * hidden !important` — some intermediate layout/animation rule resets it
+ * back to `visible` for a subtree, and inheritance alone can't be trusted
+ * against that. `display: none` has no such escape hatch: it drops the
+ * whole subtree from the render tree, full stop.
  */
 async function hideForegroundContent(page: Page): Promise<void> {
   await page.evaluate(() => {
     Array.from(document.body.children).forEach((el) => {
       if (el instanceof HTMLElement && !el.classList.contains('bg-layer')) {
-        el.style.setProperty('visibility', 'hidden', 'important');
+        el.style.setProperty('display', 'none', 'important');
       }
     });
   });

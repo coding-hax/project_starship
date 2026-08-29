@@ -102,6 +102,33 @@ html:has([data-ground]) .bg-layer {
   animation-delay: -13s;
 }
 
+/* Kontrastdeckel (AK4): on the five routes with light ink (`--on-ground:
+   var(--on-ground-light)`), the light's brightest painted pixel eats into
+   `--on-ground` contrast. Measured with `samplePixels()` against the real
+   rendered pixel, not the resolved gradient stop — 34% costs these routes
+   far more than the design sheet's own single-light estimate once painted
+   (the three lights overlap on screen), enough to drop /aufgaben under the
+   3:1 floor outright. Capped per route so none falls below 3:1 and none
+   loses more than 1.5 points versus today. Wetter and the other three
+   light-ink combinations that don't appear here (Kalender, Journal,
+   Einstellungen do) stay within budget at the 34% default and need no
+   override — Wetter has the least headroom of all five but the unscaled
+   light already clears its cap. Specificity of `html:has(...) .bg-light`
+   ((0,2,1)) sits below the dark-mode rules below it ((0,3,0)), so dark mode
+   still gets the flat 22% here regardless of these caps. */
+html:has([data-ground='aufgaben']) .bg-light {
+  --sky-strength: 15%;
+}
+html:has([data-ground='kalender']) .bg-light {
+  --sky-strength: 11%;
+}
+html:has([data-ground='journal']) .bg-light {
+  --sky-strength: 4%;
+}
+html:has([data-ground='einstellungen']) .bg-light {
+  --sky-strength: 6%;
+}
+
 /* Dark mode (AK5): the ground already sits at ~62% strength on a dark base
    (globals.css) — 34% white on top of that reads as a floodlight, not
    ambient light. */
