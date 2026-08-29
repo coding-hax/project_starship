@@ -149,7 +149,7 @@ NOW=$(date +%s)
 
 # ==============================================================================
 # 1. limit-until in der Vergangenheit -> Pause hebt sich auf, #77 wird gebaut,
-#    die Datei verschwindet, der Status wechselt weg von "Limit erreicht".
+#    die Datei verschwindet, der Status wechselt weg vom Kontingent-Titel.
 # ==============================================================================
 reset_state
 echo $((NOW - 3600)) > "$LIMIT_UNTIL"
@@ -157,7 +157,9 @@ run_main
 assert_session_exists         "AC1: abgelaufenes limit-until -> #77 wird gebaut" 77
 assert_limit_file_absent      "AC1: limit-until wird nach Ablauf aufgeräumt"
 assert_status_title_contains     "AC2: Status nennt das bearbeitete Ticket #77" "#77"
-assert_status_title_not_contains "AC2: Status hängt NICHT mehr an 'Limit erreicht'" "Limit erreicht"
+# #891, AK5/AK8: der Kontingent-Titel heißt seit #891 "Kontingent leer" (früher
+# "Limit erreicht") -- nach Ablauf überschreibt die reguläre Aggregation ihn.
+assert_status_title_not_contains "AC2: Status hängt NICHT mehr am Kontingent-Titel" "Kontingent leer"
 
 # ==============================================================================
 # 2. limit-until in der Zukunft -> Pause bleibt exakt bestehen, kein gh-Aufruf,

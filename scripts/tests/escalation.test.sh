@@ -216,10 +216,14 @@ setup_issue "$ISSUE"
   main
 ) >/dev/null 2>&1
 assert_file_absent "AC2: Limit-Lauf legt keinen failcount an" "$SHARED_DIR/failcount-$ISSUE"
+# #891, AK1/AK8: der 429-Zweig setzt KEIN blocked-limit mehr -- die
+# Kontingent-Pause ist ein Flotten-Zustand, kein Ticket-Zustand. Hier ist
+# STATUS_ISSUE=0 (der "Kontingent leer"-Titel also nicht beobachtbar), deshalb
+# ist die Label-Abwesenheit die belastbare Assertion.
 LIMIT_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$LIMIT_LABELS" in
-  *blocked-limit*) ok "AC2: Limit-Lauf setzt blocked-limit" ;;
-  *) red "AC2: Limit-Lauf setzt blocked-limit (Labels: $LIMIT_LABELS)" ;;
+  *blocked-limit*) red "AC2: Limit-Lauf setzt kein blocked-limit mehr (#891) (Labels: $LIMIT_LABELS)" ;;
+  *) ok "AC2: Limit-Lauf setzt kein blocked-limit mehr (#891)" ;;
 esac
 
 # ==============================================================================
