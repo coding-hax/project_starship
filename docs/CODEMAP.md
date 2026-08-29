@@ -126,10 +126,15 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `use-habits.ts` / `use-habit-logs.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
 - `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
 - `streak.ts` — `computeStreak` (`habit_freezes` dormant) + `countHabitsOnStreak`
-- `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge
-- `habits-overview-section.tsx` / `streak-summary-card.tsx` / `.css` — `OverviewSection` + Karte „Routinen in Serie"
-- `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So je Habit-Zeile
-- `use-archive-habit.ts` / `habit-list.tsx` / `.css` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Verwaltungsliste, Anlegen/Bearbeiten (Sheet+FAB)
+- `week-goal.ts` / `history-weeks.ts` / `history-days.ts` / `month-progress.ts` — reine Ableitungen für Wochensoll, 12-Wochen-, 30-Tage- und Monatsreihe (issue #905 AK8), je mit `.test.ts`
+- `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge auf /uebersicht
+- `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
+- `habit-tiles.tsx` / `.css` — drei Kennzahl-Kacheln HEUTE/DIESE WOCHE/LÄNGSTE SERIE auf /routinen (issue #905)
+- `habit-table.tsx` / `.css` — ausklappbare Routinen-Tabelle auf /routinen, ersetzt `habit-list.tsx` (issue #905)
+- `habit-history-card.tsx` / `.css` — 30-Tage-Verlaufskarte „Routinen in Serie" auf /routinen, ersetzt `streak-summary-card.tsx` (issue #905)
+- `habit-week-grid.tsx` / `.css` — Monatsraster Mo–So, lebt in der ausgeklappten Tabellenzeile
+- `row-month-nav.tsx` — Monatsnavigation je Tabellenzeile (issue #905, ersetzt den früheren globalen Monatsregler)
+- `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
 
@@ -241,6 +246,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `capture-unsicher.spec.ts` — unsicher erkannte Felder markieren (#691, Teil 4/4): ein Test je AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
+- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen-Seite (Kopf+Kacheln+Tabelle+Verlauf, Kontrast, 375×812, Dark/reduced-motion) und die 30-Tage-Verlaufskarte im Detail (issue #905)
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern
 - `scroll-position.spec.ts` — jede Seite startet oben, nie auf der Scrollposition der vorherigen, auch nicht per Zurück (#647)
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
