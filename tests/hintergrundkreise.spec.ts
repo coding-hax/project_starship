@@ -771,12 +771,6 @@ function wcagContrast(a: [number, number, number], b: [number, number, number]):
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-function parseRgbString(value: string): [number, number, number] {
-  const parts = value.match(/[\d.]+/g);
-  if (!parts || parts.length < 3) throw new Error(`Farbe nicht lesbar: ${value}`);
-  return [Number(parts[0]), Number(parts[1]), Number(parts[2])];
-}
-
 /** Grid-scans a light's disc (90% of its radius, clear of the anti-aliased edge)
  * for the point closest to its centre that no `.bg-circle` covers — the brightest
  * light pixel this route can actually show, same spirit as
@@ -813,16 +807,17 @@ test('AK4 (#904): Kontrastdeckel — mit Licht bleibt jede Route bei ≥ 3:1 und
   page,
 }) => {
   await registerPasskey(page);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
 
   for (const route of ROUTES.filter((r) => LIGHT_INK_ROUTES.includes(r.ground))) {
     await page.goto(route.path);
     const viewport = page.viewportSize()!;
     const ink = await resolveVarRgb(page, '--on-ground');
     // `--ground` selbst ist von diesem Ticket unberührt (nur `.bg-layer`/`.bg-light`
-    // malen etwas darüber) — die Auflösung des Custom Property ist deshalb exakt
-    // der "heute"-Grund aus AK4, unbeeinflusst vom neuen Vignette-Verlauf weiter unten.
-    const baselineGround = parseRgbString(await groundColor(page));
+    // malen etwas darüber) — die kanvasbasierte Auflösung des Custom Property ist
+    // deshalb exakt der "heute"-Grund aus AK4 (echte sRGB-Bytes statt der rohen
+    // `oklch(...)`-Zeichenkette, die `getComputedStyle` sonst zurückgibt).
+    const baselineGround = await resolveVarRgb(page, '--ground');
     const baseline = wcagContrast(baselineGround, ink);
 
     const circles = await circleRects(page);
@@ -839,7 +834,10 @@ test('AK4 (#904): Kontrastdeckel — mit Licht bleibt jede Route bei ≥ 3:1 und
     const brightest = sampled.reduce((a, b) => (relativeLuminance(a) >= relativeLuminance(b) ? a : b));
     const withLight = wcagContrast(brightest, ink);
 
-    const detail = `${route.path}: Grund ${JSON.stringify(baselineGround)} → ${baseline.toFixed(2)}:1, mit Licht ${JSON.stringify(brightest)} → ${withLight.toFixed(2)}:1, Tinte ${JSON.stringify(ink)}`;
+    const perCandidate = candidates
+      .map((c, i) => `(${c.x},${c.y})→${JSON.stringify(sampled[i])}`)
+      .join(', ');
+    const detail = `${route.path}: Grund ${JSON.stringify(baselineGround)} → ${baseline.toFixed(2)}:1, mit Licht ${JSON.stringify(brightest)} → ${withLight.toFixed(2)}:1, Tinte ${JSON.stringify(ink)}, Kandidaten: ${perCandidate}`;
     // .soft, nicht hart: ein Bericht über alle fünf Routen in einem Lauf statt
     // Abbruch bei der ersten — das macht das Nachschärfen des Kontrastdeckels
     // (AK4) in einer Runde möglich statt route-weise.
