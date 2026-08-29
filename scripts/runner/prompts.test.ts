@@ -194,6 +194,26 @@ describe('prompts', () => {
     });
   });
 
+  // #901: der Pruefer hinterlaesst IMMER eine sichtbare Anmerkung -- auch wenn
+  // alles passt und er direkt freigibt -- und postet sie VOR dem Merge, sonst
+  // laege sie auf einem bereits geschlossenen Ticket (oder gar nicht) vor.
+  describe('AK-Check-Kommentar: immer, vor dem Merge, mit Kopfzeile (#901)', () => {
+    const prompt = checkPrompt(42, ['A tut X', 'B bleibt Y'], 'feat/42-x');
+
+    it('verlangt den Befund in jedem Ausgang, auch bei voller Erfuellung', () => {
+      expect(prompt).toContain('in jedem Ausgang zuerst — auch bei voller Erfüllung');
+    });
+
+    it('verlangt den Kommentar vor Label-Aenderung und Merge', () => {
+      expect(prompt).toContain('vor jeder Label-Änderung und vor dem Merge');
+    });
+
+    it('verlangt eine menschenlesbare Kopfzeile fuer den Happy Path', () => {
+      expect(prompt).toContain('menschenlesbare Kopfzeile');
+      expect(prompt).toContain('PR freigegeben');
+    });
+  });
+
   // #588: der Lauf legt keine Fund-Tickets mehr an. Der Prompt muss das
   // ausdruecklich verbieten UND den Ersatzweg nennen -- ein blosses Weglassen
   // der alten Anleitung wuerde den Agenten raten lassen, und "gh issue create"
