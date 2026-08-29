@@ -239,6 +239,7 @@
   --text-page-title: 22px;
   --text-page-title-lg: 26px; /* Aktivitäten-Seitentitel + große Zahlen (Routinen-Kacheln, Routinen-Verlauf, issue #905) */
   --text-temp: 40px; /* Wetter, große Tages-Temperatur */
+  --text-agenda-time: 24px; /* Kalender-Agenda, Uhrzeit-Spalte (issue #923); füllt die 24-Stufe der Skala */
   /* PageHead-Zonen (issue #868): Augenbraue/Unterzeile/Chip, ebenfalls bewusst
      außerhalb der 12/14/16/20/24/32-Skala — eigener, schmalerer Kopf statt
      einer bestehenden Rolle. */

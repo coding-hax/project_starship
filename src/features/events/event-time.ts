@@ -165,6 +165,19 @@ export function formatCountdown(now: Date, startsAt: string): string {
   return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
 }
 
+/**
+ * "30 Min" / "1 Std" / "1 Std 30 Min" for an agenda row's second line (issue
+ * #923, AK1) — same wording as `formatCountdown`, but from a fixed
+ * `endsAt − startsAt` span instead of a countdown to now.
+ */
+export function formatDuration(startsAt: string, endsAt: string): string {
+  const minutes = Math.round((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000);
+  if (minutes < 60) return `${minutes} Min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} Std` : `${hours} Std ${rest} Min`;
+}
+
 const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   month: 'long',
   year: 'numeric',
