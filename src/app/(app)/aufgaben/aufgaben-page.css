@@ -12,3 +12,21 @@
   align-items: flex-start;
   gap: var(--space-2);
 }
+
+/* `flex: 1` on the h1 (issue #867, CI-Fund): without it the h1's box shrinks
+   to fit its own text, and PageFace — the next flex sibling — sits flush
+   against that box's right edge. `--font-display` (ADR-0027) renders this h1
+   with the Nunito web fallback on CI/Linux-Chromium before swapping to the
+   loaded file; the fallback's per-character metrics don't match Nunito's
+   exactly, so the h1's content width shifts by a few px on swap and drags
+   PageFace sideways with it (CI-Fund: formsprache.spec.ts AK6, layout-shift
+   score over threshold). Same fix as `.uebersicht__title-cluster h1`
+   (uebersicht.css): `flex: 1` sizes the box from the row's leftover space
+   instead of from the text, so a font-swap width change never moves the
+   following sibling. "Aufgaben" itself never wraps or overflows here (unlike
+   Übersicht's dynamic greeting), so no `white-space`/`text-overflow` companion
+   is needed. */
+.aufgaben-page__title-row h1 {
+  flex: 1 1 auto;
+  min-width: 0;
+}

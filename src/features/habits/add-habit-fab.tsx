@@ -12,7 +12,7 @@ export function AddHabitFab() {
 
   return (
     <>
-      <Fab label={LABEL} onClick={() => setOpen(true)} />
+      <Fab label={LABEL} text="Routine" onClick={() => setOpen(true)} />
       <HabitEditor open={open} mode="create" habit={null} onClose={() => setOpen(false)} />
     </>
   );

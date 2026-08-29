@@ -273,7 +273,7 @@ export function QuickAddTask() {
 
   return (
     <>
-      <Fab label={LABEL} onClick={openSheet} />
+      <Fab label={LABEL} text="Aufgabe" onClick={openSheet} />
       <Sheet
         open={open}
         onClose={() => setOpen(false)}

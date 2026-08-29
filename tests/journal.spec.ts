@@ -333,16 +333,19 @@ async function resolveBackgroundToken(page: Page, token: string): Promise<string
   }, token);
 }
 
-/** Same technique, for the FAB glyph's colour formula (fab.css, issue #831 AK3:
- * `color-mix(in oklch, var(--accent) 65%, var(--text-base))`). Probes with the
- * area token directly instead of `--accent` — journal-page.css only overrides
- * `--accent` inside `[data-module='journal']`, and a document.body probe sits
- * outside that cascade context, but the override just aliases `--accent` to
+/** Same technique, for the FAB glyph's colour formula (fab.css, issue #867
+ * AK1: `color-mix(in oklab, var(--accent) 70%, var(--text-base))` — 70% statt
+ * der im Ticket genannten 76%, weil 76% im Hellmodus für --area-tasks nur
+ * ~4,22:1 Kontrast hält, unter dem von AC3/issue #709 geforderten Minimum;
+ * siehe Kommentar in fab.css). Probes with the area token directly instead of
+ * `--accent` — journal-page.css only overrides `--accent` inside
+ * `[data-module='journal']`, and a document.body probe sits outside that
+ * cascade context, but the override just aliases `--accent` to
  * `--area-journal`, so probing the area token straight is equivalent. */
 async function resolveGlyphToken(page: Page, areaToken: string): Promise<string> {
   return page.evaluate((token) => {
     const probe = document.createElement('span');
-    probe.style.color = `color-mix(in oklch, var(${token}) 65%, var(--text-base))`;
+    probe.style.color = `color-mix(in oklab, var(${token}) 70%, var(--text-base))`;
     document.body.appendChild(probe);
     const color = getComputedStyle(probe).color;
     probe.remove();
