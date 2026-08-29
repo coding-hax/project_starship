@@ -307,23 +307,31 @@ function clampRectToViewport(rect: CircleRect, viewport: { width: number; height
 }
 
 /**
- * Hides every direct `<body>` child except `.bg-layer` itself (`visibility:
- * hidden`, not `display: none` — layout doesn't matter once we're only
- * reading pixels). Busy routes like /uebersicht stack real content with no
- * gaps down to the fold, so hunting for an "uncovered" pixel via
- * `elementFromPoint` is a dead end — most of that content is plain
- * transparent wrapper `<div>`s anyway, not `<body>` itself, so that hunt
- * misidentifies them as opaque cover. Hiding the whole foreground instead
- * leaves exactly `html`'s ground and `.bg-layer`'s circles on screen — the
- * two things this fix is actually about — and still reproduces the bug this
- * ticket fixes: `body`'s own background (if it regressed) still paints over
- * the fixed `.bg-layer` regardless of whether its siblings are visible.
+ * Hides every direct `<body>` child except `.bg-layer` itself (`display:
+ * none` — layout doesn't matter once we're only reading pixels). Busy routes
+ * like /uebersicht stack real content with no gaps down to the fold, so
+ * hunting for an "uncovered" pixel via `elementFromPoint` is a dead end —
+ * most of that content is plain transparent wrapper `<div>`s anyway, not
+ * `<body>` itself, so that hunt misidentifies them as opaque cover. Hiding
+ * the whole foreground instead leaves exactly `html`'s ground and
+ * `.bg-layer`'s circles on screen — the two things this fix is actually
+ * about — and still reproduces the bug this ticket fixes: `body`'s own
+ * background (if it regressed) still paints over the fixed `.bg-layer`
+ * regardless of whether its siblings are visible.
+ *
+ * `visibility: hidden` (tried first, #904 AK4) doesn't hold up: a descendant
+ * several levels down (e.g. `.section-card` under `/einstellungen`) painted
+ * opaque again despite every ancestor up to `<body>` carrying `visibility:
+ * hidden !important` — some intermediate layout/animation rule resets it
+ * back to `visible` for a subtree, and inheritance alone can't be trusted
+ * against that. `display: none` has no such escape hatch: it drops the
+ * whole subtree from the render tree, full stop.
  */
 async function hideForegroundContent(page: Page): Promise<void> {
   await page.evaluate(() => {
     Array.from(document.body.children).forEach((el) => {
       if (el instanceof HTMLElement && !el.classList.contains('bg-layer')) {
-        el.style.setProperty('visibility', 'hidden', 'important');
+        el.style.setProperty('display', 'none', 'important');
       }
     });
   });
@@ -564,12 +572,14 @@ function findSpotInNavBandUnderCircle(navBox: Box, navBarBox: Box, rects: Circle
   return null;
 }
 
-/** Resolves `--surface` the same way `resolveColorToken`/`toRgb` do in
- * grundfarbe-vollfarbe.spec.ts, as sRGB bytes comparable to a sampled screenshot pixel. */
-async function resolveSurfaceRgb(page: Page): Promise<[number, number, number]> {
-  return page.evaluate(() => {
+/** Resolves any colour custom property the same way `resolveColorToken`/`toRgb` do in
+ * grundfarbe-vollfarbe.spec.ts, as sRGB bytes comparable to a sampled screenshot pixel —
+ * `getComputedStyle().getPropertyValue()` alone would return the raw token string
+ * (e.g. `var(--on-ground-light)` or an `oklch(...)`), not a resolved colour. */
+async function resolveVarRgb(page: Page, name: string): Promise<[number, number, number]> {
+  return page.evaluate((name) => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--surface)';
+    probe.style.color = `var(${name})`;
     document.body.appendChild(probe);
     const color = getComputedStyle(probe).color;
     probe.remove();
@@ -581,7 +591,11 @@ async function resolveSurfaceRgb(page: Page): Promise<[number, number, number]> 
     ctx.fillRect(0, 0, 1, 1);
     const data = ctx.getImageData(0, 0, 1, 1).data;
     return [data[0], data[1], data[2]] as [number, number, number];
-  });
+  }, name);
+}
+
+async function resolveSurfaceRgb(page: Page): Promise<[number, number, number]> {
+  return resolveVarRgb(page, '--surface');
 }
 
 test('AK2/AK3 (#889): Kreisbogen läuft in der Nav-Zeile außerhalb der Pille durch, die Pille bleibt --surface', async ({
@@ -633,6 +647,262 @@ test('AK2/AK3 (#889): Kreisbogen läuft in der Nav-Zeile außerhalb der Pille du
     maxChannelDiff(bandColor, groundColor),
     `Nav-Band-Pixel ${JSON.stringify(bandColor)} vs. Grund ${JSON.stringify(groundColor)}`,
   ).toBeGreaterThanOrEqual(3);
+});
+
+// --- issue #904: drei wandernde Lichter, dieselbe Anordnung/Gangart auf jeder
+// Route (anders als die Kreise oben), Ruhelage sichtbar statt verschwunden,
+// Kontrastdeckel am gemalten Pixel gemessen. -------------------------------
+
+async function lightRects(page: Page): Promise<CircleRect[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bg-layer .bg-light')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        top: Math.round(r.top),
+        left: Math.round(r.left),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      };
+    }),
+  );
+}
+
+async function layerChildClasses(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bg-layer > *')).map((el) => el.className),
+  );
+}
+
+// Achtes Kind seit issue #919: der Statusleisten-Schleier (`.bg-layer__veil`),
+// bewusst als letztes Element, damit er innerhalb der Ebene über allem liegt.
+const LAYER_CHILD_ORDER = [
+  'bg-light',
+  'bg-light',
+  'bg-light',
+  'bg-circle',
+  'bg-circle',
+  'bg-circle',
+  'bg-circle',
+  'bg-layer__veil',
+];
+
+test('AK1 (#904): drei .bg-light vor den vier .bg-circle auf jeder Route, /offline bleibt display:none', async ({
+  page,
+  browser,
+}) => {
+  await registerPasskey(page);
+
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    const classes = await layerChildClasses(page);
+    expect(classes, `Kinder von .bg-layer auf ${route.path}`).toEqual(LAYER_CHILD_ORDER);
+  }
+
+  const anmeldenContext = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+    viewport: page.viewportSize() ?? undefined,
+  });
+  const anmeldenPage = await anmeldenContext.newPage();
+  await anmeldenPage.goto('/anmelden');
+  const anmeldenClasses = await layerChildClasses(anmeldenPage);
+  expect(anmeldenClasses, 'Kinder von .bg-layer auf /anmelden').toEqual(LAYER_CHILD_ORDER);
+  await anmeldenContext.close();
+
+  await page.goto('/offline');
+  const display = await page.locator('.bg-layer').evaluate((el) => getComputedStyle(el).display);
+  expect(display, '.bg-layer auf /offline').toBe('none');
+});
+
+test('AK2 (#904): Anordnung und Gangart der Lichter sind auf jeder Route identisch', async ({ page }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  let reference: string | null = null;
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    const rects = await lightRects(page);
+    expect(rects, `.bg-light-Anzahl auf ${route.path}`).toHaveLength(3);
+    const sig = signature(rects);
+    if (reference === null) {
+      reference = sig;
+    } else {
+      expect(sig, `Licht-Anordnung auf ${route.path} weicht von der Referenzroute ab`).toBe(reference);
+    }
+  }
+
+  await page.goto('/uebersicht');
+  const namesA = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bg-layer .bg-light')).map((el) => getComputedStyle(el).animationName),
+  );
+  await page.goto('/journal');
+  const namesB = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.bg-layer .bg-light')).map((el) => getComputedStyle(el).animationName),
+  );
+  expect(namesB, 'Gangart-Namen der Lichter unterscheiden sich zwischen Routen').toEqual(namesA);
+});
+
+async function lightAnimationState(page: Page): Promise<{ names: string[]; opacities: string[] }> {
+  return page.evaluate(() => {
+    const lights = Array.from(document.querySelectorAll('.bg-layer .bg-light'));
+    return {
+      names: lights.map((el) => getComputedStyle(el).animationName),
+      opacities: lights.map((el) => getComputedStyle(el).opacity),
+    };
+  });
+}
+
+test('AK3 (#904): Ruhelage der Lichter ist animation:none bei opacity 1, nicht verschwunden', async ({ page }) => {
+  await registerPasskey(page);
+
+  // (a) OS-Präferenz.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+  const viaMedia = await lightAnimationState(page);
+  expect(viaMedia.names).toHaveLength(3);
+  for (const [i, name] of viaMedia.names.entries()) {
+    expect(name, `Licht ${i} animationName`).toBe('none');
+    expect(viaMedia.opacities[i], `Licht ${i} opacity`).toBe('1');
+  }
+
+  // (b) App-Schalter, ohne OS-Präferenz.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/einstellungen');
+  const beforeToggle = await lightAnimationState(page);
+  expect(beforeToggle.names.some((name) => name === 'none')).toBe(false);
+
+  const toggle = page.getByRole('switch', { name: 'Bewegung reduzieren' });
+  await toggle.click();
+  await expect(page.locator('html')).toHaveAttribute('data-reduce-motion', 'true');
+
+  const afterToggle = await lightAnimationState(page);
+  expect(afterToggle.names).toHaveLength(3);
+  for (const [i, name] of afterToggle.names.entries()) {
+    expect(name, `Licht ${i} animationName nach Schalter`).toBe('none');
+    expect(afterToggle.opacities[i], `Licht ${i} opacity nach Schalter`).toBe('1');
+  }
+});
+
+function srgbToLinear(channel: number): number {
+  const c = channel / 255;
+  return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+}
+
+function wcagContrast(a: [number, number, number], b: [number, number, number]): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** Grid-scans a light's disc (90% of its radius, clear of the anti-aliased edge)
+ * for the point closest to its centre that no `.bg-circle` covers — the brightest
+ * light pixel this route can actually show, same spirit as
+ * `findSpotInNavBandUnderCircle` above. */
+function findBrightestLightPoint(
+  light: CircleRect,
+  excludeCircles: CircleRect[],
+  viewport: { width: number; height: number },
+): { x: number; y: number } | null {
+  const cx = light.left + light.width / 2;
+  const cy = light.top + light.height / 2;
+  const radius = (Math.min(light.width, light.height) / 2) * 0.9;
+  const insideAnyCircle = (x: number, y: number) =>
+    excludeCircles.some((r) => x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height);
+  const step = 8;
+  let best: { x: number; y: number; d: number } | null = null;
+  for (let y = Math.max(0, Math.floor(cy - radius)); y <= Math.min(viewport.height - 1, Math.ceil(cy + radius)); y += step) {
+    for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(viewport.width - 1, Math.ceil(cx + radius)); x += step) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > radius) continue;
+      if (insideAnyCircle(x, y)) continue;
+      if (!best || d < best.d) best = { x, y, d };
+    }
+  }
+  return best && { x: best.x, y: best.y };
+}
+
+// Die fünf Routen mit heller Tinte (`--on-ground: var(--on-ground-light)`) — auf
+// den übrigen vier hellt das Licht die Tinte gegenüber dem Grund noch weiter auf,
+// es kann dort per Definition keinen Kontrast kosten.
+const LIGHT_INK_ROUTES = ['aufgaben', 'kalender', 'journal', 'wetter', 'einstellungen'];
+
+test('AK4 (#904): Kontrastdeckel — mit Licht bleibt jede Route bei ≥ 3:1 und verliert höchstens 1,5 Punkte', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+
+  for (const route of ROUTES.filter((r) => LIGHT_INK_ROUTES.includes(r.ground))) {
+    await page.goto(route.path);
+    const viewport = page.viewportSize()!;
+    const ink = await resolveVarRgb(page, '--on-ground');
+    // `--ground` selbst ist von diesem Ticket unberührt (nur `.bg-layer`/`.bg-light`
+    // malen etwas darüber) — die kanvasbasierte Auflösung des Custom Property ist
+    // deshalb exakt der "heute"-Grund aus AK4 (echte sRGB-Bytes statt der rohen
+    // `oklch(...)`-Zeichenkette, die `getComputedStyle` sonst zurückgibt).
+    const baselineGround = await resolveVarRgb(page, '--ground');
+    const baseline = wcagContrast(baselineGround, ink);
+
+    const circles = await circleRects(page);
+    const lights = await lightRects(page);
+    expect(lights, `.bg-light-Anzahl auf ${route.path}`).toHaveLength(3);
+
+    await hideForegroundContent(page);
+    const candidates = lights
+      .map((light) => findBrightestLightPoint(light, circles, viewport))
+      .filter((p): p is { x: number; y: number } => p !== null);
+    expect(candidates.length, `keine sichtbare Lichtstelle auf ${route.path}`).toBeGreaterThan(0);
+
+    const sampled = await samplePixels(page, candidates);
+    const brightest = sampled.reduce((a, b) => (relativeLuminance(a) >= relativeLuminance(b) ? a : b));
+    const withLight = wcagContrast(brightest, ink);
+
+    const perCandidate = candidates
+      .map((c, i) => `(${c.x},${c.y})→${JSON.stringify(sampled[i])}`)
+      .join(', ');
+    const detail = `${route.path}: Grund ${JSON.stringify(baselineGround)} → ${baseline.toFixed(2)}:1, mit Licht ${JSON.stringify(brightest)} → ${withLight.toFixed(2)}:1, Tinte ${JSON.stringify(ink)}, Kandidaten: ${perCandidate}`;
+    // .soft, nicht hart: ein Bericht über alle fünf Routen in einem Lauf statt
+    // Abbruch bei der ersten — das macht das Nachschärfen des Kontrastdeckels
+    // (AK4) in einer Runde möglich statt route-weise.
+    expect.soft(withLight, `Kontrast mit Licht ≥ 3.0 — ${detail}`).toBeGreaterThanOrEqual(3.0);
+    expect.soft(baseline - withLight, `Kontrastverlust ≤ 1.5 — ${detail}`).toBeLessThanOrEqual(1.5);
+  }
+});
+
+test('AK5 (#904): Dunkelmodus setzt --sky-strength auf 22% statt 34%', async ({ page }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  await page.goto('/uebersicht');
+  const light = page.locator('.bg-layer .bg-light').first();
+  const lightStrength = await light.evaluate((el) => getComputedStyle(el).getPropertyValue('--sky-strength').trim());
+  expect(lightStrength).toBe('34%');
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkStrength = await light.evaluate((el) => getComputedStyle(el).getPropertyValue('--sky-strength').trim());
+  expect(darkStrength).toBe('22%');
+});
+
+test('AK8 (#904): 375 × 812 — die Lichter ragen über den Rand, ohne waagerechten Überlauf zu erzeugen', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+
+  const lights = await lightRects(page);
+  expect(lights, '.bg-light-Anzahl').toHaveLength(3);
+  const viewportWidth = page.viewportSize()!.width;
+  expect(lights.some((r) => r.left < 0 || r.left + r.width > viewportWidth), 'mindestens ein Licht ragt über den Rand').toBe(
+    true,
+  );
+
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(scrollWidth, 'kein waagerechter Überlauf durch die Lichter').toBeLessThanOrEqual(viewportWidth);
 });
 
 // --- issue #919: die Kreisebene wurde bislang genau an der Safe-Area-Kante

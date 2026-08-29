@@ -1,7 +1,9 @@
 /*
- * Ambient background circles, one gait per route (S3 of #828, issue #829).
- * Mounted once at the root layout; `:has()` drives the per-route arrangement
- * and gait exactly like the ground colours themselves (S1, globals.css).
+ * Ambient background circles, one gait per route (S3 of #828, issue #829),
+ * plus three ambient lights shared by every route (issue #904). Mounted once
+ * at the root layout; `:has()` drives the per-route arrangement/gait exactly
+ * like the ground colours themselves (S1, globals.css) — the lights carry no
+ * such routing on purpose (#904 AK2).
  */
 
 .bg-layer {
@@ -29,10 +31,113 @@
   --b2: color-mix(in oklab, var(--ground) 88%, #000000);
   --b3: color-mix(in oklab, var(--ground) 74%, var(--blob-partner));
   --b4: color-mix(in oklab, var(--ground) 91%, #ffffff);
+  /* Depth (issue #904): a slight vignette towards the bottom edge, painted
+     under the lights/circles below (DOM order = paint order at equal
+     z-index). */
+  background: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
 }
 
 html:has([data-ground]) .bg-layer {
   display: block;
+}
+
+/* --- lights, one gait shared by every route (issue #904) -----------------
+   Unlike the circles above (one arrangement/gait per route, AK2/AK3 of
+   #829), the three lights carry no per-route distinction at all (AK2 of
+   #904): same three rectangles, same three keyframes, on every route. */
+
+.bg-light {
+  position: absolute;
+  border-radius: 50%;
+  --sky-strength: 34%;
+  background: radial-gradient(
+    circle closest-side,
+    color-mix(in srgb, #ffffff var(--sky-strength), transparent) 0%,
+    color-mix(in srgb, #ffffff calc(var(--sky-strength) * 0.42), transparent) 48%,
+    transparent 74%
+  );
+  /* Rest state (AK3): `animation: none` (reduced motion, below) must land on
+     the VISIBLE moment, not the keyframe's dim/small 0%/100% edges — a light
+     resting at those would all but disappear under "Ruhe reduzieren". */
+  opacity: 1;
+  scale: 1;
+}
+
+@keyframes bg-light-appear {
+  0%,
+  100% {
+    opacity: 0.16;
+    scale: 0.74;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.06;
+  }
+}
+
+/* 13/17/21s are pairwise coprime and the delays are hard-picked: the three
+   never land on the same phase together. */
+.bg-light:nth-child(1) {
+  width: 520px;
+  height: 520px;
+  right: -160px;
+  top: -190px;
+  animation: bg-light-appear 13s ease-in-out infinite;
+}
+.bg-light:nth-child(2) {
+  width: 380px;
+  height: 380px;
+  left: -140px;
+  top: 300px;
+  animation: bg-light-appear 17s ease-in-out infinite;
+  animation-delay: -6s;
+}
+.bg-light:nth-child(3) {
+  width: 300px;
+  height: 300px;
+  right: 30px;
+  bottom: 170px;
+  animation: bg-light-appear 21s ease-in-out infinite;
+  animation-delay: -13s;
+}
+
+/* Kontrastdeckel (AK4): on the five routes with light ink (`--on-ground:
+   var(--on-ground-light)`), the light's brightest painted pixel eats into
+   `--on-ground` contrast. Measured with `samplePixels()` against the real
+   rendered pixel, not the resolved gradient stop — 34% costs these routes
+   far more than the design sheet's own single-light estimate once painted
+   (the three lights overlap on screen), enough to drop /aufgaben under the
+   3:1 floor outright. Capped per route so none falls below 3:1 and none
+   loses more than 1.5 points versus today. Wetter and the other three
+   light-ink combinations that don't appear here (Kalender, Journal,
+   Einstellungen do) stay within budget at the 34% default and need no
+   override — Wetter has the least headroom of all five but the unscaled
+   light already clears its cap. Specificity of `html:has(...) .bg-light`
+   ((0,2,1)) sits below the dark-mode rules below it ((0,3,0)), so dark mode
+   still gets the flat 22% here regardless of these caps. */
+html:has([data-ground='aufgaben']) .bg-light {
+  --sky-strength: 15%;
+}
+html:has([data-ground='kalender']) .bg-light {
+  --sky-strength: 11%;
+}
+html:has([data-ground='journal']) .bg-light {
+  --sky-strength: 4%;
+}
+html:has([data-ground='einstellungen']) .bg-light {
+  --sky-strength: 6%;
+}
+
+/* Dark mode (AK5): the ground already sits at ~62% strength on a dark base
+   (globals.css) — 34% white on top of that reads as a floodlight, not
+   ambient light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']) .bg-light {
+    --sky-strength: 22%;
+  }
+}
+:root[data-theme='dunkel'] .bg-light {
+  --sky-strength: 22%;
 }
 
 .bg-circle {
@@ -43,16 +148,16 @@ html:has([data-ground]) .bg-layer {
      falls back to a circle sitting exactly here, never mid-flight. */
 }
 
-.bg-circle:nth-child(1) {
+.bg-circle:nth-child(4) {
   background: var(--b1);
 }
-.bg-circle:nth-child(2) {
+.bg-circle:nth-child(5) {
   background: var(--b2);
 }
-.bg-circle:nth-child(3) {
+.bg-circle:nth-child(6) {
   background: var(--b3);
 }
-.bg-circle:nth-child(4) {
+.bg-circle:nth-child(7) {
   background: var(--b4);
 }
 
@@ -90,14 +195,14 @@ html:has([data-ground]) .bg-layer {
   }
 }
 
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(1) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
   top: 620px;
   left: 140px;
   width: 480px;
   height: 480px;
   animation: bgc-aufsteigen 22s ease-in-out infinite alternate;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(2) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(5) {
   top: 60px;
   left: 260px;
   width: 220px;
@@ -105,7 +210,7 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(2) {
   animation: bgc-aufsteigen 25s ease-in-out infinite alternate;
   animation-delay: -13s;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(3) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(6) {
   top: 420px;
   left: 200px;
   width: 160px;
@@ -113,7 +218,7 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(3) {
   animation: bgc-aufsteigen 20s ease-in-out infinite alternate;
   animation-delay: -7s;
 }
-html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
+html:has([data-ground='uebersicht']) .bg-circle:nth-child(7) {
   top: 720px;
   left: 40px;
   width: 140px;
@@ -133,14 +238,14 @@ html:has([data-ground='uebersicht']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(1) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
   top: -300px;
   left: -320px;
   width: 460px;
   height: 460px;
   animation: bgc-wandern 26s ease-in-out infinite alternate;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(2) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(5) {
   top: 300px;
   left: 190px;
   width: 200px;
@@ -148,7 +253,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(2) {
   animation: bgc-wandern 29s ease-in-out infinite alternate;
   animation-delay: -14s;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(3) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(6) {
   top: 560px;
   left: 20px;
   width: 170px;
@@ -156,7 +261,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(3) {
   animation: bgc-wandern 24s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
+html:has([data-ground='aufgaben']) .bg-circle:nth-child(7) {
   top: 100px;
   left: 90px;
   width: 130px;
@@ -201,7 +306,7 @@ html:has([data-ground='aufgaben']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='kalender']) .bg-circle:nth-child(1) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
   top: 260px;
   left: 215px;
   width: 500px;
@@ -210,7 +315,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(1) {
     bgc-kreisen-x 23s linear infinite,
     bgc-kreisen-y 31s linear infinite;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(2) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(5) {
   top: -60px;
   left: -40px;
   width: 190px;
@@ -220,7 +325,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(2) {
     bgc-kreisen-y 29s linear infinite;
   animation-delay: -11s, -19s;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(3) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(6) {
   top: 640px;
   left: 260px;
   width: 150px;
@@ -230,7 +335,7 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(3) {
     bgc-kreisen-y 33s linear infinite;
   animation-delay: -16s, -4s;
 }
-html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
+html:has([data-ground='kalender']) .bg-circle:nth-child(7) {
   top: 40px;
   left: 300px;
   width: 120px;
@@ -252,14 +357,14 @@ html:has([data-ground='kalender']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='routinen']) .bg-circle:nth-child(1) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
   top: 500px;
   left: -300px;
   width: 440px;
   height: 440px;
   animation: bgc-atmen 18s ease-in-out infinite alternate;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(2) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(5) {
   top: -100px;
   left: 200px;
   width: 210px;
@@ -267,7 +372,7 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(2) {
   animation: bgc-atmen 20s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(3) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(6) {
   top: 300px;
   left: 40px;
   width: 180px;
@@ -275,7 +380,7 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(3) {
   animation: bgc-atmen 16s ease-in-out infinite alternate;
   animation-delay: -13s;
 }
-html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
+html:has([data-ground='routinen']) .bg-circle:nth-child(7) {
   top: 700px;
   left: 260px;
   width: 100px;
@@ -298,14 +403,14 @@ html:has([data-ground='routinen']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='journal']) .bg-circle:nth-child(1) {
+html:has([data-ground='journal']) .bg-circle:nth-child(4) {
   top: -180px;
   left: -100px;
   width: 420px;
   height: 420px;
   animation: bgc-pulsieren 8s ease-in-out infinite alternate;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(2) {
+html:has([data-ground='journal']) .bg-circle:nth-child(5) {
   top: 380px;
   left: 240px;
   width: 230px;
@@ -313,7 +418,7 @@ html:has([data-ground='journal']) .bg-circle:nth-child(2) {
   animation: bgc-pulsieren 9s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(3) {
+html:has([data-ground='journal']) .bg-circle:nth-child(6) {
   top: 640px;
   left: -60px;
   width: 160px;
@@ -321,7 +426,7 @@ html:has([data-ground='journal']) .bg-circle:nth-child(3) {
   animation: bgc-pulsieren 7.5s ease-in-out infinite alternate;
   animation-delay: -6s;
 }
-html:has([data-ground='journal']) .bg-circle:nth-child(4) {
+html:has([data-ground='journal']) .bg-circle:nth-child(7) {
   top: 160px;
   left: 160px;
   width: 90px;
@@ -341,14 +446,14 @@ html:has([data-ground='journal']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(1) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
   top: 340px;
   left: 260px;
   width: 560px;
   height: 560px;
   animation: bgc-schraeg-treiben 34s ease-in-out infinite alternate;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(2) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(5) {
   top: 40px;
   left: -140px;
   width: 240px;
@@ -356,7 +461,7 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(2) {
   animation: bgc-schraeg-treiben 31s ease-in-out infinite alternate;
   animation-delay: -19s;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(3) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(6) {
   top: 600px;
   left: 80px;
   width: 140px;
@@ -364,7 +469,7 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(3) {
   animation: bgc-schraeg-treiben 29s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
-html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
+html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(7) {
   top: -80px;
   left: 120px;
   width: 110px;
@@ -384,14 +489,14 @@ html:has([data-ground='aktivitaeten']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='wetter']) .bg-circle:nth-child(1) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
   top: 660px;
   left: 160px;
   width: 500px;
   height: 500px;
   animation: bgc-ziehen 40s linear infinite alternate;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(2) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(5) {
   top: 20px;
   left: 40px;
   width: 200px;
@@ -399,7 +504,7 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(2) {
   animation: bgc-ziehen 37s linear infinite alternate;
   animation-delay: -22s;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(3) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(6) {
   top: 380px;
   left: -100px;
   width: 170px;
@@ -407,7 +512,7 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(3) {
   animation: bgc-ziehen 35s linear infinite alternate;
   animation-delay: -5s;
 }
-html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
+html:has([data-ground='wetter']) .bg-circle:nth-child(7) {
   top: 200px;
   left: 280px;
   width: 100px;
@@ -430,14 +535,14 @@ html:has([data-ground='wetter']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(1) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
   top: -160px;
   left: 60px;
   width: 440px;
   height: 440px;
   animation: bgc-wogen 28s ease-in-out infinite;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(2) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(5) {
   top: 500px;
   left: 260px;
   width: 220px;
@@ -445,7 +550,7 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(2) {
   animation: bgc-wogen 25s ease-in-out infinite;
   animation-delay: -15s;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(3) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(6) {
   top: 700px;
   left: -80px;
   width: 150px;
@@ -453,7 +558,7 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(3) {
   animation: bgc-wogen 30s ease-in-out infinite;
   animation-delay: -3s;
 }
-html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
+html:has([data-ground='einstellungen']) .bg-circle:nth-child(7) {
   top: 240px;
   left: 200px;
   width: 90px;
@@ -475,14 +580,14 @@ html:has([data-ground='einstellungen']) .bg-circle:nth-child(4) {
   }
 }
 
-html:has([data-ground='anmelden']) .bg-circle:nth-child(1) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
   top: 480px;
   left: 180px;
   width: 520px;
   height: 520px;
   animation: bgc-schweben 20s ease-in-out infinite alternate;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(2) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(5) {
   top: -120px;
   left: -60px;
   width: 210px;
@@ -490,7 +595,7 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(2) {
   animation: bgc-schweben 23s ease-in-out infinite alternate;
   animation-delay: -9s;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(3) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(6) {
   top: 260px;
   left: 260px;
   width: 160px;
@@ -498,7 +603,7 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(3) {
   animation: bgc-schweben 18s ease-in-out infinite alternate;
   animation-delay: -14s;
 }
-html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
+html:has([data-ground='anmelden']) .bg-circle:nth-child(7) {
   top: 660px;
   left: 40px;
   width: 110px;
@@ -508,21 +613,26 @@ html:has([data-ground='anmelden']) .bg-circle:nth-child(4) {
 }
 
 /*
- * Reduce motion (AK4/AK5): the global rule in tokens.css only nulls
- * `animation-duration`/`animation-iteration-count`, so `animationName` would
- * still report the gait's keyframe name — not good enough for AK4, which
- * checks `animationName === 'none'`. `animation: none` also drops every
- * animated property (translate/scale/transform/opacity) back to its
- * identity value, satisfying AK5 without a separate rest-state rule.
- * `!important` (matching the global rule's own specificity) makes the
- * outcome independent of rule order against the per-route blocks above.
+ * Reduce motion (AK4/AK5 of #829, AK3 of #904): the global rule in tokens.css
+ * only nulls `animation-duration`/`animation-iteration-count`, so
+ * `animationName` would still report the gait's keyframe name — not good
+ * enough for AK4, which checks `animationName === 'none'`. `animation: none`
+ * also drops every animated property back to its identity value: for
+ * `.bg-circle` that's the implicit default (no separate rest rule needed,
+ * see the comment on `.bg-circle` above); `.bg-light` sets `opacity`/`scale`
+ * explicitly (above) precisely so this identity value is the VISIBLE moment,
+ * not the keyframe's dim 0%/100% edge (#904 AK3). `!important` (matching the
+ * global rule's own specificity) makes the outcome independent of rule order
+ * against the per-route blocks above.
  */
 @media (prefers-reduced-motion: reduce) {
-  .bg-circle {
+  .bg-circle,
+  .bg-light {
     animation: none !important;
   }
 }
 
-:root[data-reduce-motion='true'] .bg-circle {
+:root[data-reduce-motion='true'] .bg-circle,
+:root[data-reduce-motion='true'] .bg-light {
   animation: none !important;
 }
