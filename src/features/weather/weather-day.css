@@ -25,13 +25,21 @@
   transition: transform var(--duration-base) var(--ease-spring);
 }
 
-/* Zurück-Link links, Datum rechts auf derselben Höhe. */
+/* Drei Zonen (issue #870 T3): Augenbraue (Zurück + Datum), Titelzeile
+   (Temperatur), Zusatz (Kategorie-Unterzeile) — jede Zeile bleibt intern
+   waagerecht, der Kopf selbst steht als Spalte. */
 .weather-day__topbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-block-end: var(--space-1);
+}
+
+.weather-day__eyebrow-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-block-end: var(--space-1);
 }
 
 /* Nie schrumpfen (issue #850): Icon + „Übersicht" ist die einzige Möglichkeit
@@ -40,40 +48,31 @@
   flex-shrink: 0;
 }
 
-/* Titel + Figur als ein Cluster (issue #830), damit `space-between` beim
-   Zurück-Link und dem Cluster bleibt statt die Figur zwischen Datum und Rand
-   zu schieben. `min-width: 0` (issue #850) erlaubt dem Cluster, unter seine
-   eigene Inhaltsbreite zu schrumpfen — sonst bleibt der Flex-Default
-   `min-width: auto` hart bei genau der Breite, die AC10 verletzt, sobald die
-   42-px-Figur (vorher 32px) plus langer Wochentag nicht mehr neben den
-   Zurück-Link passen. */
+/* Headline (Icon + Temperaturen) links, Figur rechts (issue #870 T3, ersetzt
+   das frühere Datum+Figur-Cluster). */
 .weather-day__title-cluster {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  min-width: 0;
 }
 
 .weather-day__date {
-  /* Ohne das margin: 0 griffe die globale h1-Regel (margin-block-end:
-     var(--space-6)) und schöbe die Kopfzeile aus der gemeinsamen Höhe mit dem
-     Zurück-Link. Größe kommt jetzt von der globalen h1-Regel (issue #833,
-     --text-page-title/22px) statt vom bisherigen --text-body/16px-Override. */
   margin: 0;
   text-align: right;
-  /* Seit #830 teilt sich das Cluster die Restbreite mit der PageFace (jetzt
-     42px, issue #850 + --space-2 Lücke) — ohne nowrap zwang die globale
-     h1-Regel (overflow-wrap: break-word) den Wochentag ("Donnerstag, …") in
-     zwei Zeilen, sobald ihm die Breite fehlte. Das vergrößerte die Kopfzeile
-     über die 44px des Zurück-Links hinaus und riss den Spalt zur ersten Box
-     auf (weather-day.spec.ts, „der Spalt … ist nach #353 noch kleiner …"). */
+  /* Seit #830 teilt sich die Augenbrauen-Zeile die Restbreite mit dem
+     Zurück-Link — ohne nowrap würde ein langer Wochentag ("Donnerstag, …")
+     in zwei Zeilen umbrechen, sobald ihm die Breite fehlt. Das vergrößerte
+     die Kopfzeile über die 44px des Zurück-Links hinaus und riss den Spalt
+     zur ersten Box auf (weather-day.spec.ts, „der Spalt … ist nach #353 noch
+     kleiner …"). */
   white-space: nowrap;
   /* Sicherheitsnetz statt zweiter Zeile (issue #850 AC10): reicht die Breite
-     bei einem langen Wochentag (z. B. „Donnerstag") neben der 42-px-Figur
-     nicht ganz, schrumpft `.weather-day__date` (min-width: 0 s. o.) auf den
-     verbliebenen Platz und blendet den Überschuss als „…" aus, statt das
-     Dokument waagerecht scrollen zu lassen. Der textContent bleibt
-     unverändert (toHaveText-Asserts greifen weiter), nur das Gemalte kürzt. */
+     bei einem langen Wochentag neben dem Zurück-Link nicht ganz, schrumpft
+     `.weather-day__date` (min-width: 0) auf den verbliebenen Platz und
+     blendet den Überschuss als „…" aus, statt das Dokument waagerecht
+     scrollen zu lassen. Der textContent bleibt unverändert (toHaveText-
+     Asserts greifen weiter), nur das Gemalte kürzt. */
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
@@ -128,14 +127,13 @@
 }
 
 /* Vier Zahlen in einer Zeile — bei 375px bleiben ~78px je Spalte, genug für
-   „27 km/h" unter „Untergang". */
+   „27 km/h" unter „Untergang". Kein border-top mehr (issue #870 T3): die
+   Headline, von der die Zeile bisher abgesetzt war, sitzt jetzt im Kopf. */
 .weather-day__stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
   margin: 0;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
 }
 
 .weather-day__stat dt {
@@ -169,8 +167,11 @@
 }
 
 .weather-day__temp-max {
-  /* Eigene Rolle statt --text-title (issue #833): die trägt noch die
-     FAB-Glyphe und den Termin-Detail-Titel bei 32. */
+  /* Jetzt die h1 (issue #870 T3) — margin: 0 schlägt die globale
+     h1-Regel (margin-block-end: var(--space-6)), eigene Rolle statt
+     --text-title (issue #833): die trägt noch die FAB-Glyphe und den
+     Termin-Detail-Titel bei 32. */
+  margin: 0;
   font-size: var(--text-temp);
   color: var(--text);
   /* Rundschrift-Rezept (issue #859, ADR-0027) — nur die große Tages-Temperatur
