@@ -333,10 +333,15 @@ test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit traegt die Kategorie
   await expect(card.locator('.event-agenda__item-subline')).toHaveText('30 Min · Arbeit');
 
   const expectedColor = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
-  const timeColor = await card
+  const timeStyle = await card
     .locator('.event-agenda__item-time')
-    .evaluate((el) => getComputedStyle(el).color);
-  expect(timeColor).toBe(expectedColor);
+    .evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    });
+  expect(timeStyle.color).toBe(expectedColor);
+  // Uhrzeit in eigener Spalte bei 24px (--text-agenda-time), AK1.
+  expect(timeStyle.fontSize).toBe('24px');
 });
 
 test('die Farbkante einer Terminkarte ist 6px breit (issue #923 AK3)', async ({ page }) => {
