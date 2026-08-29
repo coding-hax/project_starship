@@ -33,7 +33,7 @@ import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
 import { buildEscalationEval, type NonFailureEndReason } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
-import { fmtHm, resetEpoch } from './time.js';
+import { fmtClock, resetEpoch } from './time.js';
 import {
   BUILD_TOOLS,
   CHECK_TOOLS,
@@ -961,6 +961,15 @@ export interface RoundEvalResult {
   rc: number;
   didWork: boolean;
   lastIssue: string;
+  /**
+   * #891, AK4: dieser Slot veroeffentlicht den Flottenstatus EINMALIG selbst,
+   * auch wenn er nicht Leitslot ist. Nur der 429-Zweig setzt das -- das
+   * Kontingent-Limit gilt flottenweit, jeder Slot erzeugte denselben Text, und
+   * status() dedupliziert ohnehin per Hash (claude-runner.sh). Ohne diese
+   * Ausnahme bliebe der Header nach dem Fund in "N von M aktiv" stehen. Alle
+   * anderen Ausgaenge lassen das Feld undefined (= Leitslot-Regel wie bisher).
+   */
+  forcePublishStatus?: boolean;
 }
 
 // 'field' darf einen Punktpfad tragen ('usage.input_tokens') fuer verschachtelte
@@ -1086,12 +1095,15 @@ export function roundRecover(ctx: RoundContext, plan: RoundRun, rc: number, log:
 export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutcome, log: string): RoundEvalResult {
   const { gh, git, state, sharedState, clock } = ctx;
   const { issue, role } = plan;
-  const stop = (status: StatusUpdate | null, rc: number): RoundEvalResult => ({
+  const stop = (status: StatusUpdate | null, rc: number, forcePublishStatus = false): RoundEvalResult => ({
     status,
     chain: 'stop',
     rc,
     didWork: plan.didWork,
     lastIssue: plan.lastIssue,
+    // #891, AK4: nur der 429-Zweig reicht hier `true` durch. Alle anderen
+    // stop()-Ausgaenge (Notbremse, Fehlschlag, …) bleiben bei false.
+    forcePublishStatus,
   });
 
   // #740, AK1: JEDER abgeschlossene Lauf bekommt seine Verbrauchszeile --
@@ -1198,6 +1210,7 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
       sharedState,
       gh,
       git,
+      clock,
     );
 
     // #387 AC4: Backstop fuers Entfernen von 'in-progress' nach einem
@@ -1284,34 +1297,45 @@ Kein Eingreifen nötig.`,
   // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'result' scheidet aus.
   if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliOnly(outcome.out))) {
     const epoch = resetEpoch(resultTxt, clock);
-    let when: string;
+    let title: string;
+    let text: string;
     if (epoch !== null) {
       // Slotübergreifend (#204): das Kontingent ist EINS, nicht pro Slot --
       // schriebe das hier in 'state' (slot-lokal), rennte jeder andere Slot
-      // weiter in 429er, waehrend dieser korrekt pausiert.
+      // weiter in 429er, waehrend dieser korrekt pausiert. Der Flotten-Header
+      // liest 'limit-until' und traegt die Pause (#891, AK3).
       sharedState.write('limit-until', String(epoch));
-      when = ` Nächster Versuch: ${fmtHm(epoch)} Uhr.`;
+      const hhmm = fmtClock(epoch);
+      title = `Kontingent leer bis ${hhmm} · #${issue}`;
+      text = `🔵 **Token-Kontingent aufgebraucht.**
+Alle Slots warten bis ${hhmm} Uhr und laufen dann von selbst weiter.
+
+Kein Eingreifen nötig — der Arbeitsstand liegt in Git und im
+Fortschrittskommentar, nicht in der Session.`;
     } else {
       // Nicht deutbar -> 5-Minuten-Takt wie bisher (Retries kosten im Limit
       // nichts, sie kommen sofort als 429 zurueck). Den Wortlaut mitschreiben:
       // so gibt es beim naechsten unbekannten Limit-Text eine Vorlage.
       const prev = state.read('unparsed-limits.log') ?? '';
       state.write('unparsed-limits.log', `${prev}${ddmmHhmm(clock)}\t${resultTxt}\n`);
-      when = ' Nächster Versuch: in ~5 Minuten.';
+      title = `Kontingent leer · #${issue}`;
+      text = `🔵 **Token-Kontingent aufgebraucht.**
+Alle Slots warten und laufen dann von selbst weiter. Nächster Versuch: in ~5 Minuten.
+
+Kein Eingreifen nötig — der Arbeitsstand liegt in Git und im
+Fortschrittskommentar, nicht in der Session.`;
     }
-    tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'blocked-limit']);
+    // #891, AK1: KEIN 'blocked-limit' mehr am Bau-Ticket -- die Kontingent-Pause
+    // ist ein Zustand der Flotte, kein Zustand des Tickets. 'limit-until'
+    // (geteilt, oben) und der Endgrund im Fortschrittskommentar bleiben die
+    // Spur des Tickets. Das Label bleibt allein dem Opus-Tagesdeckel (AK6).
     appendEndReason(issue, 'Session-Limit', gh, clock);
     return stop(
-      {
-        title: `Limit erreicht · #${issue} pausiert`,
-        emoji: '🔵',
-        text: `🔵 **Limit erreicht.** Ticket #${issue} ist angehalten und wird automatisch
-fortgesetzt, sobald wieder Kontingent da ist.${when}
-
-**Kein Eingreifen nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar,
-nicht in der Session.`,
-      },
+      { title, emoji: '🔵', text },
       0, // kein Fehler -- der Timer probiert es einfach wieder
+      // #891, AK4: flottenweites Limit -> dieser Slot veroeffentlicht den
+      // Flotten-Status einmalig selbst, auch ohne Leitung.
+      true,
     );
   }
 
@@ -1390,6 +1414,7 @@ solange das Label \`needs-answer\` hängt.`,
     sharedState,
     gh,
     git,
+    clock,
   );
   tryGh(gh, [
     'issue',

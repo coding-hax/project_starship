@@ -175,7 +175,7 @@ unbeaufsichtigte Lauf hängt."
 # aggregiert danach ALLE Slot-Zustaende zu EINEM StatusUpdate und schreibt es
 # ans Status-Issue -- alles andere ueberschriebe sich zwischen den Slots
 # abwechselnd.
-apply_status() {   # $1 = JSON mit optionalem .status
+apply_status() {   # $1 = JSON mit optionalem .status, $2 = Force-Publish (#891, AK4)
   local s agg
   s=$(printf '%s' "$1" | jq -c '.status // empty' 2>/dev/null)
   if [ -z "$s" ] || [ "$s" = "null" ]; then
@@ -187,13 +187,24 @@ apply_status() {   # $1 = JSON mit optionalem .status
       "$(printf '%s' "$s" | jq -r '.text')" >/dev/null
   fi
 
-  # #488 (F14): frische Pruefung statt des bei Rundenbeginn festgehaltenen
-  # IS_LEAD -- der Hintergrund-Publisher (start_fleet_publisher) ruft
-  # apply_status() bis zu FLEET_PUBLISH_INTERVAL lang erneut auf, waehrend
-  # die Fuehrung laengst gewechselt haben kann (AK3). Der Keep-alive-`renew`
-  # in fleet-verify-lead haelt die Lease waehrend eines laufenden Bau-Laufs
-  # frisch, solange dieser Slot sie noch haelt.
-  ts_run fleet-verify-lead >/dev/null 2>&1 || return 0
+  # #891, AK4: erkennt EIN Slot das flottenweite Kontingent-Limit ($2 gesetzt),
+  # veroeffentlicht ER den Status einmalig selbst -- das Leitungs-Gate wird
+  # uebersprungen. Der Grund fuer die Ein-Schreiber-Regel (Slots ueberschreiben
+  # abwechselnd denselben Titel) greift hier nicht: das Limit gilt allen, jeder
+  # Slot erzeugte denselben Text, und status() dedupliziert ohnehin per Hash
+  # (~112). Ohne diese Ausnahme schriebe der Fund-Slot nur seine eigene
+  # state.json; der naechste Takt des Leitslots wird vom Limit-Gate (~695)
+  # weggeschnitten, bevor er je aggregiert -- der Header bliebe in "N von M
+  # aktiv" stehen.
+  if [ -z "${2:-}" ]; then
+    # #488 (F14): frische Pruefung statt des bei Rundenbeginn festgehaltenen
+    # IS_LEAD -- der Hintergrund-Publisher (start_fleet_publisher) ruft
+    # apply_status() bis zu FLEET_PUBLISH_INTERVAL lang erneut auf, waehrend
+    # die Fuehrung laengst gewechselt haben kann (AK3). Der Keep-alive-`renew`
+    # in fleet-verify-lead haelt die Lease waehrend eines laufenden Bau-Laufs
+    # frisch, solange dieser Slot sie noch haelt.
+    ts_run fleet-verify-lead >/dev/null 2>&1 || return 0
+  fi
   agg=$(ts_run fleet-status "$SLOT_COUNT" "$LEAD_SLOT" "$EFF_LEAD")
   [ -z "$agg" ] || [ "$agg" = "null" ] && return 0
   status "$(printf '%s' "$agg" | jq -r '.title')" \
@@ -569,7 +580,12 @@ run_round() {
 
   eval_out=$(ts_run round-eval "$ROUND_FILE" "$rc" "$timed" "$MAX_RUNTIME" "$LOG")
   [ $? -eq 127 ] && return 1
-  apply_status "$eval_out"
+  # #891, AK4: der 429-Zweig setzt forcePublishStatus=true -- dann veroeffentlicht
+  # DIESER Slot den Flottenstatus einmalig selbst, auch ohne Leitung (`// empty`
+  # macht false/null/fehlend zu ""). Sonst greift die Ein-Schreiber-Regel.
+  local force_pub
+  force_pub=$(printf '%s' "$eval_out" | jq -r '.forcePublishStatus // empty')
+  apply_status "$eval_out" "$force_pub"
 
   CHAIN_STATUS=$(printf '%s' "$eval_out" | jq -r '.chain')
   [ "$(printf '%s' "$eval_out" | jq -r '.didWork')" = "true" ] && DID_WORK=1

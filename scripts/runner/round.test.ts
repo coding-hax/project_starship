@@ -1454,13 +1454,19 @@ describe('roundEval', () => {
       maxRuntime: 2700,
     };
 
-    it('pausiert blau, setzt blocked-limit und schreibt limit-until ins sharedState, NICHT ins slot-lokale state', () => {
+    it('pausiert blau, setzt KEIN blocked-limit mehr, trägt den Kontingent-Titel und schreibt limit-until ins sharedState, NICHT ins slot-lokale state (#891)', () => {
       const { gh, calls } = ghDouble();
       const result = roundEval(ctx(gh), plan, limited, '');
       expect(result.status?.emoji).toBe('🔵');
+      // AK2: neuer Wortlaut mit deutbarer Reset-Zeit (15:01) + Ticketnummer.
+      expect(result.status?.title).toContain('Kontingent leer bis');
+      expect(result.status?.title).toContain('#77');
+      // AK4: das Limit gilt flottenweit -> dieser Slot publiziert den Status selbst.
+      expect(result.forcePublishStatus).toBe(true);
       expect(result.rc).toBe(0); // kein Fehler -- der Timer probiert es wieder
       expect(result.chain).toBe('stop');
-      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      // AK1: kein Label mehr am Bau-Ticket -- die Pause ist ein Flotten-Zustand.
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
       expect(sharedState.read('limit-until')).not.toBeNull();
       expect(state.read('limit-until')).toBeNull();
     });
@@ -1494,6 +1500,19 @@ describe('roundEval', () => {
       expect(sharedState.read('limit-until')).toBeNull();
       expect(state.read('unparsed-limits.log')).toContain('nicht deutbar');
       expect(result.status?.text).toContain('in ~5 Minuten');
+      // AK2: ohne deutbare Reset-Zeit trägt der Titel keine Uhrzeit.
+      expect(result.status?.title).toBe('Kontingent leer · #77');
+      // AK4: auch der undeutbare Zweig ist ein flottenweites Limit.
+      expect(result.forcePublishStatus).toBe(true);
+    });
+
+    // AK4-Abgrenzung: NUR der 429-Zweig publiziert selbst. Ein sauberer Lauf
+    // (Erfolg) und die Notbremse lassen forcePublishStatus falsch/leer.
+    it('setzt forcePublishStatus nur im Limit-Zweig, nicht bei Erfolg oder Notbremse (#891, AK4)', () => {
+      const { gh } = ghDouble();
+      expect(roundEval(ctx(gh), plan, ok, '').forcePublishStatus).toBeFalsy();
+      const timedOut = roundEval(ctx(gh), plan, { ...ok, rc: 1, timedOut: true }, '');
+      expect(timedOut.forcePublishStatus).toBe(false);
     });
   });
 
@@ -1683,7 +1702,11 @@ describe('roundEval', () => {
         '',
       );
       expect(result.status?.emoji).toBe('🔵');
-      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(true);
+      // #891, AK1: kein Label mehr; ohne deutbares 'result' (kein JSON) trägt der
+      // Titel den labellosen Kontingent-Wortlaut, und der Slot publiziert selbst.
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(result.status?.title).toBe('Kontingent leer · #77');
+      expect(result.forcePublishStatus).toBe(true);
     });
 
     it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON wird weiterhin als Uebergang erkannt', () => {
