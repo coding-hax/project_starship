@@ -1,19 +1,29 @@
-/* Zurück-Link links, Titel rechts auf derselben Höhe — Muster der Wetter-Tagesseite
-   (weather-day.css .weather-day__topbar), issue #288 AC1. */
+/* Augenbraue (Zurück-Link) über der Titelzeile — Drei-Zonen-Kopf-Muster aus
+   #868/#898, hier ohne Zusatz-Slot (issue #870 T3). */
 .einstellungen__topbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
   margin-block-end: var(--space-4);
 }
 
 /* Titel + Figur als ein Cluster (issue #830), damit `space-between` bei
-   Zurück-Link und Cluster bleibt statt die Figur vom Titel wegzuschieben. */
+   Zurück-Link und Cluster bleibt statt die Figur vom Titel wegzuschieben.
+   `padding-block` reserviert Platz für `.face`s eigene Bounce-Animation
+   (faces.css `pf-bob`, ±3px per `translate`): die Zeile ist sonst exakt
+   42px hoch — genau die unanimierte Höhe der Figur, also ohne jede Reserve
+   nach oben/unten. `translate` verschiebt nur die Malposition, nicht die
+   Box der Figur selbst, aber Chromium zählt die verschobene Malfläche zur
+   `scrollHeight` des Elternelements, sobald sie über die 42px hinausragt
+   (gemessen: `.einstellungen__title-cluster` scrollHeight 45 vs.
+   clientHeight 42, Endabgleich #870). `--space-1` (4px) > 3px Amplitude
+   hält beide Ausschläge innerhalb der Box. */
 .einstellungen__title-cluster {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding-block: var(--space-1);
 }
 
 .einstellungen__title {

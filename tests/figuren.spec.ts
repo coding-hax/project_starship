@@ -255,6 +255,10 @@ const FACE_COLORS: Record<string, { body: string; ink: string }> = {
   anmelden: { body: '#ffffff', ink: '#ff7300' },
 };
 
+// Anmelden trägt die Figur groß über dem Titel statt der 42px-Zeile (issue
+// #870 T3) — alle anderen acht Routen bleiben bei der halbhohen Kopfgröße.
+const EXPECTED_FACE_SIZE: Record<string, number> = { anmelden: 136 };
+
 test('AK1: die neun Silhouetten stimmen wortgleich mit dem Entwurfsblatt überein', async ({ page, browser }) => {
   await registerPasskey(page);
 
@@ -273,8 +277,9 @@ test('AK1: die neun Silhouetten stimmen wortgleich mit dem Entwurfsblatt überei
     expect(overflow, `overflow auf ${path}`).toBe('visible');
     const box = await el.boundingBox();
     expect(box, `Bounding-Box auf ${path}`).not.toBeNull();
-    expect(Math.round(box!.width), `Breite auf ${path}`).toBe(42);
-    expect(Math.round(box!.height), `Höhe auf ${path}`).toBe(42);
+    const expectedSize = EXPECTED_FACE_SIZE[face] ?? 42;
+    expect(Math.round(box!.width), `Breite auf ${path}`).toBe(expectedSize);
+    expect(Math.round(box!.height), `Höhe auf ${path}`).toBe(expectedSize);
 
     const geometry = await bodyGeometry(routePage);
     expect(geometry, `Körper-Geometrie auf ${path}`).toEqual(EXPECTED_BODY[face]);

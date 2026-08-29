@@ -138,7 +138,7 @@ function hourTickLabel(hour: number): string {
  */
 export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const { location } = useWeatherLocation();
-  const { phase, day, nextDay } = useWeatherDay(location, date);
+  const { phase, day } = useWeatherDay(location, date);
 
   if (phase === 'loading') {
     return (
@@ -157,8 +157,6 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   }
 
   const category = weatherCategory(day.weatherCode);
-  const Icon = WEATHER_ICON_BY_CATEGORY[category];
-  const night = nightTemperature(day, nextDay);
   const rainHours = day.hours.filter((hour) => hour.precipitation > 0);
   const rainTotal = rainHours.reduce((sum, hour) => sum + hour.precipitation, 0);
   const maxProbability = Math.max(0, ...day.hours.map((hour) => hour.precipitationProbability));
@@ -181,46 +179,9 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         className="weather-day__summary"
         aria-label={`Wetter: ${WEATHER_LABEL_BY_CATEGORY[category]}`}
       >
-        <div className="weather-day__headline">
-          <span
-            className="weather-day__icon"
-            role="img"
-            aria-label={WEATHER_LABEL_BY_CATEGORY[category]}
-          >
-            <Icon />
-          </span>
-          <span className="weather-day__temps">
-            <span
-              className="weather-day__temp-max"
-              aria-label={`Höchstwert: ${Math.round(day.tempMax)} Grad`}
-            >
-              <IconSunSimple />
-              {Math.round(day.tempMax)}°
-            </span>
-            {/* Fehlt der Folgetag (letzter Tag der Vorhersage), ersetzt diese
-                sichtbare Beschriftung den Mond — eine leere Stelle sähe kaputt aus
-                (issue #269 AC3). aria-hidden, weil die Bedeutung schon im
-                aria-label des Nachbarelements steckt. */}
-            {!night && (
-              <span className="weather-day__temp-fallback-label" aria-hidden="true">
-                Tiefstwert
-              </span>
-            )}
-            <span
-              className="weather-day__temp-min"
-              aria-label={
-                night
-                  ? `nachts, ${hourLabel(night.windowStart)} bis ${hourLabel(night.windowEnd)}: ${Math.round(night.value)} Grad`
-                  : `Tiefstwert: ${Math.round(day.tempMin)} Grad`
-              }
-            >
-              {night && <IconMoon />}
-              {Math.round(night ? night.value : day.tempMin)}°
-            </span>
-          </span>
-        </div>
-        {/* Wind and sun are four single numbers — a compact strip right under the
-            headline reads faster than two more cards at the bottom of the page. */}
+        {/* Wind and sun are four single numbers — a compact strip reads faster
+            than two more cards at the bottom of the page. Headline (Icon +
+            Temperatur) sitzt seit issue #870 im Kopf, nicht mehr hier. */}
         <dl className="weather-day__stats">
           <div className="weather-day__stat">
             <dt>Wind</dt>
@@ -314,6 +275,17 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [bouncing, setBouncing] = useState(false);
+
+  // Gleicher Store wie WeatherDayDetail (ADR-0009) — ein zweiter Live-Query
+  // statt Prop-Drilling hält den Kopf automatisch synchron, wenn sich der
+  // Cache ändert (issue #870 T3).
+  const { phase: headPhase, day: headDay, nextDay: headNextDay } = useWeatherDay(
+    location,
+    currentDate,
+  );
+  const headCategory = headDay ? weatherCategory(headDay.weatherCode) : null;
+  const HeadIcon = headCategory ? WEATHER_ICON_BY_CATEGORY[headCategory] : null;
+  const headNight = headDay ? nightTemperature(headDay, headNextDay) : null;
 
   const nextDate = cache.days ? nextWeatherDate(cache.days, currentDate) : null;
   const previousDate = cache.days ? previousWeatherDate(cache.days, currentDate) : null;
@@ -416,16 +388,64 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
       onPointerCancel={cancelDrag}
     >
       {/* Siehe page.tsx/issue #233: das <header> selbst ist der Fokus-Fix, ein
-          <header> ist nicht fokussierbar, der App-Router-Aufruf verpufft. */}
+          <header> ist nicht fokussierbar, der App-Router-Aufruf verpufft.
+          Drei Zonen (issue #870 T3): Augenbraue (immer, auch loading/no-data —
+          Zurück muss erreichbar bleiben), Titel = Temperatur, Zusatz =
+          Kategorie-Unterzeile (beide nur bei geladenen Daten). */}
       <header className="weather-day__topbar">
-        <Link href="/uebersicht" className="weather-day__back">
-          <IconChevronLeft />
-          Übersicht
-        </Link>
-        <div className="weather-day__title-cluster">
-          <h1 className="weather-day__date">{formatDayHeading(currentDate)}</h1>
-          <PageFace face="wetter" />
+        <div className="weather-day__eyebrow-row">
+          <Link href="/uebersicht" className="weather-day__back">
+            <IconChevronLeft />
+            Übersicht
+          </Link>
+          <p className="weather-day__date page-head__eyebrow">{formatDayHeading(currentDate)}</p>
         </div>
+        {headPhase === 'ready' && headDay && headCategory && HeadIcon && (
+          <>
+            <div className="weather-day__title-cluster">
+              <div className="weather-day__headline">
+                <span
+                  className="weather-day__icon"
+                  role="img"
+                  aria-label={WEATHER_LABEL_BY_CATEGORY[headCategory]}
+                >
+                  <HeadIcon />
+                </span>
+                <span className="weather-day__temps">
+                  <h1
+                    className="weather-day__temp-max"
+                    aria-label={`Höchstwert: ${Math.round(headDay.tempMax)} Grad`}
+                  >
+                    <IconSunSimple />
+                    {Math.round(headDay.tempMax)}°
+                  </h1>
+                  {/* Fehlt der Folgetag (letzter Tag der Vorhersage), ersetzt diese
+                      sichtbare Beschriftung den Mond — eine leere Stelle sähe kaputt
+                      aus (issue #269 AC3). aria-hidden, weil die Bedeutung schon im
+                      aria-label des Nachbarelements steckt. */}
+                  {!headNight && (
+                    <span className="weather-day__temp-fallback-label" aria-hidden="true">
+                      Tiefstwert
+                    </span>
+                  )}
+                  <span
+                    className="weather-day__temp-min"
+                    aria-label={
+                      headNight
+                        ? `nachts, ${hourLabel(headNight.windowStart)} bis ${hourLabel(headNight.windowEnd)}: ${Math.round(headNight.value)} Grad`
+                        : `Tiefstwert: ${Math.round(headDay.tempMin)} Grad`
+                    }
+                  >
+                    {headNight && <IconMoon />}
+                    {Math.round(headNight ? headNight.value : headDay.tempMin)}°
+                  </span>
+                </span>
+              </div>
+              <PageFace face="wetter" />
+            </div>
+            <p className="page-head__subline">{WEATHER_LABEL_BY_CATEGORY[headCategory]}</p>
+          </>
+        )}
       </header>
       <div
         className={

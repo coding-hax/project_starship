@@ -578,6 +578,97 @@ test('AK6 (#898): die Kalender-Augenbraue erfüllt 4,5:1 gegen den Kalender-Grun
   ).toBeGreaterThanOrEqual(4.5);
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #870 (T3 von #861): Wetter/Einstellungen/Anmelden füllen PageHead aus */
+/* T1 (#868) — Wetter/Einstellungen als handgebauter Kopf (Muster #898),      */
+/* Anmelden ohne Augenbraue/Zusatz, dafür große Figur statt Titelzeile.       */
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#870): Wetter zeigt die Augenbraue (Datum), die Temperatur als Titel und die Kategorie als Unterzeile', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  // /uebersicht wärmt den Dexie-Cache vor (AC „kein eigener Netzaufruf" auf
+  // der Tagesseite) — erst danach zeigt /wetter echte Werte statt no-data.
+  await page.goto('/uebersicht');
+  await expect(page.locator('.weather-forecast').getByRole('listitem')).toHaveCount(7);
+  await page.goto('/wetter/2026-07-18');
+
+  const eyebrow = page.locator('.weather-day__date');
+  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('20°');
+  // Wettercode 0 (Standard des Test-Mocks) -> Kategorie "Klar".
+  await expect(page.locator('.page-head__subline')).toHaveText('Klar');
+});
+
+test('AK2 (#870): Einstellungen zeigt die Augenbraue (Zurück) über dem Titel, ohne Zusatz-Slot', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  await expect(page.locator('.einstellungen__back')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Einstellungen' })).toBeVisible();
+
+  // Die #861-Tabelle sagt "—" für Einstellungen — kein Zusatz-Slot im DOM.
+  await expect(page.locator('.page-head__extra')).toHaveCount(0);
+  await expect(page.locator('.page-head__subline')).toHaveCount(0);
+});
+
+test('AK6 (#870): die Wetter-Augenbraue erfüllt 4,5:1 gegen den Wetter-Grund, Hell und Dunkel', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+  await expect(page.locator('.weather-forecast').getByRole('listitem')).toHaveCount(7);
+  await page.goto('/wetter/2026-07-18');
+
+  const eyebrow = page.locator('.weather-day__date');
+  await expect(eyebrow).toBeVisible();
+
+  const lightColor = await elementColor(eyebrow);
+  const lightGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+    'Augenbraue auf /wetter (hell)',
+  ).toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await elementColor(eyebrow);
+  const darkGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+    'Augenbraue auf /wetter (dunkel)',
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK6 (#870): die Einstellungen-Augenbraue (Zurück-Link) erfüllt 4,5:1 gegen den Einstellungen-Grund, Hell und Dunkel', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/einstellungen');
+
+  const eyebrow = page.locator('.einstellungen__back');
+  await expect(eyebrow).toBeVisible();
+
+  const lightColor = await elementColor(eyebrow);
+  const lightGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+    'Augenbraue auf /einstellungen (hell)',
+  ).toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await elementColor(eyebrow);
+  const darkGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+    'Augenbraue auf /einstellungen (dunkel)',
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
 test.describe('Anmelden (ausgeloggter Kontext)', () => {
   // Eingeloggt leitet /anmelden sofort auf /uebersicht um (shell.spec.ts) — dieser
   // Block braucht einen frischen, ausgeloggten Context statt der geteilten Sitzung.
@@ -587,7 +678,27 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
     await page.goto('/anmelden');
     const header = page.getByRole('heading', { level: 1 });
     await assertFlatHeader(header, '/anmelden');
-    await assertHeaderFitsItself(header, '/anmelden');
+    // Die 136px-Figur (#870) ist Geschwister des <h1>, nicht sein Kind — ihr
+    // Bounce-Überlauf (faces.css pf-bob, ±3px translate) zeigt sich nur am
+    // gemeinsamen Container .auth__title-row, nie am <h1> allein.
+    await assertHeaderFitsItself(page.locator('.auth__title-row'), '/anmelden');
     expect(await fontSizeOf(header), 'Titelgröße Anmelden').toBe(22);
+  });
+
+  test('AK2 (#870): Anmelden zeigt „Willkommen zurück" mit großer Figur, keine Augenbraue, kein Zusatz-Slot', async ({
+    page,
+  }) => {
+    await page.goto('/anmelden');
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Willkommen zurück' })).toBeVisible();
+    const face = page.locator('.face');
+    await expect(face).toBeVisible();
+    const box = await face.boundingBox();
+    expect(Math.round(box!.width), 'Figurbreite auf /anmelden').toBe(136);
+    expect(Math.round(box!.height), 'Figurhöhe auf /anmelden').toBe(136);
+
+    // Die #861-Tabelle sagt "—" für beide Zonen auf Anmelden.
+    await expect(page.locator('.page-head__eyebrow')).toHaveCount(0);
+    await expect(page.locator('.page-head__extra, .page-head__subline')).toHaveCount(0);
   });
 });

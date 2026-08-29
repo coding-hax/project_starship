@@ -19,7 +19,9 @@ import { appendJournalEntry, deleteJournalEntry, listJournalEntries } from '@/fe
 import { ensureJournalHabit } from '@/features/journal/journal-habit';
 import { listJournalKeyStash } from '@/features/journal/journal-key-stash';
 import { writeJournalEntry } from '@/features/journal/write';
-import { db } from '@/local/dexie';
+import { DEFAULT_WEATHER_LOCATION } from '@/features/settings/use-weather-location';
+import { weatherCacheKey } from '@/features/weather/forecast';
+import { db, type WeatherDay } from '@/local/dexie';
 import { mutate, pending, size } from '@/local/outbox';
 import { startSync, sync } from '@/local/sync';
 import { getStoragePersistenceStatus } from './persist-storage';
@@ -70,6 +72,20 @@ export function E2EBridge() {
         addIcsSubscription: (url: string, name: string) =>
           db.icsSubscriptions.put({ id: uuidv7(), url, name, fetchedAt: null, lastError: null, events: [] }),
         refreshIcsSubscriptions: () => refreshStaleSubscriptions(),
+        // issue #870 (Endabgleich): writes straight into the forecast cache instead
+        // of going through a mocked fetch. `useWeatherForecast` only ever fetches
+        // once per run — the cache row it writes never goes stale again under a
+        // frozen clock (REFRESH_INTERVAL_MS) — so a spec that needs the day route's
+        // real data has no later hook to hang a route-mock swap on. Writing the row
+        // directly sidesteps that, and — unlike swapping the network mock before the
+        // first /uebersicht mount — never touches what the overview's own forecast
+        // strip renders earlier in the same run.
+        debugSeedWeather: (days: WeatherDay[]) =>
+          db.weather.put({
+            key: weatherCacheKey(DEFAULT_WEATHER_LOCATION.latitude, DEFAULT_WEATHER_LOCATION.longitude),
+            fetchedAt: new Date().toISOString(),
+            days,
+          }),
         // The real write path (AC5) — the suite drives writeJournalEntry itself
         // rather than re-deriving row ids in the test. createEnvelope/openEnvelope/
         // encryptJournal let AC7 prove the offline row that reaches Postgres is
