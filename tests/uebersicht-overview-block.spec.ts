@@ -151,7 +151,10 @@ test('der Fortschrittsring sitzt in der Augenbrauenzeile rechts vom Datum, links
 
   const date = page.locator('.uebersicht__eyebrow-date');
   const ring = page.locator('.daily-progress-ring');
-  const settings = page.locator('.app-header__settings');
+  // `.app-header__settings` sitzt zweimal im DOM (chrome-Variante der Shell,
+  // per CSS auf Mobile `display: none`) — die Rollen-Abfrage filtert wie in
+  // shell.mobile.spec.ts über die Accessibility-Tree auf die sichtbare.
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
   await expect(ring).toBeVisible();
 
   const [dateBox, ringBox, settingsBox, eyebrowRowBox] = await Promise.all([
