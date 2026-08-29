@@ -11,12 +11,11 @@
      has none. */
   display: none;
   position: fixed;
-  /* Top edge only, not all four: keeps circles out of the status bar safe
-     area so none of them paint over the `--ground-notch` band body draws
-     there (issue #882) — a light-toned circle (`--b1`/`--b4` above) would
-     otherwise wash out the darkened band and undercut its contrast with the
-     white status bar glyphs. 0 on devices/CI without a notch, no change. */
-  inset: env(safe-area-inset-top) 0 0 0;
+  /* Full viewport, no longer stopping at the status bar safe area (issue
+     #919): the circle arc now runs unbroken to the very top, matching the
+     design sheet. `.bg-layer__veil` below — not this inset — is what keeps
+     the white status bar glyphs' contrast (issue #882) in that top strip. */
+  inset: 0;
   overflow: hidden;
   pointer-events: none;
   /* -1, not 0: a positioned z-index:0 layer would still paint over flat text
@@ -40,6 +39,21 @@
 
 html:has([data-ground]) .bg-layer {
   display: block;
+}
+
+/* Groundless routes (issue #919 AK3, e.g. /offline) have no `[data-ground]`
+   to recolour `--ground` — it keeps the `:root` fallback `var(--bg)`
+   (tokens.css), a near-white cream in light mode. `--b1`/`--b4` mixed from
+   that stay near-white too, and no veil opacity can darken a near-white tone
+   to 4.5:1 without going nearly opaque. `--ground-notch` solved the identical
+   problem for the old opaque band (#882) with its own dark fallback
+   (`--ground-base-dark`) instead of `--bg` — reused here for `--b1`/`--b4`,
+   scoped to `.bg-layer` alone so it doesn't touch `--ground` anywhere else on
+   the page. Applies even though `.bg-layer` itself stays `display: none` on
+   these routes: the token math (`resolveBgLayerToken` in
+   tests/shell.mobile.spec.ts) must hold regardless of visibility. */
+html:not(:has([data-ground])) .bg-layer {
+  --ground: var(--ground-base-dark);
 }
 
 /* --- lights, one gait shared by every route (issue #904) -----------------
@@ -160,6 +174,29 @@ html:has([data-ground='einstellungen']) .bg-light {
 }
 .bg-circle:nth-child(7) {
   background: var(--b4);
+}
+
+/*
+ * Status-bar veil (issue #919): last child of `.bg-layer`, absolutely
+ * positioned like the circles above with no z-index of its own — within the
+ * layer's stacking context, an unpositioned box paints *before* the
+ * `position: absolute` circles regardless of DOM order, so it needs the same
+ * positioning to let plain DOM order put it on top of them instead.
+ * Translucent (`--notch-veil`, tokens.css), not opaque: the old opaque band
+ * this replaces (issue #882) hard-cropped the circle arc at this exact edge,
+ * which is the bug this issue fixes — a translucent veil lets the arc keep
+ * showing through while still darkening enough for the white status bar
+ * glyphs to clear 4.5:1 against it (contrast math in tokens.css). Height is
+ * `--safe-top`, not a bare `env()`, so a test can force a non-zero value
+ * without a real notch (AK4).
+ */
+.bg-layer__veil {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-top);
+  background: var(--notch-veil);
 }
 
 /* --- gaits, one keyframe set per route (Übersicht: Aufsteigen) ----------- */

@@ -187,6 +187,77 @@ async function resolveToken(page: Page, cssVar: string): Promise<string> {
   }, cssVar);
 }
 
+/** Same canvas-pixel technique as grundfarbe.spec.ts/seitenkopf.spec.ts — a regex
+ *  against getComputedStyle's serialized colour would misparse an oklch()/
+ *  color-mix() string as if it were rgb(). */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+/** Composites a semi-transparent overlay colour onto an opaque base, both as
+ *  CSS colour strings the canvas engine resolves itself (issue #921's
+ *  Umschalter-Grund sits on top of the route ground, not a flat colour). */
+async function compositeOver(page: Page, base: string, overlay: string): Promise<[number, number, number]> {
+  return page.evaluate(
+    ([b, o]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = b;
+      ctx.fillRect(0, 0, 1, 1);
+      ctx.fillStyle = o;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, bl] = ctx.getImageData(0, 0, 1, 1).data;
+      return [r, g, bl] as [number, number, number];
+    },
+    [base, overlay],
+  );
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** Text-node-tight bounding box (not the flex item's own, possibly grown, box) —
+ *  issue #921 AK4 compares the gap to the *visible* end of the title text, not
+ *  to `.calendar-view__heading`'s own box (which `flex: 1` stretches to fill
+ *  the row's remaining width, so its own edge always sits flush next to the
+ *  figure regardless of how short the text is). */
+async function textBoundingBox(locator: Locator): Promise<{ x: number; right: number }> {
+  return locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
+}
+
+function switcherRoot(page: Page) {
+  return page.getByRole('radiogroup', { name: 'Ansicht' });
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The timeline must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -3045,4 +3116,148 @@ test('eine Kategoriefarbe gilt im Dark Mode mit dem dunklen Wert des gewählten 
     .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
     .toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #921: Kalender-Kopf — Umschalter auf dem Grund, Figur rechts aussen  */
+/* -------------------------------------------------------------------------- */
+
+test('der Umschalter traegt die Grund-Variante: 148px schmal, eigene Polsterung, nicht die Karten-Variante (AK1)', async ({
+  page,
+}) => {
+  const root = switcherRoot(page);
+  await expect(root).toHaveClass(/\bsegmented\b/);
+  await expect(root).toHaveClass(/\bsegmented--ground\b/);
+
+  const box = await root.boundingBox();
+  expect(Math.round(box?.width ?? 0)).toBe(148);
+
+  const padding = await root.evaluate((el) => getComputedStyle(el).paddingTop);
+  expect(padding).toBe('3px');
+  const gap = await root.evaluate((el) => getComputedStyle(el).gap);
+  expect(gap).toBe('3px');
+});
+
+test('die Pille wird 33px hoch gezeichnet, die Trefferflaeche jeder Option bleibt 44px hoch (AK2, issue #818)', async ({
+  page,
+}) => {
+  const box = await switcherRoot(page).boundingBox();
+  expect(Math.round(box?.height ?? 0)).toBe(33);
+
+  const monat = page.getByRole('radio', { name: 'Monat' });
+  const monatBox = await monat.boundingBox();
+  if (!monatBox) throw new Error('monat option has no bounding box');
+  // Die Option zeichnet nur 27px hoch (33 gesamt − 2×3px Polsterung) — ein
+  // Tipp 8px oberhalb ihrer eigenen Box liegt klar ausserhalb der gezeichneten
+  // Pille, aber noch innerhalb der unsichtbar erweiterten 44px-Trefferflaeche.
+  expect(monatBox.height).toBeLessThan(30);
+  await expect(monat).toHaveAttribute('aria-checked', 'false');
+
+  await page.mouse.click(monatBox.x + monatBox.width / 2, monatBox.y - 8);
+
+  await expect(monat).toHaveAttribute('aria-checked', 'true');
+});
+
+test('gedaempfter Optionstext erreicht 4,5:1 gegen den Umschalter-Grund, die aktive Pille 3:1 gegen ihre Umgebung — hell und dunkel (AK3)', async ({
+  page,
+}) => {
+  async function measure() {
+    const ground = await resolveToken(page, '--ground');
+    const track = await compositeOver(page, ground, 'color-mix(in oklab, white 20%, transparent)');
+
+    const mutedOption = page.getByRole('radio', { name: 'Monat' }); // unselected -> gedaempfter Text
+    const mutedColor = await mutedOption.evaluate((el) => getComputedStyle(el).color);
+    const mutedRgb = await toRgb(page, mutedColor);
+
+    const indicator = switcherRoot(page).locator('.segmented__indicator');
+    const pillColor = await indicator.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const pillRgb = await toRgb(page, pillColor);
+
+    return {
+      textContrast: contrastRatio(mutedRgb, track),
+      pillContrast: contrastRatio(pillRgb, track),
+    };
+  }
+
+  const light = await measure();
+  expect(light.textContrast).toBeGreaterThanOrEqual(4.5);
+  expect(light.pillContrast).toBeGreaterThanOrEqual(3);
+
+  // reducedMotion: 'reduce' collapses the option's `transition: color`
+  // (segmented-control.css) to ~0 — without it this read races the 150ms
+  // fade between the light- and dark-mode ink and can land on whatever
+  // partial blend the transition happens to be at instead of the settled
+  // colour (the same reason every other dark-mode contrast measurement in
+  // this suite, e.g. journal.spec.ts:1139, shell.spec.ts:202, pairs
+  // colorScheme with it).
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  const dark = await measure();
+  expect(dark.textContrast).toBeGreaterThanOrEqual(4.5);
+  expect(dark.pillContrast).toBeGreaterThanOrEqual(3);
+});
+
+test('die Figur steht rechts aussen, der Titel traegt die Restbreite — in Woche und Monat (AK4)', async ({
+  page,
+}) => {
+  async function measureGaps() {
+    const row = page.locator('.calendar-view__title-row');
+    const heading = page.locator('.calendar-view__heading');
+    const face = page.locator('.face');
+    const rowBox = await row.boundingBox();
+    const textBox = await textBoundingBox(heading);
+    const faceBox = await face.boundingBox();
+    if (!rowBox || !faceBox) throw new Error('missing bounding box');
+    return {
+      faceToRightEdge: rowBox.x + rowBox.width - (faceBox.x + faceBox.width),
+      textToFace: faceBox.x - textBox.right,
+    };
+  }
+
+  const week = await measureGaps();
+  expect(week.faceToRightEdge).toBeLessThan(2);
+  expect(week.textToFace).toBeGreaterThan(week.faceToRightEdge + 10);
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const month = await measureGaps();
+  expect(month.faceToRightEdge).toBeLessThan(2);
+  expect(month.textToFace).toBeGreaterThan(month.faceToRightEdge + 10);
+});
+
+test('Pfeiltasten und Roving-Tabindex am Umschalter bleiben unveraendert (AK5)', async ({ page }) => {
+  const woche = page.getByRole('radio', { name: 'Woche' });
+  const monat = page.getByRole('radio', { name: 'Monat' });
+
+  await expect(woche).toHaveAttribute('tabindex', '0');
+  await expect(monat).toHaveAttribute('tabindex', '-1');
+
+  await woche.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(monat).toBeFocused();
+  await expect(monat).toHaveAttribute('aria-checked', 'true');
+  await expect(monat).toHaveAttribute('tabindex', '0');
+  await expect(woche).toHaveAttribute('tabindex', '-1');
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(woche).toBeFocused();
+  await expect(woche).toHaveAttribute('aria-checked', 'true');
+});
+
+test('die Augenbrauenzeile passt ohne waagerechten Ueberlauf in eine Zeile, hell und dunkel (AK6)', async ({
+  page,
+}) => {
+  async function assertNoOverflow() {
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+
+    const box = await page.locator('.calendar-view__eyebrow').boundingBox();
+    expect(Math.round(box?.height ?? 0)).toBeLessThanOrEqual(34);
+  }
+
+  await assertNoOverflow();
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await assertNoOverflow();
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await assertNoOverflow();
 });
