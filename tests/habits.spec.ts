@@ -42,19 +42,23 @@ async function expandArchived(page: Page) {
 }
 
 /**
- * Opens the editor by hitting the habit's name button.
- *
- * Clicking the list item itself used to work while the item was a single row, but
- * since #105 it also holds the week grid — so the item's centre point lands on a
- * day cell and toggles a log instead of opening the editor. The regex is anchored
- * so it matches the name button ("Joggen Wöchentlich") and not the seven grid
- * buttons, whose accessible names read "Mo: Joggen offen".
+ * Toggles a row's collapsed/expanded state by tapping its header (issue #905
+ * AK3/AK4) — replaces the old direct-to-editor tap from before the table
+ * rebuild. The regex is anchored so it matches the header button ("Joggen 3")
+ * and not the seven grid buttons inside it once expanded, whose accessible
+ * names read "Mo: Joggen offen".
  */
-async function tapHabit(page: Page, name: string) {
-  await habitItems(page)
-    .filter({ hasText: name })
-    .getByRole('button', { name: new RegExp(`^${name}\\b`) })
-    .click();
+async function tapHabitRow(row: Locator, name: string) {
+  await row.getByRole('button', { name: new RegExp(`^${name}\\b`) }).click();
+}
+
+/** Expands a collapsed row and opens its editor via "Bearbeiten" (issue #905
+ * AK4) — the two-step replacement for the old single tap-to-edit. Assumes the
+ * row starts collapsed. */
+async function editHabit(page: Page, name: string) {
+  const row = habitItems(page).filter({ hasText: name });
+  await tapHabitRow(row, name);
+  await row.getByRole('button', { name: 'Bearbeiten' }).click();
 }
 
 async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -157,7 +161,9 @@ test('eine per FAB angelegte Routine erscheint sofort in der Liste', async ({ pa
   await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
-  await expect(item).toContainText('Wöchentlich');
+
+  await tapHabitRow(item, 'Wasser trinken');
+  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
 });
 
 test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
@@ -177,7 +183,9 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
   await nameField(page).fill('Meditieren');
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 
-  await expect(habitItems(page).filter({ hasText: 'Meditieren' })).toContainText('Täglich');
+  const item = habitItems(page).filter({ hasText: 'Meditieren' });
+  await tapHabitRow(item, 'Meditieren');
+  await expect(item.locator('.habit-table__meta')).toContainText('Täglich');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -233,7 +241,9 @@ test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippe
   await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
-  await expect(item).toContainText('Wöchentlich');
+
+  await tapHabitRow(item, 'Wasser trinken');
+  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
 });
 
 test('Pfeiltasten verschieben Fokus und Auswahl innerhalb der geöffneten Rhythmus-Gruppe (#138, ADR-0006)', async ({
@@ -305,7 +315,8 @@ test('der Ziel-Chip existiert nur bei „Wöchentlich" und speichert bzw. verwir
   expect(last.payload).toMatchObject({ schedule: 'weekly', target: 3 });
 
   const item = habitItems(page).filter({ hasText: 'Laufen' });
-  await expect(item).toContainText('3× pro Woche');
+  await tapHabitRow(item, 'Laufen');
+  await expect(item.locator('.habit-table__meta')).toContainText('3× pro Woche');
 
   // Zweiter Durchlauf: weg von „Wöchentlich" lässt den Ziel-Chip verschwinden
   // (nicht nur leer werden) und speichert target wieder als 1.
@@ -358,10 +369,11 @@ test('eine Routine ohne target-Feld aus der Zeit vor #509 zeigt sich unveränder
   await seedHabit(page, { name: 'Alte Routine', schedule: 'weekly', color: null, archivedAt: null });
 
   const item = habitItems(page).filter({ hasText: 'Alte Routine' });
-  await expect(item).toContainText('Wöchentlich');
-  await expect(item).not.toContainText('×');
+  await tapHabitRow(item, 'Alte Routine');
+  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
+  await expect(item.locator('.habit-table__meta')).not.toContainText('×');
 
-  await tapHabit(page, 'Alte Routine');
+  await item.getByRole('button', { name: 'Bearbeiten' }).click();
   const dialog = editDialog(page);
   await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Wöchentlich');
   await expect(habitChip(dialog, 'Ziel')).toHaveText('1×');
@@ -371,11 +383,18 @@ test('eine Routine ohne target-Feld aus der Zeit vor #509 zeigt sich unveränder
 /* AK: Bearbeiten und Archivieren funktionieren; archivierte verschwinden     */
 /* -------------------------------------------------------------------------- */
 
-test('Tippen auf eine Routine öffnet den Editor mit Name und Rhythmus', async ({ page }) => {
+test('Tippen auf eine Routine öffnet sie, „Bearbeiten" öffnet den Editor mit Name und Rhythmus (issue #905 AK4)', async ({
+  page,
+}) => {
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Joggen', schedule: 'weekly', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Joggen');
+  const item = habitItems(page).filter({ hasText: 'Joggen' });
+  const header = item.getByRole('button', { name: new RegExp('^Joggen\\b') });
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+
+  await editHabit(page, 'Joggen');
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
 
   const dialog = editDialog(page);
   await expect(dialog).toBeVisible();
@@ -389,7 +408,7 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Lesen', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Lesen');
+  await editHabit(page, 'Lesen');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
@@ -406,7 +425,7 @@ test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async 
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Dehnen', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Dehnen');
+  await editHabit(page, 'Dehnen');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Koralle' }).check();
@@ -441,7 +460,7 @@ test('der Farb-Picker zeigt alle zehn Swatches aus SWATCH_PALETTE in der bindend
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Zehn Farben', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Zehn Farben');
+  await editHabit(page, 'Zehn Farben');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   const radios = dialog.locator('.habit-editor__colors').getByRole('radio');
@@ -457,7 +476,7 @@ test('die Farboptionen sind per Pfeiltasten innerhalb der Radiogruppe erreichbar
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Pfeiltasten-Farbe', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Pfeiltasten-Farbe');
+  await editHabit(page, 'Pfeiltasten-Farbe');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Grün (Standard)' }).focus();
@@ -475,7 +494,7 @@ test('jede Farboption hat eine Trefferfläche von mindestens 44×44px (issue #65
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Trefferfläche', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Trefferfläche');
+  await editHabit(page, 'Trefferfläche');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   const options = dialog.locator('.habit-editor__color-option');
@@ -499,7 +518,7 @@ test('eine neu gewählte Farbe (--swatch-lime) übersteht einen Reload und ersch
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Limette wählen', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Limette wählen');
+  await editHabit(page, 'Limette wählen');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Limette' }).check();
@@ -522,7 +541,7 @@ test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (i
   await seedHabit(page, { name: 'Farbe offline ändern', schedule: 'daily', color: null, archivedAt: null });
   await context.setOffline(true);
 
-  await tapHabit(page, 'Farbe offline ändern');
+  await editHabit(page, 'Farbe offline ändern');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   await dialog.getByRole('radio', { name: 'Himmelblau' }).check();
@@ -551,6 +570,7 @@ test('Archivieren entfernt die Routine aus der aktiven Liste, ohne Rückgängig-
   const item = habitItems(page).filter({ hasText: 'Tagebuch' });
   await expect(item).toBeVisible();
 
+  await tapHabitRow(item, 'Tagebuch');
   await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
 
   await expect(item).toHaveCount(0);
@@ -567,6 +587,7 @@ test('das Archivieren bleibt ohne Rückgängig bestehen, der Server landet archi
   await seedHabit(page, { name: 'Stretching', schedule: 'daily', color: null, archivedAt: null });
   const item = habitItems(page).filter({ hasText: 'Stretching' });
 
+  await tapHabitRow(item, 'Stretching');
   await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
   await expect(item).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
@@ -596,6 +617,7 @@ test('Reaktivieren aus dem Archiv macht die Routine ohne Undo-Angebot wieder akt
   const archivedItem = archivedHabitItems(page).filter({ hasText: 'Alte Routine' });
   await expect(archivedItem).toBeVisible();
 
+  await tapHabitRow(archivedItem, 'Alte Routine');
   await archivedItem.getByRole('button', { name: 'Reaktivieren' }).click();
 
   await expect(habitItems(page).filter({ hasText: 'Alte Routine' })).toBeVisible();
@@ -616,9 +638,11 @@ test('die Journal-Routine hat keinen Archivieren-Button, eine normale Routine we
 
   const journalItem = habitItems(page).filter({ hasText: 'Journal' });
   await expect(journalItem).toBeVisible();
+  await tapHabitRow(journalItem, 'Journal');
   await expect(journalItem.getByRole('button', { name: /^(Archivieren|Reaktivieren)$/ })).toHaveCount(0);
 
   const joggenItem = habitItems(page).filter({ hasText: 'Joggen' });
+  await tapHabitRow(joggenItem, 'Joggen');
   await expect(joggenItem.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
 });
 
@@ -628,7 +652,7 @@ test('die Journal-Routine behält ihren Sonderfall: kein Name, keine Farbe, nur 
   await page.goto('/routinen');
   await seedJournalHabit(page);
 
-  await tapHabit(page, 'Journal');
+  await editHabit(page, 'Journal');
   const dialog = editDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveCount(0);
@@ -710,6 +734,7 @@ test('offline archiviert erreicht online die Datenbank mit gesetztem archived_at
   await context.setOffline(true);
 
   const item = habitItems(page).filter({ hasText: 'Offline archivieren' });
+  await tapHabitRow(item, 'Offline archivieren');
   await item.getByRole('button', { name: 'Archivieren', exact: true }).click();
   await expect(item).toHaveCount(0);
   // One entry for the seed, one for the archive — both still queued offline.
@@ -741,7 +766,7 @@ test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outb
   });
   await context.setOffline(true);
 
-  await tapHabit(page, 'Rhythmus wechseln');
+  await editHabit(page, 'Rhythmus wechseln');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Rhythmus').click();
   await dialog.getByRole('radio', { name: 'Wöchentlich' }).check();
@@ -751,7 +776,7 @@ test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outb
   await expect(dialog).toBeHidden();
 
   const item = habitItems(page).filter({ hasText: 'Rhythmus wechseln' });
-  await expect(item).toContainText('4× pro Woche');
+  await expect(item.locator('.habit-table__meta')).toContainText('4× pro Woche');
   // One entry for the seed, one for the schedule/target change — both queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
@@ -784,7 +809,7 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
 }
 
 function colorDotFor(page: Page, name: string) {
-  return habitItems(page).filter({ hasText: name }).locator('.habit-list__color');
+  return habitItems(page).filter({ hasText: name }).locator('.habit-table__color');
 }
 
 test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode', async ({
@@ -824,7 +849,7 @@ test('alle zehn Swatch-Hintergrundfarben sind paarweise verschieden und von --su
   await page.goto('/routinen');
   await seedHabit(page, { name: 'Farbvergleich', schedule: 'daily', color: null, archivedAt: null });
 
-  await tapHabit(page, 'Farbvergleich');
+  await editHabit(page, 'Farbvergleich');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   const swatches = dialog.locator('.habit-editor__color-swatch');
@@ -862,7 +887,7 @@ test('eine Routine auf --area-tasks bleibt nach der Erweiterung auf zehn Farben 
   const rowColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(rowColor).toBe(await resolveColorToken(page, '--area-tasks'));
 
-  await tapHabit(page, 'Bestandsfarbe');
+  await editHabit(page, 'Bestandsfarbe');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Farbe').click();
   await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
@@ -906,10 +931,10 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: Abstand zwischen aktiver Liste und Archiv-Block (issue #486)          */
+/* AK: Abstand zwischen aktiver Tabelle und Archiv-Block (issue #486)         */
 /* -------------------------------------------------------------------------- */
 
-test('der Abstand zwischen letzter aktiver Routine und Archiv-Block ist größer als der Abstand zwischen zwei Routinenkarten', async ({
+test('der Abstand zwischen der Routinen-Tabelle und dem Archiv-Block ist größer als der Standard-Blockabstand', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -921,17 +946,16 @@ test('der Abstand zwischen letzter aktiver Routine und Archiv-Block ist größer
     archivedAt: '2026-01-01T00:00:00.000Z',
   });
 
-  const listItems = habitItems(page);
-  const lastActiveItem = listItems.last();
+  const table = page.locator('.habit-table');
   const archivedSection = page.locator('.section-card');
 
-  await expect.poll(() => lastActiveItem.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
+  await expect.poll(() => table.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
 
-  const lastActiveRect = await lastActiveItem.boundingBox();
+  const tableRect = await table.boundingBox();
   const archivedRect = await archivedSection.boundingBox();
 
-  if (lastActiveRect && archivedRect) {
-    const spacingBetween = archivedRect.y - (lastActiveRect.y + lastActiveRect.height);
+  if (tableRect && archivedRect) {
+    const spacingBetween = archivedRect.y - (tableRect.y + tableRect.height);
     // --space-6 = 24px
     expect(spacingBetween).toBeGreaterThanOrEqual(24);
   }

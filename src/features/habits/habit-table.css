@@ -11,6 +11,13 @@
   color: var(--text-muted);
 }
 
+/* Spacing between active table/empty message and archived section — issue
+   #486, carried over from habit-list.css unchanged. */
+.habit-table + .section-card,
+.habit-table__empty + .section-card {
+  margin-top: var(--space-6);
+}
+
 .habit-table {
   margin-bottom: var(--space-4);
   border-radius: var(--radius-surface);
