@@ -176,9 +176,14 @@ const ROUTES: RouteCase[] = [
     ground: 'wetter',
     path: '/wetter/2026-07-18',
     ink: '--on-accent',
-    // No cached forecast is seeded (offline-agnostic AC "kein eigener Netzaufruf")
-    // — the day-detail topbar with its date heading renders in every phase.
-    heading: (page) => page.locator('.weather-day__date'),
+    // Seit issue #870 T3 ist die Temperatur der h1, `.weather-day__date` nur noch
+    // die gedämpfte Augenbraue (eigene AK6-Kontrastprüfung in seitenkopf.spec.ts).
+    // `.weather-day__temp-max` rendert erst mit geladenen Daten (kein eigener
+    // Netzaufruf, AC von #156) — der `registerPasskey`-Landepunkt /uebersicht
+    // (erster ROUTES-Eintrag) füllt den Cache für 2026-07-18 = FIXED_NOW über das
+    // gemockte Open-Meteo-Fulfil aus `beforeEach`, lange bevor die Schleife hier
+    // ankommt.
+    heading: (page) => page.locator('.weather-day__temp-max'),
   },
   {
     ground: 'einstellungen',
