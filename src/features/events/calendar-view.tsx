@@ -204,6 +204,7 @@ export function CalendarView() {
             value={expanded ? 'monat' : 'woche'}
             onChange={(next) => setExpanded(next === 'monat')}
             label="Ansicht"
+            variant="ground"
           />
         </div>
         <div className="calendar-view__title-row">
