@@ -102,11 +102,13 @@ for (const mode of MODES) {
     page,
   }) => {
     await installClockAt(page, FIXED_NOW); // Saturday, 2026-07-18
-    await registerPasskey(page);
-    await page.emulateMedia({ colorScheme: mode.colorScheme, reducedMotion: mode.reducedMotion });
 
-    // issue #870 (T3): echte Vorhersage statt der leeren beforeEach-Antwort —
-    // der Wetter-Kopf unten braucht Daten, um Titel + Unterzeile zu zeigen.
+    // issue #870 (T3): echte Vorhersage statt der leeren beforeEach-Antwort, VOR
+    // registerPasskey — das landet bereits auf /uebersicht, wo WeatherForecast den
+    // damals aktiven Mock in den Dexie-Cache schreibt (fetchedAt = eingefrorene
+    // Zeit). Ein Umbiegen erst danach bliebe wirkungslos: REFRESH_INTERVAL_MS
+    // (3h) hält den leeren Eintrag "frisch", der Wetter-Kopf unten bliebe ohne
+    // Daten für Titel + Unterzeile.
     await page.unroute(OPEN_METEO_PATTERN);
     await page.route(OPEN_METEO_PATTERN, (route) =>
       route.fulfill({
@@ -117,6 +119,9 @@ for (const mode of MODES) {
         }),
       }),
     );
+
+    await registerPasskey(page);
+    await page.emulateMedia({ colorScheme: mode.colorScheme, reducedMotion: mode.reducedMotion });
 
     // Aufgaben: „Danach nichts mehr geplant." (task-list.tsx:513).
     await seedTask(page, { title: 'Abgleich Nur heute', dueAt: FIXED_NOW });
