@@ -18,7 +18,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test('the shell renders a login or setup screen without a session', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/anmelden$/);
-  await expect(page.getByRole('heading', { name: 'Starship', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Willkommen zurück', level: 1 })).toBeVisible();
 
   // Prod already has a passkey registered ("login"); a fresh local/CI database does
   // not yet ("setup") — either is proof the shell and /api/auth/status render fine.
