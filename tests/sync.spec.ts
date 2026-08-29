@@ -1231,6 +1231,7 @@ test.describe('Konvergenz auf den natürlichen Schlüssel statt Kollision (#475)
     page,
   }) => {
     await registerPasskey(page);
+    await settleJournalHabitBoot(page);
 
     const habitId = await page.evaluate(() =>
       window.__starship.mutate({
