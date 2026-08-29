@@ -41,7 +41,7 @@ test('a tab switch restarts the opacity animation on the transition wrapper (iss
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await nav.getByRole('link', { name: 'Routinen' }).click();
-  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 1 })).toBeVisible();
 
   const wrapper = page.locator('.page-transition');
   const { animationName, animationDuration, transform } = await wrapper.evaluate((el) => {

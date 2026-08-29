@@ -46,7 +46,7 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
 
   for (const [label, path, heading] of [
     ['Aufgaben', '/aufgaben', 'Aufgaben'],
-    ['Routinen', '/routinen', 'Routinen verwalten'],
+    ['Routinen', '/routinen', 'Routinen'],
     // Titel „Diese Woche" seit issue #898 — der Nav-Tab heißt weiterhin „Kalender".
     ['Kalender', '/kalender', 'Diese Woche'],
     ['Journal', '/journal', 'Wie war dein Tag?'],
@@ -125,7 +125,7 @@ test('/heute/gewohnheiten permanently redirects to /routinen instead of 404ing (
   const response = await page.goto('/heute/gewohnheiten');
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/routinen$/);
-  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 1 })).toBeVisible();
 
   const redirected = response!.request().redirectedFrom();
   expect(redirected).not.toBeNull();

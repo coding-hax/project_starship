@@ -157,7 +157,7 @@ const ROUTES: RouteCase[] = [
     ground: 'routinen',
     path: '/routinen',
     ink: '--on-accent',
-    heading: (page) => page.getByRole('heading', { level: 1, name: 'Routinen verwalten' }),
+    heading: (page) => page.getByRole('heading', { level: 1, name: 'Routinen' }),
   },
   {
     ground: 'journal',
@@ -317,12 +317,12 @@ test('AK5: Karten setzen den Textkontext zurück, dieselbe Klasse liegt auf Grun
 
   // Flächenlos direkt auf dem (dunkel-getönten) Grund: erbt die helle/dunkle
   // Kontext-Tinte des Grunds (hier --on-accent, Routinen ist ein heller Grund).
-  const heading = page.getByRole('heading', { level: 1, name: 'Routinen verwalten' });
+  const heading = page.getByRole('heading', { level: 1, name: 'Routinen' });
   expect(await elementColor(heading)).toBe(onAccent);
 
-  // Dieselbe Rolle auf einer Karte (.habit-list__item, eigene --surface) liegt
+  // Dieselbe Rolle auf einer Karte (.habit-table, eigene --surface) liegt
   // stattdessen auf der fixen neutralen Tinte, nicht auf der Grund-Tinte.
-  const cardTitle = page.locator('.habit-list__title', { hasText: 'Kontext-Sonde' });
+  const cardTitle = page.locator('.habit-table__name', { hasText: 'Kontext-Sonde' });
   await expect(cardTitle).toBeVisible();
   expect(await elementColor(cardTitle)).toBe(textBase);
   expect(await elementColor(cardTitle)).not.toBe(onAccent);
@@ -448,7 +448,7 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
       archivedAt: null,
     });
 
-    const card = page.locator('.habit-list__item').first();
+    const card = page.locator('.habit-table').first();
     await expect(card).toBeVisible();
     const cardBorder = await card.evaluate((el) => getComputedStyle(el).borderTopColor);
     const borderBase = await resolveColorToken(page, '--border-base');
