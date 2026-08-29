@@ -47,7 +47,8 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
   for (const [label, path, heading] of [
     ['Aufgaben', '/aufgaben', 'Aufgaben'],
     ['Routinen', '/routinen', 'Routinen verwalten'],
-    ['Kalender', '/kalender', 'Kalender'],
+    // Titel „Diese Woche" seit issue #898 — der Nav-Tab heißt weiterhin „Kalender".
+    ['Kalender', '/kalender', 'Diese Woche'],
     ['Journal', '/journal', 'Wie war dein Tag?'],
     ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
     // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
