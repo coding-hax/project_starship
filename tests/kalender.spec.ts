@@ -3183,7 +3183,14 @@ test('gedaempfter Optionstext erreicht 4,5:1 gegen den Umschalter-Grund, die akt
   expect(light.textContrast).toBeGreaterThanOrEqual(4.5);
   expect(light.pillContrast).toBeGreaterThanOrEqual(3);
 
-  await page.emulateMedia({ colorScheme: 'dark' });
+  // reducedMotion: 'reduce' collapses the option's `transition: color`
+  // (segmented-control.css) to ~0 — without it this read races the 150ms
+  // fade between the light- and dark-mode ink and can land on whatever
+  // partial blend the transition happens to be at instead of the settled
+  // colour (the same reason every other dark-mode contrast measurement in
+  // this suite, e.g. journal.spec.ts:1139, shell.spec.ts:202, pairs
+  // colorScheme with it).
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const dark = await measure();
   expect(dark.textContrast).toBeGreaterThanOrEqual(4.5);
   expect(dark.pillContrast).toBeGreaterThanOrEqual(3);
