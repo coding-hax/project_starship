@@ -184,9 +184,11 @@ test('AK2: die Reiterleiste schwimmt als Pille über dem Grund, der aktive Reite
 
   // .nav selbst malt keine eigene Fläche mehr (issue #889): der Routen-Grund
   // kommt von `body` darunter, damit die Hintergrundkreise nicht an der
-  // Nav-Zeile abgeschnitten werden. Die alte Prüfung maß hier die Deklaration
-  // von .nav statt deren Wirkung — geprüft wird deshalb, dass .nav
-  // transparent ist und insbesondere nicht die Pillen-Fläche trägt.
+  // Nav-Zeile abgeschnitten werden — nur die Oberkante bleibt durchsichtig,
+  // seit #908 blendet ein `::before`-Schleier zum unteren Rand hin zum Grund
+  // aus (tests/nav-schleier.spec.ts). Die alte Prüfung maß hier die
+  // Deklaration von .nav statt deren Wirkung — geprüft wird deshalb, dass
+  // .nav transparent ist und insbesondere nicht die Pillen-Fläche trägt.
   const navContainer = page.locator('.nav');
   expect(await elementBackground(navContainer), '.nav trägt keine eigene Fläche mehr').toBe(
     'rgba(0, 0, 0, 0)',
@@ -248,6 +250,9 @@ test('AK4: der Home-Balken/die Statuszeile zeigen den Routen-Grund, keine Neutra
     // Wie AK2 oben (issue #889): .nav malt keine eigene Fläche mehr — der
     // Home-Balken/die Statuszeile lesen als Seite, weil `body` weiterhin den
     // Routen-Grund trägt, nicht weil `.nav` ihn selbst noch einmal aufmalt.
+    // Seit #908 liegt zusätzlich ein `::before`-Schleier über gescrolltem
+    // Karteninhalt in dieser Zeile (tests/nav-schleier.spec.ts) — `.nav`
+    // selbst bleibt davon unberührt transparent.
     expect(navBg, `.nav trägt keine eigene Fläche mehr (${scheme})`).toBe('rgba(0, 0, 0, 0)');
     expect(navBg, `.nav-Hintergrund (${scheme}) ist keine Neutralfläche`).not.toBe(surfaceToken);
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
