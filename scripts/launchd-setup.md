@@ -353,6 +353,13 @@ Runner nie stilllegen**, deshalb wird eine unplausible Zeit verworfen statt gegl
 lieber einmal umsonst aufwachen (ein `429` kommt sofort zurück und kostet null Tokens)
 als tagelang blind schlafen.
 
+**Kein Ticket-Label (#891).** Die Kontingent-Pause ist ein Zustand der Flotte, nicht
+des Tickets: der 429-Zweig setzt **kein** `blocked-limit` mehr am Bau-Ticket. Sichtbar
+ist die Pause allein im Flotten-Header des Status-Issues (`🔵 Kontingent leer bis
+HH:MM`), gespeist aus `limit-until` — der Slot, der das Limit erkennt, veröffentlicht
+den Header dafür einmalig selbst, auch ohne Leitung. Nur der **Opus-Tagesdeckel** trägt
+weiter `blocked-limit`.
+
 Willst du eine Pause von Hand aufheben:
 
 ```bash
