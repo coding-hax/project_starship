@@ -23,7 +23,8 @@ fehlt, setzt `needs-answer` und startet keinen Lauf. Fließtext zählt nicht.
 **Der Bau-Lauf mergt nicht mehr selbst.** Er endet mit dem Label `check` und
 lässt den PR im Entwurf. Erst ein eigener, nur lesender Prüf-Lauf hält den
 fertigen Diff gegen die Kriterien — Befund je Kriterium mit Beleg, als
-Kommentar `## ✅ AK-Check` am Ticket — und hebt den PR bei vollständiger
+Kommentar `## ✅ AK-Check` am Ticket **(in jedem Ausgang, auch bei voller
+Erfüllung, und vor dem Merge)** — und hebt den PR bei vollständiger
 Erfüllung selbst aus dem Entwurf. Bei einer Lücke fällt `check` weg,
 `in-progress` bleibt, die offenen Punkte stehen im Fortschrittskommentar und
 der nächste Takt ist wieder ein Bau-Lauf. Erst der **zweite** vergebliche
@@ -88,10 +89,12 @@ ab und bekam `parked`. Genau deshalb brauchte es danach einen eigenen Zweig, um
 es wiederzufinden, eine eigene Wache und ein Sicherheitsnetz gegen den
 Zwischenzustand. Alle drei sind mit `parked` weggefallen.
 
-Das gilt **nicht** für `blocked-limit`: ein Usage-Limit löst sich von selbst in
-Minuten und bleibt bewusst `in-progress` ohne Wartelabel, der Runner fängt in
-der Zwischenzeit nichts Neues an (siehe Abschnitt „Zwei Arten des Wartens" in
-`docs/workflow/labels.md`).
+Das gilt **nicht** für `blocked-limit`: der **Opus-Tagesdeckel** löst sich von
+selbst (morgen läuft er weiter), das Ticket behält `in-progress`, und der Runner
+fängt in der Zwischenzeit nichts Neues an. Das **Session-/Token-Kontingent** (429)
+trägt seit #891 **kein** Label mehr — es ist ein Zustand der Flotte, nicht des
+Tickets, und der Flotten-Header trägt die Pause (siehe Abschnitt „Zwei Arten des
+Wartens" in `docs/workflow/labels.md`).
 
 **Recherche-Schritt vor `plan` (optional, Idee-Ebene):** Wirfst du eine grobe
 Feature-Idee als Issue ein, setzt du das Label `research`. Der Runner lässt

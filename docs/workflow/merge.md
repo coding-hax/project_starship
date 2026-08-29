@@ -34,7 +34,10 @@ Sekunden nach diesem Push, greift der Runner-Takt wie gehabt nach.
 gepusht — nicht über eine offene Frage), setzt Claude `gh issue edit <nr>
 --add-label check` und beendet den Lauf; der PR bleibt Entwurf. Freigabe und
 Auto-Merge macht seit #839 ausschließlich der **AK-Check-Lauf**, und nur wenn
-kein Kriterium offen ist: `gh pr ready` + `gh pr merge --squash --auto
+kein Kriterium offen ist. Seit #901 schreibt der Prüf-Lauf seinen Befund als
+Kommentar `## ✅ AK-Check` immer zuerst, in jedem Ausgang und vor jeder
+Label-Änderung — er geht dem Freigeben also in jedem Fall voraus:
+`gh pr ready` + `gh pr merge --squash --auto
 --delete-branch --subject "$(gh pr view --json title -q .title)" --body ""`
 (ohne PR-Nummer — wirkt auf den PR des aktuellen Branches). Das `--subject`
 ist Pflicht: bei genau einem Commit auf dem Branch nimmt GitHub sonst dessen

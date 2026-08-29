@@ -206,8 +206,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
 - `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
 - `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
-- `swatch-palette.ts` — `SWATCH_PALETTE`, die zehn Farbnamen (Token+Label), einzige Quelle für habit-editor.tsx und category-colors-panel.tsx
-- `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Ein/Ausblenden, reduced-motion → Fade), App-Shell
+- `swatch-palette.ts` — `SWATCH_PALETTE`, zehn Farbnamen (Token+Label), Quelle für habit-editor.tsx + category-colors-panel.tsx
+- `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Motion), App-Shell
 - `use-list-presence.ts` — `useListPresence(items, getKey)`: hält entfernte Zeilen bis zum Exit-Animationsende gemountet
 - `use-now.ts` — `useNow(intervalMs)`: tickendes `Date` (Default 60s), treibt z. B. die Kalender-Jetzt-Linie (#553)
 - `use-online.ts` / `offline-notice.tsx` / `.css` — `useOnline()` (SSR-sicher) + geteilte
@@ -228,6 +228,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund (#832) + halbhoher Kopf (#833) je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe (#831)
+- `nav-schleier.spec.ts` — Boden-Schleier (#908)
 - `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor (#834)
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build, #599)

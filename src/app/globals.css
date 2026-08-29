@@ -313,19 +313,14 @@ html {
 }
 
 body {
-  /* Safe-area status bar band (issue #882): a gradient layer painted on top
-     of the flat --ground colour, confined to exactly `env(safe-area-inset-top)`
-     — 0 on devices/CI without a notch (no regression, `--ground` alone shows
-     through), the real inset height on iPhones with black-translucent. Lives
-     on body (not html, despite the ticket's wording) because body paints
-     opaquely over the whole viewport including the safe area (#849) — a band
-     under it would never be visible. Holds the notch tone through the first
-     half so the glyphs don't sit on an already-fading tint, then eases into
-     --ground. */
-  background:
-    linear-gradient(to bottom, var(--ground-notch) 0%, var(--ground-notch) 55%, var(--ground) 100%)
-      left top / 100% env(safe-area-inset-top) no-repeat,
-    var(--ground);
+  /* Flat --ground everywhere, including the safe area: the opaque status-bar
+     band that used to live here (issue #882) moved to `.bg-layer__veil`
+     (background-circles.css, issue #919) — a translucent overlay painted
+     above the circles instead of a deckende gradient painted here that hid
+     them. `--ground-notch` (globals.css above) stays defined and still
+     covers that band's own contrast measurement (tests/shell.mobile.spec.ts)
+     as the quick rollback path (see issue #919's "Rückweg"). */
+  background: var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
      z-index of its own, so that negative z-index escapes past it straight to

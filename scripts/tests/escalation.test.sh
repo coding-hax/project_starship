@@ -180,6 +180,14 @@ assert_file_absent() {   # $1 = beschreibung, $2 = pfad
   fi
 }
 
+assert_file_present() {   # $1 = beschreibung, $2 = pfad
+  if [ -e "$2" ]; then
+    ok "$1"
+  else
+    red "$1 (Datei fehlt: $2)"
+  fi
+}
+
 # ==============================================================================
 # 1. Kein Fortschritt + gleiche Signatur -> failcount steigt
 # ==============================================================================
@@ -208,10 +216,14 @@ setup_issue "$ISSUE"
   main
 ) >/dev/null 2>&1
 assert_file_absent "AC2: Limit-Lauf legt keinen failcount an" "$SHARED_DIR/failcount-$ISSUE"
+# #891, AK1/AK8: der 429-Zweig setzt KEIN blocked-limit mehr -- die
+# Kontingent-Pause ist ein Flotten-Zustand, kein Ticket-Zustand. Hier ist
+# STATUS_ISSUE=0 (der "Kontingent leer"-Titel also nicht beobachtbar), deshalb
+# ist die Label-Abwesenheit die belastbare Assertion.
 LIMIT_LABELS=$(cat "$GHSTATE_DIR/labels-$ISSUE" 2>/dev/null | tr '\n' ' ')
 case "$LIMIT_LABELS" in
-  *blocked-limit*) ok "AC2: Limit-Lauf setzt blocked-limit" ;;
-  *) red "AC2: Limit-Lauf setzt blocked-limit (Labels: $LIMIT_LABELS)" ;;
+  *blocked-limit*) red "AC2: Limit-Lauf setzt kein blocked-limit mehr (#891) (Labels: $LIMIT_LABELS)" ;;
+  *) ok "AC2: Limit-Lauf setzt kein blocked-limit mehr (#891)" ;;
 esac
 
 # ==============================================================================
@@ -283,6 +295,22 @@ case "$CAP_LABELS" in
   *) ok "AC6 (#272): kein needs-answer -- der Tagesdeckel wartet auf Zeit, nicht auf dich" ;;
 esac
 assert_eq "AC6: kein dritter Opus-Bau-Lauf reserviert" "2" "$(cat "$SHARED_DIR/opus-build-$TODAY-$ISSUE" 2>/dev/null)"
+
+# ==============================================================================
+# 6b. #900 AK1/AK4: Fortschritt loescht den Opus-Tageszaehler, laesst den
+# opus-cap-msg-Stempel aber unangetastet (Bash->TS-Shim-Pfad)
+# ==============================================================================
+reset_state
+ISSUE=109 RUN_ROLE=build LABELS="" MODEL=opus BEFORE_TIP="sha-alt"
+setup_issue "$ISSUE"
+TODAY=$(date +%Y%m%d)
+echo 2 > "$SHARED_DIR/opus-build-$TODAY-$ISSUE"
+echo -n > "$SHARED_DIR/opus-cap-msg-$TODAY-$ISSUE"
+echo "sha-neu" > "$GHSTATE_DIR/tip-$ISSUE"   # Branch hat sich bewegt
+build_escalation_eval
+assert_file_absent "#900 AK1: Fortschritt löscht den Opus-Tageszähler" "$SHARED_DIR/opus-build-$TODAY-$ISSUE"
+assert_file_present "#900 AK4: Fortschritt laesst den opus-cap-msg-Stempel unangetastet" \
+  "$SHARED_DIR/opus-cap-msg-$TODAY-$ISSUE"
 
 # ==============================================================================
 # 7. Abweichende Blocker-Signatur -> failcount zurück auf 0

@@ -449,15 +449,28 @@ ${list}
      prüfbar zu machen. Fürs Tor zählt das wie „nicht erfüllt" — aber der
      Bau-Lauf weiß dann, dass ein Beleg fehlt, nicht Code.
    Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
-4. Schreib das Ergebnis in **einen** Kommentar am Ticket, überschrieben mit
-   \`## ✅ AK-Check\`. Existiert er von einem früheren Check-Lauf bereits,
-   **editiere ihn** (\`gh api\`-PATCH auf die Kommentar-ID), statt einen zweiten
-   anzulegen. Inhalt: eine Tabelle \`Nr · Kriterium (gekürzt) · Befund · Beleg\`,
-   darunter eine Zeile \`Ergebnis: N von M erfüllt\`.
+4. **Schreib deinen Befund in jedem Ausgang zuerst — auch bei voller Erfüllung.**
+   In **einen** Kommentar am Ticket, überschrieben mit \`## ✅ AK-Check\`, und zwar
+   **vor jeder Label-Änderung und vor dem Merge**. Der Kommentar ist die
+   einzige Spur, die ein Mensch später findet; der Merge schließt das Ticket,
+   ein danach nachgereichter Kommentar käme zu spät.
+   - **Erste Zeile: eine menschenlesbare Kopfzeile**, die schon beim
+     flüchtigen Blick aufs (nach dem Merge geschlossene) Ticket das Urteil
+     zeigt — bei voller Erfüllung \`**Alle N Kriterien erfüllt — PR freigegeben.**\`,
+     bei einer Lücke \`**N von M erfüllt — zurück in den Bau.**\`.
+   - Darunter eine Tabelle \`Nr · Kriterium (gekürzt) · Befund · Beleg\` und
+     eine Zeile \`Ergebnis: N von M erfüllt\`.
+   Existiert der \`## ✅ AK-Check\`-Kommentar von einem früheren Check-Lauf
+   bereits, **editiere ihn** (\`gh api\`-PATCH auf die Kommentar-ID), statt
+   einen zweiten anzulegen.
 
 ## Ausgang
 
-**Alle Kriterien erfüllt** — du gibst den PR frei:
+In **jedem** dieser Fälle steht der \`## ✅ AK-Check\`-Kommentar aus Schritt 4
+bereits — er geht der Label-Änderung und dem Merge immer voraus.
+
+**Alle Kriterien erfüllt** — erst steht dein \`## ✅ AK-Check\`-Kommentar
+(Schritt 4), dann gibst du den PR frei:
 
 \`\`\`
 gh issue edit ${issue} --remove-label check
