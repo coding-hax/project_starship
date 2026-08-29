@@ -39,8 +39,12 @@ function habitRow(page: Page, habitName: string) {
  * starts collapsed, so each test expands its own row before reaching for
  * `monthGrid()`. */
 async function expandHabit(page: Page, habitName: string): Promise<void> {
+  // Not `\b` after the name: `\b` is defined via ASCII `\w`, so it never
+  // matches right after a name ending in "ß" or another non-ASCII letter
+  // (neither side of that boundary is a "word" character) — the button then
+  // silently matches nothing and the click times out (issue #487 AC8, "Maß").
   await habitRow(page, habitName)
-    .getByRole('button', { name: new RegExp(`^${habitName}\\b`) })
+    .getByRole('button', { name: new RegExp(`^${habitName}(?:\\s|$)`) })
     .click();
 }
 
@@ -161,7 +165,6 @@ test('‹ und › blättern den Monat je Zeile für sich, eine andere ausgeklapp
   await expect(monthGrid(page, 'Yoga').locator('button:not([data-outside])')).toHaveCount(30);
   await expect(monthGrid(page, 'Lesen').locator('button:not([data-outside])')).toHaveCount(31);
 
-  await lesenRow.getByRole('button', { name: 'Nächster Monat' }).click();
   await lesenRow.getByRole('button', { name: 'Nächster Monat' }).click();
   await expect(lesenRow.getByText('August 2026', { exact: true })).toBeVisible();
   await expect(yogaRow.getByText('Juni 2026', { exact: true })).toBeVisible();

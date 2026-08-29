@@ -179,7 +179,10 @@ test('offline geänderter Rhythmus und ein offline geschriebener Eintrag der Jou
 
   // Rhythmus offline wechseln — bleibt auf /routinen, dessen Cache der Reload
   // oben bereits bestätigt hat (kein zweiter fragiler Navigationspfad nötig).
+  // Der Zeilenkopf klappt nur noch auf (issue #905) — "Bearbeiten" im
+  // ausgeklappten Inhalt öffnet erst den Editor-Dialog.
   await journalHabit.getByRole('button', { name: /^Journal\b/ }).click();
+  await journalHabit.getByRole('button', { name: 'Bearbeiten' }).click();
   const dialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
   await expect(dialog).toBeVisible();
   // The schedule radios live behind the Rhythmus chip's panel since #713.
