@@ -41,6 +41,21 @@ html:has([data-ground]) .bg-layer {
   display: block;
 }
 
+/* Groundless routes (issue #919 AK3, e.g. /offline) have no `[data-ground]`
+   to recolour `--ground` — it keeps the `:root` fallback `var(--bg)`
+   (tokens.css), a near-white cream in light mode. `--b1`/`--b4` mixed from
+   that stay near-white too, and no veil opacity can darken a near-white tone
+   to 4.5:1 without going nearly opaque. `--ground-notch` solved the identical
+   problem for the old opaque band (#882) with its own dark fallback
+   (`--ground-base-dark`) instead of `--bg` — reused here for `--b1`/`--b4`,
+   scoped to `.bg-layer` alone so it doesn't touch `--ground` anywhere else on
+   the page. Applies even though `.bg-layer` itself stays `display: none` on
+   these routes: the token math (`resolveBgLayerToken` in
+   tests/shell.mobile.spec.ts) must hold regardless of visibility. */
+html:not(:has([data-ground])) .bg-layer {
+  --ground: var(--ground-base-dark);
+}
+
 /* --- lights, one gait shared by every route (issue #904) -----------------
    Unlike the circles above (one arrangement/gait per route, AK2/AK3 of
    #829), the three lights carry no per-route distinction at all (AK2 of
