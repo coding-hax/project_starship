@@ -49,7 +49,7 @@ Layout-Shift aus Smooth-Regel 3, verschoben auf die erste Sekunde nach dem
 Öffnen (issue #642).
 
 Ein Skeleton je Block heilt das nicht, sondern dreht es um: Blöcke, die geladen
-absichtlich *nichts* zeigen (Fortschrittsring bei M = 0, Streak-Karte ohne
+absichtlich *nichts* zeigen (Fortschrittsring bei M = 0, Verlaufskarte ohne
 aktive Routine, Monatsstreifen ohne Aktivitäten), müssten reservierte Höhe
 wieder hergeben. Ein Kollaps schiebt so hart wie ein Pop-in.
 

@@ -615,7 +615,7 @@ export function TaskList({
           the old plain note since issue #762 — undated tasks never match
           `weekWindowNodes`'s parent-driven window, so this is the only place either
           "Woche" view (/uebersicht, always; /aufgaben's "Woche" tab) surfaces them,
-          same collapsed-by-default pattern as "Archiviert" (habit-list.tsx). Sits
+          same collapsed-by-default pattern as "Archiviert" (habit-table.tsx). Sits
           outside the empty/list ternary above on purpose — a week with nothing due
           still needs to reveal this card if something is undated, so it cannot hide
           behind that message (which only speaks to the *dated* rows). */}

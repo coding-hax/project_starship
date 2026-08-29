@@ -405,7 +405,7 @@ test('kein "Routinen verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt
     .click();
   await expect(page).toHaveURL(/\/routinen$/);
   await expect(
-    page.getByRole('heading', { name: 'Routinen verwalten', level: 1 }),
+    page.getByRole('heading', { name: 'Routinen', level: 1 }),
   ).toBeVisible();
 });
 

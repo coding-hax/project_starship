@@ -1,0 +1,93 @@
+/**
+ * "Routinen in Serie" 30-day area chart (issue #905), replaces
+ * streak-summary-card.css. Same `--surface` card shape as habit-table.css/
+ * habit-tiles.css, same SVG recipe as activity-chart.css (viewBox 0 0 100 32,
+ * preserveAspectRatio="none").
+ */
+
+.habit-history-card {
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  margin-bottom: var(--space-4);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.habit-history-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.habit-history-card__label {
+  margin: 0;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.habit-history-card__value {
+  margin: 0;
+  font-size: var(--text-page-title-lg);
+  font-variant-numeric: tabular-nums;
+  /* Rundschrift-Rezept (issue #859, ADR-0027) — "große Zahl" wie die
+     Routinen-Kacheln (habit-tiles.css). */
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
+}
+
+.habit-history-card__svg {
+  display: block;
+  width: 100%;
+  height: 64px;
+}
+
+.habit-history-card__gridline,
+.habit-history-card__baseline {
+  stroke: var(--border-faint);
+  stroke-width: 1;
+}
+
+.habit-history-card__baseline {
+  /* A structural edge, not decoration (docs/design/farben-typografie.md) —
+     the chart's own zero line, so it earns the stronger of the two tokens. */
+  stroke: var(--border-base);
+}
+
+.habit-history-card__area {
+  fill: color-mix(in oklab, var(--area-habits) 26%, var(--surface));
+}
+
+.habit-history-card__line {
+  /* Same 70% mixture as the habit-table week bars — measured ≥ 3:1 against
+     its own card (docs/design/farben-typografie.md). */
+  stroke: color-mix(in oklch, var(--area-habits) 70%, var(--text-base));
+  stroke-width: 1.5;
+}
+
+.habit-history-card__dot {
+  fill: color-mix(in oklch, var(--area-habits) 70%, var(--text-base));
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+
+.habit-history-card__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-1);
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+}

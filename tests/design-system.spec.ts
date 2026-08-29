@@ -558,12 +558,14 @@ test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
       FIXED_NOW,
     );
     await page.goto('/routinen');
-    await page
+    const habitRow = page
       .getByRole('list', { name: 'Routinen', exact: true })
       .getByRole('listitem')
-      .filter({ hasText: 'Kopfzeile-Test-710' })
-      .getByRole('button', { name: /^Kopfzeile-Test-710\b/ })
-      .click();
+      .filter({ hasText: 'Kopfzeile-Test-710' });
+    // The row header only expands the row now (issue #905) — "Bearbeiten" inside
+    // the expanded body is what actually opens the editor dialog.
+    await habitRow.getByRole('button', { name: /^Kopfzeile-Test-710\b/ }).click();
+    await habitRow.getByRole('button', { name: 'Bearbeiten' }).click();
     const habitDialog = page.getByRole('dialog', { name: 'Routine bearbeiten' });
     await expect(habitDialog.getByRole('button', { name: 'Sichern' })).toBeVisible();
     await expect(habitDialog.getByRole('button', { name: 'Speichern' })).toHaveCount(0);

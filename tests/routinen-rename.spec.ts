@@ -36,14 +36,14 @@ test('der Tab heißt „Routinen" und die Seite trägt dieselbe Überschrift (AC
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await expect(nav.getByRole('link', { name: 'Routinen' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Gewohnheiten' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 1 })).toBeVisible();
 });
 
 test('/gewohnheiten leitet dauerhaft auf /routinen (AC2)', async ({ page }) => {
   await page.goto('/gewohnheiten');
 
   await expect(page).toHaveURL(/\/routinen$/);
-  await expect(page.getByRole('heading', { name: 'Routinen verwalten', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 1 })).toBeVisible();
 });
 
 test('/heute/gewohnheiten landet direkt auf /routinen, ohne Zwischenstopp (AC2)', async ({ page }) => {
