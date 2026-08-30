@@ -1,10 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
-import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useNow } from '@/ui/use-now';
-import { agendaForDay, allDayEventsForDay, categoryEdgeVar, formatDuration, nextInAgenda } from './event-time';
+import {
+  agendaForDay,
+  allDayEventsForDay,
+  allDayRangeLabel,
+  categoryEdgeVar,
+  formatDuration,
+  nextInAgenda,
+} from './event-time';
 import { expandForDay, type Occurrence } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import { EVENT_CATEGORIES, type EventView } from './use-events';
@@ -100,11 +106,11 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEven
                     data-origin={item.origin}
                     data-continues-before={item.continuesBefore}
                     data-continues-after={item.continuesAfter}
-                    style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
+                    style={{ '--agenda-cat': categoryEdgeVar(item.category) } as CSSProperties}
                   >
-                    {item.continuesBefore && <IconChevronLeft className="event-agenda__all-day-chevron" />}
+                    <span className="event-agenda__all-day-dot" aria-hidden="true" />
                     <span className="event-agenda__all-day-title">{item.title}</span>
-                    {item.continuesAfter && <IconChevronRight className="event-agenda__all-day-chevron" />}
+                    <span className="event-agenda__all-day-range">{allDayRangeLabel(item)}</span>
                   </AllDayTag>
                 </li>
               );
