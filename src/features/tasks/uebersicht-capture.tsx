@@ -443,6 +443,7 @@ export function UebersichtCapture() {
       <Fab
         label={LABEL}
         text="Erfassen"
+        reserveLabelWidth={76}
         onClick={() => {
           setUnresolvedHabit(false);
           setTitle('');
