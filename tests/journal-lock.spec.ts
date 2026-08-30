@@ -408,3 +408,37 @@ test('Geraetewechsel ohne persistierten DEK landet gesperrt, nicht automatisch o
   await second.getByRole('button', { name: 'Entsperren', exact: true }).click();
   await expect(second.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
+
+test('Passphrase-Feld und Entsperren-Knopf sind horizontal zentriert (#934)', async ({ page }) => {
+  await setUpJournal(page, PASSPHRASE);
+  await page.reload();
+  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
+
+  const mainBox = await page.locator('main.shell__main').boundingBox();
+  const inputBox = await page.getByLabel('Passphrase', { exact: true }).boundingBox();
+  const buttonBox = await page
+    .getByRole('button', { name: 'Entsperren', exact: true })
+    .boundingBox();
+  expect(mainBox).not.toBeNull();
+  expect(inputBox).not.toBeNull();
+  expect(buttonBox).not.toBeNull();
+
+  const columnCenter = mainBox!.x + mainBox!.width / 2;
+  const inputCenter = inputBox!.x + inputBox!.width / 2;
+  const buttonCenter = buttonBox!.x + buttonBox!.width / 2;
+  expect(Math.abs(inputCenter - columnCenter)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttonCenter - columnCenter)).toBeLessThanOrEqual(1);
+});
+
+test('der entsperrte Editor behaelt die volle Spaltenbreite, keine Formular-Zentrierung (AK3, #934)', async ({
+  page,
+}) => {
+  await setUpJournal(page, PASSPHRASE);
+  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
+
+  const mainBox = await page.locator('main.shell__main').boundingBox();
+  const gateBox = await page.locator('.journal-gate[data-state="unlocked"]').boundingBox();
+  expect(mainBox).not.toBeNull();
+  expect(gateBox).not.toBeNull();
+  expect(gateBox!.width).toBeGreaterThan(mainBox!.width - 2);
+});
