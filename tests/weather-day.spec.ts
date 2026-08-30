@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { registerPasskey, resetAppData, skewClock } from './helpers';
 
 // A Monday (matches weather.spec.ts's NOW, same DAY_SET shape).
@@ -277,6 +277,21 @@ test('an einem anderen Tag als heute entfällt der Jetzt-Punkt (issue #939 AK3)'
 
   await expect(page.locator('.weather-day__now-dot')).toHaveCount(0);
   await expect(page.locator('.weather-day__now-label')).toHaveCount(0);
+});
+
+test('Flächenverlauf und Jetzt-Punkt laufen nie dauerhaft, unabhängig von reduzierter Bewegung (issue #939 AK6)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+
+  const animationName = (locator: Locator) =>
+    locator.evaluate((el) => getComputedStyle(el).animationName);
+  expect(await animationName(page.locator('.weather-day__chart-area'))).toBe('none');
+  expect(await animationName(page.locator('.weather-day__now-dot'))).toBe('none');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -613,6 +628,27 @@ test('offline zeigt die Detailseite weiterhin mit dem zuletzt bekannten Stand (i
 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
   await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
+});
+
+test('offline zeigt Kurve und Jetzt-Punkt weiterhin, ganz aus der Ablage (issue #939 AK7)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // Netz komplett kappen, wie im Offline-Test oben — der Jetzt-Punkt muss
+  // trotzdem aus dem Dexie-Cache entstehen, kein eigener Netzaufruf.
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await skewClock(page, NOW);
+  await page.goto('/wetter/2026-07-20');
+
+  const d = await page.locator('.weather-day__chart-line').getAttribute('d');
+  expect(d?.startsWith('M')).toBe(true);
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+  await expect(page.locator('.weather-day__now-label')).toHaveText('19°');
 });
 
 /* -------------------------------------------------------------------------- */
