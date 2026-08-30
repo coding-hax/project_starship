@@ -288,7 +288,7 @@ test('AK1: die neun Silhouetten stimmen wortgleich mit dem Entwurfsblatt überei
   expect(seenFaces.size, 'neun paarweise verschiedene Silhouetten').toBe(9);
 });
 
-test('Regressions-Test (unverändert seit #830 AK2): die Figur steht im Fluss und überlappt weder Ring noch Aktionen auf der Übersicht', async ({
+test('Regressions-Test (unverändert seit #830 AK2, Aktionsbündel seit #920 in der Augenbrauenzeile): die Figur steht im Fluss und überlappt weder Ring noch Aktionen auf der Übersicht', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -306,7 +306,8 @@ test('Regressions-Test (unverändert seit #830 AK2): die Figur steht im Fluss un
   await page.goto('/uebersicht');
   const face = page.locator('.face');
   const ring = page.locator('.daily-progress-ring-slot');
-  const actions = page.locator('.uebersicht__title-actions');
+  // Ring + Einstellungen-Einstieg (issue #920, zuvor die Titelzeilen-Aktionen aus #652).
+  const actions = page.locator('.uebersicht__eyebrow-actions');
   const [faceBox, ringBox, actionsBox] = await Promise.all([
     face.boundingBox(),
     ring.boundingBox(),

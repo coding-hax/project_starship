@@ -48,6 +48,13 @@ async function enableDirectCapture(page: Page) {
   await page.getByRole('switch', { name: 'Ohne Bestätigung direkt anlegen' }).click();
 }
 
+async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -153,10 +160,17 @@ test('AC6: offline auf der Übersicht erfasst, erreicht online die Datenbank', a
   expect(row.rows[0].due_at).not.toBeNull();
 });
 
-test('AC9: bei 375px und erhöhter --font-scale bleibt die Titelzeile ohne horizontalen Überlauf, der Knopf überlappt nicht', async ({
+test('AC9 (issue #920 AK5): bei 375px und erhöhter --font-scale bleibt der Kopf ohne Überlauf, der FAB überdeckt keine Bedienelemente der untersten Sektion', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
+  const habitId = await seedHabit(page, {
+    name: 'AC9 Routine',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  expect(habitId).toBeTruthy();
   await page.evaluate(() => localStorage.setItem('starship:text-scale', '1.25'));
   await page.reload();
 
@@ -173,15 +187,59 @@ test('AC9: bei 375px und erhöhter --font-scale bleibt die Titelzeile ohne horiz
   );
   expect(overflow).toBe(0);
 
-  const titleRow = page.locator('.uebersicht__title-row');
-  const button = captureButton(page);
-  const [rowBox, buttonBox] = await Promise.all([titleRow.boundingBox(), button.boundingBox()]);
-  expect(rowBox).not.toBeNull();
-  expect(buttonBox).not.toBeNull();
-  if (rowBox && buttonBox) {
-    expect(buttonBox.x).toBeGreaterThanOrEqual(rowBox.x - 0.5);
-    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.5);
+  // Seit issue #920 lebt der Erfassungsknopf nicht mehr in der Titelzeile
+  // (der Knopf ist jetzt ein `position: fixed`-FAB) — die Kopfzeile selbst darf
+  // dennoch nicht überlaufen (AK5).
+  const header = page.locator('.page-head');
+  const { scrollHeight, clientHeight } = await header.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(
+    scrollHeight,
+    `Kopf: scrollHeight ${scrollHeight} vs. clientHeight ${clientHeight}`,
+  ).toBeLessThanOrEqual(clientHeight);
+
+  // Der FAB darf keine Bedienelemente der untersten Sektion verdecken — dasselbe
+  // Kriterium wie auf /aufgaben (grundfarbe-vollfarbe.spec.ts).
+  const fab = captureButton(page);
+  await expect(fab).toBeVisible();
+  const lastHabitRow = page.locator('.habit-today__item').last();
+  await expect(lastHabitRow).toBeVisible();
+
+  const [fabBox, rowBox] = await Promise.all([fab.boundingBox(), lastHabitRow.boundingBox()]);
+  expect(fabBox, 'FAB hat eine Bounding-Box').not.toBeNull();
+  expect(rowBox, 'letzte Routinen-Zeile hat eine Bounding-Box').not.toBeNull();
+  if (fabBox && rowBox) {
+    const overlapsVertically = fabBox.y < rowBox.y + rowBox.height && fabBox.y + fabBox.height > rowBox.y;
+    const overlapsHorizontally =
+      fabBox.x < rowBox.x + rowBox.width && fabBox.x + fabBox.width > rowBox.x;
+    expect(
+      overlapsVertically && overlapsHorizontally,
+      'FAB überlappt die letzte Routinen-Zeile nicht',
+    ).toBe(false);
   }
+});
+
+test('AK7 (issue #920): der Erfassungs-FAB atmet ohne Reduce-Motion, hält per OS-Präferenz an und bleibt im Dark Mode sichtbar', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/uebersicht');
+  await expect(captureButton(page)).toBeVisible();
+
+  const animationName = () =>
+    page.evaluate(() => getComputedStyle(document.querySelector('.fab__icon')!).animationName);
+  expect(await animationName(), 'atmet ohne Reduce-Motion').toBe('breathe');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  expect(await animationName(), 'hält per OS-Präferenz an').toBe('none');
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'no-preference' });
+  await page.reload();
+  await expect(captureButton(page)).toBeVisible();
+  await expect(captureButton(page).locator('.fab__label')).toHaveText('Erfassen');
 });
 
 test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben einen sauberen Titel und das richtige absolute Datum — als Termin in-place angelegt (issue #715 AK3)', async ({

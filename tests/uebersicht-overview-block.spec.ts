@@ -138,33 +138,42 @@ test('der Überschriftenpunkt trägt die Bereichsfarbe des jeweiligen Moduls (AK
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK3: Ring in der Titelzeile, rechts vom Erfassungsknopf                    */
+/* AK3: Ring in der Augenbrauenzeile, zwischen Datum und Einstellungen        */
+/* (issue #920 hebt die #652-Platzierung in der Titelzeile auf — der          */
+/* Erfassungsknopf ist seither ein von der Augenbraue unabhängiger FAB)       */
 /* -------------------------------------------------------------------------- */
 
-test('der Fortschrittsring sitzt in der Titelzeile rechts vom Erfassungsknopf (AK3)', async ({
+test('der Fortschrittsring sitzt in der Augenbrauenzeile rechts vom Datum, links vom Einstellungen-Einstieg (AK3, #920)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
-  const captureButton = page.locator('.uebersicht-capture__button');
+  const date = page.locator('.uebersicht__eyebrow-date');
   const ring = page.locator('.daily-progress-ring');
+  // `.app-header__settings` sitzt zweimal im DOM (chrome-Variante der Shell,
+  // per CSS auf Mobile `display: none`) — die Rollen-Abfrage filtert wie in
+  // shell.mobile.spec.ts über die Accessibility-Tree auf die sichtbare.
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
   await expect(ring).toBeVisible();
 
-  const [captureBox, ringBox, titleRowBox] = await Promise.all([
-    captureButton.boundingBox(),
+  const [dateBox, ringBox, settingsBox, eyebrowRowBox] = await Promise.all([
+    date.boundingBox(),
     ring.boundingBox(),
-    page.locator('.uebersicht__title-row').boundingBox(),
+    settings.boundingBox(),
+    page.locator('.uebersicht__eyebrow-row').boundingBox(),
   ]);
-  if (!captureBox || !ringBox || !titleRowBox) {
-    throw new Error('Erfassungsknopf, Ring und Titelzeile müssen sichtbar sein');
+  if (!dateBox || !ringBox || !settingsBox || !eyebrowRowBox) {
+    throw new Error('Datum, Ring, Einstellungen-Einstieg und Augenbrauenzeile müssen sichtbar sein');
   }
 
-  // Rechts vom Erfassungsknopf …
-  expect(ringBox.x).toBeGreaterThan(captureBox.x + captureBox.width);
-  // … und innerhalb der Titelzeile (vertikal überlappend).
-  expect(ringBox.y).toBeGreaterThanOrEqual(titleRowBox.y);
-  expect(ringBox.y + ringBox.height).toBeLessThanOrEqual(titleRowBox.y + titleRowBox.height + 1);
+  // Rechts vom Datum …
+  expect(ringBox.x).toBeGreaterThan(dateBox.x + dateBox.width);
+  // … links vom Einstellungen-Einstieg …
+  expect(settingsBox.x).toBeGreaterThanOrEqual(ringBox.x + ringBox.width);
+  // … innerhalb der Augenbrauenzeile (vertikal überlappend).
+  expect(ringBox.y).toBeGreaterThanOrEqual(eyebrowRowBox.y - 1);
+  expect(ringBox.y + ringBox.height).toBeLessThanOrEqual(eyebrowRowBox.y + eyebrowRowBox.height + 1);
 });
 
 /* -------------------------------------------------------------------------- */

@@ -141,9 +141,9 @@ for (const mode of MODES) {
       .filter({ hasText: 'Abgleich Krafttraining' });
     await expect(habitItem.getByText('1 von 3 diese Woche')).toBeInViewport();
     await expect(page.locator('.daily-progress-ring-slot')).toBeInViewport();
-    // issue #870 (T3): Augenbraue (langes Datum) + Unterzeile (T1 von #861, #868).
+    // issue #870 (T3): Augenbraue (langes Datum). Keine Unterzeile mehr seit #920
+    // AK4 — der Fortschrittsring (oben, in derselben Augenbrauenzeile) ersetzt sie.
     await expect(page.locator('[data-ground="uebersicht"] .page-head__eyebrow')).toBeInViewport();
-    await expect(page.locator('[data-ground="uebersicht"] .page-head__subline')).toBeInViewport();
 
     // Kalender: eigener Leerzustand (issue #638).
     await page.goto('/kalender');
