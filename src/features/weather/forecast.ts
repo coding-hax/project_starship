@@ -244,15 +244,42 @@ export function temperatureAxis(hours: WeatherHour[], tickCount = 3): Temperatur
   return { min, max, ticks: [...new Set(ticks)] };
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * The scaling math behind `temperatureLinePoints`, factored out (issue #939) so
+ * `smoothPath` can build a curve through the same `x`/`y` coordinates instead of
+ * a straight polyline. Each hour owns a slot of the box rather than spanning
+ * edge to edge — hour 23 lands one slot short of the right edge, matching the
+ * axis reading the day as 0..24 (issue #795), not 0..23.
+ */
+function scaleTemperaturePoints(
+  hours: WeatherHour[],
+  width: number,
+  height: number,
+  domain?: { min: number; max: number },
+): Point[] {
+  if (hours.length === 0) return [];
+  const temps = hours.map((hour) => hour.temperature);
+  const min = domain ? domain.min : Math.min(...temps);
+  const max = domain ? domain.max : Math.max(...temps);
+  const range = max - min || 1;
+  const stepX = width / hours.length;
+  return hours.map((hour, i) => ({
+    x: i * stepX,
+    y: height - ((hour.temperature - min) / range) * height,
+  }));
+}
+
 /**
  * SVG `points` for a 24-hour temperature curve (issue #156), scaled into a
  * `width`×`height` box — kept out of the component so the scaling math is
  * unit-testable without rendering, same reasoning as `weekdayLabel`/`isWeekend`
  * (issue #139). Without `domain` the day's own min/max span the box; the chart
- * passes `temperatureAxis`'s whole-degree range so curve and labels agree. Each
- * hour owns a slot of the box rather than spanning edge to edge — hour 23 lands
- * one slot short of the right edge, matching the axis reading the day as 0..24
- * (issue #795), not 0..23.
+ * passes `temperatureAxis`'s whole-degree range so curve and labels agree.
  */
 export function temperatureLinePoints(
   hours: WeatherHour[],
@@ -260,17 +287,103 @@ export function temperatureLinePoints(
   height: number,
   domain?: { min: number; max: number },
 ): string {
-  if (hours.length === 0) return '';
-  const temps = hours.map((hour) => hour.temperature);
-  const min = domain ? domain.min : Math.min(...temps);
-  const max = domain ? domain.max : Math.max(...temps);
-  const range = max - min || 1;
-  const stepX = width / hours.length;
-  return hours
-    .map((hour, i) => {
-      const x = i * stepX;
-      const y = height - ((hour.temperature - min) / range) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
+  return scaleTemperaturePoints(hours, width, height, domain)
+    .map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
     .join(' ');
+}
+
+export interface SmoothPath {
+  /** `d` of the curve itself, e.g. `"M0.0,50.0 C… xn,yn"`. */
+  line: string;
+  /** `line` closed down to the plot's baseline — the fill under the curve. */
+  area: string;
+}
+
+const fmt = (value: number): string => value.toFixed(1);
+
+/**
+ * `temperatureLinePoints`'s straight segments smoothed into a uniform
+ * Catmull-Rom spline, converted to cubic Bézier segments (issue #939): each
+ * segment's control points are `cp1 = p1 + (p2-p0)/6`, `cp2 = p2 - (p3-p1)/6`,
+ * with the two ends clamped (`p₋₁=p₀`, `pₙ₊₁=pₙ`) so the curve doesn't overshoot
+ * past the first/last data point. Endpoints always land exactly on the data
+ * points regardless of that tension — only the interior bulge changes.
+ */
+export function smoothPath(
+  hours: WeatherHour[],
+  width: number,
+  height: number,
+  domain?: { min: number; max: number },
+): SmoothPath {
+  const points = scaleTemperaturePoints(hours, width, height, domain);
+  if (points.length === 0) return { line: '', area: '' };
+  if (points.length === 1) {
+    return { line: `M${fmt(points[0].x)},${fmt(points[0].y)}`, area: '' };
+  }
+
+  const last = points.length - 1;
+  const at = (i: number): Point => points[Math.min(Math.max(i, 0), last)];
+
+  let line = `M${fmt(points[0].x)},${fmt(points[0].y)}`;
+  for (let i = 0; i < last; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    line += ` C${fmt(cp1x)},${fmt(cp1y)} ${fmt(cp2x)},${fmt(cp2y)} ${fmt(p2.x)},${fmt(p2.y)}`;
+  }
+
+  const area = `${line} L${fmt(points[last].x)},${fmt(height)} L${fmt(points[0].x)},${fmt(height)} Z`;
+  return { line, area };
+}
+
+const BERLIN_NOW_MARK_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Berlin',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+export interface BerlinNowMark {
+  /** `YYYY-MM-DD`, Berlin calendar day — compared against the day detail page's own date to decide whether "now" falls on it at all. */
+  dateKey: string;
+  /** Fractional hour since Berlin midnight, `[0, 24)`. */
+  hourOfDay: number;
+}
+
+/**
+ * Where "now" falls on the temperature chart's x-axis (issue #939) — same
+ * Berlin-local convention as `hourLabel`/`nightTemperature` above, so the now
+ * mark lines up with the same hours those already read off `WeatherHour.time`.
+ */
+export function berlinNowMark(now: Date): BerlinNowMark {
+  const parts = BERLIN_NOW_MARK_FORMATTER.formatToParts(now);
+  const get = (type: string): string => parts.find((part) => part.type === type)!.value;
+  const dateKey = `${get('year')}-${get('month')}-${get('day')}`;
+  const hourOfDay = Number(get('hour')) + Number(get('minute')) / 60;
+  return { dateKey, hourOfDay };
+}
+
+/**
+ * The temperature at a fractional hour (issue #939's now mark), linearly
+ * interpolated between the two hours it falls between — `hourOfDay` is clamped
+ * into `[0, hours.length-1]` first so a mark right at 24:00 still resolves to
+ * the last hour instead of reading past the array.
+ */
+export function temperatureAtHour(hours: WeatherHour[], hourOfDay: number): number {
+  const lastIndex = hours.length - 1;
+  const clamped = Math.min(Math.max(hourOfDay, 0), lastIndex);
+  const lowerIndex = Math.floor(clamped);
+  const upperIndex = Math.min(lowerIndex + 1, lastIndex);
+  const fraction = clamped - lowerIndex;
+  const lower = hours[lowerIndex].temperature;
+  const upper = hours[upperIndex].temperature;
+  return lower + (upper - lower) * fraction;
 }
