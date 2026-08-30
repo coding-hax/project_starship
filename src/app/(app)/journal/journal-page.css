@@ -22,10 +22,19 @@
 /* Titel + Figur auf der vollen Breite verteilt (issue #928 AK2, wie
    calendar-view.css `.calendar-view__title-row`/`__heading`): der Titel trägt
    `flex: 1` und schiebt die Figur an den rechten Rand — `.face` selbst trägt
-   bereits `flex: 0 0 auto` (faces.css). */
+   bereits `flex: 0 0 auto` (faces.css).
+   `min-height` bleibt trotz der aufgeräumten Lupe stehen (issue #868, CI-Fund
+   AK5 „.journal-page__title-row läuft über"): ein h1 mit gebrochener
+   Rundschrift-Zeilenhöhe (24,2px × --leading-display) neben der ganzzahligen
+   42px-SVG-Figur lässt Chromium `scrollHeight` und `clientHeight` je Kante
+   einzeln runden und meldet 1–2px „Überlauf", obwohl die Zeile für sich
+   allein gar nicht überläuft. 44px ist kein neuer Wert (die frühere
+   Lupen-Größe), nur ihr Zweck ist ein anderer: die Rundung, nicht mehr die
+   Lupe selbst, die inzwischen in der Augenbrauenzeile sitzt. */
 .journal-page__title-row {
   display: flex;
   align-items: center;
+  min-height: var(--touch-target);
 }
 
 .journal-page__heading {
