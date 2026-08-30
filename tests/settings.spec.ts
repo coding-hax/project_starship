@@ -616,9 +616,15 @@ test.describe('engere Trennzeilen (issue #937)', () => {
         const el = document.createElement('div');
         el.className = className;
         scope.appendChild(el);
+        // A lone sentinel sibling keeps `el` from matching `:last-child` — several
+        // of these classes have a `:last-child { border-bottom: none }` companion
+        // rule that would otherwise leak into this probe (issue #937 test bug).
+        const sentinel = document.createElement('div');
+        scope.appendChild(sentinel);
         const style = getComputedStyle(el);
         const result = { top: style.paddingTop, bottom: style.paddingBottom };
         el.remove();
+        sentinel.remove();
         return result;
       }
       return {
@@ -664,8 +670,14 @@ test.describe('engere Trennzeilen (issue #937)', () => {
         const el = document.createElement('div');
         el.className = className;
         scope.appendChild(el);
+        // See the padding probe above — the sentinel keeps `el` from matching
+        // `:last-child` (e.g. `.push-panel__kind:last-child { border-bottom: none }`),
+        // which would otherwise mask the real border-bottom-color.
+        const sentinel = document.createElement('div');
+        scope.appendChild(sentinel);
         const color = getComputedStyle(el).borderBottomColor;
         el.remove();
+        sentinel.remove();
         return color;
       }
       const reference = document.createElement('div');
