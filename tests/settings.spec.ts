@@ -594,3 +594,133 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
     expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* issue #937: engere, einheitliche Trennzeilen in den Einstellungen          */
+/* -------------------------------------------------------------------------- */
+
+test.describe('engere Trennzeilen (issue #937)', () => {
+  test('AC1: die Trennzeilen-Sonden aus .row, .push-panel__kind, .category-colors-panel__row und .weather-panel__result haben padding-block 8px', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    // Synthetische Sonden statt echter Elemente (gleiches Muster wie AC4/#653
+    // unten) — `.push-panel__kind` (Push-Abo aktiv) und `.weather-panel__result`
+    // (Sucheergebnis) sind nur über aufwendige Zusatz-Mocks erreichbar; die
+    // CSS-Regel selbst ist unabhängig vom Komponentenzustand.
+    const paddings = await page.evaluate(() => {
+      const scope: Element = document.querySelector('.section-card') ?? document.body;
+      function probe(className: string) {
+        const el = document.createElement('div');
+        el.className = className;
+        scope.appendChild(el);
+        // A lone sentinel sibling keeps `el` from matching `:last-child` — several
+        // of these classes have a `:last-child { border-bottom: none }` companion
+        // rule that would otherwise leak into this probe (issue #937 test bug).
+        const sentinel = document.createElement('div');
+        scope.appendChild(sentinel);
+        const style = getComputedStyle(el);
+        const result = { top: style.paddingTop, bottom: style.paddingBottom };
+        el.remove();
+        sentinel.remove();
+        return result;
+      }
+      return {
+        row: probe('row'),
+        pushKind: probe('push-panel__kind'),
+        categoryRow: probe('category-colors-panel__row'),
+        weatherResult: probe('weather-panel__result'),
+        weatherSearch: probe('weather-panel__search'),
+      };
+    });
+
+    for (const { top, bottom } of Object.values(paddings)) {
+      expect(top).toBe('8px');
+      expect(bottom).toBe('8px');
+    }
+  });
+
+  test('AC2: beschreibungslose Zeilen sind über Panels hinweg gleich hoch und behalten ihr Touch-Target', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const bewegungRow = page
+      .locator('.row')
+      .filter({ has: page.getByRole('switch', { name: 'Bewegung reduzieren' }) });
+    const moduleRow = page.locator('.row').filter({ has: page.getByRole('switch', { name: 'Journal' }) });
+
+    const [bewegungBox, moduleBox] = await Promise.all([bewegungRow.boundingBox(), moduleRow.boundingBox()]);
+    expect(Math.abs(bewegungBox!.height - moduleBox!.height)).toBeLessThanOrEqual(2);
+    expect(bewegungBox!.height).toBeGreaterThanOrEqual(44);
+    expect(moduleBox!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test('AC3: alle Trennlinien in den Einstellungen sind --border-faint, auch Benachrichtigungen, Geräte und Wetter', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const { colors, faintColor, borderColor } = await page.evaluate(() => {
+      const scope: Element = document.querySelector('.section-card') ?? document.body;
+      function probe(className: string) {
+        const el = document.createElement('div');
+        el.className = className;
+        scope.appendChild(el);
+        // See the padding probe above — the sentinel keeps `el` from matching
+        // `:last-child` (e.g. `.push-panel__kind:last-child { border-bottom: none }`),
+        // which would otherwise mask the real border-bottom-color.
+        const sentinel = document.createElement('div');
+        scope.appendChild(sentinel);
+        const color = getComputedStyle(el).borderBottomColor;
+        el.remove();
+        sentinel.remove();
+        return color;
+      }
+      const reference = document.createElement('div');
+      scope.appendChild(reference);
+      reference.style.borderBottom = '1px solid var(--border-faint)';
+      const faintColor = getComputedStyle(reference).borderBottomColor;
+      reference.style.borderBottom = '1px solid var(--border)';
+      const borderColor = getComputedStyle(reference).borderBottomColor;
+      reference.remove();
+
+      return {
+        faintColor,
+        borderColor,
+        colors: {
+          pushKind: probe('push-panel__kind'),
+          devicesItem: probe('devices-panel__item'),
+          weatherSearch: probe('weather-panel__search'),
+          weatherResult: probe('weather-panel__result'),
+        },
+      };
+    });
+
+    for (const color of Object.values(colors)) {
+      expect(color).toBe(faintColor);
+      expect(color).not.toBe(borderColor);
+    }
+  });
+
+  test('AC4: der Termin-Editor (Nicht-Einstellungen-.row) behält padding-block 12px', async ({ page }) => {
+    await registerPasskey(page);
+    await page.goto('/kalender');
+
+    await page.getByRole('button', { name: 'Termin erfassen' }).click();
+    await page.getByRole('button', { name: /^Wann/ }).click();
+
+    const ganztaegigRow = page.locator('.row').filter({ has: page.getByRole('switch', { name: 'Ganztägig' }) });
+    await expect(ganztaegigRow).toBeVisible();
+    const padding = await ganztaegigRow.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { top: style.paddingTop, bottom: style.paddingBottom };
+    });
+    expect(padding.top).toBe('12px');
+    expect(padding.bottom).toBe('12px');
+  });
+});
