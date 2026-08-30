@@ -14,6 +14,7 @@ import {
   previousWeatherDate,
   temperatureAxis,
   temperatureLinePoints,
+  windDirectionLabel,
 } from './forecast';
 import { useWeatherCache } from './use-weather-cache';
 import { useWeatherDay } from './use-weather-day';
@@ -185,7 +186,12 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         <dl className="weather-day__stats">
           <div className="weather-day__stat">
             <dt>Wind</dt>
-            <dd>{Math.round(day.windSpeedMax)} km/h</dd>
+            <dd>
+              {Math.round(day.windSpeedMax)} km/h
+              {day.windDirection !== undefined && (
+                <span className="weather-day__wind-direction">{windDirectionLabel(day.windDirection)}</span>
+              )}
+            </dd>
           </div>
           <div className="weather-day__stat">
             <dt>Böen</dt>
@@ -202,7 +208,13 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         </dl>
       </section>
 
-      <SectionCard title="Tagesverlauf" className="weather-day__card">
+      <SectionCard
+        title="Tagesverlauf"
+        className="weather-day__card"
+        titleAccessory={
+          day.apparentTempMax !== undefined ? `Gefühlt ${Math.round(day.apparentTempMax)}°` : undefined
+        }
+      >
         <ChartFrame
           className="weather-day__chart"
           ariaLabel={`Temperaturverlauf von ${Math.round(day.tempMin)}° bis ${Math.round(day.tempMax)}°, stündlich`}
@@ -215,6 +227,27 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
             transform={`translate(${PLOT_X} ${PLOT_Y})`}
           />
         </ChartFrame>
+        {day.hours.some((hour) => typeof hour.weatherCode === 'number') && (
+          <ol className="weather-day__hourly" aria-label="Wetterlage je Stunde">
+            {day.hours.map((hour) => {
+              if (typeof hour.weatherCode !== 'number') return null;
+              const hourCategory = weatherCategory(hour.weatherCode);
+              const HourIcon = WEATHER_ICON_BY_CATEGORY[hourCategory];
+              return (
+                <li key={hour.time} className="weather-day__hourly-cell">
+                  <span className="weather-day__hourly-time">{hourLabel(hour.time)}</span>
+                  <span
+                    className="weather-day__hourly-icon"
+                    role="img"
+                    aria-label={WEATHER_LABEL_BY_CATEGORY[hourCategory]}
+                  >
+                    <HourIcon />
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </SectionCard>
 
       <SectionCard title="Niederschlag" className="weather-day__card">

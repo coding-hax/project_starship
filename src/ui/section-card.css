@@ -41,6 +41,30 @@
   line-height: var(--leading-display);
 }
 
+.section-card__header-row {
+  display: flex;
+  /* Top-align, not baseline: the title is the display font, the accessory the
+     body font, and their differing ascents make `baseline` drag the shared
+     baseline — and with it the title — a pixel below the card padding, breaking
+     the "heading hugs the top edge" contract (#288/#344/#353). Both share the
+     same font-size and leading, so their line boxes are equal height and
+     top-aligning reads as level anyway. */
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.section-card__title-accessory {
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+  white-space: nowrap;
+  /* Match the title's tight display leading (not the inherited body 1.5) so the
+     accessory's line box is the same height as the title's — keeps the header
+     row exactly one title-line tall and the two reading level under the row's
+     top alignment (see `.section-card__header-row`). */
+  line-height: var(--leading-display);
+}
+
 .section-card__header {
   display: flex;
   align-items: center;
