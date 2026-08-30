@@ -167,6 +167,21 @@
   margin-top: var(--space-3);
 }
 
+/* /uebersicht only (issue #931) — the shared `.section-card` surface (16px
+   padding all round + `--shadow-raised`) turns this one-line toggle into a
+   ~76px block collapsed, Designregel 2 ("keine Form, die mehr Gerüst als
+   Inhalt zeigt"). Two-class selector so it wins over both `.section-card`
+   and the base rule above without touching either — `/aufgaben` (no
+   `--flat`) keeps its full card. Only the vertical padding goes: the header
+   button's own `min-height: var(--touch-target)` (section-card.css) then is
+   the whole collapsed height, still a full 44px tap target. */
+.section-card.task-list__undated-card--flat {
+  padding-block: 0;
+  padding-inline: var(--space-4);
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+
 .task-list__item {
   display: flex;
   align-items: center;
