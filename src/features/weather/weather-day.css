@@ -234,9 +234,33 @@
   stroke-linejoin: round;
 }
 
-.weather-day__chart-grid {
-  stroke: var(--border);
-  stroke-width: 1;
+.weather-day__chart-area {
+  fill: url(#weather-day-temp-area);
+  stroke: none;
+}
+
+.weather-day__area-stop--top {
+  stop-color: var(--accent);
+  stop-opacity: 0.25;
+}
+
+.weather-day__area-stop--bottom {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
+/* Ring in --surface so the dot reads against the curve it sits on, light or dark. */
+.weather-day__now-dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.weather-day__now-label {
+  fill: var(--text);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
 }
 
 .weather-day__chart-axis {

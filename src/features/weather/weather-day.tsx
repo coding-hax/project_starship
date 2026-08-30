@@ -6,14 +6,17 @@ import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { PageFace } from '@/ui/faces';
 import { SectionCard } from '@/ui/section-card';
 import { IconChevronLeft, IconMoon, IconSunSimple } from '@/ui/icons';
+import { useNow } from '@/ui/use-now';
 import {
+  berlinNowMark,
   formatDayHeading,
   hourLabel,
   nextWeatherDate,
   nightTemperature,
   previousWeatherDate,
+  smoothPath,
+  temperatureAtHour,
   temperatureAxis,
-  temperatureLinePoints,
   windDirectionLabel,
 } from './forecast';
 import { useWeatherCache } from './use-weather-cache';
@@ -48,15 +51,9 @@ const HOURS_PER_DAY = 24;
 /** Every sixth hour of the day plus midnight at the far end — five evenly spaced
  * quarter-day marks, none of them crowding the last one (issue #795). */
 const HOUR_TICKS = [0, 6, 12, 18, HOURS_PER_DAY];
-const PRECIPITATION_TICKS = [0, 50, 100];
 
 export interface WeatherDayDetailProps {
   date: string;
-}
-
-interface YTick {
-  y: number;
-  label: string;
 }
 
 interface XTick {
@@ -65,44 +62,23 @@ interface XTick {
 }
 
 /**
- * The axis frame both charts share: a gridline plus label per y tick, the baseline,
- * and the hour labels. `children` are the data marks, drawn on top of it.
+ * The axis frame both charts share: the baseline plus the hour labels — no
+ * y-gridline or y-label (issue #939 AK4), the sheet reads the chart's shape
+ * rather than its exact values. `children` are the data marks, drawn on top.
  */
 function ChartFrame({
   className,
   ariaLabel,
-  yTicks,
   xTicks,
   children,
 }: {
   className: string;
   ariaLabel: string;
-  yTicks: YTick[];
   xTicks: XTick[];
   children: React.ReactNode;
 }) {
   return (
     <svg className={className} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label={ariaLabel}>
-      {yTicks.map((tick) => (
-        <g key={tick.label}>
-          <line
-            className="weather-day__chart-grid"
-            x1={PLOT_X}
-            x2={PLOT_X + PLOT_W}
-            y1={tick.y}
-            y2={tick.y}
-          />
-          <text
-            className="weather-day__chart-tick"
-            x={PLOT_X - 6}
-            y={tick.y}
-            textAnchor="end"
-            dominantBaseline="middle"
-          >
-            {tick.label}
-          </text>
-        </g>
-      ))}
       <line
         className="weather-day__chart-axis"
         x1={PLOT_X}
@@ -140,6 +116,9 @@ function hourTickLabel(hour: number): string {
 export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const { location } = useWeatherLocation();
   const { phase, day } = useWeatherDay(location, date);
+  // Called unconditionally, ahead of the early returns below (rules of hooks) —
+  // `phase` moves loading → ready without unmounting this component.
+  const nowMark = berlinNowMark(useNow());
 
   if (phase === 'loading') {
     return (
@@ -163,7 +142,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const maxProbability = Math.max(0, ...day.hours.map((hour) => hour.precipitationProbability));
 
   const axis = temperatureAxis(day.hours);
-  const points = temperatureLinePoints(day.hours, PLOT_W, PLOT_H, axis);
+  const curve = smoothPath(day.hours, PLOT_W, PLOT_H, axis);
   const temperatureY = (value: number) =>
     PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * PLOT_H;
   // Hour n reads the axis as a full day, 0..24 — so it sits at n/24 of the width,
@@ -173,6 +152,9 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const slotWidth = PLOT_W / HOURS_PER_DAY;
   const barWidth = slotWidth * 0.6;
   const slotX = (hour: number) => PLOT_X + (hour + 0.5) * slotWidth;
+
+  const isToday = nowMark.dateKey === date;
+  const nowTemp = isToday && day.hours.length > 0 ? temperatureAtHour(day.hours, nowMark.hourOfDay) : null;
 
   return (
     <div className="weather-day">
@@ -186,14 +168,42 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         <ChartFrame
           className="weather-day__chart"
           ariaLabel={`Temperaturverlauf von ${Math.round(day.tempMin)}° bis ${Math.round(day.tempMax)}°, stündlich`}
-          yTicks={axis.ticks.map((value) => ({ y: temperatureY(value), label: `${value}°` }))}
           xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
         >
-          <polyline
-            points={points}
-            className="weather-day__chart-line"
+          <defs>
+            <linearGradient id="weather-day-temp-area" x1="0" y1="0" x2="0" y2="1">
+              <stop className="weather-day__area-stop--top" offset="0" />
+              <stop className="weather-day__area-stop--bottom" offset="1" />
+            </linearGradient>
+          </defs>
+          <path
+            className="weather-day__chart-area"
+            d={curve.area}
             transform={`translate(${PLOT_X} ${PLOT_Y})`}
           />
+          <path
+            className="weather-day__chart-line"
+            d={curve.line}
+            transform={`translate(${PLOT_X} ${PLOT_Y})`}
+          />
+          {nowTemp !== null && (
+            <>
+              <circle
+                className="weather-day__now-dot"
+                cx={curveX(nowMark.hourOfDay)}
+                cy={temperatureY(nowTemp)}
+                r={3.5}
+              />
+              <text
+                className="weather-day__now-label"
+                x={curveX(nowMark.hourOfDay)}
+                y={temperatureY(nowTemp) - 8}
+                textAnchor="middle"
+              >
+                {Math.round(nowTemp)}°
+              </text>
+            </>
+          )}
         </ChartFrame>
         {day.hours.some((hour) => typeof hour.weatherCode === 'number') && (
           <ol className="weather-day__hourly" aria-label="Wetterlage je Stunde">
@@ -230,10 +240,6 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         <ChartFrame
           className="weather-day__precipitation-chart"
           ariaLabel={`Regenwahrscheinlichkeit je Stunde, höchstens ${maxProbability} %`}
-          yTicks={PRECIPITATION_TICKS.map((value) => ({
-            y: PLOT_BOTTOM - (value / 100) * PLOT_H,
-            label: `${value} %`,
-          }))}
           // Ticks sit on the slot boundary (same position as curveX), not the slot
           // centre a bar itself is drawn at — both charts share one hour grid.
           xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}

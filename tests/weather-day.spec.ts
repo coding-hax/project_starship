@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { registerPasskey, resetAppData, skewClock } from './helpers';
 
 // A Monday (matches weather.spec.ts's NOW, same DAY_SET shape).
@@ -235,12 +235,63 @@ test('die Seite zeigt einen stündlichen Temperaturverlauf über 24 Stunden (iss
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  const points = await page.locator('.weather-day__chart-line').getAttribute('points');
-  expect(points?.trim().split(' ')).toHaveLength(24);
+  const d = await page.locator('.weather-day__chart-line').getAttribute('d');
+  expect(d?.startsWith('M')).toBe(true);
+  expect(d?.match(/C/g)).toHaveLength(23);
   await expect(page.locator('.weather-day__chart')).toHaveAttribute(
     'aria-label',
     'Temperaturverlauf von 5° bis 15°, stündlich',
   );
+
+  const areaD = await page.locator('.weather-day__chart-area').getAttribute('d');
+  expect(areaD?.endsWith('Z')).toBe(true);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK3: Jetzt-Punkt auf der Temperaturkurve, nur am heutigen Tag              */
+/* -------------------------------------------------------------------------- */
+
+test('am heutigen Tag zeigt die Kurve einen Jetzt-Punkt mit Temperatur-Beschriftung (issue #939 AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+  // TEMPS_MIN[0]=14, TEMPS_MAX[0]=24 -> 14 + 10*11/23 ≈ 18.8 -> 19°.
+  await expect(page.locator('.weather-day__now-label')).toHaveText('19°');
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('an einem anderen Tag als heute entfällt der Jetzt-Punkt (issue #939 AK3)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // heute = 2026-07-20.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(0);
+  await expect(page.locator('.weather-day__now-label')).toHaveCount(0);
+});
+
+test('Flächenverlauf und Jetzt-Punkt laufen nie dauerhaft, unabhängig von reduzierter Bewegung (issue #939 AK6)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+
+  const animationName = (locator: Locator) =>
+    locator.evaluate((el) => getComputedStyle(el).animationName);
+  expect(await animationName(page.locator('.weather-day__chart-area'))).toBe('none');
+  expect(await animationName(page.locator('.weather-day__now-dot'))).toBe('none');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -317,7 +368,7 @@ test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Ab
 /* Achsenbeschriftung beider Diagramme                                        */
 /* -------------------------------------------------------------------------- */
 
-test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:00, gleichmäßig verteilt (issue #795)', async ({
+test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:00, gleichmäßig verteilt (issue #795, ohne y-Gitter seit #939 AK4)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -325,11 +376,8 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  // 5°/15° sind Tiefst-/Höchstwert dieses Tages, dazwischen der Mittelwert.
+  // Kein y-Gitter/-Label mehr (issue #939 AK4) — nur die Stundenachse bleibt.
   await expect(page.locator('.weather-day__chart .weather-day__chart-tick')).toHaveText([
-    '5°',
-    '10°',
-    '15°',
     '00:00',
     '06:00',
     '12:00',
@@ -337,15 +385,14 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
     '24:00',
   ]);
   await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-tick')).toHaveText([
-    '0 %',
-    '50 %',
-    '100 %',
     '00:00',
     '06:00',
     '12:00',
     '18:00',
     '24:00',
   ]);
+  await expect(page.locator('.weather-day__chart .weather-day__chart-grid')).toHaveCount(0);
+  await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-grid')).toHaveCount(0);
 
   // Der gemeldete Fehler: die letzten beiden Uhrzeiten saßen enger zusammen als
   // der Rest, weil die Achse die Stunden 0..23 statt 0..24 abbildete. Jetzt
@@ -581,6 +628,27 @@ test('offline zeigt die Detailseite weiterhin mit dem zuletzt bekannten Stand (i
 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
   await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
+});
+
+test('offline zeigt Kurve und Jetzt-Punkt weiterhin, ganz aus der Ablage (issue #939 AK7)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // Netz komplett kappen, wie im Offline-Test oben — der Jetzt-Punkt muss
+  // trotzdem aus dem Dexie-Cache entstehen, kein eigener Netzaufruf.
+  await page.unroute(OPEN_METEO_PATTERN);
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+  await skewClock(page, NOW);
+  await page.goto('/wetter/2026-07-20');
+
+  const d = await page.locator('.weather-day__chart-line').getAttribute('d');
+  expect(d?.startsWith('M')).toBe(true);
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+  await expect(page.locator('.weather-day__now-label')).toHaveText('19°');
 });
 
 /* -------------------------------------------------------------------------- */
