@@ -21,10 +21,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
-- `(app)/uebersicht/` — Dashboard: `<DailyProgressRing/>` in der Titelzeile neben dem
-  Erfassungsknopf + `<UebersichtSections/>` (rendert je aktivem Modul dessen
-  `OverviewSection`, Reihenfolge Wetter → Termine → Aufgaben → Aktivitäten →
-  Routinen), jede Sektion mit einheitlichem Kopf über `OverviewBlock`
+- `(app)/uebersicht/` — Dashboard: Ring + Einstellungs-Einstieg in der Augenbrauenzeile,
+  `UebersichtCapture` als FAB unten rechts (#920) + `<UebersichtSections/>` (je aktivem
+  Modul eine `OverviewSection`: Wetter → Termine → Aufgaben → Aktivitäten → Routinen),
+  Kopf via `OverviewBlock`
 - `(app)/aufgaben/page.tsx` — Kopfzeile + `<TaskList/>` + `<QuickAddTask/>`
 - `(app)/kalender/page.tsx` — rendert `<CalendarView/>` (Tages-Timeline + Termin-Editor); Monat/Serien folgen S4–S6
 - `(app)/routinen/page.tsx` / `(app)/aktivitaeten/page.tsx` — Routinen-Verwaltung + Garmin-Aktivitäten, je eigener Tab

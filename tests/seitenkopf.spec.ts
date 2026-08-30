@@ -165,6 +165,21 @@ async function htmlBackground(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 }
 
+/** Text-node-tight bounding box (not the flex item's own, possibly grown, box) —
+ *  issue #928 AK2 compares the gap to the *visible* end of the title text, not
+ *  to the heading's own box (`flex: 1` stretches it to fill the row's
+ *  remaining width, so its own edge always sits flush next to the figure
+ *  regardless of how short the text is). Same technique as kalender.spec.ts's
+ *  `textBoundingBox` (issue #921 AK4). */
+async function textBoundingBox(locator: Locator): Promise<{ x: number; right: number }> {
+  return locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
+}
+
 interface HeaderCase {
   path: string;
   /** Der Kopf-Container: Titelzeile + optionaler Zusatz (Ring, Datum, Suchknopf). */
@@ -374,7 +389,7 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
 /* Aufgaben/Journal — Augenbraue, Zusatz-Slot, Kontrast.                     */
 /* -------------------------------------------------------------------------- */
 
-test('AK2 (#868): Übersicht zeigt die Augenbraue (langes Datum) und die Unterzeile (was heute offen ist)', async ({
+test('AK2 (#868, Unterzeile seit #920 entfernt): Übersicht zeigt die Augenbraue (langes Datum), keine Unterzeile mehr', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -383,13 +398,17 @@ test('AK2 (#868): Übersicht zeigt die Augenbraue (langes Datum) und die Unterze
   await seedHabit(page, { name: 'AK2 868 Routine', schedule: 'daily', color: null, archivedAt: null });
   await page.goto('/uebersicht');
 
-  const eyebrow = page.locator('[data-ground="uebersicht"] .page-head__eyebrow');
-  await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
+  // Die Augenbraue trägt seit #920 Datum UND das Aktionsbündel (Ring,
+  // Einstellungen) im selben `.page-head__eyebrow`-Wrapper — die exakte
+  // Textprüfung greift deshalb auf `.uebersicht__eyebrow-date` ein, nicht mehr
+  // auf den ganzen Wrapper (dessen textContent sonst auch die Ring-Ziffern trüge).
+  const eyebrowDate = page.locator('[data-ground="uebersicht"] .uebersicht__eyebrow-date');
+  await expect(eyebrowDate).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
   await expect(page.locator('[data-ground="uebersicht"] h1')).toBeVisible();
 
-  // Eine Aufgabe + eine Routine, keine erledigt -> "Noch 2 von 2 offen".
-  const subline = page.locator('[data-ground="uebersicht"] .page-head__subline');
-  await expect(subline).toHaveText('Noch 2 von 2 offen');
+  // issue #920 AK4: die Unterzeile ("Noch N von M offen") entfällt ersatzlos —
+  // derselbe Zählstand steht bereits im Fortschrittsring daneben.
+  await expect(page.locator('[data-ground="uebersicht"] .page-head__subline')).toHaveCount(0);
 });
 
 test('AK2 (#868): Aufgaben zeigt die Augenbraue „N offen · M erledigt" und bleibt ohne Zusatz-Slot', async ({
@@ -460,6 +479,34 @@ test('AK6 (#868): die Augenbraue erfüllt 4,5:1 gegen den Grund, Hell und Dunkel
     ).toBeGreaterThanOrEqual(4.5);
     await page.emulateMedia({ colorScheme: 'light' });
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #928: Journal-Kopf — Lupe in die Augenbrauenzeile, Figur rechts außen */
+/* AK1 (Datum links/Lupe rechts in der Augenbraue) steht in                   */
+/* journal-suche.spec.ts — die Lupe rendert erst nach dem Journal-Setup, das  */
+/* dortige `setUpEditor` bringt sie zuverlässig zum Sichtbarwerden.           */
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#928): die Figur steht rechts außen in der Journal-Titelzeile, der Titel wächst nach links', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await registerPasskey(page);
+  await page.goto('/journal');
+
+  const row = page.locator('.journal-page__title-row');
+  const heading = page.locator('.journal-page__heading');
+  const face = row.locator('.face');
+  const rowBox = await row.boundingBox();
+  const textBox = await textBoundingBox(heading);
+  const faceBox = await face.boundingBox();
+  if (!rowBox || !faceBox) throw new Error('missing bounding box');
+
+  const faceToRightEdge = rowBox.x + rowBox.width - (faceBox.x + faceBox.width);
+  const textToFace = faceBox.x - textBox.right;
+  expect(faceToRightEdge).toBeLessThan(2);
+  expect(textToFace).toBeGreaterThan(faceToRightEdge + 10);
 });
 
 test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, Hell und Dunkel', async ({

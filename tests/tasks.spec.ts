@@ -157,7 +157,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a designed empty state, not a blank screen', async ({ page }) => {
   await page.goto('/aufgaben');
-  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
+  await expect(page.getByText('Nichts geplant')).toBeVisible();
 });
 
 test('der Leerzustand auf /aufgaben sitzt eng unter dem Umschalter (issue #932)', async ({

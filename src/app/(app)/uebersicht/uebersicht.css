@@ -1,8 +1,9 @@
-/* Einstellungen sits inline with the heading on mobile — Übersicht is the only
- * screen that carries it there (issue #126). Titelzeile plus Erfassungsknopf
- * (issue #618, umgestellt auf rechts verankert in #651): der Titel trägt die
- * Restbreite, das Aktionsbündel (Erfassungsknopf, Einstellungs-Link) bleibt
- * rechts verankert und driftet nicht, egal wie breit der Titel wird. */
+/* Titelzeile trägt nur noch Begrüßung + Figur (issue #920 hebt die #618-
+ * Entscheidung auf): der Erfassungsknopf ist ein schwebender `Fab` (AK1), Ring
+ * und Einstellungen-Einstieg ziehen in die Augenbrauenzeile (AK3, siehe unten).
+ * Einstellungen war zuvor die mobile Ausnahme, die inline in dieser Zeile saß
+ * (issue #126) — die Ausnahme bleibt bestehen, nur die Zeile ist jetzt die
+ * Augenbraue statt der Titelzeile. */
 .uebersicht__title-row {
   display: flex;
   align-items: center;
@@ -24,6 +25,14 @@
   gap: var(--space-2);
   flex: 1 1 auto;
   min-width: 0;
+  /* `padding-block` reserviert Platz für PageFace's eigene Bounce-Animation
+   * (faces.css `pf-bob`, ±3px per `translate`) — ohne Reserve zählt Chromium
+   * die verschobene Malfläche zur `scrollHeight` des Elternelements, sobald sie
+   * über die unanimierte 42px-Höhe hinausragt. Bei `--font-scale: 1.25` reicht
+   * die vorherige Toleranz nicht mehr aus (CI-Fund AC9, capture-uebersicht.spec.ts:
+   * `.page-head` scrollHeight 90 vs. clientHeight 89) — dasselbe Muster wie
+   * `.einstellungen__title-cluster` (Endabgleich #870). */
+  padding-block: var(--space-1);
 }
 
 /* `overflow-wrap: normal` statt `anywhere` — und das ist keine Kosmetik, sondern
@@ -73,49 +82,70 @@
   text-overflow: ellipsis;
 }
 
-.uebersicht__title-actions {
+/* Augenbraue in zwei Hälften (issue #920, Vorbild Kalender-Kopf #921/#898):
+ * Datum links, Fortschrittsring + Einstellungen-Einstieg rechts. Anders als
+ * beim Kalender läuft das hier durch `PageHead`s `eyebrow`-Slot statt eines
+ * handgebauten `<header>` — dieser Wrapper trägt deshalb selbst die
+ * zweiseitige Flex-Verteilung, `.page-head__eyebrow` bleibt die reine
+ * Typografie-Hülle drumherum. */
+.uebersicht__eyebrow-row {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  flex-shrink: 0;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
-/* Erfassungsknopf + Fortschrittsring bilden ein eigenes Gespann mit engerem
- * Abstand (issue #652 AK3) — der weitere Abstand zum Einstellungen-Link bleibt
- * die --space-4 von `.uebersicht__title-actions`. */
-.uebersicht__capture-group {
+.uebersicht__eyebrow-date {
+  margin: 0;
+}
+
+.uebersicht__eyebrow-actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-
-/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
- * der Slot selbst hält die Titelzeile stabil (issue #652, siehe
- * daily-progress-ring.tsx). */
-.daily-progress-ring-slot {
-  width: 48px;
-  height: 48px;
   flex-shrink: 0;
 }
 
-.uebersicht-capture__button {
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: var(--text-title);
-  line-height: var(--leading-tight);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-spring);
+/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
+ * der Slot selbst hält die Augenbrauenzeile stabil (issue #652, verkleinert
+ * in #920, siehe daily-progress-ring.tsx). */
+.daily-progress-ring-slot {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
 }
 
-.uebersicht-capture__button:active {
-  opacity: 0.85;
+/* Seit issue #920 ist der Erfassungsknopf ein `position: fixed`-Fab statt eines
+ * Titelzeilen-Knopfes (siehe uebersicht-capture.tsx) — die letzte Sektion
+ * (Routinen) braucht deshalb Abstand zu ihm, sonst überdeckt der Fab bei hohem
+ * `--font-scale` deren letzte Zeile (CI-Fund AC9, capture-uebersicht.spec.ts).
+ * Rechnet `.shell__main`s eigenes `padding-bottom` (space-6 + safe-area, shell.css)
+ * auf denselben Bodenabstand hoch, den fab.css für den Fab selbst reserviert
+ * (Nav-Höhe 64px + Pillenversatz space-2 + safe-area + Fabs eigener Abstand
+ * space-4 + Tastatur-Inset) plus die Fab-Höhe (58px) — die safe-area kürzt sich
+ * dabei heraus, weil `.shell__main` sie bereits einmal trägt. */
+.uebersicht__sections {
+  padding-bottom: calc(
+    64px + var(--space-2) + var(--space-4) + var(--keyboard-inset) + 58px - var(--space-6)
+  );
+}
+
+/* Vier bis fünf Mini-Sektionen stapeln sich hier auf einer Seite — enger als
+ * die Standard-Sektionslücke `--space-6`/`--space-3`, die für einzelne,
+ * eigenständige Seiten bemessen ist. Ohne die Straffung reicht bei
+ * `--font-scale: 1.25` der Platz vor dem Fab nicht mehr (CI-Fund AC9,
+ * capture-uebersicht.spec.ts: die letzte Routinen-Zeile ragt unskaliert in
+ * dessen Bodenstreifen — `padding-bottom` oben hilft dagegen nicht, das wirkt
+ * erst *nach* der letzten Zeile, siehe Kommentar dort). `OverviewBlock` lebt
+ * ausschließlich auf /uebersicht (überprüft: keine andere Route importiert
+ * ihn), die Straffung bleibt deshalb hierher gescoped statt in
+ * overview-block.css zu wandern. */
+.uebersicht__sections .overview-block {
+  margin-bottom: var(--space-3);
+}
+
+.uebersicht__sections .overview-block__heading {
+  margin-bottom: var(--space-2);
 }
 
 /* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe

@@ -8,7 +8,6 @@ import { TodayLongDate } from '@/ui/today-long-date';
 import { DailyProgressRing } from './daily-progress-ring';
 import { GreetingHeading } from './greeting-heading';
 import { UebersichtSections } from './uebersicht-sections';
-import { UebersichtSubline } from './uebersicht-subline';
 
 export const metadata = { title: 'Übersicht · Starship' };
 
@@ -31,29 +30,37 @@ export default function UebersichtPage() {
       <PageHead
         rowClassName="uebersicht__title-row"
         dataGround="uebersicht"
-        eyebrow={<TodayLongDate />}
-        extra={<UebersichtSubline />}
+        eyebrow={
+          <div className="uebersicht__eyebrow-row">
+            <span className="uebersicht__eyebrow-date">
+              <TodayLongDate />
+            </span>
+            <div className="uebersicht__eyebrow-actions">
+              {/* Fest bemessener Slot (34×34px), unabhängig vom Ladezustand des Rings
+                  gerendert — er hält die Augenbrauenzeile stabil, nicht ein Beitritt
+                  zum Enthüllungspunkt (issue #652, siehe daily-progress-ring.tsx). */}
+              <div className="daily-progress-ring-slot">
+                <DailyProgressRing />
+              </div>
+              <AppHeader variant="inline" />
+            </div>
+          </div>
+        }
       >
         <div className="uebersicht__title-cluster">
           <GreetingHeading />
           <PageFace face="uebersicht" />
         </div>
-        <div className="uebersicht__title-actions">
-          <div className="uebersicht__capture-group">
-            <UebersichtCapture />
-            {/* Fest bemessener Slot (48×48px), unabhängig vom Ladezustand des Rings
-                gerendert — er hält die Titelzeile stabil, nicht ein Beitritt zum
-                Enthüllungspunkt (issue #652, siehe daily-progress-ring.tsx). */}
-            <div className="daily-progress-ring-slot">
-              <DailyProgressRing />
-            </div>
-          </div>
-          <AppHeader variant="inline" />
-        </div>
       </PageHead>
       <OverviewReadyProvider>
-        <UebersichtSections />
+        <div className="uebersicht__sections">
+          <UebersichtSections />
+        </div>
       </OverviewReadyProvider>
+      {/* Schwebender FAB unten rechts statt eines Titelzeilen-Knopfes (issue #920,
+          hebt die #618-Entscheidung auf) — dieselbe `Fab`-Komponente wie
+          /aufgaben, /routinen, /journal, /kalender. */}
+      <UebersichtCapture />
     </>
   );
 }

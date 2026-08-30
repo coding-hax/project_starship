@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WeatherDay, WeatherHour } from '@/local/dexie';
 import {
+  berlinNowMark,
   findWeatherDay,
   formatDayHeading,
   hourLabel,
@@ -10,9 +11,12 @@ import {
   nightTemperature,
   parseForecast,
   previousWeatherDate,
+  smoothPath,
+  temperatureAtHour,
   temperatureAxis,
   temperatureLinePoints,
   weekdayLabel,
+  windDirectionLabel,
 } from './forecast';
 
 describe('isStale', () => {
@@ -46,6 +50,31 @@ const TWO_DAY_RESPONSE = {
     sunset: ['2026-07-23T21:12', '2026-07-24T21:11'],
     wind_speed_10m_max: [12.4, 18.9],
     wind_gusts_10m_max: [24.1, 33.6],
+    apparent_temperature_max: [23.0, 17.8],
+    wind_direction_10m_dominant: [270, 90],
+  },
+  hourly: {
+    time: ['2026-07-23T00:00', '2026-07-23T01:00', '2026-07-24T00:00', '2026-07-24T01:00'],
+    temperature_2m: [14.5, 14.1, 13.9, 13.6],
+    precipitation_probability: [0, 0, 60, 80],
+    precipitation: [0, 0, 1.2, 2.4],
+    weather_code: [0, 1, 61, 63],
+  },
+};
+
+// issue #927: a cache row written before this ticket — no apparent_temperature_max,
+// wind_direction_10m_dominant or hourly.weather_code column at all.
+const LEGACY_TWO_DAY_RESPONSE = {
+  daily: {
+    time: ['2026-07-23', '2026-07-24'],
+    weather_code: [0, 61],
+    temperature_2m_max: [24.1, 19.5],
+    temperature_2m_min: [14.2, 13.8],
+    precipitation_probability_max: [0, 80],
+    sunrise: ['2026-07-23T05:53', '2026-07-24T05:54'],
+    sunset: ['2026-07-23T21:12', '2026-07-24T21:11'],
+    wind_speed_10m_max: [12.4, 18.9],
+    wind_gusts_10m_max: [24.1, 33.6],
   },
   hourly: {
     time: ['2026-07-23T00:00', '2026-07-23T01:00', '2026-07-24T00:00', '2026-07-24T01:00'],
@@ -68,9 +97,23 @@ describe('parseForecast', () => {
         sunset: '2026-07-23T21:12',
         windSpeedMax: 12.4,
         windGustsMax: 24.1,
+        apparentTempMax: 23.0,
+        windDirection: 270,
         hours: [
-          { time: '2026-07-23T00:00', temperature: 14.5, precipitationProbability: 0, precipitation: 0 },
-          { time: '2026-07-23T01:00', temperature: 14.1, precipitationProbability: 0, precipitation: 0 },
+          {
+            time: '2026-07-23T00:00',
+            temperature: 14.5,
+            precipitationProbability: 0,
+            precipitation: 0,
+            weatherCode: 0,
+          },
+          {
+            time: '2026-07-23T01:00',
+            temperature: 14.1,
+            precipitationProbability: 0,
+            precipitation: 0,
+            weatherCode: 1,
+          },
         ],
       },
       {
@@ -83,12 +126,61 @@ describe('parseForecast', () => {
         sunset: '2026-07-24T21:11',
         windSpeedMax: 18.9,
         windGustsMax: 33.6,
+        apparentTempMax: 17.8,
+        windDirection: 90,
         hours: [
-          { time: '2026-07-24T00:00', temperature: 13.9, precipitationProbability: 60, precipitation: 1.2 },
-          { time: '2026-07-24T01:00', temperature: 13.6, precipitationProbability: 80, precipitation: 2.4 },
+          {
+            time: '2026-07-24T00:00',
+            temperature: 13.9,
+            precipitationProbability: 60,
+            precipitation: 1.2,
+            weatherCode: 61,
+          },
+          {
+            time: '2026-07-24T01:00',
+            temperature: 13.6,
+            precipitationProbability: 80,
+            precipitation: 2.4,
+            weatherCode: 63,
+          },
         ],
       },
     ]);
+  });
+
+  it('leaves the three issue #927 fields undefined for a response without those columns (AC2)', () => {
+    const days = parseForecast(LEGACY_TWO_DAY_RESPONSE);
+    for (const day of days) {
+      expect(day.apparentTempMax).toBeUndefined();
+      expect(day.windDirection).toBeUndefined();
+      for (const hour of day.hours) {
+        expect(hour.weatherCode).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe('windDirectionLabel', () => {
+  it('maps the eight compass points', () => {
+    expect(windDirectionLabel(0)).toBe('Nord');
+    expect(windDirectionLabel(45)).toBe('Nordost');
+    expect(windDirectionLabel(90)).toBe('Ost');
+    expect(windDirectionLabel(135)).toBe('Südost');
+    expect(windDirectionLabel(180)).toBe('Süd');
+    expect(windDirectionLabel(225)).toBe('Südwest');
+    expect(windDirectionLabel(270)).toBe('West');
+    expect(windDirectionLabel(315)).toBe('Nordwest');
+    expect(windDirectionLabel(360)).toBe('Nord');
+  });
+
+  it('rounds an in-between value to the nearest octant', () => {
+    expect(windDirectionLabel(20)).toBe('Nord');
+    expect(windDirectionLabel(30)).toBe('Nordost');
+  });
+
+  it('normalizes negative and >360 degree values', () => {
+    expect(windDirectionLabel(-45)).toBe('Nordwest');
+    expect(windDirectionLabel(405)).toBe('Nordost');
   });
 });
 
@@ -278,6 +370,105 @@ describe('temperatureLinePoints', () => {
     ];
     // Domain twice the data's span: the curve uses the middle half of the box.
     expect(temperatureLinePoints(hours, 100, 40, { min: 0, max: 40 })).toBe('0.0,30.0 50.0,20.0');
+  });
+});
+
+describe('smoothPath', () => {
+  it('starts and ends exactly on the two data points', () => {
+    const hours = [
+      { time: '2026-07-23T00:00', temperature: 10, precipitationProbability: 0, precipitation: 0 },
+      { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
+    ];
+    const { line } = smoothPath(hours, 100, 50);
+    expect(line.startsWith('M0.0,50.0')).toBe(true);
+    expect(line.endsWith('50.0,0.0')).toBe(true);
+  });
+
+  it('flattens to a single y across a constant series', () => {
+    const hours = [
+      { time: '2026-07-23T00:00', temperature: 15, precipitationProbability: 0, precipitation: 0 },
+      { time: '2026-07-23T01:00', temperature: 15, precipitationProbability: 0, precipitation: 0 },
+    ];
+    const { line } = smoothPath(hours, 100, 50);
+    expect(line.endsWith('50.0,50.0')).toBe(true);
+  });
+
+  it('has one C segment fewer than the number of points, one per 24-hour day', () => {
+    const hours = Array.from({ length: 24 }, (_, i) => ({
+      time: `2026-07-23T${String(i).padStart(2, '0')}:00`,
+      temperature: 14 + (10 * i) / 23,
+      precipitationProbability: 0,
+      precipitation: 0,
+    }));
+    const { line } = smoothPath(hours, 300, 80);
+    expect(line.startsWith('M')).toBe(true);
+    expect(line.match(/C/g)).toHaveLength(23);
+  });
+
+  it('closes the area from the curve down to the baseline and back', () => {
+    const hours = [
+      { time: '2026-07-23T00:00', temperature: 10, precipitationProbability: 0, precipitation: 0 },
+      { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
+    ];
+    const { line, area } = smoothPath(hours, 100, 50);
+    expect(area.startsWith(line)).toBe(true);
+    expect(area.match(/L/g)?.length).toBeGreaterThanOrEqual(1);
+    expect(area.endsWith('Z')).toBe(true);
+  });
+
+  it('is empty for no hours', () => {
+    expect(smoothPath([], 100, 50)).toEqual({ line: '', area: '' });
+  });
+
+  it('is a bare move for a single hour, with no area', () => {
+    const hours = [
+      { time: '2026-07-23T00:00', temperature: 12, precipitationProbability: 0, precipitation: 0 },
+    ];
+    expect(smoothPath(hours, 100, 50)).toEqual({ line: 'M0.0,50.0', area: '' });
+  });
+});
+
+describe('berlinNowMark', () => {
+  it('reads the Berlin-local hour, offset from UTC by the summer +2h', () => {
+    expect(berlinNowMark(new Date('2026-07-20T09:00:00.000Z'))).toEqual({
+      dateKey: '2026-07-20',
+      hourOfDay: 11,
+    });
+  });
+
+  it('rolls the date key over at Berlin midnight, not UTC midnight', () => {
+    expect(berlinNowMark(new Date('2026-07-20T23:00:00.000Z'))).toEqual({
+      dateKey: '2026-07-21',
+      hourOfDay: 1,
+    });
+  });
+
+  it('carries the minute as a fraction of the hour', () => {
+    expect(berlinNowMark(new Date('2026-07-20T09:30:00.000Z')).hourOfDay).toBe(11.5);
+  });
+});
+
+describe('temperatureAtHour', () => {
+  const hours = [
+    { time: '2026-07-23T00:00', temperature: 10, precipitationProbability: 0, precipitation: 0 },
+    { time: '2026-07-23T01:00', temperature: 20, precipitationProbability: 0, precipitation: 0 },
+    { time: '2026-07-23T02:00', temperature: 24, precipitationProbability: 0, precipitation: 0 },
+  ];
+
+  it('lands exactly on the hour for a whole-number hourOfDay', () => {
+    expect(temperatureAtHour(hours, 1)).toBe(20);
+  });
+
+  it('interpolates linearly between the two enclosing hours', () => {
+    expect(temperatureAtHour(hours, 0.5)).toBe(15);
+  });
+
+  it('clamps below the first hour', () => {
+    expect(temperatureAtHour(hours, -3)).toBe(10);
+  });
+
+  it('clamps past the last hour', () => {
+    expect(temperatureAtHour(hours, 30)).toBe(24);
   });
 });
 

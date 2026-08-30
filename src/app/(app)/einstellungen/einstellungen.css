@@ -68,6 +68,13 @@
   gap: var(--space-3);
 }
 
+/* Engere, einheitliche Trennzeilen nur in den Einstellungen (issue #937) —
+   überschreibt row.css's --space-3 lokal per höherer Spezifität (0,2,0),
+   ohne die app-weit geteilte `.row` selbst zu verengen. */
+.einstellungen__group-items .row {
+  padding-block: var(--space-2);
+}
+
 /* Der Gruppen-Gap übernimmt den Kartenabstand — section-card.css's eigener
    margin-bottom addierte sich sonst dazu (gleiches Muster wie
    weather-day.css .weather-day__card, issue #381). */

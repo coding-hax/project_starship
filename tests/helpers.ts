@@ -458,6 +458,13 @@ interface ForecastFixture {
   windSpeedsMax?: number[];
   /** Defaults to 20 km/h for every day — same reasoning as `windSpeedsMax`. */
   windGustsMax?: number[];
+  /** Defaults to `tempsMax` for every day (issue #927). */
+  apparentTempsMax?: number[];
+  /** Degrees, defaults to 270 (West) for every day (issue #927). */
+  windDirections?: number[];
+  /** Hourly weather code, defaults to the day's `weatherCodes` entry for every hour
+   * of that day (issue #927). */
+  hourlyWeatherCodes?: number[];
 }
 
 /**
@@ -479,11 +486,15 @@ export function openMeteoForecastBody({
   precipitationProbabilityMax = dates.map(() => 0),
   windSpeedsMax = dates.map(() => 12),
   windGustsMax = dates.map(() => 20),
+  apparentTempsMax = tempsMax,
+  windDirections = dates.map(() => 270),
+  hourlyWeatherCodes,
 }: ForecastFixture) {
   const time: string[] = [];
   const temperature_2m: number[] = [];
   const precipitation_probability: number[] = [];
   const precipitation: number[] = [];
+  const weather_code: number[] = [];
   dates.forEach((date, day) => {
     for (let hour = 0; hour < 24; hour += 1) {
       time.push(`${date}T${String(hour).padStart(2, '0')}:00`);
@@ -492,6 +503,7 @@ export function openMeteoForecastBody({
       temperature_2m.push(tempsMin[day] + ((tempsMax[day] - tempsMin[day]) * hour) / 23);
       precipitation_probability.push(precipitationProbabilityMax[day]);
       precipitation.push(0);
+      weather_code.push(hourlyWeatherCodes?.[day * 24 + hour] ?? weatherCodes[day]);
     }
   });
   return {
@@ -505,8 +517,10 @@ export function openMeteoForecastBody({
       sunset: dates.map((date) => `${date}T21:12`),
       wind_speed_10m_max: windSpeedsMax,
       wind_gusts_10m_max: windGustsMax,
+      apparent_temperature_max: apparentTempsMax,
+      wind_direction_10m_dominant: windDirections,
     },
-    hourly: { time, temperature_2m, precipitation_probability, precipitation },
+    hourly: { time, temperature_2m, precipitation_probability, precipitation, weather_code },
   };
 }
 

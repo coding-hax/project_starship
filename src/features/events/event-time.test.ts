@@ -5,6 +5,7 @@ import {
   addMonthsClamped,
   agendaForDay,
   allDayEventsForDay,
+  allDayRangeLabel,
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
@@ -635,6 +636,40 @@ describe('categoryEdgeVar', () => {
 
   it('falls back to the area colour when there is no category', () => {
     expect(categoryEdgeVar(null)).toBe('var(--area-events)');
+  });
+});
+
+describe('allDayRangeLabel', () => {
+  it('reads plain "Ganztägig" for a single day, no continuation either side', () => {
+    const item = { startDate: '2026-07-18', endDate: '2026-07-18', continuesBefore: false, continuesAfter: false };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig');
+  });
+
+  it('shows the full weekday range on the start day of a multi-day span', () => {
+    // 2026-07-20 is a Monday, 2026-07-24 a Friday.
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: false, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('shows the same full range on a middle day of the span', () => {
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: true, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('shows the same full range on the end day of the span', () => {
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: true, continuesAfter: false };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('stays correct across a month boundary', () => {
+    // 2026-07-30 is a Thursday, 2026-08-02 a Sunday.
+    const item = { startDate: '2026-07-30', endDate: '2026-08-02', continuesBefore: false, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Do–So');
   });
 });
 

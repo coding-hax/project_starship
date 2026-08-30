@@ -166,29 +166,31 @@ test('/uebersicht rückt näher an die Statusleiste heran, ohne unter sie zu rut
   expect(paddingTop).toBe('16px');
 });
 
-test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit "Übersicht", rechtsbündig, mit vollem Touch-Ziel (issue #137 AC5)', async ({
+test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit dem Datum, rechtsbündig, mit vollem Touch-Ziel (issue #137 AC5, seit #920 in der Augenbraue statt der Titelzeile)', async ({
   page,
 }) => {
   await registerPasskey(page);
   await page.goto('/uebersicht');
 
-  // Kein Name-Filter (issue #862): der Titel ist eine tageszeitabhängige Begrüßung.
-  const heading = page.locator('[data-ground="uebersicht"] h1');
+  // issue #920 AK3: Ring und Einstellungs-Einstieg zogen aus der Titelzeile in
+  // die Augenbraue, auf eine Linie mit dem Datum — die Überschrift (Begrüßung)
+  // ist seither allein in der Titelzeile, ohne die Aktionen daneben.
+  const eyebrowDate = page.locator('[data-ground="uebersicht"] .uebersicht__eyebrow-date');
   const settings = page.getByRole('link', { name: 'Einstellungen' });
   const main = page.locator('main.shell__main');
-  const [headingBox, settingsBox, mainBox, mainPaddingRight] = await Promise.all([
-    heading.boundingBox(),
+  const [eyebrowDateBox, settingsBox, mainBox, mainPaddingRight] = await Promise.all([
+    eyebrowDate.boundingBox(),
     settings.boundingBox(),
     main.boundingBox(),
     main.evaluate((el) => parseFloat(getComputedStyle(el).paddingRight)),
   ]);
-  expect(headingBox).not.toBeNull();
+  expect(eyebrowDateBox).not.toBeNull();
   expect(settingsBox).not.toBeNull();
   expect(mainBox).not.toBeNull();
 
-  const headingCenter = headingBox!.y + headingBox!.height / 2;
+  const dateCenter = eyebrowDateBox!.y + eyebrowDateBox!.height / 2;
   const settingsCenter = settingsBox!.y + settingsBox!.height / 2;
-  expect(Math.abs(headingCenter - settingsCenter)).toBeLessThan(2);
+  expect(Math.abs(dateCenter - settingsCenter)).toBeLessThan(2);
 
   // main's own box includes its padding, so the content column's right edge —
   // where "right-aligned" content actually sits — is inset by padding-right.

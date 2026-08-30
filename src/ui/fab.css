@@ -115,9 +115,15 @@
      Sibling: `.fab` ist `position: fixed; right: …; width: auto` — ein
      Fallback→Nunito-Breitenwechsel im Label ändert `.fab`s eigene Box direkt.
      `--font-display-stable` ist dieselbe Nunito-Familie (erfüllt ADR-0027
-     weiterhin wörtlich), nur mit `display: 'block'` statt `'swap'` — malt nie
-     sichtbar im Fallback, also strukturell kein Wechsel nach dem ersten Paint
-     möglich (dieselbe Garantie, mit der Inter seit #652 sicher ist). */
+     weiterhin wörtlich), zuletzt auf `display: 'optional'` verschärft (issue
+     #920, layout.tsx). Das reicht am Ende trotzdem nicht: Next's Fallback-
+     Metrik-Anpassung ist gegen ein lokal installiertes "Arial" berechnet, das
+     auf dem CI-Linux-Runner fehlt — der Ersatz, auf den es dort ausweicht, ist
+     nicht metrik-angepasst und kann `text` sichtbar breiter oder schmaler
+     rendern als Nunito. `reserveLabelWidth` (fab.tsx), von hier aus per Prop
+     gesetzt, pinnt `.fab__label` deshalb zusätzlich auf eine feste Breite +
+     `overflow: hidden` — `.fab`s Box bewegt sich dann unabhängig davon, welche
+     Schrift gerade malt. */
   font-family: var(--font-display-stable);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
