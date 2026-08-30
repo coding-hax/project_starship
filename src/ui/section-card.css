@@ -52,6 +52,11 @@
   font-size: var(--text-secondary);
   color: var(--text-muted);
   white-space: nowrap;
+  /* Match the title's tight display leading (not the inherited body 1.5): under
+     `align-items: baseline`, a taller accessory line box would push the shared
+     baseline down and shove the title below the card padding — breaking the
+     "heading sits right under the box edge" contract (issues #288/#344/#353). */
+  line-height: var(--leading-display);
 }
 
 .section-card__header {
