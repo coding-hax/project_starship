@@ -235,12 +235,16 @@ test('die Seite zeigt einen stündlichen Temperaturverlauf über 24 Stunden (iss
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  const points = await page.locator('.weather-day__chart-line').getAttribute('points');
-  expect(points?.trim().split(' ')).toHaveLength(24);
+  const d = await page.locator('.weather-day__chart-line').getAttribute('d');
+  expect(d?.startsWith('M')).toBe(true);
+  expect(d?.match(/C/g)).toHaveLength(23);
   await expect(page.locator('.weather-day__chart')).toHaveAttribute(
     'aria-label',
     'Temperaturverlauf von 5° bis 15°, stündlich',
   );
+
+  const areaD = await page.locator('.weather-day__chart-area').getAttribute('d');
+  expect(areaD?.endsWith('Z')).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */

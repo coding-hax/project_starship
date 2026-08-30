@@ -234,6 +234,21 @@
   stroke-linejoin: round;
 }
 
+.weather-day__chart-area {
+  fill: url(#weather-day-temp-area);
+  stroke: none;
+}
+
+.weather-day__area-stop--top {
+  stop-color: var(--accent);
+  stop-opacity: 0.25;
+}
+
+.weather-day__area-stop--bottom {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
 .weather-day__chart-grid {
   stroke: var(--border);
   stroke-width: 1;

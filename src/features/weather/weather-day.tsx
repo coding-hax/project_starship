@@ -12,8 +12,8 @@ import {
   nextWeatherDate,
   nightTemperature,
   previousWeatherDate,
+  smoothPath,
   temperatureAxis,
-  temperatureLinePoints,
   windDirectionLabel,
 } from './forecast';
 import { useWeatherCache } from './use-weather-cache';
@@ -163,7 +163,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const maxProbability = Math.max(0, ...day.hours.map((hour) => hour.precipitationProbability));
 
   const axis = temperatureAxis(day.hours);
-  const points = temperatureLinePoints(day.hours, PLOT_W, PLOT_H, axis);
+  const curve = smoothPath(day.hours, PLOT_W, PLOT_H, axis);
   const temperatureY = (value: number) =>
     PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * PLOT_H;
   // Hour n reads the axis as a full day, 0..24 — so it sits at n/24 of the width,
@@ -189,9 +189,20 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
           yTicks={axis.ticks.map((value) => ({ y: temperatureY(value), label: `${value}°` }))}
           xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
         >
-          <polyline
-            points={points}
+          <defs>
+            <linearGradient id="weather-day-temp-area" x1="0" y1="0" x2="0" y2="1">
+              <stop className="weather-day__area-stop--top" offset="0" />
+              <stop className="weather-day__area-stop--bottom" offset="1" />
+            </linearGradient>
+          </defs>
+          <path
+            className="weather-day__chart-area"
+            d={curve.area}
+            transform={`translate(${PLOT_X} ${PLOT_Y})`}
+          />
+          <path
             className="weather-day__chart-line"
+            d={curve.line}
             transform={`translate(${PLOT_X} ${PLOT_Y})`}
           />
         </ChartFrame>
