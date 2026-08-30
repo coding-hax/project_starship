@@ -531,7 +531,7 @@ export function TaskList({
           ? 'Nichts fällig. Genieß den Tag.'
           : null
         : tasks.length === 0 && presenceRows.length === 0
-          ? 'Keine Aufgaben. Genieß die Ruhe.'
+          ? 'Nichts geplant'
           : view === 'alle' && presenceRows.length === 0
             ? 'Keine Aufgaben. Genieß die Ruhe.'
             : view === 'erledigt' && presenceRows.length === 0
@@ -624,7 +624,7 @@ export function TaskList({
           title={`${undatedNodes.length} Aufgabe${undatedNodes.length === 1 ? '' : 'n'} ohne Datum`}
           collapsible
           defaultOpen={false}
-          className="task-list__undated-card"
+          className={`task-list__undated-card${dueTodayOnly ? ' task-list__undated-card--flat' : ''}`}
         >
           {/* Not "Aufgaben ohne Datum" — `getByRole('list', { name: 'Aufgaben' })`
               (tasks.spec.ts, uebersicht.spec.ts) matches by substring, so a label

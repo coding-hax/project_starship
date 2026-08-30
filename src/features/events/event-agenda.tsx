@@ -1,13 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
-import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
+import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { useListPresence } from '@/ui/use-list-presence';
 import { useNow } from '@/ui/use-now';
-import { agendaForDay, allDayEventsForDay, categoryEdgeVar, nextInAgenda } from './event-time';
+import {
+  agendaForDay,
+  allDayEventsForDay,
+  allDayRangeLabel,
+  categoryEdgeVar,
+  formatDuration,
+  nextInAgenda,
+} from './event-time';
 import { expandForDay, type Occurrence } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
-import type { EventView } from './use-events';
+import { EVENT_CATEGORIES, type EventView } from './use-events';
 
 const timeFormatter = new Intl.DateTimeFormat('de-DE', {
   timeZone: 'Europe/Berlin',
@@ -18,6 +24,13 @@ const timeFormatter = new Intl.DateTimeFormat('de-DE', {
 
 function formatTime(instant: string): string {
   return timeFormatter.format(new Date(instant));
+}
+
+/** "1 Std 30 Min · Arbeit", or just the duration without a category (issue #923, AK1). */
+function agendaSubline(item: { startsAt: string; endsAt: string; category: EventView['category'] }): string {
+  const duration = formatDuration(item.startsAt, item.endsAt);
+  const categoryLabel = EVENT_CATEGORIES.find((c) => c.value === item.category)?.label;
+  return categoryLabel ? `${duration} · ${categoryLabel}` : duration;
 }
 
 export interface EventAgendaProps {
@@ -93,11 +106,11 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEven
                     data-origin={item.origin}
                     data-continues-before={item.continuesBefore}
                     data-continues-after={item.continuesAfter}
-                    style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
+                    style={{ '--agenda-cat': categoryEdgeVar(item.category) } as CSSProperties}
                   >
-                    {item.continuesBefore && <IconChevronLeft className="event-agenda__all-day-chevron" />}
+                    <span className="event-agenda__all-day-dot" aria-hidden="true" />
                     <span className="event-agenda__all-day-title">{item.title}</span>
-                    {item.continuesAfter && <IconChevronRight className="event-agenda__all-day-chevron" />}
+                    <span className="event-agenda__all-day-range">{allDayRangeLabel(item)}</span>
                   </AllDayTag>
                 </li>
               );
@@ -115,16 +128,17 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEven
             data-overlap={item.overlaps}
             data-upcoming={item.id === upcoming?.id}
             onAnimationEnd={onAnimationEnd}
-            style={{ borderInlineStartColor: categoryEdgeVar(item.category) }}
+            style={{ '--agenda-edge': categoryEdgeVar(item.category) } as CSSProperties}
           >
             <button type="button" className="event-agenda__item-button" onClick={() => onOpenEvent?.(item)}>
-              <span className="event-agenda__item-header">
-                <span className="event-agenda__item-time">
-                  {formatTime(item.startsAt)}–{formatTime(item.endsAt)}
+              <span className="event-agenda__item-time">{formatTime(item.startsAt)}</span>
+              <span className="event-agenda__item-text">
+                <span className="event-agenda__item-title">{item.title}</span>
+                <span className="event-agenda__item-subline">
+                  {agendaSubline(item)}
+                  {item.overlaps && <span className="event-agenda__overlap-note"> · Überschneidung</span>}
                 </span>
-                {item.overlaps && <span className="event-agenda__overlap-note">Überschneidung</span>}
               </span>
-              <span className="event-agenda__item-title">{item.title}</span>
             </button>
           </li>
         ))}

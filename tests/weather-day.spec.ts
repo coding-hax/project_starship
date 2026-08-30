@@ -16,12 +16,18 @@ const SUNRISE = '05:53';
 const SUNSET = '21:12';
 const WIND_SPEED_MAX = [10, 11, 9, 14, 22, 8, 12];
 const WIND_GUSTS_MAX = [18, 19, 16, 27, 38, 15, 21];
+// issue #927 — one degree colder than tempMax, so "Gefühlt" is visibly its own
+// number rather than an accidental echo of temp-max.
+const APPARENT_TEMPS_MAX = TEMPS_MAX.map((value) => value - 1);
+// West for every day (issue #927) — matches the ticket's own "12 km/h · West" example.
+const WIND_DIRECTIONS = DATES.map(() => 270);
 
-function hourlyBlock() {
+function hourlyBlock(includeWeatherCode = true) {
   const time: string[] = [];
   const temperature_2m: number[] = [];
   const precipitation_probability: number[] = [];
   const precipitation: number[] = [];
+  const weather_code: number[] = [];
   DATES.forEach((date, i) => {
     for (let h = 0; h < 24; h += 1) {
       time.push(`${date}T${String(h).padStart(2, '0')}:00`);
@@ -31,9 +37,12 @@ function hourlyBlock() {
       const raining = i === 3 && h >= 14 && h <= 16;
       precipitation_probability.push(raining ? 80 : 0);
       precipitation.push(raining ? 2.5 : 0);
+      weather_code.push(CODES[i]);
     }
   });
-  return { time, temperature_2m, precipitation_probability, precipitation };
+  return includeWeatherCode
+    ? { time, temperature_2m, precipitation_probability, precipitation, weather_code }
+    : { time, temperature_2m, precipitation_probability, precipitation };
 }
 
 function forecastResponseBody() {
@@ -48,8 +57,29 @@ function forecastResponseBody() {
       sunset: DATES.map((date) => `${date}T${SUNSET}`),
       wind_speed_10m_max: WIND_SPEED_MAX,
       wind_gusts_10m_max: WIND_GUSTS_MAX,
+      apparent_temperature_max: APPARENT_TEMPS_MAX,
+      wind_direction_10m_dominant: WIND_DIRECTIONS,
     },
     hourly: hourlyBlock(),
+  };
+}
+
+// issue #927 AC2 — a cache row written before this ticket: none of the three new
+// columns exist at all, not even as an empty array.
+function legacyForecastResponseBody() {
+  return {
+    daily: {
+      time: DATES,
+      weather_code: CODES,
+      temperature_2m_max: TEMPS_MAX,
+      temperature_2m_min: TEMPS_MIN,
+      precipitation_probability_max: DATES.map((_, i) => (i === 3 ? 80 : 0)),
+      sunrise: DATES.map((date) => `${date}T${SUNRISE}`),
+      sunset: DATES.map((date) => `${date}T${SUNSET}`),
+      wind_speed_10m_max: WIND_SPEED_MAX,
+      wind_gusts_10m_max: WIND_GUSTS_MAX,
+    },
+    hourly: hourlyBlock(false),
   };
 }
 
@@ -59,6 +89,16 @@ async function mockForecast(page: Page): Promise<() => number> {
   await page.route(OPEN_METEO_PATTERN, (route: Route) => {
     calls += 1;
     return route.fulfill({ json: forecastResponseBody() });
+  });
+  return () => calls;
+}
+
+/** Same as `mockForecast`, but the response predates issue #927's three columns. */
+async function mockLegacyForecast(page: Page): Promise<() => number> {
+  let calls = 0;
+  await page.route(OPEN_METEO_PATTERN, (route: Route) => {
+    calls += 1;
+    return route.fulfill({ json: legacyForecastResponseBody() });
   });
   return () => calls;
 }
@@ -216,7 +256,7 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__precipitation-bar')).toHaveCount(24);
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
   await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
     'aria-label',
     'Regenwahrscheinlichkeit je Stunde, höchstens 80 %',
@@ -241,7 +281,7 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-20');
 
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Kein Niederschlag erwartet.');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Kein Niederschlag erwartet.');
   await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
     'aria-label',
     'Regenwahrscheinlichkeit je Stunde, höchstens 0 %',
@@ -252,6 +292,25 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
     .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('height'))));
   expect(heights).toHaveLength(24);
   expect(heights.every((height) => height === 0)).toBe(true);
+});
+
+test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Absatz, die Balken sind abgerundet (issue #938 AK5)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(
+    page.locator('.section-card__head .weather-day__precipitation-total'),
+  ).toHaveText('Insgesamt 7.5 mm');
+
+  const radii = await page
+    .locator('.weather-day__precipitation-bar')
+    .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('rx'))));
+  expect(radii.length).toBeGreaterThan(0);
+  expect(radii.every((rx) => rx > 0)).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -331,7 +390,7 @@ test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard
   }
 });
 
-test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur oberen Box mit den rohen Tageswerten (issue #381)', async ({
+test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur Werte-Karte darunter (issue #381)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -339,15 +398,15 @@ test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  const summary = await page.locator('.weather-day__summary').boundingBox();
   const [tagesverlauf, niederschlag] = await page.locator('.weather-day__card').all();
   const tagesverlaufBox = await tagesverlauf.boundingBox();
   const niederschlagBox = await niederschlag.boundingBox();
+  const values = await page.locator('.weather-day__values').boundingBox();
 
-  const gapToChart = tagesverlaufBox!.y - (summary!.y + summary!.height);
   const gapBetweenCharts = niederschlagBox!.y - (tagesverlaufBox!.y + tagesverlaufBox!.height);
+  const gapToValues = values!.y - (niederschlagBox!.y + niederschlagBox!.height);
 
-  expect(gapBetweenCharts).toBeLessThanOrEqual(gapToChart + 0.5);
+  expect(Math.abs(gapToValues - gapBetweenCharts)).toBeLessThanOrEqual(0.5);
 });
 
 test('die Überschriften „Tagesverlauf" und „Niederschlag" sitzen dicht unter der Oberkante ihrer Box', async ({
@@ -405,9 +464,75 @@ test('der Spalt zwischen Kopfzeile und Box ist nach #353 noch kleiner als nach #
   // unteren Rand des Kopfes. Der Spalt gilt deshalb dem ganzen Kopf-Container,
   // nicht mehr nur dem Zurück-Link (dessen eigenes margin-bottom das Maß trägt).
   const topbar = await page.locator('.weather-day__topbar').boundingBox();
-  const summary = await page.locator('.weather-day__summary').boundingBox();
-  const gap = summary!.y - topbar!.y - topbar!.height;
+  const firstCard = await page.locator('.weather-day__card').first().boundingBox();
+  const gap = firstCard!.y - topbar!.y - topbar!.height;
   expect(gap).toBeLessThanOrEqual(maxGapPx);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Werte-Karte (Wind/Böen/Aufgang/Untergang) steht als letzte Karte der    */
+/* Seite (issue #938 AK1)                                                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Werte-Karte mit Wind, Böen, Aufgang und Untergang steht als letzte Karte der Seite (issue #938 AK1)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const cards = page.locator('.weather-day > .weather-day__card, .weather-day > .weather-day__values');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.last()).toHaveClass(/weather-day__values/);
+
+  // <dl>-Semantik bleibt erhalten (AK1) — kein div-Ersatz.
+  await expect(page.locator('.weather-day__values dl.weather-day__stats')).toHaveCount(1);
+  await expect(page.locator('.weather-day__values dl.weather-day__stats > div')).toHaveCount(4);
+  for (const row of await page.locator('.weather-day__values .weather-day__stat').all()) {
+    await expect(row.locator('> dt')).toHaveCount(1);
+    await expect(row.locator('> dd')).toHaveCount(1);
+  }
+
+  // Böen bleiben erhalten (#861 AK4) — die App kennt sie, das Blatt nicht.
+  await expect(page.getByText('Böen', { exact: true })).toBeVisible();
+  await expect(page.getByText('27 km/h')).toBeVisible();
+
+  // Label gedämpft links, Wert fett rechts, in derselben Zeile.
+  const row = page.locator('.weather-day__stat', { hasText: 'Wind' });
+  const dt = await row.locator('dt').boundingBox();
+  const dd = await row.locator('dd').boundingBox();
+  expect(dt!.x).toBeLessThan(dd!.x);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: die Zusammenfassungs-Kachel entfällt, Nachtwert + Fallback bleiben     */
+/* erhalten (issue #938 AK2)                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('die alte Zusammenfassungs-Kachel ist weg, der Nachtwert mit Mond, aria-Label und Fallback bleibt erhalten (issue #938 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+
+  // 2026-07-22: eigener Nachtwert mit Mond + aria-Label (issue #269 AC1).
+  await page.goto('/wetter/2026-07-22');
+  await expect(page.locator('.weather-day__summary')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('5°');
+  await expect(page.locator('.weather-day__temp-min')).toHaveAttribute(
+    'aria-label',
+    'nachts, 21:12 bis 05:53: 5 Grad',
+  );
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(1);
+
+  // Letzter Vorhersagetag: Tiefstwert-Fallback statt Mond (issue #269 AC3).
+  await page.goto('/wetter/2026-07-26');
+  await expect(page.locator('.weather-day__summary')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-fallback-label')).toHaveText('Tiefstwert');
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('21°');
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -455,7 +580,7 @@ test('offline zeigt die Detailseite weiterhin mit dem zuletzt bekannten Stand (i
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -578,7 +703,7 @@ test('die Kopfzeile nutzt den --surface-Token, auch im Dark Mode (issue #156 AC1
   await page.goto('/wetter/2026-07-23');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
 
-  const card = page.locator('.weather-day__summary');
+  const card = page.locator('.weather-day__values');
   const resolveToken = () =>
     page.evaluate(() => {
       const probe = document.createElement('span');
@@ -950,4 +1075,83 @@ test('der Kopf mit dem Tiefstwert-Rückfall passt bei 375px ohne waagerechtes Sc
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4a: „Gefühlt" im Kartenkopf der Tagesverlauf-Box (issue #927)            */
+/* -------------------------------------------------------------------------- */
+
+test('die Tagesverlauf-Karte zeigt "Gefühlt" mit der gefühlten Höchsttemperatur im Kopf (issue #927 AK4a)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // TEMPS_MAX[3] = 15, APPARENT_TEMPS_MAX[3] = 14.
+  await expect(page.locator('.weather-day__card', { hasText: 'Tagesverlauf' })).toContainText('Gefühlt 14°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4b: Windrichtung als Himmelsrichtung an der Wind-Zeile (issue #927)      */
+/* -------------------------------------------------------------------------- */
+
+test('die Wind-Zeile zeigt zusätzlich die Himmelsrichtung (issue #927 AK4b)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // WIND_DIRECTIONS = 270° für jeden Tag = West.
+  await expect(page.locator('.weather-day__wind-direction')).toHaveText('West');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4c: Stundenreihe mit Wetter-Icons unter der Tagesverlauf-Kurve (issue #927) */
+/* -------------------------------------------------------------------------- */
+
+test('unter der Tagesverlauf-Kurve läuft eine scrollbare Stundenreihe mit 24 Wetter-Icons (issue #927 AK4c)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const row = page.locator('.weather-day__hourly');
+  await expect(row.locator('.weather-day__hourly-cell')).toHaveCount(24);
+  // CODES[3] = 61 -> Regen, für jede Stunde dieses Tages gleich.
+  await expect(row.locator('.weather-day__hourly-icon').first()).toHaveAttribute('aria-label', 'Regen');
+
+  const { scrollWidth, clientWidth, overflowX } = await row.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    overflowX: getComputedStyle(el).overflowX,
+  }));
+  expect(overflowX).toBe('auto');
+  expect(scrollWidth).toBeGreaterThan(clientWidth);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2: eine gecachte Alt-Zeile ohne die drei neuen Spalten bleibt lesbar,    */
+/* die drei neuen Stellen bleiben einfach weg (issue #927)                   */
+/* -------------------------------------------------------------------------- */
+
+test('eine gecachte Alt-Zeile ohne die drei neuen Spalten rendert unverändert, ohne Fehler und ohne die neuen Stellen (issue #927 AK2)', async ({
+  page,
+}) => {
+  await mockLegacyForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Die längst vorhandenen Werte rendern weiterhin ohne Fehler.
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+  await expect(page.getByText('Für diesen Tag liegen keine Wetterdaten vor.')).toHaveCount(0);
+
+  // Die drei freigeschalteten Stellen bleiben ab, statt zu crashen.
+  await expect(page.locator('.weather-day__card', { hasText: 'Tagesverlauf' })).not.toContainText('Gefühlt');
+  await expect(page.locator('.weather-day__wind-direction')).toHaveCount(0);
+  await expect(page.locator('.weather-day__hourly')).toHaveCount(0);
 });

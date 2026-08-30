@@ -187,6 +187,23 @@ async function resolveToken(page: Page, cssVar: string): Promise<string> {
   }, cssVar);
 }
 
+/** Same probe technique, for a `color-mix(in oklab, …)` expression — lets a test
+ *  assert the browser's exact resolution of the all-day band's category mix
+ *  (issue #924) without hand-computing the OKLab arithmetic. */
+async function resolveMix(page: Page, color: string, percent: number, base: string): Promise<string> {
+  return page.evaluate(
+    ({ color, percent, base }) => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = `color-mix(in oklab, ${color} ${percent}%, ${base})`;
+      document.body.appendChild(probe);
+      const resolved = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return resolved;
+    },
+    { color, percent, base },
+  );
+}
+
 /** Same canvas-pixel technique as grundfarbe.spec.ts/seitenkopf.spec.ts — a regex
  *  against getComputedStyle's serialized colour would misparse an oklch()/
  *  color-mix() string as if it were rgb(). */
@@ -299,12 +316,66 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
 
   const card = eventCard(page, 'Zahnarzt');
   await expect(card).toBeVisible();
-  await expect(card).toContainText('09:00–10:00');
+  await expect(card.locator('.event-agenda__item-time')).toHaveText('09:00');
+  // Die Endzeit steht nicht mehr in der Kopfzeile, sondern als Dauer in der
+  // Zweitzeile (AK2) — ohne Kategorie steht dort nur die Dauer.
+  await expect(card.locator('.event-agenda__item-subline')).toHaveText('1 Std');
+  await expect(card).not.toContainText('09:00–10:00');
 
   // Chronological order in the DOM, not insertion order (AK1).
   const titles = await page.locator('.event-agenda__item').allTextContents();
   expect(titles[0]).toContain('Zahnarzt');
   expect(titles[1]).toContain('Nachmittagstermin');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1/AK3 (issue #923): Blatt-Aufbau der getakteten Agenda-Zeile             */
+/* -------------------------------------------------------------------------- */
+
+test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit traegt die Kategoriefarbe (issue #923 AK1)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T07:30:00.000Z`, // 09:30 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = eventCard(page, 'Teammeeting');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.event-agenda__item-subline')).toHaveText('30 Min · Arbeit');
+
+  const expectedColor = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  const timeStyle = await card
+    .locator('.event-agenda__item-time')
+    .evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    });
+  expect(timeStyle.color).toBe(expectedColor);
+  // Uhrzeit in eigener Spalte bei 24px (--text-agenda-time), AK1.
+  expect(timeStyle.fontSize).toBe('24px');
+});
+
+test('die Farbkante einer Terminkarte ist 6px breit (issue #923 AK3)', async ({ page }) => {
+  await seedEvent(page, {
+    title: 'Kantenprobe',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const card = eventCard(page, 'Kantenprobe');
+  await expect(card).toBeVisible();
+  const borderWidth = await card.evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
+  expect(borderWidth).toBe('6px');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -553,7 +624,7 @@ test('der alte Text "überschneidet sich" kommt in der Agenda nirgends mehr vor 
   await expect(page.getByText('überschneidet sich')).toHaveCount(0);
 });
 
-test('das Ueberschneidungs-Label steht in der Uhrzeit-Zeile, rechts von der Uhrzeit, der Titel bleibt darunter (issue #657 AK4)', async ({
+test('der Titel steht rechts von der Uhrzeit-Spalte, das Ueberschneidungs-Label in der Zweitzeile darunter (issue #657 AK4, umgezogen für #923)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -581,15 +652,14 @@ test('das Ueberschneidungs-Label steht in der Uhrzeit-Zeile, rechts von der Uhrz
   await expect(card).toHaveAttribute('data-entering', 'false');
 
   const timeBox = await card.locator('.event-agenda__item-time').boundingBox();
-  const labelBox = await card.locator('.event-agenda__overlap-note').boundingBox();
   const titleBox = await card.locator('.event-agenda__item-title').boundingBox();
-  if (!timeBox || !labelBox || !titleBox) throw new Error('AK4: Karte hat keine BoundingBox');
+  const labelBox = await card.locator('.event-agenda__overlap-note').boundingBox();
+  if (!timeBox || !titleBox || !labelBox) throw new Error('AK4: Karte hat keine BoundingBox');
 
-  const timeCenterY = timeBox.y + timeBox.height / 2;
-  const labelCenterY = labelBox.y + labelBox.height / 2;
-  expect(Math.abs(timeCenterY - labelCenterY)).toBeLessThanOrEqual(2);
-  expect(labelBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
-  expect(titleBox.y).toBeGreaterThanOrEqual(timeBox.y + timeBox.height);
+  // Uhrzeit-Spalte links, Titel in der Text-Spalte rechts davon.
+  expect(titleBox.x).toBeGreaterThanOrEqual(timeBox.x + timeBox.width);
+  // Die Zweitzeile mit dem Ueberschneidungs-Label steht unter dem Titel.
+  expect(labelBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
 });
 
 test('bei langem Titel bleibt die ueberlappende Karte innerhalb der Bildschirmbreite, iPhone 12 mini (issue #657 AK5)', async ({
@@ -1848,6 +1918,37 @@ test('ein offline angelegter Termin steht sofort lokal und erreicht nach dem Onl
   expect(row.rowCount).toBe(1);
 });
 
+test('AK7: ein offline angelegter ganztaegiger Termin steht sofort lokal im Band und erreicht nach dem Onlinegehen die echte Datenbank', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await page.getByLabel('Titel').fill('Ganztags im Zug erfasst');
+  await wannChip(page).click();
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await page.getByLabel('Von').fill(TODAY);
+  await page.getByLabel('Bis').fill(TODAY);
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(allDayBar(page, 'Ganztags im Zug erfasst')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach cuts the sync endpoints so the timeline can only ever come from
+  // IndexedDB — lift that here to let the queued mutation actually reach Postgres.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM events WHERE title = $1', ['Ganztags im Zug erfasst']),
+  );
+  expect(row.rowCount).toBe(1);
+});
+
 test('der ganztägig-Umschalter wechselt zwischen Uhrzeit- und reinem Datumsfeld, ohne die Zeitmodelle zu vermischen (#554 AC5)', async ({
   page,
 }) => {
@@ -1946,13 +2047,18 @@ test('ein mehrtägiger Termin ueber einen Monatswechsel bleibt an der Monatsgren
   await expect(bar).toBeVisible();
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
+  // The chevrons are gone (issue #924) — the range text on the right is now
+  // the fortsetzungshinweis, showing the full startDate–endDate span rather
+  // than just "Ganztägig".
+  await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig · Do–So');
 
   await selectStripDay(page, 'Fr, 31.');
   await expect(bar).toHaveAttribute('data-continues-before', 'true');
   await expect(bar).toHaveAttribute('data-continues-after', 'true');
+  await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig · Do–So');
 });
 
-test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe als Kante, die Flaeche bleibt --surface — auch im Dark Mode (#555 AC1, Dark Mode)', async ({
+test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Punkt, die Flaeche ist eine Toenung ueber dem Grund statt --surface — auch im Dark Mode (#555 AC1, umgezogen fuer #924)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -1967,19 +2073,129 @@ test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe als Kante, d
 
   const bar = allDayBar(page, 'Betriebsausflug');
   await expect(bar).toBeVisible();
+  const dot = bar.locator('.event-agenda__all-day-dot');
 
-  const expectedEdge = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  // The card is gone (issue #924): no more white --surface, no --cat-* edge —
+  // the band sits on the route ground, category identity moved to the dot.
   const expectedSurface = await resolveCardColor(page, '--surface', 'backgroundColor');
+  expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(expectedSurface);
+
+  const expectedDot = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
   await expect
-    .poll(() => bar.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedEdge);
-  expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedSurface);
+    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedDot);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  const expectedDotDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
   await expect
-    .poll(() => bar.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedDark);
+    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedDotDark);
+});
+
+/* -------------------------------------------------------------------------- */
+/* #924 AK5: Kontrast auf dem Grund gemessen, nicht geschaetzt                */
+/* -------------------------------------------------------------------------- */
+
+test('AK5: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen die Kategorie-Toenung, mit Kategorie und ohne — hell und dunkel', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Mit Kategorie',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Ohne Kategorie',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: null,
+  });
+
+  async function measure(bar: Locator) {
+    const bandRgb = await toRgb(page, await bar.evaluate((el) => getComputedStyle(el).backgroundColor));
+    const titleRgb = await toRgb(
+      page,
+      await bar
+        .locator('.event-agenda__all-day-title')
+        .evaluate((el) => getComputedStyle(el).color),
+    );
+    const rangeRgb = await toRgb(
+      page,
+      await bar
+        .locator('.event-agenda__all-day-range')
+        .evaluate((el) => getComputedStyle(el).color),
+    );
+    return { title: contrastRatio(titleRgb, bandRgb), range: contrastRatio(rangeRgb, bandRgb) };
+  }
+
+  const withCategory = allDayBar(page, 'Mit Kategorie');
+  const withoutCategory = allDayBar(page, 'Ohne Kategorie');
+  await expect(withCategory).toBeVisible();
+  await expect(withoutCategory).toBeVisible();
+
+  for (const bar of [withCategory, withoutCategory]) {
+    const light = await measure(bar);
+    expect(light.title).toBeGreaterThanOrEqual(4.5);
+    expect(light.range).toBeGreaterThanOrEqual(4.5);
+  }
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  for (const bar of [withCategory, withoutCategory]) {
+    const dark = await measure(bar);
+    expect(dark.title).toBeGreaterThanOrEqual(4.5);
+    expect(dark.range).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test('AK5: der Kategorie-Punkt des Ganztags-Bands erreicht 3:1 gegen den Grund, mit Kategorie und ohne — hell und dunkel', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Mit Kategorie',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Ohne Kategorie',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: null,
+  });
+
+  async function measureDot(bar: Locator) {
+    const groundRgb = await toRgb(page, await resolveToken(page, '--ground'));
+    const dotRgb = await toRgb(
+      page,
+      await bar.locator('.event-agenda__all-day-dot').evaluate((el) => getComputedStyle(el).backgroundColor),
+    );
+    return contrastRatio(dotRgb, groundRgb);
+  }
+
+  const withCategory = allDayBar(page, 'Mit Kategorie');
+  const withoutCategory = allDayBar(page, 'Ohne Kategorie');
+  await expect(withCategory).toBeVisible();
+  await expect(withoutCategory).toBeVisible();
+
+  expect(await measureDot(withCategory)).toBeGreaterThanOrEqual(3);
+  expect(await measureDot(withoutCategory)).toBeGreaterThanOrEqual(3);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measureDot(withCategory)).toBeGreaterThanOrEqual(3);
+  expect(await measureDot(withoutCategory)).toBeGreaterThanOrEqual(3);
 });
 
 test('ein Termin ausserhalb seines Datumsbereichs steht nicht im Band (#555 AC2)', async ({
@@ -1996,6 +2212,38 @@ test('ein Termin ausserhalb seines Datumsbereichs steht nicht im Band (#555 AC2)
   });
 
   await expect(allDayBar(page, 'Nur gestern')).toHaveCount(0);
+});
+
+test('AK6: bei langem Titel bleibt das Ganztags-Band innerhalb der Bildschirmbreite, Punkt und Zeitraum bleiben sichtbar, iPhone 12 mini', async ({
+  page,
+}) => {
+  const longTitle = 'Ein sehr sehr langer Terminname der eigentlich nicht in eine Zeile passen sollte';
+  await seedEvent(page, {
+    title: longTitle,
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  const bar = allDayBar(page, longTitle);
+  await expect(bar).toBeVisible();
+
+  const viewport = page.viewportSize();
+  const barBox = await bar.boundingBox();
+  if (!viewport || !barBox) throw new Error('AK6: kein Viewport oder keine BoundingBox');
+  expect(barBox.x + barBox.width).toBeLessThanOrEqual(viewport.width);
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+
+  await expect(bar.locator('.event-agenda__all-day-dot')).toBeVisible();
+  await expect(bar.locator('.event-agenda__all-day-range')).toBeVisible();
+  await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -2226,7 +2474,11 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(scopeDialog).toBeVisible();
   await scopeDialog.getByRole('button', { name: 'Alle folgenden' }).click();
 
-  await expect(eventCard(page, 'Yoga')).toContainText('19:00');
+  // `splitSeries` inserts a new `events` row for the tail, so this occurrence's
+  // id changes — the old (18:00) card is still mid-exit-animation right after
+  // the click, `settledEventCard` (see its doc comment) is needed here or
+  // `eventCard` hits the same title on both and violates Strict Mode.
+  await expect(settledEventCard(page, 'Yoga')).toContainText('19:00');
 
   // A further week on, the change still applies.
   await selectStripDay(page, 'Sa, 1.');
@@ -2710,8 +2962,11 @@ test('am angezeigten Tag animieren Zu- und Abgaenge weiterhin (#611 AC4, Regress
  * einem Klick von einem Vorkommen direkt zum nächsten, hält `useListPresence`
  * die alte Karte bis zum Ende ihrer Exit-Animation im DOM — beide tragen
  * denselben Titel, und `eventCard` verletzt dann Playwrights Strict Mode.
- * (Die bestehenden S6-Tests laufen über Tage ohne Vorkommen und treffen das
- * nicht.)
+ * (Die S6-Tests für "nur dieser"/"ausfallen lassen" laufen über
+ * `event_exceptions`-Overrides mit gleichbleibender Occurrence-id und treffen
+ * das nicht. "Alle folgenden" (AC5) schon — `splitSeries` legt für den
+ * abgespaltenen Teil eine neue `events`-Zeile an, die Occurrence-id wechselt
+ * also mit.)
  */
 function settledEventCard(page: Page, title: string) {
   return page

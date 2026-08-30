@@ -127,6 +127,34 @@ export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
 }
 
+const WEEKDAY_SHORT_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'short',
+  timeZone: 'UTC',
+});
+
+/**
+ * All-day band's range text (issue #924, AK4): "Ganztägig" for a single day,
+ * "Ganztägig · Mo–Fr" once the bar continues before/after the day it's shown
+ * on — the range now carries the fortsetzungshinweis that the removed
+ * chevrons used to (#555 AC3 still holds, just a different carrier). Weekday
+ * abbreviations of the event's own `startDate`/`endDate`, not of the day it's
+ * rendered on, so a multi-day event reads the same range on every day it's
+ * paged through. `weekday: 'short'` alone (no other date field) is the one
+ * Intl combination that omits the trailing period German short weekdays
+ * otherwise get (contrast `event-editor.tsx`'s `whenLabel`).
+ */
+export function allDayRangeLabel(item: {
+  startDate: string;
+  endDate: string;
+  continuesBefore: boolean;
+  continuesAfter: boolean;
+}): string {
+  if (!item.continuesBefore && !item.continuesAfter) return 'Ganztägig';
+  const start = WEEKDAY_SHORT_UTC_FORMATTER.format(parseDateKey(item.startDate));
+  const end = WEEKDAY_SHORT_UTC_FORMATTER.format(parseDateKey(item.endDate));
+  return `Ganztägig · ${start}–${end}`;
+}
+
 export interface UpcomingEvent extends Omit<EventView, 'startsAt' | 'endsAt'> {
   /** Narrowed from `EventView` — `upcomingEventsToday` only ever keeps scheduled events. */
   startsAt: string;
@@ -163,6 +191,19 @@ export function formatCountdown(now: Date, startsAt: string): string {
   const hours = Math.floor(diffMinutes / 60);
   const minutes = diffMinutes % 60;
   return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
+}
+
+/**
+ * "30 Min" / "1 Std" / "1 Std 30 Min" for an agenda row's second line (issue
+ * #923, AK1) — same wording as `formatCountdown`, but from a fixed
+ * `endsAt − startsAt` span instead of a countdown to now.
+ */
+export function formatDuration(startsAt: string, endsAt: string): string {
+  const minutes = Math.round((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000);
+  if (minutes < 60) return `${minutes} Min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} Std` : `${hours} Std ${rest} Min`;
 }
 
 const MONTH_TITLE_FORMATTER = new Intl.DateTimeFormat('de-DE', {

@@ -5,12 +5,14 @@ import {
   addMonthsClamped,
   agendaForDay,
   allDayEventsForDay,
+  allDayRangeLabel,
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
   dateKeyDiff,
   dayWindow,
   formatCountdown,
+  formatDuration,
   formatMonthTitle,
   monthDaysFor,
   monthEventCounts,
@@ -637,6 +639,40 @@ describe('categoryEdgeVar', () => {
   });
 });
 
+describe('allDayRangeLabel', () => {
+  it('reads plain "Ganztägig" for a single day, no continuation either side', () => {
+    const item = { startDate: '2026-07-18', endDate: '2026-07-18', continuesBefore: false, continuesAfter: false };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig');
+  });
+
+  it('shows the full weekday range on the start day of a multi-day span', () => {
+    // 2026-07-20 is a Monday, 2026-07-24 a Friday.
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: false, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('shows the same full range on a middle day of the span', () => {
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: true, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('shows the same full range on the end day of the span', () => {
+    const item = { startDate: '2026-07-20', endDate: '2026-07-24', continuesBefore: true, continuesAfter: false };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Mo–Fr');
+  });
+
+  it('stays correct across a month boundary', () => {
+    // 2026-07-30 is a Thursday, 2026-08-02 a Sunday.
+    const item = { startDate: '2026-07-30', endDate: '2026-08-02', continuesBefore: false, continuesAfter: true };
+
+    expect(allDayRangeLabel(item)).toBe('Ganztägig · Do–So');
+  });
+});
+
 describe('upcomingEventsToday', () => {
   // 12:00 UTC on 2026-07-18 = 14:00 Berlin (CEST).
   const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
@@ -744,5 +780,31 @@ describe('formatCountdown', () => {
 
   it('reads "Jetzt" once the event has started', () => {
     expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 11, 0)))).toBe('Jetzt');
+  });
+});
+
+describe('formatDuration', () => {
+  it('reports whole minutes under an hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 9, 30)))).toBe(
+      '30 Min',
+    );
+  });
+
+  it('omits minutes on an exact hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 10, 0)))).toBe(
+      '1 Std',
+    );
+  });
+
+  it('reports hours and minutes over an hour', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 10, 30)))).toBe(
+      '1 Std 30 Min',
+    );
+  });
+
+  it('reports multiple whole hours', () => {
+    expect(formatDuration(iso(Date.UTC(2026, 6, 18, 9, 0)), iso(Date.UTC(2026, 6, 18, 12, 0)))).toBe(
+      '3 Std',
+    );
   });
 });

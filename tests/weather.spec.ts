@@ -40,6 +40,10 @@ interface DaySet {
   windSpeedsMax?: number[];
   /** Defaults to 20 km/h for every day — same reasoning as `windSpeedsMax`. */
   windGustsMax?: number[];
+  /** Defaults to `tempsMax` for every day (issue #927). */
+  apparentTempsMax?: number[];
+  /** Degrees, defaults to 270 (West) for every day (issue #927). */
+  windDirections?: number[];
 }
 
 const DAY_SET_A: DaySet = {
@@ -65,15 +69,17 @@ function hourlyBlock(set: DaySet) {
   const temperature_2m: number[] = [];
   const precipitation_probability: number[] = [];
   const precipitation: number[] = [];
+  const weather_code: number[] = [];
   set.dates.forEach((date, i) => {
     for (let h = 0; h < 24; h += 1) {
       time.push(`${date}T${String(h).padStart(2, '0')}:00`);
       temperature_2m.push(set.tempsMin[i] + ((set.tempsMax[i] - set.tempsMin[i]) * h) / 23);
       precipitation_probability.push(0);
       precipitation.push(0);
+      weather_code.push(set.codes[i]);
     }
   });
-  return { time, temperature_2m, precipitation_probability, precipitation };
+  return { time, temperature_2m, precipitation_probability, precipitation, weather_code };
 }
 
 function forecastResponseBody(set: DaySet) {
@@ -88,6 +94,8 @@ function forecastResponseBody(set: DaySet) {
       sunset: set.dates.map((date) => `${date}T21:12`),
       wind_speed_10m_max: set.windSpeedsMax ?? set.dates.map(() => 12),
       wind_gusts_10m_max: set.windGustsMax ?? set.dates.map(() => 20),
+      apparent_temperature_max: set.apparentTempsMax ?? set.tempsMax,
+      wind_direction_10m_dominant: set.windDirections ?? set.dates.map(() => 270),
     },
     hourly: hourlyBlock(set),
   };

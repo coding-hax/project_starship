@@ -104,7 +104,7 @@
   padding: var(--space-3);
 }
 
-.weather-day__summary {
+.weather-day__values {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -126,26 +126,44 @@
   gap: var(--space-4);
 }
 
-/* Vier Zahlen in einer Zeile — bei 375px bleiben ~78px je Spalte, genug für
-   „27 km/h" unter „Untergang". Kein border-top mehr (issue #870 T3): die
-   Headline, von der die Zeile bisher abgesetzt war, sitzt jetzt im Kopf. */
+/* Gestapelte Zeilen statt vier Spalten (issue #938 AK1): Label gedämpft links,
+   Wert fett rechts — die Werte-Karte steht jetzt als letzte Karte der Seite,
+   im selben Zeilenstil wie die Diagramm-Karten darüber. */
 .weather-day__stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   margin: 0;
 }
 
+.weather-day__stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .weather-day__stat dt {
+  margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-meta);
+  font-size: var(--text-secondary);
 }
 
 .weather-day__stat dd {
   margin: 0;
   color: var(--text);
   font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
+}
+
+/* Eigene Unterzeile statt "· West" inline (issue #927): bei 375px bleiben ~71px
+   je Spalte, "14 km/h · West" liefe einzeilig über die Spaltenbreite hinaus. */
+.weather-day__wind-direction {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: normal;
 }
 
 .weather-day__icon {
@@ -232,10 +250,43 @@
   font-variant-numeric: tabular-nums;
 }
 
-.weather-day__precipitation-summary {
-  margin: 0 0 var(--space-2);
+/* Stundenreihe unter der Tagesverlauf-Kurve (issue #927, AK4) — scrollt notfalls
+   in sich statt das Dokument waagerecht zu überlaufen (AK5). */
+.weather-day__hourly {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weather-day__hourly-cell {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.weather-day__hourly-time {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-day__hourly-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
   color: var(--text);
-  font-size: var(--text-secondary);
+}
+
+.weather-day__hourly-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .weather-day__precipitation-bar {

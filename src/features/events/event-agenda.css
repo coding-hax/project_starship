@@ -24,15 +24,17 @@
   width: 100%;
   min-height: var(--touch-target);
   padding: var(--space-1) var(--space-2);
-  background: var(--surface);
-  /* Own surface, own ink (issue #832 AK5). */
-  --text: var(--text-base);
-  --text-muted: var(--text-muted-base);
-  --border: var(--border-base);
-  --border-strong: var(--border-strong-base);
-  --border-faint: var(--border-faint-base);
+  /* Kategorie-Tönung auf dem Grund, keine weiße Karte mehr (issue #924,
+     AK4/AK5) — bewusst dezent (6%): bei 15% (naheliegend, aber ungemessen)
+     reißt der Zeitraum-Text (--on-ground-muted) im Hellmodus unter die
+     4,5:1-Schwelle (gemessen 4,38:1 bei 15% gegen 4,54:1 bei 10%, 4,71:1 bei
+     6%). Die Fläche selbst bleibt damit unter 3:1 und ist eine dekorative
+     Fläche (docs/design/farben-typografie.md) — die Nicht-Text-Schwelle
+     (3:1) trägt stattdessen der Punkt (.event-agenda__all-day-dot). Kein
+     Ink-Reset mehr: anders als eine Karte erbt das Band --text/--text-muted
+     vom Grund (--on-ground/--on-ground-muted). */
+  background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 6%, var(--ground));
   border: none;
-  border-inline-start: 3px solid var(--area-events);
   border-radius: var(--radius-card);
   color: inherit;
   font: inherit;
@@ -46,10 +48,10 @@
 }
 
 /* Abonniert, schreibgeschützt (issue #560, ADR-0022): kein Klick-Cursor
-   (it's a <div>, not a <button>), gedämpfter Text, gestrichelte statt
-   durchgezogener Kante — liest als "von außen", nicht als eigener Termin. */
+   (it's a <div>, not a <button>) und gedämpfter Titel lesen schon "von
+   außen" — der gestrichelte Ring am Punkt unten trägt seit #924 die Kanten-
+   Spur, die früher an der Kante des Bands selbst saß. */
 .event-agenda__all-day-button[data-origin='subscribed'] {
-  border-inline-start-style: dashed;
   cursor: default;
 }
 
@@ -57,17 +59,21 @@
   color: var(--text-muted);
 }
 
-/* Squared-off edge where the bar continues onto the previous/next day —
-   together with the chevron, the "kein abgeschnittener Balken ohne
-   Fortsetzungshinweis" requirement (AC3). */
-.event-agenda__all-day-button[data-continues-before='true'] {
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
+.event-agenda__all-day-button[data-origin='subscribed'] .event-agenda__all-day-dot {
+  background: transparent;
+  border: 1.5px dashed color-mix(in oklab, var(--agenda-cat, var(--area-events)) 60%, var(--on-ground));
 }
 
-.event-agenda__all-day-button[data-continues-after='true'] {
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
+.event-agenda__all-day-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  /* Aufgehellte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #924,
+     AK5): die reine Kategoriefarbe erreicht im Hellmodus nur 2,13:1 gegen
+     den Kalender-Grund, unter der 3:1-Nicht-Text-Schwelle (WCAG 1.4.11).
+     Gemessen bei 60% Kategorie-Anteil: 3,37:1 hell / 5,98:1 dunkel. */
+  background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 60%, var(--on-ground));
 }
 
 .event-agenda__all-day-title {
@@ -79,11 +85,11 @@
   white-space: nowrap;
 }
 
-.event-agenda__all-day-chevron {
+.event-agenda__all-day-range {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  margin-inline-start: auto;
   color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 .event-agenda__list {
@@ -106,15 +112,16 @@
   --border: var(--border-base);
   --border-strong: var(--border-strong-base);
   --border-faint: var(--border-faint-base);
-  border-inline-start: 3px solid var(--area-events);
+  border-inline-start: 6px solid var(--agenda-edge, var(--area-events));
   border-radius: var(--radius-surface);
   box-shadow: var(--shadow-raised);
 }
 
 .event-agenda__item-button {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: var(--space-2);
   width: 100%;
   padding: var(--space-2);
   border: none;
@@ -130,15 +137,9 @@
   outline-offset: -2px;
 }
 
-.event-agenda__item-header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1);
-}
-
 .event-agenda__item-time {
-  color: var(--text-muted);
-  font-size: var(--text-meta);
+  color: var(--agenda-edge, var(--area-events));
+  font-size: var(--text-agenda-time);
   font-variant-numeric: tabular-nums;
   /* Rundschrift-Rezept (issue #859, ADR-0027): AK3 nennt die Uhrzeit in der
      Kalender-Agenda ausdrücklich, das Gewicht hebt sich damit auf 600 (vorher
@@ -149,10 +150,24 @@
   line-height: var(--leading-display);
 }
 
+/* Titel + Zweitzeile, rechts neben der Uhrzeit-Spalte (issue #923) —
+   min-width:0 ist der Hebel gegen Grid-Überlauf bei langem Titel (AK6). */
+.event-agenda__item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
 .event-agenda__item-title {
   color: var(--text);
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
+}
+
+.event-agenda__item-subline {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 .event-agenda__overlap-note {
