@@ -13,7 +13,7 @@
   gap: var(--space-4);
   width: 100%;
   min-height: var(--touch-target);
-  padding: var(--space-3) 0;
+  padding: var(--space-2) 0;
   border: none;
   background: transparent;
   font: inherit;
