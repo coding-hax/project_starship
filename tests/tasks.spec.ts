@@ -157,7 +157,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a designed empty state, not a blank screen', async ({ page }) => {
   await page.goto('/aufgaben');
-  await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
+  await expect(page.getByText('Nichts geplant')).toBeVisible();
 });
 
 test('a task created locally appears without any network request', async ({ page }) => {

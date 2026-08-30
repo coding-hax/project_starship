@@ -531,7 +531,7 @@ export function TaskList({
           ? 'Nichts fällig. Genieß den Tag.'
           : null
         : tasks.length === 0 && presenceRows.length === 0
-          ? 'Keine Aufgaben. Genieß die Ruhe.'
+          ? 'Nichts geplant'
           : view === 'alle' && presenceRows.length === 0
             ? 'Keine Aufgaben. Genieß die Ruhe.'
             : view === 'erledigt' && presenceRows.length === 0
