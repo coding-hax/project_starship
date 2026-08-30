@@ -4,6 +4,7 @@ import { archiveJournalHabit, unarchiveJournalHabit } from '@/features/journal/j
 import { Row } from '@/ui/row';
 import { SectionCard } from '@/ui/section-card';
 import { Toggle } from '@/ui/toggle';
+import { resolveOrder, useNavOrder } from './use-nav-order';
 import { useModules } from './use-modules';
 
 /**
@@ -16,9 +17,18 @@ import { useModules } from './use-modules';
  * der Flanke dieses Schalters archiviert/entarchiviert, nie bei jedem Mount — sonst
  * würde ein unterschiedlicher Schalterstand zwischen zwei Geräten über den Sync
  * endlos hin- und herschreiben.
+ *
+ * Reihenfolge (issue #935): folgt der Nav-Reihenfolge (`useNavOrder`) statt der
+ * Registry-Reihenfolge — Module ohne eigenen Nav-Tab (Wetter, Export) fallen bei
+ * `resolveOrder` als „fehlend" ans Ende, in ihrer bisherigen Registry-Reihenfolge.
  */
 export function ModulePanel() {
   const { modules, isActive, toggle } = useModules();
+  const { items: navItems } = useNavOrder();
+  const ordered = resolveOrder(
+    navItems.map((item) => item.id),
+    modules,
+  );
 
   function handleToggle(id: string) {
     if (id === 'journal') {
@@ -32,7 +42,7 @@ export function ModulePanel() {
 
   return (
     <SectionCard title="Module">
-      {modules.map((mod) => (
+      {ordered.map((mod) => (
         <Row key={mod.id} label={mod.label}>
           <Toggle
             label={mod.label}
