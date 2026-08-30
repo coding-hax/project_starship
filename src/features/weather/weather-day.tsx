@@ -175,33 +175,6 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
 
   return (
     <div className="weather-day">
-      <section
-        className="weather-day__summary"
-        aria-label={`Wetter: ${WEATHER_LABEL_BY_CATEGORY[category]}`}
-      >
-        {/* Wind and sun are four single numbers — a compact strip reads faster
-            than two more cards at the bottom of the page. Headline (Icon +
-            Temperatur) sitzt seit issue #870 im Kopf, nicht mehr hier. */}
-        <dl className="weather-day__stats">
-          <div className="weather-day__stat">
-            <dt>Wind</dt>
-            <dd>{Math.round(day.windSpeedMax)} km/h</dd>
-          </div>
-          <div className="weather-day__stat">
-            <dt>Böen</dt>
-            <dd>{Math.round(day.windGustsMax)} km/h</dd>
-          </div>
-          <div className="weather-day__stat">
-            <dt>Aufgang</dt>
-            <dd>{hourLabel(day.sunrise)}</dd>
-          </div>
-          <div className="weather-day__stat">
-            <dt>Untergang</dt>
-            <dd>{hourLabel(day.sunset)}</dd>
-          </div>
-        </dl>
-      </section>
-
       <SectionCard title="Tagesverlauf" className="weather-day__card">
         <ChartFrame
           className="weather-day__chart"
@@ -217,10 +190,15 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         </ChartFrame>
       </SectionCard>
 
-      <SectionCard title="Niederschlag" className="weather-day__card">
-        <p className="weather-day__precipitation-summary">
-          {rainHours.length === 0 ? 'Kein Niederschlag erwartet.' : `Insgesamt ${rainTotal.toFixed(1)} mm`}
-        </p>
+      <SectionCard
+        title="Niederschlag"
+        className="weather-day__card"
+        headerAside={
+          <span className="weather-day__precipitation-total">
+            {rainHours.length === 0 ? 'Kein Niederschlag erwartet.' : `Insgesamt ${rainTotal.toFixed(1)} mm`}
+          </span>
+        }
+      >
         <ChartFrame
           className="weather-day__precipitation-chart"
           ariaLabel={`Regenwahrscheinlichkeit je Stunde, höchstens ${maxProbability} %`}
@@ -242,11 +220,38 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
                 y={PLOT_BOTTOM - height}
                 width={barWidth}
                 height={height}
+                rx={2}
               />
             );
           })}
         </ChartFrame>
       </SectionCard>
+
+      <section
+        className="weather-day__values"
+        aria-label={`Wetter: ${WEATHER_LABEL_BY_CATEGORY[category]}`}
+      >
+        {/* Letzte Karte der Seite (issue #938 AK1) — Icon + Höchst-/Tiefstwert
+            stehen seit issue #870 im Kopf, hier bleiben nur die vier Rohwerte. */}
+        <dl className="weather-day__stats">
+          <div className="weather-day__stat">
+            <dt>Wind</dt>
+            <dd>{Math.round(day.windSpeedMax)} km/h</dd>
+          </div>
+          <div className="weather-day__stat">
+            <dt>Böen</dt>
+            <dd>{Math.round(day.windGustsMax)} km/h</dd>
+          </div>
+          <div className="weather-day__stat">
+            <dt>Aufgang</dt>
+            <dd>{hourLabel(day.sunrise)}</dd>
+          </div>
+          <div className="weather-day__stat">
+            <dt>Untergang</dt>
+            <dd>{hourLabel(day.sunset)}</dd>
+          </div>
+        </dl>
+      </section>
     </div>
   );
 }
