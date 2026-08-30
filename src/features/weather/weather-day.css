@@ -263,11 +263,6 @@
   text-anchor: middle;
 }
 
-.weather-day__chart-grid {
-  stroke: var(--border);
-  stroke-width: 1;
-}
-
 .weather-day__chart-axis {
   stroke: var(--border);
   stroke-width: 1.5;

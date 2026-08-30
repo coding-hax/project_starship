@@ -353,7 +353,7 @@ test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Ab
 /* Achsenbeschriftung beider Diagramme                                        */
 /* -------------------------------------------------------------------------- */
 
-test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:00, gleichmäßig verteilt (issue #795)', async ({
+test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:00, gleichmäßig verteilt (issue #795, ohne y-Gitter seit #939 AK4)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -361,11 +361,8 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  // 5°/15° sind Tiefst-/Höchstwert dieses Tages, dazwischen der Mittelwert.
+  // Kein y-Gitter/-Label mehr (issue #939 AK4) — nur die Stundenachse bleibt.
   await expect(page.locator('.weather-day__chart .weather-day__chart-tick')).toHaveText([
-    '5°',
-    '10°',
-    '15°',
     '00:00',
     '06:00',
     '12:00',
@@ -373,15 +370,14 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
     '24:00',
   ]);
   await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-tick')).toHaveText([
-    '0 %',
-    '50 %',
-    '100 %',
     '00:00',
     '06:00',
     '12:00',
     '18:00',
     '24:00',
   ]);
+  await expect(page.locator('.weather-day__chart .weather-day__chart-grid')).toHaveCount(0);
+  await expect(page.locator('.weather-day__precipitation-chart .weather-day__chart-grid')).toHaveCount(0);
 
   // Der gemeldete Fehler: die letzten beiden Uhrzeiten saßen enger zusammen als
   // der Rest, weil die Achse die Stunden 0..23 statt 0..24 abbildete. Jetzt
