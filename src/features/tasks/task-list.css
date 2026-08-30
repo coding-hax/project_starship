@@ -8,7 +8,7 @@
  */
 
 .task-list__empty {
-  padding: var(--space-12) var(--space-4);
+  padding: var(--space-4);
   text-align: center;
   color: var(--text-muted);
 }

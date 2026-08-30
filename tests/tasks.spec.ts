@@ -160,6 +160,21 @@ test('a designed empty state, not a blank screen', async ({ page }) => {
   await expect(page.getByText('Keine Aufgaben. Genieß die Ruhe.')).toBeVisible();
 });
 
+test('der Leerzustand auf /aufgaben sitzt eng unter dem Umschalter (issue #932)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const empty = page.getByText('Keine Aufgaben. Genieß die Ruhe.');
+  await expect(empty).toBeVisible();
+
+  const padding = await empty.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) };
+  });
+  expect(padding.top).toBeLessThanOrEqual(16);
+  expect(padding.bottom).toBeLessThanOrEqual(16);
+});
+
 test('a task created locally appears without any network request', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
