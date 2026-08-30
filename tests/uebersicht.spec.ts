@@ -187,6 +187,70 @@ test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst
   await expect(page.getByText('Ohne Datum', { exact: true })).toBeVisible();
 });
 
+test('die eingeklappte „ohne Datum"-Fläche auf /uebersicht misst höchstens 52px statt der vollen Kartenhöhe (issue #931 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum A' });
+  await seedTask(page, { title: 'Ohne Datum B' });
+  await seedTask(page, { title: 'Ohne Datum C' });
+
+  const card = undatedCard(page);
+  await expect(card).toHaveText('3 Aufgaben ohne Datum');
+  const box = await card.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeLessThanOrEqual(52);
+});
+
+test('der Umschalter der „ohne Datum"-Fläche bleibt ein volles Tap-Target und spiegelt aria-expanded (issue #931 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  const card = undatedCard(page);
+  const box = await card.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  await expect(card).toHaveAttribute('aria-expanded', 'false');
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('Antippen der „ohne Datum"-Fläche zeigt alle undatierten Zeilen, erneutes Antippen klappt sie wieder ein (issue #931 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum A' });
+  await seedTask(page, { title: 'Ohne Datum B' });
+
+  const card = undatedCard(page);
+  await card.click();
+  await expect(page.getByText('Ohne Datum A')).toBeVisible();
+  await expect(page.getByText('Ohne Datum B')).toBeVisible();
+
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'false');
+  const contentId = await card.getAttribute('aria-controls');
+  await expect(page.locator(`[id="${contentId}"]`)).toBeHidden();
+});
+
+test('die „ohne Datum"-Fläche bleibt in Dark Mode mit reduzierter Bewegung bedienbar (issue #931 AK5)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum A' });
+  await seedTask(page, { title: 'Ohne Datum B' });
+
+  const card = undatedCard(page);
+  await expect(card).toBeVisible();
+  await expect(card).toHaveAttribute('aria-expanded', 'false');
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('Ohne Datum A')).toBeVisible();
+});
+
 test('Unteraufgaben starten auf der Übersicht eingeklappt, die Elternzeile zeigt trotzdem ihren Fortschritt (issue #779 AK1)', async ({
   page,
 }) => {
