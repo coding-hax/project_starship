@@ -11,8 +11,8 @@ function buildForecastUrl(latitude: number, longitude: number): string {
   return (
     `https://api.open-meteo.com/v1/forecast` +
     `?latitude=${latitude}&longitude=${longitude}` +
-    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,wind_speed_10m_max,wind_gusts_10m_max` +
-    `&hourly=temperature_2m,precipitation_probability,precipitation` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,wind_speed_10m_max,wind_gusts_10m_max,apparent_temperature_max,wind_direction_10m_dominant` +
+    `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code` +
     `&timezone=Europe%2FBerlin&forecast_days=7`
   );
 }
@@ -45,12 +45,17 @@ interface OpenMeteoForecastResponse {
     sunset: string[];
     wind_speed_10m_max: number[];
     wind_gusts_10m_max: number[];
+    /** issue #927 — absent on responses cached before this field existed. */
+    apparent_temperature_max?: number[];
+    wind_direction_10m_dominant?: number[];
   };
   hourly: {
     time: string[];
     temperature_2m: number[];
     precipitation_probability: number[];
     precipitation: number[];
+    /** issue #927 — absent on responses cached before this field existed. */
+    weather_code?: number[];
   };
 }
 
@@ -66,6 +71,7 @@ export function parseForecast(response: OpenMeteoForecastResponse): WeatherDay[]
     temperature: hourly.temperature_2m[i],
     precipitationProbability: hourly.precipitation_probability[i],
     precipitation: hourly.precipitation[i],
+    weatherCode: hourly.weather_code?.[i],
   }));
   return daily.time.map((date, i) => ({
     date,
@@ -77,6 +83,8 @@ export function parseForecast(response: OpenMeteoForecastResponse): WeatherDay[]
     sunset: daily.sunset[i],
     windSpeedMax: daily.wind_speed_10m_max[i],
     windGustsMax: daily.wind_gusts_10m_max[i],
+    apparentTempMax: daily.apparent_temperature_max?.[i],
+    windDirection: daily.wind_direction_10m_dominant?.[i],
     hours: hours.filter((hour) => hour.time.startsWith(date)),
   }));
 }
@@ -172,6 +180,17 @@ export const WINDY_SPEED_THRESHOLD_KMH = 30;
  * their threshold, each catching a different kind of windy day (see the constants). */
 export function isWindy(day: Pick<WeatherDay, 'windGustsMax' | 'windSpeedMax'>): boolean {
   return day.windGustsMax >= WINDY_GUST_THRESHOLD_KMH || day.windSpeedMax >= WINDY_SPEED_THRESHOLD_KMH;
+}
+
+const COMPASS_LABELS = ['Nord', 'Nordost', 'Ost', 'Südost', 'Süd', 'Südwest', 'West', 'Nordwest'];
+
+/** Degrees (`daily.wind_direction_10m_dominant`) to an 8-point compass label
+ * (issue #927) — normalizes first so a negative or >360 degree value still
+ * lands on a valid octant. */
+export function windDirectionLabel(degrees: number): string {
+  const normalized = ((degrees % 360) + 360) % 360;
+  const index = Math.round(normalized / 45) % 8;
+  return COMPASS_LABELS[index];
 }
 
 

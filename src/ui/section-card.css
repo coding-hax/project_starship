@@ -45,7 +45,9 @@
   display: flex;
   /* Nicht baseline: der Aside-Slot erbt eine andere Schriftfamilie als der Titel
      (section-card__title setzt --font-display), unterschiedliche Aszent-Metriken
-     verschieben den Titel sonst unter die Kartenkante (issue #938). */
+     verschieben den Titel sonst unter die Kartenkante (issue #938). Beide Slot-
+     Inhalte teilen sich font-size/leading, top-align liest darum trotzdem als
+     Zeile (issue #927). */
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
@@ -55,6 +57,10 @@
   color: var(--text-muted);
   font-size: var(--text-meta);
   text-align: end;
+  white-space: nowrap;
+  /* Matches the title's tight display leading (not the inherited body 1.5) so
+     the aside's line box is the same height as the title's (issue #927). */
+  line-height: var(--leading-display);
 }
 
 .section-card__header {

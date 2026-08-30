@@ -16,12 +16,18 @@ const SUNRISE = '05:53';
 const SUNSET = '21:12';
 const WIND_SPEED_MAX = [10, 11, 9, 14, 22, 8, 12];
 const WIND_GUSTS_MAX = [18, 19, 16, 27, 38, 15, 21];
+// issue #927 — one degree colder than tempMax, so "Gefühlt" is visibly its own
+// number rather than an accidental echo of temp-max.
+const APPARENT_TEMPS_MAX = TEMPS_MAX.map((value) => value - 1);
+// West for every day (issue #927) — matches the ticket's own "12 km/h · West" example.
+const WIND_DIRECTIONS = DATES.map(() => 270);
 
-function hourlyBlock() {
+function hourlyBlock(includeWeatherCode = true) {
   const time: string[] = [];
   const temperature_2m: number[] = [];
   const precipitation_probability: number[] = [];
   const precipitation: number[] = [];
+  const weather_code: number[] = [];
   DATES.forEach((date, i) => {
     for (let h = 0; h < 24; h += 1) {
       time.push(`${date}T${String(h).padStart(2, '0')}:00`);
@@ -31,9 +37,12 @@ function hourlyBlock() {
       const raining = i === 3 && h >= 14 && h <= 16;
       precipitation_probability.push(raining ? 80 : 0);
       precipitation.push(raining ? 2.5 : 0);
+      weather_code.push(CODES[i]);
     }
   });
-  return { time, temperature_2m, precipitation_probability, precipitation };
+  return includeWeatherCode
+    ? { time, temperature_2m, precipitation_probability, precipitation, weather_code }
+    : { time, temperature_2m, precipitation_probability, precipitation };
 }
 
 function forecastResponseBody() {
@@ -48,8 +57,29 @@ function forecastResponseBody() {
       sunset: DATES.map((date) => `${date}T${SUNSET}`),
       wind_speed_10m_max: WIND_SPEED_MAX,
       wind_gusts_10m_max: WIND_GUSTS_MAX,
+      apparent_temperature_max: APPARENT_TEMPS_MAX,
+      wind_direction_10m_dominant: WIND_DIRECTIONS,
     },
     hourly: hourlyBlock(),
+  };
+}
+
+// issue #927 AC2 — a cache row written before this ticket: none of the three new
+// columns exist at all, not even as an empty array.
+function legacyForecastResponseBody() {
+  return {
+    daily: {
+      time: DATES,
+      weather_code: CODES,
+      temperature_2m_max: TEMPS_MAX,
+      temperature_2m_min: TEMPS_MIN,
+      precipitation_probability_max: DATES.map((_, i) => (i === 3 ? 80 : 0)),
+      sunrise: DATES.map((date) => `${date}T${SUNRISE}`),
+      sunset: DATES.map((date) => `${date}T${SUNSET}`),
+      wind_speed_10m_max: WIND_SPEED_MAX,
+      wind_gusts_10m_max: WIND_GUSTS_MAX,
+    },
+    hourly: hourlyBlock(false),
   };
 }
 
@@ -59,6 +89,16 @@ async function mockForecast(page: Page): Promise<() => number> {
   await page.route(OPEN_METEO_PATTERN, (route: Route) => {
     calls += 1;
     return route.fulfill({ json: forecastResponseBody() });
+  });
+  return () => calls;
+}
+
+/** Same as `mockForecast`, but the response predates issue #927's three columns. */
+async function mockLegacyForecast(page: Page): Promise<() => number> {
+  let calls = 0;
+  await page.route(OPEN_METEO_PATTERN, (route: Route) => {
+    calls += 1;
+    return route.fulfill({ json: legacyForecastResponseBody() });
   });
   return () => calls;
 }
@@ -1035,4 +1075,83 @@ test('der Kopf mit dem Tiefstwert-Rückfall passt bei 375px ohne waagerechtes Sc
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4a: „Gefühlt" im Kartenkopf der Tagesverlauf-Box (issue #927)            */
+/* -------------------------------------------------------------------------- */
+
+test('die Tagesverlauf-Karte zeigt "Gefühlt" mit der gefühlten Höchsttemperatur im Kopf (issue #927 AK4a)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // TEMPS_MAX[3] = 15, APPARENT_TEMPS_MAX[3] = 14.
+  await expect(page.locator('.weather-day__card', { hasText: 'Tagesverlauf' })).toContainText('Gefühlt 14°');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4b: Windrichtung als Himmelsrichtung an der Wind-Zeile (issue #927)      */
+/* -------------------------------------------------------------------------- */
+
+test('die Wind-Zeile zeigt zusätzlich die Himmelsrichtung (issue #927 AK4b)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // WIND_DIRECTIONS = 270° für jeden Tag = West.
+  await expect(page.locator('.weather-day__wind-direction')).toHaveText('West');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4c: Stundenreihe mit Wetter-Icons unter der Tagesverlauf-Kurve (issue #927) */
+/* -------------------------------------------------------------------------- */
+
+test('unter der Tagesverlauf-Kurve läuft eine scrollbare Stundenreihe mit 24 Wetter-Icons (issue #927 AK4c)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const row = page.locator('.weather-day__hourly');
+  await expect(row.locator('.weather-day__hourly-cell')).toHaveCount(24);
+  // CODES[3] = 61 -> Regen, für jede Stunde dieses Tages gleich.
+  await expect(row.locator('.weather-day__hourly-icon').first()).toHaveAttribute('aria-label', 'Regen');
+
+  const { scrollWidth, clientWidth, overflowX } = await row.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    overflowX: getComputedStyle(el).overflowX,
+  }));
+  expect(overflowX).toBe('auto');
+  expect(scrollWidth).toBeGreaterThan(clientWidth);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2: eine gecachte Alt-Zeile ohne die drei neuen Spalten bleibt lesbar,    */
+/* die drei neuen Stellen bleiben einfach weg (issue #927)                   */
+/* -------------------------------------------------------------------------- */
+
+test('eine gecachte Alt-Zeile ohne die drei neuen Spalten rendert unverändert, ohne Fehler und ohne die neuen Stellen (issue #927 AK2)', async ({
+  page,
+}) => {
+  await mockLegacyForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Die längst vorhandenen Werte rendern weiterhin ohne Fehler.
+  await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
+  await expect(page.getByText('Für diesen Tag liegen keine Wetterdaten vor.')).toHaveCount(0);
+
+  // Die drei freigeschalteten Stellen bleiben ab, statt zu crashen.
+  await expect(page.locator('.weather-day__card', { hasText: 'Tagesverlauf' })).not.toContainText('Gefühlt');
+  await expect(page.locator('.weather-day__wind-direction')).toHaveCount(0);
+  await expect(page.locator('.weather-day__hourly')).toHaveCount(0);
 });

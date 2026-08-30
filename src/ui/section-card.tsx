@@ -12,9 +12,10 @@ export interface SectionCardProps {
    * spacing (e.g. denser padding) without reaching into this component's own
    * class from the outside (issue #288). */
   className?: string;
-  /** Content in the header's end slot, next to the title. Only rendered on the
-   * non-collapsible path — the collapsible header is already a button with its
-   * own chevron, a second slot there is out of scope (issue #938). */
+  /** Content in the header's end slot, next to the title — e.g. a "Gefühlt 21°"
+   * readout (issue #927) or a precipitation total (issue #938). Only rendered on
+   * the non-collapsible path — the collapsible header is already a button with
+   * its own chevron, a second slot there is out of scope. */
   headerAside?: React.ReactNode;
 }
 
