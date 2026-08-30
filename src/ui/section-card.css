@@ -43,7 +43,10 @@
 
 .section-card__head {
   display: flex;
-  align-items: baseline;
+  /* Nicht baseline: der Aside-Slot erbt eine andere Schriftfamilie als der Titel
+     (section-card__title setzt --font-display), unterschiedliche Aszent-Metriken
+     verschieben den Titel sonst unter die Kartenkante (issue #938). */
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
