@@ -436,9 +436,16 @@ test('der entsperrte Editor behaelt die volle Spaltenbreite, keine Formular-Zent
   await setUpJournal(page, PASSPHRASE);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 
-  const mainBox = await page.locator('main.shell__main').boundingBox();
+  const main = page.locator('main.shell__main');
+  const mainBox = await main.boundingBox();
   const gateBox = await page.locator('.journal-gate[data-state="unlocked"]').boundingBox();
+  const mainPadding = await main.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+  });
   expect(mainBox).not.toBeNull();
   expect(gateBox).not.toBeNull();
-  expect(gateBox!.width).toBeGreaterThan(mainBox!.width - 2);
+  // .journal-gate has no horizontal padding of its own, so "full column width"
+  // means it fills main's content box, not main's (padded) border box.
+  expect(gateBox!.width).toBeGreaterThan(mainBox!.width - mainPadding - 2);
 });
