@@ -188,9 +188,20 @@ test('das Öffnen der vollen Übersicht erzeugt keinen einzigen Layout-Shift (AC
   const total = shifts.reduce((sum, shift) => sum + shift.value, 0);
 
   // Die Quellen stehen mit in der Meldung: ein roter Lauf sagt dann, welches
-  // Element geschoben hat, statt nur „irgendwas hat sich bewegt".
-  expect(shifts.map((shift) => shift.sources.join(' + '))).toEqual([]);
-  expect(total).toBe(0);
+  // Element geschoben hat, statt nur „irgendwas hat sich bewegt". Schwelle
+  // 0,002 statt Nulltoleranz nur für das eine bekannte Artefakt (menschlich
+  // freigegeben, issue #920 Runde 5, Präzedenzfall #867 AK6 in
+  // tests/formsprache.spec.ts): CI läuft auf Linux, wo next/font's
+  // Fallback-Metrik-Anpassung für --font-nunito-stable gegen ein dort nicht
+  // installiertes „Arial" berechnet ist — der FAB (`button.fab`) schrumpft
+  // dadurch minimal, bevor Nunito einschwingt. Auf dem Zielgerät
+  // (Apple/SF Pro Rounded, keine Nunito-Ladung) tritt das nachweislich nie
+  // auf. Jeder andere Schiebe-Ursprung bleibt weiter auf Nulltoleranz.
+  const unexpectedSources = shifts
+    .flatMap((shift) => shift.sources)
+    .filter((source) => !source.startsWith('button.fab'));
+  expect(unexpectedSources).toEqual([]);
+  expect(total).toBeLessThan(0.002);
 });
 
 test('auch die leere Übersicht öffnet ohne Layout-Shift (AC1)', async ({ page }) => {
@@ -200,7 +211,14 @@ test('auch die leere Übersicht öffnet ohne Layout-Shift (AC1)', async ({ page 
   await expect(page.locator('.habit-today__empty')).toBeVisible();
 
   const shifts = await page.evaluate(() => window.__shifts);
-  expect(shifts.map((shift) => shift.sources.join(' + '))).toEqual([]);
+  const total = shifts.reduce((sum, shift) => sum + shift.value, 0);
+
+  // Dieselbe Schwelle, derselbe Grund wie im vorherigen Test dieser Datei.
+  const unexpectedSources = shifts
+    .flatMap((shift) => shift.sources)
+    .filter((source) => !source.startsWith('button.fab'));
+  expect(unexpectedSources).toEqual([]);
+  expect(total).toBeLessThan(0.002);
 });
 
 /* -------------------------------------------------------------------------- */
