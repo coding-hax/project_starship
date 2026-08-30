@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { mutate } from '@/local/outbox';
 import { Sheet } from '@/ui/sheet';
 import { isoToLocalInput, localInputToIso } from './datetime-local';
@@ -13,7 +13,6 @@ const EDIT_LABEL = 'Aufgabe bearbeiten';
 // schon (ohne `open`-Attribut) schließt: `dialog.sheet`s Exit-Transition
 // (`allow-discrete`, sheet.css) hält es noch einen Frame im Accessibility-Baum.
 const CREATE_LABEL = 'Neue Aufgabe';
-const FORM_ID = 'task-editor-form';
 
 const PRIORITIES: { value: number; label: string }[] = [
   { value: 0, label: 'Normal' },
@@ -62,6 +61,17 @@ export interface TaskEditorProps {
  * not clobber each other (ADR-0001 §3); `create` just upserts a fresh row.
  */
 export function TaskEditor({ state, onClose, nestCandidates, hasChildren }: TaskEditorProps) {
+  // Not a module-level constant (CI-Fund, issue #920 AK5-Nachbarschaft):
+  // task-list.tsx mounts its own `<TaskEditor>` for the "Aufgabe bearbeiten"
+  // flow, `uebersicht-capture.tsx` mounts a second one for "Mehr" (issue #715
+  // AK4) — both on /uebersicht at once. A fixed id collided, and the header's
+  // `form={formId}` button resolved to whichever instance's `<form>` came
+  // first in DOM order, silently submitting into the OTHER (usually closed,
+  // `task === null`) instance instead — issue #920 moving the Fab (and with
+  // it this component's second mount) past the Aufgaben section flipped that
+  // order and turned a latent bug into "Anlegen tut nichts" (capture-art.spec.ts
+  // AK4). `useId()` gives every mounted instance its own id.
+  const formId = useId();
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -146,9 +156,9 @@ export function TaskEditor({ state, onClose, nestCandidates, hasChildren }: Task
       onClose={onClose}
       label={label}
       initialFocusRef={titleRef}
-      header={mode === 'create' ? { actionLabel, formId: FORM_ID } : undefined}
+      header={mode === 'create' ? { actionLabel, formId } : undefined}
     >
-      <form id={FORM_ID} className="task-editor" onSubmit={handleSubmit}>
+      <form id={formId} className="task-editor" onSubmit={handleSubmit}>
         <input
           ref={titleRef}
           type="text"
