@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -48,6 +48,24 @@ async function openFilters(page: Page): Promise<void> {
  * Suchmodus), daher bleibt der Button-Zugriff eindeutig. */
 async function openSearch(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
+}
+
+/** Bounding box of the raw date text node inside `.journal-page__eyebrow-row`
+ *  (issue #928 AK1) — `TodayLongDate` renders bare text, not its own element,
+ *  so there is no locator to target directly; same range-based technique as
+ *  kalender.spec.ts's `textBoundingBox` (issue #921 AK4), applied to the
+ *  row's first non-empty text node. */
+async function eyebrowDateBox(row: Locator): Promise<{ x: number; right: number }> {
+  return row.evaluate((el) => {
+    const textNode = Array.from(el.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim().length > 0,
+    );
+    if (!textNode) throw new Error('no date text node found in eyebrow row');
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
 }
 
 /** Seeds a real, decryptable entry via the actual unlocked session's DEK (the
@@ -535,7 +553,26 @@ test('AC-D: der Zurücksetzen-Knopf steht auf Höhe der Datumsfelder statt darun
   await expect(resetButton).not.toHaveText('Zurücksetzen');
 });
 
-test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfeld ist nicht dauerhaft sichtbar', async ({
+test('issue #928 AK1: die Augenbraue zeigt das Datum links und die Lupe rechts', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const row = page.locator('.journal-page__eyebrow-row');
+  const toggle = row.getByRole('button', { name: 'Journal durchsuchen' });
+  const rowBox = await row.boundingBox();
+  const toggleBox = await toggle.boundingBox();
+  const dateBox = await eyebrowDateBox(row);
+  if (!rowBox || !toggleBox) throw new Error('missing bounding box');
+
+  // Datum links: die Lupe beginnt rechts vom Datumstext.
+  expect(toggleBox.x).toBeGreaterThan(dateBox.right);
+
+  // Lupe rechts außen: ihr rechter Rand liegt an der Augenbrauenzeile an.
+  expect(rowBox.x + rowBox.width - (toggleBox.x + toggleBox.width)).toBeLessThan(2);
+});
+
+test('AK5: die Lupe (44×44) in der Augenbrauenzeile öffnet den Suchmodus, das Suchfeld ist nicht dauerhaft sichtbar', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -543,9 +580,10 @@ test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfe
   // Standardmäßig ist kein Suchfeld auf der Seite (AK5).
   await expect(page.locator('.journal-search')).toHaveCount(0);
 
-  // Die Lupe sitzt in der Titelzeile und ist ein 44×44-Tap-Ziel.
+  // Die Lupe sitzt in der Augenbrauenzeile (issue #928 AK1, zuvor in der
+  // Titelzeile) und ist ein 44×44-Tap-Ziel.
   const toggle = page
-    .locator('.journal-page__title-row')
+    .locator('.journal-page__eyebrow-row')
     .getByRole('button', { name: 'Journal durchsuchen' });
   await expect(toggle).toBeVisible();
   const box = (await toggle.boundingBox())!;
@@ -558,6 +596,23 @@ test('AK5: die Lupe (44×44) in der Titelzeile öffnet den Suchmodus, das Suchfe
   await toggle.click();
   await expect(page.locator('.journal-search__input')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Journal durchsuchen' })).toHaveCount(0);
+});
+
+test('issue #928 AK4: die Augenbrauenzeile behält ihre Höhe, wenn die Lupe im Suchmodus verschwindet', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const eyebrowRow = page.locator('.journal-page__eyebrow-row');
+  const beforeBox = (await eyebrowRow.boundingBox())!;
+  expect(beforeBox).not.toBeNull();
+
+  await openSearch(page);
+  await expect(page.locator('.journal-search__input')).toBeVisible();
+
+  const afterBox = (await eyebrowRow.boundingBox())!;
+  expect(afterBox).not.toBeNull();
+  expect(afterBox.height).toBe(beforeBox.height);
 });
 
 test('AK6: im Suchmodus kein FAB; jeder Treffer trägt volles Datum + Zeit und hebt das Suchwort hervor', async ({
