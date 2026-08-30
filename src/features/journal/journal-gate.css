@@ -10,6 +10,7 @@
   gap: var(--space-4);
   max-width: 320px;
   margin-top: var(--space-6);
+  margin-inline: auto;
 }
 
 /* The editor is a content view, not a narrow auth form — it gets the full
