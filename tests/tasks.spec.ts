@@ -3327,6 +3327,14 @@ test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, 
 
   const card = page.getByRole('button', { name: '2 Aufgaben ohne Datum' });
   await expect(card).toHaveAttribute('aria-expanded', 'false');
+  // /uebersicht bekam mit issue #931 eine Modifier-Klasse, die die eingeklappte
+  // Fläche auf eine Zeile schrumpft (≤52px) — hier auf /aufgaben bleibt die
+  // Basisklasse unangetastet, also das volle Karten-Format (AK4).
+  const cardArea = page.locator('.task-list__undated-card');
+  await expect(cardArea).not.toHaveClass(/--flat/);
+  const cardBox = await cardArea.boundingBox();
+  expect(cardBox).not.toBeNull();
+  expect(cardBox!.height).toBeGreaterThan(60);
   // `inert` (section-card.tsx) isn't respected by Playwright's role/text engine
   // (checked empirically: getByRole still finds inert rows) — the collapsed
   // *container* is the only element whose own box is genuinely zero-size (CSS
