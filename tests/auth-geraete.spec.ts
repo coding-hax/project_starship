@@ -97,6 +97,63 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     await expect(geraetGroup.getByRole('heading', { name: 'Geräte', level: 2 })).toBeVisible();
     await expect(geraetGroup.getByRole('button', { name: 'Beenden' })).toBeVisible();
   });
+
+  test('#936 AK1+AK2: „Umbenennen" und „Widerrufen" stehen unter Name/Zusatzzeile, mit ≥44px Höhe (375×812)', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await page.goto('/einstellungen');
+
+    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
+    const description = row.locator('.row__description');
+    const renameButton = row.getByRole('button', { name: 'Umbenennen' });
+    const revokeButton = row.getByRole('button', { name: 'Widerrufen' });
+
+    await expect(description).toBeVisible();
+    await expect(renameButton).toBeVisible();
+    await expect(revokeButton).toBeVisible();
+
+    const descriptionBox = await description.boundingBox();
+    const renameBox = await renameButton.boundingBox();
+    const revokeBox = await revokeButton.boundingBox();
+
+    expect(descriptionBox!.y + descriptionBox!.height, 'Umbenennen-Knopf unter der Zusatzzeile').toBeLessThanOrEqual(
+      renameBox!.y + 1,
+    );
+    expect(descriptionBox!.y + descriptionBox!.height, 'Widerrufen-Knopf unter der Zusatzzeile').toBeLessThanOrEqual(
+      revokeBox!.y + 1,
+    );
+    expect(renameBox!.height, 'Umbenennen-Knopf ≥44px hoch').toBeGreaterThanOrEqual(44);
+    expect(revokeBox!.height, 'Widerrufen-Knopf ≥44px hoch').toBeGreaterThanOrEqual(44);
+
+    const viewport = page.viewportSize()!;
+    expect(renameBox!.x, 'Umbenennen-Knopf innerhalb 375px Breite').toBeGreaterThanOrEqual(0);
+    expect(renameBox!.x + renameBox!.width, 'Umbenennen-Knopf ragt nicht heraus').toBeLessThanOrEqual(
+      viewport.width,
+    );
+    expect(revokeBox!.x + revokeBox!.width, 'Widerrufen-Knopf ragt nicht heraus').toBeLessThanOrEqual(
+      viewport.width,
+    );
+  });
+
+  test('#936 AK4: Anordnung bleibt im Dark Mode mit reduzierter Bewegung erhalten (375×812)', async ({ page }) => {
+    await registerPasskey(page);
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await page.goto('/einstellungen');
+
+    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
+    const description = row.locator('.row__description');
+    const renameButton = row.getByRole('button', { name: 'Umbenennen' });
+    const revokeButton = row.getByRole('button', { name: 'Widerrufen' });
+
+    await expect(renameButton).toBeVisible();
+    await expect(revokeButton).toBeVisible();
+
+    const descriptionBox = await description.boundingBox();
+    const renameBox = await renameButton.boundingBox();
+    expect(descriptionBox!.y + descriptionBox!.height).toBeLessThanOrEqual(renameBox!.y + 1);
+    expect(renameBox!.height).toBeGreaterThanOrEqual(44);
+  });
 });
 
 test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
