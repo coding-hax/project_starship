@@ -632,6 +632,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
         pushKind: probe('push-panel__kind'),
         categoryRow: probe('category-colors-panel__row'),
         weatherResult: probe('weather-panel__result'),
+        weatherSearch: probe('weather-panel__search'),
       };
     });
 
@@ -695,6 +696,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
           pushKind: probe('push-panel__kind'),
           devicesItem: probe('devices-panel__item'),
           weatherSearch: probe('weather-panel__search'),
+          weatherResult: probe('weather-panel__result'),
         },
       };
     });
