@@ -256,7 +256,7 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__precipitation-bar')).toHaveCount(24);
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
   await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
     'aria-label',
     'Regenwahrscheinlichkeit je Stunde, höchstens 80 %',
@@ -281,7 +281,7 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-20');
 
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Kein Niederschlag erwartet.');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Kein Niederschlag erwartet.');
   await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
     'aria-label',
     'Regenwahrscheinlichkeit je Stunde, höchstens 0 %',
@@ -292,6 +292,25 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
     .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('height'))));
   expect(heights).toHaveLength(24);
   expect(heights.every((height) => height === 0)).toBe(true);
+});
+
+test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Absatz, die Balken sind abgerundet (issue #938 AK5)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(
+    page.locator('.section-card__head .weather-day__precipitation-total'),
+  ).toHaveText('Insgesamt 7.5 mm');
+
+  const radii = await page
+    .locator('.weather-day__precipitation-bar')
+    .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('rx'))));
+  expect(radii.length).toBeGreaterThan(0);
+  expect(radii.every((rx) => rx > 0)).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -371,7 +390,7 @@ test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard
   }
 });
 
-test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur oberen Box mit den rohen Tageswerten (issue #381)', async ({
+test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein wie der zur Werte-Karte darunter (issue #381)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -379,15 +398,15 @@ test('der Abstand zwischen Tagesverlauf- und Niederschlags-Box ist genauso klein
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  const summary = await page.locator('.weather-day__summary').boundingBox();
   const [tagesverlauf, niederschlag] = await page.locator('.weather-day__card').all();
   const tagesverlaufBox = await tagesverlauf.boundingBox();
   const niederschlagBox = await niederschlag.boundingBox();
+  const values = await page.locator('.weather-day__values').boundingBox();
 
-  const gapToChart = tagesverlaufBox!.y - (summary!.y + summary!.height);
   const gapBetweenCharts = niederschlagBox!.y - (tagesverlaufBox!.y + tagesverlaufBox!.height);
+  const gapToValues = values!.y - (niederschlagBox!.y + niederschlagBox!.height);
 
-  expect(gapBetweenCharts).toBeLessThanOrEqual(gapToChart + 0.5);
+  expect(Math.abs(gapToValues - gapBetweenCharts)).toBeLessThanOrEqual(0.5);
 });
 
 test('die Überschriften „Tagesverlauf" und „Niederschlag" sitzen dicht unter der Oberkante ihrer Box', async ({
@@ -445,9 +464,75 @@ test('der Spalt zwischen Kopfzeile und Box ist nach #353 noch kleiner als nach #
   // unteren Rand des Kopfes. Der Spalt gilt deshalb dem ganzen Kopf-Container,
   // nicht mehr nur dem Zurück-Link (dessen eigenes margin-bottom das Maß trägt).
   const topbar = await page.locator('.weather-day__topbar').boundingBox();
-  const summary = await page.locator('.weather-day__summary').boundingBox();
-  const gap = summary!.y - topbar!.y - topbar!.height;
+  const firstCard = await page.locator('.weather-day__card').first().boundingBox();
+  const gap = firstCard!.y - topbar!.y - topbar!.height;
   expect(gap).toBeLessThanOrEqual(maxGapPx);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: Werte-Karte (Wind/Böen/Aufgang/Untergang) steht als letzte Karte der    */
+/* Seite (issue #938 AK1)                                                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Werte-Karte mit Wind, Böen, Aufgang und Untergang steht als letzte Karte der Seite (issue #938 AK1)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const cards = page.locator('.weather-day > .weather-day__card, .weather-day > .weather-day__values');
+  await expect(cards).toHaveCount(3);
+  await expect(cards.last()).toHaveClass(/weather-day__values/);
+
+  // <dl>-Semantik bleibt erhalten (AK1) — kein div-Ersatz.
+  await expect(page.locator('.weather-day__values dl.weather-day__stats')).toHaveCount(1);
+  await expect(page.locator('.weather-day__values dl.weather-day__stats > div')).toHaveCount(4);
+  for (const row of await page.locator('.weather-day__values .weather-day__stat').all()) {
+    await expect(row.locator('> dt')).toHaveCount(1);
+    await expect(row.locator('> dd')).toHaveCount(1);
+  }
+
+  // Böen bleiben erhalten (#861 AK4) — die App kennt sie, das Blatt nicht.
+  await expect(page.getByText('Böen', { exact: true })).toBeVisible();
+  await expect(page.getByText('27 km/h')).toBeVisible();
+
+  // Label gedämpft links, Wert fett rechts, in derselben Zeile.
+  const row = page.locator('.weather-day__stat', { hasText: 'Wind' });
+  const dt = await row.locator('dt').boundingBox();
+  const dd = await row.locator('dd').boundingBox();
+  expect(dt!.x).toBeLessThan(dd!.x);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: die Zusammenfassungs-Kachel entfällt, Nachtwert + Fallback bleiben     */
+/* erhalten (issue #938 AK2)                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('die alte Zusammenfassungs-Kachel ist weg, der Nachtwert mit Mond, aria-Label und Fallback bleibt erhalten (issue #938 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+
+  // 2026-07-22: eigener Nachtwert mit Mond + aria-Label (issue #269 AC1).
+  await page.goto('/wetter/2026-07-22');
+  await expect(page.locator('.weather-day__summary')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('5°');
+  await expect(page.locator('.weather-day__temp-min')).toHaveAttribute(
+    'aria-label',
+    'nachts, 21:12 bis 05:53: 5 Grad',
+  );
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(1);
+
+  // Letzter Vorhersagetag: Tiefstwert-Fallback statt Mond (issue #269 AC3).
+  await page.goto('/wetter/2026-07-26');
+  await expect(page.locator('.weather-day__summary')).toHaveCount(0);
+  await expect(page.locator('.weather-day__temp-fallback-label')).toHaveText('Tiefstwert');
+  await expect(page.locator('.weather-day__temp-min')).toHaveText('21°');
+  await expect(page.locator('.weather-day__temp-min svg')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -495,7 +580,7 @@ test('offline zeigt die Detailseite weiterhin mit dem zuletzt bekannten Stand (i
   await page.goto('/wetter/2026-07-23');
 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
-  await expect(page.locator('.weather-day__precipitation-summary')).toHaveText('Insgesamt 7.5 mm');
+  await expect(page.locator('.weather-day__precipitation-total')).toHaveText('Insgesamt 7.5 mm');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -618,7 +703,7 @@ test('die Kopfzeile nutzt den --surface-Token, auch im Dark Mode (issue #156 AC1
   await page.goto('/wetter/2026-07-23');
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
 
-  const card = page.locator('.weather-day__summary');
+  const card = page.locator('.weather-day__values');
   const resolveToken = () =>
     page.evaluate(() => {
       const probe = document.createElement('span');

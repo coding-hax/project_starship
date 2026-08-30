@@ -41,27 +41,25 @@
   line-height: var(--leading-display);
 }
 
-.section-card__header-row {
+.section-card__head {
   display: flex;
-  /* Top-align, not baseline: the title is the display font, the accessory the
-     body font, and their differing ascents make `baseline` drag the shared
-     baseline — and with it the title — a pixel below the card padding, breaking
-     the "heading hugs the top edge" contract (#288/#344/#353). Both share the
-     same font-size and leading, so their line boxes are equal height and
-     top-aligning reads as level anyway. */
+  /* Nicht baseline: der Aside-Slot erbt eine andere Schriftfamilie als der Titel
+     (section-card__title setzt --font-display), unterschiedliche Aszent-Metriken
+     verschieben den Titel sonst unter die Kartenkante (issue #938). Beide Slot-
+     Inhalte teilen sich font-size/leading, top-align liest darum trotzdem als
+     Zeile (issue #927). */
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
-.section-card__title-accessory {
-  font-size: var(--text-secondary);
+.section-card__aside {
   color: var(--text-muted);
+  font-size: var(--text-meta);
+  text-align: end;
   white-space: nowrap;
-  /* Match the title's tight display leading (not the inherited body 1.5) so the
-     accessory's line box is the same height as the title's — keeps the header
-     row exactly one title-line tall and the two reading level under the row's
-     top alignment (see `.section-card__header-row`). */
+  /* Matches the title's tight display leading (not the inherited body 1.5) so
+     the aside's line box is the same height as the title's (issue #927). */
   line-height: var(--leading-display);
 }
 
