@@ -412,3 +412,84 @@ test('Dark Mode + reduzierte Bewegung: die Umleitung einer Aus-Route funktionier
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expectUebersichtLoaded(page);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Modul-Karte folgt der Nav-Reihenfolge (issue #935)                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Scoped auf die SectionCard mit Titel „Module" — die Seite hat ein zweites
+ * gleichlautendes <h2> als Gruppenkopf (`.einstellungen__group-title`), das nicht
+ * die Schalterliste ist.
+ */
+function moduleCard(page: Page): Locator {
+  return page
+    .locator('.section-card')
+    .filter({ has: page.locator('.section-card__title', { hasText: 'Module' }) });
+}
+
+async function moduleLabels(page: Page): Promise<string[]> {
+  return moduleCard(page).locator('.row__label').allInnerTexts();
+}
+
+const DEFAULT_ORDER = [
+  'Aufgaben',
+  'Routinen',
+  'Kalender',
+  'Journal',
+  'Aktivitäten',
+  'Wetter',
+  'Export',
+];
+
+test('Modul-Schalter stehen in Nav-Reihenfolge, Wetter/Export dahinter (issue #935 AC1, AC3)', async ({
+  page,
+}) => {
+  await page.goto('/einstellungen');
+
+  expect(await moduleLabels(page)).toEqual(DEFAULT_ORDER);
+});
+
+test('eine geänderte Nav-Reihenfolge wirkt sofort auf die Modul-Schalterliste, ohne Reload (issue #935 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/einstellungen');
+  await expect(page.getByRole('heading', { name: 'Reihenfolge der Navigation' })).toBeVisible();
+  expect(await moduleLabels(page)).toEqual(DEFAULT_ORDER);
+
+  await page.getByRole('button', { name: 'Kalender nach oben' }).click();
+  await page.getByRole('button', { name: 'Kalender nach oben' }).click();
+
+  await expect.poll(async () => (await moduleLabels(page))[0]).toBe('Kalender');
+  expect(await moduleLabels(page)).toEqual([
+    'Kalender',
+    'Aufgaben',
+    'Routinen',
+    'Journal',
+    'Aktivitäten',
+    'Wetter',
+    'Export',
+  ]);
+});
+
+test('Übersicht und Einstellungen erscheinen nicht als Schalter in der Karte „Module" (issue #935 AC4)', async ({
+  page,
+}) => {
+  await page.goto('/einstellungen');
+
+  await expect(moduleCard(page).getByRole('switch', { name: 'Übersicht' })).toHaveCount(0);
+  await expect(moduleCard(page).getByRole('switch', { name: 'Einstellungen' })).toHaveCount(0);
+});
+
+test('Dark Mode + reduzierte Bewegung: die Modul-Schalterliste bleibt in Nav-Reihenfolge korrekt gerendert und bedienbar (issue #935 AC5)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.goto('/einstellungen');
+
+  expect(await moduleLabels(page)).toEqual(DEFAULT_ORDER);
+
+  const toggle = moduleCard(page).getByRole('switch', { name: 'Kalender' });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+});
