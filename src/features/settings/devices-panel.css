@@ -5,7 +5,7 @@
 }
 
 .devices-panel__item {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-faint);
 }
 
 .devices-panel__item:last-child {
@@ -68,6 +68,17 @@
 .devices-panel__confirm {
   display: flex;
   gap: var(--space-3);
+}
+
+/* Kontrollzone unter Name/Zusatzzeile statt daneben — auf 375px sonst zu schmal (#936). */
+.devices-panel__item .row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.devices-panel__item .row__control {
+  justify-content: flex-end;
 }
 
 .devices-panel__add-form {
