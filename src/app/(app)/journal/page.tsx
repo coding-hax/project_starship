@@ -22,16 +22,16 @@ export default function JournalPage() {
     <div data-module="journal" data-ground="journal">
       <PageHead
         rowClassName="journal-page__title-row"
-        eyebrow={<TodayLongDate />}
+        eyebrow={
+          <div className="journal-page__eyebrow-row">
+            <TodayLongDate />
+            <JournalSearchToggle />
+          </div>
+        }
         extra={<JournalHeadMood />}
       >
-        <div className="journal-page__title-cluster">
-          <h1>Wie war dein Tag?</h1>
-          <PageFace face="journal" />
-        </div>
-        <div className="journal-page__title-actions">
-          <JournalSearchToggle />
-        </div>
+        <h1 className="journal-page__heading">Wie war dein Tag?</h1>
+        <PageFace face="journal" />
       </PageHead>
       <JournalGate />
     </div>

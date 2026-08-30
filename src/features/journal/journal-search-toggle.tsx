@@ -6,8 +6,9 @@ import { useJournalLock } from './lock-store';
 import { useJournalSearchMode } from './journal-view-mode';
 
 /**
- * Die Lupe in der Journal-Titelzeile (issue #700 AK5): öffnet den Suchmodus.
- * Sitzt in `page.tsx`s `.journal-page__title-row`, also außerhalb des Gates.
+ * Die Lupe in der Journal-Augenbrauenzeile (issue #700 AK5, umgezogen in
+ * #928 AK1): öffnet den Suchmodus. Sitzt in `page.tsx`s
+ * `.journal-page__eyebrow-row`, also außerhalb des Gates.
  *
  * Rendert `null`, solange das Journal nicht entsperrt ist (AK7: gesperrt keine
  * Lupe) und im Suchmodus selbst (AK6: dort nur Suchfeld, „Abbrechen" und
