@@ -148,6 +148,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Eigene Unterzeile statt "· West" inline (issue #927): bei 375px bleiben ~71px
+   je Spalte, "14 km/h · West" liefe einzeilig über die Spaltenbreite hinaus. */
+.weather-day__wind-direction {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: normal;
+}
+
 .weather-day__icon {
   color: var(--text);
 }
@@ -230,6 +239,45 @@
   fill: var(--text-muted);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
+}
+
+/* Stundenreihe unter der Tagesverlauf-Kurve (issue #927, AK4) — scrollt notfalls
+   in sich statt das Dokument waagerecht zu überlaufen (AK5). */
+.weather-day__hourly {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weather-day__hourly-cell {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.weather-day__hourly-time {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-day__hourly-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  color: var(--text);
+}
+
+.weather-day__hourly-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .weather-day__precipitation-summary {
