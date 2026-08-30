@@ -248,6 +248,38 @@ test('die Seite zeigt einen stündlichen Temperaturverlauf über 24 Stunden (iss
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK3: Jetzt-Punkt auf der Temperaturkurve, nur am heutigen Tag              */
+/* -------------------------------------------------------------------------- */
+
+test('am heutigen Tag zeigt die Kurve einen Jetzt-Punkt mit Temperatur-Beschriftung (issue #939 AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // 2026-07-20T09:00Z = 11:00 Berlin.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+  // TEMPS_MIN[0]=14, TEMPS_MAX[0]=24 -> 14 + 10*11/23 ≈ 18.8 -> 19°.
+  await expect(page.locator('.weather-day__now-label')).toHaveText('19°');
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('an einem anderen Tag als heute entfällt der Jetzt-Punkt (issue #939 AK3)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW); // heute = 2026-07-20.
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(0);
+  await expect(page.locator('.weather-day__now-label')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Niederschlag, Wind, Sonnenauf- und -untergang sichtbar                 */
 /* -------------------------------------------------------------------------- */
 

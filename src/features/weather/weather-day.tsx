@@ -6,13 +6,16 @@ import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { PageFace } from '@/ui/faces';
 import { SectionCard } from '@/ui/section-card';
 import { IconChevronLeft, IconMoon, IconSunSimple } from '@/ui/icons';
+import { useNow } from '@/ui/use-now';
 import {
+  berlinNowMark,
   formatDayHeading,
   hourLabel,
   nextWeatherDate,
   nightTemperature,
   previousWeatherDate,
   smoothPath,
+  temperatureAtHour,
   temperatureAxis,
   windDirectionLabel,
 } from './forecast';
@@ -140,6 +143,9 @@ function hourTickLabel(hour: number): string {
 export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const { location } = useWeatherLocation();
   const { phase, day } = useWeatherDay(location, date);
+  // Called unconditionally, ahead of the early returns below (rules of hooks) —
+  // `phase` moves loading → ready without unmounting this component.
+  const nowMark = berlinNowMark(useNow());
 
   if (phase === 'loading') {
     return (
@@ -174,6 +180,9 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const barWidth = slotWidth * 0.6;
   const slotX = (hour: number) => PLOT_X + (hour + 0.5) * slotWidth;
 
+  const isToday = nowMark.dateKey === date;
+  const nowTemp = isToday && day.hours.length > 0 ? temperatureAtHour(day.hours, nowMark.hourOfDay) : null;
+
   return (
     <div className="weather-day">
       <SectionCard
@@ -205,6 +214,24 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
             d={curve.line}
             transform={`translate(${PLOT_X} ${PLOT_Y})`}
           />
+          {nowTemp !== null && (
+            <>
+              <circle
+                className="weather-day__now-dot"
+                cx={curveX(nowMark.hourOfDay)}
+                cy={temperatureY(nowTemp)}
+                r={3.5}
+              />
+              <text
+                className="weather-day__now-label"
+                x={curveX(nowMark.hourOfDay)}
+                y={temperatureY(nowTemp) - 8}
+                textAnchor="middle"
+              >
+                {Math.round(nowTemp)}°
+              </text>
+            </>
+          )}
         </ChartFrame>
         {day.hours.some((hour) => typeof hour.weatherCode === 'number') && (
           <ol className="weather-day__hourly" aria-label="Wetterlage je Stunde">
