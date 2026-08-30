@@ -44,19 +44,31 @@ const nunito = Nunito({
 // Nunito-Breitenwechsel eine fixe, rechts verankerte Box verschieben würde
 // (issue #867 CI-Fund: `.fab__label` hängt an `.fab`s `width: auto` +
 // `right`-Anchor — anders als ein Fließtext-h1 gibt es hier keinen Flex-
-// Sibling, dessen Box die Restfläche aufsaugen könnte). `block` statt `swap`
-// (wie Inter oben, #652) hält diese eine Nunito-Gewichtsstufe bis zu 3s
-// unsichtbar statt sichtbar im Fallback zu starten — dieselbe Garantie,
-// nur auf `--weight-emphasis` (600, das einzige Gewicht, das der FAB-Label-
-// Anwendungsfall braucht) statt global. Die übrigen Rundschrift-Stellen
-// (h1, `.section-card__title`, Zahlen) bleiben unverändert bei `--font-
-// display`/`swap` (ADR-0027) — dort sorgt ein Flex-Sibling oder eine block-
-// level-Box ohnehin dafür, dass der Breitenwechsel niemand daneben schiebt.
+// Sibling, dessen Box die Restfläche aufsaugen könnte). `optional` statt
+// `block` (issue #920 CI-Fund, tests/uebersicht-ladezustand.spec.ts AC1,
+// zweite Runde): `block` blieb selbst hier ein Risiko — sobald die Schrift
+// bereit ist, tauscht `block` IMMER nach, egal wie kurz die Wartezeit war.
+// Auf CI (Linux-Chromium) traf genau das zu: das Netz-Log zeigt die
+// Nunito-Datei in ~10-50ms geladen, trotzdem lag zwischen erstem Paint und
+// Font-Bereitschaft eine sichtbare Lücke — ein Trace-Screenshot zeigt den
+// Fab in exakt diesem Fenster als leere weiße Pille, bevor „Erfassen"
+// erscheint. `optional` entscheidet einmalig kurz nach dem ersten Paint und
+// tauscht danach nie wieder — trifft die Schrift rechtzeitig ein (der
+// Normalfall), zeigt der erste sichtbare Frame direkt Nunito; sonst bleibt
+// für diese eine Seitenansicht der metrik-angepasste Fallback stehen, aber
+// `.fab`s Box bewegt sich in keinem der beiden Fälle noch einmal. Auf dem
+// Prüfgerät (Apple, Safari/PWA) bleibt das folgenlos: SF Pro Rounded löst
+// synchron auf, diese Datei wird dort nie angefragt. Weiterhin nur auf
+// `--weight-emphasis` (600) statt global — dieselbe Begründung wie zuvor.
+// Die übrigen Rundschrift-Stellen (h1, `.section-card__title`, Zahlen)
+// bleiben unverändert bei `--font-display`/`swap` (ADR-0027) — dort sorgt
+// ein Flex-Sibling oder eine block-level-Box ohnehin dafür, dass der
+// Breitenwechsel niemand daneben schiebt.
 const nunitoStable = Nunito({
   subsets: ['latin'],
   weight: ['600'],
   variable: '--font-nunito-stable',
-  display: 'block',
+  display: 'optional',
 });
 
 export const metadata: Metadata = {
