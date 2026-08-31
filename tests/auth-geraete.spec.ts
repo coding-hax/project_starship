@@ -83,7 +83,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
     await expect(geraetGroup.getByRole('heading', { name: 'Geräte', level: 2 })).toBeVisible();
     await expect(geraetGroup.getByText('Unbenanntes Gerät')).toBeVisible();
-    await expect(geraetGroup.getByText(/Hinzugefügt am \d{2}\.\d{2}\.\d{4}/)).toBeVisible();
+    await expect(geraetGroup.getByText(/Hinzugefügt am \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}/)).toBeVisible();
   });
 
   test('AK6: Karte bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
