@@ -215,7 +215,8 @@ test('nach einem Ortswechsel zeigt Übersicht die Werte des neuen Ortes, die alt
 
   await expect(weatherDays(page)).toHaveCount(7);
   await expect(weatherDays(page).first().locator('.weather-forecast__temp-max')).toHaveText('10°');
-  await expect(page.locator('.weather-forecast__location')).toHaveText('Berlin');
+  // Kein sichtbares Ortslabel mehr im Streifen (issue #973 AK1) — der Ortswechsel
+  // schlägt sich stattdessen im `aria-label` der Section nieder.
   await expect(page.locator('.weather-forecast')).toHaveAttribute(
     'aria-label',
     'Wettervorhersage Berlin, sieben Tage',

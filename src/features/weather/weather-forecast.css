@@ -9,24 +9,37 @@
   position: relative;
   /* Block-to-block spacing now comes from `.overview-block` (issue #652) — its
    * own `margin-bottom` would double up with the wrapper's. */
-}
-
-.weather-forecast__location {
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-meta);
-  color: var(--text-muted);
+  /* Schmalkarte statt Ortszeile + Normalpolsterung (issue #973 AK2): das Blatt
+   * gibt 13px/16px vor, in Token-Schritten die nächstliegenden Rollen statt der
+   * rohen Werte — --space-3 (12px) trifft 13px am nächsten, --space-4 (16px)
+   * deckt sich exakt mit den 16px seitlich. */
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  /* Own surface, own ink (issue #832 AK5), same pattern as
+     events-overview-section.css / habit-today.css. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
 }
 
 .weather-forecast__days {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--space-1);
+  /* No gap (issue #973 AK2/AK5): the card's own 16px side padding already
+   * spends the width budget a 375px viewport has to spare — any column gap on
+   * top would push every column under the 44px tap-target floor (AK5). Each
+   * column's own border (below) still marks the seam between days. */
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
   /* Anchors the `empty-error` overlay (.weather-forecast__empty) — it needs the
-   * grid's own box, not the whole section, so it doesn't cover the location line
-   * above it. */
+   * grid's own box, not the whole card, so it doesn't cover past its edges. */
   position: relative;
 }
 
@@ -108,8 +121,8 @@
 
 .weather-forecast__icon--placeholder {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-pill);
   background: var(--border);
 }
@@ -152,8 +165,12 @@
   color: var(--text);
 }
 
+/* ~26px wie im Blatt (issue #973 AK3), bisher der Default-Größe der Icon-Sets
+ * (24px) überlassen. */
 .weather-forecast__icon svg {
   display: block;
+  width: 26px;
+  height: 26px;
 }
 
 .weather-forecast__temps {
@@ -165,7 +182,15 @@
   line-height: var(--leading-heading);
 }
 
+/* Rundschrift-Rezept (issue #859, ADR-0027), wie die große Tages-Temperatur in
+ * weather-day.css — hier in der Sekundärgröße statt --text-temp, weil die
+ * Karte kompakt bleibt (issue #973 AK3). .weather-forecast__temp-min bleibt
+ * Inter/kleiner/gedämpft. */
 .weather-forecast__temp-max {
+  font-size: var(--text-secondary);
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  line-height: var(--leading-display);
   color: var(--text);
 }
 

@@ -115,6 +115,48 @@ function weatherDays(page: Page) {
   return page.locator('.weather-forecast').getByRole('listitem');
 }
 
+/** Arms a Layout Instability API observer scoped to `selector` — issue #973 AK4
+ * wants height parity across loading/ready/empty-error proven via the real
+ * `previousRect`/`currentRect` of a Layout-Shift entry, not just a before/after
+ * `boundingBox()` snapshot diff ("nicht per Augenmaß"). Must run before the
+ * phase transition it observes. */
+async function observeLayoutShifts(page: Page, selector: string): Promise<void> {
+  await page.evaluate((sel) => {
+    const win = window as unknown as {
+      __weatherShifts: { previousHeight: number; currentHeight: number }[];
+    };
+    win.__weatherShifts = [];
+    const target = document.querySelector(sel);
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries() as unknown as {
+        sources?: { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
+      }[]) {
+        for (const source of entry.sources ?? []) {
+          if (source.node && target && (source.node === target || target.contains(source.node))) {
+            win.__weatherShifts.push({
+              previousHeight: source.previousRect.height,
+              currentHeight: source.currentRect.height,
+            });
+          }
+        }
+      }
+    });
+    observer.observe({ type: 'layout-shift', buffered: true });
+  }, selector);
+}
+
+/** Reads back the entries `observeLayoutShifts` collected so far. */
+async function readLayoutShifts(page: Page): Promise<{ previousHeight: number; currentHeight: number }[]> {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __weatherShifts: { previousHeight: number; currentHeight: number }[];
+        }
+      ).__weatherShifts,
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // Default: abort. Tests that need a response override this via mockForecast(),
@@ -497,12 +539,19 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
 
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
   const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+  await observeLayoutShifts(page, '.weather-forecast');
 
   release();
   await expect(weatherDays(page)).toHaveCount(7);
   const loadedHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
 
   expect(loadingHeight).toBe(loadedHeight);
+
+  // issue #973 AK4: derselbe Übergang zusätzlich über den Layout-Shift-Eintrag
+  // belegt (previousRect/currentRect), nicht nur per boundingBox()-Diff.
+  for (const shift of await readLayoutShifts(page)) {
+    expect(shift.currentHeight).toBe(shift.previousHeight);
+  }
 });
 
 test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/ready (issue #652 AC1)', async ({
@@ -521,12 +570,19 @@ test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/re
 
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
   const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+  await observeLayoutShifts(page, '.weather-forecast');
 
   release();
   await expect(page.getByText('Vorhersage konnte nicht geladen werden.')).toBeVisible();
   const errorHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
 
   expect(errorHeight).toBe(loadingHeight);
+
+  // issue #973 AK4: derselbe Übergang zusätzlich über den Layout-Shift-Eintrag
+  // belegt (previousRect/currentRect), nicht nur per boundingBox()-Diff.
+  for (const shift of await readLayoutShifts(page)) {
+    expect(shift.currentHeight).toBe(shift.previousHeight);
+  }
 });
 
 /* -------------------------------------------------------------------------- */
