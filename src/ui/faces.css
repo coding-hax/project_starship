@@ -22,6 +22,17 @@
   gap: var(--space-2);
 }
 
+/* Titel füllt die Restbreite, Figur rückt an den rechten Rand (issue #962,
+   Konvention #920 AK3 „Figur ganz rechts außen"). `flex: 1` statt
+   `justify-content: space-between`, damit ein Font-Swap (ADR-0027) die Figur
+   nicht seitlich mitzieht — derselbe CI-Fund wie #867 / .aufgaben. `min-width: 0`
+   lässt die h1 schrumpfen, ohne die feste 42px-Figur zu quetschen. Gilt für die
+   zwei Routen mit dieser Zeile: /routinen und /aktivitaeten. */
+.page-face-row h1 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .face--slow {
   animation-duration: 6s;
 }
