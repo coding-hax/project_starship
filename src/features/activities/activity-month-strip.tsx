@@ -51,7 +51,7 @@ export function ActivityMonthStrip() {
 
   if (summary.totalCount === 0) {
     return (
-      <OverviewBlock title="Aktivitäten" area="var(--area-activities)">
+      <OverviewBlock hiddenTitle="Aktivitäten">
         <Link href="/aktivitaeten" className="activity-month-strip">
           <p className="activity-month-strip__heading">{monthLabel}</p>
           <p className="activity-month-strip__empty">Diesen Monat noch nichts aufgezeichnet.</p>
@@ -61,7 +61,7 @@ export function ActivityMonthStrip() {
   }
 
   return (
-    <OverviewBlock title="Aktivitäten" area="var(--area-activities)">
+    <OverviewBlock hiddenTitle="Aktivitäten">
       <Link href="/aktivitaeten" className="activity-month-strip">
         <p className="activity-month-strip__heading">{monthLabel}</p>
         <ul className="activity-month-strip__list">

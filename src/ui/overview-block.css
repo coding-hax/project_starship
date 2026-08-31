@@ -2,31 +2,62 @@
   margin-bottom: var(--space-6);
 }
 
-.overview-block__heading {
+/* Card head (issue #972): title left, muted link right — values match
+   `.section-card__head` so /uebersicht's cards read as one system with the
+   rest of the app. */
+.overview-block__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-3);
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .overview-block__title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  min-width: 0;
   margin: 0;
-}
-
-.overview-block__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  flex-shrink: 0;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  font-size: var(--text-body);
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-block__more {
+  display: inline-flex;
   flex-shrink: 0;
+  align-items: center;
+  min-height: var(--touch-target);
+  /* Expands the tap target to 44px without pushing the head row taller than
+     the title's own line box — the link's rendered text stays exactly where a
+     plain inline link would sit (issue #972 AK4/AK8). */
+  margin-block: calc((var(--text-secondary) * var(--leading-body) - var(--touch-target)) / 2);
   color: var(--text-muted);
   font-size: var(--text-secondary);
   text-decoration: none;
+}
+
+/* Own white surface for the Routinen head (issue #972): unlike Termine, the
+   check-off list below it (`habit-today.css`) is already a stack of item
+   cards without an enclosing surface, so the head needs its own card instead
+   of sitting inside an existing one. Own ink reset (issue #832 AK5) — same
+   pattern as events-overview-section.css / habit-today.css. */
+.overview-block__head-card {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.overview-block__head-card .overview-block__head {
+  margin-bottom: 0;
 }
