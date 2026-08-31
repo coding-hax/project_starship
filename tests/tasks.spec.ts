@@ -164,7 +164,11 @@ test('der Leerzustand auf /aufgaben sitzt eng unter dem Umschalter (issue #932)'
   page,
 }) => {
   await page.goto('/aufgaben');
-  const empty = page.getByText('Keine Aufgaben. Genieß die Ruhe.');
+  // An account with zero tasks says "Nichts geplant" since issue #933 — "Keine
+  // Aufgaben. Genieß die Ruhe." is now only the "Alle" view with nothing but
+  // completed rows left. Same <p class="task-list__empty">, so the padding
+  // assert below is unaffected.
+  const empty = page.getByText('Nichts geplant');
   await expect(empty).toBeVisible();
 
   const padding = await empty.evaluate((el) => {
