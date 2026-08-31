@@ -11,7 +11,10 @@ Regeln greifen eine Ebene früher und gelten für jeden künftigen Screen.
 **R1 — Inhalt schlägt Gerüst.** Bei *typischer* Datenmenge muss die gewählte
 Form überwiegend Inhalt zeigen, nicht Struktur. Typisch heißt: was diese eine
 Person wirklich hat — drei Termine, nicht zwölf. Prüffrage vor dem Ticket:
-„Wie sieht das bei drei Einträgen aus?"
+„Wie sieht das bei drei Einträgen aus?" Auf /uebersicht bedeutet das seit
+issue #972: der Modultitel reitet im Kartenkopf, wo das Blatt einen zeigt
+(Termine, Routinen) — nicht als eigene Überschriftenzeile auf dem Seitengrund
+über der Karte, das wäre Gerüst ohne eigenen Inhalt.
 
 **R2 — Die Form folgt der Frage.** Jeder Screen beantwortet *eine* Frage, in
 einem Satz sagbar. „Was steht heute an?" ist eine Liste. „Wo ist zwischen 9

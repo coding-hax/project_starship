@@ -406,6 +406,22 @@ h3 {
   margin-block: var(--space-4) var(--space-2);
 }
 
+/* Visually hidden but still in the DOM and reading order (issue #972, pattern
+   from category-colors-panel.css) — for headings a card's own head already
+   shows as text elsewhere (bucket heads, month heading), so the `<h2>` stays
+   for screen readers without a duplicate line on screen. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /*
  * Flash-free route guard (issue #309): the root layout's inline bootstrap script sets
  * `data-modules-off` on <html> before first paint, from the same `starship:modules-off`

@@ -279,9 +279,12 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
 
   await page.goto('/uebersicht');
   const wetter = page.locator('.weather-forecast');
-  const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+  // Aufgaben-Überschrift ist verborgen (issue #972 AK3), Routinen sitzt jetzt im
+  // eigenen Kartenkopf statt eines Seitengrund-h2 (AK2) — beide Anker daher auf
+  // Inhaltsselektoren statt der (Aufgaben) bzw. verschobenen (Routinen) Überschrift.
+  const aufgaben = page.locator('.task-list, .task-list__empty');
   const aktivitaeten = page.locator('.activity-month-strip');
-  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+  const routinen = page.locator('.overview-block__head-card');
 
   await expect(wetter).toBeVisible();
   await expect(aktivitaeten).toBeVisible();

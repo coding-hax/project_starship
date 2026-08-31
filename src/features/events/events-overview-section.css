@@ -45,7 +45,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.events-overview__empty {
+.events-overview__empty p {
+  margin: 0;
   color: var(--text-muted);
 }
 
