@@ -29,10 +29,15 @@
      reißt der Zeitraum-Text (--on-ground-muted) im Hellmodus unter die
      4,5:1-Schwelle (gemessen 4,38:1 bei 15% gegen 4,54:1 bei 10%, 4,71:1 bei
      6%). Die Fläche selbst bleibt damit unter 3:1 und ist eine dekorative
-     Fläche (docs/design/farben-typografie.md) — die Nicht-Text-Schwelle
-     (3:1) trägt stattdessen der Punkt (.event-agenda__all-day-dot). Kein
-     Ink-Reset mehr: anders als eine Karte erbt das Band --text/--text-muted
-     vom Grund (--on-ground/--on-ground-muted). */
+     Fläche (docs/design/farben-typografie.md:136-142) — die Nicht-Text-
+     Schwelle (3:1) trägt stattdessen der Punkt (.event-agenda__all-day-dot).
+     Kein Ink-Reset mehr: anders als eine Karte erbt das Band
+     --text/--text-muted vom Grund (--on-ground/--on-ground-muted).
+     Issue #955 hat das für die volle Blatt-Palette nachgemessen: bei keinem
+     Mischanteil erreichen Fläche (3:1) und Text (4,5:1) gleichzeitig ihre
+     Schwelle — kein Rezeptfehler, sondern derselbe Zielkonflikt wie oben.
+     Entscheidung (#955, Option A): die Tönung bleibt dekorativ, die
+     bedeutungstragende 3:1-Anforderung erfüllt der Punkt. */
   background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 6%, var(--ground));
   border: none;
   border-radius: var(--radius-card);
