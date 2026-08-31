@@ -313,3 +313,106 @@ test('AK10: bei reduzierter Bewegung ist der Auf-/Zuklapp-Übergang einer Tabell
   // so compare the parsed value rather than the exact string (mirrors habits.spec.ts).
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK1–AK5 (issue #960): Kachel-Zeilen (Label/Zahl/Balken) über ein Subgrid   */
+/* geteilt, statt unabhängig im Fluss zu stehen                              */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl HEUTE einzeilig und die beiden anderen Label zweizeilig umbrechen', async ({
+  page,
+}) => {
+  const habitA = await seedHabit(page, { name: 'Kachel A' });
+  await seedHabit(page, { name: 'Kachel B' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  await expect(tiles).toHaveCount(3);
+
+  const heuteLabelBox = await tiles.nth(0).locator('.habit-tiles__label').boundingBox();
+  const wocheLabelBox = await tiles.nth(1).locator('.habit-tiles__label').boundingBox();
+  const serieLabelBox = await tiles.nth(2).locator('.habit-tiles__label').boundingBox();
+  // Der 375px-Normalfall aus dem Screenshot: "HEUTE" bricht einzeilig, die
+  // beiden längeren Label zweizeilig — sonst wäre AK1 gar nicht geprüft.
+  expect(wocheLabelBox!.height, 'DIESE WOCHE bricht zweizeilig').toBeGreaterThan(heuteLabelBox!.height);
+  expect(serieLabelBox!.height, 'LÄNGSTE SERIE bricht zweizeilig').toBeGreaterThan(heuteLabelBox!.height);
+
+  const values = page.locator('.habit-tiles__value');
+  await expect(values).toHaveCount(3);
+  const [heuteY, wocheY, serieY] = await values.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().y),
+  );
+  expect(Math.abs(wocheY - heuteY), 'HEUTE vs. DIESE WOCHE').toBeLessThanOrEqual(1);
+  expect(Math.abs(serieY - heuteY), 'HEUTE vs. LÄNGSTE SERIE').toBeLessThanOrEqual(1);
+});
+
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#960): die Balken von HEUTE und DIESE WOCHE stehen auf einer Höhe', async ({ page }) => {
+  const habitA = await seedHabit(page, { name: 'Balken-Sonde' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const bars = page.locator('.habit-tiles__bar');
+  await expect(bars).toHaveCount(2);
+  const [heuteBarY, wocheBarY] = await bars.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().y),
+  );
+  expect(Math.abs(wocheBarY - heuteBarY), 'Balken HEUTE vs. DIESE WOCHE').toBeLessThanOrEqual(1);
+});
+
+/* -------------------------------------------------------------------------- */
+
+test('AK3 (#960): die Serien-Kachel bleibt balkenlos — kein Platzhalter für die fehlende Balkenzeile', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Serien-Sonde' });
+  await page.goto('/routinen');
+
+  const serie = page.locator('.habit-tiles__tile').nth(2);
+  await expect(serie.locator('.habit-tiles__bar')).toHaveCount(0);
+  // Das freie Subgrid-Zeilendrittel bleibt unbelegt — kein zusätzliches
+  // Element trägt die Reserve, das dl bleibt einziges Kind der Kachel.
+  await expect(serie.locator('> *')).toHaveCount(1);
+});
+
+/* -------------------------------------------------------------------------- */
+
+test('AK4 (#960): dl/dt/dd bleiben erhalten, .habit-tiles__stat trägt kein display:contents', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Semantik-Sonde' });
+  await page.goto('/routinen');
+
+  const stat = page.locator('.habit-tiles__stat').first();
+  expect(await stat.evaluate((el) => el.tagName)).toBe('DL');
+  expect(await stat.evaluate((el) => getComputedStyle(el).display)).not.toBe('contents');
+
+  const label = page.locator('.habit-tiles__label').first();
+  const valueRow = page.locator('.habit-tiles__value-row').first();
+  expect(await label.evaluate((el) => el.tagName)).toBe('DT');
+  expect(await valueRow.evaluate((el) => el.tagName)).toBe('DD');
+});
+
+/* -------------------------------------------------------------------------- */
+
+test('AK5 (#960): bei 375×812 kein waagerechter Überlauf durch das Kachel-Subgrid, hell und dunkel', async ({
+  page,
+}) => {
+  const habitA = await seedHabit(page, { name: 'Überlauf-Sonde A' });
+  await seedHabit(page, { name: 'Überlauf-Sonde B' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth, `kein waagerechter Überlauf (${scheme})`).toBeLessThanOrEqual(
+      overflow.clientWidth,
+    );
+  }
+});
