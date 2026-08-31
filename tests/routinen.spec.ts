@@ -534,3 +534,56 @@ test('AK7 (#963): 375×812 — kein waagerechter Überlauf und keine abgeschnitt
     }
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK1–AK4 (issue #977): Kopfzeile "Routine · 12 Wochen · Serie" entfällt,    */
+/* Haarstrich sitzt nur noch zwischen Zeilen, nicht an der Kartenoberkante    */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#977): die Kopfzeile "Routine · 12 Wochen · Serie" ist verschwunden', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Kopfzeile-weg-Sonde' });
+  await page.goto('/routinen');
+
+  await expect(page.locator('.habit-table')).toBeVisible();
+  await expect(page.locator('.habit-table__head')).toHaveCount(0);
+  await expect(page.getByText('Routine · 12 Wochen · Serie')).toHaveCount(0);
+});
+
+test('AK2/AK3 (#977): kein Haarstrich an der Kartenoberkante, aber weiterhin zwischen den Zeilen', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Haarstrich-Sonde A' });
+  await seedHabit(page, { name: 'Haarstrich-Sonde B' });
+  await page.goto('/routinen');
+
+  const rows = page.locator('.habit-table__row');
+  await expect(rows).toHaveCount(2);
+
+  const firstBorder = await rows.nth(0).evaluate((el) => getComputedStyle(el).borderTopWidth);
+  expect(firstBorder, 'erste Zeile: kein Haarstrich an der Kartenoberkante').toBe('0px');
+
+  const secondBorder = await rows.nth(1).evaluate((el) => getComputedStyle(el).borderTopWidth);
+  expect(secondBorder, 'zweite Zeile: Trennstrich zur ersten Zeile bleibt').toBe('1px');
+});
+
+test('AK4 (#977): die erste Zeile bleibt voll bedienbar — Berührungsziel und innerhalb der Kartenfläche', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Bedienbar-Sonde' });
+  await page.goto('/routinen');
+
+  const table = page.locator('.habit-table');
+  const firstHeader = page.locator('.habit-table__row-header').first();
+
+  const [tableBox, headerBox] = await Promise.all([
+    table.evaluate((el) => el.getBoundingClientRect()),
+    firstHeader.evaluate((el) => el.getBoundingClientRect()),
+  ]);
+
+  expect(headerBox.height, 'Berührungsziel bleibt ≥ var(--touch-target)').toBeGreaterThanOrEqual(44);
+  expect(headerBox.top, 'oberer Rand liegt nicht über der Kartenfläche').toBeGreaterThanOrEqual(
+    tableBox.top,
+  );
+});
