@@ -1,6 +1,15 @@
 'use client';
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
 import {
   addDays,
@@ -157,7 +166,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
             <span
               key={category ?? 'none'}
               className="calendar-strip__dot"
-              style={{ background: categoryEdgeVar(category) }}
+              style={{ '--dot-cat': categoryEdgeVar(category) } as CSSProperties}
             />
           ))}
         </span>
@@ -226,7 +235,7 @@ const CalendarWeekRow = memo(function CalendarWeekRow({
                     <span
                       key={category ?? 'none'}
                       className="calendar-strip__dot"
-                      style={{ background: categoryEdgeVar(category) }}
+                      style={{ '--dot-cat': categoryEdgeVar(category) } as CSSProperties}
                     />
                   ))}
                 </span>
