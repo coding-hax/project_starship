@@ -54,13 +54,14 @@ function getServerTodayKey(): string | null {
 }
 
 /**
- * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473; agenda issue #597): a
- * day agenda behind a week strip that pulls open into the full month, plus
- * the FAB-driven
- * create/edit/delete editor. `selectedDay` is a Berlin calendar day, not the
- * device's local one — the same reference `berlinNow` already gives the
- * reminder scheduler (src/push/schedule.ts), so there is only ever one
- * "today" in this app.
+ * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473; agenda issue #597; the
+ * month view moved into a static body card in issue #958): a day agenda
+ * behind a week strip (`CalendarStrip`, header) or a month card (`MonthGrid`,
+ * body) — the Woche/Monat toggle picks exactly one of the two, plus the
+ * FAB-driven create/edit/delete editor. `selectedDay` is a Berlin calendar
+ * day, not the device's local one — the same reference `berlinNow` already
+ * gives the reminder scheduler (src/push/schedule.ts), so there is only ever
+ * one "today" in this app.
  *
  * `today` is `null` during SSR and the very first client render (issue #579):
  * `berlinNow` reads the client clock, which at that point differs from the
@@ -225,8 +226,10 @@ export function CalendarView() {
   return (
     <div className="calendar-view">
       {/* <header> is the auto-focus target after navigation (CODEMAP invariant,
-          same reasoning as weather-day.tsx) — CalendarStrip's paging controls
-          live in it, not just a bare heading. */}
+          same reasoning as weather-day.tsx) — the Woche/Monat-Umschalter and
+          (Woche) CalendarStrip's paging controls live in it, not just a bare
+          heading; MonthGrid's own nav sits in the body on purpose (issue
+          #958), so it never becomes the auto-focus target. */}
       <header className="calendar-view__header">
         <div className="calendar-view__eyebrow">
           <p className="calendar-view__period page-head__eyebrow">{period}</p>
@@ -252,14 +255,13 @@ export function CalendarView() {
             </div>
           </div>
         )}
-        {today !== null && selectedDay !== null && (
+        {!expanded && today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
             onSelectDay={handleSelectDay}
             today={today}
             events={timelineEvents}
             exceptions={eventExceptions}
-            expanded={expanded}
             onLeadDayChange={setLeadDayOverride}
           />
         )}
