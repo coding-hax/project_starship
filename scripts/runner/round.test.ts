@@ -246,6 +246,23 @@ describe('roundPlan', () => {
       expect((result as RoundRun).prompt).toContain('Was rot ist');
     });
 
+    // #961 AC3: der Opus-Tagesdeckel gilt dem BAUEN. Ist 'check' hier nur
+    // wegen der roten CI unterwegs zu 'build' (Test oben) und der Deckel ist
+    // fuer heute erschoepft, steht kein echter Bau-Schritt an -- das Ticket
+    // bleibt fuer die 'check'-Rolle greifbar statt unter 'blocked-limit' bis
+    // morgen zu stehen (der #932-Vorfall: 'check' fiel, 'blocked-limit' kam,
+    // ein Mensch musste beides von Hand aufloesen).
+    it('AC3: haelt den erschoepften Opus-Deckel vom check-Label fern, wenn nur der CI-Fix ansteht', () => {
+      state.write('tier-70', 'opus');
+      state.write('opus-build-20260726-70', '2');
+      const { gh, calls } = ghDouble(prRoutes(70, ['in-progress', 'check'], redChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.emoji).toBe('🟡');
+      expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(false);
+      expect(called(calls, 'edit', '70', '--add-label', 'blocked-limit')).toBe(false);
+    });
+
     // Ohne Kriterien waere "alle erfuellt" trivial wahr -- der einzige Lauf,
     // der mergen darf, wuerde ausgerechnet dort ohne Massstab durchwinken.
     it('prueft nicht ohne Kriterien, sondern gibt das Label zurueck', () => {
@@ -1555,6 +1572,30 @@ describe('roundEval', () => {
 
     it('AC4: ein inhaltlicher Stillstand ohne needs-answer zaehlt weiterhin als Fehlversuch', () => {
       const { gh } = ghDouble([labelsAre('ready')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.read('failcount-77')).toBe('1\n');
+    });
+  });
+
+  // #961: ein Bau-Lauf, der sich per `check`-Label bewusst fuer inhaltlich
+  // fertig erklaert (wartet auf CI/AK-Check), ist ebenfalls kein Eskalations-
+  // Fehlversuch -- die Ableitung sitzt an derselben Stelle wie needs-answer.
+  describe('check zaehlt nicht als Eskalations-Fehlversuch (#961)', () => {
+    it('AC2: laesst failcount- unangetastet, wenn der Lauf mit check endet (wartet auf AK-Check)', () => {
+      const { gh } = ghDouble([labelsAre('in-progress', 'check')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.exists('failcount-77')).toBe(false);
+    });
+
+    it('needs-answer schlaegt check, wenn beide gesetzt sind', () => {
+      const { gh } = ghDouble([labelsAre('in-progress', 'check', 'needs-answer')]);
+      const result = roundEval(ctx(gh), plan, ok, '');
+      expect(result.status?.emoji).toBe('🟡');
+      expect(sharedState.exists('failcount-77')).toBe(false);
+    });
+
+    it('Gegentest: ohne check (und ohne needs-answer) zaehlt ein Stillstand weiterhin als Fehlversuch', () => {
+      const { gh } = ghDouble([labelsAre('in-progress')]);
       roundEval(ctx(gh), plan, ok, '');
       expect(sharedState.read('failcount-77')).toBe('1\n');
     });
