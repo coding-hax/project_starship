@@ -1183,20 +1183,24 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
   if (outcome.rc === 0) {
     state.remove(transientFile);
 
-    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
+    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt, oder sich fuer
+    // inhaltlich fertig erklaert (wartet auf CI/AK-Check)? Bewusst nicht
     // global gefragt (#145): ein woanders wartendes Ticket darf die
     // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
-    // Muss VOR buildEscalationEval feststehen (#741): eine offene Frage ist
-    // kein inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen
-    // noch den F26-Waechter ausloesen.
+    // Muss VOR buildEscalationEval feststehen (#741, #961): beides ist kein
+    // inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen noch den
+    // F26-Waechter ausloesen.
     const postLabels = labelsOf(issue, gh);
     const nonFailureReason: NonFailureEndReason | undefined = hasLabelWord(postLabels, 'needs-answer')
       ? 'needs-answer'
-      : undefined;
+      : hasLabelWord(postLabels, 'check')
+        ? 'awaiting-check'
+        : undefined;
 
     // Ein sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein
     // Commit) -- das entscheidet die Eskalation (ADR-0007). Endet der Lauf
-    // ueber eine offene Frage, zaehlt das dabei explizit NICHT (#741).
+    // ueber eine offene Frage oder wartend auf den AK-Check, zaehlt das dabei
+    // explizit NICHT (#741, #961).
     buildEscalationEval(
       {
         issue,

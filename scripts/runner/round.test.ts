@@ -1560,6 +1560,30 @@ describe('roundEval', () => {
     });
   });
 
+  // #961: ein Bau-Lauf, der sich per `check`-Label bewusst fuer inhaltlich
+  // fertig erklaert (wartet auf CI/AK-Check), ist ebenfalls kein Eskalations-
+  // Fehlversuch -- die Ableitung sitzt an derselben Stelle wie needs-answer.
+  describe('check zaehlt nicht als Eskalations-Fehlversuch (#961)', () => {
+    it('AC2: laesst failcount- unangetastet, wenn der Lauf mit check endet (wartet auf AK-Check)', () => {
+      const { gh } = ghDouble([labelsAre('in-progress', 'check')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.exists('failcount-77')).toBe(false);
+    });
+
+    it('needs-answer schlaegt check, wenn beide gesetzt sind', () => {
+      const { gh } = ghDouble([labelsAre('in-progress', 'check', 'needs-answer')]);
+      const result = roundEval(ctx(gh), plan, ok, '');
+      expect(result.status?.emoji).toBe('🟡');
+      expect(sharedState.exists('failcount-77')).toBe(false);
+    });
+
+    it('Gegentest: ohne check (und ohne needs-answer) zaehlt ein Stillstand weiterhin als Fehlversuch', () => {
+      const { gh } = ghDouble([labelsAre('in-progress')]);
+      roundEval(ctx(gh), plan, ok, '');
+      expect(sharedState.read('failcount-77')).toBe('1\n');
+    });
+  });
+
   // #484: failcount-/blocker-sig- (buildEscalationEval) gehoeren neben
   // limit-until in den sharedState -- sonst zaehlt die Eskalation pro Slot
   // neu, sobald ein Ticket den Slot wechselt.
