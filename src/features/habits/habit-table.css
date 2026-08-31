@@ -77,13 +77,27 @@
   flex-shrink: 0;
 }
 
-.habit-table__name {
+.habit-table__title {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  gap: var(--space-1);
+}
+
+.habit-table__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+}
+
+.habit-table__schedule {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 /* 12 weekly bars, bottom-aligned — height is set inline per bar (issue #905). */
@@ -148,19 +162,17 @@
 .habit-table__body {
   overflow: hidden;
   min-height: 0;
+}
+
+.habit-table__body-inner {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: 0 var(--space-4) var(--space-3);
 }
 
-.habit-table__body > * {
+.habit-table__body-inner > * {
   margin: 0;
-}
-
-.habit-table__meta {
-  color: var(--text-muted);
-  font-size: var(--text-secondary);
 }
 
 .habit-table__month-nav {

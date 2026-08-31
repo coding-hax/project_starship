@@ -39,8 +39,6 @@ function isDayBased(schedule: HabitView['schedule']): boolean {
   return schedule === 'daily' || schedule === 'custom';
 }
 
-const CREATED_AT_FORMATTER = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' });
-
 interface HabitRowProps {
   habit: HabitView;
   logs: HabitLogView[];
@@ -95,7 +93,10 @@ function HabitRow({
         onClick={() => setExpanded((value) => !value)}
       >
         <span className="habit-table__color" style={{ background: colorVar }} aria-hidden="true" />
-        <span className="habit-table__name">{habit.name}</span>
+        <span className="habit-table__title">
+          <span className="habit-table__name">{habit.name}</span>
+          <span className="habit-table__schedule">{scheduleLabel(habit)}</span>
+        </span>
         <span className="habit-table__weeks" aria-hidden="true">
           {weeks.map((week, index) => (
             <span
@@ -116,23 +117,22 @@ function HabitRow({
       </button>
       <div className="habit-table__collapse" data-open={expanded}>
         <div className="habit-table__body" id={contentId} inert={!expanded}>
-          <p className="habit-table__meta">
-            {scheduleLabel(habit)} · seit {CREATED_AT_FORMATTER.format(new Date(habit.createdAt))}
-          </p>
-          <RowMonthNav viewedMonth={viewedMonth} onChange={setViewedMonth} />
-          <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} viewedMonth={viewedMonth} now={now} />
-          <p className="habit-table__progress">
-            {done} von {due} fälligen Tagen erledigt
-          </p>
-          <div className="habit-table__actions">
-            <button type="button" className="habit-table__action" onClick={onEdit}>
-              Bearbeiten
-            </button>
-            {habit.id !== JOURNAL_HABIT_ID && (
-              <button type="button" className="habit-table__action" onClick={onToggleArchive}>
-                {archived ? 'Reaktivieren' : 'Archivieren'}
+          <div className="habit-table__body-inner">
+            <RowMonthNav viewedMonth={viewedMonth} onChange={setViewedMonth} />
+            <HabitWeekGrid habit={habit} logs={logs} onToggle={onToggleLog} viewedMonth={viewedMonth} now={now} />
+            <p className="habit-table__progress">
+              {done} von {due} fälligen Tagen erledigt
+            </p>
+            <div className="habit-table__actions">
+              <button type="button" className="habit-table__action" onClick={onEdit}>
+                Bearbeiten
               </button>
-            )}
+              {habit.id !== JOURNAL_HABIT_ID && (
+                <button type="button" className="habit-table__action" onClick={onToggleArchive}>
+                  {archived ? 'Reaktivieren' : 'Archivieren'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
