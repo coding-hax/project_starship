@@ -7,11 +7,20 @@
 .habit-tiles {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
+  /* Label / Zahl / Balken — geteilt über alle drei Kacheln (issue #960), damit
+     ein zweizeiliges Label die Zahlen der Nachbarkacheln nicht nach unten
+     schiebt. column-gap bleibt der bisherige Kachelabstand, row-gap 0: die
+     Zeilenabstände kommen weiterhin aus den Margins unten, kein Doppel. */
+  grid-template-rows: repeat(3, auto);
+  column-gap: var(--space-2);
+  row-gap: 0;
   margin-bottom: var(--space-4);
 }
 
 .habit-tiles__tile {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
   min-width: 0;
   padding: var(--space-3);
   border-radius: var(--radius-surface);
@@ -27,6 +36,11 @@
 }
 
 .habit-tiles__stat {
+  /* Reicht die Label-/Zahl-Zeilen der Kachel an dt/dd durch (issue #960) —
+     bleibt ein `dl` (AK4), nur die Zeilenhöhen kommen jetzt vom Subgrid. */
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 2;
   margin: 0;
 }
 
