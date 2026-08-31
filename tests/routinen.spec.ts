@@ -330,13 +330,25 @@ test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl HEUTE ein
   const tiles = page.locator('.habit-tiles__tile');
   await expect(tiles).toHaveCount(3);
 
-  const heuteLabelBox = await tiles.nth(0).locator('.habit-tiles__label').boundingBox();
-  const wocheLabelBox = await tiles.nth(1).locator('.habit-tiles__label').boundingBox();
-  const serieLabelBox = await tiles.nth(2).locator('.habit-tiles__label').boundingBox();
+  // Zeilenzahl über die Textzeilen selbst messen (Range.getClientRects), nicht
+  // über die Box-Höhe des Labels: `align-self: stretch` (Grid-Item-Default)
+  // dehnt jedes Label auf die geteilte Zeilenhöhe — das ist genau der Fix, aber
+  // es macht die drei Label-Boxen gleich hoch und damit als Umbruch-Nachweis
+  // untauglich.
+  const lineCount = (label: Locator) =>
+    label.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getClientRects().length;
+    });
+  const heuteLines = await lineCount(tiles.nth(0).locator('.habit-tiles__label'));
+  const wocheLines = await lineCount(tiles.nth(1).locator('.habit-tiles__label'));
+  const serieLines = await lineCount(tiles.nth(2).locator('.habit-tiles__label'));
   // Der 375px-Normalfall aus dem Screenshot: "HEUTE" bricht einzeilig, die
   // beiden längeren Label zweizeilig — sonst wäre AK1 gar nicht geprüft.
-  expect(wocheLabelBox!.height, 'DIESE WOCHE bricht zweizeilig').toBeGreaterThan(heuteLabelBox!.height);
-  expect(serieLabelBox!.height, 'LÄNGSTE SERIE bricht zweizeilig').toBeGreaterThan(heuteLabelBox!.height);
+  expect(heuteLines, 'HEUTE bricht einzeilig').toBe(1);
+  expect(wocheLines, 'DIESE WOCHE bricht zweizeilig').toBe(2);
+  expect(serieLines, 'LÄNGSTE SERIE bricht zweizeilig').toBe(2);
 
   const values = page.locator('.habit-tiles__value');
   await expect(values).toHaveCount(3);
