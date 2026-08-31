@@ -33,6 +33,17 @@ also direkt zu „Eskalation erschöpft" + `needs-answer`.
 - **Kein Fortschritt** = kein neuer Commit **und** dieselbe Blocker-Signatur
   wie im Vorlauf (siehe #33). Ein Lauf, der durch Limit oder Notbremse
   unterbrochen wurde, zählt nie als Fehlversuch.
+- **Fertig, wartet auf CI/AK-Check (#961):** Ein Bau-Lauf, der sich mit
+  `check` bewusst für inhaltlich fertig erklärt, ist ebenfalls kein
+  Fehlversuch, selbst wenn die Branch-Spitze steht — der Fehlerzähler bleibt
+  unangetastet, keine Eskalation, kein `opus-boost`-Abzug, keine
+  F26-Auffälligkeit. Der Opus-Deckel parkt ein solches Ticket auch nicht unter
+  `blocked-limit`: steht nur noch der AK-Check an, ist kein Bau-Schritt offen,
+  gegen den der Deckel überhaupt greifen dürfte. Der Grund wird ausschließlich
+  am `check`-Label nach dem Lauf festgemacht (derselbe Ort wie bei
+  `needs-answer`), nie an einer Heuristik über den Transkript-Text — ein
+  Lauf, der fälschlich „fertig" meldet, ohne `check` gesetzt zu haben, zählt
+  weiterhin normal als Fehlversuch.
 - **Auffälligkeit (F26/#499):** Steht die Branch-Spitze, hat der Lauf aber
   trotzdem einen Fortschrittskommentar angelegt, ist das schlimmer als ein
   gewöhnlicher Fehlversuch — die gemeldete Arbeit ist nicht durch Git gedeckt,

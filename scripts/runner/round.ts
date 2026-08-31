@@ -402,6 +402,13 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   let role: RunRole = resumable.length > 0 ? roleFromLabels(resumable[0]!) : 'build';
   let ciFix = false;
   let ciSummary = '';
+  // #961 AC3: die Abnahme von 'check' beim ciFix-Uebergang (unten) wird
+  // aufgeschoben, bis feststeht, dass der Fix-Lauf tatsaechlich startet --
+  // sonst parkt der Opus-Tagesdeckel ein Ticket, dessen 'check' schon weg ist,
+  // unter 'blocked-limit' (der #932-Vorfall). Ein frueher Ausgang vor dem
+  // Deckel-Block laesst 'check' bewusst stehen: der naechste Takt sieht das
+  // Ticket dann wieder als Pruef-Lauf.
+  let deferredCheckRemoval = false;
 
   // --- CI-Wache fuer ein laufendes Bau-Ticket (#147) ------------------------
   // Hat DIESES Ticket schon einen offenen PR, entscheidet allein dessen
@@ -527,10 +534,14 @@ im Arbeitsbaum des Runners nachsehen und aufräumen, dann läuft der nächste Ta
 
     // #839: rote CI schlaegt das AK-Tor. Ueber einen Stand, dessen Checks rot
     // sind, ist nicht zu urteilen -- und der Pruefer duerfte daran ohnehin
-    // nichts aendern. Also erst reparieren: Label ab, Rolle zurueck auf 'build'.
-    // Der Fix-Lauf setzt 'check' am Ende seines sauberen Laufs selbst wieder.
+    // nichts aendern. Also reparieren: Rolle zurueck auf 'build'. Die Abnahme
+    // von 'check' selbst ist aufgeschoben (#961 AC3, s. deferredCheckRemoval)
+    // -- sie holt entweder der Opus-Deckel-Block nach (Fix-Lauf startet) oder
+    // sie unterbleibt (Deckel parkt, 'check' bleibt fuer den Pruef-Lauf
+    // greifbar). Der Fix-Lauf setzt 'check' am Ende seines sauberen Laufs
+    // ohnehin selbst wieder.
     if (ciFix && role === 'check') {
-      tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
+      deferredCheckRemoval = true;
       role = 'build';
     }
   }
@@ -824,6 +835,25 @@ hier keine anderen Status (🟡/🔴) folgen.${parkedNote}`,
   // teuren dritten Opus-Lauf kostet.
   if (role === 'build' && model === 'opus') {
     if (opusBuildCapReached(issue, labels, sharedState, clock)) {
+      // #961 AC3: der Deckel gilt dem BAUEN, nicht dem AK-Check. Ist 'check'
+      // nur wegen des ciFix-Uebergangs (oben) unterwegs zu 'build', steht kein
+      // echter Bau-Schritt an -- der Fix-Lauf haette ohnehin nichts zu tun
+      // ausser 'check' wieder zu setzen. Das Ticket bleibt fuer die
+      // 'check'-Rolle greifbar statt unter 'blocked-limit' bis morgen zu
+      // stehen (der #932-Vorfall: 'check' faellt, 'blocked-limit' kommt, ein
+      // Mensch muss beides von Hand aufloesen).
+      if (deferredCheckRemoval) {
+        claimRelease(claims, issue);
+        return {
+          kind: 'done',
+          rc: 0,
+          status: status(
+            `Opus-Deckel (#${issue}) — AK-Check bleibt greifbar`,
+            '🟡',
+            `🟡 **Opus-Tagesbudget für #${issue} erschöpft** — der CI-Fix-Lauf wartet auf morgen. \`check\` bleibt stehen: der AK-Check hängt nicht am Budget und der nächste Takt kann #${issue} weiterhin darüber prüfen.`,
+          ),
+        };
+      }
       // Meldung hoechstens einmal je Ticket und Tag (#136).
       const stamp = `opus-cap-msg-${yyyymmdd(clock)}-${issue}`;
       if (!sharedState.exists(stamp)) {
@@ -860,6 +890,15 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
       };
     }
     opusBuildCapReserve(issue, sharedState, clock);
+  }
+
+  // #961 AC3: die aufgeschobene Abnahme von 'check' (s. deferredCheckRemoval
+  // oben) jetzt nachholen -- der Fix-Lauf startet tatsaechlich (Deckel hat
+  // nicht gegriffen, oder das Modell ist gar nicht Opus). Verhalten ab hier
+  // identisch zum bisherigen Sofort-Entzug; der Fix-Lauf setzt 'check' am
+  // Ende seines sauberen Laufs selbst wieder.
+  if (deferredCheckRemoval) {
+    tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
   }
 
   const beforeTip = role === 'build' ? branchTip(issue, git) : '';
@@ -1183,20 +1222,24 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
   if (outcome.rc === 0) {
     state.remove(transientFile);
 
-    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt? Bewusst nicht
+    // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt, oder sich fuer
+    // inhaltlich fertig erklaert (wartet auf CI/AK-Check)? Bewusst nicht
     // global gefragt (#145): ein woanders wartendes Ticket darf die
     // Chain-Fortsetzung eines unabhaengigen, sauberen Laufs nicht verhindern.
-    // Muss VOR buildEscalationEval feststehen (#741): eine offene Frage ist
-    // kein inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen
-    // noch den F26-Waechter ausloesen.
+    // Muss VOR buildEscalationEval feststehen (#741, #961): beides ist kein
+    // inhaltlicher Fehlversuch und darf weder failcount- hochzaehlen noch den
+    // F26-Waechter ausloesen.
     const postLabels = labelsOf(issue, gh);
     const nonFailureReason: NonFailureEndReason | undefined = hasLabelWord(postLabels, 'needs-answer')
       ? 'needs-answer'
-      : undefined;
+      : hasLabelWord(postLabels, 'check')
+        ? 'awaiting-check'
+        : undefined;
 
     // Ein sauberer Lauf kann trotzdem "sauber-aber-festhaengend" sein (kein
     // Commit) -- das entscheidet die Eskalation (ADR-0007). Endet der Lauf
-    // ueber eine offene Frage, zaehlt das dabei explizit NICHT (#741).
+    // ueber eine offene Frage oder wartend auf den AK-Check, zaehlt das dabei
+    // explizit NICHT (#741, #961).
     buildEscalationEval(
       {
         issue,
