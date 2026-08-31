@@ -186,6 +186,16 @@ describe('pull', () => {
 
     await expect(pull()).resolves.toBe(false);
   });
+
+  it('bounds the fetch to a timeout so a request that never settles cannot wedge sync() forever (#954)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(pullResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await pull();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe('push', () => {
@@ -263,5 +273,17 @@ describe('push', () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(markFailedMock).not.toHaveBeenCalled();
+  });
+
+  it('bounds the fetch to a timeout so a request that never settles cannot wedge sync() forever (#954)', async () => {
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    const response: PushResponse = { applied: ['m1'], conflicts: [], rejected: [] };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(response));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await push();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 });
