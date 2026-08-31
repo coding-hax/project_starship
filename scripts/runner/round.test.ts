@@ -246,6 +246,23 @@ describe('roundPlan', () => {
       expect((result as RoundRun).prompt).toContain('Was rot ist');
     });
 
+    // #961 AC3: der Opus-Tagesdeckel gilt dem BAUEN. Ist 'check' hier nur
+    // wegen der roten CI unterwegs zu 'build' (Test oben) und der Deckel ist
+    // fuer heute erschoepft, steht kein echter Bau-Schritt an -- das Ticket
+    // bleibt fuer die 'check'-Rolle greifbar statt unter 'blocked-limit' bis
+    // morgen zu stehen (der #932-Vorfall: 'check' fiel, 'blocked-limit' kam,
+    // ein Mensch musste beides von Hand aufloesen).
+    it('AC3: haelt den erschoepften Opus-Deckel vom check-Label fern, wenn nur der CI-Fix ansteht', () => {
+      state.write('tier-70', 'opus');
+      state.write('opus-build-20260726-70', '2');
+      const { gh, calls } = ghDouble(prRoutes(70, ['in-progress', 'check'], redChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.emoji).toBe('🟡');
+      expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(false);
+      expect(called(calls, 'edit', '70', '--add-label', 'blocked-limit')).toBe(false);
+    });
+
     // Ohne Kriterien waere "alle erfuellt" trivial wahr -- der einzige Lauf,
     // der mergen darf, wuerde ausgerechnet dort ohne Massstab durchwinken.
     it('prueft nicht ohne Kriterien, sondern gibt das Label zurueck', () => {
