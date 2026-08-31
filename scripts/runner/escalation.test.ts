@@ -387,6 +387,96 @@ describe('buildEscalationEval', () => {
     });
   });
 
+  // #961: ein Bau-Lauf, der sich inhaltlich fuer fertig haelt und das per
+  // `check`-Label bewusst markiert (wartet auf CI/AK-Check), ist ebenfalls
+  // kein inhaltlicher Fehlversuch -- derselbe #741-Mechanismus, zweiter Grund.
+  describe('#961: nonFailureReason "awaiting-check" ist kein Fehlversuch', () => {
+    it('AC1: failcount- bleibt ungeschrieben, auch ueber mehrere Laeufe in Folge; tier bleibt Default', () => {
+      const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
+      const git = gitTip('');
+      const input = {
+        issue: 601,
+        runRole: 'build',
+        labels: '',
+        beforeTip: 'sha-alt',
+        model: 'sonnet',
+        nonFailureReason: 'awaiting-check' as const,
+      };
+
+      buildEscalationEval(input, state, gh, git, clock);
+      buildEscalationEval(input, state, gh, git, clock);
+      buildEscalationEval(input, state, gh, git, clock);
+
+      expect(state.exists('failcount-601')).toBe(false);
+      expect(state.exists('tier-601')).toBe(false);
+    });
+
+    it('opus-boost bleibt haengen -- ein "awaiting-check"-Lauf verbraucht keinen Tap', () => {
+      const gh = ghComments(PROGRESS_COMMENT('gate-rot, unfertig — nächster Lauf macht weiter.'));
+      buildEscalationEval(
+        {
+          issue: 602,
+          runRole: 'build',
+          labels: 'in-progress opus-boost',
+          beforeTip: 'sha-alt',
+          model: 'opus',
+          nonFailureReason: 'awaiting-check',
+        },
+        state,
+        gh,
+        gitTip(''),
+        clock,
+      );
+      expect(gh.run).not.toHaveBeenCalledWith(['issue', 'edit', '602', '--remove-label', 'opus-boost']);
+    });
+
+    it('AC4: postet keine Auffaelligkeit, selbst bei stehender Spitze + frischem Fortschrittskommentar', () => {
+      const gh = ghWithComments([
+        {
+          body: PROGRESS_COMMENT('fertig, wartet auf CI/AK-Check.'),
+          createdAt: '2026-08-03T10:05:00Z',
+        },
+      ]);
+      buildEscalationEval(
+        {
+          issue: 603,
+          runRole: 'build',
+          labels: '',
+          beforeTip: '',
+          model: 'sonnet',
+          runStart: '2026-08-03T10:00:00Z',
+          nonFailureReason: 'awaiting-check',
+        },
+        state,
+        gh,
+        gitTip(''),
+        clock,
+      );
+      expect(gh.run).not.toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining('Auffälligkeit')]));
+    });
+
+    it('Fortschritt (bewegte Branch-Spitze) setzt trotzdem zurueck -- unabhaengig vom Endgrund', () => {
+      state.write('tier-604', 'opus\n');
+      state.write('failcount-604', '2\n');
+      buildEscalationEval(
+        {
+          issue: 604,
+          runRole: 'build',
+          labels: '',
+          beforeTip: 'sha-alt',
+          model: 'opus',
+          nonFailureReason: 'awaiting-check',
+        },
+        state,
+        ghComments(''),
+        gitTip('sha-neu'),
+        clock,
+      );
+      expect(tierCurrent(604, state, ghComments(''))).toBe('sonnet');
+      expect(state.exists('failcount-604')).toBe(false);
+    });
+  });
+
   // F26/#499: Kommentar behauptet Fortschritt, Branch-Spitze steht -- der
   // #430-Fall.
   describe('F26/#499: Fortschritt ohne Commit', () => {
