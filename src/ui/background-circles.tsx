@@ -16,9 +16,6 @@ export function BackgroundCircles() {
       <span className="bg-circle" />
       <span className="bg-circle" />
       <span className="bg-circle" />
-      {/* Last child so plain DOM order — no z-index — stacks it above the
-          circles within the layer (issue #919). */}
-      <div className="bg-layer__veil" />
     </div>
   );
 }
