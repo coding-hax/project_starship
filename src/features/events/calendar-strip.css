@@ -286,4 +286,10 @@
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-pill);
+  /* Aufgehellte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #955
+     AK2), dasselbe Rezept wie das Ganztägig-Band (event-agenda.css, issue
+     #924): manche der neuen --cat-*-Vorgaben (Blau, Pflaume) unterschreiten
+     roh auf --ground-kalender die 3:1-Schwelle. Gemessen bei 60%
+     Kategorie-Anteil: schlechtester Fall 3,33:1 hell / 5,91:1 dunkel. */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 60%, var(--on-ground));
 }
