@@ -161,9 +161,7 @@ test('eine per FAB angelegte Routine erscheint sofort in der Liste', async ({ pa
   await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
-
-  await tapHabitRow(item, 'Wasser trinken');
-  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
+  await expect(item.locator('.habit-table__schedule')).toContainText('Wöchentlich');
 });
 
 test('ein leerer Name wird nicht gespeichert, der Fokus bleibt im Feld', async ({ page }) => {
@@ -184,8 +182,7 @@ test('Rhythmus „Täglich" ist der Standard, wenn nichts anderes gewählt wird'
   await createDialog(page).getByRole('button', { name: 'Anlegen' }).click();
 
   const item = habitItems(page).filter({ hasText: 'Meditieren' });
-  await tapHabitRow(item, 'Meditieren');
-  await expect(item.locator('.habit-table__meta')).toContainText('Täglich');
+  await expect(item.locator('.habit-table__schedule')).toContainText('Täglich');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -241,9 +238,7 @@ test('Tippen auf den Rhythmus lässt Fokus und Cursor im Namensfeld, Weitertippe
   await expect(dialog).toBeHidden();
   const item = habitItems(page).filter({ hasText: 'Wasser trinken' });
   await expect(item).toBeVisible();
-
-  await tapHabitRow(item, 'Wasser trinken');
-  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
+  await expect(item.locator('.habit-table__schedule')).toContainText('Wöchentlich');
 });
 
 test('Pfeiltasten verschieben Fokus und Auswahl innerhalb der geöffneten Rhythmus-Gruppe (#138, ADR-0006)', async ({
@@ -315,8 +310,7 @@ test('der Ziel-Chip existiert nur bei „Wöchentlich" und speichert bzw. verwir
   expect(last.payload).toMatchObject({ schedule: 'weekly', target: 3 });
 
   const item = habitItems(page).filter({ hasText: 'Laufen' });
-  await tapHabitRow(item, 'Laufen');
-  await expect(item.locator('.habit-table__meta')).toContainText('3× pro Woche');
+  await expect(item.locator('.habit-table__schedule')).toContainText('3× pro Woche');
 
   // Zweiter Durchlauf: weg von „Wöchentlich" lässt den Ziel-Chip verschwinden
   // (nicht nur leer werden) und speichert target wieder als 1.
@@ -370,8 +364,8 @@ test('eine Routine ohne target-Feld aus der Zeit vor #509 zeigt sich unveränder
 
   const item = habitItems(page).filter({ hasText: 'Alte Routine' });
   await tapHabitRow(item, 'Alte Routine');
-  await expect(item.locator('.habit-table__meta')).toContainText('Wöchentlich');
-  await expect(item.locator('.habit-table__meta')).not.toContainText('×');
+  await expect(item.locator('.habit-table__schedule')).toContainText('Wöchentlich');
+  await expect(item.locator('.habit-table__schedule')).not.toContainText('×');
 
   await item.getByRole('button', { name: 'Bearbeiten' }).click();
   const dialog = editDialog(page);
@@ -776,7 +770,7 @@ test('offline den Rhythmus einer Routine geändert: sofort sichtbar, in der Outb
   await expect(dialog).toBeHidden();
 
   const item = habitItems(page).filter({ hasText: 'Rhythmus wechseln' });
-  await expect(item.locator('.habit-table__meta')).toContainText('4× pro Woche');
+  await expect(item.locator('.habit-table__schedule')).toContainText('4× pro Woche');
   // One entry for the seed, one for the schedule/target change — both queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 

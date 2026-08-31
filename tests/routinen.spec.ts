@@ -428,3 +428,109 @@ test('AK5 (#960): bei 375×812 kein waagerechter Überlauf durch das Kachel-Subg
     );
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK1–AK4/AK7 (issue #963): Zeitplan als zweite Kopfzeile, Startdatum weg,   */
+/* eingeklappte Zeile schneidet nichts mehr ab                                */
+/* -------------------------------------------------------------------------- */
+
+function rowHeaderByName(page: Page, name: string): Locator {
+  return page
+    .locator('.habit-table__row', { hasText: name })
+    .getByRole('button', { name: new RegExp(`^${name}\\b`) });
+}
+
+test('AK1 (#963): der Zeitplan steht als zweite Kopfzeile im Zeilenkopf, nicht im aufklappbaren Rumpf', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Kopfzeilen-Sonde', schedule: 'weekly', target: 3 });
+  await page.goto('/routinen');
+
+  const header = rowHeaderByName(page, 'Kopfzeilen-Sonde');
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+  await expect(header.locator('.habit-table__schedule')).toHaveText('3× pro Woche');
+
+  // Sitzt im Zeilenkopf, nicht mehr im aufklappbaren Rumpf.
+  await expect(page.locator('.habit-table__body .habit-table__schedule')).toHaveCount(0);
+});
+
+test('AK2 (#963): der Zeitplan sitzt höchstens 4px unter der Unterkante des Namens', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Abstand-Sonde' });
+  await page.goto('/routinen');
+
+  const name = page.locator('.habit-table__name', { hasText: 'Abstand-Sonde' });
+  const schedule = page
+    .locator('.habit-table__row', { hasText: 'Abstand-Sonde' })
+    .locator('.habit-table__schedule');
+  const [nameBox, scheduleBox] = await Promise.all([
+    name.evaluate((el) => el.getBoundingClientRect()),
+    schedule.evaluate((el) => el.getBoundingClientRect()),
+  ]);
+  const gap = scheduleBox.top - nameBox.bottom;
+  expect(gap, 'Abstand Name → Zeitplan').toBeGreaterThanOrEqual(0);
+  expect(gap, 'Abstand Name → Zeitplan höchstens 4px (var(--space-1))').toBeLessThanOrEqual(4);
+});
+
+test('AK3 (#963): das Startdatum ("seit …") steht nirgends mehr, eingeklappt wie aufgeklappt', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Datum-Sonde' });
+  await page.goto('/routinen');
+
+  const row = page.locator('.habit-table__row', { hasText: 'Datum-Sonde' });
+  await expect(row).not.toContainText('seit');
+  expect(await page.locator('.habit-table__meta').count(), '.habit-table__meta entfällt').toBe(0);
+
+  await rowHeaderByName(page, 'Datum-Sonde').click();
+  await expect(row).not.toContainText('seit');
+});
+
+test('AK4 (#963): eingeklappt hat .habit-table__body eine gemessene Höhe von exakt 0', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Höhe-Sonde' });
+  await page.goto('/routinen');
+
+  const header = rowHeaderByName(page, 'Höhe-Sonde');
+  await expect(header).toHaveAttribute('aria-expanded', 'false');
+
+  const body = page
+    .locator('.habit-table__row', { hasText: 'Höhe-Sonde' })
+    .locator('.habit-table__body');
+  const height = await body.evaluate((el) => el.getBoundingClientRect().height);
+  expect(height).toBe(0);
+});
+
+test('AK7 (#963): 375×812 — kein waagerechter Überlauf und keine abgeschnittenen Unterlängen, ein-/aufgeklappt, hell und dunkel', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Randfall-Sonde', schedule: 'weekly', target: 3 });
+  await page.goto('/routinen');
+
+  const row = page.locator('.habit-table__row', { hasText: 'Randfall-Sonde' });
+  const header = rowHeaderByName(page, 'Randfall-Sonde');
+  const headerBox = await header.evaluate((el) => el.getBoundingClientRect());
+  expect(headerBox.height, 'Berührungsziel bleibt ≥ var(--touch-target)').toBeGreaterThanOrEqual(44);
+
+  for (const expanded of [false, true]) {
+    if (expanded) await header.click();
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      const label = `${expanded ? 'aufgeklappt' : 'eingeklappt'}, ${scheme}`;
+
+      const overflow = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(overflow.scrollWidth, `kein waagerechter Überlauf (${label})`).toBeLessThanOrEqual(
+        overflow.clientWidth,
+      );
+
+      const schedule = row.locator('.habit-table__schedule');
+      const clipped = await schedule.evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+      expect(clipped, `Zeitplan-Zeile nicht abgeschnitten (${label})`).toBe(false);
+    }
+  }
+});
