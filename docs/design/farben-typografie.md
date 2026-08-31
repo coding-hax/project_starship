@@ -57,16 +57,32 @@ bedeutet nichts von sich aus — sie ist eine von zehn gleichwertigen Optionen,
 die eine Person einer Zeile zuweist, um sie von anderen Zeilen derselben Art zu
 unterscheiden.
 
-### Kategoriefarben (Termine, issue #553)
+### Kategoriefarben (Termine, issue #955, löst #553 ab)
 
 Innerhalb des Bereichs Termine tragen die fünf Kategorien (`privat`, `arbeit`,
 `gesundheit`, `sport`, `familie`) je einen eigenen Akzent — `--cat-privat` /
-`--cat-arbeit` / `--cat-gesundheit` / `--cat-sport` / `--cat-familie`. Das sind
-**keine** fünf gleichberechtigten Primärfarben, sondern Varianten um den
-Teal-Ton der Bereichsfarbe (gleiche Helligkeit/Chroma, nur der Farbton wandert).
-Sie erscheinen ausschließlich als 3px-Farbkante an der Terminkarte, nie als
-Flächenfarbe — die Fläche bleibt `--surface`. Ein Termin ohne Kategorie trägt
-stattdessen `--area-events`.
+`--cat-arbeit` / `--cat-gesundheit` / `--cat-sport` / `--cat-familie`. Anders
+als bei #553 sind das **keine** Varianten um einen gemeinsamen Ton mehr,
+sondern fünf über den vollen Farbkreis verteilte Farbtöne aus dem Entwurfsblatt
+(Orange/Grün/Himmel/Blau/Pflaume) — Nachbarn liegen mindestens 40° auseinander,
+derselbe Maßstab wie bei `--swatch-*` (siehe ADR-0028). `--cat-arbeit` und
+`--cat-privat` sind gegenüber dem Blatt-Hex aufgehellt (Blau 54%→68%, Pflaume
+44,6%→68% Lightness): am Blatt-Wert selbst reißt der Kategorie-Punkt auf dem
+Kalender-Grund (siehe unten) die 3:1-Schwelle.
+
+Zwei Kontexte, unterschiedlicher Bedarf:
+
+- **6px-Farbkante an der Terminkarte** (`event-time.ts`'s `categoryEdgeVar`):
+  der rohe Token-Wert, nie als Flächenfarbe — die Fläche bleibt `--surface`.
+  Ein Termin ohne Kategorie trägt stattdessen `--area-events`.
+- **Punkt auf dem Kalender-Grund** (Wochenstreifen, Monatsraster, Ganztägig-
+  Band): der rohe Wert reicht auf dem satt-blauen `--ground-kalender` nicht
+  für 3:1 (Nicht-Text, WCAG 1.4.11) — aufgehellt via
+  `color-mix(in oklab, var(--cat-*) 60%, var(--on-ground))`, dasselbe Rezept
+  wie das Ganztägig-Band (issue #924).
+
+Wer eine Kategorie in den Einstellungen von Hand umgefärbt hat (issue #660),
+sieht diese Vorgabe nicht — die eigene Wahl gewinnt, unverändert seit #660 AC5.
 
 ### Neutrale
 

@@ -1350,14 +1350,14 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
 
   const todayDots = dayDots(page, 'Sa, 18.');
   await expect(todayDots).toHaveCount(1);
-  const expectedArbeit = await resolveToken(page, '--cat-arbeit');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
   await expect
     .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
 
   const tomorrowDots = dayDots(page, 'So, 19.');
   await expect(tomorrowDots).toHaveCount(1);
-  const expectedSport = await resolveToken(page, '--cat-sport');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
   await expect
     .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
@@ -1366,7 +1366,7 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
   await expect(dayDots(page, 'Mo, 13.')).toHaveCount(0);
 });
 
-test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im Dark Mode (S5 AC3, Dark Mode)', async ({
+test('der Kategorie-Punkt kommt aus dem semantischen Token, aufgehellt gegen den Grund, mit eigenem Wert im Dark Mode (S5 AC3, Dark Mode; Mix seit issue #955 AK2)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -1380,13 +1380,79 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, mit eigenem Wert im 
   });
 
   const dot = dayDots(page, 'Sa, 18.').first();
-  const expectedLight = await resolveToken(page, '--cat-arbeit');
+  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveToken(page, '--cat-arbeit');
+  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #955: Kategoriefarben auf die Blatt-Palette                          */
+/* -------------------------------------------------------------------------- */
+
+/** Reads a --cat-* custom property's raw declared text — custom properties
+ *  aren't colour-parsed by getComputedStyle, so this comes back as the
+ *  literal `oklch(L C H)` source text, not a resolved rgb() — and pulls the
+ *  hue out of it. */
+async function categoryHue(page: Page, cssVar: string): Promise<number> {
+  const raw = await page.evaluate(
+    (cssVar) => getComputedStyle(document.documentElement).getPropertyValue(cssVar),
+    cssVar,
+  );
+  const match = raw.match(/oklch\([^)]*\s([\d.]+)\s*\)/);
+  if (!match) throw new Error(`${cssVar}: kein oklch()-Literal (${raw})`);
+  return Number(match[1]);
+}
+
+const CATEGORIES = ['sport', 'gesundheit', 'familie', 'arbeit', 'privat'] as const;
+
+/** Smallest gap between neighbouring hues on the colour wheel (circular, so
+ *  the gap after the largest hue wraps back to the smallest). */
+function minHueGap(hues: number[]): number {
+  const sorted = [...hues].sort((a, b) => a - b);
+  let min = Infinity;
+  for (let i = 0; i < sorted.length; i += 1) {
+    let gap = sorted[(i + 1) % sorted.length] - sorted[i];
+    if (gap <= 0) gap += 360;
+    min = Math.min(min, gap);
+  }
+  return min;
+}
+
+test('AK1: die fuenf --cat-* Vorgaben liegen als deklariertes oklch()-Literal mindestens 40° auseinander, hell und dunkel (issue #955)', async ({
+  page,
+}) => {
+  const lightHues = await Promise.all(CATEGORIES.map((c) => categoryHue(page, `--cat-${c}`)));
+  expect(minHueGap(lightHues)).toBeGreaterThanOrEqual(40);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkHues = await Promise.all(CATEGORIES.map((c) => categoryHue(page, `--cat-${c}`)));
+  expect(minHueGap(darkHues)).toBeGreaterThanOrEqual(40);
+});
+
+test('AK2: der aufgehellte Kategorie-Punkt (60%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955)', async ({
+  page,
+}) => {
+  async function dotContrast(category: string): Promise<number> {
+    const ground = await toRgb(page, await resolveToken(page, '--ground'));
+    const dot = await toRgb(
+      page,
+      await resolveMix(page, `var(--cat-${category})`, 60, 'var(--on-ground)'),
+    );
+    return contrastRatio(dot, ground);
+  }
+
+  for (const category of CATEGORIES) {
+    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  }
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  for (const category of CATEGORIES) {
+    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -3059,7 +3125,7 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
 
   const dots = dayDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveToken(page, '--cat-privat');
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 60, 'var(--on-ground)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedPrivat);
@@ -3130,8 +3196,8 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
   // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
   const dots = dayDots(page, 'Sa, 25.');
   await expect(dots).toHaveCount(2);
-  const expectedArbeit = await resolveToken(page, '--cat-arbeit');
-  const expectedSport = await resolveToken(page, '--cat-sport');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
   await expect
     .poll(() => dots.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
