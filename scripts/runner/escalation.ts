@@ -108,8 +108,10 @@ export function progressCommentWrittenThisRun(issue: number, gh: GhAdapter, runS
 // failcount- noch der F26-Waechter (progressCommentWrittenThisRun) greifen
 // dann. Ein UNION statt eines booleans, damit ein kuenftiger weiterer Grund
 // (z. B. eine Turn-Begrenzung) hier ergaenzt werden kann, statt 'needs-answer'
-// im Aufrufer hart zu sonderfallen.
-export type NonFailureEndReason = 'needs-answer';
+// im Aufrufer hart zu sonderfallen. 'awaiting-check' (#961) ist der zweite
+// Grund: der Bau-Lauf haelt sich inhaltlich fuer fertig und hat das bewusst
+// per `check`-Label markiert -- wartet auf CI/AK-Check, kein Fehlversuch.
+export type NonFailureEndReason = 'needs-answer' | 'awaiting-check';
 
 export interface EscalationInput {
   issue: number;
