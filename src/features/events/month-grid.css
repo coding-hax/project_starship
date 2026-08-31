@@ -1,0 +1,148 @@
+/* Static month card in /kalender's body (issue #958, T1 of #957) — same
+   --surface card shape as habit-history-card.css/habit-table.css, same
+   7-column dot/day vocabulary as calendar-strip.css's week strip, just a
+   fixed grid instead of a rolling carousel. */
+
+.month-grid {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  margin-bottom: var(--space-4);
+  /* Own surface, own ink (issue #832 AK5). */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  color: var(--text);
+  /* Einblenden beim Wechsel nach Monat (AK7) — kein Höhen-Übergang wie beim
+     ehemaligen Streifen-Karussell, nur ein Fade; unter reduced-motion
+     automatisch auf ~0 gekürzt (tokens.css's globale Regel). */
+  animation: month-grid-in var(--duration-spring-smooth) var(--ease-spring-smooth);
+}
+
+@keyframes month-grid-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.month-grid__nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.month-grid__nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.month-grid__nav-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.month-grid__weekday-header {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.month-grid__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.month-grid__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 34px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-spring);
+}
+
+/* Trefferfläche bleibt ≥44px trotz 34px gezeichneter Zelle (AK5, Muster #860
+   AK7/#818: dieselbe Trennung von gezeichnet und anfassbar) — ein
+   unsichtbares Pseudo-Element weitet die Fläche, ohne die gemalte Zelle
+   selbst zu vergrößern. */
+.month-grid__day::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
+.month-grid__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Fremdmonatstag (issue #958, AK2) — dieselbe Technik wie
+   calendar-strip.css's [data-outside-month], andere Dämpfung (30% statt 50%,
+   das Blatt-Vorbild fürs Raster). */
+.month-grid__day[data-outside-month] {
+  opacity: 0.3;
+}
+
+.month-grid__day[data-today] {
+  background: color-mix(in oklab, var(--area-events) 16%, var(--surface));
+  font-weight: var(--weight-emphasis);
+}
+
+.month-grid__day--selected {
+  background: var(--area-events);
+  color: var(--accent-fg);
+}
+
+/* Heute-und-ausgewählt: Auswahl gewinnt (wie im Wochenstreifen). */
+.month-grid__day--selected[data-today] {
+  background: var(--area-events);
+  color: var(--accent-fg);
+}
+
+/* Immer gerendert, auch ohne Termine — hält die Zeile auf gleicher Höhe,
+   gleiche Begründung wie calendar-strip.css's .calendar-strip__dots. */
+.month-grid__dots {
+  display: flex;
+  gap: 2px;
+  min-height: 5px;
+}
+
+.month-grid__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  /* Gleiches Rezept wie .calendar-strip__dot (issue #955 AK2). */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 60%, var(--on-ground));
+}

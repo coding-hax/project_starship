@@ -13,6 +13,7 @@ import { EventAgenda } from './event-agenda';
 import { EventDetail, type EventDetailState } from './event-detail';
 import { EventEditor, type EventEditorState } from './event-editor';
 import { formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
+import { MonthGrid } from './month-grid';
 import { expandForDay, type Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions, type EventExceptionView } from './use-event-exceptions';
@@ -87,6 +88,13 @@ export function CalendarView() {
    *  zum ersten Bericht auf `today` zurück, gleiches Muster wie `selectedDay`. */
   const [leadDayOverride, setLeadDayOverride] = useState<string | null>(null);
   const leadDay = leadDayOverride ?? today;
+  /** `YYYY-MM` — der fokussierte Monat der Monats-Karte (issue #958). Zieht mit
+   *  jeder Tagesauswahl mit (`handleSelectDay`), genau wie zuvor der geteilte
+   *  `windowAnchor` des Streifens Woche und Monat zusammenhielt — Wechseln in
+   *  den Monat zeigt so weiterhin den Monat der zuletzt gewählten/gescrollten
+   *  Zelle, nicht einen stehengebliebenen Stand. */
+  const [focusMonthOverride, setFocusMonthOverride] = useState<string | null>(null);
+  const focusMonth = focusMonthOverride ?? (today === null ? null : today.slice(0, 7));
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const [detailState, setDetailState] = useState<EventDetailState>(null);
@@ -136,9 +144,23 @@ export function CalendarView() {
   );
   const eventExceptions = exceptions ?? EMPTY_EXCEPTIONS;
 
-  const focusMonth = leadDay === null ? null : leadDay.slice(0, 7);
-  const period = leadDay === null ? NBSP : expanded ? yearLabel(leadDay) : formatMonthTitle(leadDay);
-  const title = leadDay === null ? NBSP : expanded ? monthName(leadDay) : 'Diese Woche';
+  // Monat: getrieben vom fokussierten Monat der Karte (`focusMonth`), nicht
+  // mehr von `leadDay` — der Streifen hat im Monat keine führende Zelle mehr.
+  // Woche: unverändert `leadDay` (issue #898).
+  const period = expanded
+    ? focusMonth === null
+      ? NBSP
+      : yearLabel(`${focusMonth}-01`)
+    : leadDay === null
+      ? NBSP
+      : formatMonthTitle(leadDay);
+  const title = expanded
+    ? focusMonth === null
+      ? NBSP
+      : monthName(`${focusMonth}-01`)
+    : leadDay === null
+      ? NBSP
+      : 'Diese Woche';
 
   // Nur im Monat berechnet (#834, „nur was die Daten hergeben") — die Woche
   // zeigt den Streifen selbst als Zusatz, keine Chips.
@@ -146,6 +168,15 @@ export function CalendarView() {
     if (!expanded || focusMonth === null) return null;
     return monthEventCounts(focusMonth, (day) => expandForDay(timelineEvents, eventExceptions, day));
   }, [expanded, focusMonth, timelineEvents, eventExceptions]);
+
+  /** Setzt die Auswahl **und** zieht den fokussierten Monat der Karte mit —
+   *  Tap/„Heute"/Tagesschritt im Streifen (issue #958) treffen so dieselbe
+   *  Regel wie die Karte selbst, gleiches Prinzip wie zuvor der geteilte
+   *  `windowAnchor` des Streifens Woche und Monat zusammenhielt. */
+  function handleSelectDay(day: string) {
+    setSelectedDayOverride(day);
+    setFocusMonthOverride(day.slice(0, 7));
+  }
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
@@ -224,7 +255,7 @@ export function CalendarView() {
         {today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
-            onSelectDay={setSelectedDayOverride}
+            onSelectDay={handleSelectDay}
             today={today}
             events={timelineEvents}
             exceptions={eventExceptions}
@@ -233,6 +264,17 @@ export function CalendarView() {
           />
         )}
       </header>
+      {expanded && today !== null && selectedDay !== null && focusMonth !== null && (
+        <MonthGrid
+          focusMonth={focusMonth}
+          selectedDay={selectedDay}
+          today={today}
+          events={timelineEvents}
+          exceptions={eventExceptions}
+          onSelectDay={handleSelectDay}
+          onFocusMonth={setFocusMonthOverride}
+        />
+      )}
       {!online && (
         <OfflineNotice>
           Offline — neue Termine liegen lokal und werden synchronisiert, sobald du wieder online
