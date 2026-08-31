@@ -20,31 +20,30 @@
 .event-agenda__all-day-button {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  overflow: hidden;
+  gap: 10px;
   width: 100%;
   min-height: var(--touch-target);
-  padding: var(--space-1) var(--space-2);
-  /* Kategorie-Tönung auf dem Grund, keine weiße Karte mehr (issue #924,
-     AK4/AK5) — bewusst dezent (6%): bei 15% (naheliegend, aber ungemessen)
-     reißt der Zeitraum-Text (--on-ground-muted) im Hellmodus unter die
-     4,5:1-Schwelle (gemessen 4,38:1 bei 15% gegen 4,54:1 bei 10%, 4,71:1 bei
-     6%). Die Fläche selbst bleibt damit unter 3:1 und ist eine dekorative
-     Fläche (docs/design/farben-typografie.md:136-142) — die Nicht-Text-
-     Schwelle (3:1) trägt stattdessen der Punkt (.event-agenda__all-day-dot).
-     Kein Ink-Reset mehr: anders als eine Karte erbt das Band
-     --text/--text-muted vom Grund (--on-ground/--on-ground-muted).
-     Issue #955 hat das für die volle Blatt-Palette nachgemessen: bei keinem
-     Mischanteil erreichen Fläche (3:1) und Text (4,5:1) gleichzeitig ihre
-     Schwelle — kein Rezeptfehler, sondern derselbe Zielkonflikt wie oben.
-     Entscheidung (#955, Option A): die Tönung bleibt dekorativ, die
-     bedeutungstragende 3:1-Anforderung erfüllt der Punkt. */
-  background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 6%, var(--ground));
+  padding: 10px 14px;
+  /* Zurück auf die weiße Schmalkarte des Entwurfsblatts (issue #956, revidiert
+     #924's Tönung-auf-dem-Grund). Eigene Fläche, eigene Tinte (#956 AK1 /
+     Blatt) — derselbe Ink-Reset wie .event-agenda__item, damit gedämpfter
+     Text auf --surface wieder die 4,5:1-Schwelle trifft statt vom Grund zu
+     erben. Polsterung 10/14 und Abstand 10px sind Blatt-Werte, bewusst
+     außerhalb der 4/8/12-Skala. */
+  background: var(--surface);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
   border: none;
   border-radius: var(--radius-card);
   color: inherit;
   font: inherit;
   text-align: start;
   cursor: pointer;
+  box-shadow: var(--shadow-raised);
 }
 
 .event-agenda__all-day-button:focus-visible {
@@ -54,8 +53,8 @@
 
 /* Abonniert, schreibgeschützt (issue #560, ADR-0022): kein Klick-Cursor
    (it's a <div>, not a <button>) und gedämpfter Titel lesen schon "von
-   außen" — der gestrichelte Ring am Punkt unten trägt seit #924 die Kanten-
-   Spur, die früher an der Kante des Bands selbst saß. */
+   außen" — der gestrichelte Ring am Balken unten trägt die Kanten-Spur, die
+   mit dem Punkt aus #924 an den Balken zurückwandert (issue #956). */
 .event-agenda__all-day-button[data-origin='subscribed'] {
   cursor: default;
 }
@@ -64,21 +63,25 @@
   color: var(--text-muted);
 }
 
-.event-agenda__all-day-button[data-origin='subscribed'] .event-agenda__all-day-dot {
+.event-agenda__all-day-button[data-origin='subscribed'] .event-agenda__all-day-bar {
   background: transparent;
   border: 1.5px dashed color-mix(in oklab, var(--agenda-cat, var(--area-events)) 60%, var(--on-ground));
 }
 
-.event-agenda__all-day-dot {
+.event-agenda__all-day-bar {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  /* Aufgehellte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #924,
-     AK5): die reine Kategoriefarbe erreicht im Hellmodus nur 2,13:1 gegen
-     den Kalender-Grund, unter der 3:1-Nicht-Text-Schwelle (WCAG 1.4.11).
-     Gemessen bei 60% Kategorie-Anteil: 3,37:1 hell / 5,98:1 dunkel. */
-  background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 60%, var(--on-ground));
+  align-self: stretch;
+  width: 4px;
+  border-radius: 2px;
+  /* Reine Kategoriefarbe wie im Blatt (`background: var(--tone)`), außer wo
+     sie 3:1 gegen --surface nicht roh erreicht (issue #956 AK3): gemessen
+     erreicht --cat-familie nur 2,66:1 hell (--cat-sport 2,73:1,
+     --area-events-Fallback 2,95:1) — alle unter der WCAG-1.4.11-Schwelle.
+     Bei 85% Kategorie-Anteil / 15% --text-base (kein --on-surface-Token,
+     also Richtung Flächentinte gemischt) hält der schlechteste Fall
+     (--cat-familie) 3,41:1 hell / 8,40:1 dunkel — alle fünf Kategorien plus
+     Fallback liegen darüber. */
+  background: color-mix(in oklab, var(--agenda-cat, var(--area-events)) 85%, var(--text-base));
 }
 
 .event-agenda__all-day-title {

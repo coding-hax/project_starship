@@ -2124,7 +2124,7 @@ test('ein mehrtägiger Termin ueber einen Monatswechsel bleibt an der Monatsgren
   await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig · Do–So');
 });
 
-test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Punkt, die Flaeche ist eine Toenung ueber dem Grund statt --surface — auch im Dark Mode (#555 AC1, umgezogen fuer #924)', async ({
+test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Balken, die Flaeche ist wieder --surface statt einer Toenung ueber dem Grund — auch im Dark Mode (#555 AC1, umgezogen fuer #956)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2139,30 +2139,38 @@ test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Punkt, di
 
   const bar = allDayBar(page, 'Betriebsausflug');
   await expect(bar).toBeVisible();
-  const dot = bar.locator('.event-agenda__all-day-dot');
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
 
-  // The card is gone (issue #924): no more white --surface, no --cat-* edge —
-  // the band sits on the route ground, category identity moved to the dot.
-  const expectedSurface = await resolveCardColor(page, '--surface', 'backgroundColor');
-  expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(expectedSurface);
-
-  const expectedDot = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  // Die Karte ist zurück (issue #956, revidiert #924): wieder weißes
+  // --surface statt einer Kategorie-Tönung auf dem Grund — die
+  // Kategorie-Identität trägt jetzt der Balken links.
+  const expectedSurfaceLight = await resolveCardColor(page, '--surface', 'backgroundColor');
   await expect
-    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedDot);
+    .poll(() => bar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSurfaceLight);
+
+  const expectedBar = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  await expect
+    .poll(() => edgeBar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBar);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDotDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedSurfaceDark = await resolveCardColor(page, '--surface', 'backgroundColor');
   await expect
-    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedDotDark);
+    .poll(() => bar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSurfaceDark);
+
+  const expectedBarDark = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  await expect
+    .poll(() => edgeBar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBarDark);
 });
 
 /* -------------------------------------------------------------------------- */
-/* #924 AK5: Kontrast auf dem Grund gemessen, nicht geschaetzt                */
+/* #956 AK3: Kontrast auf der weißen Schmalkarte gemessen, nicht geschaetzt   */
 /* -------------------------------------------------------------------------- */
 
-test('AK5: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen die Kategorie-Toenung, mit Kategorie und ohne — hell und dunkel', async ({
+test('AK3: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen --surface, mit Kategorie und ohne — hell und dunkel', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2220,7 +2228,7 @@ test('AK5: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen 
   }
 });
 
-test('AK5: der Kategorie-Punkt des Ganztags-Bands erreicht 3:1 gegen den Grund, mit Kategorie und ohne — hell und dunkel', async ({
+test('AK3: der Kategorie-Balken des Ganztags-Bands erreicht 3:1 gegen --surface, mit Kategorie und ohne — hell und dunkel', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2243,12 +2251,12 @@ test('AK5: der Kategorie-Punkt des Ganztags-Bands erreicht 3:1 gegen den Grund, 
   });
 
   async function measureDot(bar: Locator) {
-    const groundRgb = await toRgb(page, await resolveToken(page, '--ground'));
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
     const dotRgb = await toRgb(
       page,
-      await bar.locator('.event-agenda__all-day-dot').evaluate((el) => getComputedStyle(el).backgroundColor),
+      await bar.locator('.event-agenda__all-day-bar').evaluate((el) => getComputedStyle(el).backgroundColor),
     );
-    return contrastRatio(dotRgb, groundRgb);
+    return contrastRatio(dotRgb, surfaceRgb);
   }
 
   const withCategory = allDayBar(page, 'Mit Kategorie');
@@ -2307,7 +2315,7 @@ test('AK6: bei langem Titel bleibt das Ganztags-Band innerhalb der Bildschirmbre
   );
   expect(hasHorizontalOverflow).toBe(false);
 
-  await expect(bar.locator('.event-agenda__all-day-dot')).toBeVisible();
+  await expect(bar.locator('.event-agenda__all-day-bar')).toBeVisible();
   await expect(bar.locator('.event-agenda__all-day-range')).toBeVisible();
   await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig');
 });

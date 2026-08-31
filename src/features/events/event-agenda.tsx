@@ -108,7 +108,7 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEven
                     data-continues-after={item.continuesAfter}
                     style={{ '--agenda-cat': categoryEdgeVar(item.category) } as CSSProperties}
                   >
-                    <span className="event-agenda__all-day-dot" aria-hidden="true" />
+                    <span className="event-agenda__all-day-bar" aria-hidden="true" />
                     <span className="event-agenda__all-day-title">{item.title}</span>
                     <span className="event-agenda__all-day-range">{allDayRangeLabel(item)}</span>
                   </AllDayTag>
