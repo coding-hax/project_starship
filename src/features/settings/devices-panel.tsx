@@ -8,12 +8,19 @@ import { useOnline } from '@/ui/use-online';
 import { type DeviceCredential, useDevices } from './use-devices';
 import './devices-panel.css';
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', {
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  const dateStr = date.toLocaleDateString('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
+  const timeStr = date.toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${dateStr}, ${timeStr}`;
 }
 
 interface CredentialRowProps {
@@ -46,8 +53,8 @@ function CredentialRow({
   const [name, setName] = useState(credential.label ?? '');
   const nameInputId = useId();
   const label = credential.label || 'Unbenanntes Gerät';
-  const description = `Hinzugefügt am ${formatDate(credential.createdAt)} · Zuletzt genutzt ${
-    credential.lastUsedAt ? formatDate(credential.lastUsedAt) : 'nie'
+  const description = `Hinzugefügt am ${formatDateTime(credential.createdAt)} · Zuletzt genutzt ${
+    credential.lastUsedAt ? formatDateTime(credential.lastUsedAt) : 'nie'
   }`;
   const rowLabel = credential.current ? (
     <>

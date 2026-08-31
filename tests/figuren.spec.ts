@@ -458,6 +458,31 @@ test('AK6: kein Kopf läuft über, nachdem die 42-px-Figur eingezogen ist (375×
   }
 });
 
+test('AK1 (#962): Figur sitzt rechts außen in der Titelzeile von /routinen und /aktivitaeten', async ({ page }) => {
+  await registerPasskey(page);
+  for (const path of ['/routinen', '/aktivitaeten']) {
+    await page.goto(path);
+    const row = page.locator('.page-face-row');
+    const face = row.locator('.face');
+    await expect(face, `Figur auf ${path}`).toBeVisible();
+    const rowBox = (await row.boundingBox())!;
+    const faceBox = (await face.boundingBox())!;
+    // rechte Hälfte statt links am Titel:
+    expect(faceBox.x, `Figur-x auf ${path}`).toBeGreaterThan(rowBox.x + rowBox.width / 2);
+    // rechte Kante bündig mit der Zeile (± 2px):
+    expect(
+      rowBox.x + rowBox.width - (faceBox.x + faceBox.width),
+      `rechter Abstand auf ${path}`,
+    ).toBeLessThanOrEqual(2);
+    // AK2, waagerecht kein Überlauf:
+    const { scrollWidth, clientWidth } = await row.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(scrollWidth, `waagerechter Überlauf auf ${path}`).toBeLessThanOrEqual(clientWidth);
+  }
+});
+
 test('AK7: die Figuren tragen aria-hidden auf allen neun Routen', async ({ page, browser }) => {
   await registerPasskey(page);
   await forEachRoute(page, browser, async (routePage, _face, path) => {
