@@ -33,16 +33,6 @@
   color: var(--text);
 }
 
-.habit-table__head {
-  margin: 0;
-  padding: var(--space-3) var(--space-4) var(--space-2);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-emphasis);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
 .habit-table__rows {
   display: flex;
   flex-direction: column;
@@ -51,7 +41,7 @@
   padding: 0;
 }
 
-.habit-table__row {
+.habit-table__row + .habit-table__row {
   border-block-start: 1px solid var(--border-faint);
 }
 
