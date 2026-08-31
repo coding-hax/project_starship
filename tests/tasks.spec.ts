@@ -179,6 +179,43 @@ test('der Leerzustand auf /aufgaben sitzt eng unter dem Umschalter (issue #932)'
   expect(padding.bottom).toBeLessThanOrEqual(16);
 });
 
+test('der Leerzustand auf /aufgaben bleibt im Dark Mode und bei reduzierter Bewegung korrekt (issue #932 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const empty = page.getByText('Nichts geplant');
+  await expect(empty).toBeVisible();
+
+  // The muted text colour must resolve through the semantic token in both
+  // themes — a hardcoded value would survive the theme swap unchanged and the
+  // `not.toBe` below would catch it.
+  const lightColor = await empty.evaluate((el) => getComputedStyle(el).color);
+  expect(lightColor).toBe(await resolveColorToken(page, '--text-muted'));
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await empty.evaluate((el) => getComputedStyle(el).color);
+  expect(darkColor).not.toBe(lightColor);
+  expect(darkColor).toBe(await resolveColorToken(page, '--text-muted'));
+
+  // tokens.css zeroes every animation/transition under reduced motion; this
+  // proves that global rule actually reaches this element. The padding from
+  // AK1 must not depend on either preference.
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  const reduced = await empty.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      animation: parseFloat(style.animationDuration),
+      transition: parseFloat(style.transitionDuration),
+      top: parseFloat(style.paddingTop),
+      bottom: parseFloat(style.paddingBottom),
+    };
+  });
+  expect(reduced.animation).toBeLessThanOrEqual(0.001);
+  expect(reduced.transition).toBeLessThanOrEqual(0.001);
+  expect(reduced.top).toBeLessThanOrEqual(16);
+  expect(reduced.bottom).toBeLessThanOrEqual(16);
+});
+
 test('a task created locally appears without any network request', async ({ page }) => {
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
