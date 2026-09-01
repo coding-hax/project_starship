@@ -25,13 +25,13 @@ const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
   // Own `aria-label` "Aufgaben der nächsten 7 Tage" (issue #979 AK3), matched
-  // here by the "Aufgaben" substring (issue #157). A group card's outer `<li>`
+  // here by the "Aufgaben" substring (issue #157). A group's outer `<li>`
   // renders `role="presentation"` (task-list.tsx, issue #866), so it never
   // counts as a `listitem` here — only the task rows nested inside it do.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-/** A group card's title (issue #866) — "Überfällig"/"Heute"/"7 Tage". */
+/** A group's title (issue #866) — "Überfällig"/"Heute"/"7 Tage". */
 function groupTitles(page: Page) {
   return page.locator('.task-list__group-title');
 }
@@ -51,9 +51,12 @@ function progressFor(page: Page, title: string) {
 }
 
 /** Content anchor for the Aufgaben section (issue #972 AK3: the module `<h2>`
- * is visually hidden) — whichever of list/empty-state is actually rendered. */
+ * is visually hidden) — whichever of list/empty-state is actually rendered.
+ * `.task-list__surface` (issue #996), not the inner `.task-list` `<ul>` — the
+ * surface is what now carries the card's own `--space-4` padding, so its box
+ * is what stays comparable to `.task-list__empty`'s reserved height below. */
 function aufgabenContent(page: Page): Locator {
-  return page.locator('.task-list, .task-list__empty');
+  return page.locator('.task-list__surface, .task-list__empty');
 }
 
 /** Content anchor for the Routinen section (issue #972 AK2: the module keeps
@@ -458,11 +461,11 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     const filledBox = await content.boundingBox();
     if (!filledBox) throw new Error('Die Aufgabenliste muss sichtbar sein');
 
-    // The empty state reserves one group card's worth of box — its own padding, a
-    // header line, one task row (issue #762, card since issue #866) — so a filled
-    // "Woche" list is never just a bare row anymore, and its height barely grows.
-    // Anything beyond that is the hole issue #228 fixed reopening — the numbers
-    // travel in the message, so a red run says how far off it is.
+    // The empty state reserves one group's worth of box — its own padding, a
+    // header line, one task row (issue #762, sized this way since issue #866) —
+    // so a filled "Woche" list is never just a bare row anymore, and its height
+    // barely grows. Anything beyond that is the hole issue #228 fixed reopening
+    // — the numbers travel in the message, so a red run says how far off it is.
     expect(
       Math.abs(emptyBox.height - filledBox.height),
       `leer ${emptyBox.height}px vs. mit Aufgabe ${filledBox.height}px bei ${width}px`,

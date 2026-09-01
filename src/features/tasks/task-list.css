@@ -1,10 +1,14 @@
 /**
- * Task list (docs/DESIGN_SYSTEM.md): one group is one floating card
- * (`.task-list__group-card`, issue #866 — reverses the flat-rows-on-a-hairline
- * look issue #704 introduced). Rows inside a card stay flat, bündig, no surface
- * or shadow of their own; a 3px colour edge on the left still carries
- * overdue/priority state. Completed tasks recede rather than disappear, so
- * "done" still reads as a small win instead of just vanishing.
+ * Task list (docs/DESIGN_SYSTEM.md): the whole list is one shared floating
+ * surface (`.task-list__surface`, issue #996 — reverses issue #866's one-
+ * card-per-group stack, which showed more card edge than content at this
+ * app's typical one-or-two-tasks-per-bucket size, see
+ * docs/design/formwahl-und-zustaende.md R1). Groups inside the surface are
+ * separated by whitespace and their uppercase header alone — no card, no
+ * line between them. Rows stay flat, bündig, no surface or shadow of their
+ * own; a 3px colour edge on the left still carries overdue/priority state.
+ * Completed tasks recede rather than disappear, so "done" still reads as a
+ * small win instead of just vanishing.
  */
 
 /* Tight, not roomy (issue #932) — `--space-12` here made an empty /aufgaben read
@@ -17,6 +21,17 @@
   color: var(--text-muted);
 }
 
+/* Shares `.task-list__surface` with the "ohne Datum" toggle when both render
+   at once (issue #996 AK7: "Nichts fällig, aber undatierte Aufgaben
+   vorhanden") — the surface already reserves `--space-4`/`--space-3` top and
+   bottom, so this paragraph's own block padding would double it. Its inline
+   padding survives (still needed, the surface itself carries none), and the
+   standalone case (no surface parent, AK7's "gar keine Aufgaben") keeps its
+   full padding untouched. */
+.task-list__surface > .task-list__empty {
+  padding-block: 0;
+}
+
 /* Woche/Alle/Erledigt (issue #705 AK2) — sits between the page heading and the
    list, so it needs its own bottom space rather than borrowing the list's. */
 .task-list__view-switcher {
@@ -24,27 +39,32 @@
 }
 
 /**
- * A group's card (issue #866 AK1) — the floating surface every row inside it
- * sits on, replacing the flat-list hairline look from issue #704. The outer
- * `<li role="presentation">` (task-list.tsx) keeps it out of `listitem`
- * counts; `.list-motion-item` drives the same enter/exit as every row
- * (motion.css), inherited from the group's marker so the whole card fades in
- * or out together instead of each row animating on its own.
+ * The one shared surface for the whole list (issue #996 AK1) — every
+ * bucket group's header and rows sit on it now; issue #866's model, one
+ * floating card per group, is reversed (see the file banner above). A group
+ * itself (`.task-list__group`, the `<li role="presentation">` in
+ * task-list.tsx) carries no background, radius or shadow of its own anymore
+ * — it reads as a section of this surface via its header and the whitespace
+ * around it alone (AK4), never a line. `.list-motion-item` on that `<li>`
+ * still drives its own enter/exit (motion.css): a group vanishing (its
+ * header and all its rows) still animates as one piece, the surface itself
+ * never jumps, and the other groups are untouched (AK8).
  */
-.task-list__group-card {
+.task-list__surface {
   background: var(--surface);
   border-radius: var(--radius-surface);
   box-shadow: var(--shadow-raised);
-  /* Block only (AK1: "Polsterung der Karte --space-4") — a row already carries
-     its own `--space-4` inline padding (`.task-list__item`), so an inline
-     padding here as well would double the inset every row (and the header,
-     see below) sits at, squeezing the available title width enough to wrap
-     text that fit before issue #866 and throw off row height/position
-     (issues found via #866 CI: checkoff-motion AC5, tasks.spec.ts AK7). */
+  /* Block only (same reasoning issue #866 used for the old per-group card) —
+     a row already carries its own `--space-4` inline padding
+     (`.task-list__item`), so an inline padding here as well would double the
+     inset every row (and the header, see below) sits at, squeezing the
+     available title width enough to wrap text that fit before and throw off
+     row height/position (issues found via #866 CI: checkoff-motion AC5,
+     tasks.spec.ts AK7). */
   padding-block: var(--space-4);
   /* Own surface, own ink (issue #832 AK5) — same reset every other floating
-     surface in this app uses (section-card.css, habit-today.css), otherwise a
-     route whose ground ink is white reads white text on this near-white card. */
+     surface in this app uses (section-card.css, habit-today.css), now set
+     once for the whole list instead of once per group (issue #996 AK6). */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
   --border: var(--border-base);
@@ -53,11 +73,11 @@
   color: var(--text);
 }
 
-/* Title + count, in that order (AK1: "Anzahl rechts"). A card without a
-   header (the "Alle" view's one, anonymous card) simply omits this element —
+/* Title + count, in that order (AK1: "Anzahl rechts"). A group without a
+   header (the "Alle" view's one, anonymous group) simply omits this element —
    task-list.tsx only renders it when a group actually has a label. Carries its
-   own `--space-4` inline padding since the card itself no longer does (see
-   above) — this is what keeps the header lined up with the rows below it. */
+   own `--space-4` inline padding since the surface itself only pads block
+   (see above) — this is what keeps the header lined up with the rows below it. */
 .task-list__group-header {
   display: flex;
   align-items: baseline;
@@ -118,14 +138,15 @@
  * On /uebersicht the empty state sits between two section headings, where
  * space-12 tore a hole into the page — nothing due looked like a rendering bug
  * (issue #228). A filled "Woche" list is never just one row anymore, though: the
- * shortest possible one (a single overdue-or-today task, no undated card) is one
- * group card — its own top/bottom padding, a header line, one task row (issue
- * #762, card since issue #866) — so the empty state reserves all of that, not
- * just the row — otherwise the very case #228 fixed reopens the moment the last
- * task of the week is checked off. No border and no surface: this is a note, not
- * a card. On the full /aufgaben screen the empty state is *not* given room to
- * breathe (issue #932): it sits tight under the view switcher instead of
- * floating in the middle of the screen — see `.task-list__empty` above.
+ * shortest possible one (a single overdue-or-today task, no undated section) is
+ * one group's worth of the shared surface — its own top/bottom padding, a
+ * header line, one task row (issue #762, sized this way since issue #866) — so
+ * the empty state reserves all of that, not just the row — otherwise the very
+ * case #228 fixed reopens the moment the last task of the week is checked off.
+ * No border and no surface: this is a note, not a card. On the full /aufgaben
+ * screen the empty state is *not* given room to breathe (issue #932): it sits
+ * tight under the view switcher instead of floating in the middle of the
+ * screen — see `.task-list__empty` above.
  */
 .task-list__empty--compact {
   display: flex;
@@ -137,9 +158,11 @@
   padding: var(--space-3) var(--space-4);
 }
 
-/* The outer list of group cards (issue #866) — `--space-3` between cards is
-   what carries AK1's "Abstand zwischen den Karten"; the rows *inside* a card
-   stay bündig via `.task-list__group-list` below, which does not use this gap. */
+/* The outer list of groups (issue #866, no longer cards since issue #996) —
+   `--space-3` between groups is now the *only* thing separating them (AK4:
+   "nur durch Abstand und ihren Kopf getrennt", no line); the rows *inside* a
+   group stay bündig via `.task-list__group-list` below, which does not use
+   this gap. */
 .task-list {
   display: flex;
   flex-direction: column;
@@ -149,9 +172,9 @@
   padding: 0;
 }
 
-/* A group card's own row list (issue #866) — also reused, unchanged, by the
+/* A group's own row list (issue #866) — also reused, unchanged, by the
    "ohne Datum" `SectionCard`'s rows: both are just a flat, bündig stack of
-   task rows with no gap of their own, the spacing between *cards* lives on
+   task rows with no gap of their own, the spacing between *groups* lives on
    `.task-list` above instead. */
 .task-list__group-list {
   display: flex;
@@ -162,29 +185,23 @@
   padding: 0;
 }
 
-/* The "ohne Datum" card (issue #762) — same spacing idea as "Archiviert"
-   (habit-list.css) between the active list and the archive below it, just not
-   adjacency-scoped: this class only ever appears in the one spot in
-   task-list.tsx, always right after either the list, the sparse note, or the
-   compact /uebersicht empty state. `--space-3`, not `--space-4` (issue #866) —
-   the same rhythm the group cards above it now use. */
-.task-list__undated-card {
-  margin-top: var(--space-3);
-}
-
-/* /uebersicht only (issue #931) — the shared `.section-card` surface (16px
-   padding all round + `--shadow-raised`) turns this one-line toggle into a
-   ~76px block collapsed, Designregel 2 ("keine Form, die mehr Gerüst als
-   Inhalt zeigt"). Two-class selector so it wins over both `.section-card`
-   and the base rule above without touching either — `/aufgaben` (no
-   `--flat`) keeps its full card. Only the vertical padding goes: the header
-   button's own `min-height: var(--touch-target)` (section-card.css) then is
-   the whole collapsed height, still a full 44px tap target. */
-.section-card.task-list__undated-card--flat {
+/* The "ohne Datum" toggle (issue #762) now shares `.task-list__surface` with
+   the rest of the list instead of floating as its own card (issue #996 AK2)
+   — `SectionCard`'s own surface, shadow and `--space-6` bottom margin
+   (section-card.css) all get undone here, so it reads as this surface's last
+   section, not a card nested inside a card. `--space-3` top margin is the
+   whole gap to whatever sits above it (last bucket group, sparse note or
+   empty message); inline padding survives since the surface itself only pads
+   block (see `.task-list__surface` above). The header button's own
+   `min-height: var(--touch-target)` (section-card.css) is untouched, so the
+   collapsed toggle keeps its full 44px tap target despite the padding going. */
+.section-card.task-list__undated-card {
+  margin: var(--space-3) 0 0;
   padding-block: 0;
   padding-inline: var(--space-4);
-  border-radius: var(--radius-card);
+  border-radius: 0;
   box-shadow: none;
+  background: transparent;
 }
 
 .task-list__item {

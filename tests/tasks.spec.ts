@@ -1288,13 +1288,15 @@ test('keine eigene Kartenfläche mehr — Zeile flächenlos in ihrer Gruppen-Kar
   const borderBlockEndColor = await firstRow.evaluate(
     (el) => getComputedStyle(el).borderBlockEndColor,
   );
-  // Since #866 the row sits inside `.task-list__group-card`, which resets
-  // `--border-faint` to its context-free `-base` value (same Ink-Reset every
-  // other floating surface uses) — resolving the token against the page ground
-  // (as before #866) would pick up globals.css's ground-relative override
-  // instead, so the probe must live inside the card, not on document.body.
+  // Since #866 the row sits inside the list's shared card
+  // (`.task-list__surface`, one surface for the whole list since #996), which
+  // resets `--border-faint` to its context-free `-base` value (same Ink-Reset
+  // every other floating surface uses) — resolving the token against the page
+  // ground (as before #866) would pick up globals.css's ground-relative
+  // override instead, so the probe must live inside the card, not on
+  // document.body.
   expect(borderBlockEndColor).toBe(
-    await resolveColorTokenIn(page, '.task-list__group-card', '--border-faint'),
+    await resolveColorTokenIn(page, '.task-list__surface', '--border-faint'),
   );
 });
 
@@ -1482,9 +1484,10 @@ test('die randlose Zeile behält die volle Trefferfläche (issue #706 AK8)', asy
   const row = taskRowFor(page, 'Volle Breite');
   const rowBox = await row.boundingBox();
   // Full-width grab surface within its own card (issue #866 moved the card
-  // surface up to `.task-list__group-card` — the row itself still has no
-  // inset of its own, so it fills exactly its immediate parent's width, not
-  // the outer `<ul>`'s, which is now wider by the card's own padding).
+  // surface up to the group wrapper, now the list's shared `.task-list__surface`
+  // since #996 — the row itself still has no inset of its own, so it fills
+  // exactly its immediate parent's width, not the outer `<ul>`'s, which is now
+  // wider by the card's own padding).
   const parentWidth = await row.evaluate((el) => el.parentElement!.getBoundingClientRect().width);
   if (!rowBox) throw new Error('missing bounding box');
 
@@ -3446,14 +3449,16 @@ test('AK6: Aufgaben ohne Fälligkeit stehen unter „7 Tage" nicht in der Liste,
 
   const card = page.getByRole('button', { name: '2 Aufgaben ohne Datum' });
   await expect(card).toHaveAttribute('aria-expanded', 'false');
-  // /uebersicht bekam mit issue #931 eine Modifier-Klasse, die die eingeklappte
-  // Fläche auf eine Zeile schrumpft (≤52px) — hier auf /aufgaben bleibt die
-  // Basisklasse unangetastet, also das volle Karten-Format (AK4).
+  // Seit issue #996 teilt sich die Ausklappzeile die eine Kartenfläche der
+  // Liste (`.task-list__surface`) mit den Bucket-Gruppen statt einer eigenen
+  // Karte — dieselbe ≤52px-Kollapshöhe wie /uebersicht (issue #931 AK1),
+  // unabhängig von der Route; der Umschalter bleibt trotzdem ein volles
+  // Tap-Target (issue #996 AK2: ≥44px).
   const cardArea = page.locator('.task-list__undated-card');
-  await expect(cardArea).not.toHaveClass(/--flat/);
   const cardBox = await cardArea.boundingBox();
   expect(cardBox).not.toBeNull();
-  expect(cardBox!.height).toBeGreaterThan(60);
+  expect(cardBox!.height).toBeGreaterThanOrEqual(44);
+  expect(cardBox!.height).toBeLessThanOrEqual(52);
   // `inert` (section-card.tsx) isn't respected by Playwright's role/text engine
   // (checked empirically: getByRole still finds inert rows) — the collapsed
   // *container* is the only element whose own box is genuinely zero-size (CSS
