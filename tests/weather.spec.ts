@@ -29,6 +29,24 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
+/** Same idea as `resolveColorToken`, for any other property — `border-radius`,
+ * `box-shadow`, `padding-top`/`padding-left` (issue #973 AK2). Longhand padding
+ * properties, not the shorthand — `getComputedStyle` only normalizes that
+ * reliably back to a string for longhands. */
+async function resolveToken(page: Page, property: string, token: string): Promise<string> {
+  return page.evaluate(
+    ({ property, token }) => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      const value = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return value;
+    },
+    { property, token },
+  );
+}
+
 interface DaySet {
   dates: string[];
   weekdays: string[];
@@ -779,6 +797,66 @@ test('eine Tageskarte nutzt den --surface-Token, auch im Dark Mode (issue #139 A
   const darkBg = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).toBe(await resolveToken());
   expect(darkBg).not.toBe(lightBg);
+});
+
+test('die Schmalkarte selbst trägt --surface/--radius-surface/--shadow-raised und Polsterung in Token-Schritten (issue #973 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const card = page.locator('.weather-forecast');
+  await expect(card).toBeVisible();
+
+  const surfaceToken = await resolveColorToken(page, '--surface');
+  const radiusToken = await resolveToken(page, 'border-radius', '--radius-surface');
+  const shadowToken = await resolveToken(page, 'box-shadow', '--shadow-raised');
+  // 13px/16px im Blatt (issue #973 AK2) — --space-3 (12px) oben/unten, --space-4
+  // (16px) seitlich, keine rohen Pixelwerte.
+  const paddingBlockToken = await resolveToken(page, 'padding-top', '--space-3');
+  const paddingInlineToken = await resolveToken(page, 'padding-left', '--space-4');
+
+  expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingTop)).toBe(paddingBlockToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingBottom)).toBe(paddingBlockToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe(paddingInlineToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingRight)).toBe(paddingInlineToken);
+});
+
+test('Icon ~26px, Höchstwert in --font-display/--weight-emphasis mit tabular-nums (issue #973 AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const firstDay = weatherDays(page).first();
+  const icon = firstDay.locator('.weather-forecast__icon svg');
+  await expect(icon).toBeVisible();
+  const iconSize = await icon.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { width: style.width, height: style.height };
+  });
+  expect(iconSize.width).toBe('26px');
+  expect(iconSize.height).toBe('26px');
+
+  const tempMax = firstDay.locator('.weather-forecast__temp-max');
+  const { fontFamily, fontWeight, fontVariantNumeric } = await tempMax.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      fontVariantNumeric: style.fontVariantNumeric,
+    };
+  });
+  const displayFamilyToken = await resolveToken(page, 'font-family', '--font-display');
+  const emphasisWeightToken = await resolveToken(page, 'font-weight', '--weight-emphasis');
+  expect(fontFamily).toBe(displayFamilyToken);
+  expect(fontWeight).toBe(emphasisWeightToken);
+  expect(fontVariantNumeric).toContain('tabular-nums');
 });
 
 test('bei reduzierter Bewegung steht der Lade-Puls still (issue #139 AC10)', async ({ page }) => {
