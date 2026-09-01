@@ -33,17 +33,18 @@ const SWIPE_THRESHOLD_PX = 80;
  * One geometry for both charts: same plot box, same hour grid, so the temperature
  * curve and the precipitation bars can be read against each other column for
  * column. User units, not pixels — the `viewBox` scales to whatever width the card
- * gives it. The left gutter holds the y labels, the bottom one the hours; both are
+ * gives it. Since #939 removed the y-axis labels, the plot box spans the full
+ * viewBox width (issue #998) — only the bottom row still holds the hour labels,
  * part of the same SVG rather than a separate flex row, because only inside the
  * SVG can a label sit at the exact x of the data point it belongs to. That
- * mismatch was the bug: the old label row spread 00/06/12/18 evenly across the
- * full width, so "18:00" ended up at the right edge, where hour 23 actually is.
+ * mismatch was an earlier bug: the label row once spread 00/06/12/18 evenly
+ * across the full width, so "18:00" ended up at the right edge, where hour 23
+ * actually is.
  */
 const VIEW_W = 320;
 const VIEW_H = 112;
-const PLOT_X = 38;
 const PLOT_Y = 6;
-const PLOT_W = VIEW_W - PLOT_X - 8;
+const PLOT_W = VIEW_W;
 const PLOT_H = 80;
 const PLOT_BOTTOM = PLOT_Y + PLOT_H;
 const HOUR_LABEL_Y = PLOT_BOTTOM + 16;
@@ -51,6 +52,10 @@ const HOURS_PER_DAY = 24;
 /** Every sixth hour of the day plus midnight at the far end — five evenly spaced
  * quarter-day marks, none of them crowding the last one (issue #795). */
 const HOUR_TICKS = [0, 6, 12, 18, HOURS_PER_DAY];
+/** Clearance a peak label needs above its point — a 100% precipitation bar or the
+ * day's hottest hour would otherwise put a text line above PLOT_Y, outside the
+ * viewBox (issue #998 AK8/AK16). */
+const LABEL_HEADROOM = 12;
 
 export interface WeatherDayDetailProps {
   date: string;
@@ -79,21 +84,17 @@ function ChartFrame({
 }) {
   return (
     <svg className={className} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label={ariaLabel}>
-      <line
-        className="weather-day__chart-axis"
-        x1={PLOT_X}
-        x2={PLOT_X + PLOT_W}
-        y1={PLOT_BOTTOM}
-        y2={PLOT_BOTTOM}
-      />
+      <line className="weather-day__chart-axis" x1={0} x2={PLOT_W} y1={PLOT_BOTTOM} y2={PLOT_BOTTOM} />
       {xTicks.map((tick, i) => (
         <text
           key={tick.label}
           className="weather-day__chart-tick"
           x={tick.x}
           y={HOUR_LABEL_Y}
-          // Centred on its tick, the last label would run past the viewBox edge.
-          textAnchor={i === xTicks.length - 1 ? 'end' : 'middle'}
+          // Centred on its tick, the first/last label would run past the viewBox
+          // edge — so each anchors to its inside edge instead (issue #795 for the
+          // last, issue #998 AK3 for the first).
+          textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
         >
           {tick.label}
         </text>
@@ -105,6 +106,14 @@ function ChartFrame({
 
 function hourTickLabel(hour: number): string {
   return `${String(hour).padStart(2, '0')}:00`;
+}
+
+/** Same reasoning as the hour ticks' own edge anchoring — a peak label centred
+ * on hour 0 or the last hour would run past the viewBox edge (issue #998 AK16). */
+function edgeAnchor(index: number, count: number): 'start' | 'middle' | 'end' {
+  if (index === 0) return 'start';
+  if (index === count - 1) return 'end';
+  return 'middle';
 }
 
 /**
@@ -140,21 +149,47 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   const rainHours = day.hours.filter((hour) => hour.precipitation > 0);
   const rainTotal = rainHours.reduce((sum, hour) => sum + hour.precipitation, 0);
   const maxProbability = Math.max(0, ...day.hours.map((hour) => hour.precipitationProbability));
+  // No rain at all (maxProbability 0, header reads "Kein Niederschlag erwartet.")
+  // gets no peak label — a "0 %" line over an empty baseline (issue #998 AK7).
+  // Earliest hour wins a tie (AK6): `findIndex` returns the first match.
+  const peakProbabilityIndex =
+    maxProbability > 0 ? day.hours.findIndex((hour) => hour.precipitationProbability === maxProbability) : -1;
+  // Both charts scale into PLOT_H minus the label headroom rather than the full
+  // plot height, so a 100% bar or the day's hottest hour still has room above it
+  // for its own label (issue #998 AK8/AK12/AK16).
+  const plotMaxHeight = PLOT_H - LABEL_HEADROOM;
 
   const axis = temperatureAxis(day.hours);
-  const curve = smoothPath(day.hours, PLOT_W, PLOT_H, axis);
+  const curveOffsetY = PLOT_Y + LABEL_HEADROOM;
+  const curve = smoothPath(day.hours, PLOT_W, plotMaxHeight, axis);
   const temperatureY = (value: number) =>
-    PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * PLOT_H;
+    PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * plotMaxHeight;
   // Hour n reads the axis as a full day, 0..24 — so it sits at n/24 of the width,
   // one slot short of the right edge, matching the 24:00 tick there (issue #795).
-  const curveX = (hour: number) => PLOT_X + (hour / HOURS_PER_DAY) * PLOT_W;
+  const curveX = (hour: number) => (hour / HOURS_PER_DAY) * PLOT_W;
   // A bar owns a slot instead, so its label belongs over that slot's centre.
   const slotWidth = PLOT_W / HOURS_PER_DAY;
   const barWidth = slotWidth * 0.6;
-  const slotX = (hour: number) => PLOT_X + (hour + 0.5) * slotWidth;
+  const slotX = (hour: number) => (hour + 0.5) * slotWidth;
 
   const isToday = nowMark.dateKey === date;
   const nowTemp = isToday && day.hours.length > 0 ? temperatureAtHour(day.hours, nowMark.hourOfDay) : null;
+
+  // The curve's own highest/lowest plotted point (day.hours), not day.tempMax/Min
+  // — those daily aggregates can disagree with the hourly series, and a number
+  // that doesn't match its own spot is worse than none (issue #998 AK13).
+  const tempValues = day.hours.map((hour) => hour.temperature);
+  const maxTemp = Math.max(...tempValues);
+  const minTemp = Math.min(...tempValues);
+  const maxTempIndex = day.hours.findIndex((hour) => hour.temperature === maxTemp);
+  const minTempIndex = day.hours.findIndex((hour) => hour.temperature === minTemp);
+  // A flat day collapses both extremes onto the same hour — one caption, not two
+  // stacked on top of each other (AK14).
+  const showMinTempLabel = minTemp !== maxTemp;
+  // The now-point already carries this exact value at this exact spot — drawing
+  // the extreme label on top of it would repeat the number (AK15).
+  const maxTempCoincidesWithNow = nowTemp !== null && nowMark.hourOfDay === maxTempIndex;
+  const minTempCoincidesWithNow = nowTemp !== null && nowMark.hourOfDay === minTempIndex;
 
   return (
     <div className="weather-day">
@@ -176,16 +211,8 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
               <stop className="weather-day__area-stop--bottom" offset="1" />
             </linearGradient>
           </defs>
-          <path
-            className="weather-day__chart-area"
-            d={curve.area}
-            transform={`translate(${PLOT_X} ${PLOT_Y})`}
-          />
-          <path
-            className="weather-day__chart-line"
-            d={curve.line}
-            transform={`translate(${PLOT_X} ${PLOT_Y})`}
-          />
+          <path className="weather-day__chart-area" d={curve.area} transform={`translate(0 ${curveOffsetY})`} />
+          <path className="weather-day__chart-line" d={curve.line} transform={`translate(0 ${curveOffsetY})`} />
           {nowTemp !== null && (
             <>
               <circle
@@ -203,6 +230,28 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
                 {Math.round(nowTemp)}°
               </text>
             </>
+          )}
+          {!maxTempCoincidesWithNow && (
+            <text
+              className="weather-day__extreme-label"
+              x={curveX(maxTempIndex)}
+              y={temperatureY(maxTemp) - 8}
+              textAnchor={edgeAnchor(maxTempIndex, day.hours.length)}
+              aria-hidden="true"
+            >
+              {Math.round(maxTemp)}°
+            </text>
+          )}
+          {showMinTempLabel && !minTempCoincidesWithNow && (
+            <text
+              className="weather-day__extreme-label"
+              x={curveX(minTempIndex)}
+              y={temperatureY(minTemp) - 8}
+              textAnchor={edgeAnchor(minTempIndex, day.hours.length)}
+              aria-hidden="true"
+            >
+              {Math.round(minTemp)}°
+            </text>
           )}
         </ChartFrame>
         {day.hours.some((hour) => typeof hour.weatherCode === 'number') && (
@@ -245,7 +294,7 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
           xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
         >
           {day.hours.map((hour, i) => {
-            const height = (hour.precipitationProbability / 100) * PLOT_H;
+            const height = (hour.precipitationProbability / 100) * plotMaxHeight;
             return (
               <rect
                 key={hour.time}
@@ -258,6 +307,17 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
               />
             );
           })}
+          {peakProbabilityIndex !== -1 && (
+            <text
+              className="weather-day__precip-peak-label"
+              x={slotX(peakProbabilityIndex)}
+              y={PLOT_BOTTOM - (maxProbability / 100) * plotMaxHeight - 8}
+              textAnchor="middle"
+              aria-hidden="true"
+            >
+              {maxProbability} %
+            </text>
+          )}
         </ChartFrame>
       </SectionCard>
 
