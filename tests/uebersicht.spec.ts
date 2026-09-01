@@ -1090,8 +1090,8 @@ test('AK9: ein offline angelegter Termin erscheint sofort in der Karte und errei
   page,
   context,
 }) => {
-  await context.setOffline(true);
   await page.goto('/uebersicht');
+  await context.setOffline(true);
   await seedEvent(page, {
     title: 'Im Zug erfasst',
     allDay: false,
