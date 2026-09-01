@@ -99,7 +99,10 @@
  * route's UNCHANGED area colour via OKLCH (L+0.205/−0.06/+0.175, C×0.285/
  * 1.05/0.738, H−14°/+0°/+33°, chroma bisected at gamut violations, never the
  * lightness) — CSS itself can't express that recipe, so the results are
- * pre-computed and pinned here.
+ * pre-computed and pinned here. Exceptions where the recipe's own lightness
+ * undercut the `--on-ground`-vs-arc contrast test: `--arc-2` on
+ * aufgaben/kalender/wetter/einstellungen (light mode) and most dark-mode
+ * triples — see the dark-mode block below for how those were re-solved.
  */
 /*
  * `--on-ground-muted` (issue #868, AK3; re-measured for issue #991's damped
@@ -127,7 +130,7 @@ html:has([data-ground='aufgaben']) {
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --arc-1: #9ab0ae;
-  --arc-2: #006970;
+  --arc-2: #348990;
   --arc-3: #7aa8c5;
   --face-body: var(--face-body-aufgaben);
   --face-ink: var(--face-ink-aufgaben);
@@ -137,7 +140,7 @@ html:has([data-ground='kalender']) {
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --arc-1: #82a3c4;
-  --arc-2: #0044bc;
+  --arc-2: #3778f3;
   --arc-3: #9e80eb;
   --face-body: var(--face-body-kalender);
   --face-ink: var(--face-ink-kalender);
@@ -178,7 +181,7 @@ html:has([data-ground='wetter']) {
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   --arc-1: #a5c3d0;
-  --arc-2: #0074ae;
+  --arc-2: #2284bf;
   --arc-3: #a1aff1;
   --face-body: var(--face-body-wetter);
   --face-ink: var(--face-ink-wetter);
@@ -189,7 +192,7 @@ html:has([data-ground='einstellungen']) {
   /* Gemessen 4,33:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
   --on-ground-muted: var(--on-ground);
   --arc-1: #878c8f;
-  --arc-2: #36424e;
+  --arc-2: #727f8c;
   --arc-3: #80818e;
   --face-body: var(--face-body-einstellungen);
   --face-ink: var(--face-ink-einstellungen);
@@ -261,10 +264,19 @@ html:has([data-ground='anmelden']) {
  * Once darkened, every ground clears 4.5:1 with the *light* ink regardless
  * of which ink it used in light mode — verified per route, not assumed — so
  * the ink flips uniformly here instead of repeating each route's light-mode
- * choice. Arc tones (AK5): positive lightness deltas ×0.7, negative ×0.85 of
- * the OKLCH recipe's own deltas, chroma capped at the route's raw (pre-damp)
- * chroma so they don't glow neon on the darker ground — pre-computed the
- * same way as the light triples above.
+ * choice. Arc tones (AK5), originally: positive lightness deltas ×0.7,
+ * negative ×0.85 of the OKLCH recipe's own deltas, chroma capped at the
+ * route's raw (pre-damp) chroma — pre-computed the same way as the light
+ * triples above. That anchored dark-mode lightness to the *light-mode* base
+ * colour instead of the actually-darkened ground, so most triples stayed too
+ * light for the uniformly-light dark ink above (CI: `hintergrundboegen.spec.ts`
+ * "Ersatz für #904 AK4 dunkel", contrast as low as 1.13:1). Re-solved per
+ * failing arc (14 of 24): same hue and chroma, lightness reduced via
+ * bisection in OKLab until contrast against --on-ground-light lands ≥4.6:1
+ * (margin over the 4.5:1 floor, same pattern as the light-mode --arc-2 fixes
+ * below). Four light-mode `--arc-2` triples (aufgaben/kalender/wetter/
+ * einstellungen) needed the same treatment in the other direction — lightened
+ * until they cleared 4.5:1 against the dark --on-accent ink.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']):has([data-ground]) {
@@ -272,27 +284,27 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='uebersicht']) {
     --ground: color-mix(in oklab, var(--ground-uebersicht) 50%, var(--ground-base-dark));
-    --arc-1: #efbfb6;
-    --arc-2: #e75f00;
-    --arc-3: #fab843;
+    --arc-1: #946961;
+    --arc-2: #c34f00;
+    --arc-3: #9a6a00;
   }
   :root:not([data-theme='hell']):has([data-ground='aufgaben']) {
     --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
-    --arc-1: #879d9b;
+    --arc-1: #627876;
     --arc-2: #006c73;
-    --arc-3: #6a98b4;
+    --arc-3: #4c7994;
   }
   :root:not([data-theme='hell']):has([data-ground='kalender']) {
     --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
-    --arc-1: #6f90b0;
+    --arc-1: #567695;
     --arc-2: #0046c2;
-    --arc-3: #8e70d9;
+    --arc-3: #7f61c8;
   }
   :root:not([data-theme='hell']):has([data-ground='routinen']) {
     --ground: color-mix(in oklab, var(--ground-routinen) 50%, var(--ground-base-dark));
-    --arc-1: #a9c1ae;
-    --arc-2: #00956c;
-    --arc-3: #5dc6ca;
+    --arc-1: #637967;
+    --arc-2: #00845f;
+    --arc-3: #008085;
   }
   :root:not([data-theme='hell']):has([data-ground='journal']) {
     --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
@@ -305,25 +317,25 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='aktivitaeten']) {
     --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
-    --arc-1: #ffebdb;
-    --arc-2: #ea9f00;
-    --arc-3: #f0ef88;
+    --arc-1: #827062;
+    --arc-2: #9d6900;
+    --arc-3: #7a7700;
     /* Anders als im Hellmodus (oben, 9,46:1 bei 85 %): hier nur 4,16:1 bei
        85 % — unter 4,5:1, deshalb ungedämpft. */
     --on-ground-muted: var(--on-ground);
   }
   :root:not([data-theme='hell']):has([data-ground='wetter']) {
     --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
-    --arc-1: #92afbc;
+    --arc-1: #5c7784;
     --arc-2: #0076b2;
-    --arc-3: #919fe0;
+    --arc-3: #6470ad;
     /* Anders als im Hellmodus (oben, 6,32:1 bei 85 %): hier nur 4,23:1 bei
        85 % — unter 4,5:1, deshalb ungedämpft. */
     --on-ground-muted: var(--on-ground);
   }
   :root:not([data-theme='hell']):has([data-ground='einstellungen']) {
     --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
-    --arc-1: #757a7d;
+    --arc-1: #6f7477;
     --arc-2: #394450;
     --arc-3: #71727e;
     /* Anders als im Hellmodus (oben, 4,33:1 bei 85 %): hier gemessen 5,47:1 bei
@@ -332,9 +344,9 @@ html:has([data-ground='anmelden']) {
   }
   :root:not([data-theme='hell']):has([data-ground='anmelden']) {
     --ground: color-mix(in oklab, var(--ground-anmelden) 50%, var(--ground-base-dark));
-    --arc-1: #f2c4b8;
-    --arc-2: #e76800;
-    --arc-3: #f9be4d;
+    --arc-1: #936a5f;
+    --arc-2: #be5400;
+    --arc-3: #976c00;
   }
 }
 
@@ -343,27 +355,27 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='uebersicht']) {
   --ground: color-mix(in oklab, var(--ground-uebersicht) 50%, var(--ground-base-dark));
-  --arc-1: #efbfb6;
-  --arc-2: #e75f00;
-  --arc-3: #fab843;
+  --arc-1: #946961;
+  --arc-2: #c34f00;
+  --arc-3: #9a6a00;
 }
 :root[data-theme='dunkel']:has([data-ground='aufgaben']) {
   --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
-  --arc-1: #879d9b;
+  --arc-1: #627876;
   --arc-2: #006c73;
-  --arc-3: #6a98b4;
+  --arc-3: #4c7994;
 }
 :root[data-theme='dunkel']:has([data-ground='kalender']) {
   --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
-  --arc-1: #6f90b0;
+  --arc-1: #567695;
   --arc-2: #0046c2;
-  --arc-3: #8e70d9;
+  --arc-3: #7f61c8;
 }
 :root[data-theme='dunkel']:has([data-ground='routinen']) {
   --ground: color-mix(in oklab, var(--ground-routinen) 50%, var(--ground-base-dark));
-  --arc-1: #a9c1ae;
-  --arc-2: #00956c;
-  --arc-3: #5dc6ca;
+  --arc-1: #637967;
+  --arc-2: #00845f;
+  --arc-3: #008085;
 }
 :root[data-theme='dunkel']:has([data-ground='journal']) {
   --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
@@ -374,30 +386,30 @@ html:has([data-ground='anmelden']) {
 }
 :root[data-theme='dunkel']:has([data-ground='aktivitaeten']) {
   --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
-  --arc-1: #ffebdb;
-  --arc-2: #ea9f00;
-  --arc-3: #f0ef88;
+  --arc-1: #827062;
+  --arc-2: #9d6900;
+  --arc-3: #7a7700;
   --on-ground-muted: var(--on-ground);
 }
 :root[data-theme='dunkel']:has([data-ground='wetter']) {
   --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
-  --arc-1: #92afbc;
+  --arc-1: #5c7784;
   --arc-2: #0076b2;
-  --arc-3: #919fe0;
+  --arc-3: #6470ad;
   --on-ground-muted: var(--on-ground);
 }
 :root[data-theme='dunkel']:has([data-ground='einstellungen']) {
   --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
-  --arc-1: #757a7d;
+  --arc-1: #6f7477;
   --arc-2: #394450;
   --arc-3: #71727e;
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='anmelden']) {
   --ground: color-mix(in oklab, var(--ground-anmelden) 50%, var(--ground-base-dark));
-  --arc-1: #f2c4b8;
-  --arc-2: #e76800;
-  --arc-3: #f9be4d;
+  --arc-1: #936a5f;
+  --arc-2: #be5400;
+  --arc-3: #976c00;
 }
 
 html {
