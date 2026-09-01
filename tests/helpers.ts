@@ -205,15 +205,15 @@ export async function expectUebersichtLoaded(page: Page) {
 }
 
 /**
- * Switches `/aufgaben`'s Woche/Alle/Erledigt view (issue #705 AK2) via the
+ * Switches `/aufgaben`'s 7 Tage/Alle/Erledigt view (issue #705 AK2) via the
  * SegmentedControl's `role="radio"` options, and waits for `aria-checked` so
  * the caller's next assertion never races the click. Almost every existing
  * `/aufgaben` spec was written against the flat, undated-inclusive "Alle"
- * run (issue #88) — now that "Woche" is the default, those specs call
+ * run (issue #88) — now that "7 Tage" is the default, those specs call
  * `selectView(page, 'Alle')` right after landing on `/aufgaben` to keep
  * testing exactly what they always tested (Entscheidung A, issue #705).
  */
-export async function selectView(page: Page, view: 'Woche' | 'Alle' | 'Erledigt') {
+export async function selectView(page: Page, view: '7 Tage' | 'Alle' | 'Erledigt') {
   const option = page
     .getByRole('radiogroup', { name: 'Aufgaben-Ansicht' })
     .getByRole('radio', { name: view });
