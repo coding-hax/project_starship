@@ -240,6 +240,24 @@ async function pseudoProp(locator: Locator, pseudo: string, prop: string): Promi
   );
 }
 
+/** Same probe technique as resolveToken, for an arbitrary CSS property/token pair —
+ *  lets a test assert e.g. border-radius/box-shadow against the token's computed
+ *  value instead of a literal string (same pattern as
+ *  aufgaben-kartenrhythmus.spec.ts's resolveToken). */
+async function resolveStyleToken(page: Page, property: string, token: string): Promise<string> {
+  return page.evaluate(
+    ({ property, token }) => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      const value = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return value;
+    },
+    { property, token },
+  );
+}
+
 /** Same probe technique, for a `color-mix(in oklab, …)` expression — lets a test
  *  assert the browser's exact resolution of the all-day band's category mix
  *  (issue #924) without hand-computing the OKLab arithmetic. */
@@ -2043,7 +2061,7 @@ test('ein mehrtägiger Termin ueber einen Monatswechsel bleibt an der Monatsgren
   await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig · Do–So');
 });
 
-test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Punkt, die Flaeche ist eine Toenung ueber dem Grund statt --surface — auch im Dark Mode (#555 AC1, umgezogen fuer #924)', async ({
+test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Balken, die Flaeche ist wieder --surface statt einer Toenung ueber dem Grund — auch im Dark Mode (#555 AC1, umgezogen fuer #956)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2058,30 +2076,78 @@ test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Punkt, di
 
   const bar = allDayBar(page, 'Betriebsausflug');
   await expect(bar).toBeVisible();
-  const dot = bar.locator('.event-agenda__all-day-dot');
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
 
-  // The card is gone (issue #924): no more white --surface, no --cat-* edge —
-  // the band sits on the route ground, category identity moved to the dot.
-  const expectedSurface = await resolveCardColor(page, '--surface', 'backgroundColor');
-  expect(await bar.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(expectedSurface);
-
-  const expectedDot = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  // Die Karte ist zurück (issue #956, revidiert #924): wieder weißes
+  // --surface statt einer Kategorie-Tönung auf dem Grund — die
+  // Kategorie-Identität trägt jetzt der Balken links.
+  const expectedSurfaceLight = await resolveCardColor(page, '--surface', 'backgroundColor');
   await expect
-    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedDot);
+    .poll(() => bar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSurfaceLight);
+
+  const expectedBar = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  await expect
+    .poll(() => edgeBar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBar);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDotDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedSurfaceDark = await resolveCardColor(page, '--surface', 'backgroundColor');
   await expect
-    .poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedDotDark);
+    .poll(() => bar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedSurfaceDark);
+
+  const expectedBarDark = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  await expect
+    .poll(() => edgeBar.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBarDark);
+});
+
+test('AK1: die Karte übernimmt Radius und Schatten vom Karten-Token, der Balken bleibt 4px breit mit 2px-Radius statt der 8px-Punkt-Form aus #924', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Formkontrolle',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  const bar = allDayBar(page, 'Formkontrolle');
+  await expect(bar).toBeVisible();
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
+
+  const radiusToken = await resolveStyleToken(page, 'border-radius', '--radius-card');
+  const shadowToken = await resolveStyleToken(page, 'box-shadow', '--shadow-raised');
+  expect(await bar.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await bar.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+
+  // width/border-radius sind Blatt-Literale, kein Token (#956 AK1) — der Balken
+  // ist die 4px-Schmalspur, kein 8px-Punkt mehr.
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).width)).toBe('4px');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('2px');
+
+  // Polsterung 10/14 und Abstand 10px sind Blatt-Literale, bewusst außerhalb
+  // der 4/8/12-Skala (Kommentar event-agenda.css:28-33) — Literal-Vergleich,
+  // kein Token dafür vorhanden.
+  expect(await bar.evaluate((el) => getComputedStyle(el).paddingTop)).toBe('10px');
+  expect(await bar.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('14px');
+  expect(await bar.evaluate((el) => getComputedStyle(el).gap)).toBe('10px');
+
+  // Titelgröße hat ein Token (#956 AK1) — Token-Vergleich statt Literal.
+  const titleEl = bar.locator('.event-agenda__all-day-title');
+  const titleFontSizeToken = await resolveStyleToken(page, 'font-size', '--text-secondary');
+  expect(await titleEl.evaluate((el) => getComputedStyle(el).fontSize)).toBe(titleFontSizeToken);
 });
 
 /* -------------------------------------------------------------------------- */
-/* #924 AK5: Kontrast auf dem Grund gemessen, nicht geschaetzt                */
+/* #956 AK3: Kontrast auf der weißen Schmalkarte gemessen, nicht geschaetzt   */
 /* -------------------------------------------------------------------------- */
 
-test('AK5: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen die Kategorie-Toenung, mit Kategorie und ohne — hell und dunkel', async ({
+test('AK3: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen --surface, mit Kategorie und ohne — hell und dunkel', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2139,7 +2205,7 @@ test('AK5: Titel- und Zeitraum-Text auf dem Ganztags-Band erreichen 4,5:1 gegen 
   }
 });
 
-test('AK5: der Kategorie-Punkt des Ganztags-Bands erreicht 3:1 gegen den Grund, mit Kategorie und ohne — hell und dunkel', async ({
+test('AK3: der Kategorie-Balken des Ganztags-Bands erreicht 3:1 gegen --surface, mit Kategorie und ohne — hell und dunkel', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -2162,12 +2228,12 @@ test('AK5: der Kategorie-Punkt des Ganztags-Bands erreicht 3:1 gegen den Grund, 
   });
 
   async function measureDot(bar: Locator) {
-    const groundRgb = await toRgb(page, await resolveToken(page, '--ground'));
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
     const dotRgb = await toRgb(
       page,
-      await bar.locator('.event-agenda__all-day-dot').evaluate((el) => getComputedStyle(el).backgroundColor),
+      await bar.locator('.event-agenda__all-day-bar').evaluate((el) => getComputedStyle(el).backgroundColor),
     );
-    return contrastRatio(dotRgb, groundRgb);
+    return contrastRatio(dotRgb, surfaceRgb);
   }
 
   const withCategory = allDayBar(page, 'Mit Kategorie');
@@ -2226,7 +2292,7 @@ test('AK6: bei langem Titel bleibt das Ganztags-Band innerhalb der Bildschirmbre
   );
   expect(hasHorizontalOverflow).toBe(false);
 
-  await expect(bar.locator('.event-agenda__all-day-dot')).toBeVisible();
+  await expect(bar.locator('.event-agenda__all-day-bar')).toBeVisible();
   await expect(bar.locator('.event-agenda__all-day-range')).toBeVisible();
   await expect(bar.locator('.event-agenda__all-day-range')).toHaveText('Ganztägig');
 });
@@ -3373,6 +3439,21 @@ test('ein abonnierter ganztägiger Termin erscheint schreibgeschützt und optisc
   // Editierbare Termine sind <button>, abonnierte <div> — die technische Basis
   // von AK2 (kein Editor-Zugriff).
   expect(await bar.evaluate((el) => el.tagName)).toBe('DIV');
+
+  // "optisch abgesetzt" (AK4) heißt konkret: gedämpfter Titel und eine
+  // gestrichelte statt durchgezogene Spur am Balken (issue #956) — data-origin
+  // allein ist nur das technische Attribut, nicht die sichtbare Abhebung.
+  const expectedMutedTitle = await resolveToken(page, '--text-muted-base');
+  await expect
+    .poll(() =>
+      bar.locator('.event-agenda__all-day-title').evaluate((el) => getComputedStyle(el).color),
+    )
+    .toBe(expectedMutedTitle);
+
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderStyle)).toBe('dashed');
+  const expectedBorderColor = await resolveMix(page, 'var(--area-events)', 60, 'var(--on-ground)');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderColor)).toBe(expectedBorderColor);
 });
 
 test('ein Tap auf einen abonnierten Termin öffnet keinen Editor (AK2)', async ({ page }) => {
