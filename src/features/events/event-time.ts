@@ -122,7 +122,10 @@ export function allDayEventsForDay<T extends TimelineSource>(
     }));
 }
 
-/** The card's left edge colour — the single place this category → token mapping lives. */
+/** A category's colour token (var() reference) — the single place this category
+ *  → token mapping lives. Named for its original edge/border use; also feeds
+ *  dots (calendar-strip.tsx) and, since issue #974, the overview's start-time
+ *  ink (events-overview-section.css mixes it toward --text for contrast). */
 export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
 }
