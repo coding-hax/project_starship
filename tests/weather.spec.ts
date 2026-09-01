@@ -29,6 +29,24 @@ async function resolveColorToken(page: Page, token: string): Promise<string> {
   }, token);
 }
 
+/** Same idea as `resolveColorToken`, for any other property — `border-radius`,
+ * `box-shadow`, `padding-top`/`padding-left` (issue #973 AK2). Longhand padding
+ * properties, not the shorthand — `getComputedStyle` only normalizes that
+ * reliably back to a string for longhands. */
+async function resolveToken(page: Page, property: string, token: string): Promise<string> {
+  return page.evaluate(
+    ({ property, token }) => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      const value = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return value;
+    },
+    { property, token },
+  );
+}
+
 interface DaySet {
   dates: string[];
   weekdays: string[];
@@ -113,6 +131,48 @@ async function mockForecast(page: Page, set: DaySet): Promise<() => number> {
 
 function weatherDays(page: Page) {
   return page.locator('.weather-forecast').getByRole('listitem');
+}
+
+/** Arms a Layout Instability API observer scoped to `selector` — issue #973 AK4
+ * wants height parity across loading/ready/empty-error proven via the real
+ * `previousRect`/`currentRect` of a Layout-Shift entry, not just a before/after
+ * `boundingBox()` snapshot diff ("nicht per Augenmaß"). Must run before the
+ * phase transition it observes. */
+async function observeLayoutShifts(page: Page, selector: string): Promise<void> {
+  await page.evaluate((sel) => {
+    const win = window as unknown as {
+      __weatherShifts: { previousHeight: number; currentHeight: number }[];
+    };
+    win.__weatherShifts = [];
+    const target = document.querySelector(sel);
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries() as unknown as {
+        sources?: { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
+      }[]) {
+        for (const source of entry.sources ?? []) {
+          if (source.node && target && (source.node === target || target.contains(source.node))) {
+            win.__weatherShifts.push({
+              previousHeight: source.previousRect.height,
+              currentHeight: source.currentRect.height,
+            });
+          }
+        }
+      }
+    });
+    observer.observe({ type: 'layout-shift', buffered: true });
+  }, selector);
+}
+
+/** Reads back the entries `observeLayoutShifts` collected so far. */
+async function readLayoutShifts(page: Page): Promise<{ previousHeight: number; currentHeight: number }[]> {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __weatherShifts: { previousHeight: number; currentHeight: number }[];
+        }
+      ).__weatherShifts,
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -497,12 +557,19 @@ test('reserviert vor dem allerersten Abruf schon die spätere Höhe (issue #139 
 
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
   const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+  await observeLayoutShifts(page, '.weather-forecast');
 
   release();
   await expect(weatherDays(page)).toHaveCount(7);
   const loadedHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
 
   expect(loadingHeight).toBe(loadedHeight);
+
+  // issue #973 AK4: derselbe Übergang zusätzlich über den Layout-Shift-Eintrag
+  // belegt (previousRect/currentRect), nicht nur per boundingBox()-Diff.
+  for (const shift of await readLayoutShifts(page)) {
+    expect(shift.currentHeight).toBe(shift.previousHeight);
+  }
 });
 
 test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/ready (issue #652 AC1)', async ({
@@ -521,12 +588,19 @@ test('reserviert auch beim endgültigen Fehlschlag dieselbe Höhe wie loading/re
 
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
   const loadingHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
+  await observeLayoutShifts(page, '.weather-forecast');
 
   release();
   await expect(page.getByText('Vorhersage konnte nicht geladen werden.')).toBeVisible();
   const errorHeight = (await page.locator('.weather-forecast').boundingBox())?.height;
 
   expect(errorHeight).toBe(loadingHeight);
+
+  // issue #973 AK4: derselbe Übergang zusätzlich über den Layout-Shift-Eintrag
+  // belegt (previousRect/currentRect), nicht nur per boundingBox()-Diff.
+  for (const shift of await readLayoutShifts(page)) {
+    expect(shift.currentHeight).toBe(shift.previousHeight);
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -723,6 +797,66 @@ test('eine Tageskarte nutzt den --surface-Token, auch im Dark Mode (issue #139 A
   const darkBg = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(darkBg).toBe(await resolveToken());
   expect(darkBg).not.toBe(lightBg);
+});
+
+test('die Schmalkarte selbst trägt --surface/--radius-surface/--shadow-raised und Polsterung in Token-Schritten (issue #973 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const card = page.locator('.weather-forecast');
+  await expect(card).toBeVisible();
+
+  const surfaceToken = await resolveColorToken(page, '--surface');
+  const radiusToken = await resolveToken(page, 'border-radius', '--radius-surface');
+  const shadowToken = await resolveToken(page, 'box-shadow', '--shadow-raised');
+  // 13px/16px im Blatt (issue #973 AK2) — --space-3 (12px) oben/unten, --space-4
+  // (16px) seitlich, keine rohen Pixelwerte.
+  const paddingBlockToken = await resolveToken(page, 'padding-top', '--space-3');
+  const paddingInlineToken = await resolveToken(page, 'padding-left', '--space-4');
+
+  expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingTop)).toBe(paddingBlockToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingBottom)).toBe(paddingBlockToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe(paddingInlineToken);
+  expect(await card.evaluate((el) => getComputedStyle(el).paddingRight)).toBe(paddingInlineToken);
+});
+
+test('Icon ~26px, Höchstwert in --font-display/--weight-emphasis mit tabular-nums (issue #973 AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  const firstDay = weatherDays(page).first();
+  const icon = firstDay.locator('.weather-forecast__icon svg');
+  await expect(icon).toBeVisible();
+  const iconSize = await icon.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { width: style.width, height: style.height };
+  });
+  expect(iconSize.width).toBe('26px');
+  expect(iconSize.height).toBe('26px');
+
+  const tempMax = firstDay.locator('.weather-forecast__temp-max');
+  const { fontFamily, fontWeight, fontVariantNumeric } = await tempMax.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      fontVariantNumeric: style.fontVariantNumeric,
+    };
+  });
+  const displayFamilyToken = await resolveToken(page, 'font-family', '--font-display');
+  const emphasisWeightToken = await resolveToken(page, 'font-weight', '--weight-emphasis');
+  expect(fontFamily).toBe(displayFamilyToken);
+  expect(fontWeight).toBe(emphasisWeightToken);
+  expect(fontVariantNumeric).toContain('tabular-nums');
 });
 
 test('bei reduzierter Bewegung steht der Lade-Puls still (issue #139 AC10)', async ({ page }) => {
