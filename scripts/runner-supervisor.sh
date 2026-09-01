@@ -56,6 +56,10 @@ LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}"
 # Boot steht das Netz oft erst nach einer halben Minute.
 REPORT_TRIES="${REPORT_TRIES:-3}"
 REPORT_RETRY_SEC="${REPORT_RETRY_SEC:-15}"
+# So lange bleibt dieselbe Alarmlage stumm, bevor sie erneut einen frischen
+# Kommentar bekommt. Der Alarm soll wecken; seine Wiederholung alle zehn
+# Minuten weckt niemanden mehr, sie begräbt nur das Issue (#992).
+ALARM_REPEAT_HOURS="${ALARM_REPEAT_HOURS:-6}"
 
 AGENT_PATTERN="claude -p --output-format json"
 
@@ -420,9 +424,24 @@ all_worktrees() {
 }
 
 # --- Bericht -----------------------------------------------------------------
-# Zwei Wochen Rauschen liest niemand. Gemeldet wird nur, was jemanden angeht:
-# ein Alarm immer, geheilte Störungen gesammelt. Ein stiller Lauf schreibt
-# ausschließlich ins Log.
+# Zwei Wochen Rauschen liest niemand -- und ein Kommentar je Takt ist genau das.
+# Bis zum 01.09. hingen 135 "selbst behoben" an #1, weil jede Wiederholung
+# derselben Störung einen NEUEN Kommentar bekam: Ein Slot, der alle zehn Minuten
+# neu gestartet wird, meldet sich alle zehn Minuten (#992). Zwei Schäden. Das
+# Statusfenster war nicht mehr lesbar. Und der Totmann-Wächter erkennt seinen
+# eigenen offenen Alarm an `.comments[-1]` -- jeder Kommentar dahinter ließ ihn
+# denselben Ausfall erneut melden und verschluckte die Entwarnung.
+#
+# Deshalb zwei Kanäle mit klarer Rollenteilung:
+#
+#   Lagebild  EIN rollender Kommentar, bei jedem Fund überschrieben (gh api
+#             PATCH auf die gemerkte Id). Er benachrichtigt niemanden und darf
+#             deshalb so oft schreiben, wie er will.
+#   Alarm     Ein frischer Kommentar -- nur der erzeugt eine Nachricht auf dem
+#             Handy. Einmal je Alarmlage, nicht einmal je Takt.
+#
+# Ein stiller Lauf schreibt weiterhin ausschließlich ins Log.
+#
 # `gh` bestimmt das Repository sonst aus dem Arbeitsverzeichnis -- unter launchd
 # ist das `/`, und jeder Aufruf scheitert stumm. Genau daran ging der erste
 # echte Bericht verloren ("Bericht konnte nicht ans Issue #1 geschrieben
@@ -434,41 +453,161 @@ repo_slug() {
   printf '%s' "$url" | sed -E 's#^(git@|ssh://git@|https://)github\.com[:/]##; s#\.git$##'
 }
 
+COMMENT_ID_FILE="$STATE_DIR/supervisor-comment-id"
+COMMENT_BODY_FILE="$STATE_DIR/supervisor-comment-body"
+ALARM_FP_FILE="$STATE_DIR/supervisor-alarm-lage"
+ALARM_TS_FILE="$STATE_DIR/supervisor-alarm-zeit"
+
+# Der wichtigste Lauf ist der direkt nach einem Boot -- und genau dort ist das
+# Netz oft noch nicht oben. Am 15.08. ging der Bericht 20 Sekunden nach dem
+# Start verloren. Deshalb drei Versuche mit Pause statt einem.
+# Die Ausgabe kommt über $GH_OUT zurück, nicht über stdout: `x=$(gh_try ...)`
+# fräße sonst jede Logzeile dieses Laufs mit auf, und der Vermerk über den
+# geglückten Versuch stünde im Ergebnis statt im Log.
+GH_OUT=""
+gh_try() {
+  local try=1
+  GH_OUT=""
+  while [ "$try" -le "$REPORT_TRIES" ]; do
+    if GH_OUT=$(act gh "$@" 2>/dev/null); then
+      [ "$try" -gt 1 ] && log "gh-Aufruf im ${try}. Versuch abgesetzt."
+      return 0
+    fi
+    try=$(( try + 1 ))
+    [ "$try" -le "$REPORT_TRIES" ] && sleep "$REPORT_RETRY_SEC"
+  done
+  return 1
+}
+
+# 0 = geschrieben, 1 = der Kommentar existiert nicht mehr, 2 = nicht erreichbar.
+# Die Unterscheidung ist der ganze Punkt: Auf 404 wird ein neuer Kommentar
+# angelegt, auf ein totes Netz NICHT -- sonst legt eine Stunde ohne WLAN sechs
+# Lagebilder an, also genau das Problem, das diese Änderung abstellt.
+# `-F body=@datei` liest die Datei; `-f body=@datei` postete den Pfad als Text.
+patch_comment() {   # $1 = slug, $2 = Kommentar-Id, $3 = Datei mit dem Body
+  local slug="$1" id="$2" file="$3" try=1 out
+  while [ "$try" -le "$REPORT_TRIES" ]; do
+    out=$(act gh api -X PATCH "repos/$slug/issues/comments/$id" -F "body=@$file" 2>&1) \
+      && return 0
+    case "$out" in *404*|*"Not Found"*|*"not found"*) return 1 ;; esac
+    try=$(( try + 1 ))
+    [ "$try" -le "$REPORT_TRIES" ] && sleep "$REPORT_RETRY_SEC"
+  done
+  return 2
+}
+
+# Der eine Kommentar, der das Lagebild trägt. Nie `gh issue comment --edit-last`:
+# Das trifft den zuletzt geschriebenen Kommentar irgendeines Autors und hat
+# schon fünfmal fremde Texte überschrieben. Die Id steht im STATE_DIR.
+rolling_comment() {   # $1 = slug, $2 = Datei mit dem Body
+  local slug="$1" file="$2" id rc
+  id=$(cat "$COMMENT_ID_FILE" 2>/dev/null | tr -d ' \n')
+  case "$id" in ''|*[!0-9]*) id="" ;; esac
+
+  if [ -n "$id" ]; then
+    patch_comment "$slug" "$id" "$file"; rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    if [ "$rc" -eq 2 ]; then
+      log "Lagebild nicht erreichbar ($REPORT_TRIES Versuche) — es bleibt beim Log."
+      return 1
+    fi
+    log "Lagebild-Kommentar $id gibt es nicht mehr — es wird ein neuer angelegt."
+    act rm -f "$COMMENT_ID_FILE"
+  fi
+
+  gh_try issue comment "$STATUS_ISSUE" --repo "$slug" --body-file "$file" || {
+    log "Lagebild konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden ($REPORT_TRIES Versuche)."
+    return 1
+  }
+  id=$(printf '%s' "$GH_OUT" | sed -n 's/.*#issuecomment-\([0-9][0-9]*\).*/\1/p' | tail -1)
+  if [ -n "$id" ]; then
+    act sh -c "printf '%s' '$id' > '$COMMENT_ID_FILE'"
+  else
+    log "Kommentar-Id nicht aus der gh-Ausgabe zu lesen — der nächste Fund legt einen zweiten an."
+  fi
+  return 0
+}
+
+# Ein Alarm darf wecken, eine Wiederholung nicht. Verglichen wird die Lage ohne
+# Zahlen: "Slot 1 tickt seit 148 Minuten nicht" und "... seit 158 Minuten" sind
+# dieselbe Lage, und nur deshalb hat die alte Fassung so oft gemeldet.
+alarm_comment() {   # $1 = slug, $2 = Datei mit dem Body
+  local slug="$1" file="$2" fp_new="$STATE_DIR/supervisor-alarm-lage.neu" last age same=0
+  printf '%s\n' "${ALARMS[@]}" | sed -E 's/[0-9]+/N/g' > "$fp_new" 2>/dev/null || return 1
+  cmp -s "$fp_new" "$ALARM_FP_FILE" 2>/dev/null && same=1
+  last=$(cat "$ALARM_TS_FILE" 2>/dev/null | tr -d ' \n')
+  case "$last" in ''|*[!0-9]*) last=0 ;; esac
+  age=$(( $(date +%s) - last ))
+
+  if [ "$same" -eq 1 ] && [ "$age" -lt $(( ALARM_REPEAT_HOURS * 3600 )) ]; then
+    log "Alarmlage unverändert seit $(( age / 60 )) Min. — kein zweiter Kommentar (Wiederholung nach ${ALARM_REPEAT_HOURS} h)."
+    rm -f "$fp_new" 2>/dev/null || true
+    return 0
+  fi
+
+  if gh_try issue comment "$STATUS_ISSUE" --repo "$slug" --body-file "$file"; then
+    act mv "$fp_new" "$ALARM_FP_FILE"
+    act sh -c "printf '%s' '$(date +%s)' > '$ALARM_TS_FILE'"
+    rm -f "$fp_new" 2>/dev/null || true
+    return 0
+  fi
+  rm -f "$fp_new" 2>/dev/null || true
+  log "Alarm konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden ($REPORT_TRIES Versuche)."
+  return 1
+}
+
 report() {
+  # Entspannte Lage: Der nächste Alarm soll wieder wecken dürfen, auch wenn er
+  # derselbe ist wie der von gestern.
+  if [ "${#ALARMS[@]}" -eq 0 ] && [ -f "$ALARM_FP_FILE" ]; then
+    act rm -f "$ALARM_FP_FILE"
+  fi
   [ "${#HEALED[@]}" -eq 0 ] && [ "${#ALARMS[@]}" -eq 0 ] && return 0
   command -v gh >/dev/null 2>&1 || return 0
 
   local slug
   slug=$(repo_slug) || { log "Repository nicht bestimmbar — Bericht bleibt im Log."; return 0; }
 
-  local body="" item
+  local core="" item
   if [ "${#ALARMS[@]}" -gt 0 ]; then
-    body="🚨 **Aufsicht — Eingriff nötig**"$'\n\n'
-    for item in "${ALARMS[@]}"; do body="$body- $item"$'\n'; done
-    body="$body"$'\n'
-  else
-    body="🔧 **Aufsicht — selbst behoben**"$'\n\n'
+    core="🚨 **Eingriff nötig**"$'\n\n'
+    for item in "${ALARMS[@]}"; do core="$core- $item"$'\n'; done
+    core="$core"$'\n'
   fi
   if [ "${#HEALED[@]}" -gt 0 ]; then
-    body="${body}Selbst behoben:"$'\n'
-    for item in "${HEALED[@]}"; do body="$body- $item"$'\n'; done
-    body="$body"$'\n'
+    core="${core}🔧 **Selbst behoben**"$'\n\n'
+    for item in "${HEALED[@]}"; do core="$core- $item"$'\n'; done
+    core="$core"$'\n'
   fi
-  body="${body}_$(date '+%d.%m. %H:%M') · $(hostname -s)_"
 
-  # Der wichtigste Lauf ist der direkt nach einem Boot -- und genau dort ist das
-  # Netz oft noch nicht oben. Am 15.08. ging der Bericht 20 Sekunden nach dem
-  # Start verloren. Deshalb drei Versuche mit Pause statt einem.
-  local try=1
-  while [ "$try" -le "$REPORT_TRIES" ]; do
-    if act gh issue comment "$STATUS_ISSUE" --repo "$slug" --body "$body" >/dev/null 2>&1; then
-      [ "$try" -gt 1 ] && log "Bericht im ${try}. Versuch abgesetzt."
-      return 0
+  local dir="$STATE_DIR/bericht"
+  mkdir -p "$dir" 2>/dev/null || true
+
+  # Wortgleiche Lage, wortgleicher Kommentar: dann wird nicht geschrieben. Sonst
+  # tickte die Uhrzeit im Fuß alle zehn Minuten weiter und jeder Blick ins Issue
+  # zeigte Bewegung, wo seit Stunden dasselbe steht.
+  printf '%s' "$core" > "$dir/lage.md" 2>/dev/null || return 0
+  if cmp -s "$dir/lage.md" "$COMMENT_BODY_FILE" 2>/dev/null; then
+    log "Lage unverändert — das Lagebild bleibt, wie es steht."
+  else
+    {
+      printf '%s\n\n' "🤖 **Aufsicht — Lagebild** (ein Kommentar, fortgeschrieben)"
+      cat "$dir/lage.md"
+      printf '%s\n' "_Stand $(date '+%d.%m. %H:%M') · $(hostname -s). Unveränderte Läufe schreiben nicht neu; der Puls steht in \`~/.starship-runner/supervisor.log\`._"
+    } > "$dir/lagebild.md" 2>/dev/null || return 0
+    if rolling_comment "$slug" "$dir/lagebild.md" && [ "$DRY_RUN" -eq 0 ]; then
+      cp "$dir/lage.md" "$COMMENT_BODY_FILE" 2>/dev/null || true
     fi
-    try=$(( try + 1 ))
-    [ "$try" -le "$REPORT_TRIES" ] && sleep "$REPORT_RETRY_SEC"
-  done
-  log "Bericht konnte nicht ans Issue #$STATUS_ISSUE geschrieben werden ($REPORT_TRIES Versuche)."
+  fi
+
+  # Und erst jetzt der Kanal, der weckt.
+  [ "${#ALARMS[@]}" -eq 0 ] && return 0
+  {
+    printf '%s\n\n' "🚨 **Aufsicht — Eingriff nötig**"
+    for item in "${ALARMS[@]}"; do printf -- '- %s\n' "$item"; done
+    printf '\n%s\n' "_$(date '+%d.%m. %H:%M') · $(hostname -s). Bleibt die Lage, wiederholt sich dieser Kommentar frühestens in ${ALARM_REPEAT_HOURS} h — laufend steht sie im Lagebild-Kommentar._"
+  } > "$dir/alarm.md" 2>/dev/null || return 0
+  alarm_comment "$slug" "$dir/alarm.md"
 }
 
 # --- Takt-Zeile --------------------------------------------------------------

@@ -123,13 +123,44 @@ STUB
 
   # Die ersten $scn/gh-fail Aufrufe scheitern -- so laesst sich das Netz
   # nachstellen, das nach einem Boot noch nicht oben ist.
+  #
+  # Ein angelegter Kommentar antwortet mit seiner URL, denn genau daraus liest
+  # die Aufsicht die Id ihres rollenden Kommentars. Existiert $scn/gh-404,
+  # laeuft jedes PATCH ins Leere -- der Kommentar wurde von Hand geloescht.
+  # Jeder geschriebene Text landet in $scn/gh-body.log, sonst pruefte kein Test,
+  # WAS gemeldet wurde.
   printf '0\n' > "$scn/gh-fail"
   printf '0\n' > "$scn/gh-attempts"
+  printf '5000\n' > "$scn/gh-next-id"
+  : > "$scn/gh-body.log"
   cat > "$scn/bin/gh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$scn/gh.log"
 n=\$(cat "$scn/gh-attempts"); n=\$(( n + 1 )); printf '%s\n' "\$n" > "$scn/gh-attempts"
 [ "\$n" -le "\$(cat "$scn/gh-fail")" ] && exit 1
+
+prev=""
+for a in "\$@"; do
+  case "\$a" in
+    body=@*) f="\${a#body=@}"; [ -f "\$f" ] && cat "\$f" >> "$scn/gh-body.log" ;;
+  esac
+  [ "\$prev" = "--body-file" ] && [ -f "\$a" ] && cat "\$a" >> "$scn/gh-body.log"
+  prev="\$a"
+done
+
+case "\$*" in
+  *PATCH*)
+    if [ -f "$scn/gh-404" ]; then
+      printf 'gh: Not Found (HTTP 404)\n' >&2
+      exit 1
+    fi
+    ;;
+  "issue comment"*)
+    id=\$(cat "$scn/gh-next-id")
+    printf '%s\n' "\$(( id + 1 ))" > "$scn/gh-next-id"
+    printf 'https://github.com/test/repo/issues/1#issuecomment-%s\n' "\$id"
+    ;;
+esac
 exit 0
 STUB
 
@@ -204,6 +235,7 @@ run_sup() {
   LOG_KEEP_LINES="${LOG_KEEP_LINES:-5000}" \
   REPORT_TRIES="${REPORT_TRIES:-3}" \
   REPORT_RETRY_SEC="${REPORT_RETRY_SEC:-0}" \
+  ALARM_REPEAT_HOURS="${ALARM_REPEAT_HOURS:-6}" \
     bash "$SUP" "$@" 2>&1
 }
 
@@ -626,6 +658,159 @@ if printf '%s' "$out" | grep -q "konnte nicht ans Issue"; then
   ok "T17: der endgültige Fehlschlag steht im Log"
 else
   red "T17: dauerhafter Ausfall wurde nicht vermerkt"
+fi
+
+# --- T18: der zweite Fund überschreibt den ersten Kommentar -----------------
+# Der Kern von #992: 135 mal "selbst behoben" an #1, weil jede Wiederholung
+# einen neuen Kommentar bekam. Ein Lagebild, viele Läufe.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '999999\n' > "$scn/state/lock"       # Fund 1: verwaister Lock
+run_sup "$scn" >/dev/null
+echo neu > "$scn/repo/b.txt"                # Fund 2: gestagter Index
+git -C "$scn/repo" add b.txt >/dev/null 2>&1
+run_sup "$scn" >/dev/null
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "1" ]; then
+  ok "T18: nur EIN Kommentar wird angelegt"
+else
+  red "T18: $(grep -c 'issue comment 1' "$scn/gh.log") Kommentare angelegt -- gh.log: $(cat "$scn/gh.log")"
+fi
+if grep -q 'api -X PATCH repos/test/repo/issues/comments/5000' "$scn/gh.log"; then
+  ok "T18: der zweite Fund editiert denselben Kommentar"
+else
+  red "T18: kein PATCH auf den gemerkten Kommentar -- gh.log: $(cat "$scn/gh.log")"
+fi
+# --edit-last trifft den zuletzt geschriebenen Kommentar IRGENDEINES Autors und
+# hat schon fremde Texte überschrieben. Die Id kommt aus dem STATE_DIR.
+if grep -q -- '--edit-last' "$scn/gh.log"; then
+  red "T18: --edit-last benutzt -- das überschreibt fremde Kommentare"
+else
+  ok "T18: kein --edit-last"
+fi
+
+# --- T19: unveränderte Lage schreibt gar nicht -------------------------------
+# Sonst tickte die Uhrzeit im Fuß alle zehn Minuten weiter und jeder Blick ins
+# Issue zeigte Bewegung, wo seit Stunden dasselbe steht.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '999999\n' > "$scn/state/lock"
+run_sup "$scn" >/dev/null
+before=$(wc -l < "$scn/gh.log" | tr -d ' ')
+printf '999999\n' > "$scn/state/lock"       # exakt derselbe Fund, exakt derselbe Text
+out=$(run_sup "$scn")
+after=$(wc -l < "$scn/gh.log" | tr -d ' ')
+if [ "$before" = "$after" ]; then
+  ok "T19: unveränderte Lage schreibt nicht ans Issue"
+else
+  red "T19: es wurde erneut geschrieben ($before -> $after Zeilen)"
+fi
+if printf '%s' "$out" | grep -q "Lage unverändert"; then
+  ok "T19: der übersprungene Lauf steht im Log"
+else
+  red "T19: kein Vermerk über die unveränderte Lage -- Ausgabe: $out"
+fi
+
+# --- T20: gelöschter Kommentar -> genau ein neuer ---------------------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '999999\n' > "$scn/state/lock"
+run_sup "$scn" >/dev/null
+: > "$scn/gh-404"                            # der Kommentar ist von Hand weg
+echo neu > "$scn/repo/b.txt"
+git -C "$scn/repo" add b.txt >/dev/null 2>&1
+out=$(run_sup "$scn")
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "2" ]; then
+  ok "T20: für den gelöschten Kommentar entsteht genau ein neuer"
+else
+  red "T20: erwartet 2 angelegte Kommentare, gezählt $(grep -c 'issue comment 1' "$scn/gh.log")"
+fi
+if [ "$(cat "$scn/state/supervisor-comment-id" 2>/dev/null)" = "5001" ]; then
+  ok "T20: die neue Id ist gemerkt"
+else
+  red "T20: Id nicht nachgeführt: $(cat "$scn/state/supervisor-comment-id" 2>/dev/null)"
+fi
+
+# --- T20b: totes Netz legt KEINEN zweiten Kommentar an ----------------------
+# Ein fehlgeschlagenes PATCH heißt "kein Netz", nicht "Kommentar weg". Ohne
+# diese Unterscheidung legte eine Stunde ohne WLAN sechs Lagebilder an.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+printf '999999\n' > "$scn/state/lock"
+run_sup "$scn" >/dev/null
+printf '99\n' > "$scn/gh-fail"; printf '0\n' > "$scn/gh-attempts"
+echo neu > "$scn/repo/b.txt"
+git -C "$scn/repo" add b.txt >/dev/null 2>&1
+out=$(run_sup "$scn")
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "1" ]; then
+  ok "T20b: ohne Netz entsteht kein zweiter Kommentar"
+else
+  red "T20b: $(grep -c 'issue comment 1' "$scn/gh.log") Kommentare -- ein totes Netz wurde als 404 gelesen"
+fi
+if printf '%s' "$out" | grep -q "nicht erreichbar"; then
+  ok "T20b: der Fehlschlag steht im Log"
+else
+  red "T20b: kein Vermerk über das nicht erreichbare Lagebild -- Ausgabe: $out"
+fi
+
+# --- T21: derselbe Alarm weckt nur einmal -----------------------------------
+# Ein Alarm darf wecken, seine Wiederholung nicht. Verglichen wird die Lage
+# ohne Zahlen: "seit 100 Minuten" und "seit 200 Minuten" sind dieselbe Lage.
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 100                    # steht, kein Reise-Modus -> Alarm
+run_sup "$scn" >/dev/null
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "2" ]; then
+  ok "T21: der erste Alarm bekommt Lagebild UND weckenden Kommentar"
+else
+  red "T21: erwartet 2 Schreibvorgänge (Lagebild + Alarm), gezählt $(grep -c 'issue comment 1' "$scn/gh.log")"
+fi
+set_slot_age "$scn" 1 200                    # dieselbe Lage, andere Zahl
+run_sup "$scn" >/dev/null
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "2" ]; then
+  ok "T21: die Wiederholung legt keinen zweiten Alarm-Kommentar an"
+else
+  red "T21: der wiederholte Alarm wurde erneut gemeldet ($(grep -c 'issue comment 1' "$scn/gh.log"))"
+fi
+
+# --- T22: eine NEUE Alarmlage weckt wieder ----------------------------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 100
+run_sup "$scn" >/dev/null
+set_slot_age "$scn" 2 100                    # zweiter Slot fällt dazu
+run_sup "$scn" >/dev/null
+if [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "3" ]; then
+  ok "T22: eine veränderte Alarmlage meldet sich erneut"
+else
+  red "T22: veränderte Lage wurde verschluckt ($(grep -c 'issue comment 1' "$scn/gh.log") Schreibvorgänge)"
+fi
+
+# --- T23: nach der Entwarnung darf derselbe Alarm wieder wecken -------------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 100
+run_sup "$scn" >/dev/null
+set_slot_age "$scn" 1 0                      # Slot tickt wieder
+printf '999999\n' > "$scn/state/lock"        # irgendein Fund, damit report läuft
+run_sup "$scn" >/dev/null
+set_slot_age "$scn" 1 100                    # und derselbe Alarm kehrt zurück
+run_sup "$scn" >/dev/null
+if grep -q 'issue comment 1' "$scn/gh.log" \
+   && [ "$(grep -c 'issue comment 1' "$scn/gh.log")" = "3" ]; then
+  ok "T23: nach der Entwarnung weckt derselbe Alarm wieder"
+else
+  red "T23: erwartet 3 Schreibvorgänge, gezählt $(grep -c 'issue comment 1' "$scn/gh.log")"
+fi
+
+# --- T24: der Alarm-Kommentar trägt den Alarm, nicht nur das Lagebild -------
+new_scenario; scn="$SCN"
+with_working_core "$scn"
+set_slot_age "$scn" 1 100
+run_sup "$scn" >/dev/null
+if grep -q "Aufsicht — Eingriff nötig" "$scn/gh-body.log"; then
+  ok "T24: der weckende Kommentar nennt den Eingriff"
+else
+  red "T24: kein Alarmtext geschrieben -- gh-body.log: $(cat "$scn/gh-body.log")"
 fi
 
 [ "$FAIL" -eq 0 ] && printf '\033[32mAlle Prüfungen grün.\033[0m\n'
