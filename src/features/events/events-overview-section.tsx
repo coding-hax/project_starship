@@ -1,6 +1,6 @@
 'use client';
 
-import { OverviewBlock } from '@/ui/overview-block';
+import { OverviewBlock, OverviewCardHead } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { useNow } from '@/ui/use-now';
 import { categoryEdgeVar, formatCountdown, upcomingEventsToday } from './event-time';
@@ -26,6 +26,10 @@ function formatTime(instant: string): string {
  * The loading `null` swallows this section's own `<h2>` too, so its arrival moved
  * every section below it — `useBlockReady` ties it into the overview's single
  * reveal point instead (issue #642).
+ *
+ * Card head "Nächster Termin" → "Kalender" (issue #972, AK2/AK4): rendered
+ * inside both the next-event card and the empty state, so a visible title
+ * stands in the card head whether or not there is a next event today.
  */
 export function EventsOverviewSection() {
   const events = useEvents();
@@ -38,12 +42,13 @@ export function EventsOverviewSection() {
   const [next, ...rest] = upcomingEventsToday(events, now);
 
   return (
-    <OverviewBlock title="Termine" area="var(--area-events)">
+    <OverviewBlock>
       {next ? (
         <div
           className="events-overview__next"
           style={{ borderInlineStartColor: categoryEdgeVar(next.category) }}
         >
+          <OverviewCardHead title="Nächster Termin" href="/kalender" moreLabel="Kalender" />
           <p className="events-overview__next-countdown">{formatCountdown(now, next.startsAt)}</p>
           <p className="events-overview__next-title">{next.title}</p>
           <p className="events-overview__next-time">
@@ -51,7 +56,10 @@ export function EventsOverviewSection() {
           </p>
         </div>
       ) : (
-        <p className="events-overview__empty">Keine weiteren Termine heute</p>
+        <div className="events-overview__empty">
+          <OverviewCardHead title="Nächster Termin" href="/kalender" moreLabel="Kalender" />
+          <p>Keine weiteren Termine heute</p>
+        </div>
       )}
       {rest.length > 0 && (
         <ul className="events-overview__rest">

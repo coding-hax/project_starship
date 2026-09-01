@@ -49,12 +49,16 @@ function progressFor(page: Page, title: string) {
   return dueTaskItems(page).filter({ hasText: title }).locator('.task-list__progress');
 }
 
-/** Vertical distance between the bottom of `above` and the top of `below`. */
-async function gapBetween(above: Locator, below: Locator): Promise<number> {
-  const top = await above.boundingBox();
-  const bottom = await below.boundingBox();
-  if (!top || !bottom) throw new Error('Beide Überschriften müssen sichtbar sein');
-  return bottom.y - (top.y + top.height);
+/** Content anchor for the Aufgaben section (issue #972 AK3: the module `<h2>`
+ * is visually hidden) — whichever of list/empty-state is actually rendered. */
+function aufgabenContent(page: Page): Locator {
+  return page.locator('.task-list, .task-list__empty');
+}
+
+/** Content anchor for the Routinen section (issue #972 AK2: the module keeps
+ * a visible title, now in its own card head instead of a page-ground `<h2>`). */
+function routinenHead(page: Page): Locator {
+  return page.locator('.overview-block__head-card');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -429,23 +433,24 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/uebersicht');
 
-    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+    const content = aufgabenContent(page);
     await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
-    const emptyGap = await gapBetween(aufgaben, routinen);
+    const emptyBox = await content.boundingBox();
+    if (!emptyBox) throw new Error('Der Aufgaben-Leerzustand muss sichtbar sein');
 
     const id = await seedTask(page, { title: 'Eine Aufgabe', dueAt: YESTERDAY_MORNING });
     await expect(dueTaskItems(page)).toHaveCount(1);
-    const filledGap = await gapBetween(aufgaben, routinen);
+    const filledBox = await content.boundingBox();
+    if (!filledBox) throw new Error('Die Aufgabenliste muss sichtbar sein');
 
     // The empty state reserves one group card's worth of box — its own padding, a
     // header line, one task row (issue #762, card since issue #866) — so a filled
-    // "Woche" list is never just a bare row anymore, and the two gaps differ by
-    // rounding at most. Anything beyond that is the hole issue #228 fixed
-    // reopening — the numbers travel in the message, so a red run says how far off it is.
+    // "Woche" list is never just a bare row anymore, and its height barely grows.
+    // Anything beyond that is the hole issue #228 fixed reopening — the numbers
+    // travel in the message, so a red run says how far off it is.
     expect(
-      Math.abs(emptyGap - filledGap),
-      `leer ${emptyGap}px vs. mit Aufgabe ${filledGap}px bei ${width}px`,
+      Math.abs(emptyBox.height - filledBox.height),
+      `leer ${emptyBox.height}px vs. mit Aufgabe ${filledBox.height}px bei ${width}px`,
     ).toBeLessThanOrEqual(8);
 
     await page.evaluate(
@@ -473,27 +478,31 @@ test('kein "Routinen verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt
   ).toBeVisible();
 });
 
-test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Routinen" (issue #157 AC5)', async ({
+test('die Aufgaben-Überschrift bleibt im DOM für Screenreader, ist aber visuell verborgen (issue #157 AC5, jetzt #972 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   const aufgabenHeading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const routinenHeading = page.getByRole('heading', { name: 'Routinen', level: 2 });
-  await expect(aufgabenHeading).toBeVisible();
-  await expect(routinenHeading).toBeVisible();
+  await expect(aufgabenHeading).toHaveCount(1);
+  await expect(aufgabenHeading).toHaveClass(/visually-hidden/);
 
-  const [aufgabenStyle, routinenStyle] = await Promise.all([
-    aufgabenHeading.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
-    }),
-    routinenHeading.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
-    }),
-  ]);
-  expect(aufgabenStyle).toEqual(routinenStyle);
+  // `toBeVisible()` reicht hier nicht: eine 1×1px-Box mit `clip-path` gilt für
+  // Playwright als "sichtbar" (nicht leer, kein `visibility:hidden`) — die
+  // eigentliche Prüfung ist die Bounding-Box-Größe (issue #972 AK3).
+  const box = await aufgabenHeading.boundingBox();
+  if (!box) throw new Error('Die verborgene Überschrift muss trotzdem einen Layout-Ort haben');
+  expect(box.width, 'die Überschrift darf keine sichtbare Fläche einnehmen').toBeLessThanOrEqual(1);
+  expect(box.height, 'die Überschrift darf keine sichtbare Fläche einnehmen').toBeLessThanOrEqual(1);
+});
+
+test('der sichtbare Text über der Aufgabenliste kommt aus dem Bucket-Kopf, nicht mehr aus der Modulüberschrift (issue #157 AC5, jetzt #972 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+
+  await expect(groupTitles(page).filter({ hasText: 'Heute' })).toBeVisible();
 });
 
 test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
@@ -588,8 +597,8 @@ test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter �
   // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
   // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
   const wetter = page.locator('.weather-forecast');
-  const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+  const aufgaben = aufgabenContent(page);
+  const routinen = routinenHead(page);
   await expect(wetter).toBeVisible();
   await expect(aufgaben).toBeVisible();
   await expect(routinen).toBeVisible();
@@ -674,8 +683,8 @@ test('kein Journal-Block auf der Übersicht — auf Mobile (375px) wie auf Deskt
     await page.goto('/uebersicht');
 
     await expect(page.locator('.journal-today-section')).toHaveCount(0);
-    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+    const aufgaben = aufgabenContent(page);
+    const routinen = routinenHead(page);
     await expect(aufgaben).toBeVisible();
     await expect(routinen).toBeVisible();
     expect(await topOf(aufgaben), `Aufgaben über Routinen bei ${width}px`).toBeLessThan(
@@ -691,8 +700,8 @@ test('die Übersicht bleibt ohne Journal-Block auch im Dark Mode mit reduzierter
   await page.goto('/uebersicht');
 
   await expect(page.locator('.journal-today-section')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
+  await expect(aufgabenContent(page)).toBeVisible();
+  await expect(routinenHead(page)).toBeVisible();
 
   // Die Seite ist bedienbar: der Journal-Nav-Tab führt weiterhin zur Route.
   await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
@@ -845,7 +854,7 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
       category: null,
     });
 
-    const heading = page.getByRole('heading', { name: 'Termine', level: 2 });
+    const heading = page.getByRole('heading', { name: 'Nächster Termin', level: 2 });
     const next = page.locator('.events-overview__next');
     await expect(heading).toBeVisible();
     await expect(next).toBeVisible();
