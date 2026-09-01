@@ -574,7 +574,7 @@ describe('weekBuckets', () => {
     total: children.length,
   });
 
-  it('puts Überfällig first, then Heute, then Diese Woche — all other weekdays folded into one bucket (issue #866, Variante A)', () => {
+  it('puts Überfällig first, then Heute, then 7 Tage — all other weekdays folded into one bucket (issue #866, Variante A)', () => {
     const nodes = [
       node(task({ id: 'day20', dueAt: localIso(2026, 7, 20, 9, 0) })),
       node(task({ id: 'overdue', dueAt: localIso(2026, 7, 10, 9, 0) })),
@@ -584,8 +584,8 @@ describe('weekBuckets', () => {
 
     const buckets = weekBuckets(nodes, now);
     expect(buckets.map((b) => b.key)).toEqual(['overdue', 'today', 'week']);
-    expect(buckets.map((b) => b.label)).toEqual(['Überfällig', 'Heute', 'Diese Woche']);
-    // day20 and day22 fall on different weekdays but share ONE "Diese Woche" bucket.
+    expect(buckets.map((b) => b.label)).toEqual(['Überfällig', 'Heute', '7 Tage']);
+    // day20 and day22 fall on different weekdays but share ONE "7 Tage" bucket.
     expect(buckets[2].nodes.map((n) => n.task.id)).toEqual(['day20', 'day22']);
   });
 
@@ -604,7 +604,7 @@ describe('weekBuckets', () => {
     expect(bucket.nodes.map((n) => n.task.id)).toEqual(['morning', 'evening']);
   });
 
-  it('sorts the Diese Woche bucket by the full due date, not time-of-day', () => {
+  it('sorts the 7 Tage bucket by the full due date, not time-of-day', () => {
     const nodes = [
       node(task({ id: 'later-day-early-time', dueAt: localIso(2026, 7, 22, 6, 0) })),
       node(task({ id: 'earlier-day-late-time', dueAt: localIso(2026, 7, 20, 20, 0) })),

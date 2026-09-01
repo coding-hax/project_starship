@@ -1759,7 +1759,7 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang der Kind-Zeile augenblick
   expect(parseFloat(transitionDuration)).toBeLessThan(0.001);
 });
 
-test('„Woche" startet eingeklappt, die Eltern-Zeile zeigt trotzdem ihren Fortschritt (issue #781 AK1)', async ({
+test('„7 Tage" startet eingeklappt, die Eltern-Zeile zeigt trotzdem ihren Fortschritt (issue #781 AK1)', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -1772,8 +1772,8 @@ test('„Woche" startet eingeklappt, die Eltern-Zeile zeigt trotzdem ihren Forts
   const childA = taskItems(page).filter({ hasText: 'Kind A' });
   const childB = taskItems(page).filter({ hasText: 'Kind B' });
 
-  // "Woche" ist der Standard — die Fälligkeit morgen liegt im Fenster.
-  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  // "7 Tage" ist der Standard — die Fälligkeit morgen liegt im Fenster.
+  await expect(viewOption(page, '7 Tage')).toHaveAttribute('aria-checked', 'true');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(childA).toHaveJSProperty('inert', true);
   await expect(childB).toHaveJSProperty('inert', true);
@@ -1850,7 +1850,7 @@ test('Der Ansichtswechsel klappt eine aufgeklappte Aufgabe nicht wieder zu (issu
   await viewOption(page, 'Alle').click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 
-  await viewOption(page, 'Woche').click();
+  await viewOption(page, '7 Tage').click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 });
 
@@ -3203,8 +3203,8 @@ test('AK5: Dark Mode löst den Auswahl-Token auf, reduzierte Bewegung floort die
 /* Wochenausschnitt, Woche/Alle/Erledigt-Umschalter (issue #705)              */
 /* -------------------------------------------------------------------------- */
 
-/** A group card's title (issue #866) — "Überfällig"/"Heute"/"Diese Woche" in
- *  "Woche", one per completed day in "Erledigt". */
+/** A group card's title (issue #866) — "Überfällig"/"Heute"/"7 Tage" in
+ *  "7 Tage", one per completed day in "Erledigt". */
 function groupTitles(page: Page) {
   return page.locator('.task-list__group-title');
 }
@@ -3214,7 +3214,7 @@ function groupCounts(page: Page) {
   return page.locator('.task-list__group-count');
 }
 
-function viewOption(page: Page, name: 'Woche' | 'Alle' | 'Erledigt') {
+function viewOption(page: Page, name: '7 Tage' | 'Alle' | 'Erledigt') {
   return page.getByRole('radiogroup', { name: 'Aufgaben-Ansicht' }).getByRole('radio', { name });
 }
 
@@ -3235,7 +3235,7 @@ test('AK1: der Wochenausschnitt ist beim Öffnen der Standard — überfällig, 
   await installClockAt(page, FIXED_NOW);
   await page.goto('/aufgaben');
 
-  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  await expect(viewOption(page, '7 Tage')).toHaveAttribute('aria-checked', 'true');
 
   await seedTask(page, { title: 'Überfällig', dueAt: isoAt(-8) });
   await seedTask(page, { title: 'Heute fällig', dueAt: isoAt(0, 18) });
@@ -3252,7 +3252,7 @@ test('AK1: der Wochenausschnitt ist beim Öffnen der Standard — überfällig, 
   await expect(items.filter({ hasText: 'Ohne Datum' })).toHaveCount(0);
 });
 
-test('AK2: der Umschalter Woche/Alle/Erledigt ist nicht persistiert — nach einer Navigation steht wieder „Woche"', async ({
+test('AK2: der Umschalter 7 Tage/Alle/Erledigt ist nicht persistiert — nach einer Navigation steht wieder „7 Tage"', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -3268,12 +3268,75 @@ test('AK2: der Umschalter Woche/Alle/Erledigt ist nicht persistiert — nach ein
 
   await page.reload();
 
-  await expect(viewOption(page, 'Woche')).toHaveAttribute('aria-checked', 'true');
+  await expect(viewOption(page, '7 Tage')).toHaveAttribute('aria-checked', 'true');
   await expect(taskItems(page)).toHaveCount(1);
   await expect(taskItems(page).filter({ hasText: 'Ohne Datum' })).toHaveCount(0);
 });
 
-test('AK1 (T2/#866): „Woche" bündelt in drei feste Karten — „Überfällig", „Heute", „Diese Woche" — statt einer Marke je Tag', async ({
+test('AK1: der Filter trägt links „7 Tage" statt „Woche", „Alle" und „Erledigt" bleiben unberührt (issue #979)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  const options = page.getByRole('radiogroup', { name: 'Aufgaben-Ansicht' }).getByRole('radio');
+  await expect(options).toHaveText(['7 Tage', 'Alle', 'Erledigt']);
+});
+
+test('AK7: „7 Tage" bleibt im Umschalter einzeilig ohne Überlauf, jede Option ≥44px, Kartenkopf+Zahl bleiben einzeilig (issue #979, 375×812, Hell/Dunkel, reduced-motion)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/aufgaben');
+    await seedTask(page, { title: 'In 3 Tagen', dueAt: isoAt(3) });
+
+    const switcher = page.locator('.task-list__view-switcher');
+    const options = page.getByRole('radiogroup', { name: 'Aufgaben-Ansicht' }).getByRole('radio');
+    await expect(options).toHaveCount(3);
+
+    // Kein horizontaler Überlauf im Umschalter selbst — die drei Optionen
+    // bleiben nebeneinander in einer Zeile.
+    const switcherOverflow = await switcher.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(
+      switcherOverflow.scrollWidth,
+      `${scheme}: Umschalter läuft nicht über sich selbst`,
+    ).toBeLessThanOrEqual(switcherOverflow.clientWidth);
+
+    for (let i = 0; i < 3; i++) {
+      const option = options.nth(i);
+      const optionOverflow = await option.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+      // Kein Zeilenumbruch innerhalb der Option (sonst wächst scrollHeight).
+      expect(
+        optionOverflow.scrollHeight,
+        `${scheme}: Option ${i} bricht nicht um`,
+      ).toBeLessThanOrEqual(optionOverflow.clientHeight);
+      const box = await option.boundingBox();
+      expect(box!.height, `${scheme}: Option ${i} ≥44px hoch`).toBeGreaterThanOrEqual(44);
+    }
+
+    // Kartenkopf (Titel + Zahl) bleibt in einer Zeile, kein Umbruch.
+    const header = page.locator('.task-list__group-header').first();
+    await expect(header).toBeVisible();
+    const headerOverflow = await header.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(
+      headerOverflow.scrollHeight,
+      `${scheme}: Kartenkopf bleibt einzeilig`,
+    ).toBeLessThanOrEqual(headerOverflow.clientHeight);
+  }
+});
+
+test('AK1 (T2/#866): „7 Tage" bündelt in drei feste Karten — „Überfällig", „Heute", „7 Tage" — statt einer Marke je Tag', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -3285,7 +3348,7 @@ test('AK1 (T2/#866): „Woche" bündelt in drei feste Karten — „Überfällig
   await seedTask(page, { title: 'Kürzer überfällig', dueAt: isoAt(-1) });
   await seedTask(page, { title: 'Heute dran', dueAt: isoAt(0, 15) });
   // Zwei an verschiedenen Wochentagen fällige Aufgaben — fallen unter
-  // Variante A in DIESELBE "Diese Woche"-Karte, nicht in eine je Tag.
+  // Variante A in DIESELBE "7 Tage"-Karte, nicht in eine je Tag.
   await seedTask(page, { title: 'Übermorgen dran', dueAt: isoAt(2) });
   await seedTask(page, { title: 'In 5 Tagen dran', dueAt: isoAt(5) });
 
@@ -3294,7 +3357,7 @@ test('AK1 (T2/#866): „Woche" bündelt in drei feste Karten — „Überfällig
   await expect(titles).toHaveCount(3);
   await expect(titles.nth(0)).toHaveText('Überfällig');
   await expect(titles.nth(1)).toHaveText('Heute');
-  await expect(titles.nth(2)).toHaveText('Diese Woche');
+  await expect(titles.nth(2)).toHaveText('7 Tage');
 
   // Anzahl rechts = Top-Level-Zeilen der Karte (AK1).
   const counts = groupCounts(page);
@@ -3306,7 +3369,7 @@ test('AK1 (T2/#866): „Woche" bündelt in drei feste Karten — „Überfällig
   await expect(taskItems(page)).toHaveCount(5);
 });
 
-test('AK6: Aufgaben ohne Fälligkeit stehen unter „Woche" nicht in der Liste, sondern eingeklappt in einer ausklappbaren Karte (issue #762, vormals eine reine Textzeile)', async ({
+test('AK6: Aufgaben ohne Fälligkeit stehen unter „7 Tage" nicht in der Liste, sondern eingeklappt in einer ausklappbaren Karte (issue #762, vormals eine reine Textzeile)', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);

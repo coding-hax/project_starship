@@ -104,8 +104,9 @@ async function seedTallOpenTaskList(page: Page) {
   }
 }
 
-/** Same accessible name on both /uebersicht (aria-labelledby the <h2>) and
- *  /aufgaben (aria-label directly) — see task-list.tsx. */
+/** Matches "Aufgaben" as a substring on both /uebersicht (own aria-label
+ *  "Aufgaben der nächsten 7 Tage", issue #979 AK3) and /aufgaben (aria-label
+ *  "Aufgaben" directly) — see task-list.tsx. */
 function taskListItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }

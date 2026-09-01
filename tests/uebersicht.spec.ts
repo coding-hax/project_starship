@@ -24,14 +24,14 @@ const BEYOND_WEEK = '2026-07-27T09:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
-  // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
-  // (issue #157 AC: no double announcement). A group card's outer `<li>` renders
-  // `role="presentation"` (task-list.tsx, issue #866), so it never counts as a
-  // `listitem` here — only the task rows nested inside it do.
+  // Own `aria-label` "Aufgaben der nächsten 7 Tage" (issue #979 AK3), matched
+  // here by the "Aufgaben" substring (issue #157). A group card's outer `<li>`
+  // renders `role="presentation"` (task-list.tsx, issue #866), so it never
+  // counts as a `listitem` here — only the task rows nested inside it do.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-/** A group card's title (issue #866) — "Überfällig"/"Heute"/"Diese Woche". */
+/** A group card's title (issue #866) — "Überfällig"/"Heute"/"7 Tage". */
 function groupTitles(page: Page) {
   return page.locator('.task-list__group-title');
 }
@@ -132,11 +132,25 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   await expect(dueTaskItems(page).filter({ hasText: 'Ohne Fälligkeit' })).toHaveCount(0);
   await expect(page.getByText('Gestern erledigt')).toHaveCount(0);
 
-  // Karten: Überfällig zuerst, dann Heute/Diese Woche (issue #762, drei feste
+  // Karten: Überfällig zuerst, dann Heute/7 Tage (issue #762, drei feste
   // Buckets statt einer Marke je Tag seit issue #866).
   const titles = groupTitles(page);
   await expect(titles.first()).toHaveText('Überfällig');
-  await expect(titles.last()).toHaveText('Diese Woche');
+  await expect(titles.last()).toHaveText('7 Tage');
+});
+
+test('AK3: /uebersicht zeigt denselben Bucket-Kopf „7 Tage" wie /aufgaben, kein „heute"-Versprechen im Abschnittstitel (issue #979)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'In 3 Tagen', dueAt: WITHIN_WEEK });
+
+  await expect(groupTitles(page)).toHaveText(['7 Tage']);
+  // Der Abschnittstitel bleibt "Aufgaben" (visuell versteckt, issue #972 AK3) —
+  // kein "heute", wo sieben Tage gemeint sind.
+  await expect(page.locator('#uebersicht-aufgaben-heading')).toHaveText('Aufgaben');
+  // Weiterhin per Teilstring über "Aufgaben" auffindbar (issue #157).
+  await expect(dueTaskItems(page)).toHaveCount(1);
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
@@ -506,16 +520,21 @@ test('der sichtbare Text über der Aufgabenliste kommt aus dem Bucket-Kopf, nich
   await expect(groupTitles(page).filter({ hasText: 'Heute' })).toBeVisible();
 });
 
-test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
+test('die Aufgabenliste trägt ihr eigenes aria-label „Aufgaben der nächsten 7 Tage" statt der Modulüberschrift (issue #157 AC6, jetzt #979 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
+  // Vor #979 war die Liste per `aria-labelledby` an die (identische) Modul-
+  // überschrift "Aufgaben" gebunden, um doppelte Ansage zu vermeiden. Die
+  // Texte sind jetzt unterschiedlich ("Aufgaben" vs. "Aufgaben der nächsten
+  // 7 Tage") — `aria-labelledby` würde den Zusatz "der nächsten 7 Tage"
+  // stillschweigend verschlucken, die Liste trägt ihn deshalb selbst.
   const list = page.getByRole('list', { name: 'Aufgaben' });
   await expect(list).toBeVisible();
-  await expect(list).toHaveAttribute('aria-labelledby', 'uebersicht-aufgaben-heading');
-  expect(await list.getAttribute('aria-label')).toBeNull();
+  await expect(list).toHaveAttribute('aria-label', 'Aufgaben der nächsten 7 Tage');
+  expect(await list.getAttribute('aria-labelledby')).toBeNull();
 });
 
 test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig unterscheidbar (issue #157 AC3)', async ({
