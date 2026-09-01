@@ -187,6 +187,24 @@ async function resolveToken(page: Page, cssVar: string): Promise<string> {
   }, cssVar);
 }
 
+/** Same probe technique as resolveToken, for an arbitrary CSS property/token pair —
+ *  lets a test assert e.g. border-radius/box-shadow against the token's computed
+ *  value instead of a literal string (same pattern as
+ *  aufgaben-kartenrhythmus.spec.ts's resolveToken). */
+async function resolveStyleToken(page: Page, property: string, token: string): Promise<string> {
+  return page.evaluate(
+    ({ property, token }) => {
+      const probe = document.createElement('span');
+      probe.style.setProperty(property, `var(${token})`);
+      document.body.appendChild(probe);
+      const value = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return value;
+    },
+    { property, token },
+  );
+}
+
 /** Same probe technique, for a `color-mix(in oklab, …)` expression — lets a test
  *  assert the browser's exact resolution of the all-day band's category mix
  *  (issue #924) without hand-computing the OKLab arithmetic. */
@@ -2164,6 +2182,34 @@ test('eine Ganztags-Leiste mit Kategorie traegt die Kategorie-Farbe am Balken, d
   await expect
     .poll(() => edgeBar.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedBarDark);
+});
+
+test('AK1: die Karte übernimmt Radius und Schatten vom Karten-Token, der Balken bleibt 4px breit mit 2px-Radius statt der 8px-Punkt-Form aus #924', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Formkontrolle',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  const bar = allDayBar(page, 'Formkontrolle');
+  await expect(bar).toBeVisible();
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
+
+  const radiusToken = await resolveStyleToken(page, 'border-radius', '--radius-card');
+  const shadowToken = await resolveStyleToken(page, 'box-shadow', '--shadow-raised');
+  expect(await bar.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await bar.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+
+  // width/border-radius sind Blatt-Literale, kein Token (#956 AK1) — der Balken
+  // ist die 4px-Schmalspur, kein 8px-Punkt mehr.
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).width)).toBe('4px');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('2px');
 });
 
 /* -------------------------------------------------------------------------- */
