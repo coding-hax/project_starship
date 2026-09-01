@@ -315,12 +315,12 @@ html {
 
 body {
   /* Flat --ground everywhere, including the safe area: the opaque status-bar
-     band that used to live here (issue #882) moved to `.bg-layer__veil`
-     (background-circles.css, issue #919) — a translucent overlay painted
-     above the circles instead of a deckende gradient painted here that hid
-     them. `--ground-notch` (globals.css above) stays defined and still
+     band that used to live here (issue #882) moved to a translucent overlay
+     (`.bg-layer__veil`, issue #919) and then dropped entirely (issue #982) —
+     the ground now runs through unbroken with nothing painted over it in
+     that strip. `--ground-notch` (globals.css above) stays defined and still
      covers that band's own contrast measurement (tests/shell.mobile.spec.ts)
-     as the quick rollback path (see issue #919's "Rückweg"). */
+     as the quick rollback path (see issue #982's "Rückweg"). */
   background: var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/

@@ -673,8 +673,6 @@ async function layerChildClasses(page: Page): Promise<string[]> {
   );
 }
 
-// Achtes Kind seit issue #919: der Statusleisten-Schleier (`.bg-layer__veil`),
-// bewusst als letztes Element, damit er innerhalb der Ebene über allem liegt.
 const LAYER_CHILD_ORDER = [
   'bg-light',
   'bg-light',
@@ -683,7 +681,6 @@ const LAYER_CHILD_ORDER = [
   'bg-circle',
   'bg-circle',
   'bg-circle',
-  'bg-layer__veil',
 ];
 
 test('AK1 (#904): drei .bg-light vor den vier .bg-circle auf jeder Route, /offline bleibt display:none', async ({
@@ -908,11 +905,12 @@ test('AK8 (#904): 375 × 812 — die Lichter ragen über den Rand, ohne waagerec
 // --- issue #919: die Kreisebene wurde bislang genau an der Safe-Area-Kante
 // abgeschnitten (`inset: env(safe-area-inset-top) 0 0 0`) — der Kreisbogen
 // bricht dort hart ab, obwohl die Entwurfs-Vorlage ihn bis zur Oberkante
-// durchlaufen lässt. `.bg-layer` bekommt jetzt `inset: 0`, ein eigener
-// Schleier (`.bg-layer__veil`, letztes Kind) dunkelt die Statusleisten-Zone
-// stattdessen durchscheinend ab. CI/Playwright kennen keinen Notch
-// (`env(safe-area-inset-top)` = 0) — deshalb erzwingen die Tests unten
-// `--safe-top` (tokens.css) per `addStyleTag` auf einen echten Wert (AK4). --
+// durchlaufen lässt. `.bg-layer` bekommt seitdem `inset: 0`; der Schleier,
+// der die Statusleisten-Zone zunächst noch durchscheinend abdunkelte, ist
+// seit issue #982 wieder weg — das Bild läuft dort jetzt ungedämpft durch.
+// CI/Playwright kennen keinen Notch (`env(safe-area-inset-top)` = 0) —
+// deshalb erzwingen die Tests unten `--safe-top` (tokens.css) per
+// `addStyleTag` auf einen echten Wert (AK2/AK4). ---
 
 test('AK1 (#919): .bg-layer bekommt inset:0, kein Schnitt mehr an der Safe-Area', async ({ page }) => {
   await registerPasskey(page);
@@ -953,19 +951,13 @@ function findSpotInSameCircleBelowBand(
   return null;
 }
 
-test('AK2 (#919): der Schleier liegt über den Kreisen, durchscheinend statt deckend', async ({ page }) => {
+test('AK2 (#982): das Bild läuft in der Statusleisten-Zone ungedämpft durch, kein Schleier mehr darüber', async ({
+  page,
+}) => {
   await registerPasskey(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
   await page.addStyleTag({ content: ':root { --safe-top: 60px; }' });
-
-  // Letztes Kind, kein eigener z-index — DOM-Reihenfolge allein entscheidet (AK2).
-  const isLastChild = await page.evaluate(
-    () => document.querySelector('.bg-layer')?.lastElementChild?.classList.contains('bg-layer__veil') ?? false,
-  );
-  expect(isLastChild, '.bg-layer__veil ist das letzte Kind von .bg-layer').toBe(true);
-  const veilZIndex = await page.locator('.bg-layer__veil').evaluate((el) => getComputedStyle(el).zIndex);
-  expect(veilZIndex).toBe('auto');
 
   await hideForegroundContent(page);
   const viewport = page.viewportSize()!;
@@ -975,36 +967,21 @@ test('AK2 (#919): der Schleier liegt über den Kreisen, durchscheinend statt dec
   expect(inBand, 'Testvoraussetzung: ein Kreis auf /aufgaben liegt in der erzwungenen Safe-Area-Zone').not.toBeNull();
   const belowBandSameCircle = findSpotInSameCircleBelowBand(rects, inBand!, 60, viewport.height);
   expect(belowBandSameCircle, 'derselbe Kreis reicht auch unter die Zone').not.toBeNull();
-  const inBandNoCircle = findFreeSpotOutsideRects(rects, { width: viewport.width, height: 60 });
-  expect(inBandNoCircle, 'eine kreisfreie Stelle innerhalb der Zone').not.toBeNull();
 
-  const [inBandColor, belowBandColor, inBandGroundColor] = await samplePixels(page, [
-    inBand!,
-    belowBandSameCircle!,
-    inBandNoCircle!,
-  ]);
+  const [inBandColor, belowBandColor] = await samplePixels(page, [inBand!, belowBandSameCircle!]);
 
-  // Der Schleier liegt tatsächlich über dem Kreis: derselbe Kreis sieht in der
-  // Zone anders aus als knapp darunter, wo kein Schleier mehr liegt.
+  // Kein Schleier mehr über dem Kreis: derselbe Kreis sieht in der Zone
+  // farbgleich aus wie knapp darunter.
   expect(
     maxChannelDiff(inBandColor, belowBandColor),
     `Kreis in der Zone ${JSON.stringify(inBandColor)} vs. derselbe Kreis darunter ${JSON.stringify(belowBandColor)}`,
-  ).toBeGreaterThanOrEqual(3);
-
-  // Durchscheinend, nicht deckend: der Kreis unter dem Schleier unterscheidet
-  // sich noch vom flachen Grund unter demselben Schleier — eine deckende
-  // Fläche (das alte Band) hätte beide auf dieselbe Farbe gebracht.
-  expect(
-    maxChannelDiff(inBandColor, inBandGroundColor),
-    `Kreis unterm Schleier ${JSON.stringify(inBandColor)} vs. Grund unterm Schleier ${JSON.stringify(inBandGroundColor)}`,
-  ).toBeGreaterThanOrEqual(3);
+  ).toBeLessThanOrEqual(2);
 });
 
 test('AK4 (#919): --safe-top ist ein eigener Anker, Standard 0, per addStyleTag auf einen echten Wert erzwingbar', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/aufgaben');
 
   // CI/Playwright-Browser haben keinen Notch: env(safe-area-inset-top) = 0.
@@ -1014,23 +991,8 @@ test('AK4 (#919): --safe-top ist ein eigener Anker, Standard 0, per addStyleTag 
   expect(defaultTop).toBe('0px');
 
   await page.addStyleTag({ content: ':root { --safe-top: 47px; }' });
-  const veilHeight = await page.locator('.bg-layer__veil').evaluate((el) => getComputedStyle(el).height);
-  expect(veilHeight, '--safe-top treibt tatsächlich die Schleier-Höhe, kein toter Anker').toBe('47px');
-
-  await hideForegroundContent(page);
-  const viewport = page.viewportSize()!;
-  const rects = await circleRects(page);
-  const inBand = findFreeSpotOutsideRects(rects, { width: viewport.width, height: 47 });
-  expect(inBand, 'eine kreisfreie Stelle innerhalb der erzwungenen Zone').not.toBeNull();
-  const belowBand = { x: inBand!.x, y: inBand!.y + 47 };
-  expect(
-    pointInsideAnyCircle(rects, belowBand.x, belowBand.y),
-    'Vergleichsstelle liegt außerhalb jedes Kreises',
-  ).toBe(false);
-
-  const [bandColor, groundColor] = await samplePixels(page, [inBand!, belowBand]);
-  expect(
-    maxChannelDiff(bandColor, groundColor),
-    `erzwungene Zone ${JSON.stringify(bandColor)} vs. flacher Grund ${JSON.stringify(groundColor)}`,
-  ).toBeGreaterThanOrEqual(3);
+  const forcedTop = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim(),
+  );
+  expect(forcedTop, '--safe-top lässt sich unabhängig von env() auf einen echten Wert erzwingen').toBe('47px');
 });
