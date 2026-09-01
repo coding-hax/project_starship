@@ -259,6 +259,9 @@
   --text-eyebrow: 11.5px;
   --text-subline: 13.5px;
   --text-chip: 12.5px;
+  /* month-grid Wochentagskopf (issue #958): kleiner als --text-meta, damit
+     "Mo…So" in den 7 schmalen Spalten der Monats-Karte nicht umbricht. */
+  --text-month-weekday: 10.5px;
 
   /* Zwei Font-Rollen statt einer rohen Familie (issue #859, ADR-0027): keine
      Datei greift `--font-inter`/`--font-nunito` roh ab, dieselbe Regel wie bei

@@ -61,7 +61,7 @@
   margin: 0 0 4px;
   padding: 0;
   text-align: center;
-  font-size: 10.5px;
+  font-size: var(--text-month-weekday);
   color: var(--text-muted);
 }
 
