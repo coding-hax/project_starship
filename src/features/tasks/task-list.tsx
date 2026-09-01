@@ -159,12 +159,6 @@ export interface TaskListProps {
    */
   dueTodayOnly?: boolean;
   /**
-   * Id of a visible heading that already names this list (issue #157) — the list
-   * is labelled by it via `aria-labelledby` instead of carrying its own
-   * `aria-label`, so a screen reader doesn't announce both back to back.
-   */
-  headingId?: string;
-  /**
    * Whether the chat-style scroll anchor (issue #88, below) may run. Default
    * `true` for `/aufgaben`, where this list *is* the page and owns the
    * document's scroll. An embedded call site (`/uebersicht`, issue #647) has
@@ -177,7 +171,6 @@ export interface TaskListProps {
 
 export function TaskList({
   dueTodayOnly = false,
-  headingId,
   anchorOnMount = true,
 }: TaskListProps = {}) {
   const allTasks = useTasks();
@@ -571,9 +564,7 @@ export function TaskList({
           <ul
             ref={listRef}
             className="task-list"
-            {...(headingId
-              ? { 'aria-labelledby': headingId }
-              : { 'aria-label': dueTodayOnly ? 'Aufgaben der nächsten 7 Tage' : 'Aufgaben' })}
+            aria-label={dueTodayOnly ? 'Aufgaben der nächsten 7 Tage' : 'Aufgaben'}
           >
             {foldRowsIntoCards(presenceRows).map((card) => (
               <li

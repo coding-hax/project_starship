@@ -24,10 +24,10 @@ const BEYOND_WEEK = '2026-07-27T09:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
-  // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
-  // (issue #157 AC: no double announcement). A group card's outer `<li>` renders
-  // `role="presentation"` (task-list.tsx, issue #866), so it never counts as a
-  // `listitem` here — only the task rows nested inside it do.
+  // Own `aria-label` "Aufgaben der nächsten 7 Tage" (issue #979 AK3), matched
+  // here by the "Aufgaben" substring (issue #157). A group card's outer `<li>`
+  // renders `role="presentation"` (task-list.tsx, issue #866), so it never
+  // counts as a `listitem` here — only the task rows nested inside it do.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
@@ -520,16 +520,21 @@ test('der sichtbare Text über der Aufgabenliste kommt aus dem Bucket-Kopf, nich
   await expect(groupTitles(page).filter({ hasText: 'Heute' })).toBeVisible();
 });
 
-test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
+test('die Aufgabenliste trägt ihr eigenes aria-label „Aufgaben der nächsten 7 Tage" statt der Modulüberschrift (issue #157 AC6, jetzt #979 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
+  // Vor #979 war die Liste per `aria-labelledby` an die (identische) Modul-
+  // überschrift "Aufgaben" gebunden, um doppelte Ansage zu vermeiden. Die
+  // Texte sind jetzt unterschiedlich ("Aufgaben" vs. "Aufgaben der nächsten
+  // 7 Tage") — `aria-labelledby` würde den Zusatz "der nächsten 7 Tage"
+  // stillschweigend verschlucken, die Liste trägt ihn deshalb selbst.
   const list = page.getByRole('list', { name: 'Aufgaben' });
   await expect(list).toBeVisible();
-  await expect(list).toHaveAttribute('aria-labelledby', 'uebersicht-aufgaben-heading');
-  expect(await list.getAttribute('aria-label')).toBeNull();
+  await expect(list).toHaveAttribute('aria-label', 'Aufgaben der nächsten 7 Tage');
+  expect(await list.getAttribute('aria-labelledby')).toBeNull();
 });
 
 test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig unterscheidbar (issue #157 AC3)', async ({
