@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { CSSProperties } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { IconStreak } from '@/ui/icons';
 import { useBlockReady } from '@/ui/overview-ready';
@@ -77,6 +78,7 @@ export function HabitToday() {
         const showProgress = status !== null && !showWeekHint && status.target > 1 && !status.met;
         const streak = computeStreak(habit, logs, now);
         const isJournal = habit.id === JOURNAL_HABIT_ID;
+        const toneVar = `var(${habit.color ?? '--area-habits'})`;
         return (
           <li
             key={habit.id}
@@ -84,11 +86,23 @@ export function HabitToday() {
               doneToday ? 'habit-today__item habit-today__item--done' : 'habit-today__item'
             }
           >
-            <span
-              className="habit-today__color"
-              style={{ background: `var(${habit.color ?? '--area-habits'})` }}
-              aria-hidden="true"
-            />
+            <span className="habit-today__lead">
+              {streak > 0 ? (
+                <span
+                  className="habit-today__streak"
+                  style={{ '--habit-tone': toneVar } as CSSProperties}
+                  aria-label={`Streak: ${streak}`}
+                >
+                  <IconStreak className="habit-today__streak-icon" /> {streak}
+                </span>
+              ) : (
+                <span
+                  className="habit-today__color"
+                  style={{ background: toneVar }}
+                  aria-hidden="true"
+                />
+              )}
+            </span>
             <span className="habit-today__name-group">
               <span className="habit-today__name">{habit.name}</span>
               {showWeekHint && <span className="habit-today__week-hint">{doneHint}</span>}
@@ -98,16 +112,7 @@ export function HabitToday() {
                 </span>
               )}
             </span>
-            {streak > 0 && (
-              <span
-                className="habit-today__streak"
-                style={{ color: `var(${habit.color ?? '--area-habits'})` }}
-                aria-label={`Streak: ${streak}`}
-              >
-                <IconStreak className="habit-today__streak-icon" /> {streak}
-              </span>
-            )}
-            <span className="habit-today__checkbox-wrap">
+            <label className="habit-today__checkbox-wrap">
               <input
                 type="checkbox"
                 className="habit-today__checkbox"
@@ -120,7 +125,7 @@ export function HabitToday() {
                     : `${habit.name} für heute abhaken`
                 }
               />
-            </span>
+            </label>
           </li>
         );
       })}

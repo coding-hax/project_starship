@@ -467,10 +467,11 @@ test('der Wochen-Hinweis nutzt den gedämpften Text-Token, auch im Dark Mode, oh
   );
   await expect(hint).toBeVisible();
   // `--text-muted` itself is a context variable since issue #832 (the page ground
-  // overrides it, cards reset it back). `.habit-today__item` is a card, so its
-  // `--text-muted` resolves to the fixed `--text-muted-base` — that's the value
-  // this element actually renders, not whatever `--text-muted` means at document
-  // level (which here is the route's ground ink).
+  // overrides it, cards reset it back). `.habit-today` is the card (issue #975
+  // AK1), so its `--text-muted` resolves to the fixed `--text-muted-base` and
+  // inherits down to this hint — that's the value this element actually
+  // renders, not whatever `--text-muted` means at document level (which here
+  // is the route's ground ink).
   const lightColor = await hint.evaluate((el) => getComputedStyle(el).color);
   expect(lightColor).toBe(await resolveColorToken(page, '--text-muted-base'));
 
@@ -481,4 +482,198 @@ test('der Wochen-Hinweis nutzt den gedämpften Text-Token, auch im Dark Mode, oh
 
   const transitionProperty = await hint.evaluate((el) => getComputedStyle(el).transitionProperty);
   expect(transitionProperty).toBe('all');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1: eine Karte statt Karte je Zeile (issue #975)                          */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: die Liste selbst trägt Fläche/Radius/Schatten, eine Zeile trägt keine eigenen mehr (issue #975)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Kartenrumpf', schedule: 'daily', color: null, archivedAt: null });
+
+  const list = page.locator('.habit-today');
+  await expect(list).toHaveCSS('background-color', await resolveColorToken(page, '--surface'));
+  const listShadow = await list.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(listShadow).not.toBe('none');
+
+  const item = habitTodayItems(page).filter({ hasText: 'Kartenrumpf' });
+  const itemStyle = await item.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { background: computed.backgroundColor, shadow: computed.boxShadow };
+  });
+  expect(itemStyle.background).toBe('rgba(0, 0, 0, 0)');
+  expect(itemStyle.shadow).toBe('none');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK3: Zeilen ohne Streak bleiben ausgerichtet                               */
+/* -------------------------------------------------------------------------- */
+
+test('AK3: eine Zeile ohne Streak zeigt den Farbpunkt an der Stelle der Pille, der Name beginnt bei beiden auf derselben Kante (issue #975)', async ({
+  page,
+}) => {
+  const mitSerieId = await seedHabit(page, {
+    name: 'Mit Serie',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId: mitSerieId, logDate: '2026-07-15', done: true });
+  await seedHabit(page, { name: 'Ohne Serie', schedule: 'daily', color: null, archivedAt: null });
+
+  const mitSerieItem = habitTodayItems(page).filter({ hasText: 'Mit Serie' });
+  const ohneSerieItem = habitTodayItems(page).filter({ hasText: 'Ohne Serie' });
+  await expect(mitSerieItem.locator('.habit-today__streak')).toBeVisible();
+  await expect(mitSerieItem.locator('.habit-today__color')).toHaveCount(0);
+  await expect(ohneSerieItem.locator('.habit-today__color')).toBeVisible();
+  await expect(ohneSerieItem.locator('.habit-today__streak')).toHaveCount(0);
+
+  const [mitSerieNameX, ohneSerieNameX] = await Promise.all([
+    mitSerieItem.locator('.habit-today__name').evaluate((el) => el.getBoundingClientRect().x),
+    ohneSerieItem.locator('.habit-today__name').evaluate((el) => el.getBoundingClientRect().x),
+  ]);
+  expect(mitSerieNameX).toBe(ohneSerieNameX);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4: rundes Häkchen statt Systemcheckbox, Tap-Target bleibt ≥ 44 × 44      */
+/* -------------------------------------------------------------------------- */
+
+test('AK4: das Häkchen übernimmt die runde Form von .task-list__checkbox, der ganze 44×44-Wrapper hakt ab (issue #975, issue #867)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Rundes Häkchen', schedule: 'daily', color: null, archivedAt: null });
+  const item = habitTodayItems(page).filter({ hasText: 'Rundes Häkchen' });
+  const checkbox = item.getByRole('checkbox');
+  const wrap = item.locator('.habit-today__checkbox-wrap');
+
+  const shape = await checkbox.evaluate((el) => {
+    const computed = getComputedStyle(el);
+    return { appearance: computed.appearance, borderRadius: computed.borderRadius, width: computed.width };
+  });
+  expect(shape.appearance).toBe('none');
+  expect(shape.borderRadius).toBe('50%');
+  expect(shape.width).toBe('30px');
+
+  const wrapBox = await wrap.evaluate((el) => el.getBoundingClientRect());
+  expect(wrapBox.width).toBeGreaterThanOrEqual(44);
+  expect(wrapBox.height).toBeGreaterThanOrEqual(44);
+
+  // Tippt in eine Ecke des Wrappers, nicht auf den kleineren, sichtbaren Kreis
+  // — nur ein <label>-Wrapper (statt eines bloßen <span>) leitet das an den
+  // Checkbox-Klick weiter (issue #867's genau selbe Begründung).
+  await wrap.click({ position: { x: 2, y: 2 } });
+  await expect(checkbox).toBeChecked();
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK8: Kontrast — Pillenschrift, Pillenfläche, Häkchenrand, hell und dunkel  */
+/* -------------------------------------------------------------------------- */
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** See grundfarbe.spec.ts's own `toRgb` for why canvas, not a regex on rgb()/oklch(). */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+test('AK8: Pillenschrift erreicht 4,5:1, Pillenfläche ist von --surface unterscheidbar, Häkchenrand erreicht 3:1 — hell und dunkel (issue #975)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Kontrastsonde',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-15', done: true });
+  const item = habitTodayItems(page).filter({ hasText: 'Kontrastsonde' });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    const surface = await toRgb(page, await resolveColorToken(page, '--surface'));
+
+    const pill = item.locator('.habit-today__streak');
+    const pillStyle = await pill.evaluate((el) => {
+      const computed = getComputedStyle(el);
+      return { background: computed.backgroundColor, color: computed.color };
+    });
+    const pillBg = await toRgb(page, pillStyle.background);
+    const pillText = await toRgb(page, pillStyle.color);
+    expect(
+      contrastRatio(pillText, pillBg),
+      `Pillenschrift (${scheme}) gegen die Pillenfläche`,
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(pillStyle.background, `Pillenfläche (${scheme}) gegen --surface`).not.toBe(
+      await resolveColorToken(page, '--surface'),
+    );
+
+    const checkboxBorder = await toRgb(
+      page,
+      await item.getByRole('checkbox').evaluate((el) => getComputedStyle(el).borderColor),
+    );
+    expect(
+      contrastRatio(checkboxBorder, surface),
+      `Häkchenrand (${scheme}) gegen --surface`,
+    ).toBeGreaterThanOrEqual(3);
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK9: 375 × 812 ohne Überlauf, Dark Mode, langer Name kürzt einzeilig       */
+/* -------------------------------------------------------------------------- */
+
+test('AK9: ein langer Routinenname kürzt einzeilig zwischen Pille und Häkchen, kein horizontaler Überlauf bei 375×812, Dark Mode (issue #975)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const habitId = await seedHabit(page, {
+    name: 'Ein sehr sehr sehr langer Routinenname, der garantiert nicht in eine Zeile passt',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: '2026-07-15', done: true });
+  await page.reload();
+
+  const name = habitTodayItems(page)
+    .filter({ hasText: 'Ein sehr sehr sehr langer Routinenname' })
+    .locator('.habit-today__name');
+  await expect(name).toBeVisible();
+  const { clientHeight, lineHeight } = await name.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(Math.round(clientHeight / lineHeight)).toBe(1);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
 });
