@@ -204,7 +204,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `page-head.tsx` / `.css` — Dreizonen-Kopf (Augenbraue/Titel/Zusatz), drei Routen
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `background-circles.tsx` / `.css` — Kreise hinterm Grund, Gangart je Route
+- `background-arcs.tsx` / `.css` — drei gestaffelte Bögen hinterm Grund, dieselbe Anordnung auf jeder Route
 - `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
 - `swatch-palette.ts` — `SWATCH_PALETTE`, zehn Farbnamen (Token+Label), Quelle für habit-editor.tsx + category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Motion), App-Shell

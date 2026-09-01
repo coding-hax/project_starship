@@ -1,0 +1,126 @@
+/*
+ * Ambient background arcs, three stacked layers rising from the bottom edge
+ * (S3 of #828, issue #829; recomputed as three arcs in the "Foto-Rezept"
+ * colour scheme, issue #991 — replaces the previous four circles + three
+ * lights). Mounted once at the root layout; the tones come from globals.css
+ * (`--arc-1/2/3`, literal hex per route, same pattern as `--face-*`), the
+ * shared geometry/motion live here.
+ */
+
+.bg-layer {
+  /* Only shown on routes that set a ground (`[data-ground]`) — e.g. /offline
+     has none. */
+  display: none;
+  position: fixed;
+  /* Full viewport, no longer stopping at the status bar safe area (issue
+     #919): the arcs run unbroken to the very top, matching the design
+     sheet. The white iOS status bar glyphs (clock/battery/signal) sit
+     directly on whatever is painted there with no darkening of their own
+     (issue #982) — accepted per that ticket's decision, since the 4.5:1
+     floor binds page content, not chrome iOS itself paints. The arcs
+     themselves never reach that high (AK1's geometry crowns at y ≥ 205px on
+     375×812), so the notch band always shows flat `--ground` regardless. */
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* -1, not 0: a positioned z-index:0 layer would still paint over flat text
+     in DOM order — -1 sits behind the ground itself (AK2). That only shows
+     the ground and not a plain body background because `body` isolates its
+     own stacking context (issue #849) — see the `body` rule in globals.css. */
+  z-index: -1;
+  /* Depth (issue #904): a slight vignette towards the bottom edge, painted
+     under the arcs below (DOM order = paint order at equal z-index). */
+  background: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
+}
+
+html:has([data-ground]) .bg-layer {
+  display: block;
+}
+
+.bg-arc {
+  position: absolute;
+  border-radius: 50%;
+  left: 50%;
+  translate: -50% 0;
+  /* Rest state (AK2): `animation: none` (reduced motion, below) must land on
+     the untransformed size — the identity value of the individual `scale`
+     property below, never mid-pulse. */
+  scale: 1;
+}
+
+/* Same arrangement on all nine routes (AK1) — unlike the old per-route
+   circles, arcs carry no `html:has([data-ground='…'])` routing of their own;
+   only their colour (--arc-1/2/3, globals.css) varies by route. DOM order =
+   paint order at equal z-index, so Bogen 1 (hinten, nth-child(1)) paints
+   first and Bogen 3 (vorn, nth-child(3)) last, on top — matching the design
+   sheet's front-to-back stacking. */
+.bg-arc:nth-child(1) {
+  width: 1000px;
+  height: 1000px;
+  bottom: -393px;
+  background: var(--arc-1);
+  animation: bg-arc-pulse-1 9s ease-in-out infinite alternate;
+}
+.bg-arc:nth-child(2) {
+  width: 790px;
+  height: 790px;
+  bottom: -373px;
+  background: var(--arc-2);
+  animation: bg-arc-pulse-2 11s ease-in-out infinite alternate;
+  animation-delay: -4s;
+}
+.bg-arc:nth-child(3) {
+  width: 570px;
+  height: 570px;
+  bottom: -333px;
+  background: var(--arc-3);
+  animation: bg-arc-pulse-3 14s ease-in-out infinite alternate;
+  animation-delay: -9s;
+}
+
+/* Three independent keyframes (AK2), pairwise coprime-ish durations (9/11/14s)
+   and staggered negative delays so the arcs never pulse in lockstep. */
+@keyframes bg-arc-pulse-1 {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.05;
+  }
+}
+@keyframes bg-arc-pulse-2 {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.085;
+  }
+}
+@keyframes bg-arc-pulse-3 {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.12;
+  }
+}
+
+/*
+ * Reduce motion (AK2 of #991, carried over from AK4/AK5 of #829): the global
+ * rule in tokens.css only nulls `animation-duration`/`animation-iteration-count`,
+ * which would still report the gait's keyframe name via `animationName` — not
+ * enough for a test that checks `animationName === 'none'`. `animation: none`
+ * also drops `scale` back to its identity value declared on `.bg-arc` itself
+ * (above), so the rest state is always the untransformed size, never
+ * mid-pulse. `!important` (matching the global rule's own specificity) makes
+ * the outcome independent of rule order against the per-arc blocks above.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .bg-arc {
+    animation: none !important;
+  }
+}
+
+:root[data-reduce-motion='true'] .bg-arc {
+  animation: none !important;
+}

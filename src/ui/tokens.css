@@ -77,15 +77,22 @@
      rule: `--on-ground-light` (a warm near-white, stays light in both themes —
      unlike --accent-fg) on the darker grounds, `--on-accent` (already dark in
      both themes) on the ones too light for white at 4.5:1 in light mode. */
-  --ground-uebersicht: oklch(70.1% 0.201 44.8); /* #ff6a00 */
-  --ground-aufgaben: oklch(53.5% 0.088 203); /* #0e7c84 */
-  --ground-kalender: oklch(49.8% 0.211 261.7); /* #0d55d8 */
-  --ground-routinen: oklch(64.4% 0.131 165.5); /* #12a67a */
-  --ground-journal: oklch(35.1% 0.146 301.8); /* #4a1d78 */
-  --ground-aktivitaeten: oklch(80.9% 0.17 75.4); /* #ffae00 */
-  --ground-wetter: oklch(59.3% 0.13 241.3); /* #1c86c4 */
-  --ground-einstellungen: oklch(43.3% 0.025 248.4); /* #46525e */
-  --ground-anmelden: oklch(71.3% 0.195 47.9); /* #ff7300 */
+  /* "Foto-Rezept" (issue #991 AK3): gedämpft aus der unveränderten Bereichsfarbe,
+     L' = L + (0.965 − L) × F, C' = C × 0.62, H unverändert. Raw hex, not oklch —
+     wie --face-* unten, gerechnet statt geraten (sRGB → OKLab → OKLCH, Rezept,
+     zurück). F = 0.34, nicht die im Ticket vorgeschlagenen 0.35: bei 0.35 fiel
+     Aktivitäten im Dunkelmodus unter die geforderten 5,1:1 (AK5) — die
+     Neuberechnung läuft laut AK4 uniform über alle neun Routen, nie je Route
+     einzeln. */
+  --ground-uebersicht: #fda076; /* aus #ff6a00 */
+  --ground-aufgaben: #70a3a8; /* aus #0e7c84 */
+  --ground-kalender: #6390e1; /* aus #0d55d8 */
+  --ground-routinen: #7cc0a3; /* aus #12a67a */
+  --ground-journal: #7e67a1; /* aus #4a1d78 */
+  --ground-aktivitaeten: #fac881; /* aus #ffae00 */
+  --ground-wetter: #76abd3; /* aus #1c86c4 */
+  --ground-einstellungen: #7d858d; /* aus #46525e */
+  --ground-anmelden: #fda577; /* aus #ff7300 */
 
   /* --- page face: two-colour pair per route for `<PageFace/>` (issue #850) -
      Raw hex, not oklch — these are lifted verbatim from the design sheet's

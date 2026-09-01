@@ -6,7 +6,7 @@ export const metadata = { title: 'Wetter · Starship' };
 // Android status bar colour (issue #882, AK4) — see uebersicht/page.tsx.
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#1c86c4' },
+    { media: '(prefers-color-scheme: light)', color: '#76abd3' },
     { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
   ],
 };

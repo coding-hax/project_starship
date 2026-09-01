@@ -16,7 +16,7 @@ export const metadata = { title: 'Übersicht · Starship' };
 // keeps every route's export driftfree, no `color-mix()` to duplicate here.
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ff6a00' },
+    { media: '(prefers-color-scheme: light)', color: '#fda076' },
     { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
   ],
 };

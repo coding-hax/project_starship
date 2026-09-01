@@ -147,24 +147,28 @@
 .nav::before {
   /* Since #908: scrolled page content that slides behind the transparent bar
      (see above) used to reach the pill at full card contrast. A veil fades it
-     out to the route ground before it gets there. Lives on `::before`, not on
-     `.nav` itself, so `.nav`'s own `background-color` stays `transparent` —
-     `grundfarbe-vollfarbe.spec.ts` AK2/AK4 assert exactly that. `z-index: -1`
-     keeps it behind `.nav__bar` (in-flow, no stacking context of its own) but
-     the veil is still painted inside `.nav`'s own stacking context (`--z-nav`),
-     so it stays above `main` and above the ambient circles in `.bg-layer`. */
+     out to the tone the nav row itself sits on before it gets there. Lives on
+     `::before`, not on `.nav` itself, so `.nav`'s own `background-color`
+     stays `transparent` — `grundfarbe-vollfarbe.spec.ts` AK2/AK4 assert
+     exactly that. `z-index: -1` keeps it behind `.nav__bar` (in-flow, no
+     stacking context of its own) but the veil is still painted inside
+     `.nav`'s own stacking context (`--z-nav`), so it stays above `main` and
+     above the ambient arcs in `.bg-layer`.
+     Fades to `--arc-3` (issue #991 AK7), not `--ground`: Bogen 3 (the
+     frontmost arc) always covers the nav row now, so a `--ground` stop would
+     leave a visible seam at the row's top edge where the arc actually is. */
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* Top edge stays transparent — the #889 circle test samples a pixel in the
+  /* Top edge stays transparent — the #889 arc test samples a pixel in the
      nav row outside the pill and expects it to differ measurably from the
      ground, which only holds if the veil hasn't gone opaque by the top yet. */
   background: linear-gradient(
     to top,
-    var(--ground) 0%,
-    var(--ground) 72%,
+    var(--arc-3) 0%,
+    var(--arc-3) 72%,
     transparent 100%
   );
 }
