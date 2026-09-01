@@ -147,7 +147,7 @@ export function useTasks(): TaskView[] | undefined {
   return useLiveTable('tasks', toTaskView, compareTasks);
 }
 
-/** Local calendar day as `YYYY-MM-DD` — the grouping key for the "Woche"/"Erledigt" views (issue #705). */
+/** Local calendar day as `YYYY-MM-DD` — the grouping key for the "7 Tage"/"Erledigt" views (issue #705). */
 export function localDayKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -180,11 +180,13 @@ export function compareWithinDay(
   return a.createdAt.localeCompare(b.createdAt);
 }
 
-/** Today + the next 6 days (issue #705 AK1) — the "Woche" default's upper bound. */
+/** Today + the next 6 days (issue #705 AK1) — the "7 Tage" default's upper bound.
+ *  "Woche" in the identifiers below (`buildWocheRows`, `weekWindowNodes`, `WeekBucket`)
+ *  names this same rolling 7-day window; the visible label is "7 Tage" (issue #979). */
 const WEEK_WINDOW_DAYS = 7;
 
 /**
- * The "Woche" view's window (issue #705, Q3): parent-driven — a node's whole
+ * The "7 Tage" view's window (issue #705, Q3): parent-driven — a node's whole
  * subtree moves as one, sorted into the window by the *parent's* `dueAt`. Kept
  * if overdue (any earlier day) or due within the next `WEEK_WINDOW_DAYS` days,
  * and still open — or completed *today* (AK7, the same "heute erledigt bleibt"
@@ -212,17 +214,17 @@ export function weekWindowNodes(nodes: TaskNode[], now: Date = new Date()): Task
  * (task-list.tsx) instead of vanishing: `weekWindowNodes`'s parent-driven rule
  * means an undated parent's children never surface on their own either, so the
  * card renders each returned node's whole subtree (via `nodeRows`), exactly as
- * the "Woche" window would have shown it were the parent dated.
+ * the "7 Tage" window would have shown it were the parent dated.
  */
 export function undatedOpenNodes(nodes: TaskNode[]): TaskNode[] {
   return nodes.filter((node) => node.task.dueAt === null && node.task.completedAt === null);
 }
 
 /**
- * The "Woche" view's three fixed buckets (issue #866, variant A) — supersedes
+ * The "7 Tage" view's three fixed buckets (issue #866, variant A) — supersedes
  * the former one-marker-per-due-day layout (`groupByDueDay`, issue #705 AK3):
- * every weekday inside the 7-day window now collapses into a single "Diese
- * Woche" bucket instead of a marker per day.
+ * every weekday inside the 7-day window now collapses into a single "7 Tage"
+ * bucket instead of a marker per day.
  */
 export type WeekBucketKey = 'overdue' | 'today' | 'week';
 
@@ -235,14 +237,14 @@ export interface WeekBucket {
 const WEEK_BUCKET_LABELS: Record<WeekBucketKey, string> = {
   overdue: 'Überfällig',
   today: 'Heute',
-  week: 'Diese Woche',
+  week: '7 Tage',
 };
 
 /**
- * Buckets already-windowed nodes into "Überfällig" / "Heute" / "Diese Woche"
+ * Buckets already-windowed nodes into "Überfällig" / "Heute" / "7 Tage"
  * (issue #866, variant A) — a bucket nobody is due in produces no group at all,
  * the same "no marker for nothing" rule `groupByDueDay` had. "Überfällig" and
- * "Diese Woche" each span several days, so they sort by the full `dueAt`
+ * "7 Tage" each span several days, so they sort by the full `dueAt`
  * (earliest first); "Heute" sorts by time-of-day. Children keep the
  * `createdAt` order `groupTasks` already gave them; only the top-level nodes
  * within a bucket are reordered.
@@ -307,7 +309,7 @@ function formatDayLabel(dayKey: string): string {
 
 /**
  * The marker text over an "Erledigt" day group (issue #705 AK3/AK7's owner
- * precisification) — narrowed to that one view since "Woche" moved to
+ * precisification) — narrowed to that one view since "7 Tage" moved to
  * `weekBuckets`'s three fixed labels (issue #866). Only ever shows one or two
  * relative days (`"Heute"`, `"Gestern"`) before falling back to the long label.
  */

@@ -4,8 +4,8 @@ import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from
 /**
  * Kartenrhythmus der Aufgabenliste (issue #866, T2 von #860). Eine Gruppe ist
  * eine Karte (`--radius-surface`, `--shadow-raised`) statt einer flachen Zeile
- * mit Hairline (issue #704 umgekehrt); die "Woche"-Ansicht bündelt in drei
- * feste Buckets — "Überfällig" / "Heute" / "Diese Woche" — statt einer Marke
+ * mit Hairline (issue #704 umgekehrt); die "7 Tage"-Ansicht bündelt in drei
+ * feste Buckets — "Überfällig" / "Heute" / "7 Tage" — statt einer Marke
  * je Tag (Variante A). Regressionen (Drag-to-Nest, Presence, …) bleiben
  * tasks.spec.ts/uebersicht.spec.ts — hier nur, was an der Karte selbst neu ist.
  */
@@ -195,7 +195,7 @@ test('AK1: eine Gruppe ist eine Karte — Fläche, Radius, Schatten, Polsterung;
   expect(Math.abs(secondBox.y - (firstBox.y + firstBox.height) - gapPx)).toBeLessThan(1);
 });
 
-test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in einer "Diese Woche"-Karte, Anzahl rechts = Top-Level-Zeilen', async ({
+test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in einer "7 Tage"-Karte, Anzahl rechts = Top-Level-Zeilen', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -205,14 +205,28 @@ test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in eine
   await seedTask(page, { title: 'In 5 Tagen', dueAt: isoAt(5) });
 
   await expect(groupTitles(page)).toHaveCount(1);
-  await expect(groupTitles(page).first()).toHaveText('Diese Woche');
+  await expect(groupTitles(page).first()).toHaveText('7 Tage');
 
   // Anzahl = Top-Level-Zeilen (2), nicht inklusive der Unteraufgabe.
   const count = page.locator('.task-list__group-count').first();
   await expect(count).toHaveText('2');
 });
 
-test('AK2: eine leer werdende Gruppe verschwindet als eigene Karte, die übrigen bleiben unberührt', async ({
+test('AK2: die dritte Bucket-Karte heißt „7 Tage" statt „Diese Woche" (issue #979)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  await page.goto('/aufgaben');
+  await seedTask(page, { title: 'Überfällig-Sonde', dueAt: isoAt(-1) });
+  await seedTask(page, { title: 'Heute-Sonde', dueAt: isoAt(0, 9) });
+  await seedTask(page, { title: 'In 3 Tagen', dueAt: isoAt(3) });
+
+  const titles = groupTitles(page);
+  await expect(titles).toHaveCount(3);
+  await expect(titles.nth(2)).toHaveText('7 Tage');
+});
+
+test('AK2 (issue #866): eine leer werdende Gruppe verschwindet als eigene Karte, die übrigen bleiben unberührt', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -230,7 +244,7 @@ test('AK2: eine leer werdende Gruppe verschwindet als eigene Karte, die übrigen
 
   await expect(groupTitles(page)).toHaveCount(2);
   await expect(groupTitles(page).nth(0)).toHaveText('Überfällig');
-  await expect(groupTitles(page).nth(1)).toHaveText('Diese Woche');
+  await expect(groupTitles(page).nth(1)).toHaveText('7 Tage');
 });
 
 test('AK2 (Locator-Erhalt): die Zeile bleibt unter der einen "Aufgaben"-Liste erreichbar, die Karte selbst zählt nicht als listitem', async ({

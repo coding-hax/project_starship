@@ -16,8 +16,9 @@ function captureTitleField(page: Page) {
 }
 
 /** Scoped to the full list on `/aufgaben` — the undo toast's own message
- * embeds the title too, and `/uebersicht`'s own Aufgaben-Sektion uses a
- * `aria-labelledby`-Überschrift statt eines wörtlichen `aria-label`. */
+ * embeds the title too, and `/uebersicht`'s own Aufgaben-Sektion carries a
+ * differently worded `aria-label` ("Aufgaben der nächsten 7 Tage", issue
+ * #979 AK3), still matched by the "Aufgaben" substring. */
 function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
