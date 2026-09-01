@@ -182,7 +182,7 @@ async function navBeforePseudo(
   });
 }
 
-test('AK1: der Schleier blendet die Nav-Zeile unten zum Grund aus, gescrollter Karteninhalt liest darunter als Grund', async ({
+test('AK1: der Schleier blendet die Nav-Zeile unten zum Bogen-3-Ton aus, gescrollter Karteninhalt liest darunter als Grundfläche', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -197,7 +197,10 @@ test('AK1: der Schleier blendet die Nav-Zeile unten zum Grund aus, gescrollter K
   await scrollNearBottomBehindNav(page);
   await expectCardBehindNav(page);
 
-  const groundToken = await resolveColorToken(page, '--ground');
+  // Der Verlauf blendet zu `--arc-3` aus (issue #991 AK7), nicht zu `--ground`:
+  // Bogen 3 liegt immer in der Nav-Zeile, ein `--ground`-Stopp ließe an der
+  // Oberkante eine sichtbare Kante entstehen.
+  const groundToken = await resolveColorToken(page, '--arc-3');
   const surfaceToken = await resolveColorToken(page, '--surface');
   const groundRgb = await toRgb(page, groundToken);
   const surfaceRgb = await toRgb(page, surfaceToken);
@@ -208,7 +211,7 @@ test('AK1: der Schleier blendet die Nav-Zeile unten zum Grund aus, gescrollter K
   const stripColor = await sampleElementPixel(page, nav, 0.5, 0.95);
   expect(
     maxChannelDiff(stripColor, groundRgb),
-    `unterer Streifen ${JSON.stringify(stripColor)} vs. --ground ${JSON.stringify(groundRgb)}`,
+    `unterer Streifen ${JSON.stringify(stripColor)} vs. --arc-3 ${JSON.stringify(groundRgb)}`,
   ).toBeLessThan(GROUND_WITH_SHADOW_TOLERANCE);
   expect(
     maxChannelDiff(stripColor, surfaceRgb),
@@ -276,7 +279,8 @@ test('AK4: der Home-Indicator-Streifen liest als Seite (Routen-Grund), nicht als
     const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(navBg, `.nav trägt weiterhin keine eigene Fläche (${scheme})`).toBe('rgba(0, 0, 0, 0)');
 
-    const groundToken = await resolveColorToken(page, '--ground');
+    // Der Verlauf blendet zu `--arc-3` aus (issue #991 AK7) — siehe AK1 oben.
+    const groundToken = await resolveColorToken(page, '--arc-3');
     const surfaceToken = await resolveColorToken(page, '--surface');
     const groundRgb = await toRgb(page, groundToken);
     const surfaceRgb = await toRgb(page, surfaceToken);
@@ -284,7 +288,7 @@ test('AK4: der Home-Indicator-Streifen liest als Seite (Routen-Grund), nicht als
     const stripColor = await sampleElementPixel(page, page.locator('.nav'), 0.5, 0.95);
     expect(
       maxChannelDiff(stripColor, groundRgb),
-      `Streifen (${scheme}) ${JSON.stringify(stripColor)} vs. --ground ${JSON.stringify(groundRgb)}`,
+      `Streifen (${scheme}) ${JSON.stringify(stripColor)} vs. --arc-3 ${JSON.stringify(groundRgb)}`,
     ).toBeLessThan(GROUND_WITH_SHADOW_TOLERANCE);
     expect(
       maxChannelDiff(stripColor, surfaceRgb),

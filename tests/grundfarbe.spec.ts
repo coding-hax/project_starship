@@ -181,13 +181,13 @@ const ROUTES: RouteCase[] = [
   {
     ground: 'aufgaben',
     path: '/aufgaben',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     heading: (page) => page.getByRole('heading', { level: 1, name: 'Aufgaben' }),
   },
   {
     ground: 'kalender',
     path: '/kalender',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     // .calendar-view__heading (h1) is the visible "Diese Woche" title since
     // issue #898 (used to be sr-only, with .calendar-strip__title as the
     // visible stand-in — that element moved into the header's own eyebrow).
@@ -228,7 +228,7 @@ const ROUTES: RouteCase[] = [
   {
     ground: 'einstellungen',
     path: '/einstellungen',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     heading: (page) => page.getByRole('heading', { level: 1, name: 'Einstellungen' }),
   },
 ];

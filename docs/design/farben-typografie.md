@@ -103,7 +103,7 @@ beiden Themes hell genug für WCAG AA (4,5:1) mit dunkler Schrift sind.
 
 Dark Mode ist keine Nachrüstung: jedes Token existiert in beiden Modi von Anfang an.
 
-### Seitengrund (`--ground*`, issue #832)
+### Seitengrund (`--ground*`, issue #832; gedämpft im "Foto-Rezept", issue #991)
 
 Jede der neun Hauptrouten steht vollflächig auf ihrer eigenen Grundfarbe
 (`--ground-uebersicht` … `--ground-anmelden`, je Route per `data-ground`-Attribut
@@ -116,15 +116,32 @@ Bedienelementen (Aufgaben ist bewusst Petrol statt `--area-tasks`, sonst wären
 nie geraten. Jede Fläche mit eigenem `--surface`/`--surface-raised` setzt beide
 auf die fixen Anker `--text-base`/`--text-muted-base` zurück, damit dieselbe Klasse
 auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
-`color-mix(in oklab, …, --ground-base-dark)` ab (~62 %, Aktivitäten 50 % für den
-4,5:1-Grenzwert) statt die satte Farbe grell auf Schwarz zu zeigen.
+`color-mix(in oklab, …, --ground-base-dark)` ab (62 %, bei Helligkeit > 0,75 des
+bereits gedämpften Grunds 50 % für den 4,5:1-Grenzwert) statt die satte Farbe
+grell auf Schwarz zu zeigen.
+
+Der Grund selbst ist gedämpft, nicht satt: `--ground-*` ist die *unveränderte*
+Bereichsfarbe der Route, angehoben Richtung Papier (`L' = L + (0,965 − L) × 0,34`,
+`C' = C × 0,62`, Farbton unverändert) — die Fläche hinter dem Bildschirm ist das
+Ruhigste im Bild, die drei gestaffelten Hintergrundbögen (`src/ui/background-arcs.*`,
+issue #991) tragen die Farbe. Die Bögen rechnen aus derselben unveränderten
+Bereichsfarbe, nicht aus dem gedämpften Grund (sonst verlören sie die Farbe mit) —
+je drei Helligkeits-/Chroma-/Farbton-Offsets, als literale Hex-Tripel `--arc-1/2/3`
+je Route hinterlegt (Muster wie `--face-*`, nicht `color-mix(--ground …)`: die
+Rechnung inklusive Chroma-Bisektion bei Gamut-Verletzung kann CSS nicht
+ausdrücken). Der Dämpfungsfaktor (0,34, nicht die ursprünglich vorgeschlagenen
+0,35) ist uniform für alle neun Routen bestimmt, nie je Route einzeln — er sitzt
+so hoch, wie es der knappste Fall in beiden Themes erlaubt (Journal hell 4,7:1,
+Aktivitäten dunkel 5,1:1).
 
 `--text-muted` liest auf dem Grund nicht mehr `--on-ground` selbst, sondern die
-gedämpfte Stufe `--on-ground-muted` (issue #868): je Route gemessen, `color-mix(in
-oklab, var(--on-ground) 85%, var(--ground))`, ≥ 4,5:1 in BEIDEN Themes — reicht die
-Dämpfung bei 85 % nicht (Aufgaben/Wetter im Hellmodus), fällt die Route auf das volle
+gedämpfte Stufe `--on-ground-muted` (issue #868, neu vermessen für issue #991): je
+Route und Theme gemessen, `color-mix(in oklab, var(--on-ground) 85%, var(--ground))`,
+≥ 4,5:1 in BEIDEN Themes — reicht die Dämpfung bei 85 % nicht (Journal/Einstellungen
+im Hellmodus, Aktivitäten/Wetter im Dunkelmodus), fällt die Route auf das volle
 `--on-ground` zurück statt unter den Grenzwert zu rutschen (Kontrast vor Dämpfung,
-wie unten bei den Kanten).
+wie unten bei den Kanten). Welche Routen das sind, kippt mit dem gedämpften Grund
+selbst — es sind nicht mehr dieselben vier wie vor #991.
 
 Neutrale Kanten (`--border`/`--border-strong`/`--border-faint`) sind gegen `--bg`
 abgestimmt und kollabieren auf einem farbigen Grund flach — teils unter 1,1:1
