@@ -176,18 +176,23 @@ async function pageStripForward(page: Page, times = 1): Promise<void> {
 }
 
 /**
- * Taps a day button in the strip, pulling the month open first via the
- * Woche/Monat-Umschalter if that day isn't currently in the interactive band
- * (`dayButton`'s `:not([inert])` scope reports it as not visible then, issue
- * #813) — the tap itself collapses the strip back (issue #629, replaces
- * stepping there via the "Nächster/Vorheriger Tag" buttons).
+ * Taps a day button in the strip if it's currently in the interactive band
+ * (`dayButton`'s `:not([inert])` scope reports it as not visible otherwise,
+ * issue #813); if it isn't, picks the day off the month card instead (issue
+ * #958 Stufe B removed the strip's own month carousel, so a day outside the
+ * visible week no longer has a `.calendar-strip__day` at all) and switches
+ * back to Woche afterwards, mirroring the old carousel's auto-collapse
+ * (issue #629).
  */
 async function selectStripDay(page: Page, ariaLabel: string): Promise<void> {
   const button = dayButton(page, ariaLabel);
-  if (!(await button.isVisible())) {
-    await page.getByRole('radio', { name: 'Monat' }).click();
+  if (await button.isVisible()) {
+    await button.click();
+    return;
   }
-  await button.click();
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, ariaLabel).click();
+  await page.getByRole('radio', { name: 'Woche' }).click();
 }
 
 /** Same probe technique as resolveCardColor, for an arbitrary background-color token. */
