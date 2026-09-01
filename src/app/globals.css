@@ -37,6 +37,7 @@
 @import '../features/activities/activity-chart.css';
 @import '../features/activities/activity-month-strip.css';
 @import '../features/events/calendar-strip.css';
+@import '../features/events/month-grid.css';
 @import '../features/events/event-agenda.css';
 @import '../features/events/event-detail.css';
 @import '../features/events/event-editor.css';
