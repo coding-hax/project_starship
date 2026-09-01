@@ -1295,14 +1295,14 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
 
   const todayDots = dayDots(page, 'Sa, 18.');
   await expect(todayDots).toHaveCount(1);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect
     .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
 
   const tomorrowDots = dayDots(page, 'So, 19.');
   await expect(tomorrowDots).toHaveCount(1);
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 30, 'var(--on-ground)');
   await expect
     .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
@@ -1325,11 +1325,11 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, aufgehellt gegen den
   });
 
   const dot = dayDots(page, 'Sa, 18.').first();
-  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
@@ -3120,7 +3120,7 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
 
   const dots = dayDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 60, 'var(--on-ground)');
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 30, 'var(--on-ground)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedPrivat);
