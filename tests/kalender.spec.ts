@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { addDays, dateKeyDiff } from '@/features/events/event-time';
+import { addDays } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -1067,143 +1067,26 @@ test('ein einzelner, ununterbrochener Wisch weit ueber den Rand landet trotzdem 
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #813: Monat rollt jetzt senkrecht, wochenweise (kehrt #805 um)       */
+/* issue #813: der Wochenstreifen bleibt reiner Wochenstreifen (Stufe B/#958) */
 /* -------------------------------------------------------------------------- */
 
-test('im Monat rollt ein Wisch einzelne Wochen, kein Sprung auf einen ganzen Monat (issue #813, kehrt #805 um)', async ({
-  page,
-}) => {
-  const strip = calendarStrip(page);
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-  const before = await anchorDay(page);
-  expect(before).toBe('2026-07-13'); // Montag der Woche des 18.07.
+// Die sechs vertikalen Monats-Karussell-Tests, die hier bis #958 standen
+// (senkrechtes Wochen-Wisch-Rollen, Achsensperre, Randdurchgang-Puffer,
+// scrollend-Fallback), sind mit dem Rueckbau des Streifen-Karussells im
+// Monat (Stufe B, 904c9fe) ersatzlos gegenstandslos: der Streifen rendert im
+// Monat nicht mehr, die neue Monats-Karte (.month-grid) ist statisch und
+// nicht wischbar. Ihr Verhalten ist durch die Karten-Tests weiter unten
+// (AK1/AK2/AK3/AK5/AK7/AK8 + Monatsnav) abgedeckt — siehe Fortschrittskommentar
+// an #958 fuer die Einzelbegruendung je Test.
 
-  const track = calendarWeeks(page);
-  const unit = await trackUnitPx(page);
-  await track.evaluate(
-    (el, unit) => {
-      el.scrollTop += unit; // genau eine Wochenzeile
-    },
-    unit,
-  );
-
-  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 7));
-});
-
-test('ein weiter Wisch im Monat rollt mehrere Wochen weiter, nicht auf einen Monatssprung begrenzt (issue #813)', async ({
-  page,
-}) => {
-  const strip = calendarStrip(page);
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  const before = await anchorDay(page);
-
-  const track = calendarWeeks(page);
-  const unit = await trackUnitPx(page);
-  await track.evaluate(
-    (el, unit) => {
-      el.scrollTop += unit * 3; // drei Wochenzeilen
-    },
-    unit,
-  );
-
-  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, 21));
-  await expect(strip).toHaveAttribute('data-expanded', 'true');
-});
-
-test('im Monat zeigt ein Wisch zurueck die Auswahl wieder, ein Wisch vor bewegt nur die Vorschau (issue #784 AK1, #813)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  await pageStrip(page, 1);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-
-  await pageStrip(page, -1);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('der Streifen erfasst im Monat nur senkrechte Gesten, waagerecht bleibt dem Seiten-Scroll ueberlassen (issue #813, ersetzt #764)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  const track = calendarWeeks(page);
-  await expect(track).toHaveCSS('touch-action', 'pan-y');
-
-  // overflow-x: hidden im Monat — ein waagerechter Scrollversuch bleibt wirkungslos.
-  await track.evaluate((el) => {
-    el.scrollLeft = 1000;
-  });
-  await expect(track.evaluate((el) => el.scrollLeft)).resolves.toBe(0);
-});
-
-test('im Monat landet ein einzelner, ununterbrochener Wisch ueber mehrere Randdurchgaenge hinweg trotzdem exakt richtig (issue #820)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  const before = await anchorDay(page);
-
-  const track = calendarWeeks(page);
-  const firstRow = track.locator('.calendar-strip__week-row').first().locator('.calendar-strip__day').first();
-  const firstDayBefore = await firstRow.getAttribute('aria-label');
-  const unit = await trackUnitPx(page);
-
-  // 40 Wochenzeilen in einem Zug — seit #824 muss ein Wisch bis nah an den
-  // (jetzt ±1 Jahr weiten) Pufferrand reichen, um den Nachbau ueberhaupt
-  // auszuloesen (RADIUS_WEEKS 52 minus MARGIN_WEEKS 8 minus VISIBLE_WEEKS 6
-  // ergibt 39 als kleinsten ausloesenden Wert).
-  const SWIPE_WEEKS = 40;
-  await track.evaluate(
-    (el, { unit, weeks }) => {
-      el.scrollTop += unit * weeks;
-    },
-    { unit, weeks: SWIPE_WEEKS },
-  );
-
-  await expect.poll(() => anchorDay(page)).toBe(addDays(before as string, SWIPE_WEEKS * 7));
-
-  // Der Nachbau selbst (neue Fuehrungszeile am oberen Pufferrand) darf
-  // trotzdem stattfinden — nur eben erst nach dem Scroll-Ende, nicht schon
-  // waehrend des Wischs (issue #820, gleiche Logik wie in der Woche).
-  await expect.poll(() => firstRow.getAttribute('aria-label')).not.toBe(firstDayBefore);
-});
-
-test('der Puffer baut auch weiter, wenn der native "scrollend"-Event nie feuert (issue #822)', async ({
-  page,
-}) => {
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  // Simuliert eine Engine, bei der `scrollend` fuer einen scroll-snap-Container
-  // ausbleibt (issue #822s vermuteter Grund fuer den begrenzten Bereich): ein
-  // Capture-Phase-Listener auf einem Vorfahren stoppt das Ereignis, bevor es
-  // den Carousel-eigenen Listener je erreicht. Haenge der Nachbau allein an
-  // `scrollend`, bliebe der Streifen jetzt dauerhaft am Rand des anfaenglichen
-  // RADIUS_WEEKS-Puffers stehen.
-  await calendarStrip(page).evaluate((el) => {
-    el.addEventListener('scrollend', (event) => event.stopPropagation(), { capture: true });
-  });
-
-  const before = await anchorDay(page);
-  await pageStripForward(page, 8);
-  const after = await anchorDay(page);
-
-  // Acht volle Bildschirme (48 Wochenzeilen) haetten den alten Pufferradius
-  // (14 Wochen) laengst gesprengt — ohne Nachbau waere der Streifen dort
-  // haengengeblieben. Nur eine grobe untere Schranke, kein exakter Puffervergleich:
-  // der Radius ist seit #824 ohnehin viel groesser (RADIUS_WEEKS 52).
-  expect(dateKeyDiff(before as string, after as string)).toBeGreaterThan(14 * 7);
-});
-
-test('der Puffer spannt im Wochen- wie im Monatsmodus rund ein Jahr je Richtung, damit normales Blaettern den Rand nie erreicht (issue #824)', async ({
+test('der Puffer spannt in der Woche rund ein Jahr je Richtung, damit normales Blaettern den Rand nie erreicht (issue #824)', async ({
   page,
 }) => {
   // Woche: RADIUS_DAYS 365 je Richtung + der Ankertag selbst = 731 Zellen.
+  // Die Monats-Haelfte dieses Tests (105 .calendar-strip__week-row) ist mit
+  // Stufe B (#958) gegenstandslos: der Streifen rendert im Monat nicht mehr,
+  // die Monats-Karte hat kein Karussell und keinen Puffer.
   await expect(page.locator('.calendar-strip__cell')).toHaveCount(2 * 365 + 1);
-
-  await page.getByRole('radio', { name: 'Monat' }).click();
-
-  // Monat: RADIUS_WEEKS 52 je Richtung + die Ankerwoche selbst = 105 Zeilen.
-  await expect(page.locator('.calendar-strip__week-row')).toHaveCount(2 * 52 + 1);
 });
 
 test('ein Maus-Zug ueber Tages-Knoepfe scrollt den Streifen nicht und waehlt keinen anderen Tag (AK4, issue #805)', async ({
