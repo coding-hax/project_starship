@@ -5,6 +5,7 @@ import {
   registerPasskey,
   resetAppData,
   skewClock,
+  withDb,
 } from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
@@ -723,14 +724,112 @@ test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #559 (S8 von #473): Übersicht-Sektion "Nächster Termin"              */
+/* issue #974 (T3 von #971): "Nächster Termin" im Blatt-Aufbau — die Uhrzeit  */
+/* trägt die Zeile. Ersetzt den #559-Aufbau (Countdown oben, Zeitraum unten). */
 /* -------------------------------------------------------------------------- */
 
-test('der nächste Termin heute steht groß mit Countdown-Text (issue #559 AC1)', async ({
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * getComputedStyle can serialize a color-mix()/oklch()-sourced colour back in a
+ * form a naive "rgb(r, g, b)" regex would misparse — a 1×1 canvas sidesteps
+ * that (same technique as grundfarbe.spec.ts/kalender.spec.ts).
+ */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+test('AK1: die Startzeit trägt die Zeile groß in --font-display, Titel und eine gedämpfte Metazeile stehen daneben (issue #974)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   // NOW = 12:00 UTC = 14:00 Berlin (CEST). +40 Min -> 14:40 Berlin.
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const time = next.locator('.events-overview__next-time');
+  const title = next.locator('.events-overview__next-title');
+  await expect(time).toHaveText('14:40');
+  await expect(title).toHaveText('Standup');
+
+  const timeStyle = await time.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      fontSize: parseFloat(style.fontSize),
+      fontVariant: style.fontVariantNumeric,
+      fontFamily: style.fontFamily.toLowerCase(),
+    };
+  });
+  expect(timeStyle.fontSize).toBeCloseTo(26, 0);
+  expect(timeStyle.fontVariant).toBe('tabular-nums');
+  expect(timeStyle.fontFamily).toMatch(/ui-rounded|nunito/);
+
+  expect(await title.evaluate((el) => getComputedStyle(el).fontWeight)).toBe('600');
+
+  // Titel + Metazeile stehen als eigener Block rechts neben der Uhrzeit, nicht
+  // in eigenen vollbreiten Zeilen darüber/darunter.
+  const [timeBox, bodyBox] = await Promise.all([
+    time.boundingBox(),
+    next.locator('.events-overview__next-body').boundingBox(),
+  ]);
+  expect(bodyBox!.x).toBeGreaterThan(timeBox!.x + timeBox!.width - 1);
+});
+
+test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitraum entfällt (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveText('in 40 Min · Arbeit');
+  // Zeitraum "12:40–13:10" UTC = "14:40–15:10" Berlin — die Endzeit steht nirgends mehr.
+  await expect(next).not.toContainText('15:10');
+});
+
+test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes Trennzeichen (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Zahnarzt',
     allDay: false,
@@ -741,13 +840,98 @@ test('der nächste Termin heute steht groß mit Countdown-Text (issue #559 AC1)'
     category: null,
   });
 
-  const next = page.locator('.events-overview__next');
-  await expect(next).toBeVisible();
-  await expect(next).toContainText('in 40 Min');
-  await expect(next).toContainText('Zahnarzt');
+  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 40 Min');
 });
 
-test('weitere Termine am selben Tag stehen darunter als dünne Zeilen, nicht gleichwertig groß (issue #559 AC2)', async ({
+test('AK3: die linke Kategorie-Kante entfällt, die Uhrzeit trägt jetzt die Kategoriefarbe (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  expect(await next.evaluate((el) => getComputedStyle(el).borderInlineStartWidth)).toBe('0px');
+
+  const [timeColor, titleColor] = await Promise.all([
+    next.locator('.events-overview__next-time').evaluate((el) => getComputedStyle(el).color),
+    next.locator('.events-overview__next-title').evaluate((el) => getComputedStyle(el).color),
+  ]);
+  expect(timeColor).not.toBe(titleColor);
+});
+
+test('AK4: die Startzeit erreicht 4,5:1 gegen die Kartenfläche, mit Kategorie, hell und dunkel (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    // familie liegt mit 55%-Mix am nächsten an der 4,5:1-Schwelle (ADR-0028-
+    // Nachmessung) — der strengste der fünf Vorgabefarben-Fälle.
+    category: 'familie',
+  });
+
+  const time = page.locator('.events-overview__next-time');
+  const card = page.locator('.events-overview__next');
+  async function measure(): Promise<number> {
+    const [timeColor, cardBg] = await Promise.all([
+      time.evaluate((el) => getComputedStyle(el).color),
+      card.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    return contrastRatio(await toRgb(page, timeColor), await toRgb(page, cardBg));
+  }
+
+  await expect(time).toBeVisible();
+  expect(await measure(), 'hell').toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measure(), 'dunkel').toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK4: die Startzeit ohne Kategorie erreicht 4,5:1 gegen die Kartenfläche, hell und dunkel (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const time = page.locator('.events-overview__next-time');
+  const card = page.locator('.events-overview__next');
+  async function measure(): Promise<number> {
+    const [timeColor, cardBg] = await Promise.all([
+      time.evaluate((el) => getComputedStyle(el).color),
+      card.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    return contrastRatio(await toRgb(page, timeColor), await toRgb(page, cardBg));
+  }
+
+  await expect(time).toBeVisible();
+  expect(await measure(), 'hell').toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measure(), 'dunkel').toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK5: weitere Termine am selben Tag stehen darunter als dünne Zeilen, deutlich kleiner als die große Startzeit (issue #974, vormals #559 AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -779,15 +963,15 @@ test('weitere Termine am selben Tag stehen darunter als dünne Zeilen, nicht gle
   await expect(restItems.first()).toContainText('Teammeeting');
   await expect(restItems.first()).toContainText('17:00'); // 15:00 UTC = 17:00 Berlin
 
-  // Deutlich kleinere Schrift als die große Anzeige des nächsten Termins.
+  // Deutlich kleinere Schrift als die große Startzeit des nächsten Termins.
   const [nextFontSize, restFontSize] = await Promise.all([
-    next.locator('.events-overview__next-countdown').evaluate((el) => getComputedStyle(el).fontSize),
+    next.locator('.events-overview__next-time').evaluate((el) => getComputedStyle(el).fontSize),
     restItems.first().evaluate((el) => getComputedStyle(el).fontSize),
   ]);
   expect(parseFloat(nextFontSize)).toBeGreaterThan(parseFloat(restFontSize));
 });
 
-test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #559 AC3)', async ({
+test('AK6: ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #974, vormals #559 AC3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -807,7 +991,7 @@ test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand
   await expect(page.locator('.events-overview__next')).toHaveCount(0);
 });
 
-test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #559 AC4)', async ({
+test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974, vormals #559 AC4)', async ({
   page,
 }) => {
   // Must be installed before this goto — useNow's setInterval is registered on
@@ -827,16 +1011,16 @@ test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu läd
     category: null,
   });
 
-  const countdown = page.locator('.events-overview__next-countdown');
-  await expect(countdown).toHaveText('in 40 Min');
+  const meta = page.locator('.events-overview__next-meta');
+  await expect(meta).toHaveText('in 40 Min');
 
   await freezeClock(page);
   await page.clock.fastForward(10 * 60 * 1000);
 
-  await expect(countdown).toHaveText('in 30 Min');
+  await expect(meta).toHaveText('in 30 Min');
 });
 
-test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #559 AC5)', async ({
+test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #974, vormals #559 AC5)', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -866,6 +1050,76 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
     );
     await expect(page.locator('.events-overview__empty')).toBeVisible();
   }
+});
+
+test('AK8: bei 375×812 kürzt ein langer Termintitel einzeilig, die Uhrzeit bleibt vollständig — Dark Mode, reduzierte Bewegung, kein waagerechter Überlauf (issue #974)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const time = next.locator('.events-overview__next-time');
+  const title = next.locator('.events-overview__next-title');
+  await expect(time).toHaveText('14:40');
+
+  const [titleTruncates, timeFits] = await Promise.all([
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ]);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+  expect(timeFits, 'Uhrzeit bleibt vollständig, ohne zu kürzen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
+});
+
+test('AK9: ein offline angelegter Termin erscheint sofort in der Karte und erreicht nach dem Onlinegehen die echte Datenbank (issue #974)', async ({
+  page,
+  context,
+}) => {
+  await context.setOffline(true);
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Im Zug erfasst',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Im Zug erfasst');
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach blockt /api/sync/** (route.abort) — hier aufheben, damit die
+  // gequeuete Mutation den echten Server erreichen kann.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  // Weiterhin sichtbar, ohne Reload (die Karte kommt aus derselben Live-Query).
+  await expect(next).toContainText('Im Zug erfasst');
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM events WHERE title = $1', ['Im Zug erfasst']),
+  );
+  expect(row.rowCount).toBe(1);
 });
 
 test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig, ohne Überlauf', async ({

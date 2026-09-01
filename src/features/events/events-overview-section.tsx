@@ -1,10 +1,11 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { OverviewBlock, OverviewCardHead } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { useNow } from '@/ui/use-now';
-import { categoryEdgeVar, formatCountdown, upcomingEventsToday } from './event-time';
-import { useEvents } from './use-events';
+import { categoryEdgeVar, formatCountdown, upcomingEventsToday, type UpcomingEvent } from './event-time';
+import { EVENT_CATEGORIES, useEvents } from './use-events';
 
 const timeFormatter = new Intl.DateTimeFormat('de-DE', {
   timeZone: 'Europe/Berlin',
@@ -15,6 +16,13 @@ const timeFormatter = new Intl.DateTimeFormat('de-DE', {
 
 function formatTime(instant: string): string {
   return timeFormatter.format(new Date(instant));
+}
+
+/** "in 40 Min · Arbeit", or just the countdown without a category (issue #974, AK2). */
+function nextSubline(now: Date, next: UpcomingEvent): string {
+  const countdown = formatCountdown(now, next.startsAt);
+  const categoryLabel = EVENT_CATEGORIES.find((c) => c.value === next.category)?.label;
+  return categoryLabel ? `${countdown} · ${categoryLabel}` : countdown;
 }
 
 /**
@@ -30,6 +38,11 @@ function formatTime(instant: string): string {
  * Card head "Nächster Termin" → "Kalender" (issue #972, AK2/AK4): rendered
  * inside both the next-event card and the empty state, so a visible title
  * stands in the card head whether or not there is a next event today.
+ *
+ * Row layout (issue #974, T3 von #971): the start time carries the row, large
+ * and in the event's category colour, instead of a leading countdown line and a
+ * trailing time-range line — the countdown moves into a single muted meta line
+ * next to the title, alongside the category.
  */
 export function EventsOverviewSection() {
   const events = useEvents();
@@ -44,16 +57,20 @@ export function EventsOverviewSection() {
   return (
     <OverviewBlock>
       {next ? (
-        <div
-          className="events-overview__next"
-          style={{ borderInlineStartColor: categoryEdgeVar(next.category) }}
-        >
+        <div className="events-overview__next">
           <OverviewCardHead title="Nächster Termin" href="/kalender" moreLabel="Kalender" />
-          <p className="events-overview__next-countdown">{formatCountdown(now, next.startsAt)}</p>
-          <p className="events-overview__next-title">{next.title}</p>
-          <p className="events-overview__next-time">
-            {formatTime(next.startsAt)}–{formatTime(next.endsAt)}
-          </p>
+          <div className="events-overview__next-row">
+            <p
+              className="events-overview__next-time"
+              style={{ '--cat-color': categoryEdgeVar(next.category) } as CSSProperties}
+            >
+              {formatTime(next.startsAt)}
+            </p>
+            <div className="events-overview__next-body">
+              <p className="events-overview__next-title">{next.title}</p>
+              <p className="events-overview__next-meta">{nextSubline(now, next)}</p>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="events-overview__empty">

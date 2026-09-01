@@ -1,7 +1,8 @@
 /**
- * Übersicht-Sektion „Nächster Termin" (issue #559, S8 von #473, Owner-Entscheidung 6)
- * — Kartenform wie streak-summary-card.css, damit /uebersicht als ein System wirkt. Der
- * nächste Termin steht groß mit Countdown, der Rest des Tages folgt als dünne Zeilen.
+ * Übersicht-Sektion „Nächster Termin" (issue #559, S8 von #473; Zeilen-Aufbau
+ * issue #974, T3 von #971) — Kartenform wie streak-summary-card.css, damit
+ * /uebersicht als ein System wirkt. Die Startzeit trägt die Zeile, Titel und
+ * Metazeile folgen rechts daneben; der Rest des Tages folgt als dünne Zeilen.
  */
 
 .events-overview__next,
@@ -21,28 +22,65 @@
   color: var(--text);
 }
 
-.events-overview__next {
-  border-inline-start: 3px solid var(--area-events);
-}
-
-.events-overview__next-countdown {
-  margin: 0;
-  font-size: var(--text-section);
-  font-weight: var(--weight-emphasis);
-  font-variant-numeric: tabular-nums;
-  color: var(--area-events);
-}
-
-.events-overview__next-title {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-body);
-  font-weight: var(--weight-emphasis);
+.events-overview__next-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .events-overview__next-time {
-  margin: var(--space-1) 0 0;
-  color: var(--text-muted);
+  flex-shrink: 0;
+  margin: 0;
+  /* Kategoriefarbe abgedunkelt statt roh (issue #974, AK4): die Kategorie- und
+     Swatch-Töne liegen im Hellmodus bei L 62–74%, gegen --surface (nahezu
+     Weiß) reicht das roh nur auf 2,4–3,7:1, unter 4,5:1. --next-time-ink-mix
+     bleibt im Dunkelmodus bei 100% (= die rohe Farbe): dort misst sie schon
+     5,8–8,7:1 gegen die dunkle Fläche, ein Mix gegen das dort helle --text
+     würde sie nur aufhellen — AK4 schließt das ausdrücklich aus. Gemessen bei
+     55%: 5,4–7,1:1 über alle fünf Vorgabefarben plus die zehn frei wählbaren
+     Swatches (schwächster Fall Bernstein 5,4:1), mit Marge zur 4,5:1-Schwelle. */
+  color: color-mix(in oklab, var(--cat-color, var(--area-events)) var(--next-time-ink-mix, 55%), var(--text));
+  font-family: var(--font-display);
+  font-size: var(--text-page-title-lg);
+  font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  line-height: var(--leading-display);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']) {
+    --next-time-ink-mix: 100%;
+  }
+}
+:root[data-theme='dunkel'] {
+  --next-time-ink-mix: 100%;
+}
+
+.events-overview__next-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.events-overview__next-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.events-overview__next-meta {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .events-overview__empty p {
