@@ -97,9 +97,9 @@
   flex-shrink: 0;
   padding: 7px 14px;
   border-radius: var(--radius-pill);
-  /* 13px — between --text-meta (12px) and --text-secondary (14px), the
-     sheet's own value. */
-  font-size: 13px;
+  /* Same role as every other `--radius-pill` label in the app (segmented
+     control, calendar-strip, due-picker): --text-secondary. */
+  font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
   background: color-mix(in oklab, var(--habit-tone) 16%, var(--surface));
   color: color-mix(in oklab, var(--habit-tone) 72%, var(--text));
