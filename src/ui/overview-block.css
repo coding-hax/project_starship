@@ -39,11 +39,11 @@
   text-decoration: none;
 }
 
-/* Own white surface for the Routinen head (issue #972): unlike Termine, the
-   check-off list below it (`habit-today.css`) is already a stack of item
-   cards without an enclosing surface, so the head needs its own card instead
-   of sitting inside an existing one. Own ink reset (issue #832 AK5) — same
-   pattern as events-overview-section.css / habit-today.css. */
+/* Own white surface for the Routinen head (issue #972): the check-off list
+   below it (`habit-today.css`) is its own separate card (issue #975), so the
+   head still needs one of its own rather than sitting inside it. Own ink
+   reset (issue #832 AK5) — same pattern as events-overview-section.css /
+   habit-today.css. */
 .overview-block__head-card {
   margin: 0 0 var(--space-2);
   padding: var(--space-4);
