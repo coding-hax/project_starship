@@ -240,6 +240,19 @@ export function yearLabel(dateKey: string): string {
   return YEAR_LABEL_FORMATTER.format(parseDateKey(dateKey));
 }
 
+const DAY_HEADING_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+
+/** "Samstag, 15. August" for the month view's day-agenda heading (issue #959,
+ *  T2 of #957) — same UTC-anchoring caveat as `formatMonthTitle`. */
+export function formatDayHeading(dateKey: string): string {
+  return DAY_HEADING_FORMATTER.format(parseDateKey(dateKey));
+}
+
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
 export function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split('-').map(Number);

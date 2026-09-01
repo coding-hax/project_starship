@@ -12,7 +12,7 @@ import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
 import { EventDetail, type EventDetailState } from './event-detail';
 import { EventEditor, type EventEditorState } from './event-editor';
-import { formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
+import { formatDayHeading, formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
 import { MonthGrid } from './month-grid';
 import { expandForDay, type Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
@@ -282,6 +282,16 @@ export function CalendarView() {
           Offline — neue Termine liegen lokal und werden synchronisiert, sobald du wieder online
           bist.
         </OfflineNotice>
+      )}
+      {/* Nur im Monat (issue #959, T2 von #957): in der Woche benennt der
+          Wochenstreifen im Kopf den gewählten Tag samt Wochentag bereits, eine
+          zweite Tagesüberschrift wäre Dopplung (Planentscheidung in #957).
+          Getrieben von `selectedDay`, nicht `focusMonth` — folgt dem gewählten
+          Tag, nicht dem durchgeblätterten Monat. */}
+      {expanded && selectedDay !== null && (
+        <p className="calendar-view__day-heading page-head__eyebrow">
+          {formatDayHeading(selectedDay)}
+        </p>
       )}
       {today !== null && selectedDay !== null && (
         <EventAgenda

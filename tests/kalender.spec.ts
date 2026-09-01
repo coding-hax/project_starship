@@ -291,6 +291,16 @@ async function toRgb(page: Page, color: string): Promise<[number, number, number
   }, color);
 }
 
+/** Mirrors seitenkopf.spec.ts's own probe pair — one element's computed text
+ *  colour, one the page's own background, for a WCAG contrast check. */
+async function elementColor(locator: Locator): Promise<string> {
+  return locator.evaluate((el) => getComputedStyle(el).color);
+}
+
+async function htmlBackground(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+}
+
 /** Composites a semi-transparent overlay colour onto an opaque base, both as
  *  CSS colour strings the canvas engine resolves itself (issue #921's
  *  Umschalter-Grund sits on top of the route ground, not a flat colour). */
@@ -3769,4 +3779,82 @@ test('die Augenbrauenzeile passt ohne waagerechten Ueberlauf in eine Zeile, hell
 
   await page.emulateMedia({ colorScheme: 'dark' });
   await assertNoOverflow();
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #959 (T2 von #957): Tagesauszug-Ueberschrift in der Monatsansicht    */
+/* -------------------------------------------------------------------------- */
+
+function dayHeading(page: Page) {
+  return page.locator('.calendar-view__day-heading');
+}
+
+test('im Monat steht ueber dem Tagesauszug die Wochentags-Ueberschrift des gewaehlten Tages, in der Woche nicht (AK4a/AK4b, issue #959)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, 'Mi, 22.').click();
+
+  await expect(dayHeading(page)).toBeVisible();
+  await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
+
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await expect(dayHeading(page)).toHaveCount(0);
+});
+
+test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgeblaetterten Monat (AK4c, issue #959)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, 'Mi, 22.').click();
+  await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
+
+  // "Naechster Monat" aendert nur `focusMonth`, nicht `selectedDay`
+  // (month-grid.tsx's `pageBy`) — die Ueberschrift darf sich nicht mitbewegen.
+  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
+  await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
+});
+
+test('die Tagesauszug-Ueberschrift erreicht 4,5:1 gegen den Kalender-Grund, hell und dunkel (AK7, issue #959)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, 'Mi, 22.').click();
+  const heading = dayHeading(page);
+  await expect(heading).toBeVisible();
+
+  const lightColor = await elementColor(heading);
+  const lightGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
+    'Tagesauszug-Ueberschrift hell',
+  ).toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkColor = await elementColor(heading);
+  const darkGround = await htmlBackground(page);
+  expect(
+    contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
+    'Tagesauszug-Ueberschrift dunkel',
+  ).toBeGreaterThanOrEqual(4.5);
+});
+
+test('die Tagesauszug-Ueberschrift verursacht keinen waagerechten Ueberlauf und keinen Layout-Sprung beim Tageswechsel, 375x812 (AK7, issue #959)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, 'Mi, 22.').click();
+  const heading = dayHeading(page);
+  await expect(heading).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+
+  const yBefore = (await heading.boundingBox())?.y;
+  await monthGridDay(page, 'Fr, 24.').click();
+  await expect(heading).toHaveText('Freitag, 24. Juli');
+  expect((await heading.boundingBox())?.y).toBe(yBefore);
 });
