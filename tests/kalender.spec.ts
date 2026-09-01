@@ -2210,6 +2210,18 @@ test('AK1: die Karte übernimmt Radius und Schatten vom Karten-Token, der Balken
   // ist die 4px-Schmalspur, kein 8px-Punkt mehr.
   expect(await edgeBar.evaluate((el) => getComputedStyle(el).width)).toBe('4px');
   expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('2px');
+
+  // Polsterung 10/14 und Abstand 10px sind Blatt-Literale, bewusst außerhalb
+  // der 4/8/12-Skala (Kommentar event-agenda.css:28-33) — Literal-Vergleich,
+  // kein Token dafür vorhanden.
+  expect(await bar.evaluate((el) => getComputedStyle(el).paddingTop)).toBe('10px');
+  expect(await bar.evaluate((el) => getComputedStyle(el).paddingLeft)).toBe('14px');
+  expect(await bar.evaluate((el) => getComputedStyle(el).gap)).toBe('10px');
+
+  // Titelgröße hat ein Token (#956 AK1) — Token-Vergleich statt Literal.
+  const titleEl = bar.locator('.event-agenda__all-day-title');
+  const titleFontSizeToken = await resolveStyleToken(page, 'font-size', '--text-secondary');
+  expect(await titleEl.evaluate((el) => getComputedStyle(el).fontSize)).toBe(titleFontSizeToken);
 });
 
 /* -------------------------------------------------------------------------- */
