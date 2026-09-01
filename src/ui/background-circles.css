@@ -12,9 +12,11 @@
   display: none;
   position: fixed;
   /* Full viewport, no longer stopping at the status bar safe area (issue
-     #919): the circle arc now runs unbroken to the very top, matching the
-     design sheet. `.bg-layer__veil` below — not this inset — is what keeps
-     the white status bar glyphs' contrast (issue #882) in that top strip. */
+     #919): the circle arc runs unbroken to the very top, matching the design
+     sheet. The white iOS status bar glyphs (clock/battery/signal) sit
+     directly on that unbroken arc with no darkening of their own (issue
+     #982) — accepted per the ticket's decision, since the 4.5:1 floor binds
+     page content, not chrome iOS itself paints. */
   inset: 0;
   overflow: hidden;
   pointer-events: none;
@@ -174,29 +176,6 @@ html:has([data-ground='einstellungen']) .bg-light {
 }
 .bg-circle:nth-child(7) {
   background: var(--b4);
-}
-
-/*
- * Status-bar veil (issue #919): last child of `.bg-layer`, absolutely
- * positioned like the circles above with no z-index of its own — within the
- * layer's stacking context, an unpositioned box paints *before* the
- * `position: absolute` circles regardless of DOM order, so it needs the same
- * positioning to let plain DOM order put it on top of them instead.
- * Translucent (`--notch-veil`, tokens.css), not opaque: the old opaque band
- * this replaces (issue #882) hard-cropped the circle arc at this exact edge,
- * which is the bug this issue fixes — a translucent veil lets the arc keep
- * showing through while still darkening enough for the white status bar
- * glyphs to clear 4.5:1 against it (contrast math in tokens.css). Height is
- * `--safe-top`, not a bare `env()`, so a test can force a non-zero value
- * without a real notch (AK4).
- */
-.bg-layer__veil {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--safe-top);
-  background: var(--notch-veil);
 }
 
 /* --- gaits, one keyframe set per route (Übersicht: Aufsteigen) ----------- */

@@ -36,7 +36,12 @@
      absolutely positioned .segmented__indicator within this same .segmented,
      never leaves this stacking context. */
   z-index: 1;
-  min-height: calc(var(--touch-target) - 4px);
+  /* The drawn box is the tap target here (no pseudo-element hit-area trick
+     like `.segmented--ground`), so it must itself reach --touch-target — the
+     surrounding 2px padding on `.segmented` (top: 2px calc) only widens the
+     control, it doesn't shrink what counts as the option's own height
+     (issue #979 AK7). */
+  min-height: var(--touch-target);
   padding: 0 var(--space-3);
   border: none;
   background: transparent;

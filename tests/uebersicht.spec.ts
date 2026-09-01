@@ -5,6 +5,7 @@ import {
   registerPasskey,
   resetAppData,
   skewClock,
+  withDb,
 } from './helpers';
 
 /** Fixes "now" so due-today vs. overdue vs. future is deterministic (issue #87). */
@@ -23,14 +24,14 @@ const BEYOND_WEEK = '2026-07-27T09:00:00.000Z';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 function dueTaskItems(page: Page) {
-  // Labelled by the visible <h2>Aufgaben</h2> above it, not its own aria-label
-  // (issue #157 AC: no double announcement). A group card's outer `<li>` renders
-  // `role="presentation"` (task-list.tsx, issue #866), so it never counts as a
-  // `listitem` here — only the task rows nested inside it do.
+  // Own `aria-label` "Aufgaben der nächsten 7 Tage" (issue #979 AK3), matched
+  // here by the "Aufgaben" substring (issue #157). A group card's outer `<li>`
+  // renders `role="presentation"` (task-list.tsx, issue #866), so it never
+  // counts as a `listitem` here — only the task rows nested inside it do.
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-/** A group card's title (issue #866) — "Überfällig"/"Heute"/"Diese Woche". */
+/** A group card's title (issue #866) — "Überfällig"/"Heute"/"7 Tage". */
 function groupTitles(page: Page) {
   return page.locator('.task-list__group-title');
 }
@@ -49,12 +50,16 @@ function progressFor(page: Page, title: string) {
   return dueTaskItems(page).filter({ hasText: title }).locator('.task-list__progress');
 }
 
-/** Vertical distance between the bottom of `above` and the top of `below`. */
-async function gapBetween(above: Locator, below: Locator): Promise<number> {
-  const top = await above.boundingBox();
-  const bottom = await below.boundingBox();
-  if (!top || !bottom) throw new Error('Beide Überschriften müssen sichtbar sein');
-  return bottom.y - (top.y + top.height);
+/** Content anchor for the Aufgaben section (issue #972 AK3: the module `<h2>`
+ * is visually hidden) — whichever of list/empty-state is actually rendered. */
+function aufgabenContent(page: Page): Locator {
+  return page.locator('.task-list, .task-list__empty');
+}
+
+/** Content anchor for the Routinen section (issue #972 AK2: the module keeps
+ * a visible title, now in its own card head instead of a page-ground `<h2>`). */
+function routinenHead(page: Page): Locator {
+  return page.locator('.overview-block__head-card');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -127,11 +132,25 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   await expect(dueTaskItems(page).filter({ hasText: 'Ohne Fälligkeit' })).toHaveCount(0);
   await expect(page.getByText('Gestern erledigt')).toHaveCount(0);
 
-  // Karten: Überfällig zuerst, dann Heute/Diese Woche (issue #762, drei feste
+  // Karten: Überfällig zuerst, dann Heute/7 Tage (issue #762, drei feste
   // Buckets statt einer Marke je Tag seit issue #866).
   const titles = groupTitles(page);
   await expect(titles.first()).toHaveText('Überfällig');
-  await expect(titles.last()).toHaveText('Diese Woche');
+  await expect(titles.last()).toHaveText('7 Tage');
+});
+
+test('AK3: /uebersicht zeigt denselben Bucket-Kopf „7 Tage" wie /aufgaben, kein „heute"-Versprechen im Abschnittstitel (issue #979)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'In 3 Tagen', dueAt: WITHIN_WEEK });
+
+  await expect(groupTitles(page)).toHaveText(['7 Tage']);
+  // Der Abschnittstitel bleibt "Aufgaben" (visuell versteckt, issue #972 AK3) —
+  // kein "heute", wo sieben Tage gemeint sind.
+  await expect(page.locator('#uebersicht-aufgaben-heading')).toHaveText('Aufgaben');
+  // Weiterhin per Teilstring über "Aufgaben" auffindbar (issue #157).
+  await expect(dueTaskItems(page)).toHaveCount(1);
 });
 
 test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', async ({ page }) => {
@@ -429,23 +448,24 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/uebersicht');
 
-    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+    const content = aufgabenContent(page);
     await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
-    const emptyGap = await gapBetween(aufgaben, routinen);
+    const emptyBox = await content.boundingBox();
+    if (!emptyBox) throw new Error('Der Aufgaben-Leerzustand muss sichtbar sein');
 
     const id = await seedTask(page, { title: 'Eine Aufgabe', dueAt: YESTERDAY_MORNING });
     await expect(dueTaskItems(page)).toHaveCount(1);
-    const filledGap = await gapBetween(aufgaben, routinen);
+    const filledBox = await content.boundingBox();
+    if (!filledBox) throw new Error('Die Aufgabenliste muss sichtbar sein');
 
     // The empty state reserves one group card's worth of box — its own padding, a
     // header line, one task row (issue #762, card since issue #866) — so a filled
-    // "Woche" list is never just a bare row anymore, and the two gaps differ by
-    // rounding at most. Anything beyond that is the hole issue #228 fixed
-    // reopening — the numbers travel in the message, so a red run says how far off it is.
+    // "Woche" list is never just a bare row anymore, and its height barely grows.
+    // Anything beyond that is the hole issue #228 fixed reopening — the numbers
+    // travel in the message, so a red run says how far off it is.
     expect(
-      Math.abs(emptyGap - filledGap),
-      `leer ${emptyGap}px vs. mit Aufgabe ${filledGap}px bei ${width}px`,
+      Math.abs(emptyBox.height - filledBox.height),
+      `leer ${emptyBox.height}px vs. mit Aufgabe ${filledBox.height}px bei ${width}px`,
     ).toBeLessThanOrEqual(8);
 
     await page.evaluate(
@@ -473,39 +493,48 @@ test('kein "Routinen verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt
   ).toBeVisible();
 });
 
-test('über der Aufgabenliste steht ein sichtbares <h2>Aufgaben</h2>, gestaltet wie „Routinen" (issue #157 AC5)', async ({
+test('die Aufgaben-Überschrift bleibt im DOM für Screenreader, ist aber visuell verborgen (issue #157 AC5, jetzt #972 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   const aufgabenHeading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const routinenHeading = page.getByRole('heading', { name: 'Routinen', level: 2 });
-  await expect(aufgabenHeading).toBeVisible();
-  await expect(routinenHeading).toBeVisible();
+  await expect(aufgabenHeading).toHaveCount(1);
+  await expect(aufgabenHeading).toHaveClass(/visually-hidden/);
 
-  const [aufgabenStyle, routinenStyle] = await Promise.all([
-    aufgabenHeading.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
-    }),
-    routinenHeading.evaluate((el) => {
-      const s = getComputedStyle(el);
-      return { fontSize: s.fontSize, fontWeight: s.fontWeight, color: s.color, margin: s.margin };
-    }),
-  ]);
-  expect(aufgabenStyle).toEqual(routinenStyle);
+  // `toBeVisible()` reicht hier nicht: eine 1×1px-Box mit `clip-path` gilt für
+  // Playwright als "sichtbar" (nicht leer, kein `visibility:hidden`) — die
+  // eigentliche Prüfung ist die Bounding-Box-Größe (issue #972 AK3).
+  const box = await aufgabenHeading.boundingBox();
+  if (!box) throw new Error('Die verborgene Überschrift muss trotzdem einen Layout-Ort haben');
+  expect(box.width, 'die Überschrift darf keine sichtbare Fläche einnehmen').toBeLessThanOrEqual(1);
+  expect(box.height, 'die Überschrift darf keine sichtbare Fläche einnehmen').toBeLessThanOrEqual(1);
 });
 
-test('die Aufgabenliste wird nicht doppelt angesagt — die Überschrift benennt sie statt eines eigenen aria-label (issue #157 AC6)', async ({
+test('der sichtbare Text über der Aufgabenliste kommt aus dem Bucket-Kopf, nicht mehr aus der Modulüberschrift (issue #157 AC5, jetzt #972 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
+  await expect(groupTitles(page).filter({ hasText: 'Heute' })).toBeVisible();
+});
+
+test('die Aufgabenliste trägt ihr eigenes aria-label „Aufgaben der nächsten 7 Tage" statt der Modulüberschrift (issue #157 AC6, jetzt #979 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+
+  // Vor #979 war die Liste per `aria-labelledby` an die (identische) Modul-
+  // überschrift "Aufgaben" gebunden, um doppelte Ansage zu vermeiden. Die
+  // Texte sind jetzt unterschiedlich ("Aufgaben" vs. "Aufgaben der nächsten
+  // 7 Tage") — `aria-labelledby` würde den Zusatz "der nächsten 7 Tage"
+  // stillschweigend verschlucken, die Liste trägt ihn deshalb selbst.
   const list = page.getByRole('list', { name: 'Aufgaben' });
   await expect(list).toBeVisible();
-  await expect(list).toHaveAttribute('aria-labelledby', 'uebersicht-aufgaben-heading');
-  expect(await list.getAttribute('aria-label')).toBeNull();
+  await expect(list).toHaveAttribute('aria-label', 'Aufgaben der nächsten 7 Tage');
+  expect(await list.getAttribute('aria-labelledby')).toBeNull();
 });
 
 test('Tab-Sonne und Wetter-Sonne sind auf demselben Bildschirm eindeutig unterscheidbar (issue #157 AC3)', async ({
@@ -588,8 +617,8 @@ test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter �
   // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
   // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
   const wetter = page.locator('.weather-forecast');
-  const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-  const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+  const aufgaben = aufgabenContent(page);
+  const routinen = routinenHead(page);
   await expect(wetter).toBeVisible();
   await expect(aufgaben).toBeVisible();
   await expect(routinen).toBeVisible();
@@ -674,8 +703,8 @@ test('kein Journal-Block auf der Übersicht — auf Mobile (375px) wie auf Deskt
     await page.goto('/uebersicht');
 
     await expect(page.locator('.journal-today-section')).toHaveCount(0);
-    const aufgaben = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
-    const routinen = page.getByRole('heading', { name: 'Routinen', level: 2 });
+    const aufgaben = aufgabenContent(page);
+    const routinen = routinenHead(page);
     await expect(aufgaben).toBeVisible();
     await expect(routinen).toBeVisible();
     expect(await topOf(aufgaben), `Aufgaben über Routinen bei ${width}px`).toBeLessThan(
@@ -691,8 +720,8 @@ test('die Übersicht bleibt ohne Journal-Block auch im Dark Mode mit reduzierter
   await page.goto('/uebersicht');
 
   await expect(page.locator('.journal-today-section')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
+  await expect(aufgabenContent(page)).toBeVisible();
+  await expect(routinenHead(page)).toBeVisible();
 
   // Die Seite ist bedienbar: der Journal-Nav-Tab führt weiterhin zur Route.
   await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
@@ -714,14 +743,112 @@ test('der Übersichts-Inhalt selbst verlinkt nicht mehr aufs Journal — der Weg
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #559 (S8 von #473): Übersicht-Sektion "Nächster Termin"              */
+/* issue #974 (T3 von #971): "Nächster Termin" im Blatt-Aufbau — die Uhrzeit  */
+/* trägt die Zeile. Ersetzt den #559-Aufbau (Countdown oben, Zeitraum unten). */
 /* -------------------------------------------------------------------------- */
 
-test('der nächste Termin heute steht groß mit Countdown-Text (issue #559 AC1)', async ({
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * getComputedStyle can serialize a color-mix()/oklch()-sourced colour back in a
+ * form a naive "rgb(r, g, b)" regex would misparse — a 1×1 canvas sidesteps
+ * that (same technique as grundfarbe.spec.ts/kalender.spec.ts).
+ */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+test('AK1: die Startzeit trägt die Zeile groß in --font-display, Titel und eine gedämpfte Metazeile stehen daneben (issue #974)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   // NOW = 12:00 UTC = 14:00 Berlin (CEST). +40 Min -> 14:40 Berlin.
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const time = next.locator('.events-overview__next-time');
+  const title = next.locator('.events-overview__next-title');
+  await expect(time).toHaveText('14:40');
+  await expect(title).toHaveText('Standup');
+
+  const timeStyle = await time.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      fontSize: parseFloat(style.fontSize),
+      fontVariant: style.fontVariantNumeric,
+      fontFamily: style.fontFamily.toLowerCase(),
+    };
+  });
+  expect(timeStyle.fontSize).toBeCloseTo(26, 0);
+  expect(timeStyle.fontVariant).toBe('tabular-nums');
+  expect(timeStyle.fontFamily).toMatch(/ui-rounded|nunito/);
+
+  expect(await title.evaluate((el) => getComputedStyle(el).fontWeight)).toBe('600');
+
+  // Titel + Metazeile stehen als eigener Block rechts neben der Uhrzeit, nicht
+  // in eigenen vollbreiten Zeilen darüber/darunter.
+  const [timeBox, bodyBox] = await Promise.all([
+    time.boundingBox(),
+    next.locator('.events-overview__next-body').boundingBox(),
+  ]);
+  expect(bodyBox!.x).toBeGreaterThan(timeBox!.x + timeBox!.width - 1);
+});
+
+test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitraum entfällt (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveText('in 40 Min · Arbeit');
+  // Zeitraum "12:40–13:10" UTC = "14:40–15:10" Berlin — die Endzeit steht nirgends mehr.
+  await expect(next).not.toContainText('15:10');
+});
+
+test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes Trennzeichen (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Zahnarzt',
     allDay: false,
@@ -732,13 +859,98 @@ test('der nächste Termin heute steht groß mit Countdown-Text (issue #559 AC1)'
     category: null,
   });
 
-  const next = page.locator('.events-overview__next');
-  await expect(next).toBeVisible();
-  await expect(next).toContainText('in 40 Min');
-  await expect(next).toContainText('Zahnarzt');
+  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 40 Min');
 });
 
-test('weitere Termine am selben Tag stehen darunter als dünne Zeilen, nicht gleichwertig groß (issue #559 AC2)', async ({
+test('AK3: die linke Kategorie-Kante entfällt, die Uhrzeit trägt jetzt die Kategoriefarbe (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  expect(await next.evaluate((el) => getComputedStyle(el).borderInlineStartWidth)).toBe('0px');
+
+  const [timeColor, titleColor] = await Promise.all([
+    next.locator('.events-overview__next-time').evaluate((el) => getComputedStyle(el).color),
+    next.locator('.events-overview__next-title').evaluate((el) => getComputedStyle(el).color),
+  ]);
+  expect(timeColor).not.toBe(titleColor);
+});
+
+test('AK4: die Startzeit erreicht 4,5:1 gegen die Kartenfläche, mit Kategorie, hell und dunkel (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    // familie liegt mit 55%-Mix am nächsten an der 4,5:1-Schwelle (ADR-0028-
+    // Nachmessung) — der strengste der fünf Vorgabefarben-Fälle.
+    category: 'familie',
+  });
+
+  const time = page.locator('.events-overview__next-time');
+  const card = page.locator('.events-overview__next');
+  async function measure(): Promise<number> {
+    const [timeColor, cardBg] = await Promise.all([
+      time.evaluate((el) => getComputedStyle(el).color),
+      card.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    return contrastRatio(await toRgb(page, timeColor), await toRgb(page, cardBg));
+  }
+
+  await expect(time).toBeVisible();
+  expect(await measure(), 'hell').toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measure(), 'dunkel').toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK4: die Startzeit ohne Kategorie erreicht 4,5:1 gegen die Kartenfläche, hell und dunkel (issue #974)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const time = page.locator('.events-overview__next-time');
+  const card = page.locator('.events-overview__next');
+  async function measure(): Promise<number> {
+    const [timeColor, cardBg] = await Promise.all([
+      time.evaluate((el) => getComputedStyle(el).color),
+      card.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    return contrastRatio(await toRgb(page, timeColor), await toRgb(page, cardBg));
+  }
+
+  await expect(time).toBeVisible();
+  expect(await measure(), 'hell').toBeGreaterThanOrEqual(4.5);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measure(), 'dunkel').toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK5: weitere Termine am selben Tag stehen darunter als dünne Zeilen, deutlich kleiner als die große Startzeit (issue #974, vormals #559 AC2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -770,15 +982,15 @@ test('weitere Termine am selben Tag stehen darunter als dünne Zeilen, nicht gle
   await expect(restItems.first()).toContainText('Teammeeting');
   await expect(restItems.first()).toContainText('17:00'); // 15:00 UTC = 17:00 Berlin
 
-  // Deutlich kleinere Schrift als die große Anzeige des nächsten Termins.
+  // Deutlich kleinere Schrift als die große Startzeit des nächsten Termins.
   const [nextFontSize, restFontSize] = await Promise.all([
-    next.locator('.events-overview__next-countdown').evaluate((el) => getComputedStyle(el).fontSize),
+    next.locator('.events-overview__next-time').evaluate((el) => getComputedStyle(el).fontSize),
     restItems.first().evaluate((el) => getComputedStyle(el).fontSize),
   ]);
   expect(parseFloat(nextFontSize)).toBeGreaterThan(parseFloat(restFontSize));
 });
 
-test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #559 AC3)', async ({
+test('AK6: ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #974, vormals #559 AC3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -798,7 +1010,7 @@ test('ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand
   await expect(page.locator('.events-overview__next')).toHaveCount(0);
 });
 
-test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #559 AC4)', async ({
+test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974, vormals #559 AC4)', async ({
   page,
 }) => {
   // Must be installed before this goto — useNow's setInterval is registered on
@@ -818,16 +1030,16 @@ test('der Countdown aktualisiert sich mit der Zeit, ohne dass die Seite neu läd
     category: null,
   });
 
-  const countdown = page.locator('.events-overview__next-countdown');
-  await expect(countdown).toHaveText('in 40 Min');
+  const meta = page.locator('.events-overview__next-meta');
+  await expect(meta).toHaveText('in 40 Min');
 
   await freezeClock(page);
   await page.clock.fastForward(10 * 60 * 1000);
 
-  await expect(countdown).toHaveText('in 30 Min');
+  await expect(meta).toHaveText('in 30 Min');
 });
 
-test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #559 AC5)', async ({
+test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #974, vormals #559 AC5)', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -845,7 +1057,7 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
       category: null,
     });
 
-    const heading = page.getByRole('heading', { name: 'Termine', level: 2 });
+    const heading = page.getByRole('heading', { name: 'Nächster Termin', level: 2 });
     const next = page.locator('.events-overview__next');
     await expect(heading).toBeVisible();
     await expect(next).toBeVisible();
@@ -857,6 +1069,76 @@ test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) 
     );
     await expect(page.locator('.events-overview__empty')).toBeVisible();
   }
+});
+
+test('AK8: bei 375×812 kürzt ein langer Termintitel einzeilig, die Uhrzeit bleibt vollständig — Dark Mode, reduzierte Bewegung, kein waagerechter Überlauf (issue #974)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const time = next.locator('.events-overview__next-time');
+  const title = next.locator('.events-overview__next-title');
+  await expect(time).toHaveText('14:40');
+
+  const [titleTruncates, timeFits] = await Promise.all([
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ]);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+  expect(timeFits, 'Uhrzeit bleibt vollständig, ohne zu kürzen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
+});
+
+test('AK9: ein offline angelegter Termin erscheint sofort in der Karte und erreicht nach dem Onlinegehen die echte Datenbank (issue #974)', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/uebersicht');
+  await context.setOffline(true);
+  await seedEvent(page, {
+    title: 'Im Zug erfasst',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Im Zug erfasst');
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+  // beforeEach blockt /api/sync/** (route.abort) — hier aufheben, damit die
+  // gequeuete Mutation den echten Server erreichen kann.
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  // Weiterhin sichtbar, ohne Reload (die Karte kommt aus derselben Live-Query).
+  await expect(next).toContainText('Im Zug erfasst');
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM events WHERE title = $1', ['Im Zug erfasst']),
+  );
+  expect(row.rowCount).toBe(1);
 });
 
 test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig, ohne Überlauf', async ({

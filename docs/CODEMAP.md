@@ -122,7 +122,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/features/habits
 
 - `use-habits.ts` / `use-habit-logs.ts` / `use-toggle-habit-log.ts` — Live-Queries + Abhaken/Zurücknehmen
-- `due-today.ts` / `schedule-rules.ts` — Wochen-/Monats-Helfer + reine Fälligkeits-/Erledigt-Regeln
+- `due-today.ts` / `schedule-rules.ts` / `habit-progress.ts` — Fälligkeits-/Erledigt-Regeln, `computeHabitProgress` (N von M) teilen Ring + Kopf-Link
 - `streak.ts` — `computeStreak` (`habit_freezes` dormant) + `countHabitsOnStreak`
 - `week-goal.ts` / `history-weeks.ts` / `history-days.ts` / `month-progress.ts` — reine Ableitungen: Wochensoll, 12-Wochen-, 30-Tage-, Monatsreihe
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge auf /uebersicht
@@ -216,7 +216,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet (`<dialog>`), Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host (`aria-live`) + Toast (confirmation/error)
 - `row/section-card/toggle/segmented-control/slider.tsx` (+ `.css`) — Form-Primitive
-- `overview-block.tsx` / `.css` — einheitlicher Modulkopf auf /uebersicht (Punkt in Bereichsfarbe, Titel, optionaler Link)
+- `overview-block.tsx` / `.css` — /uebersicht: `OverviewBlock` (Rahmen) + `OverviewCardHead` (Kopf: Titel + Link)
 - `field-hint.tsx` / `.css` — Warnfarbene Notiz für ein geratenes Feld, kein Icon
 - `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync/Storage-Start, Fehler-Toast, Stale-Helfer
 - `e2e-bridge.tsx` — Test-Griff auf Outbox/Journal/Dexie-Dump (nur `NEXT_PUBLIC_E2E`)
