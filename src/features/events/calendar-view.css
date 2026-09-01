@@ -43,3 +43,10 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* Tagesauszug-Überschrift, nur Monat (issue #959, T2 von #957) — überschreibt
+   `page-head__eyebrow`s eigenes `margin: 0 0 3px`: Abstand zur Monats-Karte
+   darüber und zur Agenda darunter. */
+.calendar-view__day-heading {
+  margin: var(--space-3) 0 var(--space-2);
+}
