@@ -225,10 +225,15 @@
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-pill);
-  /* Aufgehellte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #955
+  /* Gedämpfte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #955
      AK2), dasselbe Rezept wie das Ganztägig-Band (event-agenda.css, issue
      #924): manche der neuen --cat-*-Vorgaben (Blau, Pflaume) unterschreiten
-     roh auf --ground-kalender die 3:1-Schwelle. Gemessen bei 60%
-     Kategorie-Anteil: schlechtester Fall 3,33:1 hell / 5,91:1 dunkel. */
-  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 60%, var(--on-ground));
+     roh auf --ground-kalender die 3:1-Schwelle. Ursprünglich bei 60%
+     Kategorie-Anteil gemessen (3,33:1 hell / 5,91:1 dunkel) — #991 hat
+     `--ground-kalender` aufgehellt UND `--on-ground` auf dieser Route von
+     der hellen auf die dunkle Tinte (--on-accent) gekippt (AK4); derselbe
+     60%-Mix ergab dadurch einen zu dunklen Punkt auf zu hellem Grund
+     (schlechtester Fall 1,95:1 hell). Bei 30% Kategorie-Anteil (mehr Gewicht
+     auf --on-ground) hält es wieder: 3,77:1 hell / 4,91:1 dunkel. */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 30%, var(--on-ground));
 }

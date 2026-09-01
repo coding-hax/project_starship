@@ -1378,14 +1378,14 @@ test('AK1: die fuenf --cat-* Vorgaben liegen als deklariertes oklch()-Literal mi
   expect(minHueGap(darkHues)).toBeGreaterThanOrEqual(40);
 });
 
-test('AK2: der aufgehellte Kategorie-Punkt (60%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955)', async ({
+test('AK2: der gedaempfte Kategorie-Punkt (30%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955, Rezept nachgezogen von issue #991)', async ({
   page,
 }) => {
   async function dotContrast(category: string): Promise<number> {
     const ground = await toRgb(page, await resolveToken(page, '--ground'));
     const dot = await toRgb(
       page,
-      await resolveMix(page, `var(--cat-${category})`, 60, 'var(--on-ground)'),
+      await resolveMix(page, `var(--cat-${category})`, 30, 'var(--on-ground)'),
     );
     return contrastRatio(dot, ground);
   }

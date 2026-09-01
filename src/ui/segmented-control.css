@@ -88,10 +88,18 @@
      dreht sich das Bild um: Grund + Schleier ist dort dunkel genug, dass
      --on-ground trägt (5,61:1). */
   --segmented-ground-muted-ink: color-mix(in oklab, var(--on-accent) 80%, black);
-  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe), 6,35:1
-     gegen --surface im Hellmodus. */
+  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe). */
   --segmented-ground-active-ink: var(--ground);
-  --segmented-ground-pill-bg: var(--surface);
+  /* #991 hat --ground-kalender aufgehellt — der 20%-Schleier oben (Zeile 81)
+     liegt dadurch so nah an reinem --surface (Weiß), dass die aktive Pille
+     (AK3, issue #921) nur noch 2,45:1 gegen den Schleier hält, unter der
+     3:1-Schwelle. --surface bleibt Weiß, deshalb hier abgedunkelt statt den
+     Schleier selbst anzufassen (der trägt separat den gedämpften Optionstext,
+     s.o. — unverändert lassen). Bei 38% hält beides mit Marge: Pille 4,10:1
+     gegen den Schleier (AK3), Routenfarbe als Pillentext 3,16:1 gegen die
+     jetzt dunklere Pille (informell, kein eigenes AK, aber unter 3:1 fiele
+     die Blatt-Vorgabe selbst unter WCAG-Großtext). */
+  --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 38%, black);
 }
 
 @media (prefers-color-scheme: dark) {
