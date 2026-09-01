@@ -12,7 +12,8 @@ import { CalendarStrip } from './calendar-strip';
 import { EventAgenda } from './event-agenda';
 import { EventDetail, type EventDetailState } from './event-detail';
 import { EventEditor, type EventEditorState } from './event-editor';
-import { formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
+import { formatDayHeading, formatMonthTitle, monthEventCounts, monthName, yearLabel } from './event-time';
+import { MonthGrid } from './month-grid';
 import { expandForDay, type Occurrence } from './recurrence';
 import { useDeleteEvent } from './use-delete-event';
 import { useEventExceptions, type EventExceptionView } from './use-event-exceptions';
@@ -53,13 +54,14 @@ function getServerTodayKey(): string | null {
 }
 
 /**
- * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473; agenda issue #597): a
- * day agenda behind a week strip that pulls open into the full month, plus
- * the FAB-driven
- * create/edit/delete editor. `selectedDay` is a Berlin calendar day, not the
- * device's local one — the same reference `berlinNow` already gives the
- * reminder scheduler (src/push/schedule.ts), so there is only ever one
- * "today" in this app.
+ * `/kalender` (issue #553/#554/#556, S2+S3+S5 of #473; agenda issue #597; the
+ * month view moved into a static body card in issue #958): a day agenda
+ * behind a week strip (`CalendarStrip`, header) or a month card (`MonthGrid`,
+ * body) — the Woche/Monat toggle picks exactly one of the two, plus the
+ * FAB-driven create/edit/delete editor. `selectedDay` is a Berlin calendar
+ * day, not the device's local one — the same reference `berlinNow` already
+ * gives the reminder scheduler (src/push/schedule.ts), so there is only ever
+ * one "today" in this app.
  *
  * `today` is `null` during SSR and the very first client render (issue #579):
  * `berlinNow` reads the client clock, which at that point differs from the
@@ -87,6 +89,13 @@ export function CalendarView() {
    *  zum ersten Bericht auf `today` zurück, gleiches Muster wie `selectedDay`. */
   const [leadDayOverride, setLeadDayOverride] = useState<string | null>(null);
   const leadDay = leadDayOverride ?? today;
+  /** `YYYY-MM` — der fokussierte Monat der Monats-Karte (issue #958). Zieht mit
+   *  jeder Tagesauswahl mit (`handleSelectDay`), genau wie zuvor der geteilte
+   *  `windowAnchor` des Streifens Woche und Monat zusammenhielt — Wechseln in
+   *  den Monat zeigt so weiterhin den Monat der zuletzt gewählten/gescrollten
+   *  Zelle, nicht einen stehengebliebenen Stand. */
+  const [focusMonthOverride, setFocusMonthOverride] = useState<string | null>(null);
+  const focusMonth = focusMonthOverride ?? (today === null ? null : today.slice(0, 7));
   const [expanded, setExpanded] = useState(false);
   const [editorState, setEditorState] = useState<EventEditorState>(null);
   const [detailState, setDetailState] = useState<EventDetailState>(null);
@@ -136,9 +145,23 @@ export function CalendarView() {
   );
   const eventExceptions = exceptions ?? EMPTY_EXCEPTIONS;
 
-  const focusMonth = leadDay === null ? null : leadDay.slice(0, 7);
-  const period = leadDay === null ? NBSP : expanded ? yearLabel(leadDay) : formatMonthTitle(leadDay);
-  const title = leadDay === null ? NBSP : expanded ? monthName(leadDay) : 'Diese Woche';
+  // Monat: getrieben vom fokussierten Monat der Karte (`focusMonth`), nicht
+  // mehr von `leadDay` — der Streifen hat im Monat keine führende Zelle mehr.
+  // Woche: unverändert `leadDay` (issue #898).
+  const period = expanded
+    ? focusMonth === null
+      ? NBSP
+      : yearLabel(`${focusMonth}-01`)
+    : leadDay === null
+      ? NBSP
+      : formatMonthTitle(leadDay);
+  const title = expanded
+    ? focusMonth === null
+      ? NBSP
+      : monthName(`${focusMonth}-01`)
+    : leadDay === null
+      ? NBSP
+      : 'Diese Woche';
 
   // Nur im Monat berechnet (#834, „nur was die Daten hergeben") — die Woche
   // zeigt den Streifen selbst als Zusatz, keine Chips.
@@ -146,6 +169,15 @@ export function CalendarView() {
     if (!expanded || focusMonth === null) return null;
     return monthEventCounts(focusMonth, (day) => expandForDay(timelineEvents, eventExceptions, day));
   }, [expanded, focusMonth, timelineEvents, eventExceptions]);
+
+  /** Setzt die Auswahl **und** zieht den fokussierten Monat der Karte mit —
+   *  Tap/„Heute"/Tagesschritt im Streifen (issue #958) treffen so dieselbe
+   *  Regel wie die Karte selbst, gleiches Prinzip wie zuvor der geteilte
+   *  `windowAnchor` des Streifens Woche und Monat zusammenhielt. */
+  function handleSelectDay(day: string) {
+    setSelectedDayOverride(day);
+    setFocusMonthOverride(day.slice(0, 7));
+  }
 
   function openCreate() {
     setEditorState({ mode: 'create', event: null, occurrence: null });
@@ -194,8 +226,10 @@ export function CalendarView() {
   return (
     <div className="calendar-view">
       {/* <header> is the auto-focus target after navigation (CODEMAP invariant,
-          same reasoning as weather-day.tsx) — CalendarStrip's paging controls
-          live in it, not just a bare heading. */}
+          same reasoning as weather-day.tsx) — the Woche/Monat-Umschalter and
+          (Woche) CalendarStrip's paging controls live in it, not just a bare
+          heading; MonthGrid's own nav sits in the body on purpose (issue
+          #958), so it never becomes the auto-focus target. */}
       <header className="calendar-view__header">
         <div className="calendar-view__eyebrow">
           <p className="calendar-view__period page-head__eyebrow">{period}</p>
@@ -221,23 +255,43 @@ export function CalendarView() {
             </div>
           </div>
         )}
-        {today !== null && selectedDay !== null && (
+        {!expanded && today !== null && selectedDay !== null && (
           <CalendarStrip
             selectedDay={selectedDay}
-            onSelectDay={setSelectedDayOverride}
+            onSelectDay={handleSelectDay}
             today={today}
             events={timelineEvents}
             exceptions={eventExceptions}
-            expanded={expanded}
             onLeadDayChange={setLeadDayOverride}
           />
         )}
       </header>
+      {expanded && today !== null && selectedDay !== null && focusMonth !== null && (
+        <MonthGrid
+          focusMonth={focusMonth}
+          selectedDay={selectedDay}
+          today={today}
+          events={timelineEvents}
+          exceptions={eventExceptions}
+          onSelectDay={handleSelectDay}
+          onFocusMonth={setFocusMonthOverride}
+        />
+      )}
       {!online && (
         <OfflineNotice>
           Offline — neue Termine liegen lokal und werden synchronisiert, sobald du wieder online
           bist.
         </OfflineNotice>
+      )}
+      {/* Nur im Monat (issue #959, T2 von #957): in der Woche benennt der
+          Wochenstreifen im Kopf den gewählten Tag samt Wochentag bereits, eine
+          zweite Tagesüberschrift wäre Dopplung (Planentscheidung in #957).
+          Getrieben von `selectedDay`, nicht `focusMonth` — folgt dem gewählten
+          Tag, nicht dem durchgeblätterten Monat. */}
+      {expanded && selectedDay !== null && (
+        <p className="calendar-view__day-heading page-head__eyebrow">
+          {formatDayHeading(selectedDay)}
+        </p>
       )}
       {today !== null && selectedDay !== null && (
         <EventAgenda

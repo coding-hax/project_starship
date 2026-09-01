@@ -1,11 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 /**
- * `OverviewBlock` (issue #652): einheitliche Modulköpfe auf /uebersicht + Ring
- * in der Titelzeile. Je Akzeptanzkriterium ein Test, wie im Ticket gefordert.
+ * `OverviewBlock` (issue #652, Kartenkopf statt Seitengrund-Überschrift seit
+ * issue #972): einheitliche Modulköpfe auf /uebersicht + Ring in der
+ * Titelzeile. Je Akzeptanzkriterium ein Test, wie im Ticket gefordert.
  */
+
+/**
+ * Playwright's `toBeVisible()` prüft nur eine nicht-leere Bounding-Box und
+ * `visibility !== hidden` — eine 1×1px-Box mit `clip-path` (issue #972 AK3)
+ * zählt für diese Prüfung als "sichtbar". Die echte Prüfung ist die Größe.
+ */
+async function isVisuallyHidden(locator: Locator): Promise<boolean> {
+  const box = await locator.boundingBox();
+  return box === null || (box.width <= 1 && box.height <= 1);
+}
 
 const NOW = '2026-07-18T12:00:00.000Z';
 const TODAY_EVENING = '2026-07-18T18:00:00.000Z';
@@ -46,20 +57,31 @@ test.beforeEach(async ({ page }) => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK2: einheitliche h2 je Modul                                              */
+/* AK2/AK3: Kartenkopf sichtbar, wo das Blatt einen Titel zeigt — sonst        */
+/* verborgen (issue #972, löst die #652-Grundzeile ab)                        */
 /* -------------------------------------------------------------------------- */
 
-test('Wetter, Aufgaben, Termine und Routinen haben auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({
+test('Termine und Routinen haben auf /uebersicht ein sichtbares h2 im Kartenkopf (AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  await expect(page.getByRole('heading', { name: 'Nächster Termin', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
+});
+
+test('Wetter und Aufgaben haben auf /uebersicht ein h2 mit dem Modulnamen, das im DOM bleibt, aber verborgen ist (AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   // Wetter geht hier über den Fehlerzustand (open-meteo im beforeEach oben
-  // aborted) — die Überschrift muss auch dann stehen, nicht nur beim Erfolg.
-  await expect(page.getByRole('heading', { name: 'Wetter', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Termine', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
+  // aborted) — die Überschrift muss auch dann im DOM stehen, nicht nur beim Erfolg.
+  for (const name of ['Wetter', 'Aufgaben']) {
+    const heading = page.getByRole('heading', { name, level: 2 });
+    await expect(heading).toHaveCount(1);
+    expect(await isVisuallyHidden(heading), `${name}-Überschrift muss verborgen sein`).toBe(true);
+  }
 });
 
 /**
@@ -83,7 +105,9 @@ test.describe('Aktivitäten (server-seitig gesynct)', () => {
     await skewClock(page, NOW);
   });
 
-  test('Aktivitäten hat auf /uebersicht ein sichtbares h2 mit dem Modulnamen (AK2)', async ({ page }) => {
+  test('Aktivitäten hat auf /uebersicht ein h2 mit dem Modulnamen, das im DOM bleibt, aber verborgen ist (AK3)', async ({
+    page,
+  }) => {
     await withDb((client) =>
       client.query(
         `INSERT INTO garmin_activities
@@ -94,47 +118,79 @@ test.describe('Aktivitäten (server-seitig gesynct)', () => {
     );
 
     await page.goto('/uebersicht');
-    await expect(page.getByRole('heading', { name: 'Aktivitäten', level: 2 })).toBeVisible();
+    const heading = page.getByRole('heading', { name: 'Aktivitäten', level: 2 });
+    await expect(heading).toHaveCount(1);
+    expect(await isVisuallyHidden(heading)).toBe(true);
   });
 });
 
-test('der Überschriftenpunkt trägt die Bereichsfarbe des jeweiligen Moduls (AK1+AK2)', async ({
+test('AK1: keine eigene Überschriftenzeile mehr auf dem Seitengrund — der Punkt in Bereichsfarbe entfällt ersatzlos', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
-  const aufgabenDot = page
-    .getByRole('heading', { name: 'Aufgaben', level: 2 })
-    .locator('.overview-block__dot');
-  const routinenDot = page
-    .getByRole('heading', { name: 'Routinen', level: 2 })
-    .locator('.overview-block__dot');
-  const wetterDot = page.getByRole('heading', { name: 'Wetter', level: 2 }).locator('.overview-block__dot');
+  await expect(page.locator('.overview-block__heading')).toHaveCount(0);
+  await expect(page.locator('.overview-block__dot')).toHaveCount(0);
+});
 
-  const [tasksToken, habitsToken, weatherToken, aufgabenColor, routinenColor, wetterColor] = await Promise.all([
-    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-tasks').trim()),
-    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-habits').trim()),
-    page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--area-weather').trim()),
-    aufgabenDot.evaluate((el) => getComputedStyle(el).backgroundColor),
-    routinenDot.evaluate((el) => getComputedStyle(el).backgroundColor),
-    wetterDot.evaluate((el) => getComputedStyle(el).backgroundColor),
-  ]);
+test('der Kartenkopf zeigt den Titel links und den gedämpften Link rechts, mit Tap-Target ≥44px (AK1+AK2+AK4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const habitId = await seedHabit(page, { name: 'Lesen' });
+  expect(habitId).toBeTruthy();
 
-  const toRgb = async (token: string) =>
-    page.evaluate((t) => {
-      const probe = document.createElement('span');
-      probe.style.color = t;
-      document.body.appendChild(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    }, token);
+  const cases: Array<{ head: Locator; title: string; linkText: string | RegExp; href: string }> = [
+    {
+      head: page.locator('.events-overview__next, .events-overview__empty').locator('.overview-block__head'),
+      title: 'Nächster Termin',
+      linkText: 'Kalender',
+      href: '/kalender',
+    },
+    {
+      head: page.locator('.overview-block__head-card .overview-block__head'),
+      title: 'Routinen',
+      linkText: /von/,
+      href: '/routinen',
+    },
+  ];
 
-  expect(aufgabenColor).toBe(await toRgb(tasksToken));
-  expect(routinenColor).toBe(await toRgb(habitsToken));
-  expect(wetterColor).toBe(await toRgb(weatherToken));
-  expect(aufgabenColor).not.toBe(routinenColor);
-  expect(wetterColor).not.toBe(routinenColor);
+  for (const { head, title, linkText, href } of cases) {
+    const titleEl = head.locator('.overview-block__title');
+    const link = head.getByRole('link');
+    await expect(titleEl).toHaveText(title);
+    await expect(link).toHaveText(linkText);
+    await expect(link).toHaveAttribute('href', href);
+
+    const [titleBox, linkBox] = await Promise.all([titleEl.boundingBox(), link.boundingBox()]);
+    if (!titleBox || !linkBox) throw new Error('Titel und Link müssen sichtbar sein');
+    // Titel links, Link rechts …
+    expect(linkBox.x).toBeGreaterThan(titleBox.x + titleBox.width);
+    // … mit einem Tap-Target von mindestens 44px Höhe (AK4).
+    expect(linkBox.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+test('der Link-Text im Routinen-Kopf stimmt mit dem Fortschrittsring überein — geteilte Zählung, kein Zweitzähler (AK4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const habitA = await seedHabit(page, { name: 'Lesen' });
+  await seedHabit(page, { name: 'Laufen' });
+  await page.evaluate(
+    (id) =>
+      window.__starship.mutate({
+        table: 'habit_logs',
+        op: 'upsert',
+        payload: { habitId: id, logDate: '2026-07-18', done: true },
+      }),
+    habitA,
+  );
+
+  const ring = page.locator('.daily-progress-ring');
+  const link = page.locator('.overview-block__head-card').getByRole('link');
+  await expect(ring).toHaveText('1/2');
+  await expect(link).toHaveText('1 von 2');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -246,7 +302,9 @@ test('die Verlaufskarte "Routinen in Serie" ist auf /uebersicht nicht vorhanden,
 test('ein abgeschaltetes Modul rendert weder Überschrift noch Inhalt (AK6)', async ({ page }) => {
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
-  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toBeVisible();
+  // Verborgen statt sichtbar (issue #972 AK3) — hier zählt nur, dass die
+  // Überschrift überhaupt im DOM steht, bevor das Modul abgeschaltet wird.
+  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toHaveCount(1);
   await expect(page.getByText('Heute fällig')).toBeVisible();
 
   await setModulesOff(page, ['aufgaben']);
@@ -254,4 +312,38 @@ test('ein abgeschaltetes Modul rendert weder Überschrift noch Inhalt (AK6)', as
 
   await expect(page.getByRole('heading', { name: 'Aufgaben', level: 2 })).toHaveCount(0);
   await expect(page.getByText('Heute fällig')).toHaveCount(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK8: 375×812 ohne Überlauf, Dark Mode, reduzierte Bewegung                 */
+/* -------------------------------------------------------------------------- */
+
+test('AK8: der Kartenkopf bleibt bei 375×812 einzeilig, ohne horizontalen Überlauf, in Dark Mode und mit reduzierter Bewegung', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await seedHabit(page, { name: 'Lesen' });
+  await page.goto('/uebersicht');
+
+  for (const titleLocator of [
+    page.locator('.events-overview__next, .events-overview__empty').locator('.overview-block__title'),
+    page.locator('.overview-block__head-card .overview-block__title'),
+  ]) {
+    await expect(titleLocator).toBeVisible();
+    const { clientHeight, lineHeight } = await titleLocator.evaluate((el) => ({
+      clientHeight: el.clientHeight,
+      lineHeight: parseFloat(getComputedStyle(el).lineHeight),
+    }));
+    expect(Math.round(clientHeight / lineHeight)).toBe(1);
+  }
+
+  // Der Link behält seine eigene Breite, statt dass sein Text den Titel wegkürzt.
+  const routinenLink = page.locator('.overview-block__head-card').getByRole('link');
+  await expect(routinenLink).toHaveCSS('flex-shrink', '0');
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
 });

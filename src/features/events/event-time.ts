@@ -122,7 +122,10 @@ export function allDayEventsForDay<T extends TimelineSource>(
     }));
 }
 
-/** The card's left edge colour — the single place this category → token mapping lives. */
+/** A category's colour token (var() reference) — the single place this category
+ *  → token mapping lives. Named for its original edge/border use; also feeds
+ *  dots (calendar-strip.tsx) and, since issue #974, the overview's start-time
+ *  ink (events-overview-section.css mixes it toward --text for contrast). */
 export function categoryEdgeVar(category: EventView['category']): string {
   return category ? `var(--cat-${category})` : 'var(--area-events)';
 }
@@ -235,6 +238,19 @@ export function monthName(dateKey: string): string {
  *  UTC-anchoring caveat as `formatMonthTitle`. */
 export function yearLabel(dateKey: string): string {
   return YEAR_LABEL_FORMATTER.format(parseDateKey(dateKey));
+}
+
+const DAY_HEADING_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+
+/** "Samstag, 15. August" for the month view's day-agenda heading (issue #959,
+ *  T2 of #957) — same UTC-anchoring caveat as `formatMonthTitle`. */
+export function formatDayHeading(dateKey: string): string {
+  return DAY_HEADING_FORMATTER.format(parseDateKey(dateKey));
 }
 
 /** `dateKey` parsed as a UTC-anchored `Date` — machine-independent, see `addDays`. */
@@ -367,7 +383,8 @@ export function weekWindow(anchorDay: string, radiusWeeks: number): string[][] {
  * when the timeline below it renders something — all-day and multi-day events
  * (which have no `startsAt` at all) included.
  *
- * Capped at 4 so the day cell never overflows.
+ * Capped at `maxDots` (default 4) so the day cell never overflows — the week
+ * strip keeps the default, the month-grid card (issue #958) passes 3.
  */
 const CATEGORY_ORDER: EventView['category'][] = ['privat', 'arbeit', 'gesundheit', 'sport', 'familie', null];
 const MAX_DOTS_PER_DAY = 4;
@@ -375,13 +392,14 @@ const MAX_DOTS_PER_DAY = 4;
 export function categoriesForDay<T extends TimelineSource>(
   occurrences: T[],
   dateKey: string,
+  maxDots: number = MAX_DOTS_PER_DAY,
 ): EventView['category'][] {
   const present = new Set(
     [...agendaForDay(occurrences, dateKey), ...allDayEventsForDay(occurrences, dateKey)].map(
       (occurrence) => occurrence.category,
     ),
   );
-  return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, MAX_DOTS_PER_DAY);
+  return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, maxDots);
 }
 
 /**

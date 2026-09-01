@@ -12,9 +12,11 @@ import { weatherCategory } from './wmo-icon';
 /**
  * The 7-day forecast for the configured location, at the very top of /uebersicht
  * (issue #139, #159). Reads only from the local cache via `useWeatherForecast` —
- * no `fetch` here, ADR-0009. Heading row via `OverviewBlock` (issue #652) — the
- * `aria-label` on the `<section>` stays: it names the region with the location
- * and day count, more specific than the generic "Wetter" heading above it.
+ * no `fetch` here, ADR-0009. The sheet shows no visible title and no location
+ * line here — a slim card, seven columns, nothing else (issue #973 AK1/AK2) —
+ * so the module `<h2>` stays visually hidden (issue #972 AK3); the `aria-label`
+ * on the `<section>` is where the location still lives on this page, more
+ * specific than the generic "Wetter" heading above it.
  */
 export function WeatherForecast() {
   const { location } = useWeatherLocation();
@@ -31,9 +33,8 @@ export function WeatherForecast() {
   // positioned and outside this flow entirely — its own appearance can't shift
   // anything either.
   return (
-    <OverviewBlock title="Wetter" area="var(--area-weather)">
+    <OverviewBlock hiddenTitle="Wetter">
       <section className="weather-forecast" aria-label={ariaLabel}>
-        <p className="weather-forecast__location">{location.name}</p>
         <ol className="weather-forecast__days" aria-hidden={phase !== 'ready' || undefined}>
           {phase === 'ready' && days
             ? days.map((day) => {

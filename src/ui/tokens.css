@@ -149,14 +149,27 @@
   --swatch-sky: oklch(68% 0.12 228);
   --swatch-magenta: oklch(64% 0.16 335);
 
-  /* --- event category colours: accents *within* the Termine area, not a second
-     set of primaries — all clustered around --area-events' hue (195), same
-     lightness/chroma as the area colours (issue #553). --- */
-  --cat-privat: oklch(66% 0.11 170);
-  --cat-arbeit: oklch(66% 0.11 210);
-  --cat-gesundheit: oklch(66% 0.11 155);
-  --cat-sport: oklch(66% 0.11 185);
-  --cat-familie: oklch(66% 0.11 230);
+  /* --- event category colours: five distinguishable hues spanning the full
+     wheel (issue #955, ADR-0028) — replaces #553's rule of clustering them
+     within ~75° of --area-events' hue (195), which read as one blue-green
+     smear. Neighbours are now ≥40° apart (same bar as --swatch-*, 30-47°),
+     literal oklch() values taken from the design sheet's five hex swatches
+     (not var(--area-*)/--swatch-* references: no existing token pairs land
+     within 40° of both its neighbours, and a var() reference wouldn't be
+     readable back as a literal by the hue-gap test below). --cat-arbeit/
+     --cat-privat are lifted above the sheet's raw lightness (54%→68%,
+     44.6%→68%) — at the sheet's own value the existing 60%-against-
+     --on-ground mix (event-agenda.css's #924 recipe, reused by
+     calendar-strip.css) undershoots the 3:1 floor against --ground-kalender
+     (measured 2.54:1 / 1.99:1); 68% clears it with margin (3.33:1 both). Hue
+     stays the sheet's own except --cat-familie, nudged 236°→220° — the
+     sheet's Himmel/Blau pair sits only 24.5° apart, under the 40° floor;
+     220° keeps it clearly sky-blue and reaches 40.5° to --cat-arbeit. */
+  --cat-sport: oklch(71.3% 0.195 47.9); /* #ff7300 Orange */
+  --cat-gesundheit: oklch(64.4% 0.131 165.5); /* #12a67a Grün */
+  --cat-familie: oklch(69.2% 0.128 220); /* #3aa7e0 Himmel, Hue 236°→220° (AK1) */
+  --cat-arbeit: oklch(68% 0.227 260.5); /* #0061ef Blau, L 54%→68% (AK2) */
+  --cat-privat: oklch(68% 0.175 304.5); /* #6b2fa0 Pflaume, L 44.6%→68% (AK2) */
 
   /* --- semantic ----------------------------------------------------------- */
   --success: oklch(66% 0.15 148);
@@ -186,16 +199,6 @@
   /* Nav-Pille bzw. FAB (#860 Bedienelemente-Schnitt); dark + Anwendung dort. */
   --shadow-float: 0 8px 30px rgb(0 0 0 / 0.18);
   --shadow-fab: 0 12px 28px rgb(0 0 0 / 0.2);
-  /* Status-bar veil (issue #919, `.bg-layer__veil` in background-circles.css):
-     plain black, not a --ground mix like --ground-notch below — it now paints
-     translucently over the lightest circle tone that can sit under it
-     (`--b1` = --ground mixed with 16% white, background-circles.css) instead
-     of opaquely over the flat --ground the old band assumed, so it needs far
-     more black to still darken enough. 45% clears the measured worst case
-     (Aktivitäten light, circle rgb 255/188/83) at 5.10:1 against white —
-     comfortable margin over the 4.5:1 floor (issue #882), computed the same
-     way as --ground-notch's own measurement, not eyeballed. */
-  --notch-veil: rgb(0 0 0 / 45%);
 
   /* --- motion: 150–250 ms. Anything slower feels sluggish. ----------------- */
   --duration-fast: 150ms;
@@ -246,6 +249,9 @@
   --text-eyebrow: 11.5px;
   --text-subline: 13.5px;
   --text-chip: 12.5px;
+  /* month-grid Wochentagskopf (issue #958): kleiner als --text-meta, damit
+     "Mo…So" in den 7 schmalen Spalten der Monats-Karte nicht umbricht. */
+  --text-month-weekday: 10.5px;
 
   /* Zwei Font-Rollen statt einer rohen Familie (issue #859, ADR-0027): keine
      Datei greift `--font-inter`/`--font-nunito` roh ab, dieselbe Regel wie bei
@@ -340,11 +346,11 @@
     --swatch-sky: oklch(74% 0.1 228);
     --swatch-magenta: oklch(70% 0.14 335);
 
-    --cat-privat: oklch(72% 0.1 170);
-    --cat-arbeit: oklch(72% 0.1 210);
-    --cat-gesundheit: oklch(72% 0.1 155);
-    --cat-sport: oklch(72% 0.1 185);
-    --cat-familie: oklch(72% 0.1 230);
+    --cat-sport: oklch(77% 0.17 47.9);
+    --cat-gesundheit: oklch(72% 0.115 165.5);
+    --cat-familie: oklch(75% 0.11 220);
+    --cat-arbeit: oklch(75% 0.19 260.5);
+    --cat-privat: oklch(74% 0.15 304.5);
 
     --accent-fg: oklch(18% 0.012 60);
     /* Lifted well above --border-strong's 55% L (issue #780 above): stays clearly
@@ -389,11 +395,11 @@
   --swatch-sky: oklch(74% 0.1 228);
   --swatch-magenta: oklch(70% 0.14 335);
 
-  --cat-privat: oklch(72% 0.1 170);
-  --cat-arbeit: oklch(72% 0.1 210);
-  --cat-gesundheit: oklch(72% 0.1 155);
-  --cat-sport: oklch(72% 0.1 185);
-  --cat-familie: oklch(72% 0.1 230);
+  --cat-sport: oklch(77% 0.17 47.9);
+  --cat-gesundheit: oklch(72% 0.115 165.5);
+  --cat-familie: oklch(75% 0.11 220);
+  --cat-arbeit: oklch(75% 0.19 260.5);
+  --cat-privat: oklch(74% 0.15 304.5);
 
   --accent-fg: oklch(18% 0.012 60);
   --accent-neutral: oklch(66% 0.014 60);

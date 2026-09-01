@@ -37,6 +37,7 @@
 @import '../features/activities/activity-chart.css';
 @import '../features/activities/activity-month-strip.css';
 @import '../features/events/calendar-strip.css';
+@import '../features/events/month-grid.css';
 @import '../features/events/event-agenda.css';
 @import '../features/events/event-detail.css';
 @import '../features/events/event-editor.css';
@@ -315,12 +316,12 @@ html {
 
 body {
   /* Flat --ground everywhere, including the safe area: the opaque status-bar
-     band that used to live here (issue #882) moved to `.bg-layer__veil`
-     (background-circles.css, issue #919) — a translucent overlay painted
-     above the circles instead of a deckende gradient painted here that hid
-     them. `--ground-notch` (globals.css above) stays defined and still
+     band that used to live here (issue #882) moved to a translucent overlay
+     (`.bg-layer__veil`, issue #919) and then dropped entirely (issue #982) —
+     the ground now runs through unbroken with nothing painted over it in
+     that strip. `--ground-notch` (globals.css above) stays defined and still
      covers that band's own contrast measurement (tests/shell.mobile.spec.ts)
-     as the quick rollback path (see issue #919's "Rückweg"). */
+     as the quick rollback path (see issue #982's "Rückweg"). */
   background: var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
@@ -404,6 +405,22 @@ h2 {
 
 h3 {
   margin-block: var(--space-4) var(--space-2);
+}
+
+/* Visually hidden but still in the DOM and reading order (issue #972, pattern
+   from category-colors-panel.css) — for headings a card's own head already
+   shows as text elsewhere (bucket heads, month heading), so the `<h2>` stays
+   for screen readers without a duplicate line on screen. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /*

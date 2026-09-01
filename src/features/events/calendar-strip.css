@@ -1,16 +1,17 @@
-/* Week strip that pulls open into a month (issue #556, S5 of #473 — was a
-   fixed Mon–Sun row in S2/#553's week-strip). Sits inside calendar-view.tsx's
-   <header>, same 7-column grid vocabulary as habit-week-grid.css/
-   weather-forecast.css's day strip. */
+/* Mon–Sun week strip (issue #556, S5 of #473 pulled it open into a month
+   carousel; issue #958 removed that again — the month view now lives
+   entirely in month-grid.css's static card, this is a pure week strip once
+   more). Sits inside calendar-view.tsx's <header>, same 7-column grid
+   vocabulary as habit-week-grid.css/weather-forecast.css's day strip. */
 
 .calendar-strip {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   /* Height of a single day-button row (button content-box + its own vertical
-     padding) — the one number the carousel's fixed per-view heights (below)
-     are built from, so a row's own CSS can change without the carousel math
-     drifting out of sync. */
+     padding) — the one number the carousel's fixed height (below) is built
+     from, so a row's own CSS can change without the carousel math drifting
+     out of sync. */
   --calendar-strip-row-height: calc(var(--touch-target) + 2 * var(--space-1));
 }
 
@@ -29,9 +30,9 @@
   min-height: var(--touch-target);
 }
 
-/* `‹`/`›` for a week (a month in month view) — desktop-only (issue #630,
-   AK9/AK10); `.calendar-strip__nav`'s day-stepping siblings below are a
-   separate, untouched control. */
+/* `‹`/`›` for a week — desktop-only (issue #630, AK9/AK10);
+   `.calendar-strip__nav`'s day-stepping siblings below are a separate,
+   untouched control. */
 .calendar-strip__title-nav {
   display: none;
 }
@@ -127,50 +128,21 @@
   outline-offset: -2px;
 }
 
-/* Outside the scroller, rendered only in month view (calendar-strip.tsx) — a
-   rolling week-strip would otherwise scroll its own weekday column headings
-   along with it (issue #813). */
-.calendar-strip__weekday-header {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--space-1);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  text-align: center;
-  font-size: var(--text-meta);
-  color: var(--text-muted);
-}
-
 /* The carousel track (issue #813 — replaces #805's 3-page scroll-snap
-   carousel, which could only ever swipe a whole week/month at a time): a
-   generously buffered window of real days/weeks renders all at once, so
-   scrolling is native the whole way and calendar-strip.tsx only ever nudges
-   the *edges* of that buffer, never the visible position itself. Week view
-   rolls horizontally day by day (`pan-x`); month view rolls vertically week
-   by week (`pan-y`, up = later, down = earlier) — a vertical drag in week
-   view, or a horizontal one in month view, is left entirely to the page
-   scroll underneath. Scrollbar hidden the same way shell.css's `.nav__list`
-   tab carousel hides its own. */
+   carousel, which could only ever swipe a whole week at a time): a
+   generously buffered window of real days renders all at once, so scrolling
+   is native the whole way and calendar-strip.tsx only ever nudges the
+   *edges* of that buffer, never the visible position itself. Rolls
+   horizontally day by day (`pan-x`) — a vertical drag is left entirely to
+   the page scroll underneath. Scrollbar hidden the same way shell.css's
+   `.nav__list` tab carousel hides its own. */
 .calendar-strip__carousel {
   display: flex;
+  flex-direction: row;
   list-style: none;
   margin: 0;
   padding: 0;
   scrollbar-width: none;
-  /* Fixed per view (below) so a 5- vs 6-week month never shifts the layout
-     (DESIGN_SYSTEM: "kein Layout-Shift") — the Woche/Monat switch is the only
-     thing allowed to change this height, and it does so smoothly; reduced
-     motion zeroes this transition via tokens.css's global rule. */
-  transition: height var(--duration-spring-smooth) var(--ease-spring-smooth);
-}
-
-.calendar-strip__carousel::-webkit-scrollbar {
-  display: none;
-}
-
-.calendar-strip__carousel[data-expanded='false'] {
-  flex-direction: row;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x proximity;
@@ -178,15 +150,8 @@
   height: var(--calendar-strip-row-height);
 }
 
-/* Six rows reserved, whether the month showing needs five or six — same
-   fixed-height reasoning the old accordion's `.calendar-strip__week-row` carried. */
-.calendar-strip__carousel[data-expanded='true'] {
-  flex-direction: column;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scroll-snap-type: y proximity;
-  touch-action: pan-y;
-  height: calc(6 * var(--calendar-strip-row-height) + 5 * var(--space-1));
+.calendar-strip__carousel::-webkit-scrollbar {
+  display: none;
 }
 
 /* One day cell in the rolling week-strip — `flex: 0 0 calc(100% / 7)` fills
@@ -196,26 +161,6 @@
   flex: 0 0 calc(100% / 7);
   min-width: 0;
   scroll-snap-align: start;
-}
-
-/* One Mon–Sun week row in the rolling month-strip — fixed height so
-   `RADIUS_WEEKS` of them stack into a track exactly `VISIBLE_WEEKS` rows
-   tall per screen, the rest overflow for native (vertical) scrolling to
-   reach (issue #813). */
-.calendar-strip__week-row {
-  flex: 0 0 var(--calendar-strip-row-height);
-  min-height: 0;
-  scroll-snap-align: start;
-}
-
-.calendar-strip__days {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--space-1);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  height: 100%;
 }
 
 .calendar-strip__day {
@@ -266,12 +211,6 @@
   color: var(--accent-fg);
 }
 
-/* Neighbour-month day (monthDaysFor's leading/trailing weeks): dimmed via
-   opacity, same technique as habit-week-grid.css's [data-outside]. */
-.calendar-strip__day[data-outside-month] {
-  opacity: 0.5;
-}
-
 /* Always rendered, even for a day with no events (calendar-strip.tsx) — an
    empty placeholder holds the row's own height (`min-height`) so a dot-less
    day's weekday/number sit at the same offset as a day with dots instead of
@@ -286,4 +225,10 @@
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-pill);
+  /* Aufgehellte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #955
+     AK2), dasselbe Rezept wie das Ganztägig-Band (event-agenda.css, issue
+     #924): manche der neuen --cat-*-Vorgaben (Blau, Pflaume) unterschreiten
+     roh auf --ground-kalender die 3:1-Schwelle. Gemessen bei 60%
+     Kategorie-Anteil: schlechtester Fall 3,33:1 hell / 5,91:1 dunkel. */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 60%, var(--on-ground));
 }

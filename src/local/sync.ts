@@ -29,6 +29,15 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
+// Without a bound, a request that neither resolves nor rejects (a stalled proxy, a
+// captive portal, a request caught mid-flight by a Playwright route that is removed
+// before it is continued — issue #954 AC7) leaves `push()`/`pull()` awaiting `fetch`
+// forever. Since `inFlight` only ever clears in the `finally` below, that hang wedges
+// every future `sync()` call on the page — including the app's own online/focus/
+// interval triggers, which all just join the same never-settling promise. A bounded
+// fetch guarantees `push`/`pull` always settle, so the do-while can always retry.
+const SYNC_FETCH_TIMEOUT_MS = 10_000;
+
 export async function sync(): Promise<void> {
   // Coalesce overlapping triggers into the running sync, but never let coalescing
   // drop a caller's own work or serve it stale data. A call arriving mid-run sets
@@ -83,6 +92,7 @@ export async function push(): Promise<void> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ mutations }),
+      signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
     });
   } catch {
     // Offline. The queue survives — that is the entire point. Does not count
@@ -150,7 +160,9 @@ export async function pull(): Promise<boolean> {
 
     let response: Response;
     try {
-      response = await fetch(`/api/sync/pull?since=${since}`);
+      response = await fetch(`/api/sync/pull?since=${since}`, {
+        signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
+      });
     } catch {
       return appliedAny; // Offline. Try again on the next trigger.
     }

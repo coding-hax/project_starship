@@ -85,8 +85,9 @@ export const metadata: Metadata = {
     // under the status bar instead of iOS drawing an opaque bar of its own —
     // the only way to colour that strip at all. Trade-off iOS forces: the
     // glyphs (clock/battery/signal) are then always white and not themeable
-    // per route, which is why globals.css darkens the safe-area band under
-    // them (`--ground-notch`) instead of leaving the raw route colour there.
+    // per route. Nothing darkens that band on purpose (issue #982) — the raw
+    // route ground runs through unbroken; the resulting glyph contrast is an
+    // accepted trade-off (iOS chrome, not page content), not a bug to fix.
     statusBarStyle: 'black-translucent',
   },
   icons: {

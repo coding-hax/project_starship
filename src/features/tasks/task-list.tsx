@@ -29,11 +29,11 @@ import {
 /** The `/aufgaben` view switcher (issue #705 AK2) — ephemeral, never persisted;
  *  a fresh navigation always lands back on `'woche'`. Irrelevant for the
  *  `dueTodayOnly` (/uebersicht) instance, which has no switcher and always
- *  renders the "Woche" shape (issue #762). */
+ *  renders the "7 Tage" shape (issue #762). */
 type ViewMode = 'woche' | 'alle' | 'erledigt';
 
 const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
-  { value: 'woche', label: 'Woche' },
+  { value: 'woche', label: '7 Tage' },
   { value: 'alle', label: 'Alle' },
   { value: 'erledigt', label: 'Erledigt' },
 ];
@@ -63,11 +63,11 @@ function nodeRows(node: TaskNode): Exclude<TaskRow, { kind: 'marker' }>[] {
 }
 
 /**
- * The "Woche" shape (issue #705 AK3, reused on /uebersicht by issue #762; the
+ * The "7 Tage" shape (issue #705 AK3, reused on /uebersicht by issue #762; the
  * grouping itself moved from a marker per due day to `weekBuckets`'s three
  * fixed buckets in issue #866): a marker above every non-empty bucket, then
- * that bucket's nodes. Shared so /uebersicht's always-"Woche" list and
- * /aufgaben's "Woche" tab cannot drift apart — the only difference between the
+ * that bucket's nodes. Shared so /uebersicht's always-"7 Tage" list and
+ * /aufgaben's "7 Tage" tab cannot drift apart — the only difference between the
  * two call sites is whether the caller also needs `buckets` itself (AK9's
  * sparse note, /aufgaben only).
  */
@@ -151,19 +151,13 @@ function foldRowsIntoCards(presenceRows: ListPresenceRow<TaskRow>[]): RowCard[] 
 
 export interface TaskListProps {
   /**
-   * The /uebersicht dashboard subset (issue #87, issue #228): the same "Woche"
-   * shape /aufgaben's "Woche" tab renders (bucket cards, "Überfällig" first, the
+   * The /uebersicht dashboard subset (issue #87, issue #228): the same "7 Tage"
+   * shape /aufgaben's "7 Tage" tab renders (bucket cards, "Überfällig" first, the
    * 7-day window — issue #762, buckets since issue #866), just without the view
    * switcher. Everything else (editor, offline notice) stays the same so the two
    * lists don't drift apart.
    */
   dueTodayOnly?: boolean;
-  /**
-   * Id of a visible heading that already names this list (issue #157) — the list
-   * is labelled by it via `aria-labelledby` instead of carrying its own
-   * `aria-label`, so a screen reader doesn't announce both back to back.
-   */
-  headingId?: string;
   /**
    * Whether the chat-style scroll anchor (issue #88, below) may run. Default
    * `true` for `/aufgaben`, where this list *is* the page and owns the
@@ -177,7 +171,6 @@ export interface TaskListProps {
 
 export function TaskList({
   dueTodayOnly = false,
-  headingId,
   anchorOnMount = true,
 }: TaskListProps = {}) {
   const allTasks = useTasks();
@@ -206,7 +199,7 @@ export function TaskList({
   const { deleteTask } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   // Ephemeral, not persisted (issue #705 AK2) — a fresh /aufgaben navigation
-  // always starts back on "Woche". Unused on the `dueTodayOnly` instance,
+  // always starts back on "7 Tage". Unused on the `dueTodayOnly` instance,
   // which never renders the switcher and never changes it away from the default.
   const [view, setView] = useState<ViewMode>('woche');
   // Ephemeral, not persisted (per-ticket decision) — holds the ids the user has
@@ -470,7 +463,7 @@ export function TaskList({
     );
   }
 
-  // "Woche"/"Erledigt" (issue #705) have no running-history anchor to speak
+  // "7 Tage"/"Erledigt" (issue #705) have no running-history anchor to speak
   // of — only "Alle" is still the old #88 flat run. `dueTodayOnly` has no
   // switcher and keeps its old, `view`-independent behaviour.
   const anchorActive = dueTodayOnly ? anchorOnMount : anchorOnMount && view === 'alle';
@@ -513,7 +506,7 @@ export function TaskList({
    * Which whole-list message (if any) replaces the `<ul>` (issue #705). Two
    * different things both read as "empty" here, and they must stay distinct:
    * an account with zero tasks at all (checked via `tasks.length`, never
-   * `rows` — a "Woche" window with nothing *due this week* is not that, it
+   * `rows` — a "7 Tage" window with nothing *due this week* is not that, it
    * renders an empty `<ul>` plus the AK6/AK9 summary lines below it instead),
    * and "Alle"/"Erledigt" with every row gone (issue #814). All three key
    * off `presenceRows` too, not just `tasks`/`rows`: a row that just lost its
@@ -571,9 +564,7 @@ export function TaskList({
           <ul
             ref={listRef}
             className="task-list"
-            {...(headingId
-              ? { 'aria-labelledby': headingId }
-              : { 'aria-label': dueTodayOnly ? 'Aufgaben der Woche' : 'Aufgaben' })}
+            aria-label={dueTodayOnly ? 'Aufgaben der nächsten 7 Tage' : 'Aufgaben'}
           >
             {foldRowsIntoCards(presenceRows).map((card) => (
               <li
@@ -614,7 +605,7 @@ export function TaskList({
       {/* AK6's "ohne Datum" card (issue #705), an expandable `SectionCard` instead of
           the old plain note since issue #762 — undated tasks never match
           `weekWindowNodes`'s parent-driven window, so this is the only place either
-          "Woche" view (/uebersicht, always; /aufgaben's "Woche" tab) surfaces them,
+          "7 Tage" view (/uebersicht, always; /aufgaben's "7 Tage" tab) surfaces them,
           same collapsed-by-default pattern as "Archiviert" (habit-table.tsx). Sits
           outside the empty/list ternary above on purpose — a week with nothing due
           still needs to reveal this card if something is undated, so it cannot hide

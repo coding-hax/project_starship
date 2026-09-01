@@ -195,9 +195,6 @@ export function HabitTable() {
             <p className="habit-table__empty">Keine aktiven Routinen.</p>
           ) : (
             <div className="habit-table">
-              <p className="habit-table__head" aria-hidden="true">
-                Routine · 12 Wochen · Serie
-              </p>
               <ul className="habit-table__rows" aria-label="Routinen">
                 {activeRows.map((row) => (
                   <HabitRow
