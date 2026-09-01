@@ -46,13 +46,14 @@
 /* Reserves the streak pill's typical footprint (flame + up to two digits) so
    a row without a streak — which falls back to the plain dot below — still
    lines its name up on the same edge as a row with one (issue #975 AK3). A
+   two-digit pill measures 66.125px rendered; 68px leaves it a little room. A
    streak past two digits is rare enough to simply widen its own row instead
    of clipping. */
 .habit-today__lead {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  min-width: 52px;
+  min-width: 68px;
 }
 
 .habit-today__color {
@@ -102,7 +103,10 @@
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
   background: color-mix(in oklab, var(--habit-tone) 16%, var(--surface));
-  color: color-mix(in oklab, var(--habit-tone) 72%, var(--text));
+  /* 72% tone left the light-mode pill at 3.99:1 against its own background,
+     short of AK8's 4.5:1 — 55% keeps a comfortable margin in both schemes
+     (measured ~5.3:1 light / ~7.3:1 dark). */
+  color: color-mix(in oklab, var(--habit-tone) 55%, var(--text));
 }
 
 .habit-today__streak-icon {
@@ -124,13 +128,20 @@
    issue #975 AK4) — the fixed `--area-habits` token, not the routine's own
    colour: the pill above already carries per-routine colour on this row. */
 .habit-today__checkbox {
+  /* Plain `--area-habits` at 55% alpha over `--surface` measured 2.94:1 in
+     light mode, short of AK8's 3:1 — the alpha itself doesn't move that
+     number (interpolating a color-mix toward `transparent` keeps the other
+     operand's own channels), so the color itself needs darkening first, same
+     `--text` mix the streak pill above already uses. Shared as a variable so
+     the unchecked ring and the `:checked` fill stay the same shade. */
+  --habit-checkbox-tone: color-mix(in oklab, var(--area-habits) 90%, var(--text));
   appearance: none;
   -webkit-appearance: none;
   width: 30px;
   height: 30px;
   margin: 0;
   border-radius: 50%;
-  border: 2px solid color-mix(in oklab, var(--area-habits) 55%, transparent);
+  border: 2px solid color-mix(in oklab, var(--habit-checkbox-tone) 55%, transparent);
   background: transparent;
   cursor: pointer;
   position: relative;
@@ -139,8 +150,8 @@
 
 .habit-today__checkbox:checked {
   transform: scale(1.12);
-  background: var(--area-habits);
-  border-color: var(--area-habits);
+  background: var(--habit-checkbox-tone);
+  border-color: var(--habit-checkbox-tone);
 }
 
 .habit-today__checkbox:checked::after {
