@@ -3274,6 +3274,21 @@ test('ein abonnierter ganztägiger Termin erscheint schreibgeschützt und optisc
   // Editierbare Termine sind <button>, abonnierte <div> — die technische Basis
   // von AK2 (kein Editor-Zugriff).
   expect(await bar.evaluate((el) => el.tagName)).toBe('DIV');
+
+  // "optisch abgesetzt" (AK4) heißt konkret: gedämpfter Titel und eine
+  // gestrichelte statt durchgezogene Spur am Balken (issue #956) — data-origin
+  // allein ist nur das technische Attribut, nicht die sichtbare Abhebung.
+  const expectedMutedTitle = await resolveToken(page, '--text-muted-base');
+  await expect
+    .poll(() =>
+      bar.locator('.event-agenda__all-day-title').evaluate((el) => getComputedStyle(el).color),
+    )
+    .toBe(expectedMutedTitle);
+
+  const edgeBar = bar.locator('.event-agenda__all-day-bar');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderStyle)).toBe('dashed');
+  const expectedBorderColor = await resolveMix(page, 'var(--area-events)', 60, 'var(--on-ground)');
+  expect(await edgeBar.evaluate((el) => getComputedStyle(el).borderColor)).toBe(expectedBorderColor);
 });
 
 test('ein Tap auf einen abonnierten Termin öffnet keinen Editor (AK2)', async ({ page }) => {
