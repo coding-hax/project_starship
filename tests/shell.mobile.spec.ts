@@ -304,102 +304,51 @@ test('AK5: die authored Regel für .shell__main führt env(safe-area-inset-top) 
 });
 
 /**
- * `--b1`/`--b4` (background-circles.css) are only declared inside `.bg-layer`,
- * not on `:root` — a probe appended to `document.body` (like `resolveColorToken`
- * above) would inherit nothing and resolve empty. It has to be a descendant of
- * `.bg-layer` itself, present on every route (mounted once in the root layout,
- * issue #919) even where it's `display: none`, which doesn't stop custom
- * property inheritance.
+ * AK3 (issue #982) selbst — dass das Token aus tokens.css entfernt ist und
+ * nirgends mehr referenziert wird — ist ein `git grep`-Befund, kein
+ * Laufzeitverhalten: einmal aus tokens.css entfernt, kann kein Test im
+ * Browser mehr etwas über ein nicht mehr existierendes Custom Property
+ * aussagen, ohne die entfernte Zeichenkette selbst wieder in diese Datei zu
+ * schreiben. Die drei Tests unten prüfen deshalb, was tatsächlich beobachtbar
+ * ist: AK1, dass `.bg-layer__veil` als Element nirgends mehr im DOM steht —
+ * in beiden Farbschemata, falls eine `@media`-Regel es versehentlich nur in
+ * einem der beiden zurückbrächte.
  */
-async function resolveBgLayerToken(page: Page, token: string): Promise<string> {
-  return page.evaluate((cssVar) => {
-    const layer = document.querySelector('.bg-layer');
-    if (!layer) throw new Error('.bg-layer nicht im DOM');
-    const probe = document.createElement('span');
-    probe.style.color = `var(${cssVar})`;
-    layer.appendChild(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  }, token);
-}
-
-/**
- * Real Porter-Duff "source-over" compositing (canvas 2D), not a hand-rolled
- * alpha-blend formula — the same principle as `toRgb` above: trust the
- * browser's own paint math over reimplementing it.
- */
-async function compositeOver(page: Page, topColor: string, bottomColor: string): Promise<[number, number, number]> {
-  return page.evaluate(
-    ({ topColor, bottomColor }) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = bottomColor;
-      ctx.fillRect(0, 0, 1, 1);
-      ctx.fillStyle = topColor;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-      return [r, g, b] as [number, number, number];
-    },
-    { topColor, bottomColor },
-  );
-}
-
-async function assertVeilOverB1Contrast(page: Page, scheme: 'light' | 'dark') {
+async function assertNoVeilElement(page: Page, scheme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: scheme });
 
   for (const route of GROUND_ROUTES) {
     await page.goto(route.path);
-    const [veil, b1] = await Promise.all([resolveColorToken(page, '--notch-veil'), resolveBgLayerToken(page, '--b1')]);
-    const composite = await compositeOver(page, veil, b1);
-    expect(
-      contrastRatio(composite, WHITE),
-      `Schleier über --b1 auf ${route.path} (${scheme})`,
-    ).toBeGreaterThanOrEqual(4.5);
+    await expect(page.locator('.bg-layer__veil')).toHaveCount(0);
   }
 
-  // AK3 (issue #919): eine Route ohne data-ground hängt am --ground-Fallback,
-  // nicht an einer der neun Grundfarben — derselbe Fallback, den AK2/AK3
-  // (issue #882) oben schon für --ground-notch mitprüfen.
+  // eine Route ohne data-ground hängt am --ground-Fallback, nicht an einer
+  // der neun Grundfarben — derselbe Fallback, den AK2/AK3 (issue #882) oben
+  // schon für --ground-notch mitprüfen.
   await page.goto('/offline');
-  const [veilOffline, b1Offline] = await Promise.all([
-    resolveColorToken(page, '--notch-veil'),
-    resolveBgLayerToken(page, '--b1'),
-  ]);
-  const compositeOffline = await compositeOver(page, veilOffline, b1Offline);
-  expect(
-    contrastRatio(compositeOffline, WHITE),
-    `Schleier über --b1 auf /offline (${scheme})`,
-  ).toBeGreaterThanOrEqual(4.5);
+  await expect(page.locator('.bg-layer__veil')).toHaveCount(0);
 }
 
-test('AK3 (#919) hell: der Schleier über --b1 hält 4,5:1 gegen Weiß auf allen acht Routen und dem /offline-Fallback', async ({
+test('AK1 (#982) hell: kein Schleier-Element mehr im DOM, auf allen acht Routen und dem /offline-Fallback', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await assertVeilOverB1Contrast(page, 'light');
+  await assertNoVeilElement(page, 'light');
 });
 
-test('AK3 (#919) dunkel: der Schleier über --b1 hält 4,5:1 gegen Weiß auf allen acht Routen und dem /offline-Fallback', async ({
+test('AK1 (#982) dunkel: kein Schleier-Element mehr im DOM, auf allen acht Routen und dem /offline-Fallback', async ({
   page,
 }) => {
   await registerPasskey(page);
-  await assertVeilOverB1Contrast(page, 'dark');
+  await assertNoVeilElement(page, 'dark');
 });
 
-test('AK3 (#919): der Schleier über --b1 auf /anmelden (ausgeloggt, neunte Route) hält 4,5:1, hell und dunkel', async ({
+test('AK1 (#982): kein Schleier-Element mehr im DOM auf /anmelden (ausgeloggt, neunte Route), hell und dunkel', async ({
   page,
 }) => {
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/anmelden');
-    const [veil, b1] = await Promise.all([resolveColorToken(page, '--notch-veil'), resolveBgLayerToken(page, '--b1')]);
-    const composite = await compositeOver(page, veil, b1);
-    expect(
-      contrastRatio(composite, WHITE),
-      `Schleier über --b1 auf /anmelden (${scheme})`,
-    ).toBeGreaterThanOrEqual(4.5);
+    await expect(page.locator('.bg-layer__veil')).toHaveCount(0);
   }
 });
