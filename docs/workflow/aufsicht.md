@@ -55,10 +55,36 @@ Jeder Lauf schreibt eine Zeile nach `~/.starship-runner/supervisor.log` —
 2026-08-14 15:18:28  TAKT slots=3/3 agenten=2 alter=[1:0m,2:0m,3:11m] reise=ja geheilt=0 alarme=0
 ```
 
-Der Bericht ans Status-Issue wird bis zu dreimal versucht. Grund: Der
-wichtigste Lauf ist der direkt nach einem Boot — und genau dort ist das Netz
-oft noch nicht oben. Am 15.08. ging der erste Bericht 20 Sekunden nach dem
-Start verloren.
+### Der Meldeweg: ein Lagebild, seltene Alarme
+
+Bis zum 01.09. hing an #1 je Lauf mit Fund ein **neuer** Kommentar — 135 mal
+„selbst behoben", weil ein Slot, der alle zehn Minuten neu gestartet wird, sich
+auch alle zehn Minuten meldet. Das Statusfenster war unlesbar, und der
+Totmann-Wächter erkennt seinen eigenen offenen Alarm an `.comments[-1]`: Jeder
+Kommentar dahinter ließ ihn denselben Ausfall erneut melden und verschluckte
+die Entwarnung (#992). Seither zwei Kanäle:
+
+| Kanal | Was | Wie oft |
+| --- | --- | --- |
+| **Lagebild** | ein rollender Kommentar, bei jedem Fund überschrieben (`gh api -X PATCH` auf die Id aus `~/.starship-runner/supervisor-comment-id`) | so oft die Lage sich ändert — er benachrichtigt niemanden |
+| **Alarm** | ein frischer Kommentar; nur der erzeugt eine Nachricht auf dem Handy | einmal je Alarm**lage**, Wiederholung frühestens nach `ALARM_REPEAT_HOURS` (Standard 6) |
+
+„Dieselbe Lage" wird ohne Zahlen verglichen: „Slot 1 tickt seit 148 Minuten
+nicht" und „… seit 158 Minuten" ist derselbe Alarm. Entspannt sich die Lage,
+wird der Merker gelöscht — derselbe Alarm darf danach wieder wecken. Ein Lauf,
+dessen Fundliste wortgleich zur zuletzt geschriebenen ist, schreibt gar nicht;
+im Lagebild steht deshalb der Zeitpunkt der letzten **Änderung**, nicht der des
+letzten Laufs. Der Puls steht im Log, nicht im Issue.
+
+Nie `gh issue comment --edit-last`: Das trifft den zuletzt geschriebenen
+Kommentar irgendeines Autors und hat schon fremde Texte überschrieben. Ist der
+gemerkte Kommentar gelöscht (404), legt der nächste Fund genau einen neuen an;
+ein **nicht erreichbares** Netz legt dagegen keinen an — sonst stünden nach
+einer Stunde ohne WLAN sechs Lagebilder da.
+
+Jeder Schreibvorgang wird bis zu dreimal versucht. Grund: Der wichtigste Lauf
+ist der direkt nach einem Boot — und genau dort ist das Netz oft noch nicht
+oben. Am 15.08. ging der erste Bericht 20 Sekunden nach dem Start verloren.
 
 Ohne sie sieht ein gesunder Lauf exakt aus wie eine tote Aufsicht: kein
 Eintrag, keine Meldung. Genau dieser blinde Fleck ist der Grund, warum es den
