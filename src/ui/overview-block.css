@@ -38,26 +38,3 @@
   font-size: var(--text-secondary);
   text-decoration: none;
 }
-
-/* Own white surface for the Routinen head (issue #972): the check-off list
-   below it (`habit-today.css`) is its own separate card (issue #975), so the
-   head still needs one of its own rather than sitting inside it. Own ink
-   reset (issue #832 AK5) — same pattern as events-overview-section.css /
-   habit-today.css. */
-.overview-block__head-card {
-  margin: 0 0 var(--space-2);
-  padding: var(--space-4);
-  border-radius: var(--radius-surface);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
-  --text: var(--text-base);
-  --text-muted: var(--text-muted-base);
-  --border: var(--border-base);
-  --border-strong: var(--border-strong-base);
-  --border-faint: var(--border-faint-base);
-  color: var(--text);
-}
-
-.overview-block__head-card .overview-block__head {
-  margin-bottom: 0;
-}

@@ -148,7 +148,7 @@ test('der Kartenkopf zeigt den Titel links und den gedämpften Link rechts, mit 
       href: '/kalender',
     },
     {
-      head: page.locator('.overview-block__head-card .overview-block__head'),
+      head: page.locator('.habit-today .overview-block__head'),
       title: 'Routinen',
       linkText: /von/,
       href: '/routinen',
@@ -188,7 +188,7 @@ test('der Link-Text im Routinen-Kopf stimmt mit dem Fortschrittsring überein �
   );
 
   const ring = page.locator('.daily-progress-ring');
-  const link = page.locator('.overview-block__head-card').getByRole('link');
+  const link = page.locator('.habit-today').getByRole('link');
   await expect(ring).toHaveText('1/2');
   await expect(link).toHaveText('1 von 2');
 });
@@ -328,7 +328,7 @@ test('AK8: der Kartenkopf bleibt bei 375×812 einzeilig, ohne horizontalen Über
 
   for (const titleLocator of [
     page.locator('.events-overview__next, .events-overview__empty').locator('.overview-block__title'),
-    page.locator('.overview-block__head-card .overview-block__title'),
+    page.locator('.habit-today .overview-block__title'),
   ]) {
     await expect(titleLocator).toBeVisible();
     const { clientHeight, lineHeight } = await titleLocator.evaluate((el) => ({
@@ -339,7 +339,7 @@ test('AK8: der Kartenkopf bleibt bei 375×812 einzeilig, ohne horizontalen Über
   }
 
   // Der Link behält seine eigene Breite, statt dass sein Text den Titel wegkürzt.
-  const routinenLink = page.locator('.overview-block__head-card').getByRole('link');
+  const routinenLink = page.locator('.habit-today').getByRole('link');
   await expect(routinenLink).toHaveCSS('flex-shrink', '0');
 
   const overflow = await page.evaluate(

@@ -60,9 +60,10 @@ function aufgabenContent(page: Page): Locator {
 }
 
 /** Content anchor for the Routinen section (issue #972 AK2: the module keeps
- * a visible title, now in its own card head instead of a page-ground `<h2>`). */
+ * a visible title, in its own card head; issue #995 merged that head into the
+ * same card as the check-off list, so this now points at the whole card). */
 function routinenHead(page: Page): Locator {
-  return page.locator('.overview-block__head-card');
+  return page.locator('.habit-today');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {

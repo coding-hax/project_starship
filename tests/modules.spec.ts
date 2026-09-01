@@ -284,7 +284,7 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   // Inhaltsselektoren statt der (Aufgaben) bzw. verschobenen (Routinen) Überschrift.
   const aufgaben = page.locator('.task-list, .task-list__empty');
   const aktivitaeten = page.locator('.activity-month-strip');
-  const routinen = page.locator('.overview-block__head-card');
+  const routinen = page.locator('.habit-today');
 
   await expect(wetter).toBeVisible();
   await expect(aktivitaeten).toBeVisible();
