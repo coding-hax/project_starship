@@ -226,6 +226,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
+- `shell.desktop.spec.ts` / `nav-order.desktop.spec.ts` — dieselben Header-/Sidebar-Zusicherungen, aber nur ab 768px gültig
+- `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
 - `nav-schleier.spec.ts` — Boden-Schleier

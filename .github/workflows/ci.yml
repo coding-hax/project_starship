@@ -162,7 +162,7 @@ jobs:
             ].join('\n'));
           "
       - run: pnpm db:migrate
-      - run: pnpm exec playwright test --project=mobile --shard=${{ matrix.shard }}/10 --reporter=blob
+      - run: pnpm exec playwright test --project=mobile --project=desktop --shard=${{ matrix.shard }}/10 --reporter=blob
         env:
           E2E_SCOPE: main
       # Blob keeps every shard's attachments (traces, screenshots, video) so the
