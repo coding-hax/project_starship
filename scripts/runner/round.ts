@@ -172,31 +172,49 @@ function tryGh(gh: GhAdapter, args: string[]): void {
   }
 }
 
+// #1026: ein Head zaehlt als Branch zu #<issue>, wenn genau EIN Praefix-
+// Segment davorsteht und die Nummer als eigenes Token endet (`.../<nr>-` oder
+// `.../<nr>` am Ref-Ende). Praefixunabhaengig (`docs/1016-...` blieb sonst
+// unsichtbar), aber ohne Fehltreffer auf `10160` oder `7-1016`. DIE eine
+// Musterquelle fuer branchName + branchTip -- ein kuenftiger Fix an nur einer
+// der beiden waere sonst die Wiederholung genau dieses Bugs.
+function issueBranchRe(issue: number): RegExp {
+  return new RegExp(`^refs/heads/[^/]+/${issue}(?:-|$)`);
+}
+
+function remoteHeadLines(git: GitAdapter): string[] {
+  try {
+    return git
+      .run(['ls-remote', '--heads', 'origin'])
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+  } catch {
+    return [];
+  }
+}
+
+function findIssueBranch(issue: number, git: GitAdapter): { sha: string; name: string } | null {
+  const re = issueBranchRe(issue);
+  for (const line of remoteHeadLines(git)) {
+    const [sha, ref = ''] = line.split(/\s+/);
+    if (re.test(ref)) return { sha: sha ?? '', name: ref.replace(/^refs\/heads\//, '') };
+  }
+  return null;
+}
+
 // Die Spitze des Feature-Branches VOR dem Lauf -- der Vergleich danach
 // entscheidet in buildEscalationEval, ob dieser Lauf Fortschritt gebracht hat
-// (ADR-0007).
-function branchTip(issue: number, git: GitAdapter): string {
-  try {
-    const out = git.run(['ls-remote', '--heads', 'origin', `feat/${issue}-*`, `fix/${issue}-*`, `chore/${issue}-*`]);
-    const first = out.split('\n').find((line) => line.trim() !== '');
-    return first ? (first.split(/\s+/)[0] ?? '') : '';
-  } catch {
-    return '';
-  }
+// (ADR-0007). Exportiert, damit round.test.ts sie direkt gegen `findIssueBranch`
+// pruefen kann (#1026).
+export function branchTip(issue: number, git: GitAdapter): string {
+  return findIssueBranch(issue, git)?.sha ?? '';
 }
 
 // #839: der Name des Feature-Branches, nicht seine Spitze -- der Pruef-Prompt
 // nennt ihn, damit der Lauf seine gh-Aufrufe nicht raten muss. Gleiche Quelle
 // wie branchTip(), damit beide nie auseinanderlaufen koennen.
-function branchName(issue: number, git: GitAdapter): string {
-  try {
-    const out = git.run(['ls-remote', '--heads', 'origin', `feat/${issue}-*`, `fix/${issue}-*`, `chore/${issue}-*`]);
-    const first = out.split('\n').find((line) => line.trim() !== '');
-    const ref = first ? (first.split(/\s+/)[1] ?? '') : '';
-    return ref.replace(/^refs\/heads\//, '');
-  } catch {
-    return '';
-  }
+export function branchName(issue: number, git: GitAdapter): string {
+  return findIssueBranch(issue, git)?.name ?? '';
 }
 
 function twoDigits(value: number): string {
@@ -688,6 +706,15 @@ fehlt, steht als Kommentar am Ticket. Trag sie nach und nimm \`needs-answer\` ab
   // Also Label zurueck statt Merge auf Verdacht; der naechste Takt ist ein
   // Bau-Lauf und laeuft dann selbst ins AK-Tor.
   if (role === 'check' && criteria.length === 0) {
+    // #1026: vor dem stummen Label-Abnehmen erst eine Spur ans Ticket -- sonst
+    // faellt es ohne jede Meldung aus der Pruefschlange (der Deadlock aus #1016).
+    tryGh(gh, [
+      'issue',
+      'comment',
+      String(issue),
+      '--body',
+      `🚦 **Prüf-Lauf übersprungen: keine Akzeptanzkriterien.** #${issue} trägt \`check\`, aber der Body hat keinen auswertbaren \`## Akzeptanzkriterien\`-Abschnitt. Ohne Prüfmaßstab keine Freigabe — \`check\` zurückgenommen, der nächste Takt baut.`,
+    ]);
     tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
     claimRelease(claims, issue);
     return {
@@ -707,6 +734,16 @@ fehlt, steht als Kommentar am Ticket. Trag sie nach und nimm \`needs-answer\` ab
   // Takt ist dann wieder ein Bau-Lauf.
   const checkBranch = role === 'check' ? branchName(issue, git) : '';
   if (role === 'check' && checkBranch === '') {
+    // #1026: dito -- Fund UND Suchmuster ins Ticket, bevor das Label wortlos
+    // faellt (das war der eigentliche Deadlock an #1016: `docs/`-Praefix, drei
+    // feste Praefixe gesucht, nie ein Kommentar).
+    tryGh(gh, [
+      'issue',
+      'comment',
+      String(issue),
+      '--body',
+      `🚦 **Prüf-Lauf gestoppt: kein Branch zu #${issue} auf origin.** Gesucht präfixunabhängig nach einem Head \`<präfix>/${issue}-…\` (jedes Präfix, nicht nur \`feat\`/\`fix\`/\`chore\`). Befund: kein passender Branch. \`check\` zurückgenommen, der nächste Takt baut.`,
+    ]);
     tryGh(gh, ['issue', 'edit', String(issue), '--remove-label', 'check']);
     claimRelease(claims, issue);
     return {
