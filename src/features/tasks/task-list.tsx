@@ -44,8 +44,8 @@ const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
  * grouped `Fragment`s per parent had no single key per row to track. `kind`
  * carries just enough of the originating node to rebuild the same props
  * `TaskItem` always got, nothing more. `marker` is a group heading, never a
- * task — `foldRowsIntoCards` below folds it (plus every row up to the next
- * marker) into one `.task-list__group-card`, so it never renders as a row or
+ * task — `foldRowsIntoGroups` below folds it (plus every row up to the next
+ * marker) into one `.task-list__group`, so it never renders as a row or
  * counts as a `listitem` itself (issue #866).
  */
 type TaskRow =
@@ -85,10 +85,11 @@ function buildWocheRows(nodesForWindow: TaskNode[], now: Date) {
   return { rows, buckets };
 }
 
-/** One `.task-list__group-card` worth of rows (issue #866) — `header` is `null`
- *  for a view with no groups of its own ("Alle"), which still gets a card, just
- *  without a title/count line above its rows. */
-interface RowCard {
+/** One `.task-list__group` worth of rows (issue #866, flattened into a shared
+ *  surface by issue #996) — `header` is `null` for a view with no groups of
+ *  its own ("Alle"), which still gets a group wrapper, just without a
+ *  title/count line above its rows. */
+interface RowGroup {
   key: string;
   header: { label: string; count: number } | null;
   entering: boolean;
@@ -104,38 +105,40 @@ interface RowCard {
 }
 
 /**
- * Folds the flat, presence-diffed row list into cards (issue #866 AK1) — a
- * `marker` row opens a new card (its label/count become the card's header) and
- * every row after it, up to the next marker, joins that card's body. Rows
- * before the first marker (or the whole list, if there is none at all — the
- * "Alle" view has no groups) fold into one leading, headerless card instead of
- * being dropped. The card wrapper inherits its own enter/exit from the marker
- * row's presence status, so the whole group fades in/out together; a plain
- * row's own status still drives its individual animation inside the card,
- * unaffected by this folding (`useListPresence` itself is untouched — this is
- * a render-time regrouping of its flat output, not a second presence store).
+ * Folds the flat, presence-diffed row list into groups (issue #866 AK1) — a
+ * `marker` row opens a new group (its label/count become the group's header)
+ * and every row after it, up to the next marker, joins that group's body.
+ * Rows before the first marker (or the whole list, if there is none at all —
+ * the "Alle" view has no groups) fold into one leading, headerless group
+ * instead of being dropped. The group wrapper inherits its own enter/exit
+ * from the marker row's presence status, so the whole group fades in/out
+ * together; a plain row's own status still drives its individual animation
+ * inside the group, unaffected by this folding (`useListPresence` itself is
+ * untouched — this is a render-time regrouping of its flat output, not a
+ * second presence store). Groups no longer carry their own card surface
+ * (issue #996) — they share one `.task-list__surface` around the whole `<ul>`.
  */
-function foldRowsIntoCards(presenceRows: ListPresenceRow<TaskRow>[]): RowCard[] {
-  const cards: RowCard[] = [];
-  let current: RowCard | null = null;
+function foldRowsIntoGroups(presenceRows: ListPresenceRow<TaskRow>[]): RowGroup[] {
+  const groups: RowGroup[] = [];
+  let current: RowGroup | null = null;
 
   for (const presenceRow of presenceRows) {
     const { item } = presenceRow;
     if (item.kind === 'marker') {
       current = {
-        key: `card:${presenceRow.key}`,
+        key: `group:${presenceRow.key}`,
         header: { label: item.label, count: item.count },
         entering: presenceRow.status === 'entering',
         leaving: presenceRow.status === 'leaving',
         onAnimationEnd: presenceRow.onAnimationEnd,
         rows: [],
       };
-      cards.push(current);
+      groups.push(current);
       continue;
     }
     if (current === null) {
-      current = { key: 'card:leading', header: null, entering: false, leaving: false, rows: [] };
-      cards.push(current);
+      current = { key: 'group:leading', header: null, entering: false, leaving: false, rows: [] };
+      groups.push(current);
     }
     current.rows.push({
       row: item,
@@ -146,7 +149,7 @@ function foldRowsIntoCards(presenceRows: ListPresenceRow<TaskRow>[]): RowCard[] 
     });
   }
 
-  return cards;
+  return groups;
 }
 
 export interface TaskListProps {
@@ -389,8 +392,8 @@ export function TaskList({
   /**
    * One non-marker `TaskRow` as JSX — shared by the main list and the "ohne
    * Datum" card below it (issue #762), so the two never render a task
-   * differently. A `marker` row never reaches here — `foldRowsIntoCards` turns
-   * it into a card header instead (issue #866). Nesting stays off on
+   * differently. A `marker` row never reaches here — `foldRowsIntoGroups` turns
+   * it into a group header instead (issue #866). Nesting stays off on
    * /uebersicht (`dueTodayOnly`): `TaskItem`'s long-press lift only arms when
    * `onDropOnTask` is passed at all, so omitting the three drag props there
    * disables it outright, same as the old flat /uebersicht rows always did.
@@ -531,6 +534,37 @@ export function TaskList({
               ? 'Noch nichts erledigt.'
               : null;
 
+  // AK6/#762's "ohne Datum" toggle, now the shared surface's last section
+  // (issue #996 AK2) rather than a card of its own — `showUndated` decides
+  // whether the surface wrapper below is needed at all when the main list is
+  // replaced by `emptyMessage` (AK7: a lone message never gets a surface, the
+  // message *plus* this toggle always share one).
+  const showUndated =
+    tasks !== undefined && (dueTodayOnly || view === 'woche') && undatedNodes.length > 0;
+  const undatedSection = showUndated && (
+    <SectionCard
+      title={`${undatedNodes.length} Aufgabe${undatedNodes.length === 1 ? '' : 'n'} ohne Datum`}
+      collapsible
+      defaultOpen={false}
+      className="task-list__undated-card"
+    >
+      {/* Not "Aufgaben ohne Datum" — `getByRole('list', { name: 'Aufgaben' })`
+          (tasks.spec.ts, uebersicht.spec.ts) matches by substring, so a label
+          containing "Aufgaben" would fold this collapsed list's rows into the
+          main list's count from every consumer of that locator. */}
+      <ul className="task-list__group-list" aria-label="Ohne Datum">
+        {undatedNodes
+          .flatMap(nodeRows)
+          .map((item) => renderTaskRow(item, item.id, { entering: false, leaving: false }))}
+      </ul>
+    </SectionCard>
+  );
+  const emptyMessageEl = (
+    <p className={dueTodayOnly ? 'task-list__empty task-list__empty--compact' : 'task-list__empty'}>
+      {emptyMessage}
+    </p>
+  );
+
   return (
     <>
       {!online && (
@@ -552,37 +586,42 @@ export function TaskList({
       )}
 
       {tasks === undefined ? null : emptyMessage !== null ? (
-        <p
-          className={
-            dueTodayOnly ? 'task-list__empty task-list__empty--compact' : 'task-list__empty'
-          }
-        >
-          {emptyMessage}
-        </p>
+        showUndated ? (
+          <div className="task-list__surface">
+            {emptyMessageEl}
+            {undatedSection}
+          </div>
+        ) : (
+          emptyMessageEl
+        )
       ) : (
-        <>
+        // One shared surface for the whole list (issue #996 AK1/AK5) — bucket
+        // groups, the "nothing left this week" note and the "ohne Datum"
+        // toggle all live on it; groups themselves carry no card of their own
+        // anymore, just their header and whitespace (AK4).
+        <div className="task-list__surface">
           <ul
             ref={listRef}
             className="task-list"
             aria-label={dueTodayOnly ? 'Aufgaben der nächsten 7 Tage' : 'Aufgaben'}
           >
-            {foldRowsIntoCards(presenceRows).map((card) => (
+            {foldRowsIntoGroups(presenceRows).map((group) => (
               <li
-                key={card.key}
+                key={group.key}
                 role="presentation"
-                className="task-list__group-card list-motion-item"
-                data-entering={card.entering}
-                data-leaving={card.leaving}
-                onAnimationEnd={card.onAnimationEnd}
+                className="task-list__group list-motion-item"
+                data-entering={group.entering}
+                data-leaving={group.leaving}
+                onAnimationEnd={group.onAnimationEnd}
               >
-                {card.header && (
+                {group.header && (
                   <div className="task-list__group-header">
-                    <span className="task-list__group-title">{card.header.label}</span>
-                    <span className="task-list__group-count">{card.header.count}</span>
+                    <span className="task-list__group-title">{group.header.label}</span>
+                    <span className="task-list__group-count">{group.header.count}</span>
                   </div>
                 )}
                 <ul className="task-list__group-list">
-                  {card.rows.map((row) =>
+                  {group.rows.map((row) =>
                     renderTaskRow(row.row, row.key, {
                       entering: row.entering,
                       leaving: row.leaving,
@@ -599,34 +638,8 @@ export function TaskList({
           {!dueTodayOnly && view === 'woche' && !hasFutureGroup && (
             <p className="task-list__sparse-note">Danach nichts mehr geplant.</p>
           )}
-        </>
-      )}
-
-      {/* AK6's "ohne Datum" card (issue #705), an expandable `SectionCard` instead of
-          the old plain note since issue #762 — undated tasks never match
-          `weekWindowNodes`'s parent-driven window, so this is the only place either
-          "7 Tage" view (/uebersicht, always; /aufgaben's "7 Tage" tab) surfaces them,
-          same collapsed-by-default pattern as "Archiviert" (habit-table.tsx). Sits
-          outside the empty/list ternary above on purpose — a week with nothing due
-          still needs to reveal this card if something is undated, so it cannot hide
-          behind that message (which only speaks to the *dated* rows). */}
-      {tasks !== undefined && (dueTodayOnly || view === 'woche') && undatedNodes.length > 0 && (
-        <SectionCard
-          title={`${undatedNodes.length} Aufgabe${undatedNodes.length === 1 ? '' : 'n'} ohne Datum`}
-          collapsible
-          defaultOpen={false}
-          className={`task-list__undated-card${dueTodayOnly ? ' task-list__undated-card--flat' : ''}`}
-        >
-          {/* Not "Aufgaben ohne Datum" — `getByRole('list', { name: 'Aufgaben' })`
-              (tasks.spec.ts, uebersicht.spec.ts) matches by substring, so a label
-              containing "Aufgaben" would fold this collapsed list's rows into the
-              main list's count from every consumer of that locator. */}
-          <ul className="task-list__group-list" aria-label="Ohne Datum">
-            {undatedNodes
-              .flatMap(nodeRows)
-              .map((item) => renderTaskRow(item, item.id, { entering: false, leaving: false }))}
-          </ul>
-        </SectionCard>
+          {undatedSection}
+        </div>
       )}
 
       {/* Names the pending drop in words while a row is held (issue #451) — the

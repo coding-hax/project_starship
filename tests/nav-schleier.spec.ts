@@ -84,14 +84,16 @@ async function scrollNearBottomBehindNav(page: Page, margin = 200): Promise<void
 }
 
 /** Testvoraussetzung für die Streifen-Tests unten: nach dem Scrollen liegt eine
- * echte Karte tatsächlich hinter der Nav-Zeile (nicht nur leerer Grund). */
+ * echte Karte tatsächlich hinter der Nav-Zeile (nicht nur leerer Grund). Seit
+ * issue #996 ist die ganze Liste eine einzige `.task-list__surface` statt
+ * einer je Gruppe — "Alle" hatte davor ohnehin nur eine (keine Gruppen), das
+ * hier holt sich also dieselbe Fläche, nur unter dem neuen Namen. */
 async function expectCardBehindNav(page: Page): Promise<void> {
   const overlaps = await page.evaluate(() => {
-    const cards = document.querySelectorAll('.task-list__group-card');
-    const lastCard = cards[cards.length - 1];
+    const card = document.querySelector('.task-list__surface');
     const nav = document.querySelector('.nav');
-    if (!lastCard || !nav) return false;
-    const cardBox = lastCard.getBoundingClientRect();
+    if (!card || !nav) return false;
+    const cardBox = card.getBoundingClientRect();
     const navBox = nav.getBoundingClientRect();
     return cardBox.bottom > navBox.top && cardBox.top < navBox.bottom;
   });
