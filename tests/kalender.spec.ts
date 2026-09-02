@@ -119,6 +119,17 @@ function monthGridTrack(page: Page) {
 }
 
 /**
+ * The month card's interactive (middle) page — the same `:not([inert])` scope
+ * `monthGridDay` uses, for locators that count/inspect cells rather than
+ * keying off a single day's `aria-label` (issue #1009's three-page snap track
+ * renders the previous and next month alongside the current one, so an
+ * unscoped `.month-grid__day(s)` selector matches all three pages at once).
+ */
+function monthGridPage(page: Page) {
+  return page.locator('.month-grid__page:not([inert])');
+}
+
+/**
  * Swipes the month card by exactly one page — the settle-driven equivalent of
  * a full native swipe-and-release, mirroring `pageStrip` above. `dir` `1`
  * advances to the next month, `-1` goes back. Waits for `data-focus-month` to
@@ -1550,9 +1561,10 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, sechs Wochenzeilen und 
   const header = monthGrid(page).locator('.month-grid__weekday-header');
   await expect(header).toBeVisible();
 
-  // 6 Zeilen à 7 Spalten, deterministisch gerendert (keine Puffer-/Inert-Logik
-  // wie im alten Karussell — jede Zelle existiert genau einmal).
-  await expect(monthGrid(page).locator('.month-grid__days > li')).toHaveCount(42);
+  // 6 Zeilen à 7 Spalten auf der interaktiven Seite (die beiden Nachbarmonate
+  // der Drei-Seiten-Spur, issue #1009, tragen ihre eigenen 42 Zellen `inert`
+  // nebenan — ausgeklammert wie bei `monthGridDay`).
+  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
 
   const cardBox = await monthGrid(page).boundingBox();
   const dotBox = await monthGridDots(page, 'Sa, 18.').first().boundingBox();
@@ -3200,7 +3212,7 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(card).toHaveCSS('border-radius', expectedRadius);
   await expect(card).toHaveCSS('box-shadow', expectedShadow);
 
-  const daysGrid = card.locator('.month-grid__days');
+  const daysGrid = monthGridPage(page).locator('.month-grid__days');
   await expect(daysGrid).toHaveCSS('row-gap', '3px');
   await expect(daysGrid).toHaveCSS('column-gap', '3px');
   await expect(daysGrid.locator('> li')).toHaveCount(42);
@@ -3209,7 +3221,7 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(header).toHaveCSS('font-size', '10.5px');
   await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
 
-  const firstDay = card.locator('.month-grid__day').first();
+  const firstDay = monthGridPage(page).locator('.month-grid__day').first();
   const dayBox = await firstDay.boundingBox();
   if (!dayBox) throw new Error('AK1: Zelle hat keine BoundingBox');
   expect(Math.round(dayBox.height)).toBe(34);
@@ -3300,8 +3312,8 @@ test('AK7: die Monats-Karte hat auf 375×812 keinen waagerechten Ueberlauf, alle
   );
   expect(overflow).toBe(false);
 
-  await expect(card.locator('.month-grid__day')).toHaveCount(42);
-  await expect(card.locator('.month-grid__day').last()).toBeVisible();
+  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
+  await expect(monthGridPage(page).locator('.month-grid__day').last()).toBeVisible();
 
   const cardBox = await card.boundingBox();
   const viewport = page.viewportSize();
