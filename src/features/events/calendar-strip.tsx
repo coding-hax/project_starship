@@ -261,7 +261,17 @@ export function CalendarStrip({
       const step = stepFor(current);
       if (step <= 0) return null;
       const pos = current.scrollLeft;
-      const rawIndex = Math.floor(pos / step);
+      // `scrollLeft` is a whole device pixel; the layout effect below assigns
+      // it a fractional target (`RADIUS_DAYS * step`), which the browser
+      // rounds down on write. That can leave `pos` a sub-pixel short of the
+      // exact index boundary — enough for a bare `Math.floor` to read back a
+      // whole index short of the one just set (confirmed via the mount-time
+      // race a #1013 CI run traced: target 16630.3125 became `scrollLeft`
+      // 16630, and `Math.floor(16630 / 45.5625)` floored 365 down to 364).
+      // A 1px pad absorbs that rounding — far below a real cell's width, so
+      // it never shifts which cell reads as "leading" during an actual
+      // swipe.
+      const rawIndex = Math.floor((pos + 1) / step);
       const clamped = Math.min(Math.max(rawIndex, 0), windowDays.length - VISIBLE_DAYS);
       return { step, pos, clamped };
     }
