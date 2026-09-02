@@ -66,12 +66,19 @@ export function computeStreak(
   return isDayBased ? dailyStreak(habit.id, logs, now) : periodStreak(habit, logs, now);
 }
 
-/** Number of non-archived habits with a running streak (issue #809). */
+/**
+ * Number of non-archived habits whose current streak is at least `minStreak`
+ * (issue #809). Default 1 keeps the historical "has a running streak"
+ * reading used by `historyDays`; the tile denominator on /routinen passes 2
+ * to count "at least two periods in a row" instead (issue #1005).
+ */
 export function countHabitsOnStreak(
   habits: HabitView[],
   logs: HabitLogView[],
   now: Date = new Date(),
+  minStreak = 1,
 ): number {
-  return habits.filter((habit) => habit.archivedAt === null && computeStreak(habit, logs, now) > 0)
-    .length;
+  return habits.filter(
+    (habit) => habit.archivedAt === null && computeStreak(habit, logs, now) >= minStreak,
+  ).length;
 }
