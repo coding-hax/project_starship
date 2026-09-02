@@ -278,16 +278,17 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
   expect(await elementColor(heading)).toBe(onAccent);
   expect(await elementColor(heading)).not.toBe(onGroundLight);
 
-  // Seit issue #866 sitzt Listentext in der Gruppen-Karte, nicht mehr flächenlos
-  // auf dem Grund (T1/#704s Flachheit ist dort wieder eine Karte) — die Karte
-  // setzt ihre eigene Tinte zurück (AK-Ü #866, wie jede schwebende Fläche seit
-  // #832 AK5), also prüft dieser Block den Kontrast gegen die Kartenfläche statt
-  // gegen den Seitengrund.
+  // Seit issue #866 sitzt Listentext auf einer Kartenfläche, nicht mehr
+  // flächenlos auf dem Grund (T1/#704s Flachheit ist dort wieder eine Karte);
+  // seit issue #996 ist das eine einzige `.task-list__surface` für die ganze
+  // Liste statt einer je Gruppe. Die Karte setzt ihre eigene Tinte zurück
+  // (AK-Ü #866, wie jede schwebende Fläche seit #832 AK5), also prüft dieser
+  // Block den Kontrast gegen die Kartenfläche statt gegen den Seitengrund.
   await page.goto('/aufgaben');
   const taskTitle = page.getByText('Grundfarbe Kontrast-Sonde');
   await expect(taskTitle).toBeVisible();
   const cardBackground = await page
-    .locator('.task-list__group-card')
+    .locator('.task-list__surface')
     .first()
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(
