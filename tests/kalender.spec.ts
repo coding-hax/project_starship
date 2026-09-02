@@ -1757,6 +1757,51 @@ test('ein Tipp auf einen sichtbaren Tag waehlt ihn aus, die sieben sichtbaren Ta
   }
 });
 
+test('die Augenbraue folgt einem Tipp ueber eine Monatsgrenze hinweg, ohne dass sich der Streifen verschiebt (issue #1009, AK3)', async ({
+  page,
+}) => {
+  // Verschiebt "heute" auf einen Donnerstag kurz vor Monatsende — das
+  // sichtbare Sieben-Tage-Fenster reicht dann ueber Juli hinaus bis in den
+  // August hinein, ohne dass gewischt werden muss.
+  await skewClock(page, '2026-07-30T12:00:00.000Z');
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  const period = page.locator('.calendar-view__period');
+  await expect(period).toHaveText('Juli 2026');
+
+  const augustDay = dayButton(page, 'Mo, 3.');
+  await expect(augustDay).toBeVisible();
+  const anchorBefore = await anchorDay(page);
+
+  await augustDay.click();
+
+  await expect(augustDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(period).toHaveText('August 2026');
+  // Die Augenbraue zieht mit, der Streifen selbst bleibt exakt stehen.
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+});
+
+test('der Wochenstreifen laesst sich bei reduzierter Bewegung und im Dark Mode weiterhin wischen und antippen (issue #1009, AK9)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await pageStrip(page, 1);
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(anchorDay(page)).resolves.toBe('2026-07-25');
+
+  await dayButton(page, 'Sa, 25.').click();
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+});
+
 /* -------------------------------------------------------------------------- */
 /* #554 (S3): Termin-Editor — Anlegen, Ändern, Löschen, offline, ganztägig    */
 /* -------------------------------------------------------------------------- */
@@ -3364,6 +3409,24 @@ test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nim
 
   expect((await card.boundingBox())?.height).toBe(heightBefore);
   await expect(monthGridTrack(page)).toHaveCSS('touch-action', 'pan-x');
+});
+
+test('die Monats-Karte laesst sich bei reduzierter Bewegung und im Dark Mode weiterhin wischen, Titel und Dimmung folgen wie gewohnt (issue #1009, AK9)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Juli' })).toBeVisible();
+
+  await pageMonth(page, 1);
+  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
+  await expect(monthGridDay(page, 'Mo, 3.')).not.toHaveAttribute('data-outside-month', '');
 });
 
 test('Tippen auf einen gedaempften Nachbarmonatstag waehlt ihn und verschiebt den fokussierten Monat (#958)', async ({

@@ -173,10 +173,17 @@ export function CalendarView() {
   /** Setzt die Auswahl **und** zieht den fokussierten Monat der Karte mit —
    *  ein Tap im Streifen (issue #958) trifft so dieselbe Regel wie die Karte
    *  selbst, gleiches Prinzip wie zuvor der geteilte `windowAnchor` des
-   *  Streifens Woche und Monat zusammenhielt. */
+   *  Streifens Woche und Monat zusammenhielt. Zieht außerdem `leadDay` nach
+   *  (issue #1009, AK3): die Augenbraue der Wochenansicht folgt so einem Tap,
+   *  auch wenn die angetippte Zelle (innerhalb des unverändert sichtbaren
+   *  Fensters) in einem anderen Monat liegt als die zuvor führende Zelle —
+   *  ohne dass sich der Streifen selbst verschiebt, denn `windowAnchor`/
+   *  `leadIndex` in `CalendarStrip` bleiben davon unberührt. Ein Wisch
+   *  überschreibt das wieder über `onLeadDayChange` (AK4 bleibt unverändert). */
   function handleSelectDay(day: string) {
     setSelectedDayOverride(day);
     setFocusMonthOverride(day.slice(0, 7));
+    setLeadDayOverride(day);
   }
 
   function openCreate() {
