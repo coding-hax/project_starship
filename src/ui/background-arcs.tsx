@@ -11,11 +11,12 @@ import './background-arcs.css';
  * nav row (issue #1006), where they stand in for the flat fill that used to
  * hide scrolled content there — same elements, same keyframes, so the copy
  * can never drift from the background it stands in for. Everything that
- * differs is CSS (`.bg-layer--nav`).
+ * differs is CSS (`.nav-ground`, which deliberately does not carry the
+ * `.bg-layer` class — see background-arcs.css for why).
  */
 export function BackgroundArcs({ variant }: { variant?: 'nav' }) {
   return (
-    <div className={variant === 'nav' ? 'bg-layer bg-layer--nav' : 'bg-layer'} aria-hidden="true">
+    <div className={variant === 'nav' ? 'nav-ground' : 'bg-layer'} aria-hidden="true">
       <span className="bg-arc" />
       <span className="bg-arc" />
       <span className="bg-arc" />

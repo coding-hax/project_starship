@@ -204,7 +204,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `page-head.tsx` / `.css` — Dreizonen-Kopf (Augenbraue/Titel/Zusatz), drei Routen
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `background-arcs.tsx` / `.css` — drei gestaffelte Bögen hinterm Grund, dieselbe Anordnung auf jeder Route
+- `background-arcs.tsx` / `.css` — drei gestaffelte Bögen hinterm Grund, dieselbe Anordnung auf jeder Route; `variant="nav"` malt dieselben Bögen als `.nav-ground` beschnitten noch einmal in der Nav-Zeile und verdeckt dort gescrollten Inhalt (#1006)
 - `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
 - `swatch-palette.ts` — `SWATCH_PALETTE`, zehn Farbnamen (Token+Label), Quelle für habit-editor.tsx + category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Motion), App-Shell
@@ -228,7 +228,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
-- `nav-schleier.spec.ts` — Boden-Schleier
+- `nav-schleier.spec.ts` — Verdeckung an der Bodenleiste (Hintergrund-Kopie statt flacher Fläche)
 - `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build)

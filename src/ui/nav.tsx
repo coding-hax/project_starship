@@ -59,8 +59,9 @@ export function Nav() {
           Replaces the flat `.nav::before` fill from #908, which only stayed
           seamless as long as someone kept its colour in step with the
           background (#991 AK7). Ahead of `.nav__bar` in the DOM and pushed
-          behind it with `z-index: -1`. Hidden from `md` up, where the sidebar
-          carries its own opaque surface. */}
+          behind it with `z-index: -1` (`.nav-ground`, background-arcs.css).
+          Hidden from `md` up, where the sidebar carries its own opaque
+          surface. */}
       <BackgroundArcs variant="nav" />
       <div className="nav__bar">
         <ul className="nav__list" ref={listRef}>

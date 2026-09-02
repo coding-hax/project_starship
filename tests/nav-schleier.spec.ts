@@ -6,7 +6,7 @@ import { registerPasskey, resetAppData, selectView } from './helpers';
  * issue #1006): Seiteninhalt, der beim Scrollen hinter die sticky Nav-Zeile
  * rückt, blendet aus, statt bis an die Pille heranzureichen. Verdeckt wird
  * seit #1006 mit einer beschnittenen Kopie des echten Hintergrunds
- * (`.bg-layer--nav`) statt mit einer flachen Fläche in einer von Hand
+ * (`.nav-ground`) statt mit einer flachen Fläche in einer von Hand
  * nachgezogenen Farbe — deshalb prüft AK1 die Gleichheit der beiden
  * Hintergrund-Ausgaben und AK2 die Nahtlosigkeit an der Oberkante, wo die
  * alte Lösung ihre Kante hatte (#889). Ein Test je AK, gemessen per
@@ -187,13 +187,13 @@ async function navGroundStyles(
   page: Page,
 ): Promise<{ maskImage: string; pointerEvents: string; display: string; beforeContent: string }> {
   return page.evaluate(() => {
-    const copy = document.querySelector('.bg-layer--nav');
+    const copy = document.querySelector('.nav-ground');
     const cs = copy ? getComputedStyle(copy) : null;
     const before = getComputedStyle(document.querySelector('.nav')!, '::before');
     return {
-      maskImage: cs?.maskImage ?? 'kein .bg-layer--nav im DOM',
-      pointerEvents: cs?.pointerEvents ?? 'kein .bg-layer--nav im DOM',
-      display: cs?.display ?? 'kein .bg-layer--nav im DOM',
+      maskImage: cs?.maskImage ?? 'kein .nav-ground im DOM',
+      pointerEvents: cs?.pointerEvents ?? 'kein .nav-ground im DOM',
+      display: cs?.display ?? 'kein .nav-ground im DOM',
       beforeContent: before.content,
     };
   });
@@ -263,11 +263,11 @@ test('AK1: die Nav-Zeile trägt eine Kopie des echten Hintergrunds, keine nachge
   await registerPasskey(page);
   await page.goto('/aufgaben');
 
-  const copy = page.locator('.bg-layer--nav');
+  const copy = page.locator('.nav-ground');
   await expect(copy, 'die Nav-Zeile hat eine eigene Hintergrund-Ausgabe').toBeVisible();
 
-  const navArcs = await arcsOf(page, '.bg-layer--nav');
-  const ambientArcs = await arcsOf(page, '.bg-layer:not(.bg-layer--nav)');
+  const navArcs = await arcsOf(page, '.nav-ground');
+  const ambientArcs = await arcsOf(page, '.bg-layer');
   expect(navArcs, 'die Kopie rendert dieselben drei Bögen').toHaveLength(3);
   expect(navArcs, 'Geometrie und Ton je Bogen sind identisch mit der Umgebungsschicht').toEqual(
     ambientArcs,
@@ -370,7 +370,7 @@ test('AK5: die Kopie stiehlt keine Berührung — nach dem Scrollen klickt ein R
   await page.goto('/aufgaben');
 
   const styles = await navGroundStyles(page);
-  expect(styles.pointerEvents, '.bg-layer--nav ist pointer-events: none').toBe('none');
+  expect(styles.pointerEvents, '.nav-ground ist pointer-events: none').toBe('none');
 
   await seedTallTaskList(page);
   await page.reload();
@@ -412,7 +412,7 @@ test('AK7: auf Desktop (≥768px) gibt es keine Kopie — die Sidebar trägt ihr
   await page.goto('/aufgaben');
 
   const styles = await navGroundStyles(page);
-  expect(styles.display, '.bg-layer--nav ist auf Desktop abgeschaltet').toBe('none');
+  expect(styles.display, '.nav-ground ist auf Desktop abgeschaltet').toBe('none');
 
   const surfaceToken = await resolveColorToken(page, '--surface');
   const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -425,7 +425,7 @@ test('AK8: bei „Ruhe reduzieren" steht auch die Kopie still und untransformier
   await page.goto('/uebersicht');
 
   const arcs = await page.evaluate(() =>
-    [...document.querySelectorAll('.bg-layer--nav .bg-arc')].map((el) => {
+    [...document.querySelectorAll('.nav-ground .bg-arc')].map((el) => {
       const cs = getComputedStyle(el);
       return { animationName: cs.animationName, scale: cs.scale };
     }),
