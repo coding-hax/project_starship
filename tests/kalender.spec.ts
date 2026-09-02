@@ -301,27 +301,6 @@ async function htmlBackground(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
 }
 
-/** Composites a semi-transparent overlay colour onto an opaque base, both as
- *  CSS colour strings the canvas engine resolves itself (issue #921's
- *  Umschalter-Grund sits on top of the route ground, not a flat colour). */
-async function compositeOver(page: Page, base: string, overlay: string): Promise<[number, number, number]> {
-  return page.evaluate(
-    ([b, o]) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = b;
-      ctx.fillRect(0, 0, 1, 1);
-      ctx.fillStyle = o;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, bl] = ctx.getImageData(0, 0, 1, 1).data;
-      return [r, g, bl] as [number, number, number];
-    },
-    [base, overlay],
-  );
-}
-
 function relativeLuminance(r: number, g: number, b: number): number {
   const [rs, gs, bs] = [r, g, b].map((channel) => {
     const s = channel / 255;
@@ -3677,30 +3656,73 @@ test('die Pille wird 33px hoch gezeichnet, die Trefferflaeche jeder Option bleib
   await expect(monat).toHaveAttribute('aria-checked', 'true');
 });
 
-test('gedaempfter Optionstext erreicht 4,5:1 gegen den Umschalter-Grund, die aktive Pille 3:1 gegen ihre Umgebung — hell und dunkel (AK3)', async ({
+/* -------------------------------------------------------------------------- */
+/* issue #1010: Umschalter wieder weiss — Schleier-Spur entfaellt            */
+/* -------------------------------------------------------------------------- */
+
+test('die Spur des Umschalters ist transparent, kein Schleier mehr (AK2, issue #1010)', async ({
+  page,
+}) => {
+  const trackColor = await switcherRoot(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(trackColor).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('die aktive Pille ist eine ungetoente --surface-Flaeche, hell und dunkel (AK1, issue #1010)', async ({
+  page,
+}) => {
+  const indicator = switcherRoot(page).locator('.segmented__indicator');
+
+  const lightSurface = await resolveToken(page, '--surface');
+  expect(await indicator.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(lightSurface);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkSurface = await resolveToken(page, '--surface');
+  expect(await indicator.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(darkSurface);
+  expect(darkSurface).not.toBe(lightSurface);
+});
+
+test('die aktive Pille erreicht 3:1 gegen den Kalender-Grund daneben, hell und dunkel (AK3, issue #1010)', async ({
+  page,
+}) => {
+  async function pillVsGround() {
+    const ground = await toRgb(page, await htmlBackground(page));
+    const indicator = switcherRoot(page).locator('.segmented__indicator');
+    const pillColor = await indicator.evaluate((el) => getComputedStyle(el).backgroundColor);
+    return contrastRatio(await toRgb(page, pillColor), ground);
+  }
+
+  expect(await pillVsGround()).toBeGreaterThanOrEqual(3);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await pillVsGround()).toBeGreaterThanOrEqual(3);
+});
+
+test('aktive Schrift erreicht 4,5:1 gegen die Pille, gedaempfte Schrift 4,5:1 gegen den Grund — hell und dunkel (AK4, issue #1010)', async ({
   page,
 }) => {
   async function measure() {
-    const ground = await resolveToken(page, '--ground');
-    const track = await compositeOver(page, ground, 'color-mix(in oklab, white 20%, transparent)');
+    const ground = await toRgb(page, await htmlBackground(page));
+    const indicator = switcherRoot(page).locator('.segmented__indicator');
+    const pillColor = await toRgb(
+      page,
+      await indicator.evaluate((el) => getComputedStyle(el).backgroundColor),
+    );
 
     const mutedOption = page.getByRole('radio', { name: 'Monat' }); // unselected -> gedaempfter Text
-    const mutedColor = await mutedOption.evaluate((el) => getComputedStyle(el).color);
-    const mutedRgb = await toRgb(page, mutedColor);
+    const mutedRgb = await toRgb(page, await mutedOption.evaluate((el) => getComputedStyle(el).color));
 
-    const indicator = switcherRoot(page).locator('.segmented__indicator');
-    const pillColor = await indicator.evaluate((el) => getComputedStyle(el).backgroundColor);
-    const pillRgb = await toRgb(page, pillColor);
+    const activeOption = page.getByRole('radio', { name: 'Woche' }); // selected -> aktive Pillentinte
+    const activeRgb = await toRgb(page, await activeOption.evaluate((el) => getComputedStyle(el).color));
 
     return {
-      textContrast: contrastRatio(mutedRgb, track),
-      pillContrast: contrastRatio(pillRgb, track),
+      mutedVsGround: contrastRatio(mutedRgb, ground),
+      activeVsPill: contrastRatio(activeRgb, pillColor),
     };
   }
 
   const light = await measure();
-  expect(light.textContrast).toBeGreaterThanOrEqual(4.5);
-  expect(light.pillContrast).toBeGreaterThanOrEqual(3);
+  expect(light.mutedVsGround).toBeGreaterThanOrEqual(4.5);
+  expect(light.activeVsPill).toBeGreaterThanOrEqual(4.5);
 
   // reducedMotion: 'reduce' collapses the option's `transition: color`
   // (segmented-control.css) to ~0 — without it this read races the 150ms
@@ -3711,8 +3733,8 @@ test('gedaempfter Optionstext erreicht 4,5:1 gegen den Umschalter-Grund, die akt
   // colorScheme with it).
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   const dark = await measure();
-  expect(dark.textContrast).toBeGreaterThanOrEqual(4.5);
-  expect(dark.pillContrast).toBeGreaterThanOrEqual(3);
+  expect(dark.mutedVsGround).toBeGreaterThanOrEqual(4.5);
+  expect(dark.activeVsPill).toBeGreaterThanOrEqual(4.5);
 });
 
 test('die Figur steht rechts aussen, der Titel traegt die Restbreite — in Woche und Monat (AK4)', async ({
