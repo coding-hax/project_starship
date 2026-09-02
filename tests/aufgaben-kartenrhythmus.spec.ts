@@ -2,12 +2,18 @@ import { expect, test, type Page } from '@playwright/test';
 import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 /**
- * Kartenrhythmus der Aufgabenliste (issue #866, T2 von #860). Eine Gruppe ist
- * eine Karte (`--radius-surface`, `--shadow-raised`) statt einer flachen Zeile
- * mit Hairline (issue #704 umgekehrt); die "7 Tage"-Ansicht bündelt in drei
- * feste Buckets — "Überfällig" / "Heute" / "7 Tage" — statt einer Marke
- * je Tag (Variante A). Regressionen (Drag-to-Nest, Presence, …) bleiben
- * tasks.spec.ts/uebersicht.spec.ts — hier nur, was an der Karte selbst neu ist.
+ * Kartenrhythmus der Aufgabenliste (issue #866, T2 von #860). #866s "eine
+ * Gruppe ist eine Karte" ist seit issue #996 umgekehrt: eine gemeinsame
+ * Fläche (`.task-list__surface`, `--radius-surface`, `--shadow-raised`)
+ * trägt jetzt die ganze Liste, Bucket-Gruppen sind nur noch durch Weißraum
+ * und ihren Kopf getrennt (task-list.css's Datei-Banner,
+ * docs/design/formwahl-und-zustaende.md R1) — vorher war das eine flache
+ * Zeile mit Hairline (issue #704), dann eine Karte je Gruppe (issue #866),
+ * jetzt eine gemeinsame Karte für alles (issue #996). Die "7 Tage"-Ansicht
+ * bündelt weiterhin in drei feste Buckets — "Überfällig" / "Heute" /
+ * "7 Tage" — statt einer Marke je Tag (Variante A, unverändert). Regressionen
+ * (Drag-to-Nest, Presence, …) bleiben tasks.spec.ts/uebersicht.spec.ts — hier
+ * nur, was an der (jetzt gemeinsamen) Fläche selbst neu ist.
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
@@ -72,8 +78,18 @@ function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
-function groupCards(page: Page) {
-  return page.locator('.task-list__group-card');
+/** The one shared card for the whole list (issue #996 AK1) — carries the
+ *  `--surface`/`--radius-surface`/`--shadow-raised`/ink-reset styling that
+ *  used to sit on every `.task-list__group-card` individually (issue #866). */
+function surface(page: Page) {
+  return page.locator('.task-list__surface');
+}
+
+/** A bucket group's own wrapper (issue #866) — no longer a card of its own
+ *  since issue #996: just the `<li role="presentation">` holding a header and
+ *  its rows, reading as a section of `surface()` via whitespace alone. */
+function groups(page: Page) {
+  return page.locator('.task-list__group');
 }
 
 function groupTitles(page: Page) {
@@ -156,7 +172,7 @@ async function toRgb(page: Page, color: string): Promise<[number, number, number
   }, color);
 }
 
-test('AK1: eine Gruppe ist eine Karte — Fläche, Radius, Schatten, Polsterung; die Zeile darin trägt keine eigene Fläche', async ({
+test('AK1: eine gemeinsame Fläche trägt die ganze Liste — Fläche, Radius, Schatten, Polsterung; Gruppen und Zeilen darin tragen keine eigene Fläche', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -165,8 +181,9 @@ test('AK1: eine Gruppe ist eine Karte — Fläche, Radius, Schatten, Polsterung;
   await seedTask(page, { title: 'Heute-Sonde', dueAt: isoAt(0, 9) });
   await seedTask(page, { title: 'Woche-Sonde', dueAt: isoAt(2) });
 
-  const cards = groupCards(page);
-  await expect(cards).toHaveCount(3);
+  // Genau eine Fläche für die ganze Liste (AK1) — nicht mehr eine je Gruppe.
+  await expect(surface(page)).toHaveCount(1);
+  await expect(groups(page)).toHaveCount(3);
 
   const surfaceToken = await resolveColorToken(page, '--surface');
   const radiusToken = await resolveToken(page, 'border-radius', '--radius-surface');
@@ -175,27 +192,37 @@ test('AK1: eine Gruppe ist eine Karte — Fläche, Radius, Schatten, Polsterung;
   // that reliably back to a string for longhands like `padding-top`.
   const paddingToken = await resolveToken(page, 'padding-top', '--space-4');
 
-  const card = cards.first();
+  const card = surface(page);
   expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceToken);
   expect(await card.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
   expect(await card.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
   expect(await card.evaluate((el) => getComputedStyle(el).paddingTop)).toBe(paddingToken);
 
-  // Die Zeile selbst trägt weder Radius noch Schatten — nur die Karte (AK1).
+  // Die Gruppen selbst tragen weder Fläche noch Radius noch Schatten — nur die
+  // gemeinsame Karte (AK1; AK4: "nur durch Abstand und ihren Kopf getrennt").
+  const group = groups(page).first();
+  expect(await group.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+  expect(await group.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+  expect(await group.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
+
+  // Die Zeile selbst trägt ebenfalls weder Radius noch Schatten — nur die Karte.
   const row = taskItems(page).first();
   expect(await row.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
   expect(await row.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
 
-  // Abstand zwischen zwei Karten = --space-3.
+  // Abstand zwischen zwei Gruppen = --space-3 (AK4) — die einzige Trennung
+  // zwischen ihnen, keine Haarlinie.
   const gapToken = await resolveToken(page, 'margin-top', '--space-3');
   const gapPx = parseFloat(gapToken);
-  const firstBox = await cards.nth(0).boundingBox();
-  const secondBox = await cards.nth(1).boundingBox();
+  const firstBox = await groups(page).nth(0).boundingBox();
+  const secondBox = await groups(page).nth(1).boundingBox();
   if (!firstBox || !secondBox) throw new Error('missing bounding box');
   expect(Math.abs(secondBox.y - (firstBox.y + firstBox.height) - gapPx)).toBeLessThan(1);
 });
 
-test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in einer "7 Tage"-Karte, Anzahl rechts = Top-Level-Zeilen', async ({
+test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in einer "7 Tage"-Gruppe, Anzahl rechts = Top-Level-Zeilen', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -212,7 +239,7 @@ test('AK1: mehrere an verschiedenen Wochentagen fällige Aufgaben landen in eine
   await expect(count).toHaveText('2');
 });
 
-test('AK2: die dritte Bucket-Karte heißt „7 Tage" statt „Diese Woche" (issue #979)', async ({
+test('AK2: die dritte Bucket-Gruppe heißt „7 Tage" statt „Diese Woche" (issue #979)', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -226,7 +253,7 @@ test('AK2: die dritte Bucket-Karte heißt „7 Tage" statt „Diese Woche" (issu
   await expect(titles.nth(2)).toHaveText('7 Tage');
 });
 
-test('AK2 (issue #866): eine leer werdende Gruppe verschwindet als eigene Karte, die übrigen bleiben unberührt', async ({
+test('AK2/AK8 (issue #866/#996): eine leer werdende Gruppe verschwindet als eigene Einheit, die übrigen Gruppen und die Fläche selbst bleiben unberührt', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -236,6 +263,8 @@ test('AK2 (issue #866): eine leer werdende Gruppe verschwindet als eigene Karte,
   await seedTask(page, { title: 'Woche bleibt', dueAt: isoAt(2) });
 
   await expect(groupTitles(page)).toHaveCount(3);
+  const surfaceTopBefore = (await surface(page).boundingBox())?.y;
+  if (surfaceTopBefore === undefined) throw new Error('missing bounding box');
 
   await page.evaluate(
     (rowId) => window.__starship.mutate({ table: 'tasks', rowId, op: 'delete' }),
@@ -245,9 +274,15 @@ test('AK2 (issue #866): eine leer werdende Gruppe verschwindet als eigene Karte,
   await expect(groupTitles(page)).toHaveCount(2);
   await expect(groupTitles(page).nth(0)).toHaveText('Überfällig');
   await expect(groupTitles(page).nth(1)).toHaveText('7 Tage');
+
+  // Die Fläche selbst springt nicht (AK8) — ihr oberer Rand bleibt an
+  // derselben Stelle, während nur die mittlere Gruppe verschwindet.
+  const surfaceTopAfter = (await surface(page).boundingBox())?.y;
+  if (surfaceTopAfter === undefined) throw new Error('missing bounding box');
+  expect(Math.abs(surfaceTopAfter - surfaceTopBefore)).toBeLessThan(1);
 });
 
-test('AK2 (Locator-Erhalt): die Zeile bleibt unter der einen "Aufgaben"-Liste erreichbar, die Karte selbst zählt nicht als listitem', async ({
+test('AK9 (Locator-Erhalt, issue #996 / vormals AK2 issue #866): die Zeile bleibt unter der einen "Aufgaben"-Liste erreichbar, die Gruppe selbst zählt nicht als listitem', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -256,12 +291,12 @@ test('AK2 (Locator-Erhalt): die Zeile bleibt unter der einen "Aufgaben"-Liste er
   const list = page.getByRole('list', { name: 'Aufgaben' });
   await expect(list.getByRole('listitem')).toHaveCount(1);
 
-  const card = groupCards(page).first();
-  await expect(card).toHaveAttribute('role', 'presentation');
-  await expect(card.getByRole('listitem')).toHaveCount(1);
+  const group = groups(page).first();
+  await expect(group).toHaveAttribute('role', 'presentation');
+  await expect(group.getByRole('listitem')).toHaveCount(1);
 
   const row = list.getByRole('listitem').first();
-  expect(await row.evaluate((el) => el.closest('.task-list__group-card') !== null)).toBe(true);
+  expect(await row.evaluate((el) => el.closest('.task-list__group') !== null)).toBe(true);
 });
 
 /**
@@ -299,7 +334,7 @@ test('AK-Ü: der Seitenkopf läuft auf /aufgaben und /uebersicht nicht über sic
     await page.emulateMedia({ colorScheme: scheme });
     for (const path of ['/aufgaben', '/uebersicht']) {
       await page.goto(path);
-      await expect(groupCards(page).first()).toBeVisible();
+      await expect(surface(page)).toBeVisible();
       await assertHeaderFitsItself(page, path, scheme);
 
       const overflowWidth = await page.evaluate(() => ({
@@ -314,7 +349,7 @@ test('AK-Ü: der Seitenkopf läuft auf /aufgaben und /uebersicht nicht über sic
   }
 });
 
-test('AK-Ü: die Karte setzt ihren Ink zurück — Zeilentext ≠ Kartengrund, Kontrast ≥ 4,5:1, Hell und Dunkel', async ({
+test('AK6 (issue #996 / vormals AK-Ü issue #866): die gemeinsame Fläche setzt ihren Ink zurück — Zeilentext ≠ Kartengrund, Kontrast ≥ 4,5:1, Hell und Dunkel', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
@@ -323,15 +358,15 @@ test('AK-Ü: die Karte setzt ihren Ink zurück — Zeilentext ≠ Kartengrund, K
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/aufgaben');
     await seedTask(page, { title: `Ink-Sonde ${scheme}`, dueAt: isoAt(0, 9) });
-    await expect(groupCards(page).first()).toBeVisible();
+    await expect(surface(page)).toBeVisible();
 
     const textBase = await resolveColorToken(page, '--text-base');
-    const cardText = await resolveColorTokenIn(page, '.task-list__group-card', '--text');
-    expect(cardText, `.task-list__group-card löst --text auf --text-base auf (${scheme})`).toBe(
+    const cardText = await resolveColorTokenIn(page, '.task-list__surface', '--text');
+    expect(cardText, `.task-list__surface löst --text auf --text-base auf (${scheme})`).toBe(
       textBase,
     );
 
-    const card = groupCards(page).first();
+    const card = surface(page);
     const cardBackground = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
     const rowTitle = page.getByText(`Ink-Sonde ${scheme}`);
     const rowColor = await rowTitle.evaluate((el) => getComputedStyle(el).color);
@@ -343,7 +378,7 @@ test('AK-Ü: die Karte setzt ihren Ink zurück — Zeilentext ≠ Kartengrund, K
   }
 });
 
-test('Offline-Pfad: eine offline angelegte Aufgabe erscheint sofort in ihrer Gruppen-Karte, erreicht online die Datenbank', async ({
+test('Offline-Pfad: eine offline angelegte Aufgabe erscheint sofort in der gemeinsamen Kartenfläche, erreicht online die Datenbank', async ({
   page,
   context,
 }) => {
@@ -356,7 +391,7 @@ test('Offline-Pfad: eine offline angelegte Aufgabe erscheint sofort in ihrer Gru
   await expect(groupTitles(page).filter({ hasText: 'Heute' })).toBeVisible();
   const row = taskItems(page).filter({ hasText: 'Offline Kartensonde' });
   await expect(row).toBeVisible();
-  expect(await row.evaluate((el) => el.closest('.task-list__group-card') !== null)).toBe(true);
+  expect(await row.evaluate((el) => el.closest('.task-list__surface') !== null)).toBe(true);
 
   await page.unroute('**/api/sync/**');
   await context.setOffline(false);
