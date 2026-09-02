@@ -4,7 +4,7 @@ import './faces.css';
  * One inline-drawn silhouette per route (S4 of #828, issue #830; redrawn to
  * match the design sheet in issue #850). Server component, no hooks/state —
  * blink and bob live entirely in faces.css keyframes (same split as
- * background-circles.tsx), so this renders on server and client pages alike
+ * background-arcs.tsx), so this renders on server and client pages alike
  * with zero client JS. Inline paths, not `<symbol>`+`<use>`: CSS can't reach
  * into a `<use>` shadow tree, and `.face__eyes--late` must tick per figure.
  */

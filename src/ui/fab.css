@@ -59,7 +59,7 @@
    Ruhelage = Identität, damit `animation: none` (reduced motion) auf den
    ungetransformten Zustand zurückfällt statt auf ein Zwischenbild
    einzufrieren (Falle dokumentiert in docs/design/form-und-motion.md, siehe
-   auch background-circles.css). */
+   auch background-arcs.css). */
 .fab__icon,
 .fab__label {
   animation: breathe 3.6s ease-in-out infinite alternate;

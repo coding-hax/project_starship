@@ -1295,14 +1295,14 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
 
   const todayDots = dayDots(page, 'Sa, 18.');
   await expect(todayDots).toHaveCount(1);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect
     .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
 
   const tomorrowDots = dayDots(page, 'So, 19.');
   await expect(tomorrowDots).toHaveCount(1);
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 30, 'var(--on-ground)');
   await expect
     .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
@@ -1325,11 +1325,11 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, aufgehellt gegen den
   });
 
   const dot = dayDots(page, 'Sa, 18.').first();
-  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
+  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
@@ -1378,14 +1378,14 @@ test('AK1: die fuenf --cat-* Vorgaben liegen als deklariertes oklch()-Literal mi
   expect(minHueGap(darkHues)).toBeGreaterThanOrEqual(40);
 });
 
-test('AK2: der aufgehellte Kategorie-Punkt (60%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955)', async ({
+test('AK2: der gedaempfte Kategorie-Punkt (30%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955, Rezept nachgezogen von issue #991)', async ({
   page,
 }) => {
   async function dotContrast(category: string): Promise<number> {
     const ground = await toRgb(page, await resolveToken(page, '--ground'));
     const dot = await toRgb(
       page,
-      await resolveMix(page, `var(--cat-${category})`, 60, 'var(--on-ground)'),
+      await resolveMix(page, `var(--cat-${category})`, 30, 'var(--on-ground)'),
     );
     return contrastRatio(dot, ground);
   }
@@ -3120,7 +3120,7 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
 
   const dots = dayDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 60, 'var(--on-ground)');
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 30, 'var(--on-ground)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedPrivat);

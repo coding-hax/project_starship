@@ -181,13 +181,13 @@ const ROUTES: RouteCase[] = [
   {
     ground: 'aufgaben',
     path: '/aufgaben',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     heading: (page) => page.getByRole('heading', { level: 1, name: 'Aufgaben' }),
   },
   {
     ground: 'kalender',
     path: '/kalender',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     // .calendar-view__heading (h1) is the visible "Diese Woche" title since
     // issue #898 (used to be sr-only, with .calendar-strip__title as the
     // visible stand-in — that element moved into the header's own eyebrow).
@@ -228,7 +228,7 @@ const ROUTES: RouteCase[] = [
   {
     ground: 'einstellungen',
     path: '/einstellungen',
-    ink: '--on-ground-light',
+    ink: '--on-accent',
     heading: (page) => page.getByRole('heading', { level: 1, name: 'Einstellungen' }),
   },
 ];
@@ -322,7 +322,9 @@ test('AK3: bereichsgefüllte Flächen tragen weiter --on-accent, unverändert se
   expect(await elementColor(submit)).toBe(onAccent);
 });
 
-test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', async ({ page }) => {
+test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥5,1:1 (#991 AK5)', async ({
+  page,
+}) => {
   await registerPasskey(page);
   await page.emulateMedia({ colorScheme: 'dark' });
 
@@ -347,7 +349,9 @@ test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', asy
     expect(
       contrastRatio(await toRgb(page, headingColor), await toRgb(page, darkGround)),
       `Dark-Mode-Kontrast auf ${route.path}`,
-    ).toBeGreaterThanOrEqual(4.5);
+      // issue #991 AK5 verschärft den Boden von 4,5:1 auf 5,1:1, weil die
+      // gedämpften Foto-Rezept-Gründe im Dunkelmodus insgesamt heller laufen.
+    ).toBeGreaterThanOrEqual(5.1);
   }
 });
 

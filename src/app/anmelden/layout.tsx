@@ -7,7 +7,7 @@ import type { Viewport } from 'next';
 // Component exports without recomputing their `color-mix()`.
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ff7300' },
+    { media: '(prefers-color-scheme: light)', color: '#fda577' },
     { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
   ],
 };

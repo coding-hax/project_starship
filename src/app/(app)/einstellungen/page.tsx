@@ -9,7 +9,7 @@ export const metadata = { title: 'Einstellungen · Starship' };
 // Android status bar colour (issue #882, AK4) — see uebersicht/page.tsx.
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#46525e' },
+    { media: '(prefers-color-scheme: light)', color: '#7d858d' },
     { media: '(prefers-color-scheme: dark)', color: '#1c1a18' },
   ],
 };

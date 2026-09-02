@@ -92,44 +92,72 @@
  * `--face-ink` (issue #850) — the design sheet's own colour pair, unrelated
  * to the --ground/--on-ground contrast rule.
  */
-/* `--blob-partner` (issue #849, AK3): the background circles' `--b3` tone
-   mixes this in instead of white/black, so one of the four circles per route
-   carries its own colour stitch instead of a plain tint of `--ground`. */
 /*
- * `--on-ground-muted` (issue #868, AK3): gedämpfte Textstufe auf dem Grund,
- * je Route gemessen (getComputedStyle → Canvas-Pixel, wie die grundfarbe.spec.ts-
- * Helfer) statt geraten. 85 % `--on-ground`-Anteil hält alle neun Routen in
- * BEIDEN Themes ≥ 4,5:1 (kleiner Text) — außer Aufgaben und Wetter im
- * Hellmodus (gemessen 3,96:1 / 4,10:1 bei 85 %, und keine Zwischenstufe
- * zwischen 85 % und 100 % reißt die Lücke; erst 95 % genügt, was von „voll
- * deckend" kaum noch zu unterscheiden wäre). Beide fallen dort auf
- * `--on-ground` zurück (Kontrast vor Dämpfung, wie #846) — im Dunkelmodus
- * liegen beide bei 85 % klar über 4,5:1 (6,44:1 / 5,73:1), siehe die
- * `@media (prefers-color-scheme: dark)`- bzw. `[data-theme='dunkel']`-Blöcke
- * unten, die für diese zwei Routen `--on-ground-muted` erneut gedämpft setzen.
+ * `--arc-1/2/3` (issue #991 AK3): the three background arcs' tones, one
+ * literal hex triple per route — same pattern as `--face-*` above, not a
+ * `color-mix(--ground …)` (the old `--b1…--b4`): they're computed from the
+ * route's UNCHANGED area colour via OKLCH (L+0.205/−0.06/+0.175, C×0.285/
+ * 1.05/0.738, H−14°/+0°/+33°, chroma bisected at gamut violations, never the
+ * lightness) — CSS itself can't express that recipe, so the results are
+ * pre-computed and pinned here.
+ *
+ * Exception, `--arc-2` on aufgaben/kalender/wetter/einstellungen (light
+ * mode): the literal recipe (L−0.06, C×1.05, same H) computed against
+ * `--on-accent` (AK4's ink on these four routes) lands at 1.83:1–3.69:1 —
+ * below AK8's replacement floor (`--on-ground` ≥4.5:1 over every arc
+ * surface, `tests/hintergrundboegen.spec.ts`). No single uniform rescale of
+ * the −0.06 delta fixes this for all four at once: einstellungen's own
+ * *unmodified* area colour (`#46525e`, already dark, low chroma) only
+ * reaches 2.35:1 against `--on-accent` even at ΔL=0, so the arc has to move
+ * substantially lighter than the recipe's own output regardless of factor.
+ * This is the same invariant AK4 already establishes for `--ground-*` itself
+ * (measured contrast overrides literal recipe amplitude, deviation
+ * documented instead of guessed) — applied here per-route because the
+ * conflict is per-route, not global. Resolution: keep the recipe's hue and
+ * chroma, bisect lightness until the AK8 floor clears with margin (≥4.5:1,
+ * verified ≈4.6:1 here) — same lever AK3 already reserves for lightness
+ * (gamut violations bend chroma, never lightness; contrast violations bend
+ * lightness, since chroma barely moves WCAG luminance). Most dark-mode
+ * triples need the same treatment — see the dark-mode block below.
+ */
+/*
+ * `--on-ground-muted` (issue #868, AK3; re-measured for issue #991's damped
+ * grounds): gedämpfte Textstufe auf dem Grund, je Route gemessen statt
+ * geraten. 85 % `--on-ground`-Anteil hält die meisten Routen in BEIDEN
+ * Themes ≥ 4,5:1 (kleiner Text) — außer Journal und Einstellungen im
+ * Hellmodus sowie Aktivitäten und Wetter im Dunkelmodus (alle vier fallen
+ * unter 4,5:1 bei 85 %, kein Zwischenwert zwischen 85 % und 100 % rettet die
+ * Lücke). Diese vier fallen auf `--on-ground` zurück (Kontrast vor Dämpfung,
+ * wie #846) — die alten Ausnahmen (Aufgaben/Wetter hell) galten für die
+ * gesättigten Gründe von vor #991 und sind mit den gedämpften hinfällig.
  */
 html:has([data-ground='uebersicht']) {
   --ground: var(--ground-uebersicht);
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #ffce00;
+  --arc-1: #ffd5cc;
+  --arc-2: #e35d00;
+  --arc-3: #ffcd7e;
   --face-body: var(--face-body-uebersicht);
   --face-ink: var(--face-ink-uebersicht);
 }
 html:has([data-ground='aufgaben']) {
   --ground: var(--ground-aufgaben);
-  --on-ground: var(--on-ground-light);
-  /* Gemessen 3,96:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
-  --on-ground-muted: var(--on-ground);
-  --blob-partner: #12a67a;
+  --on-ground: var(--on-accent);
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+  --arc-1: #9ab0ae;
+  --arc-2: #348990;
+  --arc-3: #7aa8c5;
   --face-body: var(--face-body-aufgaben);
   --face-ink: var(--face-ink-aufgaben);
 }
 html:has([data-ground='kalender']) {
   --ground: var(--ground-kalender);
-  --on-ground: var(--on-ground-light);
+  --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #3aa7e0;
+  --arc-1: #82a3c4;
+  --arc-2: #3778f3;
+  --arc-3: #9e80eb;
   --face-body: var(--face-body-kalender);
   --face-ink: var(--face-ink-kalender);
 }
@@ -137,15 +165,20 @@ html:has([data-ground='routinen']) {
   --ground: var(--ground-routinen);
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #ffce00;
+  --arc-1: #bcd5c2;
+  --arc-2: #00926a;
+  --arc-3: #6fd7db;
   --face-body: var(--face-body-routinen);
   --face-ink: var(--face-ink-routinen);
 }
 html:has([data-ground='journal']) {
   --ground: var(--ground-journal);
   --on-ground: var(--on-ground-light);
-  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #cf49c0;
+  /* Gemessen 3,86:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
+  --arc-1: #71708b;
+  --arc-2: #3b0168;
+  --arc-3: #905183;
   --face-body: var(--face-body-journal);
   --face-ink: var(--face-ink-journal);
 }
@@ -153,24 +186,30 @@ html:has([data-ground='aktivitaeten']) {
   --ground: var(--ground-aktivitaeten);
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #ff7300;
+  --arc-1: #fff0e5;
+  --arc-2: #e69d00;
+  --arc-3: #fbfa93;
   --face-body: var(--face-body-aktivitaeten);
   --face-ink: var(--face-ink-aktivitaeten);
 }
 html:has([data-ground='wetter']) {
   --ground: var(--ground-wetter);
   --on-ground: var(--on-accent);
-  /* Gemessen 4,10:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
-  --on-ground-muted: var(--on-ground);
-  --blob-partner: #7cc9f0;
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+  --arc-1: #a5c3d0;
+  --arc-2: #2284bf;
+  --arc-3: #a1aff1;
   --face-body: var(--face-body-wetter);
   --face-ink: var(--face-ink-wetter);
 }
 html:has([data-ground='einstellungen']) {
   --ground: var(--ground-einstellungen);
-  --on-ground: var(--on-ground-light);
-  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #0e7c84;
+  --on-ground: var(--on-accent);
+  /* Gemessen 4,33:1 bei 85 % (Hellmodus) — unter 4,5:1, deshalb ungedämpft. */
+  --on-ground-muted: var(--on-ground);
+  --arc-1: #878c8f;
+  --arc-2: #727f8c;
+  --arc-3: #80818e;
   --face-body: var(--face-body-einstellungen);
   --face-ink: var(--face-ink-einstellungen);
 }
@@ -178,7 +217,9 @@ html:has([data-ground='anmelden']) {
   --ground: var(--ground-anmelden);
   --on-ground: var(--on-accent);
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --blob-partner: #ffce00;
+  --arc-1: #ffdad2;
+  --arc-2: #e36600;
+  --arc-3: #ffd385;
   --face-body: var(--face-body-anmelden);
   --face-ink: var(--face-ink-anmelden);
 }
@@ -195,15 +236,18 @@ html:has([data-ground='anmelden']) {
   --text: var(--on-ground);
   --text-muted: var(--on-ground-muted);
   /*
-   * Safe-area status bar band (issue #882): darkened per-route so white iOS
-   * status bar glyphs (statusBarStyle: black-translucent, always white, not
-   * themeable) clear 4.5:1 against it. 70% covers the worst measured case
-   * (Aktivitäten, #ffae00) with margin; every other route clears further —
-   * see the ticket's measured table. One value for all nine routes rather
-   * than per-route minimums (issue's option A): the gradient into --ground
-   * hides the difference anyway.
+   * Safe-area status bar band (issue #882; re-measured for issue #991 AK6,
+   * Option A): darkened per-route so white iOS status bar glyphs
+   * (statusBarStyle: black-translucent, always white, not themeable) clear
+   * 4.5:1 against it. The Foto-Rezept grounds run lighter than before, so the
+   * ground share dropped from 70% to 62% — the worst case (Aktivitäten,
+   * #fac881) still clears with margin, every other route clears further.
+   * One value for all nine routes rather than per-route minimums (issue's
+   * option A): the gradient into --ground hides the difference anyway. No
+   * veil/overlay comes back (issue #982's decision stands) — this token
+   * alone still covers the notch-contrast measurement.
    */
-  --ground-notch: color-mix(in oklab, var(--ground) 70%, black);
+  --ground-notch: color-mix(in oklab, var(--ground) 62%, black);
   /*
    * Neutral edges (tokens.css) are tuned against --bg (a near-white or a warm
    * anthracite) and collapse flat against a saturated route ground — issue
@@ -227,51 +271,112 @@ html:has([data-ground='anmelden']) {
 }
 
 /*
- * Dark mode (AK4): the ground mixes ~62% of its light colour onto a very
- * dark warm base instead of painting the saturated colour at full strength —
- * that reads as neon on a dark screen. Aktivitäten's gold needs a lower
- * share (50%) to still clear 4.5:1 with the light ink below; every other
- * route holds the ~62% the ticket names. Once darkened, every ground clears
- * 4.5:1 with the *light* ink regardless of which ink it used in light mode —
- * verified per route, not assumed — so the ink flips uniformly here instead
- * of repeating each route's light-mode choice.
+ * Dark mode (AK5 of #991): the ground mixes ~62% of its (already damped,
+ * "Foto-Rezept") light colour onto a very dark warm base instead of painting
+ * it at full strength — that reads as neon on a dark screen. The L > 0.75
+ * threshold for the lower 50% share now reads the DAMPED light ground (it
+ * runs lighter overall than the pre-#991 saturated grounds), which pulls
+ * Übersicht/Routinen/Anmelden into the 50% bucket alongside Aktivitäten.
+ * AK5's own literal contrast floor — "`--on-ground-light` auf allen neun
+ * Routen ≥5,1:1" — is about THIS ground-vs-ink pairing (`darkGround` vs
+ * `--on-ground-light`), pinned in `tests/grundfarbe.spec.ts` ("AK4: im
+ * Dunkelmodus…", tightened from the pre-#991 4.5:1 floor). Verified per
+ * route at F=0.34 (see tokens.css), tightest case Aktivitäten ≈5,10:1 —
+ * lowering F further than 0.34 would help here but starts eating into the
+ * light-mode AK4 floor for the `--on-accent` routes, so F stays uniform
+ * (AK4's own rule: adjust the ONE shared factor, never per route).
+ *
+ * Arc tones (AK5's OTHER rule, a separate pairing): positive lightness
+ * deltas ×0.7, negative ×0.85 of the OKLCH recipe's own deltas, chroma
+ * capped at the route's raw (pre-damp) chroma — pre-computed the same way
+ * as the light triples above, and checked against the AK8 replacement test
+ * (`--on-ground` ≥4.5:1 over every arc surface, dark variant, "Ersatz für
+ * #904 AK4 dunkel" in `tests/hintergrundboegen.spec.ts` — a DIFFERENT,
+ * weaker floor than AK5's 5.1:1 ground floor above). Applied literally
+ * (deltas anchored to the light-mode area colour), most triples landed as
+ * low as 1.13:1: the recipe's positive deltas push arcs 1/3 toward white,
+ * which collides head-on with the uniformly-light `--on-ground-light` ink
+ * this whole block sets. As with the light-mode `--arc-2` exception above,
+ * no uniform rescale rescues this — chroma barely moves WCAG luminance, so
+ * lightness is the only lever, and how far each arc needs to move depends
+ * on that route's own hue/chroma, not a shared constant. Re-solved per
+ * failing arc (14 of 24 triples): same hue and chroma as the literal
+ * recipe, lightness bisected in OKLab until contrast against
+ * `--on-ground-light` clears the AK8 floor with margin (≥4.5:1, verified
+ * ≈4.6:1 here — not AK5's stricter 5.1:1, which governs the ground pairing
+ * above, not arcs). Four light-mode `--arc-2` triples (aufgaben/kalender/
+ * wetter/einstellungen) needed the same treatment in the other direction —
+ * lightened until they cleared 4.5:1 against the dark --on-accent ink.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']):has([data-ground]) {
     --on-ground: var(--on-ground-light);
   }
   :root:not([data-theme='hell']):has([data-ground='uebersicht']) {
-    --ground: color-mix(in oklab, var(--ground-uebersicht) 62%, var(--ground-base-dark));
+    --ground: color-mix(in oklab, var(--ground-uebersicht) 50%, var(--ground-base-dark));
+    --arc-1: #946961;
+    --arc-2: #c34f00;
+    --arc-3: #9a6a00;
   }
   :root:not([data-theme='hell']):has([data-ground='aufgaben']) {
     --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
-    /* Anders als im Hellmodus (oben, 3,96:1 bei 85 %): hier gemessen 6,44:1 bei
-       85 % — genug Spielraum für die gedämpfte Stufe. */
-    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+    --arc-1: #627876;
+    --arc-2: #006c73;
+    --arc-3: #4c7994;
   }
   :root:not([data-theme='hell']):has([data-ground='kalender']) {
     --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
+    --arc-1: #567695;
+    --arc-2: #0046c2;
+    --arc-3: #7f61c8;
   }
   :root:not([data-theme='hell']):has([data-ground='routinen']) {
-    --ground: color-mix(in oklab, var(--ground-routinen) 62%, var(--ground-base-dark));
+    --ground: color-mix(in oklab, var(--ground-routinen) 50%, var(--ground-base-dark));
+    --arc-1: #637967;
+    --arc-2: #00845f;
+    --arc-3: #008085;
   }
   :root:not([data-theme='hell']):has([data-ground='journal']) {
     --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
-  }
-  :root:not([data-theme='hell']):has([data-ground='aktivitaeten']) {
-    --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
-  }
-  :root:not([data-theme='hell']):has([data-ground='wetter']) {
-    --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
-    /* Anders als im Hellmodus (oben, 4,10:1 bei 85 %): hier gemessen 5,73:1 bei
+    --arc-1: #605e78;
+    --arc-2: #3d0a68;
+    --arc-3: #7f4274;
+    /* Anders als im Hellmodus (oben, 3,86:1 bei 85 %): hier gemessen 6,34:1 bei
        85 % — genug Spielraum für die gedämpfte Stufe. */
     --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
+  :root:not([data-theme='hell']):has([data-ground='aktivitaeten']) {
+    --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
+    --arc-1: #827062;
+    --arc-2: #9d6900;
+    --arc-3: #7a7700;
+    /* Anders als im Hellmodus (oben, 9,46:1 bei 85 %): hier nur 4,16:1 bei
+       85 % — unter 4,5:1, deshalb ungedämpft. */
+    --on-ground-muted: var(--on-ground);
+  }
+  :root:not([data-theme='hell']):has([data-ground='wetter']) {
+    --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
+    --arc-1: #5c7784;
+    --arc-2: #0076b2;
+    --arc-3: #6470ad;
+    /* Anders als im Hellmodus (oben, 6,32:1 bei 85 %): hier nur 4,23:1 bei
+       85 % — unter 4,5:1, deshalb ungedämpft. */
+    --on-ground-muted: var(--on-ground);
+  }
   :root:not([data-theme='hell']):has([data-ground='einstellungen']) {
     --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
+    --arc-1: #6f7477;
+    --arc-2: #394450;
+    --arc-3: #71727e;
+    /* Anders als im Hellmodus (oben, 4,33:1 bei 85 %): hier gemessen 5,47:1 bei
+       85 % — genug Spielraum für die gedämpfte Stufe. */
+    --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
   :root:not([data-theme='hell']):has([data-ground='anmelden']) {
-    --ground: color-mix(in oklab, var(--ground-anmelden) 62%, var(--ground-base-dark));
+    --ground: color-mix(in oklab, var(--ground-anmelden) 50%, var(--ground-base-dark));
+    --arc-1: #936a5f;
+    --arc-2: #be5400;
+    --arc-3: #976c00;
   }
 }
 
@@ -279,33 +384,62 @@ html:has([data-ground='anmelden']) {
   --on-ground: var(--on-ground-light);
 }
 :root[data-theme='dunkel']:has([data-ground='uebersicht']) {
-  --ground: color-mix(in oklab, var(--ground-uebersicht) 62%, var(--ground-base-dark));
+  --ground: color-mix(in oklab, var(--ground-uebersicht) 50%, var(--ground-base-dark));
+  --arc-1: #946961;
+  --arc-2: #c34f00;
+  --arc-3: #9a6a00;
 }
 :root[data-theme='dunkel']:has([data-ground='aufgaben']) {
   --ground: color-mix(in oklab, var(--ground-aufgaben) 62%, var(--ground-base-dark));
-  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+  --arc-1: #627876;
+  --arc-2: #006c73;
+  --arc-3: #4c7994;
 }
 :root[data-theme='dunkel']:has([data-ground='kalender']) {
   --ground: color-mix(in oklab, var(--ground-kalender) 62%, var(--ground-base-dark));
+  --arc-1: #567695;
+  --arc-2: #0046c2;
+  --arc-3: #7f61c8;
 }
 :root[data-theme='dunkel']:has([data-ground='routinen']) {
-  --ground: color-mix(in oklab, var(--ground-routinen) 62%, var(--ground-base-dark));
+  --ground: color-mix(in oklab, var(--ground-routinen) 50%, var(--ground-base-dark));
+  --arc-1: #637967;
+  --arc-2: #00845f;
+  --arc-3: #008085;
 }
 :root[data-theme='dunkel']:has([data-ground='journal']) {
   --ground: color-mix(in oklab, var(--ground-journal) 62%, var(--ground-base-dark));
+  --arc-1: #605e78;
+  --arc-2: #3d0a68;
+  --arc-3: #7f4274;
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='aktivitaeten']) {
   --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
+  --arc-1: #827062;
+  --arc-2: #9d6900;
+  --arc-3: #7a7700;
+  --on-ground-muted: var(--on-ground);
 }
 :root[data-theme='dunkel']:has([data-ground='wetter']) {
   --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
-  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
+  --arc-1: #5c7784;
+  --arc-2: #0076b2;
+  --arc-3: #6470ad;
+  --on-ground-muted: var(--on-ground);
 }
 :root[data-theme='dunkel']:has([data-ground='einstellungen']) {
   --ground: color-mix(in oklab, var(--ground-einstellungen) 62%, var(--ground-base-dark));
+  --arc-1: #6f7477;
+  --arc-2: #394450;
+  --arc-3: #71727e;
+  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
 }
 :root[data-theme='dunkel']:has([data-ground='anmelden']) {
-  --ground: color-mix(in oklab, var(--ground-anmelden) 62%, var(--ground-base-dark));
+  --ground: color-mix(in oklab, var(--ground-anmelden) 50%, var(--ground-base-dark));
+  --arc-1: #936a5f;
+  --arc-2: #be5400;
+  --arc-3: #976c00;
 }
 
 html {
@@ -323,13 +457,13 @@ body {
      covers that band's own contrast measurement (tests/shell.mobile.spec.ts)
      as the quick rollback path (see issue #982's "Rückweg"). */
   background: var(--ground);
-  /* Traps `.bg-layer`'s `z-index: -1` (background-circles.css) inside body's
+  /* Traps `.bg-layer`'s `z-index: -1` (background-arcs.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
      z-index of its own, so that negative z-index escapes past it straight to
      the root stacking context — where paint order is: html's canvas
      background, then negative-z descendants (`.bg-layer`), then body's own
      in-flow box (background included). Painted last, body's background ends
-     up on top, hiding the circles despite their correct z-index. `isolation:
+     up on top, hiding the arcs despite their correct z-index. `isolation:
      isolate` makes body itself a stacking-context root: within its own local
      order, body's background paints first and its negative-z children paint
      second — on top of that background, still behind every later sibling

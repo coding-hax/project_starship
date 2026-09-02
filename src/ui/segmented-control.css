@@ -81,22 +81,30 @@
   background: color-mix(in oklab, white 20%, transparent);
   /* Gemessen (Canvas-Pixel-Kompositierung, wie grundfarbe.spec.ts) gegen den
      Kalender-Grund: --on-ground-muted/--on-ground reichen für den gedämpften
-     Optionstext auf diesem hellen Schleier im Hellmodus nicht (3,33:1 /
-     4,16:1, beide unter 4,5:1) — der Schleier ist heller als der volle Grund,
-     für den die beiden kalibriert sind. Dunkle Tinte schlägt hier den Test
-     (4,65:1), nicht helle (AK3, „Kontrast schlägt Dämpfung"). Im Dunkelmodus
-     dreht sich das Bild um: Grund + Schleier ist dort dunkel genug, dass
-     --on-ground trägt (5,61:1). */
+     Optionstext auf diesem hellen Schleier nicht (Hellmodus 3,33:1 / 4,16:1;
+     seit #991s Grunddämpfung auch der Dunkelmodus-Grund+Schleier zu hell für
+     --on-ground, nur noch 3,94:1) — der Schleier liegt in beiden Modi heller
+     als der volle Grund, für den die beiden kalibriert sind. Dunkle Tinte
+     schlägt hier den Test in beiden Modi (4,65:1 hell / 4,89:1 dunkel), nicht
+     helle (AK3, „Kontrast schlägt Dämpfung") — deshalb keine eigene
+     Dunkelmodus-Übersteuerung mehr für diesen Wert (unten). */
   --segmented-ground-muted-ink: color-mix(in oklab, var(--on-accent) 80%, black);
-  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe), 6,35:1
-     gegen --surface im Hellmodus. */
+  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe). */
   --segmented-ground-active-ink: var(--ground);
-  --segmented-ground-pill-bg: var(--surface);
+  /* #991 hat --ground-kalender aufgehellt — der 20%-Schleier oben (Zeile 81)
+     liegt dadurch so nah an reinem --surface (Weiß), dass die aktive Pille
+     (AK3, issue #921) nur noch 2,45:1 gegen den Schleier hält, unter der
+     3:1-Schwelle. --surface bleibt Weiß, deshalb hier abgedunkelt statt den
+     Schleier selbst anzufassen (der trägt separat den gedämpften Optionstext,
+     s.o. — unverändert lassen). Bei 38% hält beides mit Marge: Pille 4,10:1
+     gegen den Schleier (AK3), Routenfarbe als Pillentext 3,16:1 gegen die
+     jetzt dunklere Pille (informell, kein eigenes AK, aber unter 3:1 fiele
+     die Blatt-Vorgabe selbst unter WCAG-Großtext). */
+  --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 38%, black);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']) .segmented--ground {
-    --segmented-ground-muted-ink: var(--on-ground);
     /* Fixer Routenton statt des kontextuellen --ground: der ist im
        Dunkelmodus schon so weit abgedunkelt, dass er auf der ebenfalls
        abgedunkelten Pille kaum noch trägt (1,66:1 gemessen) — die feste
@@ -109,7 +117,6 @@
   }
 }
 :root[data-theme='dunkel'] .segmented--ground {
-  --segmented-ground-muted-ink: var(--on-ground);
   --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
   --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 70%, black);
 }
