@@ -95,12 +95,47 @@ function monthGrid(page: Page) {
   return page.locator('.month-grid');
 }
 
+/**
+ * A day button *on the interactive (middle) page* — scoping to
+ * `.month-grid__page:not([inert])` matters because the three-page snap track
+ * (issue #1009) renders the previous and next month alongside the current
+ * one, `inert` + `aria-hidden` on the non-central pages. Without the scope, a
+ * day shared between two neighbouring months' grids (e.g. "Mo, 3." showing as
+ * a dimmed trailing day on one page *and* as its own in-month day on the
+ * next) would match twice and trip Playwright's strict mode.
+ */
 function monthGridDay(page: Page, ariaLabel: string) {
-  return page.locator(`.month-grid__day[aria-label="${ariaLabel}"]`);
+  return page.locator(`.month-grid__page:not([inert]) .month-grid__day[aria-label="${ariaLabel}"]`);
 }
 
 function monthGridDots(page: Page, ariaLabel: string) {
   return monthGridDay(page, ariaLabel).locator('.month-grid__dot');
+}
+
+/** The month card's three-page snap track (issue #1009) — the horizontal
+ *  counterpart to `calendarWeeks`. */
+function monthGridTrack(page: Page) {
+  return page.locator('.month-grid__track');
+}
+
+/**
+ * Swipes the month card by exactly one page — the settle-driven equivalent of
+ * a full native swipe-and-release, mirroring `pageStrip` above. `dir` `1`
+ * advances to the next month, `-1` goes back. Waits for `data-focus-month` to
+ * actually change, which only happens once the silent recentre (month-grid.tsx's
+ * `handleScrollEnd`) has reported the settled page back up.
+ */
+async function pageMonth(page: Page, dir: 1 | -1): Promise<void> {
+  const track = monthGridTrack(page);
+  const before = await monthGrid(page).getAttribute('data-focus-month');
+  const pageWidth = await track.evaluate((el) => el.clientWidth);
+  await track.evaluate(
+    (el, { dir, pageWidth }) => {
+      el.scrollLeft += dir * pageWidth;
+    },
+    { dir, pageWidth },
+  );
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).not.toBe(before);
 }
 
 /**
@@ -905,7 +940,7 @@ test('eine Terminkarte ohne Kategorie traegt die Bereichsfarbe (--area-events) a
 /* AC4: Wochenstreifen blaettert                                             */
 /* -------------------------------------------------------------------------- */
 
-test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline wechselt entsprechend (AC4)', async ({
+test('ein Tipp auf einen Tag im Wochenstreifen waehlt ihn, die Timeline wechselt entsprechend, ohne den Streifen zu verschieben (issue #1009, AK3)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -927,16 +962,23 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
     category: null,
   });
 
+  const anchorBefore = await anchorDay(page);
+
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
 
   await selectStripDay(page, 'So, 19.');
   await expect(eventCard(page, 'Morgen-Termin')).toBeVisible();
   await expect(eventCard(page, 'Heute-Termin')).toHaveCount(0);
+  // Der Tipp waehlt nur aus — die sieben sichtbaren Tage bleiben exakt
+  // dieselben, der Anker (die fuehrende Zelle) ruehrt sich nicht.
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+  await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
 
   await selectStripDay(page, 'Sa, 18.');
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1015,33 +1057,18 @@ test('ein gerolltes Fenster bleibt stehen, kein Zurueckschnappen zur alten Auswa
   await expect(anchorDay(page)).resolves.toBe('2026-07-25');
 });
 
-test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
+test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — es gibt keine Pfeile, die noch darauf arbeiten koennten (issue #1009, AK2)', async ({
   page,
 }) => {
   await pageStrip(page, 1);
   await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
-
-  // Der Pfeil setzt Auswahl UND Anker neu — der Tag nach der (unsichtbaren)
-  // Auswahl ist sofort wieder sichtbar und ausgewaehlt, kein zweiter Schritt noetig.
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Wisch ins Leere (issue #784, AK6)', async ({
-  page,
-}) => {
-  await pageStrip(page, 1);
-  const todayChip = page.getByRole('button', { name: 'Heute' });
-  // Die Auswahl steht immer noch auf heute, nur das Fenster zeigt es nicht
-  // mehr — der Knopf ist deshalb aktiv, nicht entfernt (AK6).
-  await expect(todayChip).toBeVisible();
-  await expect(todayChip).toBeEnabled();
-
-  await todayChip.click();
-
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  // Weder Tages- noch Wochen-Pfeile existieren noch — die Auswahl bleibt
+  // ausserhalb des Fensters stehen, bis ein Wisch oder ein Tipp sie erreicht.
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
 });
 
 test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert und fuer Screenreader verborgen (issue #813)', async ({
@@ -1196,7 +1223,7 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, Spalte fuer Spalte ders
   await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
 });
 
-test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urspruenglichen (issue #813/#958)', async ({
+test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urspruenglichen (issue #813/#958, Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
@@ -1204,42 +1231,41 @@ test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urs
   await expect(augustMonday).toBeVisible();
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  await pageMonth(page, 1);
 
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
 });
 
-test('das Dimmen kippt beim Zurueckblaettern zurueck statt am neuen Fokusmonat haengen zu bleiben (issue #826/#958, AK1)', async ({
+test('das Dimmen kippt beim Zurueckwischen zurueck statt am neuen Fokusmonat haengen zu bleiben (issue #826/#958, AK1; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
   const augustMonday = monthGridDay(page, 'Mo, 3.');
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  await pageMonth(page, 1);
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
 
-  // Zurueck blaettern: der Tag muss seine Dimmung wieder aufnehmen — das
+  // Zurueck wischen: der Tag muss seine Dimmung wieder aufnehmen — das
   // outsideMask-Refactor (issue #826) darf die Maske nicht auf dem Wert vom
   // letzten Grenzuebertritt stehen lassen.
-  await page.getByRole('button', { name: 'Voriger Monat' }).click();
+  await pageMonth(page, -1);
   await expect(page.getByRole('heading', { level: 1, name: 'Juli' })).toBeVisible();
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 });
 
-test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem fokussierten Monat synchron (issue #826/#958, AK2)', async ({
+test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem fokussierten Monat synchron (issue #826/#958, AK2; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  // Fuenf Klicks (Juli -> Dezember 2026) durchlaufen mehrere Monatsgrenzen —
+  // Fuenf Wische (Juli -> Dezember 2026) durchlaufen mehrere Monatsgrenzen —
   // genug Grenzuebertritte, um eine Maske zu entlarven, die nur beim
   // allerersten Uebertritt korrekt mitzieht.
-  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
   for (let i = 0; i < 5; i += 1) {
-    await nextMonth.click();
+    await pageMonth(page, 1);
   }
   await expect(page.getByRole('heading', { level: 1, name: 'Dezember' })).toBeVisible();
 
@@ -1557,27 +1583,8 @@ test('die Streifenhoehe bleibt gleich, wenn ein Punkt fuer den sichtbaren Tag hi
   expect((await track.boundingBox())?.height).toBe(heightBefore);
 });
 
-test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
-  page,
-}) => {
-  // #578 behoben, Kartenanzeige durch AC1/AC3 + Regressionstest unten abgedeckt.
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-
-  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
-  for (let i = 0; i < 20; i += 1) {
-    await nextDay.click();
-  }
-
-  const todayChip = page.getByRole('button', { name: 'Heute' });
-  await expect(todayChip).toBeVisible();
-  await todayChip.click();
-
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
 /* -------------------------------------------------------------------------- */
-/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter, Ruecksprung-Chip (S1)  */
+/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter                        */
 /* -------------------------------------------------------------------------- */
 
 test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monatsgrenze (AK1)', async ({ page }) => {
@@ -1636,58 +1643,6 @@ test('Titel und Umschalter behalten Position und Hoehe, wenn ein anderer Tag gew
   expect(headerHeightAfter).toBe(headerHeightBefore);
 });
 
-test('der Ruecksprung-Chip erscheint ohne ein Nachbar-Element zu verschieben, waehlt heute und verschwindet dann (AK6)', async ({
-  page,
-}) => {
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-
-  const title = page.locator('.calendar-view__period');
-  const titleBoxBefore = await title.boundingBox();
-
-  await dayButton(page, 'So, 19.').click();
-
-  const chip = page.getByRole('button', { name: 'Heute' });
-  await expect(chip).toBeVisible();
-  const titleBoxAfter = await title.boundingBox();
-  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
-  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
-
-  await chip.click();
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('bei reduzierter Bewegung blendet der Ruecksprung-Chip ohne Uebergang ein (AK6, Motion)', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.reload();
-  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
-    polling: 100,
-  });
-
-  await dayButton(page, 'So, 19.').click();
-  const chip = page.getByRole('button', { name: 'Heute' });
-  await expect(chip).toBeVisible();
-  const transitionDuration = await chip.evaluate((el) => getComputedStyle(el).transitionDuration);
-  for (const duration of transitionDuration.split(',')) {
-    expect(parseFloat(duration)).toBeLessThan(0.001);
-  }
-});
-
-test('der Ruecksprung-Chip nutzt semantische Farb-Tokens, mit eigenem Wert im Dark Mode (AK6, Dark Mode)', async ({
-  page,
-}) => {
-  await dayButton(page, 'So, 19.').click();
-  const chip = page.getByRole('button', { name: 'Heute' });
-
-  const expectedLight = await resolveToken(page, '--area-events');
-  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
-
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveToken(page, '--area-events');
-  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
-  expect(expectedDark).not.toBe(expectedLight);
-});
-
 test('bei reduzierter Bewegung blendet die Monats-Karte ohne Uebergang ein (S5 AC5/#958, Motion)', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.reload();
@@ -1730,59 +1685,85 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
 });
 
 /* -------------------------------------------------------------------------- */
-/* #630 (S4): Desktop-Werkzeugleiste ‹ › Heute ab 768 px, Anordnung B         */
+/* issue #1009: Kopf ohne Knoepfe — wischen ist die einzige Geste            */
 /* -------------------------------------------------------------------------- */
 
-test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert nur die Vorschau (issue #784, AK7)', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-
-  const today = page.getByRole('button', { name: 'Heute' });
-  const prevWeek = page.getByRole('button', { name: 'Vorige Woche' });
-  const nextWeek = page.getByRole('button', { name: 'Nächste Woche' });
-  const period = page.locator('.calendar-view__period');
-
-  // Heute ist ausgewaehlt: "Heute" steht als Knopf da, disabled statt entfernt.
-  await expect(today).toHaveCount(1);
-  await expect(today).toBeVisible();
-  await expect(today).toBeDisabled();
-  await expect(prevWeek).toBeVisible();
-  await expect(nextWeek).toBeVisible();
-
-  // `>` blaettert nur die Vorschau eine Woche weiter (Sa 18. -> Sa 25.) — die
-  // Auswahl (heute) bleibt stehen und faellt damit aus dem Fenster (AK7).
-  await nextWeek.click();
-  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(period).toHaveText('Juli 2026');
-  await expect(today).toBeEnabled();
-
-  // In der Monatsansicht blaettert `>` einen Monat, weiterhin nur die Vorschau
-  // — seit issue #958 ist das der Monats-Karte eigener Knopf im Rumpf, nicht
-  // mehr Teil der Streifen-Werkzeugleiste (die Karte zeigt ihn unabhaengig
-  // von der Bildschirmbreite). Die Augenbraue zeigt dort nur noch das Jahr,
-  // der Monatsname steht in der h1 (issue #898 — die kombinierte "Monat
-  // Jahr"-Zeichenkette existiert dort nicht mehr).
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
-  await expect(nextMonth).toBeVisible();
-  await nextMonth.click();
-  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
-});
-
-test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der Ruecksprung-Chip bleibt (AK10)', async ({
+test('bei 375 px bleiben Wochenkopf ohne ‹, › und ohne "Heute"-Knopf auch nach einem Tipp auf einen Tag (issue #1009, AK1/AK2)', async ({
   page,
 }) => {
   await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
-  // Heute ist ausgewaehlt: der Chip selbst ist ebenfalls nicht da (S1, #628 AK6).
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
 
+  // Ein Tipp waehlt nur aus — kein Knopf taucht dadurch wieder auf, es gibt
+  // keinen einzigen mehr, der auftauchen koennte (AK1/AK2 gelten unveraendert).
   await dayButton(page, 'So, 19.').click();
-  await expect(page.getByRole('button', { name: 'Heute' })).toBeVisible();
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+});
+
+test('kein "Heute"-Knopf in der Wochenansicht, weder als Chip (375px) noch als Werkzeugleisten-Knopf (1280px) (issue #1009, AK1)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+});
+
+test('keine ‹ ›-Knoepfe in der Wochenansicht, weder Tages- noch Wochen-Schritte, bei 375px und 1280px (issue #1009, AK2)', async ({
+  page,
+}) => {
+  for (const viewport of [
+    { width: 375, height: 812 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+    // Kopf traegt nur noch Periode, Umschalter, Titel und Figur — keiner der
+    // frueheren Werkzeugleisten-Wrapper existiert noch.
+    await expect(
+      page.locator('.calendar-strip__title-row, .calendar-strip__toolbar, .calendar-strip__title-nav'),
+    ).toHaveCount(0);
+  }
+});
+
+test('ein Tipp auf einen sichtbaren Tag waehlt ihn aus, die sieben sichtbaren Tage bleiben exakt dieselben (issue #1009, AK3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Sonntag-Termin',
+    allDay: false,
+    startsAt: `${TOMORROW}T09:00:00.000Z`,
+    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const visibleWeek = ['Sa, 18.', 'So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.', 'Do, 23.', 'Fr, 24.'];
+  for (const label of visibleWeek) {
+    await expect(dayButton(page, label)).toBeVisible();
+  }
+  const anchorBefore = await anchorDay(page);
+
+  await dayButton(page, 'So, 19.').click();
+
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(eventCard(page, 'Sonntag-Termin')).toBeVisible();
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+  for (const label of visibleWeek) {
+    await expect(dayButton(page, label)).toBeVisible();
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -2546,9 +2527,13 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // Back on the series' own first occurrence, the original time survives —
-  // "Heute" re-selects it directly (nicht Ziehen — #784), the series was
-  // seeded on TODAY.
-  await page.getByRole('button', { name: 'Heute' }).click();
+  // ohne "Heute"-Knopf (#1009) geht der weite Sprung zurueck ueber die
+  // Monats-Karte: einen Monat zurueckwischen (August -> Juli), dann den Tag
+  // antippen. Die Serie wurde auf TODAY gesat.
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await pageMonth(page, -1);
+  await monthGridDay(page, 'Sa, 18.').click();
+  await page.getByRole('radio', { name: 'Woche' }).click();
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -2921,12 +2906,10 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  // Ueber den Tag-Pfeil statt eine Streifen-Zelle: ein Tap auf eine Zelle
-  // rueckt den Anker immer auf den getippten Tag vor (issue #813) — "Sa,
-  // 18." waere als voriger Tag danach nicht mehr im interaktiven Fenster,
-  // unabhaengig vom Puffer. Der Pfeil bleibt immer erreichbar und loest
-  // denselben `selectedDay`-Wechsel aus, den diese AK prueft.
-  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
+  // Ein Tap waehlt nur aus und verschiebt das Fenster nicht mehr (issue
+  // #1009) — "Sa, 18." bleibt deshalb im selben interaktiven Fenster wie
+  // "So, 19." erreichbar, kein Pfeil noetig.
+  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
@@ -3334,6 +3317,64 @@ test('AK7: die Monats-Karte hat auf 375×812 keinen waagerechten Ueberlauf, alle
   expect(overflowDark).toBe(false);
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #1009: Monats-Karte wird gewischt statt geblaettert                 */
+/* -------------------------------------------------------------------------- */
+
+test('die Monats-Karte hat keine ‹ ›-Knoepfe mehr, .month-grid__nav entfaellt ersatzlos (issue #1009, AK5)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(monthGrid(page).locator('.month-grid__nav')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Voriger Monat' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Monat' })).toHaveCount(0);
+});
+
+test('ein Wisch auf der Monats-Karte zeigt den naechsten/vorherigen Monat, Titel, Augenbraue und Dimmung folgen (issue #1009, AK6)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const title = page.locator('.calendar-view__heading');
+  const period = page.locator('.calendar-view__period');
+  await expect(title).toHaveText('Juli');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+
+  await pageMonth(page, 1);
+  await expect(title).toHaveText('August');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
+  await expect(monthGridDay(page, 'Mo, 3.')).not.toHaveAttribute('data-outside-month', '');
+
+  await pageMonth(page, -1);
+  await expect(title).toHaveText('Juli');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+  await expect(monthGridDay(page, 'Mo, 3.')).toHaveAttribute('data-outside-month', '');
+});
+
+test('zwei Wische in dieselbe Richtung gehen zwei Monate weiter, nicht nur einen (issue #1009, AK7)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await pageMonth(page, 1);
+  await pageMonth(page, 1);
+  await expect(page.getByRole('heading', { level: 1, name: 'September' })).toBeVisible();
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-09');
+});
+
+test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nimmt nur waagerechte Gesten an (issue #1009, AK8)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const card = monthGrid(page);
+  const heightBefore = (await card.boundingBox())?.height;
+
+  await pageMonth(page, 1);
+
+  expect((await card.boundingBox())?.height).toBe(heightBefore);
+  await expect(monthGridTrack(page)).toHaveCSS('touch-action', 'pan-x');
+});
+
 test('Tippen auf einen gedaempften Nachbarmonatstag waehlt ihn und verschiebt den fokussierten Monat (#958)', async ({
   page,
 }) => {
@@ -3500,18 +3541,18 @@ test('eine Serie in der fremden ICS-Datei erscheint als expandierte Einzeltermin
 
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 1)));
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 2)));
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
   // COUNT=3: der vierte Tag hat kein Vorkommen mehr — expandiert, nicht endlos.
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 3)));
   await expect(allDayBar(page, 'Aktionstag')).toHaveCount(0);
 
   // Jedes einzelne Vorkommen bleibt schreibgeschützt, nicht nur das erste.
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 2)));
   await allDayBar(page, 'Aktionstag').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
 });
@@ -3802,16 +3843,16 @@ test('im Monat steht ueber dem Tagesauszug die Wochentags-Ueberschrift des gewae
   await expect(dayHeading(page)).toHaveCount(0);
 });
 
-test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgeblaetterten Monat (AK4c, issue #959)', async ({
+test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgewischten Monat (AK4c, issue #959; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
   await monthGridDay(page, 'Mi, 22.').click();
   await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
 
-  // "Naechster Monat" aendert nur `focusMonth`, nicht `selectedDay`
-  // (month-grid.tsx's `pageBy`) — die Ueberschrift darf sich nicht mitbewegen.
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  // Ein Wisch aendert nur `focusMonth`, nicht `selectedDay` — die
+  // Ueberschrift darf sich nicht mitbewegen.
+  await pageMonth(page, 1);
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
 });
