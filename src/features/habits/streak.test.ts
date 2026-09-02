@@ -140,6 +140,44 @@ describe('countHabitsOnStreak (issue #809)', () => {
   });
 });
 
+describe('countHabitsOnStreak — minStreak (issue #1005)', () => {
+  it('Serie 1 zählt nicht bei minStreak 2', () => {
+    const habits = [daily({ id: 'a' })];
+    const logs = [{ ...log('2026-07-15'), habitId: 'a' }]; // nur heute -> Serie 1
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY, 2)).toBe(0);
+  });
+
+  it('Serie 2 zählt bei minStreak 2', () => {
+    const habits = [daily({ id: 'a' })];
+    const logs = [
+      { ...log('2026-07-15'), habitId: 'a' },
+      { ...log('2026-07-14'), habitId: 'a' },
+    ];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY, 2)).toBe(1);
+  });
+
+  it('archivierte Routine mit Serie 2 zählt nicht', () => {
+    const habits = [daily({ id: 'a', archivedAt: '2026-07-10T00:00:00.000Z' })];
+    const logs = [
+      { ...log('2026-07-15'), habitId: 'a' },
+      { ...log('2026-07-14'), habitId: 'a' },
+    ];
+    expect(countHabitsOnStreak(habits, logs, WEDNESDAY, 2)).toBe(0);
+  });
+
+  it('wöchentliche Routine zählt erst ab zwei erfüllten Wochen', () => {
+    const habits = [weekly({ id: 'a' })];
+    const logsOneWeek = [{ ...log('2026-07-07'), habitId: 'a' }]; // nur letzte Woche -> Serie 1
+    expect(countHabitsOnStreak(habits, logsOneWeek, WEDNESDAY, 2)).toBe(0);
+
+    const logsTwoWeeks = [
+      { ...log('2026-07-07'), habitId: 'a' },
+      { ...log('2026-06-30'), habitId: 'a' },
+    ]; // zwei Wochen in Folge -> Serie 2
+    expect(countHabitsOnStreak(habits, logsTwoWeeks, WEDNESDAY, 2)).toBe(1);
+  });
+});
+
 describe('computeStreak — monthly (issue #509)', () => {
   it('done this month and last month → streak 2', () => {
     const logs = [log('2026-07-10'), log('2026-06-05')];
