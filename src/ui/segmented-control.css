@@ -92,23 +92,29 @@
   /* Feste Kalender-Tinte (Blatt-Vorgabe: Routenfarbe als Pillentext) statt
      var(--ground): --ground-kalender selbst hält nur 3,18:1 gegen Weiß, unter
      der 4,5:1-Textschwelle (AK4). --face-ink-kalender ist dieselbe Familie
-     (schon als Figuren-Tinte kalibriert) und hält 10,4:1 gegen die weiße
-     Pille im Hellmodus. */
+     (schon als Figuren-Tinte kalibriert), themenfest dunkel (#093a90), und
+     hält 10,4:1 gegen eine weiße/helle Pille in beiden Modi (siehe unten). */
   --segmented-ground-active-ink: var(--face-ink-kalender);
+  /* AK1: im Hellmodus ungetönte --surface-Pille (Weiß), keine Abdunklung
+     mehr. Gemessen gegen den Kalender-Grund: 3,18:1 (AK3). */
+  --segmented-ground-pill-bg: var(--surface);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']) .segmented--ground {
-    /* --face-ink-kalender ist themenfest dunkel (#093a90) — im Dunkelmodus
-       ist die Pille jetzt selbst dunkel (ungetönte --surface, ~24% L), zwei
-       dunkle Töne übereinander tragen keine 4,5:1 mehr. Aufgehellter
-       Routenton bleibt erkennbar blau UND lesbar (siehe Kontrastwerte
-       unten). */
-    --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
+    /* Ungetönte --surface ist im Dunkelmodus selbst dunkel (~24% L) — gegen
+       Kalenders Dunkelmodus-Grund (~48% L, heller als andere Routen-Gründe,
+       da aus dem hellsten --ground-* gemischt) hält das nur 2,57:1, unter
+       AK3s 3:1. --on-ground-light bleibt "hell in beiden Themes" (eigener
+       Token-Kommentar in tokens.css) — die Pille bleibt die helle Fläche aus
+       dem Hellmodus statt der generischen dunklen Kartenfläche zu folgen.
+       Gemessen: 6,22:1 gegen den Grund (AK3), 10,1:1 für --face-ink-kalender
+       als Pillentext darauf (AK4). */
+    --segmented-ground-pill-bg: var(--on-ground-light);
   }
 }
 :root[data-theme='dunkel'] .segmented--ground {
-  --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
+  --segmented-ground-pill-bg: var(--on-ground-light);
 }
 
 .segmented--ground .segmented__indicator {
@@ -116,8 +122,7 @@
   bottom: 3px;
   left: 3px;
   width: calc((100% - 6px) / var(--segmented-count, 1));
-  /* AK1: ungetönte --surface-Pille, keine eigene Abdunklung mehr. */
-  background: var(--surface);
+  background: var(--segmented-ground-pill-bg);
 }
 
 .segmented--ground .segmented__option {
