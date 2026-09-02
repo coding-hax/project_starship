@@ -18,6 +18,7 @@
 .weather-icon__rays,
 .weather-icon__disc,
 .weather-icon__sun,
+.weather-icon__moon,
 .weather-icon__flake {
   transform-box: view-box;
 }
@@ -76,6 +77,23 @@
   }
   to {
     translate: 1.3px -0.2px;
+  }
+}
+
+/* Nacht-Variante „teils bewölkt" (issue #999 AK7/AK14): dieselbe Wolke driftet
+   über die Regel oben (weather-icon--partly-cloudy .weather-icon__cloud), der
+   Mond atmet sinngemäß wie die Sonne. */
+.weather-icon__moon {
+  transform-origin: 12.5px 8px;
+  animation: weather-icon-moon-breathe 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes weather-icon-moon-breathe {
+  from {
+    scale: 0.92;
+  }
+  to {
+    scale: 1.12;
   }
 }
 

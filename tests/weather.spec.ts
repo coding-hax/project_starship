@@ -903,6 +903,25 @@ async function animationState(locator: Locator) {
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/* AK12: der 7-Tage-Streifen bleibt unverändert — er kennt keine Nacht, also   */
+/* auch keinen Mond (issue #999)                                              */
+/* -------------------------------------------------------------------------- */
+
+test('der 7-Tage-Streifen zeigt weiterhin die Sonnenscheibe bei "Klar", nie den Mond (issue #999 AK12)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await expect(weatherDays(page)).toHaveCount(7);
+
+  // DAY_SET_A.categories[0] = "Klar" — im Tagesdetail würde die Nachtstunde
+  // einen Mond zeigen (issue #999 AK7); der Streifen kennt keine Nacht.
+  await expect(weatherDays(page).nth(0).locator('.weather-icon__disc')).toHaveCount(1);
+  await expect(page.locator('.weather-icon__moon')).toHaveCount(0);
+});
+
 test('jede Kategorie rendert ihre erwarteten Einzelelemente (issue #661 AK1)', async ({ page }) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);

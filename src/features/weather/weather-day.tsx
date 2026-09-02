@@ -18,11 +18,16 @@ import {
   temperatureAtHour,
   temperatureAxis,
   windDirectionLabel,
+  type WeatherHour,
 } from './forecast';
 import { useWeatherCache } from './use-weather-cache';
 import { useWeatherDay } from './use-weather-day';
-import { WEATHER_ICON_BY_CATEGORY, WEATHER_LABEL_BY_CATEGORY } from './weather-category-labels';
-import { weatherCategory } from './wmo-icon';
+import {
+  WEATHER_ICON_BY_CATEGORY,
+  WEATHER_LABEL_BY_CATEGORY,
+  WEATHER_NIGHT_ICON_BY_CATEGORY,
+} from './weather-category-labels';
+import { weatherCategory, type WeatherCategory } from './wmo-icon';
 
 /** Mirrors task-item.tsx's own swipe threshold (issue #267 AC4: "Schwelle analog
  * task-item.tsx") — below this, or when the vertical delta dominates, releasing
@@ -106,6 +111,48 @@ function ChartFrame({
 
 function hourTickLabel(hour: number): string {
   return `${String(hour).padStart(2, '0')}:00`;
+}
+
+interface WeatherBandSegment {
+  startHour: number;
+  /** Exclusive — a segment covering hours 2,3,4,5 reads `startHour: 2, endHour: 6`. */
+  endHour: number;
+  category: WeatherCategory;
+  night: boolean;
+}
+
+/** Before `sunrise` or at/after `sunset`, same-day local ISO strings so a plain
+ * lexicographic compare works (issue #999 AK6) — same trick as `nightTemperature`'s
+ * window compare in forecast.ts. */
+function isNightHour(hourTime: string, sunrise: string, sunset: string): boolean {
+  return hourTime < sunrise || hourTime >= sunset;
+}
+
+/**
+ * Groups `day.hours` into runs of the same weather category *and* day/night state
+ * (issue #999 AK3/AK6) — a run crosses sunrise/sunset splits in two even when the
+ * category doesn't change, so every segment can be tinted consistently. Hours
+ * without a `weatherCode` (pre-#927 cache rows) are skipped; the caller only
+ * renders the band once at least one hour has a code (AK11).
+ */
+function buildWeatherBandSegments(
+  hours: WeatherHour[],
+  sunrise: string,
+  sunset: string,
+): WeatherBandSegment[] {
+  const segments: WeatherBandSegment[] = [];
+  hours.forEach((hour, index) => {
+    if (typeof hour.weatherCode !== 'number') return;
+    const category = weatherCategory(hour.weatherCode);
+    const night = isNightHour(hour.time, sunrise, sunset);
+    const previous = segments[segments.length - 1];
+    if (previous && previous.category === category && previous.night === night) {
+      previous.endHour = index + 1;
+    } else {
+      segments.push({ startHour: index, endHour: index + 1, category, night });
+    }
+  });
+  return segments;
 }
 
 /** Same reasoning as the hour ticks' own edge anchoring — a peak label centred
@@ -255,20 +302,23 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
           )}
         </ChartFrame>
         {day.hours.some((hour) => typeof hour.weatherCode === 'number') && (
-          <ol className="weather-day__hourly" aria-label="Wetterlage je Stunde">
-            {day.hours.map((hour) => {
-              if (typeof hour.weatherCode !== 'number') return null;
-              const hourCategory = weatherCategory(hour.weatherCode);
-              const HourIcon = WEATHER_ICON_BY_CATEGORY[hourCategory];
+          <ol className="weather-day__band" aria-label="Wetterlage je Stunde">
+            {buildWeatherBandSegments(day.hours, day.sunrise, day.sunset).map((segment) => {
+              const nightIcon = segment.night ? WEATHER_NIGHT_ICON_BY_CATEGORY[segment.category] : undefined;
+              const Icon = nightIcon ?? WEATHER_ICON_BY_CATEGORY[segment.category];
+              const durationHours = segment.endHour - segment.startHour;
               return (
-                <li key={hour.time} className="weather-day__hourly-cell">
-                  <span className="weather-day__hourly-time">{hourLabel(hour.time)}</span>
-                  <span
-                    className="weather-day__hourly-icon"
-                    role="img"
-                    aria-label={WEATHER_LABEL_BY_CATEGORY[hourCategory]}
-                  >
-                    <HourIcon />
+                <li
+                  key={segment.startHour}
+                  className={
+                    'weather-day__band-segment' +
+                    (segment.night ? ' weather-day__band-segment--night' : '')
+                  }
+                  style={{ width: `${(durationHours / HOURS_PER_DAY) * 100}%` }}
+                  aria-label={`${WEATHER_LABEL_BY_CATEGORY[segment.category]}, ${segment.startHour} bis ${segment.endHour} Uhr`}
+                >
+                  <span className="weather-day__band-icon" data-variant={nightIcon ? 'night' : undefined}>
+                    <Icon />
                   </span>
                 </li>
               );
