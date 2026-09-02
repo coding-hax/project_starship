@@ -321,7 +321,9 @@ test('AK3: bereichsgefüllte Flächen tragen weiter --on-accent, unverändert se
   expect(await elementColor(submit)).toBe(onAccent);
 });
 
-test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', async ({ page }) => {
+test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥5,1:1 (#991 AK5)', async ({
+  page,
+}) => {
   await registerPasskey(page);
   await page.emulateMedia({ colorScheme: 'dark' });
 
@@ -346,7 +348,9 @@ test('AK4: im Dunkelmodus ist der Grund abgedunkelt, Weiß bleibt ≥4,5:1', asy
     expect(
       contrastRatio(await toRgb(page, headingColor), await toRgb(page, darkGround)),
       `Dark-Mode-Kontrast auf ${route.path}`,
-    ).toBeGreaterThanOrEqual(4.5);
+      // issue #991 AK5 verschärft den Boden von 4,5:1 auf 5,1:1, weil die
+      // gedämpften Foto-Rezept-Gründe im Dunkelmodus insgesamt heller laufen.
+    ).toBeGreaterThanOrEqual(5.1);
   }
 });
 

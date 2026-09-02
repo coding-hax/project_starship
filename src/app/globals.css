@@ -99,10 +99,26 @@
  * route's UNCHANGED area colour via OKLCH (L+0.205/−0.06/+0.175, C×0.285/
  * 1.05/0.738, H−14°/+0°/+33°, chroma bisected at gamut violations, never the
  * lightness) — CSS itself can't express that recipe, so the results are
- * pre-computed and pinned here. Exceptions where the recipe's own lightness
- * undercut the `--on-ground`-vs-arc contrast test: `--arc-2` on
- * aufgaben/kalender/wetter/einstellungen (light mode) and most dark-mode
- * triples — see the dark-mode block below for how those were re-solved.
+ * pre-computed and pinned here.
+ *
+ * Exception, `--arc-2` on aufgaben/kalender/wetter/einstellungen (light
+ * mode): the literal recipe (L−0.06, C×1.05, same H) computed against
+ * `--on-accent` (AK4's ink on these four routes) lands at 1.83:1–3.69:1 —
+ * below AK8's replacement floor (`--on-ground` ≥4.5:1 over every arc
+ * surface, `tests/hintergrundboegen.spec.ts`). No single uniform rescale of
+ * the −0.06 delta fixes this for all four at once: einstellungen's own
+ * *unmodified* area colour (`#46525e`, already dark, low chroma) only
+ * reaches 2.35:1 against `--on-accent` even at ΔL=0, so the arc has to move
+ * substantially lighter than the recipe's own output regardless of factor.
+ * This is the same invariant AK4 already establishes for `--ground-*` itself
+ * (measured contrast overrides literal recipe amplitude, deviation
+ * documented instead of guessed) — applied here per-route because the
+ * conflict is per-route, not global. Resolution: keep the recipe's hue and
+ * chroma, bisect lightness until the AK8 floor clears with margin (≥4.5:1,
+ * verified ≈4.6:1 here) — same lever AK3 already reserves for lightness
+ * (gamut violations bend chroma, never lightness; contrast violations bend
+ * lightness, since chroma barely moves WCAG luminance). Most dark-mode
+ * triples need the same treatment — see the dark-mode block below.
  */
 /*
  * `--on-ground-muted` (issue #868, AK3; re-measured for issue #991's damped
@@ -261,22 +277,36 @@ html:has([data-ground='anmelden']) {
  * threshold for the lower 50% share now reads the DAMPED light ground (it
  * runs lighter overall than the pre-#991 saturated grounds), which pulls
  * Übersicht/Routinen/Anmelden into the 50% bucket alongside Aktivitäten.
- * Once darkened, every ground clears 4.5:1 with the *light* ink regardless
- * of which ink it used in light mode — verified per route, not assumed — so
- * the ink flips uniformly here instead of repeating each route's light-mode
- * choice. Arc tones (AK5), originally: positive lightness deltas ×0.7,
- * negative ×0.85 of the OKLCH recipe's own deltas, chroma capped at the
- * route's raw (pre-damp) chroma — pre-computed the same way as the light
- * triples above. That anchored dark-mode lightness to the *light-mode* base
- * colour instead of the actually-darkened ground, so most triples stayed too
- * light for the uniformly-light dark ink above (CI: `hintergrundboegen.spec.ts`
- * "Ersatz für #904 AK4 dunkel", contrast as low as 1.13:1). Re-solved per
- * failing arc (14 of 24): same hue and chroma, lightness reduced via
- * bisection in OKLab until contrast against --on-ground-light lands ≥4.6:1
- * (margin over the 4.5:1 floor, same pattern as the light-mode --arc-2 fixes
- * below). Four light-mode `--arc-2` triples (aufgaben/kalender/wetter/
- * einstellungen) needed the same treatment in the other direction — lightened
- * until they cleared 4.5:1 against the dark --on-accent ink.
+ * AK5's own literal contrast floor — "`--on-ground-light` auf allen neun
+ * Routen ≥5,1:1" — is about THIS ground-vs-ink pairing (`darkGround` vs
+ * `--on-ground-light`), pinned in `tests/grundfarbe.spec.ts` ("AK4: im
+ * Dunkelmodus…", tightened from the pre-#991 4.5:1 floor). Verified per
+ * route at F=0.34 (see tokens.css), tightest case Aktivitäten ≈5,10:1 —
+ * lowering F further than 0.34 would help here but starts eating into the
+ * light-mode AK4 floor for the `--on-accent` routes, so F stays uniform
+ * (AK4's own rule: adjust the ONE shared factor, never per route).
+ *
+ * Arc tones (AK5's OTHER rule, a separate pairing): positive lightness
+ * deltas ×0.7, negative ×0.85 of the OKLCH recipe's own deltas, chroma
+ * capped at the route's raw (pre-damp) chroma — pre-computed the same way
+ * as the light triples above, and checked against the AK8 replacement test
+ * (`--on-ground` ≥4.5:1 over every arc surface, dark variant, "Ersatz für
+ * #904 AK4 dunkel" in `tests/hintergrundboegen.spec.ts` — a DIFFERENT,
+ * weaker floor than AK5's 5.1:1 ground floor above). Applied literally
+ * (deltas anchored to the light-mode area colour), most triples landed as
+ * low as 1.13:1: the recipe's positive deltas push arcs 1/3 toward white,
+ * which collides head-on with the uniformly-light `--on-ground-light` ink
+ * this whole block sets. As with the light-mode `--arc-2` exception above,
+ * no uniform rescale rescues this — chroma barely moves WCAG luminance, so
+ * lightness is the only lever, and how far each arc needs to move depends
+ * on that route's own hue/chroma, not a shared constant. Re-solved per
+ * failing arc (14 of 24 triples): same hue and chroma as the literal
+ * recipe, lightness bisected in OKLab until contrast against
+ * `--on-ground-light` clears the AK8 floor with margin (≥4.5:1, verified
+ * ≈4.6:1 here — not AK5's stricter 5.1:1, which governs the ground pairing
+ * above, not arcs). Four light-mode `--arc-2` triples (aufgaben/kalender/
+ * wetter/einstellungen) needed the same treatment in the other direction —
+ * lightened until they cleared 4.5:1 against the dark --on-accent ink.
  */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']):has([data-ground]) {

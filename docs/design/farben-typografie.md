@@ -117,8 +117,9 @@ nie geraten. Jede Fläche mit eigenem `--surface`/`--surface-raised` setzt beide
 auf die fixen Anker `--text-base`/`--text-muted-base` zurück, damit dieselbe Klasse
 auf Grund und auf Karte richtig liegt. Dark Mode dunkelt jeden Grund über
 `color-mix(in oklab, …, --ground-base-dark)` ab (62 %, bei Helligkeit > 0,75 des
-bereits gedämpften Grunds 50 % für den 4,5:1-Grenzwert) statt die satte Farbe
-grell auf Schwarz zu zeigen.
+bereits gedämpften Grunds 50 % für den 5,1:1-Grenzwert, issue #991 AK5 — strenger
+als der sonst übliche 4,5:1-Boden, weil die gedämpften Foto-Rezept-Gründe insgesamt
+heller laufen) statt die satte Farbe grell auf Schwarz zu zeigen.
 
 Der Grund selbst ist gedämpft, nicht satt: `--ground-*` ist die *unveränderte*
 Bereichsfarbe der Route, angehoben Richtung Papier (`L' = L + (0,965 − L) × 0,34`,
@@ -133,6 +134,18 @@ ausdrücken). Der Dämpfungsfaktor (0,34, nicht die ursprünglich vorgeschlagene
 0,35) ist uniform für alle neun Routen bestimmt, nie je Route einzeln — er sitzt
 so hoch, wie es der knappste Fall in beiden Themes erlaubt (Journal hell 4,7:1,
 Aktivitäten dunkel 5,1:1).
+
+Die Bogen-Formel selbst hält nicht auf jeder Route: `--arc-2` (Hellmodus) weicht
+auf vier Routen (Aufgaben/Kalender/Wetter/Einstellungen) von der Formel ab, die
+meisten Dunkelmodus-Tripel ebenso — dort würde die wörtliche Rechnung den
+Bogen-gegen-Tinte-Kontrast (≥4,5:1, `tests/hintergrundboegen.spec.ts`) auf bis zu
+1,13:1 reißen. Ein einzelner, für alle Routen gültiger Korrekturfaktor löst das
+nicht (Einstellungens eigene, unveränderte Bereichsfarbe hält selbst bei
+Delta null nur 2,35:1 gegen `--on-accent`) — deshalb bleiben Farbton und Chroma
+aus der Formel, nur die Helligkeit wird je betroffenem Bogen per Bisektion in
+OKLab nachgezogen, bis der Kontrast mit Marge hält. Dieselbe Regel wie beim
+Dämpfungsfaktor: gemessener Kontrast schlägt literale Rezept-Amplitude, jede
+Abweichung ist im CSS-Kommentar bei `--arc-1/2/3` dokumentiert statt geraten.
 
 `--text-muted` liest auf dem Grund nicht mehr `--on-ground` selbst, sondern die
 gedämpfte Stufe `--on-ground-muted` (issue #868, neu vermessen für issue #991): je
