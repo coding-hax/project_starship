@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, type CSSProperties } from 'react';
-import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react';
 import {
   addDays,
   addMonthsClamped,
@@ -20,6 +19,12 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
  *  default), the card's cells are narrower (issue #958, AK3). */
 const MAX_DOTS_IN_GRID = 3;
 
+/** No further `scroll` events for this long counts as "settled" — the same
+ *  hand-rolled `scrollend` fallback `calendar-strip.tsx` carries (issue #822:
+ *  the native event is known to go missing on some engines once
+ *  `scroll-snap-type` is in the mix). */
+const SCROLL_IDLE_MS = 150;
+
 export interface MonthGridProps {
   /** `YYYY-MM` — the month this card renders, driven by calendar-view.tsx's own
    *  state, not derived from `selectedDay`. */
@@ -33,9 +38,8 @@ export interface MonthGridProps {
 }
 
 /** `monthDaysFor` returns 35 or 42 keys depending on the month's weekday
- *  alignment — padded here to always 42 (six full Mon–Sun weeks) so the card
- *  never changes height across a month change (same "kein Layout-Shift"
- *  reasoning the old carousel's fixed six-row height carried). */
+ *  alignment — padded here to always 42 (six full Mon–Sun weeks) so no page
+ *  ever changes the card's height (AK8). */
 function gridDaysFor(focusMonth: string): string[] {
   const days = monthDaysFor(`${focusMonth}-01`);
   if (days.length === 42) return days;
@@ -43,27 +47,42 @@ function gridDaysFor(focusMonth: string): string[] {
   return [...days, ...extraWeek];
 }
 
-/**
- * Static month card in `/kalender`'s body (issue #958, T1 of #957) — the
- * month view's only calendar surface; `calendar-strip.tsx` stays a pure week
- * strip (its Woche-Zweig is untouched). No scrolling, no buffer, no
- * `windowAnchor`: `focusMonth` is the only state driving what's shown, paged
- * in whole months by the two nav buttons, or by tapping a day (which also
- * moves the focused month onto that day's month — including a dimmed
- * neighbour-month day).
- */
-export function MonthGrid({
-  focusMonth,
+function monthBefore(focusMonth: string): string {
+  return addMonthsClamped(`${focusMonth}-15`, -1).slice(0, 7);
+}
+
+function monthAfter(focusMonth: string): string {
+  return addMonthsClamped(`${focusMonth}-15`, 1).slice(0, 7);
+}
+
+interface MonthPageProps {
+  pageMonth: string;
+  interactive: boolean;
+  selectedDay: string;
+  today: string;
+  events: EventView[];
+  exceptions: EventExceptionView[];
+  onSelect: (day: string) => void;
+}
+
+/** One of the track's three rendered months. Non-central pages are `inert` +
+ *  `aria-hidden` (same recipe as `calendar-strip.tsx`'s buffered cells) —
+ *  without it, a day shared between a month page and its neighbour-month
+ *  dimmed rendering (e.g. "Mo, 3." on both the July and the August page)
+ *  would produce two matching `aria-label`s and a strict-mode double hit for
+ *  any locator keyed off it. */
+function MonthPage({
+  pageMonth,
+  interactive,
   selectedDay,
   today,
   events,
   exceptions,
-  onSelectDay,
-  onFocusMonth,
-}: MonthGridProps) {
-  const days = useMemo(() => gridDaysFor(focusMonth), [focusMonth]);
+  onSelect,
+}: MonthPageProps) {
+  const days = useMemo(() => gridDaysFor(pageMonth), [pageMonth]);
 
-  /** One `expandForDay` pass per day across the card — the same call the
+  /** One `expandForDay` pass per day across this page — the same call the
    *  timeline makes for the selected day, so the dots agree with it by
    *  construction (issue #612). */
   const dotsByDay = useMemo(
@@ -77,48 +96,13 @@ export function MonthGrid({
     [days, events, exceptions],
   );
 
-  const handleSelect = useCallback(
-    (day: string) => {
-      onSelectDay(day);
-      onFocusMonth(day.slice(0, 7));
-    },
-    [onSelectDay, onFocusMonth],
-  );
-
-  function pageBy(delta: 1 | -1) {
-    onFocusMonth(addMonthsClamped(`${focusMonth}-15`, delta).slice(0, 7));
-  }
-
   return (
-    <div className="month-grid">
-      <div className="month-grid__nav">
-        <button
-          type="button"
-          className="month-grid__nav-button"
-          aria-label="Voriger Monat"
-          onClick={() => pageBy(-1)}
-        >
-          <IconChevronLeft />
-        </button>
-        <button
-          type="button"
-          className="month-grid__nav-button"
-          aria-label="Nächster Monat"
-          onClick={() => pageBy(1)}
-        >
-          <IconChevronRight />
-        </button>
-      </div>
-      <ul className="month-grid__weekday-header" aria-hidden="true">
-        {WEEKDAY_LABELS.map((label) => (
-          <li key={label}>{label}</li>
-        ))}
-      </ul>
+    <div className="month-grid__page" inert={!interactive} aria-hidden={interactive ? undefined : true}>
       <ul className="month-grid__days">
         {days.map((day, index) => {
           const dayNumber = Number(day.slice(-2));
           const isSelected = day === selectedDay;
-          const isOutsideMonth = day.slice(0, 7) !== focusMonth;
+          const isOutsideMonth = day.slice(0, 7) !== pageMonth;
           return (
             <li key={day}>
               <button
@@ -130,7 +114,7 @@ export function MonthGrid({
                 data-outside-month={isOutsideMonth ? '' : undefined}
                 aria-pressed={isSelected}
                 aria-label={`${WEEKDAY_LABELS[index % 7]}, ${dayNumber}.`}
-                onClick={() => handleSelect(day)}
+                onClick={() => onSelect(day)}
               >
                 <span aria-hidden="true">{dayNumber}</span>
                 <span className="month-grid__dots" aria-hidden="true">
@@ -147,6 +131,134 @@ export function MonthGrid({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Month card in `/kalender`'s body (issue #958, T1 of #957; wiped free of its
+ * nav buttons and made swipeable in issue #1009) — the month view's only
+ * calendar surface; `calendar-strip.tsx` stays a pure week strip. Three whole
+ * months (prev/current/next) sit in a horizontal `scroll-snap-type: x
+ * mandatory` track; a swipe snaps to a neighbour page, which is reported up
+ * via `onFocusMonth` once it settles, and the track silently recentres on the
+ * new middle page before paint — the same buffered-window-plus-silent-recentre
+ * shape `calendar-strip.tsx` uses for days, just three whole-page units
+ * instead of a rolling day buffer. Tapping a day (only ever possible on the
+ * interactive middle page) also moves the focused month onto that day's
+ * month.
+ */
+export function MonthGrid({
+  focusMonth,
+  selectedDay,
+  today,
+  events,
+  exceptions,
+  onSelectDay,
+  onFocusMonth,
+}: MonthGridProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const prevMonth = useMemo(() => monthBefore(focusMonth), [focusMonth]);
+  const nextMonth = useMemo(() => monthAfter(focusMonth), [focusMonth]);
+
+  const handleSelect = useCallback(
+    (day: string) => {
+      onSelectDay(day);
+      onFocusMonth(day.slice(0, 7));
+    },
+    [onSelectDay, onFocusMonth],
+  );
+
+  /** Recentres the track on the middle (current-month) page — runs after
+   *  every `focusMonth` change (a tap or a settled swipe), always before
+   *  paint so the jump back to the middle is never visible (mirrors
+   *  `calendar-strip.tsx`'s silent re-anchor). */
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollLeft = track.clientWidth;
+  }, [focusMonth]);
+
+  /** Same settle-then-report pattern as `calendar-strip.tsx`: `scrollend` is
+   *  the fast path, the `SCROLL_IDLE_MS` idle timer the fallback for engines
+   *  where it goes missing once `scroll-snap-type` is involved (issue #822).
+   *  Once scrolling has settled on a non-middle page, reports the neighbour
+   *  month up — the resulting re-render shifts prev/current/next by one and
+   *  the layout effect above recentres again, so a second swipe right after
+   *  lands a further month over (AK7). */
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    function handleScrollEnd() {
+      if (idleTimerRef.current !== null) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+      const current = trackRef.current;
+      if (!current) return;
+      const pageWidth = current.clientWidth;
+      if (pageWidth <= 0) return;
+      const page = Math.round(current.scrollLeft / pageWidth);
+      if (page <= 0) onFocusMonth(prevMonth);
+      else if (page >= 2) onFocusMonth(nextMonth);
+    }
+
+    function handleScroll() {
+      if (idleTimerRef.current !== null) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(handleScrollEnd, SCROLL_IDLE_MS);
+    }
+
+    track.addEventListener('scroll', handleScroll, { passive: true });
+    track.addEventListener('scrollend', handleScrollEnd, { passive: true });
+    return () => {
+      track.removeEventListener('scroll', handleScroll);
+      track.removeEventListener('scrollend', handleScrollEnd);
+      if (idleTimerRef.current !== null) {
+        clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = null;
+      }
+    };
+  }, [prevMonth, nextMonth, onFocusMonth]);
+
+  return (
+    <div className="month-grid" data-focus-month={focusMonth}>
+      <ul className="month-grid__weekday-header" aria-hidden="true">
+        {WEEKDAY_LABELS.map((label) => (
+          <li key={label}>{label}</li>
+        ))}
+      </ul>
+      <div className="month-grid__track" ref={trackRef}>
+        <MonthPage
+          pageMonth={prevMonth}
+          interactive={false}
+          selectedDay={selectedDay}
+          today={today}
+          events={events}
+          exceptions={exceptions}
+          onSelect={handleSelect}
+        />
+        <MonthPage
+          pageMonth={focusMonth}
+          interactive
+          selectedDay={selectedDay}
+          today={today}
+          events={events}
+          exceptions={exceptions}
+          onSelect={handleSelect}
+        />
+        <MonthPage
+          pageMonth={nextMonth}
+          interactive={false}
+          selectedDay={selectedDay}
+          today={today}
+          events={events}
+          exceptions={exceptions}
+          onSelect={handleSelect}
+        />
+      </div>
     </div>
   );
 }

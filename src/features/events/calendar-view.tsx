@@ -171,9 +171,9 @@ export function CalendarView() {
   }, [expanded, focusMonth, timelineEvents, eventExceptions]);
 
   /** Setzt die Auswahl **und** zieht den fokussierten Monat der Karte mit —
-   *  Tap/„Heute"/Tagesschritt im Streifen (issue #958) treffen so dieselbe
-   *  Regel wie die Karte selbst, gleiches Prinzip wie zuvor der geteilte
-   *  `windowAnchor` des Streifens Woche und Monat zusammenhielt. */
+   *  ein Tap im Streifen (issue #958) trifft so dieselbe Regel wie die Karte
+   *  selbst, gleiches Prinzip wie zuvor der geteilte `windowAnchor` des
+   *  Streifens Woche und Monat zusammenhielt. */
   function handleSelectDay(day: string) {
     setSelectedDayOverride(day);
     setFocusMonthOverride(day.slice(0, 7));
@@ -226,10 +226,10 @@ export function CalendarView() {
   return (
     <div className="calendar-view">
       {/* <header> is the auto-focus target after navigation (CODEMAP invariant,
-          same reasoning as weather-day.tsx) — the Woche/Monat-Umschalter and
-          (Woche) CalendarStrip's paging controls live in it, not just a bare
-          heading; MonthGrid's own nav sits in the body on purpose (issue
-          #958), so it never becomes the auto-focus target. */}
+          same reasoning as weather-day.tsx) — the Woche/Monat-Umschalter lives
+          in it, not just a bare heading; both CalendarStrip and MonthGrid are
+          swiped, not paged by button, so neither ever becomes the auto-focus
+          target itself. */}
       <header className="calendar-view__header">
         <div className="calendar-view__eyebrow">
           <p className="calendar-view__period page-head__eyebrow">{period}</p>
