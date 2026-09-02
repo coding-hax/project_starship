@@ -3459,6 +3459,12 @@ test('AK6: Aufgaben ohne Fälligkeit stehen unter „7 Tage" nicht in der Liste,
   expect(cardBox).not.toBeNull();
   expect(cardBox!.height).toBeGreaterThanOrEqual(44);
   expect(cardBox!.height).toBeLessThanOrEqual(52);
+  // AK2: keine eigene Fläche/Schatten — die Bounding-Box-Höhe oben bleibt von
+  // box-shadow unberührt, ein wiederkehrender Kartenhintergrund fiele dort nicht auf.
+  expect(await cardArea.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+    'rgba(0, 0, 0, 0)',
+  );
+  expect(await cardArea.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
   // `inert` (section-card.tsx) isn't respected by Playwright's role/text engine
   // (checked empirically: getByRole still finds inert rows) — the collapsed
   // *container* is the only element whose own box is genuinely zero-size (CSS
@@ -3482,6 +3488,14 @@ test('AK9: liegt im Rest der Woche nichts mehr, steht darunter „Danach nichts 
 
   await expect(taskItems(page)).toHaveCount(1);
   await expect(page.getByText('Danach nichts mehr geplant.')).toBeVisible();
+  // AK7 (issue #996): Liste und Spärlich-Notiz teilen sich eine Fläche statt
+  // je einer eigenen Karte — genau eine `.task-list__surface`, beide darin verschachtelt.
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  await expect(surface.locator('.task-list__sparse-note')).toHaveText(
+    'Danach nichts mehr geplant.',
+  );
+  await expect(surface.getByRole('list', { name: 'Aufgaben' })).toBeVisible();
 
   // Sobald etwas nach heute ansteht, verschwindet der Hinweis wieder.
   await seedTask(page, { title: 'Morgen auch', dueAt: isoAt(1) });

@@ -205,6 +205,12 @@ test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst
   await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
   const card = undatedCard(page);
   await expect(card).toHaveText('1 Aufgabe ohne Datum');
+  // AK7 (issue #996): Leer-Notiz und Ausklappzeile teilen sich eine Fläche statt
+  // je einer eigenen Karte — genau eine `.task-list__surface`, beide darin verschachtelt.
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  await expect(surface.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  await expect(surface.getByRole('button', { name: '1 Aufgabe ohne Datum' })).toBeVisible();
   await card.click();
   // exact: true — the card's own title text ("1 Aufgabe ohne Datum") is a substring match otherwise.
   await expect(page.getByText('Ohne Datum', { exact: true })).toBeVisible();
