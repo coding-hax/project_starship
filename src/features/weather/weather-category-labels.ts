@@ -1,7 +1,9 @@
 import {
+  IconMoon,
   IconWeatherClear,
   IconWeatherCloudy,
   IconWeatherFog,
+  IconWeatherMoonCloudy,
   IconWeatherPartlyCloudy,
   IconWeatherRain,
   IconWeatherSnow,
@@ -22,6 +24,19 @@ export const WEATHER_ICON_BY_CATEGORY = {
   rain: IconWeatherRain,
   snow: IconWeatherSnow,
   thunderstorm: IconWeatherThunderstorm,
+};
+
+/**
+ * Night-only icon swap for the day-detail band (issue #999 AK7) — only `clear`
+ * and `partly-cloudy` carry a sun in their glyph to begin with, so only those two
+ * have a night variant; rain/snow/thunderstorm/fog/cloudy fall through to
+ * `WEATHER_ICON_BY_CATEGORY` unchanged. Only `weather-day.tsx`'s band reads this
+ * map — the 7-day strip (`weather-forecast.tsx`) has no notion of night and keeps
+ * importing `WEATHER_ICON_BY_CATEGORY` alone (AK12).
+ */
+export const WEATHER_NIGHT_ICON_BY_CATEGORY: Partial<Record<WeatherCategory, typeof IconMoon>> = {
+  clear: IconMoon,
+  'partly-cloudy': IconWeatherMoonCloudy,
 };
 
 export const WEATHER_LABEL_BY_CATEGORY: Record<WeatherCategory, string> = {
