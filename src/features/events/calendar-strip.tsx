@@ -10,7 +10,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { categoriesForDay, categoryEdgeVar, dayWindow, parseDateKey } from './event-time';
+import { allDayBandsForWindow, categoriesForDay, categoryEdgeVar, dayWindow, parseDateKey } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
@@ -202,6 +202,22 @@ export function CalendarStrip({
     [windowDays, events, exceptions],
   );
 
+  /** The currently visible 7-day band (issue #1013, AK8–12) — feeds the
+   *  all-day band row below. Derived from `leadIndex`, so it rolls with the
+   *  strip a column at a time, same cadence `interactive`/`dotsByDay` follow
+   *  already (AK10). */
+  const visibleDays = useMemo(
+    () => windowDays.slice(leadIndex, leadIndex + VISIBLE_DAYS),
+    [windowDays, leadIndex],
+  );
+
+  /** Same `expandForDay` composition as `dotsByDay` above (issue #612's
+   *  rule) — a band and that day's dots/agenda agree by construction. */
+  const allDayBands = useMemo(
+    () => allDayBandsForWindow(visibleDays, (day) => expandForDay(events, exceptions, day)),
+    [visibleDays, events, exceptions],
+  );
+
   /** Places `windowAnchor` as the leading cell, instantly — runs after every
    *  silent re-anchor near the buffer's edge, always before paint so it's
    *  never visible (issue #813, the seamless recentre-with-compensation
@@ -335,6 +351,30 @@ export function CalendarStrip({
           />
         ))}
       </ul>
+      {/* Only rendered with at least one band (AK12) — an empty row would
+          hold height the card doesn't need in the sparse default state.
+          `aria-hidden`, same as the day cells' own `__dots` row: decorative,
+          the agenda below already names every event on the day in full. */}
+      {allDayBands.length > 0 && (
+        <ul className="calendar-strip__bands" aria-hidden="true">
+          {allDayBands.map((band) => (
+            <li
+              key={band.id}
+              className="calendar-strip__band"
+              data-continues-before={band.continuesBefore ? '' : undefined}
+              data-continues-after={band.continuesAfter ? '' : undefined}
+              style={
+                {
+                  gridColumn: `${band.startCol + 1} / ${band.endCol + 2}`,
+                  '--band-cat': categoryEdgeVar(band.category),
+                } as CSSProperties
+              }
+            >
+              <span className="calendar-strip__band-title">{band.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
