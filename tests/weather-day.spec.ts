@@ -1401,10 +1401,36 @@ test('die Wind-Zeile zeigt zusätzlich die Himmelsrichtung (issue #927 AK4b)', a
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK4c: Stundenreihe mit Wetter-Icons unter der Tagesverlauf-Kurve (issue #927) */
+/* AK1/AK3: Wetterband ersetzt die Stundenreihe, ein Abschnitt je             */
+/* zusammenhängender Wetterlage statt je Stunde (issue #999)                  */
 /* -------------------------------------------------------------------------- */
 
-test('unter der Tagesverlauf-Kurve läuft eine scrollbare Stundenreihe mit 24 Wetter-Icons (issue #927 AK4c)', async ({
+test('die Stundenreihe entfällt, ein Wetterband mit einem Abschnitt je Wetterlage steht an ihrer Stelle (issue #999 AK1/AK3)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-23: CODES[3] = 61 -> Regen, für jede der 24 Stunden gleich — die
+  // Sonnenauf-/-untergangsgrenze (05:53/21:12) teilt den Tag trotzdem in drei
+  // Abschnitte (nachts/tags/nachts), nicht in 24 Einzelzellen.
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(page.locator('.weather-day__hourly')).toHaveCount(0);
+
+  const segments = page.locator('.weather-day__band-segment');
+  await expect(segments).toHaveCount(3);
+  await expect(segments.nth(0)).toHaveAttribute('aria-label', 'Regen, 0 bis 6 Uhr');
+  await expect(segments.nth(1)).toHaveAttribute('aria-label', 'Regen, 6 bis 22 Uhr');
+  await expect(segments.nth(2)).toHaveAttribute('aria-label', 'Regen, 22 bis 24 Uhr');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2: Reihenfolge in der Karte — Kurve (samt Stundenbeschriftungen), dann   */
+/* das Band (issue #999)                                                      */
+/* -------------------------------------------------------------------------- */
+
+test('das Band steht in der Karte "Tagesverlauf" nach der Kurve, nicht davor oder dazwischen (issue #999 AK2)', async ({
   page,
 }) => {
   await mockForecast(page);
@@ -1412,18 +1438,173 @@ test('unter der Tagesverlauf-Kurve läuft eine scrollbare Stundenreihe mit 24 We
   await warmForecastCache(page);
   await page.goto('/wetter/2026-07-23');
 
-  const row = page.locator('.weather-day__hourly');
-  await expect(row.locator('.weather-day__hourly-cell')).toHaveCount(24);
-  // CODES[3] = 61 -> Regen, für jede Stunde dieses Tages gleich.
-  await expect(row.locator('.weather-day__hourly-icon').first()).toHaveAttribute('aria-label', 'Regen');
+  const parts = page
+    .locator('.weather-day__card', { hasText: 'Tagesverlauf' })
+    .locator('.weather-day__chart, .weather-day__band');
+  await expect(parts).toHaveCount(2);
+  await expect(parts.nth(0)).toHaveClass(/weather-day__chart/);
+  await expect(parts.nth(1)).toHaveClass(/weather-day__band/);
+});
 
-  const { scrollWidth, clientWidth, overflowX } = await row.evaluate((el) => ({
+/* -------------------------------------------------------------------------- */
+/* AK4/AK5: Breite proportional zur Dauer auf demselben Stundenraster wie die */
+/* Kurve, das ganze Band passt ohne Querscrollen in die Karte (issue #999)    */
+/* -------------------------------------------------------------------------- */
+
+test('ein Abschnitt ist proportional zu seiner Dauer breit, das Band scrollt nicht waagerecht (issue #999 AK4/AK5)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const band = page.locator('.weather-day__band');
+  const { overflowX } = await band.evaluate((el) => ({ overflowX: getComputedStyle(el).overflowX }));
+  expect(overflowX).not.toBe('auto');
+  expect(overflowX).not.toBe('scroll');
+  const { scrollWidth, clientWidth } = await band.evaluate((el) => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
-    overflowX: getComputedStyle(el).overflowX,
   }));
-  expect(overflowX).toBe('auto');
-  expect(scrollWidth).toBeGreaterThan(clientWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+
+  // Drei Abschnitte 6/16/2 Stunden (Regen, s. o.) — jeder nimmt genau seinen
+  // Anteil an den 24 Stunden der Bandbreite ein.
+  const bandBox = (await band.boundingBox())!;
+  const durationsHours = [6, 16, 2];
+  const segments = page.locator('.weather-day__band-segment');
+  for (let i = 0; i < durationsHours.length; i += 1) {
+    const box = (await segments.nth(i).boundingBox())!;
+    const expectedWidth = (durationsHours[i] / 24) * bandBox.width;
+    expect(Math.abs(box.width - expectedWidth)).toBeLessThan(2);
+  }
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK6: Nachtabschnitte sind sichtbar dunkler getönt als Tagesabschnitte      */
+/* (issue #999)                                                               */
+/* -------------------------------------------------------------------------- */
+
+test('Nachtabschnitte sind sichtbar dunkler getönt als Tagesabschnitte (issue #999 AK6)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const segments = page.locator('.weather-day__band-segment');
+  await expect(segments.nth(0)).toHaveClass(/weather-day__band-segment--night/);
+  await expect(segments.nth(1)).not.toHaveClass(/weather-day__band-segment--night/);
+
+  const luminance = async (locator: Locator) =>
+    locator.evaluate((el) => {
+      const match = getComputedStyle(el)
+        .backgroundColor.match(/[\d.]+/g)!
+        .map(Number);
+      return (match[0] + match[1] + match[2]) / 3;
+    });
+
+  const nightLuminance = await luminance(segments.nth(0));
+  const dayLuminance = await luminance(segments.nth(1));
+  expect(nightLuminance).toBeLessThan(dayLuminance);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK7: Nachtabschnitte tragen ein Nacht-Icon bei "klar"/"teils bewölkt",     */
+/* Regen bleibt unverändert (issue #999)                                      */
+/* -------------------------------------------------------------------------- */
+
+test('ein Nachtabschnitt "klar" zeigt den Mond statt der Sonne (issue #999 AK7)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-20 (Tag 0): CODES[0] = 0 -> Klar, konstant über den ganzen Tag.
+  await page.goto('/wetter/2026-07-20');
+
+  const nightSegment = page.locator('.weather-day__band-segment').nth(0);
+  await expect(nightSegment).toHaveClass(/weather-day__band-segment--night/);
+  const icon = nightSegment.locator('.weather-day__band-icon');
+  await expect(icon).toHaveAttribute('data-variant', 'night');
+  // Dieselbe Kontur wie IconMoon im Kopf (icons.tsx) — nicht die Sonnenscheibe.
+  await expect(icon.locator('svg path')).toHaveAttribute(
+    'd',
+    'M15.5 4.5a8 8 0 1 0 4 12.5 6.5 6.5 0 0 1-4-12.5z',
+  );
+  await expect(icon.locator('.weather-icon__disc')).toHaveCount(0);
+});
+
+test('ein Nachtabschnitt "teils bewölkt" zeigt Mond statt Sonne, dieselbe Wolke (issue #999 AK7/AK8)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  // 2026-07-21 (Tag 1): CODES[1] = 2 -> Teils bewölkt, konstant über den ganzen Tag.
+  await page.goto('/wetter/2026-07-21');
+
+  const nightSegment = page.locator('.weather-day__band-segment').nth(0);
+  await expect(nightSegment).toHaveClass(/weather-day__band-segment--night/);
+  const icon = nightSegment.locator('.weather-day__band-icon');
+  await expect(icon).toHaveAttribute('data-variant', 'night');
+  await expect(icon.locator('.weather-icon__moon')).toHaveCount(1);
+  await expect(icon.locator('.weather-icon__cloud')).toHaveCount(1);
+  await expect(icon.locator('.weather-icon__sun')).toHaveCount(0);
+});
+
+test('ein Nachtabschnitt "Regen" bleibt beim Tages-Icon (issue #999 AK7)', async ({ page }) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Letzter Abschnitt (22 bis 24 Uhr) ist Nacht, CODES[3] = 61 -> Regen.
+  const nightSegment = page.locator('.weather-day__band-segment').nth(2);
+  await expect(nightSegment).toHaveClass(/weather-day__band-segment--night/);
+  const icon = nightSegment.locator('.weather-day__band-icon');
+  await expect(icon).not.toHaveAttribute('data-variant', 'night');
+  await expect(icon.locator('.weather-icon__drop')).toHaveCount(3);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK9: ein zu schmaler Abschnitt behält Fläche und Trennkante, zeigt aber    */
+/* kein Icon (issue #999)                                                     */
+/* -------------------------------------------------------------------------- */
+
+test('ein zu schmaler Abschnitt behält seine Fläche und Trennkante, zeigt aber kein Icon (issue #999 AK9)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Letzter Abschnitt (22 bis 24 Uhr, 2 von 24 Stunden) ist bei 375px zu schmal
+  // für sein Icon.
+  const narrowSegment = page.locator('.weather-day__band-segment').nth(2);
+  const box = (await narrowSegment.boundingBox())!;
+  expect(box.width).toBeGreaterThan(0);
+
+  const { iconDisplay, borderWidth, backgroundColor } = await narrowSegment.evaluate((el) => {
+    const icon = el.querySelector('.weather-day__band-icon')!;
+    const style = getComputedStyle(el);
+    return {
+      iconDisplay: getComputedStyle(icon).display,
+      borderWidth: style.borderRightWidth,
+      backgroundColor: style.backgroundColor,
+    };
+  });
+  expect(iconDisplay).toBe('none');
+  expect(borderWidth).not.toBe('0px');
+  expect(backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+
+  // Bleibt eine eigene Fläche mit eigener Beschriftung statt mit dem Nachbarn
+  // zu verschmelzen.
+  await expect(narrowSegment).toHaveAttribute('aria-label', 'Regen, 22 bis 24 Uhr');
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1431,7 +1612,7 @@ test('unter der Tagesverlauf-Kurve läuft eine scrollbare Stundenreihe mit 24 We
 /* die drei neuen Stellen bleiben einfach weg (issue #927)                   */
 /* -------------------------------------------------------------------------- */
 
-test('eine gecachte Alt-Zeile ohne die drei neuen Spalten rendert unverändert, ohne Fehler und ohne die neuen Stellen (issue #927 AK2)', async ({
+test('eine gecachte Alt-Zeile ohne die drei neuen Spalten rendert unverändert, ohne Fehler und ohne die neuen Stellen (issue #927 AK2, issue #999 AK11)', async ({
   page,
 }) => {
   await mockLegacyForecast(page);
@@ -1443,8 +1624,9 @@ test('eine gecachte Alt-Zeile ohne die drei neuen Spalten rendert unverändert, 
   await expect(page.locator('.weather-day__temp-max')).toHaveText('15°');
   await expect(page.getByText('Für diesen Tag liegen keine Wetterdaten vor.')).toHaveCount(0);
 
-  // Die drei freigeschalteten Stellen bleiben ab, statt zu crashen.
+  // Die drei freigeschalteten Stellen bleiben ab, statt zu crashen — ohne
+  // weatherCode je Stunde entfällt das Band ersatzlos (issue #999 AK11).
   await expect(page.locator('.weather-day__card', { hasText: 'Tagesverlauf' })).not.toContainText('Gefühlt');
   await expect(page.locator('.weather-day__wind-direction')).toHaveCount(0);
-  await expect(page.locator('.weather-day__hourly')).toHaveCount(0);
+  await expect(page.locator('.weather-day__band')).toHaveCount(0);
 });

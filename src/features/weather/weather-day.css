@@ -292,43 +292,63 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Stundenreihe unter der Tagesverlauf-Kurve (issue #927, AK4) — scrollt notfalls
-   in sich statt das Dokument waagerecht zu überlaufen (AK5). */
-.weather-day__hourly {
+/* Wetterband unter der Tagesverlauf-Kurve (issue #999) — ein Abschnitt je
+   zusammenhängender Wetterlage statt je Stunde, Breite proportional zur Dauer.
+   Kein overflow-x (AK5): dieselbe Kartenbreite wie die Kurve darüber, kein
+   eigener horizontaler Rand — beide teilen sich so dasselbe Stundenraster. */
+.weather-day__band {
   display: flex;
-  overflow-x: auto;
-  gap: var(--space-3);
   margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
-  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card);
+  overflow: hidden;
 }
 
-.weather-day__hourly-cell {
+.weather-day__band-segment {
   display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: center;
+  min-width: 0;
+  padding-block: var(--space-2);
+  background: var(--surface-raised);
+  /* Jeder Abschnitt behält seine eigene Trennkante, auch der letzte (issue #999
+     AK9) — sie fällt mit dem gerundeten Rand von .weather-day__band zusammen,
+     statt eigens weggelassen zu werden. */
+  border-inline-end: 1px solid var(--border-faint);
+  /* Liest die eigene gerenderte Breite, nicht die des Viewports — derselbe
+     Abschnitt ist an einem verregneten Nachmittag breit und über Nacht schmal
+     (issue #999 AK9). */
+  container-type: inline-size;
 }
 
-.weather-day__hourly-time {
-  color: var(--text-muted);
-  font-size: var(--text-meta);
-  font-variant-numeric: tabular-nums;
+/* Vor Sonnenaufgang/nach Sonnenuntergang (issue #999 AK6) — dieselbe
+   Abdunkeln-Formel wie --ground-notch (globals.css), nur auf
+   --surface-raised statt --ground angewandt. */
+.weather-day__band-segment--night {
+  background: color-mix(in oklab, var(--surface-raised) 78%, black);
 }
 
-.weather-day__hourly-icon {
+.weather-day__band-icon {
   display: block;
   width: 20px;
   height: 20px;
   color: var(--text);
 }
 
-.weather-day__hourly-icon svg {
+.weather-day__band-icon svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* Ein Abschnitt unter ~28px behält seine Fläche und Trennkante, verliert aber
+   sein Glyph statt es zu quetschen oder mit dem Nachbarn zu verschmelzen
+   (issue #999 AK9). */
+@container (max-width: 27px) {
+  .weather-day__band-icon {
+    display: none;
+  }
 }
 
 .weather-day__precipitation-bar {

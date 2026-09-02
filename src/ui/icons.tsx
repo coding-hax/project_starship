@@ -239,6 +239,25 @@ export function IconMoon({ className }: IconProps) {
   );
 }
 
+/**
+ * Night variant of IconWeatherPartlyCloudy for the weather band (issue #999
+ * AK7/AK8): same cloud, IconMoon's crescent scaled down into the sun cluster's
+ * spot instead of the sun-plus-rays group. Shares `weather-icon--partly-cloudy`
+ * so the cloud drift motion (weather-icon-motion.css) still applies unchanged;
+ * `weather-icon__moon` carries its own breathing keyframes there.
+ */
+export function IconWeatherMoonCloudy({ className }: IconProps) {
+  return (
+    <svg {...svgProps} className={weatherIconClassName('partly-cloudy', className)}>
+      <path className="weather-icon__moon" d="M13.7 4.6a4.4 4.4 0 1 0 2.2 6.9 3.6 3.6 0 0 1-2.2-6.9z" />
+      <path
+        className="weather-icon__cloud"
+        d="M7 20h10a3.5 3.5 0 0 0 .3-7 5 5 0 0 0-9.7 1.2A3.5 3.5 0 0 0 7 20z"
+      />
+    </svg>
+  );
+}
+
 export function IconReset({ className }: IconProps) {
   return (
     <svg {...svgProps} className={className}>
