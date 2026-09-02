@@ -66,9 +66,12 @@ in die Bottom-Nav oder auf Übersicht — nicht in ein neues Header-Element.
 
 ## Desktop
 
-Dieselbe App, breiter — abgeleitet aus dem Hochformat, nie ein zweiter Entwurf
-(Leitsatz, `docs/DESIGN_SYSTEM.md`). Bottom-Nav wird ab 768px zur **Sidebar**,
-dieselbe Reihenfolge, kein zweiter Entwurf.
+Dieselbe App, breiter — ein **Re-Flow** aus dem Hochformat (Leitsatz,
+`docs/DESIGN_SYSTEM.md`; ADR-0029): dieselben Bauteile und dieselbe
+Datenlogik, aber die **Anordnung** darf ab `768px` je Route abweichen. Vier
+Routen bekommen dort eine zweite Spalte — Übersicht, Kalender, Aufgaben,
+Journal. Kein zweiter Komponentenbaum, keine Desktop-only-Features. Die
+Bottom-Nav wird ab 768px zur **Sidebar**, dieselbe Reihenfolge.
 
 Keine eigene Tastaturebene: Kürzel bleiben lokal an der Komponente, wo ARIA
 sie verlangt — Pfeiltasten innerhalb des `segmented-control`, Escape im
