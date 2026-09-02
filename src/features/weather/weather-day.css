@@ -263,6 +263,24 @@
   text-anchor: middle;
 }
 
+/* Warmest/coldest point of the temperature curve (issue #998 AK12) — muted
+   rather than the now-label's full-ink fill, and no dot of their own: the
+   Jetzt-Punkt stays the one point on this curve with a filled marker (AK17). */
+.weather-day__extreme-label {
+  fill: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Same recipe as .weather-day__now-label (issue #998 AK9) — the one bar that
+   answers "how much, at most" in the unit the bars themselves are drawn in. */
+.weather-day__precip-peak-label {
+  fill: var(--text);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+
 .weather-day__chart-axis {
   stroke: var(--border);
   stroke-width: 1.5;

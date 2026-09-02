@@ -295,6 +295,136 @@ test('Flächenverlauf und Jetzt-Punkt laufen nie dauerhaft, unabhängig von redu
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK: Höchst- und Tiefstwert der Temperaturkurve tragen ihren Wert           */
+/* (issue #998 AK12-AK18)                                                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Temperaturkurve beschriftet ihren eigenen höchsten und tiefsten Punkt, nicht die Tagesaggregate (issue #998 AK12/AK13)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  const dayIndex = 3; // 2026-07-23
+  const dateOffset = dayIndex * 24;
+  // Weit über/unter dem Tagesaggregat (TEMPS_MAX[3]=15, TEMPS_MIN[3]=5) — die
+  // Beschriftung muss der gezeichneten Kurve (day.hours) folgen, nicht
+  // day.tempMax/day.tempMin.
+  body.hourly.temperature_2m[dateOffset + 12] = 30;
+  body.hourly.temperature_2m[dateOffset + 2] = -5;
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const labels = page.locator('.weather-day__extreme-label');
+  await expect(labels).toHaveText(['30°', '-5°']);
+  await expect(labels.first()).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('bei Gleichstand des Höchstwerts trägt die früheste Stunde die Beschriftung (issue #998 AK14)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  const dayIndex = 3;
+  const dateOffset = dayIndex * 24;
+  body.hourly.temperature_2m[dateOffset + 5] = 25;
+  body.hourly.temperature_2m[dateOffset + 20] = 25; // gleicher Höchstwert, spätere Stunde
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const maxLabel = page.locator('.weather-day__extreme-label').first();
+  await expect(maxLabel).toHaveText('25°');
+  const x = await maxLabel.evaluate((el) => Number(el.getAttribute('x')));
+  expect(x).toBeCloseTo((5 / 24) * 320, 1); // Stunde 5, nicht Stunde 20.
+});
+
+test('an einem flachen Tag mit gleicher Höchst- und Tiefsttemperatur steht nur eine Beschriftung (issue #998 AK14)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  const dayIndex = 3;
+  const dateOffset = dayIndex * 24;
+  for (let h = 0; h < 24; h += 1) {
+    body.hourly.temperature_2m[dateOffset + h] = 18;
+  }
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  await expect(page.locator('.weather-day__extreme-label')).toHaveCount(1);
+  await expect(page.locator('.weather-day__extreme-label')).toHaveText('18°');
+});
+
+test('fällt der Jetzt-Punkt mit dem Höchstwert zusammen, erscheint der Wert nur einmal (issue #998 AK15)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  // Tag 0 = 2026-07-20 = "heute" unter NOW (11:00 Berlin) — Stunde 11 wird zum
+  // Tageshöchstwert gemacht, genau am Jetzt-Punkt.
+  body.hourly.temperature_2m[11] = 40;
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+
+  await expect(page.locator('.weather-day__now-label')).toHaveText('40°');
+  // Nur der Tiefstwert bekommt noch eine eigene Beschriftung — der Höchstwert
+  // fällt mit dem Jetzt-Punkt zusammen und wird nicht doppelt gezeichnet.
+  await expect(page.locator('.weather-day__extreme-label')).toHaveCount(1);
+});
+
+test('liegt ein Extremwert auf Stunde 0 oder 23, bleibt die Beschriftung innerhalb der Karte (issue #998 AK16)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  const dayIndex = 3;
+  const dateOffset = dayIndex * 24;
+  body.hourly.temperature_2m[dateOffset + 0] = 30; // Stunde 0 -> neuer Höchstwert
+  body.hourly.temperature_2m[dateOffset + 23] = -10; // Stunde 23 -> neuer Tiefstwert
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const card = page.locator('.weather-day__card', { hasText: 'Tagesverlauf' });
+  const cardBox = await card.boundingBox();
+  const labels = page.locator('.weather-day__extreme-label');
+  await expect(labels).toHaveCount(2);
+  // Linksbündig am linken, rechtsbündig am rechten Rand (wie die Stundenachse
+  // selbst, issue #998 AK3) statt mittig über den Rand hinauszuragen.
+  await expect(labels.first()).toHaveAttribute('text-anchor', 'start');
+  await expect(labels.last()).toHaveAttribute('text-anchor', 'end');
+  for (const label of await labels.all()) {
+    const box = await label.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(cardBox!.x - 0.5);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 0.5);
+  }
+});
+
+test('die Extremwert-Beschriftungen sind optisch schwächer als der Jetzt-Punkt, ohne eigenen Punkt-Marker (issue #998 AK17)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-20');
+
+  // Nur der Jetzt-Punkt bekommt einen gefüllten Kreis mit Ring — die
+  // Extremwerte bleiben reiner Text, kein eigener Marker.
+  await expect(page.locator('.weather-day__now-dot')).toHaveCount(1);
+  await expect(page.locator('.weather-day__chart circle')).toHaveCount(1);
+
+  const extremeColor = await page
+    .locator('.weather-day__extreme-label')
+    .first()
+    .evaluate((el) => getComputedStyle(el).fill);
+  const nowColor = await page.locator('.weather-day__now-label').evaluate((el) => getComputedStyle(el).fill);
+  expect(extremeColor).not.toBe(nowColor);
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK: Niederschlag, Wind, Sonnenauf- und -untergang sichtbar                 */
 /* -------------------------------------------------------------------------- */
 
@@ -322,6 +452,19 @@ test('Niederschlag, Wind sowie Sonnenauf- und -untergang sind sichtbar (issue #1
   await expect(page.getByText(SUNRISE)).toBeVisible();
   await expect(page.getByText('Untergang')).toBeVisible();
   await expect(page.getByText(SUNSET)).toBeVisible();
+
+  // Spitzenwert beschriftet (issue #998 AK5) — Stunden 14/15/16 sind zu gleichen
+  // Teilen die höchste Wahrscheinlichkeit des Tages (80 %), die früheste der
+  // drei trägt die Beschriftung (AK6).
+  const peakLabel = page.locator('.weather-day__precip-peak-label');
+  await expect(peakLabel).toHaveCount(1);
+  await expect(peakLabel).toHaveText('80 %');
+  const bar14 = page.locator('.weather-day__precipitation-bar').nth(14);
+  const [peakX, bar14CentreX] = await Promise.all([
+    peakLabel.evaluate((el) => Number(el.getAttribute('x'))),
+    bar14.evaluate((el) => Number(el.getAttribute('x')) + Number(el.getAttribute('width')) / 2),
+  ]);
+  expect(peakX).toBeCloseTo(bar14CentreX, 1);
 });
 
 test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balkenfeld (issue #156 AC3)', async ({
@@ -343,6 +486,9 @@ test('ein trockener Tag zeigt "Kein Niederschlag erwartet." und ein leeres Balke
     .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('height'))));
   expect(heights).toHaveLength(24);
   expect(heights.every((height) => height === 0)).toBe(true);
+
+  // Keine Beschriftung über einer leeren Grundlinie (issue #998 AK7).
+  await expect(page.locator('.weather-day__precip-peak-label')).toHaveCount(0);
 });
 
 test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Absatz, die Balken sind abgerundet (issue #938 AK5)', async ({
@@ -362,6 +508,75 @@ test('die Niederschlagssumme steht im Kartenkopf-Slot, nicht mehr als eigener Ab
     .evaluateAll((bars) => bars.map((bar) => Number(bar.getAttribute('rx'))));
   expect(radii.length).toBeGreaterThan(0);
   expect(radii.every((rx) => rx > 0)).toBe(true);
+});
+
+test('bei 100 % Regenwahrscheinlichkeit bleibt die Spitzenwert-Beschriftung innerhalb der Karte, im Rezept des Jetzt-Werts, für Vorleser verborgen (issue #998 AK8/AK9/AK11)', async ({
+  page,
+}) => {
+  const body = forecastResponseBody();
+  const dayIndex = 3; // 2026-07-23
+  const dateOffset = dayIndex * 24;
+  body.hourly.precipitation_probability[dateOffset + 15] = 100;
+  await page.route(OPEN_METEO_PATTERN, (route) => route.fulfill({ json: body }));
+  // "Heute" = derselbe Tag, damit Jetzt-Punkt und Spitzenwert-Beschriftung
+  // gleichzeitig existieren und ihr Rezept verglichen werden kann.
+  await skewClock(page, '2026-07-23T09:00:00.000Z');
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  const peakLabel = page.locator('.weather-day__precip-peak-label');
+  await expect(peakLabel).toHaveText('100 %');
+  // Verborgen für Screenreader (AK11) — das aria-label des Diagramms nennt den
+  // Höchstwert bereits selbst ("höchstens 100 %").
+  await expect(peakLabel).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('.weather-day__precipitation-chart')).toHaveAttribute(
+    'aria-label',
+    'Regenwahrscheinlichkeit je Stunde, höchstens 100 %',
+  );
+
+  // Auch bei vollem Balken bleibt die Beschriftung oberhalb nicht abgeschnitten
+  // und ragt nicht in den Kartenkopf (AK8): ihre Oberkante bleibt unterhalb der
+  // Oberkante der Karte.
+  const card = page.locator('.weather-day__card', { hasText: 'Niederschlag' });
+  const cardBox = await card.boundingBox();
+  const labelBox = await peakLabel.boundingBox();
+  expect(labelBox!.y).toBeGreaterThanOrEqual(cardBox!.y);
+
+  // Optisch dasselbe Rezept wie der Jetzt-Wert der Temperaturkurve (AK9).
+  const style = (locator: Locator) =>
+    locator.evaluate((el) => {
+      const computed = getComputedStyle(el);
+      return {
+        fill: computed.fill,
+        fontSize: computed.fontSize,
+        fontVariantNumeric: computed.fontVariantNumeric,
+        textAnchor: computed.textAnchor,
+      };
+    });
+  expect(await style(peakLabel)).toEqual(await style(page.locator('.weather-day__now-label')));
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK: beide Diagramme nutzen die volle Zeichenfläche, kein linker Zwischenraum */
+/* (issue #998 AK1)                                                            */
+/* -------------------------------------------------------------------------- */
+
+test('Temperaturkurve und Niederschlagsbalken nutzen die volle Zeichenfläche, kein linker Zwischenraum mehr (issue #998 AK1)', async ({
+  page,
+}) => {
+  await mockForecast(page);
+  await skewClock(page, NOW);
+  await warmForecastCache(page);
+  await page.goto('/wetter/2026-07-23');
+
+  // Die Achse beider Diagramme reicht von der linken bis zur rechten Kante der
+  // 320 Einheiten breiten viewBox — der frühere 38-Einheiten-Zwischenraum links
+  // (einst für y-Beschriftungen, seit #939 AK4 nicht mehr vorhanden) ist weg.
+  for (const selector of ['.weather-day__chart', '.weather-day__precipitation-chart']) {
+    const axis = page.locator(`${selector} .weather-day__chart-axis`);
+    await expect(axis).toHaveAttribute('x1', '0');
+    await expect(axis).toHaveAttribute('x2', '320');
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -402,6 +617,7 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
   // letzte Label ist absichtlich rechtsbündig verankert (sonst liefe es über
   // den Rand hinaus), was seine Glyphen-Box gegenüber ihrer wahren Tick-Position
   // verschiebt, ohne dass die Achse selbst ungleichmäßig wäre.
+  const xsBySelector: number[][] = [];
   for (const selector of ['.weather-day__chart', '.weather-day__precipitation-chart']) {
     const ticks = page.locator(`${selector} .weather-day__chart-tick`, {
       hasText: /^\d{2}:00$/,
@@ -414,7 +630,16 @@ test('beide Diagramme haben beschriftete Achsen, die Stundenachse reicht bis 24:
     for (const gap of gaps) {
       expect(Math.abs(gap - gaps[0])).toBeLessThan(0.01);
     }
+    xsBySelector.push(xs);
+
+    // Erste Beschriftung linksbündig, letzte rechtsbündig (issue #998 AK3) —
+    // beide bleiben dadurch innerhalb der Kartenkante statt über sie hinauszuragen.
+    await expect(ticks.first()).toHaveAttribute('text-anchor', 'start');
+    await expect(ticks.last()).toHaveAttribute('text-anchor', 'end');
   }
+  // Beide Diagramme teilen sich dasselbe Stundenraster (issue #998 AK2) — Stunde
+  // n sitzt in Kurve und Balken an genau derselben x-Koordinate.
+  expect(xsBySelector[0]).toEqual(xsBySelector[1]);
 });
 
 test('die Diagramm-Karten sind kompakter gepolstert als die Standard-SectionCard (issue #288 AC2)', async ({
