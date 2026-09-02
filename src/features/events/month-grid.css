@@ -1,7 +1,7 @@
-/* Static month card in /kalender's body (issue #958, T1 of #957) — same
-   --surface card shape as habit-history-card.css/habit-table.css, same
-   7-column dot/day vocabulary as calendar-strip.css's week strip, just a
-   fixed grid instead of a rolling carousel. */
+/* Month card in /kalender's body (issue #958, T1 of #957; swiped instead of
+   paged by button since issue #1009) — same --surface card shape as
+   habit-history-card.css/habit-table.css, same 7-column dot/day vocabulary as
+   calendar-strip.css's week strip. */
 
 .month-grid {
   padding: var(--space-2) var(--space-3) var(--space-3);
@@ -28,31 +28,6 @@
   }
 }
 
-.month-grid__nav {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-1);
-}
-
-.month-grid__nav-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: var(--touch-target);
-  height: var(--touch-target);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.month-grid__nav-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
 .month-grid__weekday-header {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -63,6 +38,32 @@
   text-align: center;
   font-size: var(--text-month-weekday);
   color: var(--text-muted);
+}
+
+/* Horizontal snap track holding the three rendered months (issue #1009) —
+   `x mandatory` so a swipe always lands fully on a page, never half-between;
+   `pan-x` leaves the vertical gesture to the page scroll underneath, same as
+   calendar-strip.css's carousel. Scrollbar hidden the same way. Height is
+   never set explicitly: every page always renders 6 full Mon–Sun weeks
+   (`gridDaysFor`'s 42-cell padding), so the tallest/only page height stays
+   identical across a month change (AK8) without extra bookkeeping. */
+.month-grid__track {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  touch-action: pan-x;
+}
+
+.month-grid__track::-webkit-scrollbar {
+  display: none;
+}
+
+.month-grid__page {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
 }
 
 .month-grid__days {
