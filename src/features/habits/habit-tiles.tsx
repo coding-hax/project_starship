@@ -2,7 +2,7 @@
 
 import { metEarlierInPeriod, toDateKey } from './due-today';
 import { isDoneOnDay } from './schedule-rules';
-import { computeStreak } from './streak';
+import { countHabitsOnStreak } from './streak';
 import { useHabitLogs } from './use-habit-logs';
 import { useHabits } from './use-habits';
 import { weekDone, weekGoal } from './week-goal';
@@ -39,11 +39,13 @@ function Tile({ label, value, denominator, showBar, barTotal }: TileProps) {
 }
 
 /**
- * The three stat tiles atop /routinen (issue #905) — HEUTE/DIESE WOCHE/
- * LÄNGSTE SERIE, replacing the standalone `StreakSummaryCard`. No
- * `useBlockReady`: /routinen has no `OverviewReadyProvider` (that hook is
- * inert outside one anyway), so the loading gate below is the only one that
- * matters, same `undefined` check `HabitList` already used.
+ * The three stat tiles atop /routinen (issue #905) — Heute/Woche/Serie,
+ * replacing the standalone `StreakSummaryCard`. The third tile counts active
+ * habits with a running streak of at least two periods, not the longest
+ * streak in days (issue #1005). No `useBlockReady`: /routinen has no
+ * `OverviewReadyProvider` (that hook is inert outside one anyway), so the
+ * loading gate below is the only one that matters, same `undefined` check
+ * `HabitList` already used.
  */
 export function HabitTiles() {
   const habits = useHabits();
@@ -60,25 +62,25 @@ export function HabitTiles() {
   const doneToday = dueToday.filter((habit) => isDoneOnDay(logs, habit.id, today)).length;
   const goalThisWeek = weekGoal(active);
   const doneThisWeek = weekDone(active, logs, now);
-  const longestStreak = Math.max(0, ...active.map((habit) => computeStreak(habit, logs, now)));
+  const onStreak = countHabitsOnStreak(active, logs, now, 2);
 
   return (
     <div className="habit-tiles">
       <Tile
-        label="HEUTE"
+        label="Heute"
         value={doneToday}
         denominator={`von ${dueToday.length}`}
         showBar
         barTotal={dueToday.length}
       />
       <Tile
-        label="DIESE WOCHE"
+        label="Woche"
         value={doneThisWeek}
         denominator={`von ${goalThisWeek}`}
         showBar
         barTotal={goalThisWeek}
       />
-      <Tile label="LÄNGSTE SERIE" value={longestStreak} denominator="Tage" showBar={false} />
+      <Tile label="Serie" value={onStreak} denominator={`von ${active.length}`} showBar={false} />
     </div>
   );
 }

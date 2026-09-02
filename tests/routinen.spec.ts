@@ -153,22 +153,23 @@ test('AK2: die drei Kacheln zeigen Zähler und Nenner als Text, der Balken ist a
   await expect(tiles).toHaveCount(3);
 
   const heute = tiles.nth(0);
-  await expect(heute.locator('.habit-tiles__label')).toHaveText('HEUTE');
+  await expect(heute.locator('.habit-tiles__label')).toHaveText('Heute');
   await expect(heute.locator('.habit-tiles__value')).toHaveText('1');
   await expect(heute.locator('.habit-tiles__denominator')).toHaveText('von 2');
   await expect(heute.locator('.habit-tiles__bar')).toHaveAttribute('aria-hidden', 'true');
 
   const woche = tiles.nth(1);
-  await expect(woche.locator('.habit-tiles__label')).toHaveText('DIESE WOCHE');
+  await expect(woche.locator('.habit-tiles__label')).toHaveText('Woche');
   await expect(woche.locator('.habit-tiles__value')).toHaveText('1');
   // 2 tägliche Routinen à 7 Tage Wochensoll (week-goal.ts) = 14.
   await expect(woche.locator('.habit-tiles__denominator')).toHaveText('von 14');
   await expect(woche.locator('.habit-tiles__bar')).toHaveAttribute('aria-hidden', 'true');
 
+  // Serie liegt nur beim ersten Tag (issue #1005: Serie < 2 zählt nicht).
   const serie = tiles.nth(2);
-  await expect(serie.locator('.habit-tiles__label')).toHaveText('LÄNGSTE SERIE');
-  await expect(serie.locator('.habit-tiles__value')).toHaveText('1');
-  await expect(serie.locator('.habit-tiles__denominator')).toHaveText('Tage');
+  await expect(serie.locator('.habit-tiles__label')).toHaveText('Serie');
+  await expect(serie.locator('.habit-tiles__value')).toHaveText('0');
+  await expect(serie.locator('.habit-tiles__denominator')).toHaveText('von 2');
   // Keine Farbe allein trägt Bedeutung — die Serien-Kachel hat gar keinen
   // Balken, statt einen immer vollen zu zeigen (issue #905).
   await expect(serie.locator('.habit-tiles__bar')).toHaveCount(0);
@@ -319,7 +320,7 @@ test('AK10: bei reduzierter Bewegung ist der Auf-/Zuklapp-Übergang einer Tabell
 /* geteilt, statt unabhängig im Fluss zu stehen                              */
 /* -------------------------------------------------------------------------- */
 
-test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl HEUTE einzeilig und die beiden anderen Label zweizeilig umbrechen', async ({
+test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl die Label unterschiedlich breiten Text tragen', async ({
   page,
 }) => {
   const habitA = await seedHabit(page, { name: 'Kachel A' });
@@ -344,11 +345,12 @@ test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl HEUTE ein
   const heuteLines = await lineCount(tiles.nth(0).locator('.habit-tiles__label'));
   const wocheLines = await lineCount(tiles.nth(1).locator('.habit-tiles__label'));
   const serieLines = await lineCount(tiles.nth(2).locator('.habit-tiles__label'));
-  // Der 375px-Normalfall aus dem Screenshot: "HEUTE" bricht einzeilig, die
-  // beiden längeren Label zweizeilig — sonst wäre AK1 gar nicht geprüft.
-  expect(heuteLines, 'HEUTE bricht einzeilig').toBe(1);
-  expect(wocheLines, 'DIESE WOCHE bricht zweizeilig').toBe(2);
-  expect(serieLines, 'LÄNGSTE SERIE bricht zweizeilig').toBe(2);
+  // Seit den einwortigen Labeln (issue #1005) bricht keines der drei bei
+  // 375px mehr um — das eigentliche Umbruch-Szenario prüft AK1 (#1005)
+  // separat; hier zählt nur, dass die Werte trotzdem auf einer Höhe stehen.
+  expect(heuteLines, 'Heute bricht einzeilig').toBe(1);
+  expect(wocheLines, 'Woche bricht einzeilig').toBe(1);
+  expect(serieLines, 'Serie bricht einzeilig').toBe(1);
 
   const values = page.locator('.habit-tiles__value');
   await expect(values).toHaveCount(3);
@@ -586,4 +588,81 @@ test('AK4 (#977): die erste Zeile bleibt voll bedienbar — Berührungsziel und 
   expect(headerBox.top, 'oberer Rand liegt nicht über der Kartenfläche').toBeGreaterThanOrEqual(
     tableBox.top,
   );
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1–AK3 (issue #1005): einwortige Kachel-Label, dritte Kachel zählt        */
+/* Routinen mit Serie ≥ 2 statt der längsten Serie in Tagen                  */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#1005): die drei Kacheln tragen die einwortigen Label „Heute"/„Woche"/„Serie" und brechen bei 375px nicht um', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Label-Sonde' });
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles.nth(0).locator('.habit-tiles__label')).toHaveText('Heute');
+  await expect(tiles.nth(1).locator('.habit-tiles__label')).toHaveText('Woche');
+  await expect(tiles.nth(2).locator('.habit-tiles__label')).toHaveText('Serie');
+
+  const lineCount = (label: Locator) =>
+    label.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getClientRects().length;
+    });
+  for (const [index, name] of ['Heute', 'Woche', 'Serie'].entries()) {
+    const lines = await lineCount(tiles.nth(index).locator('.habit-tiles__label'));
+    expect(lines, `${name} bleibt bei 375px einzeilig`).toBe(1);
+  }
+});
+
+test('AK2 (#1005): die dritte Kachel zählt aktive Routinen mit einer Serie von mindestens zwei Zeiträumen, nicht die längste Serie in Tagen', async ({
+  page,
+}) => {
+  const twoInARow = await seedHabit(page, { name: 'Serie zwei' });
+  await seedHabitLog(page, twoInARow, '2026-07-15');
+  await seedHabitLog(page, twoInARow, '2026-07-14');
+
+  await seedHabit(page, { name: 'Serie eins' });
+  const singleId = await seedHabit(page, { name: 'Serie eins B' });
+  await seedHabitLog(page, singleId, '2026-07-15');
+
+  // Archivierte Routine mit Serie zwei zählt nie mit.
+  const archivedTwoInARow = await seedHabit(page, {
+    name: 'Serie zwei archiviert',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await seedHabitLog(page, archivedTwoInARow, '2026-07-15');
+  await seedHabitLog(page, archivedTwoInARow, '2026-07-14');
+
+  await page.goto('/routinen');
+
+  const serie = page.locator('.habit-tiles__tile').nth(2);
+  // Nur "Serie zwei" hat eine laufende Serie ≥ 2 — 1 von 3 aktiven Routinen.
+  await expect(serie.locator('.habit-tiles__value')).toHaveText('1');
+  await expect(serie.locator('.habit-tiles__denominator')).toHaveText('von 3');
+});
+
+test('AK3 (#1005): der Nenner der dritten Kachel ist „von N" mit N = Anzahl aktiver Routinen, die Kachel bleibt balkenlos', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Nenner-Sonde A' });
+  await seedHabit(page, { name: 'Nenner-Sonde B' });
+  await seedHabit(page, {
+    name: 'Nenner-Sonde archiviert',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await page.goto('/routinen');
+
+  const serie = page.locator('.habit-tiles__tile').nth(2);
+  await expect(serie.locator('.habit-tiles__denominator')).toHaveText('von 2');
+  await expect(serie.locator('.habit-tiles__bar')).toHaveCount(0);
+
+  const stat = serie.locator('.habit-tiles__stat');
+  expect(await stat.evaluate((el) => el.tagName)).toBe('DL');
+  expect(await stat.locator('.habit-tiles__label').evaluate((el) => el.tagName)).toBe('DT');
+  expect(await stat.locator('.habit-tiles__value-row').evaluate((el) => el.tagName)).toBe('DD');
 });
