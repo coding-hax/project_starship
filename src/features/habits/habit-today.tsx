@@ -4,8 +4,10 @@ import Link from 'next/link';
 import type { CSSProperties } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { IconStreak } from '@/ui/icons';
+import { OverviewCardHead } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { metEarlierInPeriod, toDateKey } from './due-today';
+import { computeHabitProgress } from './habit-progress';
 import { periodStatusFor } from './schedule-rules';
 import { computeStreak } from './streak';
 import { useHabitLogs } from './use-habit-logs';
@@ -41,6 +43,13 @@ const PERIOD_PROGRESS_LABELS: Partial<Record<HabitSchedule, string>> = {
  * (issue #224) — one already checked off earlier this week carries a
  * "Diese Woche schon erledigt" hint regardless of today's own checkbox state
  * (issue #288): it says something about the week, not about today.
+ *
+ * Renders its own card head (issue #972) — merged into this component's
+ * single `.habit-today` surface by issue #995, so title+link, the empty state
+ * and the rows all share one card instead of the head sitting in a card of
+ * its own above a second one. `computeHabitProgress` is shared with the
+ * progress ring so the two counts never drift apart; `total === 0` drops the
+ * link, same as the ring showing nothing.
  */
 export function HabitToday() {
   const habits = useHabits();
@@ -52,13 +61,24 @@ export function HabitToday() {
   if (habits === undefined || logs === undefined) return null;
 
   const active = habits.filter((habit) => habit.archivedAt === null);
+  const progress = computeHabitProgress(habits, logs);
+  const head = (
+    <OverviewCardHead
+      title="Routinen"
+      href="/routinen"
+      moreLabel={progress.total > 0 ? `${progress.done} von ${progress.total}` : undefined}
+    />
+  );
 
   if (active.length === 0) {
     return (
-      <p className="habit-today__empty">
-        Noch keine Routinen.{' '}
-        <Link href="/routinen">Jetzt anlegen</Link>
-      </p>
+      <div className="habit-today">
+        {head}
+        <p className="habit-today__empty">
+          Noch keine Routinen.{' '}
+          <Link href="/routinen">Jetzt anlegen</Link>
+        </p>
+      </div>
     );
   }
 
@@ -66,69 +86,72 @@ export function HabitToday() {
   const today = toDateKey(now);
 
   return (
-    <ul className="habit-today" aria-label="Routinen heute">
-      {active.map((habit) => {
-        const doneToday = logs.some(
-          (log) => log.habitId === habit.id && log.logDate === today && log.done,
-        );
-        const doneHint = PERIOD_DONE_HINTS[habit.schedule];
-        const showWeekHint = doneHint !== undefined && metEarlierInPeriod(habit, logs, now);
-        const progressLabel = PERIOD_PROGRESS_LABELS[habit.schedule];
-        const status = progressLabel !== undefined ? periodStatusFor(habit, logs, today) : null;
-        const showProgress = status !== null && !showWeekHint && status.target > 1 && !status.met;
-        const streak = computeStreak(habit, logs, now);
-        const isJournal = habit.id === JOURNAL_HABIT_ID;
-        const toneVar = `var(${habit.color ?? '--area-habits'})`;
-        return (
-          <li
-            key={habit.id}
-            className={
-              doneToday ? 'habit-today__item habit-today__item--done' : 'habit-today__item'
-            }
-          >
-            <span className="habit-today__lead">
-              {streak > 0 ? (
-                <span
-                  className="habit-today__streak"
-                  style={{ '--habit-tone': toneVar } as CSSProperties}
-                  aria-label={`Streak: ${streak}`}
-                >
-                  <IconStreak className="habit-today__streak-icon" /> {streak}
-                </span>
-              ) : (
-                <span
-                  className="habit-today__color"
-                  style={{ background: toneVar }}
-                  aria-hidden="true"
+    <div className="habit-today">
+      {head}
+      <ul className="habit-today__list" aria-label="Routinen heute">
+        {active.map((habit) => {
+          const doneToday = logs.some(
+            (log) => log.habitId === habit.id && log.logDate === today && log.done,
+          );
+          const doneHint = PERIOD_DONE_HINTS[habit.schedule];
+          const showWeekHint = doneHint !== undefined && metEarlierInPeriod(habit, logs, now);
+          const progressLabel = PERIOD_PROGRESS_LABELS[habit.schedule];
+          const status = progressLabel !== undefined ? periodStatusFor(habit, logs, today) : null;
+          const showProgress = status !== null && !showWeekHint && status.target > 1 && !status.met;
+          const streak = computeStreak(habit, logs, now);
+          const isJournal = habit.id === JOURNAL_HABIT_ID;
+          const toneVar = `var(${habit.color ?? '--area-habits'})`;
+          return (
+            <li
+              key={habit.id}
+              className={
+                doneToday ? 'habit-today__item habit-today__item--done' : 'habit-today__item'
+              }
+            >
+              <span className="habit-today__lead">
+                {streak > 0 ? (
+                  <span
+                    className="habit-today__streak"
+                    style={{ '--habit-tone': toneVar } as CSSProperties}
+                    aria-label={`Streak: ${streak}`}
+                  >
+                    <IconStreak className="habit-today__streak-icon" /> {streak}
+                  </span>
+                ) : (
+                  <span
+                    className="habit-today__color"
+                    style={{ background: toneVar }}
+                    aria-hidden="true"
+                  />
+                )}
+              </span>
+              <span className="habit-today__name-group">
+                <span className="habit-today__name">{habit.name}</span>
+                {showWeekHint && <span className="habit-today__week-hint">{doneHint}</span>}
+                {showProgress && status && (
+                  <span className="habit-today__week-hint">
+                    {status.count} von {status.target} {progressLabel}
+                  </span>
+                )}
+              </span>
+              <label className="habit-today__checkbox-wrap">
+                <input
+                  type="checkbox"
+                  className="habit-today__checkbox"
+                  checked={doneToday}
+                  disabled={isJournal}
+                  onChange={isJournal ? undefined : () => toggle(habit.id, today)}
+                  aria-label={
+                    isJournal
+                      ? `${habit.name}${doneToday ? ' heute geschrieben' : ' heute noch nicht geschrieben'}`
+                      : `${habit.name} für heute abhaken`
+                  }
                 />
-              )}
-            </span>
-            <span className="habit-today__name-group">
-              <span className="habit-today__name">{habit.name}</span>
-              {showWeekHint && <span className="habit-today__week-hint">{doneHint}</span>}
-              {showProgress && status && (
-                <span className="habit-today__week-hint">
-                  {status.count} von {status.target} {progressLabel}
-                </span>
-              )}
-            </span>
-            <label className="habit-today__checkbox-wrap">
-              <input
-                type="checkbox"
-                className="habit-today__checkbox"
-                checked={doneToday}
-                disabled={isJournal}
-                onChange={isJournal ? undefined : () => toggle(habit.id, today)}
-                aria-label={
-                  isJournal
-                    ? `${habit.name}${doneToday ? ' heute geschrieben' : ' heute noch nicht geschrieben'}`
-                    : `${habit.name} für heute abhaken`
-                }
-              />
-            </label>
-          </li>
-        );
-      })}
-    </ul>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
