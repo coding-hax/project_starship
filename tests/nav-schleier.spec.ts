@@ -2,9 +2,14 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData, selectView } from './helpers';
 
 /**
- * Verlaufs-Schleier an der mobilen Bodenleiste (issue #908): Seiteninhalt, der
- * beim Scrollen hinter die sticky Nav-Zeile rückt, blendet zum Routen-Grund aus,
- * statt bis an die Pille heranzureichen. Ein Test je AK, gemessen per
+ * Verdeckung an der mobilen Bodenleiste (issue #908, Träger gewechselt in
+ * issue #1006): Seiteninhalt, der beim Scrollen hinter die sticky Nav-Zeile
+ * rückt, blendet aus, statt bis an die Pille heranzureichen. Verdeckt wird
+ * seit #1006 mit einer beschnittenen Kopie des echten Hintergrunds
+ * (`.bg-layer--nav`) statt mit einer flachen Fläche in einer von Hand
+ * nachgezogenen Farbe — deshalb prüft AK1 die Gleichheit der beiden
+ * Hintergrund-Ausgaben und AK2 die Nahtlosigkeit an der Oberkante, wo die
+ * alte Lösung ihre Kante hatte (#889). Ein Test je AK, gemessen per
  * getComputedStyle/gemaltem Pixel statt per Augenschein. Setup wie
  * grundfarbe-vollfarbe.spec.ts. Läuft im Projekt-Standard-Viewport 375×812.
  */
@@ -175,60 +180,197 @@ async function sampleElementPixel(
   );
 }
 
-async function navBeforePseudo(
+/** Reads the nav row's own background copy (issue #1006) plus what is left of
+ * the pseudo-element it replaced — `content: 'none'` is what an unstyled
+ * `::before` computes to, i.e. the proof that no rule paints there anymore. */
+async function navGroundStyles(
   page: Page,
-): Promise<{ backgroundImage: string; pointerEvents: string; content: string }> {
+): Promise<{ maskImage: string; pointerEvents: string; display: string; beforeContent: string }> {
   return page.evaluate(() => {
-    const cs = getComputedStyle(document.querySelector('.nav')!, '::before');
-    return { backgroundImage: cs.backgroundImage, pointerEvents: cs.pointerEvents, content: cs.content };
+    const copy = document.querySelector('.bg-layer--nav');
+    const cs = copy ? getComputedStyle(copy) : null;
+    const before = getComputedStyle(document.querySelector('.nav')!, '::before');
+    return {
+      maskImage: cs?.maskImage ?? 'kein .bg-layer--nav im DOM',
+      pointerEvents: cs?.pointerEvents ?? 'kein .bg-layer--nav im DOM',
+      display: cs?.display ?? 'kein .bg-layer--nav im DOM',
+      beforeContent: before.content,
+    };
   });
 }
 
-test('AK1: der Schleier blendet die Nav-Zeile unten zum Bogen-3-Ton aus, gescrollter Karteninhalt liest darunter als Grundfläche', async ({
+/** Reads one composited pixel in VIEWPORT coordinates — the element-scoped
+ * `sampleElementPixel` above cannot compare across two boxes, which is exactly
+ * what the seam test (AK2) needs. The project's viewport runs at
+ * deviceScaleFactor 1 (playwright.config.ts, `devices['Desktop Chrome']`), so
+ * screenshot pixels and CSS pixels are the same grid. */
+async function samplePagePixel(page: Page, x: number, y: number): Promise<[number, number, number]> {
+  const buffer = await page.screenshot();
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+  return page.evaluate(
+    ({ dataUrl, x, y }) =>
+      new Promise<[number, number, number]>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          const data = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+          resolve([data[0], data[1], data[2]]);
+        };
+        img.onerror = () => reject(new Error('Seiten-Screenshot ließ sich nicht als Bild laden'));
+        img.src = dataUrl;
+      }),
+    { dataUrl, x, y },
+  );
+}
+
+/** Geometry and tone of the three arcs in one background layer, in DOM order.
+ * `scale` (the pulse) is a transform-like property and never changes a
+ * computed `width`/`height`, so this reads the same values mid-pulse as at
+ * rest — no timing, no flake. */
+async function arcsOf(page: Page, selector: string) {
+  return page.evaluate((sel) => {
+    const root = document.querySelector(sel);
+    if (!root) return null;
+    return [...root.querySelectorAll('.bg-arc')].map((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        width: cs.width,
+        height: cs.height,
+        bottom: cs.bottom,
+        left: cs.left,
+        backgroundColor: cs.backgroundColor,
+      };
+    });
+  }, selector);
+}
+
+/**
+ * Ein Schleier in der falschen Farbe — der Zustand vor diesem Ticket, wenn
+ * jemand die Bogenfarbe nicht nachzieht — liegt weit über dieser Schranke:
+ * `--ground` und `--arc-3` trennen auf Übersicht 44 Kanalstufen (grün 161 vs.
+ * 205). 12 lässt Raum für den Kartenschatten, der in beide Proben ein paar
+ * Stufen streut, und fängt jede echte Kante trotzdem.
+ */
+const SEAM_TOLERANCE = 12;
+
+test('AK1: die Nav-Zeile trägt eine Kopie des echten Hintergrunds, keine nachgezogene Farbe', async ({
   page,
 }) => {
   await registerPasskey(page);
   await page.goto('/aufgaben');
 
-  const before = await navBeforePseudo(page);
-  expect(before.backgroundImage, '.nav::before trägt einen Verlauf').toContain('gradient');
+  const copy = page.locator('.bg-layer--nav');
+  await expect(copy, 'die Nav-Zeile hat eine eigene Hintergrund-Ausgabe').toBeVisible();
 
-  await seedTallTaskList(page);
-  await page.reload();
-  await selectView(page, 'Alle');
-  await scrollNearBottomBehindNav(page);
-  await expectCardBehindNav(page);
+  const navArcs = await arcsOf(page, '.bg-layer--nav');
+  const ambientArcs = await arcsOf(page, '.bg-layer:not(.bg-layer--nav)');
+  expect(navArcs, 'die Kopie rendert dieselben drei Bögen').toHaveLength(3);
+  expect(navArcs, 'Geometrie und Ton je Bogen sind identisch mit der Umgebungsschicht').toEqual(
+    ambientArcs,
+  );
 
-  // Der Verlauf blendet zu `--arc-3` aus (issue #991 AK7), nicht zu `--ground`:
-  // Bogen 3 liegt immer in der Nav-Zeile, ein `--ground`-Stopp ließe an der
-  // Oberkante eine sichtbare Kante entstehen.
-  const groundToken = await resolveColorToken(page, '--arc-3');
-  const surfaceToken = await resolveColorToken(page, '--surface');
-  const groundRgb = await toRgb(page, groundToken);
-  const surfaceRgb = await toRgb(page, surfaceToken);
+  const styles = await navGroundStyles(page);
+  expect(styles.beforeContent, '.nav::before malt nichts mehr').toBe('none');
 
-  const nav = page.locator('.nav');
-  // relY=0.95: tief im Streifen unter der Pille (Home-Indicator-Bereich), relX=0.5:
-  // mittig, weit weg von den seitlichen Rändern der Pille.
-  const stripColor = await sampleElementPixel(page, nav, 0.5, 0.95);
-  expect(
-    maxChannelDiff(stripColor, groundRgb),
-    `unterer Streifen ${JSON.stringify(stripColor)} vs. --arc-3 ${JSON.stringify(groundRgb)}`,
-  ).toBeLessThan(GROUND_WITH_SHADOW_TOLERANCE);
-  expect(
-    maxChannelDiff(stripColor, surfaceRgb),
-    `unterer Streifen ${JSON.stringify(stripColor)} unterscheidet sich von --surface (Kartenfarbe)`,
-  ).toBeGreaterThanOrEqual(GROUND_WITH_SHADOW_TOLERANCE);
+  // Kein Verlauf mehr in `.nav` selbst: die Farbe, die dort liegt, kommt aus
+  // der Kopie und wird nirgends ein zweites Mal von Hand hingeschrieben.
+  const navBackground = await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('.nav')!);
+    return { image: cs.backgroundImage, color: cs.backgroundColor };
+  });
+  expect(navBackground.image, '.nav malt keinen eigenen Verlauf').toBe('none');
+  expect(navBackground.color, '.nav trägt keine eigene Fläche').toBe('rgba(0, 0, 0, 0)');
 });
 
-test('AK2: der Schleier stiehlt keine Berührung — nach dem Scrollen klickt ein Reiter in der Pille durch', async ({
+test('AK2: an der Oberkante der Nav-Zeile entsteht keine Kante', async ({ page }) => {
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+  await expect(page.getByRole('navigation', { name: 'Hauptnavigation' })).toBeVisible();
+
+  const navBox = (await page.locator('.nav').boundingBox())!;
+  // x = 4: links der 16px-Polsterung von `main` und links der Pille (12px
+  // Rand) — auf beiden Seiten der Kante liegt dort nur Hintergrund.
+  const x = 4;
+  // Tief im Streifen unter der Pille, wo die Kopie voll deckt …
+  const inRow = await samplePagePixel(page, x, navBox.y + navBox.height - 3);
+  // … gegen einen Punkt oberhalb der Nav-Zeile, außerhalb der Reichweite des
+  // Pillenschattens (0 8px 30px, tokens.css: höchstens 22px über deren
+  // Oberkante, die selbst 8px unter der Nav-Oberkante liegt).
+  const aboveRow = await samplePagePixel(page, x, navBox.y - 40);
+  expect(
+    maxChannelDiff(inRow, aboveRow),
+    `Nav-Zeile ${JSON.stringify(inRow)} vs. darüber ${JSON.stringify(aboveRow)}`,
+  ).toBeLessThanOrEqual(SEAM_TOLERANCE);
+});
+
+test('AK3: gescrollter Karteninhalt bleibt unter der Nav-Zeile unsichtbar — in Hell und Dunkel', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/aufgaben');
+  await seedTallTaskList(page);
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.reload();
+    await selectView(page, 'Alle');
+    await scrollNearBottomBehindNav(page);
+    await expectCardBehindNav(page);
+
+    const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(navBg, `.nav trägt weiterhin keine eigene Fläche (${scheme})`).toBe('rgba(0, 0, 0, 0)');
+
+    // Der Streifen liest als der Hintergrund, auf dem die Zeile liegt — seit
+    // #991 ist das Bogen 3, seit #1006 malt ihn die Kopie selbst statt einer
+    // gleichfarbigen Fläche. Entscheidend ist beides Mal: nicht die Karte.
+    const groundToken = await resolveColorToken(page, '--arc-3');
+    const surfaceToken = await resolveColorToken(page, '--surface');
+    const groundRgb = await toRgb(page, groundToken);
+    const surfaceRgb = await toRgb(page, surfaceToken);
+
+    const stripColor = await sampleElementPixel(page, page.locator('.nav'), 0.5, 0.95);
+    expect(
+      maxChannelDiff(stripColor, groundRgb),
+      `Streifen (${scheme}) ${JSON.stringify(stripColor)} vs. --arc-3 ${JSON.stringify(groundRgb)}`,
+    ).toBeLessThan(GROUND_WITH_SHADOW_TOLERANCE);
+    expect(
+      maxChannelDiff(stripColor, surfaceRgb),
+      `Streifen (${scheme}) unterscheidet sich von --surface`,
+    ).toBeGreaterThanOrEqual(GROUND_WITH_SHADOW_TOLERANCE);
+  }
+});
+
+test('AK4: die Ausblendung liegt auf der Kopie und endet an der Oberkante durchsichtig', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.goto('/uebersicht');
+
+  const styles = await navGroundStyles(page);
+  expect(styles.maskImage, 'die Kopie blendet per Maske aus').toContain('gradient');
+  // "to top" heißt: der letzte Stopp ist die Oberkante der Nav-Zeile, und die
+  // muss vollständig durchsichtig sein. Sonst schneidet die Kopie den
+  // Hintergrund an genau der Kante ab, die #889 schon einmal aufgemacht hat.
+  const stops = styles.maskImage.match(/(?:rgba?|oklch)\([^)]+\)/g) ?? [];
+  expect(stops.length, `Maske hat mindestens zwei Stopps: ${styles.maskImage}`).toBeGreaterThanOrEqual(2);
+  expect(
+    stops[stops.length - 1],
+    `letzter Stopp (Oberkante) ist durchsichtig: ${styles.maskImage}`,
+  ).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('AK5: die Kopie stiehlt keine Berührung — nach dem Scrollen klickt ein Reiter in der Pille durch', async ({
   page,
 }) => {
   await registerPasskey(page);
   await page.goto('/aufgaben');
 
-  const before = await navBeforePseudo(page);
-  expect(before.pointerEvents, '.nav::before ist pointer-events: none').toBe('none');
+  const styles = await navGroundStyles(page);
+  expect(styles.pointerEvents, '.bg-layer--nav ist pointer-events: none').toBe('none');
 
   await seedTallTaskList(page);
   await page.reload();
@@ -242,7 +384,7 @@ test('AK2: der Schleier stiehlt keine Berührung — nach dem Scrollen klickt ei
   await expect(page).toHaveURL(/\/kalender$/);
 });
 
-test('AK3: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt über dem Schleier', async ({ page }) => {
+test('AK6: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt über der Kopie', async ({ page }) => {
   await registerPasskey(page);
   await page.goto('/aufgaben');
   await seedTallTaskList(page);
@@ -264,76 +406,33 @@ test('AK3: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt übe
   ).toBeLessThan(3);
 });
 
-test('AK4: der Home-Indicator-Streifen liest als Seite (Routen-Grund), nicht als Neutralfläche — in Hell und Dunkel', async ({
-  page,
-}) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
-  await seedTallTaskList(page);
-
-  for (const scheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme: scheme });
-    await page.reload();
-    await selectView(page, 'Alle');
-    await scrollNearBottomBehindNav(page);
-    await expectCardBehindNav(page);
-
-    const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(navBg, `.nav trägt weiterhin keine eigene Fläche (${scheme})`).toBe('rgba(0, 0, 0, 0)');
-
-    // Der Verlauf blendet zu `--arc-3` aus (issue #991 AK7) — siehe AK1 oben.
-    const groundToken = await resolveColorToken(page, '--arc-3');
-    const surfaceToken = await resolveColorToken(page, '--surface');
-    const groundRgb = await toRgb(page, groundToken);
-    const surfaceRgb = await toRgb(page, surfaceToken);
-
-    const stripColor = await sampleElementPixel(page, page.locator('.nav'), 0.5, 0.95);
-    expect(
-      maxChannelDiff(stripColor, groundRgb),
-      `Streifen (${scheme}) ${JSON.stringify(stripColor)} vs. --arc-3 ${JSON.stringify(groundRgb)}`,
-    ).toBeLessThan(GROUND_WITH_SHADOW_TOLERANCE);
-    expect(
-      maxChannelDiff(stripColor, surfaceRgb),
-      `Streifen (${scheme}) unterscheidet sich von --surface`,
-    ).toBeGreaterThanOrEqual(GROUND_WITH_SHADOW_TOLERANCE);
-  }
-});
-
-test('AK5: die Oberkante der Nav-Zeile bleibt durchsichtig (Regression zu #889)', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
-
-  const before = await navBeforePseudo(page);
-  // "to top" heißt: der Verlauf läuft vom unteren zum oberen Rand von `.nav` — der
-  // letzte Stop im normalisierten String ist die Oberkante, und die muss vollständig
-  // durchsichtig sein. Sonst schneidet der Schleier die Hintergrundkreise wie vor
-  // #889 an der Nav-Oberkante ab (der bestehende hintergrundkreise.spec.ts-#889-Test
-  // deckt das zusätzlich mit echten Bildschirm-Pixeln ab).
-  // Chromium keeps `background-image` gradient stops in their declared colour
-  // function (here `oklch(...)` for the ground stops, tokens.css) instead of
-  // normalising them to rgb() the way it does for plain `color`/`background-color`
-  // — the stop-matcher has to cover both.
-  const stops = before.backgroundImage.match(/(?:rgba?|oklch)\([^)]+\)/g) ?? [];
-  expect(stops.length, `Verlauf hat mindestens zwei Farbstopps: ${before.backgroundImage}`).toBeGreaterThanOrEqual(
-    2,
-  );
-  expect(stops[stops.length - 1], `letzter Stop (Oberkante) ist durchsichtig: ${before.backgroundImage}`).toBe(
-    'rgba(0, 0, 0, 0)',
-  );
-
-  const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(navBg, '.nav trägt weiterhin keine eigene Fläche').toBe('rgba(0, 0, 0, 0)');
-});
-
-test('AK6: auf Desktop (≥768px) gibt es keinen Schleier — die Sidebar trägt ihre eigene Fläche', async ({ page }) => {
+test('AK7: auf Desktop (≥768px) gibt es keine Kopie — die Sidebar trägt ihre eigene Fläche', async ({ page }) => {
   await registerPasskey(page);
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto('/aufgaben');
 
-  const before = await navBeforePseudo(page);
-  expect(before.content, '.nav::before ist auf Desktop abgeschaltet').toBe('none');
+  const styles = await navGroundStyles(page);
+  expect(styles.display, '.bg-layer--nav ist auf Desktop abgeschaltet').toBe('none');
 
   const surfaceToken = await resolveColorToken(page, '--surface');
   const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(navBg, 'die Sidebar trägt ihre eigene --surface-Fläche').toBe(surfaceToken);
+});
+
+test('AK8: bei „Ruhe reduzieren" steht auch die Kopie still und untransformiert', async ({ page }) => {
+  await registerPasskey(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+
+  const arcs = await page.evaluate(() =>
+    [...document.querySelectorAll('.bg-layer--nav .bg-arc')].map((el) => {
+      const cs = getComputedStyle(el);
+      return { animationName: cs.animationName, scale: cs.scale };
+    }),
+  );
+  expect(arcs, 'die Kopie rendert drei Bögen').toHaveLength(3);
+  for (const [index, arc] of arcs.entries()) {
+    expect(arc.animationName, `Bogen ${index + 1} der Kopie animiert nicht`).toBe('none');
+    expect(arc.scale, `Bogen ${index + 1} der Kopie ruht untransformiert`).toBe('1');
+  }
 });

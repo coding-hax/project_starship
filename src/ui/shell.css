@@ -128,49 +128,22 @@
      strip below the pill still needs to read as page, not chrome (issue #831
      AK2/AK4), but `.nav` itself must not paint a layer to get there: `body`
      already carries `background: var(--ground)` (globals.css), and an opaque
-     fill here would sit on top of `.bg-layer`'s ambient circles (z-index -1
+     fill here would sit on top of `.bg-layer`'s ambient arcs (z-index -1
      inside body's isolated stacking context) for the full height of the row,
      cutting them off at the nav's top edge instead of only where the pill
-     actually sits (issue #889). Transparent lets both the ground and the
-     circles painted behind `.nav` show through everywhere except the pill
-     itself (`.nav__bar` below), which keeps its own opaque `--surface` fill,
-     shadow and ink reset. Since #908, `.nav::before` (below) adds a gradient
-     veil to the route ground that fades in toward the bottom of this row —
-     `.nav` itself still carries no fill of its own. */
+     actually sits (issue #889). Transparent lets both the ground and the arcs
+     painted behind `.nav` show through everywhere except the pill itself
+     (`.nav__bar` below), which keeps its own opaque `--surface` fill, shadow
+     and ink reset. Hiding scrolled content in this row (issue #908) is the job
+     of `.bg-layer--nav` (background-arcs.css), a clipped copy of that same
+     background rendered as `.nav`'s first child — since issue #1006 an actual
+     copy, not a fill in a colour hand-matched to it. `.nav` itself carries no
+     fill of its own either way. */
   background: transparent;
   /* A bare `env()` resolves to nothing on a device without a notch, computing to
      0px — the home-indicator gap disappears entirely instead of just not growing.
      The baseline keeps a minimum gap everywhere; the inset only ever adds to it. */
   padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
-}
-
-.nav::before {
-  /* Since #908: scrolled page content that slides behind the transparent bar
-     (see above) used to reach the pill at full card contrast. A veil fades it
-     out to the tone the nav row itself sits on before it gets there. Lives on
-     `::before`, not on `.nav` itself, so `.nav`'s own `background-color`
-     stays `transparent` — `grundfarbe-vollfarbe.spec.ts` AK2/AK4 assert
-     exactly that. `z-index: -1` keeps it behind `.nav__bar` (in-flow, no
-     stacking context of its own) but the veil is still painted inside
-     `.nav`'s own stacking context (`--z-nav`), so it stays above `main` and
-     above the ambient arcs in `.bg-layer`.
-     Fades to `--arc-3` (issue #991 AK7), not `--ground`: Bogen 3 (the
-     frontmost arc) always covers the nav row now, so a `--ground` stop would
-     leave a visible seam at the row's top edge where the arc actually is. */
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  /* Top edge stays transparent — the #889 arc test samples a pixel in the
-     nav row outside the pill and expects it to differ measurably from the
-     ground, which only holds if the veil hasn't gone opaque by the top yet. */
-  background: linear-gradient(
-    to top,
-    var(--arc-3) 0%,
-    var(--arc-3) 72%,
-    transparent 100%
-  );
 }
 
 .nav__bar {
@@ -195,7 +168,8 @@
      descendants' overflow — so `--shadow-float`'s 8px offset/30px blur (tokens.css)
      bleeds straight down into the empty home-indicator strip below the pill
      (`.nav`'s bottom padding, issue #831 AK2/AK4), which `nav-schleier.spec.ts`
-     AK4 (#908) samples and expects to read as flat `--ground` — no shadow at all,
+     AK3 (#908, renumbered in #1006) samples and expects to read as the
+     background the row sits on (Bogen 3 since #991) — no shadow at all,
      since there is no scrolled content down there for a "floating above content"
      shadow to mean anything. `clip-path`, unlike `overflow`, clips an element's
      own shadow too: 0 on the bottom edge cuts the downward bleed off exactly at
@@ -354,12 +328,6 @@
     --border: var(--border-base);
     --border-strong: var(--border-strong-base);
     --border-faint: var(--border-faint-base);
-  }
-
-  .nav::before {
-    /* Sidebar carries its own opaque `--surface` fill (above) — no scrolled
-       page content ever slides behind it, so there's nothing to veil. */
-    content: none;
   }
 
   .nav__bar {

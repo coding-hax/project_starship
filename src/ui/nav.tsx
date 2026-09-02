@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useModules } from '@/features/settings/use-modules';
 import { useNavOrder } from '@/features/settings/use-nav-order';
+import { BackgroundArcs } from './background-arcs';
 
 /**
  * One navigation, two shapes: bottom bar on mobile, sidebar from `md` up.
@@ -52,6 +53,15 @@ export function Nav() {
 
   return (
     <nav aria-label="Hauptnavigation" className="nav">
+      {/* The row's own background, clipped to it (issue #1006): the same arcs the
+          page already shows, painted opaquely so card rows scrolling under the
+          sticky bar dissolve into the background before they reach the pill.
+          Replaces the flat `.nav::before` fill from #908, which only stayed
+          seamless as long as someone kept its colour in step with the
+          background (#991 AK7). Ahead of `.nav__bar` in the DOM and pushed
+          behind it with `z-index: -1`. Hidden from `md` up, where the sidebar
+          carries its own opaque surface. */}
+      <BackgroundArcs variant="nav" />
       <div className="nav__bar">
         <ul className="nav__list" ref={listRef}>
           {visibleItems.map((tab) => {

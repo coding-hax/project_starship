@@ -29,12 +29,71 @@
      own stacking context (issue #849) — see the `body` rule in globals.css. */
   z-index: -1;
   /* Depth (issue #904): a slight vignette towards the bottom edge, painted
-     under the arcs below (DOM order = paint order at equal z-index). */
-  background: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
+     under the arcs below (DOM order = paint order at equal z-index). Held in
+     a custom property because `.bg-layer--nav` (below) has to paint the very
+     same gradient a second time, and two hand-kept copies of one gradient is
+     exactly the kind of drift issue #1006 is about. */
+  --bg-vignette: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
+  background: var(--bg-vignette);
 }
 
 html:has([data-ground]) .bg-layer {
   display: block;
+}
+
+/*
+ * The same background a second time, clipped to the mobile nav row (issue
+ * #1006). Page content that scrolls behind the sticky bar must not reach the
+ * pill at full card contrast — that is what `.nav::before` did since #908,
+ * with a flat fill in whichever colour happened to lie in that row (`--ground`
+ * then, `--arc-3` since #991 AK7). A hand-copied colour only stays seamless
+ * until the background changes: it painted a visible edge at the nav's top
+ * once already (#889). This layer paints what is actually behind it instead —
+ * the ground plus the same three arcs, from the same rules — so there is
+ * nothing left to keep in sync.
+ *
+ * `position: absolute`, not `fixed`, and that is enough: `.nav` is the last
+ * row of a `min-height: 100dvh` grid and sticks to `bottom: 0`, so the row's
+ * bottom edge always coincides with the viewport's, and the arcs are placed
+ * from `bottom` and `left: 50%` alone (`left: 50%` of the full-width nav is
+ * `left: 50%` of the viewport). Same circles, no containing-block tricks, and
+ * no second `fixed` layer that would have to be clipped back down.
+ */
+.bg-layer.bg-layer--nav {
+  position: absolute;
+  /* Opaque, unlike the ambient layer: this one has to HIDE the card rows
+     sliding under it, not just decorate. The ground is the base, the vignette
+     sits on it and the arcs paint over both — the ambient layer's own paint
+     order, rebuilt here out of longhands because the shorthand above sets
+     only an image. */
+  background-color: var(--ground);
+  background-image: var(--bg-vignette);
+  background-repeat: no-repeat;
+  /* The vignette spans the whole viewport up there, so it has to span the
+     whole viewport down here too and simply be cut off by this row — sized to
+     the row it would compress its 42%→100% ramp into ~90px and read as a dark
+     band. Anchored to the bottom, which is the edge both layers share. */
+  background-position: bottom;
+  background-size: 100% 100dvh;
+  /* Fades the copy out towards the row's top edge, so scrolled content
+     dissolves into the background instead of ending at a hard line (the ramp
+     #908 introduced, unchanged: opaque up to 72%, gone at the top). A mask,
+     not a gradient in the fill: everything under it — ground, vignette, arcs —
+     has to fade together, and where no content is behind, a partly
+     transparent copy of the exact same pixels still composites to those same
+     pixels. That is what makes this seamless at every opacity, not just at
+     the ends. */
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
+}
+
+/* From `md` up the nav is a sidebar with its own opaque `--surface` fill — no
+   page content ever slides behind it, so there is nothing to hide and nothing
+   to reproduce (issue #908 AK6, carried over). */
+@media (min-width: 768px) {
+  .bg-layer.bg-layer--nav {
+    display: none;
+  }
 }
 
 .bg-arc {
