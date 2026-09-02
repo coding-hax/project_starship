@@ -1586,7 +1586,15 @@ test('AK4: der heutige Tag ohne Auswahl traegt eine Umrandung im Routenblau stat
 
   const textBase = await resolveToken(page, '--text-base');
   expect(await today.evaluate((el) => getComputedStyle(el).color)).toBe(textBase);
-  expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  // `.calendar-strip__day` transitions `background-color` (calendar-strip.css:85,
+  // 150ms) — `selectStripDay` above just removed the `--selected` pill, so a bare
+  // synchronous read here races the fade-out and can catch a near-zero residual
+  // alpha (observed in CI: `rgba(99, 144, 225, 0.004)`). Poll until the fade
+  // settles instead of sampling mid-transition, same idiom as the dark-mode style
+  // reads above (`:1420`/`:1450`).
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgba(0, 0, 0, 0)');
 
   async function ringContrast(): Promise<number> {
     const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
