@@ -282,8 +282,20 @@ test('#1040: Grundlinie durchgezogen, Deckellinie gestrichelt, keine Mittellinie
 
   const baseline = page.locator('.habit-history-card__baseline');
   const cap = page.locator('.habit-history-card__cap');
-  await expect(baseline).toBeVisible();
-  await expect(cap).toBeVisible();
+  // Ein waagerechtes <line> hat eine Bounding-Box der Hoehe 0 — toBeVisible()
+  // wertet das als versteckt. Gezeichnet wird es trotzdem, also pruefen wir
+  // Anwesenheit plus einen gesetzten Strich statt der Box.
+  await expect(baseline).toBeAttached();
+  await expect(cap).toBeAttached();
+  for (const [name, line] of [
+    ['Grundlinie', baseline],
+    ['Deckellinie', cap],
+  ] as const) {
+    expect(
+      await line.evaluate((el) => getComputedStyle(el).stroke),
+      `${name} hat eine Strichfarbe`,
+    ).not.toBe('none');
+  }
   expect(
     await baseline.evaluate((el) => getComputedStyle(el).strokeDasharray),
     'die Grundlinie ist durchgezogen',
