@@ -51,6 +51,14 @@
   margin: var(--space-3) 0 var(--space-2);
 }
 
+/* Der Streifen ist seit issue #1013 eine schwebende Karte mit eigenem
+   Schatten/Radius statt loser Zellen auf dem Grund — der Kopf-`gap`
+   (--space-1) reicht für Augenbraue/Titel, aber die Karte darunter braucht
+   mehr Abstand, sonst klebt ihr Schatten am Titel. */
+.calendar-view__header .calendar-strip {
+  margin-top: var(--space-2);
+}
+
 /* Zwei Spalten ab 768px, nur im Monat (issue #1021, Teil 6 von #1015): der
    einzige DOM-Unterschied zwischen Woche und Monat ist `.month-grid` als
    direktes Kind im Rumpf (die Woche zeigt `.calendar-strip` stattdessen im

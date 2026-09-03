@@ -75,9 +75,14 @@ Zwei Kontexte, unterschiedlicher Bedarf:
 - **6px-Farbkante an der Terminkarte** (`event-time.ts`'s `categoryEdgeVar`):
   der rohe Token-Wert, nie als Flächenfarbe — die Fläche bleibt `--surface`.
   Ein Termin ohne Kategorie trägt stattdessen `--area-events`.
-- **Punkt auf dem Kalender-Grund** (Wochenstreifen, Monatsraster, Ganztägig-
-  Band): der rohe Wert reicht auf dem satt-blauen `--ground-kalender` nicht
-  für 3:1 (Nicht-Text, WCAG 1.4.11) — aufgehellt via
+- **Punkt im Wochenstreifen** (issue #1013): liegt seit der Karten-Umstellung
+  auf `--surface`, nicht mehr auf dem Grund — der rohe Wert reicht auch dort
+  nicht für 3:1 (Nicht-Text, WCAG 1.4.11), aufgehellt via
+  `color-mix(in oklab, var(--cat-*) 85%, var(--text-base))`, dasselbe Rezept
+  wie das Ganztägig-Band unten.
+- **Punkt auf dem Kalender-Grund** (Monatsraster, Ganztägig-Band): der rohe
+  Wert reicht auf dem satt-blauen `--ground-kalender` nicht für 3:1
+  (Nicht-Text, WCAG 1.4.11) — aufgehellt via
   `color-mix(in oklab, var(--cat-*) 60%, var(--on-ground))`, dasselbe Rezept
   wie das Ganztägig-Band (issue #924).
 
