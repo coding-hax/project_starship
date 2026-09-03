@@ -229,7 +229,13 @@ async function ensureJournalUnlocked(
   passphrase = JOURNAL_FAB_PASSPHRASE,
 ): Promise<void> {
   await page.goto('/journal');
-  const state = await page.locator('.journal-gate').getAttribute('data-state');
+  const gate = page.locator('.journal-gate');
+  // `data-state` starts at 'loading' (journal-gate.tsx) — read too early and
+  // this sees that transient value instead of 'setup'/'locked'/'unlocked',
+  // takes neither branch below, and the final waitFor() times out because
+  // nothing ever drove the gate forward.
+  await expect.poll(() => gate.getAttribute('data-state')).not.toBe('loading');
+  const state = await gate.getAttribute('data-state');
   if (state === 'setup') {
     await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
     await page.getByLabel('Passphrase wiederholen').fill(passphrase);
