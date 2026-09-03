@@ -122,7 +122,19 @@
      that content, below the FAB, the toast host and the drag caption — see the
      z-layers scale in tokens.css / docs/DESIGN_SYSTEM.md "Ebenen". */
   z-index: var(--z-nav);
-  display: flex;
+  /* A single stacked cell, not a flex row: `.nav-ground` (background-arcs.css)
+     has to cover the whole row and still sit behind `.nav__bar`. As an
+     absolutely positioned child it would be laid out against `.nav`'s box —
+     and `.nav` is `position: sticky`, whose offset Chromium applies to such a
+     child a second time for one frame while the document is still growing. The
+     copy then paints 36px (the offset) too high and corrects itself in the next
+     frame: a layout shift with the row itself never moving, which
+     `uebersicht-ladezustand.spec.ts` AK1 measures and `.nav::before` never
+     showed because a pseudo-element is not a shift source. Both children in
+     `1 / 1` keeps the copy in flow, where the sticky offset reaches it exactly
+     once, and the DOM order alone decides what paints on top (issue #1006). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   /* `.nav` is a grid row, not a `position: fixed` overlay — the home-indicator
      strip below the pill still needs to read as page, not chrome (issue #831
@@ -147,8 +159,13 @@
 }
 
 .nav__bar {
+  /* Same cell as `.nav-ground`, later in the DOM — so the pill paints over the
+     copy without either of them leaving the flow (issue #1006). */
+  grid-area: 1 / 1;
   display: flex;
   align-items: center;
+  /* Ignored in the mobile grid, still what makes the bar fill the sidebar's
+     height in the `md` flex column below. */
   flex: 1;
   min-width: 0;
   margin: var(--space-2) var(--space-3) 0;
@@ -314,6 +331,9 @@
     position: sticky;
     top: 0;
     height: 100dvh;
+    /* Back to a flex column: the stacked cell above exists only for the mobile
+       row's background copy, which is switched off from `md` up anyway. */
+    display: flex;
     flex-direction: column;
     align-items: stretch;
     border-right: 1px solid var(--border);

@@ -67,25 +67,38 @@ html:has([data-ground]) .bg-layer {
  * the ambient layer, while the part that must never drift (arc geometry,
  * tones, gait) stays shared through `.bg-arc`.
  *
- * `position: absolute`, not `fixed`, and that is enough: `.nav` is the last
- * row of a `min-height: 100dvh` grid and sticks to `bottom: 0`, so the row's
- * bottom edge always coincides with the viewport's, and the arcs are placed
- * from `bottom` and `left: 50%` alone (`left: 50%` of the full-width nav is
- * `left: 50%` of the viewport). Same circles, no containing-block tricks, and
- * no second `fixed` layer that would have to be clipped back down.
+ * In flow, not absolutely positioned: `.nav` is `position: sticky`, and while
+ * the document is still growing Chromium applies that sticky offset a second
+ * time to an absolutely positioned child for a single frame — the copy painted
+ * 36px too high and snapped back in the next frame, a measurable layout shift
+ * (`uebersicht-ladezustand.spec.ts` AK1) with the row itself never moving. As
+ * one of two items in `.nav`'s single grid cell (shell.css) the offset reaches
+ * it exactly once. `position: relative` only so the arcs have a containing
+ * block; they are placed from `bottom` and `left: 50%` alone (`left: 50%` of
+ * the full-width nav is `left: 50%` of the viewport). Same circles, no second
+ * `fixed` layer that would have to be clipped back down.
  */
 .nav-ground {
   /* Same route gate as `.bg-layer` (below): no ground, no copy. On those
      routes the old `.nav::before` painted nothing either — its `var(--arc-3)`
      was undefined there, which made the whole declaration invalid. */
   display: none;
-  position: absolute;
-  inset: 0;
+  grid-area: 1 / 1;
+  /* Fills the row instead of centring like the pill next to it. */
+  align-self: stretch;
+  /* The grid area is `.nav`'s content box, so an in-flow box stops short of the
+     home-indicator strip below the pill — `.nav`'s bottom padding, which two
+     tests pin to `.nav` itself (`shell.spec.ts` #123, `nav-order.mobile.spec.ts`)
+     and which scrolled cards pass through just the same. The negative margin
+     reaches the copy back over it, so it covers the full padding box the way
+     `inset: 0` did. */
+  margin-bottom: calc(-1 * (var(--space-2) + env(safe-area-inset-bottom)));
+  position: relative;
   overflow: hidden;
   pointer-events: none;
-  /* Behind `.nav__bar` (in-flow, no stacking context of its own) but inside
-     `.nav`'s own stacking context (`--z-nav`, shell.css), so it stays above
-     `main` and above the ambient layer. */
+  /* Behind `.nav__bar`, which shares this grid cell and comes later in the DOM,
+     but inside `.nav`'s own stacking context (`--z-nav`, shell.css), so it stays
+     above `main` and above the ambient layer. */
   z-index: -1;
   /* Opaque, unlike the ambient layer: this one has to HIDE the card rows
      sliding under it, not just decorate. Ground as the base, vignette on it,
