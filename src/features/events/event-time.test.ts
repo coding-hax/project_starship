@@ -691,6 +691,19 @@ describe('allDayBandsForWindow', () => {
     expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events))).toHaveLength(3);
   });
 
+  it('caps at a custom maxBands when provided (the month-grid card passes 2, issue #1043)', () => {
+    const events = ['a', 'b', 'c'].map((suffix, index) =>
+      event({
+        id: `evt-${suffix}`,
+        allDay: true,
+        startDate: VISIBLE_DAYS[index],
+        endDate: VISIBLE_DAYS[index],
+      }),
+    );
+
+    expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events), 2)).toHaveLength(2);
+  });
+
   it('returns an empty list for an empty window', () => {
     expect(allDayBandsForWindow([], () => [])).toEqual([]);
   });
