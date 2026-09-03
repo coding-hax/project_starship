@@ -22,7 +22,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: Ring + Einstellungs-Einstieg in der Augenbrauenzeile,
-  `UebersichtCapture` als FAB unten rechts (#920) + `<UebersichtSections/>` (je aktivem
+  `UebersichtCapture` als FAB unten rechts + `<UebersichtSections/>` (je aktivem
   Modul eine `OverviewSection`: Wetter → Termine → Aufgaben → Aktivitäten → Routinen),
   Kopf via `OverviewBlock`
 - `(app)/aufgaben/page.tsx` — Kopfzeile + `<TaskList/>` + `<QuickAddTask/>`
@@ -135,8 +135,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 ### src/features/events
 
 - `event-time.ts` — reine Layout-Logik (kein DB/DOM): Tages-/Wochen-/Monats-Helfer + `upcomingEventsToday`/`formatCountdown`
-- `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
-- `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
+- `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` → gerenderte `Occurrence`s
+- `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence`, `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
   (`'local'|'subscribed'`, View-Feld) unterscheidet synced von abonnierten Terminen
 - `use-event-exceptions.ts` — `EventExceptionView`/`toEventExceptionView` + `useEventExceptions()`, nur lesend — Schreiben läuft über `event-mutations.ts`
@@ -150,11 +150,11 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   `<EventAgenda/>`, FAB + `<EventDetail/>`/`<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, Vor/Zurück-Tag, „Heute", Punkte/Tag
 - `month-grid.tsx` / `.css` — Monats-Karte: 7×6-Raster, ≤3 Punkte/Tag, 44px-Trefferfläche per Pseudo-Element, Monatsnav
-- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste:
-  Terminkarten (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten
-  Termin, spärlich/leer-Zustände; `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
-- `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (Anlegen+Bearbeiten, `mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
-- `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
+- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste: Terminkarten
+  (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
+  `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
+- `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (`mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
+- `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6), "Nur dieser" nur wenn der Caller sie anbietet
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 - `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
 
@@ -251,11 +251,12 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
 - `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
 - `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes, Bergung der Alt-Einträge (AK1–AK7)
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull ins IndexedDB, Reminder-Versand, Panel „Benachrichtigungen"
 - `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
-- `form-bedienelemente.spec.ts` — FAB-Pille/Atem, aktiver Reiter, Häkchen (#867), je AK + Überlauf hell/dunkel
+- `form-bedienelemente.spec.ts` — FAB-Pille/Atem, aktiver Reiter, Häkchen, je AK + Überlauf hell/dunkel
 
 ### scripts/ — Runner & CI-Hilfen
 

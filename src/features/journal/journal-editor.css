@@ -182,3 +182,32 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* Zwei Bahnen ab 768px (issue #1023, Teil 8 von #1015): der 480px-Deckel und
+   der flex-Fluss weichen einem Mehrspalten-Fluss (AK1) — `columns` wirkt nicht
+   auf `display: flex`, deshalb muss `display: block` mitgehen.
+   `column-gap: var(--space-6)`, nicht `--space-5`: der Token existiert nicht
+   (Fund nebenbei, journal-editor.css alte Zeile 10/journal-mood-band.css) —
+   `--space-6` ist andernorts bereits die "Standard-Sektionslücke"
+   (uebersicht.css). AK4-Bodenreserve wie `.calendar-view` in
+   calendar-view.css (issue #1021): Desktop-Fab steht bei `bottom: space-6`
+   (fab.css), 58px hoch, `.shell__main` reserviert ab 768px nur `space-12`
+   (shell.css) — die Differenz wäre ein realer Überlapp. */
+@media (min-width: 768px) {
+  .journal-editor {
+    display: block;
+    max-width: none;
+    columns: 2;
+    column-gap: var(--space-6);
+    padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
+  }
+
+  /* AK2: eine Tagesgruppe bleibt in einer Bahn. `margin-bottom` ersetzt die
+     vertikale Lücke, die mobil aus `.journal-editor { gap: var(--space-5) }`
+     kommt (row-gap wirkt im Mehrspalten-Fluss nicht) — ebenfalls
+     `--space-6`, siehe oben. */
+  .journal-editor__day-group {
+    break-inside: avoid;
+    margin-bottom: var(--space-6);
+  }
+}
