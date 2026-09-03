@@ -55,24 +55,24 @@ html:has([data-ground]) .bg-layer {
    first and Bogen 3 (vorn, nth-child(3)) last, on top — matching the design
    sheet's front-to-back stacking. */
 .bg-arc:nth-child(1) {
-  width: 1000px;
-  height: 1000px;
-  bottom: -393px;
+  width: 267vw;
+  height: 267vw;
+  bottom: calc(74.7dvh - 267vw);
   background: var(--arc-1);
   animation: bg-arc-pulse-1 9s ease-in-out infinite alternate;
 }
 .bg-arc:nth-child(2) {
-  width: 790px;
-  height: 790px;
-  bottom: -373px;
+  width: 210.7vw;
+  height: 210.7vw;
+  bottom: calc(51.4dvh - 210.7vw);
   background: var(--arc-2);
   animation: bg-arc-pulse-2 11s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
 .bg-arc:nth-child(3) {
-  width: 570px;
-  height: 570px;
-  bottom: -333px;
+  width: 152vw;
+  height: 152vw;
+  bottom: calc(29.2dvh - 152vw);
   background: var(--arc-3);
   animation: bg-arc-pulse-3 14s ease-in-out infinite alternate;
   animation-delay: -9s;
