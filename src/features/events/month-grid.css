@@ -18,6 +18,12 @@
      track math can't drift out of sync with `.month-grid__day`/`.month-grid__days`. */
   --month-grid-day-size: 34px;
   --month-grid-gap: 3px;
+  /* Height of one all-day band row (issue #1043, AK6) — same as
+     calendar-strip.css's `.calendar-strip__band`, so a band reads identically
+     in both cards. `.month-grid__track`'s height (below) folds this in per
+     `--month-grid-band-rows`, the row count month-grid.tsx computes for the
+     currently focused month. */
+  --month-grid-band-size: var(--space-4);
   /* Einblenden beim Wechsel nach Monat (AK7) — kein Höhen-Übergang wie beim
      ehemaligen Streifen-Karussell, nur ein Fade; unter reduced-motion
      automatisch auf ~0 gekürzt (tokens.css's globale Regel). */
@@ -52,11 +58,15 @@
    never half-between; `pan-y` leaves the horizontal gesture unclaimed (there
    is none to hand off — the card no longer scrolls sideways at all).
    Scrollbar hidden the same way. Height is fixed to exactly one page (six
-   full Mon–Sun weeks, `gridDaysFor`'s 42-cell padding) via
-   `--month-grid-day-size`/`--month-grid-gap` — without it the three stacked
-   pages would triple the card's height (AK5); the tallest/only page height
-   still stays identical across a month change (AK5) without extra
-   bookkeeping. */
+   full Mon–Sun weeks, `gridDaysFor`'s 42-cell padding, plus
+   `--month-grid-band-rows` all-day band rows the focused month needs, issue
+   #1043 AK11) via `--month-grid-day-size`/`--month-grid-band-size`/
+   `--month-grid-gap` — without it the three stacked pages would triple the
+   card's height; all three still stay identical to *each other* without
+   extra bookkeeping (every page is stretched to this one fixed height), even
+   though the height itself may now change across a month swipe when the
+   newly focused month needs a different number of band rows than the one it
+   replaced. */
 .month-grid__track {
   display: flex;
   flex-direction: column;
@@ -65,7 +75,10 @@
   scrollbar-width: none;
   scroll-snap-type: y mandatory;
   touch-action: pan-y;
-  height: calc(6 * var(--month-grid-day-size) + 5 * var(--month-grid-gap));
+  height: calc(
+    6 * var(--month-grid-day-size) + 5 * var(--month-grid-gap) +
+      var(--month-grid-band-rows, 0) * (var(--month-grid-band-size) + var(--month-grid-gap))
+  );
 }
 
 .month-grid__track::-webkit-scrollbar {
@@ -134,20 +147,26 @@
   opacity: 0.3;
 }
 
+/* Heute ohne Auswahl (issue #1043, AK2) — Umrandung statt Fläche, dasselbe
+   Rezept wie calendar-strip.css's `.calendar-strip__day[data-today]`:
+   `box-shadow: inset`, damit die Zeilenhöhe nicht springt, ein 85%-Mix
+   Richtung --text-base statt reinem --ground, das im Dunkelmodus unter 3:1
+   gegen --surface fällt. */
 .month-grid__day[data-today] {
-  background: color-mix(in oklab, var(--area-events) 16%, var(--surface));
-  font-weight: var(--weight-emphasis);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ground) 85%, var(--text-base));
 }
 
+/* Ausgewählter Tag (AK1): volle Pille im Routenblau, Text in --on-ground —
+   ersetzt --area-events/--accent-fg vollständig (AK4), dasselbe Rezept wie
+   calendar-strip.css's `.calendar-strip__day--selected`. */
 .month-grid__day--selected {
-  background: var(--area-events);
-  color: var(--accent-fg);
+  background: var(--ground);
+  color: var(--on-ground);
 }
 
-/* Heute-und-ausgewählt: Auswahl gewinnt (wie im Wochenstreifen). */
+/* Heute-und-ausgewählt: Auswahl gewinnt, keine zusätzliche Umrandung (AK3). */
 .month-grid__day--selected[data-today] {
-  background: var(--area-events);
-  color: var(--accent-fg);
+  box-shadow: none;
 }
 
 /* Immer gerendert, auch ohne Termine — hält die Zeile auf gleicher Höhe,
@@ -162,6 +181,46 @@
   width: 5px;
   height: 5px;
   border-radius: var(--radius-pill);
-  /* Gleiches Rezept wie .calendar-strip__dot (issue #955 AK2). */
-  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 60%, var(--on-ground));
+  /* --surface-Rezept (issue #1043, AK5) — dasselbe wie .calendar-strip__dot
+     (issue #1013): der Punkt liegt auf --surface, nicht auf dem Grund, das
+     alte 60%/--on-ground-Rezept unterschreitet dort 3:1. */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 85%, var(--text-base));
+}
+
+/* All-day/multi-day band row (issue #1043, AK6-9) — one row per week the
+   focused month renders, only for weeks that actually carry an all-day event
+   (AK9); `grid-row`/`grid-column` are set inline per band (month-grid.tsx),
+   same reasoning as the day cells above. Same shape/recipe as
+   calendar-strip.css's `.calendar-strip__band` — the month card speaks the
+   week strip's language once it needs one. */
+.month-grid__band {
+  min-width: 0;
+  height: var(--month-grid-band-size);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: color-mix(in oklab, var(--band-cat, var(--area-events)) 85%, var(--text-base));
+}
+
+/* Runs off the week row's edge (AK7): squared off there instead of the
+   pill's default rounded end — rounded only at the event's real start/end. */
+.month-grid__band[data-continues-before] {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.month-grid__band[data-continues-after] {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.month-grid__band-title {
+  overflow: hidden;
+  color: var(--on-accent);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

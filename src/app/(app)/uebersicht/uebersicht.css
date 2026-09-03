@@ -119,14 +119,22 @@
  * Titelzeilen-Knopfes (siehe uebersicht-capture.tsx) — die letzte Sektion
  * (Routinen) braucht deshalb Abstand zu ihm, sonst überdeckt der Fab bei hohem
  * `--font-scale` deren letzte Zeile (CI-Fund AC9, capture-uebersicht.spec.ts).
- * Rechnet `.shell__main`s eigenes `padding-bottom` (space-6 + safe-area, shell.css)
- * auf denselben Bodenabstand hoch, den fab.css für den Fab selbst reserviert
- * (Nav-Höhe 64px + Pillenversatz space-2 + safe-area + Fabs eigener Abstand
- * space-4 + Tastatur-Inset) plus die Fab-Höhe (58px) — die safe-area kürzt sich
- * dabei heraus, weil `.shell__main` sie bereits einmal trägt. */
+ * Reserviert wird nur, was der Fab tatsächlich über `.shell__main`s eigenes
+ * Bodenpolster (space-6 + safe-area, shell.css) hinaus überdeckt — nicht sein
+ * ganzer Abstand zum Viewport-Boden. `.nav` ist seit #831/#889 eine Grid-Zeile,
+ * keine `position: fixed`-Überlagerung: sie belegt den Nav-Streifen (64px +
+ * space-2 + safe-area) bereits als eigenen Platz, den der Inhalt nie erreicht
+ * — ihn hier zusätzlich einzurechnen doppelte ihn (issue #1054). Fabs
+ * Oberkante über dem Viewport-Boden minus `.shell__main`s Bodenpolster bleibt
+ * die Fab-Höhe (58px) + Fabs eigener Abstand (space-4) + Tastatur-Inset, mit
+ * der safe-area einmal gegengerechnet, weil `.shell__main` sie schon trägt.
+ * `max(0px, …)` fängt den theoretischen Fall ab, in dem `--keyboard-inset`
+ * bei 0 liegt und `env(safe-area-inset-bottom)` allein schon größer ist als
+ * `58px + space-4 - space-6`. */
 .uebersicht__sections {
-  padding-bottom: calc(
-    64px + var(--space-2) + var(--space-4) + var(--keyboard-inset) + 58px - var(--space-6)
+  padding-bottom: max(
+    0px,
+    calc(58px + var(--space-4) + var(--keyboard-inset) - var(--space-6) - env(safe-area-inset-bottom))
   );
 }
 
