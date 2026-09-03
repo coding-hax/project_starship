@@ -85,7 +85,13 @@ test('AK (#1018): Puls-Lift skaliert mit der gemessenen Bogenbreite, Desktop deu
   await page.goto('/uebersicht');
   const mobileArcs = await arcMetrics(page);
 
+  // Neu navigieren statt nur die Viewportgröße zu ändern: ein reiner Resize ohne
+  // Navigation lässt vw/dvh in diesem Layout auf dem 375px-Stand einfrieren (siehe
+  // Fortschrittskommentar #1018) — kein Playwright-Timing-Flake, sondern ein Rendering-
+  // Zustand, den kein reales Nutzer-Szenario ohnehin durchläuft (ein Besuch bei 1280px
+  // lädt die Seite frisch, wie Test 1 oben es tut).
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/uebersicht');
   const desktopArcs = await arcMetrics(page);
 
   expect(mobileArcs).toHaveLength(3);
