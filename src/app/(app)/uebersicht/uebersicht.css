@@ -144,6 +144,45 @@
   margin-bottom: var(--space-3);
 }
 
+/* Desktop-Anordnung (issue #1020, Teil 5 von #1015, ADR-0029): Anordnung wird
+ * abgeleitet, nicht einspaltig übernommen. Alle mobilen Regeln oben bleiben
+ * unangetastet — dieser Block überschreibt nur ab 768px. */
+@media (min-width: 768px) {
+  .uebersicht__sections {
+    /* Mehrspalten-Balancing statt Umsortieren: die DOM-Reihenfolge aus
+     * uebersicht-sections.tsx (Wetter → Termine → Aufgaben → Aktivitäten →
+     * Routinen) bleibt die Quelle, `columns` füllt nur spaltenweise
+     * (Spalte 1 von oben, dann Spalte 2) statt sie neu zu sortieren. */
+    columns: 2;
+    column-gap: var(--space-6);
+    /* Die mobile Bodenreserve (oben) geht von der 64px-Bottom-Nav aus — auf
+     * Desktop ist die Nav eine Seitenleiste, die Reserve muss deshalb aus der
+     * Desktop-Fab-Position (fab.css `@media (min-width: 768px)`) neu
+     * abgeleitet werden: FAB-Oberkante über dem Viewport-Boden ist
+     * `space-6 + safe-area + keyboard-inset + 58px` (Höhe), `.shell__main`
+     * trägt auf Desktop bereits `padding-bottom: var(--space-12)` (shell.css,
+     * flach, ohne safe-area) — die Differenz ist die hier nötige Reserve. */
+    padding-bottom: calc(
+      var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset) + 58px -
+        var(--space-12)
+    );
+  }
+
+  /* Jede Sektion bleibt in einer Spalte ganz — sonst reißt eine Karte an der
+   * Spaltengrenze auseinander. */
+  .uebersicht__sections .overview-block {
+    break-inside: avoid;
+  }
+
+  /* Figur direkt neben dem Titelwort statt am rechten Rand: mobil füllt die h1
+   * (siehe Kommentar oben, #652/#862 Font-Swap-Schutz) den ganzen Cluster und
+   * drückt PageFace an den Rand. Ab 768px schmiegt sich die h1-Box an ihren
+   * Text, die mobile Regel bleibt außerhalb dieses Blocks unverändert stehen. */
+  .uebersicht__title-cluster h1 {
+    flex: 0 1 auto;
+  }
+}
+
 /* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe
  * absichtlich im Feld stehen bleibt, statt das Sheet zu schließen. */
 .uebersicht-capture__notice {
