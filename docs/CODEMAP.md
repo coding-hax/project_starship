@@ -106,8 +106,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   Kategorie), `report.test.ts` (das Gate; druckt den Bericht nur bei Fehlschlag).
   Die drei Art-/Titel-/Tageszeit-Regeln vom 03.09.26 stehen im Kopf von `curated.ts`.
   Schwerpunkt ist **gesprochene** Sprache: Sprechköpfe, Aussagerahmen, Zögern-Partikeln
-  und Telegrammstil stellen rund 23.000 der gut 32.000 Fälle — die sauberen Muster
-  beherrschte der Erkenner von Anfang an, die Fehler sassen im Sprechrahmen.
+  und Telegrammstil stellen rund 23.000 der gut 35.000 Fälle — die sauberen Muster
+  beherrschte der Erkenner von Anfang an, die Fehler sassen im Sprechrahmen. Dazu
+  „komplex": Zeitspannen („von 10 bis 12" meint den Anfang) und Wiederholungen
+  („jeden zweiten Montag") — immer **ein** Eintrag, nur schwer zu lesen.
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal

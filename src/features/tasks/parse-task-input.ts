@@ -225,9 +225,36 @@ const WEEKDAY_ONLY_REASON = 'Wochentag ohne Datum';
 const WEEKDAY_NEXT_REASON = '„nächsten" überspringt eine Woche';
 const YEAR_COMPLETED_REASON = 'Jahr ergänzt';
 
+/**
+ * Datumsspanne mit gemeinsamem Monat: „vom 3. bis 10. März", „vom 3.-5. Mai".
+ * Gemeint ist der Anfang; der Span deckt den ganzen Ausdruck ab, sonst bliebe
+ * „Urlaub vom 3" stehen.
+ */
+const DATE_RANGE_SPECIFICITY = 6;
+const DATE_RANGE_PATTERN = new RegExp(
+  String.raw`\bvo[nm]\s+(\d{1,2})\.?\s*(?:bis|-|–)\s*(?:zum\s+)?\d{1,2}\.?\s*(` +
+    MONTH_NAMES.join('|') +
+    String.raw`)`,
+  'giu',
+);
+
 function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null {
   const candidates: Candidate<DateValue>[] = [];
   const logicalStart = logicalDayStart(now);
+
+  for (const match of text.matchAll(DATE_RANGE_PATTERN)) {
+    const day = Number(match[1]);
+    const month = MONTH_NAMES.indexOf(match[2].toLowerCase()) + 1;
+    if (!isValidCalendarDate(now.getFullYear(), month, day)) continue;
+    const date = new Date(now.getFullYear(), month - 1, day);
+    if (date < logicalStart) date.setFullYear(date.getFullYear() + 1);
+    candidates.push({
+      start: match.index!,
+      end: match.index! + match[0].length,
+      value: { date, guessReason: null },
+      specificity: DATE_RANGE_SPECIFICITY,
+    });
+  }
 
   for (const match of text.matchAll(ABSOLUTE_DATE_PATTERN)) {
     const day = Number(match[1]);
@@ -341,6 +368,105 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
   }
 
   return bestCandidate(candidates);
+}
+
+// --- Wiederholung ----------------------------------------------------------
+
+/**
+ * Wiederholungsausdrücke: „jeden Montag", „alle zwei Wochen", „täglich", „werktags".
+ *
+ * Die Form entspricht bewusst `events.recurrence` aus dem Schema (freq/interval/
+ * byWeekday) — die Spalte ist für S6/S7 reserviert. Der Erfasser **erkennt** hier nur;
+ * geschrieben wird der Wert nicht, solange es keine Expansion gibt. Ein Wert in der
+ * Spalte ohne Expansion verspräche eine Wiederholung, die nie einträte.
+ *
+ * Der Span deckt den ganzen Ausdruck ab: ohne ihn blieb „Jeden Montag Müll rausbringen"
+ * als Titel „Jeden Müll rausbringen" zurück.
+ */
+export interface RecurrenceValue {
+  freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  interval: number;
+  /** Wochentage als `Date#getDay()`-Index, nur bei `weekly`. */
+  byWeekday?: number[];
+}
+
+const WEEKDAY_ADVERBS = WEEKDAYS.map((day) => `${day}s`);
+const COUNT_TOKEN = `(\\d{1,2}|${Object.keys(WORD_NUMBERS).join('|')})`;
+
+function countOf(token: string | undefined): number {
+  if (!token) return 1;
+  const digits = Number(token);
+  if (!Number.isNaN(digits)) return digits;
+  return WORD_NUMBERS[token.toLowerCase()] ?? 1;
+}
+
+const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => RecurrenceValue }[] = [
+  // „jeden Montag", „jeden zweiten Montag"
+  {
+    // Ordinalendung mitnehmen: „jeden zweiten Montag" — `zwei` + `ten`.
+    pattern: wordPattern(
+      `(?:jeden|jede|jedes|immer)\\s+(?:${COUNT_TOKEN}(?:te[nrms]?|n)?\\s+)?(${WEEKDAYS.join('|')})`,
+      'giu',
+    ),
+    build: (m) => ({ freq: 'weekly', interval: countOf(m[1]), byWeekday: [WEEKDAYS.indexOf(m[2].toLowerCase())] }),
+  },
+  // „immer freitags", „freitags"
+  {
+    pattern: wordPattern(`(?:immer\\s+)?(${WEEKDAY_ADVERBS.join('|')})`, 'giu'),
+    build: (m) => ({ freq: 'weekly', interval: 1, byWeekday: [WEEKDAY_ADVERBS.indexOf(m[1].toLowerCase())] }),
+  },
+  {
+    pattern: wordPattern('(?:werktags|jeden\\s+werktag|unter\\s+der\\s+woche)', 'giu'),
+    build: () => ({ freq: 'weekly', interval: 1, byWeekday: [1, 2, 3, 4, 5] }),
+  },
+  {
+    pattern: wordPattern('(?:täglich|jeden\\s+tag|jeden\\s+einzelnen\\s+tag)', 'giu'),
+    build: () => ({ freq: 'daily', interval: 1 }),
+  },
+  {
+    pattern: wordPattern(`(?:alle|jede)\\s+${COUNT_TOKEN}\\s+tage?n?`, 'giu'),
+    build: (m) => ({ freq: 'daily', interval: countOf(m[1]) }),
+  },
+  {
+    pattern: wordPattern(`(?:alle|jede)\\s+${COUNT_TOKEN}\\s+wochen?`, 'giu'),
+    build: (m) => ({ freq: 'weekly', interval: countOf(m[1]) }),
+  },
+  {
+    pattern: wordPattern('(?:wöchentlich|jede\\s+woche)', 'giu'),
+    build: () => ({ freq: 'weekly', interval: 1 }),
+  },
+  {
+    pattern: wordPattern(`(?:alle|jede[ns]?)\\s+${COUNT_TOKEN}\\s+monate?n?`, 'giu'),
+    build: (m) => ({ freq: 'monthly', interval: countOf(m[1]) }),
+  },
+  {
+    pattern: wordPattern('(?:monatlich|jeden\\s+monat)', 'giu'),
+    build: () => ({ freq: 'monthly', interval: 1 }),
+  },
+  {
+    pattern: wordPattern('(?:jährlich|jedes\\s+jahr)', 'giu'),
+    build: () => ({ freq: 'yearly', interval: 1 }),
+  },
+];
+
+interface RecurrenceMatch extends Span {
+  value: RecurrenceValue;
+}
+
+/** Längster Treffer gewinnt: „jeden zweiten Montag" schlägt „montag". */
+function findRecurrence(text: string): RecurrenceMatch | null {
+  let best: RecurrenceMatch | null = null;
+  for (const { pattern, build } of RECURRENCE_RULES) {
+    for (const match of text.matchAll(pattern)) {
+      const candidate: RecurrenceMatch = {
+        start: match.index!,
+        end: match.index! + match[0].length,
+        value: build(match),
+      };
+      if (!best || candidate.end - candidate.start > best.end - best.start) best = candidate;
+    }
+  }
+  return best;
 }
 
 // --- Uhrzeit -------------------------------------------------------------
@@ -644,8 +770,47 @@ function findStandaloneDayPartCandidates(text: string): Candidate<TimeValue>[] {
   return candidates;
 }
 
+/**
+ * Zeitspannen (#erfasser-korpus): „von 10 bis 12", „zwischen 14 und 16 Uhr", „9-17 Uhr".
+ *
+ * Ein Termin, zwei genannte Uhrzeiten — gemeint ist der **Anfang**. Ohne diese Muster
+ * gewann die zweite Zahl (das Ende) und die erste blieb als Bruchstück im Titel stehen
+ * („Termin zwischen 14 und"). Der Span deckt den ganzen Ausdruck ab, damit nichts
+ * zurückbleibt; die Spezifität liegt über allen Einzelformen.
+ */
+const TIME_RANGE_SPECIFICITY = 6;
+const TIME_RANGE_PATTERNS: RegExp[] = [
+  /\bzwischen\s+(\d{1,2})(?::(\d{2}))?\s+und\s+\d{1,2}(?::\d{2})?(?:\s*uhr)?/giu,
+  /\bvon\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr\s*)?(?:bis|-|–)\s*\d{1,2}(?::\d{2})?(?:\s*uhr)?/giu,
+  /\b(\d{1,2})(?::(\d{2}))?\s*(?:-|–)\s*\d{1,2}(?::\d{2})?\s*uhr\b/giu,
+  /\b(\d{1,2})(?::(\d{2}))?\s+bis\s+\d{1,2}(?::\d{2})?\s*uhr\b/giu,
+];
+
+function findTimeRangeMatches(text: string): RawHourMatch[] {
+  const found: RawHourMatch[] = [];
+  for (const pattern of TIME_RANGE_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      const hours = Number(match[1]);
+      const minutes = match[2] ? Number(match[2]) : 0;
+      if (hours > 23 || minutes > 59) continue;
+      found.push({
+        start: match.index!,
+        end: match.index! + match[0].length,
+        // Wie sonst auch: eine Stunde bis 12 ohne Minutenangabe bleibt mehrdeutig und
+        // geht durch die Tageshälften-Auflösung.
+        namedHour: match[2] === undefined && hours <= 12 ? hours : null,
+        pointerHours: hours,
+        minutes,
+        isRegional: false,
+        specificity: TIME_RANGE_SPECIFICITY,
+      });
+    }
+  }
+  return found;
+}
+
 function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null {
-  const raw: RawHourMatch[] = [];
+  const raw: RawHourMatch[] = [...findTimeRangeMatches(text)];
 
   for (const { pattern, specificity } of DIGIT_TIME_PATTERNS) {
     for (const match of text.matchAll(pattern)) {
@@ -785,7 +950,13 @@ function findTerminPrefixSpan(text: string, dateSpan: Span | null, timeSpan: Spa
  * sind — das „ab" aus „hake Sport für heute ab" ist ein trennbares Verb und gehört
  * nicht aus dem Titel geschnitten.
  */
-const LEADING_CONNECTOR_WORDS = ['bis', 'spätestens', 'ab', 'gegen'];
+const LEADING_CONNECTOR_WORDS = [
+  'bis', 'spätestens', 'ab', 'gegen',
+  // Wiederholungswörter: „Jeden Montag Müll rausbringen" ergab sonst den Titel
+  // „Jeden Müll rausbringen". Eine echte Wiederholung kann der Erfasser noch nicht
+  // anlegen (recurrenceRule ist im Schema reserviert) — der Titel muss trotzdem stimmen.
+  'jeden', 'jede', 'jedes', 'alle', 'immer',
+];
 
 function findConnectorSpans(text: string, anchors: Span[]): Span[] {
   if (anchors.length === 0) return [];
@@ -1098,6 +1269,9 @@ export interface DateTimeSlot {
 }
 
 export interface TextAnalysis extends DateTimeSlot {
+  /** Erkannter Wiederholungsausdruck, `null` wenn keiner. Wird bewusst nicht
+   * gespeichert — siehe `RecurrenceValue`. */
+  recurrence: RecurrenceValue | null;
   title: string;
   needsConfirmation: boolean;
   /** #691: Grundtext für die Feld-Konfidenz „Datum"/„Uhrzeit", `null` wenn nicht geraten. */
@@ -1120,6 +1294,7 @@ function resolveTimeOnlyDate(time: TimeValue, now: Date): Date {
  * Erfassungs-Klassifikator) gleichermaßen benutzt, damit R3 überall identisch gilt.
  */
 export function analyzeText(text: string, now: Date = new Date()): TextAnalysis {
+  const recurrenceMatch = findRecurrence(text);
   const dateCandidate = findDateCandidate(text, now);
   const timeCandidate = findTimeCandidate(text, now);
 
@@ -1145,11 +1320,29 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     timeGuessReason = timeCandidate.value.guessReason;
   }
 
+  // Nennt der Wiederholungsausdruck genau einen Wochentag, ist damit auch die erste
+  // Fälligkeit gesagt — „immer freitags" trägt kein eigenes Datum, meint aber Freitag.
+  // Bei „werktags" (fünf Tage) oder „täglich" bleibt sie offen.
+  if (date === null && recurrenceMatch?.value.byWeekday?.length === 1) {
+    const logicalStart = logicalDayStart(now);
+    const diff = (recurrenceMatch.value.byWeekday[0] - logicalStart.getDay() + 7) % 7;
+    date = addDays(logicalStart, diff);
+    date.setHours(timeCandidate?.value.hours ?? 9, timeCandidate?.value.minutes ?? 0, 0, 0);
+  }
+
   const needsConfirmation = timeCandidate?.value.needsConfirmation ?? false;
 
   const explicitTitle = findExplicitTitle(text);
   if (explicitTitle !== null) {
-    return { date, hasExplicitTime, title: explicitTitle, needsConfirmation, dateGuessReason, timeGuessReason };
+    return {
+      date,
+      hasExplicitTime,
+      recurrence: recurrenceMatch?.value ?? null,
+      title: explicitTitle,
+      needsConfirmation,
+      dateGuessReason,
+      timeGuessReason,
+    };
   }
 
   const dateSpan = dateCandidate ? { start: dateCandidate.start, end: dateCandidate.end } : null;
@@ -1169,6 +1362,7 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   const removalSpans = [
     ...prefixSpans,
     ...dictationSpans,
+    ...(recurrenceMatch ? [{ start: recurrenceMatch.start, end: recurrenceMatch.end }] : []),
     ...(terminSpan ? [terminSpan] : []),
     ...(suffixSpan ? [suffixSpan] : []),
     ...anchors,
@@ -1183,7 +1377,15 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     frameRemoved,
     leadingRemoved,
   );
-  return { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason };
+  return {
+    date,
+    hasExplicitTime,
+    recurrence: recurrenceMatch?.value ?? null,
+    title,
+    needsConfirmation,
+    dateGuessReason,
+    timeGuessReason,
+  };
 }
 
 export function parseTaskInput(text: string, now: Date = new Date()): ParsedTaskInput {

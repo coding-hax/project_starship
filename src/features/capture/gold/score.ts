@@ -3,13 +3,13 @@ import type { CaptureContext } from '../types';
 import { GOLD_HABITS, NOW_REF } from './types';
 import type { GoldCase } from './types';
 
-export type GoldField = 'kind' | 'title' | 'dueAt' | 'habitId';
+export type GoldField = 'kind' | 'title' | 'dueAt' | 'habitId' | 'recurrence';
 
 export interface GoldResult {
   case: GoldCase;
   /** Feld → stimmt. Felder, die der Fall nicht prüft, fehlen. */
   fields: Partial<Record<GoldField, boolean>>;
-  actual: { kind: string; title: string; dueAt: string | null; habitId: string | null };
+  actual: { kind: string; title: string; dueAt: string | null; habitId: string | null; recurrence: unknown };
   ok: boolean;
 }
 
@@ -30,6 +30,7 @@ export function scoreCase(gold: GoldCase): GoldResult {
     title: draft.title,
     dueAt: draft.dueAt,
     habitId: draft.habitId,
+    recurrence: draft.recurrence,
   };
 
   const fields: Partial<Record<GoldField, boolean>> = {
@@ -38,6 +39,9 @@ export function scoreCase(gold: GoldCase): GoldResult {
     dueAt: draft.dueAt === gold.expect.dueAt,
   };
   if (gold.expect.habitId !== undefined) fields.habitId = draft.habitId === gold.expect.habitId;
+  if (gold.expect.recurrence !== undefined) {
+    fields.recurrence = JSON.stringify(draft.recurrence ?? null) === JSON.stringify(gold.expect.recurrence);
+  }
 
   return { case: gold, fields, actual, ok: Object.values(fields).every(Boolean) };
 }
@@ -57,6 +61,7 @@ function emptyBucket(): Bucket {
       title: { checked: 0, ok: 0 },
       dueAt: { checked: 0, ok: 0 },
       habitId: { checked: 0, ok: 0 },
+      recurrence: { checked: 0, ok: 0 },
     },
   };
 }

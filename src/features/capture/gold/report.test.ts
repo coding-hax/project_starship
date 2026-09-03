@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CURATED_CASES } from './curated';
 import {
-  generateGoldCases, generateHardCases, generateSpokenCases, generateTelegramCases,
+  generateComplexCases, generateGoldCases, generateHardCases, generateSpokenCases,
+  generateTelegramCases,
 } from './generate';
 import { pct, scoreCorpus } from './score';
 import type { Bucket, GoldField, GoldResult } from './score';
@@ -55,6 +56,10 @@ describe('Goldkorpus', () => {
   check('gesprochen — Zögern mit Aussagerahmen', withPrefix(generateSpokenCases, 'spoken:zoegern-aussage'));
   check('Telegrammstil — Kürzel mit Uhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-zeit', 'tele:kuerzel-punkt'));
   check('Telegrammstil — Kurzuhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-kurzzeit', 'tele:kurzzeit'));
+  // Schwierige Konstruktionen: ein Eintrag, aber zwei Zeitangaben bzw. ein
+  // Wiederholungsausdruck vor dem Titel.
+  check('komplex — Zeitspannen', withPrefix(generateComplexCases, 'komplex:spanne'));
+  check('komplex — Wiederholungen', withPrefix(generateComplexCases, 'komplex:wiederholung'));
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {

@@ -229,3 +229,48 @@ export const SHORT_TIME_SLOTS: TimeSlot[] = [
   { text: '19h', category: 'Telegramm-Uhrzeit', hours: 19, minutes: 0 },
   { text: '20h', category: 'Telegramm-Uhrzeit', hours: 20, minutes: 0 },
 ];
+
+// --- Schwierige Satzkonstruktionen -----------------------------------------
+
+/**
+ * Zeitspannen: ein Termin, zwei genannte Uhrzeiten. Gemeint ist der Anfang — das
+ * Ende ist im Korpus bewusst nicht geprüft, weil `endsAt` beim Erfassen noch nicht
+ * gesetzt wird.
+ */
+export const TIME_RANGE_SLOTS: TimeSlot[] = [
+  { text: 'von 9 bis 11 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0 },
+  { text: 'von 14 bis 16 Uhr', category: 'Zeitspanne', hours: 14, minutes: 0 },
+  { text: 'zwischen 10 und 12 Uhr', category: 'Zeitspanne', hours: 10, minutes: 0 },
+  { text: 'zwischen 15 und 17 Uhr', category: 'Zeitspanne', hours: 15, minutes: 0 },
+  { text: '9-17 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0 },
+  { text: '13-15 Uhr', category: 'Zeitspanne', hours: 13, minutes: 0 },
+  { text: '8 bis 10 Uhr', category: 'Zeitspanne', hours: 8, minutes: 0 },
+  { text: 'von 18:30 bis 20 Uhr', category: 'Zeitspanne', hours: 18, minutes: 30 },
+];
+
+/** Wiederholungsausdrücke samt erwartetem `RecurrenceValue`. */
+export interface RecurrenceSlot {
+  text: string;
+  category: string;
+  freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  interval: number;
+  byWeekday?: number[];
+}
+
+export const RECURRENCE_SLOTS: RecurrenceSlot[] = [
+  { text: 'Jeden Montag', category: 'Wiederholung', freq: 'weekly', interval: 1, byWeekday: [1] },
+  { text: 'Jeden Freitag', category: 'Wiederholung', freq: 'weekly', interval: 1, byWeekday: [5] },
+  { text: 'Jeden zweiten Montag', category: 'Wiederholung', freq: 'weekly', interval: 2, byWeekday: [1] },
+  { text: 'Immer freitags', category: 'Wiederholung', freq: 'weekly', interval: 1, byWeekday: [5] },
+  { text: 'Immer mittwochs', category: 'Wiederholung', freq: 'weekly', interval: 1, byWeekday: [3] },
+  { text: 'Werktags', category: 'Wiederholung', freq: 'weekly', interval: 1, byWeekday: [1, 2, 3, 4, 5] },
+  { text: 'Täglich', category: 'Wiederholung', freq: 'daily', interval: 1 },
+  { text: 'Jeden Tag', category: 'Wiederholung', freq: 'daily', interval: 1 },
+  { text: 'Alle drei Tage', category: 'Wiederholung', freq: 'daily', interval: 3 },
+  { text: 'Jede Woche', category: 'Wiederholung', freq: 'weekly', interval: 1 },
+  { text: 'Alle zwei Wochen', category: 'Wiederholung', freq: 'weekly', interval: 2 },
+  { text: 'Wöchentlich', category: 'Wiederholung', freq: 'weekly', interval: 1 },
+  { text: 'Monatlich', category: 'Wiederholung', freq: 'monthly', interval: 1 },
+  { text: 'Jeden Monat', category: 'Wiederholung', freq: 'monthly', interval: 1 },
+  { text: 'Jährlich', category: 'Wiederholung', freq: 'yearly', interval: 1 },
+];

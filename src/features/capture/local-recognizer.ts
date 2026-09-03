@@ -187,7 +187,7 @@ const KIND_AMBIGUOUS_REASON = 'Aufgabe oder Termin unklar';
 const HABIT_AMBIGUOUS_REASON = 'unsicherer Gewohnheitstreffer';
 
 export const recognizeLocally: Recognizer = (text, ctx) => {
-  const { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason } =
+  const { date, hasExplicitTime, recurrence, title, needsConfirmation, dateGuessReason, timeGuessReason } =
     analyzeText(text, ctx.now);
   const habitMatch = matchHabit(text, ctx.habits);
 
@@ -226,6 +226,7 @@ export const recognizeLocally: Recognizer = (text, ctx) => {
     title: resolvedTitle,
     dueAt: kind === 'habit_check' ? null : date ? date.toISOString() : null,
     habitId: kind === 'habit_check' ? (newHabit ? null : habitMatch.habitId) : null,
+    recurrence,
     logDate: kind === 'habit_check' && !newHabit ? resolveLogDate(date, ctx.now) : null,
     needsConfirmation,
     confidence: {

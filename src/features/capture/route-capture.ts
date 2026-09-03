@@ -151,6 +151,9 @@ export function mergeDraft(
     dueAt: mentions.due ? utterance.dueAt : prev.dueAt,
     habitId: mentions.habit ? utterance.habitId : prev.habitId,
     logDate: mentions.habit ? utterance.logDate : prev.logDate,
+    // Kein eigenes Feld in `FieldMentions`: eine Wiederholung ist im Text immer explizit
+    // („jeden Montag"), nennt die neue Äusserung keine, bleibt die alte stehen.
+    recurrence: utterance.recurrence ?? prev.recurrence,
     needsConfirmation: mentions.due ? utterance.needsConfirmation : prev.needsConfirmation,
     // #780: die Art wird mit der ersten Übernahme fix (Entscheidung C, oben) — der
     // Leerzustand-Status des Art-Chips zieht mit, sonst würde er nach einer zweiten,

@@ -183,6 +183,40 @@ export const CURATED_CASES: GoldCase[] = [
     ['Hausaufgaben machen', 'task', 'Hausaufgaben machen', null],
   ]),
 
+  ...rows('Schwierige Konstruktion', [
+    // Zeitspanne: ein Termin, zwei genannte Uhrzeiten — gemeint ist der Anfang.
+    ['Meeting morgen von 10 bis 12', 'event', 'Meeting', on(1, 16, 10)],
+    ['Termin am Freitag zwischen 14 und 16 Uhr', 'event', 'Termin', on(1, 19, 14)],
+    ['Urlaub vom 3. bis 10. März', 'task', 'Urlaub', on(3, 3)],
+    ['Workshop Montag 9-17 Uhr', 'task', 'Workshop', on(1, 15, 9)],
+    ['Sprechstunde morgen 8 bis 10 Uhr', 'task', 'Sprechstunde', on(1, 16, 8)],
+    ['Konferenz vom 5. bis 7. Juni', 'task', 'Konferenz', on(6, 5)],
+    // Wiederholung vor dem Titel — der Ausdruck darf ihn nicht zerreissen.
+    ['Jeden Montag Müll rausbringen', 'task', 'Müll rausbringen', on(1, 15)],
+    ['Jede Woche Rechnungen prüfen', 'task', 'Rechnungen prüfen', null],
+    ['Alle zwei Wochen Rasen mähen', 'task', 'Rasen mähen', null],
+    ['Täglich Vitamine nehmen', 'task', 'Vitamine nehmen', null],
+    ['Jeden zweiten Montag Team-Call', 'task', 'Team-Call', on(1, 15)],
+    // Viele Angaben, aber nur ein Termin — lief schon vorher.
+    ['Am Freitag um 15 Uhr Termin mit Frau Berger im Büro wegen des Vertrags', 'event',
+      'Termin mit Frau Berger im Büro wegen des Vertrags', on(1, 19, 15)],
+    ['Nächsten Dienstag 14 Uhr Elternabend in der Schule von Lisa', 'task',
+      'Elternabend in der Schule von Lisa', on(1, 23, 14)],
+    // Nebensätze bleiben vollständig im Titel.
+    ['Den Bericht lesen, den Anna geschickt hat', 'task', 'Bericht lesen, den Anna geschickt hat', null],
+    ['Wenn das Paket kommt, Anna Bescheid geben', 'task', 'Wenn das Paket kommt, Anna Bescheid geben', null],
+  ]),
+
+  ...rows('Wiederholung nur zufällig vorn', [
+    // Kein Wiederholungsausdruck, obwohl das erste Wort so aussieht.
+    ['Jede Menge Arbeit', 'task', 'Jede Menge Arbeit', null],
+    ['Alle Unterlagen sortieren', 'task', 'Alle Unterlagen sortieren', null],
+    ['Freitagsbrötchen bestellen', 'task', 'Freitagsbrötchen bestellen', null],
+    ['Wochenbericht schreiben', 'task', 'Wochenbericht schreiben', null],
+    ['Tagesordnung erstellen', 'task', 'Tagesordnung erstellen', null],
+    ['Von Hand nacharbeiten', 'task', 'Von Hand nacharbeiten', null],
+  ]),
+
   ...rows('Rahmenwort nur zufällig vorn', [
     // Titel, die mit einem Rahmen- oder Diktierwort beginnen, dürfen nicht beschnitten
     // werden. „ja" und „ok" brauchen dafür eine strengere Grenze als \b — die steht

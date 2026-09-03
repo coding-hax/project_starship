@@ -1,7 +1,8 @@
 import {
   DATE_PREPOSITIONS, EVENT_TITLES, FRAME_PREFIXES, FRAME_SUFFIXES,
   HESITATION_PREFIXES, ROUTINE_VERBS, SHORT_TIME_SLOTS, SPOKEN_HEADS, STATEMENT_HEADS,
-  TASK_TITLES, TIME_SLOTS, WEEKDAY_ABBREVIATION_SLOTS, WHEN_SLOTS,
+  RECURRENCE_SLOTS, TASK_TITLES, TIME_RANGE_SLOTS, TIME_SLOTS,
+  WEEKDAY_ABBREVIATION_SLOTS, WHEN_SLOTS,
 } from './slots';
 import type { TimeSlot } from './slots';
 import { GOLD_HABITS, NOW_REF } from './types';
@@ -304,4 +305,70 @@ export function generateTelegramCases(options: GenerateOptions = {}): GoldCase[]
   }
 
   return cases;
+}
+
+/**
+ * Schwierige Satzkonstruktionen (#erfasser-korpus): **ein** Eintrag, aber schwer zu
+ * lesen. Zeitspannen nennen zwei Uhrzeiten und meinen die erste; Wiederholungsausdrücke
+ * stehen vor dem eigentlichen Titel und dürfen ihn nicht zerreissen.
+ */
+export function generateComplexCases(options: GenerateOptions = {}): GoldCase[] {
+  const now = options.now ?? NOW_REF;
+  const quota = options.quotaPerPattern ?? 2500;
+  const cases: GoldCase[] = [];
+  let n = 0;
+  const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
+    cases.push({
+      id: `komplex:${pattern}:${String(n++).padStart(5, '0')}`,
+      text,
+      source: 'generiert',
+      category,
+      expect,
+    });
+  };
+
+  // K1 — Zeitspanne mit Datum: „Workshop am Freitag von 9 bis 11 Uhr"
+  const ranged = cross(cross(WHEN_SLOTS, TIME_RANGE_SLOTS), TASK_TITLES);
+  for (const [[when, range], title] of sample(ranged, quota)) {
+    push('spanne-datum', `${title} ${when.text} ${range.text}`, `Zeitspanne · ${when.category}`, {
+      kind: kindOf(title),
+      title,
+      dueAt: at(when.resolve(now), range),
+    });
+  }
+
+  // K2 — Zeitspanne ohne Datum: „Workshop von 9 bis 11 Uhr"
+  for (const [range, title] of cross(TIME_RANGE_SLOTS, TASK_TITLES)) {
+    const day = new Date(now);
+    day.setHours(range.hours, range.minutes, 0, 0);
+    // Wie jede Uhrzeit ohne Datum: heute, wenn noch in der Zukunft, sonst morgen.
+    if (day <= now) day.setDate(day.getDate() + 1);
+    push('spanne', `${title} ${range.text}`, 'Zeitspanne ohne Datum', {
+      kind: kindOf(title),
+      title,
+      dueAt: day.toISOString(),
+    });
+  }
+
+  // K3 — Wiederholung vor dem Titel: „Jeden Montag Müll rausbringen"
+  for (const [rule, title] of cross(RECURRENCE_SLOTS, TASK_TITLES)) {
+    push('wiederholung', `${rule.text} ${title}`, rule.category, {
+      kind: kindOf(title),
+      title,
+      // Ein Wochentag im Ausdruck nennt zugleich die erste Fälligkeit, ein blosses
+      // „täglich" nicht — dann bleibt das Datum offen.
+      dueAt: rule.byWeekday && rule.byWeekday.length === 1 ? weekdayDue(now, rule.byWeekday[0]) : null,
+      recurrence: { freq: rule.freq, interval: rule.interval, ...(rule.byWeekday ? { byWeekday: rule.byWeekday } : {}) },
+    });
+  }
+
+  return cases;
+}
+
+/** Nächstes Auftreten des Wochentags, heute eingeschlossen (Regel des Bestandsparsers). */
+function weekdayDue(now: Date, dow: number): string {
+  const d = new Date(now);
+  d.setDate(d.getDate() + ((dow - now.getDay() + 7) % 7));
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
 }
