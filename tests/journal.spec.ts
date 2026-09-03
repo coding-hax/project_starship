@@ -333,24 +333,20 @@ async function resolveBackgroundToken(page: Page, token: string): Promise<string
   }, token);
 }
 
-/** Same technique, for the FAB glyph's colour formula (fab.css, issue #867
- * AK1: `color-mix(in oklab, var(--accent) 70%, var(--text-base))` — 70% statt
- * der im Ticket genannten 76%, weil 76% im Hellmodus für --area-tasks nur
- * ~4,22:1 Kontrast hält, unter dem von AC3/issue #709 geforderten Minimum;
- * siehe Kommentar in fab.css). Probes with the area token directly instead of
- * `--accent` — journal-page.css only overrides `--accent` inside
- * `[data-module='journal']`, and a document.body probe sits outside that
- * cascade context, but the override just aliases `--accent` to
- * `--area-journal`, so probing the area token straight is equivalent. */
-async function resolveGlyphToken(page: Page, areaToken: string): Promise<string> {
-  return page.evaluate((token) => {
+/** Same technique, for the FAB glyph's colour formula (fab.css, issue #1035:
+ * `color-mix(in oklab, var(--ground) 55%, var(--text-base))` — the glyph now
+ * follows the route's ground, not the (journal-only-overridden) --accent, so
+ * every route including /journal reads --ground directly; no area-token
+ * detour needed here anymore (see fab.css comment for the 55% measurement). */
+async function resolveGlyphToken(page: Page): Promise<string> {
+  return page.evaluate(() => {
     const probe = document.createElement('span');
-    probe.style.color = `color-mix(in oklab, var(${token}) 70%, var(--text-base))`;
+    probe.style.color = 'color-mix(in oklab, var(--ground) 55%, var(--text-base))';
     document.body.appendChild(probe);
     const color = getComputedStyle(probe).color;
     probe.remove();
     return color;
-  }, areaToken);
+  });
 }
 
 test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die Journal-Bereichsfarbe statt der App-Akzentfarbe, kein Formular auf der Seite selbst', async ({
@@ -359,12 +355,12 @@ test('AK2 (#700/#701): der FAB öffnet ein Sheet mit Mood/Text/Tags, trägt die 
   await setUpEditor(page);
 
   // issue #831 AK3 kehrt die FAB-Fläche um (hell auf dem Grund für jeden
-  // Bereich); die Journal-Bereichsfarbe trägt seither die Glyphe, nicht mehr
-  // der Hintergrund (siehe grundfarbe.spec.ts AK3, gleicher Umzug).
+  // Bereich); issue #1035 AK1 zieht die Glyphenfarbe vom Routengrund statt von
+  // --accent — die Journal-Bereichsfarbe bleibt also unbeteiligt, unabhängig
+  // vom lokalen `--accent: var(--area-journal)`-Override (journal-page.css).
   const fab = page.getByRole('button', { name: 'Eintragen', exact: true });
   const fabGlyph = await fab.evaluate((el) => getComputedStyle(el).color);
-  expect(fabGlyph).toBe(await resolveGlyphToken(page, '--area-journal'));
-  expect(fabGlyph).not.toBe(await resolveGlyphToken(page, '--area-tasks'));
+  expect(fabGlyph).toBe(await resolveGlyphToken(page));
 
   // Kein Formular sichtbar, bevor der FAB geklickt wurde.
   await expect(page.locator('.journal-editor__form')).toHaveCount(0);
