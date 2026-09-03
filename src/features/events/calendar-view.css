@@ -79,18 +79,32 @@
 
   .calendar-view:has(> .month-grid) > .month-grid {
     grid-column: 1;
-    /* Spannt bis zur letzten (Rechtsspalten-)Zeile statt nur der eigenen
-       Auto-Placement-Zeile: sonst zieht `.calendar-view__day-heading` (das die
-       erste Zeile mit dem Raster teilt) deren ganze Höhe auf die Rasterhöhe
-       hoch, und `.event-agenda` (eine Zeile darunter) begänne erst danach —
-       eine leere Lücke zwischen Tagesüberschrift und Terminliste. Gespannt
-       verteilt sich die Rasterhöhe stattdessen auf beide Zeilen, `.event-agenda`
-       bleibt neben dem Raster statt darunter. */
-    grid-row: 2 / -1;
+    /* Spannt über beide Rechtsspalten-Zeilen (Tagesüberschrift + Agenda)
+       statt nur der eigenen Auto-Placement-Zeile: sonst zieht
+       `.calendar-view__day-heading` (das die erste Zeile mit dem Raster
+       teilt) deren ganze Höhe auf die Rasterhöhe hoch, und `.event-agenda`
+       (eine Zeile darunter) begänne erst danach — eine leere Lücke zwischen
+       Tagesüberschrift und Terminliste.
+       `span 2`, nicht `-1`: ohne `grid-template-rows` hat das Grid null
+       explizite Zeilen-Linien, also fällt `-1` auf Linie 1 zurück — vor
+       Start-Linie 2, die Engine vertauscht beide (Start>Ende-Regel) und
+       zieht `.month-grid` damit auf Zeile 1, VOR den Kopf (der keine
+       explizite Zeile trägt und dadurch auf Zeile 2 verdrängt wird). `span`
+       ist relativ zur Start-Linie und braucht kein explizites Ende — bleibt
+       deterministisch. (Von e2e AK1 in CI aufgedeckt, Fund vom 03.09.) */
+    grid-row: 2 / span 2;
     /* Gürtel + Hosenträger zu `align-items: start` oben — die Karte trägt
        heute nur Punkte je Tag und stünde auf Spaltenhöhe gestreckt fast leer. */
     align-self: start;
     margin-bottom: 0;
+  }
+
+  /* Offline schiebt sich `.offline-notice` als dritte Rechtsspalten-Zeile
+     vor Tagesüberschrift + Agenda ein — das Raster muss dann drei statt
+     zwei Zeilen überspannen, sonst bleibt die Agenda unterhalb des
+     Rasters unbedeckt (derselbe Zeilen-Fund wie oben). */
+  .calendar-view:has(> .month-grid):has(> .offline-notice) > .month-grid {
+    grid-row: 2 / span 3;
   }
 
   .calendar-view:has(> .month-grid) > .offline-notice,
