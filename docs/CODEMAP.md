@@ -99,6 +99,12 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer
 - `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
 - `corpus.ts` — tabellengetriebenes Satz-Korpus
+- `gold/` — Goldkorpus (Satz + Sollwert) als Gate über dem Erfassungspfad:
+  `curated.ts` (echte Sätze, Sollwert von Hand — die Spezifikation), `slots.ts` +
+  `generate.ts` (Satzmuster × Slot-Werte, Sollwert per Konstruktion, eigene
+  Referenz-Datumsauflösung ohne den Parser), `score.ts` (Trefferquote je Feld und
+  Kategorie), `report.test.ts` (das Gate; druckt den Bericht nur bei Fehlschlag).
+  Die drei Art-/Titel-/Tageszeit-Regeln vom 03.09.26 stehen im Kopf von `curated.ts`.
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal

@@ -3,6 +3,7 @@ import { CURATED_CASES } from './curated';
 import { generateGoldCases, generateHardCases } from './generate';
 import { pct, scoreCorpus } from './score';
 import type { Bucket, GoldField, GoldResult } from './score';
+import type { GoldCase } from './types';
 
 /**
  * Das Gate über dem Erfassungspfad: jeder Fall des Goldkorpus muss stimmen.
@@ -13,18 +14,26 @@ import type { Bucket, GoldField, GoldResult } from './score';
  * der neue Sollwert nach `curated.ts` bzw. in die Slot-Tabellen — nicht diese Schwelle
  * heruntergesetzt.
  */
+/**
+ * Drei Läufe statt einem: 13.000 Fälle in einem `it` reissen unter paralleler Last das
+ * Standard-Timeout von 5 s. Geprüft wird dadurch kein Fall weniger — die Schichten
+ * laufen nur getrennt (und nebenläufig).
+ */
 describe('Goldkorpus', () => {
-  it('der lokale Erkenner trifft jeden Fall', () => {
-    const cases = [...CURATED_CASES, ...generateGoldCases(), ...generateHardCases()];
-    const report = scoreCorpus(cases);
+  const check = (name: string, build: () => GoldCase[]) => {
+    it(name, () => {
+      const report = scoreCorpus(build());
+      if (report.failures.length > 0) printReport(report);
+      expect(
+        report.failures.length,
+        `${report.failures.length} von ${report.overall.total} Fällen falsch — Bericht oben`,
+      ).toBe(0);
+    });
+  };
 
-    if (report.failures.length > 0) printReport(report);
-
-    expect(
-      report.failures.length,
-      `${report.failures.length} von ${report.overall.total} Fällen falsch — Bericht oben`,
-    ).toBe(0);
-  });
+  check('kuratierte Sätze — die Spezifikation', () => CURATED_CASES);
+  check('generierte Grundmuster', () => generateGoldCases());
+  check('generierte Sprechrahmen und Präpositionen', () => generateHardCases());
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {
