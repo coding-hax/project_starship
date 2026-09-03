@@ -711,6 +711,7 @@ const COMMAND_PREFIXES: RegExp[] = [
   /^ich\s+(?:muss|müsste|sollte|will|wollte|möchte|mag)\b(?:\s+(?:noch|mal|wieder|unbedingt))*\s*/iu,
   /^ich\s+darf\s+nicht\s+vergessen\b\s*:?\s*/iu,
   /^ich\s+(?:brauch|brauche|hab|habe)\b\s*/iu,
+  /^ich\s+(?:geh|gehe|fahr|fahre|komm|komme)\b\s*/iu,
   /^(?:wär|wäre)\s+(?:super|gut|toll|nett|klasse)\s+wenn\s+du\b\s*/iu,
   /^ich\s+(?:hab|habe)\b(?:\s+noch)?\s+vor\b\s*:?\s*/iu,
   /^unbedingt\b\s+/iu,
@@ -930,6 +931,133 @@ function stripLeadingArticle(title: string): string {
   return result;
 }
 
+// --- Titel-Rückbau ---------------------------------------------------------
+
+/**
+ * Was nach dem Ausschneiden übrig bleibt, ist oft noch kein Titel, sondern ein
+ * Satzfragment: „kommt der Handwerker", „zum Zahnarzt", „treff ich Anna",
+ * „den Müll rauszubringen". Diese Stufe baut daraus die Grundform.
+ *
+ * Alles hier ist absichtlich eng gefasst — geschlossene Wortlisten statt allgemeiner
+ * Morphologie. Ein zu breiter Rückbau zerstört Titel, die zufällig so aussehen; die
+ * Fälle unter „Rahmenwort nur zufällig vorn" in `gold/curated.ts` halten das fest.
+ */
+
+/** Trennbare Präfixe, die den zu-Infinitiv einschliessen: „rauszubringen". */
+const SEPARABLE_PREFIXES =
+  'ab|an|auf|aus|bei|durch|ein|fern|fest|her|hin|los|mit|nach|vor|weg|wieder|zurück|zusammen|raus|rein|rauf|runter|rüber|hoch|weiter|zu';
+const INFIXED_ZU_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_])(${SEPARABLE_PREFIXES})zu(\p{Ll}+)(?![\p{L}\p{N}_])`,
+  'giu',
+);
+/**
+ * Freistehendes „zu" vor einem Infinitiv: „das Auto zu tanken".
+ * Nur vor einem **klein** geschriebenen Wort auf -en — sonst fiele „Geschenk zu
+ * Weihnachten" auseinander.
+ */
+// Kein `i`-Flag: das machte `\p{Ll}` wirkungslos, und „Geschenk zu Weihnachten
+// besorgen" verlor sein „zu".
+const FREE_ZU_PATTERN = /(?<![\p{L}\p{N}_])zu\s+(\p{Ll}[\p{L}]*e[nr]n?)(?![\p{L}\p{N}_])/gu;
+
+/**
+ * Finites Verb in Zweitstellung, das nach dem Herausschneiden des Datums vorn landet:
+ * „Am Mittwoch kommt der Handwerker" → „kommt der Handwerker". Geschlossene Liste, damit
+ * „Ist-Zustand dokumentieren" nicht zum „-Zustand" wird.
+ */
+const LEADING_FINITE_VERB_PATTERN =
+  /^(?:ist|sind|war|waren|wird|werden|kommt|kommen|hat|haben|gibt|findet|beginnt|startet|endet|fällt)(?![\p{L}\p{N}_-])\s+(?=\S)/iu;
+
+/**
+ * Richtungspräposition mit verschmolzenem Artikel: „zum Zahnarzt" → „Zahnarzt".
+ * Bewusst nur diese fünf — „mit", „bei" und „für" gehören zum Titel („Mit Max über das
+ * Projekt sprechen", „Bei Rewe einkaufen").
+ */
+const LEADING_DIRECTION_PATTERN =
+  /^(?:(?:zum|zur|ins|ans|aufs)(?![\p{L}\p{N}_-])\s+(?=\S)|nach\s+(?=\p{Lu}))/u;
+
+/**
+ * Verb-Pronomen-Inversion: „treff ich Anna" → „Anna treffen". Der Infinitiv entsteht
+ * regelmässig aus dem Stamm (+ n statt + en, wenn der Stamm schon auf -e/-el/-er endet).
+ */
+const VERB_PRONOUN_PATTERN = /^(\p{Ll}+)\s+(?:ich|wir)(?![\p{L}\p{N}_])\s+(\S.*)$/u;
+/**
+ * Dasselbe mit trennbarem Verb: „ruf ich Oma an" → „Oma anrufen". Ohne diesen Zweig
+ * bliebe das Partikel als eigenes Wort stehen („Oma an rufen").
+ */
+const VERB_PRONOUN_PARTICLE_PATTERN = new RegExp(
+  String.raw`^(\p{Ll}+)\s+(?:ich|wir)(?![\p{L}\p{N}_])\s+(\S.*?)\s+(${SEPARABLE_PREFIXES})$`,
+  'u',
+);
+
+function toInfinitive(stem: string): string {
+  if (/e[lr]$/u.test(stem)) return `${stem}n`;
+  if (/e$/u.test(stem)) return `${stem}n`;
+  return `${stem}en`;
+}
+
+/**
+ * Subjekt plus finites Verb am Titelanfang. Ob auch das Verb fällt, entscheidet der
+ * Rest: steht am Ende ein Infinitiv, war das Verb nur Hilfsverb („wir gehen morgen
+ * essen" → „essen"). Sonst trägt es selbst den Inhalt und bleibt stehen
+ * („wir essen bei Müllers" → „essen bei Müllers").
+ */
+const SUBJECT_VERB_PATTERN = /^(?:[Ii]ch|[Ww]ir|[Ee]r|[Ss]ie|[Ee]s)\s+(\p{Ll}+)\s+(\S.*)$/u;
+const TRAILING_INFINITIVE_PATTERN = /(?:^|\s)\p{Ll}[\p{L}]*e[nr]n?$/u;
+
+/**
+ * @param frameRemoved Ob vor dem Titel ein **Sprechrahmen** stand (Kommandopräfix,
+ *   Diktatkopf, Kommandosuffix). Nur dann ist der Rest ein Fragment, dessen erster
+ *   Buchstabe gross gehört — nach einer blossen Zeitangabe bleibt die Schreibweise des
+ *   Nutzers stehen („in einer Woche nachfassen" → „nachfassen").
+ * @param leadingRemoved Ob am Textanfang überhaupt etwas weggeschnitten wurde. Nur dann
+ *   ist ein finites Verb vorn der Rest eines Satzes („Am Mittwoch kommt der Handwerker")
+ *   — sonst ist es der Titel selbst und bleibt („Wird gelöscht", „Zur Post gehen").
+ */
+function refineTitle(title: string, frameRemoved: boolean, leadingRemoved: boolean): string {
+  let result = title;
+  const before = result;
+
+  // 1 — zu-Infinitiv auflösen: „rauszubringen" → „rausbringen", „zu tanken" → „tanken".
+  result = result.replace(INFIXED_ZU_PATTERN, '$1$2').replace(FREE_ZU_PATTERN, '$1');
+
+  // 2 — Inversion umstellen, bevor Schritt 3 das Verb für einen Satzkopf hält.
+  // Subjekt + Verb steht für sich: das Muster verlangt ein Pronomen und ein klein
+  // geschriebenes Verb, das ist eng genug ohne Positionsbedingung.
+  const subjectVerb = result.match(SUBJECT_VERB_PATTERN);
+  if (subjectVerb) {
+    result = TRAILING_INFINITIVE_PATTERN.test(subjectVerb[2])
+      ? subjectVerb[2]
+      : `${subjectVerb[1]} ${subjectVerb[2]}`;
+  }
+
+  // Alles Weitere setzt voraus, dass vorn wirklich etwas abgeschnitten wurde — sonst
+  // ist ein führendes Verb der Titel selbst („Wird gelöscht"), kein Satzrest.
+  if (!leadingRemoved) {
+    if (result === before && !frameRemoved) return result;
+    return result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  const invertedParticle = result.match(VERB_PRONOUN_PARTICLE_PATTERN);
+  const inverted = invertedParticle ? null : result.match(VERB_PRONOUN_PATTERN);
+  if (invertedParticle) {
+    result = `${invertedParticle[2]} ${invertedParticle[3]}${toInfinitive(invertedParticle[1])}`;
+  } else if (inverted) {
+    result = `${inverted[2]} ${toInfinitive(inverted[1])}`;
+  }
+
+  // 3/4 — Satzkopf und Richtungspräposition, danach greift der Artikel erneut
+  // („kommt der Handwerker" → „der Handwerker" → „Handwerker").
+  for (let pass = 0; pass < 2; pass++) {
+    result = result
+      .replace(LEADING_FINITE_VERB_PATTERN, '')
+      .replace(LEADING_DIRECTION_PATTERN, '');
+    result = stripLeadingArticle(result);
+  }
+
+  if (result === before && !frameRemoved) return result;
+  return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
 function edgeTrim(text: string): string {
   return (
     text
@@ -1046,7 +1174,15 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     ...anchors,
     ...connectorSpans,
   ];
-  const title = stripLeadingArticle(edgeTrim(removeSpans(text, removalSpans)));
+  const frameRemoved =
+    prefixSpans.length > 0 || dictationSpans.length > 0 || terminSpan !== null || suffixSpan !== null;
+  // „Am Textanfang" heisst: der erste Span sitzt vor dem ersten inhaltlichen Zeichen.
+  const leadingRemoved = removalSpans.some((span) => isPunctuationOnly(text, 0, span.start));
+  const title = refineTitle(
+    stripLeadingArticle(edgeTrim(removeSpans(text, removalSpans))),
+    frameRemoved,
+    leadingRemoved,
+  );
   return { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason };
 }
 

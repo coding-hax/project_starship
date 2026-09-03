@@ -13,6 +13,14 @@ import type { GoldCase } from './types';
  *     nachmittags 15, abends 19, nachts 22).
  *  3. Die Art fällt an einem Schlüsselwort (Termin/Meeting/Treffen bzw. Aufgabe/Notiz,
  *     Routine + Erledigungsverb). Eine blosse Uhrzeit macht keinen Termin.
+ *  4. Nachtrag: der Titel wird auf die Grundform zurückgebaut. zu-Infinitiv auflösen
+ *     („rauszubringen" → „rausbringen"), Satzkopf und Richtungspräposition streichen
+ *     („kommt der Handwerker" → „Handwerker", „zum Zahnarzt" → „Zahnarzt"),
+ *     Verb-Pronomen-Inversion umstellen („ruf ich Oma an" → „Oma anrufen"). Der erste
+ *     Buchstabe wird nur gross, wenn tatsächlich umgebaut oder ein Sprechrahmen
+ *     entfernt wurde — nach einer blossen Zeitangabe bleibt die Schreibweise des
+ *     Nutzers („in einer Woche nachfassen" → „nachfassen"). Alles über geschlossene
+ *     Wortlisten; die Fälle unter „Rückbau darf nicht zuschlagen" halten die Grenze.
  */
 
 /** Lokale Zeit → ISO. Monat 1-basiert, wie man ihn spricht. */
@@ -66,8 +74,9 @@ export const CURATED_CASES: GoldCase[] = [
   ...rows('Sprechrahmen', [
     ['Ich muss noch die Rechnung bezahlen', 'task', 'Rechnung bezahlen', null],
     ['Nicht vergessen: Blumen gießen', 'task', 'Blumen gießen', null],
-    ['Erinnere mich daran den Müll rauszubringen', 'task', 'Müll rauszubringen', null],
-    ['Denk dran das Auto zu tanken', 'task', 'Auto zu tanken', null],
+    // zu-Infinitiv wird zurückgebaut (Entscheidung 03.09.26, zweite Runde).
+    ['Erinnere mich daran den Müll rauszubringen', 'task', 'Müll rausbringen', null],
+    ['Denk dran das Auto zu tanken', 'task', 'Auto tanken', null],
     ['Aufgabe: Küche putzen', 'task', 'Küche putzen', null],
     ['Neue Aufgabe Fenster putzen', 'task', 'Fenster putzen', null],
     ['Ich sollte mal wieder die Fenster putzen', 'task', 'Fenster putzen', null],
@@ -99,7 +108,7 @@ export const CURATED_CASES: GoldCase[] = [
     ['Mach mir ne Notiz: Reifen wechseln', 'task', 'Reifen wechseln', null],
     ['Setz mir das mal auf die Liste: Fenster putzen', 'task', 'Fenster putzen', null],
     ['Pack Milch auf meine Liste', 'task', 'Milch', null],
-    ['Schreib mir auf, dass ich tanken muss', 'task', 'tanken', null],
+    ['Schreib mir auf, dass ich tanken muss', 'task', 'Tanken', null],
     ['Trag das mal für Donnerstag ein', 'task', '', on(1, 18)],
     ['Kannst du das für Dienstag eintragen, Zahnarzt', 'task', 'Zahnarzt', on(1, 16)],
     ['Kannst du mir morgen um 9 einen Termin machen', 'event', 'Termin machen', on(1, 16, 9)],
@@ -139,18 +148,39 @@ export const CURATED_CASES: GoldCase[] = [
   ]),
 
   ...rows('Gesprochen — Verb vor dem Titel', [
-    // Regelkonform, aber unschön: der Titel behält das vorangestellte Verb. Sauber wäre
-    // „Handwerker kommt" bzw. „Zahnarzt" — dafür bräuchte es den Infinitiv-Rückbau, der
-    // am 03.09.26 bewusst verworfen wurde. Steht hier, damit die Folge sichtbar bleibt.
-    ['Ich muss morgen zum Zahnarzt', 'task', 'zum Zahnarzt', on(1, 16)],
-    ['Ich hab am Freitag frei', 'task', 'frei', on(1, 19)],
-    ['Am Mittwoch kommt der Handwerker', 'task', 'kommt der Handwerker', on(1, 17)],
-    ['Nächsten Montag ist Elternabend', 'task', 'ist Elternabend', on(1, 22)],
-    ['Freitag treff ich Anna', 'task', 'treff ich Anna', on(1, 19)],
-    ['Ich geh morgen um 7 laufen', 'task', 'Ich geh laufen', on(1, 16, 7)],
-    ['Wir essen Samstag um 19 Uhr bei Müllers', 'task', 'Wir essen bei Müllers', on(1, 20, 19)],
+    // Zurückgebaut (Entscheidung 03.09.26, zweite Runde): der Satzkopf fällt, die
+    // Richtungspräposition fällt, die Verb-Pronomen-Inversion wird zur Grundform
+    // umgestellt. Vorher stand hier „kommt der Handwerker" und „zum Zahnarzt".
+    ['Ich muss morgen zum Zahnarzt', 'task', 'Zahnarzt', on(1, 16)],
+    ['Ich muss zur Post', 'task', 'Post', null],
+    ['Ich fahr morgen nach Hamburg', 'task', 'Hamburg', on(1, 16)],
+    ['Ich hab am Freitag frei', 'task', 'Frei', on(1, 19)],
+    ['Am Mittwoch kommt der Handwerker', 'task', 'Handwerker', on(1, 17)],
+    ['Nächsten Montag ist Elternabend', 'task', 'Elternabend', on(1, 22)],
+    ['Am Montag beginnt der Kurs', 'task', 'Kurs', on(1, 15)],
+    ['Übermorgen ist Abgabe', 'task', 'Abgabe', on(1, 17)],
+    ['Freitag treff ich Anna', 'task', 'Anna treffen', on(1, 19)],
+    ['Freitag ruf ich Oma an', 'task', 'Oma anrufen', on(1, 19)],
+    ['Morgen hol ich das Paket', 'task', 'Paket holen', on(1, 16)],
+    ['Samstag geh ich ins Kino', 'task', 'Kino gehen', on(1, 20)],
+    ['Ich geh morgen um 7 laufen', 'task', 'Laufen', on(1, 16, 7)],
+    ['Wir essen Samstag um 19 Uhr bei Müllers', 'task', 'Essen bei Müllers', on(1, 20, 19)],
     ['Milch kaufen und Brot holen', 'task', 'Milch kaufen und Brot holen', null],
     ['Morgen: Zahnarzt um 10, danach einkaufen', 'task', 'Zahnarzt, danach einkaufen', on(1, 16, 10)],
+  ]),
+
+  ...rows('Rückbau darf nicht zuschlagen', [
+    // Sätze, die nur so aussehen. „Mit"/„Bei"/„Für" sind keine Richtungspräpositionen,
+    // „Ist-Zustand" ist kein Satzkopf, und „zu Weihnachten" ist kein zu-Infinitiv.
+    ['Mit Max über das Projekt sprechen', 'task', 'Mit Max über das Projekt sprechen', null],
+    ['Bei Rewe einkaufen', 'task', 'Bei Rewe einkaufen', null],
+    ['Ist-Zustand dokumentieren', 'task', 'Ist-Zustand dokumentieren', null],
+    ['Geschenk zu Weihnachten besorgen', 'task', 'Geschenk zu Weihnachten besorgen', null],
+    ['Zusammenfassung schreiben', 'task', 'Zusammenfassung schreiben', null],
+    ['Istanbul Reise planen', 'task', 'Istanbul Reise planen', null],
+    ['Kommt-Zeit-Plakat aufhängen', 'task', 'Kommt-Zeit-Plakat aufhängen', null],
+    ['Geht klar Notiz', 'task', 'Geht klar Notiz', null],
+    ['Hausaufgaben machen', 'task', 'Hausaufgaben machen', null],
   ]),
 
   ...rows('Rahmenwort nur zufällig vorn', [

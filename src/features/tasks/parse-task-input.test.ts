@@ -215,8 +215,8 @@ describe('parseTaskInput — #687 AK4: Kommandopräfixe fallen, Inhalt bleibt', 
 
   it('"erinnere mich" fällt, "daran" fällt als Bindewort direkt nach dem Datum-Span', () => {
     const result = parseTaskInput('erinnere mich morgen daran, den Müll rauszubringen', NOW);
-    // Führender Artikel fällt (Entscheidung 03.09.26).
-    expect(result.title).toBe('Müll rauszubringen');
+    // Führender Artikel fällt, zu-Infinitiv wird zurückgebaut (Entscheidung 03.09.26).
+    expect(result.title).toBe('Müll rausbringen');
     expect(result.dueAt).toBe(iso(2024, 1, 16));
   });
 
