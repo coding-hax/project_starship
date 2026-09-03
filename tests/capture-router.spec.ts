@@ -65,7 +65,7 @@ test('AC1: "morgen 12 Uhr Zahnarzt" legt den Termin in-place an, kein Kalender-U
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
-  await submitUebersichtCapture(page, 'morgen 12 Uhr Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen 12 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -148,7 +148,7 @@ test('AC4: Gewohnheitsname ohne eindeutigen Treffer öffnet die Routine-Auswahl 
   expect(entries.some((entry) => entry.table === 'habit_logs')).toBe(false);
 });
 
-test('AC5: Kalender-Modul abgeschaltet macht aus "morgen 12 Uhr Zahnarzt" eine direkt angelegte Aufgabe (issue #715 AK3)', async ({
+test('AC5: Kalender-Modul abgeschaltet macht aus "Termin morgen 12 Uhr Zahnarzt" eine direkt angelegte Aufgabe (issue #715 AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -158,7 +158,7 @@ test('AC5: Kalender-Modul abgeschaltet macht aus "morgen 12 Uhr Zahnarzt" eine d
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
-  await submitUebersichtCapture(page, 'morgen 12 Uhr Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen 12 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -192,7 +192,7 @@ test('AC7: offline per Freitext erfasster Termin erreicht nach dem Onlinegehen d
   // like to the outbox (gleiches Muster wie capture-uebersicht.spec.ts AC6).
   const due = expectedDueAt(1, 12, 0);
 
-  await submitUebersichtCapture(page, 'morgen 12 Uhr Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen 12 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);

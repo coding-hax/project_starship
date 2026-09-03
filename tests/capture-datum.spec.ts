@@ -190,7 +190,7 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
   await page.goto('/uebersicht');
   const morgen14Uhr = dueAt(MO, 1, 14, 0);
 
-  await submitUebersichtCapture(page, 'morgen 14 Uhr Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen 14 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   let entries = await page.evaluate(() => window.__starship.pending());
@@ -203,11 +203,11 @@ test('AK5: Tagesgrenze 04:00 — zwischen 00:00 und 03:59 zählt noch der vorher
   // realen Tag — 8 Uhr am logischen Montag ist um 01:30 Dienstag längst vorbei.
   await page.goto('/uebersicht');
   const umAcht = dueAt(MO, 1, 8, 0);
-  await submitUebersichtCapture(page, 'Zahnarzt um 8');
+  await submitUebersichtCapture(page, 'Zahnarzttermin um 8');
 
   entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
+    title: 'Zahnarzttermin',
     startsAt: umAcht.toISOString(),
   });
 });
