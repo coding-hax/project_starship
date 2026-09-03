@@ -1,8 +1,10 @@
 /**
- * "Routinen in Serie" 30-day area chart (issue #905), replaces
- * streak-summary-card.css. Same `--surface` card shape as habit-table.css/
- * habit-tiles.css, same SVG recipe as activity-chart.css (viewBox 0 0 100 32,
- * preserveAspectRatio="none").
+ * "Routinen in Serie" 30-day step chart (issue #905, redrawn in #1040),
+ * replaces streak-summary-card.css. Same `--surface` card shape as
+ * habit-table.css/habit-tiles.css; the SVG follows weather-day.css instead of
+ * activity-chart.css now — a viewBox in real pixels plus `height: auto`, so the
+ * drawing scales uniformly. The old `preserveAspectRatio="none"` stretched x
+ * 1.7× further than y and squashed the end dot into an oval.
  */
 
 .habit-history-card {
@@ -52,36 +54,68 @@
 .habit-history-card__svg {
   display: block;
   width: 100%;
-  height: 64px;
+  height: auto;
+  /* Auf dem Desktop wüchse die Kurve sonst mit der Karte mit und wirkte grober
+     als alles daneben — dieselbe Deckelung wie beim Wetter-Tagesverlauf
+     (weather-day.css). */
+  max-width: 420px;
 }
 
-.habit-history-card__gridline,
-.habit-history-card__baseline {
+.habit-history-card__cap {
+  /* Deckellinie = „alle aktiven Routinen". Gestrichelt, weil sie eine
+     Bezugsgröße ist und keine Kante — Raster, also --border-faint
+     (tokens.css). */
   stroke: var(--border-faint);
   stroke-width: 1;
+  stroke-dasharray: 2 3;
 }
 
 .habit-history-card__baseline {
-  /* A structural edge, not decoration (docs/design/farben-typografie.md) —
-     the chart's own zero line, so it earns the stronger of the two tokens. */
+  /* Seit #1040 wirklich die Null der Skala und nicht mehr das Reihenminimum:
+     eine strukturelle Kante, deshalb das stärkere der beiden Rastertoken
+     (docs/design/farben-typografie.md). */
   stroke: var(--border-base);
+  stroke-width: 1;
 }
 
 .habit-history-card__area {
-  fill: color-mix(in oklab, var(--area-habits) 26%, var(--surface));
+  fill: url(#habit-history-area);
+  stroke: none;
+}
+
+/* Verlauf statt flacher Tönung: die Fläche trägt keine Daten (das tut die
+   Linie), sie soll nur zur Grundlinie hin verschwinden. */
+.habit-history-card__area-stop--top {
+  stop-color: var(--area-habits);
+  stop-opacity: 0.42;
+}
+
+.habit-history-card__area-stop--bottom {
+  stop-color: var(--area-habits);
+  stop-opacity: 0.05;
+}
+
+.habit-history-card__line,
+.habit-history-card__dot {
+  /* `in oklab`, nicht `in oklch` wie bei den Wochenbalken: oklch interpoliert
+     über den Farbkreis, und aus Grün (Hue 148) plus warmem Grau (Hue 60) wird
+     auf halbem Weg ein Oliv. Gemessen >= 3:1 gegen die eigene Karte, hell und
+     dunkel (routinen.spec.ts). */
+  --habit-history-ink: color-mix(in oklab, var(--area-habits) 78%, var(--text-base));
 }
 
 .habit-history-card__line {
-  /* Same 70% mixture as the habit-table week bars — measured ≥ 3:1 against
-     its own card (docs/design/farben-typografie.md). */
-  stroke: color-mix(in oklch, var(--area-habits) 70%, var(--text-base));
-  stroke-width: 1.5;
+  fill: none;
+  stroke: var(--habit-history-ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
 }
 
 .habit-history-card__dot {
-  fill: color-mix(in oklch, var(--area-habits) 70%, var(--text-base));
+  fill: var(--habit-history-ink);
+  /* Ring in der Kartenfarbe, damit der Punkt sich vom Kurvenende absetzt. */
   stroke: var(--surface);
-  stroke-width: 1;
+  stroke-width: 2;
 }
 
 .habit-history-card__axis {

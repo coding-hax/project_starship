@@ -89,7 +89,7 @@ test('AK1: Schreibweise der Uhrzeit ändert das Ergebnis nicht — "um H Uhr" bl
   // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht Termine direkt über die
   // Outbox an, kein Bestätigen-Dialog/Editor mehr dazwischen — prüfbar ist der
   // korrekt aufgelöste Titel + Zeitpunkt in der Outbox-Payload.
-  await submitUebersichtCapture(page, 'morgen um 14 Uhr Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen um 14 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -105,12 +105,12 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   // FIXED_NOW liegt bei 14:00 Berlin (helpers.ts) — 18 Uhr ist noch in der Zukunft.
   await page.goto('/uebersicht');
   const dueToday = expectedDueAt(0, 18, 0);
-  await submitUebersichtCapture(page, 'Zahnarzt um 18 Uhr');
+  await submitUebersichtCapture(page, 'Zahnarzttermin um 18 Uhr');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   let entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
+    title: 'Zahnarzttermin',
     startsAt: dueToday.toISOString(),
   });
 
@@ -126,11 +126,11 @@ test('AK2: Uhrzeit ohne Datum wird ausgewertet — heute, wenn noch in der Zukun
   // 6:00 liegt unter beiden Lesarten sicher in der Vergangenheit -> morgen (AC2, #687).
   await page.goto('/uebersicht');
   const dueTomorrow = expectedDueAt(1, 6, 0);
-  await submitUebersichtCapture(page, 'Zahnarzt um 6:00');
+  await submitUebersichtCapture(page, 'Zahnarzttermin um 6:00');
 
   entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
+    title: 'Zahnarzttermin',
     startsAt: dueTomorrow.toISOString(),
   });
 });
@@ -145,12 +145,12 @@ test('AK3: Titel ist der Rest, nicht das Ergebnis einer Blacklist — Bindewört
   const diff = (2 - today.getDay() + 7) % 7 || 7; // nächster Dienstag, nie heute
   const due = expectedDueAt(diff, 12, 0);
 
-  await submitUebersichtCapture(page, 'Zahnarzt am Dienstag um 12 in der Klinik');
+  await submitUebersichtCapture(page, 'Zahnarzttermin am Dienstag um 12 in der Klinik');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   const entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt in der Klinik',
+    title: 'Zahnarzttermin in der Klinik',
     startsAt: due.toISOString(),
   });
 });
@@ -182,7 +182,7 @@ test('AK5: bleibt kein Titel übrig, bleibt er leer — der Editor öffnet mit F
   // bisherigen (leeren) Werten, dessen eigener `initialFocusRef` weiterhin aufs
   // Titelfeld zeigt (issue #715 P4).
   await captureButton(page).click();
-  await captureTitleField(page).fill('morgen um 12');
+  await captureTitleField(page).fill('Termin morgen um 12');
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   const dialog = eventDialog(page);
@@ -236,14 +236,15 @@ test('AK7: Klassifikation bleibt unverändert grün — neuer Korpus-Fall "nicht
   await submitUebersichtCapture(page, 'nicht vergessen: Pass verlängern');
 
   // Kein Datum -> legt ohne Bestätigungs-Sheet direkt an (gleiches Muster wie
-  // capture-uebersicht.spec.ts AC4). "nicht vergessen" ist reines Klassifikations-
-  // Vokabular (task), keine Wort-Blacklist mehr -> bleibt Teil des Titels (R3).
+  // capture-uebersicht.spec.ts AC4). "nicht vergessen" bleibt Klassifikations-Vokabular
+  // (task), fällt seit dem 03.09.26 aber als Sprechrahmen aus dem Titel — R3 aus #687
+  // galt für eine Wort-Blacklist, nicht für den Rahmen.
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(captureDialog(page)).toBeHidden();
   await page.goto('/aufgaben');
   await selectView(page, 'Alle');
   await expect(
-    taskItems(page).filter({ hasText: 'nicht vergessen: Pass verlängern' }),
+    taskItems(page).filter({ hasText: 'Pass verlängern' }),
   ).toBeVisible();
 });
 

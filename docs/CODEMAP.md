@@ -22,7 +22,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
 - `(app)/uebersicht/` — Dashboard: Ring + Einstellungs-Einstieg in der Augenbrauenzeile,
-  `UebersichtCapture` als FAB unten rechts (#920) + `<UebersichtSections/>` (je aktivem
+  `UebersichtCapture` als FAB unten rechts + `<UebersichtSections/>` (je aktivem
   Modul eine `OverviewSection`: Wetter → Termine → Aufgaben → Aktivitäten → Routinen),
   Kopf via `OverviewBlock`
 - `(app)/aufgaben/page.tsx` — Kopfzeile + `<TaskList/>` + `<QuickAddTask/>`
@@ -86,19 +86,18 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
 - `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `openTaskNodes` filtert erledigte aus „Alle"
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
-- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`;
-  `analyzeText` Baustein für `src/features/capture/`; Wann-Panel `due-picker.tsx`
+- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext (`analyzeText` auch für `capture/`); Wann-Panel `due-picker.tsx`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
 - `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe Übersicht→FAB/`EventEditor`
-- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen`
+- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über den Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo)
 
 ### src/features/capture
 
-- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht lokal/Modell-Erkenner, eigenes `CaptureDraft` (reicher als `tasks/capture-draft-store.ts`)
+- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`; eigenes `CaptureDraft` (reicher als `tasks/capture-draft-store.ts`)
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText`
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer
 - `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
-- `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung)
+- `corpus.ts` / `gold/` — Satz-Korpora; `gold/` = Gate über dem Erfassungspfad (44.578 Fälle), Regeln im Kopf von `curated.ts`
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
@@ -109,8 +108,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `recover-orphaned-entries.ts` — bergt Einträge unter gestashtem Alt-DEK, verschlüsselt sie unter dem aktuellen DEK neu
 - `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (`journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
-- `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
-- `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
+- `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
+- `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Eintragsstrom+FAB
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile
@@ -127,17 +126,16 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `week-goal.ts` / `history-weeks.ts` / `history-days.ts` / `month-progress.ts` — reine Ableitungen: Wochensoll, 12-Wochen-, 30-Tage-, Monatsreihe
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge auf /uebersicht
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
-- `habit-tiles.tsx` / `.css` — drei Kennzahl-Kacheln auf /routinen
-- `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile, ersetzt `habit-list.tsx`
-- `habit-history-card.tsx` / `.css` — 30-Tage-Verlaufskarte auf /routinen, ersetzt `streak-summary-card.tsx`
+- `habit-tiles.tsx` / `.css` — vier Kennzahl-Kacheln auf /routinen
+- `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
+- `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen (Stufenkurve, feste Skala)
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): `agendaForDay`/`nextInAgenda`/`categoryEdgeVar`/`allDayEventsForDay`,
-  `berlinMinutesOfDay`/`addDays`/`weekDaysFor`/`monthDaysFor`/`categoriesForDay` plus `upcomingEventsToday`/`formatCountdown`
-- `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` liefert die gerenderten `Occurrence`s
-- `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence` (Split-Arithmetik), `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): Tages-/Wochen-/Monats-Helfer + `upcomingEventsToday`/`formatCountdown`
+- `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` → gerenderte `Occurrence`s
+- `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence`, `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
   (`'local'|'subscribed'`, View-Feld) unterscheidet synced von abonnierten Terminen
 - `use-event-exceptions.ts` — `EventExceptionView`/`toEventExceptionView` + `useEventExceptions()`, nur lesend — Schreiben läuft über `event-mutations.ts`
@@ -151,11 +149,11 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   `<EventAgenda/>`, FAB + `<EventDetail/>`/`<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, Vor/Zurück-Tag, „Heute", Punkte/Tag
 - `month-grid.tsx` / `.css` — Monats-Karte: 7×6-Raster, ≤3 Punkte/Tag, 44px-Trefferfläche per Pseudo-Element, Monatsnav
-- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste (ersetzt die
-  Stundenachse/Jetzt-Linie): Terminkarten (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten
-  Termin, spärlich/leer-Zustände; `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
-- `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (Anlegen+Bearbeiten, `mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
-- `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6) — "Nur dieser" nur wenn der Caller sie anbietet (kein Titel-/Kategorie-Override möglich)
+- `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste: Terminkarten
+  (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
+  `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
+- `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (`mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
+- `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6), "Nur dieser" nur wenn der Caller sie anbietet
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
 - `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
 
@@ -225,35 +223,39 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
-- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
+- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark)
+- `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
+- `uebersicht.desktop.spec.ts` — /uebersicht ab 768px zweispaltig (Sektionen, Titelfigur, FAB-Reserve), 1280×800
+- `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
 - `nav-schleier.spec.ts` — Verdeckung an der Bodenleiste (Hintergrund-Kopie statt flacher Fläche)
 - `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
-- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build)
+- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect je Cookie-Zustand
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm`
-- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext auf `/uebersicht`: Termin vorbefüllt, Routine abgehakt/Review/neu, sonst Aufgabe
+- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext: Termin vorbefüllt, Routine abgehakt/Review/neu, sonst Aufgabe
 - `capture-parser.spec.ts` (Teil 1/4) — Span+Ranking-Grammatik, je Test AK1–AK7 + Offline
 - `capture-zeigerzeit.spec.ts` (Teil 2/4) — deutsche Zeigerzeit + Tageshälften, je Test AK1–AK6 + Offline
 - `capture-datum.spec.ts` (Teil 3/4) — Monatsnamen, Spannen, Tagesgrenze 04:00, rückw. Abhaken, je Test AK1–AK6 + Offline
 - `capture-unsicher.spec.ts` (Teil 4/4) — unsichere Felder markieren, je Test AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
-- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
-- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen (Kopf+Kacheln+Tabelle+Verlauf, Kontrast, 375×812, Dark/reduced-motion) + 30-Tage-Verlaufskarte im Detail
+- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht, Streaks, Monatsraster
+- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen (Kopf+Kacheln+Tabelle+Verlauf, Dark/reduced-motion) + 30-Tage-Verlaufskarte
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern
 - `scroll-position.spec.ts` — jede Seite startet oben, nie auf der Scrollposition der vorherigen, auch nicht per Zurück
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
 - `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
 - `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes, Bergung der Alt-Einträge (AK1–AK7)
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull ins IndexedDB, Reminder-Versand, Panel „Benachrichtigungen"
 - `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
-- `form-bedienelemente.spec.ts` — FAB-Pille/Atem, aktiver Reiter, Häkchen (#867), je AK + Überlauf hell/dunkel
+- `form-bedienelemente.spec.ts` — FAB-Pille/Atem, aktiver Reiter, Häkchen, je AK + Überlauf hell/dunkel
 
 ### scripts/ — Runner & CI-Hilfen
 

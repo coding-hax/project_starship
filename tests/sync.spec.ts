@@ -954,8 +954,13 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
     page,
   }) => {
     await registerPasskey(page);
-    await settleJournalHabitBoot(page);
+    // Settle on THIS page, not on /uebersicht (where registerPasskey lands) —
+    // navigating to /aufgaben afterwards would remount JournalHabitBoot/SyncBoot
+    // and fire a fresh, undrained sync() on this page's own `inFlight` singleton,
+    // which can dock onto (and steal an attempt from) the loop below (flaky in
+    // CI, mirrors the fix in 314ce00 for the #475 AK2 outbox-size race).
     await page.goto('/aufgaben');
+    await settleJournalHabitBoot(page);
 
     await page.evaluate(() =>
       window.__starship.mutate({

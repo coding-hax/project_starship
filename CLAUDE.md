@@ -301,8 +301,9 @@ dass sie an einer Prüfung vorbeirutscht.
 - [ ] Playwright-Test je Akzeptanzkriterium, grün
 - [ ] Offline-Pfad getestet (Mutation offline → online → serverseitig angekommen)
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e` grün
-- [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop läuft seit
-      #564 nicht mehr in CI
+- [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop (1280 × 800)
+      fährt seit #1017 wieder in CI, aber nur die `*.desktop.spec.ts`-Specs, kein
+      Suite-Duplikat
 - [ ] Keine neuen Dependencies ohne ADR
 - [ ] Dark Mode funktioniert
 - [ ] `prefers-reduced-motion` respektiert

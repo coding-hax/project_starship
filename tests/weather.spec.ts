@@ -47,6 +47,26 @@ async function resolveToken(page: Page, property: string, token: string): Promis
   );
 }
 
+/** Resolves a colour token in the context of `locator` rather than `document.body`.
+ * The columns reset `--text`/`--border` to their neutral `-base` anchors (issue
+ * #846), so a `resolveColorToken` on the body would read the ground mix instead. */
+async function resolveColorTokenWithin(locator: Locator, token: string): Promise<string> {
+  return locator.evaluate((el, cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    el.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+/** The weekday label of one column — since issue #1003 this, not a frame around
+ * the column, is what marks Sa/So. */
+function weekdayLabel(day: Locator) {
+  return day.locator('.weather-forecast__weekday');
+}
+
 interface DaySet {
   dates: string[];
   weekdays: string[];
@@ -65,7 +85,15 @@ interface DaySet {
 }
 
 const DAY_SET_A: DaySet = {
-  dates: ['2026-07-20', '2026-07-21', '2026-07-22', '2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26'],
+  dates: [
+    '2026-07-20',
+    '2026-07-21',
+    '2026-07-22',
+    '2026-07-23',
+    '2026-07-24',
+    '2026-07-25',
+    '2026-07-26',
+  ],
   weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
   codes: [0, 2, 3, 45, 63, 73, 96],
   categories: ['Klar', 'Teils bewölkt', 'Bewölkt', 'Nebel', 'Regen', 'Schnee', 'Gewitter'],
@@ -147,7 +175,11 @@ async function observeLayoutShifts(page: Page, selector: string): Promise<void> 
     const target = document.querySelector(sel);
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as unknown as {
-        sources?: { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
+        sources?: {
+          node?: Node | null;
+          previousRect: DOMRectReadOnly;
+          currentRect: DOMRectReadOnly;
+        }[];
       }[]) {
         for (const source of entry.sources ?? []) {
           if (source.node && target && (source.node === target || target.contains(source.node))) {
@@ -164,7 +196,9 @@ async function observeLayoutShifts(page: Page, selector: string): Promise<void> 
 }
 
 /** Reads back the entries `observeLayoutShifts` collected so far. */
-async function readLayoutShifts(page: Page): Promise<{ previousHeight: number; currentHeight: number }[]> {
+async function readLayoutShifts(
+  page: Page,
+): Promise<{ previousHeight: number; currentHeight: number }[]> {
   return page.evaluate(
     () =>
       (
@@ -203,8 +237,12 @@ test('sieben Tage stehen ganz oben, heute zuerst, je mit Kürzel, Symbol, Höchs
     const day = days.nth(i);
     await expect(day.locator('.weather-forecast__weekday')).toHaveText(DAY_SET_A.weekdays[i]);
     await expect(day.getByRole('img', { name: DAY_SET_A.categories[i] })).toBeVisible();
-    await expect(day.locator('.weather-forecast__temp-max')).toHaveText(`${DAY_SET_A.tempsMax[i]}°`);
-    await expect(day.locator('.weather-forecast__temp-min')).toHaveText(`${DAY_SET_A.tempsMin[i]}°`);
+    await expect(day.locator('.weather-forecast__temp-max')).toHaveText(
+      `${DAY_SET_A.tempsMax[i]}°`,
+    );
+    await expect(day.locator('.weather-forecast__temp-min')).toHaveText(
+      `${DAY_SET_A.tempsMin[i]}°`,
+    );
   }
 });
 
@@ -236,7 +274,7 @@ test('Gewitter-Wolke wird oben nicht abgeschnitten (issue #330)', async ({ page 
 /* AK: Wochenende bekommt einen kräftigeren Rahmen, Spaltenbreite bleibt gleich */
 /* -------------------------------------------------------------------------- */
 
-test('Samstag und Sonntag haben einen kräftigeren Rahmen (2px, dunklere Farbe), alle sieben Spalten bleiben gleich breit (issue #223 AC1–AC2, issue #268 AC1–AC3)', async ({
+test('Samstag und Sonntag heben sich über den Wochentag ab, alle sieben Spalten bleiben gleich breit und rahmenlos (issue #223 AC1–AC2, issue #268 AC1–AC3, issue #1003 AK1/AK3)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -253,47 +291,91 @@ test('Samstag und Sonntag haben einen kräftigeren Rahmen (2px, dunklere Farbe),
     expect(width).toBeCloseTo(widths[0], 1);
   }
 
-  // AC1 (issue #268): Alle haben 2px Rahmen
-  // AC2 (issue #223): Rahmenfarbe unterscheidet sich für Sa/So
   // DAY_SET_A.weekdays: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
   const monday = days.nth(0);
   const saturday = days.nth(5);
   const sunday = days.nth(6);
 
-  const mondayLink = monday.locator('.weather-forecast__day-link');
-  const saturdayLink = saturday.locator('.weather-forecast__day-link');
-  const sundayLink = sunday.locator('.weather-forecast__day-link');
+  // AK1 (issue #1003): keine Spalte trägt noch einen Rahmen — genau der Strich,
+  // von dem bei `gap: 0` zwei nebeneinander lagen.
+  const dayLinks = await days.locator('.weather-forecast__day-link').all();
+  expect(dayLinks).toHaveLength(7);
+  for (const link of dayLinks) {
+    await expect(link).toHaveCSS('border-width', '0px');
+  }
 
-  // Alle haben 2px Rahmen (issue #268)
-  await expect(mondayLink).toHaveCSS('border-width', '2px');
-  await expect(saturdayLink).toHaveCSS('border-width', '2px');
-  await expect(sundayLink).toHaveCSS('border-width', '2px');
-
-  // Sa/So haben stärkere Rahmenfarbe (dunklere Farbe mit --border-strong)
-  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
-  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
-  const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  // AK3: Sa/So tragen den Wochentag ungedämpft und kräftiger als ein Werktag.
+  const mondayColor = await weekdayLabel(monday).evaluate((el) => getComputedStyle(el).color);
+  const saturdayColor = await weekdayLabel(saturday).evaluate((el) => getComputedStyle(el).color);
+  const sundayColor = await weekdayLabel(sunday).evaluate((el) => getComputedStyle(el).color);
 
   expect(saturdayColor).not.toBe(mondayColor);
   expect(sundayColor).not.toBe(mondayColor);
   expect(saturdayColor).toBe(sundayColor);
 
-  // Die Rahmenfarbe ist tatsächlich an --border-strong gebunden (issue #288 AC3).
-  // Muss innerhalb von .weather-forecast__day aufgelöst werden — die Karte setzt
-  // --border-strong auf ihren neutralen -base-Anker zurück (issue #846), ein
-  // resolveColorToken auf document.body läse stattdessen den Grund-Mix.
-  const saturdayBorderStrong = await saturday.evaluate((el) => {
-    const probe = document.createElement('span');
-    probe.style.color = 'var(--border-strong)';
-    el.appendChild(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  });
-  expect(saturdayColor).toBe(saturdayBorderStrong);
+  // Der Ton ist tatsächlich an --text gebunden, der Werktag an --text-muted —
+  // beide innerhalb der Spalte aufgelöst, weil die Karte sie auf ihre neutralen
+  // -base-Anker zurücksetzt (issue #846).
+  expect(saturdayColor).toBe(await resolveColorTokenWithin(saturday, '--text'));
+  expect(mondayColor).toBe(await resolveColorTokenWithin(monday, '--text-muted'));
+
+  // Zweites Signal, nicht nur Farbe: das Gewicht.
+  const emphasisWeight = await resolveToken(page, 'font-weight', '--weight-emphasis');
+  const mondayWeight = await weekdayLabel(monday).evaluate((el) => getComputedStyle(el).fontWeight);
+  const saturdayWeight = await weekdayLabel(saturday).evaluate(
+    (el) => getComputedStyle(el).fontWeight,
+  );
+  const sundayWeight = await weekdayLabel(sunday).evaluate((el) => getComputedStyle(el).fontWeight);
+
+  expect(saturdayWeight).toBe(emphasisWeight);
+  expect(sundayWeight).toBe(emphasisWeight);
+  expect(saturdayWeight).not.toBe(mondayWeight);
 });
 
-test('Wochenend-Rahmen ist auch im Dark Mode vom Normal-Rahmen unterscheidbar (issue #223 AC3)', async ({
+test('die sieben Spalten teilen die Streifenbreite lückenlos auf und zeichnen keine eigene Zelle (issue #1003 AK2)', async ({
+  page,
+}) => {
+  await mockForecast(page, DAY_SET_A);
+  await skewClock(page, NOW);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  const days = weatherDays(page);
+  await expect(days).toHaveCount(7);
+
+  const list = page.locator('.weather-forecast__days');
+  const listBox = await list.boundingBox();
+  expect(listBox).toBeTruthy();
+
+  const boxes = await days.evaluateAll((elements) =>
+    elements.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return { left: rect.left, right: rect.right };
+    }),
+  );
+
+  // Bündig an beiden Enden und Kante an Kante dazwischen: keine Spalte überlappt
+  // ihre Nachbarin, keine lässt eine Lücke. Das ist die Geometrie, in der zwei
+  // 2px-Rahmen vorher zu einem 4px-Strich verschmolzen sind.
+  expect(boxes[0].left).toBeCloseTo(listBox!.x, 1);
+  expect(boxes[6].right).toBeCloseTo(listBox!.x + listBox!.width, 1);
+  for (let i = 0; i < 6; i += 1) {
+    expect(boxes[i + 1].left).toBeCloseTo(boxes[i].right, 1);
+  }
+
+  // Und weil keine Spalte eine vom Kartengrund abweichende Fläche oder einen
+  // Rahmen malt, ist an diesen Kanten auch nichts zu sehen.
+  const cardBackground = await page
+    .locator('.weather-forecast')
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  for (let i = 0; i < 7; i += 1) {
+    const day = days.nth(i);
+    await expect(day).toHaveCSS('border-width', '0px');
+    expect(await day.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(cardBackground);
+  }
+});
+
+test('der Wochenend-Wochentag ist auch im Dark Mode vom Werktag unterscheidbar (issue #223 AC3, issue #1003 AK3)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -312,16 +394,21 @@ test('Wochenend-Rahmen ist auch im Dark Mode vom Normal-Rahmen unterscheidbar (i
   const monday = days.nth(0);
   const saturday = days.nth(5);
 
-  const mondayLink = monday.locator('.weather-forecast__day-link');
-  const saturdayLink = saturday.locator('.weather-forecast__day-link');
-
-  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
-  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  const mondayColor = await weekdayLabel(monday).evaluate((el) => getComputedStyle(el).color);
+  const saturdayColor = await weekdayLabel(saturday).evaluate((el) => getComputedStyle(el).color);
 
   expect(saturdayColor).not.toBe(mondayColor);
+  expect(saturdayColor).toBe(await resolveColorTokenWithin(saturday, '--text'));
+
+  // Das Gewicht trägt im Dunkelmodus genauso (issue #1003 AK3) — der Ton allein
+  // steht dort auf dunklem Grund unter mehr Druck.
+  const emphasisWeight = await resolveToken(page, 'font-weight', '--weight-emphasis');
+  expect(await weekdayLabel(saturday).evaluate((el) => getComputedStyle(el).fontWeight)).toBe(
+    emphasisWeight,
+  );
 });
 
-test('focus-visible auf Karten-Link zeigt Accent-Outline, Wochenend-Rahmen beeinträchtigt das nicht (issue #223 AC4)', async ({
+test('focus-visible auf Karten-Link zeigt Accent-Outline nach innen, auch ohne Spaltenrahmen (issue #223 AC4, issue #1003 AK5)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -334,9 +421,13 @@ test('focus-visible auf Karten-Link zeigt Accent-Outline, Wochenend-Rahmen beein
 
   await saturdayLink.focus();
 
+  // Negativer Offset: der Ring liegt innerhalb der Spalte und ragt damit nicht in
+  // die Nachbarspalte, die seit issue #1003 unmittelbar anschließt.
   await expect(saturdayLink).toHaveCSS('outline-offset', '-2px');
+  await expect(saturdayLink).toHaveCSS('outline-width', '2px');
+  await expect(saturdayLink).toHaveCSS('border-width', '0px');
   const outlineColor = await saturdayLink.evaluate((el) => getComputedStyle(el).outlineColor);
-  expect(outlineColor).toBeTruthy();
+  expect(outlineColor).toBe(await resolveColorTokenWithin(saturday, '--accent'));
 });
 
 test('Tap-Ziel weather-forecast__day-link bleibt bei 375px ≥ 44×44px (issue #268 AC4)', async ({
@@ -361,7 +452,7 @@ test('Tap-Ziel weather-forecast__day-link bleibt bei 375px ≥ 44×44px (issue #
   }
 });
 
-test('Wochenendspalten-Rahmen ist auch bei 1280px (Desktop) sichtbar dunkel und 2px (issue #268 AC6)', async ({
+test('die Wochenendspalte bleibt auch bei 1280px (Desktop) am Wochentag erkennbar und rahmenlos (issue #268 AC6, issue #1003 AK1/AK3)', async ({
   page,
 }) => {
   await mockForecast(page, DAY_SET_A);
@@ -377,19 +468,15 @@ test('Wochenendspalten-Rahmen ist auch bei 1280px (Desktop) sichtbar dunkel und 
   const saturday = days.nth(5);
   const sunday = days.nth(6);
 
-  const mondayLink = monday.locator('.weather-forecast__day-link');
-  const saturdayLink = saturday.locator('.weather-forecast__day-link');
-  const sundayLink = sunday.locator('.weather-forecast__day-link');
+  // Rahmenlos auch hier — die Breite ändert daran nichts (issue #1003 AK1)
+  await expect(monday.locator('.weather-forecast__day-link')).toHaveCSS('border-width', '0px');
+  await expect(saturday.locator('.weather-forecast__day-link')).toHaveCSS('border-width', '0px');
+  await expect(sunday.locator('.weather-forecast__day-link')).toHaveCSS('border-width', '0px');
 
-  // All have 2px border
-  await expect(mondayLink).toHaveCSS('border-width', '2px');
-  await expect(saturdayLink).toHaveCSS('border-width', '2px');
-  await expect(sundayLink).toHaveCSS('border-width', '2px');
-
-  // Sa/So have darker border color
-  const mondayColor = await mondayLink.evaluate((el) => getComputedStyle(el).borderColor);
-  const saturdayColor = await saturdayLink.evaluate((el) => getComputedStyle(el).borderColor);
-  const sundayColor = await sundayLink.evaluate((el) => getComputedStyle(el).borderColor);
+  // Sa/So bleiben über den Wochentag erkennbar
+  const mondayColor = await weekdayLabel(monday).evaluate((el) => getComputedStyle(el).color);
+  const saturdayColor = await weekdayLabel(saturday).evaluate((el) => getComputedStyle(el).color);
+  const sundayColor = await weekdayLabel(sunday).evaluate((el) => getComputedStyle(el).color);
 
   expect(saturdayColor).not.toBe(mondayColor);
   expect(sundayColor).not.toBe(mondayColor);
@@ -400,7 +487,9 @@ test('Wochenendspalten-Rahmen ist auch bei 1280px (Desktop) sichtbar dunkel und 
 /* AK: Quellenangabe verlässt /uebersicht (zieht in die Einstellungen, #155 AC5) */
 /* -------------------------------------------------------------------------- */
 
-test('die Open-Meteo-Nennung steht nicht mehr auf /uebersicht (issue #155 AC5)', async ({ page }) => {
+test('die Open-Meteo-Nennung steht nicht mehr auf /uebersicht (issue #155 AC5)', async ({
+  page,
+}) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
   await page.goto('/uebersicht');
@@ -756,7 +845,9 @@ test('die Wetterdaten tauchen nie in der Outbox auf (issue #139 AC7)', async ({ 
 /* AK: 375px ohne horizontales Scrollen (läuft im mobile-Projekt automatisch) */
 /* -------------------------------------------------------------------------- */
 
-test('sieben Spalten passen ohne waagerechtes Scrollen der Seite (issue #139 AC9)', async ({ page }) => {
+test('sieben Spalten passen ohne waagerechtes Scrollen der Seite (issue #139 AC9)', async ({
+  page,
+}) => {
   await mockForecast(page, DAY_SET_A);
   await skewClock(page, NOW);
   await page.goto('/uebersicht');
@@ -899,7 +990,11 @@ const WEATHER_ICON_ANIMATED_SELECTOR: Record<string, string> = {
 async function animationState(locator: Locator) {
   return locator.evaluate((el) => {
     const style = getComputedStyle(el);
-    return { name: style.animationName, duration: style.animationDuration, iterationCount: style.animationIterationCount };
+    return {
+      name: style.animationName,
+      duration: style.animationDuration,
+      iterationCount: style.animationIterationCount,
+    };
   });
 }
 

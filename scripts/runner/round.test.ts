@@ -11,7 +11,7 @@ import type { GitAdapter } from './git';
 import { createFixedClock } from './clock';
 import { createStateAdapter, type StateAdapter } from './state';
 import { createClaimAdapter, type ClaimAdapter } from './claim';
-import { roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } from './round';
+import { branchName, branchTip, roundEval, roundPlan, roundRecover, type RoundContext, type RoundRun } from './round';
 import { CHECK_TOOLS, READONLY_DENY } from './prompts';
 import { READONLY_TOOLS } from './prompts';
 
@@ -48,6 +48,14 @@ function called(calls: string[][], ...needles: string[]): boolean {
   return calls.some((args) => needles.every((needle) => args.includes(needle)));
 }
 
+// #1026: Reihenfolge statt nur Anwesenheit -- der Kommentar muss VOR dem
+// Label-Abnehmen stehen, sonst faellt das Ticket wieder ohne Spur aus der
+// Pruefschlange. -1, wenn kein Aufruf passt (macht < unbrauchbar als
+// "gefunden"-Ersatz, darum immer zusaetzlich >= 0 pruefen).
+function indexOf(calls: string[][], ...needles: string[]): number {
+  return calls.findIndex((args) => needles.every((needle) => args.includes(needle)));
+}
+
 function gitDouble(replies: Record<string, string> = {}): GitAdapter {
   return {
     run: vi.fn((args: string[]) => {
@@ -76,6 +84,54 @@ const noOpenPrs = { match: (args: string[]) => args[0] === 'pr' && args[1] === '
 const labelsAre = (...names: string[]) => ({
   match: (args: string[]) => args[0] === 'issue' && args[1] === 'view' && args.includes('labels'),
   reply: names.join('\n'),
+});
+
+// #1026: #1016/PR #1024 hiess `docs/1016-desktop-doktrin` -- der alte Glob
+// suchte nur unter feat/fix/chore, fand nie etwas und nahm `check` 20 Laeufe
+// lang wortlos wieder ab. Praefixunabhaengig heisst aber nicht "irgendwas mit
+// der Nummer drin" (das waere schlimmer als der Status quo, weil der
+// Pruef-Lauf dann einen fremden Diff haelt) -- darum die beiden Fehltreffer-
+// Faelle gleich mit.
+describe('branchName/branchTip praefixunabhaengig (#1026)', () => {
+  function gitWithHeads(lines: string): GitAdapter {
+    return gitDouble({ 'ls-remote': lines });
+  }
+
+  it('findet einen Branch mit beliebigem Praefix (docs/)', () => {
+    const git = gitWithHeads('sha1\trefs/heads/docs/1016-desktop-doktrin\n');
+    expect(branchName(1016, git)).toBe('docs/1016-desktop-doktrin');
+    expect(branchTip(1016, git)).toBe('sha1');
+  });
+
+  it('kein Fehltreffer, wenn die Nummer nur ein Praefix einer laengeren ist (10160)', () => {
+    const git = gitWithHeads('shaX\trefs/heads/feat/10160-etwas\n');
+    expect(branchName(1016, git)).toBe('');
+    expect(branchTip(1016, git)).toBe('');
+  });
+
+  it('kein Fehltreffer, wenn die Nummer mitten im Slug steht (7-1016)', () => {
+    const git = gitWithHeads('shaY\trefs/heads/feat/7-1016-etwas\n');
+    expect(branchName(1016, git)).toBe('');
+    expect(branchTip(1016, git)).toBe('');
+  });
+
+  it('Regressionswaechter: die bisherige Konvention feat/<nr>-... bleibt gefunden', () => {
+    const git = gitWithHeads('shaZ\trefs/heads/feat/1016-quick-add\n');
+    expect(branchName(1016, git)).toBe('feat/1016-quick-add');
+  });
+
+  it('branchName und branchTip ziehen aus derselben Quelle -- nur der passende Head im Rauschen zaehlt', () => {
+    const git = gitWithHeads(
+      [
+        'shaMain\trefs/heads/main',
+        'sha9\trefs/heads/feat/9-x',
+        'shaNear\trefs/heads/feat/10160-nicht-treffen',
+        'sha1016\trefs/heads/docs/1016-desktop-doktrin',
+      ].join('\n'),
+    );
+    expect(branchName(1016, git)).toBe('docs/1016-desktop-doktrin');
+    expect(branchTip(1016, git)).toBe('sha1016');
+  });
 });
 
 describe('roundPlan', () => {
@@ -275,6 +331,12 @@ describe('roundPlan', () => {
       expect(result.kind).toBe('done');
       expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(true);
       expect(result.status?.title).toContain('keine AK');
+      // #1026 AK5: kein stummes Label-Abnehmen -- der Kommentar an #70 steht
+      // VOR dem `--remove-label`, sonst faellt das Ticket ohne Spur aus der Reihe.
+      const commentIdx = indexOf(calls, 'issue', 'comment', '70');
+      const removeIdx = indexOf(calls, 'issue', 'edit', '70', '--remove-label', 'check');
+      expect(commentIdx).toBeGreaterThanOrEqual(0);
+      expect(commentIdx).toBeLessThan(removeIdx);
     });
 
     it('gibt das Label zurueck, wenn es zu pruefen nichts gibt', () => {
@@ -286,6 +348,11 @@ describe('roundPlan', () => {
       const result = roundPlan(ctx(gh, gitDouble()), opts);
       expect(result.kind).toBe('done');
       expect(called(calls, 'edit', '70', '--remove-label', 'check')).toBe(true);
+      // #1026 AK4: dito fuer den "kein Branch"-Zweig -- Kommentar vor dem Label.
+      const commentIdx = indexOf(calls, 'issue', 'comment', '70');
+      const removeIdx = indexOf(calls, 'issue', 'edit', '70', '--remove-label', 'check');
+      expect(commentIdx).toBeGreaterThanOrEqual(0);
+      expect(commentIdx).toBeLessThan(removeIdx);
     });
   });
 

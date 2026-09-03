@@ -10,8 +10,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { IconChevronLeft, IconChevronRight } from '@/ui/icons';
-import { addDays, categoriesForDay, categoryEdgeVar, dayWindow, parseDateKey } from './event-time';
+import { allDayBandsForWindow, categoriesForDay, categoryEdgeVar, dayWindow, parseDateKey } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
@@ -63,15 +62,6 @@ export interface CalendarStripProps {
    *  (der Scroll-Handler setzt `leadIndex` nur bei Wechsel), nicht jeden
    *  Frame. */
   onLeadDayChange: (day: string) => void;
-}
-
-/** Explicit `behavior: 'smooth'` ignores CSS `scroll-behavior` (see nav.tsx) — so a
- *  JS-driven scroll has to check both motion sources itself, same as there. */
-function prefersReducedMotion(): boolean {
-  return (
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-    document.documentElement.getAttribute('data-reduce-motion') === 'true'
-  );
 }
 
 /** Monday-first weekday index (0 = Mo … 6 = So) for a single day key. */
@@ -164,13 +154,11 @@ const CalendarDayCell = memo(function CalendarDayCell({
  * rest of the time the buffer just sits there while `leadIndex` (the first
  * visible cell) tracks the live scroll position on every `scroll`.
  *
- * `anchorDay` (issue #784) is a second, purely local state: it drives what
- * the grid/title show, `selectedDay` (the prop) drives only `aria-pressed`
- * and — one level up in calendar-view.tsx — the agenda below. Rolling moves
- * only the window; tapping a day, the day-step arrows and "Heute" move both
- * (`selectDay` below), jumping straight there with no animation, however far
- * the target is — the desktop `‹`/`›` buttons (`pageBy`) are the one
- * exception, gliding smoothly to the neighbour week.
+ * `windowAnchor` is a second, purely local state: it drives which days are
+ * rendered, `selectedDay` (the prop) drives only `aria-pressed` and — one
+ * level up in calendar-view.tsx — the agenda below. Rolling moves only the
+ * window; a tap (issue #1009) only reports the day up via `onSelectDay` and
+ * never re-anchors the window — the strip stays exactly where it was.
  */
 export function CalendarStrip({
   selectedDay,
@@ -182,13 +170,10 @@ export function CalendarStrip({
 }: CalendarStripProps) {
   const [windowAnchor, setWindowAnchor] = useState(selectedDay);
   const [leadIndex, setLeadIndex] = useState(RADIUS_DAYS);
-  const [jumpToken, setJumpToken] = useState(0);
   const trackRef = useRef<HTMLUListElement>(null);
   /** Sub-cell scroll offset a silent rebuild carries over so the visual
    *  position never jumps — set by the scroll handler right before it calls
-   *  `setWindowAnchor`, consumed once by the layout effect below. An explicit
-   *  jump (tap/"Heute"/arrows) leaves it at 0: the target lands exactly as
-   *  the leading cell. */
+   *  `setWindowAnchor`, consumed once by the layout effect below. */
   const pendingFracRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,11 +185,6 @@ export function CalendarStrip({
   useEffect(() => {
     onLeadDayChange(leadDay);
   }, [leadDay, onLeadDayChange]);
-
-  const visibleDays = useMemo(
-    () => windowDays.slice(leadIndex, leadIndex + VISIBLE_DAYS),
-    [windowDays, leadIndex],
-  );
 
   /**
    * One `expandForDay` pass per day across the whole buffer — the same call
@@ -222,15 +202,26 @@ export function CalendarStrip({
     [windowDays, events, exceptions],
   );
 
-  // "Heute" is inactive only once both states already agree with today —
-  // otherwise the chip stays the only way back (issue #784, AK6).
-  const todayVisible = visibleDays.includes(today);
-  const todayInactive = selectedDay === today && todayVisible;
+  /** The currently visible 7-day band (issue #1013, AK8–12) — feeds the
+   *  all-day band row below. Derived from `leadIndex`, so it rolls with the
+   *  strip a column at a time, same cadence `interactive`/`dotsByDay` follow
+   *  already (AK10). */
+  const visibleDays = useMemo(
+    () => windowDays.slice(leadIndex, leadIndex + VISIBLE_DAYS),
+    [windowDays, leadIndex],
+  );
+
+  /** Same `expandForDay` composition as `dotsByDay` above (issue #612's
+   *  rule) — a band and that day's dots/agenda agree by construction. */
+  const allDayBands = useMemo(
+    () => allDayBandsForWindow(visibleDays, (day) => expandForDay(events, exceptions, day)),
+    [visibleDays, events, exceptions],
+  );
 
   /** Places `windowAnchor` as the leading cell, instantly — runs after every
-   *  buffer rebuild (silent re-anchor near the edge, or an explicit
-   *  jump/"Heute"), always before paint so neither is visible (issue #813,
-   *  the seamless recentre-with-compensation trick). */
+   *  silent re-anchor near the buffer's edge, always before paint so it's
+   *  never visible (issue #813, the seamless recentre-with-compensation
+   *  trick). */
   useLayoutEffect(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -239,7 +230,7 @@ export function CalendarStrip({
     pendingFracRef.current = 0;
     track.scrollLeft = target;
     setLeadIndex(RADIUS_DAYS);
-  }, [windowAnchor, jumpToken]);
+  }, [windowAnchor]);
 
   /** Tracks the live scroll position: `leadIndex` (drives the title, the
    *  dimming and the interactive band) updates every frame, on the `scroll`
@@ -270,7 +261,17 @@ export function CalendarStrip({
       const step = stepFor(current);
       if (step <= 0) return null;
       const pos = current.scrollLeft;
-      const rawIndex = Math.floor(pos / step);
+      // `scrollLeft` is a whole device pixel; the layout effect below assigns
+      // it a fractional target (`RADIUS_DAYS * step`), which the browser
+      // rounds down on write. That can leave `pos` a sub-pixel short of the
+      // exact index boundary — enough for a bare `Math.floor` to read back a
+      // whole index short of the one just set (confirmed via the mount-time
+      // race a #1013 CI run traced: target 16630.3125 became `scrollLeft`
+      // 16630, and `Math.floor(16630 / 45.5625)` floored 365 down to 364).
+      // A 1px pad absorbs that rounding — far below a real cell's width, so
+      // it never shifts which cell reads as "leading" during an actual
+      // swipe.
+      const rawIndex = Math.floor((pos + 1) / step);
       const clamped = Math.min(Math.max(rawIndex, 0), windowDays.length - VISIBLE_DAYS);
       return { step, pos, clamped };
     }
@@ -332,89 +333,19 @@ export function CalendarStrip({
     };
   }, [windowDays, windowAnchor]);
 
-  /** Sets selection *and* re-anchors the view on it — tap, day-step arrows and "Heute" all funnel through here (issue #784, AK4/AK6/AK7). Jumps straight there, no animation, however far the target is.
-   *  `useCallback` so it's a stable prop for `CalendarDayCell` (issue #824) — a new
-   *  function identity every render would break its `memo` regardless of any other prop. */
+  /** A tap only reports the day up (issue #1009, AK3) — the window stays put,
+   *  the tapped day keeps its column. `useCallback` so it's a stable prop for
+   *  `CalendarDayCell` (issue #824) — a new function identity every render
+   *  would break its `memo` regardless of any other prop. */
   const selectDay = useCallback(
     (day: string) => {
       onSelectDay(day);
-      pendingFracRef.current = 0;
-      setJumpToken((token) => token + 1);
-      setWindowAnchor(day);
     },
     [onSelectDay],
   );
 
-  /**
-   * Pages a week — the desktop `‹`/`›` buttons' own source (issue #630,
-   * AK9). Moves only the preview, leaving the selection untouched (issue
-   * #784, AK7). Glides smoothly to a neighbour that's already inside the
-   * current buffer (`RADIUS_DAYS` is sized generously enough for that) — the
-   * same scroll handler above picks the glide up mid-flight and silently
-   * rebuilds once it needs to.
-   */
-  function pageBy(delta: 1 | -1) {
-    const track = trackRef.current;
-    if (!track) return;
-    const behavior = prefersReducedMotion() ? 'auto' : 'smooth';
-    const step = stepFor(track);
-    track.scrollTo({ left: track.scrollLeft + delta * 7 * step, behavior });
-  }
-
   return (
     <div className="calendar-strip" data-anchor-day={leadDay}>
-      <div className="calendar-strip__title-row">
-        {/* Same control at every width (issue #630, AK9/AK10) — a mobile-hidden
-            chip that reappears on a different day (S1, #628 AK6) below
-            768px, a disabled-not-removed toolbar button from 768px up
-            (CSS alone switches the look, `data`-attribute drives the mobile
-            hide so it never becomes two parallel elements). */}
-        <button
-          type="button"
-          className="calendar-strip__today"
-          data-today-selected={todayInactive ? '' : undefined}
-          disabled={todayInactive}
-          onClick={() => selectDay(today)}
-        >
-          Heute
-        </button>
-        <div className="calendar-strip__title-nav">
-          <button
-            type="button"
-            className="calendar-strip__nav"
-            aria-label="Vorige Woche"
-            onClick={() => pageBy(-1)}
-          >
-            <IconChevronLeft />
-          </button>
-          <button
-            type="button"
-            className="calendar-strip__nav"
-            aria-label="Nächste Woche"
-            onClick={() => pageBy(1)}
-          >
-            <IconChevronRight />
-          </button>
-        </div>
-      </div>
-      <div className="calendar-strip__toolbar">
-        <button
-          type="button"
-          className="calendar-strip__nav"
-          aria-label="Vorheriger Tag"
-          onClick={() => selectDay(addDays(selectedDay, -1))}
-        >
-          <IconChevronLeft />
-        </button>
-        <button
-          type="button"
-          className="calendar-strip__nav"
-          aria-label="Nächster Tag"
-          onClick={() => selectDay(addDays(selectedDay, 1))}
-        >
-          <IconChevronRight />
-        </button>
-      </div>
       <ul className="calendar-strip__carousel" ref={trackRef}>
         {windowDays.map((day, index) => (
           <CalendarDayCell
@@ -430,6 +361,30 @@ export function CalendarStrip({
           />
         ))}
       </ul>
+      {/* Only rendered with at least one band (AK12) — an empty row would
+          hold height the card doesn't need in the sparse default state.
+          `aria-hidden`, same as the day cells' own `__dots` row: decorative,
+          the agenda below already names every event on the day in full. */}
+      {allDayBands.length > 0 && (
+        <ul className="calendar-strip__bands" aria-hidden="true">
+          {allDayBands.map((band) => (
+            <li
+              key={band.id}
+              className="calendar-strip__band"
+              data-continues-before={band.continuesBefore ? '' : undefined}
+              data-continues-after={band.continuesAfter ? '' : undefined}
+              style={
+                {
+                  gridColumn: `${band.startCol + 1} / ${band.endCol + 2}`,
+                  '--band-cat': categoryEdgeVar(band.category),
+                } as CSSProperties
+              }
+            >
+              <span className="calendar-strip__band-title">{band.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

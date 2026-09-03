@@ -4,6 +4,8 @@
  * diesen Typ, ein Austausch der Implementierung ist kein Umbau.
  */
 
+import type { RecurrenceValue } from '@/features/tasks/parse-task-input';
+
 export type CaptureKind = 'task' | 'event' | 'habit_check';
 
 export interface CaptureContext {
@@ -51,6 +53,19 @@ export interface CaptureDraft {
   dueAt: string | null;
   /** nur bei `kind: 'habit_check'` gesetzt, sonst null. */
   habitId: string | null;
+  /**
+   * ISO — Ende einer genannten Spanne („von 10 bis 12", „vom 3. bis 10. März"), sonst
+   * null. Ohne Spanne bleibt der bisherige Default (Start + eine Stunde) in Kraft.
+   */
+  endAt: string | null;
+  /**
+   * Erkannter Wiederholungsausdruck („jeden Montag", „alle zwei Wochen"), sonst null.
+   * Die Form entspricht `events.recurrence` im Schema, wird aber **nicht geschrieben**:
+   * die Expansion ist für S6/S7 reserviert, und ein Wert ohne Expansion verspräche eine
+   * Wiederholung, die nie einträte. Das Feld ist die Naht, damit diese Stufe den Wert
+   * nur noch abholen muss.
+   */
+  recurrence: RecurrenceValue | null;
   /** `YYYY-MM-DD` — nur bei `kind: 'habit_check'` gesetzt, sonst null. Der Log-Tag
    * (nicht dueAt!), R6/R7 (#689): logischer Heute-Tag, außer der Satz nennt ein Datum
    * bis 7 Tage rückwärts. */

@@ -406,7 +406,9 @@ test('AK6: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt übe
   ).toBeLessThan(3);
 });
 
-test('AK7: auf Desktop (≥768px) gibt es keine Kopie — die Sidebar trägt ihre eigene Fläche', async ({ page }) => {
+test('AK7: auf Desktop (≥768px) gibt es keine Kopie — die Sidebar steht ohne eigene Fläche auf dem Grund (#1019)', async ({
+  page,
+}) => {
   await registerPasskey(page);
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto('/aufgaben');
@@ -414,9 +416,8 @@ test('AK7: auf Desktop (≥768px) gibt es keine Kopie — die Sidebar trägt ihr
   const styles = await navGroundStyles(page);
   expect(styles.display, '.nav-ground ist auf Desktop abgeschaltet').toBe('none');
 
-  const surfaceToken = await resolveColorToken(page, '--surface');
   const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(navBg, 'die Sidebar trägt ihre eigene --surface-Fläche').toBe(surfaceToken);
+  expect(navBg, 'die Sidebar trägt keine eigene Fläche mehr, der Grund scheint durch').toBe('rgba(0, 0, 0, 0)');
 });
 
 test('AK8: bei „Ruhe reduzieren" steht auch die Kopie still und untransformiert', async ({ page }) => {

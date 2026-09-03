@@ -50,3 +50,95 @@
 .calendar-view__day-heading {
   margin: var(--space-3) 0 var(--space-2);
 }
+
+/* Der Streifen ist seit issue #1013 eine schwebende Karte mit eigenem
+   Schatten/Radius statt loser Zellen auf dem Grund — der Kopf-`gap`
+   (--space-1) reicht für Augenbraue/Titel, aber die Karte darunter braucht
+   mehr Abstand, sonst klebt ihr Schatten am Titel. */
+.calendar-view__header .calendar-strip {
+  margin-top: var(--space-2);
+}
+
+/* Zwei Spalten ab 768px, nur im Monat (issue #1021, Teil 6 von #1015): der
+   einzige DOM-Unterschied zwischen Woche und Monat ist `.month-grid` als
+   direktes Kind im Rumpf (die Woche zeigt `.calendar-strip` stattdessen im
+   Kopf) — `:has()` greift deshalb gezielt nur dort, ohne einen View-Modifier
+   am Root zu brauchen. Fällt `:has()` je aus, ignoriert der Browser den
+   ganzen Selektor und es bleibt beim mobilen Einspalter. */
+@media (min-width: 768px) {
+  .calendar-view:has(> .month-grid) {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+
+  .calendar-view:has(> .month-grid) > .calendar-view__header {
+    grid-column: 1 / -1;
+  }
+
+  .calendar-view:has(> .month-grid) > .month-grid {
+    grid-column: 1;
+    /* Spannt über beide Rechtsspalten-Zeilen (Tagesüberschrift + Agenda)
+       statt nur der eigenen Auto-Placement-Zeile: sonst zieht
+       `.calendar-view__day-heading` (das die erste Zeile mit dem Raster
+       teilt) deren ganze Höhe auf die Rasterhöhe hoch, und `.event-agenda`
+       (eine Zeile darunter) begänne erst danach — eine leere Lücke zwischen
+       Tagesüberschrift und Terminliste.
+       `span 2`, nicht `-1`: ohne `grid-template-rows` hat das Grid null
+       explizite Zeilen-Linien, also fällt `-1` auf Linie 1 zurück — vor
+       Start-Linie 2, die Engine vertauscht beide (Start>Ende-Regel) und
+       zieht `.month-grid` damit auf Zeile 1, VOR den Kopf (der keine
+       explizite Zeile trägt und dadurch auf Zeile 2 verdrängt wird). `span`
+       ist relativ zur Start-Linie und braucht kein explizites Ende — bleibt
+       deterministisch. (Von e2e AK1 in CI aufgedeckt, Fund vom 03.09.) */
+    grid-row: 2 / span 2;
+    /* Gürtel + Hosenträger zu `align-items: start` oben — die Karte trägt
+       heute nur Punkte je Tag und stünde auf Spaltenhöhe gestreckt fast leer. */
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  /* Offline schiebt sich `.offline-notice` als dritte Rechtsspalten-Zeile
+     vor Tagesüberschrift + Agenda ein — das Raster muss dann drei statt
+     zwei Zeilen überspannen, sonst bleibt die Agenda unterhalb des
+     Rasters unbedeckt (derselbe Zeilen-Fund wie oben). */
+  .calendar-view:has(> .month-grid):has(> .offline-notice) > .month-grid {
+    grid-row: 2 / span 3;
+  }
+
+  .calendar-view:has(> .month-grid) > .offline-notice,
+  .calendar-view:has(> .month-grid) > .calendar-view__day-heading,
+  .calendar-view:has(> .month-grid) > .event-agenda {
+    grid-column: 2;
+  }
+}
+
+/* Figur neben dem Titelwort statt am rechten Rand (issue #1021 AK2) — gilt in
+   beiden Ansichten (der Kopf ist geteilt), hebt mobile #921-AK4-Regeln auf:
+   `.calendar-view__heading`s `flex: 1 1 auto` (Zeile oben) und
+   `.calendar-view__eyebrow`s `justify-content: space-between` (Zeile oben)
+   bleiben unter 768px unangetastet. */
+@media (min-width: 768px) {
+  .calendar-view__heading {
+    flex: 0 1 auto;
+  }
+
+  .calendar-view__eyebrow {
+    justify-content: flex-start;
+  }
+}
+
+/* Bodenreserve gegen den schwebenden Erfassen-Knopf ab 768px (issue #1021
+   AK3) — gilt in beiden Ansichten. Ab 768px ist der Fab kein Bar-Aufsatz mehr,
+   sondern schwebt bei `bottom: calc(var(--space-6) + safe + keyboard)`, 58px
+   hoch (fab.css). `.shell__main` reserviert unten ab 768px aber nur
+   `var(--space-12)` (shell.css) — die Differenz wäre ein realer Überlapp.
+   Muster wie mobil in `.uebersicht__sections` (uebersicht.css), auf die
+   Desktop-Fab-Position übertragen; die safe-area kürzt sich heraus, weil
+   `.shell__main` sie bereits einmal trägt (im Playwright-Browser ohnehin 0). */
+@media (min-width: 768px) {
+  .calendar-view {
+    padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
+  }
+}

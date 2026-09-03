@@ -103,20 +103,13 @@ export default defineConfig({
         baseURL: E2E_SCOPE === 'offline' ? baseURLProd : baseURL,
       },
     },
-    // The `desktop` twin of this project is gone (#564). It was exactly half the
-    // suite — 573 tests, 48.8 of the 98 minutes `e2e-main` spent running them — and
-    // 568 of those 573 were the same assertions replayed at 1280 × 800. Dropping it
-    // takes `e2e-main` from ~13 min to ~6 min of wall clock.
-    //
-    // The remaining 5 were NOT duplicates, and they are the real price of this
-    // change: `shell.desktop.spec.ts` (3) and `nav-order.desktop.spec.ts` (2) cover
-    // layout that only exists on a wide screen (#126: the settings entry point is
-    // inline on Heute for mobile, in the sidebar for desktop). Nothing runs them
-    // anymore. Both files stay in the repo on purpose — "erstmal" means desktop can
-    // come back by re-adding the project, and deleting the files would drop the
-    // `test(` count that `test-integrity` guards. So: this project's `testIgnore`
-    // still excludes `*.desktop.spec.ts`, which now means those specs match no
-    // project at all. Playwright does not warn about that. This comment is the warning.
+    // The `desktop` twin of this project was dropped in #564 (573 duplicate tests,
+    // 48.8 of 98 minutes of `e2e-main`) and came back in #1017, thin: it only runs
+    // the handful of `*.desktop.spec.ts` files that assert layout which genuinely
+    // only exists on a wide screen (#126: the settings entry point is inline on
+    // Heute for mobile, in the sidebar for desktop) — no viewport duplicate of the
+    // rest of the suite. `mobile`'s `testIgnore` below still excludes
+    // `*.desktop.spec.ts`, so nothing runs twice.
     {
       name: 'mobile',
       testIgnore:
@@ -125,6 +118,16 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 375, height: 812 },
+        storageState: AUTH_STATE,
+      },
+    },
+    {
+      name: 'desktop',
+      testMatch: /.*\.desktop\.spec\.ts$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
         storageState: AUTH_STATE,
       },
     },

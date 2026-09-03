@@ -95,12 +95,60 @@ function monthGrid(page: Page) {
   return page.locator('.month-grid');
 }
 
+/**
+ * A day button *on the interactive (middle) page* — scoping to
+ * `.month-grid__page:not([inert])` matters because the three-page snap track
+ * (issue #1009) renders the previous and next month alongside the current
+ * one, `inert` + `aria-hidden` on the non-central pages. Without the scope, a
+ * day shared between two neighbouring months' grids (e.g. "Mo, 3." showing as
+ * a dimmed trailing day on one page *and* as its own in-month day on the
+ * next) would match twice and trip Playwright's strict mode.
+ */
 function monthGridDay(page: Page, ariaLabel: string) {
-  return page.locator(`.month-grid__day[aria-label="${ariaLabel}"]`);
+  return page.locator(`.month-grid__page:not([inert]) .month-grid__day[aria-label="${ariaLabel}"]`);
 }
 
 function monthGridDots(page: Page, ariaLabel: string) {
   return monthGridDay(page, ariaLabel).locator('.month-grid__dot');
+}
+
+/** The month card's three-page snap track (issue #1009), vertical since
+ *  issue #1039 — unlike `calendarWeeks`, which stays horizontal. */
+function monthGridTrack(page: Page) {
+  return page.locator('.month-grid__track');
+}
+
+/**
+ * The month card's interactive (middle) page — the same `:not([inert])` scope
+ * `monthGridDay` uses, for locators that count/inspect cells rather than
+ * keying off a single day's `aria-label` (issue #1009's three-page snap track
+ * renders the previous and next month alongside the current one, so an
+ * unscoped `.month-grid__day(s)` selector matches all three pages at once).
+ */
+function monthGridPage(page: Page) {
+  return page.locator('.month-grid__page:not([inert])');
+}
+
+/**
+ * Swipes the month card by exactly one page — the settle-driven equivalent of
+ * a full native swipe-and-release, mirroring `pageStrip` above. `dir` `1`
+ * advances to the next month (an upward swipe), `-1` goes back (downward).
+ * Waits for `data-focus-month` to actually change, which only happens once
+ * the silent recentre (month-grid.tsx's `handleScrollEnd`) has reported the
+ * settled page back up. Vertical since issue #1039 (was horizontal under
+ * issue #1009).
+ */
+async function pageMonth(page: Page, dir: 1 | -1): Promise<void> {
+  const track = monthGridTrack(page);
+  const before = await monthGrid(page).getAttribute('data-focus-month');
+  const pageHeight = await track.evaluate((el) => el.clientHeight);
+  await track.evaluate(
+    (el, { dir, pageHeight }) => {
+      el.scrollTop += dir * pageHeight;
+    },
+    { dir, pageHeight },
+  );
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).not.toBe(before);
 }
 
 /**
@@ -176,6 +224,78 @@ async function pageStripForward(page: Page, times = 1): Promise<void> {
 }
 
 /**
+ * Scrolls the week strip by exactly `days` day-columns (issue #1013, AK10) —
+ * `pageStrip`'s finer-grained sibling: that one always pages a full screen
+ * (7 columns), this one drives an arbitrary partial swipe. Same
+ * settle-driven wait as `pageStrip`: polls `anchorDay` until it actually
+ * moves, proof the strip rolled rather than stopping mid-gesture.
+ */
+async function scrollStripByDays(page: Page, days: number): Promise<void> {
+  const track = calendarWeeks(page);
+  const before = await anchorDay(page);
+  const unit = await trackUnitPx(page);
+  await track.evaluate((el, delta) => {
+    el.scrollLeft += delta;
+  }, days * unit);
+  await expect.poll(() => anchorDay(page)).not.toBe(before);
+}
+
+/**
+ * The 7 date keys currently in the strip's interactive band, derived from
+ * `data-anchor-day` (issue #1013) — the strip's initial window doesn't
+ * necessarily start on the calendar week's Monday or even on `today` itself
+ * (sub-pixel/scroll-snap rounding can land the initial scroll position one
+ * cell short), so a band-column test reads the actual anchor instead of
+ * assuming which weekday leads.
+ *
+ * `data-anchor-day` can still shift by one column shortly after mount — a
+ * pre-existing race between the mount-time scroll positioning and its own
+ * async `scroll`-driven `leadIndex` correction (confirmed via `--repeat-each`
+ * on the neighbouring "ein Wisch rollt das Fenster tageweise" test, issue
+ * #813 territory — out of scope for #1013's card/band work, which
+ * deliberately leaves the scroll/re-anchor mechanic untouched). Polling for
+ * two consecutive animation frames to agree waits out that settle window
+ * instead of reading a value that's about to change out from under the
+ * band columns a test derives from it.
+ */
+async function visibleDayKeys(page: Page): Promise<string[]> {
+  const anchor = await page.evaluate(() => {
+    function readAnchor(): string | null {
+      return document.querySelector('.calendar-strip')?.getAttribute('data-anchor-day') ?? null;
+    }
+    function nextFrame(): Promise<void> {
+      return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return (async () => {
+      let previous = readAnchor();
+      for (let i = 0; i < 20; i += 1) {
+        await nextFrame();
+        const current = readAnchor();
+        if (current === previous) return current;
+        previous = current;
+      }
+      return previous;
+    })();
+  });
+  if (!anchor) throw new Error('kein data-anchor-day');
+  return Array.from({ length: 7 }, (_, index) => addDays(anchor, index));
+}
+
+function stripBand(page: Page, title: string) {
+  return page.locator('.calendar-strip__band').filter({ hasText: title });
+}
+
+/** A band's `grid-column` as `"start/end"`, the CSS 1-based track indices
+ *  (issue #1013) — computed longhand, not the shorthand `gridColumn`, which
+ *  some engines leave empty even when start/end are individually set. */
+async function bandGridColumn(band: Locator): Promise<string> {
+  return band.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return `${style.gridColumnStart}/${style.gridColumnEnd}`;
+  });
+}
+
+/**
  * Taps a day button in the strip if it's currently in the interactive band
  * (`dayButton`'s `:not([inert])` scope reports it as not visible otherwise,
  * issue #813); if it isn't, picks the day off the month card instead (issue
@@ -205,6 +325,39 @@ async function resolveToken(page: Page, cssVar: string): Promise<string> {
     probe.remove();
     return color;
   }, cssVar);
+}
+
+/** Same technique, `color` instead of `background-color` (issue #1013, AK2) —
+ *  lets a test compare a `color`-driven token directly against another
+ *  `color`-driven read, same probe-property on both sides. */
+async function resolveColorToken(page: Page, cssVar: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, cssVar);
+}
+
+/** Same as `resolveColorToken`, but the probe is a child of `selector` — resolves
+ *  the custom property from that element's own cascade context, not `document.body`'s.
+ *  Mirrors grundfarbe-vollfarbe.spec.ts's own `resolveColorTokenIn` (issue #831 AK5),
+ *  used here to prove `.calendar-strip` owns its own `--text`/`--text-muted` reset. */
+async function resolveColorTokenIn(page: Page, selector: string, cssVar: string): Promise<string> {
+  return page.evaluate(
+    ({ selector, cssVar }) => {
+      const container = document.querySelector(selector)!;
+      const probe = document.createElement('span');
+      probe.style.color = `var(${cssVar})`;
+      container.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    },
+    { selector, cssVar },
+  );
 }
 
 /** Mirrors form-bedienelemente.spec.ts's own probe-span technique for a var()-resolved value. */
@@ -299,27 +452,6 @@ async function elementColor(locator: Locator): Promise<string> {
 
 async function htmlBackground(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
-}
-
-/** Composites a semi-transparent overlay colour onto an opaque base, both as
- *  CSS colour strings the canvas engine resolves itself (issue #921's
- *  Umschalter-Grund sits on top of the route ground, not a flat colour). */
-async function compositeOver(page: Page, base: string, overlay: string): Promise<[number, number, number]> {
-  return page.evaluate(
-    ([b, o]) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1;
-      canvas.height = 1;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = b;
-      ctx.fillRect(0, 0, 1, 1);
-      ctx.fillStyle = o;
-      ctx.fillRect(0, 0, 1, 1);
-      const [r, g, bl] = ctx.getImageData(0, 0, 1, 1).data;
-      return [r, g, bl] as [number, number, number];
-    },
-    [base, overlay],
-  );
 }
 
 function relativeLuminance(r: number, g: number, b: number): number {
@@ -905,7 +1037,7 @@ test('eine Terminkarte ohne Kategorie traegt die Bereichsfarbe (--area-events) a
 /* AC4: Wochenstreifen blaettert                                             */
 /* -------------------------------------------------------------------------- */
 
-test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline wechselt entsprechend (AC4)', async ({
+test('ein Tipp auf einen Tag im Wochenstreifen waehlt ihn, die Timeline wechselt entsprechend, ohne den Streifen zu verschieben (issue #1009, AK3)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -927,16 +1059,23 @@ test('der Wochenstreifen blaettert zum naechsten/vorherigen Tag, die Timeline we
     category: null,
   });
 
+  const anchorBefore = await anchorDay(page);
+
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
 
   await selectStripDay(page, 'So, 19.');
   await expect(eventCard(page, 'Morgen-Termin')).toBeVisible();
   await expect(eventCard(page, 'Heute-Termin')).toHaveCount(0);
+  // Der Tipp waehlt nur aus — die sieben sichtbaren Tage bleiben exakt
+  // dieselben, der Anker (die fuehrende Zelle) ruehrt sich nicht.
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+  await expect(dayButton(page, 'Sa, 18.')).toBeVisible();
 
   await selectStripDay(page, 'Sa, 18.');
   await expect(eventCard(page, 'Heute-Termin')).toBeVisible();
   await expect(eventCard(page, 'Morgen-Termin')).toHaveCount(0);
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1015,33 +1154,18 @@ test('ein gerolltes Fenster bleibt stehen, kein Zurueckschnappen zur alten Auswa
   await expect(anchorDay(page)).resolves.toBe('2026-07-25');
 });
 
-test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — Tages-Pfeile arbeiten weiter darauf (issue #784, AK5)', async ({
+test('eine Auswahl ausserhalb des Fensters ist ein sauberer Zustand — es gibt keine Pfeile, die noch darauf arbeiten koennten (issue #1009, AK2)', async ({
   page,
 }) => {
   await pageStrip(page, 1);
   await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
-
-  // Der Pfeil setzt Auswahl UND Anker neu — der Tag nach der (unsichtbaren)
-  // Auswahl ist sofort wieder sichtbar und ausgewaehlt, kein zweiter Schritt noetig.
-  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('der Heute-Knopf setzt Auswahl und Anker zurueck, auch nach einem Wisch ins Leere (issue #784, AK6)', async ({
-  page,
-}) => {
-  await pageStrip(page, 1);
-  const todayChip = page.getByRole('button', { name: 'Heute' });
-  // Die Auswahl steht immer noch auf heute, nur das Fenster zeigt es nicht
-  // mehr — der Knopf ist deshalb aktiv, nicht entfernt (AK6).
-  await expect(todayChip).toBeVisible();
-  await expect(todayChip).toBeEnabled();
-
-  await todayChip.click();
-
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
+  // Weder Tages- noch Wochen-Pfeile existieren noch — die Auswahl bleibt
+  // ausserhalb des Fensters stehen, bis ein Wisch oder ein Tipp sie erreicht.
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
 });
 
 test('nur die sichtbaren Tage der Woche sind interaktiv, der Puffer bleibt inert und fuer Screenreader verborgen (issue #813)', async ({
@@ -1196,7 +1320,7 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, Spalte fuer Spalte ders
   await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
 });
 
-test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urspruenglichen (issue #813/#958)', async ({
+test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urspruenglichen (issue #813/#958, Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
@@ -1204,42 +1328,41 @@ test('das Dimmen in der Monats-Karte folgt dem fokussierten Monat, nicht dem urs
   await expect(augustMonday).toBeVisible();
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  await pageMonth(page, 1);
 
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
 });
 
-test('das Dimmen kippt beim Zurueckblaettern zurueck statt am neuen Fokusmonat haengen zu bleiben (issue #826/#958, AK1)', async ({
+test('das Dimmen kippt beim Zurueckwischen zurueck statt am neuen Fokusmonat haengen zu bleiben (issue #826/#958, AK1; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
   const augustMonday = monthGridDay(page, 'Mo, 3.');
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  await pageMonth(page, 1);
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(augustMonday).not.toHaveAttribute('data-outside-month', '');
 
-  // Zurueck blaettern: der Tag muss seine Dimmung wieder aufnehmen — das
+  // Zurueck wischen: der Tag muss seine Dimmung wieder aufnehmen — das
   // outsideMask-Refactor (issue #826) darf die Maske nicht auf dem Wert vom
   // letzten Grenzuebertritt stehen lassen.
-  await page.getByRole('button', { name: 'Voriger Monat' }).click();
+  await pageMonth(page, -1);
   await expect(page.getByRole('heading', { level: 1, name: 'Juli' })).toBeVisible();
   await expect(augustMonday).toHaveAttribute('data-outside-month', '');
 });
 
-test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem fokussierten Monat synchron (issue #826/#958, AK2)', async ({
+test('die Dimmung bleibt ueber mehrere Monatsgrenzen hinweg mit dem fokussierten Monat synchron (issue #826/#958, AK2; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  // Fuenf Klicks (Juli -> Dezember 2026) durchlaufen mehrere Monatsgrenzen —
+  // Fuenf Wische (Juli -> Dezember 2026) durchlaufen mehrere Monatsgrenzen —
   // genug Grenzuebertritte, um eine Maske zu entlarven, die nur beim
   // allerersten Uebertritt korrekt mitzieht.
-  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
   for (let i = 0; i < 5; i += 1) {
-    await nextMonth.click();
+    await pageMonth(page, 1);
   }
   await expect(page.getByRole('heading', { level: 1, name: 'Dezember' })).toBeVisible();
 
@@ -1295,14 +1418,14 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
 
   const todayDots = dayDots(page, 'Sa, 18.');
   await expect(todayDots).toHaveCount(1);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect
     .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
 
   const tomorrowDots = dayDots(page, 'So, 19.');
   await expect(tomorrowDots).toHaveCount(1);
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 30, 'var(--on-ground)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 85, 'var(--text-base)');
   await expect
     .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
@@ -1325,11 +1448,11 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, aufgehellt gegen den
   });
 
   const dot = dayDots(page, 'Sa, 18.').first();
-  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
@@ -1378,26 +1501,334 @@ test('AK1: die fuenf --cat-* Vorgaben liegen als deklariertes oklch()-Literal mi
   expect(minHueGap(darkHues)).toBeGreaterThanOrEqual(40);
 });
 
-test('AK2: der gedaempfte Kategorie-Punkt (30%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955, Rezept nachgezogen von issue #991)', async ({
+test('AK7: der gedaempfte Kategorie-Punkt (85%-Mix gegen --text-base) erreicht 3:1 gegen --surface, alle fuenf Kategorien plus der Fallback, hell und dunkel (issue #955/#1013, Rezept nachgezogen vom Ganztags-Band)', async ({
   page,
 }) => {
-  async function dotContrast(category: string): Promise<number> {
-    const ground = await toRgb(page, await resolveToken(page, '--ground'));
-    const dot = await toRgb(
-      page,
-      await resolveMix(page, `var(--cat-${category})`, 30, 'var(--on-ground)'),
-    );
-    return contrastRatio(dot, ground);
+  async function dotContrast(catVar: string): Promise<number> {
+    const surface = await toRgb(page, await resolveToken(page, '--surface'));
+    const dot = await toRgb(page, await resolveMix(page, catVar, 85, 'var(--text-base)'));
+    return contrastRatio(dot, surface);
   }
 
-  for (const category of CATEGORIES) {
-    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  const catVars = [...CATEGORIES.map((category) => `var(--cat-${category})`), 'var(--area-events)'];
+
+  for (const catVar of catVars) {
+    expect(await dotContrast(catVar)).toBeGreaterThanOrEqual(3);
   }
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  for (const category of CATEGORIES) {
-    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  for (const catVar of catVars) {
+    expect(await dotContrast(catVar)).toBeGreaterThanOrEqual(3);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1013: Wochenstreifen wird eine weisse Karte                        */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: der Wochenstreifen ist eine eigene Karte — --surface/--radius-surface/--shadow-raised, hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await expect(strip).toBeVisible();
+
+  const radiusToken = await resolveRadiusToken(page, '--radius-surface');
+  const shadowToken = await resolveShadowToken(page, '--shadow-raised');
+  expect(await strip.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await strip.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+
+  const surfaceLight = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const surfaceDark = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceDark);
+});
+
+test('AK2: die Karte setzt ihre eigene Tinte zurueck — --text/--text-muted loesen innerhalb der Karte auf --text-base/--text-muted-base auf, nicht auf die Grund-Tinte (issue #1013, #832 AK5)', async ({
+  page,
+}) => {
+  const stripText = await resolveColorTokenIn(page, '.calendar-strip', '--text');
+  const stripTextMuted = await resolveColorTokenIn(page, '.calendar-strip', '--text-muted');
+  const textBase = await resolveColorToken(page, '--text-base');
+  const textMutedBase = await resolveColorToken(page, '--text-muted-base');
+  const onGround = await resolveColorToken(page, '--on-ground');
+
+  expect(stripText).toBe(textBase);
+  expect(stripTextMuted).toBe(textMutedBase);
+  expect(stripText).not.toBe(onGround);
+});
+
+test('AK3: der ausgewaehlte Tag traegt eine volle Pille im Routenblau, die Schrift erreicht 4,5:1 — hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  const selected = dayButton(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  async function pillContrast(): Promise<number> {
+    const bg = await selected.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const textRgb = await toRgb(page, await selected.evaluate((el) => getComputedStyle(el).color));
+    const bgRgb = await toRgb(page, bg);
+    return contrastRatio(textRgb, bgRgb);
+  }
+
+  // `expect.poll`, not a bare read: `.calendar-strip__day`'s own
+  // `transition: background-color` can still be mid-fade right after
+  // `emulateMedia` flips the colour scheme (same race the switcher's AK4
+  // test above already accounts for).
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK4: der heutige Tag ohne Auswahl traegt eine Umrandung im Routenblau statt einer Flaeche, die Zahl bleibt in der Kartentinte, die Umrandung haelt 3:1 gegen --surface — hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  await selectStripDay(page, 'Mo, 20.'); // ein anderer sichtbarer Tag — heute (18.) bleibt unausgewaehlt
+  const today = dayButton(page, 'Sa, 18.');
+
+  const textBase = await resolveToken(page, '--text-base');
+  expect(await today.evaluate((el) => getComputedStyle(el).color)).toBe(textBase);
+  // `.calendar-strip__day` transitions `background-color` (calendar-strip.css:85,
+  // 150ms) — `selectStripDay` above just removed the `--selected` pill, so a bare
+  // synchronous read here races the fade-out and can catch a near-zero residual
+  // alpha (observed in CI: `rgba(99, 144, 225, 0.004)`). Poll until the fade
+  // settles instead of sampling mid-transition, same idiom as the dark-mode style
+  // reads above (`:1420`/`:1450`).
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgba(0, 0, 0, 0)');
+
+  async function ringContrast(): Promise<number> {
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
+    const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+    // The `color-mix()` result serializes as `oklab(...)` inside `box-shadow`
+    // (unlike a plain `background-color` read, which the rest of this suite's
+    // probes normalize to `rgb()`) — match any CSS colour function, not just
+    // `rgba?()`.
+    const match = boxShadow.match(/(?:oklab|oklch|rgba?|hsla?|color)\([^)]*\)/);
+    if (!match) throw new Error(`kein Farbwert im box-shadow: ${boxShadow}`);
+    const ringRgb = await toRgb(page, match[0]);
+    return contrastRatio(ringRgb, surfaceRgb);
+  }
+
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+});
+
+test('AK5: ist der heutige Tag zugleich ausgewaehlt, gewinnt die Pille — keine zusaetzliche Umrandung (issue #1013)', async ({
+  page,
+}) => {
+  const today = dayButton(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  const groundToken = await resolveToken(page, '--ground');
+  expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundToken);
+  expect(await today.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+});
+
+test('AK6: --area-events kommt im Wochenstreifen als Auswahl- oder Heute-Farbe nicht mehr vor, die Kategorie-Punkte behalten ihre --cat-*-Farben (issue #1013)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Arbeit-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const areaEvents = await resolveToken(page, '--area-events');
+  const selected = dayButton(page, 'Sa, 18.'); // heute == ausgewaehlt: Pille
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(areaEvents);
+
+  await selectStripDay(page, 'Mo, 20.'); // waehlt ab: Sa, 18. zeigt jetzt die Umrandung
+  const today = dayButton(page, 'Sa, 18.');
+  const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(boxShadow).not.toContain(areaEvents);
+
+  const dot = dayDots(page, 'Sa, 18.').first();
+  const expectedDot = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  expect(await dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDot);
+});
+
+test('AK8: ein mehrtaegiger Termin erscheint im Wochenstreifen als durchgehendes Band ueber genau die Tage, die er abdeckt, mit Titel (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Ausflug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[1],
+    endDate: days[2],
+    category: 'familie',
+  });
+
+  const band = stripBand(page, 'Ausflug');
+  await expect(band).toBeVisible();
+  await expect(band.locator('.calendar-strip__band-title')).toHaveText('Ausflug');
+  expect(await bandGridColumn(band)).toBe('2/4');
+});
+
+test('AK9: laeuft ein Termin ueber die sichtbare Fensterkante hinaus, bleibt das Band dort eckig — rund nur am echten Anfang/Ende des Termins (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Reise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: addDays(days[0], -3), // beginnt vor dem sichtbaren Fenster
+    endDate: days[2], // endet real innerhalb des Fensters
+    category: 'sport',
+  });
+
+  const band = stripBand(page, 'Reise');
+  await expect(band).toBeVisible();
+  await expect(band).toHaveAttribute('data-continues-before', '');
+  await expect(band).not.toHaveAttribute('data-continues-after');
+
+  const corners = await band.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      topLeft: style.borderTopLeftRadius,
+      bottomLeft: style.borderBottomLeftRadius,
+      topRight: style.borderTopRightRadius,
+      bottomRight: style.borderBottomRightRadius,
+    };
+  });
+  // Eckig an der Fensterkante links (continuesBefore) …
+  expect(corners.topLeft).toBe('0px');
+  expect(corners.bottomLeft).toBe('0px');
+  // … rund am echten Ende rechts.
+  expect(corners.topRight).not.toBe('0px');
+  expect(corners.bottomRight).not.toBe('0px');
+});
+
+test('AK10: das Band rollt mit dem Streifen — nach einem Wisch um drei Tage deckt es weiterhin genau die richtigen Spalten ab (issue #1013)', async ({
+  page,
+}) => {
+  const daysBefore = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Wochenendtrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: daysBefore[3],
+    endDate: daysBefore[5],
+    category: 'privat',
+  });
+
+  const band = stripBand(page, 'Wochenendtrip');
+  await expect(band).toBeVisible();
+  expect(await bandGridColumn(band)).toBe('4/7');
+
+  await scrollStripByDays(page, 3);
+  await expect.poll(() => anchorDay(page)).toBe(addDays(daysBefore[0], 3));
+
+  await expect(band).toBeVisible();
+  expect(await bandGridColumn(band)).toBe('1/4');
+});
+
+test('AK11: liegen mehr als drei Ganztaegige im sichtbaren Fenster, werden hoechstens drei Baender gezeigt (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  for (const [index, title] of ['Eins', 'Zwei', 'Drei', 'Vier'].entries()) {
+    await seedEvent(page, {
+      title,
+      allDay: true,
+      startsAt: null,
+      endsAt: null,
+      startDate: days[index],
+      endDate: days[index],
+      category: null,
+    });
+  }
+
+  await expect(page.locator('.calendar-strip__band')).toHaveCount(3);
+  await expect(stripBand(page, 'Eins')).toBeVisible();
+  await expect(stripBand(page, 'Zwei')).toBeVisible();
+  await expect(stripBand(page, 'Drei')).toBeVisible();
+  await expect(stripBand(page, 'Vier')).toHaveCount(0);
+});
+
+test('AK12: liegt kein Ganztaegiger im sichtbaren Fenster, gibt es keine Bandzeile — die Karte ist entsprechend niedriger (issue #1013)', async ({
+  page,
+}) => {
+  await expect(page.locator('.calendar-strip__bands')).toHaveCount(0);
+  const heightWithout = await calendarStrip(page).evaluate((el) => el.getBoundingClientRect().height);
+
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[0],
+    endDate: days[0],
+    category: 'arbeit',
+  });
+
+  await expect(page.locator('.calendar-strip__bands')).toBeVisible();
+  const heightWith = await calendarStrip(page).evaluate((el) => el.getBoundingClientRect().height);
+  expect(heightWith).toBeGreaterThan(heightWithout);
+});
+
+test('AK13/AK14: die Karte beschneidet den Tagespuffer, kein waagerechter Ueberlauf im spaerlichen Default-Zustand, 375x812 (issue #1013)', async ({
+  page,
+}) => {
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+
+  const viewport = page.viewportSize();
+  const stripBox = await calendarStrip(page).boundingBox();
+  if (!viewport || !stripBox) throw new Error('AK13: kein Viewport oder keine BoundingBox');
+  expect(stripBox.x + stripBox.width).toBeLessThanOrEqual(viewport.width);
+
+  // Der Puffer selbst ist 731 Tage breit — ohne Beschneidung waere die Spur
+  // ein Vielfaches breiter als der Viewport; die Karte bleibt trotzdem schmal.
+  const carouselScrollWidth = await calendarWeeks(page).evaluate((el) => el.scrollWidth);
+  expect(carouselScrollWidth).toBeGreaterThan(viewport.width);
+});
+
+test('AK15: Dark Mode und prefers-reduced-motion gemeinsam — Karte, Pille und Band bleiben korrekt, iPhone 12 mini, 375x812 (issue #1013)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.reload();
+
+  const strip = calendarStrip(page);
+  await expect(strip).toBeVisible();
+  const surfaceDark = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceDark);
+
+  const selected = dayButton(page, 'Sa, 18.');
+  const groundDark = await resolveToken(page, '--ground');
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundDark);
+
+  await expect(stripBand(page, 'Ganztags-Termin')).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -1524,9 +1955,10 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, sechs Wochenzeilen und 
   const header = monthGrid(page).locator('.month-grid__weekday-header');
   await expect(header).toBeVisible();
 
-  // 6 Zeilen à 7 Spalten, deterministisch gerendert (keine Puffer-/Inert-Logik
-  // wie im alten Karussell — jede Zelle existiert genau einmal).
-  await expect(monthGrid(page).locator('.month-grid__days > li')).toHaveCount(42);
+  // 6 Zeilen à 7 Spalten auf der interaktiven Seite (die beiden Nachbarmonate
+  // der Drei-Seiten-Spur, issue #1009, tragen ihre eigenen 42 Zellen `inert`
+  // nebenan — ausgeklammert wie bei `monthGridDay`).
+  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
 
   const cardBox = await monthGrid(page).boundingBox();
   const dotBox = await monthGridDots(page, 'Sa, 18.').first().boundingBox();
@@ -1557,27 +1989,8 @@ test('die Streifenhoehe bleibt gleich, wenn ein Punkt fuer den sichtbaren Tag hi
   expect((await track.boundingBox())?.height).toBe(heightBefore);
 });
 
-test('der Ruecksprung-Chip springt auf den heutigen Tag zurueck, auch aus einem anderen Monat navigiert (S5 AC4)', async ({
-  page,
-}) => {
-  // #578 behoben, Kartenanzeige durch AC1/AC3 + Regressionstest unten abgedeckt.
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-
-  const nextDay = page.getByRole('button', { name: 'Nächster Tag' });
-  for (let i = 0; i < 20; i += 1) {
-    await nextDay.click();
-  }
-
-  const todayChip = page.getByRole('button', { name: 'Heute' });
-  await expect(todayChip).toBeVisible();
-  await todayChip.click();
-
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
 /* -------------------------------------------------------------------------- */
-/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter, Ruecksprung-Chip (S1)  */
+/* #628: Kopf ohne Spruenge — Monatstitel, Umschalter                        */
 /* -------------------------------------------------------------------------- */
 
 test('der Kopf zeigt Monat und Jahr des gewaehlten Tages, auch nach einer Monatsgrenze (AK1)', async ({ page }) => {
@@ -1636,58 +2049,6 @@ test('Titel und Umschalter behalten Position und Hoehe, wenn ein anderer Tag gew
   expect(headerHeightAfter).toBe(headerHeightBefore);
 });
 
-test('der Ruecksprung-Chip erscheint ohne ein Nachbar-Element zu verschieben, waehlt heute und verschwindet dann (AK6)', async ({
-  page,
-}) => {
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-
-  const title = page.locator('.calendar-view__period');
-  const titleBoxBefore = await title.boundingBox();
-
-  await dayButton(page, 'So, 19.').click();
-
-  const chip = page.getByRole('button', { name: 'Heute' });
-  await expect(chip).toBeVisible();
-  const titleBoxAfter = await title.boundingBox();
-  expect(titleBoxAfter?.x).toBe(titleBoxBefore?.x);
-  expect(titleBoxAfter?.y).toBe(titleBoxBefore?.y);
-
-  await chip.click();
-  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
-  await expect(dayButton(page, 'Sa, 18.')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('bei reduzierter Bewegung blendet der Ruecksprung-Chip ohne Uebergang ein (AK6, Motion)', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.reload();
-  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
-    polling: 100,
-  });
-
-  await dayButton(page, 'So, 19.').click();
-  const chip = page.getByRole('button', { name: 'Heute' });
-  await expect(chip).toBeVisible();
-  const transitionDuration = await chip.evaluate((el) => getComputedStyle(el).transitionDuration);
-  for (const duration of transitionDuration.split(',')) {
-    expect(parseFloat(duration)).toBeLessThan(0.001);
-  }
-});
-
-test('der Ruecksprung-Chip nutzt semantische Farb-Tokens, mit eigenem Wert im Dark Mode (AK6, Dark Mode)', async ({
-  page,
-}) => {
-  await dayButton(page, 'So, 19.').click();
-  const chip = page.getByRole('button', { name: 'Heute' });
-
-  const expectedLight = await resolveToken(page, '--area-events');
-  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
-
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveToken(page, '--area-events');
-  await expect.poll(() => chip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
-  expect(expectedDark).not.toBe(expectedLight);
-});
-
 test('bei reduzierter Bewegung blendet die Monats-Karte ohne Uebergang ein (S5 AC5/#958, Motion)', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.reload();
@@ -1730,59 +2091,130 @@ test('Kategorie-Punkte kommen aus IndexedDB, auch nach einem Reload ohne Netzwer
 });
 
 /* -------------------------------------------------------------------------- */
-/* #630 (S4): Desktop-Werkzeugleiste ‹ › Heute ab 768 px, Anordnung B         */
+/* issue #1009: Kopf ohne Knoepfe — wischen ist die einzige Geste            */
 /* -------------------------------------------------------------------------- */
 
-test('ab 1280 px zeigt der Kopf eine Werkzeugleiste mit ‹, › und Heute statt des Chips, blaettert nur die Vorschau (issue #784, AK7)', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
-
-  const today = page.getByRole('button', { name: 'Heute' });
-  const prevWeek = page.getByRole('button', { name: 'Vorige Woche' });
-  const nextWeek = page.getByRole('button', { name: 'Nächste Woche' });
-  const period = page.locator('.calendar-view__period');
-
-  // Heute ist ausgewaehlt: "Heute" steht als Knopf da, disabled statt entfernt.
-  await expect(today).toHaveCount(1);
-  await expect(today).toBeVisible();
-  await expect(today).toBeDisabled();
-  await expect(prevWeek).toBeVisible();
-  await expect(nextWeek).toBeVisible();
-
-  // `>` blaettert nur die Vorschau eine Woche weiter (Sa 18. -> Sa 25.) — die
-  // Auswahl (heute) bleibt stehen und faellt damit aus dem Fenster (AK7).
-  await nextWeek.click();
-  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
-  await expect(dayButton(page, 'Sa, 18.')).toHaveCount(0);
-  await expect(period).toHaveText('Juli 2026');
-  await expect(today).toBeEnabled();
-
-  // In der Monatsansicht blaettert `>` einen Monat, weiterhin nur die Vorschau
-  // — seit issue #958 ist das der Monats-Karte eigener Knopf im Rumpf, nicht
-  // mehr Teil der Streifen-Werkzeugleiste (die Karte zeigt ihn unabhaengig
-  // von der Bildschirmbreite). Die Augenbraue zeigt dort nur noch das Jahr,
-  // der Monatsname steht in der h1 (issue #898 — die kombinierte "Monat
-  // Jahr"-Zeichenkette existiert dort nicht mehr).
-  await page.getByRole('radio', { name: 'Monat' }).click();
-  const nextMonth = page.getByRole('button', { name: 'Nächster Monat' });
-  await expect(nextMonth).toBeVisible();
-  await nextMonth.click();
-  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
-});
-
-test('bei 375 px fehlen ‹, › und der Heute-Knopf der Werkzeugleiste, nur der Ruecksprung-Chip bleibt (AK10)', async ({
+test('bei 375 px bleiben Wochenkopf ohne ‹, › und ohne "Heute"-Knopf auch nach einem Tipp auf einen Tag (issue #1009, AK1/AK2)', async ({
   page,
 }) => {
   await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
-  // Heute ist ausgewaehlt: der Chip selbst ist ebenfalls nicht da (S1, #628 AK6).
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
 
+  // Ein Tipp waehlt nur aus — kein Knopf taucht dadurch wieder auf, es gibt
+  // keinen einzigen mehr, der auftauchen koennte (AK1/AK2 gelten unveraendert).
   await dayButton(page, 'So, 19.').click();
-  await expect(page.getByRole('button', { name: 'Heute' })).toBeVisible();
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+});
+
+test('kein "Heute"-Knopf in der Wochenansicht, weder als Chip (375px) noch als Werkzeugleisten-Knopf (1280px) (issue #1009, AK1)', async ({
+  page,
+}) => {
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.getByRole('button', { name: 'Heute' })).toHaveCount(0);
+});
+
+test('keine ‹ ›-Knoepfe in der Wochenansicht, weder Tages- noch Wochen-Schritte, bei 375px und 1280px (issue #1009, AK2)', async ({
+  page,
+}) => {
+  for (const viewport of [
+    { width: 375, height: 812 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole('button', { name: 'Vorheriger Tag' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Nächster Tag' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Vorige Woche' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Nächste Woche' })).toHaveCount(0);
+    // Kopf traegt nur noch Periode, Umschalter, Titel und Figur — keiner der
+    // frueheren Werkzeugleisten-Wrapper existiert noch.
+    await expect(
+      page.locator('.calendar-strip__title-row, .calendar-strip__toolbar, .calendar-strip__title-nav'),
+    ).toHaveCount(0);
+  }
+});
+
+test('ein Tipp auf einen sichtbaren Tag waehlt ihn aus, die sieben sichtbaren Tage bleiben exakt dieselben (issue #1009, AK3)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Sonntag-Termin',
+    allDay: false,
+    startsAt: `${TOMORROW}T09:00:00.000Z`,
+    endsAt: `${TOMORROW}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const visibleWeek = ['Sa, 18.', 'So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.', 'Do, 23.', 'Fr, 24.'];
+  for (const label of visibleWeek) {
+    await expect(dayButton(page, label)).toBeVisible();
+  }
+  const anchorBefore = await anchorDay(page);
+
+  await dayButton(page, 'So, 19.').click();
+
+  await expect(dayButton(page, 'So, 19.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(eventCard(page, 'Sonntag-Termin')).toBeVisible();
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+  for (const label of visibleWeek) {
+    await expect(dayButton(page, label)).toBeVisible();
+  }
+});
+
+test('die Augenbraue folgt einem Tipp ueber eine Monatsgrenze hinweg, ohne dass sich der Streifen verschiebt (issue #1009, AK3)', async ({
+  page,
+}) => {
+  // Verschiebt "heute" auf einen Donnerstag kurz vor Monatsende — das
+  // sichtbare Sieben-Tage-Fenster reicht dann ueber Juli hinaus bis in den
+  // August hinein, ohne dass gewischt werden muss.
+  await skewClock(page, '2026-07-30T12:00:00.000Z');
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  const period = page.locator('.calendar-view__period');
+  await expect(period).toHaveText('Juli 2026');
+
+  const augustDay = dayButton(page, 'Mo, 3.');
+  await expect(augustDay).toBeVisible();
+  const anchorBefore = await anchorDay(page);
+
+  await augustDay.click();
+
+  await expect(augustDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(period).toHaveText('August 2026');
+  // Die Augenbraue zieht mit, der Streifen selbst bleibt exakt stehen.
+  await expect(anchorDay(page)).resolves.toBe(anchorBefore);
+});
+
+test('der Wochenstreifen laesst sich bei reduzierter Bewegung und im Dark Mode weiterhin wischen und antippen (issue #1009, AK9)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await pageStrip(page, 1);
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
+  await expect(anchorDay(page)).resolves.toBe('2026-07-25');
+
+  await dayButton(page, 'Sa, 25.').click();
+  await expect(dayButton(page, 'Sa, 25.')).toHaveAttribute('aria-pressed', 'true');
+  await expect(dayButton(page, 'Sa, 25.')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -2546,9 +2978,13 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await expect(eventCard(page, 'Yoga')).toContainText('19:00');
 
   // Back on the series' own first occurrence, the original time survives —
-  // "Heute" re-selects it directly (nicht Ziehen — #784), the series was
-  // seeded on TODAY.
-  await page.getByRole('button', { name: 'Heute' }).click();
+  // ohne "Heute"-Knopf (#1009) geht der weite Sprung zurueck ueber die
+  // Monats-Karte: einen Monat zurueckwischen (August -> Juli), dann den Tag
+  // antippen. Die Serie wurde auf TODAY gesat.
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await pageMonth(page, -1);
+  await monthGridDay(page, 'Sa, 18.').click();
+  await page.getByRole('radio', { name: 'Woche' }).click();
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
 });
 
@@ -2921,12 +3357,10 @@ test('beim Tageswechsel steht kein Termin des vorherigen Tages mehr in der Agend
   expect(forward.items.filter((row) => row.entering === 'true')).toEqual([]);
 
   // …and back again: the same swap in the other direction, not a one-way fix.
-  // Ueber den Tag-Pfeil statt eine Streifen-Zelle: ein Tap auf eine Zelle
-  // rueckt den Anker immer auf den getippten Tag vor (issue #813) — "Sa,
-  // 18." waere als voriger Tag danach nicht mehr im interaktiven Fenster,
-  // unabhaengig vom Puffer. Der Pfeil bleibt immer erreichbar und loest
-  // denselben `selectedDay`-Wechsel aus, den diese AK prueft.
-  const backward = await agendaAfterDaySwitch(page, 'Vorheriger Tag');
+  // Ein Tap waehlt nur aus und verschiebt das Fenster nicht mehr (issue
+  // #1009) — "Sa, 18." bleibt deshalb im selben interaktiven Fenster wie
+  // "So, 19." erreichbar, kein Pfeil noetig.
+  const backward = await agendaAfterDaySwitch(page, 'Sa, 18.');
   expect(backward.items.map((row) => row.text)).toHaveLength(1);
   expect(backward.items[0].text).toContain('Heute-Termin');
   expect(backward.items.filter((row) => row.leaving === 'true')).toEqual([]);
@@ -3120,7 +3554,7 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
 
   const dots = dayDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 30, 'var(--on-ground)');
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 85, 'var(--text-base)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedPrivat);
@@ -3217,7 +3651,7 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(card).toHaveCSS('border-radius', expectedRadius);
   await expect(card).toHaveCSS('box-shadow', expectedShadow);
 
-  const daysGrid = card.locator('.month-grid__days');
+  const daysGrid = monthGridPage(page).locator('.month-grid__days');
   await expect(daysGrid).toHaveCSS('row-gap', '3px');
   await expect(daysGrid).toHaveCSS('column-gap', '3px');
   await expect(daysGrid.locator('> li')).toHaveCount(42);
@@ -3226,7 +3660,7 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(header).toHaveCSS('font-size', '10.5px');
   await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
 
-  const firstDay = card.locator('.month-grid__day').first();
+  const firstDay = monthGridPage(page).locator('.month-grid__day').first();
   const dayBox = await firstDay.boundingBox();
   if (!dayBox) throw new Error('AK1: Zelle hat keine BoundingBox');
   expect(Math.round(dayBox.height)).toBe(34);
@@ -3317,8 +3751,8 @@ test('AK7: die Monats-Karte hat auf 375×812 keinen waagerechten Ueberlauf, alle
   );
   expect(overflow).toBe(false);
 
-  await expect(card.locator('.month-grid__day')).toHaveCount(42);
-  await expect(card.locator('.month-grid__day').last()).toBeVisible();
+  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
+  await expect(monthGridPage(page).locator('.month-grid__day').last()).toBeVisible();
 
   const cardBox = await card.boundingBox();
   const viewport = page.viewportSize();
@@ -3332,6 +3766,192 @@ test('AK7: die Monats-Karte hat auf 375×812 keinen waagerechten Ueberlauf, alle
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(overflowDark).toBe(false);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1009: Monats-Karte wird gewischt statt geblaettert                 */
+/* -------------------------------------------------------------------------- */
+
+test('die Monats-Karte hat keine ‹ ›-Knoepfe mehr, .month-grid__nav entfaellt ersatzlos (issue #1009, AK5)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(monthGrid(page).locator('.month-grid__nav')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Voriger Monat' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Nächster Monat' })).toHaveCount(0);
+});
+
+test('ein Wisch auf der Monats-Karte zeigt den naechsten/vorherigen Monat, Titel, Augenbraue und Dimmung folgen (issue #1009, AK6)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const title = page.locator('.calendar-view__heading');
+  const period = page.locator('.calendar-view__period');
+  await expect(title).toHaveText('Juli');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+
+  await pageMonth(page, 1);
+  await expect(title).toHaveText('August');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
+  await expect(monthGridDay(page, 'Mo, 3.')).not.toHaveAttribute('data-outside-month', '');
+
+  await pageMonth(page, -1);
+  await expect(title).toHaveText('Juli');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+  await expect(monthGridDay(page, 'Mo, 3.')).toHaveAttribute('data-outside-month', '');
+});
+
+test('zwei Wische in dieselbe Richtung gehen zwei Monate weiter, nicht nur einen (issue #1009, AK7)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await pageMonth(page, 1);
+  await pageMonth(page, 1);
+  await expect(page.getByRole('heading', { level: 1, name: 'September' })).toBeVisible();
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-09');
+});
+
+test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nimmt nur senkrechte Gesten an (issue #1009, AK8; issue #1039)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const card = monthGrid(page);
+  const heightBefore = (await card.boundingBox())?.height;
+
+  await pageMonth(page, 1);
+
+  expect((await card.boundingBox())?.height).toBe(heightBefore);
+  await expect(monthGridTrack(page)).toHaveCSS('touch-action', 'pan-y');
+});
+
+test('die Monats-Karte laesst sich bei reduzierter Bewegung und im Dark Mode weiterhin wischen, Titel und Dimmung folgen wie gewohnt (issue #1009, AK9)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Juli' })).toBeVisible();
+
+  await pageMonth(page, 1);
+  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
+  await expect(monthGridDay(page, 'Mo, 3.')).not.toHaveAttribute('data-outside-month', '');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1039: Monats-Karte wird senkrecht gewischt statt waagerecht         */
+/* -------------------------------------------------------------------------- */
+
+test('ein Wisch nach oben zeigt den naechsten Monat, ein Wisch nach unten den vorigen (issue #1039, AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+  const title = page.locator('.calendar-view__heading');
+  const period = page.locator('.calendar-view__period');
+  await expect(title).toHaveText('Juli');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+
+  // Nach oben wischen = Finger bewegt sich nach oben = scrollTop steigt.
+  const pageHeight = await track.evaluate((el) => el.clientHeight);
+  await track.evaluate((el, delta) => {
+    el.scrollTop += delta;
+  }, pageHeight);
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).toBe('2026-08');
+  await expect(title).toHaveText('August');
+  await expect(period).toHaveText('2026');
+
+  // Nach unten wischen = scrollTop sinkt.
+  await track.evaluate((el, delta) => {
+    el.scrollTop -= delta;
+  }, pageHeight);
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).toBe('2026-07');
+  await expect(title).toHaveText('Juli');
+});
+
+test('.month-grid__track nimmt nur senkrechte Gesten an, waagerechte verschieben nichts (issue #1039, AK3)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+
+  await expect(track).toHaveCSS('touch-action', 'pan-y');
+  await expect(track).toHaveCSS('scroll-snap-type', 'y mandatory');
+
+  const before = await monthGrid(page).getAttribute('data-focus-month');
+  const scrollLeftBefore = await track.evaluate((el) => el.scrollLeft);
+  await track.evaluate((el) => {
+    el.scrollLeft += 500;
+  });
+  // `overflow-x: hidden` gibt es nichts, wohin die Spur waagerecht rollen
+  // koennte — scrollLeft bleibt unveraendert, kein Monatswechsel.
+  expect(await track.evaluate((el) => el.scrollLeft)).toBe(scrollLeftBefore);
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', before ?? '');
+});
+
+test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)', async ({ page }) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+
+  const { clientHeight, scrollHeight } = await track.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    scrollHeight: el.scrollHeight,
+  }));
+  // Drei Seiten (voriger/aktueller/naechster Monat) liegen gestapelt in der
+  // Spur (scrollHeight), sichtbar ist aber immer nur eine (clientHeight).
+  expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
+  expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
+
+  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
+});
+
+test('ein senkrechter Zug ausserhalb der Monats-Karte scrollt weiterhin die Seite (issue #1039, AK6)', async ({
+  page,
+}) => {
+  // Genug Agenda-Eintraege, damit die Seite den 375x812-Testviewport
+  // ueberragt — sonst gaebe es nichts zu scrollen und der Test waere
+  // unabhaengig vom eigentlichen Verhalten immer gruen.
+  for (let i = 0; i < 20; i += 1) {
+    const hour = String(i).padStart(2, '0');
+    await seedEvent(page, {
+      title: `Termin ${i}`,
+      allDay: false,
+      startsAt: `${TODAY}T${hour}:05:00.000Z`,
+      endsAt: `${TODAY}T${hour}:35:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(page.locator('.event-agenda__item')).toHaveCount(20);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+  ).toBe(true);
+
+  // `.calendar-view__header` liegt ausserhalb von `.month-grid` — ein
+  // senkrechter Zug, der hier beginnt, darf nicht von der Karte geschluckt
+  // werden (AK6 nennt Agenda/Kopfbereich als Beispiele), sondern muss die
+  // Seite selbst bewegen. `mouse.wheel` ist — anders als ein per JS
+  // dispatchtes `TouchEvent` (siehe `pageStrip`s Kommentar oben) — ein
+  // echtes, vom Browser nativ verarbeitetes Gesture-Event und deshalb hier
+  // aussagekraeftig: es beweist, dass kein Vorfahre/Geschwister von
+  // `.month-grid__track` dessen `touch-action: pan-y`/`overflow` geerbt hat.
+  const headerBox = await page.locator('.calendar-view__header').boundingBox();
+  if (!headerBox) throw new Error('AK6: kein .calendar-view__header gefunden');
+  await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + 5);
+
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
 });
 
 test('Tippen auf einen gedaempften Nachbarmonatstag waehlt ihn und verschiebt den fokussierten Monat (#958)', async ({
@@ -3500,18 +4120,18 @@ test('eine Serie in der fremden ICS-Datei erscheint als expandierte Einzeltermin
 
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 1)));
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 2)));
   await expect(allDayBar(page, 'Aktionstag')).toBeVisible();
 
   // COUNT=3: der vierte Tag hat kein Vorkommen mehr — expandiert, nicht endlos.
-  await page.getByRole('button', { name: 'Nächster Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 3)));
   await expect(allDayBar(page, 'Aktionstag')).toHaveCount(0);
 
   // Jedes einzelne Vorkommen bleibt schreibgeschützt, nicht nur das erste.
-  await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+  await selectStripDay(page, ariaLabelFor(addDays(TODAY, 2)));
   await allDayBar(page, 'Aktionstag').click();
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeHidden();
 });
@@ -3677,42 +4297,78 @@ test('die Pille wird 33px hoch gezeichnet, die Trefferflaeche jeder Option bleib
   await expect(monat).toHaveAttribute('aria-checked', 'true');
 });
 
-test('gedaempfter Optionstext erreicht 4,5:1 gegen den Umschalter-Grund, die aktive Pille 3:1 gegen ihre Umgebung — hell und dunkel (AK3)', async ({
+/* -------------------------------------------------------------------------- */
+/* issue #1010: Umschalter wieder weiss — Schleier-Spur entfaellt            */
+/* -------------------------------------------------------------------------- */
+
+test('die Spur des Umschalters ist transparent, kein Schleier mehr (AK2, issue #1010)', async ({
+  page,
+}) => {
+  const trackColor = await switcherRoot(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(trackColor).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('die aktive Pille ist im Hellmodus eine ungetoente --surface-Flaeche, keine abgedunkelte Mischung mehr (AK1, issue #1010)', async ({
+  page,
+}) => {
+  const indicator = switcherRoot(page).locator('.segmented__indicator');
+  const surface = await resolveToken(page, '--surface');
+  expect(await indicator.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surface);
+});
+
+test('die aktive Pille erreicht 3:1 gegen den Kalender-Grund daneben, hell und dunkel (AK3, issue #1010)', async ({
+  page,
+}) => {
+  async function pillVsGround() {
+    const ground = await toRgb(page, await htmlBackground(page));
+    const indicator = switcherRoot(page).locator('.segmented__indicator');
+    const pillColor = await indicator.evaluate((el) => getComputedStyle(el).backgroundColor);
+    return contrastRatio(await toRgb(page, pillColor), ground);
+  }
+
+  expect(await pillVsGround()).toBeGreaterThanOrEqual(3);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await pillVsGround()).toBeGreaterThanOrEqual(3);
+});
+
+test('aktive Schrift erreicht 4,5:1 gegen die Pille, gedaempfte Schrift 4,5:1 gegen den Grund — hell und dunkel (AK4, issue #1010)', async ({
   page,
 }) => {
   async function measure() {
-    const ground = await resolveToken(page, '--ground');
-    const track = await compositeOver(page, ground, 'color-mix(in oklab, white 20%, transparent)');
+    const ground = await toRgb(page, await htmlBackground(page));
+    const indicator = switcherRoot(page).locator('.segmented__indicator');
+    const pillColor = await toRgb(
+      page,
+      await indicator.evaluate((el) => getComputedStyle(el).backgroundColor),
+    );
 
     const mutedOption = page.getByRole('radio', { name: 'Monat' }); // unselected -> gedaempfter Text
-    const mutedColor = await mutedOption.evaluate((el) => getComputedStyle(el).color);
-    const mutedRgb = await toRgb(page, mutedColor);
+    const mutedRgb = await toRgb(page, await mutedOption.evaluate((el) => getComputedStyle(el).color));
 
-    const indicator = switcherRoot(page).locator('.segmented__indicator');
-    const pillColor = await indicator.evaluate((el) => getComputedStyle(el).backgroundColor);
-    const pillRgb = await toRgb(page, pillColor);
+    const activeOption = page.getByRole('radio', { name: 'Woche' }); // selected -> aktive Pillentinte
+    const activeRgb = await toRgb(page, await activeOption.evaluate((el) => getComputedStyle(el).color));
 
     return {
-      textContrast: contrastRatio(mutedRgb, track),
-      pillContrast: contrastRatio(pillRgb, track),
+      mutedVsGround: contrastRatio(mutedRgb, ground),
+      activeVsPill: contrastRatio(activeRgb, pillColor),
     };
   }
 
   const light = await measure();
-  expect(light.textContrast).toBeGreaterThanOrEqual(4.5);
-  expect(light.pillContrast).toBeGreaterThanOrEqual(3);
+  expect(light.mutedVsGround).toBeGreaterThanOrEqual(4.5);
+  expect(light.activeVsPill).toBeGreaterThanOrEqual(4.5);
 
-  // reducedMotion: 'reduce' collapses the option's `transition: color`
-  // (segmented-control.css) to ~0 — without it this read races the 150ms
-  // fade between the light- and dark-mode ink and can land on whatever
-  // partial blend the transition happens to be at instead of the settled
-  // colour (the same reason every other dark-mode contrast measurement in
-  // this suite, e.g. journal.spec.ts:1139, shell.spec.ts:202, pairs
-  // colorScheme with it).
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const dark = await measure();
-  expect(dark.textContrast).toBeGreaterThanOrEqual(4.5);
-  expect(dark.pillContrast).toBeGreaterThanOrEqual(3);
+  // `.segmented__option`'s `transition: color` still races this read even
+  // under reducedMotion — measured directly, the read can land mid-fade
+  // between the light- and dark-mode ink (observed as low as 2.47:1 for a
+  // settled 4,98:1). expect.poll re-reads until the transition has actually
+  // settled, the same technique this suite already uses for other
+  // transition-driven colour reads (e.g. the category-colour assertions
+  // above).
+  await expect.poll(async () => (await measure()).mutedVsGround).toBeGreaterThanOrEqual(4.5);
+  await expect.poll(async () => (await measure()).activeVsPill).toBeGreaterThanOrEqual(4.5);
 });
 
 test('die Figur steht rechts aussen, der Titel traegt die Restbreite — in Woche und Monat (AK4)', async ({
@@ -3802,16 +4458,16 @@ test('im Monat steht ueber dem Tagesauszug die Wochentags-Ueberschrift des gewae
   await expect(dayHeading(page)).toHaveCount(0);
 });
 
-test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgeblaetterten Monat (AK4c, issue #959)', async ({
+test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgewischten Monat (AK4c, issue #959; Wisch statt Knopf seit #1009)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
   await monthGridDay(page, 'Mi, 22.').click();
   await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
 
-  // "Naechster Monat" aendert nur `focusMonth`, nicht `selectedDay`
-  // (month-grid.tsx's `pageBy`) — die Ueberschrift darf sich nicht mitbewegen.
-  await page.getByRole('button', { name: 'Nächster Monat' }).click();
+  // Ein Wisch aendert nur `focusMonth`, nicht `selectedDay` — die
+  // Ueberschrift darf sich nicht mitbewegen.
+  await pageMonth(page, 1);
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
 });

@@ -4,128 +4,29 @@
    more). Sits inside calendar-view.tsx's <header>, same 7-column grid
    vocabulary as habit-week-grid.css/weather-forecast.css's day strip. */
 
+/* Own card, same shape as .month-grid (month-grid.css:6-15, issue #1013 AK1/
+   AK2) — the strip no longer sits directly on the route ground. `overflow:
+   hidden` clips the carousel's day-buffer to the card's rounded corners
+   (AK13); the carousel's own `overflow-x: auto` still does the actual
+   horizontal scroll-clipping, this is only the radius corner cut. */
 .calendar-strip {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
+  /* Own surface, own ink (issue #832 AK5) — not the route ground's tint. */
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  color: var(--text);
   /* Height of a single day-button row (button content-box + its own vertical
      padding) — the one number the carousel's fixed height (below) is built
      from, so a row's own CSS can change without the carousel math drifting
      out of sync. */
   --calendar-strip-row-height: calc(var(--touch-target) + 2 * var(--space-1));
-}
-
-/* "Heute"-Rücksprung-Chip + Desktop-`‹ ›` (issue #628/#630) — Titel und
-   Woche/Monat-Umschalter zogen in calendar-view.tsx's Augenbraue um (issue
-   #898). Feste Höhe, Position darf sich beim Tageswechsel nie ändern (issue
-   #628, AK5). Below 768px the desktop toolbar (`.calendar-strip__title-nav`)
-   is hidden, so only the "Heute" chip ever shows here (issue #630, AK9/AK10).
-   From 768px up nothing wraps: `[Heute] [‹] [›]` fit one line. */
-.calendar-strip__title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--space-2);
-  row-gap: var(--space-1);
-  min-height: var(--touch-target);
-}
-
-/* `‹`/`›` for a week — desktop-only (issue #630, AK9/AK10);
-   `.calendar-strip__nav`'s day-stepping siblings below are a separate,
-   untouched control. */
-.calendar-strip__title-nav {
-  display: none;
-}
-
-/* Same element as the mobile "Heute" chip (S1, #628) — reserved row height
-   (`.calendar-strip__title-row`'s `min-height`) keeps toggling this from
-   moving anything below it. */
-.calendar-strip__today {
-  order: 4;
-  flex: 1 0 100%;
-  min-height: var(--touch-target);
-  padding: 0 var(--space-3);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: var(--area-events);
-  color: var(--accent-fg);
-  font-size: var(--text-secondary);
-  font-weight: var(--weight-emphasis);
-  cursor: pointer;
-  opacity: 1;
-  visibility: visible;
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    visibility 0s;
-}
-
-.calendar-strip__today:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-/* Hidden (not just styled) once today is already selected — chip mode only;
-   the delayed `visibility` lets a fade-out finish before the box leaves the
-   a11y tree (issue #628, AK6). */
-.calendar-strip__today[data-today-selected] {
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity var(--duration-fast) var(--ease-spring),
-    visibility 0s var(--duration-fast);
-}
-
-@media (min-width: 768px) {
-  .calendar-strip__title-nav {
-    display: flex;
-    order: 1;
-    gap: var(--space-1);
-  }
-
-  /* Toolbar-button look replaces the chip pill; "Heute" is never hidden here
-     — disabled instead (issue #630, AK9). */
-  .calendar-strip__today {
-    order: 0;
-    flex: 0 0 auto;
-    background: transparent;
-    color: var(--text);
-  }
-
-  .calendar-strip__today[data-today-selected] {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .calendar-strip__today:disabled {
-    color: var(--text-muted);
-    cursor: default;
-  }
-}
-
-.calendar-strip__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-}
-
-.calendar-strip__nav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: var(--touch-target);
-  height: var(--touch-target);
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.calendar-strip__nav:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
 }
 
 /* The carousel track (issue #813 — replaces #805's 3-page scroll-snap
@@ -198,17 +99,30 @@
   outline-offset: -2px;
 }
 
+/* Heute ohne Auswahl (issue #1013, AK4): Umrandung statt Fläche, die Zahl
+   bleibt in der Karten-Tinte (kein Einfärben). Reines var(--ground)
+   unterschreitet die 3:1-Schwelle gegen --surface im Dunkelmodus (gemessen
+   2,57:1) — ein 85%-Mix Richtung --text-base (die selbst je Theme zwischen
+   dunkler und heller Tinte kippt) hebt Hell auf 4,00:1 und Dunkel auf
+   3,44:1, bleibt optisch weiterhin klar das Routenblau. `box-shadow` statt
+   `border`/`outline`, damit die Zeilenhöhe nicht springt. */
 .calendar-strip__day[data-today] {
-  color: var(--area-events);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ground) 85%, var(--text-base));
 }
 
+/* Ausgewählter Tag (AK3): volle Pille im Routenblau, Text in --on-ground —
+   das für „Inhalt auf --ground" bereits gemessene Tinte-Paar (gemessen
+   5,93:1 hell / 6,24:1 dunkel gegen die Pille selbst). Ersetzt
+   --area-events/--accent-fg vollständig (AK6). */
 .calendar-strip__day--selected {
-  background: var(--area-events);
-  color: var(--accent-fg);
+  background: var(--ground);
+  color: var(--on-ground);
 }
 
+/* Heute und ausgewählt zugleich (AK5): Pille gewinnt, keine zusätzliche
+   Umrandung — dieselbe Regel wie month-grid.css:130. */
 .calendar-strip__day--selected[data-today] {
-  color: var(--accent-fg);
+  box-shadow: none;
 }
 
 /* Always rendered, even for a day with no events (calendar-strip.tsx) — an
@@ -226,14 +140,68 @@
   height: var(--space-2);
   border-radius: var(--radius-pill);
   /* Gedämpfte Kategorie-Tönung statt der reinen Kategoriefarbe (issue #955
-     AK2), dasselbe Rezept wie das Ganztägig-Band (event-agenda.css, issue
-     #924): manche der neuen --cat-*-Vorgaben (Blau, Pflaume) unterschreiten
-     roh auf --ground-kalender die 3:1-Schwelle. Ursprünglich bei 60%
-     Kategorie-Anteil gemessen (3,33:1 hell / 5,91:1 dunkel) — #991 hat
-     `--ground-kalender` aufgehellt UND `--on-ground` auf dieser Route von
-     der hellen auf die dunkle Tinte (--on-accent) gekippt (AK4); derselbe
-     60%-Mix ergab dadurch einen zu dunklen Punkt auf zu hellem Grund
-     (schlechtester Fall 1,95:1 hell). Bei 30% Kategorie-Anteil (mehr Gewicht
-     auf --on-ground) hält es wieder: 3,77:1 hell / 4,91:1 dunkel. */
-  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 30%, var(--on-ground));
+     AK2). Seit issue #1013 liegt der Punkt auf --surface statt auf dem
+     Grund — das alte 30%/--on-ground-Rezept war gegen --ground-kalender
+     gemessen und gilt dort nicht mehr. Gleiches Rezept wie das
+     Ganztägig-Band (event-agenda.css:84, issue #956 AK3): 85%
+     Kategorie-Anteil + --text-base hält alle fünf Kategorien plus den
+     Fallback (--area-events) ≥3:1 gegen --surface, gemessen Hell (3,41–
+     3,92:1, --cat-familie am knappsten) und Dunkel (7,6–8,4:1). */
+  background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 85%, var(--text-base));
+}
+
+/* All-day/multi-day band row (issue #1013, AK8-12) — a second 7-column grid
+   under the day cells, one row per `allDayBandsForWindow` entry (event-time.ts),
+   `grid-column` placing each band across exactly the columns it covers. Only
+   rendered with ≥1 band (calendar-strip.tsx, AK12), so the card stays as
+   short as the sparse default state needs. */
+.calendar-strip__bands {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-1);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.calendar-strip__band {
+  min-width: 0;
+  height: var(--space-4);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  /* Same 85%-Kategorie-Rezept as the dot above and the agenda's own band
+     (event-agenda.css:84) — measured ≥3:1 against --surface for all five
+     categories plus the --area-events fallback, Hell and Dunkel. */
+  background: color-mix(in oklab, var(--band-cat, var(--area-events)) 85%, var(--text-base));
+}
+
+/* Runs off the visible window's edge (AK9): squared off there instead of
+   the pill's default rounded end — rounded only at the event's real
+   start/end. */
+.calendar-strip__band[data-continues-before] {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.calendar-strip__band[data-continues-after] {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.calendar-strip__band-title {
+  overflow: hidden;
+  /* Fixed dark ink, not --text/--text-muted (issue #832's ink-reset is for
+     content on --surface, this sits on a saturated category tint instead) —
+     --on-accent stays dark in both themes (tokens.css) and measured ≥4,5:1
+     against every category's 85%-mix band colour, Hell (4,81–5,53:1) and
+     Dunkel (8,72–9,62:1), where the theme-flipping --on-ground/--text-base
+     invert into near-white-on-pastel in Dark Mode instead. */
+  color: var(--on-accent);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

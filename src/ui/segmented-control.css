@@ -78,47 +78,43 @@
   min-height: 0;
   gap: 3px;
   padding: 3px;
-  background: color-mix(in oklab, white 20%, transparent);
-  /* Gemessen (Canvas-Pixel-Kompositierung, wie grundfarbe.spec.ts) gegen den
-     Kalender-Grund: --on-ground-muted/--on-ground reichen für den gedämpften
-     Optionstext auf diesem hellen Schleier nicht (Hellmodus 3,33:1 / 4,16:1;
-     seit #991s Grunddämpfung auch der Dunkelmodus-Grund+Schleier zu hell für
-     --on-ground, nur noch 3,94:1) — der Schleier liegt in beiden Modi heller
-     als der volle Grund, für den die beiden kalibriert sind. Dunkle Tinte
-     schlägt hier den Test in beiden Modi (4,65:1 hell / 4,89:1 dunkel), nicht
-     helle (AK3, „Kontrast schlägt Dämpfung") — deshalb keine eigene
-     Dunkelmodus-Übersteuerung mehr für diesen Wert (unten). */
-  --segmented-ground-muted-ink: color-mix(in oklab, var(--on-accent) 80%, black);
-  /* Grundfarbe der Route als Text der aktiven Pille (Blatt-Vorgabe). */
-  --segmented-ground-active-ink: var(--ground);
-  /* #991 hat --ground-kalender aufgehellt — der 20%-Schleier oben (Zeile 81)
-     liegt dadurch so nah an reinem --surface (Weiß), dass die aktive Pille
-     (AK3, issue #921) nur noch 2,45:1 gegen den Schleier hält, unter der
-     3:1-Schwelle. --surface bleibt Weiß, deshalb hier abgedunkelt statt den
-     Schleier selbst anzufassen (der trägt separat den gedämpften Optionstext,
-     s.o. — unverändert lassen). Bei 38% hält beides mit Marge: Pille 4,10:1
-     gegen den Schleier (AK3), Routenfarbe als Pillentext 3,16:1 gegen die
-     jetzt dunklere Pille (informell, kein eigenes AK, aber unter 3:1 fiele
-     die Blatt-Vorgabe selbst unter WCAG-Großtext). */
-  --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 38%, black);
+  /* issue #1010: kein Schleier mehr — die Spur ist voll transparent, der
+     Grund scheint ungetönt durch. Der alte 20%-Weiß-Schleier drückte die
+     aktive Pille (AK3, #921) so nah an reines --surface, dass sie im
+     Hellmodus abgedunkelt werden musste (--segmented-ground-pill-bg); ohne
+     Schleier entfällt der Grund für diese Dämpfung. */
+  background: transparent;
+  /* --on-ground-muted ist je Route schon auf 4,5:1 gegen den vollen Grund
+     gemessen (issue #868 AK3, #991 AK4) — der gedämpfte Optionstext sitzt
+     jetzt direkt auf dem Grund (kein Schleier mehr) und kann den bereits
+     kalibrierten Routen-Token übernehmen statt einer eigenen Mischung. */
+  --segmented-ground-muted-ink: var(--on-ground-muted);
+  /* Feste Kalender-Tinte (Blatt-Vorgabe: Routenfarbe als Pillentext) statt
+     var(--ground): --ground-kalender selbst hält nur 3,18:1 gegen Weiß, unter
+     der 4,5:1-Textschwelle (AK4). --face-ink-kalender ist dieselbe Familie
+     (schon als Figuren-Tinte kalibriert), themenfest dunkel (#093a90), und
+     hält 10,4:1 gegen eine weiße/helle Pille in beiden Modi (siehe unten). */
+  --segmented-ground-active-ink: var(--face-ink-kalender);
+  /* AK1: im Hellmodus ungetönte --surface-Pille (Weiß), keine Abdunklung
+     mehr. Gemessen gegen den Kalender-Grund: 3,18:1 (AK3). */
+  --segmented-ground-pill-bg: var(--surface);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='hell']) .segmented--ground {
-    /* Fixer Routenton statt des kontextuellen --ground: der ist im
-       Dunkelmodus schon so weit abgedunkelt, dass er auf der ebenfalls
-       abgedunkelten Pille kaum noch trägt (1,66:1 gemessen) — die feste
-       Kalender-Grundfarbe, aufgehellt, bleibt erkennbar blau UND lesbar
-       (4,75:1). */
-    --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
-    /* --surface allein trägt die aktive Pille im Dunkelmodus nur 2,86:1 gegen
-       den Schleier-Grund (unter 3:1) — leicht abgedunkelt sind es 3,33:1. */
-    --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 70%, black);
+    /* Ungetönte --surface ist im Dunkelmodus selbst dunkel (~24% L) — gegen
+       Kalenders Dunkelmodus-Grund (~48% L, heller als andere Routen-Gründe,
+       da aus dem hellsten --ground-* gemischt) hält das nur 2,57:1, unter
+       AK3s 3:1. --on-ground-light bleibt "hell in beiden Themes" (eigener
+       Token-Kommentar in tokens.css) — die Pille bleibt die helle Fläche aus
+       dem Hellmodus statt der generischen dunklen Kartenfläche zu folgen.
+       Gemessen: 6,22:1 gegen den Grund (AK3), 10,1:1 für --face-ink-kalender
+       als Pillentext darauf (AK4). */
+    --segmented-ground-pill-bg: var(--on-ground-light);
   }
 }
 :root[data-theme='dunkel'] .segmented--ground {
-  --segmented-ground-active-ink: color-mix(in oklab, var(--ground-kalender) 80%, white);
-  --segmented-ground-pill-bg: color-mix(in oklab, var(--surface) 70%, black);
+  --segmented-ground-pill-bg: var(--on-ground-light);
 }
 
 .segmented--ground .segmented__indicator {
