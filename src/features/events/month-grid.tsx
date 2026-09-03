@@ -137,11 +137,13 @@ function MonthPage({
 
 /**
  * Month card in `/kalender`'s body (issue #958, T1 of #957; wiped free of its
- * nav buttons and made swipeable in issue #1009) — the month view's only
- * calendar surface; `calendar-strip.tsx` stays a pure week strip. Three whole
- * months (prev/current/next) sit in a horizontal `scroll-snap-type: x
- * mandatory` track; a swipe snaps to a neighbour page, which is reported up
- * via `onFocusMonth` once it settles, and the track silently recentres on the
+ * nav buttons and made swipeable in issue #1009; swipe axis turned vertical
+ * in issue #1039 — a month rolls like a page, it doesn't page sideways like
+ * the day-oriented week strip) — the month view's only calendar surface;
+ * `calendar-strip.tsx` stays a pure week strip. Three whole months
+ * (prev/current/next) sit in a vertical `scroll-snap-type: y mandatory`
+ * track; a swipe snaps to a neighbour page, which is reported up via
+ * `onFocusMonth` once it settles, and the track silently recentres on the
  * new middle page before paint — the same buffered-window-plus-silent-recentre
  * shape `calendar-strip.tsx` uses for days, just three whole-page units
  * instead of a rolling day buffer. Tapping a day (only ever possible on the
@@ -178,7 +180,7 @@ export function MonthGrid({
   useLayoutEffect(() => {
     const track = trackRef.current;
     if (!track) return;
-    track.scrollLeft = track.clientWidth;
+    track.scrollTop = track.clientHeight;
   }, [focusMonth]);
 
   /** Same settle-then-report pattern as `calendar-strip.tsx`: `scrollend` is
@@ -199,9 +201,9 @@ export function MonthGrid({
       }
       const current = trackRef.current;
       if (!current) return;
-      const pageWidth = current.clientWidth;
-      if (pageWidth <= 0) return;
-      const page = Math.round(current.scrollLeft / pageWidth);
+      const pageHeight = current.clientHeight;
+      if (pageHeight <= 0) return;
+      const page = Math.round(current.scrollTop / pageHeight);
       if (page <= 0) onFocusMonth(prevMonth);
       else if (page >= 2) onFocusMonth(nextMonth);
     }

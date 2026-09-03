@@ -13,6 +13,11 @@
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
   color: var(--text);
+  /* One day cell's own size and the grid's own gap (issue #1039) — the single
+     numbers `.month-grid__track`'s fixed height (below) is built from, so the
+     track math can't drift out of sync with `.month-grid__day`/`.month-grid__days`. */
+  --month-grid-day-size: 34px;
+  --month-grid-gap: 3px;
   /* Einblenden beim Wechsel nach Monat (AK7) — kein Höhen-Übergang wie beim
      ehemaligen Streifen-Karussell, nur ein Fade; unter reduced-motion
      automatisch auf ~0 gekürzt (tokens.css's globale Regel). */
@@ -31,7 +36,7 @@
 .month-grid__weekday-header {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
+  gap: var(--month-grid-gap);
   list-style: none;
   margin: 0 0 4px;
   padding: 0;
@@ -40,20 +45,27 @@
   color: var(--text-muted);
 }
 
-/* Horizontal snap track holding the three rendered months (issue #1009) —
-   `x mandatory` so a swipe always lands fully on a page, never half-between;
-   `pan-x` leaves the vertical gesture to the page scroll underneath, same as
-   calendar-strip.css's carousel. Scrollbar hidden the same way. Height is
-   never set explicitly: every page always renders 6 full Mon–Sun weeks
-   (`gridDaysFor`'s 42-cell padding), so the tallest/only page height stays
-   identical across a month change (AK8) without extra bookkeeping. */
+/* Vertical snap track holding the three rendered months (issue #1009,
+   rotated from a horizontal to a vertical axis in issue #1039 — a month
+   rolls downward like a page, the day-oriented week strip is what keeps the
+   horizontal swipe): `y mandatory` so a swipe always lands fully on a page,
+   never half-between; `pan-y` leaves the horizontal gesture unclaimed (there
+   is none to hand off — the card no longer scrolls sideways at all).
+   Scrollbar hidden the same way. Height is fixed to exactly one page (six
+   full Mon–Sun weeks, `gridDaysFor`'s 42-cell padding) via
+   `--month-grid-day-size`/`--month-grid-gap` — without it the three stacked
+   pages would triple the card's height (AK5); the tallest/only page height
+   still stays identical across a month change (AK5) without extra
+   bookkeeping. */
 .month-grid__track {
   display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: none;
-  scroll-snap-type: x mandatory;
-  touch-action: pan-x;
+  scroll-snap-type: y mandatory;
+  touch-action: pan-y;
+  height: calc(6 * var(--month-grid-day-size) + 5 * var(--month-grid-gap));
 }
 
 .month-grid__track::-webkit-scrollbar {
@@ -62,17 +74,23 @@
 
 .month-grid__page {
   flex: 0 0 100%;
-  min-width: 0;
+  min-height: 0;
   scroll-snap-align: start;
 }
 
 .month-grid__days {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 3px;
+  gap: var(--month-grid-gap);
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Clips the edge columns' `::before` hit-target overflow (below) here,
+     before it reaches `.month-grid__track` — otherwise that 5px poking past
+     the grid's left/right edge counts as real horizontal scroll content, and
+     `.month-grid__track`'s own `overflow-x: hidden` only hides it visually
+     while still letting `scrollLeft` move into it (issue #1039, AK3). */
+  overflow-x: hidden;
 }
 
 .month-grid__day {
@@ -83,7 +101,7 @@
   justify-content: center;
   gap: 2px;
   width: 100%;
-  height: 34px;
+  height: var(--month-grid-day-size);
   border: none;
   border-radius: 11px;
   background: transparent;
