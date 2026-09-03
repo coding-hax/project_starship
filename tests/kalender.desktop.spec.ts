@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -15,6 +15,19 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
     (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
     payload,
   );
+}
+
+/** Text-node-tight bounding box (not the h1's own, flex-grown box) — mirrors
+ *  kalender.spec.ts's own textBoundingBox, same reason (issue #921 AK4): the
+ *  heading's box fills whatever width `flex` gives it, so its own edge would
+ *  always sit flush next to the figure regardless of how short the text is. */
+async function textBoundingBox(locator: Locator): Promise<{ x: number; right: number }> {
+  return locator.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, right: rect.right };
+  });
 }
 
 test.beforeEach(async ({ page }) => {
@@ -74,4 +87,32 @@ test('das Monatsraster wird nicht auf die Spaltenhöhe gestreckt (issue #1021 AK
   // Die Karte trägt heute nur Punkte je Tag und bliebe gestreckt fast leer —
   // ihre eigene Höhe muss deutlich unter der der ganzen Ansicht liegen.
   expect(gridBox.height).toBeLessThan(viewBox.height * 0.9);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2: Figur neben dem Titelwort, ab 768px                                   */
+/* -------------------------------------------------------------------------- */
+
+test('die Figur sitzt ab 768px dicht neben dem Titelwort, nicht am rechten Rand (issue #1021 AK2)', async ({
+  page,
+}) => {
+  const heading = page.locator('.calendar-view__heading');
+  const face = page.locator('.calendar-view__title-row .face');
+  await expect(heading).toBeVisible();
+  await expect(face).toBeVisible();
+
+  const [titleBox, faceBox, viewBox] = await Promise.all([
+    textBoundingBox(heading),
+    face.boundingBox(),
+    page.locator('.calendar-view').boundingBox(),
+  ]);
+  if (!faceBox || !viewBox) throw new Error('AK2: Figur oder Ansicht ohne BoundingBox');
+
+  const gapToTitle = faceBox.x - titleBox.right;
+  const gapToRightEdge = viewBox.x + viewBox.width - (faceBox.x + faceBox.width);
+  // Die Figur sitzt dicht am sichtbaren Textende — nicht mit einem großen
+  // Zwischenraum, der sie stattdessen an den rechten Ansichtsrand rückte
+  // (die Desktop-Umkehr von #921 AK4, das bei 375×812 unverändert grün bleibt).
+  expect(gapToTitle).toBeLessThan(gapToRightEdge);
+  expect(gapToTitle).toBeLessThan(48);
 });

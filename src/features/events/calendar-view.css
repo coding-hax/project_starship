@@ -83,3 +83,18 @@
     grid-column: 2;
   }
 }
+
+/* Figur neben dem Titelwort statt am rechten Rand (issue #1021 AK2) — gilt in
+   beiden Ansichten (der Kopf ist geteilt), hebt mobile #921-AK4-Regeln auf:
+   `.calendar-view__heading`s `flex: 1 1 auto` (Zeile oben) und
+   `.calendar-view__eyebrow`s `justify-content: space-between` (Zeile oben)
+   bleiben unter 768px unangetastet. */
+@media (min-width: 768px) {
+  .calendar-view__heading {
+    flex: 0 1 auto;
+  }
+
+  .calendar-view__eyebrow {
+    justify-content: flex-start;
+  }
+}
