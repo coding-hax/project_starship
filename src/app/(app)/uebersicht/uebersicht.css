@@ -161,10 +161,15 @@
      * abgeleitet werden: FAB-Oberkante über dem Viewport-Boden ist
      * `space-6 + safe-area + keyboard-inset + 58px` (Höhe), `.shell__main`
      * trägt auf Desktop bereits `padding-bottom: var(--space-12)` (shell.css,
-     * flach, ohne safe-area) — die Differenz ist die hier nötige Reserve. */
+     * flach, ohne safe-area) — die Differenz ist die hier nötige Reserve.
+     * `+ 4px` obendrauf: die exakte Differenz lässt keinerlei Spielraum, und
+     * Chromiums Spaltenausgleich (`columns: 2`) rundet die tatsächliche
+     * Spaltenhöhe je nach Inhalt um Bruchteile eines Pixels nach oben ab
+     * (beobachtet: 0,19px bei 20 Aufgaben) — ohne Puffer ragt die letzte
+     * Sektion dann hauchdünn in den Fab hinein. */
     padding-bottom: calc(
       var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset) + 58px -
-        var(--space-12)
+        var(--space-12) + 4px
     );
   }
 
