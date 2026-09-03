@@ -362,6 +362,12 @@
     border-radius: 0;
     box-shadow: none;
     overflow: visible;
+    /* No longer its own surface at this breakpoint (issue #1019) — undoes the
+       base rule's "own surface, own ink" reset above, so inactive links go
+       back to reading the route's own --on-ground instead of the fixed
+       --text-base meant for the mobile pill's opaque fill. */
+    --text: var(--on-ground);
+    --text-muted: var(--on-ground-muted);
   }
 
   .nav__list {
