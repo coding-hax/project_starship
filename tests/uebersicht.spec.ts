@@ -80,6 +80,13 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
   );
 }
 
+async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -1170,6 +1177,41 @@ test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBe(0);
+});
+
+test('AK1 (issue #1054): ganz nach unten gescrollt endet der Inhalt dort, wo der Fab anfängt, ohne 120px-Reserverest darunter', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedHabit(page, {
+    name: 'Bodenreserve-Routine',
+    schedule: 'daily',
+    color: null,
+    archivedAt: null,
+  });
+
+  // Letzte Sektion ist die Routinen-Karte (Wetter → Termine → Aufgaben →
+  // Aktivitäten → Routinen, docs/CODEMAP.md) — dieselbe, die im Ticket-
+  // Screenshot den Rest unter sich stehen hat.
+  const lastBlock = page.locator('.overview-block').last();
+  await expect(lastBlock).toBeVisible();
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+  await expect(fab).toBeVisible();
+
+  const [blockBox, fabBox] = await Promise.all([lastBlock.boundingBox(), fab.boundingBox()]);
+  expect(blockBox, 'letzte Sektion hat eine Bounding-Box').not.toBeNull();
+  expect(fabBox, 'Fab hat eine Bounding-Box').not.toBeNull();
+
+  const gap = fabBox!.y - (blockBox!.y + blockBox!.height);
+  expect(gap, `Abstand ${gap}px zwischen letzter Sektion und Fab liegt außerhalb von 0–24px`)
+    .toBeGreaterThanOrEqual(0);
+  expect(gap, `Abstand ${gap}px zwischen letzter Sektion und Fab liegt außerhalb von 0–24px`)
+    .toBeLessThanOrEqual(24);
 });
 
 // Ein Test je Route statt einer Schleife in einem Test: jede Navigation bekommt
