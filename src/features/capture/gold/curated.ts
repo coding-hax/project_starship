@@ -48,6 +48,8 @@ export const CURATED_CASES: GoldCase[] = [
     ['Neuer Termin Mittwoch 16 Uhr Teamrunde', 'event', 'Teamrunde', on(1, 17, 16)],
     ['Mach eine Notiz, dass ich das Auto tanken muss', 'task', 'Auto tanken', null],
     ['Erstell eine Aufgabe für morgen, Fenster putzen', 'task', 'Fenster putzen', on(1, 16)],
+    ['Erstelle mir einen Termin am Mittwoch um 14 Uhr beim Zahnarzt', 'event', 'Termin Zahnarzt', on(1, 17, 14)],
+    ['Termin für Mittwoch anlegen', 'event', 'Termin', on(1, 17)],
   ]),
 
   ...rows('Tageszeit', [
@@ -91,6 +93,20 @@ export const CURATED_CASES: GoldCase[] = [
     ['Um 8 Brötchen holen', 'task', 'Brötchen holen', on(1, 16, 8)],
     ['Morgen um 14 Uhr Milch kaufen', 'task', 'Milch kaufen', on(1, 16, 14)],
     ['Zug nach Hamburg um 7:42', 'task', 'Zug nach Hamburg', on(1, 16, 7, 42)],
+  ]),
+
+  ...rows('Kein Diktat, nur ein Verb', [
+    // Das erste Wort ist zufällig auch ein Diktierverb. Ohne zweites Signal
+    // (Dativpronomen, „bitte", Objektwort, Trenner) bleibt der Satz unangetastet —
+    // sonst würde aus „Plan B besprechen" ein „B besprechen".
+    ['Plan B besprechen', 'task', 'Plan B besprechen', null],
+    ['Leg dich hin', 'task', 'Leg dich hin', null],
+    ['Setz Kaffee auf', 'task', 'Setz Kaffee auf', null],
+    ['Pack Koffer', 'task', 'Pack Koffer', null],
+    ['Notiere Kilometerstand', 'task', 'Notiere Kilometerstand', null],
+    ['Schreib Oma eine Mail', 'task', 'Schreib Oma eine Mail', null],
+    ['Mach Sport', 'task', 'Mach Sport', null],
+    ['Planung fertigstellen', 'task', 'Planung fertigstellen', null],
   ]),
 
   ...rows('Schlüsselwort-Grenzfall', [

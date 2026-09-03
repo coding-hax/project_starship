@@ -808,6 +808,22 @@ const DICTATION_BODY_PATTERN = new RegExp(
     String.raw`(?:dass\s+(?:ich|wir)\s+)?`,
   'iu',
 );
+/**
+ * Ein Kommandoverb allein macht noch kein Diktat: „Plan B besprechen", „Setz Kaffee auf"
+ * und „Pack Koffer" sind Aufgaben, deren erstes Wort zufällig auch ein Diktierverb ist.
+ * Der Kopf fällt deshalb nur, wenn ein zweites Signal danebensteht — ein Dativpronomen,
+ * eine Höflichkeitsfloskel oder ein Objektwort. (Der Trenner-Fall läuft über
+ * DICTATION_BODY_PATTERN und braucht diese Prüfung nicht.)
+ */
+const DICTATION_MARKER_PATTERN = new RegExp(
+  String.raw`^\s*${DICTATION_VERB}\b(?:` +
+    String.raw`\s+(?:mir|dir|uns)(?![\p{L}\p{N}_])` +
+    String.raw`|\s+bitte(?![\p{L}\p{N}_])` +
+    String.raw`|(?:\s+\S+){0,4}?\s+(?:einen|eine|ein|nen|den|die|das)?\s*${DICTATION_OBJECT}(?![\p{L}\p{N}_])` +
+    String.raw`)`,
+  'iu',
+);
+
 const DICTATION_DATIVE_PATTERN = /(?<![\p{L}\p{N}_])(?:mir|dir|uns)(?![\p{L}\p{N}_])/giu;
 const DICTATION_POLITE_PATTERN = /(?<![\p{L}\p{N}_])bitte(?![\p{L}\p{N}_])/giu;
 /** Nur der Artikel VOR dem Objektwort — das Objektwort trägt den Titel. */
@@ -826,6 +842,8 @@ function findDictationSpans(text: string): Span[] {
   if (body && text.slice(body[0].length).trim().length > 0) {
     return [{ start: 0, end: body[0].length }];
   }
+
+  if (!DICTATION_MARKER_PATTERN.test(text)) return [];
 
   const spans: Span[] = [{ start: 0, end: head[0].length }];
   for (const pattern of [DICTATION_DATIVE_PATTERN, DICTATION_POLITE_PATTERN, DICTATION_ARTICLE_PATTERN]) {
