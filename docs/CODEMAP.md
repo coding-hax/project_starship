@@ -98,7 +98,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText`
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer
 - `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
-- `corpus.ts` — tabellengetriebenes Satz-Korpus (überlebt die Implementierung)
+- `corpus.ts` — tabellengetriebenes Satz-Korpus
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
@@ -109,8 +109,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `recover-orphaned-entries.ts` — bergt Einträge unter gestashtem Alt-DEK, verschlüsselt sie unter dem aktuellen DEK neu
 - `dek-session.ts` / `use-journal-persist-pref.ts` — opt-in persistierter DEK (`journalSession`) + Pref
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
-- `decrypt-journal-row.ts` / `conflicts.ts` — entschlüsselt Zeilen einzeln (unlesbare fällt raus) + Konflikte
-- `use-journal-{conflicts,entries,search-entries,orphaned-key}.ts` — `liveQuery`-Hooks
+- `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
+- `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Eintragsstrom+FAB
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile
@@ -128,8 +128,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge auf /uebersicht
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
 - `habit-tiles.tsx` / `.css` — drei Kennzahl-Kacheln auf /routinen
-- `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile, ersetzt `habit-list.tsx`
-- `habit-history-card.tsx` / `.css` — 30-Tage-Verlaufskarte auf /routinen, ersetzt `streak-summary-card.tsx`
+- `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
+- `habit-history-card.tsx` / `.css` — 30-Tage-Verlaufskarte auf /routinen
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
@@ -226,6 +226,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark)
 - `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
+- `uebersicht.desktop.spec.ts` — /uebersicht ab 768px zweispaltig (Sektionen, Titelfigur, FAB-Reserve), 1280×800
 - `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
