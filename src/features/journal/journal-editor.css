@@ -1,7 +1,7 @@
 /**
- * The entry stream (AK3, #701) — day groups newest-first, each a header plus
- * its entries. Field styling for the create sheet's own form now lives in
- * journal-entry-sheet.css.
+ * The day card (AK1–AK4, #1048, first cut of #1046) — one surface for today,
+ * its own line plus a collapsible "N weitere Notizen" panel for the rest.
+ * Field styling for the create sheet's own form lives in journal-entry-sheet.css.
  */
 
 .journal-editor {
@@ -17,17 +17,112 @@
   color: var(--text-muted);
 }
 
-.journal-editor__day-group {
+/* AK1/AK3: the surface itself — --surface/--radius-surface/--shadow-raised,
+   same own-surface/own-ink reset as section-card.css. */
+.journal-day-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  max-width: 480px;
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
 }
 
-.journal-editor__day-header {
+/* AK3: the empty invitation — dashed --border-strong instead of the raised
+   surface, no shadow, tap opens the same sheet as the FAB. */
+.journal-day-card--empty {
+  align-items: stretch;
+  min-height: var(--touch-target);
+  border: 1px dashed var(--border-strong);
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-day-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.journal-day-card__eyebrow {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-secondary);
   font-weight: var(--weight-emphasis);
+}
+
+.journal-day-card__date {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+}
+
+/* AK4: mood as a tinted dot in the card header, never the "Stimmung N/10" text
+   — the tint is the journal area colour mixed toward --surface, 7% per point. */
+.journal-day-card__mood {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--area-journal) calc(var(--mood) * 7%), var(--surface));
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+}
+
+.journal-day-card__line {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.journal-day-card__placeholder {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.journal-day-card__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.journal-day-card__more {
+  min-height: var(--touch-target);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+}
+
+.journal-day-card__delete {
+  margin-left: auto;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
 }
 
 .journal-editor__entries {
@@ -183,31 +278,15 @@
   text-decoration: underline;
 }
 
-/* Zwei Bahnen ab 768px (issue #1023, Teil 8 von #1015): der 480px-Deckel und
-   der flex-Fluss weichen einem Mehrspalten-Fluss (AK1) — `columns` wirkt nicht
-   auf `display: flex`, deshalb muss `display: block` mitgehen.
-   `column-gap: var(--space-6)`, nicht `--space-5`: der Token existiert nicht
-   (Fund nebenbei, journal-editor.css alte Zeile 10/journal-mood-band.css) —
-   `--space-6` ist andernorts bereits die "Standard-Sektionslücke"
-   (uebersicht.css). AK4-Bodenreserve wie `.calendar-view` in
-   calendar-view.css (issue #1021): Desktop-Fab steht bei `bottom: space-6`
+/* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie `.calendar-view`
+   in calendar-view.css (issue #1021): Desktop-Fab steht bei `bottom: space-6`
    (fab.css), 58px hoch, `.shell__main` reserviert ab 768px nur `space-12`
-   (shell.css) — die Differenz wäre ein realer Überlapp. */
+   (shell.css) — die Differenz wäre ein realer Überlapp. Der Zwei-Bahnen-Fluss
+   aus issue #1023 (Teil 8 von #1015) entfiel mit dem Strom, den er anordnete
+   (#1046, „Was dabei mitstirbt") — sein Nachfolger ist das Desktop-Kind-Ticket
+   von #1046, nicht dieser PR. */
 @media (min-width: 768px) {
   .journal-editor {
-    display: block;
-    max-width: none;
-    columns: 2;
-    column-gap: var(--space-6);
     padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
-  }
-
-  /* AK2: eine Tagesgruppe bleibt in einer Bahn. `margin-bottom` ersetzt die
-     vertikale Lücke, die mobil aus `.journal-editor { gap: var(--space-5) }`
-     kommt (row-gap wirkt im Mehrspalten-Fluss nicht) — ebenfalls
-     `--space-6`, siehe oben. */
-  .journal-editor__day-group {
-    break-inside: avoid;
-    margin-bottom: var(--space-6);
   }
 }

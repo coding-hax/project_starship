@@ -301,10 +301,10 @@ async function submit(page: Page): Promise<void> {
 
 /** Sets (or, with '', clears) the mood via the native select (issue #785,
  * replaces the ten-point MoodScale in the create sheet). Scoped to the open
- * dialog — the 14-day mood band (issue #703, journal-mood-band.tsx) sits on
- * the same page and also carries "Stimmung" in its aria-labels once at least
- * one entry exists, which made the unscoped `page.getByLabel('Stimmung')`
- * ambiguous as soon as a prior entry had been submitted. */
+ * dialog — the day card's own mood dot (AK4, #1048) also carries "Stimmung"
+ * in its `aria-label` once an entry exists, which made the unscoped
+ * `page.getByLabel('Stimmung')` ambiguous as soon as a prior entry had been
+ * submitted. */
 async function setMood(page: Page, value: number | ''): Promise<void> {
   await page
     .getByRole('dialog', { name: 'Eintragen' })
@@ -317,6 +317,13 @@ async function entryCountInDb(entryDate: string): Promise<number> {
     client.query('SELECT count(*)::int AS n FROM journal_entries WHERE entry_date = $1', [entryDate]),
   );
   return rows.rows[0].n as number;
+}
+
+/** Opens the "N weitere Notizen" panel (AK2, #1048) — present once today
+ * carries more than one entry, revealing every entry but the day's line
+ * (the first created, AK2) via the existing `.journal-editor__entry` markup. */
+async function expandMoreNotes(page: Page): Promise<void> {
+  await page.locator('.journal-day-card__more').click();
 }
 
 /** Same probe-element pattern as habits-week-grid.spec.ts's resolveBackgroundToken —
@@ -417,9 +424,8 @@ test('AC2 (#785): selectOption setzt die Stimmung, selectOption(\'\') nimmt sie 
 
   await page.getByLabel('Journal-Text').fill('Ohne Stimmung abgesendet');
   await submit(page);
-  // Scoped auf das Mood-Badge (journal-editor.tsx), nicht auf den ganzen Eintrag —
-  // der eingegebene Text selbst enthält "Stimmung" als Substring.
-  await expect(page.locator('.journal-editor__entry-mood')).toHaveCount(0);
+  // AK4 (#1048): kein Mood-Wert -> kein Punkt im Kartenkopf.
+  await expect(page.locator('.journal-day-card__mood')).toHaveCount(0);
 });
 
 test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eintragen-Knopf legt einen Eintrag an', async ({
@@ -434,10 +440,11 @@ test('AC1: ein gesetzter Mood-Wert allein schreibt noch nichts — erst der Eint
   // statt gegen Postgres geprüft (AC8 deckt den Server-Sync-Pfad separat ab)
   // — kein window.__starship.sync() nötig, der ohnehin erst alle 30s
   // automatisch liefe.
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.locator('.journal-day-card--empty')).toBeVisible();
 
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-day-card--empty')).toHaveCount(0);
+  await expect(page.locator('.journal-day-card__mood')).toHaveText('8');
 });
 
 test('AC3 (#785): Auswahlfeld und Tags-Feld bleiben bei 375px kompakt in einer Reihe, ohne horizontalen Scroll', async ({
@@ -476,7 +483,7 @@ test('AC3 (#785): Auswahlfeld und Tags-Feld bleiben bei 375px kompakt in einer R
   expect(docScrollWidth).toBeLessThanOrEqual(docClientWidth);
 });
 
-test('AC2/AC3: das Sheet schließt nach dem Absenden, ein neu geöffnetes startet leer; mehrere Einträge stehen darunter, neueste zuerst, mit Uhrzeit', async ({
+test('AC2/AC3 (angepasst AK1/AK2, #1048): das Sheet schließt nach dem Absenden, ein neu geöffnetes startet leer; ein zweiter Eintrag desselben Tages steht nicht als eigene Karte, sondern hinter „N weitere Notizen", mit Uhrzeit', async ({
   page,
 }) => {
   await setUpEditor(page);
@@ -485,7 +492,10 @@ test('AC2/AC3: das Sheet schließt nach dem Absenden, ein neu geöffnetes starte
   await page.getByLabel('Journal-Text').fill('Erster Eintrag');
   await submit(page);
 
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  // AK1/AK2: der zuerst angelegte Eintrag ist die Zeile des Tages — kein
+  // "weitere Notizen"-Knopf, solange es nur ihn gibt.
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
+  await expect(page.locator('.journal-day-card__more')).toHaveCount(0);
 
   // Create-Sheet startet bei jedem Öffnen leer (#701) — das ersetzt die alte
   // "Feld leer nach dem Absenden"-Prüfung, die ein sichtbar bleibendes
@@ -496,12 +506,16 @@ test('AC2/AC3: das Sheet schließt nach dem Absenden, ein neu geöffnetes starte
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
 
+  // AK1: die Zeile des Tages bleibt der zuerst angelegte Eintrag — der zweite
+  // erscheint nicht als eigene Karte, sondern erst hinter AK2's Knopf.
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
+  await expect(page.locator('.journal-day-card__more')).toHaveText('1 weitere Notiz');
+
+  await expandMoreNotes(page);
   const entries = page.locator('.journal-editor__entry');
-  await expect(entries).toHaveCount(2);
-  // Neuester zuerst.
-  await expect(entries.nth(0)).toContainText('Zweiter Eintrag');
-  await expect(entries.nth(1)).toContainText('Erster Eintrag');
-  await expect(entries.nth(0).locator('.journal-editor__entry-time')).toHaveText(/^\d{2}:\d{2}$/);
+  await expect(entries).toHaveCount(1);
+  await expect(entries.first()).toContainText('Zweiter Eintrag');
+  await expect(entries.first().locator('.journal-editor__entry-time')).toHaveText(/^\d{2}:\d{2}$/);
 });
 
 test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin da — aus dem Chiffrat, nicht aus einem Klartextfeld', async ({
@@ -515,15 +529,15 @@ test('mehrere Einträge stehen nach Neuladen und erneutem Entsperren weiterhin d
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(2);
+  await expect(page.locator('.journal-day-card__more')).toHaveText('1 weitere Notiz');
 
   await page.reload();
   await unlockEditor(page);
 
-  const entries = page.locator('.journal-editor__entry');
-  await expect(entries).toHaveCount(2);
-  await expect(entries.nth(0)).toContainText('Zweiter Eintrag');
-  await expect(entries.nth(1)).toContainText('Erster Eintrag');
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
+  await expandMoreNotes(page);
+  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-editor__entry').first()).toContainText('Zweiter Eintrag');
 });
 
 test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — zwei Einträge tragen unterschiedliche Werte', async ({
@@ -548,12 +562,19 @@ test('AC4: Stimmung und Tags gehören zum einzelnen Eintrag, nicht zum Tag — z
   await page.getByLabel('Tags').fill('familie');
   await submit(page);
 
+  // AK1/AK4: die Zeile des Tages ist der zuerst angelegte Eintrag — ihre
+  // Stimmung sitzt als Punkt im Kartenkopf, Tags zeigt sie nicht (die gehören
+  // zur einzelnen Notiz, AK2). Der zweite Eintrag trägt seine eigenen Werte
+  // im "weitere Notizen"-Panel.
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Ruhiger Moment');
+  await expect(page.locator('.journal-day-card__mood')).toHaveText('5');
+
+  await expandMoreNotes(page);
   const entries = page.locator('.journal-editor__entry');
-  await expect(entries).toHaveCount(2);
-  await expect(entries.nth(0)).toContainText('Stimmung 9/10');
-  await expect(entries.nth(0).locator('.journal-editor__entry-tag')).toHaveText(['familie']);
-  await expect(entries.nth(1)).toContainText('Stimmung 5/10');
-  await expect(entries.nth(1).locator('.journal-editor__entry-tag')).toHaveText(['arbeit', 'sport']);
+  await expect(entries).toHaveCount(1);
+  await expect(entries.first()).toContainText('Anderer Moment, andere Stimmung');
+  await expect(entries.first()).toContainText('Stimmung 9/10');
+  await expect(entries.first().locator('.journal-editor__entry-tag')).toHaveText(['familie']);
 
   // Server-Sync ist sonst passiv (alle 30s) — explizit anstoßen, statt auf das
   // Intervall zu warten (Muster wie jede andere withDb()-Prüfung in dieser Datei).
@@ -566,10 +587,18 @@ test('AK4 (#700/#701)/AC6 (#785): Tags erscheinen als einzelne Pillen unter dem 
 }) => {
   await setUpEditor(page);
 
+  // Ein erster, taglos abgesendeter Eintrag wird zur Zeile des Tages (AK1) —
+  // der hier geprüfte Eintrag mit den drei Tags landet dadurch im "weitere
+  // Notizen"-Panel (AK2), wo Tags-Pillen zu sehen sind.
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Erste Notiz ohne Tags');
+  await submit(page);
+
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Eintrag mit drei Tags');
   await page.getByLabel('Tags').fill('eins, zwei, drei');
   await submit(page);
+  await expandMoreNotes(page);
 
   const pills = page.locator('.journal-editor__entry-tag');
   await expect(pills).toHaveCount(3);
@@ -594,10 +623,10 @@ test('AC5: ein abgesendeter Eintrag lässt sich löschen — Soft-Delete über d
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Wird gelöscht');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Wird gelöscht');
 
   await page.getByRole('button', { name: 'Eintrag löschen' }).click();
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.locator('.journal-day-card--empty')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
 
   await page.evaluate(() => window.__starship.sync());
@@ -630,11 +659,11 @@ test('AC5: offline gelöschter Eintrag bleibt ohne Rückgängig-Popup weg und er
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Offline gelöscht');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Offline gelöscht');
 
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Eintrag löschen' }).click();
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.locator('.journal-day-card--empty')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toBeHidden();
   // Two entries for the create (journal_entries + the auto-checked-off Journal
   // habit, issue #505 AC4 — appendJournalEntry's logJournalHabit call), one
@@ -686,7 +715,7 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag
   // sync() below can catch it between the journal_entries write and the habit_logs
   // one, pushing the entry but not yet the log. The rendered entry is the signal
   // that the whole chain, auto-log included, has settled.
-  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Erster Eintrag' })).toBeVisible();
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => journalHabitLogRows(entryDate)).toHaveLength(1);
@@ -696,7 +725,10 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry').filter({ hasText: 'Zweiter Eintrag' })).toBeVisible();
+  // Die Zeile des Tages bleibt der zuerst angelegte Eintrag (AK1) — der
+  // zweite landet hinter AK2's "1 weitere Notiz", ist aber trotzdem das
+  // Signal, dass auch sein Schreibpfad (inkl. Habit-Log) durchgelaufen ist.
+  await expect(page.locator('.journal-day-card__more')).toHaveText('1 weitere Notiz');
   await page.evaluate(() => window.__starship.sync());
 
   // Idempotent (ADR-0018): der zweite Eintrag am selben Tag findet die bestehende
@@ -755,15 +787,21 @@ test('AC1 (#505): das Journal-Modul legt genau eine Journal-Routine an, ein zwei
 /* issue #374: Datum im Journal-Kopf, Eintrag trägt den Tag des Absendens     */
 /* -------------------------------------------------------------------------- */
 
-const JOURNAL_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
+/** Langes Datumsformat, geteilt von der Augenbraue (`TodayLongDate`, issue
+ * #868) und der Zeile-des-Tages-Karte (`journal-day-card__date`, #1048) —
+ * beide rendern denselben `<TodayLongDate/>`. */
+const EYEBROW_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
   day: 'numeric',
   month: 'long',
 });
 
-const WEEKDAY_LONG_FORMATTER = new Intl.DateTimeFormat('de-DE', { weekday: 'long' });
+/* -------------------------------------------------------------------------- */
+/* AK1–AK5 (#1048, erster Schnitt von #1046): der Eintragsstrom weicht der   */
+/* Zeile des Tages — ein Fläche für heute statt Tagesgruppe → n Karten.       */
+/* -------------------------------------------------------------------------- */
 
-test('AK3 (#700/#701, Nachfolger von #374 AC1): „Heute · <Wochentag>“ steht über der Eintragsliste des heutigen Tages', async ({
+test('AK1 (#1048): /journal zeigt für heute eine Fläche mit „Heute", dem langen Datum und der Zeile des Tages', async ({
   page,
 }) => {
   await installClockAt(page);
@@ -773,49 +811,189 @@ test('AK3 (#700/#701, Nachfolger von #374 AC1): „Heute · <Wochentag>“ steht
   await page.getByLabel('Journal-Text').fill('Eintrag für heute');
   await submit(page);
 
-  const header = page.locator('.journal-editor__day-header');
-  await expect(header).toHaveText(`Heute · ${WEEKDAY_LONG_FORMATTER.format(new Date(FIXED_NOW))}`);
+  const card = page.locator('.journal-day-card');
+  await expect(card.locator('.journal-day-card__eyebrow')).toHaveText('Heute');
+  await expect(card.locator('.journal-day-card__date')).toHaveText(
+    EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)),
+  );
+  await expect(card.locator('.journal-day-card__line')).toHaveText('Eintrag für heute');
 
-  const headerBox = await header.boundingBox();
-  const listBox = await page.locator('.journal-editor__entries').boundingBox();
-  expect(headerBox).not.toBeNull();
-  expect(listBox).not.toBeNull();
-  expect(headerBox!.y).toBeLessThan(listBox!.y);
+  const surfaceBg = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(surfaceBg).toBe(await resolveBackgroundToken(page, '--surface'));
+  const surfaceShadow = await card.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(surfaceShadow).not.toBe('none');
 });
 
-test('AK3 (#700/#701, Nachfolger von #423): Tagesköpfe zeigen Heute/Gestern/Datum, Tagesgruppen absteigend sortiert', async ({
+test('AK1 (#1048): ein zweiter Eintrag desselben Tages erscheint nicht als eigene Karte', async ({ page }) => {
+  await setUpEditor(page);
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await submit(page);
+
+  await expect(page.locator('.journal-day-card')).toHaveCount(1);
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
+});
+
+test('AK1 (#1048): die Fläche nutzt --surface, das sich im Dark Mode tatsächlich unterscheidet', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Für den Dark-Mode-Test');
+  await submit(page);
+
+  const card = page.locator('.journal-day-card');
+  const lightBg = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const darkBg = await card.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(darkBg).not.toBe(lightBg);
+});
+
+test('AK2 (#1048): „N weitere Notizen" zählt in Einzahl/Mehrzahl und öffnet die weiteren Einträge mit Uhrzeit, Text und Tags', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  await expect(page.locator('.journal-day-card__more')).toHaveCount(0);
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
+  await page.getByLabel('Tags').fill('sport');
+  await submit(page);
+  await expect(page.locator('.journal-day-card__more')).toHaveText('1 weitere Notiz');
+
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Dritter Eintrag');
+  await submit(page);
+  await expect(page.locator('.journal-day-card__more')).toHaveText('2 weitere Notizen');
+
+  await expandMoreNotes(page);
+  const entries = page.locator('.journal-editor__entry');
+  await expect(entries).toHaveCount(2);
+  // Neuester zuerst, wie zuvor der Strom.
+  await expect(entries.nth(0)).toContainText('Dritter Eintrag');
+  await expect(entries.nth(1)).toContainText('Zweiter Eintrag');
+  await expect(entries.nth(1).locator('.journal-editor__entry-tag')).toHaveText(['sport']);
+  await expect(entries.nth(0).locator('.journal-editor__entry-time')).toHaveText(/^\d{2}:\d{2}$/);
+});
+
+test('AK2 (#1048): eine im Panel gelöschte weitere Notiz nimmt die Zeile des Tages nicht mit und erreicht als Tombstone die Datenbank', async ({
   page,
 }) => {
   await installClockAt(page);
   await setUpEditor(page);
-
-  // FIXED_NOW ist der 18.07.2026 — vorgestern und gestern über den E2E-Bridge-Pfad
-  // geseedet (wie AC2 #480 unten), damit der Test nicht auf eine Mitternachts-
-  // Grenze der Fake-Uhr angewiesen ist.
-  await page.evaluate(async () => {
-    await window.__starship.appendJournalEntry('2026-07-16', { text: 'Vorgestern geschrieben', tags: [] });
-    await window.__starship.appendJournalEntry('2026-07-17', { text: 'Gestern geschrieben', tags: [] });
-  });
-  await expect(page.locator('.journal-editor__day-header')).toHaveCount(2);
+  const entryDate = await page.evaluate(
+    (iso) => new Date(iso).toLocaleDateString('en-CA'),
+    FIXED_NOW,
+  );
 
   await openSheet(page);
-  await page.getByLabel('Journal-Text').fill('Heute geschrieben');
+  await page.getByLabel('Journal-Text').fill('Erster Eintrag');
+  await submit(page);
+  await openSheet(page);
+  await page.getByLabel('Journal-Text').fill('Zweiter Eintrag');
   await submit(page);
 
-  const headers = page.locator('.journal-editor__day-header');
-  await expect(headers).toHaveCount(3);
-  await expect(headers.nth(0)).toHaveText(`Heute · ${WEEKDAY_LONG_FORMATTER.format(new Date(FIXED_NOW))}`);
-  await expect(headers.nth(1)).toHaveText('Gestern');
-  await expect(headers.nth(2)).toHaveText(JOURNAL_DATE_FORMATTER.format(new Date(2026, 6, 16)));
+  await expandMoreNotes(page);
+  await page.getByRole('button', { name: 'Eintrag löschen' }).click();
+
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
+  await expect(page.locator('.journal-day-card__more')).toHaveCount(0);
+
+  await page.evaluate(() => window.__starship.sync());
+  const rows = await withDb((client) =>
+    client.query(
+      'SELECT deleted_at FROM journal_entries WHERE entry_date = $1 ORDER BY created_at',
+      [entryDate],
+    ),
+  );
+  expect(rows.rowCount).toBe(2);
+  expect(rows.rows[0].deleted_at).toBeNull(); // "Erster Eintrag" bleibt.
+  expect(rows.rows[1].deleted_at).not.toBeNull(); // "Zweiter Eintrag" ist ein Tombstone.
 });
 
-/** Langes Datumsformat der Augenbraue (`TodayLongDate`, issue #868) — anders
- * als `JOURNAL_DATE_FORMATTER` oben (Tagesköpfe im Eintragsstrom), das den
- * Wochentag abgekürzt zeigt. */
-const EYEBROW_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
+test('AK3 (#1048): ohne Eintrag zeigt der Tag ein leeres Feld „Deine Zeile für heute" mit gestrichelter Kante und ohne Stimmungspunkt', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  const empty = page.locator('.journal-day-card--empty');
+  await expect(empty).toContainText('Deine Zeile für heute');
+  await expect(empty.locator('.journal-day-card__mood')).toHaveCount(0);
+
+  const borderStyle = await empty.evaluate((el) => getComputedStyle(el).borderStyle);
+  const borderColor = await empty.evaluate((el) => getComputedStyle(el).borderColor);
+  expect(borderStyle).toBe('dashed');
+  expect(borderColor).toBe(await resolveBackgroundToken(page, '--border-strong'));
+});
+
+test('AK3 (#1048): ein Tippen auf das leere Feld öffnet dasselbe Sheet wie der FAB', async ({ page }) => {
+  await setUpEditor(page);
+
+  await page.locator('.journal-day-card--empty').click();
+  await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
+});
+
+test('AK4 (#1048): die Stimmung steht als getönter Punkt im Kartenkopf, nie als „Stimmung N/10"-Text', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await openSheet(page);
+  await setMood(page, 8);
+  await page.getByLabel('Journal-Text').fill('Guter Tag');
+  await submit(page);
+
+  const dot = page.locator('.journal-day-card__mood');
+  await expect(dot).toHaveText('8');
+  await expect(page.locator('.journal-day-card')).not.toContainText('Stimmung 8/10');
+
+  const bg = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const expected = await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'color-mix(in oklab, var(--area-journal) calc(8 * 7%), var(--surface))';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  });
+  expect(bg).toBe(expected);
+});
+
+test('AK4 (#1048): die Zahl im Stimmungspunkt steht in --font-display', async ({ page }) => {
+  await setUpEditor(page);
+  await openSheet(page);
+  await setMood(page, 5);
+  await page.getByLabel('Journal-Text').fill('Mit Punktschrift');
+  await submit(page);
+
+  const dot = page.locator('.journal-day-card__mood');
+  const fontFamily = await dot.evaluate((el) => getComputedStyle(el).fontFamily);
+  const expected = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.fontFamily = 'var(--font-display)';
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).fontFamily;
+    probe.remove();
+    return value;
+  });
+  expect(fontFamily).toBe(expected);
+});
+
+test('AK5 (#1048): das 14-Tage-Stimmungsband ist entfernt, der Zusatz-Slot im Kopf bleibt leer', async ({
+  page,
+}) => {
+  await setUpEditor(page);
+
+  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
+  await expect(page.locator('.page-head__extra')).toHaveCount(0);
 });
 
 test('issue #469/#868: das heutige Datum steht als Augenbraue über der Überschrift „Wie war dein Tag?“', async ({
@@ -856,7 +1034,7 @@ test('AK4 (#714, ehem. AC-D/#423): der Eintragen-Knopf in der Kopfzeile ist blas
   // Ein disabled Submit-Button submittet nicht (native Browser-Semantik) —
   // force, weil Playwright einen disabled-Klick sonst gar nicht erst versucht.
   await action.click({ force: true });
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(0);
+  await expect(page.locator('.journal-day-card--empty')).toBeVisible();
 
   await setMood(page, 6);
   await expect(action).toBeEnabled();
@@ -895,15 +1073,14 @@ test('AC2/AC3: bleibt die App über Mitternacht offen, trägt ein danach abgesen
   await page.clock.resume();
 
   // Kein eigener Tages-State mehr, der über Mitternacht "rollen" könnte
-  // (#701 entfernt den entryDate-State + Mitternachts-Timer) — der Beweis ist
-  // der Tageskopf, unter dem der neue Eintrag tatsächlich erscheint.
+  // (#701 entfernt den entryDate-State + Mitternachts-Timer, #1048 hat keinen
+  // neuen eingeführt) — der Beweis ist die Zeile des Tages, unter der der neue
+  // Eintrag tatsächlich erscheint, mit dem langen Datum des neuen Tages.
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Nach Mitternacht geschrieben');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
-  await expect(page.locator('.journal-editor__day-header')).toHaveText(
-    `Heute · ${WEEKDAY_LONG_FORMATTER.format(tomorrow)}`,
-  );
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Nach Mitternacht geschrieben');
+  await expect(page.locator('.journal-day-card__date')).toHaveText(EYEBROW_DATE_FORMATTER.format(tomorrow));
 
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => entryCountInDb(tomorrowKey)).toBe(1);
@@ -1062,7 +1239,9 @@ test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen ni
     await page.getByLabel('Journal-Text').fill(text);
     await submit(page);
   }
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(secrets.length);
+  // Der erste Eintrag ist die Zeile des Tages (AK1), die anderen beiden das
+  // Signal für "alle drei Schreibpfade sind durchgelaufen".
+  await expect(page.locator('.journal-day-card__more')).toHaveText('2 weitere Notizen');
 
   const dumpOffline = await page.evaluate(() => window.__starship.debugDumpStores());
   for (const secret of secrets) expect(dumpOffline).not.toContain(secret);
@@ -1091,7 +1270,7 @@ test('Konflikt-Banner erscheint nie und das Bridge-Handle dafür existiert nicht
   await openSheet(page);
   await page.getByLabel('Journal-Text').fill('Normaler Eintrag');
   await submit(page);
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
+  await expect(page.locator('.journal-day-card__line')).toHaveText('Normaler Eintrag');
 
   await expect(page.locator('.journal-editor__conflict')).toHaveCount(0);
 
@@ -1289,169 +1468,3 @@ test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
   await context.setOffline(false);
 });
 
-/* -------------------------------------------------------------------------- */
-/* issue #703: das 14-Tage-Stimmungsband über dem Eintragsstrom               */
-/* (Tageswert = arithmetisches Mittel, #700 Q1; reiner Lesekonsument des      */
-/* Sitzungs-Caches, kein zusätzlicher Entschlüssel).                          */
-/* -------------------------------------------------------------------------- */
-
-/** Seeds a set of moods across days within the 14-day window, offline first
- * (DoD-Offline-Pfad) — every entry runs through the outbox via
- * `appendJournalEntry` (entry.ts → write.ts), never a direct write. FIXED_NOW
- * is 18.07.2026, so 05.–18.07. are the fourteen days the band covers. */
-async function seedMoodBandEntries(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await window.__starship.appendJournalEntry('2026-07-10', { text: 'tief', mood: '3', tags: [] });
-    await window.__starship.appendJournalEntry('2026-07-14', { text: 'hoch', mood: '9', tags: [] });
-    // Zwei Stimmungen an einem Tag -> arithmetisches Mittel (4+9)/2 = 6,5 (#700 Q1).
-    await window.__starship.appendJournalEntry('2026-07-16', { text: 'morgens', mood: '4', tags: [] });
-    await window.__starship.appendJournalEntry('2026-07-16', { text: 'abends', mood: '9', tags: [] });
-    // Ein reiner Text-Eintrag ohne Stimmung -> graue Grundlinie, kein Balken.
-    await window.__starship.appendJournalEntry('2026-07-17', { text: 'nur Text', tags: [] });
-    await window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '7', tags: [] });
-  });
-}
-
-test('AK1 (#703): das Band zeigt 14 Tagesplätze, Höhe spiegelt die Stimmung, Mehrfach-Stimmung als Mittel, leere/stimmungslose Tage als graue Grundlinie, heute markiert', async ({
-  page,
-  context,
-}) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  // Offline-Pfad (DoD): offline geschrieben, dann online — im Band sichtbar.
-  await context.setOffline(true);
-  await seedMoodBandEntries(page);
-  await context.setOffline(false);
-
-  const band = page.locator('.journal-mood-band');
-  await expect(band).toBeVisible();
-
-  const slots = page.locator('.journal-mood-band__slot');
-  await expect(slots).toHaveCount(14);
-  // Vier Tage mit Stimmung -> vier farbige Balken; die übrigen zehn (inkl. der
-  // reine-Text-Tag) sind graue Grundlinien, kein Platz wird ausgelassen (AK1).
-  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(4);
-  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(10);
-
-  // Heute (18.07., letzter Platz) trägt den Marker.
-  const todaySlot = slots.nth(13);
-  await expect(todaySlot).toHaveAttribute('data-today', 'true');
-  await expect(todaySlot).toHaveAttribute('aria-current', 'date');
-  await expect(todaySlot.locator('.journal-mood-band__bar')).toHaveCount(1);
-
-  // Reiner Text-Eintrag (17.07., vorletzter Platz) -> graue Grundlinie, kein Balken.
-  await expect(slots.nth(12).locator('.journal-mood-band__baseline')).toHaveCount(1);
-  await expect(slots.nth(12).locator('.journal-mood-band__bar')).toHaveCount(0);
-
-  // Der Tag mit zwei Stimmungen (16.07.) zeigt das arithmetische Mittel 6,5.
-  const meanSlot = page.locator('.journal-mood-band__slot[aria-label*="6,5"]');
-  await expect(meanSlot).toHaveCount(1);
-
-  // Höhe ∝ Stimmung: Stimmung 9 (14.07.) höher als Stimmung 3 (10.07.); das
-  // Mittel 6,5 (16.07.) liegt messbar dazwischen.
-  const lowBar = slots.nth(5).locator('.journal-mood-band__bar'); // 10.07., Stimmung 3
-  const highBar = slots.nth(9).locator('.journal-mood-band__bar'); // 14.07., Stimmung 9
-  const meanBar = meanSlot.locator('.journal-mood-band__bar'); // 16.07., Mittel 6,5
-  const lowBox = await lowBar.boundingBox();
-  const highBox = await highBar.boundingBox();
-  const meanBox = await meanBar.boundingBox();
-  expect(lowBox).not.toBeNull();
-  expect(highBox).not.toBeNull();
-  expect(meanBox).not.toBeNull();
-  expect(highBox!.height).toBeGreaterThan(lowBox!.height);
-  expect(meanBox!.height).toBeGreaterThan(lowBox!.height);
-  expect(meanBox!.height).toBeLessThan(highBox!.height);
-
-  // Mobil (375px) ohne horizontalen Seiten-Scroll trotz 14 Plätze.
-  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-});
-
-test('AK8 (#703): frisch entsperrt ohne Einträge zeigt eine ruhige Notiz statt eines leeren Bands', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  await expect(page.locator('.journal-mood-band__empty')).toBeVisible();
-  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
-  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(0);
-});
-
-test('AK8 (#703): wenige Einträge zeigen das vollständige Band (14 Plätze), kein zerbrochenes Gerüst und keine Notiz', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  await page.evaluate(() =>
-    window.__starship.appendJournalEntry('2026-07-18', { text: 'einziger', mood: '5', tags: [] }),
-  );
-
-  await expect(page.locator('.journal-mood-band')).toBeVisible();
-  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
-  await expect(page.locator('.journal-mood-band__slot')).toHaveCount(14);
-  await expect(page.locator('.journal-mood-band__bar')).toHaveCount(1);
-  await expect(page.locator('.journal-mood-band__baseline')).toHaveCount(13);
-});
-
-test('AK6 (#703): im Suchmodus ist das Stimmungsband abwesend', async ({ page }) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  await page.evaluate(() =>
-    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '6', tags: [] }),
-  );
-  await expect(page.locator('.journal-mood-band')).toBeVisible();
-
-  // Suchmodus über die Lupe in der Titelzeile öffnen (#700 AK5).
-  await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
-  await expect(page.locator('.journal-search')).toBeVisible();
-
-  await expect(page.locator('.journal-mood-band')).toHaveCount(0);
-  await expect(page.locator('.journal-mood-band__empty')).toHaveCount(0);
-});
-
-test('AK9 (#703): die Band-Säule füllt mit --area-journal, das sich im Dark Mode tatsächlich unterscheidet', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  await page.evaluate(() =>
-    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
-  );
-
-  const bar = page.locator('.journal-mood-band__bar').first();
-  await expect(bar).toBeVisible();
-
-  const lightBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(lightBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
-
-  await page.emulateMedia({ colorScheme: 'dark' });
-  const darkBg = await bar.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(darkBg).not.toBe(lightBg);
-  expect(darkBg).toBe(await resolveBackgroundToken(page, '--area-journal'));
-});
-
-test('AK9 (#703): prefers-reduced-motion unterdrückt die Wachs-Animation der Säule', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpEditor(page);
-
-  await page.evaluate(() =>
-    window.__starship.appendJournalEntry('2026-07-18', { text: 'heute', mood: '8', tags: [] }),
-  );
-
-  const bar = page.locator('.journal-mood-band__bar').first();
-  await expect(bar).toBeVisible();
-
-  // Ohne Reduce: die Säule wächst über eine benannte Keyframe-Animation.
-  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('mood-bar-grow');
-
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  expect(await bar.evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
-});

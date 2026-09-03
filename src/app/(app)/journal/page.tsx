@@ -1,6 +1,5 @@
 import type { Viewport } from 'next';
 import { JournalGate } from '@/features/journal/journal-gate';
-import { JournalHeadMood } from '@/features/journal/journal-head-mood';
 import { JournalSearchToggle } from '@/features/journal/journal-search-toggle';
 import { PageFace } from '@/ui/faces';
 import { PageHead } from '@/ui/page-head';
@@ -28,7 +27,6 @@ export default function JournalPage() {
             <JournalSearchToggle />
           </div>
         }
-        extra={<JournalHeadMood />}
       >
         <h1 className="journal-page__heading">Wie war dein Tag?</h1>
         <PageFace face="journal" />
