@@ -37,10 +37,16 @@
 }
 
 /* AK3: the empty invitation — dashed --border-strong instead of the raised
-   surface, no shadow, tap opens the same sheet as the FAB. */
+   surface, no shadow, tap opens the same sheet as the FAB. `--border-strong`
+   reset back to the ground-relative value (issue #846's color-mix in
+   globals.css) — the surrounding `.journal-day-card` rule above resets it to
+   the fixed `-base` tone tuned for a real `--surface` background, but this
+   variant has `background: none` and sits directly on the route ground, where
+   that fixed tone falls to 1.74:1 (grundfarbe.spec.ts AK1). */
 .journal-day-card--empty {
   align-items: stretch;
   min-height: var(--touch-target);
+  --border-strong: unset;
   border: 1px dashed var(--border-strong);
   background: none;
   box-shadow: none;

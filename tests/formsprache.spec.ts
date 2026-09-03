@@ -286,7 +286,7 @@ test('AK4: ein Journal-Titel hat die Rundschrift, ein Journal-Absatz nicht', asy
     page.locator('h1', { hasText: 'Wie war dein Tag?' }),
     'h1 "Wie war dein Tag?"',
   );
-  await assertUiFamily(page.locator('.journal-editor__entry-text').first(), '.journal-editor__entry-text');
+  await assertUiFamily(page.locator('.journal-day-card__line').first(), '.journal-day-card__line');
 });
 
 /* -------------------------------------------------------------------------- */

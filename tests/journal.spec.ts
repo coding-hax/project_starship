@@ -902,7 +902,9 @@ test('AK2 (#1048): eine im Panel gelöschte weitere Notiz nimmt die Zeile des Ta
   await submit(page);
 
   await expandMoreNotes(page);
-  await page.getByRole('button', { name: 'Eintrag löschen' }).click();
+  // Scoped to the panel: the headline now carries its own "Eintrag löschen"
+  // button too (journal-day-card__delete), so the bare role query is ambiguous.
+  await page.locator('#journal-day-card-more').getByRole('button', { name: 'Eintrag löschen' }).click();
 
   await expect(page.locator('.journal-day-card__line')).toHaveText('Erster Eintrag');
   await expect(page.locator('.journal-day-card__more')).toHaveCount(0);

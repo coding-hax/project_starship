@@ -139,9 +139,9 @@ test('AC4: nach Recovery-Unlock kann eine neue Passphrase gesetzt werden, der DE
 
   // (a) Derselbe DEK -- der vor dem Sperren geschriebene Eintrag bleibt lesbar.
   // Kein Autosave-Entwurffeld mehr, das den Text zeigen würde (issue #376,
-  // ADR-0018) -- der Eintrag steht stattdessen in der Liste darunter.
+  // ADR-0018) -- der Eintrag steht stattdessen als Zeile des Tages (#1048).
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-  await expect(page.locator('.journal-editor__entry')).toContainText(entryText);
+  await expect(page.locator('.journal-day-card__line')).toContainText(entryText);
 
   // (b) Reload: die neue Passphrase entsperrt, die alte gibt nur die ruhige Meldung.
   await page.reload();
