@@ -30,3 +30,56 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* issue #1022 (Teil 7 von #1015): ab 768px steht Aufgaben in zwei Spalten.
+   Gescopt auf [data-ground="aufgaben"], weil TaskList mit /uebersicht
+   (data-ground="uebersicht", #1020) geteilt ist — ungescopte Regeln auf
+   .task-list__surface würden die dort eingebettete Liste mit-zweispalten. */
+@media (min-width: 768px) {
+  /* AK1: zwei Spalten. Die eine .task-list__surface (task-list.css) wird zum
+     2-Spalten-Grid — das Element selbst bleibt unverändert, die mobilen
+     "genau eine Fläche"-Tests (tasks.spec.ts AK9) bleiben also wahr. */
+  [data-ground='aufgaben'] .task-list__surface {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  /* Linke Spalte: fällige Liste + Spärlich-Notiz (AK9) + Leernachricht (AK7)
+     bleiben auf der Surface (Spalte 1), statt als Streu-Item in Spalte 2. */
+  [data-ground='aufgaben'] .task-list__surface > .task-list,
+  [data-ground='aufgaben'] .task-list__surface > .task-list__sparse-note,
+  [data-ground='aufgaben'] .task-list__surface > .task-list__empty {
+    grid-column: 1;
+  }
+
+  /* AK2: die "ohne Datum"-Karte bekommt in Spalte 2 ihre eigene Fläche zurück
+     — nimmt die drei mobilen Resets aus task-list.css zurück. Der
+     Drei-Klassen-Selektor (0,3,0) schlägt die Basisregel
+     .section-card.task-list__undated-card (0,2,0) unabhängig von der
+     Importreihenfolge. */
+  [data-ground='aufgaben'] .section-card.task-list__undated-card {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    padding: var(--space-4);
+    background: var(--surface);
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-raised);
+  }
+
+  /* AK3: Figur direkt neben dem Titelwort statt am rechten Rand. Nur die
+     Desktop-Seite von flex:1 zurücknehmen — mobil hält flex:1 1 auto den
+     Font-Swap-Shift auf (#867), die Regel darf mobil nicht wegfallen. */
+  [data-ground='aufgaben'] .aufgaben-page__title-row h1 {
+    flex: 0 0 auto;
+  }
+
+  /* AK4: der schwebende Erfassen-Fab (fab.css) verdeckt keine Zeile. Addiert
+     auf .shell__mains eigene Bodenreserve, spiegelt das Muster von
+     .uebersicht__sections (uebersicht.css). */
+  [data-ground='aufgaben'] {
+    padding-bottom: calc(58px + var(--space-4) + var(--keyboard-inset));
+  }
+}
