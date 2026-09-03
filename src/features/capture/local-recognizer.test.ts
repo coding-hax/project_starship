@@ -57,7 +57,8 @@ describe('recognizeLocally — Satz-Korpus (AC10, #47)', () => {
 
 describe('recognizeLocally — einzelne Akzeptanzkriterien', () => {
   it('AC4: konkrete Uhrzeit -> event mit absoluter Startzeit gegen now/tz', () => {
-    const result = recognizeLocally('Dienstag 12 Uhr Zahnarzt', ctx());
+    // Schlüsselwort im Kompositum, sonst wäre es nach der neuen Art-Regel eine Aufgabe.
+    const result = recognizeLocally('Dienstag 12 Uhr Zahnarzttermin', ctx());
     expect(result.items[0].kind).toBe('event');
     expect(result.items[0].dueAt).toBe(iso(2024, 1, 16, 12, 0));
   });
@@ -112,7 +113,8 @@ describe('recognizeLocally — #780 provisional (AK1/AK2)', () => {
 
   it('AK1: sobald das erste Signal da ist (Uhrzeit) -> nicht mehr provisional', () => {
     const result = recognizeLocally('morgen 12 Uhr Zahnarzt', ctx());
-    expect(result.items[0].kind).toBe('event');
+    // Ohne Schlüsselwort eine Aufgabe — geprüft wird hier das `provisional`-Flag.
+    expect(result.items[0].kind).toBe('task');
     expect(result.items[0].provisional).toBe(false);
   });
 

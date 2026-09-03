@@ -107,7 +107,10 @@ test('AK3: derselbe Termin markiert dieselben Felder nach denselben Regeln im Ka
   // `.field-hint` (das lebt nur noch im vollen Editor) — "Mehr" öffnet ihn mit
   // den bisherigen Werten, ohne den Seitenwechsel den der alte Dialog machte.
   await captureButton(page).click();
-  await captureTitleField(page).fill('Dienstag um 3 Zahnarzt');
+  // Seit dem 03.09.26 macht eine Uhrzeit allein keinen Termin — der Termin-Pfad, den
+  // dieser Test prüft, braucht das Schlüsselwort. „Termin" fällt als Präfix aus dem
+  // Titel, die Markierungen unten bleiben unverändert.
+  await captureTitleField(page).fill('Termin Dienstag um 3 Zahnarzt');
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   const dialog = eventDialog(page);
@@ -139,7 +142,9 @@ test('AK4: Anfassen eines markierten Feldes räumt seine Markierung weg', async 
   // an dem sich diese Markierung noch zeigt.
   await page.goto('/uebersicht');
   await captureButton(page).click();
-  await captureTitleField(page).fill('morgen um 12');
+  // „Termin" macht daraus einen Termin (seit dem 03.09.26 reicht die Uhrzeit nicht)
+  // und fällt als Präfix wieder weg — der Titel bleibt wie geprüft leer.
+  await captureTitleField(page).fill('Termin morgen um 12');
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   const eventDlg = eventDialog(page);

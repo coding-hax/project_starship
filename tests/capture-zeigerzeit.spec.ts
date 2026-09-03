@@ -86,7 +86,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht Termine direkt über die
   // Outbox an, kein Bestätigen-Dialog mehr dazwischen — prüfbar ist der korrekt
   // aufgelöste Titel + Zeitpunkt in der Outbox-Payload.
-  await submitUebersichtCapture(page, 'morgen halb zwölf Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen halb zwölf Zahnarzt');
   await expect(page).toHaveURL(/\/uebersicht$/);
   let entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
@@ -96,7 +96,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
 
   // "um halb 12" (Ziffer statt Wort) ergibt dasselbe — "um" fällt als Bindewort.
   await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'morgen um halb 12 Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen um halb 12 Zahnarzt');
   entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
     title: 'Zahnarzt',
@@ -107,7 +107,7 @@ test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrek
   // die aufgelöste (acht) — R2 Regel 4.
   const viertelVorNeun = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 45);
   await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'morgen viertel vor neun Zahnarzt');
+  await submitUebersichtCapture(page, 'Termin morgen viertel vor neun Zahnarzt');
   entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
     title: 'Zahnarzt',
@@ -121,7 +121,7 @@ test('AK2: zusammengesetzte Minutenangabe ("M vor/nach halb H") korrekt vorbefü
   await page.goto('/uebersicht');
   const due = expectedDueAt(ZEIGERZEIT_NOW, 1, 2, 25);
 
-  await submitUebersichtCapture(page, 'morgen fünf vor halb drei Call');
+  await submitUebersichtCapture(page, 'Termin morgen fünf vor halb drei Call');
 
   // Der Termin-Pfad legt seit P1–P4 (#715) direkt an, kein Zwischenschritt mehr —
   // prüfbar ist der korrekt aufgelöste, vorbefüllte Zeitpunkt in der Outbox-Payload.
@@ -140,16 +140,19 @@ test('AK3+AK4: eine geratene Nachtzeit oder eine regionale Kurzform erzwingt das
   await page.goto('/aufgaben');
 
   const halbEins = expectedDueAt(ZEIGERZEIT_NOW, 1, 0, 30);
-  await submitQuickAdd(page, 'morgen halb eins Mittagessen');
+  // Kein Mahlzeitwort: „Mittagessen" nennt seit dem 03.09.26 die Tageshälfte und macht
+  // aus „halb eins" 12:30 — dann liegt die Zeit nicht mehr im Nachtfenster, das dieser
+  // Test prüft. „Bericht" trägt keine Tageshälfte.
+  await submitQuickAdd(page, 'morgen halb eins Bericht');
 
   let dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Mittagessen');
+  await expect(dialog.getByRole('textbox', { name: 'Titel der Aufgabe' })).toHaveValue('Bericht');
   await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(halbEins));
   await expect(dialog.locator('.capture-confirm__summary')).toHaveText(formatSummary(halbEins));
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
-  await expect(taskItems(page).filter({ hasText: 'Mittagessen' })).toBeVisible();
+  await expect(taskItems(page).filter({ hasText: 'Bericht' })).toBeVisible();
 
   // Regionale Kurzform ("dreiviertel H" ohne vor/nach) — nicht im Nachtfenster, aber
   // wegen der Verwechslungsgefahr mit "viertel nach H" trotzdem bestätigungspflichtig.
@@ -185,7 +188,7 @@ test('AK5: ein Tageszeitwort schlägt die Vormittags/Nachmittags-Heuristik immer
 
   // Ohne Tageszeitwort läge "um 8" auf der Vormittagslesart (10:00 Bezugspunkt) —
   // "abends" schlägt das.
-  await submitUebersichtCapture(page, 'morgen um 8 abends Kino');
+  await submitUebersichtCapture(page, 'Termin morgen um 8 abends Kino');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   const entries = await page.evaluate(() => window.__starship.pending());
@@ -199,7 +202,7 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   await page.goto('/uebersicht');
   const vormittags = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 0);
 
-  await submitUebersichtCapture(page, 'morgen um 8 Standup');
+  await submitUebersichtCapture(page, 'Termin morgen um 8 Standup');
   await expect(page).toHaveURL(/\/uebersicht$/);
   let entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
@@ -212,7 +215,7 @@ test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder n
   await page.goto('/uebersicht');
   const nachmittags = expectedDueAt(ZEIGERZEIT_NOW_AFTERNOON, 1, 20, 0);
 
-  await submitUebersichtCapture(page, 'morgen um 8 Standup');
+  await submitUebersichtCapture(page, 'Termin morgen um 8 Standup');
   entries = await page.evaluate(() => window.__starship.pending());
   expect(entries[entries.length - 1].payload).toMatchObject({
     title: 'Standup',
@@ -227,7 +230,7 @@ test('Offline-Pfad: eine mit Zeigerzeit erfasste Aufgabe übersteht offline die 
   // beforeEach hat die Sync-Endpunkte bereits gekappt — das ist der Tunnel ohne Netz.
   const due = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 45);
 
-  await submitQuickAdd(page, 'morgen viertel vor neun Zahnarzt');
+  await submitQuickAdd(page, 'Termin morgen viertel vor neun Zahnarzt');
 
   const dialog = confirmDialog(page);
   await expect(dialog).toBeVisible();

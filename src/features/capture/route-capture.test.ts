@@ -42,7 +42,7 @@ describe('previewDraft — task', () => {
 
 describe('previewDraft — event', () => {
   it('AC1: explizite Uhrzeit -> Zeit-Termin, Ende eine Stunde nach dem Start', () => {
-    const draft = previewDraft('Dienstag 12 Uhr Zahnarzt', ctx());
+    const draft = previewDraft('Dienstag 12 Uhr Zahnarzttermin', ctx());
     expect(draft.kind).toBe('event');
     const fields = eventFieldsFromDraft(draft, NOW);
     expect(fields.allDay).toBe(false);
@@ -173,7 +173,9 @@ describe('mergeDraft (issue #716, „Vorschau-Merge")', () => {
   it('Entscheidung C: die Art bleibt nach der ersten Übernahme fix, auch wenn die neue Äußerung für sich allein anders klassifizieren würde', () => {
     const prev = previewDraft('Einkaufen', ctx());
     expect(prev.kind).toBe('task');
-    const utterance = previewDraft('morgen um 15 Uhr', ctx());
+    // Braucht eine Äußerung, die für sich allein ANDERS klassifiziert als der Vorgänger —
+    // seit der neuen Art-Regel schafft das nur ein Schlüsselwort.
+    const utterance = previewDraft('morgen um 15 Uhr Termin', ctx());
     expect(utterance.kind).toBe('event');
     const mentions = utteranceMentions('morgen um 15 Uhr', ctx());
     const next = mergeDraft(prev, utterance, mentions);

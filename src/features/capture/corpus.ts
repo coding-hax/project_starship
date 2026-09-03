@@ -83,7 +83,7 @@ export const CORPUS: CorpusCase[] = [
     signal: 'konkrete Uhrzeit (Fall)',
     text: 'Dienstag 12 Uhr Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       // #691: der Wochentag ist geraten, "12 Uhr" ist der Fixpunkt Mittag — kein
       // Tageshälften-Rätsel, also nicht geraten (Zwölf-Sonderfall in resolveHourMatch).
       confidence: {
@@ -202,7 +202,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK1: "halb zwölf"',
     text: 'morgen halb zwölf Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 11, 30),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -211,7 +211,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK1: "um halb 12" (Ziffer statt Wort)',
     text: 'morgen um halb 12 Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 11, 30),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -219,17 +219,18 @@ export const CORPUS: CorpusCase[] = [
   {
     signal: '#688 AK1: "viertel nach acht"',
     text: 'morgen viertel nach acht Frühstück',
+    // „Frühstück" nennt die Tageshälfte, die Uhrzeit ist damit nicht mehr geraten.
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 8, 15),
-      confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
+      confidence: { time: { level: 'high' } },
     },
   },
   {
     signal: '#688 AK1: "viertel vor neun"',
     text: 'morgen viertel vor neun Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 8, 45),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -238,7 +239,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK1: "Viertel vor 9" (Ziffer statt Wort)',
     text: 'morgen Viertel vor 9 Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 8, 45),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -247,9 +248,9 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK1: "halb acht"',
     text: 'morgen halb acht Frühstück',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 7, 30),
-      confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
+      confidence: { time: { level: 'high' } },
     },
   },
 
@@ -260,7 +261,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK2: "fünf vor halb drei" fällt ins Nachtfenster',
     text: 'morgen fünf vor halb drei Call',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 2, 25),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -269,7 +270,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK2: "zehn nach halb drei" fällt ins Nachtfenster',
     text: 'morgen zehn nach halb drei Call',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 2, 40),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -281,9 +282,9 @@ export const CORPUS: CorpusCase[] = [
   // ebenso wie "halb eins" — nur die ausgeschriebene Doppelpunkt-Zeit bleibt `high`.
   {
     signal: '#688 AK3: "halb eins" fällt ins Nachtfenster',
-    text: 'morgen halb eins Mittagessen',
+    text: 'morgen halb eins Abgabe',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 0, 30),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -292,7 +293,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK3: "um 6" liegt außerhalb des Nachtfensters, aber die Tageshälfte ist trotzdem geraten',
     text: 'morgen um 6 Sport',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 6, 0),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -301,7 +302,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK3: "0:30" ist ausgeschrieben, nie geraten -> confidence high',
     text: 'morgen 0:30 Nachtschicht',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 0, 30),
       confidence: { time: { level: 'high' } },
     },
@@ -313,7 +314,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK4: "dreiviertel zwölf" (regional)',
     text: 'morgen dreiviertel zwölf Abgabe',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 11, 45),
       confidence: { time: { level: 'guessed', reason: 'regionale Zeitangabe' } },
     },
@@ -322,7 +323,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK4: "viertel zwölf" (regional)',
     text: 'morgen viertel zwölf Abgabe',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 11, 15),
       confidence: { time: { level: 'guessed', reason: 'regionale Zeitangabe' } },
     },
@@ -334,7 +335,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK5: "morgens" bestätigt die Heuristik, Feld-Konfidenz bleibt high',
     text: 'morgen um 6 Uhr morgens Sport',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 6, 0),
       confidence: { time: { level: 'high' } },
     },
@@ -343,7 +344,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK5: ohne Tageszeitwort entscheidet die Heuristik -> Feld-Konfidenz guessed',
     text: 'morgen um 8 Standup',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 8, 0),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -352,7 +353,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK5: "abends" schlägt die Heuristik (sonst vormittags gelesen)',
     text: 'morgen um 8 abends Kino',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 20, 0),
       confidence: { time: { level: 'high' } },
     },
@@ -361,7 +362,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#688 AK5: "nachmittags" schlägt die Heuristik, Zahlwort statt Ziffer',
     text: 'morgen um drei nachmittags Kaffee',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 15, 0),
       confidence: { time: { level: 'high' } },
     },
@@ -372,10 +373,10 @@ export const CORPUS: CorpusCase[] = [
   // Tageszeitwort, Feld-Konfidenz "Uhrzeit" also `guessed` an beiden Bezugspunkten.
   {
     signal: '#688 AK6: "halb acht", gesprochen um 15:00 -> Nachmittagslesart',
-    text: 'morgen halb acht Frühstück',
+    text: 'morgen halb acht Abgabe',
     now: NOW_AFTERNOON,
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 19, 30),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -385,7 +386,7 @@ export const CORPUS: CorpusCase[] = [
     text: 'morgen um 8 Standup',
     now: NOW_AFTERNOON,
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 20, 0),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -423,6 +424,7 @@ export const CORPUS: CorpusCase[] = [
   {
     signal: '#689 AK4: "kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen"',
     text: 'kannst du mir für nächsten Dienstag viertel vor neun einen Zahnarzttermin einstellen',
+    // „Zahnarzttermin" trägt das Schlüsselwort — bleibt Termin (Entscheidung 03.09.26).
     expect: {
       kind: 'event',
       dueAt: new Date(2024, 0, 23, 8, 45),
@@ -439,7 +441,7 @@ export const CORPUS: CorpusCase[] = [
     text: 'morgen 14 Uhr Zahnarzt',
     now: NOW_NIGHT,
     // "14 Uhr" ist eine eindeutige 24-Stunden-Zeit — nie geraten (#691).
-    expect: { kind: 'event', dueAt: new Date(2024, 0, 16, 14, 0), confidence: { time: { level: 'high' } } },
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 16, 14, 0), confidence: { time: { level: 'high' } } },
   },
   {
     signal: '#689 AK5: "heute noch" ist der logische, nicht der reale Kalendertag',
@@ -458,7 +460,7 @@ export const CORPUS: CorpusCase[] = [
     text: 'Dienstag 12 Uhr Zahnarzt',
     now: NOW_NIGHT,
     // "12 Uhr" ist der Zwölf-Fixpunkt (Mittag) — nie geraten, unabhängig vom Tageszeitwort.
-    expect: { kind: 'event', dueAt: new Date(2024, 0, 16, 12, 0), confidence: { time: { level: 'high' } } },
+    expect: { kind: 'task', dueAt: new Date(2024, 0, 16, 12, 0), confidence: { time: { level: 'high' } } },
   },
   {
     signal: '#689 AK5: reine Uhrzeit ohne Datum — "sonst morgen" ab dem logischen Tag',
@@ -466,7 +468,7 @@ export const CORPUS: CorpusCase[] = [
     now: NOW_NIGHT,
     // Kein Tageszeitwort -> die Tageshälfte kommt aus dem Sprechzeitpunkt (#691).
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 8, 0),
       confidence: { time: { level: 'guessed', reason: 'Tageshälfte geraten' } },
     },
@@ -535,7 +537,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#691 AK1: "Dienstag um 3 Zahnarzt" -> Uhrzeit + Datum geraten, Titel sicher',
     text: 'Dienstag um 3 Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 3, 0),
       confidence: {
         time: { level: 'guessed', reason: 'Tageshälfte geraten' },
@@ -548,7 +550,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#691 AK1: "morgen 14:30 Zahnarzt" -> keine Markierung',
     text: 'morgen 14:30 Zahnarzt',
     expect: {
-      kind: 'event',
+      kind: 'task',
       dueAt: new Date(2024, 0, 16, 14, 30),
       confidence: {
         time: { level: 'high' },
@@ -570,7 +572,7 @@ export const CORPUS: CorpusCase[] = [
     signal: '#691: Titel leer nach Abzug aller Spans -> "kein Titel erkannt"',
     text: 'morgen um 12',
     expect: {
-      kind: 'event',
+      kind: 'task',
       confidence: { title: { level: 'guessed', reason: 'kein Titel erkannt' } },
     },
   },
@@ -622,4 +624,36 @@ export const CORPUS: CorpusCase[] = [
     allowedKinds: ['task', 'event'],
     expect: { kind: 'task', title: 'Routine Wasser trinken' },
   },
+  // --- Mahlzeit nennt die Tageshälfte (Entscheidung 03.09.26) ---------------
+  // „halb eins Mittagessen" ist 12:30, nicht 00:30: das Mahlzeitwort schlägt die
+  // Uhrzeit-Heuristik und bleibt dabei im Titel stehen.
+  {
+    signal: 'Mahlzeit setzt die Tageshälfte: Mittagessen',
+    text: 'morgen halb eins Mittagessen',
+    expect: {
+      kind: 'task',
+      dueAt: new Date(2024, 0, 16, 12, 30),
+      confidence: { time: { level: 'high' } },
+    },
+  },
+  {
+    signal: 'Mahlzeit setzt die Tageshälfte: Abendessen',
+    text: 'morgen um halb acht Abendessen',
+    expect: {
+      kind: 'task',
+      dueAt: new Date(2024, 0, 16, 19, 30),
+      confidence: { time: { level: 'high' } },
+    },
+  },
+  {
+    signal: 'Mahlzeit setzt die Tageshälfte: Frühstück bleibt vormittags',
+    text: 'morgen halb acht Frühstück',
+    now: NOW_AFTERNOON,
+    expect: {
+      kind: 'task',
+      dueAt: new Date(2024, 0, 16, 7, 30),
+      confidence: { time: { level: 'high' } },
+    },
+  },
+
 ];

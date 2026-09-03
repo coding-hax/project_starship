@@ -124,12 +124,14 @@ test('AK4: der Name der neuen Routine ist vor dem Anlegen über den Titel-Chip e
   await newRoutineOption(page, 'Meditation').click();
 
   await page.getByRole('button', { name: 'Titel, Meditation' }).click();
-  await page.getByRole('textbox', { name: 'Titel', exact: true }).fill('Meditation abends');
+  // Kein Tageszeitwort im Namen: „abends" ist seit dem 03.09.26 eine Uhrzeitangabe und
+  // fiele aus dem Titel. Geprüft wird hier die Editierbarkeit, nicht die Grammatik.
+  await page.getByRole('textbox', { name: 'Titel', exact: true }).fill('Meditation lang');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
   const entries = await page.evaluate(() => window.__starship.pending());
   const created = entries.find((entry) => entry.table === 'habits');
-  expect(created?.payload).toMatchObject({ name: 'Meditation abends' });
+  expect(created?.payload).toMatchObject({ name: 'Meditation lang' });
 });
 
 test('AK5: die neu angelegte Routine erscheint auf /routinen und in der Routinen-Sektion der Übersicht', async ({
