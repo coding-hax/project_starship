@@ -112,6 +112,12 @@ function monthGridDots(page: Page, ariaLabel: string) {
   return monthGridDay(page, ariaLabel).locator('.month-grid__dot');
 }
 
+/** An all-day band inside the month card's interactive (middle) page (issue
+ *  #1043) — same `:not([inert])` scope as `monthGridDay`/`monthGridPage`. */
+function monthGridBand(page: Page, title: string) {
+  return monthGridPage(page).locator('.month-grid__band').filter({ hasText: title });
+}
+
 /** The month card's three-page snap track (issue #1009), vertical since
  *  issue #1039 — unlike `calendarWeeks`, which stays horizontal. */
 function monthGridTrack(page: Page) {
@@ -1958,7 +1964,10 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, sechs Wochenzeilen und 
   // 6 Zeilen à 7 Spalten auf der interaktiven Seite (die beiden Nachbarmonate
   // der Drei-Seiten-Spur, issue #1009, tragen ihre eigenen 42 Zellen `inert`
   // nebenan — ausgeklammert wie bei `monthGridDay`).
-  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
+  // `.month-grid__day` statt `> li`: eine Wochenzeile mit Ganztägig-Terminen
+  // traegt seit #1043 zusaetzliche `.month-grid__band`-<li>s in derselben
+  // Liste, die Tageszellen-Zaehlung bleibt trotzdem bei 42.
+  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
 
   const cardBox = await monthGrid(page).boundingBox();
   const dotBox = await monthGridDots(page, 'Sa, 18.').first().boundingBox();
@@ -3625,8 +3634,8 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
   // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
   const dots = monthGridDots(page, 'Sa, 25.');
   await expect(dots).toHaveCount(2);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 85, 'var(--text-base)');
   await expect
     .poll(() => dots.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
@@ -3654,7 +3663,9 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   const daysGrid = monthGridPage(page).locator('.month-grid__days');
   await expect(daysGrid).toHaveCSS('row-gap', '3px');
   await expect(daysGrid).toHaveCSS('column-gap', '3px');
-  await expect(daysGrid.locator('> li')).toHaveCount(42);
+  // `.month-grid__day` statt `> li` (issue #1043: Ganztägig-Bänder sind
+  // ebenfalls direkte `<li>`-Kinder derselben Liste).
+  await expect(daysGrid.locator('.month-grid__day')).toHaveCount(42);
 
   const header = card.locator('.month-grid__weekday-header');
   await expect(header).toHaveCSS('font-size', '10.5px');
@@ -3668,27 +3679,29 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(firstDay).toHaveCSS('font-variant-numeric', 'tabular-nums');
 });
 
-test('AK2: Fremdmonat gedaempft, heute getoent, Auswahl gefuellt mit --accent-fg (#958)', async ({ page }) => {
+test('AK2: Fremdmonat gedaempft, heute traegt eine Umrandung, Auswahl eine volle Pille im Routenblau (#958, Rezept umgestellt in #1043)', async ({
+  page,
+}) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  // Fremdmonat (Anfang August im Juli-Raster): 30% Deckkraft.
+  // Fremdmonat (Anfang August im Juli-Raster): 30% Deckkraft — unveraendert.
   const outsideDay = monthGridDay(page, 'Mo, 3.');
   await expect(outsideDay).toHaveCSS('opacity', '0.3');
 
   // Auswahl verschieben, damit „heute" nicht zugleich ausgewaehlt bleibt —
-  // sonst gewinnt die Auswahl-Faerbung ueber die Heute-Toenung (wie im
-  // Wochenstreifen, siehe calendar-strip.css).
+  // sonst gewinnt die Pille ueber die Umrandung (AK3).
   await monthGridDay(page, 'So, 19.').click();
 
   const todayDay = monthGridDay(page, 'Sa, 18.');
-  const expectedTodayMix = await resolveMix(page, 'var(--area-events)', 16, 'var(--surface)');
   await expect
     .poll(() => todayDay.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedTodayMix);
+    .toBe('rgba(0, 0, 0, 0)');
+  const todayBoxShadow = await todayDay.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(todayBoxShadow).not.toBe('none');
 
   const selectedDay = monthGridDay(page, 'So, 19.');
-  const expectedFill = await resolveToken(page, '--area-events');
-  const expectedText = await resolveToken(page, '--accent-fg');
+  const expectedFill = await resolveToken(page, '--ground');
+  const expectedText = await resolveColorToken(page, '--on-ground');
   await expect
     .poll(() => selectedDay.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedFill);
@@ -3909,7 +3922,10 @@ test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)'
   expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
   expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
 
-  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
+  // `.month-grid__day` statt `> li`: eine Wochenzeile mit Ganztägig-Terminen
+  // traegt seit #1043 zusaetzliche `.month-grid__band`-<li>s in derselben
+  // Liste, die Tageszellen-Zaehlung bleibt trotzdem bei 42.
+  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
 });
 
 test('ein senkrechter Zug ausserhalb der Monats-Karte scrollt weiterhin die Seite (issue #1039, AK6)', async ({
@@ -3988,7 +4004,7 @@ test('AK8: ein offline in der Monats-Karte angelegter Termin zeigt sofort einen 
   await page.getByRole('radio', { name: 'Monat' }).click();
   const dots = monthGridDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedGesundheit = await resolveMix(page, 'var(--cat-gesundheit)', 60, 'var(--on-ground)');
+  const expectedGesundheit = await resolveMix(page, 'var(--cat-gesundheit)', 85, 'var(--text-base)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedGesundheit);
@@ -4007,6 +4023,356 @@ test('AK8: ein offline in der Monats-Karte angelegter Termin zeigt sofort einen 
 
   // Punkt bleibt nach dem Sync korrekt — Datenherkunft weiter IndexedDB (issue #612).
   await expect(monthGridDots(page, 'Sa, 18.')).toHaveCount(1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1043: Monatskarte übernimmt die Sprache des Wochenstreifens         */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: der ausgewaehlte Tag in der Monats-Karte traegt eine volle Pille im Routenblau, die Schrift erreicht 4,5:1 — hell und dunkel (#1043)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const selected = monthGridDay(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  async function pillContrast(): Promise<number> {
+    const bg = await selected.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const textRgb = await toRgb(page, await selected.evaluate((el) => getComputedStyle(el).color));
+    const bgRgb = await toRgb(page, bg);
+    return contrastRatio(textRgb, bgRgb);
+  }
+
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK2: der heutige Tag ohne Auswahl traegt eine Umrandung statt einer Flaeche, die Zahl bleibt in der Kartentinte, die Umrandung haelt 3:1 gegen --surface — hell und dunkel (#1043)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await monthGridDay(page, 'So, 19.').click(); // waehlt ab: Sa, 18. zeigt jetzt die Umrandung
+  const today = monthGridDay(page, 'Sa, 18.');
+
+  const textBase = await resolveToken(page, '--text-base');
+  expect(await today.evaluate((el) => getComputedStyle(el).color)).toBe(textBase);
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgba(0, 0, 0, 0)');
+
+  async function ringContrast(): Promise<number> {
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
+    const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+    const match = boxShadow.match(/(?:oklab|oklch|rgba?|hsla?|color)\([^)]*\)/);
+    if (!match) throw new Error(`kein Farbwert im box-shadow: ${boxShadow}`);
+    const ringRgb = await toRgb(page, match[0]);
+    return contrastRatio(ringRgb, surfaceRgb);
+  }
+
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+});
+
+test('AK3: ist der heutige Tag zugleich ausgewaehlt, gewinnt die Pille — keine zusaetzliche Umrandung (#1043)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const today = monthGridDay(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  const groundToken = await resolveToken(page, '--ground');
+  expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundToken);
+  expect(await today.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+});
+
+test('AK4: --area-events kommt in der Monats-Karte als Auswahl- oder Heute-Farbe nicht mehr vor, bleibt aber Fallback fuer einen Termin ohne Kategorie (#1043)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ohne Kategorie',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const areaEvents = await resolveToken(page, '--area-events');
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const selected = monthGridDay(page, 'Sa, 18.'); // heute == ausgewaehlt: Pille
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(areaEvents);
+
+  await monthGridDay(page, 'So, 19.').click();
+  const today = monthGridDay(page, 'Sa, 18.');
+  const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(boxShadow).not.toContain(areaEvents);
+
+  // Fallback bleibt: der Punkt eines Termins ohne Kategorie mischt weiterhin --area-events.
+  const dot = monthGridDots(page, 'Sa, 18.').first();
+  const expectedDot = await resolveMix(page, 'var(--area-events)', 85, 'var(--text-base)');
+  await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDot);
+});
+
+test('AK5: die Kategorie-Punkte der Monats-Karte tragen das --surface-Rezept und halten 3:1 gegen --surface — alle fuenf Kategorien plus Fallback, hell und dunkel (#1043)', async ({
+  page,
+}) => {
+  // Getaktete Termine, nicht ganztaegig — ein Punkt je Tag ohne die
+  // Bandzeile (AK6-9) mit hineinzumischen.
+  const categories: (string | null)[] = ['sport', 'gesundheit', 'familie', 'arbeit', 'privat', null];
+  const days = categories.map((_, index) => addDays(TODAY, index + 1));
+  for (const [index, category] of categories.entries()) {
+    await seedEvent(page, {
+      title: `Punkt-${category ?? 'ohne'}`,
+      allDay: false,
+      startsAt: `${days[index]}T09:00:00.000Z`,
+      endsAt: `${days[index]}T10:00:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category,
+    });
+  }
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  async function checkAll() {
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
+    for (const [index, category] of categories.entries()) {
+      const token = category ? `--cat-${category}` : '--area-events';
+      const expected = await resolveMix(page, `var(${token})`, 85, 'var(--text-base)');
+      const dot = monthGridDots(page, ariaLabelFor(days[index])).first();
+      await expect(dot).toHaveCSS('background-color', expected);
+      const dotRgb = await toRgb(page, expected);
+      expect(contrastRatio(dotRgb, surfaceRgb)).toBeGreaterThanOrEqual(3);
+    }
+  }
+
+  await checkAll();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await checkAll();
+});
+
+test('AK6: ein mehrtaegiger Termin erscheint als durchgehendes Band in einer eigenen Zeile unter der jeweiligen Wochenzeile, ueber genau die Spalten dieser Woche (#1043)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Kurztrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-14', // Dienstag, dieselbe Wochenzeile wie "heute" (18.)
+    endDate: '2026-07-16', // Donnerstag
+    category: 'familie',
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const band = monthGridBand(page, 'Kurztrip');
+  await expect(band).toBeVisible();
+  await expect(band.locator('.month-grid__band-title')).toHaveText('Kurztrip');
+  expect(await bandGridColumn(band)).toBe('2/5'); // Di=Spalte 2 .. Do=Spalte 4
+
+  // Die Bandzeile liegt zwischen der eigenen Wochenzeile und der naechsten.
+  const weekRowBox = (await monthGridDay(page, 'Di, 14.').boundingBox())!;
+  const nextWeekRowBox = (await monthGridDay(page, 'Mo, 20.').boundingBox())!;
+  const bandBox = (await band.boundingBox())!;
+  expect(bandBox.y).toBeGreaterThanOrEqual(weekRowBox.y + weekRowBox.height - 1);
+  expect(bandBox.y + bandBox.height).toBeLessThanOrEqual(nextWeekRowBox.y + 1);
+});
+
+test('AK7: laeuft ein Termin ueber die Wochenzeile hinaus, ergeben sich zwei Baender — rechts eckig in der einen Woche, links eckig in der naechsten (#1043)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Wochenwechsel',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-26', // Sonntag, letzter Tag der Wochenzeile 20.-26.
+    endDate: '2026-07-28', // Dienstag, in der Wochenzeile 27.7.-2.8.
+    category: 'sport',
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const bands = monthGridPage(page).locator('.month-grid__band').filter({ hasText: 'Wochenwechsel' });
+  await expect(bands).toHaveCount(2);
+
+  const [earlyWeekBand, lateWeekBand] = [bands.nth(0), bands.nth(1)];
+  expect(await bandGridColumn(earlyWeekBand)).toBe('7/8'); // So. = Spalte 7
+  expect(await bandGridColumn(lateWeekBand)).toBe('1/3'); // Mo.-Di. = Spalten 1-2
+
+  const earlyCorners = await earlyWeekBand.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      topLeft: style.borderTopLeftRadius,
+      topRight: style.borderTopRightRadius,
+      bottomRight: style.borderBottomRightRadius,
+    };
+  });
+  expect(earlyCorners.topRight).toBe('0px');
+  expect(earlyCorners.bottomRight).toBe('0px');
+  expect(earlyCorners.topLeft).not.toBe('0px');
+
+  const lateCorners = await lateWeekBand.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      topLeft: style.borderTopLeftRadius,
+      bottomLeft: style.borderBottomLeftRadius,
+      topRight: style.borderTopRightRadius,
+    };
+  });
+  expect(lateCorners.topLeft).toBe('0px');
+  expect(lateCorners.bottomLeft).toBe('0px');
+  expect(lateCorners.topRight).not.toBe('0px');
+});
+
+test('AK8a: zwei Termine ohne gemeinsamen Tag teilen sich eine Bandzeile (#1043)', async ({ page }) => {
+  await seedEvent(page, {
+    title: 'Fruehe Woche',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-13',
+    endDate: '2026-07-14',
+    category: 'arbeit',
+  });
+  await seedEvent(page, {
+    title: 'Spaete Woche',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-17',
+    endDate: '2026-07-19',
+    category: 'sport',
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const fruehBox = (await monthGridBand(page, 'Fruehe Woche').boundingBox())!;
+  const spaetBox = (await monthGridBand(page, 'Spaete Woche').boundingBox())!;
+  expect(Math.round(fruehBox.y)).toBe(Math.round(spaetBox.y));
+});
+
+test('AK8b: eine echte Ueberlappung zweier Baender braucht eine zweite Zeile, ein drittes Band in derselben Woche entfaellt (#1043)', async ({
+  page,
+}) => {
+  for (const [title, category] of [
+    ['A-Erstes', 'arbeit'],
+    ['B-Zweites', 'sport'],
+    ['C-Drittes', 'familie'],
+  ] as const) {
+    await seedEvent(page, {
+      title,
+      allDay: true,
+      startsAt: null,
+      endsAt: null,
+      startDate: '2026-07-14',
+      endDate: '2026-07-16',
+      category,
+    });
+  }
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  await expect(monthGridBand(page, 'A-Erstes')).toBeVisible();
+  await expect(monthGridBand(page, 'B-Zweites')).toBeVisible();
+  await expect(monthGridBand(page, 'C-Drittes')).toHaveCount(0);
+
+  const ersteBox = (await monthGridBand(page, 'A-Erstes').boundingBox())!;
+  const zweiteBox = (await monthGridBand(page, 'B-Zweites').boundingBox())!;
+  expect(Math.round(zweiteBox.y)).toBeGreaterThan(Math.round(ersteBox.y));
+});
+
+test('AK9: eine Wochenzeile ohne ganztaegigen Termin bekommt keine Bandzeile, die Karte bleibt entsprechend niedrig (#1043)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(monthGridPage(page).locator('.month-grid__band')).toHaveCount(0);
+  const heightWithout = await monthGrid(page).evaluate((el) => el.getBoundingClientRect().height);
+
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  await expect(monthGridBand(page, 'Ganztags-Termin')).toBeVisible();
+  const heightWith = await monthGrid(page).evaluate((el) => el.getBoundingClientRect().height);
+  expect(heightWith).toBeGreaterThan(heightWithout);
+});
+
+test('AK11: alle drei Seiten der Wischspur sind gleich hoch, ein Wisch landet genau eine Seite weiter — die Karte darf beim Monatswechsel ihre Hoehe aendern (#1043)', async ({
+  page,
+}) => {
+  // August 2026 traegt einen Ganztägig-Termin, Juli keinen — die Spur soll
+  // beim Wechsel nach August hoeher werden.
+  await seedEvent(page, {
+    title: 'August-Trip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-08-10',
+    endDate: '2026-08-12',
+    category: 'privat',
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+
+  async function assertThreeEqualPages(): Promise<number> {
+    const { clientHeight, scrollHeight } = await track.evaluate((el) => ({
+      clientHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+    }));
+    expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
+    expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
+    return clientHeight;
+  }
+
+  const heightJuli = await assertThreeEqualPages();
+
+  await pageMonth(page, 1); // -> August
+
+  const heightAugust = await assertThreeEqualPages();
+  expect(heightAugust).toBeGreaterThan(heightJuli);
+});
+
+test('AK13: Dark Mode und prefers-reduced-motion gemeinsam — Pille und Band der Monats-Karte bleiben korrekt, iPhone 12 mini (#1043)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const card = monthGrid(page);
+  await expect(card).toBeVisible();
+  const surfaceDark = await resolveToken(page, '--surface');
+  expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceDark);
+
+  const today = monthGridDay(page, 'Sa, 18.'); // heute == ausgewaehlt: Pille gewinnt
+  const groundDark = await resolveToken(page, '--ground');
+  expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundDark);
+
+  await expect(monthGridBand(page, 'Ganztags-Termin')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
