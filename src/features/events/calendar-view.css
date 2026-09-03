@@ -50,3 +50,36 @@
 .calendar-view__day-heading {
   margin: var(--space-3) 0 var(--space-2);
 }
+
+/* Zwei Spalten ab 768px, nur im Monat (issue #1021, Teil 6 von #1015): der
+   einzige DOM-Unterschied zwischen Woche und Monat ist `.month-grid` als
+   direktes Kind im Rumpf (die Woche zeigt `.calendar-strip` stattdessen im
+   Kopf) — `:has()` greift deshalb gezielt nur dort, ohne einen View-Modifier
+   am Root zu brauchen. Fällt `:has()` je aus, ignoriert der Browser den
+   ganzen Selektor und es bleibt beim mobilen Einspalter. */
+@media (min-width: 768px) {
+  .calendar-view:has(> .month-grid) {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+
+  .calendar-view:has(> .month-grid) > .calendar-view__header {
+    grid-column: 1 / -1;
+  }
+
+  .calendar-view:has(> .month-grid) > .month-grid {
+    grid-column: 1;
+    /* Gürtel + Hosenträger zu `align-items: start` oben — die Karte trägt
+       heute nur Punkte je Tag und stünde auf Spaltenhöhe gestreckt fast leer. */
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  .calendar-view:has(> .month-grid) > .offline-notice,
+  .calendar-view:has(> .month-grid) > .calendar-view__day-heading,
+  .calendar-view:has(> .month-grid) > .event-agenda {
+    grid-column: 2;
+  }
+}
