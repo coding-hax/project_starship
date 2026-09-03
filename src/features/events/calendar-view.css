@@ -71,6 +71,14 @@
 
   .calendar-view:has(> .month-grid) > .month-grid {
     grid-column: 1;
+    /* Spannt bis zur letzten (Rechtsspalten-)Zeile statt nur der eigenen
+       Auto-Placement-Zeile: sonst zieht `.calendar-view__day-heading` (das die
+       erste Zeile mit dem Raster teilt) deren ganze Höhe auf die Rasterhöhe
+       hoch, und `.event-agenda` (eine Zeile darunter) begänne erst danach —
+       eine leere Lücke zwischen Tagesüberschrift und Terminliste. Gespannt
+       verteilt sich die Rasterhöhe stattdessen auf beide Zeilen, `.event-agenda`
+       bleibt neben dem Raster statt darunter. */
+    grid-row: 2 / -1;
     /* Gürtel + Hosenträger zu `align-items: start` oben — die Karte trägt
        heute nur Punkte je Tag und stünde auf Spaltenhöhe gestreckt fast leer. */
     align-self: start;
