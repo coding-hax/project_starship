@@ -112,8 +112,8 @@ function monthGridDots(page: Page, ariaLabel: string) {
   return monthGridDay(page, ariaLabel).locator('.month-grid__dot');
 }
 
-/** The month card's three-page snap track (issue #1009) — the horizontal
- *  counterpart to `calendarWeeks`. */
+/** The month card's three-page snap track (issue #1009), vertical since
+ *  issue #1039 — unlike `calendarWeeks`, which stays horizontal. */
 function monthGridTrack(page: Page) {
   return page.locator('.month-grid__track');
 }
@@ -132,19 +132,21 @@ function monthGridPage(page: Page) {
 /**
  * Swipes the month card by exactly one page — the settle-driven equivalent of
  * a full native swipe-and-release, mirroring `pageStrip` above. `dir` `1`
- * advances to the next month, `-1` goes back. Waits for `data-focus-month` to
- * actually change, which only happens once the silent recentre (month-grid.tsx's
- * `handleScrollEnd`) has reported the settled page back up.
+ * advances to the next month (an upward swipe), `-1` goes back (downward).
+ * Waits for `data-focus-month` to actually change, which only happens once
+ * the silent recentre (month-grid.tsx's `handleScrollEnd`) has reported the
+ * settled page back up. Vertical since issue #1039 (was horizontal under
+ * issue #1009).
  */
 async function pageMonth(page: Page, dir: 1 | -1): Promise<void> {
   const track = monthGridTrack(page);
   const before = await monthGrid(page).getAttribute('data-focus-month');
-  const pageWidth = await track.evaluate((el) => el.clientWidth);
+  const pageHeight = await track.evaluate((el) => el.clientHeight);
   await track.evaluate(
-    (el, { dir, pageWidth }) => {
-      el.scrollLeft += dir * pageWidth;
+    (el, { dir, pageHeight }) => {
+      el.scrollTop += dir * pageHeight;
     },
-    { dir, pageWidth },
+    { dir, pageHeight },
   );
   await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).not.toBe(before);
 }
@@ -3811,7 +3813,7 @@ test('zwei Wische in dieselbe Richtung gehen zwei Monate weiter, nicht nur einen
   await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-09');
 });
 
-test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nimmt nur waagerechte Gesten an (issue #1009, AK8)', async ({
+test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nimmt nur senkrechte Gesten an (issue #1009, AK8; issue #1039)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
@@ -3821,7 +3823,7 @@ test('die Monats-Karte aendert beim Monatswechsel ihre Hoehe nicht, die Spur nim
   await pageMonth(page, 1);
 
   expect((await card.boundingBox())?.height).toBe(heightBefore);
-  await expect(monthGridTrack(page)).toHaveCSS('touch-action', 'pan-x');
+  await expect(monthGridTrack(page)).toHaveCSS('touch-action', 'pan-y');
 });
 
 test('die Monats-Karte laesst sich bei reduzierter Bewegung und im Dark Mode weiterhin wischen, Titel und Dimmung folgen wie gewohnt (issue #1009, AK9)', async ({
@@ -3840,6 +3842,116 @@ test('die Monats-Karte laesst sich bei reduzierter Bewegung und im Dark Mode wei
   await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
   await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
   await expect(monthGridDay(page, 'Mo, 3.')).not.toHaveAttribute('data-outside-month', '');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1039: Monats-Karte wird senkrecht gewischt statt waagerecht         */
+/* -------------------------------------------------------------------------- */
+
+test('ein Wisch nach oben zeigt den naechsten Monat, ein Wisch nach unten den vorigen (issue #1039, AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+  const title = page.locator('.calendar-view__heading');
+  const period = page.locator('.calendar-view__period');
+  await expect(title).toHaveText('Juli');
+  await expect(period).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+
+  // Nach oben wischen = Finger bewegt sich nach oben = scrollTop steigt.
+  const pageHeight = await track.evaluate((el) => el.clientHeight);
+  await track.evaluate((el, delta) => {
+    el.scrollTop += delta;
+  }, pageHeight);
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).toBe('2026-08');
+  await expect(title).toHaveText('August');
+  await expect(period).toHaveText('2026');
+
+  // Nach unten wischen = scrollTop sinkt.
+  await track.evaluate((el, delta) => {
+    el.scrollTop -= delta;
+  }, pageHeight);
+  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).toBe('2026-07');
+  await expect(title).toHaveText('Juli');
+});
+
+test('.month-grid__track nimmt nur senkrechte Gesten an, waagerechte verschieben nichts (issue #1039, AK3)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+
+  await expect(track).toHaveCSS('touch-action', 'pan-y');
+  await expect(track).toHaveCSS('scroll-snap-type', 'y mandatory');
+
+  const before = await monthGrid(page).getAttribute('data-focus-month');
+  const scrollLeftBefore = await track.evaluate((el) => el.scrollLeft);
+  await track.evaluate((el) => {
+    el.scrollLeft += 500;
+  });
+  // `overflow-x: hidden` gibt es nichts, wohin die Spur waagerecht rollen
+  // koennte — scrollLeft bleibt unveraendert, kein Monatswechsel.
+  expect(await track.evaluate((el) => el.scrollLeft)).toBe(scrollLeftBefore);
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', before ?? '');
+});
+
+test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)', async ({ page }) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+
+  const { clientHeight, scrollHeight } = await track.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    scrollHeight: el.scrollHeight,
+  }));
+  // Drei Seiten (voriger/aktueller/naechster Monat) liegen gestapelt in der
+  // Spur (scrollHeight), sichtbar ist aber immer nur eine (clientHeight).
+  expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
+  expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
+
+  await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
+});
+
+test('ein senkrechter Zug ausserhalb der Monats-Karte scrollt weiterhin die Seite (issue #1039, AK6)', async ({
+  page,
+}) => {
+  // Genug Agenda-Eintraege, damit die Seite den 375x812-Testviewport
+  // ueberragt — sonst gaebe es nichts zu scrollen und der Test waere
+  // unabhaengig vom eigentlichen Verhalten immer gruen.
+  for (let i = 0; i < 20; i += 1) {
+    const hour = String(i).padStart(2, '0');
+    await seedEvent(page, {
+      title: `Termin ${i}`,
+      allDay: false,
+      startsAt: `${TODAY}T${hour}:05:00.000Z`,
+      endsAt: `${TODAY}T${hour}:35:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(page.locator('.event-agenda__item')).toHaveCount(20);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+  ).toBe(true);
+
+  // `.calendar-view__header` liegt ausserhalb von `.month-grid` — ein
+  // senkrechter Zug, der hier beginnt, darf nicht von der Karte geschluckt
+  // werden (AK6 nennt Agenda/Kopfbereich als Beispiele), sondern muss die
+  // Seite selbst bewegen. `mouse.wheel` ist — anders als ein per JS
+  // dispatchtes `TouchEvent` (siehe `pageStrip`s Kommentar oben) — ein
+  // echtes, vom Browser nativ verarbeitetes Gesture-Event und deshalb hier
+  // aussagekraeftig: es beweist, dass kein Vorfahre/Geschwister von
+  // `.month-grid__track` dessen `touch-action: pan-y`/`overflow` geerbt hat.
+  const headerBox = await page.locator('.calendar-view__header').boundingBox();
+  if (!headerBox) throw new Error('AK6: kein .calendar-view__header gefunden');
+  await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + 5);
+
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
 });
 
 test('Tippen auf einen gedaempften Nachbarmonatstag waehlt ihn und verschiebt den fokussierten Monat (#958)', async ({
