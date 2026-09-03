@@ -50,3 +50,11 @@
 .calendar-view__day-heading {
   margin: var(--space-3) 0 var(--space-2);
 }
+
+/* Der Streifen ist seit issue #1013 eine schwebende Karte mit eigenem
+   Schatten/Radius statt loser Zellen auf dem Grund — der Kopf-`gap`
+   (--space-1) reicht für Augenbraue/Titel, aber die Karte darunter braucht
+   mehr Abstand, sonst klebt ihr Schatten am Titel. */
+.calendar-view__header .calendar-strip {
+  margin-top: var(--space-2);
+}

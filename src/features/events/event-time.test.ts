@@ -4,6 +4,7 @@ import {
   addMonths,
   addMonthsClamped,
   agendaForDay,
+  allDayBandsForWindow,
   allDayEventsForDay,
   allDayRangeLabel,
   berlinMinutesOfDay,
@@ -626,6 +627,78 @@ describe('allDayEventsForDay', () => {
     ];
 
     expect(allDayEventsForDay(events, '2026-07-18')).toEqual([]);
+  });
+});
+
+describe('allDayBandsForWindow', () => {
+  // Mon–Sun, same week the rest of this file anchors on.
+  const VISIBLE_DAYS = [
+    '2026-07-13',
+    '2026-07-14',
+    '2026-07-15',
+    '2026-07-16',
+    '2026-07-17',
+    '2026-07-18',
+    '2026-07-19',
+  ];
+
+  function occurrencesFor(events: EventView[]) {
+    return () => events;
+  }
+
+  it('squares off at the window edge, rounds only at the event\'s real start/end', () => {
+    // Starts before the window, ends after it — both edges squared off.
+    const spansWholeWindow = event({ allDay: true, startDate: '2026-07-10', endDate: '2026-07-25' });
+    const [band] = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor([spansWholeWindow]));
+    expect(band.continuesBefore).toBe(true);
+    expect(band.continuesAfter).toBe(true);
+    expect(band.startCol).toBe(0);
+    expect(band.endCol).toBe(6);
+
+    // Starts inside the window (its real start), only continues past the end.
+    const startsInWindow = event({
+      id: 'evt-2',
+      allDay: true,
+      startDate: '2026-07-15',
+      endDate: '2026-07-25',
+    });
+    const [partial] = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor([startsInWindow]));
+    expect(partial.continuesBefore).toBe(false);
+    expect(partial.continuesAfter).toBe(true);
+    expect(partial.startCol).toBe(2);
+    expect(partial.endCol).toBe(6);
+  });
+
+  it('dedupes a multi-day event into one band spanning every column it covers', () => {
+    const trip = event({ allDay: true, startDate: '2026-07-14', endDate: '2026-07-16', title: 'Ausflug' });
+
+    const bands = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor([trip]));
+
+    expect(bands).toHaveLength(1);
+    expect(bands[0]).toMatchObject({ id: 'evt-1', title: 'Ausflug', startCol: 1, endCol: 3 });
+  });
+
+  it('caps at 3 bands when more than 3 all-day events lie in the window', () => {
+    const events = ['a', 'b', 'c', 'd'].map((suffix, index) =>
+      event({
+        id: `evt-${suffix}`,
+        allDay: true,
+        startDate: VISIBLE_DAYS[index],
+        endDate: VISIBLE_DAYS[index],
+      }),
+    );
+
+    expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events))).toHaveLength(3);
+  });
+
+  it('returns an empty list for an empty window', () => {
+    expect(allDayBandsForWindow([], () => [])).toEqual([]);
+  });
+
+  it('excludes an event that lies entirely outside the window', () => {
+    const before = event({ allDay: true, startDate: '2026-07-01', endDate: '2026-07-05' });
+
+    expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor([before]))).toEqual([]);
   });
 });
 

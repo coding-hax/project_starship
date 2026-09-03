@@ -122,6 +122,84 @@ export function allDayEventsForDay<T extends TimelineSource>(
     }));
 }
 
+export interface AllDayBand {
+  id: string;
+  title: string;
+  category: EventView['category'];
+  /** 0-based column indices into the `visibleDays` array passed in — the
+   *  week-strip's grid columns the band spans. */
+  startCol: number;
+  endCol: number;
+  /** True when the event's own range reaches past that edge of `visibleDays`
+   *  (issue #1013, AK9) — squared off there, rounded only where the event
+   *  actually starts/ends. Deliberately measured against the *window's*
+   *  edges, unlike `allDayEventsForDay`'s per-day `continuesBefore`/`-after`,
+   *  which compare against a single day. */
+  continuesBefore: boolean;
+  continuesAfter: boolean;
+}
+
+/**
+ * All-day/multi-day bands across the week strip's visible 7-day window
+ * (issue #1013, AK8–12) — one band per event, deduplicated by `id` the same
+ * way `categoriesForDay`/`monthEventCounts` dedupe (a multi-day event shares
+ * one id across every day it covers; a weekly all-day series gets a fresh id
+ * per occurrence, so each occurrence gets its own band). Built on
+ * `allDayEventsForDay` per visible day, so a band always agrees with that
+ * day's dots/agenda by construction rather than a second, parallel rule.
+ *
+ * Stably sorted (`startCol`, then `startDate`, then `title`) and capped at 3
+ * (AK11) — the agenda below already lists every event on a day in full, so a
+ * dropped band loses nothing the user can't see there.
+ */
+export function allDayBandsForWindow<T extends TimelineSource>(
+  visibleDays: string[],
+  occurrencesForDay: (day: string) => T[],
+): AllDayBand[] {
+  const windowStart = visibleDays[0];
+  const windowEnd = visibleDays[visibleDays.length - 1];
+  const bands = new Map<string, AllDayBand & { startDate: string }>();
+
+  visibleDays.forEach((day, col) => {
+    for (const item of allDayEventsForDay(occurrencesForDay(day), day)) {
+      const existing = bands.get(item.id);
+      if (existing) {
+        existing.startCol = Math.min(existing.startCol, col);
+        existing.endCol = Math.max(existing.endCol, col);
+        continue;
+      }
+      bands.set(item.id, {
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        startCol: col,
+        endCol: col,
+        continuesBefore: item.startDate < windowStart,
+        continuesAfter: item.endDate > windowEnd,
+        startDate: item.startDate,
+      });
+    }
+  });
+
+  return [...bands.values()]
+    .sort(
+      (a, b) =>
+        a.startCol - b.startCol ||
+        a.startDate.localeCompare(b.startDate) ||
+        a.title.localeCompare(b.title),
+    )
+    .slice(0, 3)
+    .map((band) => ({
+      id: band.id,
+      title: band.title,
+      category: band.category,
+      startCol: band.startCol,
+      endCol: band.endCol,
+      continuesBefore: band.continuesBefore,
+      continuesAfter: band.continuesAfter,
+    }));
+}
+
 /** A category's colour token (var() reference) — the single place this category
  *  → token mapping lives. Named for its original edge/border use; also feeds
  *  dots (calendar-strip.tsx) and, since issue #974, the overview's start-time
