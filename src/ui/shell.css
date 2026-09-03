@@ -386,7 +386,7 @@
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-card);
     font-size: var(--text-secondary);
-    color: var(--on-ground);
+    color: var(--text);
   }
 
   .nav__link:hover {
