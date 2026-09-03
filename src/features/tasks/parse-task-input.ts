@@ -169,7 +169,7 @@ const WEEKDAY_ABBREVIATIONS: [string, number][] = [
   ['so', 0], ['mo', 1], ['di', 2], ['mi', 3], ['do', 4], ['fr', 5], ['sa', 6],
 ];
 /** Ein Kürzel ohne Punkt zählt nur, wenn direkt eine Zeitangabe folgt. */
-const ABBREVIATION_TIME_FOLLOWS = String.raw`(?=\s+(?:\d|um\s|früh|morgens|vormittags|mittags|nachmittags|abends|nachts|halb|viertel))`;
+const ABBREVIATION_TIME_FOLLOWS = String.raw`(?=\s+(?:\d|um\s|von\s|zwischen\s|bis\s|früh|morgens|vormittags|mittags|nachmittags|abends|nachts|halb|viertel))`;
 
 // Kein `\b` am Ende: bei "4.8." (Standard-Schreibweise mit Punkt nach dem Monat, kein
 // Jahr) liegt der zweite Punkt direkt vor Zeilenende — zwei Nicht-Wortzeichen bilden
@@ -414,7 +414,19 @@ function countOf(token: string | undefined): number {
   return WORD_NUMBERS[token.toLowerCase()] ?? 1;
 }
 
+const ORDINALS = 'ersten|zweiten|dritten|vierten|letzten';
+
 const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => RecurrenceValue }[] = [
+  // Vor der Wochentagsregel: „jeden ersten Montag im Monat" ist monatlich.
+  {
+    pattern: wordPattern(
+      // "im Monat" ist Pflicht: "jeden zweiten Montag" allein meint ueblicher
+      // "alle zwei Wochen montags" und gehoert zur Wochentagsregel darunter.
+      `(?:jeden|jede[ns]?)\\s+(?:${ORDINALS})\\s+(${WEEKDAYS.join('|')})\\s+(?:im|des)\\s+monats?`,
+      'giu',
+    ),
+    build: (m) => ({ freq: 'monthly', interval: 1, byWeekday: [WEEKDAYS.indexOf(m[1].toLowerCase())] }),
+  },
   // „jeden Montag", „jeden zweiten Montag"
   {
     // Ordinalendung mitnehmen: „jeden zweiten Montag" — `zwei` + `ten`.
@@ -454,7 +466,7 @@ const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => Recur
     build: (m) => ({ freq: 'monthly', interval: countOf(m[1]) }),
   },
   {
-    pattern: wordPattern('(?:monatlich|jeden\\s+monat)', 'giu'),
+    pattern: wordPattern('(?:monatlich|jeden\\s+monat)(?:\\s+am\\s+\\d{1,2}\\.?)?', 'giu'),
     build: () => ({ freq: 'monthly', interval: 1 }),
   },
   {
@@ -463,24 +475,48 @@ const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => Recur
   },
 ];
 
-interface RecurrenceMatch extends Span {
+interface RecurrenceMatch {
+  spans: Span[];
   value: RecurrenceValue;
 }
 
-/** Längster Treffer gewinnt: „jeden zweiten Montag" schlägt „montag". */
+/**
+ * Ein Satz kann die Wiederholung auf zwei Ausdrücke verteilen: „wöchentlich montags",
+ * „alle zwei Wochen mittwochs". Der erste nennt Frequenz und Intervall, der zweite den
+ * Wochentag — beide gehören zusammen, und beide müssen aus dem Titel fallen.
+ *
+ * Überlappende Treffer werden vorher aufgelöst (längster gewinnt), damit „jeden zweiten
+ * Montag" nicht zusätzlich als blosses „Montag" zählt.
+ */
 function findRecurrence(text: string): RecurrenceMatch | null {
-  let best: RecurrenceMatch | null = null;
+  const hits: { span: Span; value: RecurrenceValue }[] = [];
   for (const { pattern, build } of RECURRENCE_RULES) {
     for (const match of text.matchAll(pattern)) {
-      const candidate: RecurrenceMatch = {
-        start: match.index!,
-        end: match.index! + match[0].length,
+      hits.push({
+        span: { start: match.index!, end: match.index! + match[0].length },
         value: build(match),
-      };
-      if (!best || candidate.end - candidate.start > best.end - best.start) best = candidate;
+      });
     }
   }
-  return best;
+  if (hits.length === 0) return null;
+
+  const byLength = [...hits].sort((a, b) => b.span.end - b.span.start - (a.span.end - a.span.start));
+  const kept: typeof hits = [];
+  for (const hit of byLength) {
+    if (kept.some((other) => overlaps(other.span, hit.span))) continue;
+    kept.push(hit);
+  }
+
+  const withWeekday = kept.find((hit) => hit.value.byWeekday !== undefined);
+  const withoutWeekday = kept.find((hit) => hit.value.byWeekday === undefined);
+  const base = withoutWeekday ?? withWeekday!;
+  const value: RecurrenceValue = {
+    freq: base.value.freq,
+    interval: base.value.interval,
+    ...(withWeekday ? { byWeekday: withWeekday.value.byWeekday } : {}),
+  };
+  const used = [withWeekday, withoutWeekday].filter((hit): hit is (typeof hits)[number] => hit !== undefined);
+  return { spans: used.map((hit) => hit.span), value };
 }
 
 // --- Uhrzeit -------------------------------------------------------------
@@ -1362,7 +1398,10 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   // Nennt der Wiederholungsausdruck genau einen Wochentag, ist damit auch die erste
   // Fälligkeit gesagt — „immer freitags" trägt kein eigenes Datum, meint aber Freitag.
   // Bei „werktags" (fünf Tage) oder „täglich" bleibt sie offen.
-  if (date === null && recurrenceMatch?.value.byWeekday?.length === 1) {
+  // `dateCandidate`, nicht `date`: eine blosse Uhrzeit hat oben schon einen Tag gesetzt
+  // („morgen 8 Uhr", weil 8 Uhr heute vorbei ist). Der genannte Wochentag ist stärker —
+  // sonst läge „wöchentlich montags von 8 bis 9" auf einem Dienstag.
+  if (dateCandidate === null && recurrenceMatch?.value.byWeekday?.length === 1) {
     const logicalStart = logicalDayStart(now);
     const diff = (recurrenceMatch.value.byWeekday[0] - logicalStart.getDay() + 7) % 7;
     date = addDays(logicalStart, diff);
@@ -1415,7 +1454,7 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   const removalSpans = [
     ...prefixSpans,
     ...dictationSpans,
-    ...(recurrenceMatch ? [{ start: recurrenceMatch.start, end: recurrenceMatch.end }] : []),
+    ...(recurrenceMatch?.spans ?? []),
     ...(terminSpan ? [terminSpan] : []),
     ...(suffixSpan ? [suffixSpan] : []),
     ...anchors,

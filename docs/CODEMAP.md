@@ -109,7 +109,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
   und Telegrammstil stellen rund 23.000 der gut 35.000 Fälle — die sauberen Muster
   beherrschte der Erkenner von Anfang an, die Fehler sassen im Sprechrahmen. Dazu
   „komplex": Zeitspannen („von 10 bis 12" meint den Anfang) und Wiederholungen
-  („jeden zweiten Montag") — immer **ein** Eintrag, nur schwer zu lesen.
+  („jeden zweiten Montag") — immer **ein** Eintrag, nur schwer zu lesen. Und
+  „kombiniert": dieselben Muster gestapelt („Kannst du mir eintragen: jeden Montag von
+  9 bis 11 Uhr Team-Call"). Dort fallen die Fehler auf, die jede Schicht einzeln nicht
+  zeigt — geprüft wird also nicht nur jedes Muster, sondern ihr Zusammentreffen.
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal

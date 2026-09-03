@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CURATED_CASES } from './curated';
 import {
-  generateComplexCases, generateGoldCases, generateHardCases, generateSpokenCases,
-  generateTelegramCases,
+  generateCombinedCases, generateComplexCases, generateGoldCases, generateHardCases,
+  generateSpokenCases, generateTelegramCases,
 } from './generate';
 import { pct, scoreCorpus } from './score';
 import type { Bucket, GoldField, GoldResult } from './score';
@@ -60,6 +60,14 @@ describe('Goldkorpus', () => {
   // Wiederholungsausdruck vor dem Titel.
   check('komplex — Zeitspannen', withPrefix(generateComplexCases, 'komplex:spanne'));
   check('komplex — Wiederholungen', withPrefix(generateComplexCases, 'komplex:wiederholung'));
+  // Kombinierte Muster: der Härtetest. Hier fielen Fehler auf, die jede Schicht für
+  // sich nicht zeigte — etwa der verlorene Wochentag in „wöchentlich montags".
+  check('kombiniert — Wiederholung mit Zeitspanne', withPrefix(generateCombinedCases, 'kombi:wdh-spanne'));
+  check('kombiniert — Sprechkopf mit Wiederholung', withPrefix(generateCombinedCases, 'kombi:kopf-wdh'));
+  check('kombiniert — Sprechkopf, Datum und Zeitspanne', withPrefix(generateCombinedCases, 'kombi:kopf-datum-spanne'));
+  check('kombiniert — Zögern, Aussagerahmen und Datum', withPrefix(generateCombinedCases, 'kombi:zoegern-aussage-datum'));
+  check('kombiniert — Telegramm mit Zeitspanne', withPrefix(generateCombinedCases, 'kombi:telegramm-spanne'));
+  check('kombiniert — Sprechkopf mit Präposition', withPrefix(generateCombinedCases, 'kombi:kopf-praeposition'));
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {

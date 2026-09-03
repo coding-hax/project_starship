@@ -4,6 +4,7 @@ import {
   RECURRENCE_SLOTS, TASK_TITLES, TIME_RANGE_SLOTS, TIME_SLOTS,
   WEEKDAY_ABBREVIATION_SLOTS, WHEN_SLOTS,
 } from './slots';
+import type { TimeRangeSlot } from './slots';
 import type { TimeSlot } from './slots';
 import { GOLD_HABITS, NOW_REF } from './types';
 
@@ -51,9 +52,17 @@ export interface GenerateOptions {
  * selbst — der Titel IST der eingesetzte String, das Datum kommt aus `slots.ts`'
  * Referenz-Auflösung. Der Parser wird dabei nie befragt.
  */
+/**
+ * Kontingent der sauberen Grundmuster. Kleiner als bei den übrigen Schichten: diese
+ * Muster stehen seit der ersten Messung bei 100 % und haben nie einen Fehler
+ * aufgedeckt, während die kombinierten sofort drei fanden. Das hält den Gate-Test
+ * unter dem Standard-Timeout, ohne dort zu sparen, wo tatsächlich etwas gefunden wird.
+ */
+const PLAIN_PATTERN_QUOTA = 2000;
+
 export function generateGoldCases(options: GenerateOptions = {}): GoldCase[] {
   const now = options.now ?? NOW_REF;
-  const quota = options.quotaPerPattern ?? 4000;
+  const quota = options.quotaPerPattern ?? PLAIN_PATTERN_QUOTA;
   const cases: GoldCase[] = [];
   let n = 0;
   const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
@@ -376,4 +385,129 @@ function weekdayDue(now: Date, dow: number): string {
   d.setDate(d.getDate() + ((dow - now.getDay() + 7) % 7));
   d.setHours(9, 0, 0, 0);
   return d.toISOString();
+}
+
+/**
+ * Kombinierte Muster (#erfasser-korpus): der eigentliche Härtetest. Bis hierher prüfte
+ * jede Schicht ihr Muster allein — ein Sprechkopf ODER eine Wiederholung ODER eine
+ * Zeitspanne. Echte Sätze stapeln sie: „Kannst du mir eintragen: jeden Montag von 9 bis
+ * 11 Uhr Team-Call" ist alle drei auf einmal.
+ *
+ * Genau an solchen Stapeln fielen die Fehler auf, die einzeln nie sichtbar wurden —
+ * etwa dass „wöchentlich montags" den Wochentag verlor, weil zwei Wiederholungs-
+ * ausdrücke im selben Satz standen.
+ */
+export function generateCombinedCases(options: GenerateOptions = {}): GoldCase[] {
+  const now = options.now ?? NOW_REF;
+  const quota = options.quotaPerPattern ?? 2200;
+  const cases: GoldCase[] = [];
+  let n = 0;
+  const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
+    cases.push({
+      id: `kombi:${pattern}:${String(n++).padStart(5, '0')}`,
+      text,
+      source: 'generiert',
+      category,
+      expect,
+    });
+  };
+
+  const recurrenceOf = (rule: (typeof RECURRENCE_SLOTS)[number]) => ({
+    freq: rule.freq,
+    interval: rule.interval,
+    ...(rule.byWeekday ? { byWeekday: rule.byWeekday } : {}),
+  });
+  /**
+   * Erste Fälligkeit. Ein einzelner Wochentag nennt sie direkt. Bei „täglich" oder
+   * „werktags" bleibt der Tag offen — steht aber eine Uhrzeit im Satz, gilt dafür die
+   * normale Regel für eine Uhrzeit ohne Datum: heute, sonst morgen.
+   */
+  const firstDue = (rule: (typeof RECURRENCE_SLOTS)[number], time: TimeRangeSlot | null) => {
+    if (rule.byWeekday?.length === 1) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + ((rule.byWeekday[0] - now.getDay() + 7) % 7));
+      d.setHours(time ? time.hours : 9, time ? time.minutes : 0, 0, 0);
+      return d;
+    }
+    if (!time) return null;
+    const d = new Date(now);
+    d.setHours(time.hours, time.minutes, 0, 0);
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d;
+  };
+
+  // C1 — Wiederholung + Zeitspanne: „Jeden Montag von 9 bis 11 Uhr Team-Call"
+  const recurringRanges = cross(cross(RECURRENCE_SLOTS, TIME_RANGE_SLOTS), TASK_TITLES);
+  for (const [[rule, range], title] of sample(recurringRanges, quota)) {
+    const due = firstDue(rule, range);
+    const end = due ? new Date(due) : null;
+    end?.setHours(range.endHours, range.endMinutes, 0, 0);
+    push('wdh-spanne', `${rule.text} ${range.text} ${title}`, 'Wiederholung + Zeitspanne', {
+      kind: kindOf(title),
+      title,
+      dueAt: due?.toISOString() ?? null,
+      endAt: end?.toISOString() ?? null,
+      recurrence: recurrenceOf(rule),
+    });
+  }
+
+  // C2 — Sprechkopf + Wiederholung: „Nicht vergessen: jeden Montag Müll rausbringen"
+  const spokenRecurring = cross(cross(SPOKEN_HEADS, RECURRENCE_SLOTS), TASK_TITLES);
+  for (const [[head, rule], title] of sample(spokenRecurring, quota)) {
+    push('kopf-wdh', `${head} ${rule.text.toLowerCase()} ${title}`, 'Sprechkopf + Wiederholung', {
+      kind: kindOf(title),
+      title,
+      dueAt: firstDue(rule, null)?.toISOString() ?? null,
+      recurrence: recurrenceOf(rule),
+    });
+  }
+
+  // C3 — Sprechkopf + Zeitspanne mit Datum: alle drei Ebenen auf einmal.
+  const spokenRanged = cross(cross(cross(SPOKEN_HEADS, WHEN_SLOTS), TIME_RANGE_SLOTS), TASK_TITLES);
+  for (const [[[head, when], range], title] of sample(spokenRanged, quota)) {
+    const day = when.resolve(now);
+    push('kopf-datum-spanne', `${head} ${title} ${when.text} ${range.text}`, 'Sprechkopf + Datum + Zeitspanne', {
+      kind: kindOf(title),
+      title,
+      dueAt: at(day, range),
+      endAt: at(day, { ...range, hours: range.endHours, minutes: range.endMinutes }),
+    });
+  }
+
+  // C4 — Zögern + Aussagerahmen + Datum: der volle gesprochene Satz mit Zeitangabe.
+  const hesitatedStated = cross(cross(cross(HESITATION_PREFIXES, STATEMENT_HEADS), WHEN_SLOTS), TASK_TITLES);
+  for (const [[[hesitation, head], when], title] of sample(hesitatedStated, quota)) {
+    const when_ = when.text.replace(/^am (?=morgen|heute|übermorgen)/, '');
+    push('zoegern-aussage-datum', `${hesitation} ${head.toLowerCase()} ${when_} ${title}`,
+      `Zögern + Aussagerahmen + ${when.category}`, {
+        kind: kindOf(title),
+        title,
+        dueAt: when.resolve(now).toISOString(),
+      });
+  }
+
+  // C5 — Telegramm-Wochentag + Zeitspanne: „Mo 9-17 Uhr Workshop"
+  const teleRanged = cross(cross(WEEKDAY_ABBREVIATION_SLOTS, TIME_RANGE_SLOTS), TASK_TITLES);
+  for (const [[day, range], title] of sample(teleRanged, quota)) {
+    const base = day.resolve(now);
+    push('telegramm-spanne', `${day.text} ${range.text} ${title}`, 'Telegramm + Zeitspanne', {
+      kind: kindOf(title),
+      title,
+      dueAt: at(base, range),
+      endAt: at(base, { ...range, hours: range.endHours, minutes: range.endMinutes }),
+    });
+  }
+
+  // C6 — Präposition + Sprechkopf: „Nicht vergessen: bis Freitag Präsentation"
+  const preppedSpoken = cross(cross(cross(SPOKEN_HEADS, DATE_PREPOSITIONS), WHEN_SLOTS), TASK_TITLES);
+  for (const [[[head, prep], when], title] of sample(preppedSpoken, quota)) {
+    const when_ = when.text.replace(/^am /, '');
+    push('kopf-praeposition', `${head} ${prep} ${when_} ${title}`, 'Sprechkopf + Präposition', {
+      kind: kindOf(title),
+      title,
+      dueAt: when.resolve(now).toISOString(),
+    });
+  }
+
+  return cases;
 }
