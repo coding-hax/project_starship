@@ -31,9 +31,20 @@ describe('Goldkorpus', () => {
     });
   };
 
+  const withPrefix = (build: () => GoldCase[], ...prefixes: string[]) => () =>
+    build().filter((c) => prefixes.some((prefix) => c.id.startsWith(prefix)));
+
   check('kuratierte Sätze — die Spezifikation', () => CURATED_CASES);
-  check('generierte Grundmuster', () => generateGoldCases());
-  check('generierte Sprechrahmen und Präpositionen', () => generateHardCases());
+  // Die beiden Termin-Muster stellen allein rund 8.000 Fälle und brauchten zusammen
+  // mit dem Rest 3,9 s — zu nah an den 5 s, sobald ein Runner langsamer ist.
+  check(
+    'generierte Grundmuster — Datum und Routine',
+    withPrefix(generateGoldCases, 'gen:nackt', 'gen:datum', 'gen:routine'),
+  );
+  check('generierte Grundmuster — Termin, Zeitangabe vorn', withPrefix(generateGoldCases, 'gen:termin-vorn'));
+  check('generierte Grundmuster — Termin, Titel vorn', withPrefix(generateGoldCases, 'gen:termin-hinten'));
+  check('generierte Sprechrahmen', withPrefix(generateHardCases, 'hard:rahmen'));
+  check('generierte Präpositionen', withPrefix(generateHardCases, 'hard:praeposition'));
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {
