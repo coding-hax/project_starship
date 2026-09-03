@@ -85,6 +85,12 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Clips the edge columns' `::before` hit-target overflow (below) here,
+     before it reaches `.month-grid__track` — otherwise that 5px poking past
+     the grid's left/right edge counts as real horizontal scroll content, and
+     `.month-grid__track`'s own `overflow-x: hidden` only hides it visually
+     while still letting `scrollLeft` move into it (issue #1039, AK3). */
+  overflow-x: hidden;
 }
 
 .month-grid__day {
