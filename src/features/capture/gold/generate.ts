@@ -330,10 +330,12 @@ export function generateComplexCases(options: GenerateOptions = {}): GoldCase[] 
   // K1 — Zeitspanne mit Datum: „Workshop am Freitag von 9 bis 11 Uhr"
   const ranged = cross(cross(WHEN_SLOTS, TIME_RANGE_SLOTS), TASK_TITLES);
   for (const [[when, range], title] of sample(ranged, quota)) {
+    const day = when.resolve(now);
     push('spanne-datum', `${title} ${when.text} ${range.text}`, `Zeitspanne · ${when.category}`, {
       kind: kindOf(title),
       title,
-      dueAt: at(when.resolve(now), range),
+      dueAt: at(day, range),
+      endAt: at(day, { ...range, hours: range.endHours, minutes: range.endMinutes }),
     });
   }
 
@@ -343,10 +345,13 @@ export function generateComplexCases(options: GenerateOptions = {}): GoldCase[] 
     day.setHours(range.hours, range.minutes, 0, 0);
     // Wie jede Uhrzeit ohne Datum: heute, wenn noch in der Zukunft, sonst morgen.
     if (day <= now) day.setDate(day.getDate() + 1);
+    const end = new Date(day);
+    end.setHours(range.endHours, range.endMinutes, 0, 0);
     push('spanne', `${title} ${range.text}`, 'Zeitspanne ohne Datum', {
       kind: kindOf(title),
       title,
       dueAt: day.toISOString(),
+      endAt: end.toISOString(),
     });
   }
 

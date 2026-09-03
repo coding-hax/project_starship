@@ -237,15 +237,21 @@ export const SHORT_TIME_SLOTS: TimeSlot[] = [
  * Ende ist im Korpus bewusst nicht geprüft, weil `endsAt` beim Erfassen noch nicht
  * gesetzt wird.
  */
-export const TIME_RANGE_SLOTS: TimeSlot[] = [
-  { text: 'von 9 bis 11 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0 },
-  { text: 'von 14 bis 16 Uhr', category: 'Zeitspanne', hours: 14, minutes: 0 },
-  { text: 'zwischen 10 und 12 Uhr', category: 'Zeitspanne', hours: 10, minutes: 0 },
-  { text: 'zwischen 15 und 17 Uhr', category: 'Zeitspanne', hours: 15, minutes: 0 },
-  { text: '9-17 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0 },
-  { text: '13-15 Uhr', category: 'Zeitspanne', hours: 13, minutes: 0 },
-  { text: '8 bis 10 Uhr', category: 'Zeitspanne', hours: 8, minutes: 0 },
-  { text: 'von 18:30 bis 20 Uhr', category: 'Zeitspanne', hours: 18, minutes: 30 },
+export interface TimeRangeSlot extends TimeSlot {
+  /** Genanntes Ende — landet als `endAt` im Draft und als `endsAt` am Termin. */
+  endHours: number;
+  endMinutes: number;
+}
+
+export const TIME_RANGE_SLOTS: TimeRangeSlot[] = [
+  { text: 'von 9 bis 11 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0, endHours: 11, endMinutes: 0 },
+  { text: 'von 14 bis 16 Uhr', category: 'Zeitspanne', hours: 14, minutes: 0, endHours: 16, endMinutes: 0 },
+  { text: 'zwischen 10 und 12 Uhr', category: 'Zeitspanne', hours: 10, minutes: 0, endHours: 12, endMinutes: 0 },
+  { text: 'zwischen 15 und 17 Uhr', category: 'Zeitspanne', hours: 15, minutes: 0, endHours: 17, endMinutes: 0 },
+  { text: '9-17 Uhr', category: 'Zeitspanne', hours: 9, minutes: 0, endHours: 17, endMinutes: 0 },
+  { text: '13-15 Uhr', category: 'Zeitspanne', hours: 13, minutes: 0, endHours: 15, endMinutes: 0 },
+  { text: '8 bis 10 Uhr', category: 'Zeitspanne', hours: 8, minutes: 0, endHours: 10, endMinutes: 0 },
+  { text: 'von 18:30 bis 20 Uhr', category: 'Zeitspanne', hours: 18, minutes: 30, endHours: 20, endMinutes: 0 },
 ];
 
 /** Wiederholungsausdrücke samt erwartetem `RecurrenceValue`. */

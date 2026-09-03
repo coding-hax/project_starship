@@ -232,11 +232,25 @@ const YEAR_COMPLETED_REASON = 'Jahr ergänzt';
  */
 const DATE_RANGE_SPECIFICITY = 6;
 const DATE_RANGE_PATTERN = new RegExp(
-  String.raw`\bvo[nm]\s+(\d{1,2})\.?\s*(?:bis|-|–)\s*(?:zum\s+)?\d{1,2}\.?\s*(` +
+  String.raw`\bvo[nm]\s+(\d{1,2})\.?\s*(?:bis|-|–)\s*(?:zum\s+)?(\d{1,2})\.?\s*(` +
     MONTH_NAMES.join('|') +
     String.raw`)`,
   'giu',
 );
+
+/** Der letzte Tag der Datumsspanne — ganztägig, deshalb ohne Uhrzeit. */
+function findDateRangeEnd(text: string, now: Date): Date | null {
+  for (const match of text.matchAll(DATE_RANGE_PATTERN)) {
+    const day = Number(match[2]);
+    const month = MONTH_NAMES.indexOf(match[3].toLowerCase()) + 1;
+    if (!isValidCalendarDate(now.getFullYear(), month, day)) continue;
+    const end = new Date(now.getFullYear(), month - 1, day);
+    if (end < logicalDayStart(now)) end.setFullYear(end.getFullYear() + 1);
+    end.setHours(9, 0, 0, 0);
+    return end;
+  }
+  return null;
+}
 
 function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null {
   const candidates: Candidate<DateValue>[] = [];
@@ -244,7 +258,7 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
 
   for (const match of text.matchAll(DATE_RANGE_PATTERN)) {
     const day = Number(match[1]);
-    const month = MONTH_NAMES.indexOf(match[2].toLowerCase()) + 1;
+    const month = MONTH_NAMES.indexOf(match[3].toLowerCase()) + 1;
     if (!isValidCalendarDate(now.getFullYear(), month, day)) continue;
     const date = new Date(now.getFullYear(), month - 1, day);
     if (date < logicalStart) date.setFullYear(date.getFullYear() + 1);
@@ -780,11 +794,29 @@ function findStandaloneDayPartCandidates(text: string): Candidate<TimeValue>[] {
  */
 const TIME_RANGE_SPECIFICITY = 6;
 const TIME_RANGE_PATTERNS: RegExp[] = [
-  /\bzwischen\s+(\d{1,2})(?::(\d{2}))?\s+und\s+\d{1,2}(?::\d{2})?(?:\s*uhr)?/giu,
-  /\bvon\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr\s*)?(?:bis|-|–)\s*\d{1,2}(?::\d{2})?(?:\s*uhr)?/giu,
-  /\b(\d{1,2})(?::(\d{2}))?\s*(?:-|–)\s*\d{1,2}(?::\d{2})?\s*uhr\b/giu,
-  /\b(\d{1,2})(?::(\d{2}))?\s+bis\s+\d{1,2}(?::\d{2})?\s*uhr\b/giu,
+  /\bzwischen\s+(\d{1,2})(?::(\d{2}))?\s+und\s+(\d{1,2})(?::(\d{2}))?(?:\s*uhr)?/giu,
+  /\bvon\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr\s*)?(?:bis|-|–)\s*(\d{1,2})(?::(\d{2}))?(?:\s*uhr)?/giu,
+  /\b(\d{1,2})(?::(\d{2}))?\s*(?:-|–)\s*(\d{1,2})(?::(\d{2}))?\s*uhr\b/giu,
+  /\b(\d{1,2})(?::(\d{2}))?\s+bis\s+(\d{1,2})(?::(\d{2}))?\s*uhr\b/giu,
 ];
+
+/**
+ * Das Ende der Zeitspanne. Der Start läuft über `findTimeRangeMatches` durch die
+ * normale Tageshälften-Auflösung; das Ende richtet sich danach: liegt es davor, war
+ * dieselbe Tageshälfte gemeint („von 2 bis 4 nachmittags" ist 14–16 Uhr).
+ */
+function findTimeRangeEnd(text: string, startHours: number): { hours: number; minutes: number } | null {
+  for (const pattern of TIME_RANGE_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      let hours = Number(match[3]);
+      const minutes = match[4] ? Number(match[4]) : 0;
+      if (Number.isNaN(hours) || hours > 23 || minutes > 59) continue;
+      if (hours < startHours && hours + 12 <= 23) hours += 12;
+      return { hours, minutes };
+    }
+  }
+  return null;
+}
 
 function findTimeRangeMatches(text: string): RawHourMatch[] {
   const found: RawHourMatch[] = [];
@@ -1269,6 +1301,13 @@ export interface DateTimeSlot {
 }
 
 export interface TextAnalysis extends DateTimeSlot {
+  /**
+   * Ende einer genannten Spanne, sonst `null`. Bei einer Uhrzeitspanne derselbe Tag mit
+   * der Endzeit („von 10 bis 12"), bei einer Datumsspanne der letzte Tag („vom 3. bis
+   * 10. März"). Ob daraus ein Zeit-Termin oder ein mehrtägiger ganztägiger wird,
+   * entscheidet `eventFieldsFromDraft` am Kalendertag-Vergleich.
+   */
+  endAt: Date | null;
   /** Erkannter Wiederholungsausdruck, `null` wenn keiner. Wird bewusst nicht
    * gespeichert — siehe `RecurrenceValue`. */
   recurrence: RecurrenceValue | null;
@@ -1330,6 +1369,19 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     date.setHours(timeCandidate?.value.hours ?? 9, timeCandidate?.value.minutes ?? 0, 0, 0);
   }
 
+  // Spannen-Ende: erst die Uhrzeit am selben Tag, dann — falls genannt — der letzte Tag
+  // einer Datumsspanne, der die Uhrzeitlesart überschreibt.
+  let endAt: Date | null = null;
+  if (date !== null && timeCandidate) {
+    const rangeEnd = findTimeRangeEnd(text, timeCandidate.value.hours);
+    if (rangeEnd) {
+      endAt = new Date(date);
+      endAt.setHours(rangeEnd.hours, rangeEnd.minutes, 0, 0);
+    }
+  }
+  const dateRangeEnd = findDateRangeEnd(text, now);
+  if (dateRangeEnd) endAt = dateRangeEnd;
+
   const needsConfirmation = timeCandidate?.value.needsConfirmation ?? false;
 
   const explicitTitle = findExplicitTitle(text);
@@ -1337,6 +1389,7 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     return {
       date,
       hasExplicitTime,
+      endAt,
       recurrence: recurrenceMatch?.value ?? null,
       title: explicitTitle,
       needsConfirmation,
@@ -1380,6 +1433,7 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   return {
     date,
     hasExplicitTime,
+    endAt,
     recurrence: recurrenceMatch?.value ?? null,
     title,
     needsConfirmation,

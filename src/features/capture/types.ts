@@ -54,6 +54,11 @@ export interface CaptureDraft {
   /** nur bei `kind: 'habit_check'` gesetzt, sonst null. */
   habitId: string | null;
   /**
+   * ISO — Ende einer genannten Spanne („von 10 bis 12", „vom 3. bis 10. März"), sonst
+   * null. Ohne Spanne bleibt der bisherige Default (Start + eine Stunde) in Kraft.
+   */
+  endAt: string | null;
+  /**
    * Erkannter Wiederholungsausdruck („jeden Montag", „alle zwei Wochen"), sonst null.
    * Die Form entspricht `events.recurrence` im Schema, wird aber **nicht geschrieben**:
    * die Expansion ist für S6/S7 reserviert, und ein Wert ohne Expansion verspräche eine

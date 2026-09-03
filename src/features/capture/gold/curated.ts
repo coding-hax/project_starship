@@ -188,9 +188,11 @@ export const CURATED_CASES: GoldCase[] = [
     ['Meeting morgen von 10 bis 12', 'event', 'Meeting', on(1, 16, 10)],
     ['Termin am Freitag zwischen 14 und 16 Uhr', 'event', 'Termin', on(1, 19, 14)],
     ['Urlaub vom 3. bis 10. März', 'task', 'Urlaub', on(3, 3)],
+    // Das Ende der Spanne wird mitgelesen; `eventFieldsFromDraft` macht daraus einen
+    // mehrtägigen ganztägigen Termin (startDate 03.03. → endDate 10.03.).
+    ['Konferenz vom 5. bis 7. Juni', 'task', 'Konferenz', on(6, 5)],
     ['Workshop Montag 9-17 Uhr', 'task', 'Workshop', on(1, 15, 9)],
     ['Sprechstunde morgen 8 bis 10 Uhr', 'task', 'Sprechstunde', on(1, 16, 8)],
-    ['Konferenz vom 5. bis 7. Juni', 'task', 'Konferenz', on(6, 5)],
     // Wiederholung vor dem Titel — der Ausdruck darf ihn nicht zerreissen.
     ['Jeden Montag Müll rausbringen', 'task', 'Müll rausbringen', on(1, 15)],
     ['Jede Woche Rechnungen prüfen', 'task', 'Rechnungen prüfen', null],

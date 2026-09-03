@@ -20,6 +20,8 @@ export interface GoldExpectation {
   dueAt: string | null;
   habitId?: string | null;
   logDate?: string | null;
+  /** Nur wo der Fall ein genanntes Spannen-Ende prüft. */
+  endAt?: string | null;
   /** Nur wo der Fall die Wiederholungserkennung prüft. */
   recurrence?: { freq: string; interval: number; byWeekday?: number[] } | null;
 }

@@ -64,7 +64,25 @@ export function eventFieldsFromDraft(draft: CaptureDraft, now: Date): EventCaptu
     timeConfidence: draft.confidence.time,
   };
   if (draft.dueAt) {
-    const endsAt = new Date(new Date(draft.dueAt).getTime() + ONE_HOUR_MS).toISOString();
+    const start = new Date(draft.dueAt);
+    const end = draft.endAt ? new Date(draft.endAt) : null;
+    // Eine Spanne über mehrere Kalendertage („vom 3. bis 10. März") ist ein
+    // mehrtägiger ganztägiger Termin, keiner mit Uhrzeit — dasselbe Modell, das
+    // `events` für ganztägige Einträge vorsieht (startDate/endDate).
+    if (end && toDateKey(end) !== toDateKey(start)) {
+      return {
+        kind: 'event',
+        title: draft.title,
+        allDay: true,
+        startsAt: null,
+        endsAt: null,
+        startDate: toDateKey(start),
+        endDate: toDateKey(end),
+        ...confidence,
+      };
+    }
+    // Sonst der genannte Endzeitpunkt; ohne Spanne bleibt der Default von einer Stunde.
+    const endsAt = (end ?? new Date(start.getTime() + ONE_HOUR_MS)).toISOString();
     return {
       kind: 'event',
       title: draft.title,
@@ -154,6 +172,8 @@ export function mergeDraft(
     // Kein eigenes Feld in `FieldMentions`: eine Wiederholung ist im Text immer explizit
     // („jeden Montag"), nennt die neue Äusserung keine, bleibt die alte stehen.
     recurrence: utterance.recurrence ?? prev.recurrence,
+    // Das Spannen-Ende hängt am Datum und zieht mit ihm um.
+    endAt: mentions.due ? utterance.endAt : prev.endAt,
     needsConfirmation: mentions.due ? utterance.needsConfirmation : prev.needsConfirmation,
     // #780: die Art wird mit der ersten Übernahme fix (Entscheidung C, oben) — der
     // Leerzustand-Status des Art-Chips zieht mit, sonst würde er nach einer zweiten,
