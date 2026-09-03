@@ -3912,6 +3912,48 @@ test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)'
   await expect(monthGridPage(page).locator('.month-grid__days > li')).toHaveCount(42);
 });
 
+test('ein senkrechter Zug ausserhalb der Monats-Karte scrollt weiterhin die Seite (issue #1039, AK6)', async ({
+  page,
+}) => {
+  // Genug Agenda-Eintraege, damit die Seite den 375x812-Testviewport
+  // ueberragt — sonst gaebe es nichts zu scrollen und der Test waere
+  // unabhaengig vom eigentlichen Verhalten immer gruen.
+  for (let i = 0; i < 20; i += 1) {
+    const hour = String(i).padStart(2, '0');
+    await seedEvent(page, {
+      title: `Termin ${i}`,
+      allDay: false,
+      startsAt: `${TODAY}T${hour}:05:00.000Z`,
+      endsAt: `${TODAY}T${hour}:35:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(page.locator('.event-agenda__item')).toHaveCount(20);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+  ).toBe(true);
+
+  // `.calendar-view__header` liegt ausserhalb von `.month-grid` — ein
+  // senkrechter Zug, der hier beginnt, darf nicht von der Karte geschluckt
+  // werden (AK6 nennt Agenda/Kopfbereich als Beispiele), sondern muss die
+  // Seite selbst bewegen. `mouse.wheel` ist — anders als ein per JS
+  // dispatchtes `TouchEvent` (siehe `pageStrip`s Kommentar oben) — ein
+  // echtes, vom Browser nativ verarbeitetes Gesture-Event und deshalb hier
+  // aussagekraeftig: es beweist, dass kein Vorfahre/Geschwister von
+  // `.month-grid__track` dessen `touch-action: pan-y`/`overflow` geerbt hat.
+  const headerBox = await page.locator('.calendar-view__header').boundingBox();
+  if (!headerBox) throw new Error('AK6: kein .calendar-view__header gefunden');
+  await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + 5);
+
+  const before = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+});
+
 test('Tippen auf einen gedaempften Nachbarmonatstag waehlt ihn und verschiebt den fokussierten Monat (#958)', async ({
   page,
 }) => {
