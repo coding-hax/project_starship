@@ -110,7 +110,7 @@ test('AK1: der Art-Chip zeigt die erkannte Art, bevor angelegt wird', async ({ p
   // sicheren Rückfall "Aufgabe" — der ist erst mit "Anlegen" eine echte Entscheidung.
   await expect(artChipEmpty(page)).toBeVisible();
 
-  await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
+  await captureTitleField(page).fill('Termin morgen 12 Uhr Zahnarzt');
   await expect(artChip(page, 'Termin')).toBeVisible();
 });
 
@@ -137,7 +137,7 @@ test('#780 AK2: leeres Feld, nie berührt -> "Anlegen" legt trotzdem eine Aufgab
 test('AK1: Antippen des Art-Chips wechselt die Art von Hand', async ({ page }) => {
   await page.goto('/uebersicht');
   await captureButton(page).click();
-  await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
+  await captureTitleField(page).fill('Termin morgen 12 Uhr Zahnarzt');
   await expect(artChip(page, 'Termin')).toBeVisible();
 
   await artChip(page, 'Termin').click();
@@ -160,7 +160,7 @@ test('AK2: der Akzent des Sheets folgt der erkannten Art', async ({ page }) => {
   expect(initialColor).not.toBe(taskColor);
   expect(initialColor).not.toBe(eventColor);
 
-  await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
+  await captureTitleField(page).fill('Termin morgen 12 Uhr Zahnarzt');
   await expect.poll(() => actionButtonBackground(page)).toBe(eventColor);
 
   await artChip(page, 'Termin').click();
@@ -197,13 +197,13 @@ test('AK3: "Wäsche waschen" legt die Aufgabe in-place an, kein Navigieren', asy
   expect(created?.payload).toMatchObject({ title: 'Wäsche waschen' });
 });
 
-test('AK3: "morgen 12 Uhr Zahnarzt" legt den Termin in-place an, kein Navigieren', async ({
+test('AK3: "Termin morgen 12 Uhr Zahnarzt" legt den Termin in-place an, kein Navigieren', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
-  await submitCapture(page, 'morgen 12 Uhr Zahnarzt');
+  await submitCapture(page, 'Termin morgen 12 Uhr Zahnarzt');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(captureDialog(page)).toBeHidden();
@@ -350,7 +350,7 @@ test('AK4: "Mehr" bei Termin öffnet das volle Modul-Sheet mit übernommenen Ker
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
   await captureButton(page).click();
-  await captureTitleField(page).fill('morgen 12 Uhr Zahnarzt');
+  await captureTitleField(page).fill('Termin morgen 12 Uhr Zahnarzt');
   await page.getByRole('button', { name: 'Kategorie' }).click();
   // Nicht `getByLabel('Kategorie')`: das immer gemountete (meist geschlossene)
   // `EventEditor` trägt sein eigenes gleichnamiges Feld unabhängig von `open`

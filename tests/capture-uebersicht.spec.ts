@@ -249,13 +249,13 @@ test('AC7+AC8 Durchstich: iOS-Satzzeichen und ausgeschriebene Uhrzeit ergeben ei
   await page.goto('/uebersicht');
   const due = expectedDueAt(1, 12, 0);
 
-  await submitUebersichtCapture(page, 'Zahnarzt morgen um zwölf.');
+  await submitUebersichtCapture(page, 'Zahnarzttermin morgen um zwölf.');
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(captureDialog(page)).toBeHidden();
   const entries = await page.evaluate(() => window.__starship.pending());
   const created = entries.find((entry) => entry.table === 'events');
-  expect(created?.payload).toMatchObject({ title: 'Zahnarzt', startsAt: due.toISOString() });
+  expect(created?.payload).toMatchObject({ title: 'Zahnarzttermin', startsAt: due.toISOString() });
 });
 
 test('das Titelfeld trägt einen neutralen Platzhalter, keine Art vorweg (issue #650 AK2, #780 E5)', async ({
