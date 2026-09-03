@@ -21,16 +21,20 @@
   gap: 10px;
   border: none;
   border-radius: var(--radius-pill);
-  /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3): reine
-     Bereichsfarbe auf --surface läge nur bei ~2,9:1. AK1 nennt 76%, aber das
-     hält im Hellmodus für --area-tasks (die hellste Bereichsfarbe, L=70%) nur
-     ~4,22:1 — unter dem von AC3 (issue #709, bestehender Required Check)
-     geforderten Minimum. 70% Bereichsfarbe gegen --text-base gemischt (oklab)
-     hält Glyphe **und** das 16px/600-Label in jedem Bereich und Theme ≥4,5:1
-     (--area-tasks im Hellmodus als knappster Fall: ~4,67:1) und bleibt an der
-     Bereichsfarbe erkennbar statt ins Neutrale zu kippen (#867 AK1). */
+  /* Hell auf dem Grund statt der Bereichsfarbe (issue #831 AK3, Mischanteil
+     seit issue #1035 gegen --ground statt --accent vermessen): --accent steht
+     global auf --area-tasks (Koralle) und wechselt nur auf /journal — auf
+     /aufgaben, /kalender, /routinen trug die Beschriftung dadurch eine Farbe,
+     die auf der Seite sonst nirgends vorkam (#1035 AK2). --ground ist bereits
+     die kontextuelle, theme-abhängige Route-Variable (globals.css) — ein
+     Wechsel des Tokens reicht, kein Umbau von --accent selbst (AK4). 55%
+     Routengrund gegen --text-base gemischt (oklab) hält Glyphe **und** Label
+     auf allen fünf FAB-Routen (/uebersicht, /aufgaben, /kalender, /routinen,
+     /journal) in beiden Themes gegen --surface ≥4,5:1 — knappster Fall
+     Hellmodus /uebersicht ~4,88:1, Dunkelmodus /journal ~5,19:1 (--ground-
+     journal ist im Dunkelmodus schon fast so dunkel wie --surface selbst). */
   background: var(--surface);
-  color: color-mix(in oklab, var(--accent) 70%, var(--text-base));
+  color: color-mix(in oklab, var(--ground) 55%, var(--text-base));
   box-shadow: var(--shadow-raised);
   display: flex;
   align-items: center;

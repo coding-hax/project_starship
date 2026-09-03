@@ -205,31 +205,119 @@ test('AK2: die Reiterleiste schwimmt als Pille über dem Grund, der aktive Reite
   expect(await elementColor(activeTab), 'aktiver Reiter trägt --area-tasks').toBe(areaTasksToken);
 });
 
-test('AK3: der schwebende Knopf steht hell auf dem Grund, die Beschriftung in abgedunkelter Bereichsfarbe', async ({
+/** Die fünf Routen mit eigenem FAB (issue #1035) — je eigener [data-ground]-
+ * Eintrag (globals.css) und eigenes aria-label (Fab-Aufrufer je Feature). */
+const FAB_ROUTES: Array<{ path: string; fabLabel: string }> = [
+  { path: '/uebersicht', fabLabel: 'Aufgabe erfassen' },
+  { path: '/aufgaben', fabLabel: 'Aufgabe erfassen' },
+  { path: '/kalender', fabLabel: 'Termin erfassen' },
+  { path: '/routinen', fabLabel: 'Routine anlegen' },
+  { path: '/journal', fabLabel: 'Eintragen' },
+];
+
+const JOURNAL_FAB_PASSPHRASE = 'grundfarbe-vollfarbe fab passphrase';
+
+/** journal-editor.tsx (und damit sein FAB) montiert erst, sobald das Gate
+ * entsperrt ist (journal-gate.tsx). Der erste Besuch in einem Test sieht
+ * `setup` (resetAppData() im beforeEach, noch keine Hülle); jeder weitere
+ * volle Reload (issue #1035s Routen×Theme-Schleife lädt /journal je Theme neu)
+ * sieht wieder `locked` — der DEK lebt nur im Speicher. Verzweigt deshalb über
+ * den tatsächlichen Gate-Zustand statt `setup` anzunehmen (Vorlage:
+ * journal.spec.ts setUpEditor/unlockEditor). */
+async function ensureJournalUnlocked(
+  page: Page,
+  passphrase = JOURNAL_FAB_PASSPHRASE,
+): Promise<void> {
+  await page.goto('/journal');
+  const state = await page.locator('.journal-gate').getAttribute('data-state');
+  if (state === 'setup') {
+    await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+    await page.getByLabel('Passphrase wiederholen').fill(passphrase);
+    await page.getByRole('button', { name: 'Einrichten' }).click();
+    await page.getByTestId('journal-recovery-key').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+  } else if (state === 'locked') {
+    await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+    await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
+  }
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+}
+
+async function gotoFabRoute(page: Page, path: string): Promise<void> {
+  if (path === '/journal') {
+    await ensureJournalUnlocked(page);
+  } else {
+    await page.goto(path);
+  }
+}
+
+/** Mirrors fab.css's eigene color-mix()-Regel (issue #1035 AK1) — eine Sonde
+ * auf document.body löst dieselben Custom Properties auf, die der FAB liest,
+ * die Messung prüft also gegen die Formel, nicht gegen eine Kopie ihrer
+ * Ausgabe. 55%: siehe Kommentar in fab.css für die Messung je Theme. */
+async function resolveFabGroundMix(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'color-mix(in oklab, var(--ground) 55%, var(--text-base))';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+}
+
+test('AK3: der schwebende Knopf steht hell auf dem Grund, der Text hält auf allen fünf FAB-Routen ≥4,5:1 gegen --surface (issue #1035 AK3)', async ({
   page,
 }) => {
   await registerPasskey(page);
 
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
-    await page.goto('/aufgaben');
 
-    const onAccent = await resolveColorToken(page, '--on-accent');
-    const surfaceToken = await resolveColorToken(page, '--surface');
-    const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
-    await expect(fab).toBeVisible();
+    for (const { path, fabLabel } of FAB_ROUTES) {
+      await gotoFabRoute(page, path);
 
-    const fabBg = await elementBackground(fab);
-    expect(fabBg, `FAB-Hintergrund im ${scheme}-Modus ist --surface`).toBe(surfaceToken);
+      const surfaceToken = await resolveColorToken(page, '--surface');
+      const fab = page.getByRole('button', { name: fabLabel });
+      await expect(fab, `${path} (${scheme}): FAB sichtbar`).toBeVisible();
+
+      const fabBg = await elementBackground(fab);
+      expect(fabBg, `${path} (${scheme}): FAB-Hintergrund ist --surface`).toBe(surfaceToken);
+
+      const glyphColor = await elementColor(fab);
+      expect(
+        contrastRatio(await toRgb(page, glyphColor), await toRgb(page, fabBg)),
+        `${path} (${scheme}): Kontrast Text/FAB ≥4,5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+});
+
+test('issue #1035 AK2: die FAB-Textfarbe kommt aus dem Routengrund, nicht mehr aus --accent', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  const colorsByPath: Record<string, string> = {};
+
+  for (const { path, fabLabel } of FAB_ROUTES) {
+    await gotoFabRoute(page, path);
+
+    const fab = page.getByRole('button', { name: fabLabel });
+    await expect(fab, `${path}: FAB sichtbar`).toBeVisible();
 
     const glyphColor = await elementColor(fab);
-    expect(glyphColor, `Glyph im ${scheme}-Modus ist nicht --on-accent (Umkehrung AK3)`).not.toBe(
-      onAccent,
+    colorsByPath[path] = glyphColor;
+    expect(glyphColor, `${path}: Textfarbe ist der aus --ground gemischte Wert`).toBe(
+      await resolveFabGroundMix(page),
     );
-    expect(
-      contrastRatio(await toRgb(page, glyphColor), await toRgb(page, fabBg)),
-      `Kontrast Glyph/FAB im ${scheme}-Modus`,
-    ).toBeGreaterThanOrEqual(4.5);
+  }
+
+  // Vorher trugen /aufgaben, /kalender und /routinen alle dieselbe --accent-
+  // Farbe (Koralle) wie /uebersicht, obwohl ihr Grund eine andere Farbe zeigt.
+  for (const path of ['/aufgaben', '/kalender', '/routinen']) {
+    expect(colorsByPath[path], `${path} unterscheidet sich sichtbar von /uebersicht`).not.toBe(
+      colorsByPath['/uebersicht'],
+    );
   }
 });
 
