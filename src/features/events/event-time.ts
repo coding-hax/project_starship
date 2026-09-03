@@ -148,13 +148,15 @@ export interface AllDayBand {
  * `allDayEventsForDay` per visible day, so a band always agrees with that
  * day's dots/agenda by construction rather than a second, parallel rule.
  *
- * Stably sorted (`startCol`, then `startDate`, then `title`) and capped at 3
- * (AK11) — the agenda below already lists every event on a day in full, so a
- * dropped band loses nothing the user can't see there.
+ * Stably sorted (`startCol`, then `startDate`, then `title`) and capped at
+ * `maxBands` (default 3, AK11 for the week strip; the month-grid card passes
+ * 2 per week row, issue #1043) — the agenda below already lists every event
+ * on a day in full, so a dropped band loses nothing the user can't see there.
  */
 export function allDayBandsForWindow<T extends TimelineSource>(
   visibleDays: string[],
   occurrencesForDay: (day: string) => T[],
+  maxBands: number = 3,
 ): AllDayBand[] {
   const windowStart = visibleDays[0];
   const windowEnd = visibleDays[visibleDays.length - 1];
@@ -188,7 +190,7 @@ export function allDayBandsForWindow<T extends TimelineSource>(
         a.startDate.localeCompare(b.startDate) ||
         a.title.localeCompare(b.title),
     )
-    .slice(0, 3)
+    .slice(0, maxBands)
     .map((band) => ({
       id: band.id,
       title: band.title,
