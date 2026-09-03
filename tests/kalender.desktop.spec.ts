@@ -116,3 +116,34 @@ test('die Figur sitzt ab 768px dicht neben dem Titelwort, nicht am rechten Rand 
   expect(gapToTitle).toBeLessThan(gapToRightEdge);
   expect(gapToTitle).toBeLessThan(48);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK3: Bodenreserve gegen den schwebenden Erfassen-Knopf, ab 768px           */
+/* -------------------------------------------------------------------------- */
+
+test('der schwebende Erfassen-Knopf verdeckt bei einer langen Terminliste kein Element (issue #1021 AK3)', async ({
+  page,
+}) => {
+  for (let hour = 0; hour < 20; hour += 1) {
+    const h = String(hour).padStart(2, '0');
+    await seedEvent(page, {
+      title: `Termin ${hour}`,
+      allDay: false,
+      startsAt: `${TODAY}T${h}:00:00.000Z`,
+      endsAt: `${TODAY}T${h}:30:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  const lastItem = page.locator('.event-agenda__item').last();
+  await lastItem.scrollIntoViewIfNeeded();
+  await expect(lastItem).toBeVisible();
+
+  const fab = page.locator('.fab');
+  const [fabBox, itemBox] = await Promise.all([fab.boundingBox(), lastItem.boundingBox()]);
+  if (!fabBox || !itemBox) throw new Error('AK3: Fab oder letztes Agenda-Element ohne BoundingBox');
+
+  expect(itemBox.y + itemBox.height).toBeLessThanOrEqual(fabBox.y);
+});

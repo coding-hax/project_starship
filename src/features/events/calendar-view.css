@@ -98,3 +98,17 @@
     justify-content: flex-start;
   }
 }
+
+/* Bodenreserve gegen den schwebenden Erfassen-Knopf ab 768px (issue #1021
+   AK3) — gilt in beiden Ansichten. Ab 768px ist der Fab kein Bar-Aufsatz mehr,
+   sondern schwebt bei `bottom: calc(var(--space-6) + safe + keyboard)`, 58px
+   hoch (fab.css). `.shell__main` reserviert unten ab 768px aber nur
+   `var(--space-12)` (shell.css) — die Differenz wäre ein realer Überlapp.
+   Muster wie mobil in `.uebersicht__sections` (uebersicht.css), auf die
+   Desktop-Fab-Position übertragen; die safe-area kürzt sich heraus, weil
+   `.shell__main` sie bereits einmal trägt (im Playwright-Browser ohnehin 0). */
+@media (min-width: 768px) {
+  .calendar-view {
+    padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
+  }
+}
