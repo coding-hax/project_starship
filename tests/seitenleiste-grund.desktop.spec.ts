@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -94,6 +94,44 @@ async function cssColorToRgb(page: Page, color: string): Promise<[number, number
   }, color);
 }
 
+/** Batches several `resolveVarRgb` lookups into one round-trip — AK3/AK4 loop this
+ * over eight routes, and one `page.evaluate` per token instead of one per route
+ * pushed the whole route×theme loop past the 30s test timeout in CI (issue #1019). */
+async function resolveVarsRgb(page: Page, names: readonly string[]): Promise<[number, number, number][]> {
+  return page.evaluate((names) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    return names.map((name) => {
+      const probe = document.createElement('span');
+      probe.style.color = `var(${name})`;
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      const data = ctx.getImageData(0, 0, 1, 1).data;
+      return [data[0], data[1], data[2]] as [number, number, number];
+    });
+  }, names);
+}
+
+/** `inactiveLink.evaluate` + `cssColorToRgb` in one round-trip instead of two — same
+ * reasoning as `resolveVarsRgb` above. */
+async function elementColorRgb(locator: Locator): Promise<[number, number, number]> {
+  return locator.evaluate((el) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = getComputedStyle(el).color;
+    ctx.fillRect(0, 0, 1, 1);
+    const data = ctx.getImageData(0, 0, 1, 1).data;
+    return [data[0], data[1], data[2]] as [number, number, number];
+  });
+}
+
 function relativeLuminance([r, g, b]: [number, number, number]): number {
   const f = (channel: number) => {
     const s = channel / 255;
@@ -144,7 +182,8 @@ test('AK2: nur der aktive Eintrag trägt --surface, in beiden Themes', async ({ 
       const cs = getComputedStyle(el);
       return { backgroundColor: cs.backgroundColor, color: cs.color, text: cs.getPropertyValue('--text').trim() };
     });
-    expect(activeStyle.backgroundColor, `Aktive Pille (${scheme})`).toBe(`rgb(${surfaceRgb.join(', ')})`);
+    const activeBackgroundRgb = await cssColorToRgb(page, activeStyle.backgroundColor);
+    expect(activeBackgroundRgb, `Aktive Pille (${scheme})`).toEqual(surfaceRgb);
     const activeColorRgb = await cssColorToRgb(page, activeStyle.color);
     expect(activeColorRgb, `Aktive Labelfarbe (${scheme})`).toEqual(accentRgb);
     const activeTextRgb = await cssColorToRgb(page, activeStyle.text || 'transparent');
@@ -158,43 +197,65 @@ test('AK2: nur der aktive Eintrag trägt --surface, in beiden Themes', async ({ 
   }
 });
 
-test('AK3: inaktive Leistenschrift ist --on-ground (voll), auf allen Routen und in beiden Themes', async ({
+/**
+ * AK3/AK4 run one test per theme instead of one test looping both (issue #1019):
+ * eight routes × two themes = 16 full navigations blew past the 30s Playwright
+ * test timeout under CI load ("page.goto: net::ERR_ABORTED; maybe frame was
+ * detached?", `e2e-main (10)`). Halving the per-test navigation count is a
+ * structural fix, not a weakened test — same assertions, same coverage, just
+ * split at the theme boundary the test names already called out.
+ */
+async function assertAk3(page: Page, scheme: 'light' | 'dark') {
+  await page.emulateMedia({ colorScheme: scheme });
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    const onGroundRgb = await resolveVarRgb(page, '--on-ground');
+    const inactiveLink = page.locator('.nav__link:not([aria-current="page"])').first();
+    const colorRgb = await elementColorRgb(inactiveLink);
+    expect(colorRgb, `Inaktive Leistenschrift auf ${route.path} (${scheme})`).toEqual(onGroundRgb);
+  }
+}
+
+test('AK3 (hell): inaktive Leistenschrift ist --on-ground (voll), auf allen Routen', async ({ page }) => {
+  await registerPasskey(page);
+  await assertAk3(page, 'light');
+});
+
+test('AK3 (dunkel): inaktive Leistenschrift ist --on-ground (voll), auf allen Routen', async ({ page }) => {
+  await registerPasskey(page);
+  await assertAk3(page, 'dark');
+});
+
+async function assertAk4(page: Page, scheme: 'light' | 'dark') {
+  await page.emulateMedia({ colorScheme: scheme });
+  const tokens = [...ARC_TOKENS, '--ground'] as const;
+  for (const route of ROUTES) {
+    await page.goto(route.path);
+    const inactiveLink = page.locator('.nav__link:not([aria-current="page"])').first();
+    const ink = await elementColorRgb(inactiveLink);
+    const targets = await resolveVarsRgb(page, tokens);
+
+    for (const [i, token] of tokens.entries()) {
+      const targetRgb = targets[i];
+      const contrast = wcagContrast(ink, targetRgb);
+      expect(
+        contrast,
+        `Leistenschrift ${JSON.stringify(ink)} vs. ${token} ${JSON.stringify(targetRgb)} auf ${route.path} (${scheme})`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
+}
+
+test('AK4 (hell): inaktive Leistenschrift hält ≥4,5:1 auf jedem der drei Bögen und auf dem Grund', async ({
   page,
 }) => {
   await registerPasskey(page);
-
-  for (const scheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme: scheme });
-    for (const route of ROUTES) {
-      await page.goto(route.path);
-      const onGroundRgb = await resolveVarRgb(page, '--on-ground');
-      const inactiveLink = page.locator('.nav__link:not([aria-current="page"])').first();
-      const color = await inactiveLink.evaluate((el) => getComputedStyle(el).color);
-      const colorRgb = await cssColorToRgb(page, color);
-      expect(colorRgb, `Inaktive Leistenschrift auf ${route.path} (${scheme})`).toEqual(onGroundRgb);
-    }
-  }
+  await assertAk4(page, 'light');
 });
 
-test('AK4: inaktive Leistenschrift hält ≥4,5:1 auf jedem der drei Bögen und auf dem Grund', async ({ page }) => {
+test('AK4 (dunkel): inaktive Leistenschrift hält ≥4,5:1 auf jedem der drei Bögen und auf dem Grund', async ({
+  page,
+}) => {
   await registerPasskey(page);
-
-  for (const scheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme: scheme });
-    for (const route of ROUTES) {
-      await page.goto(route.path);
-      const inactiveLink = page.locator('.nav__link:not([aria-current="page"])').first();
-      const color = await inactiveLink.evaluate((el) => getComputedStyle(el).color);
-      const ink = await cssColorToRgb(page, color);
-
-      for (const token of [...ARC_TOKENS, '--ground']) {
-        const targetRgb = await resolveVarRgb(page, token);
-        const contrast = wcagContrast(ink, targetRgb);
-        expect(
-          contrast,
-          `Leistenschrift ${JSON.stringify(ink)} vs. ${token} ${JSON.stringify(targetRgb)} auf ${route.path} (${scheme})`,
-        ).toBeGreaterThanOrEqual(4.5);
-      }
-    }
-  }
+  await assertAk4(page, 'dark');
 });
