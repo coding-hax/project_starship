@@ -269,6 +269,15 @@
   display: flex;
 }
 
+/* Bereichsfarbe des aktiven Eintrags (issue #1047 AK5) — von nav.tsx als
+   Custom Property durchgereicht, weil jeder Tab seine eigene --area-*-Farbe
+   trägt und CSS allein nicht weiß, welche das gerade ist. Ab 768px überschreibt
+   der Sidebar-Block das wieder auf die neutrale Flächen-Tinte (AK1/AK4) —
+   gleiche Selektor-Spezifität, später in der Kaskade, gewinnt dort. */
+.nav__link[aria-current='page'] {
+  color: var(--nav-link-accent);
+}
+
 /* Aktive Pille hinter dem Icon (issue #867 AK3): Pseudo-Element statt DOM-Eingriff,
    damit die Karussell-Geometrie (#205/#229) unangetastet bleibt. */
 .nav__link[aria-current='page'] .nav__icon {
@@ -403,6 +412,13 @@
   .nav__link[aria-current='page'] {
     background: var(--surface);
     --text: var(--text-base);
+    /* issue #1047: the base rule above also targets `[aria-current='page']`
+       (same specificity), so without an explicit override here it would win on
+       source order alone and the sidebar would keep the --area-* accent this
+       breakpoint moved off of — under 4.5:1 against --surface on every route
+       in light mode (AK1/AK4). --text already resolved to --text-base one line
+       up, matching the rest of .nav__bar's own-surface-own-ink pattern. */
+    color: var(--text);
   }
 }
 
