@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CURATED_CASES } from './curated';
-import { generateGoldCases, generateHardCases } from './generate';
+import {
+  generateGoldCases, generateHardCases, generateSpokenCases, generateTelegramCases,
+} from './generate';
 import { pct, scoreCorpus } from './score';
 import type { Bucket, GoldField, GoldResult } from './score';
 import type { GoldCase } from './types';
@@ -45,6 +47,14 @@ describe('Goldkorpus', () => {
   check('generierte Grundmuster — Termin, Titel vorn', withPrefix(generateGoldCases, 'gen:termin-hinten'));
   check('generierte Sprechrahmen', withPrefix(generateHardCases, 'hard:rahmen'));
   check('generierte Präpositionen', withPrefix(generateHardCases, 'hard:praeposition'));
+  // Gesprochene Sprache — der eigentliche Fehlerherd, deshalb der grösste Block.
+  check('gesprochen — Sprechköpfe', withPrefix(generateSpokenCases, 'spoken:kopf:'));
+  check('gesprochen — Sprechköpfe mit Datum', withPrefix(generateSpokenCases, 'spoken:kopf-datum'));
+  check('gesprochen — Aussagerahmen', withPrefix(generateSpokenCases, 'spoken:aussage'));
+  check('gesprochen — Zögern', withPrefix(generateSpokenCases, 'spoken:zoegern:'));
+  check('gesprochen — Zögern mit Aussagerahmen', withPrefix(generateSpokenCases, 'spoken:zoegern-aussage'));
+  check('Telegrammstil — Kürzel mit Uhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-zeit', 'tele:kuerzel-punkt'));
+  check('Telegrammstil — Kurzuhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-kurzzeit', 'tele:kurzzeit'));
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {

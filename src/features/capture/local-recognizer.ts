@@ -31,6 +31,15 @@ const ERLEDIGT_PATTERN = word('erledigt');
 const GEMACHT_PATTERN = word('gemacht');
 // Goldkorpus: „geschafft" fehlte als einziges der vier gängigen Erledigungsverben.
 const GESCHAFFT_PATTERN = word('geschafft');
+// Gesprochene Erledigungsmeldungen ohne eigenes Verb: „Yoga hab ich heute schon",
+// „Sport hab ich hinter mir". Als Phrase, nicht als blosses „schon" — sonst gälte
+// „schon mal an Sport denken" als abgehakt.
+const DONE_PHRASE_PATTERNS = [
+  /\bhab(?:e)?\s+ich\s+(?:heute\s+)?schon\b/iu,
+  /\bschon\s+(?:gemacht|erledigt|geschafft)\b/iu,
+  /\bhab(?:e)?\s+ich\s+hinter\s+mir\b/iu,
+  /\bist\s+(?:schon\s+)?(?:erledigt|durch|fertig)\b/iu,
+];
 const HAKE_PATTERN = word('hake');
 const AB_PATTERN = word('ab');
 
@@ -43,6 +52,7 @@ export function hasCompletionVerb(text: string): boolean {
     ERLEDIGT_PATTERN.test(text) ||
     GEMACHT_PATTERN.test(text) ||
     GESCHAFFT_PATTERN.test(text) ||
+    DONE_PHRASE_PATTERNS.some((pattern) => pattern.test(text)) ||
     (HAKE_PATTERN.test(text) && AB_PATTERN.test(text))
   );
 }

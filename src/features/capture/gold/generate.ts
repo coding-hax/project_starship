@@ -1,6 +1,7 @@
 import {
   DATE_PREPOSITIONS, EVENT_TITLES, FRAME_PREFIXES, FRAME_SUFFIXES,
-  ROUTINE_VERBS, TASK_TITLES, TIME_SLOTS, WHEN_SLOTS,
+  HESITATION_PREFIXES, ROUTINE_VERBS, SHORT_TIME_SLOTS, SPOKEN_HEADS, STATEMENT_HEADS,
+  TASK_TITLES, TIME_SLOTS, WEEKDAY_ABBREVIATION_SLOTS, WHEN_SLOTS,
 } from './slots';
 import type { TimeSlot } from './slots';
 import { GOLD_HABITS, NOW_REF } from './types';
@@ -172,6 +173,133 @@ export function generateHardCases(options: GenerateOptions = {}): GoldCase[] {
       kind: 'task',
       title,
       dueAt: when.resolve(now).toISOString(),
+    });
+  }
+
+  return cases;
+}
+
+/**
+ * Gesprochene Sprache (#erfasser-korpus, zweite Runde): der Fehlerherd, der in der
+ * ersten Fassung mit dreizehn kuratierten Sätzen viel zu dünn abgedeckt war. Alle
+ * Köpfe hier verschwinden rückstandsfrei, deshalb steht der Sollwert fest.
+ */
+export function generateSpokenCases(options: GenerateOptions = {}): GoldCase[] {
+  const now = options.now ?? NOW_REF;
+  const quota = options.quotaPerPattern ?? 4000;
+  const cases: GoldCase[] = [];
+  let n = 0;
+  const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
+    cases.push({
+      id: `spoken:${pattern}:${String(n++).padStart(5, '0')}`,
+      text,
+      source: 'generiert',
+      category,
+      expect,
+    });
+  };
+
+  // N1 — Sprechkopf ohne Zeitangabe: „Mach mir ne Notiz: Reifen wechseln"
+  for (const [head, title] of cross(SPOKEN_HEADS, TASK_TITLES)) {
+    push('kopf', `${head} ${title}`, 'Sprechkopf', { kind: 'task', title, dueAt: null });
+  }
+
+  // N2 — Sprechkopf, Zeitangabe hinten: „Nicht vergessen: Milch kaufen am Freitag"
+  const headTimed = cross(cross(SPOKEN_HEADS, WHEN_SLOTS), TASK_TITLES);
+  for (const [[head, when], title] of sample(headTimed, quota)) {
+    push('kopf-datum', `${head} ${title} ${when.text}`, `Sprechkopf · ${when.category}`, {
+      kind: 'task',
+      title,
+      dueAt: when.resolve(now).toISOString(),
+    });
+  }
+
+  // N3 — Aussagerahmen mit Zeitangabe in der Mitte: „Ich muss morgen Milch kaufen"
+  const stated = cross(cross(STATEMENT_HEADS, WHEN_SLOTS), TASK_TITLES);
+  for (const [[head, when], title] of sample(stated, quota)) {
+    // „ich muss am Freitag" ist Deutsch, „ich muss am morgen" nicht — Präposition raus,
+    // wo der Ausdruck ohne sie steht.
+    const when_ = when.text.replace(/^am (?=morgen|heute|übermorgen)/, '');
+    push('aussage', `${head} ${when_} ${title}`, `Aussagerahmen · ${when.category}`, {
+      kind: 'task',
+      title,
+      dueAt: when.resolve(now).toISOString(),
+    });
+  }
+
+  // N4 — Zögern vor dem Inhalt: „Also ähm, Milch kaufen"
+  for (const [hesitation, title] of cross(HESITATION_PREFIXES, TASK_TITLES)) {
+    push('zoegern', `${hesitation} ${title}`, 'Zögern', { kind: 'task', title, dueAt: null });
+  }
+
+  // N5 — Zögern UND Sprechkopf: der volle gesprochene Satz.
+  const both = cross(cross(HESITATION_PREFIXES, STATEMENT_HEADS), TASK_TITLES);
+  for (const [[hesitation, head], title] of sample(both, quota)) {
+    push('zoegern-aussage', `${hesitation} ${head.toLowerCase()} ${title}`, 'Zögern · Aussagerahmen', {
+      kind: 'task',
+      title,
+      dueAt: null,
+    });
+  }
+
+  return cases;
+}
+
+/**
+ * Telegrammstil (#erfasser-korpus): wie man tippt, wenn man es eilig hat — „Mo 14 Uhr
+ * Zahnarzt", „Fr 19h Kino", „Mi. Handwerker".
+ */
+export function generateTelegramCases(options: GenerateOptions = {}): GoldCase[] {
+  const now = options.now ?? NOW_REF;
+  const quota = options.quotaPerPattern ?? 2500;
+  const cases: GoldCase[] = [];
+  let n = 0;
+  const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
+    cases.push({
+      id: `tele:${pattern}:${String(n++).padStart(5, '0')}`,
+      text,
+      source: 'generiert',
+      category,
+      expect,
+    });
+  };
+
+  // T1 — Kürzel plus Uhrzeit: „Mo 14 Uhr Zahnarzt"
+  const withTime = cross(cross(WEEKDAY_ABBREVIATION_SLOTS, TIME_SLOTS), TASK_TITLES);
+  for (const [[day, time], title] of sample(withTime, quota)) {
+    push('kuerzel-zeit', `${day.text} ${time.text} ${title}`, `Telegramm · ${time.category}`, {
+      kind: 'task',
+      title,
+      dueAt: at(day.resolve(now), time),
+    });
+  }
+
+  // T2 — Kürzel plus Kurzuhrzeit: „Fr 19h Kino"
+  const withShort = cross(cross(WEEKDAY_ABBREVIATION_SLOTS, SHORT_TIME_SLOTS), TASK_TITLES);
+  for (const [[day, time], title] of sample(withShort, quota)) {
+    push('kuerzel-kurzzeit', `${day.text} ${time.text} ${title}`, 'Telegramm · Kurzuhrzeit', {
+      kind: 'task',
+      title,
+      dueAt: at(day.resolve(now), time),
+    });
+  }
+
+  // T3 — Kürzel mit Punkt, ohne Uhrzeit: „Mi. Handwerker"
+  for (const [day, title] of cross(WEEKDAY_ABBREVIATION_SLOTS, TASK_TITLES)) {
+    push('kuerzel-punkt', `${day.text}. ${title}`, 'Telegramm · nur Tag', {
+      kind: 'task',
+      title,
+      dueAt: day.resolve(now).toISOString(),
+    });
+  }
+
+  // T4 — Kurzuhrzeit ohne Tag: „morgen 8h Standup"
+  const shortOnly = cross(cross(WHEN_SLOTS, SHORT_TIME_SLOTS), TASK_TITLES);
+  for (const [[when, time], title] of sample(shortOnly, quota)) {
+    push('kurzzeit', `${cap(when.text)} ${time.text} ${title}`, 'Telegramm · Kurzuhrzeit ohne Tag', {
+      kind: 'task',
+      title,
+      dueAt: at(when.resolve(now), time),
     });
   }
 

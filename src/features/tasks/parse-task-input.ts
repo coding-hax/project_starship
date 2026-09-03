@@ -164,6 +164,13 @@ const WEEKDAYS = ['sonntag', 'montag', 'dienstag', 'mittwoch', 'donnerstag', 'fr
 // kein beliebig austauschbares Vokabular.
 const WEEKDAY_MODIFIERS = ['nächsten', 'diesen', 'kommenden'];
 
+/** Kürzel im Telegrammstil — Index wie in WEEKDAYS (Sonntag = 0). */
+const WEEKDAY_ABBREVIATIONS: [string, number][] = [
+  ['so', 0], ['mo', 1], ['di', 2], ['mi', 3], ['do', 4], ['fr', 5], ['sa', 6],
+];
+/** Ein Kürzel ohne Punkt zählt nur, wenn direkt eine Zeitangabe folgt. */
+const ABBREVIATION_TIME_FOLLOWS = String.raw`(?=\s+(?:\d|um\s|früh|morgens|vormittags|mittags|nachmittags|abends|nachts|halb|viertel))`;
+
 // Kein `\b` am Ende: bei "4.8." (Standard-Schreibweise mit Punkt nach dem Monat, kein
 // Jahr) liegt der zweite Punkt direkt vor Zeilenende — zwei Nicht-Wortzeichen bilden
 // dort nie eine Wortgrenze, ein abschließendes `\b` würde diesen Fall nie treffen.
@@ -312,6 +319,25 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
       },
       specificity: modifier ? 2 : 1,
     });
+  }
+
+  // Telegrammstil: „Mo 14 Uhr Zahnarzt", „Di früh Sport". Die Kürzel sind zu kurz, um
+  // sie frei laufen zu lassen — „so", „mi" und „do" sind auch gewöhnliche Wörter.
+  // Deshalb nur mit Punkt („Mo.") oder wenn unmittelbar eine Zeitangabe folgt.
+  for (const [abbreviation, targetDay] of WEEKDAY_ABBREVIATIONS) {
+    const pattern = new RegExp(
+      `${WORD_BEFORE}${abbreviation}(?:\\.|${ABBREVIATION_TIME_FOLLOWS})`,
+      'giu',
+    );
+    for (const match of text.matchAll(pattern)) {
+      const diff = (targetDay - logicalStart.getDay() + 7) % 7;
+      candidates.push({
+        start: match.index!,
+        end: match.index! + match[0].length,
+        value: { date: addDays(logicalStart, diff), guessReason: WEEKDAY_ONLY_REASON },
+        specificity: 1,
+      });
+    }
   }
 
   return bestCandidate(candidates);
@@ -490,6 +516,9 @@ const DIGIT_TIME_PATTERNS: { pattern: RegExp; specificity: number }[] = [
   { pattern: /\bum\s+(\d{1,2})(?::(\d{2}))?\b/giu, specificity: 2 },
   { pattern: /\b(\d{1,2})(?::(\d{2}))?\s*uhr\b/giu, specificity: 2 },
   { pattern: /\b(\d{1,2}):(\d{2})\b/g, specificity: 1 },
+  // Telegrammstil „19h", „8h" — im Erfassungsfeld meint das die Uhrzeit.
+  // Nur gültige Stunden: „24h Service" ist eine Öffnungszeit, keine Uhrzeit.
+  { pattern: /\b((?:[01]?\d|2[0-3]))()h\b/giu, specificity: 2 },
 ];
 
 const WORD_TIME_PATTERNS: { pattern: RegExp; specificity: number }[] = [
@@ -665,7 +694,7 @@ const COMMAND_PREFIXES: RegExp[] = [
   /^erstelle\b(\s+(einen|eine)\b)?(\s+aufgabe\b)?\s*:?\s*/iu,
   // „daran" gehört zum Rahmen, nicht zum Titel — ohne das blieb „Erinnere mich daran den
   // Müll rauszubringen" als „daran den Müll rauszubringen" stehen.
-  /^erinnere\s+mich\b(\s+(an|daran)\b)?\s*:?\s*/iu,
+  /^erinnere?\s+mich\b(\s+(an|daran)\b)?\s*:?\s*/iu,
   /^neue\s+aufgabe\b\s*:?\s*/iu,
   /^aufgabe\b\s*:\s*/iu,
   /^bitte\b\s+/iu,
@@ -673,17 +702,25 @@ const COMMAND_PREFIXES: RegExp[] = [
   // AK4 (#689): der Satz aus #620, die Begründung für den Modell-Parser — muss lokal fallen.
   // Das Verb dahinter nur aus einer geschlossenen Liste: ein freies `\w+` fräße bei
   // „kannst du mir Milch kaufen eintragen" das erste Titelwort.
-  /^kannst\s+du\s+mir\b(\s+(eintragen|notieren|aufschreiben|merken))?\s*:?\s*/iu,
+  /^(?:kannst|könntest|würdest|magst)\s+du\b(?:\s+(?:mir|uns|das|es))?(?:\s+bitte)?(?:\s+(?:eintragen|notieren|aufschreiben|merken|anlegen|erstellen|hinzufügen|vermerken))?(?:\s+bitte)?\s*:?\s*/iu,
   // Sprechrahmen aus dem Goldkorpus: reine Absichtserklärungen ohne Titelbeitrag.
   /^nicht\s+vergessen\b\s*:?\s*/iu,
   /^denk(e)?\s+(dran|daran)\b\s*:?\s*/iu,
   /^todo\b\s*:?\s*/iu,
   /^merken\b\s*:\s*/iu,
-  /^ich\s+muss\b(\s+noch\b)?\s*/iu,
-  /^ich\s+sollte\b(\s+mal\b)?(\s+wieder\b)?\s*/iu,
-  /^ich\s+will\b(\s+noch\b)?\s*/iu,
-  /^ich\s+möchte\b(\s+noch\b)?\s*/iu,
+  /^ich\s+(?:muss|müsste|sollte|will|wollte|möchte|mag)\b(?:\s+(?:noch|mal|wieder|unbedingt))*\s*/iu,
+  /^ich\s+darf\s+nicht\s+vergessen\b\s*:?\s*/iu,
+  /^ich\s+(?:brauch|brauche|hab|habe)\b\s*/iu,
+  /^(?:wär|wäre)\s+(?:super|gut|toll|nett|klasse)\s+wenn\s+du\b\s*/iu,
+  /^ich\s+(?:hab|habe)\b(?:\s+noch)?\s+vor\b\s*:?\s*/iu,
   /^unbedingt\b\s+/iu,
+  /^am\s+besten\b\s*/iu,
+  /^wichtig\b\s*:\s*/iu,
+  // Zögern und Gesprächspartikeln. Die Schleife in `findCommandPrefixSpans` frisst
+  // aneinandergereihte Präfixe, „Ach ja," fällt deshalb als „ach" + „ja".
+  // Strengere Grenze als `\b`: sonst frisst „ja" den Kopf von „Ja-Sager Buch zurückgeben"
+  // und „ok" den von „Ok-Zeichen entwerfen" — `\b` steht auch vor einem Bindestrich.
+  /^(?:also|äh+m?|naja|na\s+ja|okay|ok|hm+|ach|übrigens|tja|ja)(?![\p{L}\p{N}_-])\s*,?\s*/iu,
   /^ich\s+hätte\s+(?:gern|gerne)\b\s*/iu,
   // „Neuer Termin Mittwoch 16 Uhr Teamrunde" — hier ist das Objektwort Rahmen, nicht Titel.
   /^neue(?:r|s)?\s+(?:termin|aufgabe|notiz|eintrag|erinnerung)\b\s*:?\s*/iu,
@@ -691,7 +728,7 @@ const COMMAND_PREFIXES: RegExp[] = [
   /^dass\s+ich\b\s*/iu,
   // Zirkumfix „erinnere mich … an": das „an" kann hinter einem Einschub stehen
   // („erinnere mich bitte morgen früh an die Rechnung").
-  /^erinnere\s+mich\b(?:\s+bitte)?(?:\s+\S+){0,3}?\s+(?:an|daran)\b\s*/iu,
+  /^erinnere?\s+mich\b(?:\s+bitte)?(?:\s+\S+){0,3}?\s+(?:an|daran)\b\s*/iu,
 ];
 
 // "einen"/"eine" dazu (AK4, #689): dieselbe Span-Grenzen-Regel wie die übrigen
@@ -701,7 +738,7 @@ const CONNECTOR_WORDS = ['am', 'um', 'für', 'daran', 'beim', 'einen', 'eine'];
 // Trailing Diktat-Verb (AK4, #689): "... einstellen" am Satzende — das Pendant zu den
 // Kommandopräfixen, nur am Ende statt am Anfang.
 const COMMAND_SUFFIX_PATTERN =
-  /\s+(?:einstellen|eintragen|anlegen|hinzufügen|notieren|nicht\s+vergessen|muss|will|soll|möchte)\s*[!.]*\s*$/iu;
+  /\s+(?:einstellen|eintragen|anlegen|hinzufügen|notieren|notierst|vermerken|nicht\s+vergessen|muss|will|soll|möchte)\s*[!.]*\s*(?=[,;:]|$)/iu;
 
 function findCommandSuffixSpan(text: string): Span | null {
   const match = text.match(COMMAND_SUFFIX_PATTERN);
@@ -790,16 +827,20 @@ function findConnectorSpans(text: string, anchors: Span[]): Span[] {
  * Kündigt aber ein Trenner den eigentlichen Titel an („eine Aufgabe an, Milch kaufen"),
  * fällt der ganze Kopf und der Titel ist, was dahinter steht.
  */
-const DICTATION_VERB = String.raw`(?:erstell|mach|leg|setz|trag|füg|notier|schreib|pack|speicher|plan|richt)(?:e|st)?`;
-const DICTATION_OBJECT = String.raw`(?:termine?|aufgaben?|notiz|eintrag|erinnerung|todo)`;
+const DICTATION_VERB =
+  String.raw`(?:erstell|mach|leg|setz|trag|füg|notier|schreib|pack|speicher|plan|richt|merk|vermerk|gib|hol|tu|nimm)(?:e|st)?`;
+/** „das mal", „mir bitte kurz" — was zwischen Verb und Objekt an Füllung stehen darf. */
+const DICTATION_FILLER = String.raw`(?:\s+(?:mir|dir|uns|mich|das|es))?(?:\s+(?:bitte|mal|kurz|eben|schnell|noch))*`;
+const DICTATION_OBJECT =
+  String.raw`(?:termine?|aufgaben?|notiz|eintrag|erinnerung|todo|liste|merkzettel)`;
 
 const DICTATION_HEAD_PATTERN = new RegExp(
-  String.raw`^\s*${DICTATION_VERB}\b(?:\s+(?:mir|dir|uns))?(?:\s+bitte)?\s*`,
+  String.raw`^\s*${DICTATION_VERB}\b${DICTATION_FILLER}\s*`,
   'iu',
 );
 /** Kopf bis zum Trenner — dazwischen höchstens vier Wörter, damit kein Titel mitgeht. */
 const DICTATION_BODY_PATTERN = new RegExp(
-  String.raw`^\s*${DICTATION_VERB}\b(?:\s+(?:mir|dir|uns))?(?:\s+bitte)?` +
+  String.raw`^\s*${DICTATION_VERB}\b${DICTATION_FILLER}` +
     // Entweder ein Objektwort („… eine Aufgabe an, X") oder bloss ein Verbpartikel
     // („schreib auf, X") — beides kündigt denselben Trenner an.
     String.raw`(?:(?:\s+\S+){0,4}?\s+(?:einen|eine|ein|nen|den|die|das)?\s*${DICTATION_OBJECT}\b(?:\s+\S+){0,4}?)?` +
@@ -818,8 +859,9 @@ const DICTATION_BODY_PATTERN = new RegExp(
 const DICTATION_MARKER_PATTERN = new RegExp(
   String.raw`^\s*${DICTATION_VERB}\b(?:` +
     String.raw`\s+(?:mir|dir|uns)(?![\p{L}\p{N}_])` +
-    String.raw`|\s+bitte(?![\p{L}\p{N}_])` +
-    String.raw`|(?:\s+\S+){0,4}?\s+(?:einen|eine|ein|nen|den|die|das)?\s*${DICTATION_OBJECT}(?![\p{L}\p{N}_])` +
+    String.raw`|\s+(?:mich|das|es)(?![\p{L}\p{N}_])` +
+    String.raw`|\s+(?:bitte|mal|kurz|eben)(?![\p{L}\p{N}_])` +
+    String.raw`|(?:\s+\S+){0,4}?\s+(?:einen|eine|ein|nen|ne|den|die|das)?\s*${DICTATION_OBJECT}(?![\p{L}\p{N}_])` +
     String.raw`)`,
   'iu',
 );
@@ -828,11 +870,14 @@ const DICTATION_DATIVE_PATTERN = /(?<![\p{L}\p{N}_])(?:mir|dir|uns)(?![\p{L}\p{N
 const DICTATION_POLITE_PATTERN = /(?<![\p{L}\p{N}_])bitte(?![\p{L}\p{N}_])/giu;
 /** Nur der Artikel VOR dem Objektwort — das Objektwort trägt den Titel. */
 const DICTATION_ARTICLE_PATTERN = new RegExp(
-  String.raw`(?<![\p{L}\p{N}_])(?:einen|eine|ein|nen)\s+(?=${DICTATION_OBJECT}(?![\p{L}\p{N}_]))`,
+  String.raw`(?<![\p{L}\p{N}_])(?:einen|eine|ein|nen|ne)\s+(?=${DICTATION_OBJECT}(?![\p{L}\p{N}_]))`,
   'giu',
 );
 /** Trennbares Verbpartikel am Ende: „… einen Termin mit Anna ein". */
-const DICTATION_PARTICLE_PATTERN = /\s+(?:an|ein|hinzu|auf|dazu)\s*(?=[,;:]|$)/iu;
+const DICTATION_PARTICLE_PATTERN = /\s+(?:an|ein|hinzu|auf|dazu|rein|fest)\s*(?=[,;:]|$)/iu;
+/** „setz das auf die Liste", „pack auf meine Liste" — Ablage-Ort, kein Titelbestandteil. */
+const DICTATION_LIST_PATTERN =
+  /\s*\bauf\s+(?:die|meine|unsere|'?ne)\s+(?:liste|todo-?liste|merkliste|einkaufsliste)\b/giu;
 
 function findDictationSpans(text: string): Span[] {
   const head = text.match(DICTATION_HEAD_PATTERN);
@@ -846,7 +891,12 @@ function findDictationSpans(text: string): Span[] {
   if (!DICTATION_MARKER_PATTERN.test(text)) return [];
 
   const spans: Span[] = [{ start: 0, end: head[0].length }];
-  for (const pattern of [DICTATION_DATIVE_PATTERN, DICTATION_POLITE_PATTERN, DICTATION_ARTICLE_PATTERN]) {
+  for (const pattern of [
+    DICTATION_DATIVE_PATTERN,
+    DICTATION_POLITE_PATTERN,
+    DICTATION_ARTICLE_PATTERN,
+    DICTATION_LIST_PATTERN,
+  ]) {
     for (const match of text.matchAll(pattern)) {
       spans.push({ start: match.index!, end: match.index! + match[0].length });
     }
@@ -881,10 +931,16 @@ function stripLeadingArticle(title: string): string {
 }
 
 function edgeTrim(text: string): string {
-  return text
-    .replace(/\s+/g, ' ')
-    .replace(/^[\s,.;:!?]+|[\s,.;:!?]+$/g, '')
-    .trim();
+  return (
+    text
+      .replace(/\s+/g, ' ')
+      // Ein herausgeschnittener Span lässt sein Satzzeichen zurück: „Zahnarzt , danach"
+      // und „Milch,, Brot" entstehen erst beim Entfernen, nicht beim Sprechen.
+      .replace(/\s+([,;:.!?])/g, '$1')
+      .replace(/([,;:])\s*(?=[,;:])/g, '')
+      .replace(/^[\s,.;:!?]+|[\s,.;:!?]+$/g, '')
+      .trim()
+  );
 }
 
 function findExplicitTitle(text: string): string | null {

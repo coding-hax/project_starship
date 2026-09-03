@@ -95,6 +95,82 @@ export const CURATED_CASES: GoldCase[] = [
     ['Zug nach Hamburg um 7:42', 'task', 'Zug nach Hamburg', on(1, 16, 7, 42)],
   ]),
 
+  ...rows('Gesprochen — Kommando', [
+    ['Mach mir ne Notiz: Reifen wechseln', 'task', 'Reifen wechseln', null],
+    ['Setz mir das mal auf die Liste: Fenster putzen', 'task', 'Fenster putzen', null],
+    ['Pack Milch auf meine Liste', 'task', 'Milch', null],
+    ['Schreib mir auf, dass ich tanken muss', 'task', 'tanken', null],
+    ['Trag das mal für Donnerstag ein', 'task', '', on(1, 18)],
+    ['Kannst du das für Dienstag eintragen, Zahnarzt', 'task', 'Zahnarzt', on(1, 16)],
+    ['Kannst du mir morgen um 9 einen Termin machen', 'event', 'Termin machen', on(1, 16, 9)],
+    ['Könntest du mir bitte für morgen einen Termin anlegen', 'event', 'Termin', on(1, 16)],
+    ['Wär super wenn du Milch kaufen notierst', 'task', 'Milch kaufen', null],
+    ['Gib mir für morgen eine Erinnerung: Rechnung bezahlen', 'task', 'Rechnung bezahlen', on(1, 16)],
+    ['Erinner mich morgen an die Rechnung', 'task', 'Rechnung', on(1, 16)],
+    ['Ich brauch am Freitag einen Termin beim Friseur', 'event', 'Termin beim Friseur', on(1, 19)],
+    ['Ich hab morgen um 10 einen Termin', 'event', 'Termin', on(1, 16, 10)],
+  ]),
+
+  ...rows('Gesprochen — Zögern', [
+    ['Also ähm, Milch kaufen', 'task', 'Milch kaufen', null],
+    ['Ja also ich müsste noch die Rechnung bezahlen', 'task', 'Rechnung bezahlen', null],
+    ['Äh, morgen Müll rausbringen', 'task', 'Müll rausbringen', on(1, 16)],
+    ['Naja, Fenster putzen', 'task', 'Fenster putzen', null],
+    ['Übrigens, Oma anrufen', 'task', 'Oma anrufen', null],
+  ]),
+
+  ...rows('Gesprochen — Telegrammstil', [
+    // Der Bezugspunkt ist ein Montag, „Mo" meint deshalb heute.
+    ['Mo 14 Uhr Zahnarzt', 'task', 'Zahnarzt', on(1, 15, 14)],
+    ['Di früh Sport', 'task', 'Sport', on(1, 16, 8)],
+    ['Fr 19h Kino', 'task', 'Kino', on(1, 19, 19)],
+    ['morgen 8h Standup', 'task', 'Standup', on(1, 16, 8)],
+    ['Mi. Handwerker', 'task', 'Handwerker', on(1, 17)],
+    ['Do 16:30 Teamrunde', 'task', 'Teamrunde', on(1, 18, 16, 30)],
+    // „24h" ist eine Öffnungszeit, keine Uhrzeit.
+    ['24h Service anrufen', 'task', '24h Service anrufen', null],
+  ]),
+
+  ...rows('Gesprochen — Routine erledigt', [
+    ['Hab heute schon Sport gemacht', 'habit_check', 'Hab schon Sport gemacht', null],
+    ['Sport ist erledigt für heute', 'habit_check', 'Sport ist erledigt', null],
+    ['Yoga hab ich heute schon', 'habit_check', 'Yoga hab ich schon', null],
+    ['Lesen kann ich abhaken', 'habit_check', 'Lesen kann ich abhaken', null],
+  ]),
+
+  ...rows('Gesprochen — Verb vor dem Titel', [
+    // Regelkonform, aber unschön: der Titel behält das vorangestellte Verb. Sauber wäre
+    // „Handwerker kommt" bzw. „Zahnarzt" — dafür bräuchte es den Infinitiv-Rückbau, der
+    // am 03.09.26 bewusst verworfen wurde. Steht hier, damit die Folge sichtbar bleibt.
+    ['Ich muss morgen zum Zahnarzt', 'task', 'zum Zahnarzt', on(1, 16)],
+    ['Ich hab am Freitag frei', 'task', 'frei', on(1, 19)],
+    ['Am Mittwoch kommt der Handwerker', 'task', 'kommt der Handwerker', on(1, 17)],
+    ['Nächsten Montag ist Elternabend', 'task', 'ist Elternabend', on(1, 22)],
+    ['Freitag treff ich Anna', 'task', 'treff ich Anna', on(1, 19)],
+    ['Ich geh morgen um 7 laufen', 'task', 'Ich geh laufen', on(1, 16, 7)],
+    ['Wir essen Samstag um 19 Uhr bei Müllers', 'task', 'Wir essen bei Müllers', on(1, 20, 19)],
+    ['Milch kaufen und Brot holen', 'task', 'Milch kaufen und Brot holen', null],
+    ['Morgen: Zahnarzt um 10, danach einkaufen', 'task', 'Zahnarzt, danach einkaufen', on(1, 16, 10)],
+  ]),
+
+  ...rows('Rahmenwort nur zufällig vorn', [
+    // Titel, die mit einem Rahmen- oder Diktierwort beginnen, dürfen nicht beschnitten
+    // werden. „ja" und „ok" brauchen dafür eine strengere Grenze als \b — die steht
+    // auch vor einem Bindestrich.
+    ['Ja-Sager Buch zurückgeben', 'task', 'Ja-Sager Buch zurückgeben', null],
+    ['Ok-Zeichen entwerfen', 'task', 'Ok-Zeichen entwerfen', null],
+    ['Also-Konzept lesen', 'task', 'Also-Konzept lesen', null],
+    ['Jalousie reparieren', 'task', 'Jalousie reparieren', null],
+    ['Achse prüfen lassen', 'task', 'Achse prüfen lassen', null],
+    ['Wichtiger Anruf bei Peter', 'task', 'Wichtiger Anruf bei Peter', null],
+    ['Moment abwarten', 'task', 'Moment abwarten', null],
+    ['Diplomarbeit abgeben', 'task', 'Diplomarbeit abgeben', null],
+    ['Dokumente sortieren', 'task', 'Dokumente sortieren', null],
+    ['Sofa bestellen', 'task', 'Sofa bestellen', null],
+    ['Merkzettel schreiben', 'task', 'Merkzettel schreiben', null],
+    ['Listenpreis prüfen', 'task', 'Listenpreis prüfen', null],
+  ]),
+
   ...rows('Kein Diktat, nur ein Verb', [
     // Das erste Wort ist zufällig auch ein Diktierverb. Ohne zweites Signal
     // (Dativpronomen, „bitte", Objektwort, Trenner) bleibt der Satz unangetastet —

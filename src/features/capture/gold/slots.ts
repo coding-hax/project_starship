@@ -151,3 +151,81 @@ export const FRAME_SUFFIXES = ['nicht vergessen', 'nicht vergessen!'];
 
 /** Präpositionen vor einer Datumsangabe. Sie gehören zum Datum, nicht zum Titel. */
 export const DATE_PREPOSITIONS = ['bis', 'bis spätestens', 'spätestens', 'ab'];
+
+// --- Gesprochene Sprache ---------------------------------------------------
+
+/**
+ * Sprechköpfe, die **rückstandsfrei** verschwinden: was danach steht, ist der Titel.
+ * Genau das macht sie generierbar — der Sollwert ist der eingesetzte Titel-Slot.
+ *
+ * Aufgenommen ist nur, was ein Mensch so diktiert. Köpfe, bei denen ein Objektwort im
+ * Titel stehen bleibt („erstell mir einen Termin für Mittwoch" → „Termin"), gehören
+ * nicht hierher, sondern in die kuratierte Schicht.
+ */
+export const SPOKEN_HEADS = [
+  // Diktierte Kommandos mit Trenner
+  'Mach mir ne Notiz:', 'Mach mir eine Notiz:', 'Mach eine Notiz:',
+  'Setz mir das mal auf die Liste:', 'Setz das auf die Liste:', 'Pack auf meine Liste:',
+  'Schreib auf:', 'Schreib mir auf:', 'Schreib bitte auf:',
+  'Trag ein:', 'Trag mir ein:', 'Trag mir bitte ein:',
+  'Gib mir eine Erinnerung:', 'Erinnere mich an:', 'Erinner mich an:',
+  'Notier dir:', 'Notiere:', 'Notier mir:',
+  'Merk dir:', 'Vermerk:', 'Leg eine Aufgabe an:', 'Erstelle eine Aufgabe:',
+  'Füg hinzu:', 'Nimm auf:',
+  // Höfliche Bitten
+  'Kannst du mir notieren:', 'Kannst du mir bitte aufschreiben:',
+  'Könntest du mir eintragen:', 'Kannst du bitte notieren:',
+  // Etiketten
+  'Neue Aufgabe:', 'Aufgabe:', 'Todo:', 'Nicht vergessen:', 'Denk dran:',
+  'Merken:', 'Wichtig:',
+];
+
+/**
+ * Aussagerahmen — kein Befehl, sondern wie man über eine Aufgabe redet. Vertragen im
+ * Gegensatz zu den Köpfen oben eine Zeitangabe zwischen Rahmen und Titel
+ * („ich muss morgen Milch kaufen").
+ */
+export const STATEMENT_HEADS = [
+  'Ich muss', 'Ich muss noch', 'Ich müsste', 'Ich müsste noch',
+  'Ich sollte', 'Ich sollte mal', 'Ich sollte mal wieder',
+  'Ich will', 'Ich will noch', 'Ich möchte', 'Ich möchte noch',
+  'Ich darf nicht vergessen', 'Ich hab noch vor',
+  'Bitte', 'Unbedingt', 'Am besten',
+];
+
+/** Zögern und Gesprächspartikel am Satzanfang — reines Rauschen vor dem Inhalt. */
+export const HESITATION_PREFIXES = [
+  'Also ähm,', 'Also,', 'Ja also,', 'Äh,', 'Ähm,', 'Naja,', 'Okay,', 'Hm,',
+  'Ach ja,', 'Übrigens,',
+];
+
+/**
+ * Telegrammstil: „Mo 14 Uhr Zahnarzt", „Fr 19h Kino".
+ *
+ * Anders als die Wochentage oben zählt hier **heute mit** — das ist die Regel des
+ * Bestandsparsers („ein Wochentag, der auf heute fällt, zählt als heute",
+ * parse-task-input.test.ts). Der Bezugspunkt ist ein Montag, „Mo" meint also den
+ * 15.01. selbst.
+ */
+export const WEEKDAY_ABBREVIATION_SLOTS: WhenSlot[] = [
+  ['Mo', 1], ['Di', 2], ['Mi', 3], ['Do', 4], ['Fr', 5], ['Sa', 6], ['So', 0],
+].map(([label, dow]) => ({
+  text: label as string,
+  category: 'Telegramm-Wochentag',
+  resolve: (now: Date) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + (((dow as number) - now.getDay() + 7) % 7));
+    d.setHours(DEFAULT_HOUR, 0, 0, 0);
+    return d;
+  },
+}));
+
+/** Uhrzeit im Telegrammstil — „19h" statt „19 Uhr". */
+export const SHORT_TIME_SLOTS: TimeSlot[] = [
+  { text: '7h', category: 'Telegramm-Uhrzeit', hours: 7, minutes: 0 },
+  { text: '9h', category: 'Telegramm-Uhrzeit', hours: 9, minutes: 0 },
+  { text: '14h', category: 'Telegramm-Uhrzeit', hours: 14, minutes: 0 },
+  { text: '17h', category: 'Telegramm-Uhrzeit', hours: 17, minutes: 0 },
+  { text: '19h', category: 'Telegramm-Uhrzeit', hours: 19, minutes: 0 },
+  { text: '20h', category: 'Telegramm-Uhrzeit', hours: 20, minutes: 0 },
+];
