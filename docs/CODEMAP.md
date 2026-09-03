@@ -127,7 +127,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `week-goal.ts` / `history-weeks.ts` / `history-days.ts` / `month-progress.ts` — reine Ableitungen: Wochensoll, 12-Wochen-, 30-Tage-, Monatsreihe
 - `habit-today.tsx` / `.css` — Abhak-Liste, Streak-Badge auf /uebersicht
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
-- `habit-tiles.tsx` / `.css` — drei Kennzahl-Kacheln auf /routinen
+- `habit-tiles.tsx` / `.css` — vier Kennzahl-Kacheln auf /routinen
 - `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
 - `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen (Stufenkurve, feste Skala)
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)

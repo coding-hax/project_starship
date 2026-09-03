@@ -150,7 +150,7 @@ test('AK2: die drei Kacheln zeigen Zähler und Nenner als Text, der Balken ist a
   await page.goto('/routinen');
 
   const tiles = page.locator('.habit-tiles__tile');
-  await expect(tiles).toHaveCount(3);
+  await expect(tiles).toHaveCount(4);
 
   const heute = tiles.nth(0);
   await expect(heute.locator('.habit-tiles__label')).toHaveText('Heute');
@@ -173,6 +173,13 @@ test('AK2: die drei Kacheln zeigen Zähler und Nenner als Text, der Balken ist a
   // Keine Farbe allein trägt Bedeutung — die Serien-Kachel hat gar keinen
   // Balken, statt einen immer vollen zu zeigen (issue #905).
   await expect(serie.locator('.habit-tiles__bar')).toHaveCount(0);
+
+  // TOTAL zählt alle erledigten Logs, auch über archivierte Routinen (issue #1037).
+  const total = tiles.nth(3);
+  await expect(total.locator('.habit-tiles__label')).toHaveText('Total');
+  await expect(total.locator('.habit-tiles__value')).toHaveText('1');
+  await expect(total.locator('.habit-tiles__denominator')).toHaveText('mal');
+  await expect(total.locator('.habit-tiles__bar')).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -439,6 +446,8 @@ test('AK10: bei reduzierter Bewegung ist der Auf-/Zuklapp-Übergang einer Tabell
 /* geteilt, statt unabhängig im Fluss zu stehen                              */
 /* -------------------------------------------------------------------------- */
 
+// Deckt zugleich AK5 (issue #1037) ab: alle vier Kachelzahlen (statt drei)
+// auf einer Höhe.
 test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl die Label unterschiedlich breiten Text tragen', async ({
   page,
 }) => {
@@ -448,7 +457,7 @@ test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl die Label
   await page.goto('/routinen');
 
   const tiles = page.locator('.habit-tiles__tile');
-  await expect(tiles).toHaveCount(3);
+  await expect(tiles).toHaveCount(4);
 
   // Zeilenzahl über die Textzeilen selbst messen (Range.getClientRects), nicht
   // über die Box-Höhe des Labels: `align-self: stretch` (Grid-Item-Default)
@@ -472,12 +481,13 @@ test('AK1 (#960): die drei Kachelzahlen stehen auf einer Höhe, obwohl die Label
   expect(serieLines, 'Serie bricht einzeilig').toBe(1);
 
   const values = page.locator('.habit-tiles__value');
-  await expect(values).toHaveCount(3);
-  const [heuteY, wocheY, serieY] = await values.evaluateAll((els) =>
+  await expect(values).toHaveCount(4);
+  const [heuteY, wocheY, serieY, totalY] = await values.evaluateAll((els) =>
     els.map((el) => el.getBoundingClientRect().y),
   );
   expect(Math.abs(wocheY - heuteY), 'HEUTE vs. DIESE WOCHE').toBeLessThanOrEqual(1);
   expect(Math.abs(serieY - heuteY), 'HEUTE vs. LÄNGSTE SERIE').toBeLessThanOrEqual(1);
+  expect(Math.abs(totalY - heuteY), 'HEUTE vs. TOTAL').toBeLessThanOrEqual(1);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -725,7 +735,7 @@ test('AK1 (#1005): die drei Kacheln tragen die einwortigen Label „Heute"/„Wo
   await page.goto('/routinen');
 
   const tiles = page.locator('.habit-tiles__tile');
-  await expect(tiles).toHaveCount(3);
+  await expect(tiles).toHaveCount(4);
   await expect(tiles.nth(0).locator('.habit-tiles__label')).toHaveText('Heute');
   await expect(tiles.nth(1).locator('.habit-tiles__label')).toHaveText('Woche');
   await expect(tiles.nth(2).locator('.habit-tiles__label')).toHaveText('Serie');
@@ -788,4 +798,125 @@ test('AK3 (#1005): der Nenner der dritten Kachel ist „von N" mit N = Anzahl ak
   expect(await stat.evaluate((el) => el.tagName)).toBe('DL');
   expect(await stat.locator('.habit-tiles__label').evaluate((el) => el.tagName)).toBe('DT');
   expect(await stat.locator('.habit-tiles__value-row').evaluate((el) => el.tagName)).toBe('DD');
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK1–AK6 (issue #1037): vierte Stat-Kachel TOTAL, Kachelinhalt zentriert    */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#1037): die vierte Kachel TOTAL zählt alle erledigten Logs — auch von archivierten Routinen, ohne Balken', async ({
+  page,
+}) => {
+  const active = await seedHabit(page, { name: 'Aktive Routine' });
+  await seedHabitLog(page, active, TODAY);
+  await seedHabitLog(page, active, '2026-07-14');
+
+  const archived = await seedHabit(page, {
+    name: 'Archivierte Routine',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await seedHabitLog(page, archived, '2026-06-01');
+  // Ein nicht erledigter Log zählt nicht mit.
+  await seedHabitLog(page, archived, '2026-06-02', false);
+
+  await page.goto('/routinen');
+
+  const total = page.locator('.habit-tiles__tile').nth(3);
+  await expect(total.locator('.habit-tiles__label')).toHaveText('Total');
+  // 2 (aktiv, done) + 1 (archiviert, done) = 3 — der false-Log zählt nicht mit.
+  await expect(total.locator('.habit-tiles__value')).toHaveText('3');
+  await expect(total.locator('.habit-tiles__denominator')).toHaveText('mal');
+  await expect(total.locator('.habit-tiles__bar')).toHaveCount(0);
+});
+
+test('AK2 (#1037): .habit-tiles__tile kommt genau viermal vor, in der Reihenfolge Heute/Woche/Serie/Total', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Aktive Sonde' });
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  await expect(tiles).toHaveCount(4);
+  await expect(tiles.locator('.habit-tiles__label')).toHaveText(['Heute', 'Woche', 'Serie', 'Total']);
+});
+
+test('AK2 (#1037): ohne aktive Routine rendert HabitTiles weiterhin null', async ({ page }) => {
+  await seedHabit(page, {
+    name: 'Nur archiviert',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await page.goto('/routinen');
+  await expect(page.locator('.habit-tiles')).toHaveCount(0);
+});
+
+test('AK3 (#1037): alle vier Kacheln stehen auf 375×812 in einer Zeile, ohne waagerechten Überlauf', async ({
+  page,
+}) => {
+  const habitA = await seedHabit(page, { name: 'Zeilen-Sonde A' });
+  await seedHabit(page, { name: 'Zeilen-Sonde B' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  await expect(tiles).toHaveCount(4);
+  const ys = await tiles.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().y));
+  for (const y of ys.slice(1)) {
+    expect(Math.abs(y - ys[0]), 'alle vier Kacheln auf derselben Höhe').toBeLessThanOrEqual(1);
+  }
+
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(overflow.scrollWidth, 'kein waagerechter Überlauf').toBeLessThanOrEqual(overflow.clientWidth);
+});
+
+test('AK4 (#1037): Label, Zahl und Nenner jeder Kachel stehen horizontal mittig', async ({ page }) => {
+  const habitA = await seedHabit(page, { name: 'Zentrier-Sonde' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+  for (let i = 0; i < count; i += 1) {
+    const tile = tiles.nth(i);
+    const label = tile.locator('.habit-tiles__label');
+    const valueRow = tile.locator('.habit-tiles__value-row');
+    expect(
+      await label.evaluate((el) => getComputedStyle(el).textAlign),
+      `Label der Kachel ${i} ist mittig`,
+    ).toBe('center');
+    expect(
+      await valueRow.evaluate((el) => getComputedStyle(el).justifyContent),
+      `Wertzeile der Kachel ${i} ist mittig`,
+    ).toBe('center');
+  }
+});
+
+test('AK6 (#1037): bei 375px werden Label, Wert und Nenner keiner der vier Kacheln abgeschnitten', async ({
+  page,
+}) => {
+  // Zwei tägliche Routinen ergeben den bislang breitesten Nenner „von 14"
+  // (AK2 #905) — der Härtefall für die enger gewordenen Kacheln.
+  const habitA = await seedHabit(page, { name: 'Clip-Sonde A' });
+  await seedHabit(page, { name: 'Clip-Sonde B' });
+  await seedHabitLog(page, habitA, TODAY);
+  await seedHabitLog(page, habitA, '2026-07-14');
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+  for (let i = 0; i < count; i += 1) {
+    const tile = tiles.nth(i);
+    for (const selector of ['.habit-tiles__label', '.habit-tiles__value', '.habit-tiles__denominator']) {
+      const el = tile.locator(selector);
+      if ((await el.count()) === 0) continue;
+      const [scrollWidth, clientWidth] = await el.evaluate((node) => [node.scrollWidth, node.clientWidth]);
+      expect(scrollWidth, `${selector} in Kachel ${i} nicht abgeschnitten`).toBeLessThanOrEqual(
+        clientWidth + 1,
+      );
+    }
+  }
 });
