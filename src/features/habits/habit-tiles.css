@@ -1,18 +1,20 @@
 /**
- * Three stat tiles atop /routinen (issue #905) — same "own surface, own ink"
- * card as habit-table.css/habit-history-card.css, `dl`/`dt`/`dd` stat shape
- * from activity-block.css's Kopfzahlen.
+ * Four stat tiles atop /routinen (issue #905, vierte Kachel TOTAL #1037) —
+ * same "own surface, own ink" card as habit-table.css/habit-history-card.css,
+ * `dl`/`dt`/`dd` stat shape from activity-block.css's Kopfzahlen.
  */
 
 .habit-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  /* Label / Zahl / Balken — geteilt über alle drei Kacheln (issue #960), damit
+  grid-template-columns: repeat(4, 1fr);
+  /* Label / Zahl / Balken — geteilt über alle vier Kacheln (issue #960), damit
      ein zweizeiliges Label die Zahlen der Nachbarkacheln nicht nach unten
-     schiebt. column-gap bleibt der bisherige Kachelabstand, row-gap 0: die
-     Zeilenabstände kommen weiterhin aus den Margins unten, kein Doppel. */
+     schiebt. column-gap auf --space-1 statt --space-2 (issue #1037 AK6) —
+     erster erlaubter Hebel gegen Abschneiden bei vier statt drei Kacheln auf
+     375px. row-gap 0: die Zeilenabstände kommen weiterhin aus den Margins
+     unten, kein Doppel. */
   grid-template-rows: repeat(3, auto);
-  column-gap: var(--space-2);
+  column-gap: var(--space-1);
   row-gap: 0;
   margin-bottom: var(--space-4);
 }
@@ -22,7 +24,9 @@
   grid-template-rows: subgrid;
   grid-row: span 3;
   min-width: 0;
-  padding: var(--space-3);
+  /* --space-2 statt --space-3 (issue #1037 AK6) — zweiter erlaubter Hebel,
+     nach column-gap. */
+  padding: var(--space-2);
   border-radius: var(--radius-surface);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
@@ -50,11 +54,14 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+  /* Kachelinhalt mittig (issue #1037 AK4). */
+  text-align: center;
 }
 
 .habit-tiles__value-row {
   display: flex;
   align-items: baseline;
+  justify-content: center;
   flex-wrap: wrap;
   gap: var(--space-1);
   margin: var(--space-1) 0 0;
