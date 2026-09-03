@@ -222,6 +222,78 @@ async function pageStripForward(page: Page, times = 1): Promise<void> {
 }
 
 /**
+ * Scrolls the week strip by exactly `days` day-columns (issue #1013, AK10) —
+ * `pageStrip`'s finer-grained sibling: that one always pages a full screen
+ * (7 columns), this one drives an arbitrary partial swipe. Same
+ * settle-driven wait as `pageStrip`: polls `anchorDay` until it actually
+ * moves, proof the strip rolled rather than stopping mid-gesture.
+ */
+async function scrollStripByDays(page: Page, days: number): Promise<void> {
+  const track = calendarWeeks(page);
+  const before = await anchorDay(page);
+  const unit = await trackUnitPx(page);
+  await track.evaluate((el, delta) => {
+    el.scrollLeft += delta;
+  }, days * unit);
+  await expect.poll(() => anchorDay(page)).not.toBe(before);
+}
+
+/**
+ * The 7 date keys currently in the strip's interactive band, derived from
+ * `data-anchor-day` (issue #1013) — the strip's initial window doesn't
+ * necessarily start on the calendar week's Monday or even on `today` itself
+ * (sub-pixel/scroll-snap rounding can land the initial scroll position one
+ * cell short), so a band-column test reads the actual anchor instead of
+ * assuming which weekday leads.
+ *
+ * `data-anchor-day` can still shift by one column shortly after mount — a
+ * pre-existing race between the mount-time scroll positioning and its own
+ * async `scroll`-driven `leadIndex` correction (confirmed via `--repeat-each`
+ * on the neighbouring "ein Wisch rollt das Fenster tageweise" test, issue
+ * #813 territory — out of scope for #1013's card/band work, which
+ * deliberately leaves the scroll/re-anchor mechanic untouched). Polling for
+ * two consecutive animation frames to agree waits out that settle window
+ * instead of reading a value that's about to change out from under the
+ * band columns a test derives from it.
+ */
+async function visibleDayKeys(page: Page): Promise<string[]> {
+  const anchor = await page.evaluate(() => {
+    function readAnchor(): string | null {
+      return document.querySelector('.calendar-strip')?.getAttribute('data-anchor-day') ?? null;
+    }
+    function nextFrame(): Promise<void> {
+      return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    return (async () => {
+      let previous = readAnchor();
+      for (let i = 0; i < 20; i += 1) {
+        await nextFrame();
+        const current = readAnchor();
+        if (current === previous) return current;
+        previous = current;
+      }
+      return previous;
+    })();
+  });
+  if (!anchor) throw new Error('kein data-anchor-day');
+  return Array.from({ length: 7 }, (_, index) => addDays(anchor, index));
+}
+
+function stripBand(page: Page, title: string) {
+  return page.locator('.calendar-strip__band').filter({ hasText: title });
+}
+
+/** A band's `grid-column` as `"start/end"`, the CSS 1-based track indices
+ *  (issue #1013) — computed longhand, not the shorthand `gridColumn`, which
+ *  some engines leave empty even when start/end are individually set. */
+async function bandGridColumn(band: Locator): Promise<string> {
+  return band.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return `${style.gridColumnStart}/${style.gridColumnEnd}`;
+  });
+}
+
+/**
  * Taps a day button in the strip if it's currently in the interactive band
  * (`dayButton`'s `:not([inert])` scope reports it as not visible otherwise,
  * issue #813); if it isn't, picks the day off the month card instead (issue
@@ -251,6 +323,39 @@ async function resolveToken(page: Page, cssVar: string): Promise<string> {
     probe.remove();
     return color;
   }, cssVar);
+}
+
+/** Same technique, `color` instead of `background-color` (issue #1013, AK2) —
+ *  lets a test compare a `color`-driven token directly against another
+ *  `color`-driven read, same probe-property on both sides. */
+async function resolveColorToken(page: Page, cssVar: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, cssVar);
+}
+
+/** Same as `resolveColorToken`, but the probe is a child of `selector` — resolves
+ *  the custom property from that element's own cascade context, not `document.body`'s.
+ *  Mirrors grundfarbe-vollfarbe.spec.ts's own `resolveColorTokenIn` (issue #831 AK5),
+ *  used here to prove `.calendar-strip` owns its own `--text`/`--text-muted` reset. */
+async function resolveColorTokenIn(page: Page, selector: string, cssVar: string): Promise<string> {
+  return page.evaluate(
+    ({ selector, cssVar }) => {
+      const container = document.querySelector(selector)!;
+      const probe = document.createElement('span');
+      probe.style.color = `var(${cssVar})`;
+      container.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    },
+    { selector, cssVar },
+  );
 }
 
 /** Mirrors form-bedienelemente.spec.ts's own probe-span technique for a var()-resolved value. */
@@ -1311,14 +1416,14 @@ test('Tage mit Terminen verschiedener Kategorien zeigen die passenden Punkte, Ta
 
   const todayDots = dayDots(page, 'Sa, 18.');
   await expect(todayDots).toHaveCount(1);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect
     .poll(() => todayDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
 
   const tomorrowDots = dayDots(page, 'So, 19.');
   await expect(tomorrowDots).toHaveCount(1);
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 30, 'var(--on-ground)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 85, 'var(--text-base)');
   await expect
     .poll(() => tomorrowDots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedSport);
@@ -1341,11 +1446,11 @@ test('der Kategorie-Punkt kommt aus dem semantischen Token, aufgehellt gegen den
   });
 
   const dot = dayDots(page, 'Sa, 18.').first();
-  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedLight = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 30, 'var(--on-ground)');
+  const expectedDark = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
   await expect.poll(() => dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
@@ -1394,26 +1499,334 @@ test('AK1: die fuenf --cat-* Vorgaben liegen als deklariertes oklch()-Literal mi
   expect(minHueGap(darkHues)).toBeGreaterThanOrEqual(40);
 });
 
-test('AK2: der gedaempfte Kategorie-Punkt (30%-Mix gegen --on-ground) erreicht 3:1 gegen den Kalender-Grund, alle fuenf Kategorien, hell und dunkel (issue #955, Rezept nachgezogen von issue #991)', async ({
+test('AK7: der gedaempfte Kategorie-Punkt (85%-Mix gegen --text-base) erreicht 3:1 gegen --surface, alle fuenf Kategorien plus der Fallback, hell und dunkel (issue #955/#1013, Rezept nachgezogen vom Ganztags-Band)', async ({
   page,
 }) => {
-  async function dotContrast(category: string): Promise<number> {
-    const ground = await toRgb(page, await resolveToken(page, '--ground'));
-    const dot = await toRgb(
-      page,
-      await resolveMix(page, `var(--cat-${category})`, 30, 'var(--on-ground)'),
-    );
-    return contrastRatio(dot, ground);
+  async function dotContrast(catVar: string): Promise<number> {
+    const surface = await toRgb(page, await resolveToken(page, '--surface'));
+    const dot = await toRgb(page, await resolveMix(page, catVar, 85, 'var(--text-base)'));
+    return contrastRatio(dot, surface);
   }
 
-  for (const category of CATEGORIES) {
-    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  const catVars = [...CATEGORIES.map((category) => `var(--cat-${category})`), 'var(--area-events)'];
+
+  for (const catVar of catVars) {
+    expect(await dotContrast(catVar)).toBeGreaterThanOrEqual(3);
   }
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  for (const category of CATEGORIES) {
-    expect(await dotContrast(category)).toBeGreaterThanOrEqual(3);
+  for (const catVar of catVars) {
+    expect(await dotContrast(catVar)).toBeGreaterThanOrEqual(3);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1013: Wochenstreifen wird eine weisse Karte                        */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: der Wochenstreifen ist eine eigene Karte — --surface/--radius-surface/--shadow-raised, hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  const strip = calendarStrip(page);
+  await expect(strip).toBeVisible();
+
+  const radiusToken = await resolveRadiusToken(page, '--radius-surface');
+  const shadowToken = await resolveShadowToken(page, '--shadow-raised');
+  expect(await strip.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(radiusToken);
+  expect(await strip.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(shadowToken);
+
+  const surfaceLight = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceLight);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const surfaceDark = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceDark);
+});
+
+test('AK2: die Karte setzt ihre eigene Tinte zurueck — --text/--text-muted loesen innerhalb der Karte auf --text-base/--text-muted-base auf, nicht auf die Grund-Tinte (issue #1013, #832 AK5)', async ({
+  page,
+}) => {
+  const stripText = await resolveColorTokenIn(page, '.calendar-strip', '--text');
+  const stripTextMuted = await resolveColorTokenIn(page, '.calendar-strip', '--text-muted');
+  const textBase = await resolveColorToken(page, '--text-base');
+  const textMutedBase = await resolveColorToken(page, '--text-muted-base');
+  const onGround = await resolveColorToken(page, '--on-ground');
+
+  expect(stripText).toBe(textBase);
+  expect(stripTextMuted).toBe(textMutedBase);
+  expect(stripText).not.toBe(onGround);
+});
+
+test('AK3: der ausgewaehlte Tag traegt eine volle Pille im Routenblau, die Schrift erreicht 4,5:1 — hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  const selected = dayButton(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  async function pillContrast(): Promise<number> {
+    const bg = await selected.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const textRgb = await toRgb(page, await selected.evaluate((el) => getComputedStyle(el).color));
+    const bgRgb = await toRgb(page, bg);
+    return contrastRatio(textRgb, bgRgb);
+  }
+
+  // `expect.poll`, not a bare read: `.calendar-strip__day`'s own
+  // `transition: background-color` can still be mid-fade right after
+  // `emulateMedia` flips the colour scheme (same race the switcher's AK4
+  // test above already accounts for).
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(pillContrast).toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK4: der heutige Tag ohne Auswahl traegt eine Umrandung im Routenblau statt einer Flaeche, die Zahl bleibt in der Kartentinte, die Umrandung haelt 3:1 gegen --surface — hell und dunkel (issue #1013)', async ({
+  page,
+}) => {
+  await selectStripDay(page, 'Mo, 20.'); // ein anderer sichtbarer Tag — heute (18.) bleibt unausgewaehlt
+  const today = dayButton(page, 'Sa, 18.');
+
+  const textBase = await resolveToken(page, '--text-base');
+  expect(await today.evaluate((el) => getComputedStyle(el).color)).toBe(textBase);
+  // `.calendar-strip__day` transitions `background-color` (calendar-strip.css:85,
+  // 150ms) — `selectStripDay` above just removed the `--selected` pill, so a bare
+  // synchronous read here races the fade-out and can catch a near-zero residual
+  // alpha (observed in CI: `rgba(99, 144, 225, 0.004)`). Poll until the fade
+  // settles instead of sampling mid-transition, same idiom as the dark-mode style
+  // reads above (`:1420`/`:1450`).
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe('rgba(0, 0, 0, 0)');
+
+  async function ringContrast(): Promise<number> {
+    const surfaceRgb = await toRgb(page, await resolveToken(page, '--surface'));
+    const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+    // The `color-mix()` result serializes as `oklab(...)` inside `box-shadow`
+    // (unlike a plain `background-color` read, which the rest of this suite's
+    // probes normalize to `rgb()`) — match any CSS colour function, not just
+    // `rgba?()`.
+    const match = boxShadow.match(/(?:oklab|oklch|rgba?|hsla?|color)\([^)]*\)/);
+    if (!match) throw new Error(`kein Farbwert im box-shadow: ${boxShadow}`);
+    const ringRgb = await toRgb(page, match[0]);
+    return contrastRatio(ringRgb, surfaceRgb);
+  }
+
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await ringContrast()).toBeGreaterThanOrEqual(3);
+});
+
+test('AK5: ist der heutige Tag zugleich ausgewaehlt, gewinnt die Pille — keine zusaetzliche Umrandung (issue #1013)', async ({
+  page,
+}) => {
+  const today = dayButton(page, 'Sa, 18.'); // Ausgangszustand: heute == ausgewaehlt
+
+  const groundToken = await resolveToken(page, '--ground');
+  expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundToken);
+  expect(await today.evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+});
+
+test('AK6: --area-events kommt im Wochenstreifen als Auswahl- oder Heute-Farbe nicht mehr vor, die Kategorie-Punkte behalten ihre --cat-*-Farben (issue #1013)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Arbeit-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const areaEvents = await resolveToken(page, '--area-events');
+  const selected = dayButton(page, 'Sa, 18.'); // heute == ausgewaehlt: Pille
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(areaEvents);
+
+  await selectStripDay(page, 'Mo, 20.'); // waehlt ab: Sa, 18. zeigt jetzt die Umrandung
+  const today = dayButton(page, 'Sa, 18.');
+  const boxShadow = await today.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(boxShadow).not.toContain(areaEvents);
+
+  const dot = dayDots(page, 'Sa, 18.').first();
+  const expectedDot = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  expect(await dot.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDot);
+});
+
+test('AK8: ein mehrtaegiger Termin erscheint im Wochenstreifen als durchgehendes Band ueber genau die Tage, die er abdeckt, mit Titel (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Ausflug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[1],
+    endDate: days[2],
+    category: 'familie',
+  });
+
+  const band = stripBand(page, 'Ausflug');
+  await expect(band).toBeVisible();
+  await expect(band.locator('.calendar-strip__band-title')).toHaveText('Ausflug');
+  expect(await bandGridColumn(band)).toBe('2/4');
+});
+
+test('AK9: laeuft ein Termin ueber die sichtbare Fensterkante hinaus, bleibt das Band dort eckig — rund nur am echten Anfang/Ende des Termins (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Reise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: addDays(days[0], -3), // beginnt vor dem sichtbaren Fenster
+    endDate: days[2], // endet real innerhalb des Fensters
+    category: 'sport',
+  });
+
+  const band = stripBand(page, 'Reise');
+  await expect(band).toBeVisible();
+  await expect(band).toHaveAttribute('data-continues-before', '');
+  await expect(band).not.toHaveAttribute('data-continues-after');
+
+  const corners = await band.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      topLeft: style.borderTopLeftRadius,
+      bottomLeft: style.borderBottomLeftRadius,
+      topRight: style.borderTopRightRadius,
+      bottomRight: style.borderBottomRightRadius,
+    };
+  });
+  // Eckig an der Fensterkante links (continuesBefore) …
+  expect(corners.topLeft).toBe('0px');
+  expect(corners.bottomLeft).toBe('0px');
+  // … rund am echten Ende rechts.
+  expect(corners.topRight).not.toBe('0px');
+  expect(corners.bottomRight).not.toBe('0px');
+});
+
+test('AK10: das Band rollt mit dem Streifen — nach einem Wisch um drei Tage deckt es weiterhin genau die richtigen Spalten ab (issue #1013)', async ({
+  page,
+}) => {
+  const daysBefore = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Wochenendtrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: daysBefore[3],
+    endDate: daysBefore[5],
+    category: 'privat',
+  });
+
+  const band = stripBand(page, 'Wochenendtrip');
+  await expect(band).toBeVisible();
+  expect(await bandGridColumn(band)).toBe('4/7');
+
+  await scrollStripByDays(page, 3);
+  await expect.poll(() => anchorDay(page)).toBe(addDays(daysBefore[0], 3));
+
+  await expect(band).toBeVisible();
+  expect(await bandGridColumn(band)).toBe('1/4');
+});
+
+test('AK11: liegen mehr als drei Ganztaegige im sichtbaren Fenster, werden hoechstens drei Baender gezeigt (issue #1013)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  for (const [index, title] of ['Eins', 'Zwei', 'Drei', 'Vier'].entries()) {
+    await seedEvent(page, {
+      title,
+      allDay: true,
+      startsAt: null,
+      endsAt: null,
+      startDate: days[index],
+      endDate: days[index],
+      category: null,
+    });
+  }
+
+  await expect(page.locator('.calendar-strip__band')).toHaveCount(3);
+  await expect(stripBand(page, 'Eins')).toBeVisible();
+  await expect(stripBand(page, 'Zwei')).toBeVisible();
+  await expect(stripBand(page, 'Drei')).toBeVisible();
+  await expect(stripBand(page, 'Vier')).toHaveCount(0);
+});
+
+test('AK12: liegt kein Ganztaegiger im sichtbaren Fenster, gibt es keine Bandzeile — die Karte ist entsprechend niedriger (issue #1013)', async ({
+  page,
+}) => {
+  await expect(page.locator('.calendar-strip__bands')).toHaveCount(0);
+  const heightWithout = await calendarStrip(page).evaluate((el) => el.getBoundingClientRect().height);
+
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[0],
+    endDate: days[0],
+    category: 'arbeit',
+  });
+
+  await expect(page.locator('.calendar-strip__bands')).toBeVisible();
+  const heightWith = await calendarStrip(page).evaluate((el) => el.getBoundingClientRect().height);
+  expect(heightWith).toBeGreaterThan(heightWithout);
+});
+
+test('AK13/AK14: die Karte beschneidet den Tagespuffer, kein waagerechter Ueberlauf im spaerlichen Default-Zustand, 375x812 (issue #1013)', async ({
+  page,
+}) => {
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+
+  const viewport = page.viewportSize();
+  const stripBox = await calendarStrip(page).boundingBox();
+  if (!viewport || !stripBox) throw new Error('AK13: kein Viewport oder keine BoundingBox');
+  expect(stripBox.x + stripBox.width).toBeLessThanOrEqual(viewport.width);
+
+  // Der Puffer selbst ist 731 Tage breit — ohne Beschneidung waere die Spur
+  // ein Vielfaches breiter als der Viewport; die Karte bleibt trotzdem schmal.
+  const carouselScrollWidth = await calendarWeeks(page).evaluate((el) => el.scrollWidth);
+  expect(carouselScrollWidth).toBeGreaterThan(viewport.width);
+});
+
+test('AK15: Dark Mode und prefers-reduced-motion gemeinsam — Karte, Pille und Band bleiben korrekt, iPhone 12 mini, 375x812 (issue #1013)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Ganztags-Termin',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'arbeit',
+  });
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.reload();
+
+  const strip = calendarStrip(page);
+  await expect(strip).toBeVisible();
+  const surfaceDark = await resolveToken(page, '--surface');
+  expect(await strip.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(surfaceDark);
+
+  const selected = dayButton(page, 'Sa, 18.');
+  const groundDark = await resolveToken(page, '--ground');
+  expect(await selected.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundDark);
+
+  await expect(stripBand(page, 'Ganztags-Termin')).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -3139,7 +3552,7 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
 
   const dots = dayDots(page, 'Sa, 18.');
   await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 30, 'var(--on-ground)');
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 85, 'var(--text-base)');
   await expect
     .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedPrivat);

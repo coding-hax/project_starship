@@ -224,25 +224,26 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
-- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
+- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark)
 - `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
+- `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
 - `nav-schleier.spec.ts` — Boden-Schleier
 - `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
-- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect ohne/mit ungültigem Cookie (Prod-Build)
+- `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect je Cookie-Zustand
 - `shipped.prod.spec.ts` — Rauchtest gegen das ausgelieferte Bündel (ohne `NEXT_PUBLIC_E2E`, eigene `playwright.shipped.config.ts`)
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Aufgabenliste, Übersicht-Filter, Freitext-Fälligkeit, je offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf auf `/uebersicht` -> `/aufgaben` + `CaptureConfirm`
-- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext auf `/uebersicht`: Termin vorbefüllt, Routine abgehakt/Review/neu, sonst Aufgabe
+- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Freitext: Termin vorbefüllt, Routine abgehakt/Review/neu, sonst Aufgabe
 - `capture-parser.spec.ts` (Teil 1/4) — Span+Ranking-Grammatik, je Test AK1–AK7 + Offline
 - `capture-zeigerzeit.spec.ts` (Teil 2/4) — deutsche Zeigerzeit + Tageshälften, je Test AK1–AK6 + Offline
 - `capture-datum.spec.ts` (Teil 3/4) — Monatsnamen, Spannen, Tagesgrenze 04:00, rückw. Abhaken, je Test AK1–AK6 + Offline
 - `capture-unsicher.spec.ts` (Teil 4/4) — unsichere Felder markieren, je Test AK1–AK6
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version, offline
-- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht-Sektion, Streaks, Monatsraster
-- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen (Kopf+Kacheln+Tabelle+Verlauf, Kontrast, 375×812, Dark/reduced-motion) + 30-Tage-Verlaufskarte im Detail
+- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Übersicht, Streaks, Monatsraster
+- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — /routinen (Kopf+Kacheln+Tabelle+Verlauf, Dark/reduced-motion) + 30-Tage-Verlaufskarte
 - `kalender.spec.ts` — Tages-Timeline: Stundenachse, Jetzt-Linie, Kategorie-Farbkante, Wochenstreifen-Blättern
 - `scroll-position.spec.ts` — jede Seite startet oben, nie auf der Scrollposition der vorherigen, auch nicht per Zurück
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
