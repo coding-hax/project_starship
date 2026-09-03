@@ -75,16 +75,14 @@ Zwei Kontexte, unterschiedlicher Bedarf:
 - **6px-Farbkante an der Terminkarte** (`event-time.ts`'s `categoryEdgeVar`):
   der rohe Token-Wert, nie als Flächenfarbe — die Fläche bleibt `--surface`.
   Ein Termin ohne Kategorie trägt stattdessen `--area-events`.
-- **Punkt im Wochenstreifen** (issue #1013): liegt seit der Karten-Umstellung
-  auf `--surface`, nicht mehr auf dem Grund — der rohe Wert reicht auch dort
-  nicht für 3:1 (Nicht-Text, WCAG 1.4.11), aufgehellt via
-  `color-mix(in oklab, var(--cat-*) 85%, var(--text-base))`, dasselbe Rezept
-  wie das Ganztägig-Band unten.
-- **Punkt auf dem Kalender-Grund** (Monatsraster, Ganztägig-Band): der rohe
-  Wert reicht auf dem satt-blauen `--ground-kalender` nicht für 3:1
-  (Nicht-Text, WCAG 1.4.11) — aufgehellt via
-  `color-mix(in oklab, var(--cat-*) 60%, var(--on-ground))`, dasselbe Rezept
-  wie das Ganztägig-Band (issue #924).
+- **Punkt/Band im Wochenstreifen, im Monatsraster und im Ganztägig-Band**
+  (issue #1013 fürs Wochenstreifen-Rezept, #956 fürs Ganztägig-Band, #1043
+  fürs Monatsraster): alle drei liegen auf `--surface`, nicht auf dem Grund —
+  der rohe Wert reicht dort nicht für 3:1 (Nicht-Text, WCAG 1.4.11),
+  aufgehellt via `color-mix(in oklab, var(--cat-*) 85%, var(--text-base))`,
+  überall dasselbe Rezept. Das Monatsraster lag bis #958 selbst auf dem Grund
+  und trug bis #1043 noch dessen älteres `60%`/`--on-ground`-Rezept fort,
+  obwohl die Karten-Umstellung das schon hinfällig gemacht hatte.
 
 Wer eine Kategorie in den Einstellungen von Hand umgefärbt hat (issue #660),
 sieht diese Vorgabe nicht — die eigene Wahl gewinnt, unverändert seit #660 AC5.
