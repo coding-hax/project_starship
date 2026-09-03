@@ -70,3 +70,15 @@
     transition: none;
   }
 }
+
+/* AK3 (#1023, Teil 8 von #1015): Figur direkt neben dem Titelwort statt am
+   rechten Rand — Override von `flex: 1 1 auto` (oben), das den Titel bisher
+   auf volle Breite zog. `flex: 0 1 auto`, nicht `0 0 auto`: darf bei hohem
+   `--font-scale` weiter schrumpfen statt zu überlaufen, gleiches Muster wie
+   `.calendar-view__heading` (issue #1021 AK2). Mobil bleibt `flex: 1 1 auto`
+   außerhalb der Query stehen (#928/#868). */
+@media (min-width: 768px) {
+  .journal-page__heading {
+    flex: 0 1 auto;
+  }
+}
