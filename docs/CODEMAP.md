@@ -86,33 +86,18 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `task-item.tsx` — eine Zeile: Checkbox, Swipe erledigen/löschen, Drag-to-Nest
 - `use-tasks.ts` / `use-complete-task.ts` / `use-delete-task.ts` — Live-Query+Gruppierung, Erledigen/Löschen (Swipe, Undo); `openTaskNodes` filtert erledigte aus „Alle"
 - `task-editor.tsx` / `.css` — Bottom-Sheet: Titel/Notiz/Fälligkeit/Priorität
-- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext → `{ title, dueAt }`;
-  `analyzeText` Baustein für `src/features/capture/`; Wann-Panel `due-picker.tsx`
+- `quick-add.tsx` / `.css` / `parse-task-input.ts` — FAB + Sheet, parst Freitext (`analyzeText` auch für `capture/`); Wann-Panel `due-picker.tsx`
 - `capture-confirm.tsx` / `.css` — Bestätigungs-Sheet für erkannte Fälligkeit
 - `capture-draft-store.ts` — `CaptureDraftItem` (`task`/`event`) / `CaptureDraftBatch`, In-Memory-Übergabe Übersicht→FAB/`EventEditor`
-- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo), sonst `/routinen`
+- `uebersicht-capture.tsx` — Erfassungsknopf `/uebersicht`: ruft `route-capture.ts`, lenkt task/event über den Draft-Store, hakt habit_check bei hoher Konfidenz ab (Undo)
 
 ### src/features/capture
 
-- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`, Naht lokal/Modell-Erkenner, eigenes `CaptureDraft` (reicher als `tasks/capture-draft-store.ts`)
+- `types.ts` — `CaptureKind`/`CaptureContext`/`CaptureDraft`/`Recognizer`; eigenes `CaptureDraft` (reicher als `tasks/capture-draft-store.ts`)
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText`
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer
 - `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
-- `corpus.ts` — tabellengetriebenes Satz-Korpus
-- `gold/` — Goldkorpus (Satz + Sollwert) als Gate über dem Erfassungspfad:
-  `curated.ts` (echte Sätze, Sollwert von Hand — die Spezifikation), `slots.ts` +
-  `generate.ts` (Satzmuster × Slot-Werte, Sollwert per Konstruktion, eigene
-  Referenz-Datumsauflösung ohne den Parser), `score.ts` (Trefferquote je Feld und
-  Kategorie), `report.test.ts` (das Gate; druckt den Bericht nur bei Fehlschlag).
-  Die drei Art-/Titel-/Tageszeit-Regeln vom 03.09.26 stehen im Kopf von `curated.ts`.
-  Schwerpunkt ist **gesprochene** Sprache: Sprechköpfe, Aussagerahmen, Zögern-Partikeln
-  und Telegrammstil stellen rund 23.000 der gut 35.000 Fälle — die sauberen Muster
-  beherrschte der Erkenner von Anfang an, die Fehler sassen im Sprechrahmen. Dazu
-  „komplex": Zeitspannen („von 10 bis 12" meint den Anfang) und Wiederholungen
-  („jeden zweiten Montag") — immer **ein** Eintrag, nur schwer zu lesen. Und
-  „kombiniert": dieselben Muster gestapelt („Kannst du mir eintragen: jeden Montag von
-  9 bis 11 Uhr Team-Call"). Dort fallen die Fehler auf, die jede Schicht einzeln nicht
-  zeigt — geprüft wird also nicht nur jedes Muster, sondern ihr Zusammentreffen.
+- `corpus.ts` / `gold/` — Satz-Korpora; `gold/` = Gate über dem Erfassungspfad (44.578 Fälle), Regeln im Kopf von `curated.ts`
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
