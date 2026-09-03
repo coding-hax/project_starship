@@ -8,6 +8,12 @@ import { FIXED_NOW, registerPasskey, resetAppData } from './helpers';
  * 375×812 (playwright.config.ts) — kein explizites setViewportSize nötig.
  */
 
+// issue #1035s AK3/AK2-Tests durchlaufen alle fünf FAB-Routen (teils ×2 Themes),
+// jede ein voller page.goto() — das reißt den 30s-Standard-Timeout, bevor /journal
+// als letzte Route überhaupt drankommt (Vorlage: form-bedienelemente.spec.ts, das
+// dieselben fünf Routen ebenfalls durchläuft).
+test.describe.configure({ timeout: 120_000 });
+
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
