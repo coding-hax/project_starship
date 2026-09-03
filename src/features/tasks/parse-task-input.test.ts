@@ -215,7 +215,8 @@ describe('parseTaskInput — #687 AK4: Kommandopräfixe fallen, Inhalt bleibt', 
 
   it('"erinnere mich" fällt, "daran" fällt als Bindewort direkt nach dem Datum-Span', () => {
     const result = parseTaskInput('erinnere mich morgen daran, den Müll rauszubringen', NOW);
-    expect(result.title).toBe('den Müll rauszubringen');
+    // Führender Artikel fällt (Entscheidung 03.09.26).
+    expect(result.title).toBe('Müll rauszubringen');
     expect(result.dueAt).toBe(iso(2024, 1, 16));
   });
 
@@ -344,7 +345,7 @@ describe('parseTaskInput — #688 needsConfirmation', () => {
   });
 
   it('eine geratene Zeit im Nachtfenster (00:00-05:59) -> true', () => {
-    expect(parseTaskInput('morgen halb eins Mittagessen', NOW).needsConfirmation).toBe(true);
+    expect(parseTaskInput('morgen halb eins Abgabe', NOW).needsConfirmation).toBe(true);
   });
 
   it('eine regionale Kurzform -> true, unabhängig vom Nachtfenster', () => {

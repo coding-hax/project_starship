@@ -2,7 +2,7 @@ import {
   DATE_PREPOSITIONS, EVENT_TITLES, FRAME_PREFIXES, FRAME_SUFFIXES,
   ROUTINE_VERBS, TASK_TITLES, TIME_SLOTS, WHEN_SLOTS,
 } from './slots';
-import type { TimeSlot, WhenSlot } from './slots';
+import type { TimeSlot } from './slots';
 import { GOLD_HABITS, NOW_REF } from './types';
 
 /**
@@ -10,7 +10,8 @@ import { GOLD_HABITS, NOW_REF } from './types';
  * „Kino mit Anna am Samstag um 20 Uhr" ist deshalb eine Aufgabe mit Uhrzeit.
  */
 function kindOf(title: string): 'task' | 'event' {
-  return /(?:^|\s)(?:termin|meeting|treffen)/iu.test(title) ? 'event' : 'task';
+  // Komposita zählen mit: „Arzttermin" trägt das Schlüsselwort genauso wie „Termin".
+  return /(?:\p{L}*termine?|meeting|treffen)(?![\p{L}])/iu.test(title) ? 'event' : 'task';
 }
 import type { GoldCase } from './types';
 

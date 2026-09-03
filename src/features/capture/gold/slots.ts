@@ -115,7 +115,7 @@ export const TASK_TITLES = [
   'Katzenfutter kaufen', 'Blumen gießen', 'Auto tanken', 'Fenster putzen',
   'Paket abholen', 'Vertrag kündigen', 'Reifen wechseln lassen', 'Küche putzen',
   'Brief zur Post bringen', 'Rasen mähen', 'Geschirrspüler ausräumen',
-  'Zahnarzttermin vereinbaren', 'Geschenk für Lisa besorgen',
+  'Geschenk für Lisa besorgen',
   'Mail an Thomas schreiben', 'Bericht fertig schreiben', 'Rechnung an den Kunden stellen',
   'Passwort ändern', 'Rückgabe verschicken', 'Amt anrufen',
   'Bücher zurückbringen', 'Kaffee nachbestellen', 'Handyvertrag prüfen',

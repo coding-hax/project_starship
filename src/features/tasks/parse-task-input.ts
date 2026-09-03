@@ -402,7 +402,6 @@ const MEAL_HINTS: Record<string, boolean> = {
   brunch: false,
   mittagessen: true,
   mittagspause: true,
-  kaffee: true,
   abendessen: true,
   abendbrot: true,
 };

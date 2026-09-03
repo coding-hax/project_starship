@@ -93,6 +93,16 @@ export const CURATED_CASES: GoldCase[] = [
     ['Zug nach Hamburg um 7:42', 'task', 'Zug nach Hamburg', on(1, 16, 7, 42)],
   ]),
 
+  ...rows('Schlüsselwort-Grenzfall', [
+    // Offen: hier plant man den Termin, man hat ihn nicht. Nach der Regel vom 03.09.26
+    // („Schlüsselwort muss gesagt werden") ist es trotzdem ein Termin. Eine Ausnahme für
+    // „Termin … vereinbaren/absagen/verschieben" wäre semantisch richtiger, ist aber
+    // nicht entschieden — deshalb steht hier das regelkonforme Ergebnis.
+    ['Zahnarzttermin vereinbaren', 'event', 'Zahnarzttermin vereinbaren', null],
+    ['Termin beim Amt vereinbaren', 'event', 'Termin beim Amt vereinbaren', null],
+    ['Termin am Freitag absagen', 'event', 'Termin absagen', on(1, 19)],
+  ]),
+
   ...rows('Termin per Schlüsselwort', [
     ['Meeting mit dem Team um 14 Uhr', 'event', 'Meeting mit dem Team', on(1, 15, 14)],
     ['Termin beim Friseur', 'event', 'Termin beim Friseur', null],

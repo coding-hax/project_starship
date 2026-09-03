@@ -47,7 +47,13 @@ export function hasCompletionVerb(text: string): boolean {
   );
 }
 
-const EVENT_VOCAB_PATTERNS = [word('termin'), word('treffen'), word('meeting'), /\bbei\s+dr\.?/iu];
+// „Zahnarzttermin" enthält das Schlüsselwort und zählt deshalb mit — gesagt ist gesagt.
+const EVENT_VOCAB_PATTERNS = [
+  /(?<![\p{L}\p{N}_])\p{L}*termine?(?![\p{L}\p{N}_])/iu,
+  word('treffen'),
+  word('meeting'),
+  /\bbei\s+dr\.?/iu,
+];
 // Entscheidung 03.09.26: die Art fällt an einem Schlüsselwort. „Aufgabe"/„Notiz"/„Todo"
 // gehören deshalb hierher — vorher stand nur der Sprechrahmen drin.
 const TASK_VOCAB_PATTERNS = [
