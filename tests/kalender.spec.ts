@@ -3634,8 +3634,8 @@ test('ein Punkt je Kategorie, nicht je Vorkommen — auch wenn Serie und Einzelt
   // Drei Termine, zwei Kategorien — und 'arbeit' steht in CATEGORY_ORDER vor 'sport'.
   const dots = monthGridDots(page, 'Sa, 25.');
   await expect(dots).toHaveCount(2);
-  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 60, 'var(--on-ground)');
-  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 60, 'var(--on-ground)');
+  const expectedArbeit = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  const expectedSport = await resolveMix(page, 'var(--cat-sport)', 85, 'var(--text-base)');
   await expect
     .poll(() => dots.nth(0).evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedArbeit);
