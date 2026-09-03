@@ -325,7 +325,9 @@ test('AK5: die Oberkante der Nav-Zeile bleibt durchsichtig (Regression zu #889)'
   expect(navBg, '.nav trägt weiterhin keine eigene Fläche').toBe('rgba(0, 0, 0, 0)');
 });
 
-test('AK6: auf Desktop (≥768px) gibt es keinen Schleier — die Sidebar trägt ihre eigene Fläche', async ({ page }) => {
+test('AK6: auf Desktop (≥768px) gibt es keinen Schleier — die Sidebar steht ohne eigene Fläche auf dem Grund (#1019)', async ({
+  page,
+}) => {
   await registerPasskey(page);
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto('/aufgaben');
@@ -333,7 +335,6 @@ test('AK6: auf Desktop (≥768px) gibt es keinen Schleier — die Sidebar trägt
   const before = await navBeforePseudo(page);
   expect(before.content, '.nav::before ist auf Desktop abgeschaltet').toBe('none');
 
-  const surfaceToken = await resolveColorToken(page, '--surface');
   const navBg = await page.locator('.nav').evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(navBg, 'die Sidebar trägt ihre eigene --surface-Fläche').toBe(surfaceToken);
+  expect(navBg, 'die Sidebar trägt keine eigene Fläche mehr, der Grund scheint durch').toBe('rgba(0, 0, 0, 0)');
 });
