@@ -129,8 +129,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
 - `habit-tiles.tsx` / `.css` — drei Kennzahl-Kacheln auf /routinen
 - `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
-- `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen
-  (Stufenkurve auf fester Skala; `step-path.ts` ist die reine Pfad-Ableitung dazu)
+- `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen (Stufenkurve, feste Skala)
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
@@ -289,17 +288,17 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 
 ## Wo liegt was?
 
-| Ich suche…                                    | Datei                                           |
-| --------------------------------------------- | ----------------------------------------------- |
-| das Datenmodell                               | `src/db/schema.ts`                              |
-| welche Felder ein Client schreiben darf       | `src/db/sync-tables.ts`                         |
-| wie eine Änderung zum Server kommt            | `src/local/outbox.ts`, dann `src/local/sync.ts` |
-| den Vertrag zwischen Client und Sync-API      | `src/local/types.ts`                            |
-| wer reindarf                                  | `src/auth/session.ts` (`requireOwner`)          |
-| Farben, Abstände, Motion                      | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md`   |
-| wie ein Screen aus mehreren Live-Queries lädt | `src/ui/overview-ready.tsx`                     |
-| die Journal-Verschlüsselung                   | `src/crypto/journal.ts` (+ `envelope.ts`)       |
-| warum etwas so entschieden wurde              | `docs/adr/`                                     |
+| Ich suche… | Datei |
+| --- | --- |
+| das Datenmodell | `src/db/schema.ts` |
+| welche Felder ein Client schreiben darf | `src/db/sync-tables.ts` |
+| wie eine Änderung zum Server kommt | `src/local/outbox.ts`, dann `src/local/sync.ts` |
+| den Vertrag zwischen Client und Sync-API | `src/local/types.ts` |
+| wer reindarf | `src/auth/session.ts` (`requireOwner`) |
+| Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
+| wie ein Screen aus mehreren Live-Queries lädt | `src/ui/overview-ready.tsx` |
+| die Journal-Verschlüsselung | `src/crypto/journal.ts` (+ `envelope.ts`) |
+| warum etwas so entschieden wurde | `docs/adr/` |
 
 ## Wichtige Invarianten
 
