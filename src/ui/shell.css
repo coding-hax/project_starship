@@ -345,20 +345,11 @@
     border-right: 1px solid var(--border);
     padding: var(--space-6) var(--space-3);
     backdrop-filter: none;
-    /* Sidebar stays its own opaque surface (unchanged since #444/#832) — only the
-       mobile bar switched to the route ground; the pill styling below exists
-       purely for that carousel and is neutralised back to plain flow here. */
-    background: var(--surface);
-    --text: var(--text-base);
-    --text-muted: var(--text-muted-base);
-    --border: var(--border-base);
-    --border-strong: var(--border-strong-base);
-    --border-faint: var(--border-faint-base);
   }
 
   .nav::before {
-    /* Sidebar carries its own opaque `--surface` fill (above) — no scrolled
-       page content ever slides behind it, so there's nothing to veil. */
+    /* Sidebar stands on the route ground (transparent, no #832 fill) — the
+       arcs run through behind it, so there's nothing to veil. */
     content: none;
   }
 
@@ -395,10 +386,17 @@
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-card);
     font-size: var(--text-secondary);
+    color: var(--on-ground);
   }
 
   .nav__link:hover {
     background: var(--surface-raised);
+    --text: var(--text-base);
+  }
+
+  .nav__link[aria-current='page'] {
+    background: var(--surface);
+    --text: var(--text-base);
   }
 }
 

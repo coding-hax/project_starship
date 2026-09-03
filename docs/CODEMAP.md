@@ -226,6 +226,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark Mode)
 - `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
+- `seitenleiste-grund.desktop.spec.ts` — Sidebar steht auf dem Routengrund: `.nav` ohne eigene Fläche, Leistenschrift `--on-ground` ≥4,5:1 über allen Bögen/Grund, aktiver Eintrag als `--surface`-Pille (beide Themes, 1280×800)
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
 - `nav-schleier.spec.ts` — Boden-Schleier
