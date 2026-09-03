@@ -29,6 +29,8 @@ const ABHAKEN_PATTERN = word('abhaken');
 const ABGEHAKT_PATTERN = word('abgehakt');
 const ERLEDIGT_PATTERN = word('erledigt');
 const GEMACHT_PATTERN = word('gemacht');
+// Goldkorpus: „geschafft" fehlte als einziges der vier gängigen Erledigungsverben.
+const GESCHAFFT_PATTERN = word('geschafft');
 const HAKE_PATTERN = word('hake');
 const AB_PATTERN = word('ab');
 
@@ -40,12 +42,18 @@ export function hasCompletionVerb(text: string): boolean {
     ABGEHAKT_PATTERN.test(text) ||
     ERLEDIGT_PATTERN.test(text) ||
     GEMACHT_PATTERN.test(text) ||
+    GESCHAFFT_PATTERN.test(text) ||
     (HAKE_PATTERN.test(text) && AB_PATTERN.test(text))
   );
 }
 
 const EVENT_VOCAB_PATTERNS = [word('termin'), word('treffen'), word('meeting'), /\bbei\s+dr\.?/iu];
-const TASK_VOCAB_PATTERNS = [word('erinnere mich'), word('nicht vergessen'), word('muss noch')];
+// Entscheidung 03.09.26: die Art fällt an einem Schlüsselwort. „Aufgabe"/„Notiz"/„Todo"
+// gehören deshalb hierher — vorher stand nur der Sprechrahmen drin.
+const TASK_VOCAB_PATTERNS = [
+  word('erinnere mich'), word('nicht vergessen'), word('muss noch'),
+  word('aufgaben?'), word('todo'), word('notiz'), word('erinnerung'),
+];
 // #780: eigenes Vokabular fürs Routine-Intent-Wort — deckt "Routine …" und "Gewohnheit
 // …", unabhängig von einem Erledigungsverb (dessen Signal bleibt `habitCheck` oben).
 const ROUTINE_INTENT_PATTERNS = [word('routine'), word('gewohnheit')];
@@ -65,11 +73,14 @@ function stripLeadingRoutineWord(title: string): string {
 
 const SCORE = {
   habitCheck: 100,
-  eventTime: 60,
   routineIntent: 80,
+  // Entscheidung 03.09.26: ein Schlüsselwort (Termin/Meeting/Treffen bzw. Aufgabe/Notiz)
+  // entscheidet die Art allein. Vorher punktete eine blosse Uhrzeit 60 für `event` und
+  // machte aus „um 8 Brötchen holen" einen Kalendertermin.
+  eventVocab: 100,
+  taskVocab: 100,
+  // Datum ODER Uhrzeit — ohne Schlüsselwort bleibt beides eine Aufgabe.
   taskDateOnly: 40,
-  eventVocab: 20,
-  taskVocab: 20,
   taskBaseline: 1,
 };
 
@@ -108,9 +119,7 @@ function classify(signals: Signals): ClassifyResult {
   if (signals.routineIntent) {
     scores.habit_check += SCORE.routineIntent;
   }
-  if (signals.hasExplicitTime) {
-    scores.event += SCORE.eventTime;
-  } else if (signals.hasDate) {
+  if (signals.hasDate || signals.hasExplicitTime) {
     scores.task += SCORE.taskDateOnly;
   }
   if (signals.eventVocab) {

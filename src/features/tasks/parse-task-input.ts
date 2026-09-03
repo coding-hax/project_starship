@@ -391,6 +391,30 @@ const DAY_PART_PATTERN = wordPattern(`(${Object.keys(DAY_PARTS).join('|')})`, 'g
 
 /** Ein Tageszeitwort unmittelbar vor oder nach der Uhrzeit — Satzzeichen dazwischen
  * erlaubt, kein weiteres Wort (dieselbe Nachbarschafts-Regel wie bei Bindewörtern). */
+/**
+ * Mahlzeiten verraten die Tageshälfte, gehören aber zum Titel: „um halb acht Abendessen
+ * bei Müllers" ist 19:30, und der Titel bleibt „Abendessen bei Müllers". Deshalb nur der
+ * Wahrheitswert, kein Span — anders als bei den Tageszeitwörtern unten.
+ */
+const MEAL_HINTS: Record<string, boolean> = {
+  frühstück: false,
+  frühstücken: false,
+  brunch: false,
+  mittagessen: true,
+  mittagspause: true,
+  kaffee: true,
+  abendessen: true,
+  abendbrot: true,
+};
+const MEAL_HINT_PATTERN = wordPattern(`(${Object.keys(MEAL_HINTS).join('|')})`, 'giu');
+
+function findMealHint(text: string): boolean | null {
+  for (const match of text.matchAll(MEAL_HINT_PATTERN)) {
+    return MEAL_HINTS[match[1].toLowerCase()];
+  }
+  return null;
+}
+
 function findAdjacentDayPart(text: string, span: Span): { span: Span; isPM: boolean } | null {
   for (const match of text.matchAll(DAY_PART_PATTERN)) {
     const candidate: Span = { start: match.index!, end: match.index! + match[0].length };
@@ -429,7 +453,13 @@ function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate
     };
   }
   const dayPart = findAdjacentDayPart(text, raw);
-  const isPM = dayPart ? dayPart.isPM : now.getHours() * 60 + now.getMinutes() >= 12 * 60;
+  const mealHint = dayPart === null ? findMealHint(text) : null;
+  const isPM =
+    dayPart !== null
+      ? dayPart.isPM
+      : mealHint !== null
+        ? mealHint
+        : now.getHours() * 60 + now.getMinutes() >= 12 * 60;
   // Zwölf ist der Fixpunkt des 12-Stunden-Zifferblatts, kein normaler 1-11-Wert: "zwölf
   // Uhr"/"um 12" bleibt immer Mittag (12:00), unabhängig von der Tageshälfte — genau das
   // vorbestehende Verhalten der einfachen Formen (#47/#618/#619). Nur "H−1"-Formen (halb/
@@ -439,7 +469,7 @@ function resolveHourMatch(text: string, raw: RawHourMatch, now: Date): Candidate
   const hours = isFixedNoon ? 12 : (raw.pointerHours + (isPM ? 12 : 0)) % 24;
   // Der Fixpunkt braucht keine Tageshälfte, um 12:00 aufzulösen (s. o.) — für die
   // Feld-Konfidenz ist da folglich auch nichts geraten, unabhängig von `dayPart`.
-  const isGuessed = !isFixedNoon && dayPart === null;
+  const isGuessed = !isFixedNoon && dayPart === null && mealHint === null;
   const needsConfirmation = raw.isRegional || (isGuessed && hours < 6);
   // #691: die Feld-Konfidenz ist strenger als `needsConfirmation` — jede aus dem
   // Sprechzeitpunkt abgeleitete Tageshälfte gilt als geraten, nicht nur eine, die ins
@@ -553,6 +583,39 @@ function findZeigerzeitRawMatches(text: string): RawHourMatch[] {
   return raw;
 }
 
+/**
+ * Tageszeitwort ohne Uhrzeit (Entscheidung 03.09.26): „heute Abend" meint 19 Uhr, nicht
+ * den Standardtermin 09:00. Niedrigste Spezifität — jede ausgesprochene Uhrzeit im Satz
+ * schlägt diese Lesart, das Wort geht dann ohnehin über `findAdjacentDayPart` in deren
+ * Span ein und verschwindet mit ihm aus dem Titel.
+ */
+const STANDALONE_DAY_PARTS: [string, number][] = [
+  ['am morgen', 8], ['am vormittag', 10], ['am mittag', 12], ['zu mittag', 12],
+  ['am nachmittag', 15], ['am abend', 19], ['in der nacht', 22],
+  ['morgens', 8], ['früh', 8], ['vormittags', 10], ['mittags', 12],
+  ['nachmittags', 15], ['abends', 19], ['abend', 19], ['nachts', 22],
+  // Substantivform ohne Präposition: „Morgen Nachmittag Oma anrufen". „morgen" steht
+  // hier bewusst NICHT — das ist der Kalendertag, nicht die Tageszeit.
+  ['vormittag', 10], ['mittag', 12], ['nachmittag', 15], ['nacht', 22],
+];
+
+function findStandaloneDayPartCandidates(text: string): Candidate<TimeValue>[] {
+  const candidates: Candidate<TimeValue>[] = [];
+  for (const [phrase, hours] of STANDALONE_DAY_PARTS) {
+    for (const match of text.matchAll(wordPattern(phrase, 'giu'))) {
+      candidates.push({
+        start: match.index!,
+        end: match.index! + match[0].length,
+        value: { hours, minutes: 0, needsConfirmation: false, guessReason: null },
+        // Mehrwortformen („am abend") schlagen die Kurzform, damit das „am" mit aus
+        // dem Titel fällt; beide bleiben unter jeder echten Uhrzeit.
+        specificity: phrase.includes(' ') ? 1 : 0,
+      });
+    }
+  }
+  return candidates;
+}
+
 function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null {
   const raw: RawHourMatch[] = [];
 
@@ -593,20 +656,43 @@ function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null
   raw.push(...findZeigerzeitRawMatches(text));
 
   const candidates = raw.map((match) => resolveHourMatch(text, match, now));
+  candidates.push(...findStandaloneDayPartCandidates(text));
   return bestCandidate(candidates);
 }
 
 // --- Kommandopräfixe & Bindewörter (R3) -----------------------------------
 
 const COMMAND_PREFIXES: RegExp[] = [
-  /^erstelle\b(\s+(einen|eine)\b)?\s*/iu,
-  /^erinnere\s+mich\b(\s+an\b)?\s*/iu,
+  /^erstelle\b(\s+(einen|eine)\b)?(\s+aufgabe\b)?\s*:?\s*/iu,
+  // „daran" gehört zum Rahmen, nicht zum Titel — ohne das blieb „Erinnere mich daran den
+  // Müll rauszubringen" als „daran den Müll rauszubringen" stehen.
+  /^erinnere\s+mich\b(\s+(an|daran)\b)?\s*:?\s*/iu,
   /^neue\s+aufgabe\b\s*:?\s*/iu,
   /^aufgabe\b\s*:\s*/iu,
   /^bitte\b\s+/iu,
-  /^trag\b\s+/iu,
+  /^trag\b(\s+ein\b)?\s*:?\s*/iu,
   // AK4 (#689): der Satz aus #620, die Begründung für den Modell-Parser — muss lokal fallen.
-  /^kannst\s+du\s+mir\b\s*/iu,
+  // Das Verb dahinter nur aus einer geschlossenen Liste: ein freies `\w+` fräße bei
+  // „kannst du mir Milch kaufen eintragen" das erste Titelwort.
+  /^kannst\s+du\s+mir\b(\s+(eintragen|notieren|aufschreiben|merken))?\s*:?\s*/iu,
+  // Sprechrahmen aus dem Goldkorpus: reine Absichtserklärungen ohne Titelbeitrag.
+  /^nicht\s+vergessen\b\s*:?\s*/iu,
+  /^denk(e)?\s+(dran|daran)\b\s*:?\s*/iu,
+  /^todo\b\s*:?\s*/iu,
+  /^merken\b\s*:\s*/iu,
+  /^ich\s+muss\b(\s+noch\b)?\s*/iu,
+  /^ich\s+sollte\b(\s+mal\b)?(\s+wieder\b)?\s*/iu,
+  /^ich\s+will\b(\s+noch\b)?\s*/iu,
+  /^ich\s+möchte\b(\s+noch\b)?\s*/iu,
+  /^unbedingt\b\s+/iu,
+  /^ich\s+hätte\s+(?:gern|gerne)\b\s*/iu,
+  // „Neuer Termin Mittwoch 16 Uhr Teamrunde" — hier ist das Objektwort Rahmen, nicht Titel.
+  /^neue(?:r|s)?\s+(?:termin|aufgabe|notiz|eintrag|erinnerung)\b\s*:?\s*/iu,
+  // Nebensatz-Einleitung nach „schreib auf, …" / „mach eine Notiz, …".
+  /^dass\s+ich\b\s*/iu,
+  // Zirkumfix „erinnere mich … an": das „an" kann hinter einem Einschub stehen
+  // („erinnere mich bitte morgen früh an die Rechnung").
+  /^erinnere\s+mich\b(?:\s+bitte)?(?:\s+\S+){0,3}?\s+(?:an|daran)\b\s*/iu,
 ];
 
 // "einen"/"eine" dazu (AK4, #689): dieselbe Span-Grenzen-Regel wie die übrigen
@@ -615,7 +701,8 @@ const CONNECTOR_WORDS = ['am', 'um', 'für', 'daran', 'beim', 'einen', 'eine'];
 
 // Trailing Diktat-Verb (AK4, #689): "... einstellen" am Satzende — das Pendant zu den
 // Kommandopräfixen, nur am Ende statt am Anfang.
-const COMMAND_SUFFIX_PATTERN = /\s+einstellen\s*$/iu;
+const COMMAND_SUFFIX_PATTERN =
+  /\s+(?:einstellen|eintragen|anlegen|hinzufügen|notieren|nicht\s+vergessen|muss|will|soll|möchte)\s*[!.]*\s*$/iu;
 
 function findCommandSuffixSpan(text: string): Span | null {
   const match = text.match(COMMAND_SUFFIX_PATTERN);
@@ -629,9 +716,10 @@ function findCommandPrefixSpans(text: string): Span[] {
   let cursor = 0;
   for (;;) {
     const remaining = text.slice(cursor);
-    const match = COMMAND_PREFIXES.map((pattern) => remaining.match(pattern)).find(
-      (candidate): candidate is RegExpMatchArray => candidate !== null && candidate[0].length > 0,
-    );
+    const match = COMMAND_PREFIXES.map((pattern) => remaining.match(pattern))
+      .filter((candidate): candidate is RegExpMatchArray => candidate !== null && candidate[0].length > 0)
+      // Längstes Match gewinnt: „erinnere mich bitte morgen früh an" schlägt „erinnere mich".
+      .sort((a, b) => b[0].length - a[0].length)[0];
     if (!match) break;
     spans.push({ start: cursor, end: cursor + match[0].length });
     cursor += match[0].length;
@@ -654,23 +742,126 @@ function findTerminPrefixSpan(text: string, dateSpan: Span | null, timeSpan: Spa
   return { start: 0, end: match[0].length };
 }
 
+/**
+ * Bindewörter, die nur **links** vom Datum fallen dürfen: „bis Freitag", „ab Montag".
+ * Getrennt von CONNECTOR_WORDS, weil dieselben Wörter rechts vom Anker etwas anderes
+ * sind — das „ab" aus „hake Sport für heute ab" ist ein trennbares Verb und gehört
+ * nicht aus dem Titel geschnitten.
+ */
+const LEADING_CONNECTOR_WORDS = ['bis', 'spätestens', 'ab', 'gegen'];
+
 function findConnectorSpans(text: string, anchors: Span[]): Span[] {
   if (anchors.length === 0) return [];
+  const candidates: [string, boolean][] = [
+    ...CONNECTOR_WORDS.map((word): [string, boolean] => [word, false]),
+    ...LEADING_CONNECTOR_WORDS.map((word): [string, boolean] => [word, true]),
+  ];
   const spans: Span[] = [];
-  for (const word of CONNECTOR_WORDS) {
-    const pattern = wordPattern(word, 'giu');
+  // Ketten wie „bis spätestens Freitag" fallen nur ganz, wenn ein gerade entferntes
+  // Bindewort selbst zum Anker fürs nächste wird — deshalb bis zum Fixpunkt.
+  for (;;) {
+    const known = [...anchors, ...spans];
+    const before = spans.length;
+    for (const [word, leadingOnly] of candidates) {
+      const pattern = wordPattern(word, 'giu');
+      for (const match of text.matchAll(pattern)) {
+        const candidate: Span = { start: match.index!, end: match.index! + match[0].length };
+        if (known.some((span) => overlaps(span, candidate))) continue;
+        const adjacent = known.filter((span) => isAdjacent(candidate, span, text));
+        if (adjacent.length === 0) continue;
+        if (leadingOnly && !adjacent.some((span) => candidate.end <= span.start)) continue;
+        spans.push(candidate);
+      }
+    }
+    if (spans.length === before) break;
+  }
+  return spans;
+}
+
+// --- Diktierte Kommandos ---------------------------------------------------
+
+/**
+ * Gesprochene Kommandos reihen Verb, Dativpronomen, Höflichkeitsfloskel, Artikel und
+ * Objektwort frei aneinander: „erstell mir einen Termin für Mittwoch", „leg mir eine
+ * Aufgabe an, Milch kaufen", „trag mir bitte für morgen einen Termin mit Anna ein".
+ * Die feste Präfixliste oben deckt das nicht ab — sie kennt nur ganze Wendungen.
+ *
+ * Das Objektwort selbst bleibt im Titel stehen („einen Termin mit Anna" → „Termin mit
+ * Anna"), sonst bliebe von „erstell mir einen Termin für Mittwoch" gar nichts übrig.
+ * Kündigt aber ein Trenner den eigentlichen Titel an („eine Aufgabe an, Milch kaufen"),
+ * fällt der ganze Kopf und der Titel ist, was dahinter steht.
+ */
+const DICTATION_VERB = String.raw`(?:erstell|mach|leg|setz|trag|füg|notier|schreib|pack|speicher|plan|richt)(?:e|st)?`;
+const DICTATION_OBJECT = String.raw`(?:termine?|aufgaben?|notiz|eintrag|erinnerung|todo)`;
+
+const DICTATION_HEAD_PATTERN = new RegExp(
+  String.raw`^\s*${DICTATION_VERB}\b(?:\s+(?:mir|dir|uns))?(?:\s+bitte)?\s*`,
+  'iu',
+);
+/** Kopf bis zum Trenner — dazwischen höchstens vier Wörter, damit kein Titel mitgeht. */
+const DICTATION_BODY_PATTERN = new RegExp(
+  String.raw`^\s*${DICTATION_VERB}\b(?:\s+(?:mir|dir|uns))?(?:\s+bitte)?` +
+    // Entweder ein Objektwort („… eine Aufgabe an, X") oder bloss ein Verbpartikel
+    // („schreib auf, X") — beides kündigt denselben Trenner an.
+    String.raw`(?:(?:\s+\S+){0,4}?\s+(?:einen|eine|ein|nen|den|die|das)?\s*${DICTATION_OBJECT}\b(?:\s+\S+){0,4}?)?` +
+    String.raw`(?:\s+(?:an|ein|hinzu|auf|dazu))?\s*[,:]\s*` +
+    // „…, dass ich X" — die Nebensatz-Einleitung gehört zum Rahmen.
+    String.raw`(?:dass\s+(?:ich|wir)\s+)?`,
+  'iu',
+);
+const DICTATION_DATIVE_PATTERN = /(?<![\p{L}\p{N}_])(?:mir|dir|uns)(?![\p{L}\p{N}_])/giu;
+const DICTATION_POLITE_PATTERN = /(?<![\p{L}\p{N}_])bitte(?![\p{L}\p{N}_])/giu;
+/** Nur der Artikel VOR dem Objektwort — das Objektwort trägt den Titel. */
+const DICTATION_ARTICLE_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_])(?:einen|eine|ein|nen)\s+(?=${DICTATION_OBJECT}(?![\p{L}\p{N}_]))`,
+  'giu',
+);
+/** Trennbares Verbpartikel am Ende: „… einen Termin mit Anna ein". */
+const DICTATION_PARTICLE_PATTERN = /\s+(?:an|ein|hinzu|auf|dazu)\s*(?=[,;:]|$)/iu;
+
+function findDictationSpans(text: string): Span[] {
+  const head = text.match(DICTATION_HEAD_PATTERN);
+  if (!head || head[0].trim().length === 0) return [];
+
+  const body = text.match(DICTATION_BODY_PATTERN);
+  if (body && text.slice(body[0].length).trim().length > 0) {
+    return [{ start: 0, end: body[0].length }];
+  }
+
+  const spans: Span[] = [{ start: 0, end: head[0].length }];
+  for (const pattern of [DICTATION_DATIVE_PATTERN, DICTATION_POLITE_PATTERN, DICTATION_ARTICLE_PATTERN]) {
     for (const match of text.matchAll(pattern)) {
-      const candidate: Span = { start: match.index!, end: match.index! + match[0].length };
-      if (anchors.some((anchor) => overlaps(anchor, candidate))) continue;
-      if (anchors.some((anchor) => isAdjacent(candidate, anchor, text))) spans.push(candidate);
+      spans.push({ start: match.index!, end: match.index! + match[0].length });
     }
   }
+  const particle = text.match(DICTATION_PARTICLE_PATTERN);
+  if (particle) spans.push({ start: particle.index!, end: particle.index! + particle[0].length });
   return spans;
 }
 
 // --- Explizite Titelangabe -------------------------------------------------
 
 const EXPLICIT_TITLE_PATTERN = /\btitel\s+([^]+)$/iu;
+
+/**
+ * Führender Artikel fällt aus dem Titel (Entscheidung 03.09.26): „die Rechnung bezahlen"
+ * wird zu „Rechnung bezahlen". Nur am Titelanfang und nur, wenn danach noch etwas steht —
+ * ein Titel, der bloss aus einem Artikel besteht, bleibt lieber unangetastet.
+ */
+/** Modalpartikeln, die nach dem Rahmen vorne stehen bleiben: „noch die Mail schreiben". */
+const LEADING_FILLER_PATTERN = /^(?:noch|mal|schon|endlich|unbedingt|wieder)\s+(?=\S)/iu;
+
+const LEADING_ARTICLE_PATTERN =
+  /^(?:der|die|das|den|dem|des|ein|eine|einen|einem|einer|eines)\s+(?=\S)/iu;
+
+function stripLeadingArticle(title: string): string {
+  // Zweimal abwechselnd: „noch die Mail" braucht erst Füllwort, dann Artikel.
+  let result = title;
+  for (let pass = 0; pass < 2; pass++) {
+    result = result.replace(LEADING_FILLER_PATTERN, '').replace(LEADING_ARTICLE_PATTERN, '');
+  }
+  return result;
+}
 
 function edgeTrim(text: string): string {
   return text
@@ -769,15 +960,20 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
     prefixSpans.length === 0 ? findTerminPrefixSpan(text, dateSpan, timeSpan) : null;
   const connectorSpans = findConnectorSpans(text, anchors);
   const suffixSpan = findCommandSuffixSpan(text);
+  // Beide Mengen laufen immer: ein Altpräfix wie „erstelle" deckt nur den Wortanfang ab,
+  // das „mir bitte einen Termin" dahinter braucht weiter die Diktat-Grammatik.
+  // Überlappende Spans sind unschädlich — `removeSpans` schneidet sie zusammen.
+  const dictationSpans = findDictationSpans(text);
 
   const removalSpans = [
     ...prefixSpans,
+    ...dictationSpans,
     ...(terminSpan ? [terminSpan] : []),
     ...(suffixSpan ? [suffixSpan] : []),
     ...anchors,
     ...connectorSpans,
   ];
-  const title = edgeTrim(removeSpans(text, removalSpans));
+  const title = stripLeadingArticle(edgeTrim(removeSpans(text, removalSpans)));
   return { date, hasExplicitTime, title, needsConfirmation, dateGuessReason, timeGuessReason };
 }
 
