@@ -216,8 +216,11 @@ function MonthPage({
           );
         })}
         {bandCells.map(({ band, row }) => (
+          // A cross-week event yields one band per week row under the *same*
+          // `band.id` (AK7), all rendered into this one list — so the row makes
+          // the key unique across weeks; within a week `id` is already unique.
           <li
-            key={band.id}
+            key={`${band.id}-${row}`}
             className="month-grid__band"
             aria-hidden="true"
             data-continues-before={band.continuesBefore ? '' : undefined}
