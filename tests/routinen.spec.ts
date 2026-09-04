@@ -920,3 +920,78 @@ test('AK6 (#1037): bei 375px werden Label, Wert und Nenner keiner der vier Kache
     }
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* #1065: der Balken hält Abstand zur gerundeten Kachelecke                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Kürzester Abstand eines Punktes zur Silhouette der Kachel. Innerhalb des
+ * Eckquadrats zählt der Abstand zum Viertelkreis, sonst der zur geraden Kante.
+ * `ex`/`ey` sind die Abstände des Punktes zur Seiten- bzw. zur Unterkante.
+ */
+function edgeClearance(ex: number, ey: number, radius: number): number {
+  if (ex < radius && ey < radius) return radius - Math.hypot(radius - ex, radius - ey);
+  return Math.min(ex, ey);
+}
+
+test('#1065: die Balkenenden liegen innerhalb der gerundeten Kachelkante und bleiben lesbar breit', async ({
+  page,
+}) => {
+  const habitA = await seedHabit(page, { name: 'Eckabstand A' });
+  await seedHabit(page, { name: 'Eckabstand B' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const bars = page.locator('.habit-tiles__bar');
+  await expect(bars).toHaveCount(2);
+
+  const probes = await bars.evaluateAll((els) =>
+    els.map((el) => {
+      const tile = el.closest('.habit-tiles__tile') as HTMLElement;
+      const tileBox = tile.getBoundingClientRect();
+      const barBox = el.getBoundingClientRect();
+      const fillBox = (el.firstElementChild as HTMLElement).getBoundingClientRect();
+      const tileStyle = getComputedStyle(tile);
+      return {
+        label: (tile.querySelector('.habit-tiles__label') as HTMLElement).textContent ?? '',
+        radius: Number.parseFloat(tileStyle.borderBottomLeftRadius),
+        padding: Number.parseFloat(tileStyle.paddingLeft),
+        // Abstände der beiden unteren Balkenecken zu Seiten- und Unterkante.
+        leftInset: barBox.left - tileBox.left,
+        rightInset: tileBox.right - barBox.right,
+        bottomInset: tileBox.bottom - barBox.bottom,
+        tileWidth: tileBox.width,
+        barWidth: barBox.width,
+        fillOffsetLeft: fillBox.left - barBox.left,
+        fillOverhangRight: fillBox.right - barBox.right,
+      };
+    }),
+  );
+
+  for (const probe of probes) {
+    const left = edgeClearance(probe.leftInset, probe.bottomInset, probe.radius);
+    const right = edgeClearance(probe.rightInset, probe.bottomInset, probe.radius);
+
+    // Ohne den Einzug lagen beide Ecken bei ≈ −0,3px, also außerhalb der Fläche.
+    expect(left, `linkes Balkenende in Kachel ${probe.label}`).toBeGreaterThanOrEqual(4);
+    expect(right, `rechtes Balkenende in Kachel ${probe.label}`).toBeGreaterThanOrEqual(4);
+
+    // Aber nicht so weit eingerückt, dass die Skala nichts mehr zeigt.
+    const innerWidth = probe.tileWidth - 2 * probe.padding;
+    expect(probe.barWidth / innerWidth, `Balkenbreite in Kachel ${probe.label}`).toBeGreaterThan(
+      0.6,
+    );
+
+    // Die Füllung folgt dem Einzug, statt links davor zu beginnen oder rechts
+    // überzustehen.
+    expect(
+      Math.abs(probe.fillOffsetLeft),
+      `Füllung in Kachel ${probe.label} beginnt am Balken`,
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      probe.fillOverhangRight,
+      `Füllung in Kachel ${probe.label} endet im Balken`,
+    ).toBeLessThanOrEqual(0.5);
+  }
+});
