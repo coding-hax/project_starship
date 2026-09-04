@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { useModules } from '@/features/settings/use-modules';
 import { useNavOrder } from '@/features/settings/use-nav-order';
 import { BackgroundArcs } from './background-arcs';
@@ -74,7 +74,13 @@ export function Nav() {
                   href={tab.href}
                   aria-current={active ? 'page' : undefined}
                   className="nav__link"
-                  style={active ? { color: tab.accent } : undefined}
+                  // issue #1047: not `color` directly — an inline `color` would beat every
+                  // stylesheet rule, including the 768px block's own-ink override for the
+                  // active entry (AK1/AK4). Forwarding the per-tab accent as a custom
+                  // property instead lets shell.css decide per breakpoint: the mobile pill
+                  // keeps reading it (AK5, unchanged), the sidebar overrides it back to the
+                  // neutral --text-base ink once the entry gets its own --surface fill.
+                  style={active ? ({ '--nav-link-accent': tab.accent } as CSSProperties) : undefined}
                   // Explicit, not Next's default `auto` (issue #753). The nonce-based CSP
                   // makes layout.tsx read headers(), which renders the whole (app) segment
                   // dynamically instead of statically prerendering it (#599). For a dynamic

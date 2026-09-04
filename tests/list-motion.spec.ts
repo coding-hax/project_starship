@@ -332,18 +332,27 @@ test.describe('Routinen', () => {
 /* Journal                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Since #1048 the day's first entry is the day-card's own headline
+ * (`.journal-day-card__line`), which changes without animation — a
+ * `.journal-editor__entry`/`list-motion-item` only exists for entries beyond
+ * the first, inside the collapsible "N weitere Notizen" panel. AC1/AC2 below
+ * are scoped to that panel accordingly (owner decision on issue #1048).
+ */
 test.describe('Journal', () => {
   test('AC1: ein neu abgesendeter Eintrag blendet ein, der vorhandene nicht', async ({ page }) => {
     await setUpEditor(page);
-    await submitJournalEntry(page, 'Erster Eintrag');
+    await submitJournalEntry(page, 'Kopfzeile');
+    await submitJournalEntry(page, 'Erste Notiz');
+    await page.getByRole('button', { name: '1 weitere Notiz' }).click();
     await expect(journalEntries(page)).toHaveCount(1);
-    const existing = journalEntries(page).filter({ hasText: 'Erster Eintrag' });
+    const existing = journalEntries(page).filter({ hasText: 'Erste Notiz' });
     await expect(existing).toHaveAttribute('data-entering', 'false');
 
     const getEnterCapture = await armEnterAnimationCapture(page);
-    await submitJournalEntry(page, 'Zweiter Eintrag');
+    await submitJournalEntry(page, 'Zweite Notiz');
     const captured = await getEnterCapture();
-    expect(captured?.text).toContain('Zweiter Eintrag');
+    expect(captured?.text).toContain('Zweite Notiz');
     expect(captured?.entering).toBe('true');
     expect(captured?.animationName).toBe('list-enter');
     await expect(existing).toHaveAttribute('data-entering', 'false');
@@ -353,7 +362,9 @@ test.describe('Journal', () => {
     page,
   }) => {
     await setUpEditor(page);
+    await submitJournalEntry(page, 'Kopfzeile');
     await submitJournalEntry(page, 'Wird gelöscht');
+    await page.getByRole('button', { name: '1 weitere Notiz' }).click();
     const entry = journalEntries(page).filter({ hasText: 'Wird gelöscht' });
     await expect(entry).toHaveAttribute('data-entering', 'false');
 

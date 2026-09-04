@@ -17,6 +17,7 @@ import {
 } from '@/features/journal/lock-store';
 import { appendJournalEntry, deleteJournalEntry, listJournalEntries } from '@/features/journal/entry';
 import { ensureJournalHabit } from '@/features/journal/journal-habit';
+import { debugDecryptRunCount } from '@/features/journal/journal-search-cache';
 import { listJournalKeyStash } from '@/features/journal/journal-key-stash';
 import { writeJournalEntry } from '@/features/journal/write';
 import { DEFAULT_WEATHER_LOCATION } from '@/features/settings/use-weather-location';
@@ -108,6 +109,10 @@ export function E2EBridge() {
         ensureJournalHabit: () => ensureJournalHabit(),
         listJournalEntries: (entryDate: string) => listJournalEntries(entryDate),
         deleteJournalEntry: (id: string) => deleteJournalEntry(id),
+        // issue #1049 AK6: number of session-cache decrypt passes since load —
+        // "An diesem Tag" must not add a third one to the two already running
+        // (the day card's own grouping hook, the search/year-list's shared hook).
+        debugJournalDecryptRunCount: () => debugDecryptRunCount(),
         bytesToBase64: (bytes: number[]) => bytesToBase64(new Uint8Array(bytes)),
         createEnvelope: (passphrase: string, kdfParamsOverride?: Omit<KdfParams, 'salt'>) =>
           createEnvelope(passphrase, kdfParamsOverride),

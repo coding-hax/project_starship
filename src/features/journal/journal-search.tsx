@@ -1,27 +1,22 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import { MoodScale } from '@/ui/mood-scale';
 import { IconReset } from '@/ui/icons';
 import './journal-search.css';
 import { searchJournalEntries, splitHighlight, type JournalSearchEntry } from './search';
+import {
+  resetJournalSearch,
+  setMoodFilter,
+  setRangeFilter,
+  setTagFilter,
+  useJournalSearchState,
+} from './journal-search-state';
 import { useJournalSearchMode } from './journal-view-mode';
-import { useJournalSearchEntries } from './use-journal-search-entries';
 
-/** Wochentag kurz, Tag numerisch, Monat lang — derselbe Formatter, den die
- * Tagesüberschriften des Stroms (journal-editor.tsx) und die Kopfzeile
- * (journal-header-date.tsx) benutzen, damit ein Treffer wie der Eintrag liest,
- * auf den er zeigt (issue #700 AK6). */
-const DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'long',
-});
-
-const TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
-  hour: '2-digit',
-  minute: '2-digit',
-});
+/** Day + long month, no year — the year is the group heading's job (AK4), not
+ * a repeated per-row detail (issue #1051 AK5). */
+const DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' });
 
 /** Deterministic character threshold (issue #415 AC-P3) rather than a CSS
  * overflow measurement — makes the cut Playwright-testable. */
@@ -34,13 +29,42 @@ function formatEntryDate(entryDate: string): string {
   return DATE_FORMATTER.format(new Date(year, month - 1, day));
 }
 
-/** A result is one entry, not a day (issue #376 AC6) — its full date and time
- * together tell two same-day results apart. Since issue #700 AK6 this is the
- * spelled-out date („Sa. 8. August · 10:12"): Intl renders the short weekday
- * with a trailing comma („Sa.,"), and that comma stays — it matches the day
- * headers in the stream rather than being stripped by hand. */
-function formatEntryDateTime(entryDate: string, createdAt: string): string {
-  return `${formatEntryDate(entryDate)} · ${TIME_FORMATTER.format(new Date(createdAt))}`;
+function yearOf(entryDate: string): number {
+  return Number(entryDate.slice(0, 4));
+}
+
+/** "vor einem Jahr"/"vor N Jahren" — same wording #1049's "An diesem Tag"
+ * rows use for the same concept. `null` for the current year: it has no
+ * distance to state. */
+function formatYearsAgo(entryYear: number, currentYear: number): string | null {
+  const diff = currentYear - entryYear;
+  if (diff <= 0) return null;
+  return diff === 1 ? 'vor einem Jahr' : `vor ${diff} Jahren`;
+}
+
+/** A result row's top line (issue #1051 AK5): date, plus how long ago in
+ * words once the entry is from an earlier year than today. */
+function formatResultMeta(entryDate: string, currentYear: number): string {
+  const ago = formatYearsAgo(yearOf(entryDate), currentYear);
+  return ago ? `${formatEntryDate(entryDate)} · ${ago}` : formatEntryDate(entryDate);
+}
+
+interface YearGroup {
+  year: number;
+  entries: JournalSearchEntry[];
+}
+
+/** Newest year first (AK4); within a year, `searchJournalEntries`'s own
+ * createdAt-descending order is preserved (issue #376 AC6). */
+function groupByYear(entries: JournalSearchEntry[]): YearGroup[] {
+  const byYear = new Map<number, JournalSearchEntry[]>();
+  for (const entry of entries) {
+    const year = yearOf(entry.entryDate);
+    const group = byYear.get(year);
+    if (group) group.push(entry);
+    else byYear.set(year, [entry]);
+  }
+  return [...byYear.entries()].sort((a, b) => b[0] - a[0]).map(([year, list]) => ({ year, entries: list }));
 }
 
 /**
@@ -52,26 +76,38 @@ function formatEntryDateTime(entryDate: string, createdAt: string): string {
  *
  * Seit issue #700 (AK5/AK6) ist das Suchfeld nicht mehr dauerhaft sichtbar: es
  * erscheint erst, wenn die Lupe den Suchmodus öffnet (`useJournalSearchMode`),
- * und „Abbrechen" verlässt ihn wieder. Der Cache-Hook läuft dennoch bei jedem
- * Render (vor dem frühen `return null`), damit das Öffnen ohne Ladepause
- * Treffer zeigt.
+ * und „Abbrechen" verlässt ihn wieder.
  *
  * Seit issue #847 (AK1/AK2) läuft die Suche, solange der Suchmodus offen ist,
  * immer mit `showAllWhenEmpty: true` — ein leeres Feld zeigt darum sofort alle
  * Einträge, statt auf Enter oder das offene Filter-Menü zu warten (der frühere
  * `showAll`-State und der Enter-Sonderweg aus issue #456 sind damit
  * überflüssig geworden).
+ *
+ * Seit issue #1051 lebt die eigentliche Such-/Filterleiste nicht mehr hier:
+ * die Pille sitzt in der Augenbrauenzeile (journal-search-bar.tsx), die drei
+ * Filter als Chips im `extra`-Slot (journal-search-chips.tsx) — beide lesen
+ * denselben Modul-Store (journal-search-state.ts). Diese Komponente zeigt nur
+ * noch das gerade offene Filter-Panel (höchstens eins, AK2) sowie die nach
+ * Jahr gruppierten Treffer (AK4/AK5).
+ *
+ * `entries` kommt seit issue #1049 (AK6) als Prop von `journal-editor.tsx`
+ * hinein statt aus einem eigenen `useJournalSearchEntries()`-Aufruf hier: der
+ * Hook läuft dort einmal, unabhängig vom Suchmodus (damit das Öffnen ohne
+ * Ladepause Treffer zeigt), und dieselben Einträge speist „An diesem Tag" —
+ * ein zweiter Hook-Aufruf hier würde den Sitzungs-Cache ein zweites Mal
+ * entschlüsseln.
  */
-export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => void }) {
+export function JournalSearch({
+  entries,
+  onSelect,
+}: {
+  entries: JournalSearchEntry[] | undefined;
+  onSelect: (entryDate: string) => void;
+}) {
   const { active, close } = useJournalSearchMode();
-  const entries = useJournalSearchEntries();
-  const [query, setQuery] = useState('');
-  const [mood, setMood] = useState<number | null>(null);
-  const [tag, setTag] = useState<string | null>(null);
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const { query, mood, tag, from, to, openChip } = useJournalSearchState();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [showFilters, setShowFilters] = useState(false);
 
   const tagOptions = useMemo(() => {
     const all = new Set<string>();
@@ -81,49 +117,27 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
     return [...all].sort();
   }, [entries]);
 
-  const results = entries
-    ? searchJournalEntries(
-        entries,
-        {
-          query,
-          mood: mood === null ? undefined : String(mood),
-          tag: tag ?? undefined,
-          from: from || undefined,
-          to: to || undefined,
-        },
-        { showAllWhenEmpty: true },
-      )
-    : [];
-
-  function resetFilters() {
-    setMood(null);
-    setTag(null);
-    setFrom('');
-    setTo('');
-  }
-
-  function clearSearchState() {
-    setQuery('');
-    resetFilters();
-    // issue #456/#847: showFilters hält den Suchmodus zwar nicht mehr offen
-    // (der bleibt ohnehin immer aktiv), aber das Filter-Menü selbst soll beim
-    // erneuten Öffnen wieder eingeklappt starten (AK4).
-    setShowFilters(false);
-  }
-
-  /** „Abbrechen" (issue #700 AK6): verlässt den Suchmodus und stellt Editor +
-   * FAB wieder her; die Filterwerte werden zurückgesetzt, damit ein späteres
-   * erneutes Öffnen leer beginnt. */
-  function handleCancel() {
-    clearSearchState();
-    close();
-  }
-
-  function handleSelect(entryDate: string) {
-    clearSearchState();
-    close();
-    onSelect(entryDate);
-  }
+  const results = useMemo(
+    () =>
+      entries
+        ? searchJournalEntries(
+            entries,
+            {
+              query,
+              mood: mood === null ? undefined : String(mood),
+              tag: tag ?? undefined,
+              from: from || undefined,
+              to: to || undefined,
+            },
+            { showAllWhenEmpty: true },
+          )
+        : [],
+    [entries, query, mood, tag, from, to],
+  );
+  const groups = useMemo(() => groupByYear(results), [results]);
+  // Local, not module state on purpose — no other subtree reads "what year is
+  // it", so this doesn't need to live in journal-search-state.ts.
+  const currentYear = new Date().getFullYear();
 
   function toggleExpanded(id: string) {
     setExpanded((current) => {
@@ -137,46 +151,31 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
     });
   }
 
-  // Alle Hooks laufen oben (auch der Cache-Hook, damit er warm bleibt) — erst
-  // danach entscheidet der Suchmodus, ob überhaupt etwas gerendert wird (AK5).
+  function handleSelect(entryDate: string) {
+    resetJournalSearch();
+    close();
+    onSelect(entryDate);
+  }
+
+  // Alle Hooks laufen oben — erst danach entscheidet der Suchmodus, ob
+  // überhaupt etwas gerendert wird (AK5).
   if (!active) return null;
 
   return (
     <div className="journal-search">
-      <div className="journal-search__bar">
-        <input
-          type="search"
-          className="journal-search__input"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Journal durchsuchen …"
-          aria-label="Journal durchsuchen"
-          autoFocus
-        />
-        <button
-          type="button"
-          className="journal-search__filter-toggle"
-          aria-expanded={showFilters}
-          aria-controls="journal-search-filters"
-          onClick={() => setShowFilters((current) => !current)}
-        >
-          Filter
-        </button>
-        <button type="button" className="journal-search__cancel" onClick={handleCancel}>
-          Abbrechen
-        </button>
-      </div>
-      {showFilters && (
-        <div className="journal-search__filters" id="journal-search-filters">
-          <div className="journal-search__mood-filter">
-            <MoodScale value={mood} onChange={setMood} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
-          </div>
-          {tagOptions.length > 0 && (
+      {openChip && (
+        <div className="journal-search__filters" id="journal-search-filter-panel">
+          {openChip === 'mood' && (
+            <div className="journal-search__mood-filter">
+              <MoodScale value={mood} onChange={setMoodFilter} ariaLabelForValue={(n) => `Stimmung ${n} filtern`} />
+            </div>
+          )}
+          {openChip === 'tag' && (
             <select
               className="journal-search__tag-select"
               aria-label="Tag filtern"
               value={tag ?? ''}
-              onChange={(event) => setTag(event.target.value || null)}
+              onChange={(event) => setTagFilter(event.target.value || null)}
             >
               <option value="">Alle Tags</option>
               {tagOptions.map((option) => (
@@ -186,30 +185,32 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
               ))}
             </select>
           )}
-          <div className="journal-search__date-range">
-            <input
-              type="date"
-              className="journal-search__date-input"
-              aria-label="Von Datum"
-              value={from}
-              onChange={(event) => setFrom(event.target.value)}
-            />
-            <input
-              type="date"
-              className="journal-search__date-input"
-              aria-label="Bis Datum"
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-            />
-            <button
-              type="button"
-              className="journal-search__reset"
-              aria-label="Zurücksetzen"
-              onClick={resetFilters}
-            >
-              <IconReset />
-            </button>
-          </div>
+          {openChip === 'range' && (
+            <div className="journal-search__date-range">
+              <input
+                type="date"
+                className="journal-search__date-input"
+                aria-label="Von Datum"
+                value={from}
+                onChange={(event) => setRangeFilter(event.target.value, to)}
+              />
+              <input
+                type="date"
+                className="journal-search__date-input"
+                aria-label="Bis Datum"
+                value={to}
+                onChange={(event) => setRangeFilter(from, event.target.value)}
+              />
+              <button
+                type="button"
+                className="journal-search__reset"
+                aria-label="Zeitraum zurücksetzen"
+                onClick={() => setRangeFilter('', '')}
+              >
+                <IconReset />
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* issue #847 AK3: „Keine Treffer." beschreibt eine Eingabe/einen Filter,
@@ -220,18 +221,36 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
         <p className="journal-search__empty">Keine Treffer.</p>
       )}
       {results.length > 0 && (
-        <ul className="journal-search__results">
-          {results.map((entry) => (
-            <JournalSearchResult
-              key={entry.id}
-              entry={entry}
-              query={query}
-              expanded={expanded.has(entry.id)}
-              onToggleExpanded={() => toggleExpanded(entry.id)}
-              onSelect={() => handleSelect(entry.entryDate)}
-            />
-          ))}
-        </ul>
+        <>
+          {/* AK7: die Gesamtzahl über den Jahresgruppen, mit dem Suchwort nur,
+              wenn eines eingegeben ist — ein reiner Filter-Browse (Chips ohne
+              Text) hat kein „für …" zu nennen. */}
+          <p className="journal-search__total">
+            {query.trim() ? `${results.length} Treffer für „${query.trim()}"` : `${results.length} Treffer`}
+          </p>
+          <div className="journal-search__groups">
+            {groups.map((group) => (
+              <section key={group.year} className="journal-search__year-group">
+                <h2 className="journal-search__year-heading">
+                  {group.year} · {group.entries.length} Treffer
+                </h2>
+                <ul className="journal-search__results">
+                  {group.entries.map((entry) => (
+                    <JournalSearchResult
+                      key={entry.id}
+                      entry={entry}
+                      query={query}
+                      currentYear={currentYear}
+                      expanded={expanded.has(entry.id)}
+                      onToggleExpanded={() => toggleExpanded(entry.id)}
+                      onSelect={() => handleSelect(entry.entryDate)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -240,12 +259,14 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
 function JournalSearchResult({
   entry,
   query,
+  currentYear,
   expanded,
   onToggleExpanded,
   onSelect,
 }: {
   entry: JournalSearchEntry;
   query: string;
+  currentYear: number;
   expanded: boolean;
   onToggleExpanded: () => void;
   onSelect: () => void;
@@ -256,23 +277,31 @@ function JournalSearchResult({
   return (
     <li>
       <button type="button" className="journal-search__result" onClick={onSelect}>
-        <span className="journal-search__result-date">
-          {formatEntryDateTime(entry.entryDate, entry.createdAt)}
-          {entry.mood && <span className="journal-search__result-mood"> · Stimmung {entry.mood}/10</span>}
-        </span>
-        {entry.text && (
-          <span className="journal-search__result-snippet">
-            {/* Suchwort hervorheben (issue #700 AK6): über den sichtbaren, ggf.
-                gekürzten Snippet, nicht den ganzen Eintragstext. */}
-            {splitHighlight(snippet, query).map((segment, index) =>
-              segment.highlighted ? (
-                <mark key={index} className="journal-search__hl">
-                  {segment.text}
-                </mark>
-              ) : (
-                <Fragment key={index}>{segment.text}</Fragment>
-              ),
-            )}
+        <div className="journal-search__result-main">
+          <span className="journal-search__result-date">{formatResultMeta(entry.entryDate, currentYear)}</span>
+          {entry.text && (
+            <span className="journal-search__result-snippet">
+              {/* Suchwort hervorheben (issue #700 AK6): über den sichtbaren, ggf.
+                  gekürzten Snippet, nicht den ganzen Eintragstext. */}
+              {splitHighlight(snippet, query).map((segment, index) =>
+                segment.highlighted ? (
+                  <mark key={index} className="journal-search__hl">
+                    {segment.text}
+                  </mark>
+                ) : (
+                  <Fragment key={index}>{segment.text}</Fragment>
+                ),
+              )}
+            </span>
+          )}
+        </div>
+        {entry.mood && (
+          <span
+            className="journal-search__result-mood"
+            style={{ '--mood': entry.mood } as CSSProperties}
+            aria-label={`Stimmung ${entry.mood}/10`}
+          >
+            {entry.mood}
           </span>
         )}
       </button>
