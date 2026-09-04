@@ -330,3 +330,28 @@
     transition: none;
   }
 }
+
+/* AK3 (#1052): Suchtreffer laufen ab 768px in zwei Bahnen — `columns`, nicht
+   `grid` (anders als journal-editor.css's Tag/Jahre-Raster): die Jahresgruppen
+   sind gleichartige, unterschiedlich lange Blöcke, kein fester Zwei-Rollen-
+   Aufbau, dasselbe Muster wie `.uebersicht__sections` (uebersicht.css). Multi-
+   col greift nur auf Block-Container — `.journal-search__groups` verliert
+   dafür sein mobiles `display: flex`, jede Jahresgruppe bricht dank
+   `break-inside: avoid` nicht mitten in der Spalte um. `max-width: none` nimmt
+   den 480px-Deckel von `.journal-search` zurück (wie `.journal-editor`). */
+@media (min-width: 768px) {
+  .journal-search {
+    max-width: none;
+  }
+
+  .journal-search__groups {
+    display: block;
+    columns: 2;
+    column-gap: var(--space-6);
+  }
+
+  .journal-search__year-group {
+    margin-bottom: var(--space-4);
+    break-inside: avoid;
+  }
+}
