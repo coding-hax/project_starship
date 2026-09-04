@@ -175,7 +175,6 @@ test('AK2: nur der aktive Eintrag trägt --surface, in beiden Themes', async ({ 
     await expect(activeLink).toHaveAttribute('aria-current', 'page');
 
     const surfaceRgb = await resolveVarRgb(page, '--surface');
-    const accentRgb = await resolveVarRgb(page, '--area-tasks');
     const textBaseRgb = await resolveVarRgb(page, '--text-base');
 
     const activeStyle = await activeLink.evaluate((el) => {
@@ -185,7 +184,12 @@ test('AK2: nur der aktive Eintrag trägt --surface, in beiden Themes', async ({ 
     const activeBackgroundRgb = await cssColorToRgb(page, activeStyle.backgroundColor);
     expect(activeBackgroundRgb, `Aktive Pille (${scheme})`).toEqual(surfaceRgb);
     const activeColorRgb = await cssColorToRgb(page, activeStyle.color);
-    expect(activeColorRgb, `Aktive Labelfarbe (${scheme})`).toEqual(accentRgb);
+    // issue #1047 (Option A): der aktive Eintrag las hier bis 03.09. die
+    // Bereichsfarbe (--area-tasks) auf --surface — im Hellmodus < 4,5:1 auf
+    // jeder Route. Er trägt jetzt dieselbe neutrale --text-base-Tinte wie der
+    // Rest von .nav__bar; die Bereichsfarbe bleibt nur noch als 15-%-Tint
+    // hinter dem Icon (`.nav__icon::before`).
+    expect(activeColorRgb, `Aktive Labelfarbe (${scheme})`).toEqual(textBaseRgb);
     const activeTextRgb = await cssColorToRgb(page, activeStyle.text || 'transparent');
     expect(activeTextRgb, `Ink-Reset des aktiven Eintrags (${scheme})`).toEqual(textBaseRgb);
 
