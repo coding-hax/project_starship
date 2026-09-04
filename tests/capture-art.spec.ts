@@ -99,7 +99,9 @@ test.beforeEach(async ({ page }) => {
   // Fetch (CLAUDE.md Regel 8) sofort auffiele statt still durchzulaufen.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await installClockAt(page);
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 test('AK1: der Art-Chip zeigt die erkannte Art, bevor angelegt wird', async ({ page }) => {

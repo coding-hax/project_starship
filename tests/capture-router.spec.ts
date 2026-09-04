@@ -56,7 +56,9 @@ test.beforeEach(async ({ page }) => {
   // (CLAUDE.md rule 8) — everything below must survive with sync cut off.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await installClockAt(page);
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 test('AC1: "morgen 12 Uhr Zahnarzt" legt den Termin in-place an, kein Kalender-Umweg mehr nötig (issue #715 AK3)', async ({
