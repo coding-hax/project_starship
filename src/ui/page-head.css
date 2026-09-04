@@ -58,3 +58,28 @@
   font-size: var(--text-chip);
   font-variant-numeric: tabular-nums;
 }
+
+/* Interactive filter chip, "gesetzt" (issue #1051 AK3): a filled --surface
+   pill with --text-base (the fixed area ink, not the route-contextual
+   --text/--on-ground) — that pair stays >=4.5:1 on every route ground
+   because both tokens are defined together as a surface, unlike the veil
+   above. The veil itself measures ~2.9:1 for on-ground text on the journal
+   ground (a lighter area colour than the eight other routes, the only one
+   where --on-ground is the light variant) — too little for a value someone
+   actually has to read, so a "set" chip never uses it.
+*/
+.page-head__chip--set {
+  background: var(--surface);
+  color: var(--text-base);
+  font-weight: var(--weight-emphasis);
+}
+
+/* Interactive filter chip, "ungesetzt" (issue #1051 AK2): a label, not yet a
+   value — bare text directly on the route ground (the same ink/ground pair
+   the eyebrow already relies on) instead of the veil, which this file's own
+   AK3 comment above retires for text that must stay legible on any ground. */
+.page-head__chip--outline {
+  border: 1px solid color-mix(in oklab, var(--on-ground) 45%, transparent);
+  background: none;
+  color: var(--on-ground);
+}

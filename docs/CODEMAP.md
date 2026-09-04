@@ -110,10 +110,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` / `same-day.ts` — Zeile des Tages + „An diesem Tag"
-  (andere Jahrgänge am selben Monat+Tag, Abstand in Worten) + FAB
-- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
-- `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile
+- `journal-editor.tsx` / `.css` / `same-day.ts` — Zeile des Tages + „An diesem Tag" (andere Jahrgänge am selben Monat+Tag, Abstand in Worten) + FAB
+- `search.ts` / `journal-search-*.ts(x)` / `.css` — Suche: Cache, Modul-Store, Pille/Chips/Toggle, Filter-Panel + Jahresgruppen
+- `journal-page-head.tsx` / `journal-view-mode.ts` — `PageHead`-Wrapper + Suchmodus-Store
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
 - `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine
