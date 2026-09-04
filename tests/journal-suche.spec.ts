@@ -178,7 +178,12 @@ test('AC3: bei gesperrtem Journal gibt es keine Suche, sondern den Entsperr-Zust
   await expect(page.locator('.journal-search')).toHaveCount(0);
 
   await openSearch(page);
-  await expect(page.locator('.journal-search')).toBeVisible();
+  // Seit issue #1051 AK1 ist die Suchpille (`.journal-search-bar`) die
+  // eigentliche Suchmodus-Anzeige in der Augenbrauenzeile — `.journal-search`
+  // selbst trägt seither nur noch Filter-Panel und Treffer und bleibt bei
+  // einem Journal ohne Einträge leer (AK8, kein Leerzustands-Rahmen ohne
+  // Inhalt), also ohne eigene Höhe.
+  await expect(page.locator('.journal-search-bar')).toBeVisible();
 });
 
 test('AC4: keine Ladeanzeige während der Suche', async ({ page }) => {
