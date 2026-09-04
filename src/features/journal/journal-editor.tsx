@@ -97,8 +97,16 @@ export function JournalEditor() {
   // Öffnen dorthin zurück, statt einen Eintrag unsichtbar unter einem gerade
   // angesehenen älteren Tag verschwinden zu lassen. Eine Funktion für beide
   // Trigger, damit sie nicht auseinanderlaufen können.
+  //
+  // `todayKey()` frisch aufgerufen statt der oben gerenderten `today`-Variable:
+  // JournalEditor rendert nicht von selbst neu, nur weil die Uhr Mitternacht
+  // passiert — ohne eine dazwischenliegende dayGroups-/Such-Änderung hätte der
+  // Klick-Handler sonst den Render-Stand von vor Mitternacht im Closure
+  // (AC2/AC3, #1052 e2e-Fund: journal.spec.ts:1056 schlug dadurch fehl, weil
+  // der nach Mitternacht abgesendete Eintrag unter dem alten `shownDay` gesucht
+  // wurde).
   function openEntrySheet() {
-    setShownDay(today);
+    setShownDay(todayKey());
     setSheetOpen(true);
   }
 
