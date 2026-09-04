@@ -86,6 +86,15 @@
 .habit-tiles__bar {
   height: 4px;
   margin-top: var(--space-2);
+  /* Zusätzlicher Seiteneinzug (issue #1065): der Balken steht in der letzten
+     Subgrid-Zeile ganz unten, und dort ist die Kachel von --radius-surface
+     (28px) längst eingezogen — sie ist auf Balkenhöhe schmaler als ihr
+     Rechteck. Über die volle Innenbreite lag die untere Balkenecke bei
+     (8|8) ab Kachelecke, also √(20² + 20²) = 28,28px vom Mittelpunkt des
+     Eckbogens: 0,28px *außerhalb* der Silhouette. Mit 8px mehr Einzug sind
+     es √(12² + 20²) = 23,3px, der Balken hält 4,7px Abstand zur Rundung —
+     mehr geht bei 8px Padding nicht, ohne die Skala unlesbar zu kürzen. */
+  margin-inline: var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--border-faint);
   overflow: hidden;
