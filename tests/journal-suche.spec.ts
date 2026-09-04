@@ -50,22 +50,14 @@ async function openSearch(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Journal durchsuchen' }).click();
 }
 
-/** Bounding box of the raw date text node inside `.journal-page__eyebrow-row`
- *  (issue #928 AK1) — `TodayLongDate` renders bare text, not its own element,
- *  so there is no locator to target directly; same range-based technique as
- *  kalender.spec.ts's `textBoundingBox` (issue #921 AK4), applied to the
- *  row's first non-empty text node. */
+/** Bounding box of the date text inside `.journal-page__eyebrow-row`
+ *  (issue #928 AK1). Since issue #1050, the date sits in its own
+ *  `.journal-page__day-nav-date` span flanked by chevrons (`JournalDayNav`),
+ *  no longer bare text directly in the row. */
 async function eyebrowDateBox(row: Locator): Promise<{ x: number; right: number }> {
-  return row.evaluate((el) => {
-    const textNode = Array.from(el.childNodes).find(
-      (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim().length > 0,
-    );
-    if (!textNode) throw new Error('no date text node found in eyebrow row');
-    const range = document.createRange();
-    range.selectNodeContents(textNode);
-    const rect = range.getBoundingClientRect();
-    return { x: rect.x, right: rect.right };
-  });
+  const box = await row.locator('.journal-page__day-nav-date').boundingBox();
+  if (!box) throw new Error('date element not found in eyebrow row');
+  return { x: box.x, right: box.x + box.width };
 }
 
 /** Seeds a real, decryptable entry via the actual unlocked session's DEK (the
