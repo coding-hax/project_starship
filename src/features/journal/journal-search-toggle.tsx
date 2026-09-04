@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { IconSearch } from '@/ui/icons';
+import { resetJournalSearch } from './journal-search-state';
 import { useJournalLock } from './lock-store';
 import { useJournalSearchMode } from './journal-view-mode';
 
@@ -26,7 +27,12 @@ export function JournalSearchToggle() {
   const { active, open, close } = useJournalSearchMode();
 
   useEffect(() => {
-    if (state !== 'unlocked') close();
+    if (state !== 'unlocked') {
+      close();
+      // issue #1051: the query/filters/open chip live in a module store now,
+      // outside the gate that used to unmount (and reset) them on lock.
+      resetJournalSearch();
+    }
   }, [state, close]);
 
   if (state !== 'unlocked' || active) return null;
