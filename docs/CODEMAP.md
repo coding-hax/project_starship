@@ -110,9 +110,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` / `same-day.ts` — Zeile des Tages + „An diesem Tag" (andere Jahrgänge am selben Monat+Tag, Abstand in Worten) + FAB
-- `search.ts` / `journal-search-*.ts(x)` / `.css` — Suche: Cache, Modul-Store, Pille/Chips/Toggle, Filter-Panel + Jahresgruppen
-- `journal-page-head.tsx` / `journal-view-mode.ts` — `PageHead`-Wrapper + Suchmodus-Store
+- `journal-editor.tsx`/`.css`/`same-day.ts`/`journal-current-day.ts`/`journal-day-nav.tsx` — Tagzeile, Tageswechsel, „An diesem Tag"
+- `search.ts`/`journal-search-*.ts(x)`/`.css` — Suche: Cache, Modul-Store, Pille/Chips/Toggle, Filter-Panel + Jahresgruppen
+- `journal-page-head.tsx`/`journal-view-mode.ts` — `PageHead`-Wrapper: Tagnav- ↔ Suchmodus-Eyebrow
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
 - `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine
@@ -249,7 +249,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
-- `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal.spec.ts`/`journal-suche.spec.ts`/`journal-tageswechsel.spec.ts` — (Mehr-Einträge,Migration)+Suche+Tageswechsel
 - `journal-jahre.spec.ts` — „An diesem Tag": Jahrgänge, Schalttag, Zeitzone, Cache-Zähler
 - `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
