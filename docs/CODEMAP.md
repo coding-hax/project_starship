@@ -110,7 +110,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` — Eintragsstrom+FAB
+- `journal-editor.tsx` / `.css` — Zeile-des-Tages-Karte+FAB, `JournalDayPager` (Wisch/Pfeiltasten-Tageswechsel, #1050)
+- `journal-current-day.ts` — Modul-Store „welcher Tag ist gezeigt" (#1050), geteilt von Augenbraue und Editor
+- `journal-day-nav.tsx` — Chevrons+Datum in der Augenbrauenzeile (#1050), liest/schreibt `journal-current-day.ts`
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
@@ -250,6 +252,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
 - `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal-tageswechsel.spec.ts` — Tageswechsel: Wisch, Chevrons, Pfeiltasten, Grenzen, offline (#1050)
 - `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
 - `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes, Bergung der Alt-Einträge (AK1–AK7)

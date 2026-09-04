@@ -1,9 +1,9 @@
 import type { Viewport } from 'next';
+import { JournalDayNav } from '@/features/journal/journal-day-nav';
 import { JournalGate } from '@/features/journal/journal-gate';
 import { JournalSearchToggle } from '@/features/journal/journal-search-toggle';
 import { PageFace } from '@/ui/faces';
 import { PageHead } from '@/ui/page-head';
-import { TodayLongDate } from '@/ui/today-long-date';
 import './journal-page.css';
 
 export const metadata = { title: 'Journal · Starship' };
@@ -23,7 +23,7 @@ export default function JournalPage() {
         rowClassName="journal-page__title-row"
         eyebrow={
           <div className="journal-page__eyebrow-row">
-            <TodayLongDate />
+            <JournalDayNav />
             <JournalSearchToggle />
           </div>
         }
