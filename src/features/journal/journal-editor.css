@@ -206,6 +206,108 @@
   font-size: var(--text-secondary);
 }
 
+/* AK5 (#1049): dieselbe Fläche wie .journal-day-card — sie erscheint nur mit
+   mindestens einem Jahr (kein leerer Rahmen), own-surface/own-ink wie oben. */
+.journal-same-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.journal-same-day__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.journal-same-day__eyebrow {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+/* AK4: die Anzahl im Kopf, in derselben Auszeichnung wie das Datum der
+   Heute-Karte. */
+.journal-same-day__count {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-body);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+}
+
+.journal-same-day__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-same-day__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-faint);
+}
+
+.journal-same-day__row:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.journal-same-day__row-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.journal-same-day__year {
+  font-weight: var(--weight-emphasis);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-same-day__distance {
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+/* AK3: derselbe getönte Punkt wie .journal-day-card__mood, in kleiner Größe. */
+.journal-same-day__mood {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--area-journal) calc(var(--mood) * 7%), var(--surface));
+  font-family: var(--font-display);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+.journal-same-day__line {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 /* issue #518: the displaced-envelope recovery card. Same calm register as
    journal-gate.css's locked state — no --danger, a wrong secret and "nothing to
    recover" render identically (Regel 9). */

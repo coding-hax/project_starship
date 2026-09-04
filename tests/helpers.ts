@@ -596,6 +596,8 @@ declare global {
       >;
       deleteJournalEntry: (id: string) => Promise<void>;
       ensureJournalHabit: () => Promise<void>;
+      // issue #1049 AK6: Anzahl der Session-Cache-Entschlüsselungsläufe seit Laden.
+      debugJournalDecryptRunCount: () => number;
       bytesToBase64: (bytes: number[]) => string;
       createEnvelope: (
         passphrase: string,
