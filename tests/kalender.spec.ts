@@ -3672,7 +3672,9 @@ test('ein ganztaegiger Termin bekommt keinen Punkt — das Band traegt ihn, an j
   // (dayButton scoped auf :not([inert])) — erst die Monats-Karte zeigt alle
   // Tage gleichzeitig.
   await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(monthGridBand(page, 'Kurzurlaub')).toBeVisible();
+  // Zwei Baender, nicht eins: die Spanne kreuzt die Wochengrenze So/Mo, und
+  // die Karte gibt jeder Wochenzeile ihr eigenes Band (#1043 AK7).
+  await expect(monthGridBand(page, 'Kurzurlaub')).toHaveCount(2);
   for (const label of ['So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.']) {
     await expect(monthGridDots(page, label)).toHaveCount(0);
   }
