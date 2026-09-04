@@ -187,8 +187,7 @@ async function navBeforePseudo(
 test('AK1: der Schleier blendet die Nav-Zeile unten zum Bogen-3-Ton aus, gescrollter Karteninhalt liest darunter als Grundfläche', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const before = await navBeforePseudo(page);
   expect(before.backgroundImage, '.nav::before trägt einen Verlauf').toContain('gradient');
@@ -224,8 +223,7 @@ test('AK1: der Schleier blendet die Nav-Zeile unten zum Bogen-3-Ton aus, gescrol
 test('AK2: der Schleier stiehlt keine Berührung — nach dem Scrollen klickt ein Reiter in der Pille durch', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const before = await navBeforePseudo(page);
   expect(before.pointerEvents, '.nav::before ist pointer-events: none').toBe('none');
@@ -243,8 +241,7 @@ test('AK2: der Schleier stiehlt keine Berührung — nach dem Scrollen klickt ei
 });
 
 test('AK3: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt über dem Schleier', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTallTaskList(page);
   await page.reload();
   await selectView(page, 'Alle');
@@ -267,8 +264,7 @@ test('AK3: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt übe
 test('AK4: der Home-Indicator-Streifen liest als Seite (Routen-Grund), nicht als Neutralfläche — in Hell und Dunkel', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTallTaskList(page);
 
   for (const scheme of ['light', 'dark'] as const) {
@@ -300,8 +296,7 @@ test('AK4: der Home-Indicator-Streifen liest als Seite (Routen-Grund), nicht als
 });
 
 test('AK5: die Oberkante der Nav-Zeile bleibt durchsichtig (Regression zu #889)', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const before = await navBeforePseudo(page);
   // "to top" heißt: der Verlauf läuft vom unteren zum oberen Rand von `.nav` — der

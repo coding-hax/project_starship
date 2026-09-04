@@ -527,8 +527,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   // Before the first navigation (helpers.ts doc) — registerPasskey below may itself navigate.
   await installClockAt(page);
-  await registerPasskey(page);
-  await page.goto('/kalender');
+  await registerPasskey(page, '/kalender');
   await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
     polling: 100,
   });

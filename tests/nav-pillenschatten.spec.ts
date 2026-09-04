@@ -118,8 +118,7 @@ async function navBarBox(page: Page) {
 }
 
 test('AK1: die Pille schneidet ihren Schatten nicht mehr ab und behält ihn', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const navBar = page.locator('.nav__bar');
   expect(

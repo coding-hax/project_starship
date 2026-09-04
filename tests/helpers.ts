@@ -122,16 +122,25 @@ export async function createRegistrationCredential(
  * asserts the pristine "Passkey einrichten" state) leave the shared session invalid,
  * so the next caller registers again — and writes the refreshed state back, which the
  * following contexts pick up. Costs one ceremony after such a test instead of all of them.
+ *
+ * `target` says where to leave the page, and exists because loading `/uebersicht` for specs
+ * that immediately navigate elsewhere was the single most expensive thing the suite did:
+ * 1770 `/uebersicht` loads per run, ~67 of the 150 minutes, and ~1400 of them thrown away
+ * by the very next line (issue #1075). Pass the route the spec actually needs to pay for
+ * one navigation instead of two, or `null` to navigate nowhere at all — for specs whose
+ * every test body opens with its own `goto`. `null` leaves the page wherever it was, so
+ * only use it when nothing between here and that `goto` touches the document; callers that
+ * reach for `window.__starship` first need a loaded page and must keep a target.
  */
-export async function registerPasskey(page: Page) {
+export async function registerPasskey(page: Page, target: string | null = '/uebersicht') {
   const authenticated = await page.request
     .get('/api/auth/status')
     .then((r) => r.ok() && r.json().then((s: { authenticated?: boolean }) => !!s.authenticated))
     .catch(() => false);
   if (authenticated) {
-    // Same postcondition as the full ceremony: signed in AND sitting on a loaded /uebersicht.
-    // Callers rely on it — they reach straight for `window.__starship` afterwards.
-    await page.goto('/uebersicht');
+    // Postcondition: signed in, and — unless the caller opted out with `null` — sitting on a
+    // loaded `target`. Callers that keep a target reach straight for `window.__starship`.
+    if (target) await page.goto(target);
     return;
   }
 
@@ -147,6 +156,11 @@ export async function registerPasskey(page: Page) {
   await page.waitForURL('**/uebersicht');
 
   await page.context().storageState({ path: AUTH_STATE });
+
+  // The ceremony always redirects to /uebersicht, so a caller wanting anything else pays one
+  // more navigation here. That is the rare path — it only runs after a spec wiped the shared
+  // credential (shell.spec.ts) — so it is not worth optimising, but it must still honour `target`.
+  if (target && target !== '/uebersicht') await page.goto(target);
 }
 
 /**

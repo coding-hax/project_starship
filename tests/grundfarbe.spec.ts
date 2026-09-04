@@ -307,8 +307,7 @@ test('AK3: bereichsgefüllte Flächen tragen weiter --on-accent, unverändert se
   // die #709-Invariante "Text auf einer bereichsgefüllten Fläche = --on-accent"
   // und wandert jetzt auf einen weiterhin bereichsgefüllten Knopf: den
   // Speichern-Knopf im Task-Editor (task-editor.css:75-76, unverändert von #831).
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Kontrast-Sonde Speichern', dueAt: FIXED_NOW });
 
   const onAccent = await resolveColorToken(page, '--on-accent');
@@ -486,8 +485,7 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
   test('Karten-Reset: eine Karte auf dem Grund setzt --border auf den fixen Anker zurück, nicht den Grund-Mix', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await seedHabit(page, {
       name: 'Kanten-Sonde',
       schedule: 'daily',

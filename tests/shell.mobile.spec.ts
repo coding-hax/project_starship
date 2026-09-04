@@ -156,8 +156,7 @@ test('the settings entry point sits inline on Übersicht and on none of the othe
 test('/uebersicht rückt näher an die Statusleiste heran, ohne unter sie zu rutschen (issue #137 AC3+AC4)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const main = page.locator('main.shell__main');
   const paddingTop = await main.evaluate((el) => getComputedStyle(el).paddingTop);
@@ -169,8 +168,7 @@ test('/uebersicht rückt näher an die Statusleiste heran, ohne unter sie zu rut
 test('das Einstellungen-Symbol auf /uebersicht steht auf einer Linie mit dem Datum, rechtsbündig, mit vollem Touch-Ziel (issue #137 AC5, seit #920 in der Augenbraue statt der Titelzeile)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   // issue #920 AK3: Ring und Einstellungs-Einstieg zogen aus der Titelzeile in
   // die Augenbraue, auf eine Linie mit dem Datum — die Überschrift (Begrüßung)
@@ -297,8 +295,7 @@ test('AK4: /anmelden (ausgeloggt, neunte Route) gibt seine Grundfarbe als theme-
 test('AK5: die authored Regel für .shell__main führt env(safe-area-inset-top) in ihrer padding-top-Rechnung (issue #882)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
   const paddingTop = await authoredShellMainPaddingTop(page);
   expect(paddingTop).toContain('env(safe-area-inset-top)');
 });

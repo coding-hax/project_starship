@@ -204,15 +204,13 @@ test.describe('Anmelden (ausgeloggter Kontext)', () => {
 
 test('AK3: der Kartentitel trägt die Rundschrift', async ({ page }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
   await assertDisplayRecipe(page.locator('.section-card__title').first(), '.section-card__title');
 });
 
 test('AK3: das FAB-Icon trägt die Rundschrift', async ({ page }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await assertDisplayRecipe(page.locator('.fab__icon'), '.fab__icon');
 });
 
@@ -264,8 +262,7 @@ test('AK3: die Termin-Uhrzeit trägt die Rundschrift', async ({ page }) => {
 
 test('AK4: ein Journal-Titel hat die Rundschrift, ein Journal-Absatz nicht', async ({ page }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   const passphrase = '859 formsprache passphrase';
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
@@ -299,8 +296,7 @@ test('AK5: kein Request an fonts.gstatic.com/fonts.googleapis.com — die Schrif
   const requestUrls: string[] = [];
   page.on('request', (request) => requestUrls.push(request.url()));
 
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await expect(page.getByRole('heading', { level: 1, name: 'Aufgaben' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 

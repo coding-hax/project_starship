@@ -8,8 +8,7 @@ import { registerPasskey } from './helpers';
  */
 
 test('.section-card verliert ab 768px seinen 480px-Deckel (issue #1017 AK4)', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   // A synthetic 674px column: wider than the old 480px cap, narrower than any
   // real desktop column (.shell__main tops out at 816px) — so the assertion

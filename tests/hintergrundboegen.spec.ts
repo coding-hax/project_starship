@@ -175,8 +175,7 @@ test('AK1 (#991): Geometrie (Größen/bottom/Kronenhöhe) bei 375×812 ist auf a
 });
 
 test('AK2 (#829): die Bögen liegen hinter allen Inhalten, tippen geht durch zur UI', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const layer = page.locator('.bg-layer');
   await expect(layer).toBeAttached();
@@ -225,8 +224,7 @@ function gcd(a: number, b: number): number {
 test('AK2 (#991): drei paarweise teilerfremde Dauern (9/11/14s), je Bogen sein eigenes Keyframe', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const { durations, names } = await page.evaluate(() => {
     const arcs = Array.from(document.querySelectorAll('.bg-layer .bg-arc'));
@@ -251,8 +249,7 @@ test('AK2 (#991): drei paarweise teilerfremde Dauern (9/11/14s), je Bogen sein e
 test('AK2 (#991): versetzte Startphasen — die drei Bögen stehen nie gleichzeitig am selben Punkt', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const delays = await page.evaluate(() =>
     Array.from(document.querySelectorAll('.bg-layer .bg-arc')).map((el) => getComputedStyle(el).animationDelay),
@@ -305,8 +302,7 @@ async function keyframeScaleTarget(page: Page, keyframeName: string): Promise<st
 }
 
 test('AK2 (#991): jeder Bogen hat sein eigenes Keyframe mit eigenem Puls-Hub (1.05/1.085/1.12)', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const names = await page.evaluate(() =>
     Array.from(document.querySelectorAll('.bg-layer .bg-arc')).map((el) => getComputedStyle(el).animationName),
@@ -651,8 +647,7 @@ test('AK2/AK3 (#889): Bogen läuft in der Nav-Zeile außerhalb der Pille durch, 
 });
 
 test('AK1 (#919): .bg-layer bekommt inset:0, kein Schnitt mehr an der Safe-Area', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const layerTop = await page.locator('.bg-layer').evaluate((el) => getComputedStyle(el).top);
   expect(layerTop).toBe('0px');
@@ -682,8 +677,7 @@ test('AK2 (#982): die erzwungene Safe-Area-Zone zeigt den flachen Grund, kein Sc
 test('AK4 (#919): --safe-top ist ein eigener Anker, Standard 0, per addStyleTag auf einen echten Wert erzwingbar', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const defaultTop = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim(),

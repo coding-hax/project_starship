@@ -169,8 +169,7 @@ test('AK1: Karten stehen als volle Fläche mit tragendem Schatten auf dem Grund'
 test('AK2: die Reiterleiste schwimmt als Pille über dem Grund, der aktive Reiter trägt seine Bereichsfarbe', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const surfaceToken = await resolveColorToken(page, '--surface');
   const groundToken = await resolveColorToken(page, '--ground-aufgaben');

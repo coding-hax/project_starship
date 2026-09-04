@@ -149,8 +149,7 @@ function wcagContrast(a: [number, number, number], b: [number, number, number]):
 }
 
 test('AK1: .nav trägt keine eigene Fläche mehr, kein Schleier', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const nav = page.locator('.nav');
   const backgroundColor = await nav.evaluate((el) => getComputedStyle(el).backgroundColor);

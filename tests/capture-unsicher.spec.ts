@@ -61,7 +61,9 @@ test.beforeEach(async ({ page }) => {
   // Weder Aufgaben- noch Termin-Pfad dürfen je direkt fetchen (CLAUDE.md Regel 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await installClockAt(page, NOW);
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 test('AK1: geratenes Feld ist markiert, sicheres Feld bleibt unmarkiert', async ({ page }) => {
