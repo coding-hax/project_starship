@@ -92,6 +92,16 @@ export function JournalEditor() {
     await deleteJournalEntry(id);
   }
 
+  // Ein neuer Eintrag landet immer auf heute (entry.ts, journal-entry-sheet.tsx)
+  // — jeder Weg ins Sheet (FAB, leere Tageskarte) springt deshalb schon beim
+  // Öffnen dorthin zurück, statt einen Eintrag unsichtbar unter einem gerade
+  // angesehenen älteren Tag verschwinden zu lassen. Eine Funktion für beide
+  // Trigger, damit sie nicht auseinanderlaufen können.
+  function openEntrySheet() {
+    setShownDay(today);
+    setSheetOpen(true);
+  }
+
   return (
     <>
       <JournalSearch entries={searchEntries} onSelect={handleSearchSelect} />
@@ -102,15 +112,7 @@ export function JournalEditor() {
             <JournalDayCard
               dayGroups={dayGroups}
               dayKey={shownDay}
-              onOpenSheet={() => {
-                // Ein neuer Eintrag landet immer auf heute (entry.ts,
-                // journal-entry-sheet.tsx) — die Karte springt deshalb schon
-                // beim Öffnen dorthin zurück, statt einen Eintrag unsichtbar
-                // unter einem gerade angesehenen älteren Tag verschwinden zu
-                // lassen.
-                setShownDay(today);
-                setSheetOpen(true);
-              }}
+              onOpenSheet={openEntrySheet}
               onDelete={handleDelete}
             />
             <JournalRecent dayGroups={dayGroups} shownDay={shownDay} onShowDay={setShownDay} />
@@ -118,7 +120,7 @@ export function JournalEditor() {
           </>
         )}
       </div>
-      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} text="Eintrag" onClick={() => setSheetOpen(true)} />}
+      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} text="Eintrag" onClick={openEntrySheet} />}
       <JournalEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
     </>
   );
