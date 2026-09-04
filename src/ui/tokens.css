@@ -203,8 +203,13 @@
      #831 AK1): doubled from the pre-#831 opacity, blur radii untouched (60fps
      rule, docs/design/form-und-motion.md "Smooth" R4). */
   --shadow-raised: 0 10px 26px rgb(0 0 0 / 0.12);
-  /* Nav-Pille bzw. FAB (#860 Bedienelemente-Schnitt); dark + Anwendung dort. */
-  --shadow-float: 0 8px 30px rgb(0 0 0 / 0.18);
+  /* Nav-Pille (#860 Bedienelemente-Schnitt), der einzige Nutzer. Kurzer Wurf,
+     kleiner Radius (#1071): die Pille schwebt dicht über der Bildschirmkante,
+     unter ihr liegen nur ~42px Home-Indicator-Streifen. Der frühere 8px/30px-
+     Wurf war dort so kräftig, dass er abgeschnitten werden musste — und die
+     Schnittkante war sichtbarer als jeder Schatten. Dieser hier ist im
+     Streifen von selbst ausgelaufen und braucht keinen Schnitt. */
+  --shadow-float: 0 6px 18px rgb(0 0 0 / 0.1);
   --shadow-fab: 0 12px 28px rgb(0 0 0 / 0.2);
 
   /* --- motion: 150–250 ms. Anything slower feels sluggish. ----------------- */
@@ -369,7 +374,7 @@
     --danger: oklch(68% 0.17 27);
 
     --shadow-raised: 0 10px 26px rgb(0 0 0 / 0.4);
-    --shadow-float: 0 8px 30px rgb(0 0 0 / 0.68);
+    --shadow-float: 0 6px 18px rgb(0 0 0 / 0.2);
     --shadow-fab: 0 12px 28px rgb(0 0 0 / 0.7);
   }
 }
@@ -416,7 +421,7 @@
   --danger: oklch(68% 0.17 27);
 
   --shadow-raised: 0 10px 26px rgb(0 0 0 / 0.4);
-  --shadow-float: 0 8px 30px rgb(0 0 0 / 0.68);
+  --shadow-float: 0 6px 18px rgb(0 0 0 / 0.2);
   --shadow-fab: 0 12px 28px rgb(0 0 0 / 0.7);
 }
 
