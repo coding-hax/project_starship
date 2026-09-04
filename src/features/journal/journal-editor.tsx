@@ -11,7 +11,7 @@ import { JournalSearch } from './journal-search';
 import { useJournalSearchMode } from './journal-view-mode';
 import { useJournalLock } from './lock-store';
 import { formatYearCount, formatYearsAgo, sameDayEntries } from './same-day';
-import { useJournalEntries } from './use-journal-entries';
+import { useJournalEntries, type JournalDayGroup } from './use-journal-entries';
 import { useJournalSearchEntries } from './use-journal-search-entries';
 import { useOrphanedKey } from './use-orphaned-key';
 import type { JournalSearchEntry } from './search';
@@ -23,6 +23,35 @@ const ENTRY_TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
 
 function formatEntryTime(createdAt: string): string {
   return ENTRY_TIME_FORMATTER.format(new Date(createdAt));
+}
+
+const DAY_LONG_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+const DAY_SHORT_FORMATTER = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'long' });
+
+/** Local calendar day from a `YYYY-MM-DD` key, not UTC — same reasoning as
+ * `same-day.ts`'s day matching and `journal-search.tsx`'s `formatEntryDate`. */
+function parseDayKey(dayKey: string): Date {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** Same long format as `TodayLongDate`, for a day other than today (AK2,
+ * #1052, desktop's "Zuletzt geschrieben"): the day card's own header once it
+ * shows a day other than today — `TodayLongDate` itself always reads the real
+ * clock, so it only covers the `today` case. */
+function formatDayKeyLong(dayKey: string): string {
+  return DAY_LONG_FORMATTER.format(parseDayKey(dayKey));
+}
+
+/** Short form for a "Zuletzt geschrieben" row (AK2, #1052) — day + month, no
+ * year: the list only ever holds recent days, never a different year. */
+function formatDayKeyShort(dayKey: string): string {
+  return DAY_SHORT_FORMATTER.format(parseDayKey(dayKey));
 }
 
 /**
@@ -42,6 +71,15 @@ export function JournalEditor() {
   // statt je einen eigenen liveQuery/Entschlüsselungslauf zu starten. Läuft
   // unabhängig vom Suchmodus, damit dessen Öffnen ohne Ladepause Treffer zeigt.
   const searchEntries = useJournalSearchEntries();
+  // Hochgezogen (issue #1052 AK2), damit sowohl die Tageskarte als auch
+  // „Zuletzt geschrieben" denselben liveQuery/Entschlüsselungslauf teilen
+  // statt je einen eigenen zu starten (dieselbe Begründung wie searchEntries).
+  const dayGroups = useJournalEntries();
+  const today = todayKey();
+  // Welcher Tag oben in der Tageskarte + „An diesem Tag" steht (issue #1052
+  // AK2) — Default „heute". Mobil bleibt es dabei: ohne „Zuletzt geschrieben"
+  // (dort per CSS versteckt) gibt es dort nichts, das diesen State ändert.
+  const [shownDay, setShownDay] = useState(today);
 
   /** #1048: die Seite zeigt nur noch den heutigen Tag, ein Sprung zu einem
    * anderen Tag aus einem Suchtreffer existiert vorerst nicht mehr — das folgt
@@ -61,8 +99,22 @@ export function JournalEditor() {
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
-            <JournalDayCard onOpenSheet={() => setSheetOpen(true)} onDelete={handleDelete} />
-            <JournalSameDay entries={searchEntries} />
+            <JournalDayCard
+              dayGroups={dayGroups}
+              dayKey={shownDay}
+              onOpenSheet={() => {
+                // Ein neuer Eintrag landet immer auf heute (entry.ts,
+                // journal-entry-sheet.tsx) — die Karte springt deshalb schon
+                // beim Öffnen dorthin zurück, statt einen Eintrag unsichtbar
+                // unter einem gerade angesehenen älteren Tag verschwinden zu
+                // lassen.
+                setShownDay(today);
+                setSheetOpen(true);
+              }}
+              onDelete={handleDelete}
+            />
+            <JournalRecent dayGroups={dayGroups} shownDay={shownDay} onShowDay={setShownDay} />
+            <JournalSameDay entries={searchEntries} dayKey={shownDay} />
           </>
         )}
       </div>
@@ -156,31 +208,38 @@ function JournalOrphanedKeyCard() {
 }
 
 /**
- * The one surface for today (AK1–AK4, #1048): eyebrow „Heute" + the long date
- * (same `TodayLongDate` the page's own eyebrow already uses), then either the
- * day's line — the *first* entry created today (AK2's "N weitere Notizen"
- * covers the rest) — or, with nothing written yet, a dashed empty invitation
- * (AK3). `useJournalEntries()` already re-groups on every `journal_entries`
- * change (same session-cache source search reads from), so no extra decrypt
- * path is added here.
+ * The one surface for the shown day (AK1–AK4, #1048; verallgemeinert auf
+ * einen beliebigen Tag in #1052 AK2 — Default weiterhin „heute"): eyebrow
+ * „Heute" + the long date (same `TodayLongDate` the page's own eyebrow
+ * already uses) für den heutigen Tag, sonst das lange Datum des gezeigten
+ * Tages ohne „Heute"-Eyebrow. Dann entweder die Zeile des Tages — der *erste*
+ * an diesem Tag angelegte Eintrag (AK2's "N weitere Notizen" covers the
+ * rest) — or, with nothing written yet, a dashed empty invitation (AK3, nur
+ * für heute erreichbar: „Zuletzt geschrieben" listet ausschließlich Tage mit
+ * mindestens einem Eintrag). `dayGroups` kommt von `useJournalEntries()`
+ * hochgezogen in `journal-editor.tsx` (issue #1052 AK2), damit die Karte und
+ * „Zuletzt geschrieben" denselben liveQuery/Entschlüsselungslauf teilen.
  */
 function JournalDayCard({
+  dayGroups,
+  dayKey,
   onOpenSheet,
   onDelete,
 }: {
+  dayGroups: JournalDayGroup[] | undefined;
+  dayKey: string;
   onOpenSheet: () => void;
   onDelete: (id: string) => void;
 }) {
-  const dayGroups = useJournalEntries();
-  const today = todayKey();
+  const isToday = dayKey === todayKey();
   // Neuestes zuerst (useJournalEntries) — die Zeile des Tages ist der zuerst
   // angelegte Eintrag (createdAt aufsteigend), also der letzte in dieser Liste.
-  const todayEntries = useMemo(
-    () => dayGroups?.find((group) => group.dayKey === today)?.entries ?? [],
-    [dayGroups, today],
+  const dayEntries = useMemo(
+    () => dayGroups?.find((group) => group.dayKey === dayKey)?.entries ?? [],
+    [dayGroups, dayKey],
   );
-  const headline = todayEntries.length > 0 ? todayEntries[todayEntries.length - 1] : undefined;
-  const rest = useMemo(() => todayEntries.slice(0, -1), [todayEntries]);
+  const headline = dayEntries.length > 0 ? dayEntries[dayEntries.length - 1] : undefined;
+  const rest = useMemo(() => dayEntries.slice(0, -1), [dayEntries]);
   const [expanded, setExpanded] = useState(false);
   const restRows = useListPresence(rest, (entry) => entry.id);
 
@@ -206,10 +265,8 @@ function JournalDayCard({
     <section className="journal-day-card">
       <div className="journal-day-card__header">
         <div className="journal-day-card__heading">
-          <p className="journal-day-card__eyebrow">Heute</p>
-          <p className="journal-day-card__date">
-            <TodayLongDate />
-          </p>
+          {isToday && <p className="journal-day-card__eyebrow">Heute</p>}
+          <p className="journal-day-card__date">{isToday ? <TodayLongDate /> : formatDayKeyLong(dayKey)}</p>
         </div>
         {headline.mood && (
           <span
@@ -267,16 +324,77 @@ function JournalDayCard({
   );
 }
 
+/** Nicht aus einem Akzeptanzkriterium abgeleitet, nur eine sinnvolle Grenze:
+ * ein persönliches Journal, jahrelang täglich geführt, soll die linke Bahn
+ * nicht endlos wachsen lassen (issue #1052 AK2). */
+const RECENT_DAYS_LIMIT = 7;
+
+/**
+ * „Zuletzt geschrieben" (issue #1052 AK2, nur Desktop ab 768px — journal-
+ * editor.css versteckt `.journal-recent` mobil): die letzten Tage mit
+ * mindestens einem Eintrag, außer dem gerade gezeigten. Eine Zeile öffnet
+ * diesen Tag — der Ersatz für das Wischen aus #1050, das es hier (noch) nicht
+ * gibt. Ganz weg ohne andere Tage (gleiches Muster wie `JournalSameDay`), kein
+ * leerer Rahmen. Liest `dayGroups`, dieselbe von `JournalEditor` hochgezogene
+ * Quelle wie die Tageskarte — kein eigener Entschlüsselungslauf.
+ */
+function JournalRecent({
+  dayGroups,
+  shownDay,
+  onShowDay,
+}: {
+  dayGroups: JournalDayGroup[] | undefined;
+  shownDay: string;
+  onShowDay: (dayKey: string) => void;
+}) {
+  const days = useMemo(() => {
+    if (!dayGroups) return [];
+    // dayGroups ist bereits neuestes Datum zuerst sortiert (use-journal-entries.ts).
+    return dayGroups
+      .filter((group) => group.dayKey !== shownDay)
+      .slice(0, RECENT_DAYS_LIMIT)
+      .map((group) => ({ dayKey: group.dayKey, headline: group.entries[group.entries.length - 1] }));
+  }, [dayGroups, shownDay]);
+
+  if (days.length === 0) return null;
+
+  return (
+    <section className="journal-recent">
+      <p className="journal-recent__eyebrow">Zuletzt geschrieben</p>
+      <ul className="journal-recent__list">
+        {days.map((day) => (
+          <li key={day.dayKey}>
+            <button type="button" className="journal-recent__row" onClick={() => onShowDay(day.dayKey)}>
+              <span className="journal-recent__date">{formatDayKeyShort(day.dayKey)}</span>
+              {day.headline.text && <span className="journal-recent__line">{day.headline.text}</span>}
+              {day.headline.mood && (
+                <span
+                  className="journal-recent__mood"
+                  style={{ '--mood': day.headline.mood } as CSSProperties}
+                  aria-label={`Stimmung ${day.headline.mood}/10`}
+                >
+                  {day.headline.mood}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /**
  * „An diesem Tag" (issue #1049, Teil von #1046): jeder andere Jahrgang mit
- * einem Eintrag am selben Monat+Tag, unter der Zeile des Tages. Ganz weg,
- * solange kein anderes Jahr etwas beiträgt (AK5) — kein leerer Rahmen. Liest
- * denselben Sitzungs-Cache wie die Suche (`searchEntries`, hochgezogen in
- * `JournalEditor`, AK6), startet also keinen eigenen Entschlüsselungslauf.
+ * einem Eintrag am selben Monat+Tag wie `dayKey` — verallgemeinert auf einen
+ * beliebigen gezeigten Tag in #1052 AK2 (Default weiterhin „heute"), unter
+ * der Zeile des Tages. Ganz weg, solange kein anderes Jahr etwas beiträgt
+ * (AK5) — kein leerer Rahmen. Liest denselben Sitzungs-Cache wie die Suche
+ * (`searchEntries`, hochgezogen in `JournalEditor`, AK6), startet also
+ * keinen eigenen Entschlüsselungslauf.
  */
-function JournalSameDay({ entries }: { entries: JournalSearchEntry[] | undefined }) {
-  const today = todayKey();
-  const years = useMemo(() => (entries ? sameDayEntries(entries, today) : []), [entries, today]);
+function JournalSameDay({ entries, dayKey }: { entries: JournalSearchEntry[] | undefined; dayKey: string }) {
+  const years = useMemo(() => (entries ? sameDayEntries(entries, dayKey) : []), [entries, dayKey]);
 
   if (years.length === 0) return null;
 

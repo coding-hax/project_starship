@@ -206,6 +206,102 @@
   font-size: var(--text-secondary);
 }
 
+/* AK2 (#1052): mobil versteckt (`.journal-recent` gibt es dort per DOM zwar
+   — Zuletzt-geschrieben-Tage können existieren —, aber keine zweite Bahn, in
+   die sie gehören), ab 768px sichtbar (journal-editor.css 768px-Block unten).
+   Dieselbe Fläche wie .journal-day-card/.journal-same-day. */
+.journal-recent {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.journal-recent__eyebrow {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+.journal-recent__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-recent__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-recent__row:active {
+  opacity: 0.85;
+}
+
+/* Kapitälchen, gleiche Zurückhaltung wie journal-search.css's __result-date. */
+.journal-recent__date {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Eine Zeile, kein Umbruch — kompakte Liste statt langer Karten. */
+.journal-recent__line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.journal-recent__mood {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--area-journal) calc(var(--mood) * 7%), var(--surface));
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-recent__row {
+    transition: none;
+  }
+}
+
 /* AK5 (#1049): dieselbe Fläche wie .journal-day-card — sie erscheint nur mit
    mindestens einem Jahr (kein leerer Rahmen), own-surface/own-ink wie oben. */
 .journal-same-day {
@@ -386,15 +482,53 @@
   text-decoration: underline;
 }
 
-/* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie `.calendar-view`
-   in calendar-view.css (issue #1021): Desktop-Fab steht bei `bottom: space-6`
-   (fab.css), 58px hoch, `.shell__main` reserviert ab 768px nur `space-12`
-   (shell.css) — die Differenz wäre ein realer Überlapp. Der Zwei-Bahnen-Fluss
-   aus issue #1023 (Teil 8 von #1015) entfiel mit dem Strom, den er anordnete
-   (#1046, „Was dabei mitstirbt") — sein Nachfolger ist das Desktop-Kind-Ticket
-   von #1046, nicht dieser PR. */
+/* Zwei-Bahnen-Grid ab 768px (issue #1052, Teil von #1046 — Nachfolger des in
+   #1048 zurückgestellten Zwei-Bahnen-Flusses aus #1023): links die Tageskarte
+   und darunter „Zuletzt geschrieben", rechts „An diesem Tag" über beide
+   Zeilen (AK1). Ein Raster (`grid`), kein `columns` — die Spalte kommt aus
+   `grid-column`, die Höhe von `.journal-same-day` aus `grid-row: span 2`
+   relativ zur eigenen Startzeile, nicht aus fest gezählten Zeilen: so bleibt
+   die Anordnung auch dann richtig, wenn `.journal-orphaned-key` (selten, AK
+   keine dieses Tickets) zusätzlich eine Zeile vor allem anderen beansprucht.
+   `max-width: none` nimmt den 480px-Deckel von .journal-editor/.journal-
+   day-card/.journal-same-day zurück (wie schon .section-card, issue #1015). */
 @media (min-width: 768px) {
   .journal-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-6);
+    max-width: none;
+    /* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie
+       `.calendar-view` in calendar-view.css (issue #1021): Desktop-Fab steht
+       bei `bottom: space-6` (fab.css), 58px hoch, `.shell__main` reserviert
+       ab 768px nur `space-12` (shell.css) — die Differenz wäre ein realer
+       Überlapp. */
     padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
+  }
+
+  /* Bergungskarte (issue #518) ist selten und gehört keiner der beiden
+     Bahnen — volle Breite, falls sie überhaupt erscheint. */
+  .journal-orphaned-key {
+    grid-column: 1 / -1;
+  }
+
+  .journal-day-card,
+  .journal-same-day {
+    max-width: none;
+  }
+
+  .journal-day-card {
+    grid-column: 1;
+  }
+
+  .journal-recent {
+    display: flex;
+    grid-column: 1;
+  }
+
+  .journal-same-day {
+    grid-column: 2;
+    grid-row: span 2;
   }
 }
