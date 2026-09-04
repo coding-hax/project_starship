@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MoodSelect } from '@/ui/mood-select';
 import { Sheet } from '@/ui/sheet';
-import { appendJournalEntry, todayKey } from './entry';
+import { appendJournalEntry } from './entry';
 import './journal-entry-sheet.css';
 
 export const JOURNAL_ENTRY_SHEET_LABEL = 'Eintragen';
@@ -19,6 +19,10 @@ function parseTags(raw: string): string[] {
 
 export interface JournalEntrySheetProps {
   open: boolean;
+  /** The day this entry is written against (issue #1050 AK7) — the currently
+   * shown day, not necessarily today: an entry started on an older day lands
+   * on that day, never on today. */
+  date: string;
   onClose: () => void;
 }
 
@@ -29,7 +33,7 @@ export interface JournalEntrySheetProps {
  * closed->open pattern as `HabitEditor`'s create mode, since this sheet is
  * reused across openings rather than remounted.
  */
-export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
+export function JournalEntrySheet({ open, date, onClose }: JournalEntrySheetProps) {
   const [mood, setMood] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -63,7 +67,7 @@ export function JournalEntrySheet({ open, onClose }: JournalEntrySheetProps) {
     setTagsInput('');
     onClose();
 
-    await appendJournalEntry(todayKey(), {
+    await appendJournalEntry(date, {
       text: trimmedText,
       mood: submittedMood === null ? undefined : String(submittedMood),
       tags,
