@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock } from './helpers';
+import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // A Wednesday — same reference date as streak.test.ts. The running week is
 // 2026-07-13..2026-07-19 (Mon–Sun), the running month is July 2026.
@@ -136,13 +136,38 @@ test('nur archivierte Routinen lassen die Karte ebenfalls weg', async ({ page })
 /* Rein aus IndexedDB, offline                                                */
 /* -------------------------------------------------------------------------- */
 
-test('die Karte berechnet sich vollständig offline aus IndexedDB', async ({ page, context }) => {
+test('die Karte berechnet sich vollständig offline aus IndexedDB und der Log erreicht online die Datenbank', async ({
+  page,
+  context,
+}) => {
   await context.setOffline(true);
 
-  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  const habitId = await seedHabit(page, {
+    name: 'Offline-Quadrat',
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
   await seedHabitLog(page, habitId, TODAY);
 
   await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('1');
+
+  // beforeEach cuts the sync endpoints so the card above can only ever compute from
+  // IndexedDB — lift that here to let the queued mutations actually reach Postgres.
+  // Order matters: unroute before setOffline(false), otherwise the app's own 'online'
+  // listener fires an automatic sync() the instant we go online, racing its in-flight
+  // request against the route being torn down (#120).
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query(
+      'SELECT done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1 AND log_date = $2',
+      ['Offline-Quadrat', TODAY],
+    ),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0].done).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */
