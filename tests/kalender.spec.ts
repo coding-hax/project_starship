@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { addDays } from '@/features/events/event-time';
+import { addDays, weekDaysFor } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
@@ -88,73 +88,94 @@ function dayDots(page: Page, ariaLabel: string) {
   return dayButton(page, ariaLabel).locator('.calendar-strip__dot');
 }
 
-/** The static month card in the body (issue #958) — the month view's only
- *  calendar surface; unlike the old carousel, nothing here is ever `inert`
- *  or buffered, so a day cell only ever exists once per render. */
+/** The month card in the body (issue #958) — the month view's only calendar
+ *  surface; a continuously scrolling, buffered track of week rows since issue
+ *  #1064 (it was a three-month snap carousel under #1009/#1039). */
 function monthGrid(page: Page) {
   return page.locator('.month-grid');
 }
 
 /**
- * A day button *on the interactive (middle) page* — scoping to
- * `.month-grid__page:not([inert])` matters because the three-page snap track
- * (issue #1009) renders the previous and next month alongside the current
- * one, `inert` + `aria-hidden` on the non-central pages. Without the scope, a
- * day shared between two neighbouring months' grids (e.g. "Mo, 3." showing as
- * a dimmed trailing day on one page *and* as its own in-month day on the
- * next) would match twice and trip Playwright's strict mode.
+ * A day button *inside the card's visible band* — scoping to
+ * `.month-grid__week:not([inert])` matters because the buffered track (issue
+ * #1064) keeps a year of week rows either side of the anchor in the DOM, so
+ * scrolling never runs out of weeks. The rows outside the visible band stay
+ * in the document but are `inert` + `aria-hidden`, and without the scope a
+ * label like "Mo, 3." would match once per month across the whole buffer and
+ * trip Playwright's strict mode.
  */
 function monthGridDay(page: Page, ariaLabel: string) {
-  return page.locator(`.month-grid__page:not([inert]) .month-grid__day[aria-label="${ariaLabel}"]`);
+  return page.locator(`.month-grid__week:not([inert]) .month-grid__day[aria-label="${ariaLabel}"]`);
 }
 
 function monthGridDots(page: Page, ariaLabel: string) {
   return monthGridDay(page, ariaLabel).locator('.month-grid__dot');
 }
 
-/** An all-day band inside the month card's interactive (middle) page (issue
- *  #1043) — same `:not([inert])` scope as `monthGridDay`/`monthGridPage`. */
+/** An all-day band inside the card's visible band (issue #1043) — same
+ *  `:not([inert])` scope as `monthGridDay`/`monthGridWeeks`. */
 function monthGridBand(page: Page, title: string) {
-  return monthGridPage(page).locator('.month-grid__band').filter({ hasText: title });
+  return monthGridWeeks(page).locator('.month-grid__band').filter({ hasText: title });
 }
 
-/** The month card's three-page snap track (issue #1009), vertical since
- *  issue #1039 — unlike `calendarWeeks`, which stays horizontal. */
+/** The month card's continuously scrolling track of week rows (issue #1064,
+ *  replacing #1009/#1039's three snap pages) — unlike `calendarWeeks`, which
+ *  stays horizontal. */
 function monthGridTrack(page: Page) {
   return page.locator('.month-grid__track');
 }
 
 /**
- * The month card's interactive (middle) page — the same `:not([inert])` scope
- * `monthGridDay` uses, for locators that count/inspect cells rather than
- * keying off a single day's `aria-label` (issue #1009's three-page snap track
- * renders the previous and next month alongside the current one, so an
- * unscoped `.month-grid__day(s)` selector matches all three pages at once).
+ * The week rows currently inside the card's visible band — the same
+ * `:not([inert])` scope `monthGridDay` uses, for locators that count or
+ * inspect cells rather than keying off a single day's `aria-label`. Six rows
+ * at a time, one Mon–Sun week each.
  */
-function monthGridPage(page: Page) {
-  return page.locator('.month-grid__page:not([inert])');
+function monthGridWeeks(page: Page) {
+  return page.locator('.month-grid__week:not([inert])');
 }
 
 /**
- * Swipes the month card by exactly one page — the settle-driven equivalent of
- * a full native swipe-and-release, mirroring `pageStrip` above. `dir` `1`
- * advances to the next month (an upward swipe), `-1` goes back (downward).
- * Waits for `data-focus-month` to actually change, which only happens once
- * the silent recentre (month-grid.tsx's `handleScrollEnd`) has reported the
- * settled page back up. Vertical since issue #1039 (was horizontal under
- * issue #1009).
+ * Scrolls the track so the week starting on `monday` becomes its topmost row.
+ * Reads the row's own `offsetTop` rather than multiplying a row height: rows
+ * differ in height, a week carrying all-day bands is taller (issue #1043,
+ * AK9).
+ */
+async function scrollMonthGridTo(page: Page, monday: string): Promise<void> {
+  await monthGridTrack(page).evaluate((el, key) => {
+    const row = el.querySelector<HTMLElement>(`.month-grid__week[data-week="${key}"]`);
+    if (!row) throw new Error(`Wochenzeile ${key} liegt nicht im Puffer`);
+    el.scrollTop = row.offsetTop;
+  }, monday);
+}
+
+/** The Monday of the topmost visible week row (month-grid.tsx's
+ *  `data-lead-week`) — the most direct way to assert "scrolled by exactly N
+ *  weeks" without depending on implementation-internal scroll pixels, the
+ *  same role `anchorDay` plays for the week strip. */
+function leadWeek(page: Page) {
+  return monthGrid(page).getAttribute('data-lead-week');
+}
+
+/**
+ * Scrolls the month card on by exactly one month — the free-scrolling
+ * successor of the page swipe #1009/#1039 had, kept under the same name so
+ * the tests that only care about "a month further on" read unchanged (issue
+ * #1064 removed the pages themselves). Puts the week holding the target
+ * month's 15th in the middle of the visible band, which is the row
+ * month-grid.tsx reads the focused month off, then waits for
+ * `data-focus-month` to follow.
  */
 async function pageMonth(page: Page, dir: 1 | -1): Promise<void> {
-  const track = monthGridTrack(page);
   const before = await monthGrid(page).getAttribute('data-focus-month');
-  const pageHeight = await track.evaluate((el) => el.clientHeight);
-  await track.evaluate(
-    (el, { dir, pageHeight }) => {
-      el.scrollTop += dir * pageHeight;
-    },
-    { dir, pageHeight },
-  );
-  await expect.poll(() => monthGrid(page).getAttribute('data-focus-month')).not.toBe(before);
+  const [year, month] = (before ?? '').split('-').map(Number);
+  const middleOfTarget = new Date(Date.UTC(year, month - 1 + dir, 15)).toISOString().slice(0, 10);
+  // Drei Zeilen ueber der Zielwoche: month-grid.tsx liest den Fokusmonat an
+  // `leadIndex + VISIBLE_WEEKS / 2` ab, also der vierten sichtbaren Zeile.
+  await scrollMonthGridTo(page, addDays(weekDaysFor(middleOfTarget)[0], -21));
+  await expect
+    .poll(() => monthGrid(page).getAttribute('data-focus-month'))
+    .toBe(middleOfTarget.slice(0, 7));
 }
 
 /**
@@ -1967,7 +1988,7 @@ test('die Monats-Karte zeigt eine feste Mo-So-Kopfzeile, sechs Wochenzeilen und 
   // `.month-grid__day` statt `> li`: eine Wochenzeile mit Ganztägig-Terminen
   // traegt seit #1043 zusaetzliche `.month-grid__band`-<li>s in derselben
   // Liste, die Tageszellen-Zaehlung bleibt trotzdem bei 42.
-  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
+  await expect(monthGridWeeks(page).locator('.month-grid__day')).toHaveCount(42);
 
   const cardBox = await monthGrid(page).boundingBox();
   const dotBox = await monthGridDots(page, 'Sa, 18.').first().boundingBox();
@@ -3660,18 +3681,20 @@ test('AK1: die Monats-Karte zeigt ein festes 7×6-Raster mit Kartenschale wie je
   await expect(card).toHaveCSS('border-radius', expectedRadius);
   await expect(card).toHaveCSS('box-shadow', expectedShadow);
 
-  const daysGrid = monthGridPage(page).locator('.month-grid__days');
-  await expect(daysGrid).toHaveCSS('row-gap', '3px');
-  await expect(daysGrid).toHaveCSS('column-gap', '3px');
+  // Ein `.month-grid__days`-Raster je Wochenzeile (issue #1064) — Gaps am
+  // ersten geprueft, die 42 Zellen ueber alle sechs sichtbaren Zeilen.
+  const daysGrids = monthGridWeeks(page).locator('.month-grid__days');
+  await expect(daysGrids.first()).toHaveCSS('row-gap', '3px');
+  await expect(daysGrids.first()).toHaveCSS('column-gap', '3px');
   // `.month-grid__day` statt `> li` (issue #1043: Ganztägig-Bänder sind
   // ebenfalls direkte `<li>`-Kinder derselben Liste).
-  await expect(daysGrid.locator('.month-grid__day')).toHaveCount(42);
+  await expect(daysGrids.locator('.month-grid__day')).toHaveCount(42);
 
   const header = card.locator('.month-grid__weekday-header');
   await expect(header).toHaveCSS('font-size', '10.5px');
   await expect(header.locator('li')).toHaveText(['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
 
-  const firstDay = monthGridPage(page).locator('.month-grid__day').first();
+  const firstDay = monthGridWeeks(page).locator('.month-grid__day').first();
   const dayBox = await firstDay.boundingBox();
   if (!dayBox) throw new Error('AK1: Zelle hat keine BoundingBox');
   expect(Math.round(dayBox.height)).toBe(34);
@@ -3764,8 +3787,8 @@ test('AK7: die Monats-Karte hat auf 375×812 keinen waagerechten Ueberlauf, alle
   );
   expect(overflow).toBe(false);
 
-  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
-  await expect(monthGridPage(page).locator('.month-grid__day').last()).toBeVisible();
+  await expect(monthGridWeeks(page).locator('.month-grid__day')).toHaveCount(42);
+  await expect(monthGridWeeks(page).locator('.month-grid__day').last()).toBeVisible();
 
   const cardBox = await card.boundingBox();
   const viewport = page.viewportSize();
@@ -3896,7 +3919,8 @@ test('.month-grid__track nimmt nur senkrechte Gesten an, waagerechte verschieben
   const track = monthGridTrack(page);
 
   await expect(track).toHaveCSS('touch-action', 'pan-y');
-  await expect(track).toHaveCSS('scroll-snap-type', 'y mandatory');
+  // Seit issue #1064 rastet nichts mehr ein — waagerecht wie senkrecht.
+  await expect(track).toHaveCSS('scroll-snap-type', 'none');
 
   const before = await monthGrid(page).getAttribute('data-focus-month');
   const scrollLeftBefore = await track.evaluate((el) => el.scrollLeft);
@@ -3909,7 +3933,9 @@ test('.month-grid__track nimmt nur senkrechte Gesten an, waagerechte verschieben
   await expect(monthGrid(page)).toHaveAttribute('data-focus-month', before ?? '');
 });
 
-test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)', async ({ page }) => {
+test('die Monats-Karte zeigt sechs Wochenzeilen auf einmal, der Puffer dahinter ist ein Vielfaches davon (issue #1039 AK5, fortgeschrieben in #1064)', async ({
+  page,
+}) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
   const track = monthGridTrack(page);
 
@@ -3917,15 +3943,16 @@ test('die Monats-Karte ist genau eine Seite hoch, nicht drei (issue #1039, AK5)'
     clientHeight: el.clientHeight,
     scrollHeight: el.scrollHeight,
   }));
-  // Drei Seiten (voriger/aktueller/naechster Monat) liegen gestapelt in der
-  // Spur (scrollHeight), sichtbar ist aber immer nur eine (clientHeight).
-  expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
-  expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
+  // Sichtbar sind sechs Tageszeilen a 34px plus fuenf 3px-Luecken (issue
+  // #1064, AK6) — der gepufferte Inhalt dahinter ist ein Vielfaches davon
+  // (ein Jahr je Richtung), aber nie nur drei Seiten.
+  expect(clientHeight).toBe(6 * 34 + 5 * 3);
+  expect(scrollHeight).toBeGreaterThan(clientHeight * 10);
 
   // `.month-grid__day` statt `> li`: eine Wochenzeile mit Ganztägig-Terminen
   // traegt seit #1043 zusaetzliche `.month-grid__band`-<li>s in derselben
   // Liste, die Tageszellen-Zaehlung bleibt trotzdem bei 42.
-  await expect(monthGridPage(page).locator('.month-grid__day')).toHaveCount(42);
+  await expect(monthGridWeeks(page).locator('.month-grid__day')).toHaveCount(42);
 });
 
 test('ein senkrechter Zug ausserhalb der Monats-Karte scrollt weiterhin die Seite (issue #1039, AK6)', async ({
@@ -4196,7 +4223,7 @@ test('AK7: laeuft ein Termin ueber die Wochenzeile hinaus, ergeben sich zwei Bae
 
   await page.getByRole('radio', { name: 'Monat' }).click();
 
-  const bands = monthGridPage(page).locator('.month-grid__band').filter({ hasText: 'Wochenwechsel' });
+  const bands = monthGridWeeks(page).locator('.month-grid__band').filter({ hasText: 'Wochenwechsel' });
   await expect(bands).toHaveCount(2);
 
   const [earlyWeekBand, lateWeekBand] = [bands.nth(0), bands.nth(1)];
@@ -4285,12 +4312,15 @@ test('AK8b: eine echte Ueberlappung zweier Baender braucht eine zweite Zeile, ei
   expect(Math.round(zweiteBox.y)).toBeGreaterThan(Math.round(ersteBox.y));
 });
 
-test('AK9: eine Wochenzeile ohne ganztaegigen Termin bekommt keine Bandzeile, die Karte bleibt entsprechend niedrig (#1043)', async ({
+test('AK9: eine Wochenzeile ohne ganztaegigen Termin bekommt keine Bandzeile, eine mit Termin wird entsprechend hoeher (#1043, Zeile statt Karte seit #1064)', async ({
   page,
 }) => {
   await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(monthGridPage(page).locator('.month-grid__band')).toHaveCount(0);
-  const heightWithout = await monthGrid(page).evaluate((el) => el.getBoundingClientRect().height);
+  await expect(monthGridWeeks(page).locator('.month-grid__band')).toHaveCount(0);
+  const weekRow = monthGridWeeks(page).filter({
+    has: page.locator(`.month-grid__day[aria-label="${ariaLabelFor(TODAY)}"]`),
+  });
+  const heightWithout = await weekRow.evaluate((el) => el.getBoundingClientRect().height);
 
   await seedEvent(page, {
     title: 'Ganztags-Termin',
@@ -4303,15 +4333,16 @@ test('AK9: eine Wochenzeile ohne ganztaegigen Termin bekommt keine Bandzeile, di
   });
 
   await expect(monthGridBand(page, 'Ganztags-Termin')).toBeVisible();
-  const heightWith = await monthGrid(page).evaluate((el) => el.getBoundingClientRect().height);
+  const heightWith = await weekRow.evaluate((el) => el.getBoundingClientRect().height);
   expect(heightWith).toBeGreaterThan(heightWithout);
 });
 
-test('AK11: alle drei Seiten der Wischspur sind gleich hoch, ein Wisch landet genau eine Seite weiter — die Karte darf beim Monatswechsel ihre Hoehe aendern (#1043)', async ({
+test('AK11: die Spur behaelt ihre Hoehe ueber einen Monatswechsel hinweg, auch wenn der neue Monat Bandzeilen traegt (#1043, umgekehrt in #1064 AK6)', async ({
   page,
 }) => {
-  // August 2026 traegt einen Ganztägig-Termin, Juli keinen — die Spur soll
-  // beim Wechsel nach August hoeher werden.
+  // August 2026 traegt einen Ganztägig-Termin, Juli keinen — vor issue #1064
+  // wuchs die Spur beim Wechsel nach August mit; jetzt lebt die Bandzeile in
+  // ihrer eigenen Wochenzeile und die Karte bleibt gleich hoch.
   await seedEvent(page, {
     title: 'August-Trip',
     allDay: true,
@@ -4325,22 +4356,12 @@ test('AK11: alle drei Seiten der Wischspur sind gleich hoch, ein Wisch landet ge
   await page.getByRole('radio', { name: 'Monat' }).click();
   const track = monthGridTrack(page);
 
-  async function assertThreeEqualPages(): Promise<number> {
-    const { clientHeight, scrollHeight } = await track.evaluate((el) => ({
-      clientHeight: el.clientHeight,
-      scrollHeight: el.scrollHeight,
-    }));
-    expect(scrollHeight).toBeGreaterThan(clientHeight * 2.9);
-    expect(scrollHeight).toBeLessThan(clientHeight * 3.1);
-    return clientHeight;
-  }
-
-  const heightJuli = await assertThreeEqualPages();
+  const heightJuli = await track.evaluate((el) => el.clientHeight);
 
   await pageMonth(page, 1); // -> August
 
-  const heightAugust = await assertThreeEqualPages();
-  expect(heightAugust).toBeGreaterThan(heightJuli);
+  await expect(monthGridBand(page, 'August-Trip')).toBeVisible();
+  expect(await track.evaluate((el) => el.clientHeight)).toBe(heightJuli);
 });
 
 test('AK13: Dark Mode und prefers-reduced-motion gemeinsam — Pille und Band der Monats-Karte bleiben korrekt, iPhone 12 mini (#1043)', async ({
@@ -4373,6 +4394,297 @@ test('AK13: Dark Mode und prefers-reduced-motion gemeinsam — Pille und Band de
   expect(await today.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(groundDark);
 
   await expect(monthGridBand(page, 'Ganztags-Termin')).toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1064: Monatskarte scrollt frei durch Wochenzeilen statt zu blättern  */
+/* -------------------------------------------------------------------------- */
+
+/** Die erste sichtbare Wochenzeile im Default-Fixture: Montag der Woche, in
+ *  der der 1. Juli 2026 liegt — month-grid.tsx setzt den Anker beim Mount auf
+ *  die erste Woche des fokussierten Monats. */
+const FIRST_WEEK = '2026-06-29';
+
+/** Hoehe einer Wochenzeile samt Luecke, gemessen an zwei echten Zeilen statt
+ *  gerechnet: eine Woche mit Ganztags-Baendern ist hoeher (issue #1043, AK9),
+ *  eine Formel wuerde also nur im terminlosen Default stimmen. */
+async function weekRowPx(page: Page): Promise<number> {
+  return monthGridTrack(page).evaluate((el) => {
+    const rows = el.querySelectorAll<HTMLElement>('.month-grid__week');
+    return rows[1].offsetTop - rows[0].offsetTop;
+  });
+}
+
+/**
+ * Scrollt die Spur um `delta` und wartet auf das native `scrollend`. Ein per
+ * Skript gesetzter `scrollTop` feuert `scroll` und `scrollend` genau wie eine
+ * Geste, also ist month-grid.tsx's Settle-Pfad (der stille Re-Anchor)
+ * garantiert durch, wenn dieser Helfer zurueckkehrt — ohne feste Wartezeit.
+ */
+async function scrollMonthGridBy(page: Page, delta: number): Promise<void> {
+  await monthGridTrack(page).evaluate(
+    (el, d) =>
+      new Promise<void>((resolve) => {
+        el.addEventListener('scrollend', () => resolve(), { once: true });
+        el.scrollTop += d;
+      }),
+    delta,
+  );
+}
+
+test('AK1: die Spur rastet nicht ein — ein Scroll um 20px bleibt genau dort stehen (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const track = monthGridTrack(page);
+  await expect(track).toHaveCSS('scroll-snap-type', 'none');
+
+  const before = await track.evaluate((el) => el.scrollTop);
+  await scrollMonthGridBy(page, 20);
+
+  // Nach `scrollend` ist der Settle-Pfad durch: haette die Karte noch einen
+  // Seiten-Snap oder ein Zurueckzentrieren, waere `scrollTop` jetzt ein
+  // Vielfaches der Seitenhoehe statt der 20px, die der Finger hinterliess.
+  expect(await track.evaluate((el) => el.scrollTop)).toBe(before + 20);
+  // Und bleibt es auch ueber die naechsten Frames.
+  await track.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  expect(await track.evaluate((el) => el.scrollTop)).toBe(before + 20);
+});
+
+test('AK2: drei Scrolls um je eine Wochenzeile, ohne Pause dazwischen, landen drei Wochen weiter (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect.poll(() => leadWeek(page)).toBe(FIRST_WEEK);
+  const rowPx = await weekRowPx(page);
+
+  // Drei Scrolls in einem Rutsch, ohne dazwischen auf ein Settle zu warten —
+  // genau der Fall, den das Ticket meldet ("nach einmal scrollen muss man
+  // kurz warten"). Vor issue #1064 verschluckte die Karte die zweite und
+  // dritte Bewegung, bis der Seitenwechsel gemeldet war.
+  await monthGridTrack(page).evaluate((el, step) => {
+    el.scrollTop += step;
+    el.scrollTop += step;
+    el.scrollTop += step;
+  }, rowPx);
+
+  await expect.poll(() => leadWeek(page)).toBe(addDays(FIRST_WEEK, 21));
+});
+
+test('AK3: ein Scroll ueber die Monatsgrenze zeigt die Wochen des Folgemonats sofort, ohne Nachladen (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  // Die Wochenzeilen des Folgemonats liegen schon im Puffer, bevor irgendwer
+  // dorthin scrollt — es gibt nichts nachzuladen.
+  await expect(page.locator('.month-grid__week[data-week="2026-08-24"]')).toHaveCount(1);
+
+  const rowPx = await weekRowPx(page);
+  await scrollMonthGridBy(page, 8 * rowPx);
+
+  await expect.poll(() => leadWeek(page)).toBe(addDays(FIRST_WEEK, 56));
+  // Die Zellen des Folgemonats sind unmittelbar da und bedienbar, ohne
+  // Zwischenzustand: der 24.8. traegt seine Zahl und ist antippbar.
+  const august24 = monthGridDay(page, ariaLabelFor('2026-08-24'));
+  await expect(august24).toBeVisible();
+  await expect(august24).toHaveText('24');
+});
+
+test('AK4: jede Kalenderwoche kommt genau einmal vor, ueber Monatsgrenzen hinweg (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const weeks = await monthGridTrack(page).evaluate((el) =>
+    Array.from(el.querySelectorAll<HTMLElement>('.month-grid__week'), (row) => row.dataset.week),
+  );
+  expect(new Set(weeks).size).toBe(weeks.length);
+  // Lueckenlos in Siebener-Schritten — keine Woche doppelt, keine fehlt.
+  for (let index = 1; index < weeks.length; index += 1) {
+    expect(weeks[index]).toBe(addDays(weeks[index - 1] as string, 7));
+  }
+
+  // Und im Bild: 42 Tageszellen mit 42 verschiedenen Beschriftungen, obwohl
+  // der Ausschnitt zwei Monate beruehrt (das Seiten-Karussell zeigte den 1.–3.
+  // August als graue Randtage der Juli-Seite *und* auf der August-Seite).
+  const labels = await monthGridWeeks(page)
+    .locator('.month-grid__day')
+    .evaluateAll((cells) => cells.map((cell) => cell.getAttribute('aria-label')));
+  expect(labels).toHaveLength(42);
+  expect(new Set(labels).size).toBe(42);
+});
+
+test('AK5: Titel, Augenbraue und Daempfung folgen dem sichtbaren Monat (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const title = page.locator('.calendar-view__heading');
+  await expect(title).toHaveText('Juli');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+
+  // Zwei Zeilen weiter liegt die Mitte des Ausschnitts im August — dort kippt
+  // der Kopf, nicht erst beim naechsten Seitenrand.
+  const rowPx = await weekRowPx(page);
+  await scrollMonthGridBy(page, 2 * rowPx);
+
+  await expect(title).toHaveText('August');
+  await expect(page.locator('.calendar-view__period')).toHaveText('2026');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-08');
+  // Die Daempfung kippt mit: der 3. August gehoert jetzt zum fokussierten
+  // Monat, der 13. Juli nicht mehr.
+  await expect(monthGridDay(page, ariaLabelFor('2026-08-03'))).not.toHaveAttribute(
+    'data-outside-month',
+    '',
+  );
+  await expect(monthGridDay(page, ariaLabelFor('2026-07-13'))).toHaveAttribute(
+    'data-outside-month',
+    '',
+  );
+});
+
+test('AK6: die Karte behaelt ihre Hoehe ueber Monatsgrenzen und Bandzeilen hinweg — kein Layout-Sprung, 375x812 (issue #1064)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await seedEvent(page, {
+    title: 'Kurztrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-08-11',
+    endDate: '2026-08-13',
+    category: 'privat',
+  });
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const card = monthGrid(page);
+  const heightBefore = (await card.boundingBox())!.height;
+  const rowPx = await weekRowPx(page);
+
+  // Ueber die Monatsgrenze hinweg bis in die Woche mit dem Ganztags-Band.
+  for (let step = 0; step < 6; step += 1) {
+    await scrollMonthGridBy(page, rowPx);
+    expect((await card.boundingBox())!.height).toBe(heightBefore);
+  }
+
+  await expect(monthGridBand(page, 'Kurztrip')).toBeVisible();
+  expect((await card.boundingBox())!.height).toBe(heightBefore);
+});
+
+test('AK7: der Puffer spannt rund ein Jahr je Richtung und rueckt lautlos nach, ohne die Position zu verlieren (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+
+  const track = monthGridTrack(page);
+  // 52 Wochen je Richtung plus die Ankerwoche selbst.
+  await expect(page.locator('.month-grid__week')).toHaveCount(105);
+
+  // Nahe an den oberen Rand des Puffers scrollen (Zeile 5 von 105) — dort und
+  // erst dort rueckt das Fenster nach.
+  const farWeek = addDays(FIRST_WEEK, -47 * 7);
+  await scrollMonthGridTo(page, farWeek);
+
+  // Die Woche bleibt oben stehen, obwohl der Puffer darunter neu aufgebaut
+  // wurde — und liegt danach wieder mittig, mit einem vollen Jahr Vorrat in
+  // beide Richtungen.
+  await expect.poll(() => leadWeek(page)).toBe(farWeek);
+  await expect
+    .poll(() =>
+      track.evaluate((el) =>
+        Array.from(el.querySelectorAll<HTMLElement>('.month-grid__week')).findIndex(
+          (row) => row.dataset.week === document.querySelector('.month-grid')?.getAttribute('data-lead-week'),
+        ),
+      ),
+    )
+    .toBe(52);
+  await expect(page.locator('.month-grid__week')).toHaveCount(105);
+});
+
+test('AK8: ein Tipp auf einen Tag waehlt ihn, ohne die Spur zu verschieben (issue #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const rowPx = await weekRowPx(page);
+  await scrollMonthGridBy(page, 2 * rowPx);
+  const leadBefore = await leadWeek(page);
+  const scrollBefore = await monthGridTrack(page).evaluate((el) => el.scrollTop);
+
+  // Ein gedaempfter Nachbarmonatstag: waehlt aus, zieht den Kopf mit — die
+  // Spur selbst bleibt, wo sie steht.
+  const julyDay = monthGridDay(page, ariaLabelFor('2026-07-13'));
+  await expect(julyDay).toHaveAttribute('data-outside-month', '');
+  await julyDay.click();
+
+  await expect(julyDay).toHaveAttribute('aria-pressed', 'true');
+  await expect(monthGrid(page)).toHaveAttribute('data-focus-month', '2026-07');
+  expect(await leadWeek(page)).toBe(leadBefore);
+  expect(await monthGridTrack(page).evaluate((el) => el.scrollTop)).toBe(scrollBefore);
+  await expect(page.locator('.calendar-view__day-heading')).toContainText('Montag');
+});
+
+test('AK9: ein offline im naechsten Monat angelegter Termin scrollt sofort mit und erreicht danach die Datenbank (issue #1064, Offline-Pfad)', async ({
+  page,
+  context,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await context.setOffline(true);
+
+  await seedEvent(page, {
+    title: 'Offline-Augusttermin',
+    allDay: false,
+    startsAt: '2026-08-24T09:00:00.000Z',
+    endsAt: '2026-08-24T10:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  // Der Punkt steht sofort, ohne Netz — und zwar an der Stelle, zu der frei
+  // hingescrollt wurde, nicht auf einer nachgeladenen Monatsseite.
+  const rowPx = await weekRowPx(page);
+  await scrollMonthGridBy(page, 8 * rowPx);
+  await expect(monthGridDots(page, ariaLabelFor('2026-08-24'))).toHaveCount(1);
+
+  // beforeEach kappt /api/sync/** — hier aufheben, damit die Mutation die
+  // echte Datenbank erreicht (gleiche Technik wie #958 AK8 oben).
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query('SELECT title FROM events WHERE title = $1', ['Offline-Augusttermin']),
+  );
+  expect(row.rowCount).toBe(1);
+
+  // Punkt bleibt nach dem Sync stehen — Datenherkunft weiter IndexedDB.
+  await expect(monthGridDots(page, ariaLabelFor('2026-08-24'))).toHaveCount(1);
+});
+
+test('AK10: Dark Mode und prefers-reduced-motion gemeinsam — die Karte scrollt weiter frei, iPhone 12 mini (issue #1064)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
+    polling: 100,
+  });
+
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  await expect(monthGridTrack(page)).toHaveCSS('scroll-snap-type', 'none');
+
+  const rowPx = await weekRowPx(page);
+  await scrollMonthGridBy(page, 2 * rowPx);
+
+  await expect.poll(() => leadWeek(page)).toBe(addDays(FIRST_WEEK, 14));
+  await expect(page.getByRole('heading', { level: 1, name: 'August' })).toBeVisible();
+  await expect(monthGridDay(page, ariaLabelFor('2026-08-03'))).not.toHaveAttribute(
+    'data-outside-month',
+    '',
+  );
 });
 
 /* -------------------------------------------------------------------------- */
