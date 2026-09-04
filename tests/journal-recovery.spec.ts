@@ -19,8 +19,7 @@ test.beforeEach(async ({ page }) => {
 /** Setup, confirming the one-time recovery-key screen. Returns the key shown,
  * so callers can use it for a later recovery unlock. */
 async function setUpJournal(page: Page, passphrase: string): Promise<string> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -58,8 +57,7 @@ test('AC1: Ersteinrichtung erzeugt beide KEK-Wraps', async ({ page }) => {
 test('AC2: Recovery-Key wird genau einmal angezeigt, gruppiert, erst nach Bestaetigung geht es weiter', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -184,8 +182,7 @@ test('AC5: falscher Recovery-Key ist von einer falschen Passphrase nicht zu unte
 test('AC6: Warnsatz im Einrichten-Screen verweist auf den gleich angezeigten Key', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   const setupForm = page.locator('.journal-gate[data-state="setup"]');
   await expect(setupForm).toContainText('Wiederherstellungsschlüssel');
@@ -196,8 +193,7 @@ test('Offline (DoD): Ersteinrichtung offline schreibt lokal, sync bringt beide H
   page,
   context,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await context.setOffline(true);
 
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);

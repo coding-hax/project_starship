@@ -41,8 +41,7 @@ async function addThrowawayCookie(
 
 /** Mirrors `setUpJournal` in journal-lock.spec.ts:25. */
 async function setUpJournal(page: Page, passphrase: string) {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -68,8 +67,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   test('AC1: Gruppe "Gerät" zeigt die Karte "Sitzung" mit Knopf "App sperren"', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
     await expect(geraetGroup.getByRole('heading', { name: 'Sitzung', level: 2 })).toBeVisible();
@@ -77,8 +75,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   });
 
   test('AC2: der Knopf fragt inline nach, ohne die Sitzung zu beenden', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     let logoutCalls = 0;
     await page.route('**/api/auth/logout', (route) => {
@@ -102,8 +99,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     page,
     context,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
     await context.setOffline(true);
 
     await expect(page.getByRole('button', { name: 'App sperren' })).toBeDisabled();

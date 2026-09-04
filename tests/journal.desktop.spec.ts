@@ -20,8 +20,7 @@ const PASSPHRASE = 'desktop journal passphrase';
 
 /** Same setup flow as journal-suche.spec.ts's setUpEditor. */
 async function setUpEditor(page: Page): Promise<void> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE);
   await page.getByRole('button', { name: 'Einrichten' }).click();

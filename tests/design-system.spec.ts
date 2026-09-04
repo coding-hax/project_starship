@@ -13,8 +13,7 @@ test.describe('Design-System: Heading↔Content-Abstand', () => {
   test('der Seitentitel h1 hält den Token-Abstand (--space-6 = 24px) zum Inhalt', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const h1 = page.getByRole('heading', { level: 1, name: 'Aufgaben' });
     await expect(h1).toBeVisible();
@@ -30,8 +29,7 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
   test('AC1 (überholt durch #867 AK1): FAB-Icon ist 20px, nicht mehr an --text-title gekoppelt', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fabIcon = page.locator('.fab__icon');
     const fontSize = await fabIcon.evaluate((el) => getComputedStyle(el).fontSize);
@@ -43,8 +41,7 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
   test('AC2 (überholt durch #867 AK1): FAB ist eine 58px hohe Pille, breiter als hoch', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fab = page.locator('.fab');
     const bbox = await fab.boundingBox();
@@ -54,8 +51,7 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
 
   test('FAB-Icon liegt innerhalb des FAB-Buttons (AC4) — 375px', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fab = page.locator('.fab');
     const fabIcon = page.locator('.fab__icon');
@@ -76,8 +72,7 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
 
   test('FAB-Icon liegt innerhalb des FAB-Buttons (AC4) — 1280px', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1024 });
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fab = page.locator('.fab');
     const fabIcon = page.locator('.fab__icon');
@@ -98,8 +93,7 @@ test.describe('Design-System: FAB-Glyphengröße', () => {
 
   test('FAB-Icon liegt innerhalb des FAB-Buttons auch auf /routinen (geteilt)', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
 
     const fab = page.locator('.fab');
     const fabIcon = page.locator('.fab__icon');
@@ -150,8 +144,7 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
   });
 
   test('AC1: h2 rendert in --text-section auf /uebersicht', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/uebersicht');
+    await registerPasskey(page, '/uebersicht');
 
     const h2 = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
     const [fontSize, textSection] = await Promise.all([
@@ -168,8 +161,7 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
   test('AC3 (überholt durch #653 AK2): .section-card__title rendert in --text-secondary auf /einstellungen', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const title = page.locator('.section-card__title').first();
     const [fontSize, textSecondary] = await Promise.all([
@@ -182,8 +174,7 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
   });
 
   test('AC5: das Einstellungs-Icon rendert mit 26×26px statt 24×24px', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/uebersicht');
+    await registerPasskey(page, '/uebersicht');
 
     // Auf /uebersicht rendern ZWEI Header: der Chrome-Header aus dem Layout
     // (auf Mobile display:none) und der Inline-Header der Seite (sichtbar).
@@ -217,8 +208,7 @@ test.describe('Design-System: Ebenen (z-Skala)', () => {
         page,
       }) => {
         await page.setViewportSize(viewport);
-        await registerPasskey(page);
-        await page.goto('/aufgaben');
+        await registerPasskey(page, '/aufgaben');
         await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
 
         const tokens = await page.evaluate(() => {
@@ -262,8 +252,7 @@ test.describe('Design-System: Ebenen (z-Skala)', () => {
   }
 
   test('AC3: offenes Sheet samt Backdrop liegt über Nav und FAB', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
     await fab.click();
@@ -288,8 +277,7 @@ test.describe('Design-System: Ebenen (z-Skala)', () => {
   });
 
   test('AC4: ein Toast bleibt hinter einem offenen Sheet', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     // FAB first, while it's still free — an error toast would otherwise cover it,
     // and AC4 is about the sheet/toast order, not the FAB.
@@ -378,8 +366,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
 
   for (const theme of themes) {
     test(`AC3: FAB erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
-      await registerPasskey(page);
-      await page.goto('/aufgaben');
+      await registerPasskey(page, '/aufgaben');
       await setTheme(page, theme);
 
       const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
@@ -388,8 +375,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     });
 
     test(`AC3: Aufgabe-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
-      await registerPasskey(page);
-      await page.goto('/aufgaben');
+      await registerPasskey(page, '/aufgaben');
       // Undated (no dueAt) — invisible under the "Woche" default (issue #705),
       // which only shows tasks due within the week window.
       await selectView(page, 'Alle');
@@ -416,8 +402,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     });
 
     test(`AC3: Termin-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
-      await registerPasskey(page);
-      await page.goto('/kalender');
+      await registerPasskey(page, '/kalender');
       await setTheme(page, theme);
       await page.getByRole('button', { name: 'Termin erfassen' }).click();
 
@@ -427,8 +412,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     });
 
     test(`AC3: Routine-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
-      await registerPasskey(page);
-      await page.goto('/routinen');
+      await registerPasskey(page, '/routinen');
       await setTheme(page, theme);
       await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
@@ -441,8 +425,7 @@ test.describe('Design-System: --on-accent Kontrast (issue #709)', () => {
     });
 
     test(`AC3: Journal-Submit erreicht mindestens 4,5:1 Kontrast (${theme})`, async ({ page }) => {
-      await registerPasskey(page);
-      await page.goto('/journal');
+      await registerPasskey(page, '/journal');
       await setTheme(page, theme);
 
       await page.getByLabel('Passphrase', { exact: true }).fill('Kontrast-Test-709');

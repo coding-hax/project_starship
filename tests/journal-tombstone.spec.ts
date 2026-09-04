@@ -33,8 +33,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function setUpJournal(page: Page, passphrase: string) {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -167,8 +166,7 @@ test('AC4: Einrichten wird auf einer geloeschten Zeile verweigert, beide Wraps b
 test('AC5: ohne Schluesselzeile bleibt der Einrichten-Weg, und er legt eine lebende Zeile an', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   await expect(page.locator('.journal-gate[data-state="setup"]')).toBeVisible();
 

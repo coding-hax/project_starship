@@ -8,8 +8,7 @@ test.beforeEach(async () => {
 test('Bewegung reduzieren schaltet den Toggle und bleibt nach Reload erhalten', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const toggle = page.getByRole('switch', { name: 'Bewegung reduzieren' });
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -29,8 +28,7 @@ test('Bewegung reduzieren schaltet den Toggle und bleibt nach Reload erhalten', 
 test('SegmentedControl wählt das Theme, setzt es auf <html> und reagiert auf Pfeiltasten', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const dunkel = page.getByRole('radio', { name: 'Dunkel' });
   await dunkel.click();
@@ -57,8 +55,7 @@ test('SegmentedControl wählt das Theme, setzt es auf <html> und reagiert auf Pf
 });
 
 test('der Slider ändert die Textgröße per Tastatur', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const slider = page.getByRole('slider', { name: 'Textgröße' });
   await expect(slider).toHaveAttribute('aria-valuetext', 'Standard');
@@ -79,8 +76,7 @@ test('der Slider ändert die Textgröße per Tastatur', async ({ page }) => {
 test('Theme, Toggle und Slider sind fokussierbar, Space schaltet den Toggle, der Fokus ist sichtbar', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const themeOption = page.getByRole('radio', { name: 'System' });
   await themeOption.focus();
@@ -104,8 +100,7 @@ test.describe('reduced motion', () => {
   test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
   test('der Toggle wechselt zuverlässig ohne Bewegungsabhängigkeit', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const toggle = page.getByRole('switch', { name: 'Bewegung reduzieren' });
     await expect(toggle).toHaveAttribute('aria-checked', 'false');
@@ -117,8 +112,7 @@ test.describe('reduced motion', () => {
 test('die Open-Meteo-Quellenangabe steht in den Einstellungen und ist von dort erreichbar (issue #155 AC5)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const link = page.getByRole('link', { name: 'Open-Meteo' });
   await expect(link).toBeVisible();
@@ -128,8 +122,7 @@ test('die Open-Meteo-Quellenangabe steht in den Einstellungen und ist von dort e
 test('die Einstellungen-Primitive tragen keine teuren Filter (60-fps-Versprechen)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const selectors = ['.row', '.section-card', '.toggle', '.segmented', '.slider'];
   for (const selector of selectors) {
@@ -178,8 +171,7 @@ for (const viewport of [
 test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohne eigenen font-size', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const title = page.locator('.einstellungen__title');
   await expect(title).toBeVisible();
@@ -202,16 +194,14 @@ test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohn
 test('AC1 (issue #653): drei Gruppenüberschriften sind sichtbar und stehen in der erwarteten Reihenfolge', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const groupTitles = page.locator('.einstellungen__group-title');
   await expect(groupTitles).toHaveText(['Gerät', 'Module', 'Daten']);
 });
 
 test('AC2 (issue #653): ein Kartentitel rendert kleiner als seine Gruppenüberschrift', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const groupTitle = page.locator('.einstellungen__group-title').first();
   const cardTitle = page.locator('.section-card__title').first();
@@ -226,8 +216,7 @@ test('AC2 (issue #653): ein Kartentitel rendert kleiner als seine Gruppenübersc
 });
 
 test('AC3 (issue #653): das Export-Panel liegt in einer .section-card', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const exportCard = page.locator('.section-card.export');
   await expect(exportCard).toBeVisible();
@@ -235,8 +224,7 @@ test('AC3 (issue #653): das Export-Panel liegt in einer .section-card', async ({
 });
 
 test('AC4 (issue #653): .row trennt mit --border-faint statt --border', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   // The probe must sit inside the same card as `.row` — `.section-card` resets
   // --border*/--border-faint back to their neutral -base anchors (issue #846), so
@@ -261,8 +249,7 @@ test('AC4 (issue #653): .row trennt mit --border-faint statt --border', async ({
 test('AC6 (issue #653): ein abgeschaltetes Modul verbirgt sein Panel, eine leer gewordene Gruppe verliert auch ihre Überschrift', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const groupTitles = page.locator('.einstellungen__group-title');
   await expect(groupTitles).toHaveText(['Gerät', 'Module', 'Daten']);
@@ -319,8 +306,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK1: das Panel „Kategoriefarben" steht unter „Module", solange Kalender aktiv ist', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const moduleGroup = page
       .locator('.einstellungen__group')
@@ -332,8 +318,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK2: das Panel listet alle fünf Kategorien mit Namen und ihrer aktuellen Farbe', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const panel = categoryColorsPanel(page);
     await expect(panel.locator('.category-colors-panel__category')).toHaveCount(5);
@@ -357,8 +342,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK3: eine Farbe aus der Zehnerpalette lässt sich je Kategorie wählen', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     // Die Palette liegt zugeklappt (issue #858) — erst öffnen.
     await categoryRowToggle(page, 'Arbeit').click();
@@ -377,8 +361,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK6: ein Reset-Weg führt je Kategorie zurück auf den Default', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const arbeitRow = categoryRow(page, 'Arbeit');
     await categoryRowToggle(page, 'Arbeit').click();
@@ -396,8 +379,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK8: zwei Kategorien mit derselben Farbe zeigen das sichtbar an', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     await categoryRowToggle(page, 'Arbeit').click();
     await categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' }).click();
@@ -413,8 +395,7 @@ test.describe('Kategoriefarben (issue #660)', () => {
   });
 
   test('AK9: offline gewählte Kategoriefarbe erreicht online die Datenbank', async ({ page, context }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
     await context.setOffline(true);
 
     await categoryRowToggle(page, 'Familie').click();
@@ -444,8 +425,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC1: fünf geschlossene Zeilen mit Name und Farbpunkt, kein Farbfeld sichtbar', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     for (const label of ['Privat', 'Arbeit', 'Gesundheit', 'Sport', 'Familie']) {
       const toggle = categoryRowToggle(page, label);
@@ -464,8 +444,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC2: Antippen von „Arbeit" zeigt genau ihre zehn Farbfelder und setzt aria-expanded', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const toggle = categoryRowToggle(page, 'Arbeit');
     await toggle.click();
@@ -480,8 +459,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC3: „Sport" antippen schließt „Arbeit" — nie sind zwei Paletten gleichzeitig offen', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const arbeitToggle = categoryRowToggle(page, 'Arbeit');
     const sportToggle = categoryRowToggle(page, 'Sport');
@@ -500,8 +478,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC4: eine zugeklappte Zeile ist inert, Tab überspringt ihre Farbfelder und erreicht die nächste Zeile', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const arbeitToggle = categoryRowToggle(page, 'Arbeit');
     const contentId = await arbeitToggle.getAttribute('aria-controls');
@@ -515,8 +492,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC5: Farbwahl bei offener Zeile aktualisiert den Punkt sofort, die Zeile bleibt offen', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const toggle = categoryRowToggle(page, 'Arbeit');
     await toggle.click();
@@ -540,8 +516,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC6: bei offener Zeile mit Override zeigt „Standard verwenden", ein Tipp setzt zurück und der Knopf verschwindet', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const toggle = categoryRowToggle(page, 'Arbeit');
     await toggle.click();
@@ -557,8 +532,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   });
 
   test('AC7: geteilte Farbe steht in beiden zugeklappten Zeilen', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     await categoryRowToggle(page, 'Arbeit').click();
     await categoryRow(page, 'Arbeit').getByRole('radio', { name: 'Arbeit: Bernstein' }).click();
@@ -575,8 +549,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
   test('AC8: bei fünf zugeklappten Zeilen ist die Karte höchstens 450px hoch (iPhone 12 mini, 375×812)', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const box = await categoryColorsPanel(page).boundingBox();
     expect(box?.height).toBeLessThanOrEqual(450);
@@ -584,8 +557,7 @@ test.describe('Kategoriefarben klappen auf (issue #858)', () => {
 
   test('AC9: bei reduzierter Bewegung wechselt der Zustand ohne Aufklapp-Übergang', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const collapse = categoryRow(page, 'Arbeit').locator('.category-colors-panel__collapse');
     const transitionDuration = await collapse.evaluate((el) => getComputedStyle(el).transitionDuration);
@@ -603,8 +575,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
   test('AC1: die Trennzeilen-Sonden aus .row, .push-panel__kind, .category-colors-panel__row und .weather-panel__result haben padding-block 8px', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     // Synthetische Sonden statt echter Elemente (gleiches Muster wie AC4/#653
     // unten) — `.push-panel__kind` (Push-Abo aktiv) und `.weather-panel__result`
@@ -645,8 +616,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
   test('AC2: beschreibungslose Zeilen sind über Panels hinweg gleich hoch und behalten ihr Touch-Target', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const bewegungRow = page
       .locator('.row')
@@ -662,8 +632,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
   test('AC3: alle Trennlinien in den Einstellungen sind --border-faint, auch Benachrichtigungen, Geräte und Wetter', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const { colors, faintColor, borderColor } = await page.evaluate(() => {
       const scope: Element = document.querySelector('.section-card') ?? document.body;
@@ -708,8 +677,7 @@ test.describe('engere Trennzeilen (issue #937)', () => {
   });
 
   test('AC4: der Termin-Editor (Nicht-Einstellungen-.row) behält padding-block 12px', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/kalender');
+    await registerPasskey(page, '/kalender');
 
     await page.getByRole('button', { name: 'Termin erfassen' }).click();
     await page.getByRole('button', { name: /^Wann/ }).click();
