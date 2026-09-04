@@ -908,8 +908,11 @@ test('AK1 (#1051): die Suchpille ersetzt die Augenbraue — Lupe links, Löschen
   await input.fill('see');
   const clear = page.locator('.journal-search-bar__clear');
   await expect(clear).toBeVisible();
+  // Neu gemessen, nicht die alte `inputBox`: das Feld hat `flex: 1` und
+  // schrumpft, sobald das × als weiteres Pillen-Kind Platz beansprucht.
+  const inputBoxWithClear = (await input.boundingBox())!;
   const clearBox = (await clear.boundingBox())!;
-  expect(clearBox.x).toBeGreaterThan(inputBox.x + inputBox.width - 40);
+  expect(clearBox.x).toBeGreaterThanOrEqual(inputBoxWithClear.x + inputBoxWithClear.width);
   await clear.click();
   await expect(input).toHaveValue('');
 
