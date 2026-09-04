@@ -2,7 +2,7 @@
 
 import { PageFace } from '@/ui/faces';
 import { PageHead } from '@/ui/page-head';
-import { TodayLongDate } from '@/ui/today-long-date';
+import { JournalDayNav } from './journal-day-nav';
 import { JournalSearchBar } from './journal-search-bar';
 import { JournalSearchChips } from './journal-search-chips';
 import { JournalSearchToggle } from './journal-search-toggle';
@@ -10,10 +10,10 @@ import { useJournalSearchMode } from './journal-view-mode';
 
 /**
  * Journal's PageHead wiring (issue #1051 AK1/AK2): swaps the eyebrow between
- * date+lupe and the search pill, and only shows the filter chips (extra slot)
- * while search mode is open. Its own client component because page.tsx stays
- * a server component for its `metadata`/`viewport` exports — a hook here
- * couldn't otherwise decide what page.tsx passes into `<PageHead>`.
+ * day-nav+lupe and the search pill, and only shows the filter chips (extra
+ * slot) while search mode is open. Its own client component because page.tsx
+ * stays a server component for its `metadata`/`viewport` exports — a hook
+ * here couldn't otherwise decide what page.tsx passes into `<PageHead>`.
  */
 export function JournalPageHead() {
   const { active } = useJournalSearchMode();
@@ -27,7 +27,7 @@ export function JournalPageHead() {
             <JournalSearchBar />
           ) : (
             <>
-              <TodayLongDate />
+              <JournalDayNav />
               <JournalSearchToggle />
             </>
           )}

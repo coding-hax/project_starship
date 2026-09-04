@@ -17,6 +17,32 @@
   color: var(--text-muted);
 }
 
+/* Tageswechsel (issue #1050, AK1/AK2): pan-y statt none — senkrechtes Scrollen
+   bleibt uneingeschränkt möglich, auch mit dem Finger über der Karte, die
+   waagerechte Geste wertet ausschließlich der Pointer-Handler in
+   journal-editor.tsx (JournalDayPager) aus. Gleiches Muster wie
+   weather-day.css' `.weather-day-screen`. */
+.journal-day-pager {
+  touch-action: pan-y;
+}
+
+.journal-day-pager__track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  transition: none;
+}
+
+/* Nur beim federnden Zurückschnappen (Schwelle unterschritten, überwiegend
+   senkrecht, oder die Vorwärtsgrenze bei heute, AK1/AK6) — ein echter
+   Tageswechsel setzt den Transform ohne Übergang zurück (AK3: kein gleitender
+   Übergang beim Tageswechsel selbst). prefers-reduced-motion braucht keine
+   Sonderbehandlung: die globale Regel in tokens.css nullt transition-duration
+   ohnehin überall (wie in task-item.tsx/weather-day.css). */
+.journal-day-pager__track--bouncing {
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
 /* AK1/AK3: the surface itself — --surface/--radius-surface/--shadow-raised,
    same own-surface/own-ink reset as section-card.css. */
 .journal-day-card {
