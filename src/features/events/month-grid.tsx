@@ -299,12 +299,20 @@ export function MonthGrid({
   );
 
   /** Re-measures every row's offset — after a buffer rebuild, and after any
-   *  event change that can add or drop a band row. */
+   *  event change that can add or drop a band row. Measured against the
+   *  track's own scrolled content origin rather than via `offsetTop`: that
+   *  property counts from the nearest *positioned* ancestor, which is not the
+   *  track (it sets no `position`), so its values carry the card's own
+   *  distance down the page — a constant that put `leadIndexAt` several rows
+   *  off and left the header naming a month that wasn't on screen. */
   useLayoutEffect(() => {
     const track = trackRef.current;
     if (!track) return;
+    const contentTop = track.getBoundingClientRect().top - track.scrollTop;
     const rows = track.querySelectorAll<HTMLElement>('.month-grid__week');
-    offsetsRef.current = Array.from(rows, (row) => row.offsetTop);
+    offsetsRef.current = Array.from(rows, (row) =>
+      Math.round(row.getBoundingClientRect().top - contentTop),
+    );
   }, [layouts]);
 
   /** Puts the anchor week at the top of the card, instantly and before paint —
@@ -322,13 +330,27 @@ export function MonthGrid({
     setLeadIndex(RADIUS_WEEKS);
   }, [windowAnchor]);
 
-  /** Reports the month in the middle of the card up. Driven by `leadIndex`,
-   *  which the scroll handler updates every frame — so the header follows the
-   *  finger instead of waiting for the scroll to settle (issue #1064). */
+  /** Mirrors the `focusMonth` prop for the reporting effect below, which must
+   *  not re-run when it changes: a tap on a neighbour-month day legitimately
+   *  moves the focused month without moving the track (issue #958), and an
+   *  effect keyed on the prop would immediately report the scroll position's
+   *  month back over it. */
+  const focusMonthRef = useRef(focusMonth);
+  useEffect(() => {
+    focusMonthRef.current = focusMonth;
+  }, [focusMonth]);
+
+  /** Reports the month in the middle of the card up — on scroll only. Driven
+   *  by `leadIndex`, which the scroll handler updates every frame, so the
+   *  header follows the finger instead of waiting for the scroll to settle
+   *  (issue #1064). A tap's own focused month therefore stands until the next
+   *  actual scroll. */
   useEffect(() => {
     const next = focusMonthForLead(weeks, leadIndex);
-    if (next !== focusMonth) onFocusMonth(next);
-  }, [weeks, leadIndex, focusMonth, onFocusMonth]);
+    if (next === focusMonthRef.current) return;
+    focusMonthRef.current = next;
+    onFocusMonth(next);
+  }, [weeks, leadIndex, onFocusMonth]);
 
   /** Tracks the live scroll position: `leadIndex` (title, dimming, the
    *  interactive band) updates every frame on `scroll`. The buffer itself
