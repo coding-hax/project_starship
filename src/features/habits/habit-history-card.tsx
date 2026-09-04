@@ -1,6 +1,7 @@
 'use client';
 
 import { cellHabitId, historyGrid } from './history-grid';
+import { legendOrder } from './legend-order';
 import { useHabitLogs } from './use-habit-logs';
 import { useHabits } from './use-habits';
 
@@ -58,7 +59,7 @@ export function HabitHistoryCard() {
         <span>heute</span>
       </div>
       <ul className="habit-history-card__legend">
-        {active.map((habit) => (
+        {legendOrder(active).map((habit) => (
           <li key={habit.id} className="habit-history-card__legend-item">
             <span
               className="habit-history-card__legend-dot"

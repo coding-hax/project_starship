@@ -307,6 +307,88 @@ test('AK8 (#1070): unter der Achse steht je aktiver Routine ein Legendeneintrag 
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK1/AK2/AK5 (issue #1078): Legende sortiert platzsparend statt nach        */
+/* Anlagereihenfolge                                                          */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#1078): die Legende ordnet nach absteigender Namenslänge, bei Gleichstand nach Anlagereihenfolge', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Wochenendspaziergang mit Hund', createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Yoga am Morgen', createdAt: '2026-06-02T00:00:00.000Z' });
+  // Gleichstand-Paar: beide 5 Zeichen lang, "Lesen" zuerst angelegt.
+  await seedHabit(page, { name: 'Lesen', createdAt: '2026-06-03T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Notiz', createdAt: '2026-06-04T00:00:00.000Z' });
+  await page.goto('/routinen');
+
+  await expect(page.locator('.habit-history-card__legend-name')).toHaveText([
+    'Wochenendspaziergang mit Hund',
+    'Yoga am Morgen',
+    'Lesen',
+    'Notiz',
+  ]);
+});
+
+test('AK2 (#1078): "kurz, sehr lang, kurz" belegt zwei statt drei Zeilen — kein Eintrag rutscht in eine neue Zeile, während eine frühere noch Platz hätte', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Lesen', createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedHabit(page, {
+    name: 'Ausdauertraining kombiniert mit Krafttraining und ausführlichen Dehnübungen am frühen Abend im Fitnessstudio nebenan',
+    createdAt: '2026-06-02T00:00:00.000Z',
+  });
+  await seedHabit(page, { name: 'Yoga', createdAt: '2026-06-03T00:00:00.000Z' });
+  await page.goto('/routinen');
+
+  const items = page.locator('.habit-history-card__legend-item');
+  await expect(items).toHaveCount(3);
+  const tops = await items.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  const rows = new Set(tops.map((top) => Math.round(top)));
+  // Zeilen über 1px Toleranz gruppieren statt über exakte Gleichheit —
+  // Sub-Pixel-Rundung könnte sonst eine Zeile künstlich verdoppeln.
+  const rowCount = [...rows].sort((a, b) => a - b).reduce((count, top, index, sorted) => {
+    if (index === 0 || top - sorted[index - 1] > 1) return count + 1;
+    return count;
+  }, 0);
+  expect(rowCount, 'zwei statt drei Zeilen').toBe(2);
+});
+
+test('AK5 (#1078): eine offline angelegte Routine erscheint sofort als Legendeneintrag, ohne Neuladen', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await expect(page.locator('.habit-history-card')).toHaveCount(0);
+
+  await seedHabit(page, { name: 'Frisch angelegt' });
+
+  await expect(page.locator('.habit-history-card__legend-item')).toHaveCount(1);
+  await expect(page.locator('.habit-history-card__legend-name')).toHaveText('Frisch angelegt');
+});
+
+test('AK5 (#1078): bei 375×812 kein waagerechter Überlauf durch die Legende, hell und dunkel', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Lesen', createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedHabit(page, {
+    name: 'Ausdauertraining kombiniert mit Krafttraining und ausführlichen Dehnübungen am frühen Abend im Fitnessstudio nebenan',
+    createdAt: '2026-06-02T00:00:00.000Z',
+  });
+  await seedHabit(page, { name: 'Yoga', createdAt: '2026-06-03T00:00:00.000Z' });
+  await page.goto('/routinen');
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth, `kein waagerechter Überlauf (${scheme})`).toBeLessThanOrEqual(
+      overflow.clientWidth,
+    );
+  }
+});
+
+/* -------------------------------------------------------------------------- */
 /* AK6/AK10: Kontrast von Wochenbalken, Kachel-Balken und Kartentext          */
 /* -------------------------------------------------------------------------- */
 
