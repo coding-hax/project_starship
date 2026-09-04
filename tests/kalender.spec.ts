@@ -145,7 +145,11 @@ async function scrollMonthGridTo(page: Page, monday: string): Promise<void> {
   await monthGridTrack(page).evaluate((el, key) => {
     const row = el.querySelector<HTMLElement>(`.month-grid__week[data-week="${key}"]`);
     if (!row) throw new Error(`Wochenzeile ${key} liegt nicht im Puffer`);
-    el.scrollTop = row.offsetTop;
+    // Abstand der Zeile zur Spuroberkante auf die aktuelle Position addieren.
+    // `row.offsetTop` waere falsch: es zaehlt ab dem naechsten *positionierten*
+    // Vorfahren, und das ist nicht die Spur — der Wert truege die Strecke der
+    // Karte die Seite hinunter mit sich und scrollte rund vier Zeilen zu weit.
+    el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top;
   }, monday);
 }
 
