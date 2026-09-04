@@ -490,13 +490,16 @@
    den rechten Block nicht zwingend ab Zeile 1 (das Sparse-Packing rückt den
    Cursor auf die Zeile des zuvor auto-platzierten linken Elements vor, bevor
    die rechte Spalte überhaupt geprüft wird — beobachtet, nicht nur Theorie).
+   Kein `align-items: start` (anders als aufgaben-page.css, wo die einzeilige
+   „ohne Datum"-Karte bewusst NICHT die potenziell viel höhere fällige Liste
+   nachzeichnen soll) — hier soll `.journal-same-day` den vollen Zwei-Zeilen-
+   Bereich füllen, das Standard-`stretch` macht genau das.
    `max-width: none` nimmt den 480px-Deckel von .journal-editor/.journal-
    day-card/.journal-same-day zurück (wie schon .section-card, issue #1015). */
 @media (min-width: 768px) {
   .journal-editor {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
     gap: var(--space-6);
     max-width: none;
     /* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie
