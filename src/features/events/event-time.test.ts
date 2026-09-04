@@ -420,8 +420,12 @@ describe('categoriesForDay', () => {
 /**
  * The dots read expanded occurrences, exactly as calendar-strip.tsx composes
  * the two (issue #612) — before that, `categoriesForDay` filtered raw `events`
- * rows by `startsAt`, so a series was dotted only on its anchor day, a cancelled
- * instance kept its dot, and an all-day event never got one at all.
+ * rows by `startsAt`, so a series was dotted only on its anchor day and a
+ * cancelled instance kept its dot.
+ *
+ * Ganztägige Termine bekommen seit issue #1061 bewusst keinen Punkt mehr — sie
+ * stehen im Band unter den Tageszellen, und der Punkt daneben war dieselbe
+ * Aussage ein zweites Mal. Die drei Fälle darauf stehen weiter unten.
  */
 describe('categoriesForDay over expandForDay', () => {
   function dotsOn(
@@ -467,7 +471,7 @@ describe('categoriesForDay over expandForDay', () => {
     expect(dotsOn([weeklySeries], [cancelled], '2026-07-27')).toEqual(['arbeit']);
   });
 
-  it('dots an all-day event, which carries no startsAt at all', () => {
+  it('leaves an all-day event undotted — its band already carries it (issue #1061)', () => {
     const allDay = event({
       allDay: true,
       startDate: '2026-07-18',
@@ -475,10 +479,10 @@ describe('categoriesForDay over expandForDay', () => {
       category: 'privat',
     });
 
-    expect(dotsOn([allDay], [], '2026-07-18')).toEqual(['privat']);
+    expect(dotsOn([allDay], [], '2026-07-18')).toEqual([]);
   });
 
-  it('dots every day a multi-day event spans, not only its first', () => {
+  it('leaves every day of a multi-day event undotted, not just its first (issue #1061)', () => {
     const trip = event({
       allDay: true,
       startDate: '2026-07-18',
@@ -486,13 +490,12 @@ describe('categoriesForDay over expandForDay', () => {
       category: 'familie',
     });
 
-    expect(dotsOn([trip], [], '2026-07-18')).toEqual(['familie']);
-    expect(dotsOn([trip], [], '2026-07-19')).toEqual(['familie']);
-    expect(dotsOn([trip], [], '2026-07-20')).toEqual(['familie']);
-    expect(dotsOn([trip], [], '2026-07-21')).toEqual([]);
+    for (const day of ['2026-07-18', '2026-07-19', '2026-07-20', '2026-07-21']) {
+      expect(dotsOn([trip], [], day)).toEqual([]);
+    }
   });
 
-  it('dots a recurring all-day series on a later occurrence', () => {
+  it('leaves a recurring all-day series undotted on a later occurrence (issue #1061)', () => {
     const series = event({
       allDay: true,
       startDate: '2026-07-18',
@@ -501,7 +504,25 @@ describe('categoriesForDay over expandForDay', () => {
       recurrence: { freq: 'weekly', interval: 1 },
     });
 
-    expect(dotsOn([series], [], '2026-07-25')).toEqual(['sport']);
+    expect(dotsOn([series], [], '2026-07-25')).toEqual([]);
+  });
+
+  it('keeps the dot of a scheduled event sharing the day and category with an all-day one (issue #1061)', () => {
+    const feiertag = event({
+      id: 'evt-allday',
+      allDay: true,
+      startDate: '2026-07-18',
+      endDate: '2026-07-18',
+      category: 'privat',
+    });
+    const termin = event({
+      id: 'evt-timed',
+      startsAt: '2026-07-18T07:00:00.000Z',
+      endsAt: '2026-07-18T08:00:00.000Z',
+      category: 'privat',
+    });
+
+    expect(dotsOn([feiertag, termin], [], '2026-07-18')).toEqual(['privat']);
   });
 
   it('stops dotting a series after its until date', () => {

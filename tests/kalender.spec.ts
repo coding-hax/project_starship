@@ -3634,7 +3634,12 @@ test('ein ausgefallenes Vorkommen verliert seinen Punkt, die uebrigen behalten i
   await expect(monthGridDots(page, 'Sa, 25.')).toHaveCount(1);
 });
 
-test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag seiner Spanne (#612 AC3)', async ({
+// #612 AC3 hat hier den umgekehrten Fall geprueft (ganztaegig == ein Punkt je
+// Tag der Spanne). Seit issue #1062 traegt allein das Band den ganztaegigen
+// Termin — der Punkt daneben war dieselbe Aussage ein zweites Mal, und das Band
+// sagt zusaetzlich Titel und Spanne. Der Fall bleibt derselbe, die Erwartung
+// dreht sich um.
+test('ein ganztaegiger Termin bekommt keinen Punkt — das Band traegt ihn, an jedem Tag seiner Spanne (#612 AC3, umgedreht in #1062)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -3647,12 +3652,8 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
     category: 'privat',
   });
 
-  const dots = dayDots(page, 'Sa, 18.');
-  await expect(dots).toHaveCount(1);
-  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 85, 'var(--text-base)');
-  await expect
-    .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
-    .toBe(expectedPrivat);
+  await expect(stripBand(page, 'Feiertag')).toBeVisible();
+  await expect(dayDots(page, 'Sa, 18.')).toHaveCount(0);
 
   await seedEvent(page, {
     title: 'Kurzurlaub',
@@ -3664,15 +3665,53 @@ test('ein ganztaegiger Termin bekommt einen Punkt, ein mehrtaegiger an jedem Tag
     category: 'familie',
   });
 
-  await expect(dayDots(page, 'So, 19.')).toHaveCount(1);
+  await expect(stripBand(page, 'Kurzurlaub')).toBeVisible();
+  await expect(dayDots(page, 'So, 19.')).toHaveCount(0);
 
   // Mo/Di/Mi liegen ausserhalb der anfaenglich sichtbaren Woche des Streifens
   // (dayButton scoped auf :not([inert])) — erst die Monats-Karte zeigt alle
   // Tage gleichzeitig.
   await page.getByRole('radio', { name: 'Monat' }).click();
-  await expect(monthGridDots(page, 'Mo, 20.')).toHaveCount(1);
-  await expect(monthGridDots(page, 'Di, 21.')).toHaveCount(1);
-  await expect(monthGridDots(page, 'Mi, 22.')).toHaveCount(0);
+  // Zwei Baender, nicht eins: die Spanne kreuzt die Wochengrenze So/Mo, und
+  // die Karte gibt jeder Wochenzeile ihr eigenes Band (#1043 AK7).
+  await expect(monthGridBand(page, 'Kurzurlaub')).toHaveCount(2);
+  for (const label of ['So, 19.', 'Mo, 20.', 'Di, 21.', 'Mi, 22.']) {
+    await expect(monthGridDots(page, label)).toHaveCount(0);
+  }
+});
+
+test('liegt am selben Tag ein getakteter Termin derselben Kategorie, bleibt dessen Punkt stehen (#1062)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: TODAY,
+    endDate: TODAY,
+    category: 'privat',
+  });
+  await seedEvent(page, {
+    title: 'Kaffee',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'privat',
+  });
+
+  await expect(stripBand(page, 'Feiertag')).toBeVisible();
+
+  // Genau einer, nicht zwei und nicht null: der Punkt gehoert dem getakteten
+  // Termin, das Band dem ganztaegigen.
+  const dots = dayDots(page, 'Sa, 18.');
+  await expect(dots).toHaveCount(1);
+  const expectedPrivat = await resolveMix(page, 'var(--cat-privat)', 85, 'var(--text-base)');
+  await expect
+    .poll(() => dots.first().evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedPrivat);
 });
 
 test('Punkt und Tagesansicht stimmen ueberein: ein Punkt genau dann, wenn der Tag einen Termin zeigt (#612 AC4)', async ({
