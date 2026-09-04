@@ -1,12 +1,19 @@
 'use client';
 
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Fab } from '@/ui/fab';
-import { TodayLongDate } from '@/ui/today-long-date';
 import { useListPresence } from '@/ui/use-list-presence';
-import { deleteJournalEntry, todayKey } from './entry';
+import { deleteJournalEntry, shiftDayKey, todayKey } from './entry';
 import { JournalEntrySheet, JOURNAL_ENTRY_SHEET_LABEL } from './journal-entry-sheet';
 import './journal-editor.css';
+import { useJournalDayNav } from './journal-current-day';
 import { JournalSearch } from './journal-search';
 import { useJournalSearchMode } from './journal-view-mode';
 import { useJournalLock } from './lock-store';
@@ -25,7 +32,7 @@ function formatEntryTime(createdAt: string): string {
   return ENTRY_TIME_FORMATTER.format(new Date(createdAt));
 }
 
-const DAY_LONG_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+const DAY_CARD_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
   weekday: 'long',
   day: 'numeric',
   month: 'long',
@@ -40,18 +47,40 @@ function parseDayKey(dayKey: string): Date {
   return new Date(year, month - 1, day);
 }
 
-/** Same long format as `TodayLongDate`, for a day other than today (AK2,
- * #1052, desktop's "Zuletzt geschrieben"): the day card's own header once it
- * shows a day other than today — `TodayLongDate` itself always reads the real
- * clock, so it only covers the `today` case. */
-function formatDayKeyLong(dayKey: string): string {
-  return DAY_LONG_FORMATTER.format(parseDayKey(dayKey));
+/** Local calendar day (not UTC), same reasoning as `entry.ts`'s `todayKey`. */
+function formatDayCardDate(dayKey: string): string {
+  return DAY_CARD_DATE_FORMATTER.format(parseDayKey(dayKey));
 }
 
 /** Short form for a "Zuletzt geschrieben" row (AK2, #1052) — day + month, no
  * year: the list only ever holds recent days, never a different year. */
 function formatDayKeyShort(dayKey: string): string {
   return DAY_SHORT_FORMATTER.format(parseDayKey(dayKey));
+}
+
+/** "Heute"/"Gestern" for the two days closest to now (same idiom as
+ * `use-tasks.ts`'s `formatDayMarker`) — any older day shows no relative badge,
+ * `.journal-day-card__date` already carries its full weekday/day/month. */
+function relativeDayLabel(dayKey: string): string | null {
+  const today = todayKey();
+  if (dayKey === today) return 'Heute';
+  if (dayKey === shiftDayKey(today, -1)) return 'Gestern';
+  return null;
+}
+
+/** Below this, or when the vertical delta dominates, releasing is a cancelled
+ * swipe (issue #1050 AK1) — mirrors task-item.tsx's/weather-day.tsx's own
+ * `SWIPE_THRESHOLD_PX`. */
+const SWIPE_THRESHOLD_PX = 80;
+
+/** Movement at or below this still counts as a tap (task-item.tsx's own
+ * `TAP_TOLERANCE_PX`) — the point at which the pager below claims the pointer
+ * for itself, see `handlePointerMove`. */
+const TAP_TOLERANCE_PX = 8;
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const tag = (target as HTMLElement | null)?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
 /**
@@ -75,11 +104,14 @@ export function JournalEditor() {
   // „Zuletzt geschrieben" denselben liveQuery/Entschlüsselungslauf teilen
   // statt je einen eigenen zu starten (dieselbe Begründung wie searchEntries).
   const dayGroups = useJournalEntries();
-  const today = todayKey();
-  // Welcher Tag oben in der Tageskarte + „An diesem Tag" steht (issue #1052
-  // AK2) — Default „heute". Mobil bleibt es dabei: ohne „Zuletzt geschrieben"
-  // (dort per CSS versteckt) gibt es dort nichts, das diesen State ändert.
-  const [shownDay, setShownDay] = useState(today);
+  // Derselbe Modul-Store wie die Chevrons in der Augenbrauenzeile
+  // (journal-day-nav.tsx) und das Wischen (JournalDayPager unten, issue
+  // #1050) — „Zuletzt geschrieben" (issue #1052 AK2) ist ein dritter
+  // Schreiber desselben Stores, kein eigener State: eine Zeile dort, ein
+  // Chevron und ein Wisch ändern denselben gezeigten Tag, ohne Prop-Drilling
+  // durch page.tsx hindurch.
+  const { date, goTo } = useJournalDayNav();
+  const shownDay = date ?? todayKey();
 
   /** #1048: die Seite zeigt nur noch den heutigen Tag, ein Sprung zu einem
    * anderen Tag aus einem Suchtreffer existiert vorerst nicht mehr — das folgt
@@ -92,24 +124,6 @@ export function JournalEditor() {
     await deleteJournalEntry(id);
   }
 
-  // Ein neuer Eintrag landet immer auf heute (entry.ts, journal-entry-sheet.tsx)
-  // — jeder Weg ins Sheet (FAB, leere Tageskarte) springt deshalb schon beim
-  // Öffnen dorthin zurück, statt einen Eintrag unsichtbar unter einem gerade
-  // angesehenen älteren Tag verschwinden zu lassen. Eine Funktion für beide
-  // Trigger, damit sie nicht auseinanderlaufen können.
-  //
-  // `todayKey()` frisch aufgerufen statt der oben gerenderten `today`-Variable:
-  // JournalEditor rendert nicht von selbst neu, nur weil die Uhr Mitternacht
-  // passiert — ohne eine dazwischenliegende dayGroups-/Such-Änderung hätte der
-  // Klick-Handler sonst den Render-Stand von vor Mitternacht im Closure
-  // (AC2/AC3, #1052 e2e-Fund: journal.spec.ts:1056 schlug dadurch fehl, weil
-  // der nach Mitternacht abgesendete Eintrag unter dem alten `shownDay` gesucht
-  // wurde).
-  function openEntrySheet() {
-    setShownDay(todayKey());
-    setSheetOpen(true);
-  }
-
   return (
     <>
       <JournalSearch entries={searchEntries} onSelect={handleSearchSelect} />
@@ -117,19 +131,18 @@ export function JournalEditor() {
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
-            <JournalDayCard
+            <JournalDayPager
               dayGroups={dayGroups}
-              dayKey={shownDay}
-              onOpenSheet={openEntrySheet}
+              entries={searchEntries}
+              onOpenSheet={() => setSheetOpen(true)}
               onDelete={handleDelete}
             />
-            <JournalRecent dayGroups={dayGroups} shownDay={shownDay} onShowDay={setShownDay} />
-            <JournalSameDay entries={searchEntries} dayKey={shownDay} />
+            <JournalRecent dayGroups={dayGroups} shownDay={shownDay} onShowDay={goTo} />
           </>
         )}
       </div>
-      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} text="Eintrag" onClick={openEntrySheet} />}
-      <JournalEntrySheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      {!searchActive && <Fab label={JOURNAL_ENTRY_SHEET_LABEL} text="Eintrag" onClick={() => setSheetOpen(true)} />}
+      <JournalEntrySheet open={sheetOpen} date={shownDay} onClose={() => setSheetOpen(false)} />
     </>
   );
 }
@@ -218,17 +231,159 @@ function JournalOrphanedKeyCard() {
 }
 
 /**
- * The one surface for the shown day (AK1–AK4, #1048; verallgemeinert auf
- * einen beliebigen Tag in #1052 AK2 — Default weiterhin „heute"): eyebrow
- * „Heute" + the long date (same `TodayLongDate` the page's own eyebrow
- * already uses) für den heutigen Tag, sonst das lange Datum des gezeigten
- * Tages ohne „Heute"-Eyebrow. Dann entweder die Zeile des Tages — der *erste*
- * an diesem Tag angelegte Eintrag (AK2's "N weitere Notizen" covers the
- * rest) — or, with nothing written yet, a dashed empty invitation (AK3, nur
- * für heute erreichbar: „Zuletzt geschrieben" listet ausschließlich Tage mit
- * mindestens einem Eintrag). `dayGroups` kommt von `useJournalEntries()`
- * hochgezogen in `journal-editor.tsx` (issue #1052 AK2), damit die Karte und
- * „Zuletzt geschrieben" denselben liveQuery/Entschlüsselungslauf teilen.
+ * Swipe/keyboard day switcher (issue #1050) — same shape as `weather-day.tsx`'s
+ * `WeatherDayScreen` (issue #267): pointer handlers translate the card by
+ * `dragX`, a real day change resets it without a transition (AK3, no glide on
+ * the flip itself), an invalid or (forward, AK6) out-of-bounds swipe springs
+ * back instead (`bouncing`). Reads `journal-current-day.ts`'s module store,
+ * the same one the eyebrow's chevrons (`journal-day-nav.tsx`, outside this
+ * subtree) and „Zuletzt geschrieben"'s rows (`JournalRecent`, issue #1052 AK2)
+ * read/write — a swipe here, a chevron tap, or a row click there all change
+ * the very same day. The page's own header (Augenbraue/h1/Figur) lives
+ * entirely outside this component, in `page.tsx`, so it is untouched by the
+ * transform for free — nothing here needs to special-case it (AK3).
+ *
+ * `dayGroups` is threaded through from `JournalEditor` (issue #1052 AK2,
+ * shared with `JournalRecent`) instead of queried again here. On desktop
+ * (journal-editor.css 768px block) this wrapper and its `__track` collapse
+ * via `display: contents`, so `JournalDayCard`/`JournalSameDay` land as
+ * direct grid items of `.journal-editor` — the swipe machinery stays mounted
+ * (harmless: #1052 AK2 says nobody swipes on desktop) but contributes no box
+ * of its own to the two-column grid.
+ */
+function JournalDayPager({
+  dayGroups,
+  entries,
+  onOpenSheet,
+  onDelete,
+}: {
+  dayGroups: JournalDayGroup[] | undefined;
+  entries: JournalSearchEntry[] | undefined;
+  onOpenSheet: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const { date, nextDate, previousDate, goTo } = useJournalDayNav();
+  const currentDate = date ?? todayKey();
+  const [startX, setStartX] = useState<number | null>(null);
+  const [startY, setStartY] = useState<number | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [bouncing, setBouncing] = useState(false);
+
+  // AK5: dieselbe Zuordnung wie die Chevrons — ArrowLeft wie der linke
+  // ("Vorheriger Tag"), ArrowRight wie der rechte ("Nächster Tag"). Ignoriert,
+  // solange irgendwo getippt wird (Eintrag-Sheet, Suche), damit ein Cursor-Move
+  // im Textfeld nicht nebenbei den Tag wechselt (Muster wie quick-add.tsx's
+  // eigener `isTypingTarget`-Guard).
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (isTypingTarget(event.target)) return;
+      const target = event.key === 'ArrowLeft' ? previousDate : nextDate;
+      if (!target) return;
+      event.preventDefault();
+      goTo(target);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [nextDate, previousDate, goTo]);
+
+  /**
+   * Capture is deferred to the first real move (`handlePointerMove`), not
+   * taken here — the empty day's own card is itself a tappable `<button>`
+   * (AK3, #1048), and capturing immediately would steal the native click the
+   * browser is about to synthesize for a plain tap on it, same reasoning as
+   * task-item.tsx's checkbox exclusion. A plain tap on that button, or on the
+   * card's own "Löschen"/"N weitere Notizen" buttons, is thus untouched by
+   * this handler entirely; only a real drag ever claims the pointer.
+   */
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    setStartX(event.clientX);
+    setStartY(event.clientY);
+    setDragging(true);
+    setBouncing(false);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging || startX === null) return;
+    const deltaX = event.clientX - startX;
+    if (!event.currentTarget.hasPointerCapture(event.pointerId) && Math.abs(deltaX) > TAP_TOLERANCE_PX) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setDragX(deltaX);
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const deltaX = startX === null ? 0 : event.clientX - startX;
+    const deltaY = startY === null ? 0 : event.clientY - startY;
+    setDragging(false);
+    setStartX(null);
+    setStartY(null);
+    setDragX(0);
+
+    // Too short, or mostly vertical (AK1) — both leave the day unchanged.
+    const isSwipe = Math.abs(deltaX) > SWIPE_THRESHOLD_PX && Math.abs(deltaX) > Math.abs(deltaY);
+    const target = isSwipe ? (deltaX < 0 ? nextDate : previousDate) : null;
+
+    if (target) {
+      // A real day change is instant, never a glide (AK3) — `dragX` above
+      // already reset to 0 without ever turning `bouncing` on.
+      goTo(target);
+    } else {
+      // Invalid swipe, or the forward edge at today (AK6) — spring back.
+      setBouncing(true);
+    }
+  }
+
+  /** The browser took the gesture over (e.g. a real vertical scroll) — nothing
+   * to undo visually, same reasoning as task-item.tsx's own `cancelDrag`. */
+  function cancelDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragging) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragging(false);
+    setStartX(null);
+    setStartY(null);
+    setDragX(0);
+  }
+
+  return (
+    <div
+      className="journal-day-pager"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={cancelDrag}
+    >
+      <div
+        className={'journal-day-pager__track' + (bouncing ? ' journal-day-pager__track--bouncing' : '')}
+        style={dragX ? { transform: `translateX(${dragX}px)` } : undefined}
+        onTransitionEnd={() => setBouncing(false)}
+      >
+        <JournalDayCard dayGroups={dayGroups} dayKey={currentDate} onOpenSheet={onOpenSheet} onDelete={onDelete} />
+        <JournalSameDay entries={entries} dayKey={currentDate} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The one surface for the shown day (AK1–AK4, #1048; generalized to any day
+ * in #1050's Wischen/Chevrons/Pfeiltasten, and reachable from #1052 AK2's
+ * „Zuletzt geschrieben" — default remains „heute"): eyebrow „Heute"/„Gestern"
+ * (older days: none, the date line already carries the full weekday) + the
+ * long date, then either the day's line — the *first* entry created that day
+ * (AK2's "N weitere Notizen" covers the rest) — or, with nothing written yet,
+ * a dashed empty invitation (AK3, #1048). `dayGroups` comes from
+ * `useJournalEntries()` lifted in `journal-editor.tsx` (issue #1052 AK2), so
+ * this card and „Zuletzt geschrieben" share one liveQuery/Entschlüsselungslauf
+ * instead of each starting its own.
  */
 function JournalDayCard({
   dayGroups,
@@ -241,7 +396,6 @@ function JournalDayCard({
   onOpenSheet: () => void;
   onDelete: (id: string) => void;
 }) {
-  const isToday = dayKey === todayKey();
   // Neuestes zuerst (useJournalEntries) — die Zeile des Tages ist der zuerst
   // angelegte Eintrag (createdAt aufsteigend), also der letzte in dieser Liste.
   const dayEntries = useMemo(
@@ -252,6 +406,8 @@ function JournalDayCard({
   const rest = useMemo(() => dayEntries.slice(0, -1), [dayEntries]);
   const [expanded, setExpanded] = useState(false);
   const restRows = useListPresence(rest, (entry) => entry.id);
+  const eyebrow = relativeDayLabel(dayKey);
+  const dateLabel = formatDayCardDate(dayKey);
 
   // Kein Ladezustand (Produktprinzip, wie der bisherige Editor) — vor dem
   // ersten liveQuery-Ergebnis wird nichts gerendert.
@@ -261,10 +417,8 @@ function JournalDayCard({
     return (
       <button type="button" className="journal-day-card journal-day-card--empty" onClick={onOpenSheet}>
         <div className="journal-day-card__heading">
-          <p className="journal-day-card__eyebrow">Heute</p>
-          <p className="journal-day-card__date">
-            <TodayLongDate />
-          </p>
+          {eyebrow && <p className="journal-day-card__eyebrow">{eyebrow}</p>}
+          <p className="journal-day-card__date">{dateLabel}</p>
         </div>
         <p className="journal-day-card__placeholder">Deine Zeile für heute</p>
       </button>
@@ -275,8 +429,8 @@ function JournalDayCard({
     <section className="journal-day-card">
       <div className="journal-day-card__header">
         <div className="journal-day-card__heading">
-          {isToday && <p className="journal-day-card__eyebrow">Heute</p>}
-          <p className="journal-day-card__date">{isToday ? <TodayLongDate /> : formatDayKeyLong(dayKey)}</p>
+          {eyebrow && <p className="journal-day-card__eyebrow">{eyebrow}</p>}
+          <p className="journal-day-card__date">{dateLabel}</p>
         </div>
         {headline.mood && (
           <span
@@ -343,7 +497,8 @@ const RECENT_DAYS_LIMIT = 7;
  * „Zuletzt geschrieben" (issue #1052 AK2, nur Desktop ab 768px — journal-
  * editor.css versteckt `.journal-recent` mobil): die letzten Tage mit
  * mindestens einem Eintrag, außer dem gerade gezeigten. Eine Zeile öffnet
- * diesen Tag — der Ersatz für das Wischen aus #1050, das es hier (noch) nicht
+ * diesen Tag über denselben Modul-Store wie Chevrons und Wischen (issue
+ * #1050) — der Ersatz für das Wischen, das es hier (am Desktop) so nicht
  * gibt. Ganz weg ohne andere Tage (gleiches Muster wie `JournalSameDay`), kein
  * leerer Rahmen. Liest `dayGroups`, dieselbe von `JournalEditor` hochgezogene
  * Quelle wie die Tageskarte — kein eigener Entschlüsselungslauf.
@@ -396,12 +551,12 @@ function JournalRecent({
 
 /**
  * „An diesem Tag" (issue #1049, Teil von #1046): jeder andere Jahrgang mit
- * einem Eintrag am selben Monat+Tag wie `dayKey` — verallgemeinert auf einen
- * beliebigen gezeigten Tag in #1052 AK2 (Default weiterhin „heute"), unter
- * der Zeile des Tages. Ganz weg, solange kein anderes Jahr etwas beiträgt
- * (AK5) — kein leerer Rahmen. Liest denselben Sitzungs-Cache wie die Suche
- * (`searchEntries`, hochgezogen in `JournalEditor`, AK6), startet also
- * keinen eigenen Entschlüsselungslauf.
+ * einem Eintrag am selben Monat+Tag wie `dayKey` — generalized to any shown
+ * day in #1050 (Chevrons/Wischen) and #1052 AK2 („Zuletzt geschrieben"),
+ * default weiterhin „heute", unter der Zeile des Tages. Ganz weg, solange
+ * kein anderes Jahr etwas beiträgt (AK5) — kein leerer Rahmen. Liest denselben
+ * Sitzungs-Cache wie die Suche (`searchEntries`, hochgezogen in
+ * `JournalEditor`, AK6), startet also keinen eigenen Entschlüsselungslauf.
  */
 function JournalSameDay({ entries, dayKey }: { entries: JournalSearchEntry[] | undefined; dayKey: string }) {
   const years = useMemo(() => (entries ? sameDayEntries(entries, dayKey) : []), [entries, dayKey]);

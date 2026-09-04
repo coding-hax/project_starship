@@ -17,6 +17,32 @@
   color: var(--text-muted);
 }
 
+/* Tageswechsel (issue #1050, AK1/AK2): pan-y statt none — senkrechtes Scrollen
+   bleibt uneingeschränkt möglich, auch mit dem Finger über der Karte, die
+   waagerechte Geste wertet ausschließlich der Pointer-Handler in
+   journal-editor.tsx (JournalDayPager) aus. Gleiches Muster wie
+   weather-day.css' `.weather-day-screen`. */
+.journal-day-pager {
+  touch-action: pan-y;
+}
+
+.journal-day-pager__track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  transition: none;
+}
+
+/* Nur beim federnden Zurückschnappen (Schwelle unterschritten, überwiegend
+   senkrecht, oder die Vorwärtsgrenze bei heute, AK1/AK6) — ein echter
+   Tageswechsel setzt den Transform ohne Übergang zurück (AK3: kein gleitender
+   Übergang beim Tageswechsel selbst). prefers-reduced-motion braucht keine
+   Sonderbehandlung: die globale Regel in tokens.css nullt transition-duration
+   ohnehin überall (wie in task-item.tsx/weather-day.css). */
+.journal-day-pager__track--bouncing {
+  transition: transform var(--duration-base) var(--ease-spring);
+}
+
 /* AK1/AK3: the surface itself — --surface/--radius-surface/--shadow-raised,
    same own-surface/own-ink reset as section-card.css. */
 .journal-day-card {
@@ -519,6 +545,19 @@
     display: flex;
   }
 
+  /* Das Wisch-Gerüst um Tageskarte + „An diesem Tag" (`.journal-day-pager`/
+     `__track`, issue #1050) ist ab hier für das Raster unsichtbar: beide
+     Boxen fallen weg (`display: contents`), ihre Kinder rücken für die
+     Grid-Platzierung direkt an die Stelle von `.journal-editor` — die
+     Wisch-Logik selbst bleibt aktiv (harmlos, #1052 AK2: am Desktop wischt
+     niemand), trägt aber keine eigene Box mehr ins Raster ein. Ein Transform
+     während des Ziehens hätte an einer `display: contents`-Box ohnehin keine
+     Wirkung. */
+  .journal-day-pager,
+  .journal-day-pager__track {
+    display: contents;
+  }
+
   /* Regelfall: keine Bergungskarte (issue #518, selten) im Baum. */
   .journal-day-card {
     grid-column: 1;
@@ -538,13 +577,17 @@
   /* Bergungskarte vorhanden: volle Breite in Zeile 1, alles andere rückt eine
      Zeile weiter — dieselbe `:has()`-Fallback-Logik wie calendar-view.css's
      Monat/Woche-Umschaltung (ohne `:has()`-Unterstützung bleibt es beim
-     Regelfall oben, nur ohne den Zeilenversatz). */
+     Regelfall oben, nur ohne den Zeilenversatz). Tageskarte/„An diesem Tag"
+     stecken seit #1050 im (per `display: contents` aufgelösten) Wisch-Gerüst,
+     sind also keine direkten Kinder von `.journal-editor` mehr — deshalb hier
+     ohne `>` vor ihnen, anders als bei der Bergungskarte und „Zuletzt
+     geschrieben", die es weiterhin sind. */
   .journal-editor:has(> .journal-orphaned-key) > .journal-orphaned-key {
     grid-column: 1 / -1;
     grid-row: 1;
   }
 
-  .journal-editor:has(> .journal-orphaned-key) > .journal-day-card {
+  .journal-editor:has(> .journal-orphaned-key) .journal-day-card {
     grid-row: 2;
   }
 
@@ -552,7 +595,7 @@
     grid-row: 3;
   }
 
-  .journal-editor:has(> .journal-orphaned-key) > .journal-same-day {
+  .journal-editor:has(> .journal-orphaned-key) .journal-same-day {
     grid-row: 2 / span 2;
   }
 }

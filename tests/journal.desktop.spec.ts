@@ -142,17 +142,20 @@ test('AK2 (#1052): eine Zeile in „Zuletzt geschrieben" öffnet diesen Tag, mit
   const card = page.locator('.journal-day-card');
   await expect(card.locator('.journal-day-card__line')).toHaveText('Gestern geschrieben');
   await expect(card.locator('.journal-day-card__mood')).toHaveText('4');
-  // Kein „Heute" mehr über einem Tag, der nicht heute ist.
-  await expect(card.locator('.journal-day-card__eyebrow')).toHaveCount(0);
+  // „Zuletzt geschrieben" öffnet über denselben Modul-Store wie Chevrons und
+  // Wischen (issue #1050) — „Gestern" bekommt dort dieselbe Augenbraue.
+  await expect(card.locator('.journal-day-card__eyebrow')).toHaveText('Gestern');
 
   // Der geöffnete Tag verschwindet aus der Liste, heute taucht dafür auf.
   await expect(page.locator('.journal-recent__row', { hasText: 'Gestern geschrieben' })).toHaveCount(0);
   await expect(page.locator('.journal-recent__row', { hasText: 'Heute geschrieben' })).toBeVisible();
 
-  // Der schwebende Erfassen-Knopf schreibt immer auf heute (entry.ts) — er
-  // holt die Karte deshalb zurück auf heute, bevor er das Sheet öffnet.
+  // Derselbe Store treibt auch Chevrons/Wischen (issue #1050 AK7): ein
+  // Eintrag landet auf dem gerade gezeigten Tag, nicht zwingend auf heute —
+  // der Erfassen-Knopf springt deshalb nicht mehr zurück auf heute.
   await page.locator('.fab').click();
-  await expect(card.locator('.journal-day-card__eyebrow')).toHaveText('Heute');
+  await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
+  await expect(card.locator('.journal-day-card__eyebrow')).toHaveText('Gestern');
   await page.getByRole('button', { name: 'Abbrechen' }).click();
 });
 
