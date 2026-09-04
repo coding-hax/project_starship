@@ -80,6 +80,13 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
   );
 }
 
+async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8).
@@ -1170,6 +1177,61 @@ test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBe(0);
+});
+
+test('AK1 (issue #1054): ganz nach unten gescrollt endet der Inhalt dort, wo der Fab anfängt, ohne 120px-Reserverest darunter', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+
+  // Ein voller Tag wie im Ticket-Screenshot, nicht nur eine Routine: `.shell`
+  // hält `.shell__main` per `min-height: 100dvh` + `1fr`-Zeile (shell.css) auf
+  // volle Viewport-Höhe, solange der Inhalt sie nicht sprengt — bei schlankem
+  // Seed bliebe unterhalb der letzten Karte gestreckter Leerraum stehen, der
+  // mit der Bodenreserve-Formel nichts zu tun hat und AK1 gar nicht prüfen
+  // will. Erst wenn der Inhalt den Viewport tatsächlich überläuft, bestimmt
+  // `.uebersicht__sections`s `padding-bottom` den Abstand zum Fab.
+  for (let i = 0; i < 8; i += 1) {
+    await seedTask(page, { title: `Aufgabe ${i + 1}`, dueAt: WITHIN_WEEK });
+  }
+  for (let i = 0; i < 8; i += 1) {
+    await seedHabit(page, {
+      name: i === 7 ? 'Bodenreserve-Routine' : `Routine ${i + 1}`,
+      schedule: 'daily',
+      color: null,
+      archivedAt: null,
+    });
+  }
+
+  // Letzte Sektion ist die Routinen-Karte (Wetter → Termine → Aufgaben →
+  // Aktivitäten → Routinen, docs/CODEMAP.md) — dieselbe, die im Ticket-
+  // Screenshot den Rest unter sich stehen hat.
+  const lastBlock = page.locator('.overview-block').last();
+  await expect(lastBlock).toBeVisible();
+
+  // `scrollY > 0` statt eines Polls auf einen festen Zielwert: die exakte
+  // `scrollHeight` hängt von Zeilenumbrüchen/Fontmetriken ab, „ist am Ende
+  // angekommen" nicht.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.scrollY + window.innerHeight >= document.body.scrollHeight - 1),
+    )
+    .toBe(true);
+
+  const fab = page.getByRole('button', { name: 'Aufgabe erfassen' });
+  await expect(fab).toBeVisible();
+
+  const [blockBox, fabBox] = await Promise.all([lastBlock.boundingBox(), fab.boundingBox()]);
+  expect(blockBox, 'letzte Sektion hat eine Bounding-Box').not.toBeNull();
+  expect(fabBox, 'Fab hat eine Bounding-Box').not.toBeNull();
+
+  const gap = fabBox!.y - (blockBox!.y + blockBox!.height);
+  expect(gap, `Abstand ${gap}px zwischen letzter Sektion und Fab liegt außerhalb von 0–24px`)
+    .toBeGreaterThanOrEqual(0);
+  expect(gap, `Abstand ${gap}px zwischen letzter Sektion und Fab liegt außerhalb von 0–24px`)
+    .toBeLessThanOrEqual(24);
 });
 
 // Ein Test je Route statt einer Schleife in einem Test: jede Navigation bekommt

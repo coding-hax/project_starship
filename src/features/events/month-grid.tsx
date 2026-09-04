@@ -4,10 +4,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSPrope
 import {
   addDays,
   addMonthsClamped,
+  allDayBandsForWindow,
   categoriesForDay,
   categoryEdgeVar,
   monthDaysFor,
   weekDaysFor,
+  type AllDayBand,
 } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
@@ -18,6 +20,11 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 /** Dot cap for the card — tighter than the week strip's 4 (`categoriesForDay`'s
  *  default), the card's cells are narrower (issue #958, AK3). */
 const MAX_DOTS_IN_GRID = 3;
+
+/** Band cap per week row — tighter than the week strip's 3 (issue #1043,
+ *  AK8): a week row shares its width with six others stacked in the same
+ *  card, so two is what stays legible. */
+const MAX_BANDS_IN_GRID = 2;
 
 /** No further `scroll` events for this long counts as "settled" — the same
  *  hand-rolled `scrollend` fallback `calendar-strip.tsx` carries (issue #822:
@@ -38,13 +45,58 @@ export interface MonthGridProps {
 }
 
 /** `monthDaysFor` returns 35 or 42 keys depending on the month's weekday
- *  alignment — padded here to always 42 (six full Mon–Sun weeks) so no page
- *  ever changes the card's height (AK8). */
+ *  alignment — padded here to always 42 (six full Mon–Sun weeks) so every
+ *  page keeps the same six day-rows; the card's overall height can still
+ *  differ per page once all-day bands are involved (issue #1043, AK11). */
 function gridDaysFor(focusMonth: string): string[] {
   const days = monthDaysFor(`${focusMonth}-01`);
   if (days.length === 42) return days;
   const extraWeek = weekDaysFor(addDays(days[days.length - 1], 1));
   return [...days, ...extraWeek];
+}
+
+interface MonthWeekLayout {
+  weekDays: string[];
+  bands: AllDayBand[];
+  /** 0 with no all-day event that week (AK9, no reserved empty row); 2 only
+   *  when two bands genuinely overlap in column range, else 1 (AK8: two
+   *  bands sharing no day share a single row). */
+  bandRows: 0 | 1 | 2;
+}
+
+/**
+ * Every calendar week of a rendered page (six Mon–Sun rows, `gridDaysFor`'s
+ * 42-cell padding), paired with the all-day bands due under it — at most
+ * `MAX_BANDS_IN_GRID`, sorted/capped the same way `allDayBandsForWindow`
+ * caps the week strip's own bands. Shared between `MonthPage`'s rendering
+ * and `MonthGrid`'s track-height calculation (issue #1043) so both agree on
+ * the same row count by construction, the same reasoning `dotsByDay`
+ * elsewhere in this file already follows for dots.
+ */
+function monthWeekLayout(
+  pageMonth: string,
+  events: EventView[],
+  exceptions: EventExceptionView[],
+): MonthWeekLayout[] {
+  const days = gridDaysFor(pageMonth);
+  const weeks: string[][] = [];
+  for (let start = 0; start < days.length; start += 7) {
+    weeks.push(days.slice(start, start + 7));
+  }
+  return weeks.map((weekDays) => {
+    const bands = allDayBandsForWindow(
+      weekDays,
+      (day) => expandForDay(events, exceptions, day),
+      MAX_BANDS_IN_GRID,
+    );
+    const overlaps = bands.length > 1 && bands[0].endCol >= bands[1].startCol;
+    const bandRows: MonthWeekLayout['bandRows'] = bands.length === 0 ? 0 : overlaps ? 2 : 1;
+    return { weekDays, bands, bandRows };
+  });
+}
+
+function totalBandRows(layout: MonthWeekLayout[]): number {
+  return layout.reduce((sum, week) => sum + week.bandRows, 0);
 }
 
 function monthBefore(focusMonth: string): string {
@@ -80,7 +132,11 @@ function MonthPage({
   exceptions,
   onSelect,
 }: MonthPageProps) {
-  const days = useMemo(() => gridDaysFor(pageMonth), [pageMonth]);
+  const weekLayout = useMemo(
+    () => monthWeekLayout(pageMonth, events, exceptions),
+    [pageMonth, events, exceptions],
+  );
+  const days = useMemo(() => weekLayout.flatMap((week) => week.weekDays), [weekLayout]);
 
   /** One `expandForDay` pass per day across this page — the same call the
    *  timeline makes for the selected day, so the dots agree with it by
@@ -96,15 +152,44 @@ function MonthPage({
     [days, events, exceptions],
   );
 
+  /** Day cells with an explicit `row`/`col` (issue #1043) — the band rows
+   *  interspersed between weeks (below) would otherwise push later weeks'
+   *  cells out of place under CSS Grid's auto-placement. */
+  const dayCells = useMemo(() => {
+    const cells: { day: string; row: number; col: number }[] = [];
+    let row = 1;
+    for (const week of weekLayout) {
+      week.weekDays.forEach((day, col) => cells.push({ day, row, col }));
+      row += 1 + week.bandRows;
+    }
+    return cells;
+  }, [weekLayout]);
+
+  /** Band cells, placed one row under their own week's day row — two rows
+   *  only when that week's (at most `MAX_BANDS_IN_GRID`) bands genuinely
+   *  overlap in column range (AK8). */
+  const bandCells = useMemo(() => {
+    const cells: { band: AllDayBand; row: number }[] = [];
+    let row = 1;
+    for (const week of weekLayout) {
+      row += 1;
+      week.bands.forEach((band, index) => {
+        cells.push({ band, row: week.bandRows === 2 && index === 1 ? row + 1 : row });
+      });
+      row += week.bandRows;
+    }
+    return cells;
+  }, [weekLayout]);
+
   return (
     <div className="month-grid__page" inert={!interactive} aria-hidden={interactive ? undefined : true}>
       <ul className="month-grid__days">
-        {days.map((day, index) => {
+        {dayCells.map(({ day, row, col }) => {
           const dayNumber = Number(day.slice(-2));
           const isSelected = day === selectedDay;
           const isOutsideMonth = day.slice(0, 7) !== pageMonth;
           return (
-            <li key={day}>
+            <li key={day} style={{ gridRow: row, gridColumn: col + 1 } as CSSProperties}>
               <button
                 type="button"
                 className={
@@ -113,7 +198,7 @@ function MonthPage({
                 data-today={day === today ? '' : undefined}
                 data-outside-month={isOutsideMonth ? '' : undefined}
                 aria-pressed={isSelected}
-                aria-label={`${WEEKDAY_LABELS[index % 7]}, ${dayNumber}.`}
+                aria-label={`${WEEKDAY_LABELS[col]}, ${dayNumber}.`}
                 onClick={() => onSelect(day)}
               >
                 <span aria-hidden="true">{dayNumber}</span>
@@ -130,6 +215,27 @@ function MonthPage({
             </li>
           );
         })}
+        {bandCells.map(({ band, row }) => (
+          // A cross-week event yields one band per week row under the *same*
+          // `band.id` (AK7), all rendered into this one list — so the row makes
+          // the key unique across weeks; within a week `id` is already unique.
+          <li
+            key={`${band.id}-${row}`}
+            className="month-grid__band"
+            aria-hidden="true"
+            data-continues-before={band.continuesBefore ? '' : undefined}
+            data-continues-after={band.continuesAfter ? '' : undefined}
+            style={
+              {
+                gridRow: row,
+                gridColumn: `${band.startCol + 1} / ${band.endCol + 2}`,
+                '--band-cat': categoryEdgeVar(band.category),
+              } as CSSProperties
+            }
+          >
+            <span className="month-grid__band-title">{band.title}</span>
+          </li>
+        ))}
       </ul>
     </div>
   );
@@ -164,6 +270,16 @@ export function MonthGrid({
 
   const prevMonth = useMemo(() => monthBefore(focusMonth), [focusMonth]);
   const nextMonth = useMemo(() => monthAfter(focusMonth), [focusMonth]);
+
+  /** All-day band rows the focused page needs (issue #1043, AK11) — drives
+   *  `.month-grid__track`'s CSS height (`--month-grid-band-rows`) in the same
+   *  render pass the layout effect below resets `scrollTop` in, so by the
+   *  time a swipe settles on a neighbour month the track's height already
+   *  matches it. */
+  const bandRowCount = useMemo(
+    () => totalBandRows(monthWeekLayout(focusMonth, events, exceptions)),
+    [focusMonth, events, exceptions],
+  );
 
   const handleSelect = useCallback(
     (day: string) => {
@@ -226,7 +342,11 @@ export function MonthGrid({
   }, [prevMonth, nextMonth, onFocusMonth]);
 
   return (
-    <div className="month-grid" data-focus-month={focusMonth}>
+    <div
+      className="month-grid"
+      data-focus-month={focusMonth}
+      style={{ '--month-grid-band-rows': bandRowCount } as CSSProperties}
+    >
       <ul className="month-grid__weekday-header" aria-hidden="true">
         {WEEKDAY_LABELS.map((label) => (
           <li key={label}>{label}</li>

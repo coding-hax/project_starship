@@ -148,7 +148,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `calendar-view.tsx` / `.css` — `/kalender`: Woche `<CalendarStrip/>` im Header, Monat `<MonthGrid/>` im Rumpf, dann
   `<EventAgenda/>`, FAB + `<EventDetail/>`/`<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, Vor/Zurück-Tag, „Heute", Punkte/Tag
-- `month-grid.tsx` / `.css` — Monats-Karte: 7×6-Raster, ≤3 Punkte/Tag, 44px-Trefferfläche per Pseudo-Element, Monatsnav
+- `month-grid.tsx` / `.css` — Monatskarte 7×6, ≤3 Punkte/Tag, 44px-Treffer per ::before, darunter ≤2 Ganztägig-Bänder
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste: Terminkarten
   (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
   `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
