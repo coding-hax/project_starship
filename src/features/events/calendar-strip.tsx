@@ -364,7 +364,11 @@ export function CalendarStrip({
       {/* Only rendered with at least one band (AK12) — an empty row would
           hold height the card doesn't need in the sparse default state.
           `aria-hidden`, same as the day cells' own `__dots` row: decorative,
-          the agenda below already names every event on the day in full. */}
+          the agenda below already names every event on the day in full.
+          Both grid axes come from the band itself (issue #1061): the row is
+          packed first-fit in `allDayBandsForWindow`, not left to Grid's own
+          sparse auto-placement, which never backtracks into a row an earlier
+          band left partly free. */}
       {allDayBands.length > 0 && (
         <ul className="calendar-strip__bands" aria-hidden="true">
           {allDayBands.map((band) => (
@@ -375,6 +379,7 @@ export function CalendarStrip({
               data-continues-after={band.continuesAfter ? '' : undefined}
               style={
                 {
+                  gridRow: band.row + 1,
                   gridColumn: `${band.startCol + 1} / ${band.endCol + 2}`,
                   '--band-cat': categoryEdgeVar(band.category),
                 } as CSSProperties
