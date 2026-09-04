@@ -100,6 +100,10 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     context,
   }) => {
     await registerPasskey(page, '/einstellungen');
+    // Barrier, not a drain: it round-trips through window.__starship, which proves the page
+    // is hydrated. The throwaway /uebersicht load registerPasskey no longer does (#1075) used
+    // to provide that head start, and going offline before hydration leaves the form unbuilt.
+    await settleJournalHabitBoot(page);
     await context.setOffline(true);
 
     await expect(page.getByRole('button', { name: 'App sperren' })).toBeDisabled();

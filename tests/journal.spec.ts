@@ -1221,6 +1221,10 @@ test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen ni
   context,
 }) => {
   await registerPasskey(page, '/journal');
+  // Drains the boot-time Journal-habit mutation while still online. It used to ride out on
+  // the throwaway /uebersicht load registerPasskey no longer does (#1075); left queued it
+  // inflates the outbox count below and lets the test go offline before the page is live.
+  await settleJournalHabitBoot(page);
   // Offline-Pfad (AC3): Einrichten und alle drei Einträge entstehen ohne Netz.
   await context.setOffline(true);
 

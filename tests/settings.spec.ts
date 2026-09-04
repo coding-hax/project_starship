@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, withDb } from './helpers';
+import { registerPasskey, resetAppData, settleJournalHabitBoot, withDb } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -396,6 +396,10 @@ test.describe('Kategoriefarben (issue #660)', () => {
 
   test('AK9: offline gewählte Kategoriefarbe erreicht online die Datenbank', async ({ page, context }) => {
     await registerPasskey(page, '/einstellungen');
+    // Drains the boot-time Journal-habit mutation while still online. It used to ride out on
+    // the throwaway /uebersicht load registerPasskey no longer does (#1075); left queued it
+    // inflates the outbox count below and lets the test go offline before the page is live.
+    await settleJournalHabitBoot(page);
     await context.setOffline(true);
 
     await categoryRowToggle(page, 'Familie').click();

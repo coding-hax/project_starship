@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import {
+  FIXED_NOW,
+  installClockAt,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  withDb,
+} from './helpers';
 
 /**
  * Issue #372: wires up the recovery kit from #343 — both KEK wraps at setup,
@@ -194,6 +201,10 @@ test('Offline (DoD): Ersteinrichtung offline schreibt lokal, sync bringt beide H
   context,
 }) => {
   await registerPasskey(page, '/journal');
+  // Drains the boot-time Journal-habit mutation while still online. It used to ride out on
+  // the throwaway /uebersicht load registerPasskey no longer does (#1075); left queued it
+  // inflates the outbox count below and lets the test go offline before the page is live.
+  await settleJournalHabitBoot(page);
   await context.setOffline(true);
 
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
