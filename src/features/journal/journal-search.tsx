@@ -13,7 +13,6 @@ import {
   useJournalSearchState,
 } from './journal-search-state';
 import { useJournalSearchMode } from './journal-view-mode';
-import { useJournalSearchEntries } from './use-journal-search-entries';
 
 /** Day + long month, no year — the year is the group heading's job (AK4), not
  * a repeated per-row detail (issue #1051 AK5). */
@@ -77,9 +76,13 @@ function groupByYear(entries: JournalSearchEntry[]): YearGroup[] {
  *
  * Seit issue #700 (AK5/AK6) ist das Suchfeld nicht mehr dauerhaft sichtbar: es
  * erscheint erst, wenn die Lupe den Suchmodus öffnet (`useJournalSearchMode`),
- * und „Abbrechen" verlässt ihn wieder. Der Cache-Hook läuft dennoch bei jedem
- * Render (vor dem frühen `return null`), damit das Öffnen ohne Ladepause
- * Treffer zeigt.
+ * und „Abbrechen" verlässt ihn wieder.
+ *
+ * Seit issue #847 (AK1/AK2) läuft die Suche, solange der Suchmodus offen ist,
+ * immer mit `showAllWhenEmpty: true` — ein leeres Feld zeigt darum sofort alle
+ * Einträge, statt auf Enter oder das offene Filter-Menü zu warten (der frühere
+ * `showAll`-State und der Enter-Sonderweg aus issue #456 sind damit
+ * überflüssig geworden).
  *
  * Seit issue #1051 lebt die eigentliche Such-/Filterleiste nicht mehr hier:
  * die Pille sitzt in der Augenbrauenzeile (journal-search-bar.tsx), die drei
@@ -87,10 +90,22 @@ function groupByYear(entries: JournalSearchEntry[]): YearGroup[] {
  * denselben Modul-Store (journal-search-state.ts). Diese Komponente zeigt nur
  * noch das gerade offene Filter-Panel (höchstens eins, AK2) sowie die nach
  * Jahr gruppierten Treffer (AK4/AK5).
+ *
+ * `entries` kommt seit issue #1049 (AK6) als Prop von `journal-editor.tsx`
+ * hinein statt aus einem eigenen `useJournalSearchEntries()`-Aufruf hier: der
+ * Hook läuft dort einmal, unabhängig vom Suchmodus (damit das Öffnen ohne
+ * Ladepause Treffer zeigt), und dieselben Einträge speist „An diesem Tag" —
+ * ein zweiter Hook-Aufruf hier würde den Sitzungs-Cache ein zweites Mal
+ * entschlüsseln.
  */
-export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => void }) {
+export function JournalSearch({
+  entries,
+  onSelect,
+}: {
+  entries: JournalSearchEntry[] | undefined;
+  onSelect: (entryDate: string) => void;
+}) {
   const { active, close } = useJournalSearchMode();
-  const entries = useJournalSearchEntries();
   const { query, mood, tag, from, to, openChip } = useJournalSearchState();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -142,8 +157,8 @@ export function JournalSearch({ onSelect }: { onSelect: (entryDate: string) => v
     onSelect(entryDate);
   }
 
-  // Alle Hooks laufen oben (auch der Cache-Hook, damit er warm bleibt) — erst
-  // danach entscheidet der Suchmodus, ob überhaupt etwas gerendert wird (AK5).
+  // Alle Hooks laufen oben — erst danach entscheidet der Suchmodus, ob
+  // überhaupt etwas gerendert wird (AK5).
   if (!active) return null;
 
   return (
