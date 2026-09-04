@@ -111,7 +111,10 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
 - `journal-editor.tsx` / `.css` — Eintragsstrom+FAB
-- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
+- `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, offenes Filter-Panel + nach Jahr gruppierte Treffer (nur im Suchmodus)
+- `journal-search-state.ts` — Modul-Store für Suchtext/Filter/offenen Chip, geteilt zwischen Pille, Chips und Treffern (issue #1051)
+- `journal-search-bar.tsx` / `journal-search-chips.tsx` — Such-Pille (Augenbraue) + Stimmung/Tag/Zeitraum-Chips (`extra`-Slot), beide im Suchmodus
+- `journal-page-head.tsx` — Client-Wrapper um `PageHead` fürs Journal, entscheidet Augenbraue/Zusatz je Suchmodus
 - `journal-view-mode.ts` / `journal-search-toggle.tsx` — Suchmodus-Store + Lupe in der Titelzeile
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
