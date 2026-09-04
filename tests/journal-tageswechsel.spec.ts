@@ -306,7 +306,10 @@ test('AK7: ein auf einem älteren Tag angelegter Eintrag landet auf diesem Tag, 
   await expect(eyebrowDate(page)).toHaveText(TODAY_LABEL);
   await expect(page.locator('.journal-day-card--empty')).toBeVisible();
 
-  expect(await entryCountInDb(YESTERDAY_KEY)).toBe(1);
+  // Server-Sync ist sonst passiv (alle 30s) — explizit anstoßen, statt auf das
+  // Intervall zu warten (Muster wie jede andere withDb()-Prüfung in journal.spec.ts).
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => entryCountInDb(YESTERDAY_KEY)).toBe(1);
   expect(await entryCountInDb(TODAY_KEY)).toBe(0);
 });
 
