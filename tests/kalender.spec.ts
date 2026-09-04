@@ -173,13 +173,15 @@ function leadWeek(page: Page) {
 async function pageMonth(page: Page, dir: 1 | -1): Promise<void> {
   const before = await monthGrid(page).getAttribute('data-focus-month');
   const [year, month] = (before ?? '').split('-').map(Number);
-  const middleOfTarget = new Date(Date.UTC(year, month - 1 + dir, 15)).toISOString().slice(0, 10);
-  // Drei Zeilen ueber der Zielwoche: month-grid.tsx liest den Fokusmonat an
-  // `leadIndex + VISIBLE_WEEKS / 2` ab, also der vierten sichtbaren Zeile.
-  await scrollMonthGridTo(page, addDays(weekDaysFor(middleOfTarget)[0], -21));
+  const firstOfTarget = new Date(Date.UTC(year, month - 1 + dir, 1)).toISOString().slice(0, 10);
+  // Die Woche mit dem Monatsersten nach oben — derselbe Ausschnitt, den die
+  // alte Monatsseite zeigte (sechs Wochen ab dem Monatsanfang, inklusive der
+  // gedaempften Randtage des Folgemonats), und die Mitte davon liegt immer im
+  // Zielmonat, woran month-grid.tsx den Fokusmonat ablieszt.
+  await scrollMonthGridTo(page, weekDaysFor(firstOfTarget)[0]);
   await expect
     .poll(() => monthGrid(page).getAttribute('data-focus-month'))
-    .toBe(middleOfTarget.slice(0, 7));
+    .toBe(firstOfTarget.slice(0, 7));
 }
 
 /**
@@ -4612,6 +4614,9 @@ test('AK8: ein Tipp auf einen Tag waehlt ihn, ohne die Spur zu verschieben (issu
   await page.getByRole('radio', { name: 'Monat' }).click();
   const rowPx = await weekRowPx(page);
   await scrollMonthGridBy(page, 2 * rowPx);
+  // Erst wenn der Scrollstand durchgeschlagen ist, taugt er als Vergleichswert:
+  // `data-lead-week` folgt dem Scroll ueber einen rAF, nicht synchron.
+  await expect.poll(() => leadWeek(page)).toBe(addDays(FIRST_WEEK, 14));
   const leadBefore = await leadWeek(page);
   const scrollBefore = await monthGridTrack(page).evaluate((el) => el.scrollTop);
 
