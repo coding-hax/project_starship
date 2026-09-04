@@ -235,7 +235,13 @@ function JournalDayCard({
           Löschen
         </button>
       </div>
-      {expanded && rest.length > 0 && (
+      {expanded && restRows.length > 0 && (
+        // `restRows.length`, not `rest.length`: a row mid-exit-animation is
+        // already gone from `rest` (the live-query-derived source), but must
+        // stay mounted in the DOM until `settlePresenceEntry` drops it after
+        // `onAnimationEnd` — gating on `rest` instead would unmount the last
+        // remaining row (and the whole panel with it) before its `list-exit`
+        // animation ever gets to play.
         <ul id="journal-day-card-more" className="journal-editor__entries">
           {restRows.map((row) => (
             <JournalEntryRow
