@@ -16,6 +16,14 @@ export function todayKey(): string {
   return new Date().toLocaleDateString('en-CA');
 }
 
+/** `dateKey` shifted by `delta` local calendar days — same local basis as
+ * `todayKey` (device-local, not UTC). Shared by the day-switcher (issue #1050)
+ * and its eyebrow chevrons. */
+export function shiftDayKey(dateKey: string, delta: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year, month - 1, day + delta).toLocaleDateString('en-CA');
+}
+
 /** Milliseconds until the next device-local midnight — the exact point at
  * which the editor's visible "today" (issue #374 AC2) needs to roll onto the
  * new day, same local basis as `todayKey`. Scheduling a single timeout for
