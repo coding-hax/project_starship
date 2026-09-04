@@ -154,7 +154,7 @@ test('AK2: an der Pillen-Unterkante liegt keine Kante — in Hell und Dunkel', a
     // unten beschnitten auf das, was der Viewport hergibt.
     const viewport = page.viewportSize()!;
     const yFrom = Math.max(0, Math.round(box.y + box.height) - 8);
-    const yTo = Math.min(viewport.height, Math.round(box.y + box.height) + 8);
+    const yTo = Math.min(viewport.height, Math.round(box.y + box.height) + 12);
     const column = await columnPixels(page, 4, yFrom, yTo - yFrom);
 
     let worst = 0;
