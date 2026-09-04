@@ -137,6 +137,12 @@ export interface AllDayBand {
    *  which compare against a single day. */
   continuesBefore: boolean;
   continuesAfter: boolean;
+  /** 0-based row the band sits in, assigned here rather than left to CSS
+   *  Grid's auto-placement (issue #1061): that placement is "sparse" and
+   *  never backtracks, so a single band spanning the whole window pushed
+   *  every later band onto a fresh row — even one whose columns an earlier
+   *  row still had free. */
+  row: number;
 }
 
 /**
@@ -148,19 +154,29 @@ export interface AllDayBand {
  * `allDayEventsForDay` per visible day, so a band always agrees with that
  * day's dots/agenda by construction rather than a second, parallel rule.
  *
- * Stably sorted (`startCol`, then `startDate`, then `title`) and capped at
- * `maxBands` (default 3, AK11 for the week strip; the month-grid card passes
- * 2 per week row, issue #1043) — the agenda below already lists every event
- * on a day in full, so a dropped band loses nothing the user can't see there.
+ * Stably sorted (`startCol`, then `startDate`, then `title`), then packed
+ * into rows first-fit (issue #1061): every band takes the lowest row no
+ * already-placed band shares a column with. In `startCol` order that is
+ * plain interval-graph colouring — a row is free from `startCol` on exactly
+ * when its last band ended before it, so one `endCol` per row is the entire
+ * bookkeeping.
+ *
+ * Capped at `maxRows` (default 3 for the week strip; the month-grid card
+ * passes 2 per week row, issue #1043). Rows are what cost card height, so
+ * rows are what the cap counts (issue #1061 — it counted bands before, which
+ * dropped a band even where a row still had room for it): a band that only
+ * finds space in row `maxRows` or beyond falls away, one that fits beside an
+ * earlier band never does. The agenda below already lists every event on a
+ * day in full, so a dropped band loses nothing the user can't see there.
  */
 export function allDayBandsForWindow<T extends TimelineSource>(
   visibleDays: string[],
   occurrencesForDay: (day: string) => T[],
-  maxBands: number = 3,
+  maxRows: number = 3,
 ): AllDayBand[] {
   const windowStart = visibleDays[0];
   const windowEnd = visibleDays[visibleDays.length - 1];
-  const bands = new Map<string, AllDayBand & { startDate: string }>();
+  const bands = new Map<string, Omit<AllDayBand, 'row'> & { startDate: string }>();
 
   visibleDays.forEach((day, col) => {
     for (const item of allDayEventsForDay(occurrencesForDay(day), day)) {
@@ -183,15 +199,26 @@ export function allDayBandsForWindow<T extends TimelineSource>(
     }
   });
 
-  return [...bands.values()]
-    .sort(
-      (a, b) =>
-        a.startCol - b.startCol ||
-        a.startDate.localeCompare(b.startDate) ||
-        a.title.localeCompare(b.title),
-    )
-    .slice(0, maxBands)
-    .map((band) => ({
+  const sorted = [...bands.values()].sort(
+    (a, b) =>
+      a.startCol - b.startCol ||
+      a.startDate.localeCompare(b.startDate) ||
+      a.title.localeCompare(b.title),
+  );
+
+  /** Last column each row is occupied up to — `rowEnds[r]` is the `endCol` of
+   *  the rightmost band already in row `r`. Because `sorted` runs in
+   *  `startCol` order, a row is free for the next band exactly when that
+   *  number is smaller than the band's own `startCol`. */
+  const rowEnds: number[] = [];
+  const placed: AllDayBand[] = [];
+
+  for (const band of sorted) {
+    let row = rowEnds.findIndex((end) => end < band.startCol);
+    if (row === -1) row = rowEnds.length;
+    if (row >= maxRows) continue;
+    rowEnds[row] = band.endCol;
+    placed.push({
       id: band.id,
       title: band.title,
       category: band.category,
@@ -199,7 +226,11 @@ export function allDayBandsForWindow<T extends TimelineSource>(
       endCol: band.endCol,
       continuesBefore: band.continuesBefore,
       continuesAfter: band.continuesAfter,
-    }));
+      row,
+    });
+  }
+
+  return placed;
 }
 
 /** A category's colour token (var() reference) — the single place this category

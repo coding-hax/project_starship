@@ -301,6 +301,12 @@ async function bandGridColumn(band: Locator): Promise<string> {
   });
 }
 
+/** Die 1-basierte Grid-Zeile eines Bandes (issue #1061) — dieselbe
+ *  Longhand-Lesart wie `bandGridColumn` daneben. */
+async function bandGridRow(band: Locator): Promise<number> {
+  return band.evaluate((el) => Number(getComputedStyle(el).gridRowStart));
+}
+
 /**
  * Taps a day button in the strip if it's currently in the interactive band
  * (`dayButton`'s `:not([inert])` scope reports it as not visible otherwise,
@@ -1740,27 +1746,36 @@ test('AK10: das Band rollt mit dem Streifen — nach einem Wisch um drei Tage de
   expect(await bandGridColumn(band)).toBe('1/4');
 });
 
-test('AK11: liegen mehr als drei Ganztaegige im sichtbaren Fenster, werden hoechstens drei Baender gezeigt (issue #1013)', async ({
+// Der Deckel zaehlt seit issue #1061 Zeilen statt Baender — die Kartenhoehe
+// war immer seine Begruendung, und Baender nebeneinander kosten keine. Der
+// Fall bleibt derselbe wie in #1013 AK11, nur decken die vier Termine jetzt
+// denselben Tag ab, statt vier verschiedene (die teilen sich seit #1061 eine
+// Zeile, siehe den Nachbartest unten).
+test('AK11: liegen mehr als drei Ganztaegige uebereinander, werden hoechstens drei Bandzeilen gezeigt (issue #1013, Deckel seit #1061 zeilenweise)', async ({
   page,
 }) => {
   const days = await visibleDayKeys(page);
-  for (const [index, title] of ['Eins', 'Zwei', 'Drei', 'Vier'].entries()) {
+  for (const title of ['A-Erstes', 'B-Zweites', 'C-Drittes', 'D-Viertes']) {
     await seedEvent(page, {
       title,
       allDay: true,
       startsAt: null,
       endsAt: null,
-      startDate: days[index],
-      endDate: days[index],
+      startDate: days[2],
+      endDate: days[3],
       category: null,
     });
   }
 
   await expect(page.locator('.calendar-strip__band')).toHaveCount(3);
-  await expect(stripBand(page, 'Eins')).toBeVisible();
-  await expect(stripBand(page, 'Zwei')).toBeVisible();
-  await expect(stripBand(page, 'Drei')).toBeVisible();
-  await expect(stripBand(page, 'Vier')).toHaveCount(0);
+  await expect(stripBand(page, 'A-Erstes')).toBeVisible();
+  await expect(stripBand(page, 'B-Zweites')).toBeVisible();
+  await expect(stripBand(page, 'C-Drittes')).toBeVisible();
+  await expect(stripBand(page, 'D-Viertes')).toHaveCount(0);
+
+  expect(await bandGridRow(stripBand(page, 'A-Erstes'))).toBe(1);
+  expect(await bandGridRow(stripBand(page, 'B-Zweites'))).toBe(2);
+  expect(await bandGridRow(stripBand(page, 'C-Drittes'))).toBe(3);
 });
 
 test('AK12: liegt kein Ganztaegiger im sichtbaren Fenster, gibt es keine Bandzeile — die Karte ist entsprechend niedriger (issue #1013)', async ({
@@ -1835,6 +1850,77 @@ test('AK15: Dark Mode und prefers-reduced-motion gemeinsam — Karte, Pille und 
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1061: Ganztaegig-Baender packen sich in Zeilen                       */
+/* -------------------------------------------------------------------------- */
+
+test('AK3: ein eintaegiges Band ruckt neben ein kurzes Band derselben Woche, statt unter das Band ueber die ganze Woche (issue #1061)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  await seedEvent(page, {
+    title: 'Fahrradtour',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[1],
+    endDate: days[2],
+    category: 'sport',
+  });
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[1],
+    endDate: days[6],
+    category: 'privat',
+  });
+  await seedEvent(page, {
+    title: 'Nibirii',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: days[5],
+    endDate: days[5],
+    category: 'familie',
+  });
+
+  await expect(page.locator('.calendar-strip__band')).toHaveCount(3);
+
+  // Zwei Zeilen, nicht drei: das eintaegige Band teilt die Zeile mit dem
+  // kurzen, dessen Spalten Fr-So frei lassen.
+  expect(await bandGridRow(stripBand(page, 'Fahrradtour'))).toBe(1);
+  expect(await bandGridRow(stripBand(page, 'Urlaub'))).toBe(2);
+  expect(await bandGridRow(stripBand(page, 'Nibirii'))).toBe(1);
+
+  const kurzBox = (await stripBand(page, 'Fahrradtour').boundingBox())!;
+  const einzelBox = (await stripBand(page, 'Nibirii').boundingBox())!;
+  expect(Math.round(einzelBox.y)).toBe(Math.round(kurzBox.y));
+});
+
+test('AK4: vier ganztaegige Termine ohne gemeinsamen Tag teilen sich eine Bandzeile — keiner entfaellt (issue #1061)', async ({
+  page,
+}) => {
+  const days = await visibleDayKeys(page);
+  for (const [index, title] of ['Eins', 'Zwei', 'Drei', 'Vier'].entries()) {
+    await seedEvent(page, {
+      title,
+      allDay: true,
+      startsAt: null,
+      endsAt: null,
+      startDate: days[index],
+      endDate: days[index],
+      category: null,
+    });
+  }
+
+  await expect(page.locator('.calendar-strip__band')).toHaveCount(4);
+  for (const title of ['Eins', 'Zwei', 'Drei', 'Vier']) {
+    expect(await bandGridRow(stripBand(page, title))).toBe(1);
+  }
 });
 
 /* -------------------------------------------------------------------------- */

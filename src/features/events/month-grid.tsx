@@ -21,10 +21,11 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
  *  default), the card's cells are narrower (issue #958, AK3). */
 const MAX_DOTS_IN_GRID = 3;
 
-/** Band cap per week row — tighter than the week strip's 3 (issue #1043,
+/** Band-row cap per week row — tighter than the week strip's 3 (issue #1043,
  *  AK8): a week row shares its width with six others stacked in the same
- *  card, so two is what stays legible. */
-const MAX_BANDS_IN_GRID = 2;
+ *  card, so two is what stays legible. Counts rows, not bands (issue #1061):
+ *  bands that share a row cost the card no height. */
+const MAX_BAND_ROWS_IN_GRID = 2;
 
 /** No further `scroll` events for this long counts as "settled" — the same
  *  hand-rolled `scrollend` fallback `calendar-strip.tsx` carries (issue #822:
@@ -58,17 +59,19 @@ function gridDaysFor(focusMonth: string): string[] {
 interface MonthWeekLayout {
   weekDays: string[];
   bands: AllDayBand[];
-  /** 0 with no all-day event that week (AK9, no reserved empty row); 2 only
-   *  when two bands genuinely overlap in column range, else 1 (AK8: two
-   *  bands sharing no day share a single row). */
-  bandRows: 0 | 1 | 2;
+  /** How many band rows this week needs: 0 with no all-day event (AK9, no
+   *  reserved empty row), otherwise the highest row `allDayBandsForWindow`
+   *  packed a band into, plus one — capped at `MAX_BAND_ROWS_IN_GRID`. Bands
+   *  sharing no day share a row and cost nothing extra (AK8). */
+  bandRows: number;
 }
 
 /**
  * Every calendar week of a rendered page (six Mon–Sun rows, `gridDaysFor`'s
- * 42-cell padding), paired with the all-day bands due under it — at most
- * `MAX_BANDS_IN_GRID`, sorted/capped the same way `allDayBandsForWindow`
- * caps the week strip's own bands. Shared between `MonthPage`'s rendering
+ * 42-cell padding), paired with the all-day bands due under it — packed into
+ * at most `MAX_BAND_ROWS_IN_GRID` rows, sorted/capped the same way
+ * `allDayBandsForWindow` caps the week strip's own bands. Shared between
+ * `MonthPage`'s rendering
  * and `MonthGrid`'s track-height calculation (issue #1043) so both agree on
  * the same row count by construction, the same reasoning `dotsByDay`
  * elsewhere in this file already follows for dots.
@@ -87,10 +90,13 @@ function monthWeekLayout(
     const bands = allDayBandsForWindow(
       weekDays,
       (day) => expandForDay(events, exceptions, day),
-      MAX_BANDS_IN_GRID,
+      MAX_BAND_ROWS_IN_GRID,
     );
-    const overlaps = bands.length > 1 && bands[0].endCol >= bands[1].startCol;
-    const bandRows: MonthWeekLayout['bandRows'] = bands.length === 0 ? 0 : overlaps ? 2 : 1;
+    // The row each band sits in comes from `allDayBandsForWindow` itself
+    // (issue #1061) — this used to be an ad-hoc `bands[0].endCol >=
+    // bands[1].startCol` comparison here, which only ever held for exactly
+    // two bands.
+    const bandRows = bands.reduce((rows, band) => Math.max(rows, band.row + 1), 0);
     return { weekDays, bands, bandRows };
   });
 }
@@ -165,17 +171,15 @@ function MonthPage({
     return cells;
   }, [weekLayout]);
 
-  /** Band cells, placed one row under their own week's day row — two rows
-   *  only when that week's (at most `MAX_BANDS_IN_GRID`) bands genuinely
-   *  overlap in column range (AK8). */
+  /** Band cells, placed under their own week's day row — a second row only
+   *  where that week's bands genuinely overlap in column range (AK8), which
+   *  `band.row` already answers (issue #1061). */
   const bandCells = useMemo(() => {
     const cells: { band: AllDayBand; row: number }[] = [];
     let row = 1;
     for (const week of weekLayout) {
       row += 1;
-      week.bands.forEach((band, index) => {
-        cells.push({ band, row: week.bandRows === 2 && index === 1 ? row + 1 : row });
-      });
+      week.bands.forEach((band) => cells.push({ band, row: row + band.row }));
       row += week.bandRows;
     }
     return cells;

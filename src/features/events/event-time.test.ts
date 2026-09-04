@@ -678,7 +678,59 @@ describe('allDayBandsForWindow', () => {
     expect(bands[0]).toMatchObject({ id: 'evt-1', title: 'Ausflug', startCol: 1, endCol: 3 });
   });
 
-  it('caps at 3 bands when more than 3 all-day events lie in the window', () => {
+  it('caps at 3 rows when more than 3 all-day events cover the same day', () => {
+    const events = ['a', 'b', 'c', 'd'].map((suffix) =>
+      event({
+        id: `evt-${suffix}`,
+        allDay: true,
+        startDate: VISIBLE_DAYS[2],
+        endDate: VISIBLE_DAYS[3],
+      }),
+    );
+
+    const bands = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events));
+
+    expect(bands).toHaveLength(3);
+    expect(bands.map((band) => band.row)).toEqual([0, 1, 2]);
+  });
+
+  it('caps at a custom maxRows when provided (the month-grid card passes 2, issue #1043)', () => {
+    const events = ['a', 'b', 'c'].map((suffix) =>
+      event({
+        id: `evt-${suffix}`,
+        allDay: true,
+        startDate: VISIBLE_DAYS[1],
+        endDate: VISIBLE_DAYS[4],
+      }),
+    );
+
+    const bands = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events), 2);
+
+    expect(bands).toHaveLength(2);
+    expect(bands.map((band) => band.row)).toEqual([0, 1]);
+  });
+
+  it('packs a band into the first row whose columns it does not share (issue #1061)', () => {
+    // Genau der gemeldete Fall: ein kurzes Band, ein Band ueber die ganze
+    // Woche, ein eintaegiges danach — das eintaegige gehoert neben das kurze,
+    // nicht in eine dritte Zeile.
+    const bands = allDayBandsForWindow(
+      VISIBLE_DAYS,
+      occurrencesFor([
+        event({ id: 'kurz', allDay: true, startDate: VISIBLE_DAYS[1], endDate: VISIBLE_DAYS[2], title: 'Fahrradtour' }),
+        event({ id: 'lang', allDay: true, startDate: VISIBLE_DAYS[1], endDate: VISIBLE_DAYS[6], title: 'Urlaub' }),
+        event({ id: 'kurz-2', allDay: true, startDate: VISIBLE_DAYS[5], endDate: VISIBLE_DAYS[5], title: 'Nibirii' }),
+      ]),
+    );
+
+    expect(bands.map((band) => [band.title, band.row])).toEqual([
+      ['Fahrradtour', 0],
+      ['Urlaub', 1],
+      ['Nibirii', 0],
+    ]);
+  });
+
+  it('keeps every band that fits beside an earlier one, however many there are (issue #1061)', () => {
     const events = ['a', 'b', 'c', 'd'].map((suffix, index) =>
       event({
         id: `evt-${suffix}`,
@@ -688,20 +740,10 @@ describe('allDayBandsForWindow', () => {
       }),
     );
 
-    expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events))).toHaveLength(3);
-  });
+    const bands = allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events));
 
-  it('caps at a custom maxBands when provided (the month-grid card passes 2, issue #1043)', () => {
-    const events = ['a', 'b', 'c'].map((suffix, index) =>
-      event({
-        id: `evt-${suffix}`,
-        allDay: true,
-        startDate: VISIBLE_DAYS[index],
-        endDate: VISIBLE_DAYS[index],
-      }),
-    );
-
-    expect(allDayBandsForWindow(VISIBLE_DAYS, occurrencesFor(events), 2)).toHaveLength(2);
+    expect(bands).toHaveLength(4);
+    expect(bands.every((band) => band.row === 0)).toBe(true);
   });
 
   it('returns an empty list for an empty window', () => {
