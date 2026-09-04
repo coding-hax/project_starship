@@ -17,7 +17,9 @@ import { useJournalDayNav } from './journal-current-day';
 import { JournalSearch } from './journal-search';
 import { useJournalSearchMode } from './journal-view-mode';
 import { useJournalLock } from './lock-store';
+import { formatYearCount, formatYearsAgo, sameDayEntries } from './same-day';
 import { useJournalEntries } from './use-journal-entries';
+import { useJournalSearchEntries } from './use-journal-search-entries';
 import { useOrphanedKey } from './use-orphaned-key';
 import type { JournalSearchEntry } from './search';
 
@@ -79,6 +81,11 @@ export function JournalEditor() {
   // Der Suchmodus lebt seit issue #700 (AK5) im Modul-Store, geöffnet von der
   // Lupe in der Titelzeile — nicht mehr als lokaler State hier.
   const { active: searchActive } = useJournalSearchMode();
+  // Ein Hook-Aufruf für beide Verbraucher (issue #1049 AK6): die Suche
+  // (journal-search.tsx) und „An diesem Tag" lesen denselben Sitzungs-Cache
+  // statt je einen eigenen liveQuery/Entschlüsselungslauf zu starten. Läuft
+  // unabhängig vom Suchmodus, damit dessen Öffnen ohne Ladepause Treffer zeigt.
+  const searchEntries = useJournalSearchEntries();
   // Derselbe Modul-Store wie die Chevrons in der Augenbrauenzeile
   // (journal-day-nav.tsx, issue #1050) — `date` ist so mit denen immer
   // synchron, ohne Prop-Drilling durch page.tsx hindurch.
@@ -98,12 +105,12 @@ export function JournalEditor() {
 
   return (
     <>
-      <JournalSearch onSelect={handleSearchSelect} />
+      <JournalSearch entries={searchEntries} onSelect={handleSearchSelect} />
       <div className="journal-editor">
         {!searchActive && (
           <>
             <JournalOrphanedKeyCard />
-            <JournalDayPager onOpenSheet={() => setSheetOpen(true)} onDelete={handleDelete} />
+            <JournalDayPager entries={searchEntries} onOpenSheet={() => setSheetOpen(true)} onDelete={handleDelete} />
           </>
         )}
       </div>
@@ -209,13 +216,16 @@ function JournalOrphanedKeyCard() {
  * for free — nothing here needs to special-case it (AK3).
  */
 function JournalDayPager({
+  entries,
   onOpenSheet,
   onDelete,
 }: {
+  entries: JournalSearchEntry[] | undefined;
   onOpenSheet: () => void;
   onDelete: (id: string) => void;
 }) {
   const { date, nextDate, previousDate, goTo } = useJournalDayNav();
+  const currentDate = date ?? todayKey();
   const [startX, setStartX] = useState<number | null>(null);
   const [startY, setStartY] = useState<number | null>(null);
   const [dragX, setDragX] = useState(0);
@@ -318,7 +328,8 @@ function JournalDayPager({
         style={dragX ? { transform: `translateX(${dragX}px)` } : undefined}
         onTransitionEnd={() => setBouncing(false)}
       >
-        <JournalDayCard date={date ?? todayKey()} onOpenSheet={onOpenSheet} onDelete={onDelete} />
+        <JournalDayCard date={currentDate} onOpenSheet={onOpenSheet} onDelete={onDelete} />
+        <JournalSameDay date={currentDate} entries={entries} />
       </div>
     </div>
   );
@@ -432,6 +443,50 @@ function JournalDayCard({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * „An diesem Tag" (issue #1049, Teil von #1046): jeder andere Jahrgang mit
+ * einem Eintrag am selben Monat+Tag, unter der Zeile des Tages. Ganz weg,
+ * solange kein anderes Jahr etwas beiträgt (AK5) — kein leerer Rahmen. Liest
+ * denselben Sitzungs-Cache wie die Suche (`searchEntries`, hochgezogen in
+ * `JournalEditor`, AK6), startet also keinen eigenen Entschlüsselungslauf.
+ * `date` ist seit #1050 der gezeigte Tag, nicht mehr fest „heute" — dieselbe
+ * Verallgemeinerung wie bei `JournalDayCard`.
+ */
+function JournalSameDay({ date, entries }: { date: string; entries: JournalSearchEntry[] | undefined }) {
+  const years = useMemo(() => (entries ? sameDayEntries(entries, date) : []), [entries, date]);
+
+  if (years.length === 0) return null;
+
+  return (
+    <section className="journal-same-day">
+      <div className="journal-same-day__heading">
+        <p className="journal-same-day__eyebrow">An diesem Tag</p>
+        <p className="journal-same-day__count">{formatYearCount(years.length)}</p>
+      </div>
+      <ul className="journal-same-day__list">
+        {years.map((year) => (
+          <li key={year.year} className="journal-same-day__row">
+            <div className="journal-same-day__row-header">
+              <span className="journal-same-day__year">{year.year}</span>
+              <span className="journal-same-day__distance">{formatYearsAgo(year.yearsAgo)}</span>
+              {year.entry.mood && (
+                <span
+                  className="journal-same-day__mood"
+                  style={{ '--mood': year.entry.mood } as CSSProperties}
+                  aria-label={`Stimmung ${year.entry.mood}/10`}
+                >
+                  {year.entry.mood}
+                </span>
+              )}
+            </div>
+            {year.entry.text && <p className="journal-same-day__line">{year.entry.text}</p>}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

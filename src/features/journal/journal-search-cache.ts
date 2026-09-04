@@ -3,6 +3,16 @@ import { decryptJournalRows } from './decrypt-journal-row';
 import { journalDek } from './lock-store';
 import type { JournalSearchEntry } from './search';
 
+let runCount = 0;
+
+/** Test-only tally of `loadSearchableJournalEntries` calls (issue #1049 AK6) —
+ * lets a Playwright spec assert that "An diesem Tag" reuses the existing
+ * session-cache hook instead of starting its own decrypt pass, without a
+ * feature toggle to compare a with/without build. Never read in production. */
+export function debugDecryptRunCount(): number {
+  return runCount;
+}
+
 /**
  * Decrypts every `journal_entries` row once into memory (AC2, owner decision "3a"
  * in #301) — the session cache the search reads from. The result only ever lives
@@ -14,6 +24,7 @@ import type { JournalSearchEntry } from './search';
 export async function loadSearchableJournalEntries(): Promise<JournalSearchEntry[]> {
   const dek = journalDek();
   if (!dek) return [];
+  runCount += 1;
 
   const rows = await db.records.where('table').equals('journal_entries').toArray();
   const visible = rows.filter((row) => row.deletedAt === null);

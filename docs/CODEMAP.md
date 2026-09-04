@@ -110,7 +110,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` — Zeile-des-Tages-Karte+FAB, `JournalDayPager` (Wisch/Pfeiltasten-Tageswechsel, #1050)
+- `journal-editor.tsx` / `.css` / `same-day.ts` — Zeile-des-Tages-Karte+FAB, „An diesem Tag"
+  (andere Jahrgänge am selben Monat+Tag, Abstand in Worten), `JournalDayPager` (Wisch/Pfeiltasten-Tageswechsel, #1050)
 - `journal-current-day.ts` — Modul-Store „welcher Tag ist gezeigt" (#1050), geteilt von Augenbraue und Editor
 - `journal-day-nav.tsx` — Chevrons+Datum in der Augenbrauenzeile (#1050), liest/schreibt `journal-current-day.ts`
 - `search.ts` / `journal-search-cache.ts` / `journal-search.tsx` / `.css` — In-Memory-Suche + `splitHighlight`, Cache, Suchfeld+Treffer (nur im Suchmodus)
@@ -253,6 +254,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
 - `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
 - `journal-tageswechsel.spec.ts` — Tageswechsel: Wisch, Chevrons, Pfeiltasten, Grenzen, offline (#1050)
+- `journal-jahre.spec.ts` — „An diesem Tag": Jahrgänge, Schalttag, Zeitzone, Cache-Zähler
 - `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen
 - `journal-key-race.spec.ts` — Erst-Setup-Race auf zwei Geräten: Stash des verdrängten Envelopes, Bergung der Alt-Einträge (AK1–AK7)
@@ -310,15 +312,14 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 - Jede API-Route prüft `requireOwner()`. Es gibt keinen zweiten Pfad in die Daten.
 - Jede synchronisierte Tabelle spreizt `syncColumns` aus `src/db/schema.ts`.
 - Löschen ist **immer** ein Tombstone (`deleted_at`), nie ein `DELETE`.
-- Der App-Router fokussiert nach einer Navigation automatisch das erste Element
-  des Segments — `page-transition.tsx` liegt deshalb bewusst über dem
-  Router-Segment (nicht in `template.tsx`), und Seiten mit eigener Kopfzeile
-  (z. B. `wetter/[datum]/page.tsx`) tragen ihre Kopfzeile bewusst als `<header>`,
-  weil sie so dieses erste fokussierte Element wird.
+- Der App-Router fokussiert je Navigation automatisch das erste Segment-Element
+  — `page-transition.tsx` liegt deshalb über dem Router-Segment (nicht
+  `template.tsx`); Seiten mit eigener Kopfzeile (`wetter/[datum]/page.tsx`)
+  nutzen dafür `<header>`.
 
 ## Bauen
 
-`pnpm build` und `pnpm dev` laufen mit `--webpack`, **nicht** mit Turbopack.
-Serwist ist ein Webpack-Plugin, Next 16 nimmt Turbopack als Standard, und die
-Kombination bricht den Build (serwist#54). Nimmt man das Flag weg, verschwindet der
-Service Worker und mit ihm die Installierbarkeit — ohne dass irgendetwas rot wird.
+`pnpm build`/`pnpm dev` laufen mit `--webpack`, **nicht** Turbopack (Next 16s
+Standard): Serwist ist ein Webpack-Plugin, die Kombination bricht sonst den
+Build (serwist#54). Ohne das Flag verschwindet der Service Worker lautlos, ohne
+roten Fehler.
