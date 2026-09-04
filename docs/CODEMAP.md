@@ -128,8 +128,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
 - `habit-tiles.tsx` / `.css` — vier Kennzahl-Kacheln auf /routinen
 - `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
-- `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen (Stufenkurve, feste Skala)
-- `legend-order.ts` — sortiert die Legende der Verlaufskarte platzsparend: absteigende Namenslänge, Gleichstand nach `compareHabits`
+- `habit-history-card.tsx` / `.css` / `step-path.ts` / `legend-order.ts` — 30-Tage-Verlaufskarte (Stufenkurve), Legende platzsparend
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
