@@ -557,8 +557,6 @@ function JournalRecent({
  * kein anderes Jahr etwas beiträgt (AK5) — kein leerer Rahmen. Liest denselben
  * Sitzungs-Cache wie die Suche (`searchEntries`, hochgezogen in
  * `JournalEditor`, AK6), startet also keinen eigenen Entschlüsselungslauf.
- * `date` ist seit #1050 der gezeigte Tag, nicht mehr fest „heute" — dieselbe
- * Verallgemeinerung wie bei `JournalDayCard`.
  */
 function JournalSameDay({ entries, dayKey }: { entries: JournalSearchEntry[] | undefined; dayKey: string }) {
   const years = useMemo(() => (entries ? sameDayEntries(entries, dayKey) : []), [entries, dayKey]);
