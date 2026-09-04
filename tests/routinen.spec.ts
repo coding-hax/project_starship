@@ -183,144 +183,134 @@ test('AK2: die drei Kacheln zeigen Zähler und Nenner als Text, der Balken ist a
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK5 (#905) / issue #1040: Verlaufskarte als Stufenkurve auf fester Skala   */
+/* AK1–AK5, AK8 (issue #1070): Verlaufskarte als Quadratraster                */
 /* -------------------------------------------------------------------------- */
 
-/** y-Werte der Karte (habit-history-card.tsx): Null unten, alle Routinen oben. */
-const CHART_BASE_Y = 76;
-const CHART_TOP_Y = 8;
-
-test('#1040: der Endpunkt ist rund und liegt vollstaendig in der Zeichenflaeche (AK5 von #905)', async ({
-  page,
-}) => {
-  const habitId = await seedHabit(page, { name: 'Verlaufssonde' });
-  await seedHabitLog(page, habitId, TODAY);
+test('AK1 (#1070): das Raster hat 30×N Zellen und kein SVG mehr', async ({ page }) => {
+  await seedHabit(page, { name: 'Raster-Sonde A', createdAt: '2026-06-01T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Raster-Sonde B', createdAt: '2026-06-02T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Raster-Sonde C', createdAt: '2026-06-03T00:00:00.000Z' });
   await page.goto('/routinen');
 
-  const dot = page.locator('.habit-history-card__dot');
-  await expect(dot).toBeVisible();
-
-  const dotBox = await dot.boundingBox();
-  const svgBox = await page.locator('.habit-history-card__svg').boundingBox();
-  expect(dotBox, 'Endpunkt hat eine Flaeche').not.toBeNull();
-  expect(svgBox, 'SVG hat eine Flaeche').not.toBeNull();
-  if (!dotBox || !svgBox) return;
-
-  // Kreis, kein Oval: vor #1040 dehnte preserveAspectRatio="none" x um 3,4x und
-  // y nur um 2x, der Punkt war also 1,7x breiter als hoch.
-  expect(
-    Math.abs(dotBox.width - dotBox.height),
-    `Endpunkt ist rund (${dotBox.width} x ${dotBox.height})`,
-  ).toBeLessThanOrEqual(1);
-
-  // Nicht mehr an der Kante angeschnitten: der Punkt sass auf cx = viewBox-Breite.
-  const gap = svgBox.x + svgBox.width - (dotBox.x + dotBox.width);
-  expect(gap, 'zwischen Endpunkt und rechter SVG-Kante bleibt Luft').toBeGreaterThanOrEqual(4);
+  await expect(page.locator('.habit-history-card__cell')).toHaveCount(90); // 30 Tage × 3 Routinen
+  await expect(page.locator('.habit-history-card__svg')).toHaveCount(0);
 });
 
-test('#1040: die Kurve laeuft in Stufen und nicht in Diagonalen', async ({ page }) => {
-  const habitId = await seedHabit(page, { name: 'Stufensonde' });
-  // Zwei Luecken erzwingen echte Hoehenwechsel in der 30-Tage-Reihe.
-  await seedHabitLog(page, habitId, TODAY);
-  await seedHabitLog(page, habitId, '2026-07-13');
-  await page.goto('/routinen');
-
-  const d = await page.locator('.habit-history-card__line').getAttribute('d');
-  expect(d, 'die Kurve ist gezeichnet').toBeTruthy();
-
-  const points = (d ?? '')
-    .split(/(?=[ML])/)
-    .map((segment) => segment.replace(/^[ML]/, '').split(','))
-    .map(([x, y]) => ({ x: Number(x), y: Number(y) }));
-  expect(points.length, 'die Reihe besteht aus mehr als einem Punkt').toBeGreaterThan(1);
-
-  for (let i = 1; i < points.length; i++) {
-    const previous = points[i - 1];
-    const current = points[i];
-    const axisParallel = previous.x === current.x || previous.y === current.y;
-    expect(axisParallel, `Abschnitt ${i} laeuft waagerecht oder senkrecht, nicht schraeg`).toBe(
-      true,
-    );
-  }
-});
-
-test('#1040: die Skala steht fest — eine Reihe ohne Null beruehrt die Grundlinie nicht', async ({
+test('AK2 (#1070): eine erledigte Routine ist ein Quadrat in ihrer eigenen Farbe, color:null bekommt --area-habits, ein offener Platz --border-faint', async ({
   page,
 }) => {
-  // Zwei Routinen, eine davon seit 30 Tagen jeden Tag erledigt: der Tageswert
-  // faellt nie auf 0. Vor #1040 skalierte buildLinePath auf min..max, die Kurve
-  // klebte damit trotzdem an der Unterkante.
-  const dauerlaeufer = await seedHabit(page, { name: 'Dauerlaeufer' });
-  await seedHabit(page, { name: 'Aussetzer' });
-  for (let back = 0; back < 30; back++) {
-    const day = new Date(`${TODAY}T12:00:00.000Z`);
-    day.setUTCDate(day.getUTCDate() - back);
-    await seedHabitLog(page, dauerlaeufer, day.toISOString().slice(0, 10));
-  }
+  const amber = await seedHabit(page, {
+    name: 'Amber-Sonde',
+    color: '--swatch-amber',
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
+  const fallback = await seedHabit(page, {
+    name: 'Fallback-Sonde',
+    color: null,
+    createdAt: '2026-06-02T00:00:00.000Z',
+  });
+  await seedHabitLog(page, amber, TODAY);
+  await seedHabitLog(page, fallback, TODAY);
   await page.goto('/routinen');
 
-  const d = await page.locator('.habit-history-card__line').getAttribute('d');
-  expect(d).toBeTruthy();
-  const lowest = Math.max(
-    ...Array.from((d ?? '').matchAll(/[ML][\d.]+,([\d.]+)/g), (m) => Number(m[1])),
+  // 2 aktive Routinen -> 2 Zeilen à 30 Tage im DOM, obere Zeile zuerst
+  // (AK4: Stapelreihenfolge). Spalte 29 = heute in jeder Zeile.
+  const cells = page.locator('.habit-history-card__cell');
+  const topRowToday = cells.nth(29); // zuletzt angelegt: Fallback-Sonde
+  const bottomRowToday = cells.nth(59); // zuerst angelegt: Amber-Sonde
+  const emptyCell = cells.nth(0); // vor 30 Tagen, nichts erledigt
+
+  await expect(bottomRowToday).toHaveCSS('background-color', await resolveColorToken(page, '--swatch-amber'));
+  await expect(topRowToday).toHaveCSS('background-color', await resolveColorToken(page, '--area-habits'));
+  await expect(emptyCell).toHaveCSS('background-color', await resolveColorToken(page, '--border-faint-base'));
+});
+
+test('AK3 (#1070): die Quadrate eines Tages stehen lückenlos ab der Grundlinie', async ({ page }) => {
+  const first = await seedHabit(page, { name: 'Erste', createdAt: '2026-06-01T00:00:00.000Z' });
+  const second = await seedHabit(page, { name: 'Zweite', createdAt: '2026-06-02T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Dritte (offen)', createdAt: '2026-06-03T00:00:00.000Z' });
+  await seedHabitLog(page, first, TODAY);
+  await seedHabitLog(page, second, TODAY);
+  await page.goto('/routinen');
+
+  // 3 Zeilen à 30 Tage, heute = Index 29/59/89. Zwei von drei Routinen
+  // erledigt -> die beiden untersten Zellen der Spalte gefüllt, die oberste blass.
+  const cells = page.locator('.habit-history-card__cell');
+  const faintExpected = await resolveColorToken(page, '--border-faint-base');
+  await expect(cells.nth(29)).toHaveCSS('background-color', faintExpected); // oben: offen
+  await expect(cells.nth(59)).not.toHaveCSS('background-color', faintExpected); // Mitte: gefüllt
+  await expect(cells.nth(89)).not.toHaveCSS('background-color', faintExpected); // unten: gefüllt
+});
+
+test('AK4 (#1070): die Stapelreihenfolge folgt compareHabits — die zuerst angelegte Routine liegt unten', async ({
+  page,
+}) => {
+  const older = await seedHabit(page, { name: 'Älter', createdAt: '2026-06-01T00:00:00.000Z' });
+  const newer = await seedHabit(page, { name: 'Neuer', createdAt: '2026-06-15T00:00:00.000Z' });
+  await seedHabitLog(page, older, TODAY);
+  await seedHabitLog(page, newer, TODAY);
+  await page.goto('/routinen');
+
+  const cells = page.locator('.habit-history-card__cell');
+  const topRowToday = await cells.nth(29).boundingBox();
+  const bottomRowToday = await cells.nth(59).boundingBox();
+  expect(topRowToday, 'obere Zeile hat eine Fläche').not.toBeNull();
+  expect(bottomRowToday, 'untere Zeile hat eine Fläche').not.toBeNull();
+  if (!topRowToday || !bottomRowToday) return;
+  // Größeres y = weiter unten auf dem Bildschirm.
+  expect(bottomRowToday.y, 'die zuerst angelegte Routine sitzt in der unteren Zeile').toBeGreaterThan(
+    topRowToday.y,
   );
-  expect(lowest, 'kein Punkt liegt auf der Nulllinie').toBeLessThan(CHART_BASE_Y);
 });
 
-test('#1040: bei genau einer Routine spannt der erledigte Tag bis zur Deckellinie', async ({
-  page,
-}) => {
-  const habitId = await seedHabit(page, { name: 'Einzelstueck' });
-  await seedHabitLog(page, habitId, TODAY);
-  await page.goto('/routinen');
+for (const viewport of [
+  { width: 375, height: 812 },
+  { width: 1280, height: 800 },
+]) {
+  test(`AK5 (#1070): die Zellen sind quadratisch und nie breiter als 14px bei ${viewport.width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    const habitId = await seedHabit(page, { name: 'Quadrat-Sonde' });
+    await seedHabitLog(page, habitId, TODAY);
+    await page.goto('/routinen');
 
-  // 1 von 1 ist der Hoechstwert der Skala — der Endpunkt sitzt auf der
-  // Deckellinie, ohne dass die feste Skala durch Null teilt.
-  await expect(page.locator('.habit-history-card__dot')).toHaveAttribute('cy', String(CHART_TOP_Y));
-  await expect(page.locator('.habit-history-card__value')).toHaveText('1/1');
-});
-
-test('#1040: Grundlinie durchgezogen, Deckellinie gestrichelt, keine Mittellinie mehr', async ({
-  page,
-}) => {
-  const habitId = await seedHabit(page, { name: 'Rastersonde' });
-  await seedHabitLog(page, habitId, TODAY);
-  await page.goto('/routinen');
-
-  const baseline = page.locator('.habit-history-card__baseline');
-  const cap = page.locator('.habit-history-card__cap');
-  // Ein waagerechtes <line> hat eine Bounding-Box der Hoehe 0 — toBeVisible()
-  // wertet das als versteckt. Gezeichnet wird es trotzdem, also pruefen wir
-  // Anwesenheit plus einen gesetzten Strich statt der Box.
-  await expect(baseline).toBeAttached();
-  await expect(cap).toBeAttached();
-  for (const [name, line] of [
-    ['Grundlinie', baseline],
-    ['Deckellinie', cap],
-  ] as const) {
+    const cell = await page.locator('.habit-history-card__cell').first().boundingBox();
+    expect(cell, 'Zelle hat eine Fläche').not.toBeNull();
+    if (!cell) return;
     expect(
-      await line.evaluate((el) => getComputedStyle(el).stroke),
-      `${name} hat eine Strichfarbe`,
-    ).not.toBe('none');
-  }
-  expect(
-    await baseline.evaluate((el) => getComputedStyle(el).strokeDasharray),
-    'die Grundlinie ist durchgezogen',
-  ).toBe('none');
-  expect(
-    await cap.evaluate((el) => getComputedStyle(el).strokeDasharray),
-    'die Deckellinie ist gestrichelt',
-  ).not.toBe('none');
+      Math.abs(cell.width - cell.height),
+      `Zelle ist quadratisch (${cell.width} x ${cell.height})`,
+    ).toBeLessThanOrEqual(0.5);
+    expect(cell.width, 'nie breiter als 14px').toBeLessThanOrEqual(14);
+  });
+}
 
-  // Die Gitterlinie auf halber Hoehe markierte keinen Wert und ist ersatzlos weg.
-  expect(await page.locator('.habit-history-card__gridline').count()).toBe(0);
+test('AK8 (#1070): unter der Achse steht je aktiver Routine ein Legendeneintrag mit Farbpunkt und Namen', async ({
+  page,
+}) => {
+  await seedHabit(page, {
+    name: 'Legenden-Sonde',
+    color: '--swatch-amber',
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
+  await seedHabit(page, { name: 'Ohne Farbe', color: null, createdAt: '2026-06-02T00:00:00.000Z' });
+  await page.goto('/routinen');
+
+  const legend = page.locator('.habit-history-card__legend-item');
+  await expect(legend).toHaveCount(2);
+  await expect(legend.first().locator('.habit-history-card__legend-name')).toHaveText('Legenden-Sonde');
+  await expect(legend.first().locator('.habit-history-card__legend-dot')).toHaveCSS(
+    'background-color',
+    await resolveColorToken(page, '--swatch-amber'),
+  );
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK6/AK10: Kontrast der drei neuen Farbmischungen, hell und dunkel          */
+/* AK6/AK10: Kontrast von Wochenbalken, Kachel-Balken und Kartentext          */
 /* -------------------------------------------------------------------------- */
 
-test('AK6/AK10: Wochenbalken, Kachel-Balken und Verlaufslinie/-punkt erreichen 3:1 gegen die eigene Fläche, Text 4,5:1 — hell und dunkel (issue #905)', async ({
+test('AK6/AK10: Wochenbalken und Kachel-Balken erreichen 3:1 gegen die eigene Fläche, Text 4,5:1 — hell und dunkel (issue #905)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, { name: 'Kontrastsonde' });
@@ -355,24 +345,6 @@ test('AK6/AK10: Wochenbalken, Kachel-Balken und Verlaufslinie/-punkt erreichen 3
     expect(
       contrastRatio(barFillColor, surface),
       `Kachel-Balken (${scheme}) gegen die Kachelfläche`,
-    ).toBeGreaterThanOrEqual(3);
-
-    const lineColor = await toRgb(
-      page,
-      await page.locator('.habit-history-card__line').evaluate((el) => getComputedStyle(el).stroke),
-    );
-    expect(
-      contrastRatio(lineColor, surface),
-      `Verlaufslinie (${scheme}) gegen die Kartenfläche`,
-    ).toBeGreaterThanOrEqual(3);
-
-    const dotColor = await toRgb(
-      page,
-      await page.locator('.habit-history-card__dot').evaluate((el) => getComputedStyle(el).fill),
-    );
-    expect(
-      contrastRatio(dotColor, surface),
-      `Endpunkt (${scheme}) gegen die Kartenfläche`,
     ).toBeGreaterThanOrEqual(3);
 
     // Jede Beschriftung (Kachel-Label/-Nenner, Zeilenname, Serie, Achse) hängt
