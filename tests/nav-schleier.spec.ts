@@ -260,8 +260,7 @@ const SEAM_TOLERANCE = 12;
 test('AK1: die Nav-Zeile trägt eine Kopie des echten Hintergrunds, keine nachgezogene Farbe', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const copy = page.locator('.nav-ground');
   await expect(copy, 'die Nav-Zeile hat eine eigene Hintergrund-Ausgabe').toBeVisible();
@@ -366,8 +365,7 @@ test('AK4: die Ausblendung liegt auf der Kopie und endet an der Oberkante durchs
 test('AK5: die Kopie stiehlt keine Berührung — nach dem Scrollen klickt ein Reiter in der Pille durch', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   const styles = await navGroundStyles(page);
   expect(styles.pointerEvents, '.nav-ground ist pointer-events: none').toBe('none');
@@ -385,8 +383,7 @@ test('AK5: die Kopie stiehlt keine Berührung — nach dem Scrollen klickt ein R
 });
 
 test('AK6: die Pille bleibt eigene --surface-Fläche mit Schatten und liegt über der Kopie', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTallTaskList(page);
   await page.reload();
   await selectView(page, 'Alle');

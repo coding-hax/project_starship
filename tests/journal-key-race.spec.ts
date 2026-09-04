@@ -35,8 +35,7 @@ const TEXT_A = 'GERAET-A-ALTER-KLARTEXT';
 const TEXT_B = 'GERAET-B-GEWINNT-KLARTEXT';
 
 async function setUpEditorA(page: Page): Promise<{ recoveryKey: string }> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE_A);
   await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE_A);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -95,8 +94,7 @@ test('AK1: der verdrängte Envelope landet im Stash, bevor die fremde Hülle ihn
   page,
   browser,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   // Baseline: A's own first setup + push/pull round trip stashes nothing — a
   // pull that echoes back this device's own just-pushed row must not look like

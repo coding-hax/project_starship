@@ -101,8 +101,7 @@ const EDITOR_PASSPHRASE = 'list motion editor passphrase';
 
 /** Mirrors journal.spec.ts's own setUpEditor. */
 async function setUpEditor(page: Page): Promise<void> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(EDITOR_PASSPHRASE);
   await page.getByLabel('Passphrase wiederholen').fill(EDITOR_PASSPHRASE);
   await page.getByRole('button', { name: 'Einrichten' }).click();

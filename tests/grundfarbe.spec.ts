@@ -307,8 +307,7 @@ test('AK3: bereichsgefüllte Flächen tragen weiter --on-accent, unverändert se
   // die #709-Invariante "Text auf einer bereichsgefüllten Fläche = --on-accent"
   // und wandert jetzt auf einen weiterhin bereichsgefüllten Knopf: den
   // Speichern-Knopf im Task-Editor (task-editor.css:75-76, unverändert von #831).
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Kontrast-Sonde Speichern', dueAt: FIXED_NOW });
 
   const onAccent = await resolveColorToken(page, '--on-accent');
@@ -486,8 +485,7 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
   test('Karten-Reset: eine Karte auf dem Grund setzt --border auf den fixen Anker zurück, nicht den Grund-Mix', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await seedHabit(page, {
       name: 'Kanten-Sonde',
       schedule: 'daily',
@@ -503,6 +501,79 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
 
     expect(await toRgb(page, cardBorder)).toEqual(await toRgb(page, borderBase));
     expect(await toRgb(page, cardBorder)).not.toEqual(await toRgb(page, groundBorder));
+  });
+});
+
+test.describe('#1063: leeres Tagesfeld trägt Grund-Tinte statt Karten-Tinte', () => {
+  const PASSPHRASE = '1063 kontrast passphrase';
+
+  async function setUpEmptyJournal(page: Page, theme: 'light' | 'dark'): Promise<void> {
+    await registerPasskey(page);
+    await installClockAt(page);
+    await page.emulateMedia({ colorScheme: theme });
+    await page.goto('/journal');
+    await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+    await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE);
+    await page.getByRole('button', { name: 'Einrichten' }).click();
+    await page.getByTestId('journal-recovery-key').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+    await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+  }
+
+  async function contrastOfElement(page: Page, locator: Locator, ground: string): Promise<number> {
+    const color = await elementColor(locator);
+    return contrastRatio(await toRgb(page, color), await toRgb(page, ground));
+  }
+
+  const EMPTY_CARD_SELECTORS = [
+    '.journal-day-card__eyebrow',
+    '.journal-day-card__date',
+    '.journal-day-card__placeholder',
+  ];
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`AK2: „Heute“, Datumszeile und Platzhalter im leeren Tagesfeld erfüllen 4,5:1 gegen den Journal-Grund (${theme})`, async ({
+      page,
+    }) => {
+      await setUpEmptyJournal(page, theme);
+
+      const empty = page.locator('.journal-day-card--empty');
+      await expect(empty).toBeVisible();
+      const ground = await htmlBackground(page);
+
+      for (const selector of EMPTY_CARD_SELECTORS) {
+        const ratio = await contrastOfElement(page, empty.locator(selector), ground);
+        expect(ratio, `${selector} auf /journal (${theme})`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
+
+  test('AK3: die gefüllte Tageskarte bleibt dunkle Tinte auf --surface, das leere Feld daneben trägt die helle Grund-Tinte', async ({
+    page,
+  }) => {
+    await setUpEmptyJournal(page, 'light');
+
+    await page.getByRole('button', { name: 'Eintragen', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeVisible();
+    await page.getByLabel('Journal-Text').fill('Kontrast-Sonde gefüllt');
+    await page.getByRole('dialog', { name: 'Eintragen' }).locator('.sheet__action').click();
+    await expect(page.getByRole('dialog', { name: 'Eintragen' })).toBeHidden();
+
+    const filled = page.locator('.journal-day-card:not(.journal-day-card--empty)');
+    await expect(filled).toBeVisible();
+    const textBase = await resolveColorToken(page, '--text-base');
+    const textMutedBase = await resolveColorToken(page, '--text-muted-base');
+    expect(await elementColor(filled.locator('.journal-day-card__eyebrow'))).toBe(textMutedBase);
+    expect(await elementColor(filled.locator('.journal-day-card__date'))).toBe(textBase);
+
+    await page.getByRole('button', { name: 'Vorheriger Tag' }).click();
+    const empty = page.locator('.journal-day-card--empty');
+    await expect(empty).toBeVisible();
+    const ground = await htmlBackground(page);
+    for (const selector of EMPTY_CARD_SELECTORS) {
+      const ratio = await contrastOfElement(page, empty.locator(selector), ground);
+      expect(ratio, `${selector} (leeres Feld neben der gefüllten Karte)`).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 

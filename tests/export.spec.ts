@@ -31,8 +31,7 @@ test.beforeEach(async () => {
 test('Alles exportieren lädt alle lokalen Datensätze als JSON, inklusive Tombstones', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 
   await seedTask(page, { title: 'Bleibt' });
   const deletedId = await seedTask(page, { title: 'Wird gelöscht' });
@@ -62,8 +61,7 @@ test('Alles exportieren lädt alle lokalen Datensätze als JSON, inklusive Tombs
 });
 
 test('der Export enthält Schema-Version und Zeitstempel', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Beliebige Aufgabe' });
 
   await page.goto('/einstellungen');
@@ -74,8 +72,7 @@ test('der Export enthält Schema-Version und Zeitstempel', async ({ page }) => {
 });
 
 test('der Export funktioniert offline, weil er aus IndexedDB liest', async ({ page, context }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Offline-Export-Aufgabe' });
 
   await page.goto('/einstellungen');

@@ -153,8 +153,7 @@ test('AK1: zwei Radienrollen — Fläche 28px (.section-card), innen 14px (.cale
 test('AK2: der neue Kartenschatten liegt auf einer schwebenden Fläche (.section-card)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const shadowToken = await resolveShadowToken(page, '--shadow-raised');
   const surfaceCard = page.locator('.section-card').first();

@@ -48,8 +48,7 @@ test('the settings entry point stays reachable from every screen via the sidebar
 test('auf /uebersicht rutscht der Inhalt bei 1280px nicht unter die Kopfzeile der Shell (issue #137 AC6)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const header = page.locator('.app-header--chrome');
   const main = page.locator('main.shell__main');

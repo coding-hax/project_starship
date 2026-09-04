@@ -136,8 +136,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     browser,
   }) => {
     await page.clock.install();
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await selectView(page, 'Alle');
 
     const devicePage = await openSecondDevice(browser, page);
@@ -155,8 +154,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     page,
     browser,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await selectView(page, 'Alle');
 
     const devicePage = await openSecondDevice(browser, page);
@@ -173,8 +171,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     browser,
   }) => {
     await page.clock.install();
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await selectView(page, 'Alle');
 
     // A read-only property in real browsers; overriding it is the standard way to
@@ -299,8 +296,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
     browser,
   }) => {
     await page.clock.install();
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await selectView(page, 'Alle');
 
     const pageErrors: Error[] = [];
@@ -325,8 +321,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
   });
 
   test('startSync tears down exactly the listeners and interval it set up', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const counts = await page.evaluate(() => {
       let addedListeners = 0;
@@ -590,8 +585,7 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
     page,
     browser,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await selectView(page, 'Alle');
 
     // Establish a baseline so device B's cursor is not simply "start of time".
@@ -826,8 +820,7 @@ test.describe('N+1 Abfrage beseitigen: Outbox einmal statt pro Änderung (#183)'
   test('AC2: eine gequeute Änderung wird nicht durch Pull-Daten überschrieben', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     // Create a task and sync it to establish a baseline (syncSeq = 1)
     const taskId = await page.evaluate(async () => {
@@ -984,8 +977,7 @@ test.describe('eine kaputte Mutation blockiert die Outbox nicht mehr (#182)', ()
   test('AC3: ein Offline-Fehlschlag zählt nicht zum Fehler-Cap — kein Hinweis, die Queue überlebt', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     await settleJournalHabitBoot(page);
 
     await page.evaluate(() =>

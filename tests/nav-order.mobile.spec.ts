@@ -334,8 +334,7 @@ test.describe('die Bottom-Nav ist auf keiner Seite transparent (issue #444)', ()
   }
 
   test('bleibt im Dark Mode voll deckend', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.emulateMedia({ colorScheme: 'dark' });
 
     expect(await backgroundAlpha(page)).toBe(255);

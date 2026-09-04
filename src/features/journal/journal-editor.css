@@ -63,16 +63,19 @@
 }
 
 /* AK3: the empty invitation — dashed --border-strong instead of the raised
-   surface, no shadow, tap opens the same sheet as the FAB. `--border-strong`
-   reset back to the ground-relative value (issue #846's color-mix in
-   globals.css) — the surrounding `.journal-day-card` rule above resets it to
-   the fixed `-base` tone tuned for a real `--surface` background, but this
-   variant has `background: none` and sits directly on the route ground, where
-   that fixed tone falls to 1.74:1 (grundfarbe.spec.ts AK1). */
+   surface, no shadow, tap opens the same sheet as the FAB. `--border-strong`,
+   `--text` and `--text-muted` all reset back to the ground-relative value
+   (issue #846's color-mix in globals.css) — the surrounding `.journal-day-card`
+   rule above resets all three to the fixed `-base` tones tuned for a real
+   `--surface` background, but this variant has `background: none` and sits
+   directly on the route ground, where those fixed tones fall to 1.74:1
+   (border, grundfarbe.spec.ts AK1) resp. 1.14:1/1.80:1 (ink, issue #1063). */
 .journal-day-card--empty {
   align-items: stretch;
   min-height: var(--touch-target);
   --border-strong: unset;
+  --text: unset;
+  --text-muted: unset;
   border: 1px dashed var(--border-strong);
   background: none;
   box-shadow: none;
@@ -230,6 +233,102 @@
   background: var(--surface-raised);
   color: var(--text-muted);
   font-size: var(--text-secondary);
+}
+
+/* AK2 (#1052): mobil versteckt (`.journal-recent` gibt es dort per DOM zwar
+   — Zuletzt-geschrieben-Tage können existieren —, aber keine zweite Bahn, in
+   die sie gehören), ab 768px sichtbar (journal-editor.css 768px-Block unten).
+   Dieselbe Fläche wie .journal-day-card/.journal-same-day. */
+.journal-recent {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  padding: var(--space-4);
+  border-radius: var(--radius-surface);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  color: var(--text);
+}
+
+.journal-recent__eyebrow {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+.journal-recent__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-recent__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.journal-recent__row:active {
+  opacity: 0.85;
+}
+
+/* Kapitälchen, gleiche Zurückhaltung wie journal-search.css's __result-date. */
+.journal-recent__date {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Eine Zeile, kein Umbruch — kompakte Liste statt langer Karten. */
+.journal-recent__line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.journal-recent__mood {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--area-journal) calc(var(--mood) * 7%), var(--surface));
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-recent__row {
+    transition: none;
+  }
 }
 
 /* AK5 (#1049): dieselbe Fläche wie .journal-day-card — sie erscheint nur mit
@@ -412,15 +511,94 @@
   text-decoration: underline;
 }
 
-/* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie `.calendar-view`
-   in calendar-view.css (issue #1021): Desktop-Fab steht bei `bottom: space-6`
-   (fab.css), 58px hoch, `.shell__main` reserviert ab 768px nur `space-12`
-   (shell.css) — die Differenz wäre ein realer Überlapp. Der Zwei-Bahnen-Fluss
-   aus issue #1023 (Teil 8 von #1015) entfiel mit dem Strom, den er anordnete
-   (#1046, „Was dabei mitstirbt") — sein Nachfolger ist das Desktop-Kind-Ticket
-   von #1046, nicht dieser PR. */
+/* Zwei-Bahnen-Grid ab 768px (issue #1052, Teil von #1046 — Nachfolger des in
+   #1048 zurückgestellten Zwei-Bahnen-Flusses aus #1023): links die Tageskarte
+   und darunter „Zuletzt geschrieben", rechts „An diesem Tag" über beide
+   Zeilen (AK1). Ein Raster (`grid`), kein `columns` — jede Bahn bekommt eine
+   feste Zeilennummer statt Auto-Placement: `grid-row: span 2` allein platziert
+   den rechten Block nicht zwingend ab Zeile 1 (das Sparse-Packing rückt den
+   Cursor auf die Zeile des zuvor auto-platzierten linken Elements vor, bevor
+   die rechte Spalte überhaupt geprüft wird — beobachtet, nicht nur Theorie).
+   Kein `align-items: start` (anders als aufgaben-page.css, wo die einzeilige
+   „ohne Datum"-Karte bewusst NICHT die potenziell viel höhere fällige Liste
+   nachzeichnen soll) — hier soll `.journal-same-day` den vollen Zwei-Zeilen-
+   Bereich füllen, das Standard-`stretch` macht genau das.
+   `max-width: none` nimmt den 480px-Deckel von .journal-editor/.journal-
+   day-card/.journal-same-day zurück (wie schon .section-card, issue #1015). */
 @media (min-width: 768px) {
   .journal-editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-6);
+    max-width: none;
+    /* AK4-Bodenreserve gegen den schwebenden Erfassen-Knopf, wie
+       `.calendar-view` in calendar-view.css (issue #1021): Desktop-Fab steht
+       bei `bottom: space-6` (fab.css), 58px hoch, `.shell__main` reserviert
+       ab 768px nur `space-12` (shell.css) — die Differenz wäre ein realer
+       Überlapp. */
     padding-bottom: calc(58px + var(--space-6) + var(--keyboard-inset) - var(--space-12));
+  }
+
+  .journal-day-card,
+  .journal-same-day {
+    max-width: none;
+  }
+
+  .journal-recent {
+    display: flex;
+  }
+
+  /* Das Wisch-Gerüst um Tageskarte + „An diesem Tag" (`.journal-day-pager`/
+     `__track`, issue #1050) ist ab hier für das Raster unsichtbar: beide
+     Boxen fallen weg (`display: contents`), ihre Kinder rücken für die
+     Grid-Platzierung direkt an die Stelle von `.journal-editor` — die
+     Wisch-Logik selbst bleibt aktiv (harmlos, #1052 AK2: am Desktop wischt
+     niemand), trägt aber keine eigene Box mehr ins Raster ein. Ein Transform
+     während des Ziehens hätte an einer `display: contents`-Box ohnehin keine
+     Wirkung. */
+  .journal-day-pager,
+  .journal-day-pager__track {
+    display: contents;
+  }
+
+  /* Regelfall: keine Bergungskarte (issue #518, selten) im Baum. */
+  .journal-day-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .journal-recent {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .journal-same-day {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  /* Bergungskarte vorhanden: volle Breite in Zeile 1, alles andere rückt eine
+     Zeile weiter — dieselbe `:has()`-Fallback-Logik wie calendar-view.css's
+     Monat/Woche-Umschaltung (ohne `:has()`-Unterstützung bleibt es beim
+     Regelfall oben, nur ohne den Zeilenversatz). Tageskarte/„An diesem Tag"
+     stecken seit #1050 im (per `display: contents` aufgelösten) Wisch-Gerüst,
+     sind also keine direkten Kinder von `.journal-editor` mehr — deshalb hier
+     ohne `>` vor ihnen, anders als bei der Bergungskarte und „Zuletzt
+     geschrieben", die es weiterhin sind. */
+  .journal-editor:has(> .journal-orphaned-key) > .journal-orphaned-key {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .journal-editor:has(> .journal-orphaned-key) .journal-day-card {
+    grid-row: 2;
+  }
+
+  .journal-editor:has(> .journal-orphaned-key) > .journal-recent {
+    grid-row: 3;
+  }
+
+  .journal-editor:has(> .journal-orphaned-key) .journal-same-day {
+    grid-row: 2 / span 2;
   }
 }
