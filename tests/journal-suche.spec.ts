@@ -161,9 +161,7 @@ test('AC5: kein Treffer zeigt einen ruhigen Leerzustand statt einer Fehlermeldun
   await expect(page.locator('.toast--error')).toHaveCount(0);
 });
 
-test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des jeweiligen Tages', async ({
-  page,
-}) => {
+test('AC6: ein Treffer zeigt Datum und Uhrzeit', async ({ page }) => {
   await setUpEditor(page);
   await seedEntry(page, '2026-07-01', { text: 'Alter Eintrag mit Stichwort', mood: '6', tags: [] });
 
@@ -180,13 +178,15 @@ test('AC6: ein Treffer zeigt Datum und Uhrzeit und führt zu den Einträgen des 
   await expect(result.locator('.journal-search__result-date')).toHaveText(
     /^Mi\., 1\. Juli · \d{2}:\d{2} · Stimmung 6\/10$/,
   );
-  await result.click();
 
-  // Kein Autosave-Entwurffeld mehr, das befüllt würde (ADR-0018) — der Treffer
-  // wechselt den sichtbaren Tag, dessen Einträge darunter erscheinen.
-  await expect(page.locator('.journal-editor__entry')).toHaveCount(1);
-  await expect(page.locator('.journal-editor__entry')).toContainText('Alter Eintrag mit Stichwort');
-  await expect(page.locator('.journal-editor__entry')).toContainText('Stimmung 6/10');
+  // Ein Treffer führte früher zu den Einträgen des jeweiligen Tages — seit
+  // #1048 zeigt die Seite nur noch den heutigen Tag, ein Sprung existiert
+  // vorerst nicht mehr (journal-editor.tsx, handleSearchSelect). Kehrt mit
+  // "Suche im neuen Register" zurück (Kind-Ticket von #1046); bis dahin prüft
+  // dieser Test nur noch, dass der Klick den Suchmodus verlässt (AC-P4 deckt
+  // das für den Filter-Fall bereits ab, hier nur die Rückkehr selbst).
+  await result.click();
+  await expect(page.locator('.journal-search')).toHaveCount(0);
 });
 
 test('AC6: mehrere Einträge desselben Tages sind eigenständige Treffer', async ({ page }) => {

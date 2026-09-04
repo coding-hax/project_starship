@@ -428,7 +428,11 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
     }
   });
 
-  test('AK1: Stimmungsband-Grundlinie (kein Mood) erfüllt 3:1 gegen den Journal-Grund im Dunkelmodus. Heute 1,02:1', async ({
+  // Nachfolger des früheren Stimmungsband-Grundlinien-Tests (issue #703):
+  // das Band ist mit #1048 (AK5) entfernt, dieselbe Kontrastprüfung gilt jetzt
+  // der gestrichelten Kante des leeren Feldes „Deine Zeile für heute" (AK3),
+  // derselbe Grund (kein farbtragendes Element ohne 3:1), dieselbe Schwelle.
+  test('AK1: die gestrichelte Kante des leeren Tagesfelds erfüllt 3:1 gegen den Journal-Grund im Dunkelmodus', async ({
     page,
   }) => {
     await registerPasskey(page);
@@ -444,18 +448,12 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
     await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
     await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 
-    // Ein reiner Text-Eintrag ohne Stimmung -> die anderen 13 Tagesplätze zeigen
-    // die graue Grundlinie (journal.spec.ts's "wenige Einträge"-Fall).
-    await page.evaluate(() =>
-      window.__starship.appendJournalEntry('2026-07-18', { text: 'nur Text', tags: [] }),
-    );
-
-    const baseline = page.locator('.journal-mood-band__baseline').first();
-    await expect(baseline).toBeVisible();
-    const baselineColor = await baseline.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const empty = page.locator('.journal-day-card--empty');
+    await expect(empty).toBeVisible();
+    const borderColor = await empty.evaluate((el) => getComputedStyle(el).borderColor);
     const ground = await htmlBackground(page);
     expect(
-      contrastRatio(await toRgb(page, baselineColor), await toRgb(page, ground)),
+      contrastRatio(await toRgb(page, borderColor), await toRgb(page, ground)),
     ).toBeGreaterThanOrEqual(3);
   });
 
