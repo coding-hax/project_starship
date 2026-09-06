@@ -150,11 +150,14 @@
   background: color-mix(in oklab, var(--dot-cat, var(--area-events)) 85%, var(--text-base));
 }
 
-/* All-day/multi-day band row (issue #1013, AK8-12) — a second 7-column grid
-   under the day cells, one row per `allDayBandsForWindow` entry (event-time.ts),
-   `grid-column` placing each band across exactly the columns it covers. Only
-   rendered with ≥1 band (calendar-strip.tsx, AK12), so the card stays as
-   short as the sparse default state needs. */
+/* All-day/multi-day band rows (issue #1013, AK8-12) — a second 7-column grid
+   under the day cells; `allDayBandsForWindow` (event-time.ts) hands every band
+   both its `grid-column` and its `grid-row`. That row is packed first-fit
+   there (issue #1061) instead of being left to auto-placement: Grid places
+   sparsely and never backtracks, so a band across all seven columns used to
+   push every later band onto a row of its own, however free the earlier rows
+   still were. Only rendered with ≥1 band (calendar-strip.tsx, AK12), so the
+   card stays as short as the sparse default state needs. */
 .calendar-strip__bands {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
