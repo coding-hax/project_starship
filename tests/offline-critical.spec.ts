@@ -22,8 +22,7 @@ import {
  */
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 });
 
 test('Service Worker → IndexedDB → Outbox → Postgres im geschlossenen Kreis', async ({

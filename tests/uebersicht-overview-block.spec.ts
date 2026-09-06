@@ -292,7 +292,7 @@ test('die Verlaufskarte "Routinen in Serie" ist auf /uebersicht nicht vorhanden,
   await expect(page.locator('.habit-history-card')).toHaveCount(0);
 
   await page.goto('/routinen');
-  await expect(page.locator('.habit-history-card').getByText('Routinen in Serie')).toBeVisible();
+  await expect(page.locator('.habit-history-card').getByText('Erledigt · 30 Tage')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */

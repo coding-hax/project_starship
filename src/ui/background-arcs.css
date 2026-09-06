@@ -29,12 +29,113 @@
      own stacking context (issue #849) — see the `body` rule in globals.css. */
   z-index: -1;
   /* Depth (issue #904): a slight vignette towards the bottom edge, painted
-     under the arcs below (DOM order = paint order at equal z-index). */
-  background: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
+     under the arcs below (DOM order = paint order at equal z-index). The
+     gradient itself is declared once for both layers (`--bg-vignette` below);
+     two hand-kept copies of one gradient are exactly the kind of drift issue
+     #1006 is about. */
+  background: var(--bg-vignette);
+}
+
+/* The one declaration both background layers read — the ambient one above and
+   the nav row's clipped copy below. */
+.bg-layer,
+.nav-ground {
+  --bg-vignette: linear-gradient(180deg, transparent 42%, color-mix(in srgb, #170c03 40%, transparent) 100%);
 }
 
 html:has([data-ground]) .bg-layer {
   display: block;
+}
+
+/*
+ * The same background a second time, clipped to the mobile nav row (issue
+ * #1006). Page content that scrolls behind the sticky bar must not reach the
+ * pill at full card contrast — that is what `.nav::before` did since #908,
+ * with a flat fill in whichever colour happened to lie in that row (`--ground`
+ * then, `--arc-3` since #991 AK7). A hand-copied colour only stays seamless
+ * until the background changes: it painted a visible edge at the nav's top
+ * once already (#889). This layer paints what is actually behind it instead —
+ * the ground, the same vignette and the same three `.bg-arc` children from the
+ * same rules — so there is nothing left to keep in sync.
+ *
+ * Deliberately NOT a `.bg-layer` modifier: `hintergrundboegen.spec.ts` reads
+ * the background through `.bg-layer`/`.bg-layer .bg-arc` at fifteen places and
+ * asserts "exactly three arcs" on each route. A second element carrying that
+ * class would turn every one of those counts into six and every
+ * `page.locator('.bg-layer')` into a strict-mode violation — the copy would
+ * silently change what those tests measure. Its own class keeps them reading
+ * the ambient layer, while the part that must never drift (arc geometry,
+ * tones, gait) stays shared through `.bg-arc`.
+ *
+ * In flow, not absolutely positioned: `.nav` is `position: sticky`, and while
+ * the document is still growing Chromium applies that sticky offset a second
+ * time to an absolutely positioned child for a single frame — the copy painted
+ * 36px too high and snapped back in the next frame, a measurable layout shift
+ * (`uebersicht-ladezustand.spec.ts` AK1) with the row itself never moving. As
+ * one of two items in `.nav`'s single grid cell (shell.css) the offset reaches
+ * it exactly once. `position: relative` only so the arcs have a containing
+ * block; they are placed from `bottom` and `left: 50%` alone (`left: 50%` of
+ * the full-width nav is `left: 50%` of the viewport). Same circles, no second
+ * `fixed` layer that would have to be clipped back down.
+ */
+.nav-ground {
+  /* Same route gate as `.bg-layer` (below): no ground, no copy. On those
+     routes the old `.nav::before` painted nothing either — its `var(--arc-3)`
+     was undefined there, which made the whole declaration invalid. */
+  display: none;
+  grid-area: 1 / 1;
+  /* Fills the row instead of centring like the pill next to it. */
+  align-self: stretch;
+  /* The grid area is `.nav`'s content box, so an in-flow box stops short of the
+     home-indicator strip below the pill — `.nav`'s bottom padding, which two
+     tests pin to `.nav` itself (`shell.spec.ts` #123, `nav-order.mobile.spec.ts`)
+     and which scrolled cards pass through just the same. The negative margin
+     reaches the copy back over it, so it covers the full padding box the way
+     `inset: 0` did. */
+  margin-bottom: calc(-1 * (var(--space-2) + env(safe-area-inset-bottom)));
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+  /* Behind `.nav__bar`, which shares this grid cell and comes later in the DOM,
+     but inside `.nav`'s own stacking context (`--z-nav`, shell.css), so it stays
+     above `main` and above the ambient layer. */
+  z-index: -1;
+  /* Opaque, unlike the ambient layer: this one has to HIDE the card rows
+     sliding under it, not just decorate. Ground as the base, vignette on it,
+     arcs over both — the ambient layer's own paint order, rebuilt out of
+     longhands because its shorthand sets an image only. */
+  background-color: var(--ground);
+  background-image: var(--bg-vignette);
+  background-repeat: no-repeat;
+  /* The vignette spans the whole viewport up there, so it has to span the
+     whole viewport down here too and simply be cut off by this row — sized to
+     the row, its 42%→100% ramp would compress into ~90px and read as a dark
+     band. Anchored to the bottom, the edge both layers share. */
+  background-position: bottom;
+  background-size: 100% 100dvh;
+  /* Fades the copy out towards the row's top edge, so scrolled content
+     dissolves into the background instead of ending at a hard line (#908's
+     ramp, unchanged: opaque up to 72%, gone at the top). A mask, not a
+     gradient in the fill: ground, vignette and arcs have to fade together,
+     and where nothing is behind it, a half-transparent copy of the exact same
+     pixels still composites to those same pixels. That is what makes this
+     seamless at every opacity, not just at the ends. */
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, #000 72%, transparent 100%);
+}
+
+html:has([data-ground]) .nav-ground {
+  display: block;
+}
+
+/* From `md` up the nav is a sidebar with its own opaque `--surface` fill — no
+   page content ever slides behind it, so there is nothing to hide and nothing
+   to reproduce (issue #908 AK6, carried over). Same specificity as the rule
+   above, so order decides — this one comes later. */
+@media (min-width: 768px) {
+  html:has([data-ground]) .nav-ground {
+    display: none;
+  }
 }
 
 .bg-arc {

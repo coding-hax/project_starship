@@ -110,9 +110,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `lock-store.ts` — Entsperr-Automat: `setup`/`locked`/`unlocked`, In-Memory-DEK, Auto-Lock 15 Min
 - `decrypt-journal-row.ts` — entschlüsselt Zeilen einzeln, unlesbare fällt raus
 - `use-journal-{entries,search-entries}.ts` / `use-orphaned-key.ts` — `liveQuery`-Hooks
-- `journal-editor.tsx` / `.css` / `same-day.ts` — Zeile des Tages + „An diesem Tag" (andere Jahrgänge am selben Monat+Tag, Abstand in Worten) + FAB
-- `search.ts` / `journal-search-*.ts(x)` / `.css` — Suche: Cache, Modul-Store, Pille/Chips/Toggle, Filter-Panel + Jahresgruppen
-- `journal-page-head.tsx` / `journal-view-mode.ts` — `PageHead`-Wrapper + Suchmodus-Store
+- `journal-editor.tsx`/`.css`/`same-day.ts`/`journal-current-day.ts`/`journal-day-nav.tsx` — Tagzeile, Tageswechsel, „An diesem Tag"
+- `search.ts`/`journal-search-*.ts(x)`/`.css` — Suche: Cache, Modul-Store, Pille/Chips/Toggle, Filter-Panel + Jahresgruppen
+- `journal-page-head.tsx`/`journal-view-mode.ts` — `PageHead`-Wrapper: Tagnav- ↔ Suchmodus-Eyebrow
 - `journal-gate.tsx` / `.css` — Zustands-UI: setup/locked/unlocked, Recovery-/Rewrap-Screen
 - `journal-settings-panel.tsx` / `.css` — Opt-in-Toggle + Recovery-Key neu ausstellen
 - `journal-habit.ts` — feste `JOURNAL_HABIT_ID` + Anlegen/Archivieren/Abhaken der Journal-Routine
@@ -128,7 +128,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `habits-overview-section.tsx` — `OverviewSection`-Wrapper für `HabitToday`
 - `habit-tiles.tsx` / `.css` — vier Kennzahl-Kacheln auf /routinen
 - `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` (+ `.css`) — ausklappbare Tabelle auf /routinen mit Monatsraster+-nav je Zeile
-- `habit-history-card.tsx` / `.css` / `step-path.ts` — 30-Tage-Verlaufskarte auf /routinen (Stufenkurve, feste Skala)
+- `habit-history-card.tsx` / `.css` / `step-path.ts` / `legend-order.ts` — 30-Tage-Verlaufskarte (Stufenkurve), Legende platzsparend
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten (Sheet+FAB)
 
 ### src/features/events
@@ -148,7 +148,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `calendar-view.tsx` / `.css` — `/kalender`: Woche `<CalendarStrip/>` im Header, Monat `<MonthGrid/>` im Rumpf, dann
   `<EventAgenda/>`, FAB + `<EventDetail/>`/`<EventEditor/>` + Lösch-Undo-`<Toast/>`
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, Vor/Zurück-Tag, „Heute", Punkte/Tag
-- `month-grid.tsx` / `.css` — Monatskarte 7×6, ≤3 Punkte/Tag, 44px-Treffer per ::before, darunter ≤2 Ganztägig-Bandzeilen
+- `month-grid.tsx` / `.css` — Monatskarte: frei scrollende Wochenzeilen, ≤3 Punkte/Tag, darunter ≤2 Ganztägig-Bandzeilen
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste: Terminkarten
   (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
   `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
@@ -202,7 +202,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 - `page-head.tsx` / `.css` — Dreizonen-Kopf (Augenbraue/Titel/Zusatz), drei Routen
 - `mood-scale.tsx` / `.css` — Zehn Ein-Tipp-Punkte 1–10
-- `background-arcs.tsx` / `.css` — drei gestaffelte Bögen hinterm Grund, dieselbe Anordnung auf jeder Route
+- `background-arcs.tsx` / `.css` — drei Bögen hinterm Grund, gleich je Route; `variant="nav"` auch in der Nav-Zeile
 - `faces.tsx` / `.css` — eine Figur je Route (`PageFace`), Inline-SVG, CSS-Blinzeln
 - `swatch-palette.ts` — `SWATCH_PALETTE`, zehn Farbnamen (Token+Label), Quelle für habit-editor.tsx + category-colors-panel.tsx
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets + `.list-motion-item` (Listen-Motion), App-Shell
@@ -229,7 +229,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf je Route, je ein Test je AK
 - `grundfarbe-vollfarbe.spec.ts` — Karten/Leiste/FAB, Vollfarbe
-- `nav-schleier.spec.ts` — Boden-Schleier
+- `nav-schleier.spec.ts` — Grund-Kopie
 - `abgleich-828.spec.ts` — Kopf-Angaben aus S2 AK4 `toBeInViewport` im vollen Recolor
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW→IndexedDB→Outbox→Postgres (Prod-Build) + Reload/Tombstones/401/Konflikte
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne RSC-/Dokument-Request, offline erreichbare Tabs, Redirect je Cookie-Zustand
@@ -249,7 +249,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle/Slider/Fokus
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht + Tagesdetailseite, Netzausfall/Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema
-- `journal.spec.ts` / `journal-suche.spec.ts` — Editor (Mehr-Einträge, Migration Up/Down) + Suche
+- `journal.spec.ts`/`journal-suche.spec.ts`/`journal-tageswechsel.spec.ts` — (Mehr-Einträge,Migration)+Suche+Tageswechsel
 - `journal-jahre.spec.ts` — „An diesem Tag": Jahrgänge, Schalttag, Zeitzone, Cache-Zähler
 - `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel, Bodenreserve gegen den Fab
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Recovery-Key neu ausstellen

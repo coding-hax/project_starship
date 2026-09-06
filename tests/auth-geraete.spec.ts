@@ -77,8 +77,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   test('AK1: Gruppe "Gerät" zeigt die Karte "Geräte" mit dem registrierten Passkey', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
     await expect(geraetGroup.getByRole('heading', { name: 'Geräte', level: 2 })).toBeVisible();
@@ -101,8 +100,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   test('#936 AK1+AK2: „Umbenennen" und „Widerrufen" stehen unter Name/Zusatzzeile, mit ≥44px Höhe (375×812)', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/einstellungen');
+    await registerPasskey(page, '/einstellungen');
 
     const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
     const description = row.locator('.row__description');

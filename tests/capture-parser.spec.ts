@@ -77,7 +77,9 @@ test.beforeEach(async ({ page }) => {
   // Weder Aufgaben- noch Termin-Pfad dürfen je direkt fetchen (CLAUDE.md Regel 8).
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await installClockAt(page);
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 test('AK1: Schreibweise der Uhrzeit ändert das Ergebnis nicht — "um H Uhr" bleibt kein Rest im Titel', async ({

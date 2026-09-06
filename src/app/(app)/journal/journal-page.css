@@ -19,6 +19,43 @@
   min-height: var(--touch-target);
 }
 
+/* Tageswechsel (issue #1050 AK4): Chevrons flankieren das lange Datum, das
+   bisher allein hier stand (`TodayLongDate`) — dieselbe Kontur-Sprache wie
+   row-month-nav.css' `.habit-table__month-nav*`. `min-width: 0` am Datum lässt
+   es auf sehr schmalen Bildschirmen eher umbrechen als die Lupe zu verdrängen. */
+.journal-page__day-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.journal-page__day-nav-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.journal-page__day-nav-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.journal-page__day-nav-date {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* Titel + Figur auf der vollen Breite verteilt (issue #928 AK2, wie
    calendar-view.css `.calendar-view__title-row`/`__heading`): der Titel trägt
    `flex: 1` und schiebt die Figur an den rechten Rand — `.face` selbst trägt

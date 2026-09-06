@@ -19,8 +19,7 @@ const PASSPHRASE = '1049 jahre passphrase';
  * entsperrt — von hier aus laufen Seeds direkt über den echten Schreibpfad
  * (window.__starship.appendJournalEntry), nie eine Test-Fake-Zeile. */
 async function setUpEditor(page: Page): Promise<void> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE);
   await page.getByRole('button', { name: 'Einrichten' }).click();

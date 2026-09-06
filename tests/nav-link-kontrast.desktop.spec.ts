@@ -118,17 +118,31 @@ test('AK1 (hell): aktiver Eintrag auf /journal hält ≥4,5:1 gegen die eigene F
 
 test('AK2 (hell): gehoverter Eintrag hält ≥4,5:1 auf /journal', async ({ page }) => {
   await registerPasskey(page);
-  await page.emulateMedia({ colorScheme: 'light' });
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
   await page.goto('/journal');
 
   const inactiveLink = page.locator('.nav__link:not([aria-current="page"])').first();
   await inactiveLink.hover();
-  const style = await inactiveLink.evaluate((el) => {
-    const cs = getComputedStyle(el);
-    return { color: cs.color, backgroundColor: cs.backgroundColor };
-  });
-  const [color, backgroundColor] = await Promise.all([toRgb(page, style.color), toRgb(page, style.backgroundColor)]);
-  expect(wcagContrast(color, backgroundColor)).toBeGreaterThanOrEqual(4.5);
+
+  async function measure() {
+    const style = await inactiveLink.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { color: cs.color, backgroundColor: cs.backgroundColor };
+    });
+    const [color, backgroundColor] = await Promise.all([
+      toRgb(page, style.color),
+      toRgb(page, style.backgroundColor),
+    ]);
+    return wcagContrast(color, backgroundColor);
+  }
+
+  // `.nav__link`'s `transition: color` (shell.css) races this read: hovering flips
+  // --text from journal's near-white route ink (--on-ground-light) to the dark
+  // --text-base, and a same-tick getComputedStyle can land mid-fade even under
+  // reducedMotion (observed as low as 2.65:1 for a settled >9:1 — same failure
+  // mode as kalender.spec.ts's category-colour assertions). expect.poll re-reads
+  // until the transition has actually settled.
+  await expect.poll(measure).toBeGreaterThanOrEqual(4.5);
 });
 
 test('AK3 (dunkel): aktiver Eintrag auf /journal bleibt lesbar', async ({ page }) => {

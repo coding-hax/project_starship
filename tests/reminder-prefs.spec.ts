@@ -57,8 +57,7 @@ async function stubNotificationGranted(page: Page) {
 async function openPanelGranted(page: Page) {
   await stubNotificationGranted(page);
   await stubPushManager(page);
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
   await page.getByRole('button', { name: 'Erlauben' }).click();
   await expect(page.getByRole('button', { name: 'Senden' })).toBeVisible();
 }

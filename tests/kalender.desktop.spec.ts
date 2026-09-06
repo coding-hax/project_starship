@@ -33,8 +33,7 @@ async function textBoundingBox(locator: Locator): Promise<{ x: number; right: nu
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   await installClockAt(page);
-  await registerPasskey(page);
-  await page.goto('/kalender');
+  await registerPasskey(page, '/kalender');
   await page.waitForFunction(() => typeof window.__starship?.mutate === 'function', null, {
     polling: 100,
   });
