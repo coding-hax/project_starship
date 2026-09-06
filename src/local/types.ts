@@ -151,7 +151,8 @@ export interface JournalKeysData {
  * are ISO instants (scheduled events); `startDate`/`endDate` are `YYYY-MM-DD`
  * calendar days (all-day events), like `HabitLogData.logDate` — see the doc
  * comment on `events` in src/db/schema.ts for why the two never mix on one row.
- * `recurrence`/`reminderMinutes` are reserved for S6/S7, unwritten until then.
+ * `recurrence` is written by the event editor and, since issue #1081, by the
+ * capture path; `reminderMinutes` has no UI yet and stays unwritten.
  */
 export interface EventData {
   title: string;

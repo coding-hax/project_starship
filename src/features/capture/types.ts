@@ -60,10 +60,9 @@ export interface CaptureDraft {
   endAt: string | null;
   /**
    * Erkannter Wiederholungsausdruck („jeden Montag", „alle zwei Wochen"), sonst null.
-   * Die Form entspricht `events.recurrence` im Schema, wird aber **nicht geschrieben**:
-   * die Expansion ist für S6/S7 reserviert, und ein Wert ohne Expansion verspräche eine
-   * Wiederholung, die nie einträte. Das Feld ist die Naht, damit diese Stufe den Wert
-   * nur noch abholen muss.
+   * Zählt Wochentage wie `Date#getDay()` (0 = Sonntag …) — `eventFieldsFromDraft`
+   * (route-capture.ts) rechnet das beim Übernehmen auf die Montag-erste Zählung des
+   * Termin-Modells (`events.recurrence`) um (issue #1081).
    */
   recurrence: RecurrenceValue | null;
   /** `YYYY-MM-DD` — nur bei `kind: 'habit_check'` gesetzt, sonst null. Der Log-Tag
