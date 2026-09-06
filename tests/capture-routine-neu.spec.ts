@@ -14,8 +14,13 @@ function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
 }
 
+// issue #1083: der Sheet-Kopf folgt der erkannten Art statt fest "Aufgabe
+// erfassen" zu heißen — das eine, dauerhaft gemountete Titelfeld dieses Sheets
+// identifiziert es unabhängig vom aktuellen Kopf-Label.
 function captureDialog(page: Page) {
-  return page.getByRole('dialog', { name: CAPTURE_LABEL });
+  return page
+    .locator('dialog.sheet')
+    .filter({ has: page.getByRole('textbox', { name: 'Titel der Aufgabe' }) });
 }
 
 function captureTitleField(page: Page) {

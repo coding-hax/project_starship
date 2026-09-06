@@ -464,6 +464,10 @@ test('AK4+AK5 (#1083): der 09:00-Rückfall einer ungenannten Startzeit ist gerat
   await expect(page.getByRole('button', { name: 'Zeit verwerfen' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Zeit,/ })).toBeVisible();
 
+  // Sheet schließen, bevor der FAB erneut geöffnet wird — offen bleibend blockiert
+  // dessen Klick (das Sheet fängt als Modal alle Zeiger-Events außerhalb ab).
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+
   // AK5: eine vom Erkenner sicher gelesene Zeit ist von Anfang an ungekennzeichnet.
   await captureButton(page).click();
   await captureTitleField(page).fill('Termin morgen 14 Uhr Zahnarzt');
