@@ -57,6 +57,11 @@ test('AK5: der Wiederholungs-Chip laesst sich verwerfen — danach legt "Anlegen
 }) => {
   await page.goto('/uebersicht');
   await typeCapture(page, RECURRENCE_TEXT);
+  // Erst übernehmen (Enter leert die Eingabezeile) — sonst leitet die reaktive
+  // Vorschau-Merge (issue #716) die Wiederholung aus dem weiterhin getippten Text
+  // sofort wieder her, sobald das Verwerfen den übernommenen Stand nullt (gleiches
+  // Muster wie tasks.spec.ts's Fälligkeit-Verwerfen-Test).
+  await captureTitleField(page).press('Enter');
   await expect(recurrenceChip(page)).toBeVisible();
 
   await page.getByRole('button', { name: 'Wiederholung verwerfen' }).click();
