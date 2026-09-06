@@ -37,6 +37,8 @@ import { PRIORITIES } from './quick-add';
 import { TaskEditor, type TaskEditorState } from './task-editor';
 import { groupTasks, useTasks } from './use-tasks';
 
+/** issue #1083: der FAB nennt sich selbst immer so, unabhängig von der erkannten
+ * Art — nur der Sheet-Kopf (`SHEET_LABEL` unten) folgt ihr. */
 const LABEL = 'Aufgabe erfassen';
 const FORM_ID = 'uebersicht-capture-form';
 const ART_PANEL_ID = 'uebersicht-capture-panel-art';
@@ -55,6 +57,17 @@ const ART_LABELS: Record<CaptureKind, string> = {
   event: 'Termin',
   habit_check: 'Routine',
 };
+
+/** issue #1083 AK1: der Sheet-Kopf je erkannter Art. */
+const SHEET_LABEL: Record<CaptureKind, string> = {
+  task: 'Aufgabe erfassen',
+  event: 'Termin erfassen',
+  habit_check: 'Routine erfassen',
+};
+
+/** issue #1083 AK2: solange die Art `provisional` ist (Art-Chip zeigt „Art?"),
+ * behauptet der Kopf keine Art, die der Chip nicht zeigt. */
+const NEUTRAL_SHEET_LABEL = 'Erfassen';
 
 /** Referenz statt fertigem `oklch(...)`, damit Light-/Dark-Mode-Variante und der
  * einheitliche Motion-Übergang von `--accent` (tokens.css) automatisch greifen. */
@@ -185,6 +198,7 @@ export function UebersichtCapture() {
     [accumulated, liveUtterance, liveMentions],
   );
   const displayedKind = preview.kind;
+  const sheetLabel = preview.provisional ? NEUTRAL_SHEET_LABEL : SHEET_LABEL[displayedKind];
 
   const taskFields = useMemo(() => taskFieldsFromDraft(preview), [preview]);
   const dueLocal = isoToLocalInput(taskFields.dueAt);
@@ -196,9 +210,14 @@ export function UebersichtCapture() {
   const eventStartLocal = eventFields.startsAt
     ? isoToLocalInput(eventFields.startsAt)
     : defaultEventStart(now);
+  // issue #1083 AK4: ohne genannte Zeit ist `eventStartLocal` der 09:00-Rückfall aus
+  // `defaultEventStart` — kein von Erkenner oder Nutzer gesetzter Wert, also immer
+  // geraten, unabhängig von `preview.confidence` (die dann noch gar keine Aussage
+  // über eine Zeit trifft).
   const eventStartGuessed =
-    eventFields.startsAt !== null &&
-    (preview.confidence.date.level === 'guessed' || preview.confidence.time.level === 'guessed');
+    eventFields.startsAt === null ||
+    preview.confidence.date.level === 'guessed' ||
+    preview.confidence.time.level === 'guessed';
 
   const habitFields = useMemo(() => habitFieldsFromDraft(preview, now), [preview, now]);
   const resolvedHabitId = habitFields.resolved ? habitFields.habitId : null;
@@ -460,7 +479,7 @@ export function UebersichtCapture() {
       <Sheet
         open={open}
         onClose={() => setOpen(false)}
-        label={LABEL}
+        label={sheetLabel}
         initialFocusRef={inputRef}
         header={{ actionLabel: 'Anlegen', formId: FORM_ID }}
         accent={preview.provisional ? NEUTRAL_ACCENT : ART_ACCENT[displayedKind]}

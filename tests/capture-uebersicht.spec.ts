@@ -423,3 +423,50 @@ test('Offline (DoD): über zwei Äußerungen erfasst, erreicht online die Datenb
   expect(row.rowCount).toBe(1);
   expect(new Date(row.rows[0].starts_at as string).getTime()).toBe(due.getTime());
 });
+
+/**
+ * issue #1083: der Sheet-Kopf log bisher immer "Aufgabe erfassen", auch wenn der
+ * Art-Chip längst "Termin" zeigte — und der 09:00-Rückfall einer ungenannten
+ * Startzeit stand ungekennzeichnet neben einer wirklich geratenen Zeit.
+ */
+test('AK1–AK3 (#1083): der Sheet-Kopf folgt der erkannten Art und bleibt neutral, solange sie vorläufig ist', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // AK2: vor jedem Signal ist die Art `provisional` — der Kopf behauptet keine.
+  await captureButton(page).click();
+  await expect(page.getByRole('dialog', { name: 'Erfassen', exact: true })).toBeVisible();
+
+  // AK1: "Termin" allein trägt schon das Art-Vokabular (local-recognizer.ts).
+  await captureTitleField(page).fill('Termin Arzt');
+  await expect(page.getByRole('dialog', { name: 'Termin erfassen', exact: true })).toBeVisible();
+
+  // AK3: der Art-Chip wechselt die Art von Hand — der Kopf zieht mit.
+  await page.getByRole('button', { name: 'Art, Termin', exact: true }).click();
+  await page.getByRole('radio', { name: 'Aufgabe' }).click();
+  await expect(page.getByRole('dialog', { name: 'Aufgabe erfassen', exact: true })).toBeVisible();
+});
+
+test('AK4+AK5 (#1083): der 09:00-Rückfall einer ungenannten Startzeit ist geraten, eine sicher gelesene oder selbst gesetzte Zeit nicht', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // AK4: kein Zeit-Signal -> der Zeit-Chip zeigt den 09:00-Rückfall als geraten.
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Termin Arzt');
+  await expect(page.getByRole('button', { name: 'Zeit verwerfen' })).toBeVisible();
+
+  // AK5: "Verwerfen" übernimmt den Rückfall bewusst — die Startzeit bleibt stehen
+  // (ein Termin braucht sie), nur die Geraten-Markierung fällt weg.
+  await page.getByRole('button', { name: 'Zeit verwerfen' }).click();
+  await expect(page.getByRole('button', { name: 'Zeit verwerfen' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Zeit,/ })).toBeVisible();
+
+  // AK5: eine vom Erkenner sicher gelesene Zeit ist von Anfang an ungekennzeichnet.
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Termin morgen 14 Uhr Zahnarzt');
+  await expect(page.getByRole('button', { name: 'Zeit verwerfen' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Zeit,/ })).toBeVisible();
+});
