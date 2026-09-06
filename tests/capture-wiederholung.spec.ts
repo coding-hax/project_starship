@@ -52,6 +52,23 @@ test('AK4: ohne erkannte Wiederholung erscheint der Chip gar nicht', async ({ pa
   await expect(recurrenceChip(page)).toHaveCount(0);
 });
 
+/** Deckt die drei `recurrenceLabel`-Zweige (uebersicht-capture.tsx:110-114) ab, die der
+ * AK-Check als Testlücke markiert hat: „Jede Woche" (Standardfall) läuft bereits oben
+ * mit — hier die restlichen vier Label-Formen. */
+for (const { text, label } of [
+  { text: 'Termin Arzt alle 2 Wochen', label: 'Alle 2 Wochen' },
+  { text: 'Termin Arzt jeden Montag', label: 'Jeden Montag' },
+  { text: 'Termin Arzt täglich', label: 'Täglich' },
+  { text: 'Termin Arzt monatlich', label: 'Monatlich' },
+]) {
+  test(`AK4: Klartext-Chip zeigt "${label}"`, async ({ page }) => {
+    await page.goto('/uebersicht');
+    await typeCapture(page, text);
+
+    await expect(recurrenceChip(page)).toHaveText(label);
+  });
+}
+
 test('AK5: der Wiederholungs-Chip laesst sich verwerfen — danach legt "Anlegen" einen einzelnen Termin ohne Wiederholung an', async ({
   page,
 }) => {
