@@ -28,10 +28,11 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
  *  default), the card's cells are narrower (issue #958, AK3). */
 const MAX_DOTS_IN_GRID = 3;
 
-/** Band cap per week row — tighter than the week strip's 3 (issue #1043,
+/** Band-row cap per week row — tighter than the week strip's 3 (issue #1043,
  *  AK8): a week row shares its width with six others stacked in the same
- *  card, so two is what stays legible. */
-const MAX_BANDS_IN_GRID = 2;
+ *  card, so two is what stays legible. Counts rows, not bands (issue #1061):
+ *  bands that share a row cost the card no height. */
+const MAX_BAND_ROWS_IN_GRID = 2;
 
 /** One screen's worth of week rows — `.month-grid__track`'s CSS height is
  *  built from the same number (month-grid.css), so the interactive band below
@@ -73,10 +74,6 @@ interface WeekLayout {
   /** Monday-first date keys of this week — `weekDays[0]` is also its React key. */
   weekDays: string[];
   bands: AllDayBand[];
-  /** 0 with no all-day event that week (issue #1043, AK9 — no reserved empty
-   *  row); 2 only when two bands genuinely overlap in column range (AK8: two
-   *  bands sharing no day share a single row), else 1. */
-  bandRows: 0 | 1 | 2;
   /** Category dots per day of this week, `MAX_DOTS_IN_GRID` at most. */
   dots: EventView['category'][][];
 }
@@ -98,13 +95,11 @@ function layoutForWeeks(
     const bands = allDayBandsForWindow(
       weekDays,
       (day) => occurrences.get(day) ?? [],
-      MAX_BANDS_IN_GRID,
+      MAX_BAND_ROWS_IN_GRID,
     );
-    const overlaps = bands.length > 1 && bands[0].endCol >= bands[1].startCol;
     return {
       weekDays,
       bands,
-      bandRows: bands.length === 0 ? 0 : overlaps ? 2 : 1,
       dots: weekDays.map((day) =>
         categoriesForDay(occurrences.get(day) ?? [], day, MAX_DOTS_IN_GRID),
       ),
@@ -170,7 +165,7 @@ const MonthWeekRow = memo(function MonthWeekRow({
   dimMask,
   onSelect,
 }: MonthWeekRowProps) {
-  const { weekDays, bands, bandRows, dots } = layout;
+  const { weekDays, bands, dots } = layout;
   return (
     <div
       className="month-grid__week"
@@ -209,7 +204,7 @@ const MonthWeekRow = memo(function MonthWeekRow({
             </li>
           );
         })}
-        {bands.map((band, index) => (
+        {bands.map((band) => (
           <li
             key={band.id}
             className="month-grid__band"
@@ -218,7 +213,11 @@ const MonthWeekRow = memo(function MonthWeekRow({
             data-continues-after={band.continuesAfter ? '' : undefined}
             style={
               {
-                gridRow: bandRows === 2 && index === 1 ? 3 : 2,
+                // The row each band sits in comes from `allDayBandsForWindow`
+                // itself (issue #1061) — this used to be an ad-hoc
+                // `bands[0].endCol >= bands[1].startCol` comparison here,
+                // which only ever held for exactly two bands.
+                gridRow: 2 + band.row,
                 gridColumn: `${band.startCol + 1} / ${band.endCol + 2}`,
                 '--band-cat': categoryEdgeVar(band.category),
               } as CSSProperties
