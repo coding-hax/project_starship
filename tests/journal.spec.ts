@@ -264,8 +264,7 @@ const EDITOR_PASSPHRASE = '376 editor passphrase';
 /** Same wait-for-settled-state reasoning as journal-lock.spec.ts's setUpJournal:
  * journalSetup() derives a key and writes before the button resolves. */
 async function setUpEditor(page: Page, passphrase = EDITOR_PASSPHRASE): Promise<void> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -747,8 +746,7 @@ test('AC4 (#505): ein abgesendeter Eintrag hakt die Journal-Routine für den Tag
 test('AC1 (#505): das Journal-Modul legt genau eine Journal-Routine an, ein zweiter Boot keine zweite', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   await expect
     .poll(async () => {
@@ -1002,8 +1000,7 @@ test('issue #469/#868: das heutige Datum steht als Augenbraue über der Übersch
   page,
 }) => {
   await installClockAt(page);
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   const heading = page.getByRole('heading', { name: 'Wie war dein Tag?', exact: true });
   const eyebrow = page.locator('[data-ground="journal"] .page-head__eyebrow');
@@ -1223,8 +1220,11 @@ test('AC2 (#394): mehrere Einträge an einem Tag, offline geschrieben, landen ni
   page,
   context,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
+  // Drains the boot-time Journal-habit mutation while still online. It used to ride out on
+  // the throwaway /uebersicht load registerPasskey no longer does (#1075); left queued it
+  // inflates the outbox count below and lets the test go offline before the page is live.
+  await settleJournalHabitBoot(page);
   // Offline-Pfad (AC3): Einrichten und alle drei Einträge entstehen ohne Netz.
   await context.setOffline(true);
 
@@ -1459,8 +1459,7 @@ test('im Setup-Zustand erscheint offline keine Notiz (issue #646 AC3)', async ({
   page,
   context,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.locator('.journal-gate[data-state="setup"]').waitFor();
 
   await context.setOffline(true);

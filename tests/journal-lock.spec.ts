@@ -24,8 +24,7 @@ test.beforeEach(async () => {
  * A caller that reloads right after the click would race that in-flight write.
  */
 async function setUpJournal(page: Page, passphrase: string) {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();
@@ -99,8 +98,7 @@ test('Default speicherresident: Kaltstart sperrt wieder (AC4)', async ({ page })
 test('Passphrase-Felder tragen autocomplete fuer den Passwortmanager (Fund #392)', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await expect(page.getByLabel('Passphrase', { exact: true })).toHaveAttribute(
     'autocomplete',
     'new-password',

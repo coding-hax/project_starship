@@ -44,15 +44,13 @@ test.describe('Keyboard-safe Layout (#106)', () => {
   });
 
   test('Viewport-Meta deklariert interactive-widget=resizes-content', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     const content = await page.locator('meta[name="viewport"]').getAttribute('content');
     expect(content).toContain('interactive-widget=resizes-content');
   });
 
   test('ohne Tastatur ist --keyboard-inset 0px', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
     const inset = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
     );
@@ -60,8 +58,7 @@ test.describe('Keyboard-safe Layout (#106)', () => {
   });
 
   test('synthetische Tastatur setzt --keyboard-inset und hebt den FAB an', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/aufgaben');
+    await registerPasskey(page, '/aufgaben');
 
     const fab = page.locator('.fab');
     await expect(fab).toBeVisible();
@@ -117,8 +114,7 @@ test.describe('Rhythmus-Auswahl behält Fokus bei Zeigergeräten (#138)', () => 
   test('Tippen auf den Rhythmus schließt die synthetische Tastatur nicht, das Sheet bleibt stehen', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });
@@ -194,8 +190,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('Routinen-Sheet: Namensfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });
@@ -220,8 +215,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('Termin-Sheet: Titelfeld und Karte bleiben bei offener Tastatur sichtbar', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/kalender');
+    await registerPasskey(page, '/kalender');
     await page.getByRole('button', { name: 'Termin erfassen' }).click();
 
     const titleField = page.getByLabel('Titel');
@@ -237,8 +231,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   });
 
   test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
     // The six stacked schedule radios (behind the Rhythmus chip's panel since
     // #713) are tall enough on their own to exceed the ~512px left once a
@@ -269,8 +262,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('ohne Tastatur sitzt das Routinen-Sheet weiterhin bündig am unteren Rand', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const sheetContent = page.getByRole('dialog').locator('.sheet__content');
@@ -284,8 +276,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('ohne Tastatur sitzt das Termin-Sheet weiterhin bündig am unteren Rand', async ({
     page,
   }) => {
-    await registerPasskey(page);
-    await page.goto('/kalender');
+    await registerPasskey(page, '/kalender');
     await page.getByRole('button', { name: 'Termin erfassen' }).click();
 
     const sheetContent = page.getByRole('dialog').locator('.sheet__content');
@@ -300,8 +291,7 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await registerPasskey(page);
-    await page.goto('/routinen');
+    await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
 
     const nameField = page.getByRole('textbox', { name: 'Name' });

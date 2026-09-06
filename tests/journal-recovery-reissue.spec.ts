@@ -16,8 +16,7 @@ test.beforeEach(async () => {
 
 /** Setup, confirming the one-time recovery-key screen. Returns the key shown. */
 async function setUpJournal(page: Page, passphrase: string): Promise<string> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();

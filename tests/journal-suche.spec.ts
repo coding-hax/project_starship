@@ -25,8 +25,7 @@ const SEARCH_PASSPHRASE = 's4 suche passphrase';
 
 /** Same wait-for-settled-state reasoning as journal.spec.ts's setUpEditor. */
 async function setUpEditor(page: Page, passphrase = SEARCH_PASSPHRASE): Promise<void> {
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
   await page.getByLabel('Passphrase wiederholen').fill(passphrase);
   await page.getByRole('button', { name: 'Einrichten' }).click();

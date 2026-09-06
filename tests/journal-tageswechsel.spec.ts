@@ -18,8 +18,7 @@ const YESTERDAY_LABEL = 'Freitag, 17. Juli';
 
 async function setUpEditor(page: Page): Promise<void> {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
   await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE);
   await page.getByRole('button', { name: 'Einrichten' }).click();

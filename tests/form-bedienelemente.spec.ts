@@ -289,8 +289,7 @@ test('AK3: der aktive Reiter trägt seine Pille hinter dem Icon, ein inaktiver n
 });
 
 test('AK4: die Aufgaben-Checkbox ist ein gezeichneter Kreis mit Häkchen', async ({ page }) => {
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
   // Ohne dueAt fällt die Sonde unter die "Woche"-Standardansicht (issue #705) —
   // "Alle" macht sie unabhängig vom Fälligkeitsdatum sichtbar (Vorlage: tasks.spec.ts).
   await selectView(page, 'Alle');

@@ -54,7 +54,9 @@ test.beforeEach(async ({ page }) => {
       },
     }),
   );
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {

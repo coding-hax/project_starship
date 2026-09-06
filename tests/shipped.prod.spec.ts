@@ -16,8 +16,7 @@ import { registerPasskey, resetDatabase, selectView, withDb } from './helpers';
  */
 test.beforeEach(async ({ page }) => {
   await resetDatabase();
-  await registerPasskey(page);
-  await page.goto('/aufgaben');
+  await registerPasskey(page, '/aufgaben');
 });
 
 test('Ausgeliefertes Bündel: Anmeldung mit Passkey → offline Hülle nach Reload → online synchronisiert', async ({

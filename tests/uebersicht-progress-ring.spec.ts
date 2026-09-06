@@ -45,7 +45,9 @@ test.beforeEach(async ({ page }) => {
   // The ring reads from IndexedDB only (CLAUDE.md rule 8), never a fetch.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
   await page.route('https://api.open-meteo.com/**', (route) => route.abort('failed'));
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
   await skewClock(page, NOW);
 });
 

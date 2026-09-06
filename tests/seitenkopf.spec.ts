@@ -266,8 +266,7 @@ test('AK2: Titelgrad ist gegenüber --text-title halbiert, /uebersicht zeigt meh
 test('AK3: der Fortschrittsring steht im Fluss neben dem Titel, nicht absolut darüber', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
 
   const ring = page.locator('.daily-progress-ring-slot');
   await expect(ring).toBeVisible();
@@ -431,8 +430,7 @@ test('AK2 (#868): Journal zeigt die Augenbraue (langes Datum) über dem Titel �
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   const eyebrow = page.locator('[data-ground="journal"] .page-head__eyebrow');
   await expect(eyebrow).toHaveText(EYEBROW_DATE_FORMATTER.format(new Date(FIXED_NOW)));
@@ -492,8 +490,7 @@ test('AK2 (#928): die Figur steht rechts außen in der Journal-Titelzeile, der T
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/journal');
+  await registerPasskey(page, '/journal');
 
   const row = page.locator('.journal-page__title-row');
   const heading = page.locator('.journal-page__heading');
@@ -603,8 +600,7 @@ test('AK6 (#898): die Kalender-Augenbraue erfüllt 4,5:1 gegen den Kalender-Grun
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/kalender');
+  await registerPasskey(page, '/kalender');
 
   const eyebrow = page.locator('.calendar-view__period');
   await expect(eyebrow).toBeVisible();
@@ -652,8 +648,7 @@ test('AK2 (#870): Wetter zeigt die Augenbraue (Datum), die Temperatur als Titel 
 test('AK2 (#870): Einstellungen zeigt die Augenbraue (Zurück) über dem Titel, ohne Zusatz-Slot', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   await expect(page.locator('.einstellungen__back')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1, name: 'Einstellungen' })).toBeVisible();
@@ -667,8 +662,7 @@ test('AK6 (#870): die Wetter-Augenbraue erfüllt 4,5:1 gegen den Wetter-Grund, H
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
   await expect(page.locator('.weather-forecast').getByRole('listitem')).toHaveCount(7);
   await page.goto('/wetter/2026-07-18');
 
@@ -694,8 +688,7 @@ test('AK6 (#870): die Wetter-Augenbraue erfüllt 4,5:1 gegen den Wetter-Grund, H
 test('AK6 (#870): die Einstellungen-Augenbraue (Zurück-Link) erfüllt 4,5:1 gegen den Einstellungen-Grund, Hell und Dunkel', async ({
   page,
 }) => {
-  await registerPasskey(page);
-  await page.goto('/einstellungen');
+  await registerPasskey(page, '/einstellungen');
 
   const eyebrow = page.locator('.einstellungen__back');
   await expect(eyebrow).toBeVisible();

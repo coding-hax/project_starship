@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock } from './helpers';
+import { registerPasskey, resetAppData, skewClock, withDb } from './helpers';
 
 // A Wednesday — same reference date as streak.test.ts. The running week is
 // 2026-07-13..2026-07-19 (Mon–Sun), the running month is July 2026.
@@ -40,7 +40,8 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page);
   await skewClock(page, NOW);
   // Umgezogen von /uebersicht auf /routinen (issue #652), jetzt die Verlaufskarte
-  // statt der Ein-Zahl-Karte (issue #905, T4).
+  // statt der Ein-Zahl-Karte (issue #905, T4), seit #1070 ein Quadratraster
+  // statt der Stufenkurve.
   await page.goto('/routinen');
 });
 
@@ -48,48 +49,47 @@ test.beforeEach(async ({ page }) => {
 /* Karte erscheint, sobald es mindestens eine aktive Routine gibt             */
 /* -------------------------------------------------------------------------- */
 
-test('die Karte "Routinen in Serie" erscheint, sobald es eine aktive Routine gibt', async ({
+test('die Karte "Erledigt · 30 Tage" erscheint, sobald es eine aktive Routine gibt', async ({
   page,
 }) => {
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
-  await expect(historyCard(page).getByText('Routinen in Serie')).toBeVisible();
+  await expect(historyCard(page).getByText('Erledigt · 30 Tage')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
-/* Kopf-Wert = aktueller Tag / Anzahl aktiver Routinen                        */
+/* Kopf-Wert = Summe aller gefüllten Quadrate im Fenster (issue #1070 AC6)    */
 /* -------------------------------------------------------------------------- */
 
-test('der Kopf-Wert zählt nur Routinen mit laufender Serie, gegen alle aktiven', async ({
+test('der Kopf-Wert ist die Summe aller Erledigungen im 30-Tage-Fenster, nicht die Zahl der Routinen mit laufender Serie', async ({
   page,
 }) => {
-  const withStreak = await seedHabit(page, {
-    name: 'Wasser trinken',
-    schedule: 'daily',
-    createdAt: '2026-06-01T00:00:00.000Z',
-  });
-  const weeklyWithStreak = await seedHabit(page, {
-    name: 'Großeinkauf',
-    schedule: 'weekly',
-    createdAt: '2026-06-01T00:00:00.000Z',
-  });
-  await seedHabit(page, {
-    name: 'Meditieren',
-    schedule: 'daily',
-    createdAt: '2026-06-01T00:00:00.000Z',
-  }); // ohne jeden Log -> keine Serie
+  // Deckt wörtlich das Beispiel aus der Akzeptanzkriterien-Beschreibung ab:
+  // 4 aktive Routinen mit zusammen 11 Logs in den letzten 30 Tagen ⇒ 11.
+  const a = await seedHabit(page, { name: 'Wasser trinken', createdAt: '2026-06-01T00:00:00.000Z' });
+  const b = await seedHabit(page, { name: 'Meditieren', createdAt: '2026-06-01T00:00:00.000Z' });
+  const c = await seedHabit(page, { name: 'Dehnen', createdAt: '2026-06-01T00:00:00.000Z' });
+  const d = await seedHabit(page, { name: 'Lesen', createdAt: '2026-06-01T00:00:00.000Z' });
 
-  await seedHabitLog(page, withStreak, TODAY);
-  await seedHabitLog(page, weeklyWithStreak, '2026-07-14'); // diese Woche
+  for (const day of ['2026-07-15', '2026-07-14', '2026-07-13', '2026-07-12', '2026-07-11']) {
+    await seedHabitLog(page, a, day);
+  }
+  for (const day of ['2026-07-10', '2026-07-09', '2026-07-08']) {
+    await seedHabitLog(page, b, day);
+  }
+  for (const day of ['2026-07-07', '2026-07-06']) {
+    await seedHabitLog(page, c, day);
+  }
+  await seedHabitLog(page, d, '2026-07-05');
 
-  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('2/3');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('11');
 });
 
 /* -------------------------------------------------------------------------- */
-/* Archivierte Routine mit Serie zählt nicht, auch nicht im Nenner            */
+/* Archivierte Routine liefert weder Zeile noch Quadrat noch Kopf-Beitrag     */
 /* -------------------------------------------------------------------------- */
 
-test('eine archivierte Routine mit laufender Serie zählt weder mit noch im Nenner', async ({
+test('eine archivierte Routine liefert weder Zeile noch Quadrat noch einen Beitrag zum Kopf-Wert', async ({
   page,
 }) => {
   const archived = await seedHabit(page, {
@@ -97,24 +97,22 @@ test('eine archivierte Routine mit laufender Serie zählt weder mit noch im Nenn
     archivedAt: '2026-07-14T00:00:00.000Z',
   });
   await seedHabitLog(page, archived, TODAY);
-  // Eine zweite, aktive Routine ohne Serie hält die Karte sichtbar.
+  // Eine zweite, aktive Routine ohne Erledigung hält die Karte sichtbar.
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
-  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('0/1');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('0');
 });
 
 /* -------------------------------------------------------------------------- */
-/* 0 laufende Serien → Kopf-Wert "0/N", Kurve rendert trotzdem                */
+/* 0 Erledigungen → Kopf-Wert "0", das Raster rendert trotzdem                */
 /* -------------------------------------------------------------------------- */
 
-test('ohne laufende Serie zeigt die Karte "0/N" und die Kurve bleibt sichtbar', async ({
-  page,
-}) => {
+test('ohne jede Erledigung zeigt die Karte "0" und das Raster bleibt sichtbar', async ({ page }) => {
   await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
 
   const card = historyCard(page);
-  await expect(card.locator('.habit-history-card__value')).toHaveText('0/1');
-  await expect(card.locator('.habit-history-card__svg')).toBeVisible();
+  await expect(card.locator('.habit-history-card__value')).toHaveText('0');
+  await expect(card.locator('.habit-history-card__grid')).toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
@@ -138,13 +136,38 @@ test('nur archivierte Routinen lassen die Karte ebenfalls weg', async ({ page })
 /* Rein aus IndexedDB, offline                                                */
 /* -------------------------------------------------------------------------- */
 
-test('die Karte berechnet sich vollständig offline aus IndexedDB', async ({ page, context }) => {
+test('die Karte berechnet sich vollständig offline aus IndexedDB und der Log erreicht online die Datenbank', async ({
+  page,
+  context,
+}) => {
   await context.setOffline(true);
 
-  const habitId = await seedHabit(page, { createdAt: '2026-06-01T00:00:00.000Z' });
+  const habitId = await seedHabit(page, {
+    name: 'Offline-Quadrat',
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
   await seedHabitLog(page, habitId, TODAY);
 
-  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('1/1');
+  await expect(historyCard(page).locator('.habit-history-card__value')).toHaveText('1');
+
+  // beforeEach cuts the sync endpoints so the card above can only ever compute from
+  // IndexedDB — lift that here to let the queued mutations actually reach Postgres.
+  // Order matters: unroute before setOffline(false), otherwise the app's own 'online'
+  // listener fires an automatic sync() the instant we go online, racing its in-flight
+  // request against the route being torn down (#120).
+  await page.unroute('**/api/sync/**');
+  await context.setOffline(false);
+  await page.evaluate(() => window.__starship.sync());
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  const row = await withDb((client) =>
+    client.query(
+      'SELECT done FROM habit_logs l JOIN habits h ON h.id = l.habit_id WHERE h.name = $1 AND log_date = $2',
+      ['Offline-Quadrat', TODAY],
+    ),
+  );
+  expect(row.rowCount).toBe(1);
+  expect(row.rows[0].done).toBe(true);
 });
 
 /* -------------------------------------------------------------------------- */

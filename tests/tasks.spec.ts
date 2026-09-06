@@ -152,7 +152,9 @@ test.beforeEach(async ({ page }) => {
   // The list must come from IndexedDB, never a direct fetch (CLAUDE.md rule 8) —
   // with the sync endpoints cut, that is the only way any of these tests can pass.
   await page.route('**/api/sync/**', (route) => route.abort('failed'));
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 test('a designed empty state, not a blank screen', async ({ page }) => {

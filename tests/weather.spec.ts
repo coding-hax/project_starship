@@ -216,7 +216,9 @@ test.beforeEach(async ({ page }) => {
   // matching route intercepts first). The real API is never reachable from this
   // suite either way (AC "echte API nie angerufen").
   await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
-  await registerPasskey(page);
+  // No target: every test in this file opens with its own goto, so loading
+  // /uebersicht here would only be thrown away (issue #1075).
+  await registerPasskey(page, null);
 });
 
 /* -------------------------------------------------------------------------- */

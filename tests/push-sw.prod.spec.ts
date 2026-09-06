@@ -22,8 +22,7 @@ import { registerPasskey, resetPushData } from './helpers';
  */
 test.beforeEach(async ({ page }) => {
   await resetPushData();
-  await registerPasskey(page);
-  await page.goto('/uebersicht');
+  await registerPasskey(page, '/uebersicht');
   await page.evaluate(() => navigator.serviceWorker.ready);
 });
 
