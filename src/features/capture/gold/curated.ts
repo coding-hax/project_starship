@@ -330,4 +330,30 @@ export const CURATED_CASES: GoldCase[] = [
     ['Termin Arzt alle Tage', 'event', 'Arzt', null, { freq: 'daily', interval: 1 }],
     ['Termin Arzt alle Monate', 'event', 'Arzt', null, { freq: 'monthly', interval: 1 }],
   ]),
+
+  // #1090: "Dienstagabend" statt "Dienstag Abend" — löst wie die getrennte Schreibweise
+  // auf. AK1: der Satz aus der Meldung, mit Rahmen und genannter Uhrzeit.
+  ...rows('Wochentag+Tageszeit-Kompositum (#1090)', [
+    ['Erstelle mir einen Termin für Dienstagabend 19:30 Uhr Kino', 'event', 'Kino', on(1, 16, 19, 30)],
+    // AK2: ohne genannte Uhrzeit setzt der Tageszeit-Teil die feste Uhrzeit.
+    ['Dienstagabend Kino', 'task', 'Kino', on(1, 16, 19)],
+    ['Freitagmittag Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 12)],
+    ['Samstagvormittag Einkauf', 'task', 'Einkauf', on(1, 20, 10)],
+    ['Mittwochmorgen Sport', 'task', 'Sport', on(1, 17, 8)],
+    // AK2: eine ausgesprochene Uhrzeit schlägt den Tageszeit-Teil auch dann, wenn sie
+    // als Text kürzer ist als der Tageszeit-Suffix ("mittag"/"vormittag"/"nachmittag"
+    // sind länger als "15:30" oder "8h") — sonst gewinnt der Suffix fälschlich allein
+    // wegen der Span-Länge.
+    ['Freitagmittag 15:30 Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 15, 30)],
+    ['Dienstagabend 8h Kino', 'task', 'Kino', on(1, 16, 8)],
+    ['Freitagnachmittag 15:30 Uhr Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 15, 30)],
+  ]),
+
+  // AK5: keine Kollision mit der bestehenden Wiederholungsform "montags"/"sonntags" —
+  // die endet auf "s", nicht auf eines der sechs Tageszeitwörter, und bleibt deshalb
+  // eine Wiederholung statt Datum+Tageszeit.
+  ...recurrenceRows('Wochentag-Adverb bleibt Wiederholung (#1090 AK5)', [
+    ['Montags Sport machen', 'task', 'Sport machen', on(1, 15), { freq: 'weekly', interval: 1, byWeekday: [1] }],
+    ['Sonntags Wäsche waschen', 'task', 'Wäsche waschen', on(1, 21), { freq: 'weekly', interval: 1, byWeekday: [0] }],
+  ]),
 ];

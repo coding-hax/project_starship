@@ -253,6 +253,28 @@ test('AK6/R7: ein genanntes Datum steuert bis 7 Tage rückwärts den Log-Tag, Zu
   expect(logDates).toEqual([dateKeyOf(dueAt(MO, -1, 0, 0)), dateKeyOf(MO)].sort());
 });
 
+test('#1090 AK7: Wochentag+Tageszeit-Kompositum löst im Erfassen-Sheet auf, der Datums-Chip zeigt den Dienstag', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const dienstag1930 = dueAt(MO, 1, 19, 30);
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Erstelle mir einen Termin für Dienstagabend 19:30 Uhr Kino');
+
+  // Nicht der Erfassungstag (Montag) — das war der Fehler aus der Meldung.
+  await expect(page.getByRole('button', { name: 'Zeit, Dienstag 19:30' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  expect(entries[entries.length - 1].payload).toMatchObject({
+    title: 'Kino',
+    startsAt: dienstag1930.toISOString(),
+  });
+});
+
 test('Offline-Pfad: eine Erfassung mit relativem Datum offline erreicht online die Datenbank', async ({
   page,
 }) => {
