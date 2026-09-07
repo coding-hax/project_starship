@@ -232,6 +232,49 @@ const WEEKDAY_ONLY_REASON = 'Wochentag ohne Datum';
 const WEEKDAY_NEXT_REASON = '„nächsten" überspringt eine Woche';
 const YEAR_COMPLETED_REASON = 'Jahr ergänzt';
 
+// Wochentag+Tageszeit-Komposita (#1090): Diktat sagt "Dienstagabend", nicht "Dienstag
+// Abend" — `wordPattern` blockt die getrennten Muster hier zweifach: WORD_AFTER hinter
+// "dienstag" bzw. WORD_BEFORE vor "abend" sitzen je auf einem Buchstaben der anderen
+// Hälfte, keine Wortgrenze, kein Treffer. Eigenes Muster ohne Grenze zwischen den beiden
+// Teilen. "morgen" zählt nur hier als Tageszeit (8 Uhr) — freistehend bleibt es der
+// Kalendertag (RELATIVE_DAYS), STANDALONE_DAY_PARTS lässt es deshalb bewusst weg (AK3).
+const COMPOUND_DAY_PART_HOURS: Record<string, number> = {
+  morgen: 8,
+  vormittag: 10,
+  mittag: 12,
+  nachmittag: 15,
+  abend: 19,
+  nacht: 22,
+};
+const WEEKDAY_DAY_PART_PATTERN = wordPattern(
+  `(${WEEKDAYS.join('|')})(${Object.keys(COMPOUND_DAY_PART_HOURS).join('|')})`,
+  'giu',
+);
+
+interface WeekdayDayPartMatch {
+  start: number;
+  /** Grenze zwischen Wochentags- und Tageszeit-Teil — der Wochentag trägt das Datum, der
+   * Rest die Uhrzeit; beide laufen als eigene, eigenständige Kandidaten weiter. */
+  weekdayEnd: number;
+  end: number;
+  targetDay: number;
+  hours: number;
+}
+
+function findWeekdayDayPartMatches(text: string): WeekdayDayPartMatch[] {
+  const matches: WeekdayDayPartMatch[] = [];
+  for (const match of text.matchAll(WEEKDAY_DAY_PART_PATTERN)) {
+    matches.push({
+      start: match.index!,
+      weekdayEnd: match.index! + match[1].length,
+      end: match.index! + match[0].length,
+      targetDay: WEEKDAYS.indexOf(match[1].toLowerCase()),
+      hours: COMPOUND_DAY_PART_HOURS[match[2].toLowerCase()],
+    });
+  }
+  return matches;
+}
+
 /**
  * Datumsspanne mit gemeinsamem Monat: „vom 3. bis 10. März", „vom 3.-5. Mai".
  * Gemeint ist der Anfang; der Span deckt den ganzen Ausdruck ab, sonst bliebe
@@ -366,6 +409,21 @@ function findDateCandidate(text: string, now: Date): Candidate<DateValue> | null
         guessReason: modifier === 'nächsten' ? WEEKDAY_NEXT_REASON : WEEKDAY_ONLY_REASON,
       },
       specificity: modifier ? 2 : 1,
+    });
+  }
+
+  // Komposita (#1090): der Span deckt das ganze Kompositum ab (Wochentag + Tageszeit-
+  // Suffix), nicht nur den Wochentags-Teil — sonst bliebe der Suffix im Titel stehen,
+  // sobald eine ausgesprochene Uhrzeit den kürzeren Tageszeit-Kandidaten in
+  // `findTimeCandidate` schlägt (AK4). Der Tageszeit-Teil selbst ist dort ein eigener,
+  // kürzerer Kandidat, damit genau das passieren kann (AK1).
+  for (const match of findWeekdayDayPartMatches(text)) {
+    const diff = (match.targetDay - logicalStart.getDay() + 7) % 7;
+    candidates.push({
+      start: match.start,
+      end: match.end,
+      value: { date: addDays(logicalStart, diff), guessReason: WEEKDAY_ONLY_REASON },
+      specificity: 1,
     });
   }
 
@@ -939,6 +997,23 @@ function findStandaloneDayPartCandidates(text: string): Candidate<TimeValue>[] {
 }
 
 /**
+ * Der Tageszeit-Teil eines Wochentag+Tageszeit-Kompositums (#1090): „Dienstagabend" gibt
+ * "abend" als eigenen, **kurzen** Zeit-Kandidaten — nur der Suffix, nicht das ganze
+ * Kompositum. So bleibt es bei derselben Regel wie bei den freistehenden Tageszeitwörtern
+ * oben: der längste Span gewinnt, eine ausgesprochene Uhrzeit schlägt diesen Kandidaten
+ * fast immer (AK1). Der Wochentags-Teil selbst deckt in `findDateCandidate` trotzdem das
+ * ganze Kompositum ab, damit auch dann nichts vom Suffix im Titel übrig bleibt (AK4).
+ */
+function findWeekdayDayPartTimeCandidates(text: string): Candidate<TimeValue>[] {
+  return findWeekdayDayPartMatches(text).map((match) => ({
+    start: match.weekdayEnd,
+    end: match.end,
+    value: { hours: match.hours, minutes: 0, needsConfirmation: false, guessReason: null },
+    specificity: 0,
+  }));
+}
+
+/**
  * Zeitspannen (#erfasser-korpus): „von 10 bis 12", „zwischen 14 und 16 Uhr", „9-17 Uhr".
  *
  * Ein Termin, zwei genannte Uhrzeiten — gemeint ist der **Anfang**. Ohne diese Muster
@@ -1036,6 +1111,7 @@ function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null
 
   const candidates = raw.map((match) => resolveHourMatch(text, match, now));
   candidates.push(...findStandaloneDayPartCandidates(text));
+  candidates.push(...findWeekdayDayPartTimeCandidates(text));
   return bestCandidate(candidates);
 }
 

@@ -457,3 +457,61 @@ describe('parseTaskInput — #689: "gestern"', () => {
     expect(result.dueAt).toBe(iso(2024, 1, 14));
   });
 });
+
+describe('parseTaskInput — #1090: Wochentag+Tageszeit-Komposita', () => {
+  it('AK1: löst wie die getrennte Schreibweise auf — Datum, Uhrzeit und Titel stimmen', () => {
+    const result = parseTaskInput('Erstelle mir einen Termin für Dienstagabend 19:30 Uhr Kino', NOW);
+    expect(result.title).toBe('Kino');
+    expect(result.dueAt).toBe(iso(2024, 1, 16, 19, 30));
+    expect(result.dateGuessReason).toBe('Wochentag ohne Datum');
+  });
+
+  it('AK2: ohne genannte Uhrzeit setzt der Tageszeit-Teil die feste Uhrzeit', () => {
+    expect(parseTaskInput('Dienstagabend Kino', NOW).dueAt).toBe(iso(2024, 1, 16, 19, 0));
+    expect(parseTaskInput('Freitagmittag Zahnarzt', NOW).dueAt).toBe(iso(2024, 1, 19, 12, 0));
+    expect(parseTaskInput('Samstagvormittag Einkauf', NOW).dueAt).toBe(iso(2024, 1, 20, 10, 0));
+    expect(parseTaskInput('Mittwochmorgen Sport', NOW).dueAt).toBe(iso(2024, 1, 17, 8, 0));
+  });
+
+  it('AK2: eine ausgesprochene Uhrzeit schlägt den Tageszeit-Teil weiterhin', () => {
+    const result = parseTaskInput('Freitagabend um 20:15 Uhr Kino', NOW);
+    expect(result.title).toBe('Kino');
+    expect(result.dueAt).toBe(iso(2024, 1, 19, 20, 15));
+  });
+
+  it('AK3: "morgen" zählt nur im Kompositum als Tageszeit, freistehend bleibt es der Kalendertag', () => {
+    expect(parseTaskInput('Mittwochmorgen Sport', NOW).dueAt).toBe(iso(2024, 1, 17, 8, 0));
+    const standalone = parseTaskInput('Mittwoch Morgen Sport', NOW);
+    expect(standalone.title).toBe('Morgen Sport');
+  });
+
+  it('AK3: Groß-/Kleinschreibung ist egal', () => {
+    expect(parseTaskInput('dienstagabend kino', NOW).dueAt).toBe(iso(2024, 1, 16, 19, 0));
+  });
+
+  it('AK4: dateGuessReason ist identisch zur getrennten Form, kein Rest im Titel', () => {
+    const result = parseTaskInput('Donnerstagnacht Standup', NOW);
+    expect(result.title).toBe('Standup');
+    expect(result.dateGuessReason).toBe('Wochentag ohne Datum');
+  });
+
+  it('AK5: "montags"/"sonntags" bleiben eine Wiederholung, keine Kollision', () => {
+    const montags = parseTaskInput('Montags Sport machen', NOW);
+    expect(montags.title).toBe('Sport machen');
+    expect(montags.dateGuessReason).toBeNull();
+    const sonntags = parseTaskInput('Sonntags Wäsche waschen', NOW);
+    expect(sonntags.title).toBe('Wäsche waschen');
+    expect(sonntags.dateGuessReason).toBeNull();
+  });
+
+  it('AK5: "Zahnarzttermin vereinbaren" behält seinen Titel', () => {
+    const result = parseTaskInput('Zahnarzttermin vereinbaren', NOW);
+    expect(result.title).toBe('Zahnarzttermin vereinbaren');
+    expect(result.dueAt).toBeNull();
+  });
+
+  it('AK5: "Mittagessen"/"Abendessen" bleiben unangetastet', () => {
+    expect(parseTaskInput('Mittagessen mit Anna', NOW).title).toBe('Mittagessen mit Anna');
+    expect(parseTaskInput('Abendessen mit Lisa', NOW).title).toBe('Abendessen mit Lisa');
+  });
+});

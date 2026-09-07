@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CURATED_CASES } from './curated';
 import {
   generateCombinedCases, generateComplexCases, generateGoldCases, generateHardCases,
-  generateSpokenCases, generateTelegramCases,
+  generateSpokenCases, generateTelegramCases, generateWeekdayDayPartCases,
 } from './generate';
 import { pct, scoreCorpus } from './score';
 import type { Bucket, GoldField, GoldResult } from './score';
@@ -69,6 +69,8 @@ describe('Goldkorpus', () => {
   check('kombiniert — Zögern, Aussagerahmen und Datum', withPrefix(generateCombinedCases, 'kombi:zoegern-aussage-datum'));
   check('kombiniert — Telegramm mit Zeitspanne', withPrefix(generateCombinedCases, 'kombi:telegramm-spanne'));
   check('kombiniert — Sprechkopf mit Präposition', withPrefix(generateCombinedCases, 'kombi:kopf-praeposition'));
+  // Wochentag+Tageszeit-Komposita (#1090): "Dienstagabend" statt "Dienstag Abend".
+  check('Wochentag+Tageszeit-Komposita (#1090)', withPrefix(generateWeekdayDayPartCases, 'wtag'));
 });
 
 function printReport(report: ReturnType<typeof scoreCorpus>): void {
