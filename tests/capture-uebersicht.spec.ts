@@ -1,14 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
+import { formatDueLabel } from '@/features/tasks/datetime-local';
 import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
+
+/** issue #1089: der FAB heißt immer `CAPTURE_LABEL` (#1083 AK-Kommentar in
+ * uebersicht-capture.tsx), der Sheet-Kopf selbst folgt seit #1083 der erkannten
+ * Art — "Erfassen" (provisorisch, großes E) oder "Aufgabe erfassen"/"Termin
+ * erfassen"/"Routine erfassen" (klein, zusammengesetztes Wort — SHEET_LABEL in
+ * uebersicht-capture.tsx). `captureDialog` muss alle vier treffen, sonst laufen
+ * Locator-Scopes wie `dueChip`/`zeitChip` bei jedem Termin oder vor dem ersten
+ * Signal ins Leere. */
+const SHEET_LABEL_PATTERN = /^(Aufgabe |Termin |Routine )?[Ee]rfassen$/;
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
 }
 
 function captureDialog(page: Page) {
-  return page.getByRole('dialog', { name: CAPTURE_LABEL });
+  return page.getByRole('dialog', { name: SHEET_LABEL_PATTERN });
 }
 
 function captureTitleField(page: Page) {
@@ -42,6 +52,54 @@ function expectedDueAt(daysFromNow: number, hours: number, minutes: number): Dat
 function isoToLocalInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** issue #1089: der Fälligkeits-Chip der Aufgabe — leer zeigt nur "Fälligkeit"
+ * (kein Komma), gesetzt "Fälligkeit, …" (dieselbe Regel wie `quickAddChip` in
+ * tasks.spec.ts). */
+function dueChip(page: Page) {
+  return captureDialog(page).getByRole('button', { name: /^Fälligkeit(,|$)/ });
+}
+
+/** issue #1089: der Zeit-Chip des Termins, Pendant zu `dueChip`. */
+function zeitChip(page: Page) {
+  return captureDialog(page).getByRole('button', { name: /^Zeit(,|$)/ });
+}
+
+function captureDuePicker(page: Page) {
+  return captureDialog(page).locator('.due-picker');
+}
+
+function dueQuickSelect(page: Page, label: 'Heute' | 'Morgen' | 'Nächste Woche') {
+  return captureDuePicker(page).getByRole('button', { name: label, exact: true });
+}
+
+/** A calendar day cell by its full a11y label, e.g. `"Montag, 20."`. */
+function dueCalendarDay(page: Page, label: string) {
+  return captureDuePicker(page).getByRole('button', { name: label });
+}
+
+function dueTimeInput(page: Page) {
+  return captureDuePicker(page).getByLabel('Uhrzeit');
+}
+
+function selectedDuePickerDay(page: Page) {
+  return captureDuePicker(page).locator('.due-picker__day[aria-pressed="true"]');
+}
+
+/** Sets a due date+time through the picker the same way a person would: tap
+ * the day, then optionally type a time (mirrors tasks.spec.ts's helper). */
+async function setDueViaCalendar(page: Page, dayLabel: string, time?: string) {
+  await dueCalendarDay(page, dayLabel).click();
+  if (time) await dueTimeInput(page).fill(time);
+}
+
+/** issue #1089: der `DuePicker` hat keinen einzelnen Feldwert mehr (anders als
+ * das abgelöste `datetime-local`) — die Zusicherung geht über den markierten
+ * Kalendertag + das getrennte Uhrzeitfeld. */
+async function expectDuePickerValue(page: Page, expected: Date) {
+  await expect(selectedDuePickerDay(page)).toHaveText(String(expected.getDate()));
+  await expect(dueTimeInput(page)).toHaveValue(isoToLocalInput(expected).slice(11));
 }
 
 async function enableDirectCapture(page: Page) {
@@ -92,13 +150,9 @@ test('AC2: Freitext mit Datum zeigt die geratene Fälligkeit inline im Kern-Shee
 
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expect(page.getByRole('dialog', { name: 'Aufgabe bestätigen' })).toHaveCount(0);
-  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
-  await expect(dueChip).toBeVisible();
-  await dueChip.click();
-  // Nicht `getByLabel('Fälligkeit')`: `/uebersicht`s eigene „Fällige Aufgaben"-
-  // Sektion (task-list.tsx) und das AK4-„Mehr"-Sheet (task-editor.tsx) tragen je
-  // ein eigenes, immer gemountetes Feld gleichen Namens im DOM.
-  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(isoToLocalInput(due));
+  await expect(dueChip(page)).toBeVisible();
+  await dueChip(page).click();
+  await expectDuePickerValue(page, due);
 });
 
 test('AC3: "Anlegen" legt die Aufgabe direkt an, sie erscheint in der Liste', async ({ page }) => {
@@ -305,14 +359,11 @@ test('AK2: eine genannte Fälligkeit überschreibt die vorherige', async ({ page
   await typeAndCommit(page, 'Einkaufen');
   await typeAndCommit(page, 'morgen');
 
-  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
-  await dueChip.click();
-  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(isoToLocalInput(tomorrow));
+  await dueChip(page).click();
+  await expectDuePickerValue(page, tomorrow);
 
   await typeAndCommit(page, 'übermorgen');
-  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(
-    isoToLocalInput(dayAfterTomorrow),
-  );
+  await expectDuePickerValue(page, dayAfterTomorrow);
 });
 
 test('AK3: was eine Äußerung nicht nennt, bleibt unangetastet stehen — auch der Titel (Füllwort-Schutz)', async ({
@@ -326,9 +377,8 @@ test('AK3: was eine Äußerung nicht nennt, bleibt unangetastet stehen — auch 
 
   await typeAndCommit(page, 'um 15 Uhr');
   await expect(page.getByRole('button', { name: 'Titel, Einkaufen', exact: true })).toBeVisible();
-  const dueChip = page.getByRole('button', { name: /^Fälligkeit,/ });
-  await dueChip.click();
-  await expect(page.locator('#uebersicht-capture-panel-wann')).toHaveValue(/T15:00$/);
+  await dueChip(page).click();
+  await expect(dueTimeInput(page)).toHaveValue('15:00');
 
   await typeAndCommit(page, 'eher');
   await expect(page.getByRole('button', { name: 'Titel, Einkaufen', exact: true })).toBeVisible();
@@ -473,4 +523,167 @@ test('AK4+AK5 (#1083): der 09:00-Rückfall einer ungenannten Startzeit ist gerat
   await captureTitleField(page).fill('Termin morgen 14 Uhr Zahnarzt');
   await expect(page.getByRole('button', { name: 'Zeit verwerfen' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Zeit,/ })).toBeVisible();
+});
+
+/**
+ * issue #1089: der Fälligkeits-/Zeit-Chip öffnete bisher ein nacktes
+ * `input[type="datetime-local"]` ohne Rahmen/Fläche/Höhe (tote Klasse
+ * `quick-add__due`, seit #722 ohne CSS-Regel) — ersetzt durch denselben
+ * `DuePicker` wie im Aufgaben-Sheet (quick-add.tsx).
+ */
+async function resolveColorToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((cssVar) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${cssVar})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
+test('AK1+AK5 (#1089): der Fälligkeits-Chip einer Aufgabe öffnet den DuePicker (Schnellwahl, Monatskalender, Uhrzeit), kein datetime-local/quick-add__due mehr im DOM', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Einkaufen');
+  await dueChip(page).click();
+
+  await expect(captureDuePicker(page)).toBeVisible();
+  await expect(dueQuickSelect(page, 'Heute')).toBeVisible();
+  await expect(dueQuickSelect(page, 'Morgen')).toBeVisible();
+  await expect(dueQuickSelect(page, 'Nächste Woche')).toBeVisible();
+  await expect(captureDuePicker(page).getByRole('button', { name: 'Voriger Monat' })).toBeVisible();
+  await expect(captureDuePicker(page).getByRole('button', { name: 'Nächster Monat' })).toBeVisible();
+  await expect(dueTimeInput(page)).toBeVisible();
+  await expect(captureDialog(page).locator('input[type="datetime-local"]')).toHaveCount(0);
+  await expect(captureDialog(page).locator('.quick-add__due')).toHaveCount(0);
+});
+
+test('AK2 (#1089): der Zeit-Chip eines Termins öffnet denselben Picker ohne „Kein Datum"-Knopf, die Aufgabe behält ihn', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // Termin: `startsAt` wird nie leer (`defaultEventStart`-Rückfall) — kein
+  // "Kein Datum"-Knopf im Panel.
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Termin Zahnarzt');
+  await zeitChip(page).click();
+  await expect(captureDuePicker(page)).toBeVisible();
+  await expect(captureDuePicker(page).getByRole('button', { name: 'Kein Datum' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Abbrechen' }).click();
+
+  // Aufgabe: der Knopf bleibt, eine Fälligkeit darf leer sein.
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Einkaufen morgen');
+  await dueChip(page).click();
+  await expect(captureDuePicker(page).getByRole('button', { name: 'Kein Datum' })).toBeVisible();
+});
+
+test('AK3 (#1089): im Picker gewählter Tag + Uhrzeit stehen am zugeklappten Chip und landen unverändert in der Outbox — Aufgabe (dueAt) und Termin (startsAt), offline geprüft', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // beforeEach hat die Sync-Endpunkte schon gekappt (AC6/Offline(DoD)-Muster).
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Wäsche');
+  await dueChip(page).click();
+  await setDueViaCalendar(page, 'Mittwoch, 22.', '16:15');
+  await expect(dueChip(page)).toHaveAccessibleName(
+    `Fälligkeit, ${formatDueLabel('2026-07-22T16:15')}`,
+  );
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(captureDialog(page)).toBeHidden();
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Termin Zahnarzt');
+  await zeitChip(page).click();
+  await setDueViaCalendar(page, 'Donnerstag, 23.', '11:30');
+  await expect(zeitChip(page)).toHaveAccessibleName(`Zeit, ${formatDueLabel('2026-07-23T11:30')}`);
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(captureDialog(page)).toBeHidden();
+
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const task = entries.find((entry) => entry.table === 'tasks');
+  const eventEntry = entries.find((entry) => entry.table === 'events');
+  expect(task?.payload.dueAt).toBe(new Date('2026-07-22T16:15').toISOString());
+  expect(eventEntry?.payload.startsAt).toBe(new Date('2026-07-23T11:30').toISOString());
+
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const taskRow = await withDb((client) =>
+    client.query('SELECT due_at FROM tasks WHERE title = $1', ['Wäsche']),
+  );
+  expect(new Date(taskRow.rows[0].due_at as string).toISOString()).toBe(
+    new Date('2026-07-22T16:15').toISOString(),
+  );
+  // local-recognizer.ts (R3): Art-Vokabular bleibt im Titel stehen — "Termin"
+  // fällt hier nicht weg wie bei einer separat committeten Äußerung.
+  const eventRow = await withDb((client) =>
+    client.query('SELECT starts_at FROM events WHERE title = $1', ['Termin Zahnarzt']),
+  );
+  expect(new Date(eventRow.rows[0].starts_at as string).toISOString()).toBe(
+    new Date('2026-07-23T11:30').toISOString(),
+  );
+});
+
+test('AK4 (#1089): der Picker öffnet auf dem vom Erkenner geratenen Tag (aria-pressed) und eine Auswahl räumt die Geraten-Markierung des Chips weg', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const due = expectedDueAt(1, 9, 0);
+
+  await captureButton(page).click();
+  await captureTitleField(page).fill('Einkaufen morgen');
+  await expect(page.getByRole('button', { name: 'Fälligkeit verwerfen' })).toBeVisible();
+
+  await dueChip(page).click();
+  await expect(selectedDuePickerDay(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect(selectedDuePickerDay(page)).toHaveText(String(due.getDate()));
+
+  await dueQuickSelect(page, 'Heute').click();
+  await expect(page.getByRole('button', { name: 'Fälligkeit verwerfen' })).toHaveCount(0);
+});
+
+test('AK6 (#1089): der Chip zeigt per aria-controls aufs offene Panel, das Panel ist per Tastatur erreichbar — Dark Mode und reduzierte Bewegung wie im Aufgaben-Sheet', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/uebersicht');
+  await captureButton(page).click();
+  // "Einkaufen" allein trägt kein Signal (#780) — die Art bliebe `provisional`
+  // und der Sheet-Akzent `--accent-neutral` (grau) statt `--area-tasks`, die
+  // die letzte Assertion unten erwartet. "Notiz" ist Aufgaben-Vokabular
+  // (local-recognizer.ts TASK_VOCAB_PATTERNS) und entscheidet die Art sofort —
+  // derselbe Trick wie "Termin Zahnarzt" im AK2/AK3-Test oben.
+  await captureTitleField(page).fill('Notiz Einkaufen');
+
+  await expect(dueChip(page)).toHaveAttribute('aria-controls', 'uebersicht-capture-panel-wann');
+  await dueChip(page).click();
+  await expect(dueChip(page)).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#uebersicht-capture-panel-wann')).toBeVisible();
+
+  const today = dueCalendarDay(page, 'Samstag, 18.');
+  // Der vorangegangene dueChip-Klick setzt die Eingabe-Modalität des Dokuments auf
+  // Maus — Chromiums :focus-visible bleibt dann auch bei einem script-`.focus()`
+  // aus, bis irgendein Tastendruck sie zurück auf Tastatur stellt (deshalb hier ein
+  // Tab, unabhängig davon, wo er landet; `.focus()` überschreibt den Fokus danach).
+  await page.keyboard.press('Tab');
+  await today.focus();
+  await expect(today).toHaveCSS('outline-style', 'solid');
+  const durationString = await today.evaluate((el) => getComputedStyle(el).transitionDuration);
+  expect(parseFloat(durationString)).toBeLessThan(0.001);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await today.click();
+  await expect(today).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() => today.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(await resolveColorToken(page, '--accent'));
 });
