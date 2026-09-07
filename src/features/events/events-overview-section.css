@@ -13,7 +13,8 @@
   padding: var(--space-4);
   margin: 0 0 var(--space-2);
   /* Own surface, own ink (issue #832 AK5) — .events-overview__rest-item below
-     stays unreset on purpose, it's flat on the ground, not this card. */
+     gets the same treatment now too (issue #1105), each row its own small
+     surface instead of sitting flat on the ground. */
   --text: var(--text-base);
   --text-muted: var(--text-muted-base);
   --border: var(--border-base);
@@ -115,8 +116,21 @@
   align-items: baseline;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
+  /* Own surface, own ink (issue #1105) — same treatment as .events-overview__next
+     above and .event-agenda__all-day-button (issue #956): --radius-card (14px)
+     instead of --radius-surface (28px), a ~36px row would round nearly to a
+     pill at 28px, and the smaller radius keeps the rank difference to the big
+     card above visible. */
+  background: var(--surface);
+  --text: var(--text-base);
+  --text-muted: var(--text-muted-base);
+  --border: var(--border-base);
+  --border-strong: var(--border-strong-base);
+  --border-faint: var(--border-faint-base);
+  border-radius: var(--radius-card);
   color: var(--text-muted);
   font-size: var(--text-secondary);
+  box-shadow: var(--shadow-raised);
 }
 
 .events-overview__rest-time {
