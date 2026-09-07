@@ -657,7 +657,12 @@ test('AK6 (#1089): der Chip zeigt per aria-controls aufs offene Panel, das Panel
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/uebersicht');
   await captureButton(page).click();
-  await captureTitleField(page).fill('Einkaufen');
+  // "Einkaufen" allein trägt kein Signal (#780) — die Art bliebe `provisional`
+  // und der Sheet-Akzent `--accent-neutral` (grau) statt `--area-tasks`, die
+  // die letzte Assertion unten erwartet. "Notiz" ist Aufgaben-Vokabular
+  // (local-recognizer.ts TASK_VOCAB_PATTERNS) und entscheidet die Art sofort —
+  // derselbe Trick wie "Termin Zahnarzt" im AK2/AK3-Test oben.
+  await captureTitleField(page).fill('Notiz Einkaufen');
 
   await expect(dueChip(page)).toHaveAttribute('aria-controls', 'uebersicht-capture-panel-wann');
   await dueChip(page).click();
