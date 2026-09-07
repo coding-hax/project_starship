@@ -9,6 +9,7 @@
  * S1 von #617, damit spätere Schnitte (Mehrfach-Erfassung) hier refactorbar bleiben.
  */
 
+import type { EventData } from '@/local/types';
 import type { FieldConfidence } from '../capture/types';
 
 export interface TaskCaptureDraftItem {
@@ -32,6 +33,9 @@ export interface EventCaptureDraftItem {
   endsAt: string | null;
   startDate: string | null;
   endDate: string | null;
+  /** issue #1081: erkannte Wiederholung, bereits auf die Montag-erste Wochentagszählung
+   * des Termin-Modells umgerechnet — `null` ohne erkannte Wiederholung, nie `undefined`. */
+  recurrence: EventData['recurrence'];
   /** #691: Konfidenz je Feld — Grundlage für die Markierung im Termin-Editor (AK3). */
   titleConfidence: FieldConfidence;
   dateConfidence: FieldConfidence;

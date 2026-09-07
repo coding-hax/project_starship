@@ -1,3 +1,4 @@
+import type { EventData } from '@/local/types';
 import { toDateKey } from '../habits/due-today';
 import { logicalDayStart } from '../tasks/parse-task-input';
 import type { EventCaptureDraftItem, TaskCaptureDraftItem } from '../tasks/capture-draft-store';
@@ -50,6 +51,24 @@ export function taskFieldsFromDraft(draft: CaptureDraft): TaskCaptureDraftItem {
 }
 
 /**
+ * Der Parser zählt Wochentage wie `Date#getDay()` (0 = Sonntag …), das Termin-Modell
+ * (`events/recurrence.ts`s `weekdayIndex`) zählt Montag-erst — ohne diese Umrechnung
+ * landet jede Wiederholung einen Tag daneben (issue #1081).
+ */
+function toEventWeekday(parserWeekday: number): number {
+  return (parserWeekday + 6) % 7;
+}
+
+function toEventRecurrence(value: CaptureDraft['recurrence']): EventData['recurrence'] {
+  if (!value) return null;
+  return {
+    freq: value.freq,
+    interval: value.interval,
+    ...(value.byWeekday ? { byWeekday: value.byWeekday.map(toEventWeekday) } : {}),
+  };
+}
+
+/**
  * `draft` -> Termin-Kernfelder, kind-unabhängig wie `taskFieldsFromDraft` oben.
  * Unter dem aktuellen Klassifikator (local-recognizer.ts) bedeutet ein gesetztes
  * `dueAt` immer eine explizite Uhrzeit; ohne `dueAt` (reines Vokabular, z. B.
@@ -63,6 +82,7 @@ export function eventFieldsFromDraft(draft: CaptureDraft, now: Date): EventCaptu
     dateConfidence: draft.confidence.date,
     timeConfidence: draft.confidence.time,
   };
+  const recurrence = toEventRecurrence(draft.recurrence);
   if (draft.dueAt) {
     const start = new Date(draft.dueAt);
     const end = draft.endAt ? new Date(draft.endAt) : null;
@@ -78,6 +98,7 @@ export function eventFieldsFromDraft(draft: CaptureDraft, now: Date): EventCaptu
         endsAt: null,
         startDate: toDateKey(start),
         endDate: toDateKey(end),
+        recurrence,
         ...confidence,
       };
     }
@@ -91,6 +112,7 @@ export function eventFieldsFromDraft(draft: CaptureDraft, now: Date): EventCaptu
       endsAt,
       startDate: null,
       endDate: null,
+      recurrence,
       ...confidence,
     };
   }
@@ -103,6 +125,7 @@ export function eventFieldsFromDraft(draft: CaptureDraft, now: Date): EventCaptu
     endsAt: null,
     startDate: today,
     endDate: today,
+    recurrence,
     ...confidence,
   };
 }
