@@ -479,6 +479,17 @@ describe('parseTaskInput — #1090: Wochentag+Tageszeit-Komposita', () => {
     expect(result.dueAt).toBe(iso(2024, 1, 19, 20, 15));
   });
 
+  it('AK2: kurze Uhrzeit-Formen schlagen auch lange Tageszeit-Suffixe ("mittag"/"vormittag"/"nachmittag")', () => {
+    // Ohne diese Sonderregel gewinnt der Tageszeit-Suffix allein wegen der Span-Länge
+    // ("nachmittag" hat mehr Zeichen als "15:30") — bestCandidate vergleicht sonst nur
+    // die Länge, nicht die Semantik.
+    expect(parseTaskInput('Freitagmittag 15:30 Zahnarzt', NOW).dueAt).toBe(iso(2024, 1, 19, 15, 30));
+    expect(parseTaskInput('Dienstagabend 8h Kino', NOW).dueAt).toBe(iso(2024, 1, 16, 8, 0));
+    const result = parseTaskInput('Freitagnachmittag 15:30 Uhr Zahnarzt', NOW);
+    expect(result.dueAt).toBe(iso(2024, 1, 19, 15, 30));
+    expect(result.title).toBe('Zahnarzt');
+  });
+
   it('AK3: "morgen" zählt nur im Kompositum als Tageszeit, freistehend bleibt es der Kalendertag', () => {
     expect(parseTaskInput('Mittwochmorgen Sport', NOW).dueAt).toBe(iso(2024, 1, 17, 8, 0));
     const standalone = parseTaskInput('Mittwoch Morgen Sport', NOW);

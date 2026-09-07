@@ -966,8 +966,9 @@ function findZeigerzeitRawMatches(text: string): RawHourMatch[] {
 /**
  * Tageszeitwort ohne Uhrzeit (Entscheidung 03.09.26): „heute Abend" meint 19 Uhr, nicht
  * den Standardtermin 09:00. Niedrigste Spezifität — jede ausgesprochene Uhrzeit im Satz
- * schlägt diese Lesart, das Wort geht dann ohnehin über `findAdjacentDayPart` in deren
- * Span ein und verschwindet mit ihm aus dem Titel.
+ * schlägt diese Lesart immer (siehe die Weiche in `findTimeCandidate`, #1090 AK2), das
+ * Wort geht dann ohnehin über `findAdjacentDayPart` in deren Span ein und verschwindet
+ * mit ihm aus dem Titel.
  */
 const STANDALONE_DAY_PARTS: [string, number][] = [
   ['am morgen', 8], ['am vormittag', 10], ['am mittag', 12], ['zu mittag', 12],
@@ -1000,9 +1001,10 @@ function findStandaloneDayPartCandidates(text: string): Candidate<TimeValue>[] {
  * Der Tageszeit-Teil eines Wochentag+Tageszeit-Kompositums (#1090): „Dienstagabend" gibt
  * "abend" als eigenen, **kurzen** Zeit-Kandidaten — nur der Suffix, nicht das ganze
  * Kompositum. So bleibt es bei derselben Regel wie bei den freistehenden Tageszeitwörtern
- * oben: der längste Span gewinnt, eine ausgesprochene Uhrzeit schlägt diesen Kandidaten
- * fast immer (AK1). Der Wochentags-Teil selbst deckt in `findDateCandidate` trotzdem das
- * ganze Kompositum ab, damit auch dann nichts vom Suffix im Titel übrig bleibt (AK4).
+ * oben: eine ausgesprochene Uhrzeit schlägt diesen Kandidaten immer, unabhängig von der
+ * Span-Länge (AK1/AK2, siehe die Weiche in `findTimeCandidate`). Der Wochentags-Teil
+ * selbst deckt in `findDateCandidate` trotzdem das ganze Kompositum ab, damit auch dann
+ * nichts vom Suffix im Titel übrig bleibt (AK4).
  */
 function findWeekdayDayPartTimeCandidates(text: string): Candidate<TimeValue>[] {
   return findWeekdayDayPartMatches(text).map((match) => ({
@@ -1109,10 +1111,19 @@ function findTimeCandidate(text: string, now: Date): Candidate<TimeValue> | null
 
   raw.push(...findZeigerzeitRawMatches(text));
 
-  const candidates = raw.map((match) => resolveHourMatch(text, match, now));
-  candidates.push(...findStandaloneDayPartCandidates(text));
-  candidates.push(...findWeekdayDayPartTimeCandidates(text));
-  return bestCandidate(candidates);
+  // Eine ausgesprochene Uhrzeit schlägt einen Tageszeit-Kandidaten immer (AK2, #1090) —
+  // unabhängig von der Span-Länge. "vormittag"/"nachmittag" sind als Wort länger als
+  // kurze, aber eindeutige Zeitformen wie "15:30" oder "8h"; über `bestCandidate` allein
+  // würde der längere, aber unspezifischere Tageszeit-Kandidat sonst fälschlich gewinnen.
+  // Deshalb getrennt: gibt es irgendeine ausgesprochene Uhrzeit im Satz, entscheidet
+  // `bestCandidate` nur unter denen; der Tageszeit-Kandidat kommt nur zum Zug, wenn
+  // keine ausgesprochene Uhrzeit im Satz steht.
+  const spokenCandidates = raw.map((match) => resolveHourMatch(text, match, now));
+  const bestSpoken = bestCandidate(spokenCandidates);
+  if (bestSpoken) return bestSpoken;
+
+  const dayPartCandidates = [...findStandaloneDayPartCandidates(text), ...findWeekdayDayPartTimeCandidates(text)];
+  return bestCandidate(dayPartCandidates);
 }
 
 // --- Kommandopräfixe & Bindewörter (R3) -----------------------------------

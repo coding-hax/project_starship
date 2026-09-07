@@ -340,6 +340,13 @@ export const CURATED_CASES: GoldCase[] = [
     ['Freitagmittag Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 12)],
     ['Samstagvormittag Einkauf', 'task', 'Einkauf', on(1, 20, 10)],
     ['Mittwochmorgen Sport', 'task', 'Sport', on(1, 17, 8)],
+    // AK2: eine ausgesprochene Uhrzeit schlägt den Tageszeit-Teil auch dann, wenn sie
+    // als Text kürzer ist als der Tageszeit-Suffix ("mittag"/"vormittag"/"nachmittag"
+    // sind länger als "15:30" oder "8h") — sonst gewinnt der Suffix fälschlich allein
+    // wegen der Span-Länge.
+    ['Freitagmittag 15:30 Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 15, 30)],
+    ['Dienstagabend 8h Kino', 'task', 'Kino', on(1, 16, 8)],
+    ['Freitagnachmittag 15:30 Uhr Zahnarzt', 'task', 'Zahnarzt', on(1, 19, 15, 30)],
   ]),
 
   // AK5: keine Kollision mit der bestehenden Wiederholungsform "montags"/"sonntags" —
