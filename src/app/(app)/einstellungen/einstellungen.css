@@ -1,15 +1,18 @@
-/* Augenbraue (Zurück-Link) über der Titelzeile — Drei-Zonen-Kopf-Muster aus
-   #868/#898, hier ohne Zusatz-Slot (issue #870 T3). */
+/* Einzeilige Kopfzeile (issue #1087, Entscheidung vom 07.09.2026) — weicht
+   für diese Route bewusst vom Drei-Zonen-Kopf-Muster aus #868/#898/#870
+   (Augenbraue über der Titelzeile) ab: Zurück-Link und Titel+Figur teilen
+   sich eine Zeile, `justify-content: space-between` hält sie an den Rändern. */
 .einstellungen__topbar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   margin-block-end: var(--space-4);
 }
 
-/* Titel + Figur als ein Cluster (issue #830), damit `space-between` bei
-   Zurück-Link und Cluster bleibt statt die Figur vom Titel wegzuschieben.
+/* Titel + Figur als ein Cluster (issue #830) — seit #1087 sitzt der Cluster
+   dank `.einstellungen__topbar`s `justify-content: space-between` rechts
+   neben dem Zurück-Link statt darunter (#870).
    `padding-block` reserviert Platz für `.face`s eigene Bounce-Animation
    (faces.css `pf-bob`, ±3px per `translate`): die Zeile ist sonst exakt
    42px hoch — genau die unanimierte Höhe der Figur, also ohne jede Reserve
