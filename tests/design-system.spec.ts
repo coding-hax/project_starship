@@ -475,7 +475,10 @@ test.describe('Design-System: Sheet-Kopfzeile (issue #710)', () => {
 
     await page.goto('/uebersicht');
     await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
-    dialog = page.getByRole('dialog', { name: 'Aufgabe erfassen' });
+    // issue #1083 AK2: die Sheet-FAB heißt immer "Aufgabe erfassen" (unverändert),
+    // ihr Sheet-Kopf aber "Erfassen" (exact, sonst matcht "Aufgabe erfassen" auch),
+    // solange keine Art erkannt ist (provisional).
+    dialog = page.getByRole('dialog', { name: 'Erfassen', exact: true });
     await expect(dialog.locator('.sheet__grip')).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Abbrechen' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Anlegen' })).toBeVisible();

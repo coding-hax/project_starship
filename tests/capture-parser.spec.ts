@@ -27,12 +27,20 @@ function captureTitleField(page: Page) {
   return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
 }
 
+// issue #1083: der Sheet-Kopf folgt der erkannten Art statt fest "Aufgabe
+// erfassen" zu heißen — das eine, dauerhaft gemountete Titelfeld dieses Sheets
+// identifiziert es unabhängig vom aktuellen Kopf-Label.
 function captureDialog(page: Page) {
-  return page.getByRole('dialog', { name: CAPTURE_LABEL });
+  return page
+    .locator('dialog.sheet')
+    .filter({ has: page.getByRole('textbox', { name: 'Titel der Aufgabe' }) });
 }
 
 function eventDialog(page: Page) {
-  return page.getByRole('dialog', { name: EVENT_LABEL });
+  // Während der Schließ-Transition des Kern-Sheets (`allow-discrete`, sheet.css)
+  // trägt es denselben Namen wie der frisch geöffnete Termin-Editor — `[open]`
+  // filtert das schließende Exemplar heraus.
+  return page.getByRole('dialog', { name: EVENT_LABEL }).and(page.locator('[open]'));
 }
 
 /** Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen. */

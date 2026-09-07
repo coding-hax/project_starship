@@ -144,7 +144,12 @@ test('AC4: Gewohnheitsname ohne eindeutigen Treffer öffnet die Routine-Auswahl 
   // öffnet sich stattdessen (capture-art.spec.ts AK5), statt still nach
   // /routinen zu navigieren.
   await expect(page).toHaveURL(/\/uebersicht$/);
-  await expect(page.getByRole('dialog', { name: CAPTURE_LABEL })).toBeVisible();
+  // issue #1083: der Sheet-Kopf folgt der erkannten Art (hier "Routine erfassen"),
+  // nicht mehr fest CAPTURE_LABEL — das Titelfeld identifiziert das Sheet
+  // unabhängig vom aktuellen Kopf-Label.
+  await expect(
+    page.locator('dialog.sheet').filter({ has: page.getByRole('textbox', { name: 'Titel der Aufgabe' }) }),
+  ).toBeVisible();
 
   const entries = await page.evaluate(() => window.__starship.pending());
   expect(entries.some((entry) => entry.table === 'habit_logs')).toBe(false);
