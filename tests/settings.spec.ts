@@ -143,7 +143,7 @@ test('die Einstellungen-Primitive tragen keine teuren Filter (60-fps-Versprechen
 });
 
 for (const viewport of [
-  { width: 375, height: 667 },
+  { width: 375, height: 812 },
   { width: 1280, height: 800 },
 ]) {
   test(`Zurück-Link und Titel stehen in einer Zeile, Titel rechts (${viewport.width}px, issue #1087 AK1)`, async ({
