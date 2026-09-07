@@ -20,6 +20,17 @@ import {
 const TODAY = '2026-07-18';
 const TOMORROW = '2026-07-19';
 
+/** `datetime-local`'s own local-time formatting, mirrored here (same copy as
+ *  `capture-uebersicht.spec.ts`'s) — Node's host TZ and the browser's are the
+ *  same machine, so deriving an expected field value this way stays correct
+ *  independent of it (CI runs UTC, a dev machine may not), unlike a hardcoded
+ *  `TODAY}T11:00`-style literal next to a UTC-seeded `startsAt`. */
+function isoToLocalInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<string> {
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
@@ -3155,11 +3166,13 @@ test('AK2: nach einer eigenen Bis-Änderung bleibt die neu eingestellte Dauer be
 test('AK3: im Bearbeiten-Modus verschiebt eine Von-Änderung Bis um dieselbe Dauer, die Termindauer bleibt unverändert (#1104)', async ({
   page,
 }) => {
+  const seedStartsAt = `${TODAY}T11:00:00.000Z`;
+  const seedEndsAt = `${TODAY}T13:00:00.000Z`; // 2 Std Dauer
   await seedEvent(page, {
     title: 'Strategiemeeting',
     allDay: false,
-    startsAt: `${TODAY}T11:00:00.000Z`,
-    endsAt: `${TODAY}T13:00:00.000Z`, // 2 Std Dauer
+    startsAt: seedStartsAt,
+    endsAt: seedEndsAt,
     startDate: null,
     endDate: null,
     category: null,
@@ -3169,12 +3182,14 @@ test('AK3: im Bearbeiten-Modus verschiebt eine Von-Änderung Bis um dieselbe Dau
   await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
   await wannChip(page).click();
 
-  await expect(page.getByLabel('Von')).toHaveValue(`${TODAY}T11:00`);
-  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T13:00`);
+  await expect(page.getByLabel('Von')).toHaveValue(isoToLocalInput(seedStartsAt));
+  await expect(page.getByLabel('Bis')).toHaveValue(isoToLocalInput(seedEndsAt));
 
-  await page.getByLabel('Von').fill(`${TODAY}T15:00`);
+  const newStart = new Date(new Date(seedStartsAt).getTime() + 4 * 60 * 60 * 1000);
+  await page.getByLabel('Von').fill(isoToLocalInput(newStart.toISOString()));
 
-  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T17:00`);
+  const expectedEnd = new Date(newStart.getTime() + 2 * 60 * 60 * 1000); // Dauer bleibt 2 Std
+  await expect(page.getByLabel('Bis')).toHaveValue(isoToLocalInput(expectedEnd.toISOString()));
 });
 
 test('AK4: ganztägig verschiebt das Bis-Datum um dieselbe Anzahl Tage wie Von, ein- wie dreitägige Spannen bleiben gleich lang (#1104)', async ({
@@ -3236,7 +3251,13 @@ test('AK6: ein per Freitext erfasster Termin behält seine vorbelegten Von-/Bis-
   // die eine ungewollte Kopplung beim Seeden verraten würde.
   await page.getByRole('button', { name: 'Mehr' }).click();
 
-  const dialog = page.getByRole('dialog', { name: CREATE_LABEL });
+  // Die quick-add-Sheet selbst trägt denselben Namen, solange ihre Art "event"
+  // ist (SHEET_LABEL in uebersicht-capture.tsx) — sie schließt bei "Mehr", steht
+  // aber während ihres Exit-Übergangs noch kurz mit im DOM (gleiches Muster wie
+  // `settledEventCard` weiter oben), bis nur noch der neu geöffnete Editor bleibt.
+  const dialogs = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(dialogs).toHaveCount(1);
+  const dialog = dialogs.first();
   await expect(dialog).toBeVisible();
   await wannChip(dialog).click();
 
