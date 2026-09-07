@@ -69,6 +69,14 @@
   flex-shrink: 0;
 }
 
+/* Same lead slot as the streak pill/dot, shown instead of either once a habit
+   has an emoji (issue #1101 AC8, Variante A). */
+.habit-today__emoji {
+  flex-shrink: 0;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+
 .habit-today__name-group {
   display: flex;
   flex-direction: column;
@@ -94,9 +102,9 @@
 }
 
 /* Streak pill (issue #975 AK2) — replaces both the left colour dot and the
-   right-hand streak text; `--habit-tone` is the routine's own colour (or
-   `--area-habits`), set inline (habit-today.tsx), same pattern as
-   habit-table.tsx's `--week-bar-color`. */
+   right-hand streak text; `--habit-tone` is fixed to `--area-habits` (issue
+   #1101: routines no longer carry a per-row colour), set inline
+   (habit-today.tsx). */
 .habit-today__streak {
   display: inline-flex;
   align-items: center;

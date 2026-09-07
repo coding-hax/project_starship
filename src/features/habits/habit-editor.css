@@ -67,25 +67,55 @@
   outline-offset: 2px;
 }
 
-/* 5 columns x 2 rows (issue #658) — ten swatches no longer fit a wrapping
-   list with text labels at 375px; the grid keeps every touch target the
-   same size regardless of how many rows the labels used to take. */
-.habit-editor__colors {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+/* Scrollable curated grid (issue #1101) — 100+ emoji don't fit a single
+   screen, so the fieldset caps its own height and scrolls internally rather
+   than pushing the sheet's own scroll region past comfortable reach. */
+.habit-editor__emojis {
+  display: flex;
+  flex-direction: column;
   border: none;
   padding: 0;
   margin: 0;
+  min-height: 0;
 }
 
-.habit-editor__colors legend {
-  grid-column: 1 / -1;
+.habit-editor__emojis legend {
   color: var(--text-muted);
   font-size: var(--text-secondary);
   margin-bottom: var(--space-2);
 }
 
-.habit-editor__color-option {
+.habit-editor__emoji-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.habit-editor__emoji-none {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch-target);
+  color: var(--text);
+}
+
+.habit-editor__emoji-heading {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+/* Auto-fill so the grid adapts from 375px up without a fixed column count —
+   each cell keeps the same touch target regardless of viewport. */
+.habit-editor__emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--touch-target), 1fr));
+}
+
+.habit-editor__emoji-option {
   position: relative;
   display: flex;
   align-items: center;
@@ -95,10 +125,10 @@
 }
 
 /* The native radio stays in the a11y tree (accessible name via `aria-label`,
-   native arrow-key roving within the shared `name="color"` group) but is
-   visually replaced by the swatch — opacity (not `display`/`visibility`) so
+   native arrow-key roving within the shared `name="emoji"` group) but is
+   visually replaced by the glyph — opacity (not `display`/`visibility`) so
    it remains hit-testable across the whole touch target. */
-.habit-editor__color-option input {
+.habit-editor__emoji-option input {
   position: absolute;
   inset: 0;
   margin: 0;
@@ -106,21 +136,20 @@
   cursor: pointer;
 }
 
-.habit-editor__color-swatch {
-  width: 24px;
-  height: 24px;
+.habit-editor__emoji-glyph {
+  font-size: var(--text-section);
+  line-height: 1;
   border-radius: var(--radius-pill);
-  flex-shrink: 0;
   outline: 2px solid transparent;
   outline-offset: 2px;
   transition: outline-color var(--duration-fast) var(--ease-spring);
 }
 
-.habit-editor__color-option input:checked + .habit-editor__color-swatch {
+.habit-editor__emoji-option input:checked + .habit-editor__emoji-glyph {
   outline-color: var(--border-strong);
 }
 
-.habit-editor__color-option input:focus-visible + .habit-editor__color-swatch {
+.habit-editor__emoji-option input:focus-visible + .habit-editor__emoji-glyph {
   outline-color: var(--accent);
   outline-offset: 3px;
 }

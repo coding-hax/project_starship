@@ -65,6 +65,15 @@
   height: 12px;
   border-radius: var(--radius-pill);
   flex-shrink: 0;
+  background: var(--area-habits);
+}
+
+/* Same slot as `.habit-table__color`, shown instead of it once a habit has an
+   emoji (issue #1101 AC3) — routines identify by emoji now, not colour. */
+.habit-table__emoji {
+  flex-shrink: 0;
+  font-size: var(--text-body);
+  line-height: 1;
 }
 
 .habit-table__title {
@@ -106,13 +115,14 @@
   /* The 11 trailing weeks read as history, the running week stands out
      (issue #905). A flat, muted mix rather than opacity: opacity composites
      toward --surface and craters contrast (measured ~1.7:1 light / ~2.4:1
-     dark, AK6) — this mix stays >=3:1 against --surface for every palette
-     colour in both themes (worst case measured ~3.5:1, amber/light). */
-  background: color-mix(in oklch, var(--week-bar-color) 50%, var(--text-muted-base) 50%);
+     dark, AK6) — this mix stays >=3:1 against --surface in both themes.
+     Fixed to `--area-habits` for every row (issue #1101 AC7) — routines no
+     longer carry a per-row colour. */
+  background: color-mix(in oklch, var(--area-habits) 50%, var(--text-muted-base) 50%);
 }
 
 .habit-table__week-bar[data-current] {
-  background: color-mix(in oklch, var(--week-bar-color) 70%, var(--text-base));
+  background: color-mix(in oklch, var(--area-habits) 70%, var(--text-base));
 }
 
 .habit-table__streak {

@@ -100,7 +100,7 @@ export function HabitToday() {
           const showProgress = status !== null && !showWeekHint && status.target > 1 && !status.met;
           const streak = computeStreak(habit, logs, now);
           const isJournal = habit.id === JOURNAL_HABIT_ID;
-          const toneVar = `var(${habit.color ?? '--area-habits'})`;
+          const toneVar = 'var(--area-habits)';
           return (
             <li
               key={habit.id}
@@ -109,7 +109,14 @@ export function HabitToday() {
               }
             >
               <span className="habit-today__lead">
-                {streak > 0 ? (
+                {habit.emoji ? (
+                  // Emoji leads whenever it is set (issue #1101 AC8, Variante A) —
+                  // replaces both the streak pill and the plain dot below for this
+                  // row; a habit without an emoji keeps today's behaviour.
+                  <span className="habit-today__emoji" aria-hidden="true">
+                    {habit.emoji}
+                  </span>
+                ) : streak > 0 ? (
                   <span
                     className="habit-today__streak"
                     style={{ '--habit-tone': toneVar } as CSSProperties}

@@ -4,9 +4,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { mutate } from '@/local/outbox';
 import { Chip } from '@/ui/chip';
+import { EMOJI_PALETTE } from '@/ui/emoji-palette';
 import { SegmentedControl } from '@/ui/segmented-control';
 import { Sheet } from '@/ui/sheet';
-import { SWATCH_PALETTE } from '@/ui/swatch-palette';
 import type { HabitSchedule, HabitView } from './use-habits';
 
 const CREATE_LABEL = 'Routine anlegen';
@@ -37,22 +37,8 @@ const TARGETS: { value: '1' | '2' | '3' | '4' | '5' | '6'; label: string }[] = [
   { value: '6', label: '6' },
 ];
 
-/**
- * Derived from `SWATCH_PALETTE` (src/ui/swatch-palette.ts, issue #658), shared
- * with the settings category-colours panel (issue #660). Only the first entry
- * (`--area-habits`) differs here: `''` is the sentinel for "no override" —
- * `color: null` on the row, which the list resolves to `--area-habits` anyway,
- * so it doubles as this editor's "Standard" option.
- */
-const COLORS: { value: string; token: string; label: string }[] = SWATCH_PALETTE.map(
-  (swatch, index) =>
-    index === 0
-      ? { value: '', token: swatch.token, label: `${swatch.label} (Standard)` }
-      : { value: swatch.token, token: swatch.token, label: swatch.label },
-);
-
 /** Which chip's panel is open — at most one at a time (issue #711 AK3). */
-type ChipKey = 'rhythmus' | 'ziel' | 'farbe';
+type ChipKey = 'rhythmus' | 'ziel' | 'emoji';
 
 export interface HabitEditorProps {
   open: boolean;
@@ -71,7 +57,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   const [name, setName] = useState('');
   const [schedule, setSchedule] = useState<HabitSchedule>('daily');
   const [target, setTarget] = useState<'1' | '2' | '3' | '4' | '5' | '6'>('1');
-  const [color, setColor] = useState('');
+  const [emoji, setEmoji] = useState('');
   const [openChip, setOpenChip] = useState<ChipKey | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
@@ -81,8 +67,8 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   // button targets via the HTML `form` attribute — the browser's form-owner lookup
   // then silently binds to whichever instance happens to come first in the DOM.
   const formId = useId();
-  /** The Journal habit's name and colour are fixed (issue #505 AC3) — only its
-   * rhythm can be changed here. */
+  /** The Journal habit's name and emoji are fixed (issue #505 AC3, #1101 AC9) —
+   * only its rhythm can be changed here. */
   const isJournal = mode === 'edit' && habit?.id === JOURNAL_HABIT_ID;
 
   // Load values exactly once, on the closed->open transition — not on every
@@ -96,14 +82,14 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
           ? (String(habit.target) as '1' | '2' | '3' | '4' | '5' | '6')
           : '1',
       );
-      setColor(habit.color ?? '');
+      setEmoji(habit.emoji ?? '');
       setOpenChip(null);
     }
     if (open && !wasOpenRef.current && mode === 'create') {
       setName('');
       setSchedule('daily');
       setTarget('1');
-      setColor('');
+      setEmoji('');
       setOpenChip(null);
     }
     wasOpenRef.current = open;
@@ -147,7 +133,7 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
           name: trimmedName,
           schedule,
           target: nextTarget,
-          color: color || null,
+          emoji: emoji || null,
           archivedAt: null,
           createdAt: new Date().toISOString(),
         },
@@ -159,12 +145,12 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
 
     const payload: Record<string, unknown> = {};
     if (schedule !== habit.schedule) payload.schedule = schedule;
-    // The Journal habit has no name/colour/target inputs (issue #505 AC3) —
-    // only its rhythm is diffed, never the fixed fields.
+    // The Journal habit has no name/emoji/target inputs (issue #505 AC3, #1101
+    // AC9) — only its rhythm is diffed, never the fixed fields.
     if (!isJournal) {
-      const nextColor = color || null;
+      const nextEmoji = emoji || null;
       if (trimmedName !== habit.name) payload.name = trimmedName;
-      if (nextColor !== habit.color) payload.color = nextColor;
+      if (nextEmoji !== habit.emoji) payload.emoji = nextEmoji;
       if (nextTarget !== habit.target) payload.target = nextTarget;
     }
 
@@ -175,9 +161,8 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
   }
 
   const scheduleLabel = SCHEDULES.find((option) => option.value === schedule)!.label;
-  const colorLabel = COLORS.find((option) => option.value === color)!.label;
   const showZielChip = !isJournal && schedule === 'weekly';
-  const showFarbeChip = !isJournal;
+  const showEmojiChip = !isJournal;
 
   return (
     <Sheet
@@ -218,20 +203,20 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
               onOpen={() => toggleChip('ziel')}
             />
           )}
-          {showFarbeChip && (
+          {showEmojiChip && (
             <Chip
-              field="Farbe"
-              emptyLabel="Farbe?"
-              value={colorLabel}
-              open={openChip === 'farbe'}
-              panelId="habit-panel-farbe"
-              onOpen={() => toggleChip('farbe')}
+              field="Emoji"
+              emptyLabel="Emoji?"
+              value={emoji || 'Kein Emoji'}
+              open={openChip === 'emoji'}
+              panelId="habit-panel-emoji"
+              onOpen={() => toggleChip('emoji')}
             />
           )}
         </div>
         {/* Gated on `open` for the same reason the quick-add panel-slot is
             (issue #711 AK5): a closed <dialog> keeps its children in the DOM,
-            and the Schedule-/Farb-Optionen would otherwise sit in it as real
+            and the Schedule-/Emoji-Optionen would otherwise sit in it as real
             text nodes, matching every page-wide text query twice. */}
         {open && (
           <div className="habit-editor__panel-slot" id={`habit-panel-${openChip ?? 'none'}`}>
@@ -268,28 +253,41 @@ export function HabitEditor({ open, mode, habit, onClose }: HabitEditorProps) {
                 label="Wie oft pro Woche"
               />
             )}
-            {openChip === 'farbe' && showFarbeChip && (
-              <fieldset className="habit-editor__colors">
-                <legend>Farbe</legend>
-                {/* Ten swatches don't fit a text-labelled list at 375px (issue #658)
-                    — the visible label is dropped in favour of the colour itself;
-                    `aria-label` carries the same text as the accessible name. */}
-                {COLORS.map((option) => (
-                  <label key={option.value || 'default'} className="habit-editor__color-option">
+            {openChip === 'emoji' && showEmojiChip && (
+              <fieldset className="habit-editor__emojis">
+                <legend>Emoji</legend>
+                <div className="habit-editor__emoji-scroll">
+                  <label className="habit-editor__emoji-none">
                     <input
                       type="radio"
-                      name="color"
-                      aria-label={option.label}
-                      checked={color === option.value}
-                      onChange={() => setColor(option.value)}
+                      name="emoji"
+                      checked={emoji === ''}
+                      onChange={() => setEmoji('')}
                     />
-                    <span
-                      className="habit-editor__color-swatch"
-                      style={{ background: `var(${option.token})` }}
-                      aria-hidden="true"
-                    />
+                    Kein Emoji
                   </label>
-                ))}
+                  {EMOJI_PALETTE.map((group) => (
+                    <div key={group.heading} className="habit-editor__emoji-group">
+                      <h3 className="habit-editor__emoji-heading">{group.heading}</h3>
+                      <div className="habit-editor__emoji-grid">
+                        {group.emojis.map((option) => (
+                          <label key={option.emoji} className="habit-editor__emoji-option">
+                            <input
+                              type="radio"
+                              name="emoji"
+                              aria-label={option.label}
+                              checked={emoji === option.emoji}
+                              onChange={() => setEmoji(option.emoji)}
+                            />
+                            <span className="habit-editor__emoji-glyph" aria-hidden="true">
+                              {option.emoji}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </fieldset>
             )}
           </div>

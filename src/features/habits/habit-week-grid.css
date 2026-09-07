@@ -64,9 +64,18 @@
   border-width: 2px;
 }
 
+/* Flat `--area-habits` fill by default (issue #1101 AC5) — a habit with an
+   emoji (`[data-emoji]`) shows it on the transparent ground instead (AC4), the
+   glyph itself is the marker, no fill competing with it. */
 .habit-week-grid__day--done {
   border-color: transparent;
+  background: var(--area-habits);
   color: var(--accent-fg);
+}
+
+.habit-week-grid__day--done[data-emoji] {
+  background: transparent;
+  font-size: var(--text-section);
 }
 
 /* Neighbour-month day (issue #487 AC2): dimmed via opacity, same as

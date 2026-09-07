@@ -1,6 +1,5 @@
 'use client';
 
-import type { CSSProperties } from 'react';
 import { useId, useMemo, useState } from 'react';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { OfflineNotice } from '@/ui/offline-notice';
@@ -66,7 +65,6 @@ function HabitRow({
   const [viewedMonth, setViewedMonth] = useState<Date>(() => startOfMonth(now));
   const contentId = useId();
   const archived = habit.archivedAt !== null;
-  const colorVar = `var(${habit.color ?? '--area-habits'})`;
 
   const weeks = useMemo(() => historyWeeks(habit, logs, now), [habit, logs, now]);
   const serieLabel = isDayBased(habit.schedule)
@@ -92,7 +90,13 @@ function HabitRow({
         aria-controls={contentId}
         onClick={() => setExpanded((value) => !value)}
       >
-        <span className="habit-table__color" style={{ background: colorVar }} aria-hidden="true" />
+        {habit.emoji ? (
+          <span className="habit-table__emoji" aria-hidden="true">
+            {habit.emoji}
+          </span>
+        ) : (
+          <span className="habit-table__color" aria-hidden="true" />
+        )}
         <span className="habit-table__title">
           <span className="habit-table__name">{habit.name}</span>
           <span className="habit-table__schedule">{scheduleLabel(habit)}</span>
@@ -103,12 +107,9 @@ function HabitRow({
               key={index}
               className="habit-table__week-bar"
               data-current={index === weeks.length - 1 ? '' : undefined}
-              style={
-                {
-                  height: `${week.due > 0 ? Math.max(0.08, Math.min(1, week.done / week.due)) * 100 : 8}%`,
-                  '--week-bar-color': colorVar,
-                } as CSSProperties
-              }
+              style={{
+                height: `${week.due > 0 ? Math.max(0.08, Math.min(1, week.done / week.due)) * 100 : 8}%`,
+              }}
             />
           ))}
         </span>
