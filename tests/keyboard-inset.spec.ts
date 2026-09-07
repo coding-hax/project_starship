@@ -65,6 +65,12 @@ test.describe('Keyboard-safe Layout (#106)', () => {
     const before = await fab.boundingBox();
     expect(before).not.toBeNull();
 
+    // A keyboard only ever appears with a focused input (#1097) — quick-add's
+    // title field auto-focuses when its sheet opens; the FAB itself stays
+    // mounted (and its geometry unaffected) while the sheet is open.
+    await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
+    await expect(page.getByRole('textbox', { name: 'Titel der Aufgabe' })).toBeFocused();
+
     // Emulate an on-screen keyboard: shadow visualViewport.height by 300px, fire resize.
     await page.evaluate(() => {
       const vv = window.visualViewport!;
@@ -233,10 +239,17 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
     await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+
     // The six stacked schedule radios (behind the Rhythmus chip's panel since
     // #713) are tall enough on their own to exceed the ~512px left once a
     // 300px keyboard covers the bottom of a 812px screen.
     await page.getByRole('button', { name: /^Rhythmus(,|$)/ }).click();
+    // Opening the panel focuses the toggle button itself in Chromium — hand
+    // focus back to the name field first, mirroring the #138 test above: a
+    // real device never blurred it, and the keyboard (`--keyboard-inset`,
+    // #1097) only stays up while an editable field is focused.
+    await nameField.focus();
     await page.getByRole('radio', { name: 'Wöchentlich' }).click();
 
     await shrinkViewportForKeyboard(page);
@@ -255,7 +268,6 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     // Scrolling back to the top brings the name field back into view — the
     // top of the content is not stranded once you have scrolled down.
     await sheetContent.evaluate((el) => el.scrollTo({ top: 0 }));
-    const nameField = page.getByRole('textbox', { name: 'Name' });
     await expectVisibleAboveKeyboard(page, nameField, 300);
   });
 
@@ -300,5 +312,125 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     await shrinkViewportForKeyboard(page);
 
     await expectVisibleAboveKeyboard(page, nameField, 300);
+  });
+});
+
+/**
+ * #1097: iOS reports a transient `visualViewport.offsetTop ≠ 0` (and can shrink
+ * `height`) while rubber-banding at the end of a scrollable page — with no
+ * `input`/`textarea`/`select`/`[contenteditable]` focused. Unguarded, that made
+ * `--keyboard-inset` go non-zero on scroll, lifting the FAB and growing
+ * `/uebersicht`'s bottom padding under the user's finger. These specs guard the
+ * mechanism the same way the block above does: no real device, synthetic
+ * `visualViewport` events instead.
+ */
+test.describe('Kein Tastatur-Rauschen ohne fokussiertes Feld (#1097)', () => {
+  test.beforeEach(async () => {
+    await resetAppData();
+  });
+
+  test('AK1: Überscroll-Rauschen per scroll-Ereignis (offsetTop≠0) bleibt ohne Fokus bei 0px', async ({
+    page,
+  }) => {
+    await registerPasskey(page, '/aufgaben');
+
+    await page.evaluate(() => {
+      const vv = window.visualViewport!;
+      const shrunk = window.innerHeight - 300;
+      Object.defineProperty(vv, 'height', { configurable: true, get: () => shrunk });
+      Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 40 });
+      vv.dispatchEvent(new Event('scroll'));
+    });
+
+    const inset = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
+    );
+    expect(inset).toBe('0px');
+  });
+
+  test('AK2: verkleinerte Höhe per resize-Ereignis bleibt ohne Fokus bei 0px', async ({ page }) => {
+    await registerPasskey(page, '/aufgaben');
+
+    await page.evaluate(() => {
+      const vv = window.visualViewport!;
+      const shrunk = window.innerHeight - 300;
+      Object.defineProperty(vv, 'height', { configurable: true, get: () => shrunk });
+      Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 0 });
+      vv.dispatchEvent(new Event('resize'));
+    });
+
+    const inset = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
+    );
+    expect(inset).toBe('0px');
+  });
+
+  test('AK4: verliert das Feld den Fokus, fällt --keyboard-inset auf 0px zurück', async ({ page }) => {
+    await registerPasskey(page, '/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
+
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+    await expect(nameField).toBeFocused();
+
+    await shrinkViewportForKeyboard(page);
+
+    await nameField.evaluate((el) => (el as HTMLElement).blur());
+    const inset = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
+    );
+    expect(inset).toBe('0px');
+  });
+
+  test('AK6: eine gemeldete Verdeckung unter 150px bleibt auch bei fokussiertem Feld 0px', async ({
+    page,
+  }) => {
+    await registerPasskey(page, '/routinen');
+    await page.getByRole('button', { name: 'Routine anlegen' }).click();
+
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+    await expect(nameField).toBeFocused();
+
+    await page.evaluate(() => {
+      const vv = window.visualViewport!;
+      const shrunk = window.innerHeight - 80;
+      Object.defineProperty(vv, 'height', { configurable: true, get: () => shrunk });
+      Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 0 });
+      vv.dispatchEvent(new Event('resize'));
+    });
+
+    const inset = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
+    );
+    expect(inset).toBe('0px');
+  });
+
+  test('AK5: /uebersicht — Überscroll-Rauschen ohne Fokus rührt weder Fab-Position noch Sektions-Bodenpolster', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const fab = page.locator('.fab');
+    await expect(fab).toBeVisible();
+    await expect(page.locator('.uebersicht__sections')).toBeVisible();
+
+    const readStyles = () =>
+      page.evaluate(() => ({
+        fabBottom: getComputedStyle(document.querySelector('.fab')!).bottom,
+        sectionsPaddingBottom: getComputedStyle(document.querySelector('.uebersicht__sections')!)
+          .paddingBottom,
+      }));
+
+    const before = await readStyles();
+
+    await page.evaluate(() => {
+      const vv = window.visualViewport!;
+      const shrunk = window.innerHeight - 300;
+      Object.defineProperty(vv, 'height', { configurable: true, get: () => shrunk });
+      Object.defineProperty(vv, 'offsetTop', { configurable: true, get: () => 40 });
+      vv.dispatchEvent(new Event('scroll'));
+    });
+
+    const after = await readStyles();
+    expect(after).toEqual(before);
   });
 });
