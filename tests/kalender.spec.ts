@@ -4218,6 +4218,55 @@ test('.month-grid__track nimmt nur senkrechte Gesten an, waagerechte verschieben
   await expect(monthGrid(page)).toHaveAttribute('data-focus-month', before ?? '');
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #1099: `.month-grid__days` ist kein eigener Scroll-Container         */
+/* (Desktop-Scrollbalken je Wochenzeile)                                     */
+/* -------------------------------------------------------------------------- */
+
+test('`.month-grid__days` ist fuer jede Wochenzeile kein Scroll-Container (issue #1099, AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const daysGrids = monthGridWeeks(page).locator('.month-grid__days');
+
+  const count = await daysGrids.count();
+  expect(count).toBeGreaterThan(0);
+  for (let i = 0; i < count; i += 1) {
+    const overflowY = await daysGrids.nth(i).evaluate((el) => getComputedStyle(el).overflowY);
+    expect(overflowY).not.toBe('auto');
+    expect(overflowY).not.toBe('scroll');
+  }
+});
+
+test('`.month-grid__days` laesst sich nach einem gesetzten Scroll nicht mehr verschieben (issue #1099, AK2)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const daysGrid = monthGridWeeks(page).locator('.month-grid__days').first();
+
+  // Vor dem Fix blieben hier 5px auf jeder Achse stehen (siehe Ticket) — mit
+  // `overflow: clip` gibt es keinen Scroll-Container mehr, der etwas annimmt.
+  await daysGrid.evaluate((el) => {
+    el.scrollLeft = 50;
+    el.scrollTop = 50;
+  });
+  expect(await daysGrid.evaluate((el) => el.scrollLeft)).toBe(0);
+  expect(await daysGrid.evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test('die Monats-Karte scrollt ueber Wochenzeilen weiterhin senkrecht, die Spur bleibt waagerecht bei 0 (issue #1099, AK3; Regressionsschutz #1039 AK3, #1064)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Monat' }).click();
+  const title = page.locator('.calendar-view__heading');
+  await expect(title).toHaveText('Juli');
+
+  await pageMonth(page, 1);
+
+  await expect(title).toHaveText('August');
+  expect(await monthGridTrack(page).evaluate((el) => el.scrollLeft)).toBe(0);
+});
+
 test('die Monats-Karte zeigt sechs Wochenzeilen auf einmal, der Puffer dahinter ist ein Vielfaches davon (issue #1039 AK5, fortgeschrieben in #1064)', async ({
   page,
 }) => {
