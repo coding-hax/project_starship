@@ -321,4 +321,13 @@ export const CURATED_CASES: GoldCase[] = [
       { freq: 'weekly', interval: 1 },
     ],
   ]),
+
+  // #1082 AK4: "alle Wochen"/"alle Tage"/"alle Monate" ohne Zahl sind je Intervall 1 —
+  // dasselbe wie "jede Woche"/"täglich"/"monatlich". "alle Wochen" läuft oben bereits
+  // über den AK6-Satz mit, hier direkt und für die anderen beiden Formen.
+  ...recurrenceRows('Wiederholung ohne Zahl', [
+    ['Termin Arzt alle Wochen', 'event', 'Arzt', null, { freq: 'weekly', interval: 1 }],
+    ['Termin Arzt alle Tage', 'event', 'Arzt', null, { freq: 'daily', interval: 1 }],
+    ['Termin Arzt alle Monate', 'event', 'Arzt', null, { freq: 'monthly', interval: 1 }],
+  ]),
 ];
