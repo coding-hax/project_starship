@@ -57,8 +57,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/auth
 
-- `session.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`
-- `session-cookie.ts` — nur `SESSION_COOKIE`, blattlos (keine Imports), damit `middleware.ts` es im Edge-Runtime laden kann
+- `session.ts` / `device-cookie.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`; Geräte-Etikett (#1102)
+- `session-cookie.ts` — nur `SESSION_COOKIE`, blattlos, für `middleware.ts` im Edge-Runtime
 - `webauthn.ts` — Challenges, Credentials, Recovery-Code
 
 ### src/crypto — Journal-Verschlüsselung
