@@ -1,9 +1,14 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
+  addIcsSubscription,
   freezeClock,
+  icsFixture,
+  mockIcsFeed,
   openMeteoForecastBody,
+  refreshIcsSubscriptions,
   registerPasskey,
   resetAppData,
+  singleDayIcsEvent,
   skewClock,
   withDb,
 } from './helpers';
@@ -1007,11 +1012,11 @@ test('AK5: weitere Termine am selben Tag stehen darunter als dünne Zeilen, deut
   expect(parseFloat(nextFontSize)).toBeGreaterThan(parseFloat(restFontSize));
 });
 
-test('AK6: ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzustand (issue #974, vormals #559 AC3)', async ({
+test('AK7 (issue #1091): der Leerzustand greift erst, wenn im 366-Tage-Fenster gar nichts mehr liegt', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
-  // Ein Termin, der schon vorbei ist, zählt nicht als "weiterer Termin heute".
+  // Ein Termin, der schon vorbei ist, und sonst nichts im ganzen Scan-Fenster.
   await seedEvent(page, {
     title: 'Vorbei',
     allDay: false,
@@ -1023,7 +1028,7 @@ test('AK6: ohne weitere Termine heute zeigt die Sektion einen erkennbaren Leerzu
   });
 
   await expect(page.locator('.events-overview__empty')).toBeVisible();
-  await expect(page.getByText('Keine weiteren Termine heute')).toBeVisible();
+  await expect(page.getByText('Keine Termine geplant')).toBeVisible();
   await expect(page.locator('.events-overview__next')).toHaveCount(0);
 });
 
@@ -1156,6 +1161,212 @@ test('AK9: ein offline angelegter Termin erscheint sofort in der Karte und errei
     client.query('SELECT title FROM events WHERE title = $1', ['Im Zug erfasst']),
   );
   expect(row.rowCount).toBe(1);
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1091: "Nächster Termin" schaut über den heutigen Tag hinaus —       */
+/* Serien, abonnierte ICS-Termine und ganztägige Termine zählen jetzt mit.    */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (issue #1091): liegt der nächste Termin nicht heute, steht er trotzdem groß im Block', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-22T08:00:00.000Z', // Mi, 10:00 Berlin
+    endsAt: '2026-07-22T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(page.locator('.events-overview__next')).toContainText('Zahnarzt');
+  await expect(page.locator('.events-overview__empty')).toHaveCount(0);
+});
+
+test('AK2 (issue #1091): eine wöchentliche Serie zählt mit, eine abgesagte Instanz wird übersprungen', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const seriesId = await seedEvent(page, {
+    title: 'Yoga',
+    allDay: false,
+    startsAt: '2026-07-11T08:00:00.000Z', // Sa 11.07., 10:00 Berlin — Anker in der Vergangenheit.
+    endsAt: '2026-07-11T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+    recurrence: { freq: 'weekly', interval: 1 },
+  });
+
+  const next = page.locator('.events-overview__next');
+  // Die eigene Instanz vom 18.07. (10-11 Uhr Berlin) ist bei NOW (14 Uhr) schon
+  // vorbei — die nächste liegt eine Woche später, am 25.07.
+  await expect(next).toContainText('Yoga');
+  await expect(next.locator('.events-overview__next-range')).toContainText('25.07.');
+
+  await page.evaluate(
+    (eventId) =>
+      window.__starship.mutate({
+        table: 'event_exceptions',
+        op: 'upsert',
+        payload: {
+          eventId,
+          originalDate: '2026-07-25',
+          cancelled: true,
+          overrideStartsAt: null,
+          overrideEndsAt: null,
+          overrideStartDate: null,
+          overrideEndDate: null,
+        },
+      }),
+    seriesId,
+  );
+
+  await expect(next.locator('.events-overview__next-range')).toContainText('01.08.');
+});
+
+test('AK3 (issue #1091): ein abonnierter ICS-Termin zählt mit', async ({ page }) => {
+  await page.goto('/uebersicht');
+  await mockIcsFeed(page, icsFixture(singleDayIcsEvent('holiday-1', 'Nationalfeiertag', '2026-07-20')));
+  await addIcsSubscription(page, 'https://example.com/feiertage.ics', 'Feiertage');
+  await refreshIcsSubscriptions(page);
+
+  await expect(page.locator('.events-overview__next')).toContainText('Nationalfeiertag');
+});
+
+test('AK4 (issue #1091): ein ganztägiger Termin zählt mit, die Zeitzeile sagt "Ganztägig" statt einer Uhrzeitspanne', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-20',
+    endDate: '2026-07-20',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Feiertag');
+  await expect(next.locator('.events-overview__next-time')).toHaveCount(0);
+  await expect(next.locator('.events-overview__next-range')).toContainText('Ganztägig');
+});
+
+test('AK4 (issue #1091): ein mehrtägiger ganztägiger Termin, der heute schon läuft, gilt als der nächste Termin', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-16',
+    endDate: '2026-07-20',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Urlaub');
+  await expect(next.locator('.events-overview__next-range')).toHaveText('Heute');
+});
+
+test('AK5 (issue #1091): der Countdown zeigt "Morgen" für einen Termin am nächsten Tag', async ({ page }) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z',
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(page.locator('.events-overview__next-meta')).toHaveText('Morgen');
+});
+
+test('AK5 (issue #1091): der Countdown zeigt "in N Tagen", die Zeitzeile nennt zusätzlich Wochentag, Datum und Zeitspanne', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-22T08:00:00.000Z', // 10:00 Berlin
+    endsAt: '2026-07-22T09:00:00.000Z', // 11:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 4 Tagen');
+  await expect(page.locator('.events-overview__next-range')).toHaveText('Mi, 22.07. · 10:00–11:00');
+});
+
+test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeitspalte', async ({ page }) => {
+  await page.goto('/uebersicht');
+  // 19.07. (So, morgen) wird "der nächste Termin"; 20.07. (Mo) und 24.07. (Fr)
+  // liegen noch innerhalb der nächsten 6 Tage (Wochentag), 25.07. (Sa) ist der
+  // 7. Tag (Datum), 26.07. (So) ist der 5. Folgetermin und fällt weg.
+  const days = ['2026-07-19', '2026-07-20', '2026-07-24', '2026-07-25', '2026-07-26'];
+  for (const [index, day] of days.entries()) {
+    await seedEvent(page, {
+      title: `Termin ${index + 1}`,
+      allDay: false,
+      startsAt: `${day}T08:00:00.000Z`,
+      endsAt: `${day}T09:00:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  const restItems = page.locator('.events-overview__rest-item');
+  await expect(restItems).toHaveCount(3);
+  await expect(restItems.nth(0).locator('.events-overview__rest-time')).toHaveText('Mo 10:00');
+  await expect(restItems.nth(1).locator('.events-overview__rest-time')).toHaveText('Fr 10:00');
+  await expect(restItems.nth(2).locator('.events-overview__rest-time')).toHaveText('25.07. 10:00');
+  await expect(page.locator('.events-overview__next')).toContainText('Termin 1');
+});
+
+test('AK8 (issue #1091): bei 375×812 und Dark Mode bricht ein langer Titel plus Datumsangabe nicht um und läuft nicht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: false,
+    startsAt: '2026-07-22T08:00:00.000Z',
+    endsAt: '2026-07-22T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const title = next.locator('.events-overview__next-title');
+  const range = next.locator('.events-overview__next-range');
+  await expect(range).toContainText('22.07.');
+
+  const [titleTruncates, rangeFits] = await Promise.all([
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+    range.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ]);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+  expect(rangeFits, 'Zeitzeile mit Datum bricht nicht um, läuft nicht über').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
 });
 
 test('AC4 (issue #651): die Titelzeile trägt den 32px-Titel bei 375px einzeilig, ohne Überlauf', async ({

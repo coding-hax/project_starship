@@ -1,6 +1,18 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { addDays, weekDaysFor } from '@/features/events/event-time';
-import { installClockAt, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import {
+  addIcsSubscription,
+  icsFixture,
+  installClockAt,
+  mockIcsFeed,
+  refreshIcsSubscriptions,
+  registerPasskey,
+  resetAppData,
+  seriesIcsEvent,
+  singleDayIcsEvent,
+  skewClock,
+  withDb,
+} from './helpers';
 
 // installClockAt's default (helpers.ts) is 2026-07-18T12:00:00.000Z — 14:00
 // Berlin (CEST, UTC+2), same calendar day as every event seeded below unless
@@ -4825,47 +4837,6 @@ test('AK10: Dark Mode und prefers-reduced-motion gemeinsam — die Karte scrollt
 /* -------------------------------------------------------------------------- */
 
 const ICS_URL = 'https://example.com/feiertage.ics';
-
-function icsDateKey(dateKey: string): string {
-  return dateKey.replace(/-/g, '');
-}
-
-function icsFixture(events: string[]): string {
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', ...events, 'END:VCALENDAR'].join('\r\n');
-}
-
-function singleDayIcsEvent(uid: string, summary: string, dateKey: string): string[] {
-  return ['BEGIN:VEVENT', `UID:${uid}`, `SUMMARY:${summary}`, `DTSTART;VALUE=DATE:${icsDateKey(dateKey)}`, 'END:VEVENT'];
-}
-
-function seriesIcsEvent(uid: string, summary: string, startDateKey: string, rrule: string): string[] {
-  return [
-    'BEGIN:VEVENT',
-    `UID:${uid}`,
-    `SUMMARY:${summary}`,
-    `DTSTART;VALUE=DATE:${icsDateKey(startDateKey)}`,
-    `RRULE:${rrule}`,
-    'END:VEVENT',
-  ];
-}
-
-/** Fulfils every request to the SSRF-guarded proxy route with `body`, counting how often it was actually called. */
-async function mockIcsFeed(page: Page, body: string): Promise<() => number> {
-  let calls = 0;
-  await page.route('**/api/ics**', (route) => {
-    calls += 1;
-    return route.fulfill({ status: 200, contentType: 'text/calendar', body });
-  });
-  return () => calls;
-}
-
-async function addIcsSubscription(page: Page, url: string, name: string): Promise<void> {
-  await page.evaluate(({ url, name }) => window.__starship.addIcsSubscription(url, name), { url, name });
-}
-
-async function refreshIcsSubscriptions(page: Page): Promise<void> {
-  await page.evaluate(() => window.__starship.refreshIcsSubscriptions());
-}
 
 test('ein abonnierter ganztägiger Termin erscheint schreibgeschützt und optisch abgesetzt im All-Day-Band (AK1)', async ({
   page,
