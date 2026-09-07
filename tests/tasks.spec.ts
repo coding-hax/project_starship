@@ -17,6 +17,10 @@ const LONG_PRESS_MS = 400;
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const EDITOR_LABEL = 'Aufgabe bearbeiten';
 
+/** /uebersicht fires a forecast fetch on load — aborted here (like weather.spec.ts)
+ *  so the AK1-geometry test below can visit it without a real network call. */
+const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
+
 async function openQuickAdd(page: Page) {
   await page.getByRole('button', { name: QUICK_ADD_LABEL }).click();
 }
@@ -1076,6 +1080,13 @@ function dueLabelFor(page: Page, title: string) {
   return taskItems(page).filter({ hasText: title }).locator('.task-list__due');
 }
 
+/** The state colour lives on `.task-list__item[data-edge]::before` since issue
+ *  #1094, not on the row's own `border-inline-start` any more — a plain
+ *  `getComputedStyle(el)` can no longer see it. */
+function tabColorFor(row: Locator): Promise<string> {
+  return row.evaluate((el) => getComputedStyle(el, '::before').backgroundColor);
+}
+
 /** Resolves a token the same way the browser would for any element on the page —
  * used so colour assertions never hardcode an OKLCH literal that could drift. */
 async function resolveColorToken(page: Page, token: string): Promise<string> {
@@ -1121,6 +1132,96 @@ async function resolveBackground(page: Page, css: string): Promise<string> {
   }, css);
 }
 
+/** Same idea as `resolveBackground`, but the probe is a child of `selector` —
+ * needed for the priority tab's `color-mix(… var(--text))` (issue #1094 AK2):
+ * `.task-list__surface` resets `--text` to `--text-base`, so resolving against
+ * `document.body` would pick up `globals.css`'s ground-relative override instead
+ * (same reasoning as `resolveColorTokenIn` above). */
+async function resolveBackgroundIn(page: Page, selector: string, css: string): Promise<string> {
+  return page.evaluate(
+    ({ selector, css }) => {
+      const container = document.querySelector(selector)!;
+      const probe = document.createElement('span');
+      probe.style.background = css;
+      container.appendChild(probe);
+      const background = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return background;
+    },
+    { selector, css },
+  );
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((channel) => {
+    const s = channel / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** WCAG contrast ratio (1–21) between two 0–255 sRGB byte tuples. */
+function contrastRatio(rgbA: [number, number, number], rgbB: [number, number, number]): number {
+  const [la, lb] = [relativeLuminance(...rgbA), relativeLuminance(...rgbB)];
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** See grundfarbe.spec.ts's own `toRgb` for why canvas, not a regex on rgb()/oklch(). */
+async function toRgb(page: Page, color: string): Promise<[number, number, number]> {
+  return page.evaluate((c) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r, g, b] as [number, number, number];
+  }, color);
+}
+
+/** Reads real on-screen pixels at `points` off a full-page screenshot — the only
+ * way to locate a `::before` tab, which has no element handle of its own to call
+ * `boundingBox()` on (mirrors hintergrundboegen.spec.ts's `samplePixels`, issue
+ * #1094 AK6: proving the tab visually rides along with a mid-swipe row). */
+async function samplePixels(
+  page: Page,
+  points: { x: number; y: number }[],
+): Promise<[number, number, number][]> {
+  const buffer = await page.screenshot();
+  const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+  return page.evaluate(
+    ({ dataUrl, points }) =>
+      new Promise<[number, number, number][]>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          const scaleX = img.naturalWidth / window.innerWidth;
+          const scaleY = img.naturalHeight / window.innerHeight;
+          resolve(
+            points.map(({ x, y }) => {
+              const data = ctx.getImageData(Math.round(x * scaleX), Math.round(y * scaleY), 1, 1).data;
+              return [data[0], data[1], data[2]] as [number, number, number];
+            }),
+          );
+        };
+        img.onerror = () => reject(new Error('Screenshot ließ sich nicht als Bild laden'));
+        img.src = dataUrl;
+      }),
+    { dataUrl, points },
+  );
+}
+
+function colorDistance(a: [number, number, number], b: [number, number, number]): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
 /** Same idea as `resolveColorToken`, for a `font-size` token instead of a colour —
  * used so the done-state shrink assertion never hardcodes the 14px literal. */
 async function resolveFontSizeToken(page: Page, token: string): Promise<string> {
@@ -1134,7 +1235,7 @@ async function resolveFontSizeToken(page: Page, token: string): Promise<string> 
   }, token);
 }
 
-test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, Normal bleibt transparent; Priorität bleibt über title zugänglich (issue #704 AK5, migriert von #86 AC1)', async ({
+test('Zustandsmarke: überfällig schlägt Priorität, Priorität schlägt nichts, Normal bleibt transparent; Priorität bleibt über title zugänglich (issue #704 AK5, migriert von #86 AC1; Lasche statt Kante seit #1094 AK1–AK4)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1148,18 +1249,30 @@ test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, N
     dueAt: '2020-01-01T09:00:00.000Z',
   });
 
+  // The reserved `border-inline-start` stays transparent on every row now,
+  // state or not (issue #1094 AK4) — the state colour moved onto the
+  // `::before` tab, checked separately below via `tabColorFor`.
   const normalRow = taskRowFor(page, 'Normale Aufgabe');
   await expect(normalRow).not.toHaveAttribute('data-edge');
   const normalEdgeColor = await normalRow.evaluate(
     (el) => getComputedStyle(el).borderInlineStartColor,
   );
   expect(normalEdgeColor).toBe('rgba(0, 0, 0, 0)');
+  const normalTabColor = await tabColorFor(normalRow);
+  expect(normalTabColor).toBe('rgba(0, 0, 0, 0)');
   await expect(normalRow.locator('.task-list__title')).not.toHaveAttribute('title');
+
+  const priorityTabColor = await resolveBackgroundIn(
+    page,
+    '.task-list__surface',
+    'color-mix(in oklab, var(--warning) 75%, var(--text))',
+  );
 
   const hochRow = taskRowFor(page, 'Hohe Priorität');
   await expect(hochRow).toHaveAttribute('data-edge', 'priority');
-  const hochColor = await hochRow.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
-  expect(hochColor).toBe(await resolveColorToken(page, '--warning'));
+  const hochEdgeColor = await hochRow.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
+  expect(hochEdgeColor).toBe('rgba(0, 0, 0, 0)');
+  expect(await tabColorFor(hochRow)).toBe(priorityTabColor);
   await expect(hochRow.locator('.task-list__title')).toHaveAttribute('title', 'Priorität: Hoch');
 
   // Dringend without an overdue due date still reads as --warning, not --danger —
@@ -1167,10 +1280,7 @@ test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, N
   // (the one intentional colour-semantics change AK5 makes over the old dot).
   const dringendRow = taskRowFor(page, 'Dringende Aufgabe');
   await expect(dringendRow).toHaveAttribute('data-edge', 'priority');
-  const dringendColor = await dringendRow.evaluate(
-    (el) => getComputedStyle(el).borderInlineStartColor,
-  );
-  expect(dringendColor).toBe(await resolveColorToken(page, '--warning'));
+  expect(await tabColorFor(dringendRow)).toBe(priorityTabColor);
   await expect(dringendRow.locator('.task-list__title')).toHaveAttribute(
     'title',
     'Priorität: Dringend',
@@ -1178,10 +1288,143 @@ test('Farbkante: überfällig schlägt Priorität, Priorität schlägt nichts, N
 
   const overdueUrgentRow = taskRowFor(page, 'Überfällig und dringend');
   await expect(overdueUrgentRow).toHaveAttribute('data-edge', 'overdue');
-  const overdueUrgentColor = await overdueUrgentRow.evaluate(
+  const overdueUrgentEdgeColor = await overdueUrgentRow.evaluate(
     (el) => getComputedStyle(el).borderInlineStartColor,
   );
-  expect(overdueUrgentColor).toBe(await resolveColorToken(page, '--danger'));
+  expect(overdueUrgentEdgeColor).toBe('rgba(0, 0, 0, 0)');
+  expect(await tabColorFor(overdueUrgentRow)).toBe(await resolveColorToken(page, '--danger'));
+});
+
+test('die Priorität-Lasche hält den Kontrast gegen die Kartenfläche in beiden Themes ≥ 3:1 (issue #1094 AK2, WCAG 1.4.11)', async ({
+  page,
+}) => {
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/aufgaben');
+    await selectView(page, 'Alle');
+    await seedTask(page, { title: `Kontrast-Sonde ${scheme}`, priority: 1 });
+
+    const row = taskRowFor(page, `Kontrast-Sonde ${scheme}`);
+    const tabColor = await tabColorFor(row);
+    const cardBackground = await page
+      .locator('.task-list__surface')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    const ratio = contrastRatio(await toRgb(page, tabColor), await toRgb(page, cardBackground));
+    expect(ratio, `Lasche/Karte-Kontrast (${scheme})`).toBeGreaterThanOrEqual(3);
+  }
+});
+
+test('die Lasche ist von der Zeilenkante eingerückt und berührt so nie mehr die Kartenrundung, auf /uebersicht und /aufgaben (issue #1094 AK1)', async ({
+  page,
+}) => {
+  await installClockAt(page, FIXED_NOW);
+  // /uebersicht fires a forecast fetch on load — aborted, not answered, since
+  // this test only cares about the task row underneath it (like weather.spec.ts).
+  await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
+
+  for (const path of ['/aufgaben', '/uebersicht']) {
+    await page.goto(path);
+    const title = `Lasche ${path}`;
+    await seedTask(page, { title, priority: 1, dueAt: new Date(FIXED_NOW).toISOString() });
+
+    const row = taskRowFor(page, title);
+    await expect(row).toHaveAttribute('data-edge', 'priority');
+
+    const tab = await row.evaluate((el) => {
+      const style = getComputedStyle(el, '::before');
+      return {
+        top: style.top,
+        bottom: style.bottom,
+        width: style.width,
+        radii: [
+          style.borderTopLeftRadius,
+          style.borderTopRightRadius,
+          style.borderBottomRightRadius,
+          style.borderBottomLeftRadius,
+        ],
+      };
+    });
+
+    // `inset-block: var(--space-2)` (8px) from the row's own top/bottom edge —
+    // well clear of the surrounding `.task-list__surface`'s 28px corner radius.
+    expect(tab.top, `${path}: Abstand zur Zeilenoberkante`).toBe('8px');
+    expect(tab.bottom, `${path}: Abstand zur Zeilenunterkante`).toBe('8px');
+    expect(tab.width, `${path}: Laschenbreite`).toBe('4px');
+    expect(tab.radii, `${path}: nur zur offenen Seite hin gerundet`).toEqual([
+      '0px',
+      '3px',
+      '3px',
+      '0px',
+    ]);
+  }
+});
+
+test('beim Wischen verschiebt sich die Lasche um dieselbe Strecke wie die Zeile (issue #1094 AK6)', async ({
+  page,
+}) => {
+  await page.goto('/aufgaben');
+  await selectView(page, 'Alle');
+  const title = 'Lasche beim Wischen';
+  await seedTask(page, { title, priority: 1 });
+
+  const row = taskRowFor(page, title);
+  await expect(row).toHaveAttribute('data-edge', 'priority');
+
+  const tabRgb = await toRgb(
+    page,
+    await resolveBackgroundIn(
+      page,
+      '.task-list__surface',
+      'color-mix(in oklab, var(--warning) 75%, var(--text))',
+    ),
+  );
+
+  const box = (await row.boundingBox())!;
+  const borderLeftWidth = await row.evaluate((el) =>
+    parseFloat(getComputedStyle(el).borderInlineStartWidth),
+  );
+  // Middle of the 4px-wide tab, clear of anti-aliased pixels at its own edges.
+  const tabCenterX = Math.round(box.x + borderLeftWidth + 2);
+  const centerY = Math.round(box.y + box.height / 2);
+  const dx = 40; // below the 80px action threshold (see swipeRight usage above) — a pure visual displacement
+
+  const [restColor] = await samplePixels(page, [{ x: tabCenterX, y: centerY }]);
+  expect(colorDistance(restColor, tabRgb), 'Lasche sichtbar in Ruhe').toBeLessThan(20);
+
+  const startX = box.x + 20;
+  await row.dispatchEvent('pointerdown', {
+    pointerId: 1,
+    clientX: startX,
+    clientY: centerY,
+    button: 0,
+    bubbles: true,
+  });
+  await row.dispatchEvent('pointermove', {
+    pointerId: 1,
+    clientX: startX + dx,
+    clientY: centerY,
+    bubbles: true,
+  });
+
+  const [vacatedColor, shiftedColor] = await samplePixels(page, [
+    { x: tabCenterX, y: centerY },
+    { x: tabCenterX + dx, y: centerY },
+  ]);
+  expect(colorDistance(vacatedColor, tabRgb), 'Lasche an alter Stelle verschwunden').toBeGreaterThan(
+    20,
+  );
+  expect(
+    colorDistance(shiftedColor, tabRgb),
+    'Lasche an neuer Stelle sichtbar, genau um dx verschoben',
+  ).toBeLessThan(20);
+
+  await row.dispatchEvent('pointerup', {
+    pointerId: 1,
+    clientX: startX + dx,
+    clientY: centerY,
+    bubbles: true,
+  });
 });
 
 test('eine offene, vergangene Fälligkeit wird hervorgehoben; eine künftige nicht (issue #86 AC2)', async ({
@@ -1223,7 +1466,7 @@ test('eine erledigte Aufgabe wird trotz alter Fälligkeit nie hervorgehoben (iss
   );
 });
 
-test('Farbkante und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #704 AK5, migriert von #86 AC3)', async ({
+test('Lasche und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und fügen keine Bewegung hinzu (issue #704 AK5, migriert von #86 AC3; Lasche seit #1094)', async ({
   page,
 }) => {
   await page.goto('/aufgaben');
@@ -1246,21 +1489,21 @@ test('Farbkante und Überfällig-Hervorhebung bleiben im Dark Mode korrekt und f
     .poll(() => due.evaluate((el) => getComputedStyle(el).transitionProperty))
     .toBe('none');
 
-  const lightEdgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
+  const lightTabColor = await tabColorFor(row);
   const lightDueColor = await due.evaluate((el) => getComputedStyle(el).color);
 
   await page.emulateMedia({ colorScheme: 'dark' });
 
-  const darkEdgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
+  const darkTabColor = await tabColorFor(row);
   const darkDueColor = await due.evaluate((el) => getComputedStyle(el).color);
 
   // Still resolve to the semantic token, just its dark-mode value — proving the
   // override in tokens.css actually reaches these elements, not a hardcoded colour.
   // The seeded row is overdue *and* priority 2 — precedence picks --danger, same
   // as light mode.
-  expect(darkEdgeColor).toBe(await resolveColorToken(page, '--danger'));
+  expect(darkTabColor).toBe(await resolveColorToken(page, '--danger'));
   expect(darkDueColor).toBe(await resolveColorToken(page, '--danger'));
-  expect(darkEdgeColor).not.toBe(lightEdgeColor);
+  expect(darkTabColor).not.toBe(lightTabColor);
   expect(darkDueColor).not.toBe(lightDueColor);
 });
 
@@ -1338,7 +1581,7 @@ test('Erledigtes schrumpft an Ort und Stelle statt zu springen (issue #704 AK7)'
   expect(heightAfter).toBe(heightBefore);
 });
 
-test('unter reduzierter Bewegung fügen Kante, Haarlinie und Schrumpfen nichts Animiertes hinzu (issue #704 AK10)', async ({
+test('unter reduzierter Bewegung fügen Lasche, Haarlinie und Schrumpfen nichts Animiertes hinzu (issue #704 AK10; Lasche seit #1094 AK5)', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1358,8 +1601,15 @@ test('unter reduzierter Bewegung fügen Kante, Haarlinie und Schrumpfen nichts A
   // so compare the parsed value rather than the exact string.
   expect(parseFloat(rowTransitionDuration)).toBeLessThan(0.001);
   expect(await transitionDurationFor(row, 'border-inline-start-color')).toBe(0);
-  const edgeColor = await row.evaluate((el) => getComputedStyle(el).borderInlineStartColor);
-  expect(edgeColor).toBe(await resolveColorToken(page, '--danger'));
+  // The tab (`::before`) never declares its own `transition`, so its
+  // `background-color` changes instantly with or without reduced motion —
+  // this just confirms the global reduced-motion override (tokens.css) doesn't
+  // somehow make it worse (issue #1094 AK5).
+  const tabTransitionDuration = await row.evaluate(
+    (el) => getComputedStyle(el, '::before').transitionDuration,
+  );
+  expect(parseFloat(tabTransitionDuration)).toBeLessThan(0.001);
+  expect(await tabColorFor(row)).toBe(await resolveColorToken(page, '--danger'));
 
   await checkboxFor(page, title).click();
   await expect(row).toHaveClass(/task-list__item--done/);
