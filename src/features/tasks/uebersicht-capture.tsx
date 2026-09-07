@@ -34,6 +34,7 @@ import { Chip } from '@/ui/chip';
 import { Fab } from '@/ui/fab';
 import { Sheet } from '@/ui/sheet';
 import { formatDueLabel, isoToLocalInput, localInputToIso } from './datetime-local';
+import { DuePicker } from './due-picker';
 import { PRIORITIES } from './quick-add';
 import { TaskEditor, type TaskEditorState } from './task-editor';
 import { groupTasks, useTasks } from './use-tasks';
@@ -691,22 +692,20 @@ export function UebersichtCapture() {
             />
           )}
           {openChip === 'wann' && (
-            <input
-              type="datetime-local"
-              className="quick-add__due"
-              id={WANN_PANEL_ID}
-              value={dueLocal}
-              onChange={(event) => {
-                const iso = localInputToIso(event.target.value);
-                const base = accumulated ?? preview;
-                setAccumulated({
-                  ...base,
-                  dueAt: iso,
-                  confidence: { ...base.confidence, date: { level: 'high' }, time: { level: 'high' } },
-                });
-              }}
-              aria-label="Fälligkeit"
-            />
+            <div id={WANN_PANEL_ID}>
+              <DuePicker
+                value={dueLocal}
+                onChange={(next) => {
+                  const iso = localInputToIso(next);
+                  const base = accumulated ?? preview;
+                  setAccumulated({
+                    ...base,
+                    dueAt: iso,
+                    confidence: { ...base.confidence, date: { level: 'high' }, time: { level: 'high' } },
+                  });
+                }}
+              />
+            </div>
           )}
           {openChip === 'prio' && (
             <fieldset className="quick-add__priority" aria-label="Priorität" id={PRIO_PANEL_ID}>
@@ -725,22 +724,21 @@ export function UebersichtCapture() {
             </fieldset>
           )}
           {openChip === 'zeit' && (
-            <input
-              type="datetime-local"
-              className="quick-add__due"
-              id={ZEIT_PANEL_ID}
-              value={eventStartLocal}
-              onChange={(event) => {
-                const iso = localInputToIso(event.target.value);
-                const base = accumulated ?? preview;
-                setAccumulated({
-                  ...base,
-                  dueAt: iso,
-                  confidence: { ...base.confidence, date: { level: 'high' }, time: { level: 'high' } },
-                });
-              }}
-              aria-label="Zeit"
-            />
+            <div id={ZEIT_PANEL_ID}>
+              <DuePicker
+                value={eventStartLocal}
+                clearable={false}
+                onChange={(next) => {
+                  const iso = localInputToIso(next);
+                  const base = accumulated ?? preview;
+                  setAccumulated({
+                    ...base,
+                    dueAt: iso,
+                    confidence: { ...base.confidence, date: { level: 'high' }, time: { level: 'high' } },
+                  });
+                }}
+              />
+            </div>
           )}
           {openChip === 'kategorie' && (
             <select
