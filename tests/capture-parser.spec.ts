@@ -52,6 +52,12 @@ function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
 }
 
+/** Nur der Chip-Körper — `/^Wiederholung/` allein matcht auch den Verwerfen-Knopf
+ * (gleiches Muster wie capture-wiederholung.spec.ts). */
+function recurrenceChip(page: Page) {
+  return page.getByRole('button', { name: /^Wiederholung,/ });
+}
+
 async function submitUebersichtCapture(page: Page, text: string) {
   await captureButton(page).click();
   await captureTitleField(page).fill(text);
@@ -256,6 +262,23 @@ test('AK7: Klassifikation bleibt unverändert grün — neuer Korpus-Fall "nicht
   await expect(
     taskItems(page).filter({ hasText: 'Pass verlängern' }),
   ).toBeVisible();
+});
+
+test('#1082 AK9: Benennungs- und Wiederholungs-Relativsatz — Art-/Titel-/Wiederholungs-Chip zeigen "Termin"/"Arzt"/"Jede Woche"', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // Der Satz aus der Meldung: Benennung ("der heißt Arzt") und Wiederholung
+  // ("der sich alle Wochen wiederholt") in einem Rutsch.
+  await captureButton(page).click();
+  await captureTitleField(page).fill(
+    'Erstelle einen Termin, der heißt Arzt, der sich alle Wochen wiederholt',
+  );
+
+  await expect(page.getByRole('button', { name: 'Art, Termin', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Titel, Arzt', exact: true })).toBeVisible();
+  await expect(recurrenceChip(page)).toHaveText('Jede Woche');
 });
 
 test('Offline-Pfad: eine Erfassung offline erreicht nach dem Onlinegehen die Datenbank', async ({

@@ -43,8 +43,15 @@
  *   …", "erinnere mich (an)", "neue aufgabe:", "aufgabe:", "bitte", "trag") und "Termin",
  *   wenn unmittelbar ein Datum-/Zeit-Span folgt — sowie Bindewörter ("am", "um", "für",
  *   "daran", "beim"), die direkt an einer Span-Grenze stehen. Eine explizite "Titel X"
- *   schlägt alles andere. Alles sonst bleibt stehen, auch "Termin"/"Aufgabe" mitten im Satz.
+ *   schlägt alles andere. Alles sonst bleibt stehen, auch "Termin"/"Aufgabe" mitten im Satz —
+ *   ausser "Termin" steht unmittelbar vor einem Benennungsrahmen (unten) oder eine
+ *   Wiederholung folgt irgendwo dahinter (#1082, AK5): "Termin Arzt jede Woche" -> "Arzt".
  *   Bleibt kein Titel übrig, bleibt er leer (AC5) — die Rohzeile wird nicht mehr Titel.
+ * - Benennung (#1082): ein Relativsatz gibt dem Termin einen Namen — "der/die/das heißt X",
+ *   verbletzt "der X heißt", oder ohne Relativpronomen "namens X"/"mit dem Namen X". Der
+ *   Rahmen fällt komplett, nur X bleibt als Titel. Ein Wiederholungs-Relativsatz ("der sich
+ *   jede Woche wiederholt", "der jeden Montag stattfindet") fällt ebenso komplett, nicht nur
+ *   sein Kernausdruck.
  *
  * Kein Anspruch auf "alles verstehen" — das Bestätigungs-Sheet bzw. der Undo-Toast
  * im Direkt-Pfad ist das Netz für alles, was diese Grammatik nicht trifft.
@@ -446,7 +453,9 @@ const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => Recur
     build: () => ({ freq: 'weekly', interval: 1, byWeekday: [1, 2, 3, 4, 5] }),
   },
   {
-    pattern: wordPattern('(?:täglich|jeden\\s+tag|jeden\\s+einzelnen\\s+tag)', 'giu'),
+    // AK4 (#1082): "alle Tage" ohne Zahl ist dasselbe wie "täglich" — Diktat nennt den
+    // Plural oft ohne Zähler.
+    pattern: wordPattern('(?:täglich|jeden\\s+tag|jeden\\s+einzelnen\\s+tag|alle\\s+tage?n?)', 'giu'),
     build: () => ({ freq: 'daily', interval: 1 }),
   },
   {
@@ -458,7 +467,8 @@ const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => Recur
     build: (m) => ({ freq: 'weekly', interval: countOf(m[1]) }),
   },
   {
-    pattern: wordPattern('(?:wöchentlich|jede\\s+woche)', 'giu'),
+    // AK4 (#1082): "alle Wochen" ohne Zahl ist dasselbe wie "jede Woche".
+    pattern: wordPattern('(?:wöchentlich|jede\\s+woche|alle\\s+wochen?)', 'giu'),
     build: () => ({ freq: 'weekly', interval: 1 }),
   },
   {
@@ -466,7 +476,8 @@ const RECURRENCE_RULES: { pattern: RegExp; build: (m: RegExpMatchArray) => Recur
     build: (m) => ({ freq: 'monthly', interval: countOf(m[1]) }),
   },
   {
-    pattern: wordPattern('(?:monatlich|jeden\\s+monat)(?:\\s+am\\s+\\d{1,2}\\.?)?', 'giu'),
+    // AK4 (#1082): "alle Monate" ohne Zahl ist dasselbe wie "monatlich".
+    pattern: wordPattern('(?:monatlich|jeden\\s+monat|alle\\s+monate?n?)(?:\\s+am\\s+\\d{1,2}\\.?)?', 'giu'),
     build: () => ({ freq: 'monthly', interval: 1 }),
   },
   {
@@ -517,6 +528,113 @@ function findRecurrence(text: string): RecurrenceMatch | null {
   };
   const used = [withWeekday, withoutWeekday].filter((hit): hit is (typeof hits)[number] => hit !== undefined);
   return { spans: used.map((hit) => hit.span), value };
+}
+
+// AK3 (#1082): der Relativsatz um eine Wiederholung fällt vollständig aus dem Titel, nicht
+// nur der Kernausdruck — "Termin Arzt, der sich jede Woche wiederholt" darf nicht als
+// "Termin Arzt, der sich wiederholt" liegen bleiben. "sich" ist optional: "der jeden Montag
+// stattfindet" ist nicht reflexiv.
+const RECURRENCE_CLAUSE_OPENER_PATTERN = /,?\s*(?:der|die|das)\s+(?:sich\s+)?$/iu;
+const RECURRENCE_CLAUSE_CLOSER_PATTERN = /^\s+(?:wiederholt|stattfindet|stattfinden)\b/iu;
+
+/** Erweitert die Wiederholungs-Spans um ihren Relativsatz-Rahmen, falls einer direkt
+ * angrenzt — sonst bleiben `spans` unverändert. */
+function extendRecurrenceClauseSpans(text: string, spans: Span[]): Span[] {
+  if (spans.length === 0) return spans;
+  const start = Math.min(...spans.map((span) => span.start));
+  const end = Math.max(...spans.map((span) => span.end));
+  const openerMatch = text.slice(0, start).match(RECURRENCE_CLAUSE_OPENER_PATTERN);
+  const closerMatch = text.slice(end).match(RECURRENCE_CLAUSE_CLOSER_PATTERN);
+  if (!openerMatch && !closerMatch) return spans;
+  return [
+    ...spans,
+    {
+      start: openerMatch ? start - openerMatch[0].length : start,
+      end: closerMatch ? end + closerMatch[0].length : end,
+    },
+  ];
+}
+
+// --- Benennung (AK1/AK2, #1082) --------------------------------------------
+
+/**
+ * Der Relativsatz ist die natürlichste Art, einem Termin einen Namen zu geben: "der heißt
+ * Arzt", verbletzt "der Arzt heißt", oder ohne Relativpronomen "namens Arzt"/"mit dem Namen
+ * Arzt". Anders als ein Wiederholungs-Relativsatz (oben) trägt dieser Rahmen selbst keinen
+ * Inhalt — nur der Name bleibt stehen, der Rahmen fällt komplett (der Hinweis aus dem
+ * Ticket: der Benennungssatz muss vor dem Rückbau in `refineTitle` weg sein, nicht danach,
+ * sonst wird aus "heißt Arzt" ein großgeschriebenes "Heißt Arzt").
+ */
+const NAMING_FORWARD_PATTERN = new RegExp(`${WORD_BEFORE}(?:der|die|das)\\s+heißt\\s+`, 'giu');
+// Named group statt Index: robust gegen künftige zusätzliche Gruppen in den anderen Mustern.
+const NAMING_VERBLETZT_PATTERN = new RegExp(
+  `${WORD_BEFORE}(?:der|die|das)\\s+(?<name>[^,]+?)\\s+heißt${WORD_AFTER}`,
+  'giud',
+);
+const NAMING_NAMENS_PATTERN = new RegExp(`${WORD_BEFORE}namens\\s+`, 'giu');
+const NAMING_MIT_DEM_NAMEN_PATTERN = new RegExp(`${WORD_BEFORE}mit\\s+dem\\s+namen\\s+`, 'giu');
+
+interface NamingSpans {
+  /** Alle Rahmen-Spans, die aus dem Titel fallen. */
+  removalSpans: Span[];
+  /** Nur die Spans, denen ein Art-Schlüsselwort ("Termin") unmittelbar vorausgehen darf
+   * (AK5) — beim Verbletzt-Muster ist das nur die Öffnung ("der "), nie das nachgestellte
+   * "heißt". */
+  openerSpans: Span[];
+}
+
+function findNamingSpans(text: string): NamingSpans {
+  const removalSpans: Span[] = [];
+  const openerSpans: Span[] = [];
+  for (const pattern of [NAMING_FORWARD_PATTERN, NAMING_NAMENS_PATTERN, NAMING_MIT_DEM_NAMEN_PATTERN]) {
+    for (const match of text.matchAll(pattern)) {
+      const span: Span = { start: match.index!, end: match.index! + match[0].length };
+      removalSpans.push(span);
+      openerSpans.push(span);
+    }
+  }
+  for (const match of text.matchAll(NAMING_VERBLETZT_PATTERN)) {
+    const nameSpan = match.indices?.groups?.name;
+    if (!nameSpan) continue;
+    const opener: Span = { start: match.index!, end: nameSpan[0] };
+    const closer: Span = { start: nameSpan[1], end: match.index! + match[0].length };
+    removalSpans.push(opener, closer);
+    openerSpans.push(opener);
+  }
+  return { removalSpans, openerSpans };
+}
+
+// --- Art-Schlüsselwort (AK5, #1082) -----------------------------------------
+
+/**
+ * "Termin" als freistehendes Wort (nie ein Kompositum wie "Zahnarzttermin", das entscheidet
+ * die Art mit, bleibt aber Titel-Text) fällt aus dem Titel, wenn ihm — Satzzeichen erlaubt,
+ * kein weiteres Wort — direkt ein Datum, eine Uhrzeit oder ein Benennungsrahmen folgt, oder
+ * wenn irgendwo dahinter eine Wiederholung erkannt wurde ("Termin Arzt jede Woche" — der Name
+ * dazwischen bleibt stehen, "Termin" selbst nicht).
+ */
+const ART_KEYWORD_PATTERN = wordPattern('termine?', 'giu');
+
+function findArtKeywordSpans(
+  text: string,
+  immediateAnchors: Span[],
+  hasRecurrence: boolean,
+  recurrenceSpans: Span[],
+): Span[] {
+  const recurrenceStart =
+    recurrenceSpans.length > 0 ? Math.min(...recurrenceSpans.map((span) => span.start)) : null;
+  const spans: Span[] = [];
+  for (const match of text.matchAll(ART_KEYWORD_PATTERN)) {
+    const span: Span = { start: match.index!, end: match.index! + match[0].length };
+    const nextAnchorStart = immediateAnchors
+      .filter((anchor) => anchor.start >= span.end)
+      .map((anchor) => anchor.start)
+      .sort((a, b) => a - b)[0];
+    const precedesAnchor = nextAnchorStart !== undefined && isPunctuationOnly(text, span.end, nextAnchorStart);
+    const precedesRecurrence = hasRecurrence && recurrenceStart !== null && span.end <= recurrenceStart;
+    if (precedesAnchor || precedesRecurrence) spans.push(span);
+  }
+  return spans;
 }
 
 // --- Uhrzeit -------------------------------------------------------------
@@ -997,21 +1115,6 @@ function findCommandPrefixSpans(text: string): Span[] {
   return spans;
 }
 
-/** "Termin" ist nur ein Kommandopräfix, wenn unmittelbar (Whitespace/Satzzeichen erlaubt,
- * kein weiteres Wort) ein Datum- oder Zeit-Span folgt — sonst bleibt es Titel-Text. */
-function findTerminPrefixSpan(text: string, dateSpan: Span | null, timeSpan: Span | null): Span | null {
-  const match = text.match(/^termin\b\s*/iu);
-  if (!match) return null;
-  const prefixEnd = match.index! + match[0].length;
-  const nextSpanStart = [dateSpan, timeSpan]
-    .filter((span): span is Span => span !== null)
-    .map((span) => span.start)
-    .sort((a, b) => a - b)[0];
-  if (nextSpanStart === undefined) return null;
-  if (!isPunctuationOnly(text, prefixEnd, nextSpanStart)) return null;
-  return { start: 0, end: match[0].length };
-}
-
 /**
  * Bindewörter, die nur **links** vom Datum fallen dürfen: „bis Freitag", „ab Montag".
  * Getrennt von CONNECTOR_WORDS, weil dieselben Wörter rechts vom Anker etwas anderes
@@ -1442,8 +1545,14 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   const anchors = [dateSpan, timeSpan].filter((span): span is Span => span !== null);
 
   const prefixSpans = findCommandPrefixSpans(text);
-  const terminSpan =
-    prefixSpans.length === 0 ? findTerminPrefixSpan(text, dateSpan, timeSpan) : null;
+  const namingSpans = findNamingSpans(text);
+  const recurrenceSpans = extendRecurrenceClauseSpans(text, recurrenceMatch?.spans ?? []);
+  const artKeywordSpans = findArtKeywordSpans(
+    text,
+    [...anchors, ...namingSpans.openerSpans],
+    recurrenceMatch !== null,
+    recurrenceSpans,
+  );
   const connectorSpans = findConnectorSpans(text, anchors);
   const suffixSpan = findCommandSuffixSpan(text);
   // Beide Mengen laufen immer: ein Altpräfix wie „erstelle" deckt nur den Wortanfang ab,
@@ -1454,14 +1563,19 @@ export function analyzeText(text: string, now: Date = new Date()): TextAnalysis 
   const removalSpans = [
     ...prefixSpans,
     ...dictationSpans,
-    ...(recurrenceMatch?.spans ?? []),
-    ...(terminSpan ? [terminSpan] : []),
+    ...recurrenceSpans,
+    ...namingSpans.removalSpans,
+    ...artKeywordSpans,
     ...(suffixSpan ? [suffixSpan] : []),
     ...anchors,
     ...connectorSpans,
   ];
   const frameRemoved =
-    prefixSpans.length > 0 || dictationSpans.length > 0 || terminSpan !== null || suffixSpan !== null;
+    prefixSpans.length > 0 ||
+    dictationSpans.length > 0 ||
+    namingSpans.removalSpans.length > 0 ||
+    artKeywordSpans.length > 0 ||
+    suffixSpan !== null;
   // „Am Textanfang" heisst: der erste Span sitzt vor dem ersten inhaltlichen Zeichen.
   const leadingRemoved = removalSpans.some((span) => isPunctuationOnly(text, 0, span.start));
   const title = refineTitle(
