@@ -3244,11 +3244,10 @@ test('AK6: ein per Freitext erfasster Termin behält seine vorbelegten Von-/Bis-
   await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
   await page
     .getByRole('textbox', { name: 'Titel der Aufgabe' })
-    .fill('Termin morgen 14 bis 16 Uhr Zahnarzt');
+    .fill('Termin morgen 14 Uhr Zahnarzt');
   // "Mehr" öffnet den vollen Termin-Editor vorbefüllt (uebersicht-capture.tsx's
   // `openMoreForEvent`) — der einzige heute erreichbare Pfad zu einem
-  // `EventEditorPrefill` mit einer vom 1h-Default abweichenden Dauer (2 Std),
-  // die eine ungewollte Kopplung beim Seeden verraten würde.
+  // `EventEditorPrefill` aus Freitext.
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   // Die quick-add-Sheet selbst trägt denselben Namen, solange ihre Art "event"
@@ -3262,7 +3261,7 @@ test('AK6: ein per Freitext erfasster Termin behält seine vorbelegten Von-/Bis-
   await wannChip(dialog).click();
 
   await expect(dialog.getByLabel('Von')).toHaveValue(`${TOMORROW}T14:00`);
-  await expect(dialog.getByLabel('Bis')).toHaveValue(`${TOMORROW}T16:00`);
+  await expect(dialog.getByLabel('Bis')).toHaveValue(`${TOMORROW}T15:00`);
 });
 
 /* -------------------------------------------------------------------------- */
