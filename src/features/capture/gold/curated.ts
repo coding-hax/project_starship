@@ -40,6 +40,25 @@ function rows(category: string, list: Row[]): GoldCase[] {
   }));
 }
 
+type RecurrenceExpect = NonNullable<GoldCase['expect']['recurrence']>;
+type RecurrenceRow = [
+  text: string,
+  kind: GoldCase['expect']['kind'],
+  title: string,
+  dueAt: string | null,
+  recurrence: RecurrenceExpect,
+];
+
+function recurrenceRows(category: string, list: RecurrenceRow[]): GoldCase[] {
+  return list.map(([text, kind, title, dueAt, recurrence], index) => ({
+    id: `kur:${category.slice(0, 4).toLowerCase()}:${String(index).padStart(3, '0')}`,
+    text,
+    source: 'kuratiert' as const,
+    category,
+    expect: { kind, title, dueAt, recurrence },
+  }));
+}
+
 export const CURATED_CASES: GoldCase[] = [
   // Bezugspunkt überall NOW_REF: Montag, 15.01.2024, 10:00.
   ...rows('Diktiertes Kommando', [
@@ -265,5 +284,41 @@ export const CURATED_CASES: GoldCase[] = [
     ['Meeting mit dem Team um 14 Uhr', 'event', 'Meeting mit dem Team', on(1, 15, 14)],
     ['Termin beim Friseur', 'event', 'Termin beim Friseur', null],
     ['Treffen mit Jonas am Donnerstag', 'event', 'Treffen mit Jonas', on(1, 18)],
+  ]),
+
+  // #1082 AK1/AK2: der Relativsatz gibt dem Termin einen Namen — der Rahmen fällt
+  // komplett, nicht nur der Sprechkopf davor.
+  ...rows('Benennungs-Relativsatz', [
+    ['Erstelle einen Termin, der heißt Arzt', 'event', 'Arzt', null],
+    ['Erstelle einen Termin, die heißt Steuer', 'event', 'Steuer', null],
+    ['Erstelle einen Termin, das heißt Umzug', 'event', 'Umzug', null],
+    // Verbletzt: der Name steht vor "heißt".
+    ['Erstelle einen Termin, der Arzt heißt', 'event', 'Arzt', null],
+    // Ohne Relativpronomen — wie es beim Diktieren herauskommt.
+    ['Erstelle einen Termin namens Arzt', 'event', 'Arzt', null],
+    ['Erstelle einen Termin mit dem Namen Arzt', 'event', 'Arzt', null],
+  ]),
+
+  // #1082 AK3/AK5: der Wiederholungs-Relativsatz fällt vollständig, nicht nur sein
+  // Kernausdruck; das freistehende "Termin" faellt mit, wenn irgendwo dahinter eine
+  // Wiederholung erkannt wurde.
+  ...recurrenceRows('Wiederholungs-Relativsatz', [
+    ['Termin Arzt, der sich jede Woche wiederholt', 'event', 'Arzt', null, { freq: 'weekly', interval: 1 }],
+    ['Termin Arzt, die sich alle zwei Wochen wiederholt', 'event', 'Arzt', null, { freq: 'weekly', interval: 2 }],
+    ['Termin Arzt, der jeden Montag stattfindet', 'event', 'Arzt', on(1, 15), { freq: 'weekly', interval: 1, byWeekday: [1] }],
+    // Ohne Relativsatz-Rahmen — die Wiederholung steht bloss hinter dem Namen.
+    ['Termin Arzt jede Woche', 'event', 'Arzt', null, { freq: 'weekly', interval: 1 }],
+  ]),
+
+  // #1082 AK4/AK6: "alle Wochen" ohne Zahl ist Intervall 1; der volle Satz aus der
+  // Meldung kombiniert Benennung und Wiederholung in einem Rutsch.
+  ...recurrenceRows('Voller Satz aus der Meldung', [
+    [
+      'Erstelle einen Termin, der heißt Arzt, der sich alle Wochen wiederholt',
+      'event',
+      'Arzt',
+      null,
+      { freq: 'weekly', interval: 1 },
+    ],
   ]),
 ];

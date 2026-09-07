@@ -54,6 +54,7 @@ describe('Goldkorpus', () => {
   check('gesprochen — Aussagerahmen', withPrefix(generateSpokenCases, 'spoken:aussage'));
   check('gesprochen — Zögern', withPrefix(generateSpokenCases, 'spoken:zoegern:'));
   check('gesprochen — Zögern mit Aussagerahmen', withPrefix(generateSpokenCases, 'spoken:zoegern-aussage'));
+  check('gesprochen — Relativsätze (#1082)', withPrefix(generateSpokenCases, 'spoken:relativsatz'));
   check('Telegrammstil — Kürzel mit Uhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-zeit', 'tele:kuerzel-punkt'));
   check('Telegrammstil — Kurzuhrzeit', withPrefix(generateTelegramCases, 'tele:kuerzel-kurzzeit', 'tele:kurzzeit'));
   // Schwierige Konstruktionen: ein Eintrag, aber zwei Zeitangaben bzw. ein

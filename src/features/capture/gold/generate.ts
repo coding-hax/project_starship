@@ -190,6 +190,31 @@ export function generateHardCases(options: GenerateOptions = {}): GoldCase[] {
 }
 
 /**
+ * Benennungs-Relativsätze (AK7, #1082): der Name ist überall derselbe ("Arzt") — die
+ * kuratierte Schicht deckt unterschiedliche Namen ab (AK1/AK2), hier geht es um die
+ * Kombinatorik der Rahmenwörter. Nur echte Relativsätze — "namens"/"mit dem Namen" sind
+ * keine Relativsätze (kein Relativpronomen) und stehen deshalb nur in `curated.ts` (AK2);
+ * mit einem angehängten Wiederholungs-Relativsatz frisst die Diktat-Grammatik (Trenner-Suche
+ * über bis zu vier Wörter, für „Füg einen Termin hinzu, Kino …" gedacht) sonst den Namen mit.
+ */
+const RELATIVSATZ_NAME = 'Arzt';
+interface NamingClauseSlot {
+  category: string;
+  text: string;
+}
+const NAMING_CLAUSES: NamingClauseSlot[] = [
+  { category: 'Benennung · heißt (der)', text: `der heißt ${RELATIVSATZ_NAME}` },
+  { category: 'Benennung · heißt (die)', text: `die heißt ${RELATIVSATZ_NAME}` },
+  { category: 'Benennung · heißt (das)', text: `das heißt ${RELATIVSATZ_NAME}` },
+  { category: 'Benennung · verbletzt', text: `der ${RELATIVSATZ_NAME} heißt` },
+];
+
+/** Diktierte Köpfe, die einen Termin ankündigen — mit Komma dahinter geht der
+ * Benennungs-Relativsatz rückstandsfrei durch dieselbe Diktat-Grammatik wie „Füg einen
+ * Termin hinzu, Kino am Samstag". */
+const TERMIN_SPRECHKOEPFE = ['Erstelle einen Termin', 'Mach mir einen Termin', 'Leg mir einen Termin an'];
+
+/**
  * Gesprochene Sprache (#erfasser-korpus, zweite Runde): der Fehlerherd, der in der
  * ersten Fassung mit dreizehn kuratierten Sätzen viel zu dünn abgedeckt war. Alle
  * Köpfe hier verschwinden rückstandsfrei, deshalb steht der Sollwert fest.
@@ -250,6 +275,26 @@ export function generateSpokenCases(options: GenerateOptions = {}): GoldCase[] {
       title,
       dueAt: null,
     });
+  }
+
+  // N6 — Relativsätze (AK7, #1082): Sprechkopf × Benennungssatz × Wiederholungssatz.
+  // „Erstelle einen Termin, der heißt Arzt, der sich jede Woche wiederholt".
+  for (const head of TERMIN_SPRECHKOEPFE) {
+    for (const naming of NAMING_CLAUSES) {
+      for (const rule of RECURRENCE_SLOTS) {
+        const sentence = `${head}, ${naming.text}, der sich ${rule.text.toLowerCase()} wiederholt`;
+        push('relativsatz', sentence, naming.category, {
+          kind: 'event',
+          title: RELATIVSATZ_NAME,
+          dueAt: rule.byWeekday?.length === 1 ? weekdayDue(now, rule.byWeekday[0]) : null,
+          recurrence: {
+            freq: rule.freq,
+            interval: rule.interval,
+            ...(rule.byWeekday ? { byWeekday: rule.byWeekday } : {}),
+          },
+        });
+      }
+    }
   }
 
   return cases;
