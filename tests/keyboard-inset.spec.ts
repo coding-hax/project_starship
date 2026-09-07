@@ -239,10 +239,17 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
   test('hoher Sheet-Inhalt wird bei offener Tastatur im Sheet scrollbar', async ({ page }) => {
     await registerPasskey(page, '/routinen');
     await page.getByRole('button', { name: 'Routine anlegen' }).click();
+    const nameField = page.getByRole('textbox', { name: 'Name' });
+
     // The six stacked schedule radios (behind the Rhythmus chip's panel since
     // #713) are tall enough on their own to exceed the ~512px left once a
     // 300px keyboard covers the bottom of a 812px screen.
     await page.getByRole('button', { name: /^Rhythmus(,|$)/ }).click();
+    // Opening the panel focuses the toggle button itself in Chromium — hand
+    // focus back to the name field first, mirroring the #138 test above: a
+    // real device never blurred it, and the keyboard (`--keyboard-inset`,
+    // #1097) only stays up while an editable field is focused.
+    await nameField.focus();
     await page.getByRole('radio', { name: 'Wöchentlich' }).click();
 
     await shrinkViewportForKeyboard(page);
@@ -261,7 +268,6 @@ test.describe('Sheet-Inhalt bleibt bei offener Tastatur sichtbar (#594)', () => 
     // Scrolling back to the top brings the name field back into view — the
     // top of the content is not stranded once you have scrolled down.
     await sheetContent.evaluate((el) => el.scrollTo({ top: 0 }));
-    const nameField = page.getByRole('textbox', { name: 'Name' });
     await expectVisibleAboveKeyboard(page, nameField, 300);
   });
 
