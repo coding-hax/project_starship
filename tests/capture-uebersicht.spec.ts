@@ -623,8 +623,10 @@ test('AK3 (#1089): im Picker gewählter Tag + Uhrzeit stehen am zugeklappten Chi
   expect(new Date(taskRow.rows[0].due_at as string).toISOString()).toBe(
     new Date('2026-07-22T16:15').toISOString(),
   );
+  // local-recognizer.ts (R3): Art-Vokabular bleibt im Titel stehen — "Termin"
+  // fällt hier nicht weg wie bei einer separat committeten Äußerung.
   const eventRow = await withDb((client) =>
-    client.query('SELECT starts_at FROM events WHERE title = $1', ['Zahnarzt']),
+    client.query('SELECT starts_at FROM events WHERE title = $1', ['Termin Zahnarzt']),
   );
   expect(new Date(eventRow.rows[0].starts_at as string).toISOString()).toBe(
     new Date('2026-07-23T11:30').toISOString(),
@@ -663,6 +665,11 @@ test('AK6 (#1089): der Chip zeigt per aria-controls aufs offene Panel, das Panel
   await expect(page.locator('#uebersicht-capture-panel-wann')).toBeVisible();
 
   const today = dueCalendarDay(page, 'Samstag, 18.');
+  // Der vorangegangene dueChip-Klick setzt die Eingabe-Modalität des Dokuments auf
+  // Maus — Chromiums :focus-visible bleibt dann auch bei einem script-`.focus()`
+  // aus, bis irgendein Tastendruck sie zurück auf Tastatur stellt (deshalb hier ein
+  // Tab, unabhängig davon, wo er landet; `.focus()` überschreibt den Fokus danach).
+  await page.keyboard.press('Tab');
   await today.focus();
   await expect(today).toHaveCSS('outline-style', 'solid');
   const durationString = await today.evaluate((el) => getComputedStyle(el).transitionDuration);
