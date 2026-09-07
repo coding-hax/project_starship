@@ -101,8 +101,14 @@
      before it reaches `.month-grid__track` — otherwise that 5px poking past
      the grid's left/right edge counts as real horizontal scroll content, and
      `.month-grid__track`'s own `overflow-x: hidden` only hides it visually
-     while still letting `scrollLeft` move into it (issue #1039, AK3). */
-  overflow-x: hidden;
+     while still letting `scrollLeft` move into it (issue #1039, AK3).
+     `clip`, not `hidden` — CSS upgrades `overflow-x: hidden` paired with the
+     default `overflow-y: visible` to computed `overflow-y: auto`, making this
+     a scroll container on both axes with the `::before` overflow below as
+     scrollable content (5px of `scrollLeft`/`scrollTop`, one gutter per week
+     row with classic scrollbars — issue #1099). `clip` is exempt from that
+     upgrade and still clips both axes. */
+  overflow: clip;
 }
 
 .month-grid__day {
