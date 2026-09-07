@@ -127,8 +127,9 @@ test('AK7 Offline: derselbe Satz offline erfasst erreicht online die Datenbank m
   await page.evaluate(() => window.__starship.sync());
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  // #1082: "Termin" fällt aus dem Titel, sobald eine Wiederholung dahinter erkannt wird.
   const row = await withDb((client) =>
-    client.query('SELECT recurrence FROM events WHERE title = $1', ['Termin Arzt']),
+    client.query('SELECT recurrence FROM events WHERE title = $1', ['Arzt']),
   );
   expect(row.rowCount).toBe(1);
   expect(row.rows[0].recurrence).toEqual({ freq: 'weekly', interval: 1 });
