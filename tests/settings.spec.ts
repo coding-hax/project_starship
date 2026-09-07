@@ -143,10 +143,10 @@ test('die Einstellungen-Primitive tragen keine teuren Filter (60-fps-Versprechen
 });
 
 for (const viewport of [
-  { width: 375, height: 667 },
+  { width: 375, height: 812 },
   { width: 1280, height: 800 },
 ]) {
-  test(`Zurück-Link führt zur Übersicht, Titel steht darunter, linksbündig (${viewport.width}px, issue #870 AK2)`, async ({
+  test(`Zurück-Link und Titel stehen in einer Zeile, Titel rechts (${viewport.width}px, issue #1087 AK1)`, async ({
     page,
   }) => {
     await registerPasskey(page);
@@ -159,14 +159,39 @@ for (const viewport of [
 
     const backBox = await back.boundingBox();
     const titleBox = await page.getByRole('heading', { level: 1 }).boundingBox();
-    // Augenbraue (Zurück) oben, Titelzeile darunter — beide linksbündig.
-    expect(titleBox!.y).toBeGreaterThan(backBox!.y + backBox!.height);
-    expect(Math.abs(titleBox!.x - backBox!.x)).toBeLessThan(4);
+    // Eine Zeile: Zurück-Link links, Titel rechts davon, vertikal überlappend.
+    expect(titleBox!.x).toBeGreaterThan(backBox!.x + backBox!.width);
+    expect(titleBox!.y).toBeLessThan(backBox!.y + backBox!.height);
+    expect(titleBox!.y + titleBox!.height).toBeGreaterThan(backBox!.y);
 
     await back.click();
     await expect(page).toHaveURL('/uebersicht');
   });
 }
+
+test('AK2/AK3 (issue #1087): der Kopf ist höchstens 56px hoch, der Abstand zur ersten Gruppe bleibt unverändert, nichts bricht um oder scrollt waagerecht (375×812)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/einstellungen');
+
+  const topbar = page.locator('.einstellungen__topbar');
+  const topbarBox = await topbar.boundingBox();
+  expect(topbarBox!.height).toBeLessThanOrEqual(56);
+
+  const firstGroupTitle = page.locator('.einstellungen__group-title').first();
+  const groupTitleBox = await firstGroupTitle.boundingBox();
+  // Der Abstand entspricht margin-block-end des Kopfs (--space-4, 16px) —
+  // unverändert gegenüber dem Stand vor #1087.
+  expect(groupTitleBox!.y - (topbarBox!.y + topbarBox!.height)).toBeCloseTo(16, 0);
+
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+});
 
 test('AC2 (issue #651): der Seitentitel auf /einstellungen ist linksbündig, ohne eigenen font-size', async ({
   page,
