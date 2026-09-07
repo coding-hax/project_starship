@@ -1326,7 +1326,14 @@ test('die Lasche ist von der Zeilenkante eingerückt und berührt so nie mehr di
   for (const path of ['/aufgaben', '/uebersicht']) {
     await page.goto(path);
     const title = `Lasche ${path}`;
-    await seedTask(page, { title, priority: 1, dueAt: new Date(FIXED_NOW).toISOString() });
+    // An hour past FIXED_NOW, not equal to it: `installClockAt`'s fake clock
+    // ticks forward at real rate (helpers.ts), so a `dueAt` exactly at the
+    // install instant is already in the past by the time `seedTask`'s round
+    // trip finishes — the row would render `data-edge="overdue"` instead of
+    // `"priority"` (issue #704 AK5's precedence, working as intended) and
+    // never reach this test's actual concern, the tab's geometry.
+    const dueAt = new Date(new Date(FIXED_NOW).getTime() + 60 * 60 * 1000).toISOString();
+    await seedTask(page, { title, priority: 1, dueAt });
 
     const row = taskRowFor(page, title);
     await expect(row).toHaveAttribute('data-edge', 'priority');
