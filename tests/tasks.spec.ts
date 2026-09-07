@@ -1293,6 +1293,15 @@ test('Zustandsmarke: überfällig schlägt Priorität, Priorität schlägt nicht
   );
   expect(overdueUrgentEdgeColor).toBe('rgba(0, 0, 0, 0)');
   expect(await tabColorFor(overdueUrgentRow)).toBe(await resolveColorToken(page, '--danger'));
+
+  // AK4: rows stay flush regardless of `data-edge` — the tab is an absolutely
+  // positioned `::before` and the reserved `border-inline-start` never changes
+  // width, so the title's x-position must be identical with or without a state.
+  const normalTitleX = (await normalRow.locator('.task-list__title').boundingBox())!.x;
+  const hochTitleX = (await hochRow.locator('.task-list__title').boundingBox())!.x;
+  const overdueTitleX = (await overdueUrgentRow.locator('.task-list__title').boundingBox())!.x;
+  expect(hochTitleX, 'Titel bündig: Priorität vs. ohne Zustand').toBe(normalTitleX);
+  expect(overdueTitleX, 'Titel bündig: überfällig vs. ohne Zustand').toBe(normalTitleX);
 });
 
 test('die Priorität-Lasche hält den Kontrast gegen die Kartenfläche in beiden Themes ≥ 3:1 (issue #1094 AK2, WCAG 1.4.11)', async ({
