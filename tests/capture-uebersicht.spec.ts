@@ -6,11 +6,12 @@ const CAPTURE_LABEL = 'Aufgabe erfassen';
 
 /** issue #1089: der FAB heißt immer `CAPTURE_LABEL` (#1083 AK-Kommentar in
  * uebersicht-capture.tsx), der Sheet-Kopf selbst folgt seit #1083 der erkannten
- * Art — "Erfassen" (provisorisch), "Aufgabe erfassen", "Termin erfassen" oder
- * "Routine erfassen". `captureDialog` muss alle vier treffen, sonst laufen
+ * Art — "Erfassen" (provisorisch, großes E) oder "Aufgabe erfassen"/"Termin
+ * erfassen"/"Routine erfassen" (klein, zusammengesetztes Wort — SHEET_LABEL in
+ * uebersicht-capture.tsx). `captureDialog` muss alle vier treffen, sonst laufen
  * Locator-Scopes wie `dueChip`/`zeitChip` bei jedem Termin oder vor dem ersten
  * Signal ins Leere. */
-const SHEET_LABEL_PATTERN = /^(Aufgabe |Termin |Routine )?Erfassen$/;
+const SHEET_LABEL_PATTERN = /^(Aufgabe |Termin |Routine )?[Ee]rfassen$/;
 
 function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
