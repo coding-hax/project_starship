@@ -556,3 +556,80 @@ export function generateCombinedCases(options: GenerateOptions = {}): GoldCase[]
 
   return cases;
 }
+
+// --- Wochentag+Tageszeit-Komposita (#1090) ---------------------------------
+
+/**
+ * Alle sieben Wochentage — anders als `WHEN_SLOTS` **mit** Montag: der Bestandsparser
+ * zählt einen Wochentag, der auf den Bezugstag fällt, immer als heute (kein Wochensprung),
+ * und AK3 verlangt ausdrücklich "alle sieben Wochentage" im Kompositum.
+ */
+const WEEKDAY_DAY_PART_WEEKDAYS: [string, number][] = [
+  ['Montag', 1], ['Dienstag', 2], ['Mittwoch', 3], ['Donnerstag', 4],
+  ['Freitag', 5], ['Samstag', 6], ['Sonntag', 0],
+];
+
+/** Deckungsgleich mit `COMPOUND_DAY_PART_HOURS` in `parse-task-input.ts` (AK3). */
+const WEEKDAY_DAY_PART_SUFFIXES: [string, number][] = [
+  ['morgen', 8], ['vormittag', 10], ['mittag', 12], ['nachmittag', 15], ['abend', 19], ['nacht', 22],
+];
+
+function weekdayCompoundDate(now: Date, dow: number, hours: number, minutes: number): Date {
+  const d = new Date(now);
+  d.setDate(d.getDate() + ((dow - now.getDay() + 7) % 7));
+  d.setHours(hours, minutes, 0, 0);
+  return d;
+}
+
+/**
+ * #1090: "Dienstagabend" statt "Dienstag Abend" — löst wie die getrennte Schreibweise
+ * auf (AK1), gekreuzt über alle sieben Wochentage und alle sechs Tageszeitwörter (AK3),
+ * mit und ohne genannte Uhrzeit (AK6).
+ *
+ * W2 (mit Uhrzeit) benutzt bewusst "um H:MM Uhr" statt der kürzeren "H:MM Uhr"-Form: ein
+ * bloßes "15:30" ist kürzer als "nachmittag"/"vormittag" — beim längsten-Span-gewinnt
+ * würde der Tageszeit-Teil dann fälschlich vor der genannten Uhrzeit gewinnen (derselbe
+ * Effekt trifft schon heute die freistehenden Tageszeitwörter, siehe Fund im
+ * Fortschrittskommentar zu #1090). "um H:MM Uhr" ist immer länger als jedes Tageszeitwort
+ * und bleibt so unabhängig von dieser vorbestehenden Einschränkung korrekt.
+ */
+export function generateWeekdayDayPartCases(options: GenerateOptions = {}): GoldCase[] {
+  const now = options.now ?? NOW_REF;
+  const quota = options.quotaPerPattern ?? 1500;
+  const cases: GoldCase[] = [];
+  let n = 0;
+  const push = (pattern: string, text: string, category: string, expect: GoldCase['expect']) => {
+    cases.push({
+      id: `wtag:${pattern}:${String(n++).padStart(5, '0')}`,
+      text,
+      source: 'generiert',
+      category,
+      expect,
+    });
+  };
+
+  // W1 — ohne genannte Uhrzeit (AK2): der Tageszeit-Teil setzt die feste Uhrzeit.
+  const bare = cross(cross(WEEKDAY_DAY_PART_WEEKDAYS, WEEKDAY_DAY_PART_SUFFIXES), TASK_TITLES);
+  for (const [[[day, dow], [suffix, hours]], title] of sample(bare, quota)) {
+    push('kompositum', `${day}${suffix} ${title}`, `Kompositum · ${suffix}`, {
+      kind: 'task',
+      title,
+      dueAt: weekdayCompoundDate(now, dow, hours, 0).toISOString(),
+    });
+  }
+
+  // W2 — mit genannter Uhrzeit (AK1): die ausgesprochene Uhrzeit schlägt den
+  // Tageszeit-Teil.
+  const times: [number, number][] = [[9, 15], [11, 45], [14, 0], [19, 30], [21, 5]];
+  const timed = cross(cross(WEEKDAY_DAY_PART_WEEKDAYS, WEEKDAY_DAY_PART_SUFFIXES), cross(times, TASK_TITLES));
+  for (const [[[day, dow], [suffix]], [[hours, minutes], title]] of sample(timed, quota)) {
+    const timeText = `${hours}:${String(minutes).padStart(2, '0')} Uhr`;
+    push('kompositum-uhrzeit', `${day}${suffix} um ${timeText} ${title}`, `Kompositum · ${suffix} + Uhrzeit`, {
+      kind: 'task',
+      title,
+      dueAt: weekdayCompoundDate(now, dow, hours, minutes).toISOString(),
+    });
+  }
+
+  return cases;
+}
