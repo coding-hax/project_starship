@@ -87,6 +87,36 @@ describe('previewDraft — event', () => {
   });
 });
 
+describe('eventFieldsFromDraft — recurrence (issue #1081)', () => {
+  it('AK1: eine erkannte Wiederholung landet im Kernfeld', () => {
+    const draft = previewDraft('Termin Arzt jede Woche', ctx());
+    expect(eventFieldsFromDraft(draft, NOW).recurrence).toEqual({ freq: 'weekly', interval: 1 });
+  });
+
+  it('AK1: ohne erkannte Wiederholung ist das Feld null, nie undefined', () => {
+    const draft = previewDraft('Meeting mit Chef', ctx());
+    expect(eventFieldsFromDraft(draft, NOW).recurrence).toBeNull();
+  });
+
+  it('AK2: „jeden Montag" -> byWeekday [0] (Montag-erste Zählung des Termin-Modells)', () => {
+    const draft = previewDraft('Termin Arzt jeden Montag', ctx());
+    expect(eventFieldsFromDraft(draft, NOW).recurrence).toEqual({
+      freq: 'weekly',
+      interval: 1,
+      byWeekday: [0],
+    });
+  });
+
+  it('AK2: „jeden Sonntag" -> byWeekday [6] (Montag-erste Zählung des Termin-Modells)', () => {
+    const draft = previewDraft('Termin Arzt jeden Sonntag', ctx());
+    expect(eventFieldsFromDraft(draft, NOW).recurrence).toEqual({
+      freq: 'weekly',
+      interval: 1,
+      byWeekday: [6],
+    });
+  });
+});
+
 describe('habitFieldsFromDraft', () => {
   it('AC3: hohe Konfidenz -> aufgelöst, mit Habit-Id und Log-Tag', () => {
     const draft = previewDraft('hake Sport ab', ctx());

@@ -28,6 +28,7 @@ import { useToggleHabitLog } from '@/features/habits/use-toggle-habit-log';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { useModules } from '@/features/settings/use-modules';
 import { mutate } from '@/local/outbox';
+import type { EventData } from '@/local/types';
 import { berlinNow } from '@/push/schedule';
 import { Chip } from '@/ui/chip';
 import { Fab } from '@/ui/fab';
@@ -46,6 +47,7 @@ const TITEL_PANEL_ID = 'uebersicht-capture-panel-titel';
 const WANN_PANEL_ID = 'uebersicht-capture-panel-wann';
 const PRIO_PANEL_ID = 'uebersicht-capture-panel-prio';
 const ZEIT_PANEL_ID = 'uebersicht-capture-panel-zeit';
+const WIEDERHOLUNG_PANEL_ID = 'uebersicht-capture-panel-wiederholung';
 const KATEGORIE_PANEL_ID = 'uebersicht-capture-panel-kategorie';
 const ROUTINE_PANEL_ID = 'uebersicht-capture-panel-routine';
 
@@ -96,6 +98,34 @@ const EXTRA_FIELD: Record<CaptureKind, { label: string; chip: ChipKey }> = {
   event: { label: 'Kategorie', chip: 'kategorie' },
   habit_check: { label: 'Routine', chip: 'routine' },
 };
+
+const WEEKDAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+const RECURRENCE_SINGULAR_LABEL: Record<NonNullable<EventData['recurrence']>['freq'], string> = {
+  daily: 'Täglich',
+  weekly: 'Jede Woche',
+  monthly: 'Monatlich',
+  yearly: 'Jährlich',
+};
+
+const RECURRENCE_PLURAL_UNIT: Record<NonNullable<EventData['recurrence']>['freq'], string> = {
+  daily: 'Tage',
+  weekly: 'Wochen',
+  monthly: 'Monate',
+  yearly: 'Jahre',
+};
+
+/** issue #1081 AK4: Klartext-Label für den Wiederholungs-Chip — ein einzelner
+ * Wochentag (interval 1) bekommt seinen eigenen Namen, alles andere hängt nur an
+ * Frequenz/Intervall. */
+function recurrenceLabel(recurrence: NonNullable<EventData['recurrence']>): string {
+  const { freq, interval, byWeekday } = recurrence;
+  if (freq === 'weekly' && interval === 1 && byWeekday?.length === 1) {
+    return `Jeden ${WEEKDAY_NAMES[byWeekday[0]]}`;
+  }
+  if (interval === 1) return RECURRENCE_SINGULAR_LABEL[freq];
+  return `Alle ${interval} ${RECURRENCE_PLURAL_UNIT[freq]}`;
+}
 
 /**
  * Öffnet das volle Modul-Sheet (AK4) — kein Feld mit Wert/Panel wie `Chip`,
@@ -406,6 +436,7 @@ export function UebersichtCapture() {
         startDate: null,
         endDate: null,
         category: category || null,
+        recurrence: fields.recurrence,
       };
       closeAndReset();
       await mutate({ table: 'events', op: 'upsert', payload });
@@ -588,6 +619,20 @@ export function UebersichtCapture() {
                   }}
                   changed={lastChanged.has('zeit')}
                 />
+                {eventFields.recurrence && (
+                  <Chip
+                    field="Wiederholung"
+                    emptyLabel="Wiederholung?"
+                    value={recurrenceLabel(eventFields.recurrence)}
+                    guessed
+                    panelId={WIEDERHOLUNG_PANEL_ID}
+                    onOpen={() => {}}
+                    onDiscard={() => {
+                      const base = accumulated ?? preview;
+                      setAccumulated({ ...base, recurrence: null });
+                    }}
+                  />
+                )}
                 <Chip
                   field="Kategorie"
                   emptyLabel="Kategorie?"
