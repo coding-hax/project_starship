@@ -1012,6 +1012,143 @@ test('AK5: weitere Termine am selben Tag stehen darunter als dünne Zeilen, deut
   expect(parseFloat(nextFontSize)).toBeGreaterThan(parseFloat(restFontSize));
 });
 
+test('AK1 (issue #1105): jede Folgezeile trägt --surface als eigene Fläche mit --radius-card statt --radius-surface und sichtbarem Schatten, hell und dunkel', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: '2026-07-18T15:00:00.000Z',
+    endsAt: '2026-07-18T16:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  const restItem = page.locator('.events-overview__rest-item').first();
+
+  async function measure() {
+    const [nextBg, restBg, restRadius, restShadow] = await Promise.all([
+      next.evaluate((el) => getComputedStyle(el).backgroundColor),
+      restItem.evaluate((el) => getComputedStyle(el).backgroundColor),
+      restItem.evaluate((el) => getComputedStyle(el).borderRadius),
+      restItem.evaluate((el) => getComputedStyle(el).boxShadow),
+    ]);
+    return { nextBg, restBg, restRadius, restShadow };
+  }
+
+  const hell = await measure();
+  // Gleiche Fläche wie die große Karte darüber — beide lösen --surface auf.
+  expect(hell.restBg).toBe(hell.nextBg);
+  expect(hell.restBg).not.toBe('rgba(0, 0, 0, 0)');
+  expect(hell.restRadius).toBe('14px'); // --radius-card, nicht --radius-surface (28px)
+  expect(hell.restShadow).not.toBe('none');
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const dunkel = await measure();
+  expect(dunkel.restBg).toBe(dunkel.nextBg);
+  expect(dunkel.restBg).not.toBe(hell.restBg); // --surface wechselt hell/dunkel
+  expect(dunkel.restRadius).toBe('14px');
+  expect(dunkel.restShadow).not.toBe('none');
+});
+
+test('AK2 (issue #1105): die Folgezeile setzt ihre Tinte auf der eigenen Fläche zurück — die Zeit-Spalte erreicht 4,5:1 gegen die Zeilenfläche, hell und dunkel', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: '2026-07-18T15:00:00.000Z',
+    endsAt: '2026-07-18T16:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').first();
+  const restTime = restItem.locator('.events-overview__rest-time');
+
+  async function measure(): Promise<number> {
+    const [timeColor, itemBg] = await Promise.all([
+      restTime.evaluate((el) => getComputedStyle(el).color),
+      restItem.evaluate((el) => getComputedStyle(el).backgroundColor),
+    ]);
+    return contrastRatio(await toRgb(page, timeColor), await toRgb(page, itemBg));
+  }
+
+  expect(await measure(), 'hell').toBeGreaterThanOrEqual(4.5);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await measure(), 'dunkel').toBeGreaterThanOrEqual(4.5);
+});
+
+test('AK3 (issue #1105): die Folgezeilen bleiben ein Stapel einzelner Flächen — sichtbarer Spalt zwischen den Zeilen, gleiche Breite wie die Karte des nächsten Termins', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Teammeeting',
+    allDay: false,
+    startsAt: '2026-07-18T15:00:00.000Z',
+    endsAt: '2026-07-18T16:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Sport',
+    allDay: false,
+    startsAt: '2026-07-19T15:00:00.000Z',
+    endsAt: '2026-07-19T16:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  const restItems = page.locator('.events-overview__rest-item');
+  await expect(restItems).toHaveCount(2);
+
+  const [nextBox, firstBox, secondBox] = await Promise.all([
+    next.boundingBox(),
+    restItems.nth(0).boundingBox(),
+    restItems.nth(1).boundingBox(),
+  ]);
+  // Sichtbarer Spalt zwischen den Zeilen — kein durchgehender Block.
+  expect(secondBox!.y).toBeGreaterThan(firstBox!.y + firstBox!.height);
+  // Gleiche Breite wie die Karte des nächsten Termins.
+  expect(firstBox!.width).toBeCloseTo(nextBox!.width, 0);
+});
+
 test('AK7 (issue #1091): der Leerzustand greift erst, wenn im 366-Tage-Fenster gar nichts mehr liegt', async ({
   page,
 }) => {
