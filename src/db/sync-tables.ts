@@ -52,7 +52,7 @@ export const SYNC_REGISTRY = {
   },
   habits: {
     table: habits,
-    writable: ['name', 'schedule', 'target', 'color', 'archivedAt', 'createdAt'],
+    writable: ['name', 'schedule', 'target', 'color', 'emoji', 'archivedAt', 'createdAt'],
     required: ['name', 'schedule'],
   },
   habit_logs: {

@@ -8,6 +8,7 @@ function habit(overrides: Partial<HabitView> & Pick<HabitView, 'id' | 'name' | '
     schedule: 'daily',
     target: 1,
     color: null,
+    emoji: null,
     archivedAt: null,
     ...overrides,
   };
