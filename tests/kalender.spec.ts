@@ -3122,6 +3122,129 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
 });
 
 /* -------------------------------------------------------------------------- */
+/* #1104: "Bis" folgt dem Start und behält die Dauer                          */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: im Create-Modus mit unverändertem Bis setzt eine Von-Änderung Bis auf genau eine Stunde später (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(`${TODAY}T09:00`);
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T10:00`);
+
+  await page.getByLabel('Von').fill(`${TOMORROW}T20:00`);
+
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TOMORROW}T21:00`);
+});
+
+test('AK2: nach einer eigenen Bis-Änderung bleibt die neu eingestellte Dauer beim nächsten Von-Wechsel exakt erhalten (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  // Dauer von Hand auf 3 Std gesetzt (09:00 Von steht noch auf dem Default).
+  await page.getByLabel('Bis').fill(`${TODAY}T12:00`);
+  await page.getByLabel('Von').fill(`${TOMORROW}T20:00`);
+
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TOMORROW}T23:00`);
+});
+
+test('AK3: im Bearbeiten-Modus verschiebt eine Von-Änderung Bis um dieselbe Dauer, die Termindauer bleibt unverändert (#1104)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Strategiemeeting',
+    allDay: false,
+    startsAt: `${TODAY}T11:00:00.000Z`,
+    endsAt: `${TODAY}T13:00:00.000Z`, // 2 Std Dauer
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await openEventEditor(page, eventCard(page, 'Strategiemeeting'));
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(`${TODAY}T11:00`);
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T13:00`);
+
+  await page.getByLabel('Von').fill(`${TODAY}T15:00`);
+
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T17:00`);
+});
+
+test('AK4: ganztägig verschiebt das Bis-Datum um dieselbe Anzahl Tage wie Von, ein- wie dreitägige Spannen bleiben gleich lang (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(TODAY);
+  await expect(page.getByLabel('Bis')).toHaveValue(TODAY);
+
+  // Eintägig bleibt eintägig.
+  await page.getByLabel('Von').fill(TOMORROW);
+  await expect(page.getByLabel('Bis')).toHaveValue(TOMORROW);
+
+  // Von Hand auf eine dreitägige Spanne gesetzt (Bis zwei Tage nach Von) …
+  const threeDaySpanEnd = addDays(TOMORROW, 2);
+  await page.getByLabel('Bis').fill(threeDaySpanEnd);
+
+  // … bleibt beim nächsten Von-Wechsel dreitägig.
+  const newStart = addDays(TODAY, 5);
+  await page.getByLabel('Von').fill(newStart);
+  await expect(page.getByLabel('Bis')).toHaveValue(addDays(newStart, 2));
+});
+
+test('AK5: Bis trägt min = Von, ein von Hand vor den Start gesetztes Ende ist nativ ungültig (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', `${TODAY}T09:00`);
+  await page.getByLabel('Von').fill(`${TODAY}T15:00`);
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', `${TODAY}T15:00`);
+
+  await page.getByLabel('Bis').fill(`${TODAY}T14:00`);
+  const bisValidWhenBeforeStart = await page
+    .getByLabel('Bis')
+    .evaluate((el: HTMLInputElement) => el.checkValidity());
+  expect(bisValidWhenBeforeStart).toBe(false);
+
+  // Dasselbe für das ganztägige Zeitmodell.
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', TODAY);
+});
+
+test('AK6: ein per Freitext erfasster Termin behält seine vorbelegten Von-/Bis-Zeiten, solange niemand Von anfasst (#1104)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
+  await page
+    .getByRole('textbox', { name: 'Titel der Aufgabe' })
+    .fill('Termin morgen 14 bis 16 Uhr Zahnarzt');
+  // "Mehr" öffnet den vollen Termin-Editor vorbefüllt (uebersicht-capture.tsx's
+  // `openMoreForEvent`) — der einzige heute erreichbare Pfad zu einem
+  // `EventEditorPrefill` mit einer vom 1h-Default abweichenden Dauer (2 Std),
+  // die eine ungewollte Kopplung beim Seeden verraten würde.
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(dialog).toBeVisible();
+  await wannChip(dialog).click();
+
+  await expect(dialog.getByLabel('Von')).toHaveValue(`${TOMORROW}T14:00`);
+  await expect(dialog.getByLabel('Bis')).toHaveValue(`${TOMORROW}T16:00`);
+});
+
+/* -------------------------------------------------------------------------- */
 /* #712: Termin-Sheet auf Zeile und Chips                                     */
 /* -------------------------------------------------------------------------- */
 
