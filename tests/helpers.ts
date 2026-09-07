@@ -538,6 +538,64 @@ export function openMeteoForecastBody({
   };
 }
 
+/**
+ * Shared `.ics`-abo test fixtures/helpers (issue #560, ADR-0022) — kalender.spec.ts's
+ * own read-only-abo suite and issue #1091's "Nächster Termin" spec (AK3) both need
+ * them, so they live here once instead of twice.
+ */
+
+function icsDateKey(dateKey: string): string {
+  return dateKey.replace(/-/g, '');
+}
+
+export function icsFixture(events: string[]): string {
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', ...events, 'END:VCALENDAR'].join('\r\n');
+}
+
+export function singleDayIcsEvent(uid: string, summary: string, dateKey: string): string[] {
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `SUMMARY:${summary}`,
+    `DTSTART;VALUE=DATE:${icsDateKey(dateKey)}`,
+    'END:VEVENT',
+  ];
+}
+
+export function seriesIcsEvent(
+  uid: string,
+  summary: string,
+  startDateKey: string,
+  rrule: string,
+): string[] {
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `SUMMARY:${summary}`,
+    `DTSTART;VALUE=DATE:${icsDateKey(startDateKey)}`,
+    `RRULE:${rrule}`,
+    'END:VEVENT',
+  ];
+}
+
+/** Fulfils every request to the SSRF-guarded proxy route with `body`, counting how often it was actually called. */
+export async function mockIcsFeed(page: Page, body: string): Promise<() => number> {
+  let calls = 0;
+  await page.route('**/api/ics**', (route) => {
+    calls += 1;
+    return route.fulfill({ status: 200, contentType: 'text/calendar', body });
+  });
+  return () => calls;
+}
+
+export async function addIcsSubscription(page: Page, url: string, name: string): Promise<void> {
+  await page.evaluate(({ url, name }) => window.__starship.addIcsSubscription(url, name), { url, name });
+}
+
+export async function refreshIcsSubscriptions(page: Page): Promise<void> {
+  await page.evaluate(() => window.__starship.refreshIcsSubscriptions());
+}
+
 /** The handle the E2E bridge puts on window. */
 declare global {
   interface Window {

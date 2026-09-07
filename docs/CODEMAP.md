@@ -133,7 +133,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/features/events
 
-- `event-time.ts` — reine Layout-Logik (kein DB/DOM): Tages-/Wochen-/Monats-Helfer + `upcomingEventsToday`/`formatCountdown`
+- `event-time.ts` — reine Layout-Logik (kein DB/DOM): Tages-/Wochen-/Monats-Helfer + `nextUpcomingOccurrences`/`formatCountdown`
 - `recurrence.ts` — reine Serien-Expansion: `occurrencesOnDay`/`matchesPattern`/`anchorDateKeyOf`, `expandForDay(events, exceptions, dayKey)` → gerenderte `Occurrence`s
 - `event-mutations.ts` — Schreibseite zu `recurrence.ts` (S6): `truncateRecurrence`/`remainingRecurrence`, `moveOccurrence`/`cancelOccurrence`, `splitSeries`/`truncateSeriesFrom`
 - `use-events.ts` — `EventView`/`toEventView` + `useEvents()` (Dexie-Live-Query über `useLiveTable`); `EventView.origin`
@@ -155,7 +155,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (`mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6), "Nur dieser" nur wenn der Caller sie anbietet
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin (1:1-Spiegel von `use-delete-task.ts`, ohne Kinder)
-- `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster Termin heute groß mit Countdown, Rest des Tages als dünne Zeilen darunter
+- `events-overview-section.tsx` / `.css` — `OverviewSection` "Nächster Termin": nächster überhaupt (Serien/ICS/ganztägig), bis zu 3 Folgezeilen
 
 ### src/features/export
 
