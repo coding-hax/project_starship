@@ -7,8 +7,13 @@ function captureButton(page: Page) {
   return page.getByRole('button', { name: CAPTURE_LABEL });
 }
 
+// issue #1083: der Sheet-Kopf folgt der erkannten Art statt fest "Aufgabe
+// erfassen" zu heißen — das eine, dauerhaft gemountete Titelfeld dieses Sheets
+// identifiziert es unabhängig vom aktuellen Kopf-Label.
 function captureDialog(page: Page) {
-  return page.getByRole('dialog', { name: CAPTURE_LABEL });
+  return page
+    .locator('dialog.sheet')
+    .filter({ has: page.getByRole('textbox', { name: 'Titel der Aufgabe' }) });
 }
 
 function captureTitleField(page: Page) {
@@ -363,7 +368,10 @@ test('AK4: "Mehr" bei Termin öffnet das volle Modul-Sheet mit übernommenen Ker
 
   await expect(captureDialog(page)).toBeHidden();
   await expect(page).toHaveURL(/\/uebersicht$/);
-  const dialog = page.getByRole('dialog', { name: 'Termin erfassen' });
+  // issue #1083: während der Schließ-Transition des Kern-Sheets trägt es
+  // denselben Namen wie der frisch geöffnete Termin-Editor — `[open]` filtert
+  // das schließende Exemplar heraus.
+  const dialog = page.getByRole('dialog', { name: 'Termin erfassen' }).and(page.locator('[open]'));
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
   // Ganztägig/Von/Bis sitzen seit #712 hinter dem Wann-Chip — vor jedem Zugriff öffnen.

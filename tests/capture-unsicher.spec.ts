@@ -32,7 +32,11 @@ function confirmDialog(page: Page) {
 }
 
 function eventDialog(page: Page) {
-  return page.getByRole('dialog', { name: EVENT_LABEL });
+  // issue #1083: das Kern-Sheet trägt für die Dauer seiner Schließ-Transition
+  // (`allow-discrete`, sheet.css) denselben Namen wie der frisch geöffnete
+  // Editor, solange die Art Termin ist — `[open]` filtert das schließende
+  // Exemplar heraus.
+  return page.getByRole('dialog', { name: EVENT_LABEL }).and(page.locator('[open]'));
 }
 
 function taskItems(page: Page) {
