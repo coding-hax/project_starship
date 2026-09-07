@@ -14,12 +14,15 @@ import {
   dayWindow,
   formatCountdown,
   formatDuration,
+  formatEventTime,
   formatMonthTitle,
+  formatNextTimeline,
+  formatRestRowTime,
   monthDaysFor,
   monthEventCounts,
   monthName,
   nextInAgenda,
-  upcomingEventsToday,
+  nextUpcomingOccurrences,
   weekDaysFor,
   weekWindow,
   yearLabel,
@@ -822,26 +825,36 @@ describe('allDayRangeLabel', () => {
   });
 });
 
-describe('upcomingEventsToday', () => {
-  // 12:00 UTC on 2026-07-18 = 14:00 Berlin (CEST).
+/**
+ * `nextUpcomingOccurrences` replaces the same-day-only `upcomingEventsToday`
+ * (issue #1091) — same `expandForDay`-over-a-callback composition as
+ * "categoriesForDay over expandForDay" above, so the series/exception cases
+ * exercise the real recurrence expansion, not a stand-in.
+ */
+describe('nextUpcomingOccurrences', () => {
+  // 12:00 UTC on 2026-07-18 (Saturday) = 14:00 Berlin (CEST).
   const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
 
-  it('orders today\'s remaining events by start time', () => {
+  function occurrencesFor(events: EventView[], exceptions: EventExceptionView[] = []) {
+    return (day: string) => expandForDay(events, exceptions, day);
+  }
+
+  it('orders remaining events today by start time before moving to later days', () => {
     const later = event({
       title: 'Später',
       startsAt: iso(Date.UTC(2026, 6, 18, 15, 0)),
       endsAt: iso(Date.UTC(2026, 6, 18, 16, 0)),
     });
     const next = event({
+      id: 'evt-2',
       title: 'Als Nächstes',
       startsAt: iso(Date.UTC(2026, 6, 18, 13, 0)),
       endsAt: iso(Date.UTC(2026, 6, 18, 14, 0)),
     });
 
-    expect(upcomingEventsToday([later, next], NOW).map((e) => e.title)).toEqual([
-      'Als Nächstes',
-      'Später',
-    ]);
+    const found = nextUpcomingOccurrences(occurrencesFor([later, next]), NOW, 4);
+
+    expect(found.map((o) => o.item.title)).toEqual(['Als Nächstes', 'Später']);
   });
 
   it('keeps an event that has already started but not yet ended', () => {
@@ -850,31 +863,120 @@ describe('upcomingEventsToday', () => {
       endsAt: iso(Date.UTC(2026, 6, 18, 13, 0)),
     });
 
-    expect(upcomingEventsToday([inProgress], NOW)).toHaveLength(1);
+    expect(nextUpcomingOccurrences(occurrencesFor([inProgress]), NOW, 4)).toHaveLength(1);
   });
 
-  it('drops an event that has already ended', () => {
+  it('drops an event that has already ended, today', () => {
     const past = event({
       startsAt: iso(Date.UTC(2026, 6, 18, 9, 0)),
       endsAt: iso(Date.UTC(2026, 6, 18, 10, 0)),
     });
 
-    expect(upcomingEventsToday([past], NOW)).toEqual([]);
+    expect(nextUpcomingOccurrences(occurrencesFor([past]), NOW, 4)).toEqual([]);
   });
 
-  it('drops an event on a different day', () => {
-    const tomorrow = event({
-      startsAt: iso(Date.UTC(2026, 6, 19, 9, 0)),
-      endsAt: iso(Date.UTC(2026, 6, 19, 10, 0)),
+  it('finds the next occurrence on a later day when nothing is left today (issue #1091 AK1)', () => {
+    const zahnarzt = event({
+      title: 'Zahnarzt',
+      startsAt: iso(Date.UTC(2026, 6, 22, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 22, 9, 0)),
     });
 
-    expect(upcomingEventsToday([tomorrow], NOW)).toEqual([]);
+    const [next] = nextUpcomingOccurrences(occurrencesFor([zahnarzt]), NOW, 4);
+
+    expect(next.dayKey).toBe('2026-07-22');
+    expect(next.item.title).toBe('Zahnarzt');
   });
 
-  it('drops all-day events', () => {
-    const allDay = event({ allDay: true, startDate: '2026-07-18', endDate: '2026-07-18' });
+  it('skips a weekly occurrence that already ended today, finds the one a week later (issue #1091 AK2)', () => {
+    const weekly = event({
+      // Anchor Sat 11.07.2026, 09:00 Berlin (07:00 UTC).
+      startsAt: iso(Date.UTC(2026, 6, 11, 7, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 11, 8, 0)),
+      recurrence: { freq: 'weekly', interval: 1 },
+    });
 
-    expect(upcomingEventsToday([allDay], NOW)).toEqual([]);
+    const [next] = nextUpcomingOccurrences(occurrencesFor([weekly]), NOW, 4);
+
+    // 18.07's own instance (09:00-10:00 Berlin) is already over by NOW (14:00).
+    expect(next.dayKey).toBe('2026-07-25');
+  });
+
+  it('skips a cancelled occurrence, landing on the one after it (issue #1091 AK2)', () => {
+    const weekly = event({
+      startsAt: iso(Date.UTC(2026, 6, 11, 7, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 11, 8, 0)),
+      recurrence: { freq: 'weekly', interval: 1 },
+    });
+    const cancelled: EventExceptionView = {
+      id: 'exc-1',
+      eventId: 'evt-1',
+      originalDate: '2026-07-25',
+      cancelled: true,
+      overrideStartsAt: null,
+      overrideEndsAt: null,
+      overrideStartDate: null,
+      overrideEndDate: null,
+    };
+
+    const [next] = nextUpcomingOccurrences(occurrencesFor([weekly], [cancelled]), NOW, 4);
+
+    expect(next.dayKey).toBe('2026-08-01');
+  });
+
+  it('picks up a multi-day all-day event already running today (issue #1091 AK4)', () => {
+    const trip = event({ allDay: true, startDate: '2026-07-17', endDate: '2026-07-20' });
+
+    const [next] = nextUpcomingOccurrences(occurrencesFor([trip]), NOW, 4);
+
+    expect(next.dayKey).toBe('2026-07-18');
+    expect(next.item.allDay).toBe(true);
+  });
+
+  it('orders an all-day event before a scheduled one on the same day (issue #1091 Umsetzungshinweise)', () => {
+    const allDay = event({
+      id: 'evt-allday',
+      allDay: true,
+      startDate: '2026-07-22',
+      endDate: '2026-07-22',
+    });
+    const timed = event({
+      id: 'evt-timed',
+      startsAt: iso(Date.UTC(2026, 6, 22, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 22, 9, 0)),
+    });
+
+    const [first, second] = nextUpcomingOccurrences(occurrencesFor([timed, allDay]), NOW, 4);
+
+    expect(first.item.id).toBe('evt-allday');
+    expect(second.item.id).toBe('evt-timed');
+  });
+
+  it('caps the result at `limit`, even when a single day holds more (issue #1091 AK6)', () => {
+    const events = ['a', 'b', 'c', 'd', 'e'].map((suffix) =>
+      event({
+        id: `evt-${suffix}`,
+        startsAt: iso(Date.UTC(2026, 6, 22, 8, 0)),
+        endsAt: iso(Date.UTC(2026, 6, 22, 9, 0)),
+      }),
+    );
+
+    expect(nextUpcomingOccurrences(occurrencesFor(events), NOW, 4)).toHaveLength(4);
+  });
+
+  it('returns an empty list when nothing is left within the lookahead window (issue #1091 AK7)', () => {
+    const past = event({
+      startsAt: iso(Date.UTC(2026, 6, 18, 9, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 10, 0)),
+    });
+
+    expect(nextUpcomingOccurrences(occurrencesFor([past]), NOW, 4)).toEqual([]);
+  });
+});
+
+describe('formatEventTime', () => {
+  it('formats a Berlin wall-clock time from a UTC instant', () => {
+    expect(formatEventTime(iso(Date.UTC(2026, 6, 18, 12, 40)))).toBe('14:40');
   });
 });
 
@@ -914,21 +1016,126 @@ describe('yearLabel', () => {
 
 describe('formatCountdown', () => {
   const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+  const TODAY = '2026-07-18';
 
   it('reports whole minutes under an hour', () => {
-    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 12, 40)))).toBe('in 40 Min');
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 12, 40)))).toBe('in 40 Min');
   });
 
   it('reports hours and minutes over an hour', () => {
-    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 14, 5)))).toBe('in 2 Std 5 Min');
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 14, 5)))).toBe('in 2 Std 5 Min');
   });
 
   it('omits minutes on an exact hour boundary', () => {
-    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 14, 0)))).toBe('in 2 Std');
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 14, 0)))).toBe('in 2 Std');
   });
 
   it('reads "Jetzt" once the event has started', () => {
-    expect(formatCountdown(NOW, iso(Date.UTC(2026, 6, 18, 11, 0)))).toBe('Jetzt');
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 11, 0)))).toBe('Jetzt');
+  });
+
+  it('reads "Morgen" once the event is on tomorrow\'s Berlin day (issue #1091 AK5)', () => {
+    expect(formatCountdown(NOW, '2026-07-19', iso(Date.UTC(2026, 6, 19, 8, 0)))).toBe('Morgen');
+  });
+
+  it('reads "in N Tagen" beyond tomorrow (issue #1091 AK5)', () => {
+    expect(formatCountdown(NOW, '2026-07-22', iso(Date.UTC(2026, 6, 22, 8, 0)))).toBe('in 4 Tagen');
+  });
+});
+
+describe('formatNextTimeline', () => {
+  const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+  const TODAY = '2026-07-18';
+
+  it('is null for a scheduled event today — already carried by the big start time and countdown (issue #1091 AK5)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 18, 12, 40)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 13, 10)),
+    };
+
+    expect(formatNextTimeline(NOW, TODAY, item)).toBeNull();
+  });
+
+  it('reads "Heute" for an all-day event today (issue #1091 AK5)', () => {
+    expect(formatNextTimeline(NOW, TODAY, { allDay: true, startsAt: null, endsAt: null })).toBe('Heute');
+  });
+
+  it('shows weekday, date and the time span for a scheduled event on another day (issue #1091 AK5)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 22, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 22, 9, 0)),
+    };
+
+    expect(formatNextTimeline(NOW, '2026-07-22', item)).toBe('Mi, 22.07. · 10:00–11:00');
+  });
+
+  it('shows weekday, date and "Ganztägig" for an all-day event on another day (issue #1091 AK4)', () => {
+    expect(formatNextTimeline(NOW, '2026-07-20', { allDay: true, startsAt: null, endsAt: null })).toBe(
+      'Mo, 20.07. · Ganztägig',
+    );
+  });
+});
+
+describe('formatRestRowTime', () => {
+  const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+  const TODAY = '2026-07-18';
+
+  it('shows a bare time for today (issue #1091 AK6)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 18, 15, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 18, 16, 0)),
+    };
+
+    expect(formatRestRowTime(NOW, TODAY, item)).toBe('17:00');
+  });
+
+  it('shows "Ganztägig" for an all-day row today (issue #1091 AK6)', () => {
+    expect(formatRestRowTime(NOW, TODAY, { allDay: true, startsAt: null, endsAt: null })).toBe('Ganztägig');
+  });
+
+  it('prefixes the weekday within the next 6 days (issue #1091 AK6)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 20, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 20, 9, 0)),
+    };
+
+    expect(formatRestRowTime(NOW, '2026-07-20', item)).toBe('Mo 10:00');
+  });
+
+  it('prefixes the weekday, lower-case "ganztägig", within the next 6 days (issue #1091 AK6)', () => {
+    expect(formatRestRowTime(NOW, '2026-07-20', { allDay: true, startsAt: null, endsAt: null })).toBe(
+      'Mo ganztägig',
+    );
+  });
+
+  it('still uses the weekday on the 6th day, the last one before the date prefix kicks in (issue #1091 AK6)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 24, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 24, 9, 0)),
+    };
+
+    expect(formatRestRowTime(NOW, '2026-07-24', item)).toBe('Fr 10:00');
+  });
+
+  it('switches to the date from the 7th day on (issue #1091 AK6)', () => {
+    const item = {
+      allDay: false,
+      startsAt: iso(Date.UTC(2026, 6, 25, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 25, 9, 0)),
+    };
+
+    expect(formatRestRowTime(NOW, '2026-07-25', item)).toBe('25.07. 10:00');
+  });
+
+  it('prefixes the date, lower-case "ganztägig", from the 7th day on (issue #1091 AK6)', () => {
+    expect(formatRestRowTime(NOW, '2026-07-25', { allDay: true, startsAt: null, endsAt: null })).toBe(
+      '25.07. ganztägig',
+    );
   });
 });
 

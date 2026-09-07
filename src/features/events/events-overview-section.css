@@ -83,6 +83,19 @@
   white-space: nowrap;
 }
 
+/* Date/time-span line (issue #1091, AK4/AK5) — only rendered once the event
+   isn't today, or is all-day, so it never doubles up with the big start time
+   and countdown that already cover the same-day, scheduled case. Same muted
+   treatment as .events-overview__next-meta, one line below it. */
+.events-overview__next-range {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .events-overview__empty p {
   margin: 0;
   color: var(--text-muted);

@@ -269,42 +269,159 @@ export function allDayRangeLabel(item: {
   return `Ganztägig · ${start}–${end}`;
 }
 
-export interface UpcomingEvent extends Omit<EventView, 'startsAt' | 'endsAt'> {
-  /** Narrowed from `EventView` — `upcomingEventsToday` only ever keeps scheduled events. */
-  startsAt: string;
-  endsAt: string;
+/** How far ahead the overview's "next event" scan looks (issue #1091, Owner-
+ *  Entscheidung 07.09.2026) — unbounded in spirit, but a day-for-day
+ *  `expandForDay` scan needs a hard stop somewhere, or an endless series with
+ *  nothing else on the calendar would spin forever. A year is generous enough
+ *  that "nothing in the next 366 days" is a real empty calendar, not a scan
+ *  that gave up too early. */
+export const MAX_LOOKAHEAD_DAYS = 366;
+
+/** One item `nextUpcomingOccurrences` found, tagged with the Berlin day it
+ *  falls on — a multi-day all-day event is only ever picked up on the first
+ *  day of the scan that still covers it (today or later), so `dayKey` is that
+ *  day, not necessarily the item's own `startDate`. Not generic over the
+ *  caller's own item type (unlike `categoriesForDay`/`monthEventCounts`
+ *  above): this is the one function in the file whose *result*, not just its
+ *  input, callers actually render, and `TimelineSource` already carries
+ *  everything the overview needs (title, category, allDay, times/dates). */
+export interface NextOccurrence {
+  item: TimelineSource;
+  dayKey: string;
 }
 
 /**
- * Scheduled (non-all-day) events on today's Berlin calendar day that haven't ended
- * yet, earliest start first (issue #559, S8 of #473). The first entry is "the next
- * event" for the overview's countdown — it may already be in progress; the rest
- * render as the thin "rest of day" rows.
+ * The next `limit` occurrences from today onward, across an unbounded horizon
+ * (issue #1091, replaces the same-day-only `upcomingEventsToday`) — walks
+ * `dayKey` forward one Berlin calendar day at a time starting today, on each
+ * day collecting `allDayEventsForDay` (all-day first, issue #1091
+ * Umsetzungshinweise) then `agendaForDay` filtered to `endsAt > now`, and
+ * stops as soon as `limit` items are collected or `MAX_LOOKAHEAD_DAYS` is
+ * reached. The early stop is what keeps an unbounded horizon cheap: a real
+ * calendar answers within a handful of days, and only a genuinely empty one
+ * pays for the full scan.
  */
-export function upcomingEventsToday(events: EventView[], now: Date): UpcomingEvent[] {
-  const dayKey = berlinNow(now).dateKey;
-  return events
-    .filter(
-      (event): event is EventView & { startsAt: string; endsAt: string } =>
-        !event.allDay && event.startsAt !== null && event.endsAt !== null,
-    )
-    .filter((event) => berlinDateKey(event.startsAt) === dayKey)
-    .filter((event) => new Date(event.endsAt).getTime() > now.getTime())
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+export function nextUpcomingOccurrences(
+  occurrencesForDay: (day: string) => TimelineSource[],
+  now: Date,
+  limit: number,
+): NextOccurrence[] {
+  const todayKey = berlinNow(now).dateKey;
+  const result: NextOccurrence[] = [];
+
+  for (let offset = 0; offset < MAX_LOOKAHEAD_DAYS; offset++) {
+    const dayKey = addDays(todayKey, offset);
+    const occurrences = occurrencesForDay(dayKey);
+
+    for (const item of allDayEventsForDay(occurrences, dayKey)) {
+      result.push({ item, dayKey });
+    }
+    for (const item of agendaForDay(occurrences, dayKey)) {
+      if (new Date(item.endsAt).getTime() > now.getTime()) {
+        result.push({ item, dayKey });
+      }
+    }
+
+    if (result.length >= limit) break;
+  }
+
+  return result.slice(0, limit);
+}
+
+const EVENT_TIME_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  timeZone: 'Europe/Berlin',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** "14:40" — Berlin wall-clock time for an ISO instant (issue #1091, moved out
+ *  of events-overview-section.tsx so the overview's whole formatting matrix
+ *  stays Vitest-testable, same reasoning as the other helpers in this file). */
+export function formatEventTime(instant: string): string {
+  return EVENT_TIME_FORMATTER.format(new Date(instant));
 }
 
 /**
- * "in 40 Min" / "in 2 Std 5 Min" for an event starting at `startsAt`, "Jetzt" once
- * it has started — never a negative countdown, since `upcomingEventsToday`'s first
- * entry may already be in progress (issue #559).
+ * "in 40 Min" / "in 2 Std 5 Min" / "Jetzt" while `dayKey` is today (issue
+ * #559's original countdown, unchanged) — "Morgen" the very next Berlin day,
+ * "in N Tagen" beyond that (issue #1091, AK5), since a minute-precise
+ * countdown stops being useful once the event isn't today.
  */
-export function formatCountdown(now: Date, startsAt: string): string {
+export function formatCountdown(now: Date, dayKey: string, startsAt: string): string {
+  const todayKey = berlinNow(now).dateKey;
+  if (dayKey !== todayKey) {
+    const daysAhead = dateKeyDiff(todayKey, dayKey);
+    return daysAhead === 1 ? 'Morgen' : `in ${daysAhead} Tagen`;
+  }
   const diffMinutes = Math.round((new Date(startsAt).getTime() - now.getTime()) / 60_000);
   if (diffMinutes <= 0) return 'Jetzt';
   if (diffMinutes < 60) return `in ${diffMinutes} Min`;
   const hours = Math.floor(diffMinutes / 60);
   const minutes = diffMinutes % 60;
   return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
+}
+
+const DAY_MONTH_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: 'UTC',
+});
+
+/** "Mi, 22.07." — weekday + day.month. for a `dateKey` that isn't today, same
+ *  UTC-anchoring caveat as `formatMonthTitle` (issue #1091). */
+function weekdayDateLabel(dateKey: string): string {
+  const date = parseDateKey(dateKey);
+  return `${WEEKDAY_SHORT_UTC_FORMATTER.format(date)}, ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
+}
+
+export interface NextTimelineItem {
+  allDay: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
+/**
+ * The overview's big-block time line (issue #1091, AK4/AK5): `null` for a
+ * scheduled event today — that case is already carried by the existing big
+ * start time (`formatEventTime`) and the countdown line, unchanged since
+ * issue #974, and adding a second, redundant time span there would repeat
+ * the end time right next to the AK2 assertion that it appears nowhere in
+ * `.events-overview__next`. Every other case gets its own line: "Heute" for
+ * an all-day event today, `HH:MM–HH:MM` once the event isn't today needs a
+ * span to stand on its own (prefixed with `weekdayDateLabel`), "Ganztägig"
+ * (same prefix) for an all-day event on another day.
+ */
+export function formatNextTimeline(now: Date, dayKey: string, item: NextTimelineItem): string | null {
+  const todayKey = berlinNow(now).dateKey;
+  const isToday = dayKey === todayKey;
+
+  if (item.allDay) {
+    return isToday ? 'Heute' : `${weekdayDateLabel(dayKey)} · Ganztägig`;
+  }
+  if (isToday) return null;
+  const span = `${formatEventTime(item.startsAt as string)}–${formatEventTime(item.endsAt as string)}`;
+  return `${weekdayDateLabel(dayKey)} · ${span}`;
+}
+
+/**
+ * The overview's rest-row time column (issue #1091, AK6): bare `HH:MM` today,
+ * weekday-prefixed within the next 6 days ("Mo 10:00"), date-prefixed from
+ * the 7th day on ("14.09. 10:00") — a bare weekday alone reads ambiguous a
+ * week or more out. All-day rows swap the time for "ganztägig"/"Ganztägig",
+ * capitalised only standing alone (German capitalises the noun, not a
+ * trailing adjective-like continuation).
+ */
+export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineItem): string {
+  const todayKey = berlinNow(now).dateKey;
+  if (dayKey === todayKey) {
+    return item.allDay ? 'Ganztägig' : formatEventTime(item.startsAt as string);
+  }
+  const daysAhead = dateKeyDiff(todayKey, dayKey);
+  const date = parseDateKey(dayKey);
+  const prefix =
+    daysAhead <= 6 ? WEEKDAY_SHORT_UTC_FORMATTER.format(date) : DAY_MONTH_UTC_FORMATTER.format(date);
+  return item.allDay ? `${prefix} ganztägig` : `${prefix} ${formatEventTime(item.startsAt as string)}`;
 }
 
 /**
