@@ -26,6 +26,10 @@ export interface DuePickerProps {
    * `T` + `hh:mm`, oder `''` für keine Fälligkeit. */
   value: string;
   onChange: (next: string) => void;
+  /** issue #1089 AK2: ein Termin hat immer eine Startzeit (`defaultEventStart`
+   * ist der Rückfall, `startsAt` wird nie leer) — für ihn entfällt der
+   * „Kein Datum"-Knopf. Vorgabe `true` (Aufgabe). */
+  clearable?: boolean;
 }
 
 function splitValue(value: string): { day: string; time: string } {
@@ -47,7 +51,7 @@ function nextMonday(dayKey: string): string {
  * ablöst: gleiche Wertform rein wie raus. Die ISO-Umrechnung bleibt an ihrer
  * einen bestehenden Stelle (`localInputToIso` in quick-add.tsx).
  */
-export function DuePicker({ value, onChange }: DuePickerProps) {
+export function DuePicker({ value, onChange, clearable = true }: DuePickerProps) {
   const { day, time } = splitValue(value);
   const todayKey = isoToLocalInput(new Date().toISOString()).slice(0, 10);
   const [viewedMonth, setViewedMonth] = useState(day || todayKey);
@@ -149,14 +153,16 @@ export function DuePicker({ value, onChange }: DuePickerProps) {
           value={time}
           onChange={(event) => setTime(event.target.value)}
         />
-        <button
-          type="button"
-          className="due-picker__no-date"
-          disabled={!value}
-          onClick={() => onChange('')}
-        >
-          Kein Datum
-        </button>
+        {clearable && (
+          <button
+            type="button"
+            className="due-picker__no-date"
+            disabled={!value}
+            onClick={() => onChange('')}
+          >
+            Kein Datum
+          </button>
+        )}
       </div>
     </div>
   );
