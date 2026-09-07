@@ -72,9 +72,11 @@ Kalender-Grund (siehe unten) die 3:1-Schwelle.
 
 Zwei Kontexte, unterschiedlicher Bedarf:
 
-- **6px-Farbkante an der Terminkarte** (`event-time.ts`'s `categoryEdgeVar`):
-  der rohe Token-Wert, nie als Flächenfarbe — die Fläche bleibt `--surface`.
-  Ein Termin ohne Kategorie trägt stattdessen `--area-events`.
+- **Uhrzeit-Pille an der Terminkarte** (`event-time.ts`'s `categoryEdgeVar`,
+  issue #1109, löst die 6px-Farbkante von #923 ab): der rohe Token-Wert als
+  Flächenfarbe der Pille, Text darauf `--on-accent` — die Kartenfläche selbst
+  bleibt `--surface`. Ein Termin ohne Kategorie trägt stattdessen
+  `--area-events`.
 - **Punkt/Band im Wochenstreifen, im Monatsraster und im Ganztägig-Band**
   (issue #1013 fürs Wochenstreifen-Rezept, #956 fürs Ganztägig-Band, #1043
   fürs Monatsraster): alle drei liegen auf `--surface`, nicht auf dem Grund —

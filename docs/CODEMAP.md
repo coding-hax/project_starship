@@ -150,7 +150,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, Vor/Zurück-Tag, „Heute", Punkte/Tag
 - `month-grid.tsx` / `.css` — Monatskarte: frei scrollende Wochenzeilen, ≤3 Punkte/Tag, darunter ≤2 Ganztägig-Bandzeilen
 - `event-agenda.tsx` / `.css` — All-Day-Band (ganztägig/mehrtägig) + chronologische Agenda-Liste: Terminkarten
-  (antippbar → Detail-Sheet) mit Kategorie-Farbkante, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
+  (antippbar → Detail-Sheet) mit Uhrzeit-Pille in Kategoriefarbe, Fokus auf den nächsten Termin, spärlich/leer-Zustände;
   `origin:'subscribed'`-Items als nicht-interaktives `<div data-origin="subscribed">`, kein Detail-Zugriff
 - `event-detail.tsx`/`event-editor.tsx` (`.css`) — Detail-Sheet, „Bearbeiten" öffnet den Editor (`mutate()`); Serien-Instanz fragt erst `<RecurrenceScopeSheet/>` (S6)
 - `recurrence-scope-sheet.tsx` / `.css` — "Nur dieser"/"Alle folgenden"/"Ganze Serie"-Abfrage (S6), "Nur dieser" nur wenn der Caller sie anbietet
