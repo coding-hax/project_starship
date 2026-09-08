@@ -164,6 +164,13 @@
   color: var(--text-muted);
 }
 
+/* Tagesnummer neben dem Wochentag-Kürzel (issue #1119 AK3) — unter 1440px kein
+   Platz dafür (AK5), deshalb hier verborgen statt aus dem Markup entfernt;
+   die Breakpoint-Regel unten schaltet sie sichtbar. */
+.weather-forecast__daynum {
+  display: none;
+}
+
 /* `--text`, not `--text-muted`: the mark has to stand out against the already
  * muted weekday label. Not `--warning`/`--accent` either — a windy day is
  * information, not a warning or a task (issue #695). */
@@ -245,4 +252,68 @@
   color: var(--text-muted);
   font-size: var(--text-secondary);
   text-align: center;
+}
+
+/* Vierte Stufe (issue #1119, Nachfolger von #1117): ab 1440px legt sich jeder
+   Tag als zweispaltiges Raster hin statt gestapelt — Symbol (38×38px) groß
+   links über beide Zeilen, Wochentag + Tagesnummer rechts oben, Höchst- und
+   Tiefstwert rechts unten nebeneinander (AK1). Reine CSS-Repositionierung,
+   kein DOM-Umbau (siehe src/ui/use-min-width.ts). */
+@media (min-width: 1440px) {
+  .weather-forecast__day-link {
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: var(--space-2);
+    row-gap: 0;
+  }
+
+  .weather-forecast__icon {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+
+  .weather-forecast__icon svg,
+  .weather-forecast__icon--placeholder {
+    width: 38px;
+    height: 38px;
+  }
+
+  .weather-forecast__weekday-row {
+    grid-column: 2;
+    grid-row: 1;
+    /* AK2: die Basisregel oben zentriert die Zeile (`justify-content: center`)
+       — ohne diese Regel schwimmt der Wochentag gegenüber dem linksbündigen
+       Höchstwert darunter nach rechts. */
+    justify-content: flex-start;
+  }
+
+  .weather-forecast__daynum {
+    display: inline;
+    font-size: var(--text-meta);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .weather-forecast__temps {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: row;
+    /* `flex-start` statt `baseline` (issue #1119 CI-Fund): --font-display
+       (temp-max) und die geerbte UI-Schrift (temp-min) haben unterschiedliche
+       Baseline-Metriken, dazu seit AK4 eine größere Schriftgröße auf
+       temp-max — baseline-ausgerichtet lag der Tiefstwert 6px höher als der
+       Höchstwert, AK1 verlangt aber dieselbe Zeile (±4px). Oberkante statt
+       Mitte, weil die Differenz sonst weiter von den Schriftgrößen abhinge
+       (~3.8px bei `center`, zu knapp an der Toleranzgrenze). */
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  /* AK4: Höchstwert auf die Sektions-Rolle statt der kompakten Sekundärgröße
+     — mehr Platz als in der schmalen gestapelten Spalte. */
+  .weather-forecast__temp-max {
+    font-size: var(--text-section);
+  }
 }
