@@ -85,6 +85,23 @@ function readPackageVersion(): string {
   return (JSON.parse(raw) as { version: string }).version;
 }
 
+// stdout und stderr des claude-Laufs kommen seit #1144 als zwei getrennte
+// Dateien an (claude-runner.sh). Ein fehlender Pfad/eine fehlende Datei wird
+// zu leerem String, nie zu einem Wurf -- AK4 "kein Absturz".
+function readStream(path: string | undefined): string {
+  try {
+    return readFileSync(path ?? '', 'utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function combineStreams(out: string, err: string): string {
+  if (out === '') return err;
+  if (err === '') return out;
+  return `${out}\n${err}`;
+}
+
 export const commands: Record<string, CommandHandler> = {
   version: () => readPackageVersion(),
   // $1 = installierter Pfad, $2 = Ref. '' = kein Drift (#252).
@@ -218,29 +235,19 @@ export const commands: Record<string, CommandHandler> = {
   // #356 (B): zwischen dem `claude`-Aufruf und round-eval -- erkennt eine
   // nicht-fortsetzbare Session (--resume ins Leere), bevor round-eval den
   // Absturz als Eskalations-Fehlversuch werten kann. Muster wie round-eval:
-  // ROUND_FILE -> RoundRun, LOG per readFileSync wie dort.
+  // ROUND_FILE -> RoundRun, stdout+stderr getrennt per readFileSync (#1144).
   'round-recover': (ctx, args) => {
     const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as RoundRun;
-    let log = '';
-    try {
-      log = readFileSync(args[2] ?? '', 'utf-8');
-    } catch {
-      log = '';
-    }
+    const log = combineStreams(readStream(args[2]), readStream(args[3]));
     return JSON.stringify(roundRecover(ctx, plan, Number(args[1] ?? 0), log));
   },
 
   'round-eval': (ctx, args) => {
     const plan = JSON.parse(readFileSync(args[0] ?? '', 'utf-8')) as RoundRun;
-    const logPath = args[4] ?? '';
-    let log = '';
-    try {
-      log = readFileSync(logPath, 'utf-8');
-    } catch {
-      log = '';
-    }
+    const out = readStream(args[4]);
+    const log = combineStreams(out, readStream(args[5]));
     return JSON.stringify(
-      roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out: log, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
+      roundEval(ctx, plan, { rc: Number(args[1] ?? 0), out, timedOut: args[2] === '1', maxRuntime: Number(args[3] ?? 2700) }, log),
     );
   },
 
