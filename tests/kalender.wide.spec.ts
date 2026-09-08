@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { formatDayHeading } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -271,8 +272,8 @@ test('die Wochenansicht wird ab 1440px zu sieben Spalten, die Termine des Tages 
   await seedEvent(page, {
     title: 'Spalten-Termin',
     allDay: false,
-    startsAt: `${TODAY}T09:00:00.000Z`,
-    endsAt: `${TODAY}T10:00:00.000Z`,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T08:00:00.000Z`, // 10:00 Berlin
     startDate: null,
     endDate: null,
     category: 'arbeit',
@@ -340,4 +341,24 @@ test('die gewählte Spalte ist abgesetzt — Fläche und Rand in der Routenfarbe
   expect(selectedShadow).toContain(expectedRing);
   // Die andere Spalte bleibt unberührt.
   await expect(other).not.toHaveClass(/calendar-strip__day--selected/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK3: Tagesüberschrift + volle Agenda unter der Woche                       */
+/* -------------------------------------------------------------------------- */
+
+test('unter der Woche steht die Tagesüberschrift des gewählten Tages, darunter die Agenda (issue #1124 AK3)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  const heading = page.locator('.calendar-view__day-heading');
+  const agenda = page.locator('.event-agenda');
+  await expect(heading).toBeVisible();
+  await expect(heading).toHaveText(formatDayHeading(TODAY));
+  await expect(agenda).toBeVisible();
+
+  const [headingBox, agendaBox] = await Promise.all([heading.boundingBox(), agenda.boundingBox()]);
+  if (!headingBox || !agendaBox) throw new Error('AK3: Tagesüberschrift oder Agenda ohne BoundingBox');
+  expect(agendaBox.y).toBeGreaterThan(headingBox.y);
 });

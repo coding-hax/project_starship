@@ -44,11 +44,32 @@
   min-width: 0;
 }
 
-/* Tagesauszug-Überschrift, nur Monat (issue #959, T2 von #957) — überschreibt
+/* Tagesauszug-Überschrift (issue #959, T2 von #957) — überschreibt
    `page-head__eyebrow`s eigenes `margin: 0 0 3px`: Abstand zur Monats-Karte
-   darüber und zur Agenda darunter. */
+   (bzw. ab 1440px zum Wochenstreifen, issue #1124) darüber und zur Agenda
+   darunter. */
 .calendar-view__day-heading {
   margin: var(--space-3) 0 var(--space-2);
+}
+
+/* Immer im DOM (calendar-view.tsx, issue #1124), aber in der Woche unter
+   1440px unsichtbar: die Spalten des Wochenstreifens tragen dort keinen
+   eigenen Tages-Titel, doch ein Duplikat der Monats-Überschrift wäre dort
+   trotzdem Dopplung mit dem, was der Streifen im Kopf bereits nennt (AK3
+   erst ab 1440px verlangt) — `display: none`, nicht `toHaveCount(0)`
+   (kalender.spec.ts), das treue Bild von „keine zweite Überschrift
+   sichtbar", nicht „gar nicht gerendert" (R1/#1124-Plan). `:not(:has(>
+   .month-grid))` ist dasselbe Woche/Monat-Unterscheidungsmerkmal wie der
+   768px-Zweispalter oben — die Monats-Überschrift bleibt davon unberührt,
+   auf jeder Breite sichtbar (#959 unverändert). */
+.calendar-view:not(:has(> .month-grid)) .calendar-view__day-heading {
+  display: none;
+}
+
+@media (min-width: 1440px) {
+  .calendar-view:not(:has(> .month-grid)) .calendar-view__day-heading {
+    display: block;
+  }
 }
 
 /* Setzt `order` zurück (issue #1123 AK5) — ab 1440px trägt `page-head.css`
