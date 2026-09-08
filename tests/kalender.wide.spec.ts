@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { formatDayHeading } from '@/features/events/event-time';
 import { installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -250,3 +251,216 @@ test('die Agenda klebt oben an der Tagesüberschrift, statt um die halbe Rasterh
 /* AK6 (Nicht-Regression): siehe kalender.desktop.spec.ts (1280px) und        */
 /* kalender.spec.ts (375px, mobile-Messplatz) — dort unverändert.             */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/* issue #1124: die Wochenansicht wird ab 1440px sieben Tagesspalten,         */
+/* der gewählte Tag darunter ausführlich.                                    */
+/* -------------------------------------------------------------------------- */
+
+function todayStripCell(page: Page) {
+  return page.locator('.calendar-strip__day[data-today]');
+}
+
+/* -------------------------------------------------------------------------- */
+/* AK1: sieben ≥300px hohe Spalten mit Terminen als Chips                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Wochenansicht wird ab 1440px zu sieben Spalten, die Termine des Tages als Chips (Uhrzeit über Titel, Kategoriekante) (issue #1124 AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await seedEvent(page, {
+    title: 'Spalten-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T08:00:00.000Z`, // 10:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const days = page.locator('.calendar-strip__day:not([inert])');
+  await expect(days).toHaveCount(7);
+  for (let index = 0; index < 7; index += 1) {
+    const box = await days.nth(index).boundingBox();
+    if (!box) throw new Error(`AK1: Spalte ${index} ohne BoundingBox`);
+    expect(box.height).toBeGreaterThanOrEqual(300);
+  }
+
+  const todayCell = todayStripCell(page);
+  const chip = todayCell.locator('.calendar-strip__chip').filter({ hasText: 'Spalten-Termin' });
+  await expect(chip).toBeVisible();
+
+  const [timeBox, titleBox] = await Promise.all([
+    chip.locator('.calendar-strip__chip-time').boundingBox(),
+    chip.locator('.calendar-strip__chip-title').boundingBox(),
+  ]);
+  if (!timeBox || !titleBox) throw new Error('AK1: Chip-Zeit oder -Titel ohne BoundingBox');
+  await expect(chip.locator('.calendar-strip__chip-time')).toHaveText('09:00');
+  expect(timeBox.y).toBeLessThan(titleBox.y);
+
+  const expectedEdge = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  expect(await chip.evaluate((el) => getComputedStyle(el).borderInlineStartColor)).toBe(expectedEdge);
+
+  await expect(todayCell.locator('.calendar-strip__dots')).not.toBeVisible();
+  await expect(todayCell.locator('.calendar-strip__dot')).not.toBeVisible();
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2: gewählte Spalte abgesetzt — Fläche + Rand in der Routenfarbe          */
+/* -------------------------------------------------------------------------- */
+
+test('die gewählte Spalte ist abgesetzt — Fläche und Rand in der Routenfarbe (issue #1124 AK2)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  // Zwei Nicht-Heute-Spalten (data-today trägt selbst schon einen Ring —
+  // eine sauber isolierte Vergleichsbasis bleibt so unberührt davon).
+  const days = page.locator('.calendar-strip__day:not([inert]):not([data-today])');
+  const target = days.nth(0);
+  const other = days.nth(1);
+
+  const [expectedRing, plainBg, plainShadow] = await Promise.all([
+    resolveMix(page, 'var(--ground)', 85, 'var(--text-base)'),
+    other.evaluate((el) => getComputedStyle(el).backgroundColor),
+    other.evaluate((el) => getComputedStyle(el).boxShadow),
+  ]);
+  expect(plainShadow).toBe('none');
+
+  await target.click();
+  await expect(target).toHaveClass(/calendar-strip__day--selected/);
+
+  const [selectedBg, selectedShadow] = await Promise.all([
+    target.evaluate((el) => getComputedStyle(el).backgroundColor),
+    target.evaluate((el) => getComputedStyle(el).boxShadow),
+  ]);
+  // Fläche: abgesetzt gegen eine unausgewählte Spalte (die Ground-Tönung).
+  expect(selectedBg).not.toBe(plainBg);
+  // Rand: derselbe Ring wie `[data-today]` — hält in der Routenfarbe.
+  expect(selectedShadow).toContain(expectedRing);
+  // Die andere Spalte bleibt unberührt.
+  await expect(other).not.toHaveClass(/calendar-strip__day--selected/);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK3: Tagesüberschrift + volle Agenda unter der Woche                       */
+/* -------------------------------------------------------------------------- */
+
+test('unter der Woche steht die Tagesüberschrift des gewählten Tages, darunter die Agenda (issue #1124 AK3)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  const heading = page.locator('.calendar-view__day-heading');
+  const agenda = page.locator('.event-agenda');
+  await expect(heading).toBeVisible();
+  await expect(heading).toHaveText(formatDayHeading(TODAY));
+  await expect(agenda).toBeVisible();
+
+  const [headingBox, agendaBox] = await Promise.all([heading.boundingBox(), agenda.boundingBox()]);
+  if (!headingBox || !agendaBox) throw new Error('AK3: Tagesüberschrift oder Agenda ohne BoundingBox');
+  expect(agendaBox.y).toBeGreaterThan(headingBox.y);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK4: Agenda-Zeile nutzt die Breite — Zeitspanne links, Titel, Subline rechts */
+/* -------------------------------------------------------------------------- */
+
+test('die Agenda-Zeile nutzt bei 1800px die Breite — Zeitspanne links, Titel daneben, Kategorie/Dauer rechts (issue #1124 AK4)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await seedEvent(page, {
+    title: 'Breitzeilen-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T08:00:00.000Z`, // 10:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = page.locator('.event-agenda__item').filter({ hasText: 'Breitzeilen-Termin' });
+  await expect(card).toBeVisible();
+  await expect(card.locator('.event-agenda__item-time')).toHaveText('09:00');
+  await expect(card.locator('.event-agenda__item-end')).toBeVisible();
+  await expect(card.locator('.event-agenda__item-end')).toHaveText('10:00');
+
+  const [timeBox, endBox, titleBox, sublineBox] = await Promise.all([
+    card.locator('.event-agenda__item-time').boundingBox(),
+    card.locator('.event-agenda__item-end').boundingBox(),
+    card.locator('.event-agenda__item-title').boundingBox(),
+    card.locator('.event-agenda__item-subline').boundingBox(),
+  ]);
+  if (!timeBox || !endBox || !titleBox || !sublineBox) {
+    throw new Error('AK4: Zeitspanne, Titel oder Zweitzeile ohne BoundingBox');
+  }
+  // Zeitspanne links, Titel daneben, Zweitzeile am rechten Rand — in dieser
+  // Reihenfolge nebeneinander.
+  expect(timeBox.x).toBeLessThan(endBox.x);
+  expect(endBox.x).toBeLessThan(titleBox.x);
+  expect(titleBox.x).toBeLessThan(sublineBox.x);
+  // Nebeneinander, nicht unter dem Titel gestapelt (AK4's eigene Wortwahl).
+  expect(Math.abs(sublineBox.y - titleBox.y)).toBeLessThan(titleBox.height);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK5: Woche + Tagesdetail bei 1800×1000 ohne Scrollen gemeinsam sichtbar   */
+/* -------------------------------------------------------------------------- */
+
+test('Woche und Tagesdetail sind bei 1800×1000 gemeinsam ohne Scrollen sichtbar (issue #1124 AK5)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  const strip = page.locator('.calendar-strip');
+  const agenda = page.locator('.event-agenda');
+  await expect(strip).toBeVisible();
+  await expect(agenda).toBeVisible();
+
+  const [scrollHeight, viewportHeight] = await Promise.all([
+    page.evaluate(() => document.documentElement.scrollHeight),
+    page.evaluate(() => window.innerHeight),
+  ]);
+  expect(scrollHeight).toBeLessThanOrEqual(viewportHeight);
+
+  const [stripBox, agendaBox] = await Promise.all([strip.boundingBox(), agenda.boundingBox()]);
+  if (!stripBox || !agendaBox) throw new Error('AK5: Streifen oder Agenda ohne BoundingBox');
+  expect(agendaBox.y + agendaBox.height).toBeLessThanOrEqual(viewportHeight);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK6 (Nicht-Regression): ganztägiges Band läuft unverändert über die       */
+/* betroffenen Spalten — die geänderte Höhe/Overflow (Schritt 1) darf es     */
+/* weder beschneiden noch verschieben.                                       */
+/* -------------------------------------------------------------------------- */
+
+test('ein mehrtägiger ganztägiger Termin läuft ab 1440px unverändert als Band über die betroffenen Spalten (issue #1124 AK6)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  // TODAY (18.07., Sa) ist die führende, sichtbare Spalte (Spalte 0) — Mo
+  // 20.07. bis Mi 22.07. liegt vollständig im sichtbaren Fenster (Spalten 2–4).
+  await seedEvent(page, {
+    title: 'Wochenband-Kurztrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-20', // Montag
+    endDate: '2026-07-22', // Mittwoch
+    category: 'familie',
+  });
+
+  const band = page.locator('.calendar-strip__band').filter({ hasText: 'Wochenband-Kurztrip' });
+  await expect(band).toBeVisible();
+  await expect(band.locator('.calendar-strip__band-title')).toHaveText('Wochenband-Kurztrip');
+  expect(await bandGridColumn(band)).toBe('3/6'); // Mo=Spalte 2 .. Mi=Spalte 4
+
+  const bandBox = await band.boundingBox();
+  const stripBox = await page.locator('.calendar-strip').boundingBox();
+  if (!bandBox || !stripBox) throw new Error('AK6: Band oder Streifen ohne BoundingBox');
+  // Unbeschnitten: das Band liegt vollständig innerhalb der Streifen-Karte.
+  expect(bandBox.y).toBeGreaterThanOrEqual(stripBox.y);
+  expect(bandBox.y + bandBox.height).toBeLessThanOrEqual(stripBox.y + stripBox.height + 1);
+});
