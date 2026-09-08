@@ -250,3 +250,57 @@ test('die Agenda klebt oben an der Tagesüberschrift, statt um die halbe Rasterh
 /* AK6 (Nicht-Regression): siehe kalender.desktop.spec.ts (1280px) und        */
 /* kalender.spec.ts (375px, mobile-Messplatz) — dort unverändert.             */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/* issue #1124: die Wochenansicht wird ab 1440px sieben Tagesspalten,         */
+/* der gewählte Tag darunter ausführlich.                                    */
+/* -------------------------------------------------------------------------- */
+
+function todayStripCell(page: Page) {
+  return page.locator('.calendar-strip__day[data-today]');
+}
+
+/* -------------------------------------------------------------------------- */
+/* AK1: sieben ≥300px hohe Spalten mit Terminen als Chips                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Wochenansicht wird ab 1440px zu sieben Spalten, die Termine des Tages als Chips (Uhrzeit über Titel, Kategoriekante) (issue #1124 AK1)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await seedEvent(page, {
+    title: 'Spalten-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const days = page.locator('.calendar-strip__day:not([inert])');
+  await expect(days).toHaveCount(7);
+  for (let index = 0; index < 7; index += 1) {
+    const box = await days.nth(index).boundingBox();
+    if (!box) throw new Error(`AK1: Spalte ${index} ohne BoundingBox`);
+    expect(box.height).toBeGreaterThanOrEqual(300);
+  }
+
+  const todayCell = todayStripCell(page);
+  const chip = todayCell.locator('.calendar-strip__chip').filter({ hasText: 'Spalten-Termin' });
+  await expect(chip).toBeVisible();
+
+  const [timeBox, titleBox] = await Promise.all([
+    chip.locator('.calendar-strip__chip-time').boundingBox(),
+    chip.locator('.calendar-strip__chip-title').boundingBox(),
+  ]);
+  if (!timeBox || !titleBox) throw new Error('AK1: Chip-Zeit oder -Titel ohne BoundingBox');
+  await expect(chip.locator('.calendar-strip__chip-time')).toHaveText('09:00');
+  expect(timeBox.y).toBeLessThan(titleBox.y);
+
+  const expectedEdge = await resolveMix(page, 'var(--cat-arbeit)', 85, 'var(--text-base)');
+  expect(await chip.evaluate((el) => getComputedStyle(el).borderInlineStartColor)).toBe(expectedEdge);
+
+  await expect(todayCell.locator('.calendar-strip__dots')).not.toBeVisible();
+  await expect(todayCell.locator('.calendar-strip__dot')).not.toBeVisible();
+});
