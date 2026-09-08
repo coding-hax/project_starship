@@ -8,10 +8,10 @@
 - `ics-parse.ts` — Minimal-RFC-5545-Parser, nur ganztägig; getimte Termine fallen heraus
 - `ics-expand.ts` — Serien-Expansion für abonnierte Kalender, mit Staleness-Grenze
 - `use-ics-subscriptions.ts` — Wetter-Muster: Live-Query, Refresh nur bei Staleness
-- `calendar-view.tsx` / `.css` — /kalender: Wochenstreifen im Header, Monat im Rumpf, Agenda + FAB
+- `calendar-view.tsx` / `.css` — /kalender: Wochenstreifen, Monat im Rumpf, Agenda + FAB
 - `calendar-strip.tsx` / `.css` — Wochenstreifen Mo–So, Wisch blättert, „Heute"-Sprung
 - `month-grid.tsx` / `.css` — Monatskarte: scrollende Wochenzeilen, gedeckelte Punkte/Bänder
-- `event-agenda.tsx` / `.css` — Ganztägig-Band + chronologische Agenda mit Farbkante
+- `event-agenda.tsx` / `.css` — Ganztägig-Band + Agenda, Uhrzeit-Pille in Kategoriefarbe
 - `event-detail.tsx` / `event-editor.tsx` — Detail-Sheet, „Bearbeiten" öffnet den Editor
 - `recurrence-scope-sheet.tsx` / `.css` — Scope-Abfrage: dieser, alle folgenden, ganze Serie
 - `use-delete-event.ts` — Tombstone + Undo-Fenster für einen Termin
