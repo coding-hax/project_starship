@@ -9,7 +9,7 @@
 # Entscheidungslogik liegt in scripts/runner/*.ts und wird über ts_run()
 # gerufen. In Bash bleibt nur, was in Node ein Rückschritt wäre -- Lock,
 # Limit-Gate, Chain-Schleife, run_limited, `claude`-Aufruf. Begründung je
-# Stück: docs/CODEMAP.md, Abschnitt claude-runner.sh.
+# Stück: docs/codemap/scripts.md.
 set -uo pipefail
 
 # Wurzel des Checkouts, aus dem der Runner GESTARTET wurde -- getrennt von
@@ -97,7 +97,7 @@ fmt_hm() { date -r "$1" "+%a %H:%M" 2>/dev/null || date -d "@$1" "+%a %H:%M" 2>/
 # Status-Issue per EDIT aktualisieren, nicht per Kommentar -- sonst gibt es bei
 # jedem Lauf eine Push-Nachricht aufs Handy. Die Ampel steht im TITEL, weil in
 # der Issue-Liste sonst nur das statische Symbol sichtbar wäre. Was die
-# einzelnen Farben bedeuten: docs/CODEMAP.md, Abschnitt claude-runner.sh.
+# einzelnen Farben bedeuten: docs/codemap/scripts.md.
 #
 # Nur bei inhaltlicher Änderung schreiben (#64): sha1 über Titel+Emoji+Text,
 # ausdrücklich OHNE den "_Stand:_"-Zeitstempel unten, sonst wäre der Hash immer
