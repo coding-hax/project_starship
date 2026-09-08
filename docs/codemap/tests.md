@@ -7,6 +7,7 @@
 - `uebersicht.desktop.spec.ts` — ab 768px zweispaltig, mit FAB-Reserve
 - `seitenleiste-grund.desktop.spec.ts` — Nav ohne Fläche, Kontrastschrift
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf
+- `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
 - `grundfarbe-vollfarbe.spec.ts` — Karten, Leiste, FAB in Vollfarbe
 - `nav-schleier.spec.ts` — Grund-Kopie der Nav
 - `abgleich-828.spec.ts` — Kopf-Angaben, voller Recolor

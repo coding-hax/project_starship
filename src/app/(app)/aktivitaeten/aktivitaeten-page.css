@@ -3,3 +3,15 @@
 [data-module='aktivitaeten'] h1 {
   font-size: var(--text-page-title-lg);
 }
+
+/* issue #1117 AK5: ab 1440px gilt --text-title (32) wie auf jeder anderen
+   Route mit PageHead (page-head.css) — gleiche Spezifität wie die Regel oben
+   ([data-module] + Typ), deshalb hier statt im geteilten page-head.css
+   überschrieben: eine Media Query INNERHALB dieser Datei gewinnt garantiert
+   über die Grundregel, unabhängig davon, in welcher Reihenfolge Next.js die
+   beiden CSS-Dateien am Ende bündelt. */
+@media (min-width: 1440px) {
+  [data-module='aktivitaeten'] h1 {
+    font-size: var(--text-title);
+  }
+}
