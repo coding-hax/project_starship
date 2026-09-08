@@ -1,39 +1,19 @@
 # Code-Karte: Playwright-Specs (`tests/`)
 
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
-- `helpers.ts` — Authenticator, DB-Zugriff, Reset, Seed-Helfer
-- `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge
-- `section-card.desktop.spec.ts` / `shell.wide.spec.ts` — Deckel weg ab 768px, 1800px ohne Querlauf
-- `uebersicht.desktop.spec.ts` — ab 768px zweispaltig, mit FAB-Reserve
-- `seitenleiste-grund.desktop.spec.ts` — Nav ohne Fläche, Kontrastschrift
-- `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf
+- `shell.spec.ts` / `nav-order.spec.ts` / `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Login/Tabs/Header/Karussell; Seitengrund+Kopf
 - `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
-- `grundfarbe-vollfarbe.spec.ts` — Karten, Leiste, FAB in Vollfarbe
-- `nav-schleier.spec.ts` — Grund-Kopie der Nav
-- `abgleich-828.spec.ts` — Kopf-Angaben, voller Recolor
-- `offline-critical.spec.ts` / `sync.spec.ts` — SW-IndexedDB-Outbox-Postgres, Konflikte
-- `navigation.prod.spec.ts` — Tab-Wechsel ohne Dokument-Request
+- `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche
+- `grundfarbe-vollfarbe.spec.ts` / `nav-schleier.spec.ts` / `abgleich-828.spec.ts` — Vollfarbe (Karten/Leiste/FAB), Nav-Grundkopie, Kopf-Recolor
+- `navigation.prod.spec.ts` / `export.spec.ts` / `kalender.spec.ts` / `journal.desktop.spec.ts` — Tab-Wechsel o. Doc-Request; Export+Tombstones; Kalender-Timeline/Farbkante; Journal 2-spaltig 768px
 - `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Liste, Filter, Freitext, offline
-- `capture-uebersicht.spec.ts` — Erfassungsknopf → Aufgaben
-- `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Termin, Routine oder Aufgabe
-- `capture-parser.spec.ts` — Span-/Ranking-Grammatik, Teil 1/4
-- `capture-zeigerzeit.spec.ts` — deutsche Zeigerzeit, Teil 2/4
-- `capture-datum.spec.ts` — Monatsnamen, Spannen, Tagesgrenze, Teil 3/4
-- `capture-unsicher.spec.ts` — unsichere Felder markieren, Teil 4/4
-- `export.spec.ts` — Export inkl. Tombstones, Schema-Version
-- `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Streaks
-- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — Kopf, Kacheln, Verlaufskarte
-- `kalender.spec.ts` — Timeline, Jetzt-Linie, Farbkante, Wochenstreifen
-- `scroll-position.spec.ts` — startet oben, nie auf alter Position
-- `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle
-- `weather.spec.ts` / `weather-day.spec.ts` — Übersicht, Tagesdetail, Stale
-- `schema.spec.ts` — Migrationen erzeugen exakt das Schema
-- `journal.spec.ts` / `journal-suche.spec.ts` / `journal-tageswechsel.spec.ts` — Einträge, Suche, Tageswechsel
-- `journal-jahre.spec.ts` — „An diesem Tag": Jahrgänge, Schalttag
-- `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel
-- `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Key neu ausstellen
-- `journal-key-race.spec.ts` — Erst-Setup-Race, Bergung der Alt-Einträge
-- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull, Reminder, Panel
-- `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
-- `form-bedienelemente.spec.ts` — FAB-Pille, Reiter, Häkchen
+- `capture-{uebersicht,router,routine-neu}.spec.ts` — Erfassungsknopf: Termin/Routine/Aufgabe
+- `capture-{parser,zeigerzeit,datum,unsicher}.spec.ts` — Grammatik: Zeigerzeit, Datum, Unsicher-Markierung
+- `habits.spec.ts` / `habits-{uebersicht,week-grid}.spec.ts` / `streaks.spec.ts` — Verwaltung, Streaks
+- `helpers.ts` / `routinen.spec.ts` / `habits-streak-summary.spec.ts` / `form-bedienelemente.spec.ts` — Test-Helfer; Routinen-Kopf/Kacheln/Verlauf; FAB-Pille/Reiter/Häkchen
+- `scroll-position.spec.ts` / `persist-storage.spec.ts` / `settings.spec.ts` / `schema.spec.ts` — Scroll-Reset, Storage-Persistenz, Theme/Toggle, Schema-Exaktheit
+- `offline-critical.spec.ts` / `sync.spec.ts` / `weather.spec.ts` / `weather-day.spec.ts` — Outbox-Postgres/Konflikte; Wetter Übersicht/Tagesdetail
+- `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
+- `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
+- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Pull, Reminder, Push-Panel, Modul-Panel/Route-Guard
