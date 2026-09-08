@@ -404,12 +404,12 @@ describe('weekOverview', () => {
     });
 
     const week = weekOverview(occurrencesFor([later, earlier, allDay]), NOW);
-    const tuesday = week.find((day) => day.dayKey === '2026-07-15')!;
+    const wednesday = week.find((day) => day.dayKey === '2026-07-15')!;
 
-    expect(tuesday.chips.map((chip) => chip.title)).toEqual(['Ganztägig', 'Früher', 'Später']);
-    expect(tuesday.chips[0]).toMatchObject({ allDay: true, time: null });
-    expect(tuesday.chips[1]).toMatchObject({ allDay: false, time: '10:00' });
-    expect(tuesday.chips[2]).toMatchObject({ allDay: false, time: '17:00' });
+    expect(wednesday.chips.map((chip) => chip.title)).toEqual(['Ganztägig', 'Früher', 'Später']);
+    expect(wednesday.chips[0]).toMatchObject({ allDay: true, time: null });
+    expect(wednesday.chips[1]).toMatchObject({ allDay: false, time: '10:00' });
+    expect(wednesday.chips[2]).toMatchObject({ allDay: false, time: '17:00' });
   });
 
   it('carries the category and formats the scheduled chip time as Berlin HH:MM', () => {
