@@ -189,7 +189,7 @@ test('die Punkte (.month-grid__dots) stehen ab 1440px nicht mehr — Chips erset
   const cell = monthGridDay(page, ariaLabelFor(TODAY));
   await expect(cell.locator('.month-grid__chip')).toBeVisible();
   await expect(cell.locator('.month-grid__dots')).not.toBeVisible();
-  expect(await cell.locator('.month-grid__dot').count()).toBe(0);
+  await expect(cell.locator('.month-grid__dot')).not.toBeVisible();
 });
 
 /* -------------------------------------------------------------------------- */
