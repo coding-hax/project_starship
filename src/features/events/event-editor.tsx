@@ -17,6 +17,7 @@ import {
   type EventFields,
 } from './event-mutations';
 import { RecurrenceScopeSheet, type RecurrenceScope } from './recurrence-scope-sheet';
+import { addDays, dateKeyDiff } from './event-time';
 import { anchorDateKeyOf } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import { EVENT_CATEGORIES, type EventView } from './use-events';
@@ -67,6 +68,13 @@ function isoToLocalInput(iso: string | null): string {
 
 function localInputToIso(value: string): string | null {
   return value ? new Date(value).toISOString() : null;
+}
+
+/** `value` shifted by `deltaMs` — instant arithmetic (`Date.getTime()`), so DST
+ *  transitions land on the correct wall-clock time, then re-rendered through
+ *  `isoToLocalInput` the same way every other `datetime-local` value is. */
+function shiftLocalDateTime(value: string, deltaMs: number): string {
+  return isoToLocalInput(new Date(new Date(value).getTime() + deltaMs).toISOString());
 }
 
 const WEEKDAY_SHORT_LOCAL_FORMATTER = new Intl.DateTimeFormat('de-DE', { weekday: 'short' });
@@ -310,6 +318,30 @@ export function EventEditor({
 
   function toggleChip(key: ChipKey) {
     setOpenChip((current) => (current === key ? null : key));
+  }
+
+  /** Issue #1104: `Bis` follows `Von` and keeps whatever duration is currently
+   *  set — computed from the *previous* Von/Bis pair, so a duration the user
+   *  already changed by hand (AC2) survives just as much as the untouched 1h
+   *  default (AC1) does. Google/Apple-Kalender-Verhalten. */
+  function handleStartsAtChange(value: string) {
+    setStartEdited(true);
+    if (startsAtInput && endsAtInput && value) {
+      const durationMs = new Date(endsAtInput).getTime() - new Date(startsAtInput).getTime();
+      setEndsAtInput(shiftLocalDateTime(value, durationMs));
+    }
+    setStartsAtInput(value);
+  }
+
+  /** All-day counterpart of `handleStartsAtChange` (AC4) — shifts `Bis` by the
+   *  same number of calendar days instead of milliseconds. */
+  function handleStartDateChange(value: string) {
+    setStartEdited(true);
+    if (startDateInput && endDateInput && value) {
+      const dayDiff = dateKeyDiff(startDateInput, endDateInput);
+      setEndDateInput(addDays(value, dayDiff));
+    }
+    setStartDateInput(value);
   }
 
   function toggleWeekday(day: number) {
@@ -581,10 +613,7 @@ export function EventEditor({
                           type="date"
                           className="event-editor__start"
                           value={startDateInput}
-                          onChange={(formEvent) => {
-                            setStartDateInput(formEvent.target.value);
-                            setStartEdited(true);
-                          }}
+                          onChange={(formEvent) => handleStartDateChange(formEvent.target.value)}
                           aria-label="Von"
                           aria-describedby={showStartHint ? START_HINT_ID : undefined}
                           required
@@ -599,6 +628,7 @@ export function EventEditor({
                           type="date"
                           className="event-editor__end"
                           value={endDateInput}
+                          min={startDateInput}
                           onChange={(formEvent) => setEndDateInput(formEvent.target.value)}
                           aria-label="Bis"
                           required
@@ -613,10 +643,7 @@ export function EventEditor({
                           type="datetime-local"
                           className="event-editor__start"
                           value={startsAtInput}
-                          onChange={(formEvent) => {
-                            setStartsAtInput(formEvent.target.value);
-                            setStartEdited(true);
-                          }}
+                          onChange={(formEvent) => handleStartsAtChange(formEvent.target.value)}
                           aria-label="Von"
                           aria-describedby={showStartHint ? START_HINT_ID : undefined}
                           required
@@ -634,6 +661,7 @@ export function EventEditor({
                           type="datetime-local"
                           className="event-editor__end"
                           value={endsAtInput}
+                          min={startsAtInput}
                           onChange={(formEvent) => setEndsAtInput(formEvent.target.value)}
                           aria-label="Bis"
                           required

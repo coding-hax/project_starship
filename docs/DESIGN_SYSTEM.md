@@ -7,9 +7,9 @@ CSS-px, nutzbar 375 × 734 nach Safe Area (44 px oben, 34 px unten), abzüglich
 Bottom-Nav. Das ist kein Breakpoint unter mehreren, sondern **die Fläche, für
 die entworfen wird**. Desktop ist dieselbe App, breiter: ein **Re-Flow** aus
 dem Hochformat — dieselben Bauteile, dieselbe Datenlogik, nur die
-**Anordnung** darf je Route abweichen (bis zu einer zweiten Spalte, `@media
-(min-width: 768px)`). Kein zweiter Entwurf, und Mobil bleibt der Maßstab
-(ADR-0029).
+**Anordnung** darf je Route abweichen, in drei Stufen bis zu drei Spalten
+(`@media (min-width: 768px)` / `min-width: 1440px`). Kein zweiter Entwurf, und
+Mobil bleibt der Maßstab (ADR-0029, ADR-0030).
 
 Zur Zahl: Das mini rendert **375 × 812 CSS-px** (iPhone-X-Klasse), skaliert bei
 3x herunter. „Physisch 1080 ÷ 3 = 360" ist **falsch** — das ist die 2x-Rechnung
@@ -30,9 +30,9 @@ Daraus folgen harte Regeln:
    überhaupt zu sehen.
 2. **Keine Form, die mehr Gerüst als Inhalt zeigt.**
 3. **Desktop ist ein Re-Flow des Hochformats, kein zweiter Entwurf.** Bauteile
-   und Datenlogik bleiben geteilt; nur die Anordnung darf ab `@media
-   (min-width: 768px)` abweichen — vier Routen bekommen dort eine zweite
-   Spalte (ADR-0029).
+   und Datenlogik bleiben geteilt; nur die Anordnung darf abweichen — in drei
+   Stufen: ≤ 767 mobil · 768–1439 zwei Spalten · ≥ 1440 drei Spalten
+   (ADR-0029, ADR-0030).
 
 Der eigentliche Regeltext lebt seit #596 themenweise in `docs/design/`, damit
 jede referenzierte Datei klein und gezielt lesbar bleibt (Token-Disziplin,

@@ -298,6 +298,17 @@ export const sessions = pgTable(
     credentialId: uuid('credential_id').references(() => credentials.id, {
       onDelete: 'cascade',
     }),
+    /**
+     * Which browser profile this session was opened from (issue #1102). A synced
+     * passkey is the *same* credential on every Apple device at one keychain, so
+     * `credential_id` alone cannot tell an iPhone from a Mac — this can.
+     *
+     * A label, never a key: nothing in the authorisation path reads it. Nullable
+     * like `credential_id` above, for the same reason — sessions minted before
+     * this column existed stay `null`, and the login sweep treats them as
+     * residue of the device that is logging in.
+     */
+    deviceId: text('device_id'),
   },
   (table) => [index('sessions_expires_at_idx').on(table.expiresAt)],
 );
