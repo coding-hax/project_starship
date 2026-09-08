@@ -1,18 +1,18 @@
 # Code-Karte: Playwright-Specs (`tests/`)
 
-- `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele Läufe
+- `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `helpers.ts` — Authenticator, DB-Zugriff, Reset, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge
-- `section-card.desktop.spec.ts` — .section-card verliert ab 768px seinen Deckel
+- `section-card.desktop.spec.ts` / `shell.wide.spec.ts` — Deckel weg ab 768px, 1800px ohne Querlauf
 - `uebersicht.desktop.spec.ts` — ab 768px zweispaltig, mit FAB-Reserve
 - `seitenleiste-grund.desktop.spec.ts` — Nav ohne Fläche, Kontrastschrift
 - `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Seitengrund + halbhoher Kopf
 - `grundfarbe-vollfarbe.spec.ts` — Karten, Leiste, FAB in Vollfarbe
 - `nav-schleier.spec.ts` — Grund-Kopie der Nav
-- `abgleich-828.spec.ts` — Kopf-Angaben im vollen Recolor
+- `abgleich-828.spec.ts` — Kopf-Angaben, voller Recolor
 - `offline-critical.spec.ts` / `sync.spec.ts` — SW-IndexedDB-Outbox-Postgres, Konflikte
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne Dokument-Request
-- `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen das Bündel
+- `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Liste, Filter, Freitext, offline
 - `capture-uebersicht.spec.ts` — Erfassungsknopf → Aufgaben
 - `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Termin, Routine oder Aufgabe
@@ -24,7 +24,7 @@
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Streaks
 - `routinen.spec.ts` / `habits-streak-summary.spec.ts` — Kopf, Kacheln, Verlaufskarte
 - `kalender.spec.ts` — Timeline, Jetzt-Linie, Farbkante, Wochenstreifen
-- `scroll-position.spec.ts` — startet stets oben, nie auf alter Position
+- `scroll-position.spec.ts` — startet oben, nie auf alter Position
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle
 - `weather.spec.ts` / `weather-day.spec.ts` — Übersicht, Tagesdetail, Stale
 - `schema.spec.ts` — Migrationen erzeugen exakt das Schema

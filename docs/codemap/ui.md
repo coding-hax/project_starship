@@ -13,7 +13,7 @@
 - `sheet.tsx` / `.css` / `fab.tsx` / `.css` — Bottom-Sheet, Floating Action Button
 - `toast-host.tsx` / `toast.tsx` / `.css` — zentraler Toast-Host plus Toast
 - `row/section-card/toggle/segmented-control/slider.tsx` / `.css` — Form-Primitive
-- `overview-block.tsx` / `.css` — /uebersicht: Rahmen plus Kopf mit Titel und Link
+- `overview-block.tsx` / `.css` — /uebersicht: Rahmen + Kopf mit Titel, Link
 - `field-hint.tsx` / `.css` — Warnfarbene Notiz für ein geratenes Feld
 - `sync-boot.tsx` / `persist-storage.ts` / `sync-status.tsx` / `stale.ts` — Sync-Start, Fehler-Toast, Stale-Helfer
 - `e2e-bridge.tsx` — Test-Zugriff auf Outbox/Journal/Dexie-Dump, nur im E2E-Build
