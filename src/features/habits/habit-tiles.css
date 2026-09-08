@@ -108,3 +108,19 @@
      bedeutungstragende Grafik (docs/design/farben-typografie.md). */
   background: color-mix(in oklch, var(--area-habits) 65%, var(--text-base));
 }
+
+/* Dritte Desktop-Stufe (issue #1125, ADR-0030): ab 1440px stehen die Kacheln
+   in der rechten Spalte von routinen-page.css's Grid, über der 30-Tage-
+   Verlaufskarte statt darüber gestapelt im normalen Fluss — der eigene
+   `margin-bottom` (oben) weicht dabei dem Grid-`row-gap`, sonst läge zwischen
+   Kacheln und Verlaufskarte space-4 (Grid) + space-4 (Margin) statt der in
+   AK3 verlangten space-4 allein. Karten-Form und Subgrid-Ausrichtung (#960,
+   oben in dieser Datei) bleiben unangetastet — nur die Platzierung ändert
+   sich. */
+@media (min-width: 1440px) {
+  [data-ground='routinen'] .habit-tiles {
+    grid-column: 2;
+    grid-row: 2;
+    margin-bottom: 0;
+  }
+}

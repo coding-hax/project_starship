@@ -19,6 +19,7 @@
 - `scroll-position.spec.ts` / `persist-storage.spec.ts` / `settings.spec.ts` / `schema.spec.ts` — Scroll-Reset, Storage-Persistenz, Theme/Toggle, Schema-Exaktheit
 - `offline-critical.spec.ts` / `sync.spec.ts` / `weather.spec.ts` / `weather-day.spec.ts` — Outbox-Postgres/Konflikte; Wetter Übersicht/Tagesdetail
 - `wetter.wide.spec.ts` — ab 1440px zweispaltiges Tagesraster + Tagesnummer
+- `routinen.wide.spec.ts` — ab 1440px Tabelle links über beide Zeilen, Kacheln+Verlauf rechts 440px
 - `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
 - `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Pull, Reminder, Push-Panel, Modul-Panel/Route-Guard
