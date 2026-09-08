@@ -135,6 +135,11 @@ STUB
 # Session-ID. Jeder Aufruf zaehlt mit (claude-calls) und schreibt seine
 # vollstaendige Argumentliste in eine eigene Datei -- so lassen sich beide
 # Aufrufe einzeln pruefen, nicht nur der letzte.
+# #1144, AK6: Diagnosen gehen nach stderr, das Ergebnis-JSON bleibt allein auf
+# stdout -- so laeuft die ganze Suite durch die echte Zwei-Stroeme-Umlenkung
+# in run_limited() (claude-runner.sh). Der no-resume-Zweig haengt zusaetzlich
+# eine harmlose stderr-Warnzeile an, um AC3 (neue Session-ID kommt trotzdem
+# an) als Beleg fuer AK1 mitzunehmen.
 cat > "$FAKEBIN/claude" <<'STUB'
 #!/usr/bin/env bash
 G="$GHSTATE_DIR"
@@ -146,9 +151,10 @@ resumed=0
 for a in "$@"; do [ "$a" = "--resume" ] && resumed=1; done
 
 if [ "$resumed" -eq 1 ]; then
-  printf 'Fehler beim Fortsetzen der Session.\nNo conversation found with session ID: poisoned-session-id\n'
+  printf 'Fehler beim Fortsetzen der Session.\nNo conversation found with session ID: poisoned-session-id\n' >&2
   exit 1
 fi
+printf 'Warnung: irgendwas Belangloses\n' >&2
 printf '%s' '{"session_id":"frische-session-nach-recovery","result":"ok"}'
 exit 0
 STUB

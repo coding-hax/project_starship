@@ -1831,13 +1831,13 @@ describe('roundEval', () => {
       expect(sharedState.read('failcount-77')).toBe('1\n');
     });
 
-    it('AK2 (Rueckfall): ein Limit-Text OHNE JSON (kein "result" zum Ausfiltern) wird weiterhin als Limit erkannt', () => {
+    it('AK2 (Rueckfall): ein Limit-Text OHNE JSON, nur auf stderr/log (kein "result" zum Ausfiltern), wird weiterhin als Limit erkannt', () => {
       const { gh, calls } = ghDouble();
       const result = roundEval(
         ctx(gh),
         plan,
-        { rc: 1, out: 'Claude usage limit reached ∙ resets 3pm', timedOut: false, maxRuntime: 2700 },
-        '',
+        { rc: 1, out: '', timedOut: false, maxRuntime: 2700 },
+        'Claude usage limit reached ∙ resets 3pm',
       );
       expect(result.status?.emoji).toBe('🔵');
       // #891, AK1: kein Label mehr; ohne deutbares 'result' (kein JSON) trägt der
@@ -1847,13 +1847,13 @@ describe('roundEval', () => {
       expect(result.forcePublishStatus).toBe(true);
     });
 
-    it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON wird weiterhin als Uebergang erkannt', () => {
+    it('AK3 (Rueckfall): ein Uebergangsfehler-Text OHNE JSON, nur auf stderr/log, wird weiterhin als Uebergang erkannt', () => {
       const { gh } = ghDouble();
       const result = roundEval(
         ctx(gh),
         plan,
-        { rc: 1, out: 'Error: overloaded_error', timedOut: false, maxRuntime: 2700 },
-        '',
+        { rc: 1, out: '', timedOut: false, maxRuntime: 2700 },
+        'Error: overloaded_error',
       );
       expect(result.status?.text).toContain('Versuch 1 von 3');
       expect(state.read('transient-77')).toBe('1');
@@ -1874,6 +1874,73 @@ describe('roundEval', () => {
       );
       expect(result.status?.emoji).toBe('🔴');
       expect(state.read('transient-77')).toBeNull();
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+    });
+  });
+
+  // #1144, AK1: 'out' und 'log' sind seit der Zwei-Stroeme-Naht getrennte
+  // Werte (stdout-only vs. kombiniert) -- eine CLI-Warnung auf stderr darf den
+  // Parse von 'out' nicht anfassen.
+  describe('Getrennte Stroeme: stderr-Warnung neben gueltigem stdout-JSON (#1144)', () => {
+    it('AK1: session_id, usage und Ergebnistext kommen trotz Warnzeile in log unveraendert an, kein falscher 429', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh, calls } = ghDouble();
+      const out = JSON.stringify({
+        session_id: 'sid-1',
+        result: 'ok',
+        num_turns: 3,
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 0, out, timedOut: false, maxRuntime: 2700 },
+        `${out}\nWarnung: irgendwas Belangloses`,
+      );
+      expect(result.chain).toBe('continue');
+      expect(state.read('session-77')).toBe('sid-1');
+      expect(usageLine(stderr.mock.calls)).toMatchObject({
+        num_turns: '3',
+        input_tokens: '10',
+        output_tokens: '5',
+      });
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      stderr.mockRestore();
+    });
+
+    // AK3: 'result' steht (weil stdout+stderr kombiniert werden) auch im Log --
+    // cliText schneidet ihn dort genauso heraus wie zuvor aus 'out' allein.
+    // Eine harmlose stderr-Zeile daneben darf kein Limit vortaeuschen.
+    it('AK3: "usage limit" allein im Agententext loest keinen 429 aus, obwohl das JSON auch in log steht', () => {
+      const { gh, calls } = ghDouble();
+      const out = JSON.stringify({ subtype: 'error_max_turns', is_error: true, result: 'usage limit erreicht' });
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out, timedOut: false, maxRuntime: 2700 },
+        `${out}\nWarnung auf stderr`,
+      );
+      expect(result.status?.emoji).toBe('🔴');
+      expect(called(calls, 'edit', '77', '--add-label', 'blocked-limit')).toBe(false);
+      expect(sharedState.read('limit-until')).toBeNull();
+      expect(sharedState.read('failcount-77')).toBe('1\n');
+    });
+
+    // AK4: fehlendes/kaputtes stdout darf nicht werfen und die alte
+    // Session-ID nicht mit Leere ueberschreiben (Muster wie #64 oben) --
+    // definierter Fehlschlag statt Absturz, auch wenn log Teil-stderr traegt.
+    it('AK4: leeres/kaputtes stdout wirft nicht, ueberschreibt die alte Session-ID nicht, definierter Fehlschlag', () => {
+      state.write('session-77', 'sid-alt');
+      const { gh, calls } = ghDouble();
+      const result = roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: '', timedOut: false, maxRuntime: 2700 },
+        'unvollstaendiges stderr',
+      );
+      expect(state.read('session-77')).toBe('sid-alt');
+      expect(result.status?.emoji).toBe('🔴');
+      expect(result.rc).toBe(1);
       expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
     });
   });
