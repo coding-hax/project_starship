@@ -13,9 +13,8 @@
 - `ics-subscriptions-panel.tsx` / `.css` — .ics-Abos hinzufügen/entfernen, Fehler je Abo
 - `use-nav-order.ts` / `nav-order-panel.tsx` / `.css` — Reihenfolge der Nav-Einträge
 - `use-push.ts` / `use-reminder-prefs.ts` / `push-panel.tsx` / `.css` — Push-Hook, Prefs, Panel an/aus
-- `use-devices.ts` / `devices-panel.tsx` / `.css` — Karte „Passkeys": Liste, Hinzufügen, Widerruf
-- `use-sessions.ts` / `session-panel.tsx` / `.css` — Karte „Sitzung": sperren, Sitzungen beenden
-- `logins-panel.tsx` / `.css` — Karte „Anmeldungen": Sitzungsliste, „zuletzt gesehen", einzeln beenden
+- `use-devices.ts` / `devices-panel.tsx` / `.css` — „Passkeys": Umbenennen, Widerruf
+- `use-sessions.ts` / `session-panel.tsx` / `logins-panel.tsx` / `.css` — sperren, Liste + zuletzt gesehen
 - `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kategorie
 - `category-colors-boot.tsx` — setzt/entfernt die Kategorie-Farbvariable am Root
 - `calendar-settings-panel.tsx` — Kalenders Settings-Slot: Farben + ICS-Abos

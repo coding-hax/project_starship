@@ -75,15 +75,21 @@ async function deleteAllSessions(): Promise<void> {
 }
 
 test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
-  test('AK1: Gruppe "Gerät" zeigt die Karte "Geräte" mit dem registrierten Passkey', async ({
+  test('AK1 (#1103): Gruppe "Gerät" zeigt die Karte "Passkeys" mit dem registrierten Passkey und dem iCloud-Hinweis', async ({
     page,
   }) => {
     await registerPasskey(page, '/einstellungen');
 
     const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
-    await expect(geraetGroup.getByRole('heading', { name: 'Geräte', level: 2 })).toBeVisible();
+    await expect(geraetGroup.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeVisible();
     await expect(geraetGroup.getByText('Unbenanntes Gerät')).toBeVisible();
     await expect(geraetGroup.getByText(/Hinzugefügt am \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}/)).toBeVisible();
+    await expect(
+      geraetGroup.getByText(/iCloud-Schlüsselbund synchronisierter Passkey ist auf allen deinen Apple-Geräten derselbe/),
+    ).toBeVisible();
+    await expect(
+      geraetGroup.getByText(/im Passkey-Dialog einen anderen Speicherort wählen/),
+    ).toBeVisible();
   });
 
   test('AK6: Karte bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
@@ -94,7 +100,7 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     await page.goto('/einstellungen');
 
     const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
-    await expect(geraetGroup.getByRole('heading', { name: 'Geräte', level: 2 })).toBeVisible();
+    await expect(geraetGroup.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeVisible();
     await expect(geraetGroup.getByRole('button', { name: 'Beenden' })).toBeVisible();
   });
 
@@ -632,13 +638,15 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
     await context.close();
   });
 
-  test('AK3: Down-Pfad von 0022 stellt last_seen_at wieder her, Up-Pfad entfernt sie erneut', async () => {
+  test('AK6 (#1103): Migration 0025 hat einen Rückweg — down entfernt last_seen_at, up legt sie wieder an', async () => {
+    // last_seen_at kommt in #1103 belebt zurück (Retarget von 0022 auf 0025 —
+    // die alte 0022-Prämisse "last_seen_at existiert nicht" gilt seither nicht mehr).
     const downSql = readFileSync(
-      path.join(__dirname, '../src/db/migrations/down/0022_melted_zarda.down.sql'),
+      path.join(__dirname, '../src/db/migrations/down/0025_needy_hobgoblin.down.sql'),
       'utf8',
     );
     const upSql = readFileSync(
-      path.join(__dirname, '../src/db/migrations/0022_melted_zarda.sql'),
+      path.join(__dirname, '../src/db/migrations/0025_needy_hobgoblin.sql'),
       'utf8',
     );
 
@@ -653,10 +661,10 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
       await client.query('BEGIN');
       try {
         const columnsBefore = await sessionColumns(client);
-        expect(columnsBefore).not.toContain('last_seen_at');
+        expect(columnsBefore).toContain('last_seen_at');
 
         await client.query(downSql);
-        expect(await sessionColumns(client)).toContain('last_seen_at');
+        expect(await sessionColumns(client)).not.toContain('last_seen_at');
 
         await client.query(upSql);
         expect(await sessionColumns(client)).toEqual(columnsBefore);
@@ -955,6 +963,148 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
+    await context.close();
+  });
+});
+
+test.describe('#1103: Karte "Anmeldungen" (destruktiv, frischer Context)', () => {
+  test('AK2: listet lebende Sitzungen mit unterschiedlicher Geräte-ID, abgelaufene fehlen', async ({
+    browser,
+    baseURL,
+  }) => {
+    const own = await createThrowawaySession(undefined, randomUUID());
+    const context = await browser.newContext();
+    await context.addCookies([{ name: 'starship_session', value: own.token, url: baseURL }]);
+    const page = await context.newPage();
+
+    await createThrowawaySession(undefined, randomUUID());
+    // Abgelaufene Sitzung, direkt geseedet — darf in der Liste nicht auftauchen.
+    await withDb((client) =>
+      client.query(
+        'INSERT INTO sessions (id, token_hash, expires_at, device_id) VALUES ($1, $2, $3, $4)',
+        [randomUUID(), randomUUID(), new Date(Date.now() - 1000), randomUUID()],
+      ),
+    );
+
+    await page.goto('/einstellungen');
+    const loginsPanel = page.locator('.logins-panel');
+    await expect(loginsPanel.locator('.logins-panel__item')).toHaveCount(2);
+    await expect(loginsPanel.getByText('Dieses Gerät')).toBeVisible();
+
+    await context.close();
+  });
+
+  test('AK3: „zuletzt gesehen" wird gedrosselt fortgeschrieben — höchstens 1x je Stunde', async ({
+    browser,
+    baseURL,
+  }) => {
+    const session = await createThrowawaySession(undefined, randomUUID());
+    const context = await browser.newContext();
+    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+
+    async function lastSeenAt(): Promise<Date | null> {
+      const { rows } = await withDb((client) =>
+        client.query('SELECT last_seen_at FROM sessions WHERE token_hash = $1', [session.tokenHash]),
+      );
+      return rows[0].last_seen_at as Date | null;
+    }
+
+    expect(await lastSeenAt()).toBeNull();
+
+    expect((await context.request.get('/api/auth/sessions')).ok()).toBe(true);
+    const fresh = await lastSeenAt();
+    expect(fresh).not.toBeNull();
+    expect(Date.now() - fresh!.getTime()).toBeLessThan(60_000);
+
+    // Innerhalb der Drossel (30 Minuten) — ein zweiter Aufruf schreibt nicht erneut.
+    const withinThrottle = new Date(Date.now() - 30 * 60 * 1000);
+    await withDb((client) =>
+      client.query('UPDATE sessions SET last_seen_at = $1 WHERE token_hash = $2', [
+        withinThrottle,
+        session.tokenHash,
+      ]),
+    );
+    await context.request.get('/api/auth/sessions');
+    expect(Math.abs((await lastSeenAt())!.getTime() - withinThrottle.getTime())).toBeLessThan(1000);
+
+    // Fenster überschritten (2 Stunden) — der nächste Aufruf schreibt wieder frisch.
+    const pastThrottle = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await withDb((client) =>
+      client.query('UPDATE sessions SET last_seen_at = $1 WHERE token_hash = $2', [
+        pastThrottle,
+        session.tokenHash,
+      ]),
+    );
+    await context.request.get('/api/auth/sessions');
+    expect(Date.now() - (await lastSeenAt())!.getTime()).toBeLessThan(60_000);
+
+    await context.close();
+  });
+
+  test('AK4: „Beenden" an einer fremden Zeile löscht genau diese Sitzung, die eigene bleibt', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page, tokenHash: ownHash } = await freshSessionContext(browser, baseURL);
+    const other = await createThrowawaySession(undefined, randomUUID());
+
+    await page.goto('/einstellungen');
+    const loginsPanel = page.locator('.logins-panel');
+    await expect(loginsPanel.locator('.logins-panel__item')).toHaveCount(2);
+
+    const foreignRow = loginsPanel
+      .locator('.logins-panel__item')
+      .filter({ hasNotText: 'Dieses Gerät' });
+    await foreignRow.getByRole('button', { name: 'Beenden' }).click();
+    await foreignRow.getByRole('button', { name: 'Beenden' }).click();
+
+    await expect.poll(() => sessionRowExists(other.tokenHash)).toBe(false);
+    expect(await sessionRowExists(ownHash)).toBe(true);
+    await expect(loginsPanel.locator('.logins-panel__item')).toHaveCount(1);
+
+    await context.close();
+  });
+
+  test('AK5: die eigene Zeile hat kein "Beenden", sondern den Verweis auf „App sperren"', async ({
+    browser,
+    baseURL,
+  }) => {
+    const { context, page } = await freshSessionContext(browser, baseURL);
+
+    await page.goto('/einstellungen');
+    const ownRow = page.locator('.logins-panel__item', { hasText: 'Dieses Gerät' });
+    await expect(ownRow.getByRole('button', { name: 'Beenden' })).toHaveCount(0);
+    await expect(ownRow.getByText('App sperren')).toBeVisible();
+
+    await context.close();
+  });
+
+  test('AK7: „Anmeldungen" bleibt auf dem iPhone im Dark Mode sichtbar, offline mit Hinweis', async ({
+    browser,
+    baseURL,
+  }) => {
+    const session = await createThrowawaySession(undefined, randomUUID());
+    const context = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+      colorScheme: 'dark',
+      reducedMotion: 'reduce',
+    });
+    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+    const page = await context.newPage();
+
+    await page.goto('/einstellungen');
+    const loginsPanel = page.locator('.logins-panel');
+    await expect(loginsPanel).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    await context.setOffline(true);
+    await expect(loginsPanel.getByText('Geht nur online.')).toBeVisible();
+
+    await context.setOffline(false);
     await context.close();
   });
 });
