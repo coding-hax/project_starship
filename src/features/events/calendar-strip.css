@@ -209,53 +209,13 @@
   white-space: nowrap;
 }
 
-/* Fourth stage (issue #1124, ADR-0029/0030): ≥1440px turns the week strip's
-   day buttons into real columns — each carries its own day's events as
-   chips, replacing the dot row. Gated on width alone: the strip only ever
-   renders in the week view (calendar-view.tsx), so there is no separate
-   `.month-grid`-sibling scope to exclude here (contrast calendar-view.css's
-   `:not(:has(> .month-grid))`, which the *shared* `.calendar-view` selectors
-   need). */
-@media (min-width: 1440px) {
-  /* The carousel's height used to be a fixed single-row constant
-     (`--calendar-strip-row-height`) sized for a weekday label, a day number
-     and a short dot row — a column of chips needs the row to grow with its
-     tallest day instead. `align-items: stretch` (the flex default, already
-     in effect) then brings every other column up to that same height. */
-  .calendar-strip__carousel {
-    height: auto;
-  }
-
-  /* The card's `overflow: hidden` (issue #1013 AK13) only ever clipped a
-     fixed-height row's corners — with the row now growing to fit a column of
-     chips, the same clip would cut the bottom chip off instead. The radius
-     itself is unaffected: nothing here overflows the card's own box. */
-  .calendar-strip {
-    overflow: visible;
-  }
-
-  .calendar-strip__day {
-    justify-content: flex-start;
-    /* Cells sit flush edge-to-edge (`.calendar-strip__cell`'s `flex: 0 0 calc(100% / 7)`
-       carries no gap — the buffer's scroll math (`stepFor`, calendar-strip.tsx)
-       assumes exactly that width) — horizontal padding on the button itself
-       is what keeps two full-width chip columns from touching. */
-    padding: var(--space-1);
-    min-height: 300px;
-  }
-
-  .calendar-strip__dots {
-    display: none;
-  }
-
-  .calendar-strip__chips {
-    display: flex;
-  }
-}
-
 /* Always rendered (calendar-strip.tsx), same reasoning as `.calendar-strip__dots`
    above — hidden below 1440px, where the dot row (above) carries the day's
-   categories instead. */
+   categories instead. Declared before the `@media` block below on purpose:
+   the block's own `.calendar-strip__chips { display: flex }` needs to win
+   the cascade at ≥1440px against this unconditional rule, same specificity
+   either way — CSS resolves that tie by source order, not by which one sits
+   inside a media query. */
 .calendar-strip__chips {
   display: none;
   flex-direction: column;
@@ -299,4 +259,72 @@
   font-size: var(--text-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Fourth stage (issue #1124, ADR-0029/0030): ≥1440px turns the week strip's
+   day buttons into real columns — each carries its own day's events as
+   chips, replacing the dot row. Gated on width alone: the strip only ever
+   renders in the week view (calendar-view.tsx), so there is no separate
+   `.month-grid`-sibling scope to exclude here (contrast calendar-view.css's
+   `:not(:has(> .month-grid))`, which the *shared* `.calendar-view` selectors
+   need). */
+@media (min-width: 1440px) {
+  /* The carousel's height used to be a fixed single-row constant
+     (`--calendar-strip-row-height`) sized for a weekday label, a day number
+     and a short dot row — a column of chips needs the row to grow with its
+     tallest day instead. `align-items: stretch` (the flex default, already
+     in effect) then brings every other column up to that same height. */
+  .calendar-strip__carousel {
+    height: auto;
+  }
+
+  /* The card's `overflow: hidden` (issue #1013 AK13) only ever clipped a
+     fixed-height row's corners — with the row now growing to fit a column of
+     chips, the same clip would cut the bottom chip off instead. The radius
+     itself is unaffected: nothing here overflows the card's own box. */
+  .calendar-strip {
+    overflow: visible;
+  }
+
+  .calendar-strip__day {
+    justify-content: flex-start;
+    /* Cells sit flush edge-to-edge (`.calendar-strip__cell`'s `flex: 0 0 calc(100% / 7)`
+       carries no gap — the buffer's scroll math (`stepFor`, calendar-strip.tsx)
+       assumes exactly that width) — horizontal padding on the button itself
+       is what keeps two full-width chip columns from touching. */
+    padding: var(--space-1);
+    min-height: 300px;
+  }
+
+  .calendar-strip__dots {
+    display: none;
+  }
+
+  .calendar-strip__chips {
+    display: flex;
+  }
+
+  /* Ausgewählte Spalte (issue #1124, AK2): eine Tönung + derselbe Ring wie
+     `[data-today]` oben ersetzt die volle `--ground`-Pille (Zeile 117) — die
+     Pille färbte `--on-ground` über die ganze Fläche, was die Chips'
+     eigene Kategorie-Kante und ihre auf `--surface` gemessene Tinte
+     (`--text`/`--text-muted`) übermalt hätte. `color` bleibt deshalb
+     unverändert `--text` (kein `--on-ground`). 14 % Ground-Anteil in der
+     Fläche hält den Ring (dasselbe 85 %-Rezept wie `[data-today]`) gegen
+     diese Fläche ≥3:1 (gemessen 3,47:1 hell / 3,10:1 dunkel) und die
+     Chip-Tinte bleibt lesbar (`--text-muted` gemessen 4,81:1 hell / 5,57:1
+     dunkel gegen dieselbe Fläche). */
+  .calendar-strip__day--selected {
+    background: color-mix(in oklab, var(--ground) 14%, var(--surface));
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ground) 85%, var(--text-base));
+    color: var(--text);
+  }
+
+  /* Heute und ausgewählt zugleich: derselbe Ring wie oben, nicht die
+     Basisregel `box-shadow: none` (Zeile 124) — dort galt „Pille gewinnt,
+     keine zusätzliche Umrandung", hier gibt es ab 1440px keine Pille mehr,
+     die den Ring ersetzen könnte. */
+  .calendar-strip__day--selected[data-today] {
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ground) 85%, var(--text-base));
+  }
 }

@@ -304,3 +304,40 @@ test('die Wochenansicht wird ab 1440px zu sieben Spalten, die Termine des Tages 
   await expect(todayCell.locator('.calendar-strip__dots')).not.toBeVisible();
   await expect(todayCell.locator('.calendar-strip__dot')).not.toBeVisible();
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK2: gewählte Spalte abgesetzt — Fläche + Rand in der Routenfarbe          */
+/* -------------------------------------------------------------------------- */
+
+test('die gewählte Spalte ist abgesetzt — Fläche und Rand in der Routenfarbe (issue #1124 AK2)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  // Zwei Nicht-Heute-Spalten (data-today trägt selbst schon einen Ring —
+  // eine sauber isolierte Vergleichsbasis bleibt so unberührt davon).
+  const days = page.locator('.calendar-strip__day:not([inert]):not([data-today])');
+  const target = days.nth(0);
+  const other = days.nth(1);
+
+  const [expectedRing, plainBg, plainShadow] = await Promise.all([
+    resolveMix(page, 'var(--ground)', 85, 'var(--text-base)'),
+    other.evaluate((el) => getComputedStyle(el).backgroundColor),
+    other.evaluate((el) => getComputedStyle(el).boxShadow),
+  ]);
+  expect(plainShadow).toBe('none');
+
+  await target.click();
+  await expect(target).toHaveClass(/calendar-strip__day--selected/);
+
+  const [selectedBg, selectedShadow] = await Promise.all([
+    target.evaluate((el) => getComputedStyle(el).backgroundColor),
+    target.evaluate((el) => getComputedStyle(el).boxShadow),
+  ]);
+  // Fläche: abgesetzt gegen eine unausgewählte Spalte (die Ground-Tönung).
+  expect(selectedBg).not.toBe(plainBg);
+  // Rand: derselbe Ring wie `[data-today]` — hält in der Routenfarbe.
+  expect(selectedShadow).toContain(expectedRing);
+  // Die andere Spalte bleibt unberührt.
+  await expect(other).not.toHaveClass(/calendar-strip__day--selected/);
+});
