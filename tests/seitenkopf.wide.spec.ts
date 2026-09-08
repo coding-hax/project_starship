@@ -86,10 +86,27 @@ async function setUpJournal(page: Page, passphrase: string) {
   await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
 }
 
+/** `main.shell__main`'s own box, not the Inhaltsspalte — ab 1440px trägt
+ * `.shell__main` selbst ein `padding-inline: var(--space-12)` (48px, shell.css
+ * #1116), innerhalb dessen Kinder wie `.page-head` rendern. Die Inhaltsspalte,
+ * an der AK1/AK2 die Kanten misst, ist deshalb `main`s Innenkante, nicht seine
+ * eigene Randbox. */
 async function contentColumnBox(page: Page) {
-  const box = await page.locator('main.shell__main').boundingBox();
+  const main = page.locator('main.shell__main');
+  const [box, padding] = await Promise.all([
+    main.boundingBox(),
+    main.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight) };
+    }),
+  ]);
   if (!box) throw new Error('main.shell__main hat keine Bounding Box');
-  return box;
+  return {
+    x: box.x + padding.left,
+    y: box.y,
+    width: box.width - padding.left - padding.right,
+    height: box.height,
+  };
 }
 
 /** AK1/AK2: Augenbraue, Zusatz (falls vorhanden) und Titelzeile teilen eine
