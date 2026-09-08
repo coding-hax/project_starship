@@ -224,6 +224,24 @@ describe('roundPlan', () => {
       expect(result.prompt).toContain('1. Es tut, was im Titel steht.');
     });
 
+    // #1136 AC2: der Bau endet gruen (setzt 'check', behaelt 'in-progress'),
+    // der naechste Takt kommt hier ueber den running-Zweig zurueck (mode =
+    // 'resume', Rolle 'check' aus dem Label). Ohne eigene Session-Familie fuer
+    // 'check' haette sessionKey() denselben Schluessel wie der Bauer geliefert
+    // und dessen Session in einen Readonly-Worktree durchgereicht, den die CLI
+    // nie sah ("No conversation found").
+    it('AC2: uebernimmt die gespeicherte Bau-Session NICHT als --resume, selbst wenn eine unter session-70 liegt', () => {
+      state.write('session-70', 'sid-build');
+      const { gh } = ghDouble([
+        openIssues(issueJson(70, ['in-progress', 'check'])),
+        noOpenPrs,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun;
+      expect(result.role).toBe('check');
+      expect(result.resume).toBe('');
+    });
+
     // Die Eskalation aus ADR-0007 gilt dem Bauen, nicht dem Nachsehen.
     it('hebt den Pruefer nicht auf die Eskalationsstufe des Bau-Tickets', () => {
       state.write('tier-70', 'opus');
@@ -1382,6 +1400,18 @@ describe('roundEval', () => {
     roundEval(ctx(gh), plan, ok, '');
     expect(state.read('session-77')).toBe('sid-1');
     expect(state.read('session-think-77')).toBeNull();
+  });
+
+  // #1136 AC3: Bau -> Check -> Bau. Ein Check-Lauf schreibt seine Session
+  // unter dem eigenen Schluessel session-check-<nr> und laesst den Bau-Stand
+  // unter session-<nr> unangetastet -- vorher teilten sich beide denselben
+  // Schluessel, und der Check ueberschrieb ihn nach jedem Lauf.
+  it('AC3: schreibt die Session einer Check-Rolle unter session-check-<nr> und laesst den Bau-Stand unter session-<nr> unangetastet', () => {
+    state.write('session-77', 'sid-build');
+    const { gh } = ghDouble();
+    roundEval(ctx(gh), { ...plan, role: 'check', beforeDirty: '' }, ok, '');
+    expect(state.read('session-77')).toBe('sid-build');
+    expect(state.read('session-check-77')).toBe('sid-1');
   });
 
   // #740: Token-Verbrauch je Lauf als Logzeile, damit Sparmassnahmen mess-
