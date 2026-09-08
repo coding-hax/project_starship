@@ -35,6 +35,7 @@ Weitere liest du nur bei konkretem Anlass:
 | Journal, Krypto | `docs/adr/0004-journal-metadaten-verschluesseln.md` |
 | Zweifel, ob ein Ticket zum Produkt passt | `docs/VISION.md` |
 | Architektur- oder Grundsatzfrage | das passende ADR unter `docs/adr/` |
+| Details zu einem Bereich aus der Code-Karte | die passende Bereichskarte unter `docs/codemap/` |
 
 ADRs sind getroffene Entscheidungen. Sie werden nicht neu verhandelt.
 

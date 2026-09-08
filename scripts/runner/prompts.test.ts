@@ -58,6 +58,13 @@ describe('prompts', () => {
       expect(prompt).toContain('nie das halbe Repo');
     });
 
+    // #1112 (CODEMAP-Diaet): ein Lauf soll die passende Bereichskarte unter
+    // docs/codemap/ als Anlass-Lektuere ziehen, statt bei Detailfragen zu
+    // einem Bereich zu raten oder das halbe Repo zu lesen.
+    it('nennt die Bereichskarte als Anlass-Lektuere', () => {
+      expect(prompt).toContain('Details zu einem Bereich der Code-Karte → die passende Bereichskarte unter docs/codemap/');
+    });
+
     it('verlangt die schnellen Tore lokal, aber kein volles e2e', () => {
       expect(prompt).toContain("'pnpm lint', 'pnpm typecheck', 'pnpm test'");
       expect(prompt).toContain("Kein voller 'pnpm e2e' lokal");
