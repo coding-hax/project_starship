@@ -424,7 +424,8 @@ test('ein Emoji wählen und speichern setzt das Emoji der Routine (issue #1101 A
   await editHabit(page, 'Dehnen');
   const dialog = editDialog(page);
   await habitChip(dialog, 'Emoji').click();
-  await dialog.getByRole('radio', { name: 'Laufen' }).check();
+  // exact: true — 'Laufen' otherwise substring-matches 'Schlittschuhlaufen' too.
+  await dialog.getByRole('radio', { name: 'Laufen', exact: true }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
@@ -514,7 +515,8 @@ test('die Emoji-Optionen sind per Pfeiltasten innerhalb der Radiogruppe erreichb
   await dialog.getByRole('radio', { name: /^Kein Emoji/ }).focus();
 
   await page.keyboard.press('ArrowRight');
-  await expect(dialog.getByRole('radio', { name: 'Laufen' })).toBeChecked();
+  // exact: true — 'Laufen' otherwise substring-matches 'Schlittschuhlaufen' too.
+  await expect(dialog.getByRole('radio', { name: 'Laufen', exact: true })).toBeChecked();
 
   await page.keyboard.press('ArrowRight');
   await expect(dialog.getByRole('radio', { name: 'Radfahren' })).toBeChecked();

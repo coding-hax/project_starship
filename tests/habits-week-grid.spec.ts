@@ -598,6 +598,12 @@ test('Nachbartage sind gedimmt und optisch von den Tagen des gewählten Monats a
 test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, füllt sich in --area-habits (issue #487 AC3, #1101 AC5)', async ({
   page,
 }) => {
+  // Same transition race as the in-month equivalent above: background-color is
+  // animated, so a synchronous read right after the class change can still
+  // catch the pre-transition frame. expect.poll waits it out instead of racing
+  // it (not a loosened assert — the target colour is unchanged).
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
   await seedHabit(page, {
     name: 'Nachbar',
     schedule: 'daily',
@@ -614,8 +620,10 @@ test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, 
   await neighbourDay.click();
   await expect(neighbourDay).toHaveAttribute('aria-pressed', 'true');
   await expect(neighbourDay).toHaveClass(/habit-week-grid__day--done/);
-  const background = await neighbourDay.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(background).toBe(await resolveBackgroundToken(page, '--area-habits'));
+  const expectedBackground = await resolveBackgroundToken(page, '--area-habits');
+  await expect
+    .poll(async () => neighbourDay.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBackground);
 
   const entries = await page.evaluate(() => window.__starship.pending());
   const logMutations = entries.filter((entry) => entry.table === 'habit_logs');
