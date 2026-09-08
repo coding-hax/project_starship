@@ -146,3 +146,37 @@ test('der schwebende Erfassen-Knopf verdeckt bei einer langen Terminliste kein E
 
   expect(itemBox.y + itemBox.height).toBeLessThanOrEqual(fabBox.y);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK7 (Nicht-Regression, issue #1124): bei 1280px bleibt die Wochenansicht  */
+/* der heutige Punktstreifen — keine Spalten-Chips, keine Tagesüberschrift,  */
+/* gestapelte Agenda-Zeile.                                                  */
+/* -------------------------------------------------------------------------- */
+
+test('in der Wochenansicht bleibt es bei 1280px beim Punktstreifen mit gestapelter Agenda darunter (issue #1124 AK7)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await seedEvent(page, {
+    title: 'Punktstreifen-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const todayCell = page.locator('.calendar-strip__day[data-today]');
+  await expect(todayCell.locator('.calendar-strip__dots')).toBeVisible();
+  await expect(todayCell.locator('.calendar-strip__chips')).not.toBeVisible();
+  await expect(page.locator('.calendar-view__day-heading')).not.toBeVisible();
+
+  const card = page.locator('.event-agenda__item').filter({ hasText: 'Punktstreifen-Termin' });
+  const [titleBox, sublineBox] = await Promise.all([
+    card.locator('.event-agenda__item-title').boundingBox(),
+    card.locator('.event-agenda__item-subline').boundingBox(),
+  ]);
+  if (!titleBox || !sublineBox) throw new Error('AK7: Titel oder Zweitzeile ohne BoundingBox');
+  expect(sublineBox.y).toBeGreaterThan(titleBox.y);
+});

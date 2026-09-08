@@ -10,7 +10,15 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { allDayBandsForWindow, categoriesForDay, categoryEdgeVar, dayWindow, parseDateKey } from './event-time';
+import {
+  agendaForDay,
+  allDayBandsForWindow,
+  categoriesForDay,
+  categoryEdgeVar,
+  dayWindow,
+  formatEventTime,
+  parseDateKey,
+} from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
 import type { EventView } from './use-events';
@@ -47,6 +55,24 @@ const MARGIN_DAYS = 10;
  *  (~16ms) so it never fires mid-fling (issue #820's fix still holds),
  *  comfortably above a snap correction's own settle-out. */
 const SCROLL_IDLE_MS = 150;
+
+/** A day column's event chip (issue #1124, AK1) — the ≥1440px week columns'
+ *  own vocabulary, distinct from the month grid's `DayChip` (event-time.ts,
+ *  issue #1123): that one caps at `maxChips` plus a "+N" overflow chip for a
+ *  small month-grid cell, this one shows every scheduled event of the day (a
+ *  week column is tall enough) and carries the start time the month chip
+ *  doesn't need. */
+interface StripChip {
+  id: string;
+  time: string;
+  title: string;
+  category: EventView['category'];
+}
+
+/** Shared empty-array identity (issue #824/#845's `CalendarDayCell` memo) —
+ *  a fresh `[]` per render on a chip-less day would break the memo just like
+ *  a fresh `dotsByDay` map would. */
+const EMPTY_CHIPS: StripChip[] = [];
 
 export interface CalendarStripProps {
   selectedDay: string;
@@ -87,6 +113,7 @@ interface CalendarDayCellProps {
   weekdayLabel: string;
   dayNumber: number;
   dots: EventView['category'][];
+  chips: StripChip[];
   onSelect: (day: string) => void;
 }
 
@@ -102,6 +129,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
   weekdayLabel,
   dayNumber,
   dots,
+  chips,
   onSelect,
 }: CalendarDayCellProps) {
   return (
@@ -129,6 +157,21 @@ const CalendarDayCell = memo(function CalendarDayCell({
               className="calendar-strip__dot"
               style={{ '--dot-cat': categoryEdgeVar(category) } as CSSProperties}
             />
+          ))}
+        </span>
+        {/* ≥1440px only (calendar-strip.css) — replaces `.calendar-strip__dots`
+            above, same decorative `aria-hidden` reasoning: the button itself
+            selects the day, the agenda below names every event in full. */}
+        <span className="calendar-strip__chips" aria-hidden="true">
+          {chips.map((chip) => (
+            <span
+              key={chip.id}
+              className="calendar-strip__chip"
+              style={{ '--chip-cat': categoryEdgeVar(chip.category) } as CSSProperties}
+            >
+              <span className="calendar-strip__chip-time">{chip.time}</span>
+              <span className="calendar-strip__chip-title">{chip.title}</span>
+            </span>
           ))}
         </span>
       </button>
@@ -197,6 +240,28 @@ export function CalendarStrip({
         windowDays.map((day) => [
           day,
           categoriesForDay(expandForDay(events, exceptions, day), day),
+        ]),
+      ),
+    [windowDays, events, exceptions],
+  );
+
+  /** One `agendaForDay` pass per day across the whole buffer (issue #1124,
+   *  AK1) — the ≥1440px week columns' chips, one per scheduled event, no cap:
+   *  a column is tall enough to carry the day's full agenda, unlike the month
+   *  grid's capped `chipsForDay` (event-time.ts, issue #1123). */
+  const chipsByDay = useMemo(
+    () =>
+      new Map(
+        windowDays.map((day) => [
+          day,
+          agendaForDay(expandForDay(events, exceptions, day), day).map(
+            (item): StripChip => ({
+              id: item.id,
+              time: formatEventTime(item.startsAt),
+              title: item.title,
+              category: item.category,
+            }),
+          ),
         ]),
       ),
     [windowDays, events, exceptions],
@@ -357,6 +422,7 @@ export function CalendarStrip({
             weekdayLabel={WEEKDAY_LABELS[weekdayIndexOf(day)]}
             dayNumber={Number(day.slice(-2))}
             dots={dotsByDay.get(day) ?? []}
+            chips={chipsByDay.get(day) ?? EMPTY_CHIPS}
             onSelect={selectDay}
           />
         ))}

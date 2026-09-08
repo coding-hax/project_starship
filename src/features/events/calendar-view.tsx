@@ -290,12 +290,16 @@ export function CalendarView() {
           bist.
         </OfflineNotice>
       )}
-      {/* Nur im Monat (issue #959, T2 von #957): in der Woche benennt der
-          Wochenstreifen im Kopf den gewählten Tag samt Wochentag bereits, eine
-          zweite Tagesüberschrift wäre Dopplung (Planentscheidung in #957).
+      {/* Im Monat immer sichtbar (issue #959, T2 von #957): der Wochenstreifen
+          benennt den gewählten Tag im Kopf bereits, eine zweite Überschrift
+          wäre dort Dopplung. In der Woche ab 1440px (issue #1124, AK3)
+          erscheint sie trotzdem — die Spalten selbst tragen dort keinen
+          Tages-Titel mehr, nur Wochentag + Zahl (calendar-strip.tsx) — via CSS
+          gescopet (calendar-view.css), unter 1440px bleibt sie per
+          `display: none` unsichtbar statt aus dem DOM zu verschwinden.
           Getrieben von `selectedDay`, nicht `focusMonth` — folgt dem gewählten
           Tag, nicht dem durchgeblätterten Monat. */}
-      {expanded && selectedDay !== null && (
+      {selectedDay !== null && (
         <p className="calendar-view__day-heading page-head__eyebrow">
           {formatDayHeading(selectedDay)}
         </p>

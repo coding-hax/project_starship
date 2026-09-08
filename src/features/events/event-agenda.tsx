@@ -132,6 +132,12 @@ export function EventAgenda({ events, exceptions, selectedDay, today, onOpenEven
           >
             <button type="button" className="event-agenda__item-button" onClick={() => onOpenEvent?.(item)}>
               <span className="event-agenda__item-time">{formatTime(item.startsAt)}</span>
+              {/* Nur ab 1440px sichtbar (event-agenda.css, issue #1124 AK4) —
+                  der Bindestrich davor ist dort ein CSS-`::before`, kein
+                  Textknoten: mobil bleibt `textContent` „09:0010:00…" statt
+                  „09:00–10:00", der Vertrag, den kalender.spec.ts an dieser
+                  Karte prüft (kein sichtbarer Bindestrich ohne Endzeit). */}
+              <span className="event-agenda__item-end">{formatTime(item.endsAt)}</span>
               <span className="event-agenda__item-text">
                 <span className="event-agenda__item-title">{item.title}</span>
                 <span className="event-agenda__item-subline">
