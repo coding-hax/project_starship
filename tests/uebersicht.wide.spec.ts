@@ -233,6 +233,10 @@ test('AK1: die Termin-Sektion zeigt sieben Spalten Mo-So mit Wochentag, Tagesnum
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  // Frischer Mount mit bereits eingefrorener Uhr (wie habits-uebersicht.spec.ts
+  // beforeEach) — registerPasskey landet vor dem skewClock-Aufruf auf /uebersicht,
+  // dessen erster Render liest also noch die echte Uhrzeit.
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Standup',
     allDay: false,
@@ -275,6 +279,7 @@ test('AK2: die sieben Spalten stehen auf denselben linken Kanten wie die sieben 
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  await page.goto('/uebersicht');
 
   await waitForReveal(page);
 
@@ -300,6 +305,7 @@ test('AK3: der heutige Tag ist als eigene Fläche abgesetzt, seine Tagesnummer t
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  await page.goto('/uebersicht');
 
   await waitForReveal(page);
 
@@ -330,6 +336,7 @@ test('AK4: ein Tag ohne Termine zeigt "nichts geplant" statt einer leeren Spalte
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Standup',
     allDay: false,
@@ -353,6 +360,7 @@ test('AK5: ein zu breiter Titel wird mit Auslassungspunkten beschnitten, die Spa
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Ein sehr sehr sehr langer Terminname, der garantiert nicht in eine einzelne Wochenspalte passt',
     allDay: false,
@@ -391,6 +399,7 @@ test('AK6: bei 1280px und 375px bleibt es bei "Nächster Termin" plus Restzeilen
 }) => {
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
+  await page.goto('/uebersicht');
   await seedEvent(page, {
     title: 'Standup',
     allDay: false,
