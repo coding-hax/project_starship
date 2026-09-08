@@ -300,7 +300,14 @@
     grid-column: 2;
     grid-row: 2;
     flex-direction: row;
-    align-items: baseline;
+    /* `flex-start` statt `baseline` (issue #1119 CI-Fund): --font-display
+       (temp-max) und die geerbte UI-Schrift (temp-min) haben unterschiedliche
+       Baseline-Metriken, dazu seit AK4 eine größere Schriftgröße auf
+       temp-max — baseline-ausgerichtet lag der Tiefstwert 6px höher als der
+       Höchstwert, AK1 verlangt aber dieselbe Zeile (±4px). Oberkante statt
+       Mitte, weil die Differenz sonst weiter von den Schriftgrößen abhinge
+       (~3.8px bei `center`, zu knapp an der Toleranzgrenze). */
+    align-items: flex-start;
     gap: var(--space-1);
   }
 
