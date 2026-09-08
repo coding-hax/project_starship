@@ -10,6 +10,10 @@ interface OverviewBlockProps {
   hiddenTitle?: string;
   /** Set when a descendant needs `aria-labelledby` to point at this heading. */
   headingId?: string;
+  /** Module id (registry.ts), rendered as `data-section` (issue #1120 AK1) —
+   * the hook the ≥1440px grid uses to give Wetter/Kalender the full-width row,
+   * since CSS has no other way to tell modules apart from inside their block. */
+  section?: string;
   children: ReactNode;
 }
 
@@ -21,9 +25,9 @@ interface OverviewBlockProps {
  * shows no title for at all (AK3), and `OverviewCardHead` below is what a card
  * puts in its own head where the sheet does show one (AK2).
  */
-export function OverviewBlock({ hiddenTitle, headingId, children }: OverviewBlockProps) {
+export function OverviewBlock({ hiddenTitle, headingId, section, children }: OverviewBlockProps) {
   return (
-    <div className="overview-block">
+    <div className="overview-block" data-section={section}>
       {hiddenTitle ? (
         <h2 className="visually-hidden" id={headingId}>
           {hiddenTitle}
