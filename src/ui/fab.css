@@ -142,3 +142,14 @@
     bottom: calc(var(--space-6) + env(safe-area-inset-bottom) + var(--keyboard-inset));
   }
 }
+
+/* Dritte Desktop-Stufe (issue #1116 AK4, ADR-0030): ab 1440px folgt die rechte
+   Kante der zentrierten 1440er Inhaltsspalte statt der rohen Fensterkante —
+   bei 1800px läge `right: var(--space-4)` sonst gut 30px rechts von ihr statt
+   der geforderten höchstens `--space-6`. `--shell-edge-inset-wide`
+   (tokens.css) rechnet das aus der Leisten-/Inhaltsbreite aus shell.css. */
+@media (min-width: 1440px) {
+  .fab {
+    right: var(--shell-edge-inset-wide);
+  }
+}

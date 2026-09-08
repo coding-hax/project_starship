@@ -73,6 +73,13 @@
   justify-content: flex-end;
 }
 
+/* Third desktop stage (issue #1116, ADR-0030): shown only from 1440px up, see
+   the media block below — hidden here by default so it never doubles up with
+   `chrome` on mobile or on the 768–1439px stage. */
+.app-header--sidebar {
+  display: none;
+}
+
 .app-header__settings {
   display: flex;
   align-items: center;
@@ -99,6 +106,16 @@
 .app-header__icon svg {
   width: 26px;
   height: 26px;
+}
+
+/* Real text (issue #1116 AC3), not a `::before`/`::after` `content:` — a
+   pseudo-element's generated content never reaches a screen reader's text
+   tree. Only rendered by the `sidebar` variant (app-header.tsx); the
+   ellipsis guard costs nothing on the other two, which never mount it. */
+.app-header__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --------------------------------- nav ---------------------------------- */
@@ -403,6 +420,61 @@
        in light mode (AK1/AK4). --text already resolved to --text-base one line
        up, matching the rest of .nav__bar's own-surface-own-ink pattern. */
     color: var(--text);
+  }
+}
+
+/* --------------------------- desktop, dritte Stufe ----------------------- */
+
+/*
+ * Dritte Desktop-Stufe (issue #1116, ADR-0030): eine 264er Leiste statt der
+ * 232er aus der zweiten Stufe, und eine zentrierte 1440er Inhaltsspalte statt
+ * der 880er linksbündigen. Der Block oben (768–1439px) bleibt dabei unberührt
+ * — AK2 verlangt ausdrücklich, dass die zweite Stufe unverändert bleibt.
+ */
+@media (min-width: 1440px) {
+  .shell {
+    grid-template-columns: var(--shell-col-wide) 1fr;
+  }
+
+  .shell__main {
+    max-width: var(--shell-content-wide);
+    margin-inline: auto;
+    padding-inline: var(--space-12);
+  }
+
+  /* Der Einstellungs-Einstieg wandert aus der Kopfzeile in den Leistenfuß
+     (AK3) — `chrome` weicht der `sidebar`-Variante, die Nav.tsx selbst
+     mountet, sonst gäbe es zwei sichtbare „Einstellungen"-Links gleichzeitig. */
+  .app-header--chrome {
+    display: none;
+  }
+
+  .app-header--sidebar {
+    display: block;
+    /* Volle Leistenbreite statt der 240px Innenbreite von `.nav` (264px Leiste
+       minus deren `--space-3`-Innenabstand, shell.css oben): negative
+       Außenabstände heben das Innenpolster auf, `align-items: stretch` auf
+       `.nav` löst die Breite anschließend wieder bis zur vollen Leistenbreite
+       auf — AK3 verlangt linke Kante 0, Breite 264, nicht das eingerückte
+       240px-Raster der Tabs darüber. */
+    margin-inline: calc(-1 * var(--space-3));
+  }
+
+  .app-header--sidebar .app-header__settings {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    font-size: var(--text-secondary);
+  }
+
+  .app-header--sidebar .app-header__settings:hover {
+    background: var(--surface-raised);
+  }
+
+  .app-header--sidebar .app-header__settings[aria-current='page'] {
+    background: var(--surface);
   }
 }
 
