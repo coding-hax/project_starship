@@ -404,3 +404,63 @@ test('die Agenda-Zeile nutzt bei 1800px die Breite — Zeitspanne links, Titel d
   // Nebeneinander, nicht unter dem Titel gestapelt (AK4's eigene Wortwahl).
   expect(Math.abs(sublineBox.y - titleBox.y)).toBeLessThan(titleBox.height);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK5: Woche + Tagesdetail bei 1800×1000 ohne Scrollen gemeinsam sichtbar   */
+/* -------------------------------------------------------------------------- */
+
+test('Woche und Tagesdetail sind bei 1800×1000 gemeinsam ohne Scrollen sichtbar (issue #1124 AK5)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+
+  const strip = page.locator('.calendar-strip');
+  const agenda = page.locator('.event-agenda');
+  await expect(strip).toBeVisible();
+  await expect(agenda).toBeVisible();
+
+  const [scrollHeight, viewportHeight] = await Promise.all([
+    page.evaluate(() => document.documentElement.scrollHeight),
+    page.evaluate(() => window.innerHeight),
+  ]);
+  expect(scrollHeight).toBeLessThanOrEqual(viewportHeight);
+
+  const [stripBox, agendaBox] = await Promise.all([strip.boundingBox(), agenda.boundingBox()]);
+  if (!stripBox || !agendaBox) throw new Error('AK5: Streifen oder Agenda ohne BoundingBox');
+  expect(agendaBox.y + agendaBox.height).toBeLessThanOrEqual(viewportHeight);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK6 (Nicht-Regression): ganztägiges Band läuft unverändert über die       */
+/* betroffenen Spalten — die geänderte Höhe/Overflow (Schritt 1) darf es     */
+/* weder beschneiden noch verschieben.                                       */
+/* -------------------------------------------------------------------------- */
+
+test('ein mehrtägiger ganztägiger Termin läuft ab 1440px unverändert als Band über die betroffenen Spalten (issue #1124 AK6)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  // TODAY (18.07., Sa) ist die führende, sichtbare Spalte (Spalte 0) — Mo
+  // 20.07. bis Mi 22.07. liegt vollständig im sichtbaren Fenster (Spalten 2–4).
+  await seedEvent(page, {
+    title: 'Wochenband-Kurztrip',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-20', // Montag
+    endDate: '2026-07-22', // Mittwoch
+    category: 'familie',
+  });
+
+  const band = page.locator('.calendar-strip__band').filter({ hasText: 'Wochenband-Kurztrip' });
+  await expect(band).toBeVisible();
+  await expect(band.locator('.calendar-strip__band-title')).toHaveText('Wochenband-Kurztrip');
+  expect(await bandGridColumn(band)).toBe('3/6'); // Mo=Spalte 2 .. Mi=Spalte 4
+
+  const bandBox = await band.boundingBox();
+  const stripBox = await page.locator('.calendar-strip').boundingBox();
+  if (!bandBox || !stripBox) throw new Error('AK6: Band oder Streifen ohne BoundingBox');
+  // Unbeschnitten: das Band liegt vollständig innerhalb der Streifen-Karte.
+  expect(bandBox.y).toBeGreaterThanOrEqual(stripBox.y);
+  expect(bandBox.y + bandBox.height).toBeLessThanOrEqual(stripBox.y + stripBox.height + 1);
+});
