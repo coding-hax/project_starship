@@ -275,29 +275,32 @@ describe('dispatch', () => {
     });
   });
 
-  // #356 (B): round-recover liest ROUND_FILE + Log wie round-eval und reicht
-  // an roundRecover() durch -- die eigentliche Entscheidungslogik hat ihre
+  // #356 (B): round-recover liest ROUND_FILE + stdout/stderr wie round-eval
+  // und reicht die kombinierte Sicht an roundRecover() durch (#1144: zwei
+  // Dateien statt einer) -- die eigentliche Entscheidungslogik hat ihre
   // eigenen Faelle in round.test.ts, hier zaehlt nur die Dispatcher-Naht.
-  describe('round-recover dispatch (#356 B)', () => {
-    function withRoundFixture(run: (roundFile: string, logFile: string) => void): void {
+  describe('round-recover dispatch (#356 B, #1144)', () => {
+    function withRoundFixture(run: (roundFile: string, outFile: string, errFile: string) => void): void {
       const dir = mkdtempSync(join(tmpdir(), 'starship-cli-round-recover-'));
       try {
         const roundFile = join(dir, 'round.json');
-        const logFile = join(dir, 'claude.log');
+        const outFile = join(dir, 'claude.out.json');
+        const errFile = join(dir, 'claude.err.log');
         writeFileSync(roundFile, JSON.stringify({ issue: 42, role: 'build', resume: 'sid-old' }));
-        run(roundFile, logFile);
+        run(roundFile, outFile, errFile);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     }
 
-    it('retry=true + Session entfernt, wenn der Log "No conversation found" enthaelt', () => {
-      withRoundFixture((roundFile, logFile) => {
-        writeFileSync(logFile, 'irgendwas\nNo conversation found with session ID: sid-old\n');
+    it('retry=true + Session entfernt, wenn stderr "No conversation found" enthaelt', () => {
+      withRoundFixture((roundFile, outFile, errFile) => {
+        writeFileSync(outFile, '');
+        writeFileSync(errFile, 'irgendwas\nNo conversation found with session ID: sid-old\n');
         const ctx = fakeContext();
         const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-        const rc = dispatch(ctx, ['round-recover', roundFile, '1', logFile]);
+        const rc = dispatch(ctx, ['round-recover', roundFile, '1', outFile, errFile]);
 
         expect(rc).toBe(0);
         expect(stdout).toHaveBeenCalledWith('{"retry":true}\n');
@@ -307,17 +310,35 @@ describe('dispatch', () => {
       });
     });
 
-    it('retry=false ohne den Marker im Log, keine Seiteneffekte', () => {
-      withRoundFixture((roundFile, logFile) => {
-        writeFileSync(logFile, 'ein anderer Fehler\n');
+    it('retry=false ohne den Marker in stdout/stderr, keine Seiteneffekte', () => {
+      withRoundFixture((roundFile, outFile, errFile) => {
+        writeFileSync(outFile, '');
+        writeFileSync(errFile, 'ein anderer Fehler\n');
         const ctx = fakeContext();
         const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-        const rc = dispatch(ctx, ['round-recover', roundFile, '1', logFile]);
+        const rc = dispatch(ctx, ['round-recover', roundFile, '1', outFile, errFile]);
 
         expect(rc).toBe(0);
         expect(stdout).toHaveBeenCalledWith('{"retry":false}\n');
         expect(ctx.state.remove).not.toHaveBeenCalled();
+
+        stdout.mockRestore();
+      });
+    });
+
+    it('retry=true, wenn stderr den Marker traegt UND stdout gueltiges JSON hat (realer Fall)', () => {
+      withRoundFixture((roundFile, outFile, errFile) => {
+        writeFileSync(outFile, JSON.stringify({ subtype: 'error_during_execution' }));
+        writeFileSync(errFile, 'No conversation found with session ID: sid-old\n');
+        const ctx = fakeContext();
+        const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+        const rc = dispatch(ctx, ['round-recover', roundFile, '1', outFile, errFile]);
+
+        expect(rc).toBe(0);
+        expect(stdout).toHaveBeenCalledWith('{"retry":true}\n');
+        expect(ctx.state.remove).toHaveBeenCalledWith('session-42');
 
         stdout.mockRestore();
       });

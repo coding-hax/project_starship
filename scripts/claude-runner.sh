@@ -78,7 +78,8 @@ WORKTREE_BASE="${WORKTREE_BASE:-$REPO_DIR/.claude/worktrees}"
 # gemeinsam auf SHARED_DIR zeigen, sonst liest das Gate hier eine Datei, die
 # nie jemand schreibt, und kein Slot pausiert mehr.
 LIMIT_UNTIL="$SHARED_DIR/limit-until"   # Unix-Zeit, bis zu der das Kontingent leer ist
-LOG="$STATE_DIR/last-run.log"           # stdout+stderr des letzten claude-Laufs
+LOG_OUT="$STATE_DIR/last-run.out.json"  # stdout des letzten claude-Laufs (nur das Ergebnis-JSON, #1144)
+LOG_ERR="$STATE_DIR/last-run.err.log"   # stderr des letzten claude-Laufs (CLI-Diagnosen, #1144)
 TIMED_OUT="$STATE_DIR/timed-out"        # Marker der Notbremse, siehe run_limited()
 ROUND_FILE="$STATE_DIR/round.json"      # Plan der laufenden Runde, Übergabe an round-eval
 
@@ -246,7 +247,7 @@ stop_fleet_publisher() {
 # --- Ersatz für `timeout` (fehlt auf macOS) ----------------------------------
 # Bleibt in Bash: hängt an Signalen und Prozessgruppen, in Node wäre das ein
 # Rückschritt. Beendet die ganze Prozessgruppe, nicht nur das Kind.
-run_limited() {   # $1 = Sekunden, $2 = cwd, Rest = Befehl. Ausgabe geht nach $LOG.
+run_limited() {   # $1 = Sekunden, $2 = cwd, Rest = Befehl. stdout -> $LOG_OUT, stderr -> $LOG_ERR (#1144).
   local secs="$1"; shift
   local cwd="$1"; shift
   rm -f "$TIMED_OUT"
@@ -257,7 +258,7 @@ run_limited() {   # $1 = Sekunden, $2 = cwd, Rest = Befehl. Ausgabe geht nach $L
   # ersetzt nur den Subshell-Prozess, die Prozessgruppen-/Signal-Logik unten
   # (Notbremse) trifft weiter den ganzen Baum.
   set -m
-  ( cd "$cwd" && exec "$@" ) <&0 > "$LOG" 2>&1 &
+  ( cd "$cwd" && exec "$@" ) <&0 > "$LOG_OUT" 2> "$LOG_ERR" &
   local cmd_pid=$!
   set +m
 
@@ -559,7 +560,7 @@ run_round() {
   # Vor der Worktree-Entfernung: der Frischversuch braucht denselben run_cwd.
   # Nicht bei einem Notbremse-Timeout -- der ist eindeutig, kein Session-Fehler.
   if [ "$used_resume" -eq 1 ] && [ "$timed" -ne 1 ]; then
-    if ts_run round-recover "$ROUND_FILE" "$rc" "$LOG" | jq -e '.retry == true' >/dev/null 2>&1; then
+    if ts_run round-recover "$ROUND_FILE" "$rc" "$LOG_OUT" "$LOG_ERR" | jq -e '.retry == true' >/dev/null 2>&1; then
       start_fleet_publisher
       ts_run round-prompt "$ROUND_FILE" | run_limited "$MAX_RUNTIME" "$run_cwd" claude "${base_args[@]}"
       rc=${PIPESTATUS[1]}
@@ -578,7 +579,7 @@ run_round() {
       || { rm -rf "$run_cwd"; git -C "$REPO_DIR" worktree prune >/dev/null 2>&1; }
   fi
 
-  eval_out=$(ts_run round-eval "$ROUND_FILE" "$rc" "$timed" "$MAX_RUNTIME" "$LOG")
+  eval_out=$(ts_run round-eval "$ROUND_FILE" "$rc" "$timed" "$MAX_RUNTIME" "$LOG_OUT" "$LOG_ERR")
   [ $? -eq 127 ] && return 1
   # #891, AK4: der 429-Zweig setzt forcePublishStatus=true -- dann veroeffentlicht
   # DIESER Slot den Flottenstatus einmalig selbst, auch ohne Leitung (`// empty`
