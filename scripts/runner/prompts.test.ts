@@ -132,6 +132,52 @@ describe('prompts', () => {
     });
   });
 
+  // #1147: der Bau-Prompt liest die Ticket-Historie gezielt statt bei jedem
+  // Wiederaufsetzen routinemaessig vollstaendig -- bei #1101 waren Body plus
+  // vier Kommentare 24.101 Zeichen, der groesste Teil davon totes Gewicht.
+  describe('Ticket-Historie gezielt statt vollstaendig (#1147)', () => {
+    const prompt = buildPrompt(42);
+
+    it('verlangt bei vorhandenem Fortschrittskommentar nur Body, Fortschritt, Plan und neue Kommentare', () => {
+      expect(prompt).toContain(
+        'Existiert im Issue bereits ein Fortschrittskommentar (Marker „🤖\n     Fortschritt (automatisch aktualisiert)")',
+      );
+      expect(prompt).toContain(
+        'genügen für den Kontext\n     der Issue-Body, dieser Fortschrittskommentar, ein Plan-Kommentar',
+      );
+      expect(prompt).toContain('die\n     Kommentare, die seit deinem letzten Lauf dazugekommen sind');
+      expect(prompt).not.toContain('Lies das Issue: gh issue view');
+    });
+
+    it('nennt die beiden Marker woertlich', () => {
+      expect(prompt).toContain('„🤖\n     Fortschritt (automatisch aktualisiert)"');
+      expect(prompt).toContain('„🧠 Plan (Opus) — Status:"');
+    });
+
+    it('faellt beim ersten Bau-Lauf (kein Fortschrittskommentar) auf die vollstaendige Diskussion zurueck', () => {
+      expect(prompt).toContain('Existiert noch KEIN Fortschrittskommentar (erster Bau-Lauf an diesem\n     Ticket)');
+      expect(prompt).toContain("lies die vollständige Diskussion wie bisher —\n     'gh issue view 42 --comments'.");
+    });
+
+    it('holt bei einer kurzen mehrdeutigen Antwort die Frage nach, statt zu raten', () => {
+      expect(prompt).toContain('kurze, für sich genommen mehrdeutige Antwort ist\n     („B", „ja", „Variante 2")');
+      expect(prompt).toContain('statt sie zu erraten');
+      expect(prompt).toContain("gilt Schritt 6 ('needs-answer')");
+      expect(prompt).toContain('eine Entscheidung wird nie\n     geraten');
+    });
+
+    it('nennt die vollstaendige Diskussion als jederzeit erlaubten Rueckfall bei Unklarheit', () => {
+      expect(prompt).toContain(
+        "Bei jeder Unklarheit über den aktuellen Auftrag bleibt\n     'gh issue view 42 --comments' ausdrücklich erlaubt und ist dein\n     Rückfall",
+      );
+    });
+
+    it('aendert die Denk- und Pruef-Rollen nicht', () => {
+      expect(planPrompt(42)).toContain('gh issue view 42 --comments');
+      expect(researchPrompt(42)).toContain('gh issue view 42 --comments');
+      expect(checkPrompt(42, ['X'], 'feat/42-x')).toContain('gh issue view 42 --comments');
+    });
+  });
 
   // #839: der AK-Check ist das Tor vor dem Merge. Was hier festgenagelt ist,
   // sind genau die Zusagen, deren Verlust den Check wertlos machte: die
