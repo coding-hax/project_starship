@@ -5,14 +5,16 @@ import { slotWorkerLimit } from './vitest.pool.mts';
 export default defineConfig({
   test: {
     environment: 'node',
-    // Playwright owns tests/ as a directory of specs, but `route-readiness.ts` (issue
-    // #1142) is framework-agnostic logic that happens to live next to auth.setup.ts —
-    // same reasoning as the scripts/runner exception below. playwright.config.ts's
-    // `mobile` project excludes this file from Playwright's own discovery.
+    // Playwright owns tests/ as a directory of specs, but `route-readiness.ts` and the
+    // exported probe in `global-setup.ts` (issue #1142) are framework-agnostic/DB-free
+    // logic that happens to live next to auth.setup.ts — same reasoning as the
+    // scripts/runner exception below. playwright.config.ts's `mobile` project excludes
+    // both files from Playwright's own discovery.
     include: [
       'src/**/*.test.ts',
       'scripts/runner/**/*.test.ts',
       'tests/route-readiness.test.ts',
+      'tests/global-setup.test.ts',
       'vitest.pool.test.ts',
     ],
     // Needs a real Postgres (MVCC snapshot semantics a mock cannot have, fund

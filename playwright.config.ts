@@ -112,12 +112,14 @@ export default defineConfig({
     // `*.desktop.spec.ts`, so nothing runs twice.
     {
       name: 'mobile',
-      // route-readiness.test.ts (#1142) is a Vitest unit test, not a Playwright spec —
-      // it has no testMatch-scoped project of its own to fall out of by default, so
-      // `mobile` (the only project without its own testMatch) must exclude it explicitly.
+      // route-readiness.test.ts and global-setup.test.ts (#1142) are Vitest unit tests,
+      // not Playwright specs — they have no testMatch-scoped project of their own to
+      // fall out of by default, so `mobile` (the only project without its own
+      // testMatch) must exclude them explicitly.
       testIgnore: [
         /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|.*\.desktop|.*\.wide)\.spec\.ts$/,
         /route-readiness\.test\.ts$/,
+        /global-setup\.test\.ts$/,
       ],
       dependencies: ['setup'],
       use: {

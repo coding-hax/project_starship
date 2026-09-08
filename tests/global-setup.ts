@@ -2,7 +2,7 @@ import type { FullConfig } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createThrowawaySession } from './helpers';
-import { waitForRouteReady } from './route-readiness';
+import { type RouteProbe, waitForRouteReady } from './route-readiness';
 import { DEV_SERVER_READY_TIMEOUT_MS, LOCK_FILE, PORT, PORT_PROD } from './run-lock';
 
 type Lock = { pid: number; startedAt: string };
@@ -43,29 +43,37 @@ function readLock(): Lock | null {
  * throwaway `sessions` row instead (same mechanism `auth-geraete.spec.ts` uses elsewhere)
  * and requests the route with it. `auth.setup.ts`'s `resetDatabase()` deletes that row
  * along with everything else before the real ceremony starts.
+ *
+ * Exported so `global-setup.test.ts` can drive it directly against a stubbed `fetch`
+ * (AK1/AK2) instead of only exercising the generic `waitForRouteReady` engine with a
+ * fake probe.
  */
+export function createColdRouteProbe(port: number, sessionToken: string): RouteProbe {
+  return async () => {
+    let response: Response;
+    try {
+      response = await fetch(`http://localhost:${port}/uebersicht`, {
+        headers: { cookie: `starship_session=${sessionToken}` },
+        redirect: 'manual',
+      });
+    } catch (error) {
+      return { ready: false, detail: error instanceof Error ? error.message : String(error) };
+    }
+    return response.status === 200
+      ? { ready: true, detail: 'ok' }
+      : { ready: false, detail: `HTTP ${response.status}` };
+  };
+}
+
 async function waitForColdRouteReady(): Promise<void> {
   const scope = process.env.E2E_SCOPE ?? 'all';
   const port = scope === 'offline' ? PORT_PROD : PORT;
   const session = await createThrowawaySession();
 
-  await waitForRouteReady(
-    async () => {
-      let response: Response;
-      try {
-        response = await fetch(`http://localhost:${port}/uebersicht`, {
-          headers: { cookie: `starship_session=${session.token}` },
-          redirect: 'manual',
-        });
-      } catch (error) {
-        return { ready: false, detail: error instanceof Error ? error.message : String(error) };
-      }
-      return response.status === 200
-        ? { ready: true, detail: 'ok' }
-        : { ready: false, detail: `HTTP ${response.status}` };
-    },
-    { route: '/uebersicht', deadlineMs: DEV_SERVER_READY_TIMEOUT_MS },
-  );
+  await waitForRouteReady(createColdRouteProbe(port, session.token), {
+    route: '/uebersicht',
+    deadlineMs: DEV_SERVER_READY_TIMEOUT_MS,
+  });
 }
 
 /**
