@@ -362,3 +362,45 @@ test('unter der Woche steht die Tagesüberschrift des gewählten Tages, darunter
   if (!headingBox || !agendaBox) throw new Error('AK3: Tagesüberschrift oder Agenda ohne BoundingBox');
   expect(agendaBox.y).toBeGreaterThan(headingBox.y);
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK4: Agenda-Zeile nutzt die Breite — Zeitspanne links, Titel, Subline rechts */
+/* -------------------------------------------------------------------------- */
+
+test('die Agenda-Zeile nutzt bei 1800px die Breite — Zeitspanne links, Titel daneben, Kategorie/Dauer rechts (issue #1124 AK4)', async ({
+  page,
+}) => {
+  await page.getByRole('radio', { name: 'Woche' }).click();
+  await seedEvent(page, {
+    title: 'Breitzeilen-Termin',
+    allDay: false,
+    startsAt: `${TODAY}T07:00:00.000Z`, // 09:00 Berlin
+    endsAt: `${TODAY}T08:00:00.000Z`, // 10:00 Berlin
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = page.locator('.event-agenda__item').filter({ hasText: 'Breitzeilen-Termin' });
+  await expect(card).toBeVisible();
+  await expect(card.locator('.event-agenda__item-time')).toHaveText('09:00');
+  await expect(card.locator('.event-agenda__item-end')).toBeVisible();
+  await expect(card.locator('.event-agenda__item-end')).toHaveText('10:00');
+
+  const [timeBox, endBox, titleBox, sublineBox] = await Promise.all([
+    card.locator('.event-agenda__item-time').boundingBox(),
+    card.locator('.event-agenda__item-end').boundingBox(),
+    card.locator('.event-agenda__item-title').boundingBox(),
+    card.locator('.event-agenda__item-subline').boundingBox(),
+  ]);
+  if (!timeBox || !endBox || !titleBox || !sublineBox) {
+    throw new Error('AK4: Zeitspanne, Titel oder Zweitzeile ohne BoundingBox');
+  }
+  // Zeitspanne links, Titel daneben, Zweitzeile am rechten Rand — in dieser
+  // Reihenfolge nebeneinander.
+  expect(timeBox.x).toBeLessThan(endBox.x);
+  expect(endBox.x).toBeLessThan(titleBox.x);
+  expect(titleBox.x).toBeLessThan(sublineBox.x);
+  // Nebeneinander, nicht unter dem Titel gestapelt (AK4's eigene Wortwahl).
+  expect(Math.abs(sublineBox.y - titleBox.y)).toBeLessThan(titleBox.height);
+});

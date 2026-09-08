@@ -166,6 +166,17 @@
   line-height: var(--leading-display);
 }
 
+/* Endzeit (issue #1124, AK4) — eigenes Geschwister, nicht Teil der
+   Zeitpille: unter 1440px unsichtbar, `.event-agenda__item-time` bleibt
+   dort allein die Kopfzeile (kalender.spec.ts prüft dort ausdrücklich
+   *keinen* Zeitspannen-Text auf der Karte). Deklariert vor dem
+   `@media`-Block unten, aus demselben Cascade-Grund wie
+   `.calendar-strip__chips` (calendar-strip.css): eine unbedingte Regel nach
+   dem Media-Block würde dessen `display: inline` immer schlagen. */
+.event-agenda__item-end {
+  display: none;
+}
+
 /* Titel + Zweitzeile, rechts neben der Uhrzeit-Spalte (issue #923) —
    min-width:0 ist der Hebel gegen Grid-Überlauf bei langem Titel (AK6). */
 .event-agenda__item-text {
@@ -197,4 +208,48 @@
   color: var(--text-muted);
   font-size: var(--text-meta);
   text-align: center;
+}
+
+/* Breite Agenda-Zeile (issue #1124, AK4) — nur die Woche ab 1440px:
+   `:not(:has(> .month-grid))` ist dasselbe Woche/Monat-Unterscheidungsmerkmal
+   wie calendar-view.css's Tagesüberschrift-Regel, hier nötig, weil die
+   Monatsagenda in der zweiten/dritten Desktop-Stufe (issue #1021/#1123)
+   selbst bei ≥1440px höchstens 400px schmal bleibt — eine gestapelte Karte
+   passt dort besser als vier Grid-Spalten. Beide Bedingungen müssen im
+   selben `@media`-Block stehen (nicht nur per `:not(:has())` gescopet):
+   die Woche zeigt `.event-agenda` auch unter 1440px (AK7, kalender.desktop/
+   .spec.ts) — ohne die Breitenklammer griffe die vierspaltige Zeile dort
+   auch schon bei 375/1280px. */
+@media (min-width: 1440px) {
+  .calendar-view:not(:has(> .month-grid)) .event-agenda__item-button {
+    grid-template-columns: auto auto 1fr auto;
+    column-gap: var(--space-2);
+  }
+
+  .calendar-view:not(:has(> .month-grid)) .event-agenda__item-end {
+    display: inline;
+    color: var(--text);
+    font-size: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .calendar-view:not(:has(> .month-grid)) .event-agenda__item-end::before {
+    content: '–';
+    margin-inline-end: 2px;
+    color: var(--text-muted);
+  }
+
+  /* Hebt Titel + Zweitzeile zu direkten Grid-Kindern des Buttons — sonst
+     bliebe die vierte Spalte oben leer, weil `.event-agenda__item-text`
+     selbst nur eine der vier Spalten belegt. Der mobile Zwei-Spalten-Stapel
+     (`.event-agenda__item-text`'s eigene `display: flex; flex-direction:
+     column`, oben in dieser Datei) bleibt unter 1440px unangetastet. */
+  .calendar-view:not(:has(> .month-grid)) .event-agenda__item-text {
+    display: contents;
+  }
+
+  .calendar-view:not(:has(> .month-grid)) .event-agenda__item-subline {
+    text-align: end;
+    align-self: center;
+  }
 }
