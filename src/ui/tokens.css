@@ -198,6 +198,21 @@
   --space-8: 32px;
   --space-12: 48px;
 
+  /* Dritte Desktop-Stufe ab 1440px (ADR-0030, issue #1116): Leisten- und
+     Inhaltsbreite, geteilt zwischen shell.css (Grid-Spalten), fab.css und
+     toast.css (damit deren fixed-positionierte Ecken der Inhaltsspalte statt
+     der rohen Fensterkante folgen — sonst zwei Kopien derselben Rechnung). */
+  --shell-col-wide: 264px;
+  --shell-content-wide: 1440px;
+  /* Abstand vom Fensterrand für `.fab`/`.toast-host` ab 1440px: space-6 rechts
+     der Inhaltsspalte, nie näher am Fenster als space-6 selbst — die zweite
+     Zahl wird negativ (und von max() verworfen), solange die Spalte noch
+     nicht ihre volle 1440er Breite erreicht (1440–1704px Fensterbreite). */
+  --shell-edge-inset-wide: max(
+    var(--space-6),
+    calc((100vw - var(--shell-col-wide) - var(--shell-content-wide)) / 2 - var(--space-6))
+  );
+
   /* Soft, sits underneath, no hard edges — but opaque enough to still read once
      a card sits on a saturated route ground instead of near-white --bg (issue
      #831 AK1): doubled from the pre-#831 opacity, blur radii untouched (60fps
