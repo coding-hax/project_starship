@@ -439,12 +439,21 @@
   .shell__main {
     /* `box-sizing: border-box` explizit statt vererbt: `max-width` muss die
        Box INKLUSIVE des `padding-inline` unten treffen, sonst füllt die Box
-       (1440 + 2×48 Padding) genau die verfügbare 1536px-Spalte bei 1800px und
-       `margin-inline: auto` hat nichts mehr zu verteilen (Fund: AK1 lieferte
-       0px statt 48px Rand, ohne diese Zeile). */
+       (1440 + 2×48 Padding) genau die verfügbare 1536px-Spalte bei 1800px. */
     box-sizing: border-box;
     max-width: var(--shell-content-wide);
-    margin-inline: auto;
+    /* `margin-inline: auto` zentriert `.shell__main` als Grid-Item NICHT —
+       weder mit geerbtem `width: 100%` noch mit `width: min(100%, …)`
+       (beide Varianten geprüft): die berechneten `margin-left`/`margin-right`
+       blieben in jedem Fall bei 0px statt bei den erwarteten 48px (AK1).
+       Statt uns auf die Auto-Margin-Verteilung von Grid-Items zu verlassen,
+       rechnen wir den Rand selbst aus: `100%` löst hier gegen die Breite der
+       Grid-Spalte auf (1536px bei 1800px Viewport, 264er Leiste), `max(0px, …)`
+       verhindert einen negativen Rand, sobald die Spalte schmaler als
+       1440px + 2×Rand wird (z. B. exakt an der 1440px-Grenze selbst, wo die
+       Spalte nur 1176px misst) — dort füllt `.shell__main` die Spalte über
+       das geerbte `width: 100%` ohnehin randlos aus. */
+    margin-inline: max(0px, calc((100% - var(--shell-content-wide)) / 2));
     padding-inline: var(--space-12);
   }
 
