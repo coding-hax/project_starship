@@ -50,7 +50,7 @@ function allDayBar(page: Page, title: string) {
 async function resolveCardColor(
   page: Page,
   cssVar: string,
-  property: 'backgroundColor' | 'borderInlineStartColor',
+  property: 'backgroundColor' | 'borderInlineStartColor' | 'color' | 'borderRadius',
 ): Promise<string> {
   return page.evaluate(
     ({ cssVar, property }) => {
@@ -606,7 +606,7 @@ test('Termine am aktuellen Tag erscheinen als chronologische Liste, mit Titel un
 /* AK1/AK3 (issue #923): Blatt-Aufbau der getakteten Agenda-Zeile             */
 /* -------------------------------------------------------------------------- */
 
-test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit traegt die Kategoriefarbe (issue #923 AK1)', async ({
+test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit sitzt auf einer Pille in Kategoriefarbe (issue #923 AK1, issue #1109 AK1/AK4)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -623,19 +623,28 @@ test('die Zweitzeile zeigt Dauer und Kategorie, die Uhrzeit traegt die Kategorie
   await expect(card).toBeVisible();
   await expect(card.locator('.event-agenda__item-subline')).toHaveText('30 Min · Arbeit');
 
-  const expectedColor = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
-  const timeStyle = await card
-    .locator('.event-agenda__item-time')
-    .evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { color: style.color, fontSize: style.fontSize };
-    });
+  const expectedBackground = await resolveCardColor(page, '--cat-arbeit', 'backgroundColor');
+  const expectedColor = await resolveCardColor(page, '--on-accent', 'color');
+  const expectedRadius = await resolveCardColor(page, '--radius-pill', 'borderRadius');
+  const timeStyle = await card.locator('.event-agenda__item-time').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      backgroundColor: style.backgroundColor,
+      color: style.color,
+      borderRadius: style.borderRadius,
+      fontSize: style.fontSize,
+    };
+  });
+  expect(timeStyle.backgroundColor).toBe(expectedBackground);
   expect(timeStyle.color).toBe(expectedColor);
-  // Uhrzeit in eigener Spalte bei 24px (--text-agenda-time), AK1.
-  expect(timeStyle.fontSize).toBe('24px');
+  expect(timeStyle.borderRadius).toBe(expectedRadius);
+  // Uhrzeit-Pille bei 20px (--text-agenda-time, issue #1109 AK4 — vormals 24px).
+  expect(timeStyle.fontSize).toBe('20px');
 });
 
-test('die Farbkante einer Terminkarte ist 6px breit (issue #923 AK3)', async ({ page }) => {
+test('die 6px-Kategoriekante entfaellt, die Kategoriefarbe bleibt als Flaeche der Uhrzeit-Pille sichtbar (issue #923 AK3, issue #1109 AK3)', async ({
+  page,
+}) => {
   await seedEvent(page, {
     title: 'Kantenprobe',
     allDay: false,
@@ -643,13 +652,58 @@ test('die Farbkante einer Terminkarte ist 6px breit (issue #923 AK3)', async ({ 
     endsAt: `${TODAY}T10:00:00.000Z`,
     startDate: null,
     endDate: null,
-    category: null,
+    category: 'arbeit',
   });
 
   const card = eventCard(page, 'Kantenprobe');
   await expect(card).toBeVisible();
   const borderWidth = await card.evaluate((el) => getComputedStyle(el).borderInlineStartWidth);
-  expect(borderWidth).toBe('6px');
+  expect(borderWidth).toBe('0px');
+
+  const expectedBackground = await resolveCardColor(page, '--cat-arbeit', 'backgroundColor');
+  const pillBackground = await card
+    .locator('.event-agenda__item-time')
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(pillBackground).toBe(expectedBackground);
+});
+
+test('der Text auf der Uhrzeit-Pille haelt 4,5:1 Kontrast, alle Kategorien plus Fallback, hell und dunkel (issue #1109 AK2)', async ({
+  page,
+}) => {
+  const cases = [
+    { category: 'sport', title: 'Kontrastprobe Sport' },
+    { category: 'gesundheit', title: 'Kontrastprobe Gesundheit' },
+    { category: 'familie', title: 'Kontrastprobe Familie' },
+    { category: 'arbeit', title: 'Kontrastprobe Arbeit' },
+    { category: 'privat', title: 'Kontrastprobe Privat' },
+    { category: null, title: 'Kontrastprobe Fallback' },
+  ] as const;
+
+  for (const [i, { category, title }] of cases.entries()) {
+    const hour = String(6 + i).padStart(2, '0');
+    await seedEvent(page, {
+      title,
+      allDay: false,
+      startsAt: `${TODAY}T${hour}:00:00.000Z`,
+      endsAt: `${TODAY}T${hour}:30:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category,
+    });
+  }
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const { title } of cases) {
+      const pill = eventCard(page, title).locator('.event-agenda__item-time');
+      const [background, ink] = await Promise.all([
+        pill.evaluate((el) => getComputedStyle(el).backgroundColor),
+        pill.evaluate((el) => getComputedStyle(el).color),
+      ]);
+      const ratio = contrastRatio(await toRgb(page, background), await toRgb(page, ink));
+      expect(ratio, `${title} (${scheme})`).toBeGreaterThanOrEqual(4.5);
+    }
+  }
 });
 
 /* -------------------------------------------------------------------------- */
@@ -936,6 +990,28 @@ test('der Titel steht rechts von der Uhrzeit-Spalte, das Ueberschneidungs-Label 
   expect(labelBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
 });
 
+test('die Trefferflaeche der Terminkarte bleibt trotz Zeitpille mindestens --touch-target hoch (issue #1109 AK6)', async ({
+  page,
+}) => {
+  await seedEvent(page, {
+    title: 'Trefferprobe',
+    allDay: false,
+    startsAt: `${TODAY}T09:00:00.000Z`,
+    endsAt: `${TODAY}T10:00:00.000Z`,
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const card = eventCard(page, 'Trefferprobe');
+  await expect(card).toHaveAttribute('data-entering', 'false');
+
+  const buttonBox = await card.locator('.event-agenda__item-button').boundingBox();
+  if (!buttonBox) throw new Error('AK6: Kachel hat keine BoundingBox');
+  const touchTarget = parseFloat(await resolveStyleToken(page, 'min-height', '--touch-target'));
+  expect(buttonBox.height).toBeGreaterThanOrEqual(touchTarget);
+});
+
 test('bei langem Titel bleibt die ueberlappende Karte innerhalb der Bildschirmbreite, iPhone 12 mini (issue #657 AK5)', async ({
   page,
 }) => {
@@ -1041,7 +1117,7 @@ test('bei reduzierter Bewegung erscheint ein neuer Termin ohne Bewegungs-Ueberga
 /* AC3: Kategorie-Farbkante                                                  */
 /* -------------------------------------------------------------------------- */
 
-test('eine Terminkarte mit Kategorie traegt die Kategorie-Farbe als Kante, die Flaeche bleibt --surface (AC3)', async ({
+test('eine Terminkarte mit Kategorie traegt die Kategorie-Farbe als Flaeche der Uhrzeit-Pille, die Kartenflaeche bleibt --surface (AC3, issue #1109)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -1057,15 +1133,15 @@ test('eine Terminkarte mit Kategorie traegt die Kategorie-Farbe als Kante, die F
   const card = eventCard(page, 'Teammeeting');
   await expect(card).toBeVisible();
 
-  const expectedEdge = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  const expectedPill = await resolveCardColor(page, '--cat-arbeit', 'backgroundColor');
   const expectedSurface = await resolveCardColor(page, '--surface', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedEdge);
+    .poll(() => card.locator('.event-agenda__item-time').evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedPill);
   expect(await card.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedSurface);
 });
 
-test('eine Terminkarte ohne Kategorie traegt die Bereichsfarbe (--area-events) als Kante — auch im Dark Mode (AC3)', async ({
+test('eine Terminkarte ohne Kategorie traegt die Bereichsfarbe (--area-events) als Flaeche der Uhrzeit-Pille — auch im Dark Mode (AC3, issue #1109)', async ({
   page,
 }) => {
   await seedEvent(page, {
@@ -1080,17 +1156,14 @@ test('eine Terminkarte ohne Kategorie traegt die Bereichsfarbe (--area-events) a
 
   const card = eventCard(page, 'Spontanes');
   await expect(card).toBeVisible();
+  const pill = card.locator('.event-agenda__item-time');
 
-  const expectedLight = await resolveCardColor(page, '--area-events', 'borderInlineStartColor');
-  await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedLight);
+  const expectedLight = await resolveCardColor(page, '--area-events', 'backgroundColor');
+  await expect.poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveCardColor(page, '--area-events', 'borderInlineStartColor');
-  await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedDark);
+  const expectedDark = await resolveCardColor(page, '--area-events', 'backgroundColor');
+  await expect.poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
 
@@ -5160,19 +5233,19 @@ test('eine geänderte Kategoriefarbe schlägt sofort auf die Terminkarte durch, 
     category: 'arbeit',
   });
 
-  const card = eventCard(page, 'Teammeeting');
-  const defaultEdge = await resolveCardColor(page, '--cat-arbeit', 'borderInlineStartColor');
+  const pill = eventCard(page, 'Teammeeting').locator('.event-agenda__item-time');
+  const defaultBackground = await resolveCardColor(page, '--cat-arbeit', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(defaultEdge);
+    .poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(defaultBackground);
 
   await setCategoryColor(page, 'arbeit', '--swatch-sky');
 
-  const expectedEdge = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  const expectedBackground = await resolveCardColor(page, '--swatch-sky', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedEdge);
-  expect(expectedEdge).not.toBe(defaultEdge);
+    .poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBackground);
+  expect(expectedBackground).not.toBe(defaultBackground);
 });
 
 test('ein frisches Gerät ohne gespeicherte Kategoriefarbe setzt nichts auf <html> und zeigt weiterhin den heutigen --cat-*-Wert (issue #660 AK5)', async ({
@@ -5188,11 +5261,11 @@ test('ein frisches Gerät ohne gespeicherte Kategoriefarbe setzt nichts auf <htm
     category: 'sport',
   });
 
-  const card = eventCard(page, 'Laufrunde');
-  const expectedEdge = await resolveCardColor(page, '--cat-sport', 'borderInlineStartColor');
+  const pill = eventCard(page, 'Laufrunde').locator('.event-agenda__item-time');
+  const expectedBackground = await resolveCardColor(page, '--cat-sport', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
-    .toBe(expectedEdge);
+    .poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBackground);
 
   // CategoryColorsBoot is mounted (layout.tsx) but resetAppData left no
   // category_colors rows — it must never have called setProperty for 'sport'.
@@ -5217,16 +5290,16 @@ test('eine Kategoriefarbe gilt im Dark Mode mit dem dunklen Wert des gewählten 
 
   await setCategoryColor(page, 'arbeit', '--swatch-sky');
 
-  const card = eventCard(page, 'Teammeeting');
-  const expectedLight = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  const pill = eventCard(page, 'Teammeeting').locator('.event-agenda__item-time');
+  const expectedLight = await resolveCardColor(page, '--swatch-sky', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark' });
-  const expectedDark = await resolveCardColor(page, '--swatch-sky', 'borderInlineStartColor');
+  const expectedDark = await resolveCardColor(page, '--swatch-sky', 'backgroundColor');
   await expect
-    .poll(() => card.evaluate((el) => getComputedStyle(el).borderInlineStartColor))
+    .poll(() => pill.evaluate((el) => getComputedStyle(el).backgroundColor))
     .toBe(expectedDark);
   expect(expectedDark).not.toBe(expectedLight);
 });
