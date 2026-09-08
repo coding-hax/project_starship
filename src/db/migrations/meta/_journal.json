@@ -169,6 +169,13 @@
       "when": 1788813094635,
       "tag": "0023_silky_kitty_pryde",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788837663511,
+      "tag": "0024_slim_anita_blake",
+      "breakpoints": true
     }
   ]
 }

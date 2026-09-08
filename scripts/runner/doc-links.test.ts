@@ -24,12 +24,6 @@ const MAX_BYTES = 10 * 1024;
 // Datei wieder in Richtung ihres alten Umfangs waechst.
 const CLAUDE_MD_MAX_BYTES = 14 * 1024;
 
-// docs/CODEMAP.md ist die bewusst grosse Ausnahme (Token-Disziplin Punkt 1,
-// CLAUDE.md): sie ist die Antwort auf "wo liegt...?" und soll im Ganzen
-// gelesen werden, nicht abschnittsweise wie WORKFLOW.md. Ihre Groesse ist ein
-// vorbestehendes, bekanntes Faktum -- eine eigene Diaet ist ein eigenes
-// Ticket (siehe #446-Plankommentar, "Folge-Ticket"), nicht dieser Split hier.
-//
 // docs/adr/** ist als Kategorie ausgenommen: ADRs sind historische
 // Entscheidungsprotokolle (CLAUDE.md: "werden nicht neu verhandelt"), nicht
 // Teil des WORKFLOW-Splits, den #446 durchfuehrt. Sie bleiben von sich aus
@@ -39,13 +33,20 @@ const CLAUDE_MD_MAX_BYTES = 14 * 1024;
 // werden, nur weil sie ein paar Bytes ueber die 10-KB-Linie dieses Tests
 // schiebt -- dieser Test ist fuer den WORKFLOW-Split da, nicht als Dauer-Gate
 // auf fremden, bereits gemergten ADR-Text.
-const SIZE_EXEMPT_FILES = new Set(['docs/CODEMAP.md']);
+//
+// docs/CODEMAP.md war bis #1112 die bewusst grosse Ausnahme; die Diaet dort
+// (Index + docs/codemap/*.md, siehe scripts/check-codemap.sh) hat sie unter
+// die 10 KB dieses Tests gebracht -- kein Sonderfall mehr noetig.
 function isSizeExempt(path: string): boolean {
-  return SIZE_EXEMPT_FILES.has(path) || path.startsWith('docs/adr/');
+  return path.startsWith('docs/adr/');
 }
 
 function claudeMd(): string {
   return readFileSync(join(ROOT, 'CLAUDE.md'), 'utf-8');
+}
+
+function codemapMd(): string {
+  return readFileSync(join(ROOT, 'docs', 'CODEMAP.md'), 'utf-8');
 }
 
 // Jeder Verweis der Form `docs/irgendwas.md` in Backticks -- unabhaengig
@@ -65,12 +66,41 @@ function referencedAnchors(text: string): { path: string; anchor: string }[] {
   }));
 }
 
-describe('CLAUDE.md-Verweise <-> docs/ (#446 AC1-3)', () => {
-  it('jeder docs/*.md-Verweis in CLAUDE.md zeigt auf eine existierende Datei', () => {
-    const missing = referencedDocs(claudeMd()).filter((path) => !existsSync(join(ROOT, path)));
-    expect(missing, `Toter Verweis in CLAUDE.md: ${missing.join(', ')}`).toEqual([]);
+// Beide Dateien sind Pflichtlektuere jedes Laufs (CLAUDE.md, prompts.ts
+// Ablauf-Schritt 1) und verweisen auf docs/*.md -- ein toter oder zu grosser
+// Verweis in einer von beiden verlangsamt jeden Lauf gleichermassen. #1112
+// (CODEMAP-Diaet) lässt docs/CODEMAP.md selbst auf docs/codemap/*.md zeigen,
+// deshalb laeuft es hier durch dieselben drei Pruefungen wie CLAUDE.md.
+const SOURCES: [string, () => string][] = [
+  ['CLAUDE.md', claudeMd],
+  ['docs/CODEMAP.md', codemapMd],
+];
+
+describe.each(SOURCES)('%s-Verweise <-> docs/ (#446 AC1-3, #1112 AK7)', (label, read) => {
+  it(`jeder docs/*.md-Verweis in ${label} zeigt auf eine existierende Datei`, () => {
+    const missing = referencedDocs(read()).filter((path) => !existsSync(join(ROOT, path)));
+    expect(missing, `Toter Verweis in ${label}: ${missing.join(', ')}`).toEqual([]);
   });
 
+  it('jede referenzierte Datei ist unter 10 KB (ausser der dokumentierten Ausnahme)', () => {
+    const tooBig = referencedDocs(read())
+      .filter((path) => !isSizeExempt(path))
+      .filter((path) => statSync(join(ROOT, path)).size >= MAX_BYTES);
+    expect(tooBig, `>= 10 KB, obwohl aus ${label} referenziert: ${tooBig.join(', ')}`).toEqual([]);
+  });
+
+  it('jeder benannte Abschnittsanker existiert als echte Ueberschrift in der Zieldatei', () => {
+    const broken = referencedAnchors(read())
+      .filter(({ path, anchor }) => {
+        const lines = readFileSync(join(ROOT, path), 'utf-8').split('\n');
+        return !lines.some((line) => /^#{1,6}\s/.test(line) && line.includes(anchor));
+      })
+      .map(({ path, anchor }) => `${path} „${anchor}"`);
+    expect(broken, `Anker ohne echte Ueberschrift: ${broken.join(' | ')}`).toEqual([]);
+  });
+});
+
+describe('CLAUDE.md-eigener Deckel (#446 AC1-3)', () => {
   it('CLAUDE.md selbst bleibt unter ihrem eigenen Deckel (#768 AK5)', () => {
     const size = statSync(join(ROOT, 'CLAUDE.md')).size;
     expect(
@@ -81,23 +111,6 @@ describe('CLAUDE.md-Verweise <-> docs/ (#446 AC1-3)', () => {
         `nach docs/workflow/. Steht hier wirklich eine neue REGEL, hebe den Deckel bewusst ` +
         `und begruende es im Ticket.`,
     ).toBeLessThan(CLAUDE_MD_MAX_BYTES);
-  });
-
-  it('jede referenzierte Datei ist unter 10 KB (ausser der dokumentierten Ausnahme)', () => {
-    const tooBig = referencedDocs(claudeMd())
-      .filter((path) => !isSizeExempt(path))
-      .filter((path) => statSync(join(ROOT, path)).size >= MAX_BYTES);
-    expect(tooBig, `>= 10 KB, obwohl aus CLAUDE.md referenziert: ${tooBig.join(', ')}`).toEqual([]);
-  });
-
-  it('jeder benannte Abschnittsanker existiert als echte Ueberschrift in der Zieldatei', () => {
-    const broken = referencedAnchors(claudeMd())
-      .filter(({ path, anchor }) => {
-        const lines = readFileSync(join(ROOT, path), 'utf-8').split('\n');
-        return !lines.some((line) => /^#{1,6}\s/.test(line) && line.includes(anchor));
-      })
-      .map(({ path, anchor }) => `${path} „${anchor}"`);
-    expect(broken, `Anker ohne echte Ueberschrift: ${broken.join(' | ')}`).toEqual([]);
   });
 });
 

@@ -431,7 +431,7 @@ async function resolveBackgroundToken(page: Page, token: string): Promise<string
   }, token);
 }
 
-test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark Mode (issue #124 AC11)', async ({
+test('eine erledigte Zelle ohne Emoji zeigt --area-habits als Hintergrund, unabhängig von einem gesetzten color-Feld, auch im Dark Mode (issue #1101 AC5)', async ({
   page,
 }) => {
   // Logs load asynchronously from IndexedDB, so the cell briefly paints "open"
@@ -445,6 +445,8 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
   const habitId = await seedHabit(page, {
     name: 'Eigenfarbe',
     schedule: 'daily',
+    // Stale data from before #1101 — habits no longer read `color`, this must
+    // not leak into the cell fill.
     color: '--area-journal',
     archivedAt: null,
   });
@@ -453,7 +455,7 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
 
   const day = dayButton(monthGrid(page, 'Eigenfarbe'), 1, 'Juli');
   await expect(day).toHaveClass(/habit-week-grid__day--done/);
-  const expectedLight = await resolveBackgroundToken(page, '--area-journal');
+  const expectedLight = await resolveBackgroundToken(page, '--area-habits');
   let lightColor = '';
   await expect
     .poll(async () => {
@@ -463,7 +465,7 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
     .toBe(expectedLight);
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const expectedDark = await resolveBackgroundToken(page, '--area-journal');
+  const expectedDark = await resolveBackgroundToken(page, '--area-habits');
   let darkColor = '';
   await expect
     .poll(async () => {
@@ -472,6 +474,77 @@ test('eine erledigte Zelle zeigt die Habit-Farbe als Hintergrund, auch im Dark M
     })
     .toBe(expectedDark);
   expect(darkColor).not.toBe(lightColor);
+});
+
+test('eine erledigte Zelle mit Emoji zeigt das Emoji statt der Tageszahl auf transparentem Grund (issue #1101 AC4)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Klettern',
+    schedule: 'daily',
+    emoji: '🧗',
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: JULY_1, done: true });
+  await expandHabit(page, 'Klettern');
+
+  const day = dayButton(monthGrid(page, 'Klettern'), 1, 'Juli');
+  await expect(day).toHaveClass(/habit-week-grid__day--done/);
+  await expect(day).toHaveText('🧗');
+  const background = await day.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(background).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('das heutige Kästchen behält seinen Akzentrahmen, auch wenn es mit Emoji erledigt ist (issue #1101 AC4)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Heute-Klettern',
+    schedule: 'daily',
+    emoji: '🧗',
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: JULY_15_TODAY, done: true });
+  await expandHabit(page, 'Heute-Klettern');
+
+  const today = dayButton(monthGrid(page, 'Heute-Klettern'), 15, 'Juli');
+  await expect(today).toHaveAttribute('data-today', '');
+  await expect(today).toHaveText('🧗');
+});
+
+test('ein Tipp hakt eine Emoji-Routine ab und wieder ab; das Emoji erscheint und verschwindet unmittelbar (issue #1101 AC6)', async ({
+  page,
+}) => {
+  await seedHabit(page, { name: 'Boxen', schedule: 'daily', emoji: '🥊', archivedAt: null });
+  await expandHabit(page, 'Boxen');
+  const day = dayButton(monthGrid(page, 'Boxen'), 1, 'Juli');
+
+  await expect(day).not.toHaveText('🥊');
+  await day.click();
+  await expect(day).toHaveClass(/habit-week-grid__day--done/);
+  await expect(day).toHaveText('🥊');
+
+  await day.click();
+  await expect(day).not.toHaveClass(/habit-week-grid__day--done/);
+  await expect(day).not.toHaveText('🥊');
+  await expect(day).toHaveText('1');
+});
+
+test('das Emoji ist rein dekorativ: der aria-label einer erledigten Zelle nennt weiterhin Datum, Name und Status, ohne Emoji (issue #1101 AC10)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Tischtennis',
+    schedule: 'daily',
+    emoji: '🏓',
+    archivedAt: null,
+  });
+  await seedHabitLog(page, { habitId, logDate: JULY_1, done: true });
+  await expandHabit(page, 'Tischtennis');
+
+  const day = dayButton(monthGrid(page, 'Tischtennis'), 1, 'Juli');
+  await expect(day).toHaveText('🏓');
+  await expect(day).toHaveAccessibleName('1. Juli 2026: Tischtennis erledigt');
 });
 
 test('bei reduzierter Bewegung ist der Zellen-Übergang augenblicklich (issue #124 AC11)', async ({
@@ -522,12 +595,20 @@ test('Nachbartage sind gedimmt und optisch von den Tagen des gewählten Monats a
 /* AK: ein Nachbartag ist vollwertig abhakbar, wie ein Tag des Monats         */
 /* -------------------------------------------------------------------------- */
 
-test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, zeigt die Habit-Farbe (issue #487 AC3)', async ({
+test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, füllt sich in --area-habits (issue #487 AC3, #1101 AC5)', async ({
   page,
 }) => {
+  // Same transition race as the in-month equivalent above: background-color is
+  // animated, so a synchronous read right after the class change can still
+  // catch the pre-transition frame. expect.poll waits it out instead of racing
+  // it (not a loosened assert — the target colour is unchanged).
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+
   await seedHabit(page, {
     name: 'Nachbar',
     schedule: 'daily',
+    // Stale data from before #1101 — must not leak into the fill either, see
+    // the equivalent in-month assertion above.
     color: '--area-tasks',
     archivedAt: null,
   });
@@ -539,6 +620,10 @@ test('ein Nachbartag ist vollwertig abhakbar wie ein Tag des gewählten Monats, 
   await neighbourDay.click();
   await expect(neighbourDay).toHaveAttribute('aria-pressed', 'true');
   await expect(neighbourDay).toHaveClass(/habit-week-grid__day--done/);
+  const expectedBackground = await resolveBackgroundToken(page, '--area-habits');
+  await expect
+    .poll(async () => neighbourDay.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(expectedBackground);
 
   const entries = await page.evaluate(() => window.__starship.pending());
   const logMutations = entries.filter((entry) => entry.table === 'habit_logs');

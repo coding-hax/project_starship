@@ -31,6 +31,7 @@ function habit(overrides: Partial<HabitView> = {}): HabitView {
     schedule: 'daily',
     target: 1,
     color: null,
+    emoji: null,
     archivedAt: null,
     createdAt: YESTERDAY.toISOString(),
     ...overrides,

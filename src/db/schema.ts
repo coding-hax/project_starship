@@ -123,6 +123,7 @@ export const habits = pgTable(
     >().notNull(),
     target: integer('target').notNull().default(1),
     color: text('color'),
+    emoji: text('emoji'),
     /** Archiving, not deleting — the streak history stays intact. */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

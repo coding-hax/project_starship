@@ -8,11 +8,12 @@ import { useHabits } from './use-habits';
 /**
  * "Erledigt · 30 Tage" as a squares grid (issue #1070, replaces the step-chart
  * card from #905/#1040) — 30 columns of days, one row per active habit, each
- * done habit a filled square in its own color, stacked from the baseline in
- * `compareHabits` order so a reliable habit reads as an unbroken band instead
- * of jumping row on every miss. Renders nothing at 0 active habits, same rule
- * the card it replaces already followed (#905 AK7) — an empty grid would read
- * as "nothing happened" more loudly than silence.
+ * done habit a filled `--area-habits` square (issue #1101: cells are 14px,
+ * too small to read an emoji, so no per-habit marker here), stacked from the
+ * baseline in `compareHabits` order so a reliable habit reads as an unbroken
+ * band instead of jumping row on every miss. Renders nothing at 0 active
+ * habits, same rule the card it replaces already followed (#905 AK7) — an
+ * empty grid would read as "nothing happened" more loudly than silence.
  */
 export function HabitHistoryCard() {
   const habits = useHabits();
@@ -48,7 +49,7 @@ export function HabitHistoryCard() {
               <span
                 key={`${rowIndex}-${day.dateKey}`}
                 className="habit-history-card__cell"
-                style={habit ? { background: `var(${habit.color ?? '--area-habits'})` } : undefined}
+                style={habit ? { background: 'var(--area-habits)' } : undefined}
               />
             );
           }),
@@ -61,10 +62,7 @@ export function HabitHistoryCard() {
       <ul className="habit-history-card__legend">
         {legendOrder(active).map((habit) => (
           <li key={habit.id} className="habit-history-card__legend-item">
-            <span
-              className="habit-history-card__legend-dot"
-              style={{ background: `var(${habit.color ?? '--area-habits'})` }}
-            />
+            <span className="habit-history-card__legend-dot" />
             <span className="habit-history-card__legend-name">{habit.name}</span>
           </li>
         ))}

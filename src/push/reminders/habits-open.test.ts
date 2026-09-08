@@ -30,6 +30,7 @@ function habit(overrides: Partial<Habit> = {}): Habit {
     schedule: 'daily',
     target: 1,
     color: null,
+    emoji: null,
     archivedAt: null,
     createdAt: new Date('2026-01-01'),
     ...overrides,

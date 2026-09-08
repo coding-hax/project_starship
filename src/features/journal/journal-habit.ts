@@ -8,7 +8,7 @@ import { mutate } from '@/local/outbox';
  */
 export const JOURNAL_HABIT_ID = '5b5c9dc3-25c8-4f97-a4c5-61cb4c736c80';
 export const JOURNAL_HABIT_NAME = 'Journal';
-export const JOURNAL_HABIT_COLOR = '--area-journal';
+export const JOURNAL_HABIT_EMOJI = '📓';
 
 async function readHabitRow() {
   return db.records.get(['habits', JOURNAL_HABIT_ID] as never);
@@ -32,7 +32,7 @@ export async function ensureJournalHabit(): Promise<void> {
     payload: {
       name: JOURNAL_HABIT_NAME,
       schedule: 'daily',
-      color: JOURNAL_HABIT_COLOR,
+      emoji: JOURNAL_HABIT_EMOJI,
       archivedAt: null,
       createdAt: new Date().toISOString(),
     },

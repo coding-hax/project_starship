@@ -421,6 +421,38 @@ test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch 
   expect(darkColor).not.toBe(lightColor);
 });
 
+/* -------------------------------------------------------------------------- */
+/* issue #1101 AC8/AC9: Emoji statt Punkt/Pille auf /uebersicht               */
+/* -------------------------------------------------------------------------- */
+
+test('eine Routine mit Emoji zeigt es auf /uebersicht statt Punkt oder Streak-Pille (issue #1101 AC8, Variante A)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, {
+    name: 'Laufen',
+    schedule: 'daily',
+    emoji: '🏃',
+    archivedAt: null,
+  });
+  // A running streak (yesterday done) proves Variante A: the emoji still wins
+  // over the streak pill — #975's pill is reserved for habits without an emoji.
+  await seedHabitLog(page, { habitId, logDate: '2026-07-14', done: true });
+
+  const item = habitTodayItems(page).filter({ hasText: 'Laufen' });
+  await expect(item.locator('.habit-today__emoji')).toHaveText('🏃');
+  await expect(item.locator('.habit-today__streak')).toHaveCount(0);
+  await expect(item.locator('.habit-today__color')).toHaveCount(0);
+});
+
+test('die Journal-Routine zeigt ihr festes Emoji 📓 auf der Übersicht (issue #1101 AC9)', async ({
+  page,
+}) => {
+  await seedJournalHabit(page);
+
+  const item = habitTodayItems(page).filter({ hasText: 'Journal' });
+  await expect(item.locator('.habit-today__emoji')).toHaveText('📓');
+});
+
 test('bei reduzierter Bewegung ist die Abhak-Animation augenblicklich (issue #103 AC5)', async ({
   page,
 }) => {

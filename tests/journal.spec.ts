@@ -757,11 +757,11 @@ test('AC1 (#505): das Journal-Modul legt genau eine Journal-Routine an, ein zwei
   await page.evaluate(() => window.__starship.sync());
 
   const rows = await withDb((client) =>
-    client.query("SELECT id, schedule, color, archived_at FROM habits WHERE name = 'Journal'"),
+    client.query("SELECT id, schedule, emoji, archived_at FROM habits WHERE name = 'Journal'"),
   );
   expect(rows.rowCount).toBe(1);
   expect(rows.rows[0].schedule).toBe('daily');
-  expect(rows.rows[0].color).toBe('--area-journal');
+  expect(rows.rows[0].emoji).toBe('📓');
   expect(rows.rows[0].archived_at).toBeNull();
   const habitId = rows.rows[0].id as string;
 
