@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellHabitId, historyGrid } from './history-grid';
+import { historyGrid, isHabitDoneOnDay } from './history-grid';
 import type { HabitLogView } from './use-habit-logs';
 import type { HabitView } from './use-habits';
 
@@ -106,31 +106,25 @@ describe('historyGrid', () => {
   });
 });
 
-describe('cellHabitId', () => {
-  it('fills the bottom rows first, leaving the top rows empty (issue #1070 AC3)', () => {
-    const day = { dateKey: '2026-07-15', habitIds: ['older', 'newer'] };
-    // 3 active habits total → 3 rows (0 = top, 2 = bottom), only 2 done.
-    expect(cellHabitId(day, 0, 3)).toBeNull(); // top row: empty
-    expect(cellHabitId(day, 1, 3)).toBe('newer'); // middle row
-    expect(cellHabitId(day, 2, 3)).toBe('older'); // bottom row: oldest habit
-  });
-
-  it('fills every row when every habit is done, bottom row anchored to the first entry', () => {
+describe('isHabitDoneOnDay', () => {
+  it('is true when the habit id is in the day\'s done list', () => {
     const day = { dateKey: '2026-07-15', habitIds: ['a', 'b'] };
-    expect(cellHabitId(day, 0, 2)).toBe('b'); // top row
-    expect(cellHabitId(day, 1, 2)).toBe('a'); // bottom row: first entry
+    expect(isHabitDoneOnDay(day, 'a')).toBe(true);
+    expect(isHabitDoneOnDay(day, 'b')).toBe(true);
   });
 
-  it('leaves every row empty for a day with nothing done', () => {
+  it('is false when the habit id is not in the day\'s done list', () => {
+    const day = { dateKey: '2026-07-15', habitIds: ['a'] };
+    expect(isHabitDoneOnDay(day, 'other')).toBe(false);
+  });
+
+  it('is false for a day with nothing done', () => {
     const day = { dateKey: '2026-07-15', habitIds: [] };
-    expect(cellHabitId(day, 0, 2)).toBeNull();
-    expect(cellHabitId(day, 1, 2)).toBeNull();
+    expect(isHabitDoneOnDay(day, 'a')).toBe(false);
   });
 
-  it('handles a single row without dividing by an out-of-range index', () => {
-    const done = { dateKey: '2026-07-15', habitIds: ['a'] };
-    const empty = { dateKey: '2026-07-15', habitIds: [] };
-    expect(cellHabitId(done, 0, 1)).toBe('a');
-    expect(cellHabitId(empty, 0, 1)).toBeNull();
+  it('does not match a habit id that is only a substring of a done id', () => {
+    const day = { dateKey: '2026-07-15', habitIds: ['habit-12'] };
+    expect(isHabitDoneOnDay(day, 'habit-1')).toBe(false);
   });
 });

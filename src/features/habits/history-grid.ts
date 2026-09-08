@@ -45,15 +45,10 @@ export function historyGrid(habits: HabitView[], logs: HabitLogView[], now: Date
 }
 
 /**
- * The habit id filling one grid cell, or `null` for an empty cell — `rowIndex`
- * counts from the top (0) down to `rowCount - 1` at the baseline, matching how
- * the card renders rows top to bottom. Cells fill from the baseline up with no
- * gaps (issue #1070 AC3): the bottom `day.habitIds.length` rows are filled, in
- * stack order, everything above is empty.
+ * Whether `habitId` was done on `day` — replaces `cellHabitId`'s stacking
+ * lookup now that each habit gets its own fixed grid row instead of a
+ * baseline stack (issue #1150).
  */
-export function cellHabitId(day: HistoryGridDay, rowIndex: number, rowCount: number): string | null {
-  const positionFromBottom = rowCount - 1 - rowIndex;
-  return positionFromBottom >= 0 && positionFromBottom < day.habitIds.length
-    ? day.habitIds[positionFromBottom]
-    : null;
+export function isHabitDoneOnDay(day: HistoryGridDay, habitId: string): boolean {
+  return day.habitIds.includes(habitId);
 }
