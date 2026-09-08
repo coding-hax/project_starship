@@ -697,6 +697,38 @@ export function categoriesForDay<T extends TimelineSource>(
   return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, maxDots);
 }
 
+export interface DayChip {
+  id: string;
+  title: string;
+  category: EventView['category'];
+}
+
+/**
+ * Up to `maxChips` scheduled events on `dateKey`, chronological, plus how
+ * many more didn't fit — the wide month grid's chip row (issue #1123,
+ * ≥1440px only; the narrower stages keep `categoriesForDay`'s dots). One
+ * chip per event rather than one dot per category (`categoriesForDay`
+ * dedupes those): a chip carries a title, so two same-category events need
+ * two chips to both be readable. Same all-day exclusion as
+ * `categoriesForDay` — an all-day/multi-day event already has its own band
+ * under the day cells.
+ */
+export function chipsForDay<T extends TimelineSource>(
+  occurrences: T[],
+  dateKey: string,
+  maxChips: number,
+): { chips: DayChip[]; overflow: number } {
+  const items = agendaForDay(occurrences, dateKey);
+  return {
+    chips: items.slice(0, maxChips).map((item) => ({
+      id: item.id,
+      title: item.title,
+      category: item.category,
+    })),
+    overflow: Math.max(0, items.length - maxChips),
+  };
+}
+
 /**
  * Days of the calendar month `focusMonth` (`YYYY-MM`) itself, excluding the
  * dimmed neighbour-month days `monthDaysFor`'s grid also carries.

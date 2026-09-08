@@ -10,6 +10,7 @@ import {
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
+  chipsForDay,
   dateKeyDiff,
   dayWindow,
   formatCountdown,
@@ -507,6 +508,78 @@ describe('categoriesForDay', () => {
     );
     expect(categoriesForDay(events, DAY)).toHaveLength(4);
     expect(categoriesForDay(events, DAY)).toEqual(['privat', 'arbeit', 'gesundheit', 'sport']);
+  });
+});
+
+describe('chipsForDay', () => {
+  const DAY = '2026-07-18';
+
+  function withStart(overrides: Partial<EventView>): EventView {
+    return event({ startsAt: `${DAY}T09:00:00.000Z`, endsAt: `${DAY}T10:00:00.000Z`, ...overrides });
+  }
+
+  it('returns one chip per event, chronological, title and category carried through', () => {
+    const events = [
+      withStart({
+        id: 'b',
+        title: 'Zweiter',
+        startsAt: `${DAY}T11:00:00.000Z`,
+        endsAt: `${DAY}T12:00:00.000Z`,
+        category: 'sport',
+      }),
+      withStart({ id: 'a', title: 'Erster', category: 'arbeit' }),
+    ];
+    expect(chipsForDay(events, DAY, 3)).toEqual({
+      chips: [
+        { id: 'a', title: 'Erster', category: 'arbeit' },
+        { id: 'b', title: 'Zweiter', category: 'sport' },
+      ],
+      overflow: 0,
+    });
+  });
+
+  it('does not dedupe same-category events — one chip each, unlike categoriesForDay', () => {
+    const events = [
+      withStart({ id: 'a', title: 'Erster', category: 'arbeit' }),
+      withStart({
+        id: 'b',
+        title: 'Zweiter',
+        startsAt: `${DAY}T11:00:00.000Z`,
+        endsAt: `${DAY}T12:00:00.000Z`,
+        category: 'arbeit',
+      }),
+    ];
+    expect(chipsForDay(events, DAY, 3).chips).toHaveLength(2);
+  });
+
+  it('caps chips at maxChips and reports the rest as overflow', () => {
+    const events = ['a', 'b', 'c', 'd'].map((id, index) =>
+      withStart({
+        id,
+        title: `Termin ${id}`,
+        startsAt: `${DAY}T${String(9 + index).padStart(2, '0')}:00:00.000Z`,
+        endsAt: `${DAY}T${String(10 + index).padStart(2, '0')}:00:00.000Z`,
+      }),
+    );
+    const result = chipsForDay(events, DAY, 3);
+    expect(result.chips.map((chip) => chip.id)).toEqual(['a', 'b', 'c']);
+    expect(result.overflow).toBe(1);
+  });
+
+  it('returns no chips and no overflow for a day without events', () => {
+    expect(chipsForDay([], DAY, 3)).toEqual({ chips: [], overflow: 0 });
+  });
+
+  it('ignores events on other days', () => {
+    const events = [
+      withStart({ startsAt: '2026-07-19T09:00:00.000Z', endsAt: '2026-07-19T10:00:00.000Z' }),
+    ];
+    expect(chipsForDay(events, DAY, 3)).toEqual({ chips: [], overflow: 0 });
+  });
+
+  it('excludes all-day events — they already have their own band, same rule as categoriesForDay', () => {
+    const events = [event({ allDay: true, startDate: DAY, endDate: DAY, category: 'familie' })];
+    expect(chipsForDay(events, DAY, 3)).toEqual({ chips: [], overflow: 0 });
   });
 });
 
