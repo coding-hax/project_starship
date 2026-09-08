@@ -1,6 +1,6 @@
 # ADR-0029: Desktop-Anordnung ist abgeleitet — geteilte Bauteile, freie Anordnung
 
-Status: angenommen · Datum: 2026-09-02 · Bezug: #1016 (Epic #1015)
+Status: abgelöst durch ADR-0030 · Datum: 2026-09-02 · Bezug: #1016 (Epic #1015)
 
 ## Kontext
 
