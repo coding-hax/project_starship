@@ -6,6 +6,7 @@
 - `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
 - `kalender.wide.spec.ts` — ab 1440px Monatsraster breit, Agenda schmal, Chips statt Punkte
 - `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche
+- `uebersicht.wide.spec.ts` — ab 1440px dreispaltig, Wetter/Termine als volle Bahn
 - `grundfarbe-vollfarbe.spec.ts` / `nav-schleier.spec.ts` / `abgleich-828.spec.ts` — Vollfarbe (Karten/Leiste/FAB), Nav-Grundkopie, Kopf-Recolor
 - `navigation.prod.spec.ts` / `export.spec.ts` / `kalender.spec.ts` / `journal.desktop.spec.ts` — Tab-Wechsel o. Doc-Request; Export+Tombstones; Kalender-Timeline/Farbkante; Journal 2-spaltig 768px
 - `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
@@ -16,6 +17,7 @@
 - `helpers.ts` / `routinen.spec.ts` / `habits-streak-summary.spec.ts` / `form-bedienelemente.spec.ts` — Test-Helfer; Routinen-Kopf/Kacheln/Verlauf; FAB-Pille/Reiter/Häkchen
 - `scroll-position.spec.ts` / `persist-storage.spec.ts` / `settings.spec.ts` / `schema.spec.ts` — Scroll-Reset, Storage-Persistenz, Theme/Toggle, Schema-Exaktheit
 - `offline-critical.spec.ts` / `sync.spec.ts` / `weather.spec.ts` / `weather-day.spec.ts` — Outbox-Postgres/Konflikte; Wetter Übersicht/Tagesdetail
+- `wetter.wide.spec.ts` — ab 1440px zweispaltiges Tagesraster + Tagesnummer
 - `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
 - `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
 - `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Pull, Reminder, Push-Panel, Modul-Panel/Route-Guard

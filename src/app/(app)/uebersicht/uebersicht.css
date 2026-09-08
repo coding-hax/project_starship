@@ -196,6 +196,45 @@
   }
 }
 
+/* Dritte Desktop-Stufe (issue #1120, Nachfolger von #1020/ADR-0029): ab 1440px
+ * lösen sich Wetter und Termine aus dem Spalten-Balancing und laufen als volle
+ * Bahnen über die Breite — beide sprechen in Wochentagen und stehen so
+ * deckungsgleich übereinander statt in getrennten `columns`-Spalten zufällig
+ * gegeneinander versetzt zu sein. Die übrigen Sektionen bleiben dreispaltig
+ * darunter. `grid-template-columns` statt weiterem `columns`-Tuning: ein
+ * Balancing-Algorithmus kann kein Element gezielt über mehrere Spalten
+ * spannen lassen, ein Grid schon (`grid-column: 1 / -1`). Kein
+ * `grid-row`/`grid-column` an den übrigen Sektionen — Auto-Placement setzt sie
+ * in DOM-Reihenfolge in die nächste freie Zelle, genau AK3/AK4: fehlt eine
+ * (abgeschaltetes Modul, oder ein Modul im eigenen Ladezustand kurzzeitig ganz
+ * ohne Block, siehe events-overview-section.tsx/activity-month-strip.tsx),
+ * rückt die nächste ohne Lücke nach, ohne dass diese Regel davon weiß. */
+@media (min-width: 1440px) {
+  .uebersicht__sections {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    /* Sektionen unterschiedlicher Eigenhöhe (Wetter-Streifen vs. Aufgabenliste)
+     * sollen sich nicht auf die höchste in ihrer Zeile strecken — `start` statt
+     * des Grid-Default `stretch`, das ist das „oben ausgerichtet" aus AK3. */
+    align-items: start;
+    gap: var(--space-6);
+  }
+
+  /* `gap` oben übernimmt den Row- wie Column-Abstand im Grid — das mobile/
+   * Zweispalten-`margin-bottom` (oben) verdoppelte ihn sonst zwischen den
+   * Zeilen. */
+  .uebersicht__sections .overview-block {
+    margin-bottom: 0;
+  }
+
+  /* AK2: Wetter und Termine überspannen alle drei Spalten und bilden dadurch
+   * automatisch je eine eigene volle Zeile. */
+  .uebersicht__sections .overview-block[data-section='wetter'],
+  .uebersicht__sections .overview-block[data-section='kalender'] {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Inline-Hinweis im Erfassungs-Sheet (issue #687 AK6): kein Toast, weil die Eingabe
  * absichtlich im Feld stehen bleibt, statt das Sheet zu schließen. */
 .uebersicht-capture__notice {

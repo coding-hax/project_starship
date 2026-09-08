@@ -33,7 +33,7 @@ export function WeatherForecast() {
   // positioned and outside this flow entirely — its own appearance can't shift
   // anything either.
   return (
-    <OverviewBlock hiddenTitle="Wetter">
+    <OverviewBlock hiddenTitle="Wetter" section="wetter">
       <section className="weather-forecast" aria-label={ariaLabel}>
         <ol className="weather-forecast__days" aria-hidden={phase !== 'ready' || undefined}>
           {phase === 'ready' && days
@@ -55,6 +55,12 @@ export function WeatherForecast() {
                     <Link href={`/wetter/${day.date}`} className="weather-forecast__day-link">
                       <span className="weather-forecast__weekday-row">
                         <span className="weather-forecast__weekday">{weekdayLabel(day.date)}</span>
+                        {/* Ab 1440px (issue #1119 AK3) — dieselbe Tagesnummer wie die
+                            Wochenübersicht darunter (calendar-strip.tsx), hier `display: none`
+                            unter dieser Breite statt aus dem Markup entfernt: reine
+                            CSS-Repositionierung, kein DOM-Umbau nötig (siehe
+                            src/ui/use-min-width.ts). */}
+                        <span className="weather-forecast__daynum">{Number(day.date.slice(-2))}</span>
                         {isWindy(day) ? (
                           <svg
                             className="weather-forecast__wind"
@@ -103,7 +109,10 @@ export function WeatherForecast() {
                   }
                 >
                   <span className="weather-forecast__day-link">
-                    <span className="weather-forecast__weekday">&nbsp;</span>
+                    <span className="weather-forecast__weekday-row">
+                      <span className="weather-forecast__weekday">&nbsp;</span>
+                      <span className="weather-forecast__daynum">&nbsp;</span>
+                    </span>
                     <span className="weather-forecast__icon weather-forecast__icon--placeholder" />
                     <span className="weather-forecast__temps">
                       <span className="weather-forecast__temp-max">&nbsp;</span>
