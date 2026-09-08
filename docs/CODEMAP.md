@@ -224,6 +224,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark)
+- `shell.wide.spec.ts` — Rauchtest fürs `desktop-wide`-Projekt (1800×1000): `/uebersicht` lädt, kein Querlauf
 - `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
 - `uebersicht.desktop.spec.ts` — /uebersicht ab 768px zweispaltig (Sektionen, Titelfigur, FAB-Reserve), 1280×800
 - `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv

@@ -113,7 +113,7 @@ export default defineConfig({
     {
       name: 'mobile',
       testIgnore:
-        /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|.*\.desktop)\.spec\.ts$/,
+        /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|.*\.desktop|.*\.wide)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -128,6 +128,19 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 800 },
+        storageState: AUTH_STATE,
+      },
+    },
+    // Third viewport stage for the ≥1440px three-column layout (ADR-0030, issue
+    // #1115) — `desktop` above stays at 1280 and keeps checking the second
+    // stage untouched. Own `testMatch` so nothing runs in two viewports (#564).
+    {
+      name: 'desktop-wide',
+      testMatch: /.*\.wide\.spec\.ts$/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1800, height: 1000 },
         storageState: AUTH_STATE,
       },
     },
