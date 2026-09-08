@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react';
 import { OverviewBlock, OverviewCardHead } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
+import { useMinWidth } from '@/ui/use-min-width';
 import { useNow } from '@/ui/use-now';
 import {
   categoryEdgeVar,
@@ -11,6 +12,7 @@ import {
   formatNextTimeline,
   formatRestRowTime,
   nextUpcomingOccurrences,
+  weekOverview,
   type NextOccurrence,
 } from './event-time';
 import { expandForDay } from './recurrence';
@@ -58,18 +60,67 @@ function nextMeta(now: Date, occurrence: NextOccurrence): string | null {
  * `formatNextTimeline` (issue #1091, AK4/AK5) adds a further line once the
  * event isn't today, or is all-day — carrying the date and/or the full time
  * span that the big number and the countdown alone no longer spell out.
+ *
+ * Ab 1440px (issue #1121) tritt an die Stelle dieser "Nächster Termin"-Karte
+ * ein siebenspaltiges Wochenraster Mo–So (`weekOverview`, event-time.ts) —
+ * strukturell andere DOM-Bäume, kein bloßes Umpositionieren wie beim
+ * Wetterstreifen (#1119), deshalb `useMinWidth` statt einer reinen
+ * CSS-Regel. Unter 1440px bleibt genau das bisherige Markup stehen (AK6).
  */
 export function EventsOverviewSection() {
   const events = useEvents();
   const exceptions = useEventExceptions();
   const subscribed = useSubscribedEvents();
   const now = useNow();
+  const wide = useMinWidth(1440);
 
   useBlockReady(events !== undefined && exceptions !== undefined);
 
   if (events === undefined || exceptions === undefined) return null;
 
   const occurrencesForDay = (day: string) => expandForDay([...events, ...subscribed], exceptions, day);
+
+  if (wide) {
+    const week = weekOverview(occurrencesForDay, now);
+    return (
+      <OverviewBlock section="kalender">
+        <div className="events-overview__week">
+          <OverviewCardHead title="Termine" href="/kalender" moreLabel="Kalender" />
+          <ol className="events-overview__week-grid">
+            {week.map((day) => (
+              <li
+                key={day.dayKey}
+                className="events-overview__week-day"
+                data-today={day.isToday ? '' : undefined}
+              >
+                <div className="events-overview__week-dayhead">
+                  <span className="events-overview__week-weekday">{day.weekdayLabel}</span>
+                  <span className="events-overview__week-daynum">{day.dayNumber}</span>
+                </div>
+                {day.chips.length > 0 ? (
+                  <ul className="events-overview__week-chips">
+                    {day.chips.map((chip) => (
+                      <li
+                        key={chip.id}
+                        className="events-overview__week-chip"
+                        style={{ '--cat-color': categoryEdgeVar(chip.category) } as CSSProperties}
+                      >
+                        <span className="events-overview__week-chip-time">{chip.time ?? 'Ganztägig'}</span>
+                        <span className="events-overview__week-chip-title">{chip.title}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="events-overview__week-empty">nichts geplant</p>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </OverviewBlock>
+    );
+  }
+
   const [next, ...rest] = nextUpcomingOccurrences(occurrencesForDay, now, 4);
   const nextMetaText = next ? nextMeta(now, next) : null;
   const nextTimeline = next ? formatNextTimeline(now, next.dayKey, next.item) : null;
