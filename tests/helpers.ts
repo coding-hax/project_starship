@@ -687,7 +687,7 @@ declare global {
       journalSetup: (passphrase: string) => Promise<string>;
       journalUnlock: (passphrase: string) => Promise<'ok' | 'wrong'>;
       journalLock: () => Promise<void>;
-      journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked';
+      journalLockState: () => 'loading' | 'setup' | 'locked' | 'unlocked' | 'unavailable';
       journalHasPersistedDek: () => Promise<boolean>;
       journalPersistedDekExtractable: () => Promise<boolean | null>;
       debugDumpStores: () => Promise<string>;

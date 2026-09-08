@@ -192,8 +192,11 @@ async function initialize(): Promise<void> {
   // pulled — fresh install, storage evicted by iOS, or simply the Safari container
   // next to the home-screen PWA — would otherwise be offered a setup, and that
   // setup upserts a new DEK onto the fixed row id, orphaning every existing entry.
-  // So ask the server once before believing the local emptiness.
-  const pulled = await pull();
+  // So ask the server once before believing the local emptiness. A page landing
+  // before a later page fails is not proof the account was fully checked — only
+  // `result.complete` is (#1135); the envelope may still be sitting on the page
+  // that never arrived.
+  const result = await pull();
   if (current.state !== 'loading') return;
 
   const remote = await readEnvelope();
@@ -203,7 +206,7 @@ async function initialize(): Promise<void> {
     return;
   }
 
-  if (!pulled) {
+  if (!result.complete) {
     setSnapshot({ state: 'unavailable', error: UNAVAILABLE_MESSAGE });
     return;
   }
