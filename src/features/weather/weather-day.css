@@ -292,6 +292,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Wertachse links, wide stage only (issue #1128 AK3/AK5) — nur gerendert, wenn
+   weather-day.tsx `yTicks` mitgibt, keine eigene Sichtbarkeitsregel nötig. */
+.weather-day__chart-grid {
+  stroke: var(--border-faint);
+  stroke-width: 1;
+}
+
+.weather-day__chart-ylabel {
+  fill: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Wetterband unter der Tagesverlauf-Kurve (issue #999) — ein Abschnitt je
    zusammenhängender Wetterlage statt je Stunde, Breite proportional zur Dauer.
    Kein overflow-x (AK5): dieselbe Kartenbreite wie die Kurve darüber, kein
@@ -382,4 +395,60 @@
   border-radius: var(--radius-surface);
   color: var(--text-muted);
   font-size: var(--text-secondary);
+}
+
+/* Kopf-Kategorie inline statt eigene Unterzeile, wide stage only (issue #1128
+   AK2) — dieselbe Typografie wie page-head.css's `.page-head__subline`, die sie
+   dort ersetzt. */
+.weather-day__category {
+  font-size: var(--text-subline);
+  color: var(--on-ground-muted);
+}
+
+/* Ab 1440px: zweispaltiges Tagesraster, Kategorie in den Kopf, Wertachse an
+   beiden Kurven (issue #1128). Alles hier drin — der Media-Block selbst ist der
+   Rückweg: entfernt man ihn, steht wieder der heutige, gestapelte Stand da. */
+@media (min-width: 1440px) {
+  /* AK1: Tagesverlauf breit links über beide Zeilen, Niederschlag + Werte
+     rechts untereinander. Reihenfolge im Markup ist Tagesverlauf, Niederschlag,
+     Werte (WeatherDayDetail) — :nth-child platziert entlang dieser festen
+     Reihenfolge, kein zusätzliches Wrapper-Element nötig. */
+  .weather-day {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-4);
+  }
+
+  .weather-day > :nth-child(1) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+
+  .weather-day > :nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .weather-day > :nth-child(3) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  /* AK3: der 420px-Telefon-Deckel gilt hier nicht mehr — die Kurve füllt die
+     (deutlich breitere) Kartenspalte. */
+  .weather-day__chart,
+  .weather-day__precipitation-chart {
+    max-width: none;
+  }
+
+  /* AK2: Symbol, Höchst-/Tiefstwert und Kategorie in einer Zeile statt
+     Kategorie als eigene Unterzeile darunter — Haarstriche trennen die
+     Segmente, dieselbe Machart wie .weather-day__band-segment weiter oben in
+     dieser Datei. */
+  .weather-day__temps,
+  .weather-day__category {
+    border-inline-start: 1px solid var(--border-faint);
+    padding-inline-start: var(--space-3);
+  }
 }

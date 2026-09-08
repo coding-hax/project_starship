@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { PageFace } from '@/ui/faces';
 import { SectionCard } from '@/ui/section-card';
 import { IconChevronLeft, IconMoon, IconSunSimple } from '@/ui/icons';
+import { useMinWidth } from '@/ui/use-min-width';
 import { useNow } from '@/ui/use-now';
 import {
   berlinNowMark,
@@ -35,21 +36,21 @@ import { weatherCategory, type WeatherCategory } from './wmo-icon';
 const SWIPE_THRESHOLD_PX = 80;
 
 /*
- * One geometry for both charts: same plot box, same hour grid, so the temperature
- * curve and the precipitation bars can be read against each other column for
- * column. User units, not pixels — the `viewBox` scales to whatever width the card
- * gives it. Since #939 removed the y-axis labels, the plot box spans the full
- * viewBox width (issue #998) — only the bottom row still holds the hour labels,
- * part of the same SVG rather than a separate flex row, because only inside the
- * SVG can a label sit at the exact x of the data point it belongs to. That
- * mismatch was an earlier bug: the label row once spread 00/06/12/18 evenly
- * across the full width, so "18:00" ended up at the right edge, where hour 23
- * actually is.
+ * Shared plot box for both charts: same hour grid, so the temperature curve and
+ * the precipitation bars can be read against each other column for column. User
+ * units, not pixels — the narrow stage's `viewBox` spans the full `VIEW_W`, no
+ * left gutter (#939 removed the y-axis there); the wide stage (issue #1128)
+ * measures its own rendered width per chart instead and opens a gutter for its
+ * value axis (see `WIDE_AXIS_GUTTER`, `useMeasuredWidth` below). The bottom row
+ * holds the hour labels, part of the same SVG rather than a separate flex row,
+ * because only inside the SVG can a label sit at the exact x of the data point
+ * it belongs to. That mismatch was an earlier bug: the label row once spread
+ * 00/06/12/18 evenly across the full width, so "18:00" ended up at the right
+ * edge, where hour 23 actually is.
  */
 const VIEW_W = 320;
 const VIEW_H = 112;
 const PLOT_Y = 6;
-const PLOT_W = VIEW_W;
 const PLOT_H = 80;
 const PLOT_BOTTOM = PLOT_Y + PLOT_H;
 const HOUR_LABEL_Y = PLOT_BOTTOM + 16;
@@ -61,6 +62,10 @@ const HOUR_TICKS = [0, 6, 12, 18, HOURS_PER_DAY];
  * day's hottest hour would otherwise put a text line above PLOT_Y, outside the
  * viewBox (issue #998 AK8/AK16). */
 const LABEL_HEADROOM = 12;
+/** Left gutter for the value axis, wide stage only (issue #1128 AK3/AK5) — the
+ * narrow/1280 stage keeps it at 0 (#939 removed the axis gutter there). */
+const WIDE_AXIS_GUTTER = 36;
+const PRECIPITATION_TICKS = [0, 50, 100];
 
 export interface WeatherDayDetailProps {
   date: string;
@@ -71,25 +76,62 @@ interface XTick {
   label: string;
 }
 
+interface YTick {
+  y: number;
+  label: string;
+}
+
 /**
- * The axis frame both charts share: the baseline plus the hour labels — no
- * y-gridline or y-label (issue #939 AK4), the sheet reads the chart's shape
- * rather than its exact values. `children` are the data marks, drawn on top.
+ * The axis frame both charts share: the baseline plus the hour labels, plus an
+ * optional value axis (`yTicks`, wide stage only — issue #1128 AK3/AK5; #939
+ * removed it for the narrow stage, which never passes it). `viewW`/`plotX` are
+ * per-instance rather than the old module constants: the wide stage measures its
+ * own rendered width so the viewBox can match it 1:1 (AK4) — a scaled-up viewBox
+ * would grow the label font-size right along with the card. `children` are the
+ * data marks, drawn on top.
  */
 function ChartFrame({
   className,
   ariaLabel,
+  viewW,
+  plotX,
+  svgRef,
   xTicks,
+  yTicks,
   children,
 }: {
   className: string;
   ariaLabel: string;
+  viewW: number;
+  plotX: number;
+  svgRef?: React.RefObject<SVGSVGElement | null>;
   xTicks: XTick[];
+  yTicks?: YTick[];
   children: React.ReactNode;
 }) {
   return (
-    <svg className={className} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label={ariaLabel}>
-      <line className="weather-day__chart-axis" x1={0} x2={PLOT_W} y1={PLOT_BOTTOM} y2={PLOT_BOTTOM} />
+    <svg
+      ref={svgRef}
+      className={className}
+      viewBox={`0 0 ${viewW} ${VIEW_H}`}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      {yTicks?.map((tick) => (
+        <g key={tick.label}>
+          <line className="weather-day__chart-grid" x1={plotX} x2={viewW} y1={tick.y} y2={tick.y} />
+          <text
+            className="weather-day__chart-ylabel"
+            x={plotX - 6}
+            y={tick.y}
+            textAnchor="end"
+            dominantBaseline="middle"
+          >
+            {tick.label}
+          </text>
+        </g>
+      ))}
+      <line className="weather-day__chart-axis" x1={plotX} x2={viewW} y1={PLOT_BOTTOM} y2={PLOT_BOTTOM} />
       {xTicks.map((tick, i) => (
         <text
           key={tick.label}
@@ -164,6 +206,28 @@ function edgeAnchor(index: number, count: number): 'start' | 'middle' | 'end' {
 }
 
 /**
+ * Actual rendered width of an SVG element, wide stage only (issue #1128 AK4) —
+ * `active=false` (narrow/1280) never attaches an observer, so those stages pay
+ * nothing for it and the geometry below falls back to the fixed `VIEW_W`
+ * untouched. `null` until the first observation lands, which the caller falls
+ * back to `VIEW_W` for too — a one-frame scaled label beats a zero-width chart.
+ */
+function useMeasuredWidth(active: boolean): [React.RefObject<SVGSVGElement | null>, number | null] {
+  const ref = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active || !ref.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setWidth(entry.contentRect.width);
+    });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [active]);
+  return [ref, width];
+}
+
+/**
  * Hourly breakdown for one day out of the cached forecast (issue #156). Reads only
  * from IndexedDB via `useWeatherDay` — no `fetch` here, same ADR-0009 rule as
  * `WeatherForecast`, and no *own* refresh trigger either (AC "kein eigener
@@ -175,6 +239,12 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
   // Called unconditionally, ahead of the early returns below (rules of hooks) —
   // `phase` moves loading → ready without unmounting this component.
   const nowMark = berlinNowMark(useNow());
+  // Wide stage only (issue #1128 AK1/AK3/AK4/AK5) — each chart measures its own
+  // column: the temperature card sits in the wide left column, the precipitation
+  // card in the narrower right one.
+  const isWide = useMinWidth(1440);
+  const [tempChartRef, measuredTempWidth] = useMeasuredWidth(isWide);
+  const [precipChartRef, measuredPrecipWidth] = useMeasuredWidth(isWide);
 
   if (phase === 'loading') {
     return (
@@ -208,16 +278,32 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
 
   const axis = temperatureAxis(day.hours);
   const curveOffsetY = PLOT_Y + LABEL_HEADROOM;
-  const curve = smoothPath(day.hours, PLOT_W, plotMaxHeight, axis);
+  // Each chart's own plot box (issue #1128 AK4): `plotX` opens up only in the
+  // wide stage, `viewW` is that stage's measured column width once the
+  // ResizeObserver above has fired, otherwise the fixed `VIEW_W` both stages
+  // start from — narrow/1280 always resolve to `plotX=0, viewW=VIEW_W`, byte-
+  // identical to before (AK6).
+  const tempPlotX = isWide ? WIDE_AXIS_GUTTER : 0;
+  const tempViewW = isWide && measuredTempWidth ? Math.round(measuredTempWidth) : VIEW_W;
+  const tempPlotW = tempViewW - tempPlotX;
+  const precipPlotX = isWide ? WIDE_AXIS_GUTTER : 0;
+  const precipViewW = isWide && measuredPrecipWidth ? Math.round(measuredPrecipWidth) : VIEW_W;
+  const precipPlotW = precipViewW - precipPlotX;
+
+  const curve = smoothPath(day.hours, tempPlotW, plotMaxHeight, axis);
   const temperatureY = (value: number) =>
     PLOT_BOTTOM - ((value - axis.min) / (axis.max - axis.min)) * plotMaxHeight;
   // Hour n reads the axis as a full day, 0..24 — so it sits at n/24 of the width,
   // one slot short of the right edge, matching the 24:00 tick there (issue #795).
-  const curveX = (hour: number) => (hour / HOURS_PER_DAY) * PLOT_W;
+  const curveX = (hour: number) => tempPlotX + (hour / HOURS_PER_DAY) * tempPlotW;
+  // Narrow stage: identical to `curveX` (both plot boxes collapse to the same
+  // 0..320 box, issue #998 AK2). Wide stage: the precipitation chart measures its
+  // own, narrower column (issue #1128 AK4), so it needs its own x mapping.
+  const precipCurveX = (hour: number) => precipPlotX + (hour / HOURS_PER_DAY) * precipPlotW;
   // A bar owns a slot instead, so its label belongs over that slot's centre.
-  const slotWidth = PLOT_W / HOURS_PER_DAY;
+  const slotWidth = precipPlotW / HOURS_PER_DAY;
   const barWidth = slotWidth * 0.6;
-  const slotX = (hour: number) => (hour + 0.5) * slotWidth;
+  const slotX = (hour: number) => precipPlotX + (hour + 0.5) * slotWidth;
 
   const isToday = nowMark.dateKey === date;
   const nowTemp = isToday && day.hours.length > 0 ? temperatureAtHour(day.hours, nowMark.hourOfDay) : null;
@@ -250,7 +336,13 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         <ChartFrame
           className="weather-day__chart"
           ariaLabel={`Temperaturverlauf von ${Math.round(day.tempMin)}° bis ${Math.round(day.tempMax)}°, stündlich`}
+          viewW={tempViewW}
+          plotX={tempPlotX}
+          svgRef={tempChartRef}
           xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
+          yTicks={
+            isWide ? axis.ticks.map((tick) => ({ y: temperatureY(tick), label: `${tick}°` })) : undefined
+          }
         >
           <defs>
             <linearGradient id="weather-day-temp-area" x1="0" y1="0" x2="0" y2="1">
@@ -339,9 +431,20 @@ export function WeatherDayDetail({ date }: WeatherDayDetailProps) {
         <ChartFrame
           className="weather-day__precipitation-chart"
           ariaLabel={`Regenwahrscheinlichkeit je Stunde, höchstens ${maxProbability} %`}
-          // Ticks sit on the slot boundary (same position as curveX), not the slot
-          // centre a bar itself is drawn at — both charts share one hour grid.
-          xTicks={HOUR_TICKS.map((hour) => ({ x: curveX(hour), label: hourTickLabel(hour) }))}
+          viewW={precipViewW}
+          plotX={precipPlotX}
+          svgRef={precipChartRef}
+          // Ticks sit on the slot boundary (same position as precipCurveX), not the
+          // slot centre a bar itself is drawn at.
+          xTicks={HOUR_TICKS.map((hour) => ({ x: precipCurveX(hour), label: hourTickLabel(hour) }))}
+          yTicks={
+            isWide
+              ? PRECIPITATION_TICKS.map((p) => ({
+                  y: PLOT_BOTTOM - (p / 100) * plotMaxHeight,
+                  label: `${p} %`,
+                }))
+              : undefined
+          }
         >
           {day.hours.map((hour, i) => {
             const height = (hour.precipitationProbability / 100) * plotMaxHeight;
@@ -440,6 +543,9 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
   const headCategory = headDay ? weatherCategory(headDay.weatherCode) : null;
   const HeadIcon = headCategory ? WEATHER_ICON_BY_CATEGORY[headCategory] : null;
   const headNight = headDay ? nightTemperature(headDay, headNextDay) : null;
+  // Wide stage only (issue #1128 AK2) — the category moves from its own subline
+  // into the headline row, hairline-separated from the temperatures.
+  const isWideHead = useMinWidth(1440);
 
   const nextDate = cache.days ? nextWeatherDate(cache.days, currentDate) : null;
   const previousDate = cache.days ? previousWeatherDate(cache.days, currentDate) : null;
@@ -594,10 +700,15 @@ export function WeatherDayScreen({ initialDate }: WeatherDayScreenProps) {
                     {Math.round(headNight ? headNight.value : headDay.tempMin)}°
                   </span>
                 </span>
+                {isWideHead && (
+                  <span className="weather-day__category">{WEATHER_LABEL_BY_CATEGORY[headCategory]}</span>
+                )}
               </div>
               <PageFace face="wetter" />
             </div>
-            <p className="page-head__subline">{WEATHER_LABEL_BY_CATEGORY[headCategory]}</p>
+            {!isWideHead && (
+              <p className="page-head__subline">{WEATHER_LABEL_BY_CATEGORY[headCategory]}</p>
+            )}
           </>
         )}
       </header>
