@@ -1,19 +1,52 @@
 'use client';
 
-import { cellHabitId, historyGrid } from './history-grid';
-import { legendOrder } from './legend-order';
+import { isHabitDoneOnDay, historyGrid, type HistoryGridDay } from './history-grid';
 import { useHabitLogs } from './use-habit-logs';
-import { useHabits } from './use-habits';
+import { compareHabits, useHabits } from './use-habits';
+
+/** True when `dateKey` (`YYYY-MM-DD`) falls on a Monday, parsed as a local date to avoid UTC off-by-one. */
+function isMonday(dateKey: string): boolean {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year, month - 1, day).getDay() === 1;
+}
+
+/**
+ * Grid column tracks for the 30 day cells plus a 2px track before every Monday
+ * in the window (except the first day, even if it is itself a Monday — a gap
+ * before the first column would just be dead space). `dayColumns[i]` and
+ * `weekLineColumns[i]` are 1-based CSS grid line numbers.
+ */
+function weekLayout(days: HistoryGridDay[]): {
+  gridTemplateColumns: string;
+  dayColumns: number[];
+  weekLineColumns: number[];
+} {
+  const tracks: string[] = [];
+  const dayColumns: number[] = [];
+  const weekLineColumns: number[] = [];
+
+  days.forEach((day, index) => {
+    if (index > 0 && isMonday(day.dateKey)) {
+      tracks.push('2px');
+      weekLineColumns.push(tracks.length);
+    }
+    tracks.push('minmax(0, 14px)');
+    dayColumns.push(tracks.length);
+  });
+
+  return { gridTemplateColumns: tracks.join(' '), dayColumns, weekLineColumns };
+}
 
 /**
  * "Erledigt · 30 Tage" as a squares grid (issue #1070, replaces the step-chart
- * card from #905/#1040) — 30 columns of days, one row per active habit, each
- * done habit a filled `--area-habits` square (issue #1101: cells are 14px,
- * too small to read an emoji, so no per-habit marker here), stacked from the
- * baseline in `compareHabits` order so a reliable habit reads as an unbroken
- * band instead of jumping row on every miss. Renders nothing at 0 active
- * habits, same rule the card it replaces already followed (#905 AK7) — an
- * empty grid would read as "nothing happened" more loudly than silence.
+ * card from #905/#1040) — 30 columns of days, one fixed row per active habit
+ * in `compareHabits` order (oldest on top, same order as the table above), a
+ * done habit's emoji on a transparent cell, or a flat `--area-habits` fill
+ * for a habit with no emoji (issue #1150, replaces the baseline-stacked,
+ * emoji-less grid from #1070/#1101 — 30 fixed rows read "which" habit, not
+ * just "how many"). A 2px column before every Monday carries a hairline week
+ * divider. Renders nothing at 0 active habits, same rule the card it replaces
+ * already followed (#905 AK7).
  */
 export function HabitHistoryCard() {
   const habits = useHabits();
@@ -21,13 +54,12 @@ export function HabitHistoryCard() {
 
   if (habits === undefined || logs === undefined) return null;
 
-  const active = habits.filter((habit) => habit.archivedAt === null);
+  const active = habits.filter((habit) => habit.archivedAt === null).sort(compareHabits);
   if (active.length === 0) return null;
 
   const now = new Date();
   const grid = historyGrid(habits, logs, now);
-  const rowCount = active.length;
-  const habitById = new Map(active.map((habit) => [habit.id, habit]));
+  const { gridTemplateColumns, dayColumns, weekLineColumns } = weekLayout(grid.days);
 
   return (
     <div className="habit-history-card">
@@ -37,20 +69,39 @@ export function HabitHistoryCard() {
       </div>
       <div
         className="habit-history-card__grid"
-        style={{ gridTemplateRows: `repeat(${rowCount}, minmax(0, 14px))` }}
+        style={{
+          gridTemplateColumns,
+          gridTemplateRows: `repeat(${active.length}, minmax(0, 14px))`,
+        }}
         role="img"
         aria-label={`${grid.total} Erledigungen in den letzten 30 Tagen`}
       >
-        {Array.from({ length: rowCount }, (_, rowIndex) =>
-          grid.days.map((day) => {
-            const habitId = cellHabitId(day, rowIndex, rowCount);
-            const habit = habitId ? habitById.get(habitId) : undefined;
+        {weekLineColumns.map((column) => (
+          <span
+            key={`week-${column}`}
+            className="habit-history-card__week-line"
+            style={{ gridColumn: column, gridRow: '1 / -1' }}
+          />
+        ))}
+        {active.map((habit, rowIndex) =>
+          grid.days.map((day, dayIndex) => {
+            const done = isHabitDoneOnDay(day, habit.id);
             return (
               <span
-                key={`${rowIndex}-${day.dateKey}`}
+                key={`${habit.id}-${day.dateKey}`}
                 className="habit-history-card__cell"
-                style={habit ? { background: 'var(--area-habits)' } : undefined}
-              />
+                style={{
+                  gridColumn: dayColumns[dayIndex],
+                  gridRow: rowIndex + 1,
+                  background: done ? (habit.emoji ? 'transparent' : 'var(--area-habits)') : undefined,
+                }}
+              >
+                {done && habit.emoji ? (
+                  <span className="habit-history-card__emoji" aria-hidden="true">
+                    {habit.emoji}
+                  </span>
+                ) : null}
+              </span>
             );
           }),
         )}
@@ -59,14 +110,6 @@ export function HabitHistoryCard() {
         <span>vor 30 Tagen</span>
         <span>heute</span>
       </div>
-      <ul className="habit-history-card__legend">
-        {legendOrder(active).map((habit) => (
-          <li key={habit.id} className="habit-history-card__legend-item">
-            <span className="habit-history-card__legend-dot" />
-            <span className="habit-history-card__legend-name">{habit.name}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
