@@ -807,8 +807,13 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
         await client.query(downSql);
         expect(await sessionColumns(client)).not.toContain('device_id');
 
+        // Sortiert vergleichen, nicht als Array: `ADD COLUMN` hängt physisch immer
+        // ans Ende an, seit #1103 last_seen_at (0025) *nach* device_id (0023) kam.
+        // Ein Down/Up-Zyklus von 0023 verschiebt device_id deshalb hinter
+        // last_seen_at — die Spaltenmenge stimmt wieder, die Reihenfolge nicht, und
+        // die ist für keinen Aufrufer (Drizzle liest per Name) je bedeutungsvoll.
         await client.query(upSql);
-        expect(await sessionColumns(client)).toEqual(columnsBefore);
+        expect((await sessionColumns(client)).sort()).toEqual([...columnsBefore].sort());
       } finally {
         // DDL ist in Postgres transaktional — der Rollback macht auch ADD/DROP
         // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt.
@@ -968,6 +973,14 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
 });
 
 test.describe('#1103: Karte "Anmeldungen" (destruktiv, frischer Context)', () => {
+  // `sessions` hat keine Scoping (single-user app, siehe deleteAllSessions oben) —
+  // ohne das hier akkumulieren frühere Specs' Wegwerf-Sitzungen in der geteilten
+  // Test-DB, und listSessions() (systemweit, keine Test-Grenze) liefert für jede
+  // Zeilenzahl-Assertion unten viel zu viele Treffer.
+  test.beforeEach(async () => {
+    await deleteAllSessions();
+  });
+
   test('AK2: listet lebende Sitzungen mit unterschiedlicher Geräte-ID, abgelaufene fehlen', async ({
     browser,
     baseURL,
