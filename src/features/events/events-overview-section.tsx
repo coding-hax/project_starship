@@ -75,7 +75,7 @@ export function EventsOverviewSection() {
   const nextTimeline = next ? formatNextTimeline(now, next.dayKey, next.item) : null;
 
   return (
-    <OverviewBlock>
+    <OverviewBlock section="kalender">
       {next ? (
         <div className="events-overview__next">
           <OverviewCardHead title="Nächster Termin" href="/kalender" moreLabel="Kalender" />

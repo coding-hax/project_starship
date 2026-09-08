@@ -51,6 +51,19 @@
   margin: var(--space-3) 0 var(--space-2);
 }
 
+/* Setzt `order` zurück (issue #1123 AK5) — ab 1440px trägt `page-head.css`
+   (issue #1117) `.page-head__eyebrow { order: 1 }` für den eigenen
+   Flex-Kopf, aber diese Zeile teilt sich mit jener Klasse nur den Textstil,
+   nicht deren Flex-Kontext: hier ist sie ein Grid-Item im Grid dieser Datei
+   (`.calendar-view:has(> .month-grid)`). `order` wirkt auch im Grid-
+   Autoplacement, also landete die Tagesüberschrift hinter statt vor der
+   Agenda — genau der Rutsch, den diese AK verhindern soll. Der zusammengesetzte
+   Selektor schlägt `.page-head__eyebrow` per Spezifität, unabhängig von der
+   Importreihenfolge beider Dateien. */
+.calendar-view__day-heading.page-head__eyebrow {
+  order: 0;
+}
+
 /* Der Streifen ist seit issue #1013 eine schwebende Karte mit eigenem
    Schatten/Radius statt loser Zellen auf dem Grund — der Kopf-`gap`
    (--space-1) reicht für Augenbraue/Titel, aber die Karte darunter braucht
@@ -111,6 +124,38 @@
   .calendar-view:has(> .month-grid) > .calendar-view__day-heading,
   .calendar-view:has(> .month-grid) > .event-agenda {
     grid-column: 2;
+  }
+}
+
+/* Dritte Desktop-Stufe (issue #1123, ADR-0030): das Monatsraster wird die
+   Hauptfläche statt der schmalen linken Spalte von der zweiten Stufe (oben) —
+   die Spaltenbreiten drehen um (Raster breit/flexibel, Agenda höchstens
+   400px, AK1), `grid-column` der Kinder oben bleibt unverändert richtig
+   (Raster weiterhin Spalte 1, Agenda weiterhin Spalte 2). */
+@media (min-width: 1440px) {
+  .calendar-view:has(> .month-grid) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 25rem);
+    /* Explizite Zeilenhöhen statt der von der zweiten Stufe geerbten
+       impliziten `auto`-Zeilen (AK5): ohne sie verteilt Chromium die
+       Überhöhe, die das jetzt viel größere Raster gegenüber
+       Tagesüberschrift + Agenda zusammen mitbringt, gleichmäßig auf beide
+       von ihm überspannten Zeilen — die Agenda rutscht sichtbar um die
+       halbe Differenz nach unten statt oben an der Tagesüberschrift zu
+       kleben. Eine flexible letzte Zeile (`minmax(0, 1fr)`) nimmt die ganze
+       Überhöhe stattdessen allein: sobald eine überspannte Zeile flexibel
+       ist, bleiben die `auto`-Zeilen davor bei ihrer eigenen
+       Ein-Spalten-Inhaltsgröße (CSS Grid Abschnitt „Resolving Intrinsic
+       Track Sizes" — überspannende Items, die eine flexible Spur kreuzen,
+       vergrößern nur die flexible Spur, nie die `auto`-Spuren daneben). */
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  /* Schiebt eine zusätzliche `auto`-Zeile für `.offline-notice` ein (dieselbe
+     dritte Rechtsspalten-Zeile wie in der zweiten Stufe oben) — sonst würde
+     die letzte, flexible Zeile plötzlich die Offline-Meldung statt der
+     Agenda tragen. */
+  .calendar-view:has(> .month-grid):has(> .offline-notice) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
   }
 }
 
