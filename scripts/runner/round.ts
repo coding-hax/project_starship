@@ -1074,7 +1074,9 @@ function parseField(out: string, field: string): string {
 // wuerde das brechen). Faellt 'usage'/'num_turns' im Ergebnis-JSON weg (Kill vor
 // der finalen Ausgabe: Notbremse, 429), liefert parseField '' -- die Zeile
 // wird trotzdem geschrieben, nur mit leeren Feldern (AK3): kein Abbruch.
-function logUsage(plan: RoundRun, outcome: RoundOutcome): void {
+// #1146: 'issue' und 'slot' kommen aus 'plan'/'ctx', nicht aus dem Ergebnis-JSON
+// -- sie stehen deshalb auch dann in der Zeile, wenn 'out' kein valides JSON ist.
+function logUsage(plan: RoundRun, outcome: RoundOutcome, slotId: string): void {
   const entry = {
     role: plan.role,
     model: plan.model,
@@ -1084,6 +1086,8 @@ function logUsage(plan: RoundRun, outcome: RoundOutcome): void {
     input_tokens: parseField(outcome.out, 'usage.input_tokens'),
     output_tokens: parseField(outcome.out, 'usage.output_tokens'),
     num_turns: parseField(outcome.out, 'num_turns'),
+    issue: plan.issue,
+    slot: slotId,
   };
   process.stderr.write(`runner-usage ${JSON.stringify(entry)}\n`);
 }
@@ -1172,7 +1176,7 @@ export function roundRecover(ctx: RoundContext, plan: RoundRun, rc: number, log:
 }
 
 export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutcome, log: string): RoundEvalResult {
-  const { gh, git, state, sharedState, clock } = ctx;
+  const { gh, git, state, sharedState, slotId, clock } = ctx;
   const { issue, role } = plan;
   const stop = (status: StatusUpdate | null, rc: number, forcePublishStatus = false): RoundEvalResult => ({
     status,
@@ -1188,7 +1192,7 @@ export function roundEval(ctx: RoundContext, plan: RoundRun, outcome: RoundOutco
   // #740, AK1: JEDER abgeschlossene Lauf bekommt seine Verbrauchszeile --
   // unabhaengig davon, welcher Zweig unten (Erfolg/Limit/Notbremse/Fehlschlag)
   // greift.
-  logUsage(plan, outcome);
+  logUsage(plan, outcome, slotId);
 
   // Session-ID sichern. Nach einem Timeout-Kill ist $OUT kein valides JSON --
   // eine leere Zeile wuerde die noch gueltige alte ID ueberschreiben, und der
