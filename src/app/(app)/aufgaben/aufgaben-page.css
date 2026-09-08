@@ -83,3 +83,17 @@
     padding-bottom: calc(58px + var(--space-4) + var(--keyboard-inset));
   }
 }
+
+/* issue #1117 AK3: der Umschalter zieht ab 1440px aus seiner eigenen Zeile
+   unter dem Kopf in `PageHead`s `extra`-Slot (aufgaben-view.tsx) — dort ist er
+   ein Flex-Item der Kopfzeile (page-head.css), nicht mehr das letzte Element
+   eines normalen Blockflusses. `margin-bottom: var(--space-4)` (task-list.css)
+   bläht als Flex-Item-Rand die eigene Randbox real auf (Flex-Items etablieren
+   einen eigenen Block-Formatierungskontext, der Rand kollabiert nicht mehr
+   nach außen) und würde den gemessenen Mittelpunkt von `.page-head__extra`
+   gegen AK1 (±4px) verschieben. */
+@media (min-width: 1440px) {
+  [data-ground='aufgaben'] .task-list__view-switcher {
+    margin-bottom: 0;
+  }
+}
