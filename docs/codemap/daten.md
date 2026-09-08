@@ -5,7 +5,8 @@
 - `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit fürs Datenmodell
 - `sync-tables.ts` / `sync-lock.ts` — Sync-Felder je Tabelle + Advisory-Lock
 - `index.ts` / `migrate.ts` — DB-Verbindung + wendet Migrationen an
-- `migrations/` — generierte Migrationen + Down-Pfad, nie von Hand
+- `migrations/` — generierte Migrationen, nie von Hand
+- `migrations/down/` — Down-Pfad je Migration
 
 ## src/local
 
