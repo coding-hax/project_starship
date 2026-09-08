@@ -343,21 +343,44 @@ export function UebersichtCapture() {
     setOpen(false);
     setOpenChip(null);
     const fields = eventFieldsFromDraft(final, now);
-    const startsAt = fields.startsAt ?? localInputToIso(defaultEventStart(now));
-    const endsAt = startsAt
-      ? new Date(new Date(startsAt).getTime() + 60 * 60 * 1000).toISOString()
-      : null;
-    const prefill: EventEditorPrefill = {
-      title: fields.title,
-      allDay: false,
-      startsAt,
-      endsAt,
-      startDate: null,
-      endDate: null,
-      category: (category || null) as EventEditorPrefill['category'],
+    const confidence = {
       titleConfidence: fields.titleConfidence,
       dateConfidence: fields.dateConfidence,
       timeConfidence: fields.timeConfidence,
+    };
+    // issue #1138: ohne erkanntes `dueAt` bekommt der Editor seinen eigenen
+    // Create-Default (09:00 heute, eine Stunde) — der ganztägig-Fallback, den
+    // `eventFieldsFromDraft` sonst für "nichts erkannt" liefert, wäre hier ein
+    // unerklärter Sprung auf "ganztägig" (AK4).
+    if (!final.dueAt) {
+      const startsAtDate = new Date(defaultEventStart(now));
+      const startsAt = startsAtDate.toISOString();
+      const endsAt = new Date(startsAtDate.getTime() + 60 * 60 * 1000).toISOString();
+      const prefill: EventEditorPrefill = {
+        title: fields.title,
+        allDay: false,
+        startsAt,
+        endsAt,
+        startDate: null,
+        endDate: null,
+        category: (category || null) as EventEditorPrefill['category'],
+        ...confidence,
+      };
+      setEventEditorState({ mode: 'create', event: null, occurrence: null, prefill });
+      return;
+    }
+    // AK1-AK3 (#1138): Zeit, Enddatum und ganztägig-Status exakt wie erkannt
+    // übernehmen — vorher wurde `endsAt` hart als `startsAt + 1h` neu gerechnet
+    // und `allDay`/`startDate`/`endDate` verworfen (Ticket-Kontext).
+    const prefill: EventEditorPrefill = {
+      title: fields.title,
+      allDay: fields.allDay,
+      startsAt: fields.startsAt,
+      endsAt: fields.endsAt,
+      startDate: fields.startDate,
+      endDate: fields.endDate,
+      category: (category || null) as EventEditorPrefill['category'],
+      ...confidence,
     };
     setEventEditorState({ mode: 'create', event: null, occurrence: null, prefill });
   }
