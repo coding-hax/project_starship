@@ -21,15 +21,21 @@
 
 /* Week divider (issue #1150 AK5) — `--border` in light mode, but `--border-strong`
    in dark, not just a darkened `--border`: at 1px wide it needs the stronger
-   token to stay visible against the darker `--surface`. Global, `var(..., ...)`-
-   gated like `--next-time-ink-mix` (events-overview-section.css) rather than
-   redeclared per-theme selector inside `.habit-history-card`. */
+   token to stay visible against the darker `--surface`. Scoped to
+   `.habit-history-card`, NOT `:root` (unlike `--next-time-ink-mix`,
+   events-overview-section.css): `var(--border-strong)` is resolved at the
+   element the custom property is declared on, and at `:root` that's the
+   route-ground-mixed value from `globals.css`'s `:root:has([data-ground])`
+   (issue #846, same (0,2,0) specificity, wins by source order over tokens.css's
+   dark block) — not the neutral `--border-strong-base` this card resets to for
+   itself two rules up ("Own surface, own ink", issue #832 AK5). Declaring it
+   here instead picks up that local reset. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='hell']) {
+  :root:not([data-theme='hell']) .habit-history-card {
     --week-line: var(--border-strong);
   }
 }
-:root[data-theme='dunkel'] {
+:root[data-theme='dunkel'] .habit-history-card {
   --week-line: var(--border-strong);
 }
 
