@@ -4,8 +4,12 @@ const cookieStore = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve(cookieStore) }));
 
 const limit = vi.fn();
+const updateWhere = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/db', () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ limit }) }) }) },
+  db: {
+    select: () => ({ from: () => ({ where: () => ({ limit }) }) }),
+    update: () => ({ set: () => ({ where: updateWhere }) }),
+  },
 }));
 
 describe('requireOwner (issue #176)', () => {

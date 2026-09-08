@@ -12,6 +12,9 @@ export { SESSION_COOKIE };
 /** Long-lived on purpose: the goal is never having to log in again. */
 const SESSION_TTL_DAYS = 365;
 
+/** How often `last_seen_at` may advance for one session (issue #1103 AC3). */
+const LAST_SEEN_THROTTLE_MS = 60 * 60 * 1000;
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -69,8 +72,10 @@ export async function createSession(credentialId: string | null = null): Promise
 /** Returns the owner id when the request carries a live session, otherwise null. */
 export async function getSession(): Promise<{
   userId: string;
+  sessionId: string;
   credentialId: string | null;
   deviceId: string | null;
+  lastSeenAt: Date | null;
 } | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
@@ -87,7 +92,13 @@ export async function getSession(): Promise<{
   const ownerId = process.env.OWNER_USER_ID;
   if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
 
-  return { userId: ownerId, credentialId: row.credentialId, deviceId: row.deviceId };
+  return {
+    userId: ownerId,
+    sessionId: row.id,
+    credentialId: row.credentialId,
+    deviceId: row.deviceId,
+    lastSeenAt: row.lastSeenAt,
+  };
 }
 
 /** The credential id of the current session, or null (no session / legacy session). */
@@ -109,19 +120,6 @@ export async function pruneExpired(): Promise<void> {
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
 }
 
-/** Live sessions other than the current one — the count shown before the "end all" action. */
-export async function countOtherSessions(): Promise<number> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  if (!token) return 0;
-
-  const rows = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(and(ne(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())));
-  return rows.length;
-}
-
 /**
  * Ends every live session except the caller's own. Missing cookie means nothing can
  * be identified as "own", so it deletes nothing rather than guessing.
@@ -136,6 +134,79 @@ export async function endOtherSessions(): Promise<number> {
     .where(and(ne(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
     .returning({ id: sessions.id });
   return deleted.length;
+}
+
+export interface SessionSummary {
+  id: string;
+  deviceId: string | null;
+  lastSeenAt: string | null;
+  current: boolean;
+}
+
+/** Live sessions — the rows behind the "Anmeldungen" card (issue #1103 AC2). */
+export async function listSessions(): Promise<SessionSummary[]> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  const currentHash = token ? hashToken(token) : null;
+
+  const rows = await db
+    .select({
+      id: sessions.id,
+      tokenHash: sessions.tokenHash,
+      deviceId: sessions.deviceId,
+      lastSeenAt: sessions.lastSeenAt,
+    })
+    .from(sessions)
+    .where(gt(sessions.expiresAt, new Date()));
+
+  return rows.map((row) => ({
+    id: row.id,
+    deviceId: row.deviceId,
+    lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
+    current: row.tokenHash === currentHash,
+  }));
+}
+
+export type EndSessionResult = 'deleted' | 'not-found' | 'self';
+
+/**
+ * Ends one specific session (issue #1103 AC4). Never the caller's own — that is
+ * "App sperren"'s job, not this button's (AC5, the same separation #857 made for
+ * "end all others").
+ */
+export async function endSession(id: string): Promise<EndSessionResult> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  const currentHash = token ? hashToken(token) : null;
+
+  const [row] = await db
+    .select({ tokenHash: sessions.tokenHash })
+    .from(sessions)
+    .where(eq(sessions.id, id))
+    .limit(1);
+  if (!row) return 'not-found';
+  if (currentHash && row.tokenHash === currentHash) return 'self';
+
+  await db.delete(sessions).where(eq(sessions.id, id));
+  return 'deleted';
+}
+
+/**
+ * Stamps `last_seen_at` on one session, throttled to at most once per hour
+ * (issue #1103 AC3) — the goal is an honest "zuletzt gesehen", not a write on
+ * every request. The `WHERE` guard is the actual throttle and is race-safe on
+ * its own (two concurrent requests racing the guard just both no-op or both
+ * write the same `now()`, either is fine); the JS check above it only spares
+ * the round trip in the common case where nothing needs to happen.
+ */
+async function touchLastSeen(sessionId: string, lastSeenAt: Date | null): Promise<void> {
+  const throttleBoundary = new Date(Date.now() - LAST_SEEN_THROTTLE_MS);
+  if (lastSeenAt && lastSeenAt > throttleBoundary) return;
+
+  await db
+    .update(sessions)
+    .set({ lastSeenAt: new Date() })
+    .where(and(eq(sessions.id, sessionId), or(isNull(sessions.lastSeenAt), lt(sessions.lastSeenAt, throttleBoundary))));
 }
 
 /**
@@ -157,6 +228,7 @@ export async function requireOwner(): Promise<string> {
   // route checks requireOwner(), and only a route handler may write a cookie.
   // Do not call this from a Server Component; getSession() is the read-only half.
   await healDeviceCookie(session.deviceId);
+  await touchLastSeen(session.sessionId, session.lastSeenAt);
 
   return session.userId;
 }
