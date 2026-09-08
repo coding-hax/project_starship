@@ -158,6 +158,7 @@ Ablauf:
    - UI-/Design-Arbeit → docs/DESIGN_SYSTEM.md
    - Journal-/Krypto-Arbeit → docs/adr/0004-journal-metadaten-verschluesseln.md
    - Architektur-/Grundsatzfrage → das passende ADR unter docs/adr/
+   - Details zu einem Bereich der Code-Karte → die passende Bereichskarte unter docs/codemap/
    Die im Ticket unter „Betroffene Dateien"/„Betroffene Docs" genannten Pfade
    sind Pflicht — lies sie selektiv, nie das halbe Repo.
 2. Lies das Issue: gh issue view ${issue} --comments
