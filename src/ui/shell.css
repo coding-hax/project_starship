@@ -73,6 +73,13 @@
   justify-content: flex-end;
 }
 
+/* Third desktop stage (issue #1116, ADR-0030): shown only from 1440px up, see
+   the media block below — hidden here by default so it never doubles up with
+   `chrome` on mobile or on the 768–1439px stage. */
+.app-header--sidebar {
+  display: none;
+}
+
 .app-header__settings {
   display: flex;
   align-items: center;
@@ -99,6 +106,16 @@
 .app-header__icon svg {
   width: 26px;
   height: 26px;
+}
+
+/* Real text (issue #1116 AC3), not a `::before`/`::after` `content:` — a
+   pseudo-element's generated content never reaches a screen reader's text
+   tree. Only rendered by the `sidebar` variant (app-header.tsx); the
+   ellipsis guard costs nothing on the other two, which never mount it. */
+.app-header__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --------------------------------- nav ---------------------------------- */
@@ -403,6 +420,79 @@
        in light mode (AK1/AK4). --text already resolved to --text-base one line
        up, matching the rest of .nav__bar's own-surface-own-ink pattern. */
     color: var(--text);
+  }
+}
+
+/* --------------------------- desktop, dritte Stufe ----------------------- */
+
+/*
+ * Dritte Desktop-Stufe (issue #1116, ADR-0030): eine 264er Leiste statt der
+ * 232er aus der zweiten Stufe, und eine zentrierte 1440er Inhaltsspalte statt
+ * der 880er linksbündigen. Der Block oben (768–1439px) bleibt dabei unberührt
+ * — AK2 verlangt ausdrücklich, dass die zweite Stufe unverändert bleibt.
+ */
+@media (min-width: 1440px) {
+  .shell {
+    grid-template-columns: var(--shell-col-wide) 1fr;
+  }
+
+  .shell__main {
+    /* `box-sizing: border-box` explizit statt vererbt: `max-width` muss die
+       Box INKLUSIVE des `padding-inline` unten treffen, sonst füllt die Box
+       (1440 + 2×48 Padding) genau die verfügbare 1536px-Spalte bei 1800px. */
+    box-sizing: border-box;
+    max-width: var(--shell-content-wide);
+    /* `margin-inline: auto` zentriert `.shell__main` als Grid-Item NICHT —
+       weder mit geerbtem `width: 100%` noch mit `width: min(100%, …)`
+       (beide Varianten geprüft): die berechneten `margin-left`/`margin-right`
+       blieben in jedem Fall bei 0px statt bei den erwarteten 48px (AK1).
+       Statt uns auf die Auto-Margin-Verteilung von Grid-Items zu verlassen,
+       rechnen wir den Rand selbst aus: `100%` löst hier gegen die Breite der
+       Grid-Spalte auf (1536px bei 1800px Viewport, 264er Leiste), `max(0px, …)`
+       verhindert einen negativen Rand, sobald die Spalte schmaler als
+       1440px + 2×Rand wird (z. B. exakt an der 1440px-Grenze selbst, wo die
+       Spalte nur 1176px misst) — dort füllt `.shell__main` die Spalte über
+       das geerbte `width: 100%` ohnehin randlos aus. */
+    margin-inline: max(0px, calc((100% - var(--shell-content-wide)) / 2));
+    padding-inline: var(--space-12);
+  }
+
+  /* Der Einstellungs-Einstieg wandert aus der Kopfzeile in den Leistenfuß
+     (AK3) — `chrome` weicht der `sidebar`-Variante, die Nav.tsx selbst
+     mountet, sonst gäbe es zwei sichtbare „Einstellungen"-Links gleichzeitig. */
+  .app-header--chrome {
+    display: none;
+  }
+
+  .app-header--sidebar {
+    display: block;
+    /* Absolute statt aus `.nav`s Innenbreite abgeleitete Breite (AK3: linke
+       Kante 0, Breite 264 — exakt die Leistenbreite, nicht das um Innenabstand
+       UND rechten Rahmen (`.nav { border-right: 1px }`, oben) verkleinerte
+       Raster der Tabs darüber). Mit `align-items: stretch` + negativem
+       `margin-inline` allein fehlte genau dieser eine Rahmen-Pixel (Fund:
+       AK3 lieferte 263px statt 264px) — die Grid-Spalte selbst ist der
+       verlässliche Bezug, nicht `.nav`s eigene, um Innenabstand/Rahmen
+       geschmälerte Box. */
+    width: var(--shell-col-wide);
+    margin-inline: calc(-1 * var(--space-3));
+  }
+
+  .app-header--sidebar .app-header__settings {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    font-size: var(--text-secondary);
+  }
+
+  .app-header--sidebar .app-header__settings:hover {
+    background: var(--surface-raised);
+  }
+
+  .app-header--sidebar .app-header__settings[aria-current='page'] {
+    background: var(--surface);
   }
 }
 
