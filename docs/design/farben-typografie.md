@@ -25,13 +25,14 @@ Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutun
 
 ### Frei wählbare Nutzerfarben (`--swatch-*`, issue #658)
 
-Wo eine Person aus mehreren gleichrangigen Optionen wählt — aktuell die
-Routinen-Farbe, ab #660 auch Kategoriefarben in den Einstellungen — reichen
-die fünf Bereichsfarben nicht: sie tragen woanders schon eine feste Bedeutung
-und stünden zur Auswahl in Konkurrenz zu sich selbst. Die zehn Optionen des
-Routinen-Farbwählers sind deshalb die fünf Bereichsfarben (`--area-tasks`,
-`--area-events`, `--area-journal`, `--area-habits`, `--area-activities`) plus
-fünf neue `--swatch-*`-Tokens, die es sonst nirgends in der App gibt:
+Wo eine Person aus mehreren gleichrangigen Optionen wählt — seit #660 die
+Kategoriefarben in den Einstellungen (Routinen identifizieren sich seit #1101
+per Emoji, nicht mehr per Farbe) — reichen die fünf Bereichsfarben nicht: sie
+tragen woanders schon eine feste Bedeutung und stünden zur Auswahl in
+Konkurrenz zu sich selbst. Die zehn Optionen des Farbwählers sind deshalb die
+fünf Bereichsfarben (`--area-tasks`, `--area-events`, `--area-journal`,
+`--area-habits`, `--area-activities`) plus fünf neue `--swatch-*`-Tokens, die
+es sonst nirgends in der App gibt:
 
 | Token | Label | Farbton (hell) |
 | --- | --- | --- |

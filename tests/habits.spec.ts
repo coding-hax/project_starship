@@ -200,9 +200,9 @@ test('das Sheet zeigt Namensfeld und Chip-Zeile; ein Chip öffnet sein Panel (is
 
   await expect(nameField(page)).toBeVisible();
   const rhythmChip = habitChip(dialog, 'Rhythmus');
-  const colorChip = habitChip(dialog, 'Farbe');
+  const emojiChip = habitChip(dialog, 'Emoji');
   await expect(rhythmChip).toBeVisible();
-  await expect(colorChip).toBeVisible();
+  await expect(emojiChip).toBeVisible();
   await expect(rhythmChip).toHaveAttribute('aria-expanded', 'false');
   await expect(dialog.locator('.habit-editor__schedules')).toHaveCount(0);
 
@@ -417,84 +417,133 @@ test('nur die geänderten Felder landen in der Mutation, nicht der ganze Datensa
   expect(last.payload).toEqual({ schedule: 'weekly' });
 });
 
-test('eine Farbe wählen und speichern setzt die Eigenfarbe der Routine', async ({ page }) => {
+test('ein Emoji wählen und speichern setzt das Emoji der Routine (issue #1101 AC2)', async ({ page }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Dehnen', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Dehnen', schedule: 'daily', archivedAt: null });
 
   await editHabit(page, 'Dehnen');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  await dialog.getByRole('radio', { name: 'Koralle' }).check();
+  await habitChip(dialog, 'Emoji').click();
+  // exact: true — 'Laufen' otherwise substring-matches 'Schlittschuhlaufen' too.
+  await dialog.getByRole('radio', { name: 'Laufen', exact: true }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   const entries = await page.evaluate(() => window.__starship.pending());
   const last = entries[entries.length - 1];
-  expect(last.payload).toEqual({ color: '--area-tasks' });
+  expect(last.payload).toEqual({ emoji: '🏃' });
+});
+
+test('"Kein Emoji" ist der Standard beim Anlegen und schreibt null (issue #1101 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await openAddHabit(page);
+  const dialog = createDialog(page);
+  await nameField(page).fill('Ohne Emoji');
+  await habitChip(dialog, 'Emoji').click();
+  await expect(dialog.getByRole('radio', { name: /^Kein Emoji/ })).toBeChecked();
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+  await expect(dialog).toBeHidden();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const last = entries[entries.length - 1];
+  expect(last.payload).toMatchObject({ emoji: null });
+});
+
+test('eine Routine mit bereits gesetztem Emoji zeigt es beim erneuten Öffnen des Editors als Chip-Wert (issue #1101 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Schwimmen', schedule: 'daily', archivedAt: null, emoji: '🏊' });
+
+  await editHabit(page, 'Schwimmen');
+  const dialog = editDialog(page);
+  await expect(habitChip(dialog, 'Emoji')).toHaveText('🏊');
 });
 
 /* -------------------------------------------------------------------------- */
-/* issue #658: Farbwähler von 4 auf 10 Swatches, Raster 5x2                   */
+/* issue #1101: Emoji-Raster statt Farbwähler, mindestens 100 Emojis          */
 /* -------------------------------------------------------------------------- */
 
-const COLOR_LABELS_658 = [
-  'Grün (Standard)',
-  'Koralle',
-  'Teal',
-  'Violett',
-  'Blau',
-  'Rosé',
-  'Bernstein',
-  'Limette',
-  'Himmelblau',
-  'Magenta',
+const EMOJI_HEADINGS_1101 = [
+  'Sport & Bewegung',
+  'Gesundheit & Körper',
+  'Essen & Trinken',
+  'Haushalt',
+  'Lernen & Arbeit',
+  'Kreativ & Freizeit',
+  'Natur',
+  'Symbole',
 ];
 
-test('der Farb-Picker zeigt alle zehn Swatches aus SWATCH_PALETTE in der bindenden Reihenfolge mit ihren aria-labeln (issue #713 AK3)', async ({
+test('das Emoji-Raster zeigt mindestens 100 Emojis unter acht benannten Überschriften, scrollbar (issue #1101 AC1)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Zehn Farben', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Hundert Emojis', schedule: 'daily', archivedAt: null });
 
-  await editHabit(page, 'Zehn Farben');
+  await editHabit(page, 'Hundert Emojis');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  const radios = dialog.locator('.habit-editor__colors').getByRole('radio');
-  await expect(radios).toHaveCount(10);
+  await habitChip(dialog, 'Emoji').click();
 
-  const names = await radios.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
-  expect(names).toEqual(COLOR_LABELS_658);
+  const headings = dialog.locator('.habit-editor__emoji-heading');
+  await expect(headings).toHaveCount(8);
+  expect(await headings.allTextContents()).toEqual(EMOJI_HEADINGS_1101);
+
+  const options = dialog.locator('.habit-editor__emoji-option');
+  expect(await options.count()).toBeGreaterThanOrEqual(100);
+
+  const scroll = dialog.locator('.habit-editor__emoji-scroll');
+  const overflows = await scroll.evaluate((el) => el.scrollHeight > el.clientHeight);
+  expect(overflows).toBe(true);
 });
 
-test('die Farboptionen sind per Pfeiltasten innerhalb der Radiogruppe erreichbar (issue #658 AC4)', async ({
+test('alle Emojis im Raster sind paarweise verschieden, keines ist leer (issue #1101 AC1)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Pfeiltasten-Farbe', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Verschiedene Emojis', schedule: 'daily', archivedAt: null });
 
-  await editHabit(page, 'Pfeiltasten-Farbe');
+  await editHabit(page, 'Verschiedene Emojis');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  await dialog.getByRole('radio', { name: 'Grün (Standard)' }).focus();
+  await habitChip(dialog, 'Emoji').click();
 
-  await page.keyboard.press('ArrowRight');
-  await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
-
-  await page.keyboard.press('ArrowRight');
-  await expect(dialog.getByRole('radio', { name: 'Teal' })).toBeChecked();
+  const glyphs = await dialog.locator('.habit-editor__emoji-glyph').allTextContents();
+  expect(glyphs.every((glyph) => glyph.trim().length > 0)).toBe(true);
+  expect(new Set(glyphs).size).toBe(glyphs.length);
 });
 
-test('jede Farboption hat eine Trefferfläche von mindestens 44×44px (issue #658 AC5, 375×812)', async ({
+test('die Emoji-Optionen sind per Pfeiltasten innerhalb der Radiogruppe erreichbar (issue #1101 AC1)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Trefferfläche', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Pfeiltasten-Emoji', schedule: 'daily', archivedAt: null });
 
-  await editHabit(page, 'Trefferfläche');
+  await editHabit(page, 'Pfeiltasten-Emoji');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  const options = dialog.locator('.habit-editor__color-option');
-  await expect(options).toHaveCount(10);
+  await habitChip(dialog, 'Emoji').click();
+  await dialog.getByRole('radio', { name: /^Kein Emoji/ }).focus();
+
+  await page.keyboard.press('ArrowRight');
+  // exact: true — 'Laufen' otherwise substring-matches 'Schlittschuhlaufen' too.
+  await expect(dialog.getByRole('radio', { name: 'Laufen', exact: true })).toBeChecked();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: 'Radfahren' })).toBeChecked();
+});
+
+test('jede Emoji-Option hat eine Trefferfläche von mindestens 44×44px (issue #1101 AC1, 375×812)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Emoji-Trefferfläche', schedule: 'daily', archivedAt: null });
+
+  await editHabit(page, 'Emoji-Trefferfläche');
+  const dialog = editDialog(page);
+  await habitChip(dialog, 'Emoji').click();
+  const options = dialog.locator('.habit-editor__emoji-option');
+  expect(await options.count()).toBeGreaterThanOrEqual(100);
 
   const boxes = await options.evaluateAll((els) =>
     els.map((el) => {
@@ -508,42 +557,41 @@ test('jede Farboption hat eine Trefferfläche von mindestens 44×44px (issue #65
   }
 });
 
-test('eine neu gewählte Farbe (--swatch-lime) übersteht einen Reload und erscheint in der Liste (issue #658 AC7)', async ({
+test('ein neu gewähltes Emoji übersteht einen Reload und erscheint vor dem Namen in der Tabelle (issue #1101 AC2/AC3)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Limette wählen', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Emoji wählen', schedule: 'daily', archivedAt: null });
 
-  await editHabit(page, 'Limette wählen');
+  await editHabit(page, 'Emoji wählen');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  await dialog.getByRole('radio', { name: 'Limette' }).check();
+  await habitChip(dialog, 'Emoji').click();
+  await dialog.getByRole('radio', { name: 'Yoga' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
 
   await page.reload();
 
-  const dot = colorDotFor(page, 'Limette wählen');
-  await expect(dot).toBeVisible();
-  const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(color).toBe(await resolveColorToken(page, '--swatch-lime'));
+  const item = habitItems(page).filter({ hasText: 'Emoji wählen' });
+  await expect(item.locator('.habit-table__emoji')).toHaveText('🧘');
+  await expect(item.locator('.habit-table__color')).toHaveCount(0);
 });
 
-test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (issue #658 AC8)', async ({
+test('ein Emoji offline gesetzt kommt nach dem Onlinegehen serverseitig an (issue #1101 AC11)', async ({
   page,
   context,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Farbe offline ändern', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Emoji offline setzen', schedule: 'daily', archivedAt: null });
   await context.setOffline(true);
 
-  await editHabit(page, 'Farbe offline ändern');
+  await editHabit(page, 'Emoji offline setzen');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  await dialog.getByRole('radio', { name: 'Himmelblau' }).check();
+  await habitChip(dialog, 'Emoji').click();
+  await dialog.getByRole('radio', { name: 'Wandern' }).check();
   await dialog.getByRole('button', { name: 'Sichern' }).click();
   await expect(dialog).toBeHidden();
-  // One entry for the seed, one for the colour change — both queued offline.
+  // One entry for the seed, one for the emoji change — both queued offline.
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(2);
 
   // Order matters here — see the comment at the equivalent point above (#120).
@@ -553,9 +601,9 @@ test('eine Farbe offline geändert kommt nach dem Onlinegehen serverseitig an (i
 
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
   const row = await withDb((client) =>
-    client.query('SELECT color FROM habits WHERE name = $1', ['Farbe offline ändern']),
+    client.query('SELECT emoji FROM habits WHERE name = $1', ['Emoji offline setzen']),
   );
-  expect(row.rows[0].color).toBe('--swatch-sky');
+  expect(row.rows[0].emoji).toBe('🚶');
 });
 
 test('Archivieren entfernt die Routine aus der aktiven Liste, ohne Rückgängig-Popup', async ({
@@ -642,7 +690,19 @@ test('die Journal-Routine hat keinen Archivieren-Button, eine normale Routine we
   await expect(joggenItem.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
 });
 
-test('die Journal-Routine behält ihren Sonderfall: kein Name, keine Farbe, nur Täglich/Wöchentlich als Rhythmus (issue #713 AK4)', async ({
+test('die Journal-Routine zeigt ihr festes Emoji 📓 in der Tabelle, unabhängig von Sync (issue #1101 AC9)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  // No `emoji` key at all in the row — the fixed 📓 is a render override
+  // (use-habits.ts), not something a synced row needs to carry.
+  await seedJournalHabit(page);
+
+  const journalItem = habitItems(page).filter({ hasText: 'Journal' });
+  await expect(journalItem.locator('.habit-table__emoji')).toHaveText('📓');
+});
+
+test('die Journal-Routine behält ihren Sonderfall: kein Name, kein Emoji-Chip, nur Täglich/Wöchentlich als Rhythmus (issue #713 AK4, #1101 AC9)', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -652,8 +712,8 @@ test('die Journal-Routine behält ihren Sonderfall: kein Name, keine Farbe, nur 
   const dialog = editDialog(page);
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('textbox', { name: 'Name' })).toHaveCount(0);
-  await expect(habitChip(dialog, 'Farbe')).toHaveCount(0);
-  await expect(dialog.locator('.habit-editor__colors')).toHaveCount(0);
+  await expect(habitChip(dialog, 'Emoji')).toHaveCount(0);
+  await expect(dialog.locator('.habit-editor__emojis')).toHaveCount(0);
   await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Täglich');
 
   await habitChip(dialog, 'Rhythmus').click();
@@ -808,11 +868,11 @@ function colorDotFor(page: Page, name: string) {
   return habitItems(page).filter({ hasText: name }).locator('.habit-table__color');
 }
 
-test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch im Dark Mode', async ({
+test('eine Routine ohne Emoji zeigt den Standard-Token --area-habits, auch im Dark Mode (issue #1101 AC3)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Standardfarbe', schedule: 'daily', archivedAt: null });
 
   const dot = colorDotFor(page, 'Standardfarbe');
   const lightColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -825,70 +885,61 @@ test('eine Routine ohne Eigenfarbe zeigt den Standard-Token --area-habits, auch 
   expect(darkColor).not.toBe(lightColor);
 });
 
-test('eine gewählte Eigenfarbe zeigt den passenden Bereichs-Token', async ({ page }) => {
+test('eine Routine mit Emoji zeigt es in der Tabelle vor ihrem Namen, statt des Punkts (issue #1101 AC3)', async ({
+  page,
+}) => {
   await page.goto('/routinen');
   await seedHabit(page, {
-    name: 'Eigenfarbe',
+    name: 'Mit Emoji',
     schedule: 'daily',
-    color: '--area-journal',
+    emoji: '🏆',
     archivedAt: null,
   });
 
-  const dot = colorDotFor(page, 'Eigenfarbe');
-  const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(color).toBe(await resolveColorToken(page, '--area-journal'));
+  const item = habitItems(page).filter({ hasText: 'Mit Emoji' });
+  await expect(item.locator('.habit-table__emoji')).toHaveText('🏆');
+  await expect(item.locator('.habit-table__color')).toHaveCount(0);
 });
 
-test('alle zehn Swatch-Hintergrundfarben sind paarweise verschieden und von --surface unterscheidbar, hell und dunkel (issue #658 AC3)', async ({
+test('das Emoji ist rein dekorativ: der Tabellenzeilen-Name nennt weiterhin nur Namen und Rhythmus, kein Emoji (issue #1101 AC10)', async ({
   page,
 }) => {
   await page.goto('/routinen');
-  await seedHabit(page, { name: 'Farbvergleich', schedule: 'daily', color: null, archivedAt: null });
+  await seedHabit(page, { name: 'Dekoratives Emoji', schedule: 'daily', emoji: '🏆', archivedAt: null });
 
-  await editHabit(page, 'Farbvergleich');
-  const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  const swatches = dialog.locator('.habit-editor__color-swatch');
-  await expect(swatches).toHaveCount(10);
-
-  async function readSwatchesAndSurface() {
-    const colors = await swatches.evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
-    const surface = await resolveColorToken(page, '--surface');
-    return { colors, surface };
-  }
-
-  const light = await readSwatchesAndSurface();
-  expect(new Set(light.colors).size).toBe(10);
-  for (const color of light.colors) {
-    expect(color).not.toBe('rgba(0, 0, 0, 0)');
-    expect(color).not.toBe(light.surface);
-  }
-
-  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dunkel'));
-  const dark = await readSwatchesAndSurface();
-  expect(new Set(dark.colors).size).toBe(10);
-  for (const color of dark.colors) {
-    expect(color).not.toBe('rgba(0, 0, 0, 0)');
-    expect(color).not.toBe(dark.surface);
-  }
+  const item = habitItems(page).filter({ hasText: 'Dekoratives Emoji' });
+  const header = item.getByRole('button', { name: new RegExp('^Dekoratives Emoji\\b') });
+  await expect(header).toBeVisible();
+  await expect(header).not.toHaveAccessibleName(/🏆/);
+  await expect(item.locator('.habit-table__emoji')).toHaveAttribute('aria-hidden', 'true');
 });
 
-test('eine Routine auf --area-tasks bleibt nach der Erweiterung auf zehn Farben in Koralle, Editor zeigt genau Swatch 2 ausgewählt (issue #658 AC6)', async ({
+test('der Farbchip ist verschwunden, die Wochenbalken sind einheitlich --area-habits — auch bei einer Routine mit gesetztem color-Feld (issue #1101 AC7)', async ({
   page,
 }) => {
   await page.goto('/routinen');
+  // Stale `color` from before #1101 — the row must render exactly like a
+  // freshly created one without it.
   await seedHabit(page, { name: 'Bestandsfarbe', schedule: 'daily', color: '--area-tasks', archivedAt: null });
-
-  const dot = colorDotFor(page, 'Bestandsfarbe');
-  const rowColor = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(rowColor).toBe(await resolveColorToken(page, '--area-tasks'));
+  await seedHabit(page, { name: 'Ohne Farbfeld', schedule: 'daily', archivedAt: null });
 
   await editHabit(page, 'Bestandsfarbe');
   const dialog = editDialog(page);
-  await habitChip(dialog, 'Farbe').click();
-  await expect(dialog.getByRole('radio', { name: 'Koralle' })).toBeChecked();
-  const checkedCount = await dialog.locator('.habit-editor__colors input:checked').count();
-  expect(checkedCount).toBe(1);
+  await expect(habitChip(dialog, 'Farbe')).toHaveCount(0);
+  await expect(habitChip(dialog, 'Emoji')).toHaveText('Kein Emoji');
+  await dialog.getByRole('button', { name: 'Abbrechen' }).click();
+
+  const withColorBar = habitItems(page)
+    .filter({ hasText: 'Bestandsfarbe' })
+    .locator('.habit-table__week-bar[data-current]');
+  const withoutColorBar = habitItems(page)
+    .filter({ hasText: 'Ohne Farbfeld' })
+    .locator('.habit-table__week-bar[data-current]');
+  const [withColorBg, withoutColorBg] = await Promise.all([
+    withColorBar.evaluate((el) => getComputedStyle(el).backgroundColor),
+    withoutColorBar.evaluate((el) => getComputedStyle(el).backgroundColor),
+  ]);
+  expect(withColorBg).toBe(withoutColorBg);
 });
 
 test('bei reduzierter Bewegung öffnet das Anlegen-Sheet nur mit einem Opacity-Übergang', async ({

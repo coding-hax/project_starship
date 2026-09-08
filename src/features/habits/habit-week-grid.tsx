@@ -55,6 +55,11 @@ export function HabitWeekGrid({
             isFuture ? 'in der Zukunft' : done ? 'erledigt' : 'offen'
           }`;
 
+          // A done day with an emoji shows it on a transparent ground instead of
+          // the day number (issue #1101 AC4) — without an emoji it stays flat
+          // `--area-habits` as before (AC5).
+          const doneWithEmoji = done && Boolean(habit.emoji);
+
           return (
             <li key={day} className="habit-week-grid__cell">
               <button
@@ -67,13 +72,13 @@ export function HabitWeekGrid({
                 data-today={isToday ? '' : undefined}
                 data-future={isFuture ? '' : undefined}
                 data-outside={inMonth ? undefined : ''}
+                data-emoji={doneWithEmoji ? '' : undefined}
                 disabled={isFuture || readOnly}
-                style={done ? { background: `var(${habit.color ?? '--area-habits'})` } : undefined}
                 aria-pressed={isFuture ? undefined : done}
                 aria-label={label}
                 onClick={readOnly ? undefined : () => onToggle(habit.id, day)}
               >
-                <span aria-hidden="true">{dayNumber}</span>
+                <span aria-hidden="true">{doneWithEmoji ? habit.emoji : dayNumber}</span>
               </button>
             </li>
           );

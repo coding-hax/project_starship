@@ -4,7 +4,7 @@
 - `mood-scale.tsx` / `.css` — zehn Ein-Tipp-Punkte, Skala 1–10
 - `background-arcs.tsx` / `.css` — drei Bögen hinterm Grund, gleich je Route
 - `faces.tsx` / `.css` — eine Figur je Route, Inline-SVG mit CSS-Blinzeln
-- `swatch-palette.ts` — zehn Farbnamen, Quelle für Habit-Editor und Kategorie-Panel
+- `swatch-palette.ts` — zehn Farben; `emoji-palette.ts` — 100 Emojis, Habit-Editor
 - `tokens.css` / `motion.css` / `shell.css` — Farbtokens, Spring-Presets, App-Shell
 - `use-list-presence.ts` — hält entfernte Zeilen bis zum Ende der Exit-Animation
 - `use-now.ts` — tickendes Datum, treibt z. B. die Kalender-Jetzt-Linie

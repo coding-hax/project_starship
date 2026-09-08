@@ -196,11 +196,13 @@ test('AK1 (#1070): das Raster hat 30×N Zellen und kein SVG mehr', async ({ page
   await expect(page.locator('.habit-history-card__svg')).toHaveCount(0);
 });
 
-test('AK2 (#1070): eine erledigte Routine ist ein Quadrat in ihrer eigenen Farbe, color:null bekommt --area-habits, ein offener Platz --border-faint', async ({
+test('AK2 (#1070): eine erledigte Routine ist ein Quadrat in --area-habits, unabhängig von einem gesetzten color-Feld, ein offener Platz --border-faint (issue #1101)', async ({
   page,
 }) => {
   const amber = await seedHabit(page, {
     name: 'Amber-Sonde',
+    // Stale data from before #1101 — habits no longer read `color`, this must
+    // not leak into the history card's fill either.
     color: '--swatch-amber',
     createdAt: '2026-06-01T00:00:00.000Z',
   });
@@ -220,7 +222,7 @@ test('AK2 (#1070): eine erledigte Routine ist ein Quadrat in ihrer eigenen Farbe
   const bottomRowToday = cells.nth(59); // zuerst angelegt: Amber-Sonde
   const emptyCell = cells.nth(0); // vor 30 Tagen, nichts erledigt
 
-  await expect(bottomRowToday).toHaveCSS('background-color', await resolveColorToken(page, '--swatch-amber'));
+  await expect(bottomRowToday).toHaveCSS('background-color', await resolveColorToken(page, '--area-habits'));
   await expect(topRowToday).toHaveCSS('background-color', await resolveColorToken(page, '--area-habits'));
   await expect(emptyCell).toHaveCSS('background-color', await resolveColorToken(page, '--border-faint-base'));
 });
@@ -286,11 +288,12 @@ for (const viewport of [
   });
 }
 
-test('AK8 (#1070): unter der Achse steht je aktiver Routine ein Legendeneintrag mit Farbpunkt und Namen', async ({
+test('AK8 (#1070): unter der Achse steht je aktiver Routine ein Legendeneintrag mit Punkt und Namen, Punkt einheitlich --area-habits (issue #1101)', async ({
   page,
 }) => {
   await seedHabit(page, {
     name: 'Legenden-Sonde',
+    // Stale data from before #1101 — must not leak into the legend dot either.
     color: '--swatch-amber',
     createdAt: '2026-06-01T00:00:00.000Z',
   });
@@ -302,7 +305,7 @@ test('AK8 (#1070): unter der Achse steht je aktiver Routine ein Legendeneintrag 
   await expect(legend.first().locator('.habit-history-card__legend-name')).toHaveText('Legenden-Sonde');
   await expect(legend.first().locator('.habit-history-card__legend-dot')).toHaveCSS(
     'background-color',
-    await resolveColorToken(page, '--swatch-amber'),
+    await resolveColorToken(page, '--area-habits'),
   );
 });
 

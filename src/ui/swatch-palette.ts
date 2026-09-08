@@ -1,10 +1,10 @@
 /**
- * The ten free-choice colour swatches (issue #658), single source shared by the
- * habit editor (`src/features/habits/habit-editor.tsx`) and the category-colours
- * settings panel (`src/features/settings/category-colors-panel.tsx`, issue #660):
- * the four area colours already audited for contrast and dark mode, plus
- * `--area-activities`, plus five `--swatch-*` tokens reserved for free choice
- * (docs/DESIGN_SYSTEM.md). Order is binding — both consumers render it as-is.
+ * The ten free-choice colour swatches (issue #658), single source for the
+ * category-colours settings panel (`src/features/settings/category-colors-panel.tsx`,
+ * issue #660): the four area colours already audited for contrast and dark mode,
+ * plus `--area-activities`, plus five `--swatch-*` tokens reserved for free choice
+ * (docs/DESIGN_SYSTEM.md). Order is binding — the consumer renders it as-is.
+ * No longer used by the habit editor (issue #1101: routines identify by emoji now).
  */
 export const SWATCH_PALETTE: { token: string; label: string }[] = [
   { token: '--area-habits', label: 'Grün' },

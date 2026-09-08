@@ -91,9 +91,13 @@
   color: var(--text-muted);
 }
 
+/* Fixed to `--area-habits` for every row (issue #1101, cells are too small at
+   14px for an emoji, see the file's docstring) — no per-habit colour left to
+   read. */
 .habit-history-card__legend-dot {
   flex-shrink: 0;
   width: var(--space-2);
   height: var(--space-2);
   border-radius: var(--radius-pill);
+  background: var(--area-habits);
 }

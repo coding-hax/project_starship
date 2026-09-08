@@ -1,3 +1,4 @@
+import { JOURNAL_HABIT_EMOJI, JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import { useLiveTable } from '@/local/use-live-table';
 
 export type HabitSchedule =
@@ -30,6 +31,7 @@ export interface HabitView {
   /** How often per period, >= 1. Only > 1 for `weekly` (issue #509). */
   target: number;
   color: string | null;
+  emoji: string | null;
   archivedAt: string | null;
   createdAt: string;
 }
@@ -43,6 +45,14 @@ export function toHabitView(id: string, data: Record<string, unknown>): HabitVie
       : 'daily',
     target: typeof data.target === 'number' ? data.target : 1,
     color: typeof data.color === 'string' ? data.color : null,
+    // The Journal habit's emoji is fixed and not user-editable (issue #1101 AC9) —
+    // overridden here so a row created before this feature also gets it, with no
+    // extra write/sync round trip.
+    emoji: id === JOURNAL_HABIT_ID
+      ? JOURNAL_HABIT_EMOJI
+      : typeof data.emoji === 'string'
+        ? data.emoji
+        : null,
     archivedAt: typeof data.archivedAt === 'string' ? data.archivedAt : null,
     createdAt: typeof data.createdAt === 'string' ? data.createdAt : new Date(0).toISOString(),
   };
