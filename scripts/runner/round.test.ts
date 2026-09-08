@@ -1498,6 +1498,31 @@ describe('roundEval', () => {
       });
       stderr.mockRestore();
     });
+
+    // #1146 AK1+AK4: Ticket und Slot stehen zusaetzlich zu den bisherigen
+    // Feldern in der Zeile -- fuer einen sauberen Lauf.
+    it('#1146: traegt Ticket und Slot bei einem sauberen Lauf', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      roundEval({ ...ctx(gh), slotId: '2' }, plan, ok, '');
+      expect(usageLine(stderr.mock.calls)).toMatchObject({ issue: 77, slot: '2' });
+      stderr.mockRestore();
+    });
+
+    // #1146 AK3: auch ohne verwertbares Ergebnis-JSON (Notbremse/429/Kill)
+    // stehen Ticket und Slot in der Zeile, nur die Token-Felder bleiben leer.
+    it('#1146: traegt Ticket und Slot auch bei einem abgebrochenen Lauf ohne Ergebnis-JSON', () => {
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const { gh } = ghDouble();
+      roundEval(
+        { ...ctx(gh), slotId: '2' },
+        plan,
+        { rc: 1, out: 'kaputt (Notbremsen-Kill)', timedOut: true, maxRuntime: 2700 },
+        '',
+      );
+      expect(usageLine(stderr.mock.calls)).toMatchObject({ issue: 77, slot: '2' });
+      stderr.mockRestore();
+    });
   });
 
   // Gegenstueck zum Deckel oben: 'blocked-limit' ist ein Zeit-Label, das kein
