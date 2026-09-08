@@ -6,6 +6,8 @@ import { belongsOnUebersicht, type TaskView } from '@/features/tasks/use-tasks';
 export interface DailyProgress {
   done: number;
   total: number;
+  /** Offene Menge je Art (issue #1122) — 0 für ein abgeschaltetes Modul. */
+  open: { aufgaben: number; routinen: number };
 }
 
 /**
@@ -26,18 +28,23 @@ export function computeDailyProgress(
 ): DailyProgress {
   let done = 0;
   let total = 0;
+  let openAufgaben = 0;
+  let openRoutinen = 0;
 
   if (isActive('aufgaben')) {
     const dueTasks = tasks.filter((task) => belongsOnUebersicht(task, now));
+    const doneTasks = dueTasks.filter((task) => task.completedAt !== null).length;
     total += dueTasks.length;
-    done += dueTasks.filter((task) => task.completedAt !== null).length;
+    done += doneTasks;
+    openAufgaben = dueTasks.length - doneTasks;
   }
 
   if (isActive('routinen')) {
     const habitProgress = computeHabitProgress(habits, logs, now);
     total += habitProgress.total;
     done += habitProgress.done;
+    openRoutinen = habitProgress.total - habitProgress.done;
   }
 
-  return { done, total };
+  return { done, total, open: { aufgaben: openAufgaben, routinen: openRoutinen } };
 }
