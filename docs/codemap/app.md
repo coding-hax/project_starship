@@ -1,0 +1,22 @@
+# Code-Karte: Routen & API (`src/app`)
+
+- `middleware.ts` — Auth-Gate vor (app): prüft nur Cookie-Anwesenheit; ohne Cookie → /anmelden
+- `(app)/layout.tsx` — App-Shell mit Modul-Route-Guard
+- `(app)/page-transition.tsx` — Opacity-Crossfade um den Seiteninhalt
+- `(app)/uebersicht/page.tsx` — Dashboard: Ring, Einstellungs-Einstieg, Erfassungs-FAB, Modul-Sektionen
+- `(app)/aufgaben/page.tsx` — Kopfzeile, Aufgabenliste, Schnellerfassung
+- `(app)/kalender/page.tsx` — Tages-Timeline mit Termin-Editor, Monats- und Serienansicht
+- `(app)/routinen/page.tsx` / `(app)/aktivitaeten/page.tsx` — Routinen-Verwaltung, Garmin-Aktivitäten
+- `(app)/wetter/[datum]/page.tsx` — Stundenverlauf, Niederschlag, Wind, Sonnenzeiten
+- `(app)/journal/page.tsx` — Titelzeile mit Datum, rendert den Journal-Zustand
+- `(app)/einstellungen/page.tsx` — Darstellung, Reihenfolge, Module, Push je Panel
+- `anmelden/` — Passkey: Einrichten, Anmelden, Recovery
+- `offline/page.tsx` — Service-Worker-Fallback ohne Netz
+- `api/auth/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf
+- `api/health/` — SELECT 1 + Versions-SHA, ungeschützt
+- `api/sync/` — push/pull, die einzigen Wege zu den Daten
+- `api/push/` — Abo (subscribe/unsubscribe/test) + Reminder-Versand, Bearer-Secret
+- `api/garmin-sync/` — holt Aktivitäten, Bearer-Secret
+- `api/ics/` / `ssrf.ts` / `route.ts` — SSRF-Proxy für .ics-Feeds, Owner-geschützt
+- `layout.tsx` / `manifest.ts` / `globals.css` — Root-Layout, PWA-Manifest, globale Tokens
+- `sw.ts` — Service Worker (Serwist): Push- und Notification-Handler
