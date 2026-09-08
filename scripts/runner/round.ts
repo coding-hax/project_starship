@@ -27,7 +27,7 @@ import type { QueueIssue } from './queue.js';
 import { entriesFromIssues, hasLabel, queueBlocked, queueCycles, queuePending, untriaged } from './queue.js';
 import { queueSnapshot, waitingIssues } from './status.js';
 import { BLOCKING_LABELS, pickTicket, queueNext, roleFromLabels, type RunRole } from './select.js';
-import { sessionKey } from './session.js';
+import { sessionFamily, sessionKey } from './session.js';
 import { watchWaitingIssues, watchRunningIssue, type WaitingIssueInput } from './watch.js';
 import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
@@ -946,10 +946,12 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
   // uebersteigt die einmalige Neu-Lektuere (1,25 * R) fast immer. Der Stand
   // liegt in Git + Fortschrittskommentar, nicht in der Session -- die
   // Denk-Rollen tragen ihren Kontext dagegen bewusst in der Session, dort
-  // ist die breite Lektuere der Auftrag.
+  // ist die breite Lektuere der Auftrag. `check` startet aus demselben Grund
+  // bewusst IMMER frisch (#1136): ein Diff wird bei jedem Takt neu beurteilt,
+  // nie an eine fremde (Bau-)Session angehaengt.
   const sid = state.read(sessionKey(issue, role)) ?? '';
   let resume = '';
-  if (role !== 'build' && mode === 'resume' && sid !== '') {
+  if (sessionFamily(role) === 'think' && mode === 'resume' && sid !== '') {
     resume = sid;
   }
 
