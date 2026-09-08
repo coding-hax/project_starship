@@ -5,7 +5,7 @@
 | Schicht          | Wahl                                   | Warum                                                  |
 | ---------------- | -------------------------------------- | ------------------------------------------------------ |
 | Framework        | Next.js (App Router) + TypeScript      | Frontend und API in einem Repo, ein Deploy             |
-| UI               | Tailwind + shadcn/ui + Motion          | schnelle, konsistente Basis; Animationen ohne Eigenbau |
+| UI               | Tailwind (shadcn/ui, Motion: nicht installiert) | Utility-CSS, eigene Komponenten (`src/ui/`) |
 | Lokaler Speicher | IndexedDB via **Dexie**                | Wahrheit für die UI, offline-fähig                     |
 | PWA              | **Serwist** (Service Worker, Manifest) | Home-Screen-Installation, Precaching, Web Push         |
 | Server-DB        | **Postgres (Neon, EU-Region)**         | Sync-Ziel und Backup, Standard-SQL                     |
@@ -118,12 +118,14 @@ oder Google (ADR-0002). Konsequenzen für die Architektur:
 - Keine externen Identitäten (`external_uid`, `etag`) am Event, keine Mapping-Tabelle,
   kein Loop-Schutz, keine Polling-Jobs für Kalender.
 - **Serientermine** werden trotzdem gebraucht, aber in einfacher Form: täglich / wöchentlich /
-  monatlich mit optionalem Enddatum. Kein vollständiger RRULE-Sprachumfang,
-  keine `EXDATE`/`RECURRENCE-ID`-Ausnahmen (eigenes Ticket, falls es fehlt).
-- **`.ics`-Export** bleibt Teil des Export-Features (siehe unten) — als Datenausgang,
-  nicht als Sync.
+  monatlich mit optionalem Enddatum. Kein vollständiger RRULE-Sprachumfang; einzelne
+  Vorkommen lassen sich per `event_exceptions`-Tabelle verschieben/absagen (`recurrence.ts`),
+  nicht per RFC-5545-Syntax. `EXDATE` liest nur der `.ics`-Import (`ics-parse.ts`);
+  `RECURRENCE-ID` kommt im Code nicht vor.
+- `.ics`-Export der eigenen Termine ist (noch) nicht gebaut (siehe unten), kein Sync-Ersatz.
 
-Der GitHub-Actions-Cron bleibt trotzdem nötig: für Backups und für terminierte Web-Push-Erinnerungen.
+Der GitHub-Actions-Cron läuft für terminierte Web-Push-Erinnerungen (`reminders.yml`);
+ein Backup-Cron ist (Stand heute) nicht angelegt, siehe unten.
 
 ## Garmin: read-only Server-Origin-Daten
 
@@ -149,9 +151,10 @@ kein Registry-Eintrag, kein `syncColumns`.
 
 ## Backup & Export
 
-- Nightly `pg_dump` per GitHub Action → verschlüsselt (age/gpg) in ein privates Repo oder Object Storage.
-- „Alles exportieren"-Button in der App: JSON (vollständig) + `.ics` (Termine) + Markdown (Journal, entschlüsselt, clientseitig erzeugt).
-- Der Export ist ein Feature, kein Notfallwerkzeug: er wird in M1 gebaut und bleibt grün getestet.
+- „Alles exportieren" (`src/features/export/`): vollständiger JSON-Dump aller
+  IndexedDB-Datensätze inkl. Tombstones. Kein `.ics`-, kein Markdown-Export.
+- Nächtliches `pg_dump`-Backup per GitHub Action ist **Absicht, nicht umgesetzt** —
+  `.github/workflows/` hat heute keinen Backup-Workflow, keine dafür nötigen Secrets.
 
 ## Umgebungen
 
