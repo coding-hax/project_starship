@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { config } from 'dotenv';
-import { AUTH_STATE, PORT, PORT_PROD } from './tests/run-lock';
+import { AUTH_STATE, DEV_SERVER_READY_TIMEOUT_MS, PORT, PORT_PROD } from './tests/run-lock';
 
 // The specs assert against the real database, so they need DATABASE_URL.
 // In CI it comes from the environment and the missing file is fine.
@@ -41,7 +41,7 @@ const devServer = {
   // adopted silently, and every test would then fail with ERR_CONNECTION_REFUSED.
   // Refusing to start says what is wrong; reusing hides it.
   reuseExistingServer: false,
-  timeout: 120_000,
+  timeout: DEV_SERVER_READY_TIMEOUT_MS,
   env: { ...e2eEnv, RP_ORIGIN: baseURL },
 };
 
@@ -112,8 +112,13 @@ export default defineConfig({
     // `*.desktop.spec.ts`, so nothing runs twice.
     {
       name: 'mobile',
-      testIgnore:
+      // route-readiness.test.ts (#1142) is a Vitest unit test, not a Playwright spec —
+      // it has no testMatch-scoped project of its own to fall out of by default, so
+      // `mobile` (the only project without its own testMatch) must exclude it explicitly.
+      testIgnore: [
         /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|.*\.desktop|.*\.wide)\.spec\.ts$/,
+        /route-readiness\.test\.ts$/,
+      ],
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

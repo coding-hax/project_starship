@@ -2,6 +2,7 @@
 
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `helpers.ts` — Authenticator, DB-Zugriff, Reset, Seed-Helfer
+- `route-readiness.ts` — Warten auf kalte Dev-Route
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge
 - `section-card.desktop.spec.ts` / `shell.wide.spec.ts` — Deckel weg ab 768px, 1800px ohne Querlauf
 - `uebersicht.desktop.spec.ts` — ab 768px zweispaltig, mit FAB-Reserve
@@ -10,10 +11,10 @@
 - `grundfarbe-vollfarbe.spec.ts` — Karten, Leiste, FAB in Vollfarbe
 - `nav-schleier.spec.ts` — Grund-Kopie der Nav
 - `abgleich-828.spec.ts` — Kopf-Angaben, voller Recolor
-- `offline-critical.spec.ts` / `sync.spec.ts` — SW-IndexedDB-Outbox-Postgres, Konflikte
+- `offline-critical.spec.ts` / `sync.spec.ts` — SW-IndexedDB-Outbox-Postgres
 - `navigation.prod.spec.ts` — Tab-Wechsel ohne Dokument-Request
 - `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
-- `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Liste, Filter, Freitext, offline
+- `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Liste, Filter, Freitext
 - `capture-uebersicht.spec.ts` — Erfassungsknopf → Aufgaben
 - `capture-router.spec.ts` / `capture-routine-neu.spec.ts` — Termin, Routine oder Aufgabe
 - `capture-parser.spec.ts` — Span-/Ranking-Grammatik, Teil 1/4
@@ -22,7 +23,7 @@
 - `capture-unsicher.spec.ts` — unsichere Felder markieren, Teil 4/4
 - `export.spec.ts` — Export inkl. Tombstones, Schema-Version
 - `habits.spec.ts` / `habits-uebersicht.spec.ts` / `streaks.spec.ts` / `habits-week-grid.spec.ts` — Verwaltung, Streaks
-- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — Kopf, Kacheln, Verlaufskarte
+- `routinen.spec.ts` / `habits-streak-summary.spec.ts` — Kopf, Kacheln
 - `kalender.spec.ts` — Timeline, Jetzt-Linie, Farbkante, Wochenstreifen
 - `scroll-position.spec.ts` — startet oben, nie auf alter Position
 - `persist-storage.spec.ts` / `settings.spec.ts` — Storage-Persistenz, Theme/Toggle
@@ -33,6 +34,6 @@
 - `journal.desktop.spec.ts` — zwei Bahnen ab 768px, Figur neben Titel
 - `journal-recovery.spec.ts` / `journal-recovery-reissue.spec.ts` — Recovery-Kit, Key neu ausstellen
 - `journal-key-race.spec.ts` — Erst-Setup-Race, Bergung der Alt-Einträge
-- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull, Reminder, Panel
+- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` — Pull, Reminder
 - `modules.spec.ts` — Modul-Panel, Route-Guard, beide Viewports
 - `form-bedienelemente.spec.ts` — FAB-Pille, Reiter, Häkchen
