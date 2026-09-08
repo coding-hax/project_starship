@@ -437,6 +437,12 @@
   }
 
   .shell__main {
+    /* `box-sizing: border-box` explizit statt vererbt: `max-width` muss die
+       Box INKLUSIVE des `padding-inline` unten treffen, sonst füllt die Box
+       (1440 + 2×48 Padding) genau die verfügbare 1536px-Spalte bei 1800px und
+       `margin-inline: auto` hat nichts mehr zu verteilen (Fund: AK1 lieferte
+       0px statt 48px Rand, ohne diese Zeile). */
+    box-sizing: border-box;
     max-width: var(--shell-content-wide);
     margin-inline: auto;
     padding-inline: var(--space-12);
@@ -451,12 +457,15 @@
 
   .app-header--sidebar {
     display: block;
-    /* Volle Leistenbreite statt der 240px Innenbreite von `.nav` (264px Leiste
-       minus deren `--space-3`-Innenabstand, shell.css oben): negative
-       Außenabstände heben das Innenpolster auf, `align-items: stretch` auf
-       `.nav` löst die Breite anschließend wieder bis zur vollen Leistenbreite
-       auf — AK3 verlangt linke Kante 0, Breite 264, nicht das eingerückte
-       240px-Raster der Tabs darüber. */
+    /* Absolute statt aus `.nav`s Innenbreite abgeleitete Breite (AK3: linke
+       Kante 0, Breite 264 — exakt die Leistenbreite, nicht das um Innenabstand
+       UND rechten Rahmen (`.nav { border-right: 1px }`, oben) verkleinerte
+       Raster der Tabs darüber). Mit `align-items: stretch` + negativem
+       `margin-inline` allein fehlte genau dieser eine Rahmen-Pixel (Fund:
+       AK3 lieferte 263px statt 264px) — die Grid-Spalte selbst ist der
+       verlässliche Bezug, nicht `.nav`s eigene, um Innenabstand/Rahmen
+       geschmälerte Box. */
+    width: var(--shell-col-wide);
     margin-inline: calc(-1 * var(--space-3));
   }
 
