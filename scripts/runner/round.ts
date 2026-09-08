@@ -1025,7 +1025,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
 export interface RoundOutcome {
   /** Exit-Code von `claude`. */
   rc: number;
-  /** stdout des Laufs (JSON von `claude -p --output-format json`). */
+  /** stdout des Laufs, ausschließlich das Ergebnis-JSON von `claude -p --output-format json` (#1144). */
   out: string;
   /** Hat die Notbremse zugeschlagen? (run_limited, Bash) */
   timedOut: boolean;
@@ -1089,11 +1089,12 @@ function logUsage(plan: RoundRun, outcome: RoundOutcome): void {
 }
 
 // Textmuster duerfen nur den CLI-eigenen Anteil der Ausgabe sehen, nie die
-// Antwort des Agenten (F17, #491): `result` ist im Erfolgsfall Agententext.
-// Kein/ungueltiges JSON (Kill vor der JSON-Ausgabe) -> alles ist stderr = CLI.
-function cliOnly(out: string): string {
-  const result = parseField(out, 'result');
-  return result === '' ? out : out.split(result).join(' ');
+// Antwort des Agenten (F17, #491): 'resultTxt' ist im Erfolgsfall Agententext
+// und wird aus der (kombinierten stdout+stderr) Diagnose-Sicht herausgeschnitten.
+// Kein/ungueltiges 'resultTxt' (Kill vor der JSON-Ausgabe) -> die ganze
+// Diagnose zaehlt als CLI-Text.
+function cliText(diag: string, resultTxt: string): string {
+  return resultTxt === '' ? diag : diag.split(resultTxt).join(' ');
 }
 
 function errorExcerpt(out: string, log: string): string {
@@ -1377,7 +1378,7 @@ Kein Eingreifen nötig.`,
   const resultTxt = parseField(outcome.out, 'result');
 
   // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'result' scheidet aus.
-  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliOnly(outcome.out))) {
+  if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliText(log, resultTxt))) {
     const epoch = resetEpoch(resultTxt, clock);
     let title: string;
     let text: string;
@@ -1442,7 +1443,7 @@ Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**`,
   // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'resultTxt' scheidet aus.
   const transient =
     ['500', '502', '503', '504', '529'].includes(apiStatus) ||
-    /api error|server error|overloaded|connection error|timed? ?out/i.test(cliOnly(outcome.out));
+    /api error|server error|overloaded|connection error|timed? ?out/i.test(cliText(log, resultTxt));
 
   if (transient) {
     const count = Number(state.read(transientFile) ?? '0') + 1;
