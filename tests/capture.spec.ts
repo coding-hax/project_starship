@@ -231,11 +231,17 @@ test('AK1 (#1138): eine erkannte Zwei-Stunden-Spanne steht im "Mehr"-Editor exak
   page,
 }) => {
   await page.goto('/uebersicht');
-  const start = expectedDueAt(1, 14, 0);
-  const end = expectedDueAt(1, 16, 0);
+  // 10/12 statt 14/16 (nicht FIXED_NOW's Stunde selbst, siehe unten): 14 Uhr fällt exakt
+  // auf FIXED_NOW's Berlin-lokale Uhrzeit (12:00 UTC = 14:00 CEST) — resolveTimeOnlyDate
+  // vergleicht `candidate > now`, und auf einem Berlin-Rechner (lokale Entwicklung/Runner)
+  // ist das dann ein Gleichstand (→ morgen), während CI in UTC läuft und 14:00 noch als
+  // Rest des heutigen Tages sieht (→ heute) — derselbe Lauf liefert je nach Host-Zeitzone
+  // ein anderes Ergebnis. 10/12 liegt in beiden Zeitzonen eindeutig vor „jetzt".
+  const start = expectedDueAt(1, 10, 0);
+  const end = expectedDueAt(1, 12, 0);
 
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Termin von 14 bis 16 Uhr Zahnarzt');
+  await quickAddTitleField(page).fill('Termin von 10 bis 12 Uhr Zahnarzt');
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   const dialog = eventEditorDialog(page);
@@ -334,14 +340,17 @@ test('AK5 (#1138): der Direkt-Speichern-Pfad bleibt beim Ein-Stunden-Default, da
   page,
 }) => {
   await page.goto('/uebersicht');
-  const start = expectedDueAt(1, 14, 0);
-  const directEnd = expectedDueAt(1, 15, 0);
+  // 10/12 statt 14/16 — siehe AK1: 14 Uhr fällt exakt auf FIXED_NOW's Berlin-lokale
+  // Uhrzeit und macht das Testergebnis von der Host-Zeitzone abhängig (Berlin: morgen,
+  // UTC/CI: heute). 10/12 liegt in beiden Zeitzonen eindeutig vor „jetzt".
+  const start = expectedDueAt(1, 10, 0);
+  const directEnd = expectedDueAt(1, 11, 0);
 
   // Direkt-Pfad ("Anlegen" im Kern-Sheet, kein "Mehr"): dieser Fix ändert nur
-  // `openMoreForEvent`, nicht `handleSubmit` — der erkannte 16-Uhr-Endpunkt wird
+  // `openMoreForEvent`, nicht `handleSubmit` — der erkannte 12-Uhr-Endpunkt wird
   // hier weiterhin verworfen, genau wie vor dem Fix (Nicht-Ziele, kein Doppel zu #1104).
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Termin von 14 bis 16 Uhr Zahnarzt');
+  await quickAddTitleField(page).fill('Termin von 10 bis 12 Uhr Zahnarzt');
   await page.getByRole('button', { name: 'Anlegen' }).click();
 
   const directEntries = await page.evaluate(() => window.__starship.pending());
@@ -357,7 +366,7 @@ test('AK5 (#1138): der Direkt-Speichern-Pfad bleibt beim Ein-Stunden-Default, da
   // übernommene Zwei-Stunden-Dauer bleibt beim Verschieben von "Von" erhalten,
   // die Zusammenführungslogik in event-editor.tsx bleibt unangetastet.
   await openQuickAdd(page);
-  await quickAddTitleField(page).fill('Termin von 14 bis 16 Uhr Zahnarzt');
+  await quickAddTitleField(page).fill('Termin von 10 bis 12 Uhr Zahnarzt');
   await page.getByRole('button', { name: 'Mehr' }).click();
 
   const dialog = eventEditorDialog(page);
