@@ -89,14 +89,14 @@
   aspect-ratio: 1;
   overflow: hidden;
   background: var(--border-faint);
-  line-height: 1;
+  line-height: var(--leading-tight);
 }
 
 /* 0,82 × Zellbreite bei 10,1px (issue #1150), fest statt fluid: eine kleinere
    Zelle auf breiteren Flächen wächst nur, nie schrumpft, also schneidet ein
    fester Wert dort nie an. */
 .habit-history-card__emoji {
-  font-size: 8px;
+  font-size: var(--text-history-emoji);
 }
 
 .habit-history-card__week-line {
