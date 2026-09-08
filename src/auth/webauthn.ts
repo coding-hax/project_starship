@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { authChallenges, credentials, recoveryCodes } from '@/db/schema';
@@ -31,27 +31,30 @@ export async function storeChallenge(
 }
 
 /**
- * Consumes the challenge: valid at most once, never after it expired. Carries the
- * recovery-code binding set by `storeChallenge` — that is how `verify` learns a
- * registration is recovery-backed without trusting a code sent again by the client.
+ * Consumes the challenge: valid at most once, never after it expired. Single
+ * `DELETE ... RETURNING` — matching challenge, `kind` and non-expiry are all part of
+ * the `WHERE`, so there is no read-then-delete window two concurrent callers could
+ * race through. Carries the recovery-code binding set by `storeChallenge` — that is
+ * how `verify` learns a registration is recovery-backed without trusting a code sent
+ * again by the client.
  */
 export async function consumeChallenge(
   challenge: string,
   kind: 'registration' | 'authentication',
 ): Promise<{ ok: boolean; recoveryCodeId: string | null }> {
   const [row] = await db
-    .select()
-    .from(authChallenges)
-    .where(eq(authChallenges.challenge, challenge))
-    .limit(1);
+    .delete(authChallenges)
+    .where(
+      and(
+        eq(authChallenges.challenge, challenge),
+        eq(authChallenges.kind, kind),
+        gt(authChallenges.expiresAt, new Date()),
+      ),
+    )
+    .returning({ recoveryCodeId: authChallenges.recoveryCodeId });
 
   if (!row) return { ok: false, recoveryCodeId: null };
-  await db.delete(authChallenges).where(eq(authChallenges.id, row.id));
-
-  return {
-    ok: row.kind === kind && row.expiresAt > new Date(),
-    recoveryCodeId: row.recoveryCodeId,
-  };
+  return { ok: true, recoveryCodeId: row.recoveryCodeId };
 }
 
 export async function listCredentials() {
