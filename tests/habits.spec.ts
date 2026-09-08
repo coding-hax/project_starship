@@ -451,6 +451,17 @@ test('"Kein Emoji" ist der Standard beim Anlegen und schreibt null (issue #1101 
   expect(last.payload).toMatchObject({ emoji: null });
 });
 
+test('eine Routine mit bereits gesetztem Emoji zeigt es beim erneuten Öffnen des Editors als Chip-Wert (issue #1101 AC2)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, { name: 'Schwimmen', schedule: 'daily', archivedAt: null, emoji: '🏊' });
+
+  await editHabit(page, 'Schwimmen');
+  const dialog = editDialog(page);
+  await expect(habitChip(dialog, 'Emoji')).toHaveText('🏊');
+});
+
 /* -------------------------------------------------------------------------- */
 /* issue #1101: Emoji-Raster statt Farbwähler, mindestens 100 Emojis          */
 /* -------------------------------------------------------------------------- */
