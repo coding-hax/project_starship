@@ -3,10 +3,9 @@
 **Zweck:** Tokens sparen — eine Zeile pro Datei/Ordner, reine Struktur.
 Beantwortet „wo liegt eigentlich…?", nicht „warum".
 
-**Regel:** Struktur, kein Warum. Begründungen, Entscheidungen und Issue-Historie
-gehören in `git blame`, die ADRs oder das Ticket — nicht hierher. Für Detail
-jenseits der Grobstruktur (Zusammenhänge, Implementierungsdetails) ist der
-**Explore-Subagent** der Weg, nicht ein Ausbau dieser Karte.
+**Regel:** Struktur, kein Warum. Begründungen und Historie gehören in
+`git blame`, ADRs oder Ticket — nicht hierher. Detail jenseits der Grobstruktur
+sucht der **Explore-Subagent**, kein Ausbau dieser Karte.
 
 Wer eine Datei anlegt, verschiebt oder löscht, aktualisiert diese Karte im
 selben PR. Eine veraltete Karte ist schlimmer als keine.
@@ -15,9 +14,9 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/app — Routen & API
 
-- `middleware.ts` — Auth-Gate vor `(app)`: prüft nur Cookie-**Anwesenheit** (kein DB-Zugriff),
-  `matcher` auf `(app)`-Routen; ohne Cookie → `/anmelden`. Liegt bewusst unter `src/`,
-  nicht an der Repo-Wurzel — dort lädt Next es lautlos nie.
+- `middleware.ts` — Auth-Gate vor `(app)`: prüft nur Cookie-**Anwesenheit** (kein
+  DB-Zugriff), `matcher` auf `(app)`-Routen; ohne Cookie → `/anmelden`. Bewusst
+  unter `src/`, nicht Repo-Wurzel — dort lädt Next es lautlos nie.
 - `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
@@ -224,7 +223,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock gegen parallele E2E-Läufe, Lockfile-Pfad+Ports
 - `helpers.ts` — virtueller Authenticator, DB-Zugriff, Reset, `skewClock`, Seed-Helfer
 - `shell.spec.ts` / `nav-order.spec.ts` — Login/Tabs/Header, Karussell/Reihenfolge/Sidebar (reduced-motion, Dark)
-- `shell.wide.spec.ts` — Rauchtest fürs `desktop-wide`-Projekt (1800×1000): `/uebersicht` lädt, kein Querlauf
+- `shell.wide.spec.ts` — Rauchtest `desktop-wide` (1800×1000): `/uebersicht` lädt, kein Querlauf
 - `section-card.desktop.spec.ts` — `.section-card` verliert ab 768px ihren 480px-Deckel
 - `uebersicht.desktop.spec.ts` — /uebersicht ab 768px zweispaltig (Sektionen, Titelfigur, FAB-Reserve), 1280×800
 - `seitenleiste-grund.desktop.spec.ts` — `.nav` ohne Fläche, `--on-ground`-Schrift ≥4,5:1, `--surface`-Pille aktiv
@@ -316,7 +315,6 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 
 ## Bauen
 
-`pnpm build`/`pnpm dev` laufen mit `--webpack`, **nicht** Turbopack (Next 16s
-Standard): Serwist ist ein Webpack-Plugin, die Kombination bricht sonst den
-Build (serwist#54). Ohne das Flag verschwindet der Service Worker lautlos, ohne
-roten Fehler.
+`pnpm build`/`pnpm dev` laufen mit `--webpack`, **nicht** Turbopack (Next-16-
+Standard): Serwist ist ein Webpack-Plugin, sonst bricht der Build (serwist#54).
+Ohne das Flag verschwindet der Service Worker lautlos, ohne roten Fehler.
