@@ -161,10 +161,26 @@ Ablauf:
    - Details zu einem Bereich der Code-Karte → die passende Bereichskarte unter docs/codemap/
    Die im Ticket unter „Betroffene Dateien"/„Betroffene Docs" genannten Pfade
    sind Pflicht — lies sie selektiv, nie das halbe Repo.
-2. Lies das Issue: gh issue view ${issue} --comments
-3. Falls es bereits einen Branch und einen Fortschrittskommentar gibt:
-   checke den Branch aus, lies den Fortschrittskommentar und 'git log',
-   und mach beim nächsten offenen Punkt weiter. Fang NICHT von vorne an.
+2. Lies die Ticket-Historie gezielt statt routinemäßig vollständig:
+   - Existiert im Issue bereits ein Fortschrittskommentar (Marker „🤖
+     Fortschritt (automatisch aktualisiert)"): dann genügen für den Kontext
+     der Issue-Body, dieser Fortschrittskommentar, ein Plan-Kommentar
+     (Marker „🧠 Plan (Opus) — Status:", falls vorhanden) und die
+     Kommentare, die seit deinem letzten Lauf dazugekommen sind.
+   - Existiert noch KEIN Fortschrittskommentar (erster Bau-Lauf an diesem
+     Ticket): lies die vollständige Diskussion wie bisher —
+     'gh issue view ${issue} --comments'.
+   - Bei jeder Unklarheit über den aktuellen Auftrag bleibt
+     'gh issue view ${issue} --comments' ausdrücklich erlaubt und ist dein
+     Rückfall — nimm ihn insbesondere dann, wenn ein Kommentar seit dem
+     letzten Lauf eine kurze, für sich genommen mehrdeutige Antwort ist
+     („B", „ja", „Variante 2"): hol dir die zugehörige Frage aus der
+     vollständigen Historie nach, statt sie zu erraten. Bleibt sie auch dann
+     unklar, gilt Schritt 6 ('needs-answer') — eine Entscheidung wird nie
+     geraten.
+3. Existiert bereits ein Branch zu diesem Ticket: checke ihn aus, lies
+   'git log' und mach beim nächsten offenen Punkt weiter (Marker „← HIER
+   WEITER" im Fortschrittskommentar). Fang NICHT von vorne an.
 4. Arbeite die Akzeptanzkriterien ab. Committe nach jedem abgeschlossenen
    Schritt. Bevor du pushst: lass die schnellen Tore lokal laufen —
    'pnpm lint', 'pnpm typecheck', 'pnpm test' (zusammen unter einer Minute) —
