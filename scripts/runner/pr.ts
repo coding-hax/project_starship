@@ -206,38 +206,107 @@ export function reopenFalselyClosedIssues(gh: GhAdapter): void {
   }
 }
 
-// Knappe Zusammenfassung der roten Checks fuer den Fix-Agenten-Auftrag:
-// Job, Kurzbeschreibung, ein begrenzter Log-Ausschnitt. Hoechstens die
+const MAX_FAILING_CHECKS = 3;
+const MAX_LOG_LINES = 25;
+const MAX_LINE_BYTES = 1024;
+const MAX_SUMMARY_BYTES = 8192;
+const LINE_TRUNCATION_MARK = ' …[Zeile gekürzt]';
+const OUTPUT_TRUNCATION_MARK = '\n\n_… Ausgabe gekürzt, überschritt 8.192 Bytes._';
+
+// Schneidet an einer UTF-8-Zeichengrenze ab, nie mitten in einem Mehrbyte-
+// Zeichen -- eine Byte-Grenze allein koennte eine kaputte Sequenz erzeugen.
+function truncateUtf8Bytes(str: string, maxBytes: number): string {
+  if (maxBytes <= 0) return '';
+  const buf = Buffer.from(str, 'utf-8');
+  if (buf.byteLength <= maxBytes) return str;
+  let end = maxBytes;
+  while (end > 0 && (buf[end] & 0b11000000) === 0b10000000) end--;
+  return buf.subarray(0, end).toString('utf-8');
+}
+
+function truncateLineToBytes(line: string, maxBytes: number): string {
+  if (Buffer.byteLength(line, 'utf-8') <= maxBytes) return line;
+  const markBytes = Buffer.byteLength(LINE_TRUNCATION_MARK, 'utf-8');
+  return `${truncateUtf8Bytes(line, maxBytes - markBytes)}${LINE_TRUNCATION_MARK}`;
+}
+
+// Ordnet die Zeilen eines `--log-failed`-Logs einem Job zu: jede Zeile
+// beginnt mit `<Jobname>\t<Schrittname>\t...` (mehrere Jobs eines Laufs
+// stehen im selben Log). Kein exakter Treffer -- z.B. bei wiederverwendbaren
+// Workflows kann der Job anders heissen als der Check --, dann Zeilen nehmen,
+// deren Job-Feld den Checknamen enthaelt oder umgekehrt.
+function jobLogLines(log: string, checkName: string): string[] {
+  const lines = log.split('\n');
+  const exact = lines.filter((line) => line.split('\t', 1)[0] === checkName);
+  if (exact.length > 0) return exact;
+  return lines.filter((line) => {
+    const job = line.split('\t', 1)[0];
+    return job.length > 0 && (job.includes(checkName) || checkName.includes(job));
+  });
+}
+
+// Knappe Zusammenfassung der roten Checks fuer den Fix-Agenten-Auftrag: Job,
+// Kurzbeschreibung, Link und ein begrenzter Log-Ausschnitt. Hoechstens die
 // ersten 3 roten Checks, sonst waechst der Auftrag mit jedem zusaetzlichen
-// Shard unnoetig.
+// Shard unnoetig. Mehrere Checks (z.B. Shards) EINES Workflow-Laufs teilen
+// sich dieselbe runId -- der Log wird darum je runId genau einmal geholt
+// (#1141) und je Check anhand des Job-Namens wieder auseinandersortiert.
 export function prFailureSummary(pr: string, gh: GhAdapter): string {
   const checks = prChecks(pr, gh);
-  const failing = checks
+  const allFailing = checks
     // #283: Hier stand eine Ausnahme fuer 'protected-paths' -- der Check war
     // eine Genehmigungs-Schranke, kein Fund, den ein Agent haette beheben
     // koennen. Den Job gibt es nicht mehr, also auch die Ausnahme nicht.
-    .filter((c) => c.bucket === 'fail' || c.bucket === 'cancel')
-    .slice(0, 3);
+    .filter((c) => c.bucket === 'fail' || c.bucket === 'cancel');
+  const failing = allFailing.slice(0, MAX_FAILING_CHECKS);
+  const omittedChecks = allFailing.length - failing.length;
+
+  // Log je runId nur EINMAL holen, unabhaengig davon, wie viele der
+  // gemeldeten Checks dieselbe runId teilen. `null` markiert einen
+  // gescheiterten Abruf, gesondert von einem leeren, aber erfolgreichen Log.
+  const logsByRunId = new Map<string, string | null>();
+  for (const c of failing) {
+    const runId = c.link?.match(/runs\/(\d+)/)?.[1];
+    if (!runId || logsByRunId.has(runId)) continue;
+    try {
+      logsByRunId.set(runId, gh.run(['run', 'view', runId, '--log-failed']));
+    } catch {
+      logsByRunId.set(runId, null);
+    }
+  }
 
   const parts: string[] = [];
   for (const c of failing) {
-    parts.push(`### ${c.name}\n${c.description ?? ''}\n`);
+    parts.push(`### ${c.name}\n${c.description ?? ''}${c.link ? `\n${c.link}` : ''}\n`);
     const runId = c.link?.match(/runs\/(\d+)/)?.[1];
     if (!runId) continue;
-    let log = '';
-    try {
-      log = gh.run(['run', 'view', runId, '--log-failed']);
-    } catch {
-      log = '';
+    const log = logsByRunId.get(runId);
+    if (log === null) {
+      parts.push('_Log nicht abrufbar._\n');
+      continue;
     }
     if (!log) continue;
-    const tail = log.split('\n').slice(-25).join('\n');
-    parts.push(`\`\`\`\n${tail}\n\`\`\`\n`);
+    const tail = jobLogLines(log, c.name)
+      .slice(-MAX_LOG_LINES)
+      .map((line) => truncateLineToBytes(line, MAX_LINE_BYTES));
+    if (tail.length === 0) continue;
+    parts.push(`\`\`\`\n${tail.join('\n')}\n\`\`\`\n`);
   }
+
   // Bash faengt jeden Aufruf ueber `$(...)` ab (summary=$(pr_failure_summary
   // ...) in watch_running_issue_bash) -- das entfernt trailing Newlines
   // unvermeidlich. Hier explizit angleichen, sonst weicht das direkt in
-  // watchRunningIssue() eingebettete Ergebnis (kein Subshell-Grenze in TS) von
-  // der Bash-Parität ab, siehe runner-ts-s5-parity.test.sh.
-  return parts.join('').replace(/\n+$/, '');
+  // watchRunningIssue() eingebettete Ergebnis (kein Subshell-Grenze in TS)
+  // davon ab.
+  let result = parts.join('').replace(/\n+$/, '');
+  if (omittedChecks > 0) {
+    result += `\n\n_… ${omittedChecks} weitere(r) roter Check(s) gekürzt._`;
+  }
+
+  if (Buffer.byteLength(result, 'utf-8') > MAX_SUMMARY_BYTES) {
+    const markBytes = Buffer.byteLength(OUTPUT_TRUNCATION_MARK, 'utf-8');
+    result = truncateUtf8Bytes(result, MAX_SUMMARY_BYTES - markBytes) + OUTPUT_TRUNCATION_MARK;
+  }
+
+  return result;
 }
