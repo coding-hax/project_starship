@@ -14,9 +14,11 @@ import {
   allDayBandsForWindow,
   categoriesForDay,
   categoryEdgeVar,
+  chipsForDay,
   weekDaysFor,
   weekWindow,
   type AllDayBand,
+  type DayChip,
 } from './event-time';
 import { expandForDay } from './recurrence';
 import type { EventExceptionView } from './use-event-exceptions';
@@ -27,6 +29,11 @@ const WEEKDAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 /** Dot cap for the card — tighter than the week strip's 4 (`categoriesForDay`'s
  *  default), the card's cells are narrower (issue #958, AK3). */
 const MAX_DOTS_IN_GRID = 3;
+
+/** Chip cap for the wide (≥1440px) card (issue #1123, AK2) — dots stay the
+ *  narrower stages' vocabulary (`MAX_DOTS_IN_GRID` above), chips are the wide
+ *  stage's own, sized independently of it. */
+const MAX_CHIPS_IN_GRID = 3;
 
 /** Band-row cap per week row — tighter than the week strip's 3 (issue #1043,
  *  AK8): a week row shares its width with six others stacked in the same
@@ -76,6 +83,11 @@ interface WeekLayout {
   bands: AllDayBand[];
   /** Category dots per day of this week, `MAX_DOTS_IN_GRID` at most. */
   dots: EventView['category'][][];
+  /** Event chips per day of this week, `MAX_CHIPS_IN_GRID` at most, plus how
+   *  many more didn't fit — the wide (≥1440px) card's replacement for `dots`
+   *  above (issue #1123). Computed for every week regardless of viewport,
+   *  same as `dots`: CSS alone decides which one paints (month-grid.css). */
+  chips: { chips: DayChip[]; overflow: number }[];
 }
 
 /**
@@ -103,6 +115,7 @@ function layoutForWeeks(
       dots: weekDays.map((day) =>
         categoriesForDay(occurrences.get(day) ?? [], day, MAX_DOTS_IN_GRID),
       ),
+      chips: weekDays.map((day) => chipsForDay(occurrences.get(day) ?? [], day, MAX_CHIPS_IN_GRID)),
     } satisfies WeekLayout;
   });
 }
@@ -165,7 +178,7 @@ const MonthWeekRow = memo(function MonthWeekRow({
   dimMask,
   onSelect,
 }: MonthWeekRowProps) {
-  const { weekDays, bands, dots } = layout;
+  const { weekDays, bands, dots, chips } = layout;
   return (
     <div
       className="month-grid__week"
@@ -199,6 +212,22 @@ const MonthWeekRow = memo(function MonthWeekRow({
                       style={{ '--dot-cat': categoryEdgeVar(category) } as CSSProperties}
                     />
                   ))}
+                </span>
+                <span className="month-grid__chips" aria-hidden="true">
+                  {chips[col].chips.map((chip) => (
+                    <span
+                      key={chip.id}
+                      className="month-grid__chip"
+                      style={{ '--chip-cat': categoryEdgeVar(chip.category) } as CSSProperties}
+                    >
+                      {chip.title}
+                    </span>
+                  ))}
+                  {chips[col].overflow > 0 && (
+                    <span className="month-grid__chip month-grid__chip--overflow">
+                      +{chips[col].overflow}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>

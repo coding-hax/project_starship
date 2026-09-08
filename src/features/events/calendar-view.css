@@ -114,6 +114,38 @@
   }
 }
 
+/* Dritte Desktop-Stufe (issue #1123, ADR-0030): das Monatsraster wird die
+   Hauptfläche statt der schmalen linken Spalte von der zweiten Stufe (oben) —
+   die Spaltenbreiten drehen um (Raster breit/flexibel, Agenda höchstens
+   400px, AK1), `grid-column` der Kinder oben bleibt unverändert richtig
+   (Raster weiterhin Spalte 1, Agenda weiterhin Spalte 2). */
+@media (min-width: 1440px) {
+  .calendar-view:has(> .month-grid) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 25rem);
+    /* Explizite Zeilenhöhen statt der von der zweiten Stufe geerbten
+       impliziten `auto`-Zeilen (AK5): ohne sie verteilt Chromium die
+       Überhöhe, die das jetzt viel größere Raster gegenüber
+       Tagesüberschrift + Agenda zusammen mitbringt, gleichmäßig auf beide
+       von ihm überspannten Zeilen — die Agenda rutscht sichtbar um die
+       halbe Differenz nach unten statt oben an der Tagesüberschrift zu
+       kleben. Eine flexible letzte Zeile (`minmax(0, 1fr)`) nimmt die ganze
+       Überhöhe stattdessen allein: sobald eine überspannte Zeile flexibel
+       ist, bleiben die `auto`-Zeilen davor bei ihrer eigenen
+       Ein-Spalten-Inhaltsgröße (CSS Grid Abschnitt „Resolving Intrinsic
+       Track Sizes" — überspannende Items, die eine flexible Spur kreuzen,
+       vergrößern nur die flexible Spur, nie die `auto`-Spuren daneben). */
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  /* Schiebt eine zusätzliche `auto`-Zeile für `.offline-notice` ein (dieselbe
+     dritte Rechtsspalten-Zeile wie in der zweiten Stufe oben) — sonst würde
+     die letzte, flexible Zeile plötzlich die Offline-Meldung statt der
+     Agenda tragen. */
+  .calendar-view:has(> .month-grid):has(> .offline-notice) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+}
+
 /* Figur neben dem Titelwort statt am rechten Rand (issue #1021 AK2) — gilt in
    beiden Ansichten (der Kopf ist geteilt), hebt mobile #921-AK4-Regeln auf:
    `.calendar-view__heading`s `flex: 1 1 auto` (Zeile oben) und
