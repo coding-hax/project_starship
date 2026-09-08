@@ -173,6 +173,14 @@
   padding: 0;
 }
 
+/* issue #1118 AK2: keine Fälligkeitsgruppe reißt an einer Bahnengrenze
+   auseinander — inert überall außer im Bahnen-Layout, das aufgaben-page.css
+   ab 1440px auf `.task-list` legt (`columns: 2`); dort verhindert dies, dass
+   Kopf und erste Zeile derselben Gruppe in unterschiedlichen Bahnen landen. */
+.task-list__group {
+  break-inside: avoid;
+}
+
 /* A group's own row list (issue #866) — also reused, unchanged, by the
    "ohne Datum" `SectionCard`'s rows: both are just a flat, bündig stack of
    task rows with no gap of their own, the spacing between *groups* lives on
