@@ -4,6 +4,7 @@
 - `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
 - `shell.spec.ts` / `nav-order.spec.ts` / `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Login/Tabs/Header/Karussell; Seitengrund+Kopf
 - `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
+- `kalender.wide.spec.ts` — ab 1440px Monatsraster breit, Agenda schmal, Chips statt Punkte
 - `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche
 - `uebersicht.wide.spec.ts` — ab 1440px dreispaltig, Wetter/Termine als volle Bahn
 - `grundfarbe-vollfarbe.spec.ts` / `nav-schleier.spec.ts` / `abgleich-828.spec.ts` — Vollfarbe (Karten/Leiste/FAB), Nav-Grundkopie, Kopf-Recolor
