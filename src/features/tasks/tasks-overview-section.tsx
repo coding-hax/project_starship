@@ -16,7 +16,7 @@ import { TaskList } from './task-list';
  */
 export function TasksOverviewSection() {
   return (
-    <OverviewBlock hiddenTitle="Aufgaben" headingId="uebersicht-aufgaben-heading">
+    <OverviewBlock hiddenTitle="Aufgaben" headingId="uebersicht-aufgaben-heading" section="aufgaben">
       {/* Embedded in /uebersicht, no scroll container of its own — the list's
           own scroll anchor (issue #88) would scroll the document, not itself
           (issue #647). */}

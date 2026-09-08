@@ -10,6 +10,7 @@ import {
   berlinMinutesOfDay,
   categoriesForDay,
   categoryEdgeVar,
+  chipsForDay,
   dateKeyDiff,
   dayWindow,
   formatCountdown,
@@ -24,6 +25,7 @@ import {
   nextInAgenda,
   nextUpcomingOccurrences,
   weekDaysFor,
+  weekOverview,
   weekWindow,
   yearLabel,
 } from './event-time';
@@ -339,6 +341,95 @@ describe('weekDaysFor', () => {
   });
 });
 
+describe('weekOverview', () => {
+  // 12:00 UTC on 2026-07-18 (Saturday) = 14:00 Berlin (CEST).
+  const NOW = new Date(iso(Date.UTC(2026, 6, 18, 12, 0)));
+
+  function occurrencesFor(events: EventView[], exceptions: EventExceptionView[] = []) {
+    return (day: string) => expandForDay(events, exceptions, day);
+  }
+
+  it('returns exactly 7 entries, Mon-Sun of the week containing `now`', () => {
+    const week = weekOverview(occurrencesFor([]), NOW);
+
+    expect(week.map((day) => day.dayKey)).toEqual([
+      '2026-07-13',
+      '2026-07-14',
+      '2026-07-15',
+      '2026-07-16',
+      '2026-07-17',
+      '2026-07-18',
+      '2026-07-19',
+    ]);
+  });
+
+  it('marks only today as isToday, everything else false', () => {
+    const week = weekOverview(occurrencesFor([]), NOW);
+
+    expect(week.map((day) => day.isToday)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it('leaves chips empty for a day with nothing scheduled', () => {
+    const week = weekOverview(occurrencesFor([]), NOW);
+
+    expect(week.every((day) => day.chips.length === 0)).toBe(true);
+  });
+
+  it('orders all-day chips before timed ones, timed ones chronologically', () => {
+    const later = event({
+      id: 'evt-later',
+      title: 'Später',
+      startsAt: iso(Date.UTC(2026, 6, 15, 15, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 15, 16, 0)),
+    });
+    const earlier = event({
+      id: 'evt-earlier',
+      title: 'Früher',
+      startsAt: iso(Date.UTC(2026, 6, 15, 8, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 15, 9, 0)),
+    });
+    const allDay = event({
+      id: 'evt-allday',
+      title: 'Ganztägig',
+      allDay: true,
+      startDate: '2026-07-15',
+      endDate: '2026-07-15',
+    });
+
+    const week = weekOverview(occurrencesFor([later, earlier, allDay]), NOW);
+    const wednesday = week.find((day) => day.dayKey === '2026-07-15')!;
+
+    expect(wednesday.chips.map((chip) => chip.title)).toEqual(['Ganztägig', 'Früher', 'Später']);
+    expect(wednesday.chips[0]).toMatchObject({ allDay: true, time: null });
+    expect(wednesday.chips[1]).toMatchObject({ allDay: false, time: '10:00' });
+    expect(wednesday.chips[2]).toMatchObject({ allDay: false, time: '17:00' });
+  });
+
+  it('carries the category and formats the scheduled chip time as Berlin HH:MM', () => {
+    const meeting = event({
+      title: 'Standup',
+      category: 'arbeit',
+      startsAt: iso(Date.UTC(2026, 6, 13, 7, 0)),
+      endsAt: iso(Date.UTC(2026, 6, 13, 8, 0)),
+    });
+
+    const week = weekOverview(occurrencesFor([meeting]), NOW);
+    const monday = week.find((day) => day.dayKey === '2026-07-13')!;
+
+    expect(monday.chips).toEqual([
+      { id: 'evt-1', title: 'Standup', time: '09:00', allDay: false, category: 'arbeit' },
+    ]);
+  });
+});
+
 describe('monthDaysFor', () => {
   it('pads a month that starts mid-week with real neighbour-month days, 35 keys total', () => {
     // July 2026 starts on a Wednesday (same month due-today.test.ts uses for
@@ -417,6 +508,78 @@ describe('categoriesForDay', () => {
     );
     expect(categoriesForDay(events, DAY)).toHaveLength(4);
     expect(categoriesForDay(events, DAY)).toEqual(['privat', 'arbeit', 'gesundheit', 'sport']);
+  });
+});
+
+describe('chipsForDay', () => {
+  const DAY = '2026-07-18';
+
+  function withStart(overrides: Partial<EventView>): EventView {
+    return event({ startsAt: `${DAY}T09:00:00.000Z`, endsAt: `${DAY}T10:00:00.000Z`, ...overrides });
+  }
+
+  it('returns one chip per event, chronological, title and category carried through', () => {
+    const events = [
+      withStart({
+        id: 'b',
+        title: 'Zweiter',
+        startsAt: `${DAY}T11:00:00.000Z`,
+        endsAt: `${DAY}T12:00:00.000Z`,
+        category: 'sport',
+      }),
+      withStart({ id: 'a', title: 'Erster', category: 'arbeit' }),
+    ];
+    expect(chipsForDay(events, DAY, 3)).toEqual({
+      chips: [
+        { id: 'a', title: 'Erster', category: 'arbeit' },
+        { id: 'b', title: 'Zweiter', category: 'sport' },
+      ],
+      overflow: 0,
+    });
+  });
+
+  it('does not dedupe same-category events — one chip each, unlike categoriesForDay', () => {
+    const events = [
+      withStart({ id: 'a', title: 'Erster', category: 'arbeit' }),
+      withStart({
+        id: 'b',
+        title: 'Zweiter',
+        startsAt: `${DAY}T11:00:00.000Z`,
+        endsAt: `${DAY}T12:00:00.000Z`,
+        category: 'arbeit',
+      }),
+    ];
+    expect(chipsForDay(events, DAY, 3).chips).toHaveLength(2);
+  });
+
+  it('caps chips at maxChips and reports the rest as overflow', () => {
+    const events = ['a', 'b', 'c', 'd'].map((id, index) =>
+      withStart({
+        id,
+        title: `Termin ${id}`,
+        startsAt: `${DAY}T${String(9 + index).padStart(2, '0')}:00:00.000Z`,
+        endsAt: `${DAY}T${String(10 + index).padStart(2, '0')}:00:00.000Z`,
+      }),
+    );
+    const result = chipsForDay(events, DAY, 3);
+    expect(result.chips.map((chip) => chip.id)).toEqual(['a', 'b', 'c']);
+    expect(result.overflow).toBe(1);
+  });
+
+  it('returns no chips and no overflow for a day without events', () => {
+    expect(chipsForDay([], DAY, 3)).toEqual({ chips: [], overflow: 0 });
+  });
+
+  it('ignores events on other days', () => {
+    const events = [
+      withStart({ startsAt: '2026-07-19T09:00:00.000Z', endsAt: '2026-07-19T10:00:00.000Z' }),
+    ];
+    expect(chipsForDay(events, DAY, 3)).toEqual({ chips: [], overflow: 0 });
+  });
+
+  it('excludes all-day events — they already have their own band, same rule as categoriesForDay', () => {
+    const events = [event({ allDay: true, startDate: DAY, endDate: DAY, category: 'familie' })];
+    expect(chipsForDay(events, DAY, 3)).toEqual({ chips: [], overflow: 0 });
   });
 });
 

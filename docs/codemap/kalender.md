@@ -15,4 +15,4 @@
 - `event-detail.tsx` / `.css` / `event-editor.tsx` / `.css` — Detail-Sheet, „Bearbeiten" öffnet den Editor
 - `recurrence-scope-sheet.tsx` / `.css` — Scope-Abfrage: dieser, alle folgenden, ganze Serie
 - `use-delete-event.ts` — Tombstone + Undo-Fenster je Termin
-- `events-overview-section.tsx` / `.css` — „Nächster Termin": bis zu 3 Folgezeilen
+- `events-overview-section.tsx` / `.css` — „Nächster Termin": bis zu 3 Folgezeilen, ab 1440px Wochenraster

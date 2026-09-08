@@ -140,7 +140,12 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   await expect(page.getByText('Diese Woche fällig')).toBeVisible();
   // Checked off today, so it stays for the rest of the day (issue #228 AC1).
   // exact: true — 'Morgen fällig, heute erledigt' below is a substring match otherwise.
-  await expect(page.getByText('Heute erledigt', { exact: true })).toBeVisible();
+  // Scoped to the task list — the Wide-Segmentring's side label (issue #1122)
+  // renders the same text "Heute erledigt", just hidden via display:none below
+  // 1440px. It stays in the DOM, so an unscoped getByText resolves to both.
+  await expect(
+    dueTaskItems(page).getByText('Heute erledigt', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('Morgen fällig, heute erledigt')).toBeVisible();
   await expect(dueTaskItems(page)).toHaveCount(5);
   await expect(page.getByText('Außerhalb der Woche')).toHaveCount(0);

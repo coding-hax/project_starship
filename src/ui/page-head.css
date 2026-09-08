@@ -83,3 +83,56 @@
   background: none;
   color: var(--on-ground);
 }
+
+/* Dritte Desktop-Stufe (issue #1117, Nachfolger von #1116): ab 1440px rückt
+   der Kopf in eine Zeile zusammen — Augenbraue + Zusatz-Slot links, Titelzeile
+   rechts. `order` statt DOM-Umbau, weil die Auszeichnungsreihenfolge
+   (Augenbraue, Titelzeile, Zusatz) für die gestapelten Stufen darunter
+   erhalten bleiben muss (Screenreader-Reihenfolge, bestehende Kopf-Specs).
+   `margin-inline-start: auto` auf der Titelzeile statt `justify-content`, weil
+   Letzteres bei drei Items (Augenbraue/Zusatz/Titelzeile) den Abstand
+   gleichmäßig verteilen würde statt Augenbraue und Zusatz zusammenzuhalten. */
+@media (min-width: 1440px) {
+  .page-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .page-head__eyebrow {
+    order: 1;
+    margin: 0;
+  }
+
+  .page-head__extra {
+    order: 2;
+    margin: 0;
+  }
+
+  .page-head__title-row {
+    order: 3;
+    margin-inline-start: auto;
+  }
+
+  /* Titel + Figur wachsen auf die volle Desktop-Rolle (--text-title, 32px)
+     statt des halbhohen --text-page-title (22px) — der Kopf trägt hier eine
+     ganze Zeile für sich, nicht mehr die halbe Höhe von issue #833. Gescopt
+     auf `.page-head__title-row`, nicht global: `.face`/h1 laufen auch außerhalb
+     des Kopfs (FAB-Glyphe, /kalender, /wetter/<datum>, /einstellungen), die
+     dieses Ticket nicht anfasst (Nicht-Ziele). `margin-block-end: 0` nimmt
+     ausschließlich hier den globalen h1↔Inhalt-Rhythmus (globals.css,
+     issue #85, --space-6) zurück: als Flex-Item der Zeile bläht diese
+     Nachlaufmarge sonst die eigene Randbox über die 60px-Figur hinaus auf und
+     verschiebt den gemessenen Mittelpunkt der Titelzeile gegen AK1 (±4px) —
+     `align-items`/`gap` der Titelzeile selbst bleiben unangetastet, die setzt
+     weiterhin jede Route (siehe Kommentar oben in dieser Datei). */
+  .page-head__title-row h1 {
+    font-size: var(--text-title);
+    margin-block-end: 0;
+  }
+
+  .page-head__title-row .face {
+    inline-size: 60px;
+    block-size: 60px;
+  }
+}
