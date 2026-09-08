@@ -30,13 +30,35 @@ import {
  *  a fresh navigation always lands back on `'woche'`. Irrelevant for the
  *  `dueTodayOnly` (/uebersicht) instance, which has no switcher and always
  *  renders the "7 Tage" shape (issue #762). */
-type ViewMode = 'woche' | 'alle' | 'erledigt';
+export type ViewMode = 'woche' | 'alle' | 'erledigt';
 
 const VIEW_OPTIONS: SegmentedOption<ViewMode>[] = [
   { value: 'woche', label: '7 Tage' },
   { value: 'alle', label: 'Alle' },
   { value: 'erledigt', label: 'Erledigt' },
 ];
+
+/**
+ * The switcher itself, split out of `TaskList` (issue #1117 AK3) so
+ * `AufgabenView` can render it into `PageHead`'s `extra` slot — from 1440px
+ * that slot sits inside `.page-head` instead of below it. Same
+ * `.task-list__view-switcher` class either way, so the mobile styling
+ * (task-list.css) and the existing Playwright locators keep working
+ * unchanged.
+ */
+export function TaskViewSwitcher({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (view: ViewMode) => void;
+}) {
+  return (
+    <div className="task-list__view-switcher">
+      <SegmentedControl label="Aufgaben-Ansicht" options={VIEW_OPTIONS} value={value} onChange={onChange} />
+    </div>
+  );
+}
 
 /**
  * One `<li>` worth of row, flattened out of the parent/child tree (issue #430)
@@ -170,11 +192,20 @@ export interface TaskListProps {
    * Not derived from `dueTodayOnly`: that is a data filter, this is a layout fact.
    */
   anchorOnMount?: boolean;
+  /**
+   * Read-only view mode (issue #1117 AK3) — `/aufgaben` (`AufgabenView`) owns
+   * the state and feeds the same value into `TaskViewSwitcher`, rendered
+   * separately into `PageHead`'s `extra` slot. Defaults to `'woche'` when
+   * omitted, which is what the `dueTodayOnly` instance on `/uebersicht` relies
+   * on: it never shows a switcher and never changes away from the default.
+   */
+  view?: ViewMode;
 }
 
 export function TaskList({
   dueTodayOnly = false,
   anchorOnMount = true,
+  view = 'woche',
 }: TaskListProps = {}) {
   const allTasks = useTasks();
   // Grouped from the full list (issue #89) — nesting structure, the /uebersicht
@@ -201,10 +232,6 @@ export function TaskList({
   const { toggleComplete } = useCompleteTask();
   const { deleteTask } = useDeleteTask();
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  // Ephemeral, not persisted (issue #705 AK2) — a fresh /aufgaben navigation
-  // always starts back on "7 Tage". Unused on the `dueTodayOnly` instance,
-  // which never renders the switcher and never changes it away from the default.
-  const [view, setView] = useState<ViewMode>('woche');
   // Ephemeral, not persisted (per-ticket decision) — holds the ids the user has
   // expanded, default collapsed on both /aufgaben (issue #781) and /uebersicht
   // (issue #779): a parent row shows its `done/total` and holds its children
@@ -572,17 +599,6 @@ export function TaskList({
           Offline — deine Aufgaben sind lokal gespeichert und werden synchronisiert, sobald du
           wieder online bist.
         </OfflineNotice>
-      )}
-
-      {!dueTodayOnly && (
-        <div className="task-list__view-switcher">
-          <SegmentedControl
-            label="Aufgaben-Ansicht"
-            options={VIEW_OPTIONS}
-            value={view}
-            onChange={setView}
-          />
-        </div>
       )}
 
       {tasks === undefined ? null : emptyMessage !== null ? (
