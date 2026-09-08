@@ -2,7 +2,7 @@
 
 ## src/db
 
-- `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit fürs Datenmodell
+- `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit
 - `sync-tables.ts` / `sync-lock.ts` — Sync-Felder je Tabelle + Advisory-Lock
 - `index.ts` / `migrate.ts` — DB-Verbindung + wendet Migrationen an
 - `migrations/` — generierte Migrationen, nie von Hand
@@ -18,15 +18,15 @@
 
 ## src/auth
 
-- `session.ts` — opakes Session-Token (Hash in der DB), requireOwner()
-- `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` im Edge-Runtime ladbar
+- `session.ts` / `device-cookie.ts` — opakes Session-Token (Hash in DB), requireOwner(); Geräte-Etikett
+- `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` — Challenges, Credentials, Recovery
 
 ## src/crypto
 
 - `errors.ts` / `base64.ts` — Fehler ohne Klartext in der Message + Base64-Helfer
 - `envelope.ts` — KEK+Hülle: DEK-Erzeugung und -Öffnung als AES-GCM
-- `journal.ts` — Ver-/Entschlüsselung, Recovery-Neuausstellung, Envelope-Re-Export
+- `journal.ts` — Ver-/Entschlüsselung, Recovery-Neuausstellung, Re-Export
 - `__fixtures__/journal-vector.json` — Testvektor gegen unbemerkte Formatänderungen
 
 ## src/modules
@@ -35,7 +35,7 @@
 
 ## src/push
 
-- `vapid.ts` / `send.ts` — VAPID, Versand an alle Abos, löscht ungültige
+- `vapid.ts` / `send.ts` — VAPID, Versand an Abos, löscht ungültige
 - `notification.ts` / `schedule.ts` — Payload-Logik + DST-sichere Slots
 - `reminders/index.ts` / `reminder-kinds.ts` — Reminder-Registry + Kind-Metadaten
 - `reminders/tasks-due.ts` / `habits-open.ts` / `interaction-limit.ts` — Aufgaben, Routinen, Ablauf

@@ -253,18 +253,22 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
  * `starship_session` cookie in a fresh context; sperren must never touch the shared
  * session every other project's `storageState` depends on. Optional `credentialId`
  * binds the session the way a real login/register does (issue #854) — omitted, it
- * stays `null` like a pre-#854 session.
+ * stays `null` like a pre-#854 session. Optional `deviceId` does the same for the
+ * browser profile (issue #1102): omitted it stays `null`, which the login sweep
+ * reads as residue of the device that is logging in.
  */
 export async function createThrowawaySession(
   credentialId?: string,
+  deviceId?: string,
 ): Promise<{ token: string; tokenHash: string }> {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   await withDb((client) =>
     client.query(
-      'INSERT INTO sessions (id, token_hash, expires_at, credential_id) VALUES ($1, $2, $3, $4)',
-      [randomUUID(), tokenHash, expiresAt, credentialId ?? null],
+      'INSERT INTO sessions (id, token_hash, expires_at, credential_id, device_id) ' +
+        'VALUES ($1, $2, $3, $4, $5)',
+      [randomUUID(), tokenHash, expiresAt, credentialId ?? null, deviceId ?? null],
     ),
   );
   return { token, tokenHash };

@@ -162,6 +162,13 @@
       "when": 1787825968773,
       "tag": "0022_melted_zarda",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788813094635,
+      "tag": "0023_silky_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }
