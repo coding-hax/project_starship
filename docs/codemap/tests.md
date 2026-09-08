@@ -7,6 +7,7 @@
 - `kalender.wide.spec.ts` — ab 1440px Monatsraster breit, Agenda schmal, Chips statt Punkte
 - `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche
 - `uebersicht.wide.spec.ts` — ab 1440px dreispaltig, Wetter/Termine als volle Bahn
+- `uebersicht-progress-ring.wide.spec.ts` — ab 1440px Tagesfortschritt als Segmentring statt „N/M"
 - `grundfarbe-vollfarbe.spec.ts` / `nav-schleier.spec.ts` / `abgleich-828.spec.ts` — Vollfarbe (Karten/Leiste/FAB), Nav-Grundkopie, Kopf-Recolor
 - `navigation.prod.spec.ts` / `export.spec.ts` / `kalender.spec.ts` / `journal.desktop.spec.ts` — Tab-Wechsel o. Doc-Request; Export+Tombstones; Kalender-Timeline/Farbkante; Journal 2-spaltig 768px
 - `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
