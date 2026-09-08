@@ -74,7 +74,7 @@
 .habit-today__emoji {
   flex-shrink: 0;
   font-size: var(--text-body);
-  line-height: 1;
+  line-height: var(--leading-tight);
 }
 
 .habit-today__name-group {

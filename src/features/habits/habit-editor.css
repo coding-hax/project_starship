@@ -138,7 +138,7 @@
 
 .habit-editor__emoji-glyph {
   font-size: var(--text-section);
-  line-height: 1;
+  line-height: var(--leading-tight);
   border-radius: var(--radius-pill);
   outline: 2px solid transparent;
   outline-offset: 2px;
