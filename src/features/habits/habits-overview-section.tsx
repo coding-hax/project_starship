@@ -14,7 +14,7 @@ import { HabitToday } from './habit-today';
  */
 export function HabitsOverviewSection() {
   return (
-    <OverviewBlock>
+    <OverviewBlock section="routinen">
       <HabitToday />
     </OverviewBlock>
   );
