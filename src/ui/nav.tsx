@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { useModules } from '@/features/settings/use-modules';
 import { useNavOrder } from '@/features/settings/use-nav-order';
+import { AppHeader } from './app-header';
 import { BackgroundArcs } from './background-arcs';
 
 /**
@@ -13,7 +14,11 @@ import { BackgroundArcs } from './background-arcs';
  * Mobile is a horizontal carousel past five entries (issue #205); the order comes
  * from `useNavOrder`, so a change in Einstellungen shows here immediately.
  *
- * Einstellungen is not a tab here — its entry point lives in AppHeader instead.
+ * Einstellungen is not a tab here — its entry point lives in AppHeader instead,
+ * as a header row above `main` up to 1439px. From 1440px up (issue #1116,
+ * ADR-0030) that same entry point rides along here too (`variant="sidebar"`,
+ * hidden below that width), pinned to this flex column's foot because
+ * `.nav__bar` right above it keeps its `flex: 1` (shell.css).
  */
 export function Nav() {
   const pathname = usePathname();
@@ -99,6 +104,7 @@ export function Nav() {
           })}
         </ul>
       </div>
+      <AppHeader variant="sidebar" />
     </nav>
   );
 }
