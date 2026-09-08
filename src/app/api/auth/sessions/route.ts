@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { countOtherSessions, endOtherSessions, requireOwner, UnauthorizedError } from '@/auth/session';
+import { endOtherSessions, listSessions, requireOwner, UnauthorizedError } from '@/auth/session';
 
 async function guard() {
   try {
@@ -17,7 +17,8 @@ export async function GET() {
   const unauthorized = await guard();
   if (unauthorized) return unauthorized;
 
-  return NextResponse.json({ otherCount: await countOtherSessions() });
+  const sessions = await listSessions();
+  return NextResponse.json({ sessions, otherCount: sessions.filter((s) => !s.current).length });
 }
 
 export async function DELETE() {

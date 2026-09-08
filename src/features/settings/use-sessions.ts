@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+export interface LiveSession {
+  id: string;
+  deviceId: string | null;
+  lastSeenAt: string | null;
+  current: boolean;
+}
+
 type Phase = 'loading' | 'ready' | 'error';
 
 /**
@@ -10,6 +17,7 @@ type Phase = 'loading' | 'ready' | 'error';
  */
 export function useSessions() {
   const [phase, setPhase] = useState<Phase>('loading');
+  const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [otherCount, setOtherCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +29,7 @@ export function useSessions() {
       return;
     }
     const body = await response.json();
+    setSessions(body.sessions);
     setOtherCount(body.otherCount);
     setPhase('ready');
   }, []);
@@ -49,5 +58,23 @@ export function useSessions() {
     }
   }, [load]);
 
-  return { phase, otherCount, busy, error, endOtherSessions, reload: load };
+  const endSession = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/auth/sessions/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+          setError('Beenden fehlgeschlagen.');
+          return;
+        }
+        await load();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  return { phase, sessions, otherCount, busy, error, endOtherSessions, endSession, reload: load };
 }

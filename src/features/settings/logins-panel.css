@@ -1,0 +1,75 @@
+.logins-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.logins-panel__item {
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.logins-panel__item:last-child {
+  border-bottom: none;
+}
+
+.logins-panel__button {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.logins-panel__button:active {
+  opacity: 0.85;
+}
+
+.logins-panel__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.logins-panel__button--secondary {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.logins-panel__current-badge {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  white-space: nowrap;
+}
+
+.logins-panel__hint {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.logins-panel__confirm {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/* Kontrollzone unter Name/Zusatzzeile statt daneben — auf 375px sonst zu schmal (#936). */
+.logins-panel__item .row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.logins-panel__item .row__control {
+  justify-content: flex-end;
+}

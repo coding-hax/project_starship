@@ -172,9 +172,14 @@ export function DevicesPanel() {
   if (phase === 'loading') return null;
 
   return (
-    <SectionCard title="Geräte" className="devices-panel">
+    <SectionCard title="Passkeys" className="devices-panel">
       {!online && <p className="devices-panel__hint">Geht nur online.</p>}
       {error && <p className="devices-panel__error">{error}</p>}
+      <p className="devices-panel__hint">
+        {
+          'Ein über den iCloud-Schlüsselbund synchronisierter Passkey ist auf allen deinen Apple-Geräten derselbe und erscheint hier deshalb als ein Eintrag.'
+        }
+      </p>
       <ul className="devices-panel__list">
         {rows.map((row) => (
           <CredentialRow
@@ -196,6 +201,11 @@ export function DevicesPanel() {
       <p className="devices-panel__hint">
         {
           'Neues Gerät hinzufügen? Öffne die App auf dem neuen Gerät und melde es unter „Anmelden" mit deinem Recovery-Code an.'
+        }
+      </p>
+      <p className="devices-panel__hint">
+        {
+          'Auf einem zweiten Apple-Gerät musst du im Passkey-Dialog einen anderen Speicherort wählen, sonst verweigert der Browser das Anlegen.'
         }
       </p>
     </SectionCard>

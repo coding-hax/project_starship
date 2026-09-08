@@ -309,6 +309,16 @@ export const sessions = pgTable(
      * residue of the device that is logging in.
      */
     deviceId: text('device_id'),
+    /**
+     * Last authenticated request through this session (issue #1103). Dropped in
+     * #857 for being a dead column — the auth middleware only checked cookie
+     * presence, no DB access (#599). Comes back *alive* this time: `requireOwner()`
+     * writes it through a throttled, guarded `UPDATE` (at most once per hour per
+     * session), never once per request, so the cheap-write-path concern from #857
+     * still holds. Nullable, no default — a session minted before this column
+     * existed, or never re-authenticated since, stays `null` ("noch nie").
+     */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   },
   (table) => [index('sessions_expires_at_idx').on(table.expiresAt)],
 );
