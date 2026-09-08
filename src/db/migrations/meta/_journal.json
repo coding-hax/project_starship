@@ -176,6 +176,13 @@
       "when": 1788837663511,
       "tag": "0024_slim_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788843824619,
+      "tag": "0025_needy_hobgoblin",
+      "breakpoints": true
     }
   ]
 }
