@@ -1,3 +1,4 @@
+import type { FullConfig } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createThrowawaySession } from './helpers';
@@ -76,7 +77,7 @@ async function waitForColdRouteReady(): Promise<void> {
  * start when something else holds 3100. This hook cannot do that anyway — the web server
  * boots before global setup runs.
  */
-export default async function globalSetup(): Promise<void> {
+export default async function globalSetup(config: FullConfig): Promise<void> {
   // CI runs one job against its own database — nothing to collide with, so the lock
   // below is skipped there. The cold-route wait has nothing to do with that lock and
   // runs regardless: a fresh CI runner has no warm `.next` cache either.
@@ -103,6 +104,13 @@ export default async function globalSetup(): Promise<void> {
     mkdirSync(dirname(LOCK_FILE), { recursive: true });
     writeFileSync(LOCK_FILE, JSON.stringify(own));
   }
+
+  // playwright.shipped.config.ts has no `setup` project — shipped.prod.spec.ts registers
+  // its own passkey per test instead of starting from a pre-authenticated storageState
+  // (see that config's own comment) — so nothing here is about to navigate to a route
+  // this wait would warm up. It also serves from PORT_SHIPPED, a port this wait doesn't
+  // know about, so running it there was a bug, not just redundant: it always timed out.
+  if (!config.projects.some((project) => project.name === 'setup')) return;
 
   await waitForColdRouteReady();
 }
