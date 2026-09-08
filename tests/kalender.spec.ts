@@ -20,6 +20,17 @@ import {
 const TODAY = '2026-07-18';
 const TOMORROW = '2026-07-19';
 
+/** `datetime-local`'s own local-time formatting, mirrored here (same copy as
+ *  `capture-uebersicht.spec.ts`'s) — Node's host TZ and the browser's are the
+ *  same machine, so deriving an expected field value this way stays correct
+ *  independent of it (CI runs UTC, a dev machine may not), unlike a hardcoded
+ *  `TODAY}T11:00`-style literal next to a UTC-seeded `startsAt`. */
+function isoToLocalInput(iso: string): string {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<string> {
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
@@ -3192,6 +3203,138 @@ test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frue
   await monthGridDay(page, 'Sa, 18.').click();
   await page.getByRole('radio', { name: 'Woche' }).click();
   await expect(eventCard(page, 'Yoga')).toContainText('18:00');
+});
+
+/* -------------------------------------------------------------------------- */
+/* #1104: "Bis" folgt dem Start und behält die Dauer                          */
+/* -------------------------------------------------------------------------- */
+
+test('AK1: im Create-Modus mit unverändertem Bis setzt eine Von-Änderung Bis auf genau eine Stunde später (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(`${TODAY}T09:00`);
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TODAY}T10:00`);
+
+  await page.getByLabel('Von').fill(`${TOMORROW}T20:00`);
+
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TOMORROW}T21:00`);
+});
+
+test('AK2: nach einer eigenen Bis-Änderung bleibt die neu eingestellte Dauer beim nächsten Von-Wechsel exakt erhalten (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  // Dauer von Hand auf 3 Std gesetzt (09:00 Von steht noch auf dem Default).
+  await page.getByLabel('Bis').fill(`${TODAY}T12:00`);
+  await page.getByLabel('Von').fill(`${TOMORROW}T20:00`);
+
+  await expect(page.getByLabel('Bis')).toHaveValue(`${TOMORROW}T23:00`);
+});
+
+test('AK3: im Bearbeiten-Modus verschiebt eine Von-Änderung Bis um dieselbe Dauer, die Termindauer bleibt unverändert (#1104)', async ({
+  page,
+}) => {
+  const seedStartsAt = `${TODAY}T11:00:00.000Z`;
+  const seedEndsAt = `${TODAY}T13:00:00.000Z`; // 2 Std Dauer
+  await seedEvent(page, {
+    title: 'Strategiemeeting',
+    allDay: false,
+    startsAt: seedStartsAt,
+    endsAt: seedEndsAt,
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+
+  await openEventEditor(page, eventCard(page, 'Strategiemeeting'));
+  await expect(page.getByRole('dialog', { name: EDIT_LABEL })).toBeVisible();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(isoToLocalInput(seedStartsAt));
+  await expect(page.getByLabel('Bis')).toHaveValue(isoToLocalInput(seedEndsAt));
+
+  const newStart = new Date(new Date(seedStartsAt).getTime() + 4 * 60 * 60 * 1000);
+  await page.getByLabel('Von').fill(isoToLocalInput(newStart.toISOString()));
+
+  const expectedEnd = new Date(newStart.getTime() + 2 * 60 * 60 * 1000); // Dauer bleibt 2 Std
+  await expect(page.getByLabel('Bis')).toHaveValue(isoToLocalInput(expectedEnd.toISOString()));
+});
+
+test('AK4: ganztägig verschiebt das Bis-Datum um dieselbe Anzahl Tage wie Von, ein- wie dreitägige Spannen bleiben gleich lang (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+
+  await expect(page.getByLabel('Von')).toHaveValue(TODAY);
+  await expect(page.getByLabel('Bis')).toHaveValue(TODAY);
+
+  // Eintägig bleibt eintägig.
+  await page.getByLabel('Von').fill(TOMORROW);
+  await expect(page.getByLabel('Bis')).toHaveValue(TOMORROW);
+
+  // Von Hand auf eine dreitägige Spanne gesetzt (Bis zwei Tage nach Von) …
+  const threeDaySpanEnd = addDays(TOMORROW, 2);
+  await page.getByLabel('Bis').fill(threeDaySpanEnd);
+
+  // … bleibt beim nächsten Von-Wechsel dreitägig.
+  const newStart = addDays(TODAY, 5);
+  await page.getByLabel('Von').fill(newStart);
+  await expect(page.getByLabel('Bis')).toHaveValue(addDays(newStart, 2));
+});
+
+test('AK5: Bis trägt min = Von, ein von Hand vor den Start gesetztes Ende ist nativ ungültig (#1104)', async ({
+  page,
+}) => {
+  await page.getByRole('button', { name: CREATE_LABEL }).click();
+  await wannChip(page).click();
+
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', `${TODAY}T09:00`);
+  await page.getByLabel('Von').fill(`${TODAY}T15:00`);
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', `${TODAY}T15:00`);
+
+  await page.getByLabel('Bis').fill(`${TODAY}T14:00`);
+  const bisValidWhenBeforeStart = await page
+    .getByLabel('Bis')
+    .evaluate((el: HTMLInputElement) => el.checkValidity());
+  expect(bisValidWhenBeforeStart).toBe(false);
+
+  // Dasselbe für das ganztägige Zeitmodell.
+  await page.getByRole('switch', { name: 'Ganztägig' }).click();
+  await expect(page.getByLabel('Bis')).toHaveAttribute('min', TODAY);
+});
+
+test('AK6: ein per Freitext erfasster Termin behält seine vorbelegten Von-/Bis-Zeiten, solange niemand Von anfasst (#1104)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
+  await page
+    .getByRole('textbox', { name: 'Titel der Aufgabe' })
+    .fill('Termin morgen 14 Uhr Zahnarzt');
+  // "Mehr" öffnet den vollen Termin-Editor vorbefüllt (uebersicht-capture.tsx's
+  // `openMoreForEvent`) — der einzige heute erreichbare Pfad zu einem
+  // `EventEditorPrefill` aus Freitext.
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  // Die quick-add-Sheet selbst trägt denselben Namen, solange ihre Art "event"
+  // ist (SHEET_LABEL in uebersicht-capture.tsx) — sie schließt bei "Mehr", steht
+  // aber während ihres Exit-Übergangs noch kurz mit im DOM (gleiches Muster wie
+  // `settledEventCard` weiter oben), bis nur noch der neu geöffnete Editor bleibt.
+  const dialogs = page.getByRole('dialog', { name: CREATE_LABEL });
+  await expect(dialogs).toHaveCount(1);
+  const dialog = dialogs.first();
+  await expect(dialog).toBeVisible();
+  await wannChip(dialog).click();
+
+  await expect(dialog.getByLabel('Von')).toHaveValue(`${TOMORROW}T14:00`);
+  await expect(dialog.getByLabel('Bis')).toHaveValue(`${TOMORROW}T15:00`);
 });
 
 /* -------------------------------------------------------------------------- */
