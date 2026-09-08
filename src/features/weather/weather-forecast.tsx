@@ -33,7 +33,7 @@ export function WeatherForecast() {
   // positioned and outside this flow entirely — its own appearance can't shift
   // anything either.
   return (
-    <OverviewBlock hiddenTitle="Wetter">
+    <OverviewBlock hiddenTitle="Wetter" section="wetter">
       <section className="weather-forecast" aria-label={ariaLabel}>
         <ol className="weather-forecast__days" aria-hidden={phase !== 'ready' || undefined}>
           {phase === 'ready' && days
