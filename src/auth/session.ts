@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, lt, ne } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { sessions } from '@/db/schema';
+import { ensureDeviceId, healDeviceCookie } from './device-cookie';
 import { SESSION_COOKIE } from './session-cookie';
 
 export { SESSION_COOKIE };
@@ -25,20 +26,34 @@ export async function createSession(credentialId: string | null = null): Promise
   const id = uuidv7();
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const deviceId = await ensureDeviceId();
 
   await db.insert(sessions).values({
     id,
     tokenHash: hashToken(token),
     expiresAt,
     credentialId,
+    deviceId,
   });
 
   if (credentialId) {
     // One live session per device: drop this credential's login residue so the
     // "other sessions" count reflects distinct devices, not stale logins (#857).
+    //
+    // "Device" is the browser profile, not the passkey (#1102). A passkey synced
+    // through a keychain is the same credential on an iPhone and a Mac, so the
+    // old credential-wide sweep logged the other one out on every switch. Rows
+    // with no device id are pre-#1102 residue and still belong to whoever is
+    // logging in — there is no other device they could be attributed to.
     await db
       .delete(sessions)
-      .where(and(eq(sessions.credentialId, credentialId), ne(sessions.id, id)));
+      .where(
+        and(
+          eq(sessions.credentialId, credentialId),
+          ne(sessions.id, id),
+          or(eq(sessions.deviceId, deviceId), isNull(sessions.deviceId)),
+        ),
+      );
   }
 
   const store = await cookies();
@@ -52,7 +67,11 @@ export async function createSession(credentialId: string | null = null): Promise
 }
 
 /** Returns the owner id when the request carries a live session, otherwise null. */
-export async function getSession(): Promise<{ userId: string; credentialId: string | null } | null> {
+export async function getSession(): Promise<{
+  userId: string;
+  credentialId: string | null;
+  deviceId: string | null;
+} | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -68,7 +87,7 @@ export async function getSession(): Promise<{ userId: string; credentialId: stri
   const ownerId = process.env.OWNER_USER_ID;
   if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
 
-  return { userId: ownerId, credentialId: row.credentialId };
+  return { userId: ownerId, credentialId: row.credentialId, deviceId: row.deviceId };
 }
 
 /** The credential id of the current session, or null (no session / legacy session). */
@@ -133,6 +152,11 @@ export async function endOtherSessions(): Promise<number> {
 export async function requireOwner(): Promise<string> {
   const session = await getSession();
   if (!session) throw new UnauthorizedError();
+
+  // Route-handler context by construction — the CODEMAP invariant is that every
+  // route checks requireOwner(), and only a route handler may write a cookie.
+  // Do not call this from a Server Component; getSession() is the read-only half.
+  await healDeviceCookie(session.deviceId);
 
   return session.userId;
 }

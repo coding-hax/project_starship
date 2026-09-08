@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Browser } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 import type { Client } from 'pg';
 import {
   createThrowawayCredential,
@@ -725,6 +726,234 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
     const sessionPanel = page.locator('.session-panel');
     await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeVisible();
     await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeVisible();
+
+    await context.close();
+  });
+});
+
+test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Context)', () => {
+  /**
+   * The full ceremony inline rather than `registerPasskey` — that helper writes
+   * `AUTH_STATE`, and these tests delete every credential and session, so the
+   * shared storage state must not be re-pointed at one of them (same reason the
+   * #857 block above does it by hand).
+   */
+  async function registerFreshDevice(browser: Browser) {
+    await deleteAllCredentials();
+    await deleteAllSessions();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await enableVirtualAuthenticator(page);
+
+    await page.goto('/anmelden');
+    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
+    await page.getByTestId('recovery-code').waitFor();
+    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+    await page.waitForURL('**/uebersicht');
+
+    const { rows } = await withDb((client) =>
+      client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
+    );
+    return { context, page, credentialId: rows[0].id as string };
+  }
+
+  async function deviceCookie(context: Awaited<ReturnType<Browser['newContext']>>) {
+    return (await context.cookies()).find((cookie) => cookie.name === 'starship_device');
+  }
+
+  /** Locks the app server-side and signs back in with the same passkey. */
+  async function lockAndLogIn(page: Page) {
+    await page.goto('/einstellungen');
+    const sessionPanel = page.locator('.session-panel');
+    await sessionPanel.getByRole('button', { name: 'App sperren' }).click();
+    await sessionPanel.getByRole('button', { name: 'Sperren' }).click();
+    await page.waitForURL('**/anmelden');
+
+    await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
+    await page.waitForURL('**/uebersicht');
+  }
+
+  test('AK1: Migration 0023 hat einen Rückweg — down entfernt device_id, up legt sie wieder an', async () => {
+    const downSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/down/0023_silky_kitty_pryde.down.sql'),
+      'utf8',
+    );
+    const upSql = readFileSync(
+      path.join(__dirname, '../src/db/migrations/0023_silky_kitty_pryde.sql'),
+      'utf8',
+    );
+
+    async function sessionColumns(client: Client): Promise<string[]> {
+      const { rows } = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'sessions'`,
+      );
+      return rows.map((r) => r.column_name as string);
+    }
+
+    await withDb(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const columnsBefore = await sessionColumns(client);
+        expect(columnsBefore).toContain('device_id');
+
+        await client.query(downSql);
+        expect(await sessionColumns(client)).not.toContain('device_id');
+
+        await client.query(upSql);
+        expect(await sessionColumns(client)).toEqual(columnsBefore);
+      } finally {
+        // DDL ist in Postgres transaktional — der Rollback macht auch ADD/DROP
+        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt.
+        await client.query('ROLLBACK');
+      }
+    });
+  });
+
+  test('AK2: der Login vergibt eine Geräte-ID — Cookie und sessions.device_id tragen denselben Wert, das Cookie überlebt die Sitzung', async ({
+    browser,
+  }) => {
+    const { context, credentialId } = await registerFreshDevice(browser);
+
+    const device = await deviceCookie(context);
+    expect(device).toBeDefined();
+    expect(device?.value).not.toBe('');
+    expect(device?.httpOnly).toBe(true);
+    expect(device?.sameSite).toBe('Lax');
+    expect(device?.path).toBe('/');
+
+    const session = (await context.cookies()).find((cookie) => cookie.name === 'starship_session');
+    // Ein Geräte-Cookie, das vor der Sitzung abläuft, macht aus einem lebenden
+    // Gerät beim nächsten Login ein neues — genau die Altlast, die device_id
+    // vermeiden soll.
+    expect(device!.expires).toBeGreaterThan(session!.expires);
+
+    const { rows } = await withDb((client) =>
+      client.query('SELECT device_id FROM sessions WHERE credential_id = $1', [credentialId]),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].device_id).toBe(device!.value);
+
+    await context.close();
+  });
+
+  test('AK3: eine Anmeldung desselben Passkeys von einem anderen Gerät überlebt den Login', async ({
+    browser,
+  }) => {
+    const { context, page, credentialId } = await registerFreshDevice(browser);
+
+    // Das zweite Apple-Gerät am selben Schlüsselbund: derselbe Passkey, andere
+    // Geräte-ID. Vor #1102 hat der Login hier die andere Sitzung gelöscht.
+    const other = await createThrowawaySession(credentialId, randomUUID());
+
+    await lockAndLogIn(page);
+
+    expect(await sessionRowExists(other.tokenHash)).toBe(true);
+
+    await context.close();
+  });
+
+  test('AK4: Anmeldungen desselben Geräts und Altlasten ohne Geräte-ID werden weiterhin eingedampft', async ({
+    browser,
+  }) => {
+    const { context, page, credentialId } = await registerFreshDevice(browser);
+    const device = await deviceCookie(context);
+
+    const sameDevice = await createThrowawaySession(credentialId, device!.value);
+    // device_id IS NULL: Anmeldung von vor #1102, keinem Gerät zuzuordnen.
+    const legacy = await createThrowawaySession(credentialId);
+
+    await lockAndLogIn(page);
+
+    expect(await sessionRowExists(sameDevice.tokenHash)).toBe(false);
+    expect(await sessionRowExists(legacy.tokenHash)).toBe(false);
+
+    await context.close();
+  });
+
+  test('AK5: ein verlorenes Geräte-Cookie heilt aus der Sitzungszeile, ohne eine zweite Anmeldung anzulegen', async ({
+    browser,
+  }) => {
+    const { context, page, credentialId } = await registerFreshDevice(browser);
+    const before = await deviceCookie(context);
+
+    async function sessionRows() {
+      const { rows } = await withDb((client) =>
+        client.query('SELECT device_id FROM sessions WHERE credential_id = $1', [credentialId]),
+      );
+      return rows as Array<{ device_id: string | null }>;
+    }
+    expect(await sessionRows()).toHaveLength(1);
+
+    await context.clearCookies({ name: 'starship_device' });
+    expect(await deviceCookie(context)).toBeUndefined();
+
+    const response = await page.request.get('/api/auth/sessions');
+    expect(response.ok()).toBe(true);
+
+    const after = await deviceCookie(context);
+    expect(after?.value).toBe(before!.value);
+
+    const rows = await sessionRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].device_id).toBe(before!.value);
+
+    await context.close();
+  });
+
+  test('AK6: die Geräte-ID autorisiert nichts — ohne Sitzung 401, mit fremdem Wert bleibt die Zeile unberührt', async ({
+    browser,
+    baseURL,
+  }) => {
+    const strangerContext = await browser.newContext();
+    await strangerContext.addCookies([
+      { name: 'starship_device', value: randomUUID(), url: baseURL },
+    ]);
+    const strangerResponse = await strangerContext.request.get('/api/auth/sessions');
+    expect(strangerResponse.status()).toBe(401);
+    await strangerContext.close();
+
+    const ownDeviceId = randomUUID();
+    const session = await createThrowawaySession(undefined, ownDeviceId);
+    const context = await browser.newContext();
+    await context.addCookies([
+      { name: 'starship_session', value: session.token, url: baseURL },
+      { name: 'starship_device', value: randomUUID(), url: baseURL },
+    ]);
+
+    const response = await context.request.get('/api/auth/sessions');
+    expect(response.ok()).toBe(true);
+
+    const { rows } = await withDb((client) =>
+      client.query('SELECT device_id FROM sessions WHERE token_hash = $1', [session.tokenHash]),
+    );
+    expect(rows[0].device_id).toBe(ownDeviceId);
+    // Die Zeile gewinnt: der fremde Wert wird im Browser korrigiert, nicht in der DB.
+    expect((await deviceCookie(context))?.value).toBe(ownDeviceId);
+
+    await context.close();
+  });
+
+  test('AK7: die Einstellungen bleiben auf dem iPhone im Dark Mode unverändert bedienbar', async ({
+    browser,
+    baseURL,
+  }) => {
+    const session = await createThrowawaySession(undefined, randomUUID());
+    const context = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+      colorScheme: 'dark',
+      reducedMotion: 'reduce',
+    });
+    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+    const page = await context.newPage();
+
+    await page.goto('/einstellungen');
+    await expect(page.locator('.devices-panel')).toBeVisible();
+    await expect(page.locator('.session-panel')).toBeVisible();
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
 
     await context.close();
   });
