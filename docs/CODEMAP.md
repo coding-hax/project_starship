@@ -14,9 +14,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/app — Routen & API
 
-- `middleware.ts` — Auth-Gate vor `(app)`: prüft nur Cookie-**Anwesenheit** (kein
-  DB-Zugriff), `matcher` auf `(app)`-Routen; ohne Cookie → `/anmelden`. Bewusst
-  unter `src/`, nicht Repo-Wurzel — dort lädt Next es lautlos nie.
+- `middleware.ts` — Auth-Gate vor `(app)`: prüft nur Cookie-**Anwesenheit** (kein DB-Zugriff),
+  `matcher` auf `(app)`-Routen; ohne Cookie → `/anmelden`.
 - `(app)/layout.tsx` — App-Shell, `<ModuleRouteGuard/>`; die echte Autorisierung bleibt
   an der Datenschicht (`requireOwner()` in jeder `/api/sync/*`-Route)
 - `(app)/page-transition.tsx` — Opacity-Crossfade-Wrapper um `{children}` (siehe Invarianten)
@@ -56,8 +55,8 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 
 ### src/auth
 
-- `session.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`
-- `session-cookie.ts` — nur `SESSION_COOKIE`, blattlos (keine Imports), damit `middleware.ts` es im Edge-Runtime laden kann
+- `session.ts` / `device-cookie.ts` — opakes Session-Token (Hash in der DB), `requireOwner()`; Geräte-Etikett (#1102)
+- `session-cookie.ts` — nur `SESSION_COOKIE`, blattlos, für `middleware.ts` im Edge-Runtime
 - `webauthn.ts` — Challenges, Credentials, Recovery-Code
 
 ### src/crypto — Journal-Verschlüsselung
@@ -96,7 +95,7 @@ selben PR. Eine veraltete Karte ist schlimmer als keine.
 - `local-recognizer.ts` — Klassifikator (Punktzahl je Art), reine Funktion, kein React/Dexie; Titel kommt aus `parse-task-input.ts`s `analyzeText`
 - `habit-match.ts` — Fuzzy-Match ohne Dependency (Tokenüberlappung, Diakritika gefaltet); Verneinung ("nicht") kassiert einen Treffer
 - `field-confidence.ts` — Helfer für `FieldConfidence`, von Erkenner und `quick-add.tsx` geteilt
-- `corpus.ts` / `gold/` — Satz-Korpora; `gold/` = Gate über dem Erfassungspfad (44.578 Fälle), Regeln im Kopf von `curated.ts`
+- `corpus.ts` / `gold/` — Satz-Korpora; `gold/` = Gate über dem Erfassungspfad, Regeln im Kopf von `curated.ts`
 - `route-capture.ts` — die eine Stelle für „wohin damit": ruft `recognizeLocally`, übersetzt `CaptureKind` in Navigation/Prefill/Mutation; `allowedCaptureKinds` aus aktiven Modulen
 
 ### src/features/journal
@@ -308,10 +307,8 @@ Vision, Architektur, Design, Workflow, Token-Budget, ADRs.
 - Jede API-Route prüft `requireOwner()`. Es gibt keinen zweiten Pfad in die Daten.
 - Jede synchronisierte Tabelle spreizt `syncColumns` aus `src/db/schema.ts`.
 - Löschen ist **immer** ein Tombstone (`deleted_at`), nie ein `DELETE`.
-- Der App-Router fokussiert je Navigation automatisch das erste Segment-Element
-  — `page-transition.tsx` liegt deshalb über dem Router-Segment (nicht
-  `template.tsx`); Seiten mit eigener Kopfzeile (`wetter/[datum]/page.tsx`)
-  nutzen dafür `<header>`.
+- `page-transition.tsx` liegt über dem Router-Segment, nicht `template.tsx`;
+  Seiten mit eigener Kopfzeile (`wetter/[datum]/page.tsx`) nutzen `<header>`.
 
 ## Bauen
 
