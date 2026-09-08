@@ -1,6 +1,7 @@
 # Code-Karte: Playwright-Specs (`tests/`)
 
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
+- `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
 - `shell.spec.ts` / `nav-order.spec.ts` / `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Login/Tabs/Header/Karussell; Seitengrund+Kopf
 - `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
 - `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche

@@ -40,3 +40,12 @@ export const PORT_PROD = PORT + 1;
  * build time and can't share `.next`.
  */
 export const PORT_SHIPPED = PORT + 2;
+
+/**
+ * How long the dev server's `webServer` entry may take to answer the root URL —
+ * and, since issue #1142, also the budget `global-setup.ts` gives the actual
+ * authenticated route to finish its cold on-demand compile before `auth.setup.ts`
+ * navigates there. One number so the two can never silently disagree on what
+ * "the existing start deadline" means.
+ */
+export const DEV_SERVER_READY_TIMEOUT_MS = 120_000;
