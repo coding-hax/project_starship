@@ -351,8 +351,15 @@ test('AK3/AK4: die Temperaturkurve hat bei 1800px eine Wertachse links und füll
     `viewBox (${viewBoxWidth}) weicht von der gerenderten Breite (${renderedWidth}) ab`,
   ).toBeLessThanOrEqual(2);
 
-  // AK3: Gradbeschriftung + waagerechte Hilfslinien.
-  await expect(page.locator('.weather-day__chart .weather-day__chart-grid').first()).toBeVisible();
+  // AK3: Gradbeschriftung + waagerechte Hilfslinien. Kein `toBeVisible()` auf der
+  // `<line>` selbst: Playwrights Sichtbarkeitsprüfung bemisst SVG-Formen an ihrer
+  // geometrischen BBox (ohne Stroke) — bei einer exakt waagerechten (oder
+  // senkrechten) Linie ist die BBox-Höhe/-Breite 0, also gilt sie als „hidden",
+  // obwohl sie sichtbar gerendert wird (reproduziert außerhalb der App, unabhängig
+  // vom Diff). `count()` prüft dieselbe Absicht — die Hilfslinien existieren —, ohne
+  // an dieser Playwright-Eigenheit zu scheitern.
+  const gridLineCount = await page.locator('.weather-day__chart .weather-day__chart-grid').count();
+  expect(gridLineCount, 'keine Hilfslinien').toBeGreaterThan(0);
   const ylabels = await page.locator('.weather-day__chart .weather-day__chart-ylabel').allTextContents();
   expect(ylabels.length, 'keine Gradbeschriftung').toBeGreaterThan(0);
   for (const label of ylabels) {
