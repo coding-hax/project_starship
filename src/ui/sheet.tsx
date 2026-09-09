@@ -82,6 +82,9 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
   // time the sheet is open and is still there to restore once it closes.
   const triggerRef = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Whether the current press started on the backdrop rather than on the card —
+  // read by the dialog's `onClick` below (issue #1175).
+  const backdropPressRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number; scrollTop: number } | null>(null);
   // Read from the native `touchmove` listener below, which is attached once on
   // mount and would otherwise close over a stale `false` forever (same reason
@@ -137,7 +140,25 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
     // Left untouched, not just excluded from starting a drag: a `preventDefault()`
     // here would also suppress the synthesized click a touch pointer relies on —
     // breaking e.g. a `<label>` wrapping a `Toggle` elsewhere in a sheet's form.
-    if ((event.target as HTMLElement).closest('input, textarea, select, button, a, label, [contenteditable]')) {
+    const interactive = (event.target as HTMLElement).closest(
+      'input, textarea, select, button, a, label, [contenteditable]',
+    );
+    if (interactive) {
+      // …with one exception (issue #1175): a tap on a *button* focuses it by
+      // default, which blurs whatever text field the sheet opened with. On a real
+      // device the OS answers a blur by closing the keyboard, `--keyboard-inset`
+      // (keyboard-inset.tsx) collapses to 0 the moment `focusout` fires, and
+      // `.sheet__content` loses that much bottom padding — the bottom-anchored
+      // card's top edge drops several hundred pixels *between the press and the
+      // release*. The release then lands on the backdrop, and the click lands on
+      // the two targets' common ancestor: the <dialog> itself. Suppressing the
+      // focus move keeps the field focused, the keyboard up and the card still.
+      // Same fix as the schedule radios' own `onPointerDown` (issue #138); only
+      // the compatibility mouse events are cancelled by this, never the `click`
+      // that follows. Buttons only — every other control in that list either
+      // legitimately takes focus (input/select/textarea) or needs its default
+      // action left alone (the `<label>` case above).
+      if (interactive.tagName === 'BUTTON') event.preventDefault();
       return;
     }
     clearTextSelection();
@@ -217,10 +238,21 @@ export function Sheet({ open, onClose, label, initialFocusRef, header, accent, c
         }
       }}
       onCancel={onClose}
+      onPointerDown={(event) => {
+        backdropPressRef.current = event.target === ref.current;
+      }}
       onClick={(event) => {
         // The dialog element is sized to the full viewport (see sheet.css) — a click
         // that lands on it rather than on .sheet__content is a backdrop click.
-        if (event.target === ref.current) onClose();
+        //
+        // The press has to have started there too (issue #1175). A `click` is
+        // dispatched on the *common ancestor* of the press and release targets, so
+        // anything that moves the card between the two — the keyboard closing and
+        // with it `--keyboard-inset`, a panel opening, a list growing — makes a tap
+        // that began on a control inside the card arrive here looking exactly like a
+        // backdrop click, and dismissed the sheet mid-interaction. A press that began
+        // on the card is never a dismiss, whatever the layout did in between.
+        if (event.target === ref.current && backdropPressRef.current) onClose();
       }}
     >
       <div
