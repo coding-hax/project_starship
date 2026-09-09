@@ -113,3 +113,16 @@
   font-size: var(--text-meta);
   color: var(--text-muted);
 }
+
+/* Dritte Desktop-Stufe (issue #1125, ADR-0030): ab 1440px steht die Karte in
+   der rechten Spalte von routinen-page.css's Grid, unter den Kacheln statt
+   darunter gestapelt im normalen Fluss — der eigene `margin-bottom` (oben)
+   weicht dabei dem Grid-`row-gap` (siehe habit-tiles.css's identischer
+   Kommentar). */
+@media (min-width: 1440px) {
+  [data-ground='routinen'] .habit-history-card {
+    grid-column: 2;
+    grid-row: 3;
+    margin-bottom: 0;
+  }
+}

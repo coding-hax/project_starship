@@ -16,6 +16,25 @@
   color: var(--text-muted);
 }
 
+/* issue #1127 AK1: zwei Blöcke nebeneinander statt einer einzigen gestapelten
+   Spur, oben ausgerichtet -- die Blockhöhe schwankt mit Kartenpräsenz und
+   Kurvenanzahl (AK2/AK3), `align-items: stretch` würde den kürzeren Block
+   sonst künstlich auf die Höhe des längeren ziehen. Die Bildunterschrift läuft
+   über beide Spalten -- sie steht immer nach allen Blöcken (activity-list.tsx),
+   nie daneben. */
+@media (min-width: 1440px) {
+  .activity-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-4);
+    align-items: start;
+  }
+
+  .activity-list__caption {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Shared by every skeleton placeholder across the activities feature (this file,
    activity-block.css, activity-month-strip.css) — one pulse, one definition. */
 @keyframes activity-pulse {

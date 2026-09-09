@@ -367,6 +367,13 @@ test('AK5: die Kopie stiehlt keine Berührung — nach dem Scrollen klickt ein R
 }) => {
   await registerPasskey(page, '/aufgaben');
 
+  // Next dev compiles routes on demand (issue #1142) — `/kalender` is otherwise still
+  // cold at this point, and the click below has to land inside a fixed-timeout
+  // assertion. Warming it here, off that clock, through the already-authenticated
+  // `page.request` (shares the session cookie with `page`) turns a race against the
+  // compiler into a plain, deterministic click.
+  await page.request.get('/kalender');
+
   const styles = await navGroundStyles(page);
   expect(styles.pointerEvents, '.nav-ground ist pointer-events: none').toBe('none');
 

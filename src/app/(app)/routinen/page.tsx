@@ -6,6 +6,7 @@ import { HabitTiles } from '@/features/habits/habit-tiles';
 import { PageFace } from '@/ui/faces';
 import { PageHead } from '@/ui/page-head';
 import { TodayLongDate } from '@/ui/today-long-date';
+import './routinen-page.css';
 
 export const metadata = { title: 'Routinen · Starship' };
 
@@ -25,7 +26,14 @@ export default function RoutinenPage() {
         <PageFace face="routinen" />
       </PageHead>
       <HabitTiles />
-      <HabitTable />
+      {/* Eigener Wrapper statt `HabitTable` direkt (issue #1125): die
+          Komponente rendert je nach Zustand mehrere Geschwister auf
+          oberster Ebene (Offline-Hinweis, Tabelle/Leertext, archivierter
+          Bereich als eigene SectionCard) — dieser Block macht daraus
+          verlässlich EIN Grid-Item für routinen-page.css, ab 1440px. */}
+      <div className="routinen-page__table">
+        <HabitTable />
+      </div>
       <HabitHistoryCard />
       <AddHabitFab />
     </div>
