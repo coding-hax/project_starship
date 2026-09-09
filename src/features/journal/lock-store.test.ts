@@ -133,7 +133,7 @@ describe('lock-store', () => {
     vi.resetModules();
     vi.useFakeTimers();
 
-    pull.mockReset().mockResolvedValue(false);
+    pull.mockReset().mockResolvedValue({ appliedAny: false, complete: false });
     syncFn.mockReset().mockResolvedValue(undefined);
     getPersistedDek.mockReset().mockResolvedValue(null);
     persistDek.mockReset().mockResolvedValue(undefined);
@@ -291,6 +291,66 @@ describe('lock-store', () => {
       const snapshot = store.journalLockSnapshot();
       expect(Object.keys(snapshot)).toEqual(['state', 'error']);
       expect(JSON.stringify(snapshot)).not.toMatch(/dek/i);
+    });
+  });
+
+  describe('initialize / Kontoprüfung (#1135)', () => {
+    // Same value as the un-exported SHARE_REQUEST_TIMEOUT_MS in lock-store.ts —
+    // requestSharedDek() falls back to `locked` once nothing answers by then.
+    const SHARE_REQUEST_TIMEOUT_MS = 150;
+
+    async function retryAndSettle() {
+      const done = store.journalRetryInitialize();
+      await vi.advanceTimersByTimeAsync(SHARE_REQUEST_TIMEOUT_MS);
+      await done;
+    }
+
+    it('bricht der Pull mittendrin ab und es gibt keinen Envelope, dann unavailable (AK3)', async () => {
+      readEnvelope.mockReset().mockResolvedValue(null);
+      pull.mockReset().mockResolvedValue({ appliedAny: true, complete: false });
+
+      await store.journalRetryInitialize();
+
+      expect(store.journalLockSnapshot().state).toBe('unavailable');
+      expect(store.journalLockSnapshot().error).toBeTruthy();
+    });
+
+    it('Envelope kommt auf einer späteren Seite an: benutzt ihn, legt keinen Ersatz an (AK4)', async () => {
+      readEnvelope.mockReset().mockResolvedValueOnce(null).mockResolvedValueOnce({ fake: 'envelope' });
+      pull.mockReset().mockResolvedValue({ appliedAny: true, complete: false });
+
+      await retryAndSettle();
+
+      expect(store.journalLockSnapshot().state).toBe('locked');
+      expect(writeEnvelopes).not.toHaveBeenCalled();
+    });
+
+    it('alle Seiten durchgelaufen, kein Envelope: setup erlaubt (AK5)', async () => {
+      readEnvelope.mockReset().mockResolvedValue(null);
+      pull.mockReset().mockResolvedValue({ appliedAny: true, complete: true });
+
+      await store.journalRetryInitialize();
+
+      expect(store.journalLockSnapshot().state).toBe('setup');
+    });
+
+    it('vollständig, aber nichts angewendet: setup hängt an complete, nicht appliedAny (AK5)', async () => {
+      readEnvelope.mockReset().mockResolvedValue(null);
+      pull.mockReset().mockResolvedValue({ appliedAny: false, complete: true });
+
+      await store.journalRetryInitialize();
+
+      expect(store.journalLockSnapshot().state).toBe('setup');
+    });
+
+    it('lokaler Envelope vorhanden: pull() wird nie gefragt, Offline-Entsperren unverändert (AK6)', async () => {
+      readEnvelope.mockReset().mockResolvedValueOnce({ fake: 'envelope' });
+      pull.mockReset();
+
+      await retryAndSettle();
+
+      expect(store.journalLockSnapshot().state).toBe('locked');
+      expect(pull).not.toHaveBeenCalled();
     });
   });
 });

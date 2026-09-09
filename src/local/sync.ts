@@ -140,10 +140,23 @@ export async function push(): Promise<void> {
   }
 }
 
+export interface PullResult {
+  /** At least one page was fetched and applied (the old, single-flag result). */
+  appliedAny: boolean;
+  /** Every page was fetched through to the end: the server reported `hasMore: false`.
+   *  False as soon as a page fails partway (offline / non-ok / 401) — the account is
+   *  then NOT fully checked (#1135, extends #371). */
+  complete: boolean;
+}
+
 /**
- * Resolves `true` only if the server's changes were actually applied. Callers that
- * merely trigger a sync can ignore it; a caller that has to tell "the server has
- * nothing" apart from "we never asked" cannot (issue #371).
+ * Resolves `appliedAny: true` only if the server's changes were actually applied.
+ * Callers that merely trigger a sync can ignore that; a caller that has to tell
+ * "the server has nothing" apart from "we never asked" cannot (issue #371). That
+ * distinction alone is not enough to know the account was fully checked, though — a
+ * page can fail after an earlier page already applied changes. `complete` answers
+ * that question instead: whether every page was walked, not just whether anything
+ * landed (#1135).
  *
  * Loops page by page (fund F5, #478) — the server caps a single response at
  * `PULL_PAGE_LIMIT` and reports `hasMore`; a fresh device's first sync can be many
@@ -152,8 +165,9 @@ export async function push(): Promise<void> {
  * just at the end — so a mid-loop failure (offline, tab closed) leaves the next
  * sync resuming from the last completed page, never restarting at 0 (AK4).
  */
-export async function pull(): Promise<boolean> {
+export async function pull(): Promise<PullResult> {
   let appliedAny = false;
+  let complete = false;
 
   for (;;) {
     const since = (await getMeta<number>(META_LAST_PULLED_SEQ)) ?? 0;
@@ -164,14 +178,14 @@ export async function pull(): Promise<boolean> {
         signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
       });
     } catch {
-      return appliedAny; // Offline. Try again on the next trigger.
+      return { appliedAny, complete }; // Offline. Try again on the next trigger.
     }
 
     if (response.status === 401) {
       onUnauthorized?.();
-      return appliedAny;
+      return { appliedAny, complete };
     }
-    if (!response.ok) return appliedAny;
+    if (!response.ok) return { appliedAny, complete };
 
     const { changes, cursor, hasMore }: PullResponse = await response.json();
 
@@ -244,14 +258,20 @@ export async function pull(): Promise<boolean> {
     await setMeta(META_LAST_PULLED_SEQ, nextCursor);
     appliedAny = true;
 
+    if (!hasMore) {
+      complete = true;
+      break;
+    }
     // `nextCursor <= since` guards against a server that reports `hasMore` without
     // the cursor actually advancing, and against a skip clamping this page's cursor
     // back to (or below) where it started — either way, looping again here would
-    // just re-fetch the same page forever instead of making progress.
-    if (!hasMore || nextCursor <= since) break;
+    // just re-fetch the same page forever instead of making progress. `complete`
+    // stays false: the server still claims more pages exist, so the account was not
+    // fully checked (#1135) — that is the safe direction (`unavailable`, not `setup`).
+    if (nextCursor <= since) break;
   }
 
-  return appliedAny;
+  return { appliedAny, complete };
 }
 
 /** Debounced trigger — call after a mutation without hammering the endpoint. */
