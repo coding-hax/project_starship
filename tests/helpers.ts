@@ -641,6 +641,9 @@ declare global {
         patch: Record<string, unknown>,
       ) => Promise<number>;
       debugDeleteRecord: (table: string, id: string) => Promise<void>;
+      debugSeedHabitLogs: (
+        entries: Array<{ habitId: string; logDate: string; done: boolean }>,
+      ) => Promise<unknown>;
       debugRecords: () => Promise<
         Array<{
           table: string;
