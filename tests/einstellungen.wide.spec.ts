@@ -65,12 +65,11 @@ test('AC2: Gruppenüberschriften bleiben im DOM und in der Vorlese-Reihenfolge, 
     expect(box).not.toBeNull();
     expect(box!.width).toBeLessThanOrEqual(1);
     expect(box!.height).toBeLessThanOrEqual(1);
+    // Weiterhin als <h2> im Accessibility-Tree ansprechbar — page-weites
+    // getByRole('heading', { name }) wäre hier mehrdeutig: „Module" ist auch
+    // der Kartentitel des gleichnamigen Panels (section-card__title).
+    await expect(title).toHaveRole('heading');
   }
-
-  // Weiterhin als <h2> im Accessibility-Tree ansprechbar.
-  await expect(page.getByRole('heading', { name: 'Gerät', level: 2 })).toBeAttached();
-  await expect(page.getByRole('heading', { name: 'Module', level: 2 })).toBeAttached();
-  await expect(page.getByRole('heading', { name: 'Daten', level: 2 })).toBeAttached();
 });
 
 test('AC3: Zurück-Link links, Titel+Figur rechts, in einer Zeile', async ({ page }) => {
