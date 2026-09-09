@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { openSecondDevice, registerPasskey, resetAppData, withDb } from './helpers';
+import { PULL_PAGE_LIMIT } from '@/local/conflict';
+import { openSecondDevice, registerPasskey, resetAppData, settleJournalHabitBoot, withDb } from './helpers';
 
 /**
  * issue #518 (Weg B aus #477): the journal_keys first-setup race. Two devices
@@ -264,4 +265,103 @@ test('AK7: Bergung offline geschrieben erreicht online die Datenbank', async ({ 
     expect(ciphertextB64).not.toContain(TEXT_A);
     expect(ciphertextB64).not.toContain(TEXT_B);
   }
+});
+
+test.describe('Journal-Setup erst nach vollständig geprüftem Konto (#1135)', () => {
+  const PASSPHRASE = '1135 vollstaendigkeit passphrase';
+
+  /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq —
+   *  local copy of sync.spec.ts's helper (that file stays untouched). */
+  async function seedTasks(count: number, titlePrefix: string) {
+    await withDb((c) =>
+      c.query(
+        `INSERT INTO tasks (id, title, sync_seq)
+         SELECT gen_random_uuid(), $1 || g, nextval('sync_seq')
+         FROM generate_series(1, $2) AS g`,
+        [titlePrefix, count],
+      ),
+    );
+  }
+
+  /**
+   * A fresh device (own context, own IndexedDB) whose `/api/sync/pull` route is
+   * wired up *before* the one navigation to `/journal` — the app-start pull (the
+   * root layout's `SyncBoot`) and the journal page's own bootstrap pull
+   * (`lock-store.ts` `initialize()`) both fire on that single load, and a route
+   * attached afterwards would miss whichever got there first (see the sibling
+   * `#371 AC4` test in journal-lock.spec.ts for the same reasoning). Gating on
+   * each request's own `since` — not on call order — keeps this race-free
+   * against however many concurrent pull requests those two triggers produce.
+   */
+  async function openGatedDevice(
+    browser: Browser,
+    page: Page,
+    allowSince: (since: number) => boolean,
+  ): Promise<Page> {
+    const context = await browser.newContext({ storageState: await page.context().storageState() });
+    const devicePage = await context.newPage();
+    await devicePage.route('**/api/sync/pull**', async (route) => {
+      const since = Number(new URL(route.request().url()).searchParams.get('since'));
+      if (allowSince(since)) {
+        await route.continue();
+      } else {
+        await route.abort('failed');
+      }
+    });
+    await devicePage.goto('/journal');
+    return devicePage;
+  }
+
+  test('abgebrochen mitten im Pull: unavailable, nicht setup (der Datenverlust-Fall)', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page, '/uebersicht');
+    await settleJournalHabitBoot(page);
+    await seedTasks(PULL_PAGE_LIMIT, 'Seed #1135 ');
+
+    // Pushed after every seeded task, so the envelope gets the highest sync_seq and
+    // sits on the page after the first PULL_PAGE_LIMIT rows.
+    await page.evaluate((p) => window.__starship.journalSetup(p), PASSPHRASE);
+    await page.evaluate(() => window.__starship.sync());
+
+    // since=0 (page 1) lands, every later page (holding the envelope) is aborted.
+    const deviceB = await openGatedDevice(browser, page, (since) => since === 0);
+
+    await expect
+      .poll(() => deviceB.evaluate(() => window.__starship.journalLockState()))
+      .toBe('unavailable');
+
+    await deviceB.close();
+  });
+
+  test('durchgelaufen mit Envelope: locked, benutzt die spätere Seite, kein Ersatz', async ({
+    page,
+    browser,
+  }) => {
+    await registerPasskey(page, '/uebersicht');
+    await settleJournalHabitBoot(page);
+    await seedTasks(PULL_PAGE_LIMIT, 'Seed #1135 ');
+    await page.evaluate((p) => window.__starship.journalSetup(p), PASSPHRASE);
+    await page.evaluate(() => window.__starship.sync());
+
+    const deviceB = await openGatedDevice(browser, page, () => true);
+
+    await expect.poll(() => deviceB.evaluate(() => window.__starship.journalLockState())).toBe('locked');
+
+    await deviceB.close();
+  });
+
+  test('durchgelaufen ohne Envelope: setup erlaubt', async ({ page, browser }) => {
+    await registerPasskey(page, '/uebersicht');
+    await settleJournalHabitBoot(page);
+    await seedTasks(PULL_PAGE_LIMIT, 'Seed #1135 ');
+    // Kein journalSetup — kein journal_keys-Eintrag existiert für dieses Konto.
+
+    const deviceB = await openGatedDevice(browser, page, () => true);
+
+    await expect.poll(() => deviceB.evaluate(() => window.__starship.journalLockState())).toBe('setup');
+
+    await deviceB.close();
+  });
 });

@@ -102,7 +102,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(true);
+    expect(result).toEqual({ appliedAny: true, complete: true });
     expect(recordsPutMock).toHaveBeenCalledTimes(1);
     expect(recordsPutMock).toHaveBeenCalledWith(
       expect.objectContaining({ table: 'tasks', id: 't1', syncSeq: 5 }),
@@ -120,7 +120,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(true);
+    expect(result).toEqual({ appliedAny: true, complete: true });
     expect(recordsPutMock).not.toHaveBeenCalled();
     // The cursor still advances (clamped below the skip), it just never claims
     // the skipped row was applied — see cursorAfterSkips (issue #479).
@@ -145,7 +145,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(true);
+    expect(result).toEqual({ appliedAny: true, complete: true });
     expect(recordsPutMock).not.toHaveBeenCalled();
     expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 5);
   });
@@ -155,7 +155,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(false);
+    expect(result).toEqual({ appliedAny: false, complete: false });
     expect(setMetaMock).not.toHaveBeenCalled();
     expect(recordsPutMock).not.toHaveBeenCalled();
   });
@@ -165,7 +165,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(false);
+    expect(result).toEqual({ appliedAny: false, complete: false });
     expect(setMetaMock).not.toHaveBeenCalled();
   });
 
@@ -176,7 +176,7 @@ describe('pull', () => {
 
     const result = await pull();
 
-    expect(result).toBe(false);
+    expect(result).toEqual({ appliedAny: false, complete: false });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(setMetaMock).not.toHaveBeenCalled();
   });
@@ -184,7 +184,86 @@ describe('pull', () => {
   it('does nothing special on a 401 when no handler is registered', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
 
-    await expect(pull()).resolves.toBe(false);
+    await expect(pull()).resolves.toEqual({ appliedAny: false, complete: false });
+  });
+
+  /** `since` grows across pages like production does (read from `getMeta`, written via
+   *  `setMeta`) — a statically-stubbed `since` cannot tell "page 2 was requested" apart
+   *  from "the loop re-fetched page 1". */
+  function statefulCursor(): void {
+    let since = 0;
+    getMetaMock.mockReset().mockImplementation(() => Promise.resolve(since));
+    setMetaMock.mockReset().mockImplementation((_key: string, value: number) => {
+      since = value;
+      return Promise.resolve();
+    });
+  }
+
+  it('keeps the cursor progress and reports incomplete when page 2 fails over the network (AK3)', async () => {
+    statefulCursor();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(pullResponse({ changes: [changeRow({ syncSeq: 5 })], cursor: 5, hasMore: true })),
+      )
+      .mockRejectedValueOnce(new Error('offline'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: true, complete: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(setMetaMock).toHaveBeenCalledTimes(1);
+    expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 5);
+  });
+
+  it('keeps the cursor progress and reports incomplete when page 2 answers HTTP 500 (AK3)', async () => {
+    statefulCursor();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(pullResponse({ changes: [changeRow({ syncSeq: 5 })], cursor: 5, hasMore: true })),
+      )
+      .mockResolvedValueOnce(jsonResponse({}, false, 500));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: true, complete: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(setMetaMock).toHaveBeenCalledTimes(1);
+    expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 5);
+  });
+
+  it('reports complete once a later page reports hasMore: false (AK1)', async () => {
+    statefulCursor();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(pullResponse({ changes: [changeRow({ syncSeq: 5 })], cursor: 5, hasMore: true })),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          pullResponse({ changes: [changeRow({ id: 't2', syncSeq: 10 })], cursor: 10, hasMore: false }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: true, complete: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports complete for an account with no changes at all — completion never requires a row to land (AK5)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(pullResponse({ changes: [], cursor: 0, hasMore: false }))),
+    );
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: true, complete: true });
   });
 
   it('bounds the fetch to a timeout so a request that never settles cannot wedge sync() forever (#954)', async () => {
