@@ -54,24 +54,22 @@ async function seedTallTable(page: Page, count: number): Promise<string> {
   return firstId;
 }
 
-/** Runs entirely inside the page — 1284 individual round-trips through
- *  Playwright's evaluate bridge would be the slow way to seed this (AK2's
- *  "1284 mal" only needs the *count* of done logs, `HabitTiles`' `totalDone`
- *  doesn't dedupe by date, so reusing one long-past date for all of them is
- *  fine offline: the sync route is aborted in `beforeEach`, and the
+/** One bulk write, not `count` individual `mutate()` calls (AK2's "1284 mal"
+ *  only needs the *count* of done logs, `HabitTiles`' `totalDone` doesn't
+ *  dedupe by date, so reusing one long-past date for all of them is fine
+ *  offline — the sync route is aborted in `beforeEach`, and the
  *  (habitId, logDate) unique index only lives server-side, drizzle
- *  schema.ts). */
+ *  schema.ts). `count` separate `mutate()` calls each open their own
+ *  outbox-writing transaction — that many overlapping writes in quick
+ *  succession starves the live queries the freshly reloaded /routinen page
+ *  depends on for minutes (observed). `debugSeedHabitLogs` is one
+ *  transaction, one change notification, skipping the outbox this fixture
+ *  never asserts on. */
 async function seedManyDoneLogs(page: Page, habitId: string, count: number): Promise<void> {
   await page.evaluate(
     ({ habitId, count }) =>
-      Promise.all(
-        Array.from({ length: count }, () =>
-          window.__starship.mutate({
-            table: 'habit_logs',
-            op: 'upsert',
-            payload: { habitId, logDate: '2000-01-01', done: true },
-          }),
-        ),
+      window.__starship.debugSeedHabitLogs(
+        Array.from({ length: count }, () => ({ habitId, logDate: '2000-01-01', done: true })),
       ),
     { habitId, count },
   );
