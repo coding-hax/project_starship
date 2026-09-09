@@ -602,3 +602,54 @@
     grid-row: 2 / span 2;
   }
 }
+
+/* Dritte Desktop-Stufe (issue #1126, ADR-0030): dreibahnig statt zweibahnig —
+   die Tageskarte bekommt die 1.5fr-Bahn zum Schreiben, „An diesem Tag" und
+   „Zuletzt geschrieben" rücken als je eigene 1fr-Bahn daneben (bisher teilten
+   sich Tageskarte und „Zuletzt geschrieben" die linke Spalte übereinander).
+   `align-items: start` (AK2) ersetzt den geerbten Grid-Default `stretch` aus
+   dem 768px-Block oben — dort sollte „An diesem Tag" bewusst die volle
+   Zwei-Zeilen-Höhe der linken Spalte nachzeichnen (Kommentar dort), hier
+   sollen alle drei Karten ihre eigene Höhe behalten. Die Tageskarte spannt
+   trotzdem weiterhin „1 / span 2" (statt nur Zeile 1): derselbe Kunstgriff wie
+   zuvor bei `.journal-same-day` — eine leere zweite Zeilenspur, die nur bei
+   der Bergungskarte (AK3 unten) tatsächlich belegt wird, hält die
+   Zeilennummerierung zwischen Regelfall und Bergungsfall deckungsgleich. */
+@media (min-width: 1440px) {
+  .journal-editor {
+    grid-template-columns: 1.5fr 1fr 1fr;
+    align-items: start;
+  }
+
+  .journal-day-card {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .journal-same-day {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .journal-recent {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  /* Bergungskarte vorhanden (AK3): volle Breite in Zeile 1, die drei Karten
+     rücken gemeinsam eine Zeile weiter — anders als im 768px-Block oben
+     (dort standen „Zuletzt geschrieben" und die Tageskarte noch übereinander
+     in einer Spalte und brauchten deshalb unterschiedliche Zeilen) liegen
+     hier alle drei nebeneinander in derselben Zeile. */
+  .journal-editor:has(> .journal-orphaned-key) .journal-day-card {
+    grid-row: 2 / span 2;
+  }
+
+  .journal-editor:has(> .journal-orphaned-key) .journal-same-day {
+    grid-row: 2;
+  }
+
+  .journal-editor:has(> .journal-orphaned-key) > .journal-recent {
+    grid-row: 2;
+  }
+}

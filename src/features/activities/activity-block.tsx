@@ -64,18 +64,20 @@ export function ActivityBlock({ activity }: { activity: ActivityView }) {
   return (
     <article className="activity-block">
       <ActivityMap activity={activity} />
-      <h2 className="activity-block__title">{title}</h2>
-      <p className="activity-block__date">{DATE_FORMATTER.format(new Date(activity.startedAt))}</p>
-      {stats.length > 0 ? (
-        <dl className="activity-block__stats">
-          {stats.map((row) => (
-            <div className="activity-block__stat" key={row.label}>
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
+      <div className="activity-block__head">
+        <h2 className="activity-block__title">{title}</h2>
+        <p className="activity-block__date">{DATE_FORMATTER.format(new Date(activity.startedAt))}</p>
+        {stats.length > 0 ? (
+          <dl className="activity-block__stats">
+            {stats.map((row) => (
+              <div className="activity-block__stat" key={row.label}>
+                <dt>{row.label}</dt>
+                <dd>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+      </div>
       {track ? (
         <>
           <ActivityChart

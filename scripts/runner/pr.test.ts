@@ -327,7 +327,7 @@ describe('prFailureSummary', () => {
   // der Check war eine Genehmigungs-Schranke, kein Fund, den ein Agent haette
   // beheben koennen. Den Job gibt es nicht mehr, also gilt wieder die einfache
   // Regel: jeder rote Check ist ein Fund, gedeckelt auf die ersten drei.
-  it('nennt Job, Kurzbeschreibung und Log-Ausschnitt, hoechstens die ersten drei roten Checks', () => {
+  it('nennt Job, Kurzbeschreibung, Link und Log-Ausschnitt, hoechstens die ersten drei roten Checks', () => {
     const checks = [
       { bucket: 'fail', name: 'e2e', description: '2 tests failed in shard 2', link: 'https://x/actions/runs/999999/job/111' },
       { bucket: 'fail', name: 'lint', description: 'eslint rot' },
@@ -338,7 +338,7 @@ describe('prFailureSummary', () => {
       run: vi.fn((args: string[]) => {
         const key = args.join(' ');
         if (key.startsWith('pr checks')) return JSON.stringify(checks);
-        if (key.startsWith('run view 999999')) return 'log line 1\nlog line 2';
+        if (key.startsWith('run view 999999')) return 'e2e\tRun tests\t2024-01-01T00:00:00Z log line 1\ne2e\tRun tests\t2024-01-01T00:00:00Z log line 2';
         return '';
       }),
     };
@@ -347,11 +347,14 @@ describe('prFailureSummary', () => {
 
     expect(summary).toContain('### e2e');
     expect(summary).toContain('2 tests failed in shard 2');
+    expect(summary).toContain('https://x/actions/runs/999999/job/111');
     expect(summary).toContain('log line 1');
     expect(summary).toContain('### lint');
     expect(summary).toContain('### typecheck');
-    // Der vierte faellt raus -- sonst waechst der Auftrag mit jedem Shard.
+    // Der vierte faellt raus -- sonst waechst der Auftrag mit jedem Shard --,
+    // aber sichtbar vermerkt statt stillschweigend verschluckt (#1141 AC4).
     expect(summary).not.toContain('e2e-2');
+    expect(summary).toContain('1 weitere(r) roter Check(s) gekürzt');
   });
 
   it('nimmt keinen Check mehr aus -- auch ein Check namens protected-paths zaehlt', () => {
@@ -364,5 +367,128 @@ describe('prFailureSummary', () => {
   it('leer, wenn nichts rot ist', () => {
     const gh = ghRouter({ 'pr checks': JSON.stringify([{ bucket: 'pass', name: 'quality' }]) });
     expect(prFailureSummary('55', gh)).toBe('');
+  });
+
+  // #1141 AC1: drei Shards EINES Laufs teilen sich dieselbe runId im Link --
+  // der teure `gh run view --log-failed`-Aufruf darf nur einmal passieren.
+  it('holt den Workflow-Log nur einmal, wenn mehrere rote Checks dieselbe runId teilen', () => {
+    const checks = [
+      { bucket: 'fail', name: 'e2e-main (1)', description: 'shard 1 rot', link: 'https://x/actions/runs/555/job/1' },
+      { bucket: 'fail', name: 'e2e-main (2)', description: 'shard 2 rot', link: 'https://x/actions/runs/555/job/2' },
+    ];
+    const runViewCalls: string[] = [];
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) return JSON.stringify(checks);
+        if (key.startsWith('run view')) {
+          runViewCalls.push(key);
+          return 'e2e-main (1)\tRun tests\t... shard 1 failure\ne2e-main (2)\tRun tests\t... shard 2 failure';
+        }
+        return '';
+      }),
+    };
+
+    prFailureSummary('55', gh);
+
+    expect(runViewCalls).toEqual(['run view 555 --log-failed']);
+  });
+
+  // #1141 AC2: zwei verschiedene Jobs desselben Laufs behalten getrennte,
+  // nach Job benannte Auszuege statt denselben Log-Schwanz doppelt zu tragen.
+  it('sortiert den gemeinsamen Log nach Job-Namen auseinander, statt ihn zu duplizieren', () => {
+    const checks = [
+      { bucket: 'fail', name: 'e2e-main (1)', description: 'shard 1 rot', link: 'https://x/actions/runs/555/job/1' },
+      { bucket: 'fail', name: 'e2e-main (2)', description: 'shard 2 rot', link: 'https://x/actions/runs/555/job/2' },
+    ];
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) return JSON.stringify(checks);
+        if (key.startsWith('run view')) {
+          return [
+            'e2e-main (1)\tRun tests\t... assertion failed in shard one',
+            'e2e-main (2)\tRun tests\t... timeout in shard two',
+          ].join('\n');
+        }
+        return '';
+      }),
+    };
+
+    const summary = prFailureSummary('55', gh);
+    const firstBlock = summary.split('### e2e-main (2)')[0];
+    const secondBlock = summary.split('### e2e-main (2)')[1] ?? '';
+
+    expect(firstBlock).toContain('assertion failed in shard one');
+    expect(firstBlock).not.toContain('timeout in shard two');
+    expect(secondBlock).toContain('timeout in shard two');
+    expect(secondBlock).not.toContain('assertion failed in shard one');
+  });
+
+  // #1141 AC5: ein nicht abrufbarer Log stuerzt den Aufrufer nicht ab und wird
+  // als Aussage im Auszug vermerkt statt kommentarlos zu fehlen.
+  it('vermerkt einen nicht abrufbaren Log als Aussage, statt zu werfen', () => {
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) {
+          return JSON.stringify([{ bucket: 'fail', name: 'e2e', description: 'rot', link: 'https://x/actions/runs/777/job/1' }]);
+        }
+        if (key.startsWith('run view')) throw new Error('gh timeout');
+        return '';
+      }),
+    };
+
+    let summary = '';
+    expect(() => {
+      summary = prFailureSummary('55', gh);
+    }).not.toThrow();
+    expect(summary).toContain('### e2e');
+    expect(summary).toContain('nicht abrufbar');
+  });
+
+  // #1141 AC4: die Gesamtausgabe bleibt unter 8.192 UTF-8-Bytes und traegt am
+  // Ende einen sichtbaren Kuerzungshinweis, wenn ein einzelner Log riesig ist.
+  it('deckelt die Gesamtausgabe auf 8.192 UTF-8-Bytes mit sichtbarem Kuerzungshinweis', () => {
+    // 25 Zeilen (der Deckel je Job) knapp unter der 1.024-Byte-Zeilengrenze,
+    // damit die Zeilenkuerzung nicht zwischenfunkt und ausschliesslich der
+    // Gesamt-Byte-Deckel greift -- 25 * ~950 Bytes liegt klar ueber 8.192.
+    const hugeLog = Array.from({ length: 25 }, (_, i) => `e2e\tRun tests\t... Zeile ${i} ${'x'.repeat(900)}`).join('\n');
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) {
+          return JSON.stringify([{ bucket: 'fail', name: 'e2e', description: 'rot', link: 'https://x/actions/runs/888/job/1' }]);
+        }
+        if (key.startsWith('run view')) return hugeLog;
+        return '';
+      }),
+    };
+
+    const summary = prFailureSummary('55', gh);
+
+    expect(Buffer.byteLength(summary, 'utf-8')).toBeLessThanOrEqual(8192);
+    expect(summary).toContain('gekürzt');
+  });
+
+  // #1141 AC4: eine einzelne, sehr lange Zeile wird an ihr selbst gekuerzt und
+  // sichtbar markiert -- der Byte-Deckel ist keine Zeilen-Zaehlung.
+  it('kuerzt eine einzelne, sehr lange Log-Zeile sichtbar', () => {
+    const longLine = `e2e\tRun tests\t... ${'y'.repeat(5000)}`;
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) {
+          return JSON.stringify([{ bucket: 'fail', name: 'e2e', description: 'rot', link: 'https://x/actions/runs/999/job/1' }]);
+        }
+        if (key.startsWith('run view')) return longLine;
+        return '';
+      }),
+    };
+
+    const summary = prFailureSummary('55', gh);
+
+    expect(summary).toContain('[Zeile gekürzt]');
+    expect(Buffer.byteLength(summary, 'utf-8')).toBeLessThanOrEqual(8192);
   });
 });

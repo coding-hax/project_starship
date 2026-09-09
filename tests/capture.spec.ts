@@ -10,6 +10,20 @@ import {
 
 const QUICK_ADD_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
+const EVENT_LABEL = 'Termin erfassen';
+
+/** Wie `confirmDialog`, aber für den vollen Termin-Editor, den "Mehr" auf
+ *  `/uebersicht` öffnet (`uebersicht-capture.tsx`'s `openMoreForEvent`, issue
+ *  #1138). `[open]` filtert das noch schließende Kern-Sheet heraus — beide
+ *  tragen während dessen Exit-Transition kurz denselben Namen. */
+function eventEditorDialog(page: Page) {
+  return page.getByRole('dialog', { name: EVENT_LABEL }).and(page.locator('[open]'));
+}
+
+/** Von/Bis sitzen hinter dem Wann-Chip — vor jedem Zugriff öffnen. */
+function openWannChip(dialog: ReturnType<typeof eventEditorDialog>) {
+  return dialog.getByRole('button', { name: /^Wann/ }).click();
+}
 
 async function openQuickAdd(page: Page) {
   await page.getByRole('button', { name: QUICK_ADD_LABEL }).click();
@@ -204,4 +218,166 @@ test('AC7: bei reduzierter Bewegung öffnet das Bestätigungs-Sheet nur mit eine
     (el) => getComputedStyle(el.firstElementChild as Element).transitionProperty,
   );
   expect(transitionProperty).toBe('opacity');
+});
+
+/**
+ * issue #1138: "Mehr" auf `/uebersicht` (`uebersicht-capture.tsx`'s
+ * `openMoreForEvent`) warf die vom Erkenner gelieferte Endzeit und die
+ * Mehrtagesspanne bisher weg und rechnete `endsAt` hart als `start + 1h` neu —
+ * jeder Test hier tippt echten Freitext und klickt "Mehr" (AK6), statt einen
+ * Prefill direkt zu setzen.
+ */
+test('AK1 (#1138): eine erkannte Zwei-Stunden-Spanne steht im "Mehr"-Editor exakt wie erkannt, Speichern ohne Änderung behält sie', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // 15/17 statt 14/16: 14 Uhr fällt exakt auf FIXED_NOW's Berlin-lokale Uhrzeit (12:00 UTC
+  // = 14:00 CEST) — resolveTimeOnlyDate vergleicht `candidate > now`, und auf einem
+  // Berlin-Rechner (lokale Entwicklung/Runner) ist das dann ein Gleichstand (→ morgen),
+  // während CI in UTC läuft und 14:00 noch als Rest des heutigen Tages sieht (→ heute) —
+  // derselbe Lauf liefert je nach Host-Zeitzone ein anderes Ergebnis. Wichtig auch: eine
+  // Stunde ≤ 12 ohne Doppelpunkt/Tageszeitwort ist mehrdeutig (findTimeCandidate) und
+  // würde über die Vormittags/Nachmittags-Heuristik zusätzlich unabhängig verfälscht (z. B.
+  // "10" → 22 Uhr, weil `now` nachmittags liegt) — 15/17 bleibt über 12 und damit eindeutig,
+  // und liegt in beiden Zeitzonen klar nach „jetzt" (12:00 UTC / 14:00 CEST), bleibt also
+  // konsistent „heute".
+  const start = expectedDueAt(0, 15, 0);
+  const end = expectedDueAt(0, 17, 0);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin von 15 bis 17 Uhr Zahnarzt');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = eventEditorDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Zahnarzt');
+  await openWannChip(dialog);
+  await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).not.toBeChecked();
+  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(start));
+  await expect(dialog.getByLabel('Bis')).toHaveValue(isoToLocalInput(end));
+
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'events');
+  expect(created?.payload).toMatchObject({
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+  });
+});
+
+test('AK2 (#1138): eine erkannte Mehrtagesspanne ist im "Mehr"-Editor ganztägig mit dem erkannten Start- und Enddatum, nicht ein einstündiger Termin am ersten Tag', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // "3. März" liegt vor dem fixierten Juli-"heute" — die Spanne fällt damit auf
+  // das nächste Jahr (findDateCandidate/findDateRangeEnd, parse-task-input.ts).
+  const year = new Date(FIXED_NOW).getFullYear() + 1;
+  const startDate = `${year}-03-03`;
+  const endDate = `${year}-03-10`;
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin Urlaub vom 3. bis 10. März');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = eventEditorDialog(page);
+  await expect(dialog).toBeVisible();
+  await openWannChip(dialog);
+  await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).toBeChecked();
+  await expect(dialog.getByLabel('Von')).toHaveValue(startDate);
+  await expect(dialog.getByLabel('Bis')).toHaveValue(endDate);
+
+  await dialog.getByRole('button', { name: 'Anlegen' }).click();
+
+  const entries = await page.evaluate(() => window.__starship.pending());
+  const created = entries.find((entry) => entry.table === 'events');
+  expect(created?.payload).toMatchObject({ allDay: true, startDate, endDate });
+});
+
+test('AK3 (#1138): eine erkannte Spanne über Mitternacht behält im "Mehr"-Editor neben der Uhrzeit auch das richtige Enddatum', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // Kein erkanntes Spannen-Ende, also greift der Ein-Stunden-Default aus
+  // route-capture.ts — die reine Datumsarithmetik rollt dabei über Mitternacht.
+  const start = expectedDueAt(0, 23, 30);
+  const end = expectedDueAt(1, 0, 30);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin 23:30 Uhr Kino');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = eventEditorDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Titel')).toHaveValue('Kino');
+  await openWannChip(dialog);
+  await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).not.toBeChecked();
+  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(start));
+  await expect(dialog.getByLabel('Bis')).toHaveValue(isoToLocalInput(end));
+});
+
+test('AK4 (#1138): eine Eingabe ohne Endzeit bleibt im "Mehr"-Editor beim heutigen Ein-Stunden-Default', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // Weder Datum noch Uhrzeit erkannt — derselbe Rückfall wie event-editor.tsx's
+  // eigener Create-Modus (defaultEventStart, route-capture.ts), kein Sprung auf
+  // den ganztägig-Fallback, den `eventFieldsFromDraft` sonst für diesen Fall liefert.
+  const start = expectedDueAt(0, 9, 0);
+  const end = expectedDueAt(0, 10, 0);
+
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin Kino');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = eventEditorDialog(page);
+  await expect(dialog).toBeVisible();
+  await openWannChip(dialog);
+  await expect(dialog.getByRole('switch', { name: 'Ganztägig' })).not.toBeChecked();
+  await expect(dialog.getByLabel('Von')).toHaveValue(isoToLocalInput(start));
+  await expect(dialog.getByLabel('Bis')).toHaveValue(isoToLocalInput(end));
+});
+
+test('AK5 (#1138): der Direkt-Speichern-Pfad bleibt beim Ein-Stunden-Default, das Start-/Dauer-Verhalten des Editors bleibt unverändert', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // 15/17 statt 14/16 — siehe AK1: 14 Uhr fällt exakt auf FIXED_NOW's Berlin-lokale Uhrzeit
+  // und macht das Testergebnis von der Host-Zeitzone abhängig; eine Stunde ≤ 12 wäre zudem
+  // über die Vormittags/Nachmittags-Heuristik mehrdeutig. 15/17 bleibt eindeutig und liegt
+  // in beiden Zeitzonen klar nach „jetzt".
+  const start = expectedDueAt(0, 15, 0);
+  const directEnd = expectedDueAt(0, 16, 0);
+
+  // Direkt-Pfad ("Anlegen" im Kern-Sheet, kein "Mehr"): dieser Fix ändert nur
+  // `openMoreForEvent`, nicht `handleSubmit` — der erkannte 17-Uhr-Endpunkt wird
+  // hier weiterhin verworfen, genau wie vor dem Fix (Nicht-Ziele, kein Doppel zu #1104).
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin von 15 bis 17 Uhr Zahnarzt');
+  await page.getByRole('button', { name: 'Anlegen' }).click();
+
+  const directEntries = await page.evaluate(() => window.__starship.pending());
+  const directCreated = directEntries.find((entry) => entry.table === 'events');
+  expect(directCreated?.payload).toMatchObject({
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: start.toISOString(),
+    endsAt: directEnd.toISOString(),
+  });
+
+  // Editor-Verhalten (#1104): dieselbe Eingabe über "Mehr" — die jetzt korrekt
+  // übernommene Zwei-Stunden-Dauer bleibt beim Verschieben von "Von" erhalten,
+  // die Zusammenführungslogik in event-editor.tsx bleibt unangetastet.
+  await openQuickAdd(page);
+  await quickAddTitleField(page).fill('Termin von 15 bis 17 Uhr Zahnarzt');
+  await page.getByRole('button', { name: 'Mehr' }).click();
+
+  const dialog = eventEditorDialog(page);
+  await openWannChip(dialog);
+  const shiftedStart = expectedDueAt(1, 20, 0);
+  const shiftedEnd = expectedDueAt(1, 22, 0);
+  await dialog.getByLabel('Von').fill(isoToLocalInput(shiftedStart));
+  await expect(dialog.getByLabel('Bis')).toHaveValue(isoToLocalInput(shiftedEnd));
 });

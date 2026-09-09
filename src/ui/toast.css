@@ -126,3 +126,12 @@
     align-items: flex-end;
   }
 }
+
+/* Gleiche Rechnung wie beim FAB (fab.css, issue #1116 AK4, ADR-0030): ab
+   1440px folgt auch der Toast-Host der Inhaltsspalte statt der Fensterkante,
+   damit beide Ecken-Elemente auf derselben Höhe der Spalte zusammenbleiben. */
+@media (min-width: 1440px) {
+  .toast-host {
+    right: var(--shell-edge-inset-wide);
+  }
+}

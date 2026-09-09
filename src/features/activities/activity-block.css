@@ -59,3 +59,31 @@
   background: var(--surface-raised);
   animation: activity-pulse 1.4s ease-in-out infinite;
 }
+
+/* issue #1127 AK2: die Karte rückt neben Titel/Datum/Kennzahlen statt darüber.
+   `.activity-block__head` bündelt die drei zu einem einzigen Grid-Item, damit
+   Karte und Kopf dieselbe (erste) Zeile teilen — die drei Kurven bleiben ohne
+   eigene Spaltenangabe und landen automatisch in den nächsten, vollständig
+   freien Zeilen darunter (grid-column: 1 / -1 verlangt beide Spalten frei).
+   `:has(> .activity-map)` statt eigener Modifier-Klasse (Muster aus
+   calendar-view.css, issue #1021): rendert `ActivityMap` nichts (AK3), bleibt
+   der Block einspaltig statt einer leeren 280px-Spalte. */
+@media (min-width: 1440px) {
+  .activity-block:has(> .activity-map) {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    column-gap: var(--space-4);
+  }
+
+  .activity-block:has(> .activity-map) > .activity-map {
+    grid-column: 1;
+  }
+
+  .activity-block:has(> .activity-map) > .activity-block__head {
+    grid-column: 2;
+  }
+
+  .activity-block:has(> .activity-map) > .activity-chart {
+    grid-column: 1 / -1;
+  }
+}

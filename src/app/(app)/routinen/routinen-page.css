@@ -1,0 +1,44 @@
+/**
+ * Dritte Desktop-Stufe (issue #1125, Nachfolger von #1117/#1123, ADR-0030):
+ * ab 1440px steht die Routinen-Tabelle links über beide Inhaltszeilen, rechts
+ * daneben die vier Kacheln über der 30-Tage-Verlaufskarte — statt alles
+ * gestapelt in einer Spalte. Die Kacheln/Verlaufskarte selbst platzieren sich
+ * in ihrer eigenen Datei (habit-tiles.css/habit-history-card.css), dieser
+ * Block trägt nur den Grid-Rahmen und die Tabellen-Spalte, die keiner der
+ * beiden Komponenten allein gehört.
+ *
+ * Unter 1440px bleibt `[data-ground='routinen']` normaler Block-Fluss —
+ * diese Datei greift dort gar nicht ein, die bisherige Reihenfolge Kacheln →
+ * Tabelle → Verlauf (routinen.spec.ts AK1) bleibt unverändert stehen.
+ */
+@media (min-width: 1440px) {
+  [data-ground='routinen'] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    /* Kopf (Zeile 1, volle Breite) — Kacheln (Zeile 2) — Verlauf (Zeile 3):
+     * `minmax(0, 1fr)` statt `auto` für die letzte Zeile, damit die über
+     * beide Inhaltszeilen (2+3) spannende Tabelle ihre Überhöhe
+     * ausschließlich in die Verlauf-Zeile drückt statt sie auf Kacheln- und
+     * Verlauf-Zeile zu verteilen — sonst wüchse der Abstand zwischen Kacheln
+     * und Verlaufskarte über --space-4 hinaus (AK3). Spannende Items über
+     * einer flexiblen Spur vergrößern nur diese, nie die `auto`-Spuren davor
+     * (CSS Grid „Resolving Intrinsic Track Sizes"), derselbe Kniff wie
+     * calendar-view.css's `.calendar-view:has(> .month-grid)`. */
+    grid-template-rows: auto auto minmax(0, 1fr);
+    column-gap: var(--space-6);
+    row-gap: var(--space-4);
+    /* Karten strecken sich nicht auf die volle Zeilenhöhe — jede bleibt bei
+       ihrer eigenen Inhaltsgröße (siehe .routinen-page__table unten). */
+    align-items: start;
+  }
+
+  [data-ground='routinen'] > .page-head {
+    grid-column: 1 / -1;
+  }
+
+  [data-ground='routinen'] > .routinen-page__table {
+    grid-column: 1;
+    grid-row: 2 / -1;
+    min-width: 0;
+  }
+}

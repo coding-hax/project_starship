@@ -550,6 +550,70 @@ export function weekDaysFor(dateKey: string): string[] {
   return Array.from({ length: 7 }, (_, offset) => addDays(dateKey, diffToMonday + offset));
 }
 
+/** One chip in a `WeekOverviewDay` (issue #1121) — `time` is `null` for an
+ *  all-day event, "HH:MM" for a scheduled one, mirroring the all-day/scheduled
+ *  split `nextUpcomingOccurrences` already draws. No `origin` field: these
+ *  chips are ADR-0022 non-interactive by construction, whether the underlying
+ *  event is local or a subscribed ICS abo. */
+export interface WeekOverviewChip {
+  id: string;
+  title: string;
+  time: string | null;
+  allDay: boolean;
+  category: EventView['category'];
+}
+
+/** One column of the overview's ≥1440px week grid (issue #1121, AK1). */
+export interface WeekOverviewDay {
+  dayKey: string;
+  /** "Mo"…"So" */
+  weekdayLabel: string;
+  dayNumber: number;
+  isToday: boolean;
+  chips: WeekOverviewChip[];
+}
+
+/**
+ * The Mon–Sun week containing `now`, one entry per day, always length 7 —
+ * unlike `nextUpcomingOccurrences`'s scanning horizon, a day with nothing on
+ * it still gets its own (empty-chips) entry here, since the wide overview
+ * section renders every day's column regardless (AK4). Built on the same
+ * `allDayEventsForDay`/`agendaForDay` predicates as `nextUpcomingOccurrences`
+ * — all-day chips first, then scheduled ones chronologically.
+ */
+export function weekOverview(
+  occurrencesForDay: (day: string) => TimelineSource[],
+  now: Date,
+): WeekOverviewDay[] {
+  const todayKey = berlinNow(now).dateKey;
+  return weekDaysFor(todayKey).map((dayKey) => {
+    const occurrences = occurrencesForDay(dayKey);
+    const chips: WeekOverviewChip[] = [
+      ...allDayEventsForDay(occurrences, dayKey).map((item) => ({
+        id: item.id,
+        title: item.title,
+        time: null,
+        allDay: true,
+        category: item.category,
+      })),
+      ...agendaForDay(occurrences, dayKey).map((item) => ({
+        id: item.id,
+        title: item.title,
+        time: formatEventTime(item.startsAt),
+        allDay: false,
+        category: item.category,
+      })),
+    ];
+    return {
+      dayKey,
+      weekdayLabel: WEEKDAY_SHORT_UTC_FORMATTER.format(parseDateKey(dayKey)),
+      dayNumber: Number(dayKey.slice(-2)),
+      isToday: dayKey === todayKey,
+      chips,
+    };
+  });
+}
+
 /**
  * Full Mon–Sun weeks covering the month containing `dateKey` (issue #556, S5):
  * the 1st rolled back to its Monday, the last rolled forward to its Sunday,
@@ -631,6 +695,38 @@ export function categoriesForDay<T extends TimelineSource>(
     agendaForDay(occurrences, dateKey).map((occurrence) => occurrence.category),
   );
   return CATEGORY_ORDER.filter((category) => present.has(category)).slice(0, maxDots);
+}
+
+export interface DayChip {
+  id: string;
+  title: string;
+  category: EventView['category'];
+}
+
+/**
+ * Up to `maxChips` scheduled events on `dateKey`, chronological, plus how
+ * many more didn't fit — the wide month grid's chip row (issue #1123,
+ * ≥1440px only; the narrower stages keep `categoriesForDay`'s dots). One
+ * chip per event rather than one dot per category (`categoriesForDay`
+ * dedupes those): a chip carries a title, so two same-category events need
+ * two chips to both be readable. Same all-day exclusion as
+ * `categoriesForDay` — an all-day/multi-day event already has its own band
+ * under the day cells.
+ */
+export function chipsForDay<T extends TimelineSource>(
+  occurrences: T[],
+  dateKey: string,
+  maxChips: number,
+): { chips: DayChip[]; overflow: number } {
+  const items = agendaForDay(occurrences, dateKey);
+  return {
+    chips: items.slice(0, maxChips).map((item) => ({
+      id: item.id,
+      title: item.title,
+      category: item.category,
+    })),
+    overflow: Math.max(0, items.length - maxChips),
+  };
 }
 
 /**

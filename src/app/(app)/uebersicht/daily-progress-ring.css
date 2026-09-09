@@ -33,3 +33,94 @@
   letter-spacing: -0.025em;
   line-height: var(--leading-display);
 }
+
+/* Größerer Geschwister-Ring ab 1440px (issue #1122) — Segment je fälliger
+   Sache statt der kompakten „N/M"-Zahl. Unter 1440px unsichtbar, damit er
+   weder Platz belegt noch doppelt vom AT angesagt wird (siehe
+   `.daily-progress-ring` oben, das bleibt dort unverändert). Der 34px-Slot-
+   Käfig um beide Ringe steckt in `uebersicht.css` (`.daily-progress-ring-slot`)
+   — der Override hier löst ihn nur für die Breite ab 1440px. */
+.daily-progress-ring-wide {
+  display: none;
+}
+
+@media (min-width: 1440px) {
+  .daily-progress-ring {
+    display: none;
+  }
+
+  .daily-progress-ring-slot {
+    width: auto;
+    height: auto;
+  }
+
+  .daily-progress-ring-wide {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+}
+
+.daily-progress-ring-wide__svg {
+  flex-shrink: 0;
+}
+
+.daily-progress-ring-wide__segment,
+.daily-progress-ring-wide__arc-track,
+.daily-progress-ring-wide__arc {
+  fill: none;
+  stroke-width: 5px;
+}
+
+/* Lücken zwischen Segmenten müssen sichtbar bleiben — `round` würde sie wieder
+   zuwachsen lassen (AK4). */
+.daily-progress-ring-wide__segment {
+  stroke-linecap: butt;
+}
+
+.daily-progress-ring-wide__segment--done {
+  stroke: var(--on-ground);
+}
+
+/* Gedämpfte Mischung derselben Farbe, keine zweite Bedeutung (AK1). Dekorative
+   Stufe, darf unter 3:1 auf dem Grund bleiben (Präzedenz issue #846 AK4, siehe
+   `.daily-progress-ring__track` oben). */
+.daily-progress-ring-wide__segment--open {
+  stroke: color-mix(in oklab, var(--on-ground) 30%, transparent);
+}
+
+/* Vollring-Rückfall ab `MAX_SEGMENTS` (AK5) — dieselbe Farbgebung wie der
+   Kompaktring, nur groß; hier sind Lücken kein Thema, `round` ist erlaubt. */
+.daily-progress-ring-wide__arc-track {
+  stroke: var(--border-faint);
+}
+
+.daily-progress-ring-wide__arc {
+  stroke: var(--on-ground);
+  stroke-linecap: round;
+}
+
+.daily-progress-ring-wide__count {
+  fill: var(--text);
+  font-size: var(--text-title);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: -0.025em;
+}
+
+.daily-progress-ring-wide__of {
+  fill: var(--on-ground-muted);
+  font-size: var(--text-meta);
+}
+
+.daily-progress-ring-wide__label {
+  color: var(--on-ground);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+}
+
+.daily-progress-ring-wide__breakdown {
+  color: var(--on-ground-muted);
+  font-size: var(--text-subline);
+}
