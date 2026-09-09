@@ -96,4 +96,43 @@
   [data-ground='aufgaben'] .task-list__view-switcher {
     margin-bottom: 0;
   }
+
+  /* issue #1118 AK1: dritte Spalte für „ohne Datum" statt die zweispaltige
+     Fläche aus #1022 auf 1000px+ Restbreite leer stehen zu lassen. 0.9fr
+     statt 1fr für Spalte 3 — die Karte braucht keine volle Drittelbreite,
+     ihre Zeilen tragen kein Datum/keinen Edge-Tab wie eine Aufgabenzeile. */
+  [data-ground='aufgaben'] .task-list__surface {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  }
+
+  /* AK1: `.task-list` übernimmt Spalte 1–2 vom 768px-Block oben (der dort
+     gesetzte `grid-column: 1` wird von dieser gleich spezifischen, aber
+     später stehenden Regel überschrieben) und läuft darin selbst zweibahnig.
+     `columns` statt eines eigenen inneren Grids, damit die Gruppen weiter in
+     Leserichtung eine Bahn füllen, statt in ein Zeilenraster gezwungen zu
+     werden — die Basisregel (task-list.css) macht `.task-list` zu einem
+     Flex-Container, `columns` greift dort nicht, deshalb hier `display: block`. */
+  [data-ground='aufgaben'] .task-list__surface > .task-list {
+    grid-column: 1 / 3;
+    display: block;
+    column-count: 2;
+    column-gap: var(--space-6);
+  }
+
+  /* Ersetzt den Flex-`gap` der Basisregel (wirkungslos in `columns`-Layout
+     zwischen gestapelten Geschwistern, nur zwischen den beiden Bahnen selbst)
+     durch echten Rand zwischen den Gruppen einer Bahn. `break-inside: avoid`
+     selbst steht unconditional in task-list.css (AK2). */
+  [data-ground='aufgaben'] .task-list__surface > .task-list > .task-list__group {
+    margin-bottom: var(--space-3);
+  }
+
+  /* AK3: die "ohne Datum"-Karte rückt aus Spalte 2 (768px-Block oben) in die
+     neue Spalte 3, Zeile 1 — bleibt dort neben statt unter der zweibahnigen
+     Liste. Gleiche Spezifität wie die 768px-Regel, gewinnt aber als später
+     stehende Regel bei jeder Breite ≥1440px. */
+  [data-ground='aufgaben'] .section-card.task-list__undated-card {
+    grid-column: 3;
+    grid-row: 1;
+  }
 }

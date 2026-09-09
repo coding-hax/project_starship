@@ -219,3 +219,211 @@ test('AK6: bei Viewport 1800 ragt keine Sektion in den schwebenden Erfassen-Knop
   const fabBox = await page.locator('.fab').boundingBox();
   expect(maxBottom, 'unterster Sektionsrand bleibt oberhalb des Fab').toBeLessThanOrEqual(fabBox!.y);
 });
+
+/**
+ * Termine der Woche statt "Nächster Termin" (issue #1121) — ab 1440px löst ein
+ * siebenspaltiges Wochenraster Mo–So die bisherige "Nächster Termin"-Karte ab
+ * (useMinWidth(1440), events-overview-section.tsx). NOW (2026-07-18) ist ein
+ * Samstag; die laufende Woche ist Mo 13.07.–So 19.07., Samstag also Spalte 5
+ * (0-basiert).
+ */
+
+test('AK1: die Termin-Sektion zeigt sieben Spalten Mo-So mit Wochentag, Tagesnummer und Terminen als Chip (Uhrzeit über Titel, Kategoriefarbe als linke Kante) (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  // Frischer Mount mit bereits eingefrorener Uhr (wie habits-uebersicht.spec.ts
+  // beforeEach) — registerPasskey landet vor dem skewClock-Aufruf auf /uebersicht,
+  // dessen erster Render liest also noch die echte Uhrzeit.
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-13T07:00:00.000Z',
+    endsAt: '2026-07-13T08:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  await waitForReveal(page);
+
+  const days = page.locator('.events-overview__week-day');
+  await expect(days).toHaveCount(7);
+
+  const monday = days.nth(0);
+  await expect(monday.locator('.events-overview__week-weekday')).toHaveText('Mo');
+  await expect(monday.locator('.events-overview__week-daynum')).toHaveText('13');
+
+  const chip = monday.locator('.events-overview__week-chip').first();
+  await expect(chip.locator('.events-overview__week-chip-time')).toHaveText('09:00');
+  await expect(chip.locator('.events-overview__week-chip-title')).toHaveText('Standup');
+
+  const [timeBox, titleBox] = await Promise.all([
+    chip.locator('.events-overview__week-chip-time').boundingBox(),
+    chip.locator('.events-overview__week-chip-title').boundingBox(),
+  ]);
+  expect(timeBox!.y, 'Uhrzeit steht über dem Titel').toBeLessThan(titleBox!.y);
+
+  const [borderLeftWidth, catColorVar] = await chip.evaluate((el) => [
+    getComputedStyle(el).borderLeftWidth,
+    el.style.getPropertyValue('--cat-color'),
+  ]);
+  expect(borderLeftWidth, 'Kategoriefarbe als linke Kante').toBe('3px');
+  expect(catColorVar).toBe('var(--cat-arbeit)');
+});
+
+test('AK2: die sieben Spalten stehen auf denselben linken Kanten wie die sieben Tage des Wetterstreifens (Abweichung je Spalte ≤ 2px) (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  await waitForReveal(page);
+
+  const weekDays = page.locator('.events-overview__week-day');
+  const weatherDays = page.locator('.weather-forecast__day');
+  await expect(weekDays).toHaveCount(7);
+  await expect(weatherDays).toHaveCount(7);
+
+  for (let i = 0; i < 7; i += 1) {
+    const [eventBox, weatherBox] = await Promise.all([
+      weekDays.nth(i).boundingBox(),
+      weatherDays.nth(i).boundingBox(),
+    ]);
+    expect(
+      Math.abs(eventBox!.x - weatherBox!.x),
+      `Spalte ${i}: linke Kante ≤ 2px Abweichung vom Wetterstreifen`,
+    ).toBeLessThanOrEqual(2);
+  }
+});
+
+test('AK3: der heutige Tag ist als eigene Fläche abgesetzt, seine Tagesnummer trägt die Routenfarbe (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+
+  await waitForReveal(page);
+
+  const days = page.locator('.events-overview__week-day');
+  const today = page.locator('.events-overview__week-day[data-today]');
+  await expect(today).toHaveCount(1);
+  // Samstag (18.07.) ist Spalte 5 (0-basiert) der Mo-So-Woche.
+  await expect(days.nth(5)).toHaveAttribute('data-today', '');
+
+  const otherDay = days.nth(0); // Montag, nicht heute
+  const [todayBg, otherBg] = await Promise.all([
+    today.evaluate((el) => getComputedStyle(el).backgroundColor),
+    otherDay.evaluate((el) => getComputedStyle(el).backgroundColor),
+  ]);
+  expect(todayBg, 'heutige Spalte hat eine andere Fläche als eine normale Spalte').not.toBe(otherBg);
+
+  const [todayNumColor, otherNumColor] = await Promise.all([
+    today.locator('.events-overview__week-daynum').evaluate((el) => getComputedStyle(el).color),
+    otherDay.locator('.events-overview__week-daynum').evaluate((el) => getComputedStyle(el).color),
+  ]);
+  expect(todayNumColor, 'heutige Tagesnummer trägt eine andere Farbe als eine normale Tagesnummer').not.toBe(
+    otherNumColor,
+  );
+});
+
+test('AK4: ein Tag ohne Termine zeigt "nichts geplant" statt einer leeren Spalte (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-13T07:00:00.000Z',
+    endsAt: '2026-07-13T08:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  await waitForReveal(page);
+
+  // Dienstag (14.07.) hat keinen Termin.
+  const tuesday = page.locator('.events-overview__week-day').nth(1);
+  await expect(tuesday.locator('.events-overview__week-empty')).toHaveText('nichts geplant');
+  await expect(tuesday.locator('.events-overview__week-chip')).toHaveCount(0);
+});
+
+test('AK5: ein zu breiter Titel wird mit Auslassungspunkten beschnitten, die Spalte läuft nicht über die Karte hinaus (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Ein sehr sehr sehr langer Terminname, der garantiert nicht in eine einzelne Wochenspalte passt',
+    allDay: false,
+    startsAt: '2026-07-15T07:00:00.000Z',
+    endsAt: '2026-07-15T08:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'privat',
+  });
+
+  await waitForReveal(page);
+
+  // Mittwoch (15.07.) trägt den langen Titel.
+  const wednesday = page.locator('.events-overview__week-day').nth(2);
+  const title = wednesday.locator('.events-overview__week-chip-title');
+
+  const [textOverflow, scrollWidth, clientWidth] = await title.evaluate((el) => [
+    getComputedStyle(el).textOverflow,
+    el.scrollWidth,
+    el.clientWidth,
+  ]);
+  expect(textOverflow, 'Titel trägt text-overflow: ellipsis').toBe('ellipsis');
+  expect(scrollWidth, 'Titel ist tatsächlich breiter als sein Kasten').toBeGreaterThan(clientWidth);
+
+  const [cardBox, dayBox] = await Promise.all([
+    page.locator('.events-overview__week').boundingBox(),
+    wednesday.boundingBox(),
+  ]);
+  expect(dayBox!.x + dayBox!.width, 'Spalte läuft nicht über die Karte hinaus').toBeLessThanOrEqual(
+    cardBox!.x + cardBox!.width + 1,
+  );
+});
+
+test('AK6: bei 1280px und 375px bleibt es bei "Nächster Termin" plus Restzeilen wie bisher (issue #1121)', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+  await skewClock(page, NOW);
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T13:00:00.000Z',
+    endsAt: '2026-07-18T13:30:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  await waitForReveal(page);
+
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 375, height: 812 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(
+      page.locator('.events-overview__week'),
+      `${viewport.width}px: kein Wochenraster`,
+    ).toHaveCount(0);
+    await expect(
+      page.locator('.events-overview__next'),
+      `${viewport.width}px: "Nächster Termin" steht wie bisher`,
+    ).toBeVisible();
+  }
+});

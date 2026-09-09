@@ -19,6 +19,26 @@
   color: var(--text);
 }
 
+/* Week divider (issue #1150 AK5) — `--border` in light mode, but `--border-strong`
+   in dark, not just a darkened `--border`: at 1px wide it needs the stronger
+   token to stay visible against the darker `--surface`. Scoped to
+   `.habit-history-card`, NOT `:root` (unlike `--next-time-ink-mix`,
+   events-overview-section.css): `var(--border-strong)` is resolved at the
+   element the custom property is declared on, and at `:root` that's the
+   route-ground-mixed value from `globals.css`'s `:root:has([data-ground])`
+   (issue #846, same (0,2,0) specificity, wins by source order over tokens.css's
+   dark block) — not the neutral `--border-strong-base` this card resets to for
+   itself two rules up ("Own surface, own ink", issue #832 AK5). Declaring it
+   here instead picks up that local reset. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='hell']) .habit-history-card {
+    --week-line: var(--border-strong);
+  }
+}
+:root[data-theme='dunkel'] .habit-history-card {
+  --week-line: var(--border-strong);
+}
+
 .habit-history-card__head {
   display: flex;
   align-items: baseline;
@@ -48,22 +68,42 @@
   line-height: var(--leading-display);
 }
 
-/* 30 Spalten = Tage, N Zeilen = aktive Routinen. `minmax(0, 14px)` schrumpft
-   die Zelle auf schmalen Bildschirmen sauber (311px Karteninnenbreite / 30
-   Spalten / 1px Abstand ⇒ 9,4px) und deckelt sie auf breiten Flächen bei
-   14px, statt auf dem Desktop einen Riesenblock aufzuziehen — dieselbe
-   `minmax`-Deckelung wie `.habit-week-grid` (habit-week-grid.css), nur ohne
-   `1fr`, weil hier die Zelle quadratisch bleiben muss. */
+/* 30 Spalten = Tage, N Zeilen = aktive Routinen, `grid-template-columns` kommt
+   inline (habit-history-card.tsx) — die Spur je Tag ist `minmax(0, 14px)`, sie
+   schrumpft auf schmalen Bildschirmen sauber (311px Karteninnenbreite, 4×2px
+   Wochenlinienspuren, kein Zellabstand ⇒ 10,1px) und deckelt sie auf breiten
+   Flächen bei 14px, statt auf dem Desktop einen Riesenblock aufzuziehen —
+   dieselbe `minmax`-Deckelung wie `.habit-week-grid` (habit-week-grid.css),
+   nur ohne `1fr`, weil hier die Zelle quadratisch bleiben muss. `gap: 0`: die
+   Zeilen stehen ohne Abstand aufeinander (issue #1150 AK3), die Wochenlücke
+   ist eine eigene 2px-Spur, kein `column-gap`. */
 .habit-history-card__grid {
   display: grid;
-  grid-template-columns: repeat(30, minmax(0, 14px));
-  gap: 1px;
+  gap: 0;
   width: 100%;
 }
 
 .habit-history-card__cell {
+  display: grid;
+  place-items: center;
   aspect-ratio: 1;
+  overflow: hidden;
   background: var(--border-faint);
+  line-height: var(--leading-tight);
+}
+
+/* 0,82 × Zellbreite bei 10,1px (issue #1150), fest statt fluid: eine kleinere
+   Zelle auf breiteren Flächen wächst nur, nie schrumpft, also schneidet ein
+   fester Wert dort nie an. */
+.habit-history-card__emoji {
+  font-size: var(--text-history-emoji);
+}
+
+.habit-history-card__week-line {
+  justify-self: center;
+  width: 1px;
+  height: 100%;
+  background: var(--week-line, var(--border));
 }
 
 .habit-history-card__axis {
@@ -72,34 +112,6 @@
   margin-top: var(--space-1);
   font-size: var(--text-meta);
   color: var(--text-muted);
-}
-
-.habit-history-card__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  margin: var(--space-3) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.habit-history-card__legend-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-meta);
-  color: var(--text-muted);
-}
-
-/* Fixed to `--area-habits` for every row (issue #1101, cells are too small at
-   14px for an emoji, see the file's docstring) — no per-habit colour left to
-   read. */
-.habit-history-card__legend-dot {
-  flex-shrink: 0;
-  width: var(--space-2);
-  height: var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--area-habits);
 }
 
 /* Dritte Desktop-Stufe (issue #1125, ADR-0030): ab 1440px steht die Karte in

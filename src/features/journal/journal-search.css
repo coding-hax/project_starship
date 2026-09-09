@@ -355,3 +355,12 @@
     break-inside: avoid;
   }
 }
+
+/* Dritte Desktop-Stufe (issue #1126, ADR-0030): dieselbe zweite Bahn wird eine
+   dritte — `break-inside: avoid` oben gilt unverändert weiter, keine Gruppe
+   bricht an der neuen dritten Bahnengrenze auf. */
+@media (min-width: 1440px) {
+  .journal-search__groups {
+    columns: 3;
+  }
+}
