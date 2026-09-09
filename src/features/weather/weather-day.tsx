@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useWeatherLocation } from '@/features/settings/use-weather-location';
 import { PageFace } from '@/ui/faces';
 import { SectionCard } from '@/ui/section-card';
@@ -104,7 +104,7 @@ function ChartFrame({
   ariaLabel: string;
   viewW: number;
   plotX: number;
-  svgRef?: React.RefObject<SVGSVGElement | null>;
+  svgRef?: React.Ref<SVGSVGElement>;
   xTicks: XTick[];
   yTicks?: YTick[];
   children: React.ReactNode;
@@ -211,19 +211,29 @@ function edgeAnchor(index: number, count: number): 'start' | 'middle' | 'end' {
  * nothing for it and the geometry below falls back to the fixed `VIEW_W`
  * untouched. `null` until the first observation lands, which the caller falls
  * back to `VIEW_W` for too — a one-frame scaled label beats a zero-width chart.
+ *
+ * A callback ref, not a plain `useRef` + `useEffect([active])`: the `<svg>`
+ * this measures only mounts once `WeatherDayDetail`'s `phase` reaches `ready`,
+ * which can land *after* `active` has already settled to `true` (issue #1128
+ * CI failure). With a plain ref, the effect's one and only run would find
+ * `ref.current` still `null` and never retry, leaving the chart stuck on the
+ * `VIEW_W` fallback forever. The callback ref fires again on every mount, so
+ * `node` — and with it this effect — re-runs exactly when the element
+ * actually appears.
  */
-function useMeasuredWidth(active: boolean): [React.RefObject<SVGSVGElement | null>, number | null] {
-  const ref = useRef<SVGSVGElement>(null);
+function useMeasuredWidth(active: boolean): [(node: SVGSVGElement | null) => void, number | null] {
+  const [node, setNode] = useState<SVGSVGElement | null>(null);
   const [width, setWidth] = useState<number | null>(null);
+  const ref = useCallback((el: SVGSVGElement | null) => setNode(el), []);
   useEffect(() => {
-    if (!active || !ref.current) return;
+    if (!active || !node) return;
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) setWidth(entry.contentRect.width);
     });
-    observer.observe(ref.current);
+    observer.observe(node);
     return () => observer.disconnect();
-  }, [active]);
+  }, [active, node]);
   return [ref, width];
 }
 
