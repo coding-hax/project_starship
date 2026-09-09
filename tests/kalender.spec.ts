@@ -5502,7 +5502,12 @@ test('im Monat steht ueber dem Tagesauszug die Wochentags-Ueberschrift des gewae
   await expect(dayHeading(page)).toHaveText('Mittwoch, 22. Juli');
 
   await page.getByRole('radio', { name: 'Woche' }).click();
-  await expect(dayHeading(page)).toHaveCount(0);
+  // Nicht toHaveCount(0): seit issue #1124 (AK3) steht dieselbe Überschrift
+  // auch in der Woche im DOM, ab 1440px sichtbar (dieses Spec läuft bei
+  // 375px, siehe playwright.config.ts) — `not.toBeVisible()` ist die treue
+  // Fassung von #959s Intent „in der Woche keine Tagesüberschrift
+  // sichtbar", nicht „gar nicht gerendert".
+  await expect(dayHeading(page)).not.toBeVisible();
 });
 
 test('die Tagesauszug-Ueberschrift folgt dem gewaehlten Tag, nicht dem durchgewischten Monat (AK4c, issue #959; Wisch statt Knopf seit #1009)', async ({

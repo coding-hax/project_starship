@@ -87,6 +87,29 @@ export function E2EBridge() {
             fetchedAt: new Date().toISOString(),
             days,
           }),
+        // A fixture that needs many `habit_logs` rows (issue #1125 AK2, "1284 mal")
+        // must land them in one write: `count` separate `mutate()` calls each open
+        // their own outbox-writing transaction, and that many overlapping writes in
+        // quick succession starves the live queries the freshly reloaded /routinen
+        // page depends on for minutes (observed, not theoretical — see the issue's
+        // progress comment). A single `bulkPut` is one transaction, one change
+        // notification, same as any other bulk import would produce. Skips the
+        // outbox on purpose — this fixture only needs the rows to be *visible*, not
+        // queued for a push the test never asserts on.
+        debugSeedHabitLogs: (entries: Array<{ habitId: string; logDate: string; done: boolean }>) => {
+          const now = new Date().toISOString();
+          return db.records.bulkPut(
+            entries.map((entry) => ({
+              table: 'habit_logs' as const,
+              id: uuidv7(),
+              updatedAt: now,
+              deletedAt: null,
+              syncedAt: null,
+              syncSeq: null,
+              data: entry,
+            })),
+          );
+        },
         // The real write path (AC5) — the suite drives writeJournalEntry itself
         // rather than re-deriving row ids in the test. createEnvelope/openEnvelope/
         // encryptJournal let AC7 prove the offline row that reaches Postgres is
