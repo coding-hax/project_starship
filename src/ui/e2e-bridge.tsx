@@ -149,6 +149,35 @@ export function E2EBridge() {
         // way to reproduce a poison mutation for the #182 tests.
         debugPatchOutbox: (id: string, patch: Record<string, unknown>) =>
           db.outbox.update(id, patch),
+        // Simulates entries an old, pre-#1145 build already queued — no `seq`, only
+        // `createdAt` order — deterministically. A real `indexedDB.open('starship', N)`
+        // against an older schema version is documented as flaky in this suite
+        // (journal.spec.ts #338 AC3: Dexie's `versionchange` handler races under
+        // `workers: 1`) and was rejected for the same reason here; `bulkAdd` bypasses
+        // `mutate()` entirely, writing straight into the store the way an already-open
+        // older build's outbox would look right before the v8 upgrade runs.
+        debugSeedLegacyOutbox: (
+          entries: Array<{
+            table: string;
+            rowId: string;
+            op: 'upsert' | 'delete' | 'restore';
+            payload: Record<string, unknown>;
+            createdAt: string;
+          }>,
+        ) =>
+          db.outbox.bulkAdd(
+            entries.map((entry) => ({
+              id: uuidv7(),
+              table: entry.table,
+              rowId: entry.rowId,
+              op: entry.op,
+              payload: entry.payload,
+              updatedAt: entry.createdAt,
+              baseSeq: null,
+              createdAt: entry.createdAt,
+              attempts: 0,
+            })) as never,
+          ),
         // Simulates a server-side ciphertext swap between two already-synced rows
         // (issue #480, F7 AC2) — something no client call can produce, only direct
         // storage tampering. `records` is keyed by `[table+id]`, not `id` alone;

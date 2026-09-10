@@ -23,17 +23,45 @@ export interface MutateInput {
 /**
  * A logical clock, not a display of the actual time: `Date.now()` only has
  * millisecond resolution, so two `mutate()` calls in the same tick would get an
- * identical `createdAt` — and `pending()`'s ordering (this device's arrival order,
- * ADR-0008) would then depend on IndexedDB's tie-break by primary key (the
- * mutation's random UUIDv7), not on call order. Nudging forward by at least 1ms
- * per call keeps `createdAt` strictly increasing, so it stays a valid stand-in for
- * "the order this device made these mutations in".
+ * identical `createdAt`. Kept strictly increasing purely so `createdAt` stays a
+ * useful display timestamp and tiebreaker within one session — it is no longer the
+ * ordering authority for `pending()` (that is `seq`, below, issue #1145): this
+ * variable resets on every reload, which is exactly what let a clock correction
+ * between two writes silently reorder them before this fix.
  */
 let lastTimestamp = 0;
 function nextTimestamp(): string {
   const now = Date.now();
   lastTimestamp = now > lastTimestamp ? now : lastTimestamp + 1;
   return new Date(lastTimestamp).toISOString();
+}
+
+/** Next device-local order number, given the outbox's current maximum (`undefined` if empty). */
+export function nextOutboxSeq(maxSeq: number | undefined): number {
+  return (maxSeq ?? 0) + 1;
+}
+
+/**
+ * This device's arrival order (ADR-0008), oldest first. Primarily by `seq`
+ * (issue #1145) — it survives a reload, unlike the old `createdAt`-only order,
+ * which a clock correction between two writes could invert. Entries without a
+ * numeric `seq` (pre-migration/mixed state — after a real upgrade this never
+ * happens, since the Dexie v8 backfill assigns one to every existing entry) sort
+ * by `createdAt` then `id`, and ahead of every `seq`-carrying entry.
+ */
+export function compareOutboxOrder(a: OutboxEntry, b: OutboxEntry): number {
+  const aHasSeq = typeof a.seq === 'number';
+  const bHasSeq = typeof b.seq === 'number';
+
+  if (aHasSeq && bHasSeq) return a.seq - b.seq;
+  if (aHasSeq !== bHasSeq) return aHasSeq ? 1 : -1;
+
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+export function sortByOrder(entries: OutboxEntry[]): OutboxEntry[] {
+  return [...entries].sort(compareOutboxOrder);
 }
 
 export async function mutate(input: MutateInput): Promise<string> {
@@ -48,6 +76,11 @@ export async function mutate(input: MutateInput): Promise<string> {
 
   await db.transaction('rw', db.records, db.outbox, async () => {
     const existing = await db.records.get([input.table, rowId] as never);
+    // Vergeben in derselben Transaktion wie Zeile+Eintrag (AK2, issue #1145) — der
+    // überlappende rw-Scope serialisiert nebenläufige `mutate()`-Aufrufe (IndexedDB-
+    // Spec-Garantie), sodass keine zwei Aufrufe dieselbe `seq` bekommen.
+    const maxSeq = (await db.outbox.orderBy('seq').last())?.seq;
+    const seq = nextOutboxSeq(maxSeq);
 
     const mutation: OutboxEntry = {
       id: uuidv7(),
@@ -61,6 +94,7 @@ export async function mutate(input: MutateInput): Promise<string> {
       baseSeq: existing?.syncSeq ?? null,
       createdAt: now,
       attempts: 0,
+      seq,
     };
 
     const next: LocalRecord = {
@@ -83,26 +117,45 @@ export async function mutate(input: MutateInput): Promise<string> {
   return rowId;
 }
 
-/** Oldest first — mutations must reach the server in the order they were made. */
+/**
+ * Oldest first — mutations must reach the server in the order they were made.
+ * `toArray()` + an in-JS sort, not `orderBy('seq')`: the `seq` index is sparse
+ * (entries from before the Dexie v8 backfill may lack it), and a blind index scan
+ * would silently drop those. Negligible for a single-user outbox of at most a few
+ * dozen entries.
+ */
 export async function pending(): Promise<OutboxEntry[]> {
-  return db.outbox.orderBy('createdAt').toArray();
+  return sortByOrder(await db.outbox.toArray());
 }
 
 export async function size(): Promise<number> {
   return db.outbox.count();
 }
 
-/** Applied server-side. Drop from the queue and stamp the local row as synced. */
+/**
+ * Applied server-side. Drop from the queue and stamp the local row as synced —
+ * but only once nothing for that row is left queued. The old guard compared
+ * `row.updatedAt <= m.updatedAt` (a client clock), which stamped a row as synced
+ * even while a newer, still-queued edit sat behind it if that edit happened to
+ * carry an earlier-looking timestamp (a backdated clock, issue #1145). Deleting
+ * first and then reading the remaining queue once is uhr-independent: it looks at
+ * what is *actually* still pending, not at what a clock claims came before what.
+ */
 export async function markApplied(mutations: Mutation[]): Promise<void> {
   const now = new Date().toISOString();
 
   await db.transaction('rw', db.records, db.outbox, async () => {
     for (const m of mutations) {
       await db.outbox.delete(m.id);
+    }
 
+    const remaining = await db.outbox.toArray();
+    const stillQueued = new Set(remaining.map((entry) => `${entry.table}:${entry.rowId}`));
+
+    for (const m of mutations) {
+      if (stillQueued.has(`${m.table}:${m.rowId}`)) continue;
       const row = await db.records.get([m.table, m.rowId] as never);
-      // Only stamp if nothing newer happened locally in the meantime.
-      if (row && row.updatedAt <= m.updatedAt) {
+      if (row) {
         await db.records.put({ ...row, syncedAt: now });
       }
     }

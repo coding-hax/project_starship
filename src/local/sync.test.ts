@@ -51,6 +51,7 @@ function outboxEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
     baseSeq: null,
     createdAt: new Date().toISOString(),
     attempts: 0,
+    seq: 1,
     ...overrides,
   };
 }
