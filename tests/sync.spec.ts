@@ -738,6 +738,16 @@ test.describe('Reihenfolge der Offline-Mutationen übersteht Reload + Uhrkorrekt
     page,
   }) => {
     await registerPasskey(page);
+    // Settle the boot-created Journal habit (issue #505 AC1) first — its own
+    // mutate() lands in the outbox asynchronously, with no bound on when, and
+    // would otherwise races into the pending() snapshots this test asserts on
+    // (see createTaskOnDevice's sibling tests for the same reasoning).
+    await settleJournalHabitBoot(page);
+
+    // Offline for the whole seeding/reload phase — otherwise SyncBoot's own mount
+    // sync (fired again by the reload below) races to push and clear these entries
+    // before the test ever reads them back.
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
 
     const legacyRowIds = [randomUUID(), randomUUID(), randomUUID()];
     await page.evaluate(
@@ -795,6 +805,7 @@ test.describe('Reihenfolge der Offline-Mutationen übersteht Reload + Uhrkorrekt
       'Neu',
     ]);
 
+    await page.unroute('**/api/sync/**');
     await page.evaluate(() => window.__starship.sync());
     await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 
