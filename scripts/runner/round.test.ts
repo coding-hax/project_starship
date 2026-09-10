@@ -953,6 +953,80 @@ describe('roundPlan', () => {
     });
   });
 
+  // #1174: die Schleife aus #1127, im ganzen Takt nachgestellt. Der PR ist
+  // Entwurf und traegt 'check', alles Verlangte ist gruen, allein Vercel ist
+  // rot (`build-rate-limit`). Vorher schlug daraus 'rote CI schlaegt das
+  // AK-Tor' zu: Rolle zurueck auf 'build', der Bau-Lauf fand an einem fremden
+  // Rate-Limit nichts zu reparieren und setzte 'check' wieder -- sieben Runden
+  // in acht Stunden, kuerzester Zyklus 23 Sekunden.
+  describe('roter NICHT-verlangter Check dreht keine Schleife mehr (#1174)', () => {
+    const protection = {
+      match: (args: string[]) => args[0] === 'api' && args[1]!.includes('required_status_checks'),
+      reply: JSON.stringify({ contexts: ['quality', 'e2e', 'test-integrity'] }),
+    };
+    const draftPrRoutes = [
+      {
+        match: (args: string[]) => args[0] === 'pr' && args[1] === 'list',
+        reply: JSON.stringify([{ number: 1127, headRefName: 'fix/1127-x', title: 'fix: irgendwas' }]),
+      },
+      {
+        match: (args: string[]) => args[0] === 'pr' && args[1] === 'checks',
+        reply: JSON.stringify([
+          { bucket: 'pass', name: 'quality' },
+          { bucket: 'pass', name: 'e2e' },
+          { bucket: 'pass', name: 'test-integrity' },
+          { bucket: 'fail', name: 'Vercel', description: 'build-rate-limit' },
+        ]),
+      },
+      {
+        match: (args: string[]) => args[0] === 'pr' && args[1] === 'view',
+        reply: JSON.stringify({ headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: true }),
+      },
+    ];
+    const tip = gitDouble({ 'ls-remote': 'abc123\trefs/heads/fix/1127-x\n' });
+
+    it('AC1: die Rolle bleibt beim Pruefer, statt auf build zurueckzufallen', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(1127, ['in-progress', 'check'])),
+        ...draftPrRoutes,
+        protection,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, tip), opts) as RoundRun;
+      expect(result.kind).toBe('run');
+      expect(result.role).toBe('check');
+    });
+
+    // AC5: er entscheidet nichts mehr, verschwindet aber auch nicht. Die Notiz
+    // haengt an JEDEM Statustext der Runde -- 'gated' faellt in den
+    // Rollen-Dispatch durch und haette sonst gar keine eigene Stelle dafuer.
+    it('AC5: nennt den ignorierten roten Check im Statustext', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(1127, ['in-progress', 'check'])),
+        ...draftPrRoutes,
+        protection,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, tip), opts);
+      expect(result.status?.text).toContain('Vercel');
+      expect(result.status?.text).toContain('Branch-Schutz');
+    });
+
+    // Die Gegenprobe: ohne lesbare Required-Liste (kein api-Route -> leere
+    // Antwort) gilt das alte Verhalten. Sie belegt zugleich, dass der Test
+    // oben wirklich am neuen Pfad haengt und nicht aus anderem Grund gruen ist.
+    it('AC4: ohne lesbare Required-Liste faellt der Takt auf build zurueck wie bisher', () => {
+      const { gh } = ghDouble([
+        openIssues(issueJson(1127, ['in-progress', 'check'])),
+        ...draftPrRoutes,
+        labelsAre('in-progress', 'check'),
+      ]);
+      const result = roundPlan(ctx(gh, tip), opts) as RoundRun;
+      expect(result.role).toBe('build');
+      expect(result.status?.text).not.toContain('Branch-Schutz');
+    });
+  });
+
   describe('CI-Wache fuer wartende Tickets (#154, #272)', () => {
     // Beantwortet alles, was prForIssue/prCiState/prSquashMerge fuer EIN
     // wartendes Ticket brauchen. `pr view` muss nach Feld unterscheiden:

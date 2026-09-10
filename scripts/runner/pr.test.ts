@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GhAdapter } from './gh';
 import {
+  prCiEvaluation,
   prCiState,
   prFailureSummary,
   prForIssue,
@@ -9,6 +10,7 @@ import {
   prMergeState,
   prSquashMerge,
   reopenFalselyClosedIssues,
+  requiredCheckContexts,
 } from './pr';
 
 function ghRouter(routes: Record<string, string>): GhAdapter {
@@ -154,6 +156,168 @@ describe('prCiState', () => {
       'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY' }),
     });
     expect(prCiState('55', failing)).toBe('failing');
+  });
+});
+
+// --- #1174: nur verlangte Checks entscheiden ---------------------------------
+// Der Fund: ein roter Check, den GitHub fuer 'main' gar nicht verlangt (Vercel
+// mit `build-rate-limit`), galt dem Runner als CI-Fehler. Er nahm 'check' ab,
+// schaltete die Rolle auf 'build', der Bau-Lauf fand an einem fremden
+// Rate-Limit nichts zu reparieren und setzte 'check' wieder -- #1127 drehte so
+// sieben Runden in acht Stunden, #1016 etwa zehn.
+const PROTECTION = 'api repos/:owner/:repo/branches/main/protection/required_status_checks';
+const REQUIRED_JSON = JSON.stringify({ contexts: ['quality', 'e2e', 'test-integrity'] });
+
+// Die Lage von #1127, Check fuer Check: alles Verlangte gruen, allein der
+// fremde Vercel-Check rot.
+const CHECKS_1127 = JSON.stringify([
+  { bucket: 'pass', name: 'quality' },
+  { bucket: 'pass', name: 'e2e' },
+  { bucket: 'pass', name: 'test-integrity' },
+  { bucket: 'fail', name: 'Vercel', description: 'build-rate-limit' },
+]);
+
+describe('requiredCheckContexts (#1174)', () => {
+  it('liest die Liste aus dem Branch-Schutz', () => {
+    const gh = ghRouter({ [PROTECTION]: REQUIRED_JSON });
+    expect(requiredCheckContexts(gh)).toEqual(['quality', 'e2e', 'test-integrity']);
+  });
+
+  it('liefert null statt zu werfen, wenn der Aufruf scheitert (AC4)', () => {
+    const gh: GhAdapter = {
+      run: vi.fn(() => {
+        throw new Error('403 -- Token ohne Recht');
+      }),
+    };
+    expect(requiredCheckContexts(gh)).toBeNull();
+  });
+
+  it('liefert null bei kaputter Antwort', () => {
+    expect(requiredCheckContexts(ghRouter({ [PROTECTION]: 'kein JSON' }))).toBeNull();
+  });
+
+  // Eine leere Liste waere sonst ein Freibrief: "nichts ist verlangt, also
+  // darf jeder rote Check ignoriert werden". Im Zweifel gilt das alte
+  // Verhalten, nicht das grosszuegigere.
+  it('behandelt eine LEERE contexts-Liste als nicht ermittelbar', () => {
+    expect(requiredCheckContexts(ghRouter({ [PROTECTION]: JSON.stringify({ contexts: [] }) }))).toBeNull();
+  });
+});
+
+describe('prCiState -- Filter auf verlangte Checks (#1174)', () => {
+  // AC1: der Regressionstest zum Fund. Vorher 'failing' -> Schleife.
+  it('roter NICHT-verlangter Check macht den PR nicht rot -- die Lage von #1127 (AC1)', () => {
+    const gh = ghRouter({
+      'pr checks': CHECKS_1127,
+      [PROTECTION]: REQUIRED_JSON,
+      'pr view': JSON.stringify({ headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: false }),
+    });
+    expect(prCiState('55', gh)).toBe('success');
+  });
+
+  // AC5: er zaehlt nicht mehr mit, verschwindet aber auch nicht -- der Name
+  // reist weiter bis in den Statustext.
+  it('nennt den ignorierten roten Check beim Namen (AC5)', () => {
+    const gh = ghRouter({
+      'pr checks': CHECKS_1127,
+      [PROTECTION]: REQUIRED_JSON,
+      'pr view': JSON.stringify({ headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: false }),
+    });
+    expect(prCiEvaluation('55', gh)).toEqual({ state: 'success', ignoredFailing: ['Vercel'] });
+  });
+
+  // AC3: am eigentlichen Tor aendert sich nichts.
+  it('roter VERLANGTER Check bleibt failing (AC3)', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([
+        { bucket: 'pass', name: 'quality' },
+        { bucket: 'fail', name: 'e2e' },
+        { bucket: 'pass', name: 'test-integrity' },
+        { bucket: 'pass', name: 'Vercel' },
+      ]),
+      [PROTECTION]: REQUIRED_JSON,
+    });
+    expect(prCiState('55', gh)).toBe('failing');
+  });
+
+  // AC4: kein Netz, kein Recht, kaputte Antwort -> das alte, strengere
+  // Verhalten. Der Runner wird nie grosszuegiger, wenn er die Regel nicht
+  // kennt.
+  it('faellt auf das alte Verhalten zurueck, wenn die Liste nicht ermittelbar ist (AC4)', () => {
+    const gh: GhAdapter = {
+      run: vi.fn((args: string[]) => {
+        const key = args.join(' ');
+        if (key.startsWith('pr checks')) return CHECKS_1127;
+        throw new Error('gh failed');
+      }),
+    };
+    expect(prCiEvaluation('55', gh)).toEqual({ state: 'failing', ignoredFailing: [] });
+  });
+
+  // Frage 3 aus dem Ticket: konsistent ja. Ein noch laufender Preview-Deploy
+  // hielt den Merge sonst genauso auf wie ein roter.
+  it('ein laufender NICHT-verlangter Check haelt den Takt nicht mehr auf', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([
+        { bucket: 'pass', name: 'quality' },
+        { bucket: 'pass', name: 'e2e' },
+        { bucket: 'pass', name: 'test-integrity' },
+        { bucket: 'pending', name: 'Vercel' },
+      ]),
+      [PROTECTION]: REQUIRED_JSON,
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN', isDraft: false }),
+    });
+    expect(prCiState('55', gh)).toBe('success');
+  });
+
+  // Die Kehrseite des Filters: ein verlangter Check, der noch gar nicht
+  // gemeldet hat, taucht in `gh pr checks` ueberhaupt nicht auf. Ohne diese
+  // Regel wuerde ein PR, an dem allein ein fremder Check haengt, gemergt,
+  // BEVOR CI ueberhaupt laeuft.
+  it('bleibt pending, solange ein verlangter Check noch nicht gemeldet hat', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([
+        { bucket: 'pass', name: 'quality' },
+        { bucket: 'fail', name: 'Vercel' },
+      ]),
+      [PROTECTION]: REQUIRED_JSON,
+    });
+    expect(prCiState('55', gh)).toBe('pending');
+  });
+
+  // Kostenprobe: die Required-Liste wird nur geholt, wenn sie das Ergebnis
+  // aendern kann. Ein durchweg gruener PR bleibt so genauso teuer wie vor
+  // #1174 -- ein gh-Aufruf pro Takt mehr waere sonst der Regelfall.
+  it('fragt den Branch-Schutz gar nicht erst, wenn nichts rot und nichts pending ist', () => {
+    const gh = ghRouter({
+      'pr checks': JSON.stringify([
+        { bucket: 'pass', name: 'quality' },
+        { bucket: 'pass', name: 'e2e' },
+        { bucket: 'pass', name: 'test-integrity' },
+      ]),
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'CLEAN', isDraft: false }),
+    });
+    expect(prCiState('55', gh)).toBe('success');
+    const calls = (gh.run as unknown as { mock: { calls: string[][][] } }).mock.calls;
+    expect(calls.some((c) => c[0]!.join(' ').startsWith('api '))).toBe(false);
+  });
+
+  // Ein roter fremder Check darf einen Konflikt nicht zudecken: ohne das
+  // wuerde ein DIRTY-PR mit rotem Vercel jetzt auf 'success' durchfallen.
+  it('deckt conflict/behind nicht zu', () => {
+    const dirty = ghRouter({
+      'pr checks': CHECKS_1127,
+      [PROTECTION]: REQUIRED_JSON,
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'DIRTY', isDraft: false }),
+    });
+    expect(prCiState('55', dirty)).toBe('conflict');
+
+    const behind = ghRouter({
+      'pr checks': CHECKS_1127,
+      [PROTECTION]: REQUIRED_JSON,
+      'pr view': JSON.stringify({ headRefName: 'fix/1-x', mergeStateStatus: 'BEHIND', isDraft: false }),
+    });
+    expect(prCiState('55', behind)).toBe('behind');
   });
 });
 

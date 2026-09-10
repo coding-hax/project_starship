@@ -7,8 +7,8 @@ Fortsetzung oder ein anderes Ticket denkt:
 
 | CI-Zustand des PR | Was der Takt tut | Agentenlauf? |
 | --- | --- | --- |
-| läuft noch (irgendein Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
-| rot, sonst irgendein Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
+| läuft noch (ein **verlangter** Check pending) | nichts — `in-progress` bleibt stehen, kein anderes Ticket wird gewählt | nein |
+| rot, sonst ein **verlangter** Check | ein Bau-Agent startet gezielt, mit Job, Testnamen, Zeilen und Fehlermeldung als Auftrag — **nicht** die rohe Log-Ausgabe | **ja** |
 | konfliktbehaftet (`DIRTY`) | ein Bau-Agent startet gezielt, mit den Konfliktdateien im Auftrag (lokal per Trockenlauf-Merge ermittelt, s. u.) | **ja** |
 | hinter `main` (Checks laufen nicht mehr, s.u.) | `main` per `git fetch`+`git merge`+`git push` in den Branch nachziehen (#160) | nein — außer bei echtem Konflikt |
 | grün, aber noch Entwurf (Sicherheitsnetz — z. B. nach einem abgebrochenen Lauf) | Draft → `ready`, Auto-Merge aktivieren (`gh pr merge --squash --auto --delete-branch --subject <PR-Titel> --body ''`, s. `prSquashMerge()`) | nein |
@@ -25,6 +25,48 @@ konfliktbehafteten PR für immer unerreichbar, und CI würde bei jedem grünen
 Check-Lauf fälschlich `success` melden, obwohl GitHub selbst gar nicht mergen
 kann (#217). `behind` wird also nur geprüft, wenn feststeht, dass nichts
 mehr läuft, nichts rot ist und kein echter Konflikt vorliegt.
+
+## Welcher Check überhaupt zählt (#1174)
+
+**Nur die, die GitHub für `main` verlangt** —
+`required_status_checks.contexts`, heute `quality`, `e2e`, `test-integrity`.
+Ein roter Check daneben (Vercel, `schema-drift`, `smoke`, einzelne
+`e2e-main`-Shards) hält den Takt nicht mehr auf.
+
+Vorher zählte jeder rote Check, und das drehte eine Schleife: Der einzige rote
+Check an #1127 war Vercel mit `build-rate-limit` — ein fremdes Build-Kontingent,
+kein Code-Fehler. Der Takt wertete ihn als CI-Fehler, nahm `check` ab und
+schaltete die Rolle zurück auf `build`; der Bau-Lauf fand an einem fremden
+Rate-Limit nichts zu reparieren und setzte `check` wieder; der nächste Takt
+räumte es erneut ab. Sieben Runden in acht Stunden, kürzester Zyklus
+23 Sekunden, am Ende eine Frage an den Menschen, die keine war (#1016 vorher
+etwa zehn Runden).
+
+Die Required-Liste ist die Antwort, die der Mensch auf „darf gemergt werden?"
+im Branch-Schutz längst gegeben hat — der Runner hat sie überstimmt. Der
+Vercel-Check am PR ist zudem ein *Preview*-Build und prüft **weniger** als CI
+(überspringt die Migrationen, `scripts/vercel-build.sh:16`); ob der
+Produktions-Build durchläuft, sagt der Required-Check `e2e` (`e2e-offline` +
+`e2e-shipped`). Dazu ADR „kein Vendor-Lock-in": ein Rate-Limit bei einem Hoster
+darf die Flotte nicht anhalten.
+
+Drei Riegel, damit daraus kein zu großzügiger Merge wird:
+
+- **Ist die Liste nicht ermittelbar** (Netz weg, Token ohne Recht, kaputte
+  Antwort, leere `contexts`), zählt wieder **jeder** rote Check. Ohne die Regel
+  gilt die strengere Variante, nie die großzügigere.
+- **Ein verlangter Check, der noch gar nicht gemeldet hat**, taucht in
+  `gh pr checks` überhaupt nicht auf — das gilt als `pending`, nicht als grün.
+  Sonst könnte ein PR, an dem allein ein fremder Check hängt, gemergt werden,
+  bevor CI auch nur gestartet ist.
+- **Der ignorierte rote Check bleibt sichtbar**: er erscheint benannt in der
+  Statusmeldung dieser Runde, mit dem Grund, warum er nicht aufhält. Er
+  entscheidet nichts mehr, verschwindet aber auch nicht.
+
+Blind ist die Regel für Checks, die über *Rulesets* statt Branch-Schutz
+verlangt werden. Dieses Repo hat keine (`gh api repos/:owner/:repo/rulesets`
+ist leer); käme eines dazu, gilt weiter die Branch-Schutz-Liste — der Runner
+wäre dann zu streng, nie zu großzügig.
 
 In aller Regel ist der PR beim ersten grünen Blick des Takts schon `ready`
 (Claude hat das selbst am Lauf-Ende erledigt) — der Merge passiert dann durch

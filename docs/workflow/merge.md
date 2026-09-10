@@ -65,9 +65,12 @@ gleichermaßen. Ein PR, der **nicht** im Entwurf ist (Alt-PR aus der Zeit vor
 Entwurfsstatus und nicht am Label: der Prüf-Lauf nimmt `check` ab, wenn er eine
 Lücke findet — das ist sein vorgesehener Rückweg in den Bau. Am Label
 festgemacht sähe der nächste Takt einen grünen PR ohne Label und mergte den
-ungeprüften Entwurf (beobachtet an #850). Wird die CI rot, während `check`
+ungeprüften Entwurf (beobachtet an #850). Wird ein **verlangter** Check rot, während `check`
 hängt, nimmt der Takt das Label zurück und lässt erst reparieren — der Fix-Lauf
-gibt es an seinem sauberen Ende selbst wieder ab.
+gibt es an seinem sauberen Ende selbst wieder ab. Ein roter Check, der **nicht**
+im Branch-Schutz steht, tut das seit #1174 nicht mehr: er wird benannt und
+übergangen, statt eine Schleife aus Abnehmen und Wiedersetzen zu drehen
+(`docs/workflow/ci-wache.md`, „Welcher Check überhaupt zählt").
 
 
 **Branch-Schutz auf `main` (zwingend einzurichten, sonst hängt alles in der Luft):**
