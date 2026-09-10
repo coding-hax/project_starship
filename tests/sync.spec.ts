@@ -624,6 +624,320 @@ test.describe('Konfliktauflösung: Server-Sequence statt Client-Uhr (#53)', () =
 });
 
 /**
+ * #1145 — `pending()` used to sort by `createdAt` alone, and `createdAt` came from
+ * a module-level counter (`lastTimestamp` in outbox.ts) that resets on reload. A
+ * clock moved forward, a write, the clock corrected back, and a reload in between
+ * could give the *later* write the *smaller* `createdAt` — it would be pushed
+ * first, and the server (arrival wins, ADR-0008) applied the earlier write last,
+ * silently discarding the newer user input. `seq`, a device-local order number
+ * persisted with each outbox entry, fixes the ordering without touching the wire
+ * format or the server's conflict authority (AK5).
+ */
+test.describe('Reihenfolge der Offline-Mutationen übersteht Reload + Uhrkorrektur (#1145)', () => {
+  test('AK1 (rot zuerst): die spätere Eingabe gewinnt, obwohl eine Uhrkorrektur ihr über einen Reload hinweg ein kleineres createdAt gibt', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    const rowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Basis' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+
+    await page.route('**/api/sync/**', (route) => route.abort('failed'));
+
+    // Uhr vor eine Stunde, dann geschrieben.
+    const ahead = new Date(new Date(FIXED_NOW).getTime() + 60 * 60 * 1000).toISOString();
+    await skewClock(page, ahead);
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'erste' },
+        }),
+      rowId,
+    );
+
+    // Uhr korrigiert, dann ein Reload — die Warteschlange überlebt ihn (IndexedDB),
+    // der In-Memory-Zähler hinter `createdAt` nicht.
+    await skewClock(page, FIXED_NOW);
+    await page.reload();
+    await page.waitForFunction(() => typeof window.__starship?.mutate === 'function');
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'zweite' },
+        }),
+      rowId,
+    );
+
+    // `createdAt` beweist den Fehlerauslöser: die zuletzt geschriebene Eingabe trägt
+    // hier den kleineren Zeitstempel, wie im Ticket beschrieben.
+    const entries = await page.evaluate(() => window.__starship.pending());
+    const erste = entries.find((e) => e.payload.title === 'erste');
+    const zweite = entries.find((e) => e.payload.title === 'zweite');
+    expect(zweite!.createdAt < erste!.createdAt).toBe(true);
+
+    await page.unroute('**/api/sync/**');
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const result = await withDb((c) => c.query('SELECT title FROM tasks WHERE id = $1', [rowId]));
+    expect(result.rows[0].title).toBe('zweite');
+  });
+
+  test('AK2: nebenläufige mutate()-Aufrufe bekommen verschiedene, lückenlos steigende seq in stabiler Reihenfolge', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    const titles = Array.from({ length: 8 }, (_, i) => `Nebenläufig ${i}`);
+    await page.evaluate(
+      async (ts) =>
+        Promise.all(
+          ts.map((title) =>
+            window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title } }),
+          ),
+        ),
+      titles,
+    );
+
+    const entries = await page.evaluate(() => window.__starship.pending());
+    expect(entries).toHaveLength(titles.length);
+
+    const seqs = entries.map((e) => e.seq);
+    expect(new Set(seqs).size).toBe(titles.length);
+    // pending() sorts by seq — stable, gapless: each entry exactly one more than
+    // the last, no two writers collided on the same value.
+    for (let i = 1; i < seqs.length; i += 1) {
+      expect(seqs[i]).toBe(seqs[i - 1] + 1);
+    }
+
+    // No torn write: every mutation's row landed alongside its outbox entry.
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const writtenTitles = records
+      .filter((r) => r.table === 'tasks')
+      .map((r) => r.data.title as string)
+      .filter((title) => titles.includes(title));
+    expect(new Set(writtenTitles).size).toBe(titles.length);
+  });
+
+  test('AK3: seq-lose Einträge aus einer alten Version behalten ihre createdAt-Reihenfolge, neue Schreibvorgänge reihen sich dahinter ein', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+
+    const legacyRowIds = [randomUUID(), randomUUID(), randomUUID()];
+    await page.evaluate(
+      async (rows) => {
+        await window.__starship.debugSeedLegacyOutbox([
+          {
+            table: 'tasks',
+            rowId: rows[0],
+            op: 'upsert',
+            payload: { title: 'Legacy A' },
+            createdAt: '2026-01-01T00:00:02.000Z',
+          },
+          {
+            table: 'tasks',
+            rowId: rows[1],
+            op: 'upsert',
+            payload: { title: 'Legacy B' },
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+          {
+            table: 'tasks',
+            rowId: rows[2],
+            op: 'upsert',
+            payload: { title: 'Legacy C' },
+            createdAt: '2026-01-01T00:00:01.000Z',
+          },
+        ]);
+      },
+      legacyRowIds,
+    );
+
+    const beforeNewWrite = await page.evaluate(() => window.__starship.pending());
+    expect(beforeNewWrite.map((e) => e.payload.title)).toEqual(['Legacy B', 'Legacy C', 'Legacy A']);
+
+    const newRowId = await page.evaluate(() =>
+      window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'Neu' } }),
+    );
+
+    const afterNewWrite = await page.evaluate(() => window.__starship.pending());
+    expect(afterNewWrite.map((e) => e.payload.title)).toEqual([
+      'Legacy B',
+      'Legacy C',
+      'Legacy A',
+      'Neu',
+    ]);
+
+    await page.reload();
+    await page.waitForFunction(() => typeof window.__starship?.mutate === 'function');
+
+    const afterReload = await page.evaluate(() => window.__starship.pending());
+    expect(afterReload.map((e) => e.payload.title)).toEqual([
+      'Legacy B',
+      'Legacy C',
+      'Legacy A',
+      'Neu',
+    ]);
+
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const arrived = await withDb((c) =>
+      c.query('SELECT title FROM tasks WHERE id IN ($1, $2, $3, $4) ORDER BY sync_seq', [
+        legacyRowIds[0],
+        legacyRowIds[1],
+        legacyRowIds[2],
+        newRowId,
+      ]),
+    );
+    expect(arrived.rows.map((r) => r.title)).toEqual(['Legacy B', 'Legacy C', 'Legacy A', 'Neu']);
+  });
+
+  test('AK4a: die Reihenfolge übersteht einen fehlgeschlagenen Push-Versuch', async ({ page }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    await page.route('**/api/sync/push', (route) => route.fulfill({ status: 500, body: '{}' }));
+
+    const titles = ['Erste', 'Zweite', 'Dritte'];
+    const rowIds: string[] = [];
+    for (const title of titles) {
+      const id = await page.evaluate(
+        (t) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: t } }),
+        title,
+      );
+      rowIds.push(id);
+    }
+
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(titles.length);
+
+    await page.unroute('**/api/sync/push');
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    const rows = await withDb((c) =>
+      c.query('SELECT title FROM tasks WHERE id IN ($1, $2, $3) ORDER BY sync_seq', rowIds),
+    );
+    expect(rows.rows.map((r) => r.title)).toEqual(titles);
+  });
+
+  test('AK4b: die Bestätigung einer älteren Mutation markiert eine neuere, noch offene Änderung derselben Zeile nicht als synchronisiert', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    const rowId = await page.evaluate(async () => {
+      const id = await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Basis' },
+      });
+      await window.__starship.sync();
+      return id;
+    });
+
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'Erste Änderung' },
+        }),
+      rowId,
+    );
+
+    // Uhr zwischen den beiden Schreibvorgängen zurückgestellt — die zweite (in
+    // Ankunftsreihenfolge spätere) Mutation trägt dadurch das kleinere `updatedAt`.
+    await skewClock(page, '2016-01-01T00:00:00.000Z');
+    await page.evaluate(
+      (id) =>
+        window.__starship.mutate({
+          table: 'tasks',
+          rowId: id,
+          op: 'upsert',
+          payload: { title: 'Zweite Änderung' },
+        }),
+      rowId,
+    );
+
+    const entries = await page.evaluate(() => window.__starship.pending());
+    const outboxEntriesForRow = entries.filter((e) => e.rowId === rowId);
+    expect(outboxEntriesForRow).toHaveLength(2);
+    const olderMutationId = outboxEntriesForRow[0].id;
+
+    // Simuliert den Server, der aus einer wiederholten Push-Runde nur die erste der
+    // beiden Mutationen bestätigt — der Punkt hier ist markApplied()s Umgang mit der
+    // Antwort, nicht push()s Retry-Mechanik selbst.
+    await page.route('**/api/sync/push', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ applied: [olderMutationId], conflicts: [], rejected: [] }),
+      }),
+    );
+
+    await page.evaluate(() => window.__starship.sync());
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
+    const records = await page.evaluate(() => window.__starship.debugRecords());
+    const row = records.find((r) => r.id === rowId);
+    expect(row?.syncedAt).toBeNull();
+  });
+
+  test('AK5: seq verlässt das Gerät nie — das Wire-Format bleibt exakt wie heute', async ({
+    page,
+  }) => {
+    await registerPasskey(page);
+    await settleJournalHabitBoot(page);
+
+    let capturedMutations: Record<string, unknown>[] | null = null;
+    await page.route('**/api/sync/push', async (route) => {
+      const body = route.request().postDataJSON() as { mutations: Record<string, unknown>[] };
+      capturedMutations = body.mutations;
+      await route.continue();
+    });
+
+    await page.evaluate(async () => {
+      await window.__starship.mutate({
+        table: 'tasks',
+        op: 'upsert',
+        payload: { title: 'Wire-Format-Test' },
+      });
+      await window.__starship.sync();
+    });
+
+    await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+    expect(capturedMutations).not.toBeNull();
+    expect(capturedMutations).toHaveLength(1);
+    const wireMutation = capturedMutations![0];
+    expect(wireMutation).not.toHaveProperty('seq');
+    expect(Object.keys(wireMutation).sort()).toEqual(
+      ['baseSeq', 'id', 'op', 'payload', 'rowId', 'table', 'updatedAt'].sort(),
+    );
+  });
+});
+
+/**
  * #479 — a row skipped during pull because a local mutation for it was still
  * queued used to let the cursor advance past it anyway. If that mutation was
  * later discarded (e.g. rejected as malformed), the skipped server version was

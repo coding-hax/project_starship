@@ -228,6 +228,14 @@ export interface OutboxEntry extends Mutation {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  /**
+   * Device-local, strictly increasing order — drives `pending()` (ADR-0008 arrival
+   * order for this device), never leaves the device (issue #1145). `createdAt`
+   * stays the display/tiebreaker timestamp; `seq` is the order, not the time, so a
+   * clock correction between two writes can no longer reorder them. Entries from
+   * before this field existed have none until the Dexie v8 backfill runs.
+   */
+  seq: number;
 }
 
 export interface PushRequest {

@@ -239,6 +239,41 @@ db.version(7).stores({
 // generic `records` store, discriminated by `table` alone, no new store or index,
 // so no db.version() bump.
 
+// Additive: a `seq` index on `outbox`, plus a one-time backfill (issue #1145) — the
+// old `createdAt`-only order in `pending()` (src/local/outbox.ts) could invert two
+// mutations across a reload plus a clock correction between them, since the module-
+// level counter that kept `createdAt` strictly increasing resets on reload. `seq` is
+// a device-local, strictly increasing order that survives a reload because it is
+// persisted with the outbox entry (assigned by `mutate()` from here on).
+//
+// The upgrade backfills every entry already queued by an older build, ordered by
+// `(createdAt, id)` — the same fallback comparison `compareOutboxOrder` in outbox.ts
+// uses for `seq`-less entries — so an upgrading install keeps its current
+// deterministic order; it does not (and cannot) reconstruct order lost before this
+// fix shipped. New writes after the upgrade get their `seq` from `mutate()` itself.
+//
+// Down path: `seq` is additive and purely local — it never reaches the server, so an
+// older build reading this store simply ignores the field, same as any other bump
+// here. A real code rollback to a build ≤ v7 hits IndexedDB's own `VersionError`
+// opening a newer database, like every Dexie downgrade — this project's migrations
+// are forward-only (ADR-0008); the rollback path is a DB rebuild via a fresh server
+// pull, and the only data at risk is whatever sits unpushed in the outbox at that
+// moment — the same risk any version bump already carries, not a new one.
+db.version(8)
+  .stores({
+    outbox: 'id, createdAt, table, seq',
+  })
+  .upgrade(async (tx) => {
+    const entries = await tx.table('outbox').toArray();
+    const ordered = [...entries].sort((a, b) => {
+      if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+    await Promise.all(
+      ordered.map((entry, index) => tx.table('outbox').update(entry.id, { seq: index + 1 })),
+    );
+  });
+
 export { db };
 
 /**
