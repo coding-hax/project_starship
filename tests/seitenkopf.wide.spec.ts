@@ -17,6 +17,12 @@ import {
  * 768–1439px/375px bleibt unverändert — dafür bürgt seitenkopf.spec.ts (läuft
  * nur im `mobile`-Messplatz), AK6 unten prüft zusätzlich gezielt, dass die
  * neue Regel unterhalb von 1440px gar nicht erst greift.
+ *
+ * /uebersicht ist seit issue #1180 keine Instanz dieser Regel mehr (ADR-0030,
+ * Nachtrag 10.09.2026) — eigene Zeile aus vier statt zwei Zonen, Titelzeile
+ * mittig statt rechtsbündig. Deren eigene Zeilen-Assertions stehen in
+ * uebersicht-progress-ring.wide.spec.ts, hier taucht die Route deshalb nicht
+ * mehr auf.
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
@@ -160,11 +166,11 @@ async function assertTitleTokenAndFace(page: Page, path: string, titleRow: Locat
   expect(Math.round(faceBox!.height), `${path}: Figurhöhe`).toBe(60);
 }
 
-test('AK1/AK2/AK5: Aufgaben, Routinen, Aktivitäten und Übersicht laufen in einer Zeile, bündig zur Inhaltsspalte, mit --text-title/60px-Figur', async ({
+test('AK1/AK2/AK5: Aufgaben, Routinen und Aktivitäten laufen in einer Zeile, bündig zur Inhaltsspalte, mit --text-title/60px-Figur', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW);
-  await registerPasskey(page, '/uebersicht');
+  await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Breite Aufgabe', dueAt: null });
   await insertActivity();
 
@@ -190,11 +196,6 @@ test('AK1/AK2/AK5: Aufgaben, Routinen, Aktivitäten und Übersicht laufen in ein
       eyebrow: (p) => p.locator("[data-module='aktivitaeten'] .page-head__eyebrow"),
       titleRow: (p) => p.locator("[data-module='aktivitaeten'] .page-face-row"),
       extra: (p) => p.locator("[data-module='aktivitaeten'] .page-head__extra"),
-    },
-    {
-      path: '/uebersicht',
-      eyebrow: (p) => p.locator("[data-ground='uebersicht'] .page-head__eyebrow"),
-      titleRow: (p) => p.locator('.uebersicht__title-row'),
     },
   ];
 

@@ -5,7 +5,7 @@ import { PageFace } from '@/ui/faces';
 import { OverviewReadyProvider } from '@/ui/overview-ready';
 import { PageHead } from '@/ui/page-head';
 import { TodayLongDate } from '@/ui/today-long-date';
-import { DailyProgressRing } from './daily-progress-ring';
+import { DailyProgressPill, DailyProgressRing } from './daily-progress-ring';
 import { GreetingHeading } from './greeting-heading';
 import { UebersichtSections } from './uebersicht-sections';
 
@@ -46,6 +46,7 @@ export default function UebersichtPage() {
             </div>
           </div>
         }
+        extra={<DailyProgressPill />}
       >
         <div className="uebersicht__title-cluster">
           <GreetingHeading />

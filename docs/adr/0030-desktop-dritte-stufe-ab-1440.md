@@ -51,3 +51,14 @@ durch dieses ADR abgelöst, bleibt aber als Beleg der ersten (768px-)Stufe
 stehen — nicht gelöscht. Kein Schema, kein Sync, keine Krypto, keine
 Dependency, kein Laufzeitcode — die Umsetzung in CSS/Komponenten folgt in
 eigenen Tickets aus #1113.
+
+## Nachtrag 10.09.2026 — /uebersicht weicht von Punkt 3 ab (#1180)
+
+Punkt 3 oben („Beiwerk links, Titel und Figur rechts") beschrieb den
+einzeiligen Seitenkopf, den #1117/#1122 für alle PageHead-Routen gebaut haben.
+Für /uebersicht ersetzt #1180 das durch eine eigene Zeile aus vier Dingen:
+Datum links, Begrüßung mittig, Zählpille (vormals Segmentring aus #1122)
+rechts davon, Einstellungs-Einstieg am rechten Rand — der Leistenfuß-Eintrag
+ist auf dieser einen Route dafür unsichtbar. Aufgaben und Journal bleiben bei
+Punkt 3 wie beschlossen; die Abweichung ist bewusst auf /uebersicht begrenzt,
+keine Neuverhandlung dieses ADRs.

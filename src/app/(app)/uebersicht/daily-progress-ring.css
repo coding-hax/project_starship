@@ -34,16 +34,11 @@
   line-height: var(--leading-display);
 }
 
-/* Größerer Geschwister-Ring ab 1440px (issue #1122) — Segment je fälliger
-   Sache statt der kompakten „N/M"-Zahl. Unter 1440px unsichtbar, damit er
-   weder Platz belegt noch doppelt vom AT angesagt wird (siehe
-   `.daily-progress-ring` oben, das bleibt dort unverändert). Der 34px-Slot-
-   Käfig um beide Ringe steckt in `uebersicht.css` (`.daily-progress-ring-slot`)
-   — der Override hier löst ihn nur für die Breite ab 1440px. */
-.daily-progress-ring-wide {
-  display: none;
-}
-
+/* Ring verschwindet ab 1440px (issue #1180, Nachfolger von #1122) — die
+   Zählpille im Zusatz-Slot der Kopfzeile (uebersicht.css) übernimmt dieselbe
+   Zahl. Der 34px-Slot-Käfig um den Ring steckt in `uebersicht.css`
+   (`.daily-progress-ring-slot`) — der Override hier löst nur den Ring selbst
+   ab dieser Breite ab. */
 @media (min-width: 1440px) {
   .daily-progress-ring {
     display: none;
@@ -53,74 +48,33 @@
     width: auto;
     height: auto;
   }
-
-  .daily-progress-ring-wide {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
 }
 
-.daily-progress-ring-wide__svg {
-  flex-shrink: 0;
+/* Zählpille (issue #1180 AK3) — Sichtbarkeit (nur ab 1440px, nur /uebersicht)
+   regelt `uebersicht.css` über `.page-head__extra`, hier steht nur die
+   Optik. */
+.daily-progress-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.daily-progress-ring-wide__segment,
-.daily-progress-ring-wide__arc-track,
-.daily-progress-ring-wide__arc {
-  fill: none;
-  stroke-width: 5px;
-}
-
-/* Lücken zwischen Segmenten müssen sichtbar bleiben — `round` würde sie wieder
-   zuwachsen lassen (AK4). */
-.daily-progress-ring-wide__segment {
-  stroke-linecap: butt;
-}
-
-.daily-progress-ring-wide__segment--done {
-  stroke: var(--on-ground);
-}
-
-/* Gedämpfte Mischung derselben Farbe, keine zweite Bedeutung (AK1). Dekorative
-   Stufe, darf unter 3:1 auf dem Grund bleiben (Präzedenz issue #846 AK4, siehe
-   `.daily-progress-ring__track` oben). */
-.daily-progress-ring-wide__segment--open {
-  stroke: color-mix(in oklab, var(--on-ground) 30%, transparent);
-}
-
-/* Vollring-Rückfall ab `MAX_SEGMENTS` (AK5) — dieselbe Farbgebung wie der
-   Kompaktring, nur groß; hier sind Lücken kein Thema, `round` ist erlaubt. */
-.daily-progress-ring-wide__arc-track {
-  stroke: var(--border-faint);
-}
-
-.daily-progress-ring-wide__arc {
-  stroke: var(--on-ground);
-  stroke-linecap: round;
-}
-
-.daily-progress-ring-wide__count {
-  fill: var(--text);
-  font-size: var(--text-title);
-  font-variant-numeric: tabular-nums;
-  font-family: var(--font-display);
+/* Dieselbe `--surface`/`--text-base`-Kombination wie `.page-head__chip--set`
+   (issue #1051) — bleibt >=4,5:1 auf jedem Routen-Grund, unabhängig vom
+   eigenen Flächenton der Übersicht. */
+.daily-progress-pill__count {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-base);
   font-weight: var(--weight-emphasis);
-  letter-spacing: -0.025em;
-}
-
-.daily-progress-ring-wide__of {
-  fill: var(--on-ground-muted);
-  font-size: var(--text-meta);
-}
-
-.daily-progress-ring-wide__label {
-  color: var(--on-ground);
   font-size: var(--text-secondary);
-  font-weight: var(--weight-emphasis);
+  font-variant-numeric: tabular-nums;
 }
 
-.daily-progress-ring-wide__breakdown {
+.daily-progress-pill__breakdown {
   color: var(--on-ground-muted);
   font-size: var(--text-subline);
 }

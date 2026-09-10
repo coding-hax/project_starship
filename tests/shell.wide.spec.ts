@@ -63,6 +63,35 @@ test('AK3: Einstellungs-Einstieg sitzt im Leistenfuß mit sichtbarem Text (issue
   await expect(label).toHaveText('Einstellungen');
 });
 
+test('AK6 (issue #1180): auf /uebersicht ist der Leistenfuß-Einstieg unsichtbar, die Kopfzeile trägt den einzigen erreichbaren Link', async ({
+  page,
+}) => {
+  await registerPasskey(page, '/uebersicht');
+
+  // Kein zweiter erreichbarer „Einstellungen"-Link — sonst strict-mode-Fund
+  // wie in AK3 oben.
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  await expect(settings).toHaveCount(1);
+  await expect(settings).toBeVisible();
+  await expect(settings).toHaveAttribute('href', '/einstellungen');
+
+  const settingsBox = await settings.boundingBox();
+  expect(settingsBox).not.toBeNull();
+  expect(settingsBox!.width).toBeGreaterThanOrEqual(44);
+  expect(settingsBox!.height).toBeGreaterThanOrEqual(44);
+
+  // Der Leistenfuß selbst bleibt im DOM (Nav.tsx mountet ihn immer), nur auf
+  // dieser einen Route ausgeblendet (AK5).
+  await expect(page.locator('.app-header--sidebar')).toBeHidden();
+
+  // Andere Routen bleiben unverändert (AK6) — derselbe Leistenfuß-Link wie in
+  // AK3, hier nur als Gegenprobe, dass unsere Route-Scope-Regel nicht
+  // ausgelaufen ist.
+  await page.goto('/aufgaben');
+  await expect(page.locator('.app-header--sidebar')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Einstellungen' })).toHaveCount(1);
+});
+
 test('AK4: rechte Kante des FAB folgt der Inhaltsspalte, nicht dem Fensterrand (issue #1116)', async ({ page }) => {
   await registerPasskey(page, '/aufgaben');
 
