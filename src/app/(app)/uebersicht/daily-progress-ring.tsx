@@ -10,15 +10,6 @@ import { computeDailyProgress, type DailyProgress } from './daily-progress';
 const RADIUS = 14.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-// Ab dieser Menge fälliger Sachen zerfallen einzelne Segmente in Haarstriche —
-// ab hier fällt der Wide-Ring auf den Vollring zurück (issue #1122, AK5).
-const MAX_SEGMENTS = 24;
-const WIDE_RADIUS = 32;
-const WIDE_CIRCUMFERENCE = 2 * Math.PI * WIDE_RADIUS;
-// Sichtbarer Anteil je Segment auf einer `pathLength={total}`-Skala — der Rest
-// (28 %) bleibt Lücke, damit sie zwischen den Segmenten sichtbar bleiben.
-const SEGMENT_VISIBLE = 0.72;
-
 function formatOpen(open: DailyProgress['open']): string {
   const parts: string[] = [];
   if (open.aufgaben > 0) {
@@ -44,14 +35,80 @@ function formatOpen(open: DailyProgress['open']): string {
  * steht bewusst außerhalb von `OverviewReadyProvider` (issue #642) und ein
  * Beitritt dort würde sie selbst verzögern statt sie stabil zu halten.
  *
- * Ab 1440px rendert dieselbe Berechnung zusätzlich ein Geschwister
- * (`.daily-progress-ring-wide`, issue #1122): ein Segment je fälliger Sache
- * statt der kompakten „N/M"-Zahl, mit Klartext-Aufschlüsselung daneben. Beide
- * Varianten stehen immer im DOM, `daily-progress-ring.css` blendet je
- * Breakpoint genau eine per `display:none` aus — kein Doppel-Announce, kein
- * reservierter Platz für die jeweils andere.
+ * Ab 1440px verschwindet dieser Ring (uebersicht.css) zugunsten von
+ * `DailyProgressPill` unten, die dieselbe Zahl im Zusatz-Slot der Kopfzeile
+ * zeigt (issue #1180, Nachfolger von #1122).
  */
 export function DailyProgressRing() {
+  const tasks = useTasks();
+  const habits = useHabits();
+  const logs = useHabitLogs();
+  const { isActive } = useModules();
+
+  if (tasks === undefined || habits === undefined || logs === undefined) return null;
+
+  const { done, total } = computeDailyProgress(tasks, habits, logs, isActive);
+  if (total === 0) return null;
+
+  const fraction = done / total;
+  const offset = CIRCUMFERENCE * (1 - fraction);
+
+  return (
+    <div
+      className="daily-progress-ring"
+      role="status"
+      aria-label={`heute ${done} von ${total} erledigt`}
+    >
+      <svg
+        className="daily-progress-ring__svg"
+        viewBox="0 0 34 34"
+        width="34"
+        height="34"
+        aria-hidden="true"
+      >
+        <circle
+          className="daily-progress-ring__track"
+          cx="17"
+          cy="17"
+          r={RADIUS}
+          fill="none"
+          strokeWidth="3"
+        />
+        <circle
+          className="daily-progress-ring__fill"
+          cx="17"
+          cy="17"
+          r={RADIUS}
+          fill="none"
+          strokeWidth="3"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          transform="rotate(-90 17 17)"
+        />
+        <text
+          className="daily-progress-ring__count"
+          x="17"
+          y="17"
+          textAnchor="middle"
+          dominantBaseline="central"
+        >
+          {done}/{total}
+        </text>
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Zählpille im Zusatz-Slot der Kopfzeile, sichtbar erst ab 1440px
+ * (uebersicht.css blendet `.page-head__extra` für /uebersicht darunter aus) —
+ * löst dort den Segmentring aus #1122 ab (issue #1180 AK3). Eigene
+ * Live-Queries statt eines gemeinsamen Hooks mit `DailyProgressRing`: beide
+ * Bauteile stehen in verschiedenen Zonen der Kopfzeile (Augenbraue vs.
+ * Zusatz-Slot), dieselbe Unabhängigkeit wie anderswo im Übersicht-Rahmen
+ * (z. B. `aufgaben-count.tsx` neben `task-list.tsx`).
+ */
+export function DailyProgressPill() {
   const tasks = useTasks();
   const habits = useHabits();
   const logs = useHabitLogs();
@@ -62,119 +119,16 @@ export function DailyProgressRing() {
   const { done, total, open } = computeDailyProgress(tasks, habits, logs, isActive);
   if (total === 0) return null;
 
-  const fraction = done / total;
-  const offset = CIRCUMFERENCE * (1 - fraction);
-
   return (
-    <>
-      <div
-        className="daily-progress-ring"
-        role="status"
-        aria-label={`heute ${done} von ${total} erledigt`}
-      >
-        <svg
-          className="daily-progress-ring__svg"
-          viewBox="0 0 34 34"
-          width="34"
-          height="34"
-          aria-hidden="true"
-        >
-          <circle
-            className="daily-progress-ring__track"
-            cx="17"
-            cy="17"
-            r={RADIUS}
-            fill="none"
-            strokeWidth="3"
-          />
-          <circle
-            className="daily-progress-ring__fill"
-            cx="17"
-            cy="17"
-            r={RADIUS}
-            fill="none"
-            strokeWidth="3"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={offset}
-            transform="rotate(-90 17 17)"
-          />
-          <text
-            className="daily-progress-ring__count"
-            x="17"
-            y="17"
-            textAnchor="middle"
-            dominantBaseline="central"
-          >
-            {done}/{total}
-          </text>
-        </svg>
-      </div>
-      <div
-        className="daily-progress-ring-wide"
-        role="status"
-        aria-label={`heute ${done} von ${total} erledigt, ${formatOpen(open)}`}
-      >
-        <svg
-          className="daily-progress-ring-wide__svg"
-          viewBox="0 0 72 72"
-          width="72"
-          height="72"
-          aria-hidden="true"
-        >
-          {total <= MAX_SEGMENTS ? (
-            Array.from({ length: total }, (_, i) => (
-              <circle
-                key={i}
-                className={`daily-progress-ring-wide__segment ${
-                  i < done
-                    ? 'daily-progress-ring-wide__segment--done'
-                    : 'daily-progress-ring-wide__segment--open'
-                }`}
-                cx="36"
-                cy="36"
-                r={WIDE_RADIUS}
-                fill="none"
-                pathLength={total}
-                strokeDasharray={`${SEGMENT_VISIBLE} ${total - SEGMENT_VISIBLE}`}
-                strokeDashoffset={-i}
-                transform="rotate(-90 36 36)"
-              />
-            ))
-          ) : (
-            <>
-              <circle
-                className="daily-progress-ring-wide__arc-track"
-                cx="36"
-                cy="36"
-                r={WIDE_RADIUS}
-                fill="none"
-              />
-              <circle
-                className="daily-progress-ring-wide__arc"
-                cx="36"
-                cy="36"
-                r={WIDE_RADIUS}
-                fill="none"
-                strokeDasharray={WIDE_CIRCUMFERENCE}
-                strokeDashoffset={WIDE_CIRCUMFERENCE * (1 - fraction)}
-                transform="rotate(-90 36 36)"
-              />
-            </>
-          )}
-          <text textAnchor="middle">
-            <tspan className="daily-progress-ring-wide__count" x="36" y="33">
-              {done}
-            </tspan>
-            <tspan className="daily-progress-ring-wide__of" x="36" y="51">
-              von {total}
-            </tspan>
-          </text>
-        </svg>
-        <div className="daily-progress-ring-wide__text">
-          <div className="daily-progress-ring-wide__label">Heute erledigt</div>
-          <div className="daily-progress-ring-wide__breakdown">{formatOpen(open)}</div>
-        </div>
-      </div>
-    </>
+    <div
+      className="daily-progress-pill"
+      role="status"
+      aria-label={`heute ${done} von ${total} erledigt, ${formatOpen(open)}`}
+    >
+      <span className="daily-progress-pill__count">
+        {done} von {total} erledigt
+      </span>
+      <span className="daily-progress-pill__breakdown">{formatOpen(open)}</span>
+    </div>
   );
 }

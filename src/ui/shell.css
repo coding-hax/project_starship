@@ -494,6 +494,15 @@
   .app-header--sidebar .app-header__settings[aria-current='page'] {
     background: var(--surface);
   }
+
+  /* /uebersicht trägt ihren eigenen Einstellungs-Einstieg jetzt in der
+     Kopfzeile (issue #1180, uebersicht.css) — der Leistenfuß-Eintrag bliebe
+     sonst ein zweiter erreichbarer „Einstellungen"-Link auf derselben Route
+     (AK5). Andere Routen (AK6, shell.wide.spec.ts AK3) sind von `:has()` nicht
+     betroffen, `html` trägt `[data-ground]` je nach aktiver Route. */
+  html:has([data-ground='uebersicht']) .app-header--sidebar {
+    display: none;
+  }
 }
 
 /* ------------------------------ auth page ------------------------------- */

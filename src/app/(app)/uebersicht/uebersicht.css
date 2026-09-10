@@ -115,6 +115,89 @@
   flex-shrink: 0;
 }
 
+/* Zusatz-Slot der Kopfzeile trägt hier erst ab 1440px die Zählpille (issue
+ * #1180) — darunter bleibt die Augenbraue mit dem kompakten Ring die einzige
+ * Stelle für den Tagesstand (AK7). `html:has(...)` statt `[data-ground=...]`
+ * direkt auf `.page-head__extra`, weil dieselbe Route-Scope-Regel gleich
+ * darunter auch Geschwister von `.page-head` treffen muss (Einstellungen-
+ * Einstieg, Leistenfuß). Ohne dieses Aus wäre `.page-head__extra` schon unter
+ * 1440px sichtbar (page-head.css setzt `margin-block-start` bedingungslos) —
+ * eine leere zweite Zeile bei M = 0, eine doppelte bei M > 0. */
+html:has([data-ground='uebersicht']) .page-head__extra {
+  display: none;
+}
+
+/* Dritte Kopfzeilen-Stufe (issue #1180, hebt #1117 AK3 für /uebersicht wieder
+ * auf): eine Zeile aus vier Dingen — Datum, Begrüßung, Zählpille,
+ * Einstellungen —, kein Flex-Rechtsrutsch aus page-head.css mehr. Grid statt
+ * Flex, weil `1fr auto 1fr` die mittlere Spalte unabhängig vom Inhalt der
+ * äußeren zentriert hält (AK2, AK8): fällt die Pille weg (M = 0), bleiben
+ * beide äußeren Spalten trotzdem gleich breit, die Begrüßung rückt keinen
+ * Pixel. `minmax(0, 1fr)` statt `1fr` — dieselbe Absicherung wie `.shell`
+ * (shell.css, issue #364): eine ungewöhnlich lange Aufschlüsselung darf die
+ * rechte Spalte nie über ihren fairen Anteil hinaus wachsen lassen, sonst
+ * rutscht die Mitte aus AK2s ±4px. */
+@media (min-width: 1440px) {
+  html:has([data-ground='uebersicht']) .page-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    /* Anker für den absolut positionierten Einstellungs-Einstieg unten — eine
+     * vierte Rasterspalte zöge die Mitte um deren halbe Breite nach links und
+     * risse AK2 (siehe Kommentar dort). */
+    position: relative;
+    /* Überschreibt page-head.css' generisches `gap: var(--space-4)` (dortige
+     * 1440px-Flex-Stufe) — als Grid-`column-gap` verschöbe das die dritte
+     * Spalte (Zusatz-Slot/Pille) um 16px nach rechts, weg vom Ende der
+     * zweiten Spalte (Begrüßungsgruppe). `.page-head__extra` zentriert die
+     * Pille selbst innerhalb ihrer Spalte (unten), die dafür genau am rechten
+     * Rand der Begrüßungsgruppe beginnen muss, sonst reißt AK4s ±8px
+     * (CI-Fund: 16px Differenz, exakt --space-4). */
+    gap: 0;
+  }
+
+  html:has([data-ground='uebersicht']) .page-head__eyebrow {
+    order: 0;
+    margin: 0;
+  }
+
+  /* Nur noch das Datum bleibt hier im Fluss — Ring (ausgeblendet, siehe
+   * daily-progress-ring.css) und Einstellungen (absolut, siehe unten) tragen
+   * nichts mehr zur Zeilenbreite bei, `space-between` hätte hier nichts mehr
+   * zu verteilen. */
+  html:has([data-ground='uebersicht']) .uebersicht__eyebrow-row {
+    justify-content: flex-start;
+  }
+
+  html:has([data-ground='uebersicht']) .page-head__title-row {
+    order: 0;
+    margin-inline-start: 0;
+  }
+
+  html:has([data-ground='uebersicht']) .page-head__extra {
+    display: flex;
+    order: 0;
+    margin: 0;
+    align-items: center;
+    justify-content: center;
+    /* Reserviert den Platz des Einstellungs-Einstiegs (44×44, `--touch-target`)
+     * am rechten Rand, damit die Pille im FREIEN Feld zentriert steht (AK4) —
+     * nicht in der ganzen (breiteren) Rasterspalte, die dort noch endet. */
+    padding-inline-end: var(--touch-target);
+  }
+
+  /* Der mobile Einstellungs-Einstieg (issue #126/#920) übernimmt hier die
+   * Rolle des Leistenfuß-Eintrags für /uebersicht (AK5) — an sein bestehendes
+   * Icon/`Link` gehängt statt neu gebaut, nur die Position ändert sich. */
+  html:has([data-ground='uebersicht']) .app-header--inline {
+    display: flex;
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+  }
+}
+
 /* Seit issue #920 ist der Erfassungsknopf ein `position: fixed`-Fab statt eines
  * Titelzeilen-Knopfes (siehe uebersicht-capture.tsx) — die letzte Sektion
  * (Routinen) braucht deshalb Abstand zu ihm, sonst überdeckt der Fab bei hohem
