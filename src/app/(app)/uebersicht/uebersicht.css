@@ -146,6 +146,14 @@ html:has([data-ground='uebersicht']) .page-head__extra {
      * vierte Rasterspalte zöge die Mitte um deren halbe Breite nach links und
      * risse AK2 (siehe Kommentar dort). */
     position: relative;
+    /* Überschreibt page-head.css' generisches `gap: var(--space-4)` (dortige
+     * 1440px-Flex-Stufe) — als Grid-`column-gap` verschöbe das die dritte
+     * Spalte (Zusatz-Slot/Pille) um 16px nach rechts, weg vom Ende der
+     * zweiten Spalte (Begrüßungsgruppe). `.page-head__extra` zentriert die
+     * Pille selbst innerhalb ihrer Spalte (unten), die dafür genau am rechten
+     * Rand der Begrüßungsgruppe beginnen muss, sonst reißt AK4s ±8px
+     * (CI-Fund: 16px Differenz, exakt --space-4). */
+    gap: 0;
   }
 
   html:has([data-ground='uebersicht']) .page-head__eyebrow {
