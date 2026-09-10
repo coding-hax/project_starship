@@ -151,6 +151,11 @@ interface GhFixture {
   // die Wache mergt ihn dann wie bisher.
   mergeState?: Record<string, { headRefName: string; mergeStateStatus: string; isDraft?: boolean }>;
   prList?: { number: number; headRefName: string }[];
+  // #1174: die Liste aus dem Branch-Schutz. Fehlt sie (wie in allen
+  // Alt-Fixtures), antwortet der Stub leer -- `requiredCheckContexts` liest
+  // daraus "nicht ermittelbar" und es gilt das alte Verhalten (AC4). Genau
+  // deshalb aendert dieses Ticket an keinem bestehenden Test etwas.
+  required?: string[];
 }
 
 function ghFake(fx: GhFixture = {}): GhAdapter {
@@ -164,6 +169,7 @@ function ghFake(fx: GhFixture = {}): GhAdapter {
       }
       if (a === 'pr' && b === 'list') return JSON.stringify(fx.prList ?? []);
       if (a === 'run' && b === 'view') return 'log line 1\nlog line 2';
+      if (a === 'api' && fx.required) return JSON.stringify({ contexts: fx.required });
       return '';
     }),
   };
@@ -217,6 +223,72 @@ describe('watchRunningIssue (Parität zu scripts/tests/ci-watch.test.sh)', () =>
     state = createStateAdapter(dir);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  // --- #1174: der fremde rote Check haelt den Takt nicht mehr an ------------
+  // Die Lage von #1127: alles Verlangte gruen, allein Vercel rot. Vorher wurde
+  // daraus 'build-fix' -- der Bau-Lauf fand nichts zu reparieren, setzte
+  // 'check' wieder, der naechste Takt nahm es ab: sieben Runden.
+  const REQUIRED = ['quality', 'e2e', 'test-integrity'];
+  const GREEN_EXCEPT_VERCEL: Check[] = [
+    { bucket: 'pass', name: 'quality' },
+    { bucket: 'pass', name: 'e2e' },
+    { bucket: 'pass', name: 'test-integrity' },
+    { bucket: 'fail', name: 'Vercel', description: 'build-rate-limit' },
+  ];
+
+  it('#1174 AC2: mergt einen freigegebenen PR, obwohl ein nicht-verlangter Check rot ist', () => {
+    const gh = ghFake({
+      checks: { '1127': GREEN_EXCEPT_VERCEL },
+      mergeState: { '1127': { headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: false } },
+      required: REQUIRED,
+    });
+    const result = watchRunningIssue(1127, '1127', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    expect(result).toEqual({ kind: 'merged', ignoredFailing: ['Vercel'] });
+    expect(gh.run).toHaveBeenCalledWith(expect.arrayContaining(['pr', 'merge', '--squash']));
+  });
+
+  // Der eigentliche Schleifen-Zweig: PR ist Entwurf und traegt 'check'. Vorher
+  // 'build-fix' (Rolle zurueck auf 'build'), jetzt 'gated' -- das AK-Tor
+  // bleibt beim Pruef-Lauf, wo es hingehoert.
+  it('#1174 AC1: gruen-aber-Entwurf bleibt gated statt build-fix zu werden', () => {
+    const gh = ghFake({
+      checks: { '1127': GREEN_EXCEPT_VERCEL },
+      mergeState: { '1127': { headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: true } },
+      required: REQUIRED,
+    });
+    const result = watchRunningIssue(1127, '1127', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    expect(result).toEqual({ kind: 'gated', ignoredFailing: ['Vercel'] });
+  });
+
+  // AC3: am eigentlichen Tor aendert sich nichts -- ein roter VERLANGTER Check
+  // startet weiterhin den Fix-Lauf, mitsamt CI-Auszug.
+  it('#1174 AC3: ein roter verlangter Check startet weiterhin den Fix-Lauf', () => {
+    const gh = ghFake({
+      checks: {
+        '1127': [
+          { bucket: 'pass', name: 'quality' },
+          { bucket: 'fail', name: 'e2e', link: 'https://github.com/x/y/actions/runs/123' },
+          { bucket: 'pass', name: 'test-integrity' },
+          { bucket: 'fail', name: 'Vercel' },
+        ],
+      },
+      required: REQUIRED,
+    });
+    const result = watchRunningIssue(1127, '1127', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    expect(result.kind).toBe('build-fix');
+  });
+
+  // AC4: ohne lesbare Required-Liste zaehlt wieder JEDER rote Check -- der
+  // Runner wird nie grosszuegiger, wenn er die Regel nicht kennt.
+  it('#1174 AC4: ohne Required-Liste bleibt es beim alten Verhalten', () => {
+    const gh = ghFake({
+      checks: { '1127': GREEN_EXCEPT_VERCEL },
+      mergeState: { '1127': { headRefName: 'fix/1127-x', mergeStateStatus: 'CLEAN', isDraft: false } },
+    });
+    const result = watchRunningIssue(1127, '1127', { gh, git: gitFake(), state, clock: FIXED_CLOCK });
+    expect(result.kind).toBe('build-fix');
+    expect(result.ignoredFailing).toBeUndefined();
+  });
 
   it('T1: CI läuft noch (pending) -> kein Merge, kein Fix', () => {
     const gh = ghFake({ checks: { '501': [{ bucket: 'pass', name: 'quality' }, { bucket: 'pending', name: 'e2e' }] } });

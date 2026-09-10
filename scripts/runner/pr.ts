@@ -87,6 +87,47 @@ function prChecks(pr: string, gh: GhAdapter): PrCheck[] {
   return tryParseJson<PrCheck[]>(raw) ?? [];
 }
 
+export interface PrCiEvaluation {
+  state: PrState;
+  // #1174 (AC5): rote Checks, die 'main' NICHT verlangt und die die
+  // Entscheidung deshalb nicht mehr beeinflusst haben. Sie verschwinden nicht
+  // lautlos, sondern werden benannt weitergereicht -- sonst tauschen wir die
+  // Schleife gegen Schweigen.
+  ignoredFailing: string[];
+}
+
+// #1174: Welche Checks GitHub fuer 'main' wirklich verlangt. Diese Liste ist
+// die Antwort, die der Mensch auf "darf gemergt werden?" laengst gegeben hat.
+// Der Runner hat sie bisher ueberstimmt und JEDEN roten Check als CI-Fehler
+// gewertet -- auch einen fremden (Vercel `build-rate-limit`, #1127/#1016).
+// Ergebnis war eine Endlosschleife: 'check' ab, Rolle zurueck auf 'build', der
+// Bau-Lauf findet an einem fremden Rate-Limit nichts zu reparieren, setzt
+// 'check' wieder, naechster Takt raeumt es erneut ab (#1127: sieben Runden in
+// acht Stunden, kuerzester Zyklus 23 Sekunden).
+//
+// Rueckgabe `null` heisst "nicht ermittelbar" (Netz weg, Token ohne Recht,
+// kaputte Antwort) -- NICHT "nichts ist required". Der Aufrufer faellt dann
+// auf das alte Verhalten zurueck (AC4). Aus demselben Grund ist auch eine
+// LEERE contexts-Liste `null`: sie waere sonst ein Freibrief, jeden roten
+// Check zu ignorieren.
+//
+// Blind fuer Checks, die ueber *Rulesets* statt Branch-Schutz verlangt werden
+// -- dieses Repo hat keine (`gh api repos/:owner/:repo/rulesets` ist leer).
+// Kaeme je eines dazu, faellt diese Funktion auf die Branch-Schutz-Liste
+// zurueck; der Runner waere dann zu streng, nie zu grosszuegig.
+export function requiredCheckContexts(gh: GhAdapter): string[] | null {
+  let raw = '';
+  try {
+    raw = gh.run(['api', 'repos/:owner/:repo/branches/main/protection/required_status_checks']);
+  } catch {
+    return null;
+  }
+  const contexts = tryParseJson<{ contexts?: unknown }>(raw)?.contexts;
+  if (!Array.isArray(contexts)) return null;
+  const names = contexts.filter((c): c is string => typeof c === 'string');
+  return names.length > 0 ? names : null;
+}
+
 // CI-Gesamtzustand eines PR. Reihenfolge ist Absicht (#160, erweitert um
 // #217): 'pending' hat Vorrang vor 'failing' -- ein noch laufender Shard darf
 // einen bereits roten Check nicht uebertoenen. 'conflict' (mergeStateStatus
@@ -98,19 +139,49 @@ function prChecks(pr: string, gh: GhAdapter): PrCheck[] {
 // vergeblich zu mergen versuchen. 'behind' wird erst geprueft, NACHDEM
 // feststeht, dass nichts mehr laeuft, nichts rot ist und kein echter Konflikt
 // vorliegt.
-export function prCiState(pr: string, gh: GhAdapter): PrState {
+//
+// #1174: 'pending' und 'fail'/'cancel' zaehlen nur noch, wenn GitHub den Check
+// fuer 'main' auch verlangt. Ein fremder roter Check haelt die Flotte damit
+// nicht mehr an -- er wird aber benannt weitergereicht, nicht verschwiegen.
+export function prCiEvaluation(pr: string, gh: GhAdapter): PrCiEvaluation {
   const checks = prChecks(pr, gh);
-  if (checks.length === 0) return 'pending';
-  if (checks.some((c) => c.bucket === 'pending')) return 'pending';
-  if (checks.some((c) => c.bucket === 'fail' || c.bucket === 'cancel')) return 'failing';
+  if (checks.length === 0) return { state: 'pending', ignoredFailing: [] };
+
+  const isRed = (c: PrCheck) => c.bucket === 'fail' || c.bucket === 'cancel';
+  // Die Required-Liste kostet einen `gh api`-Aufruf. Sie wird nur geholt, wenn
+  // sie das Ergebnis ueberhaupt aendern KANN -- ist ohnehin nichts rot und
+  // nichts pending, bleibt ein gruener PR genauso teuer wie vor #1174.
+  const relevant = checks.some((c) => isRed(c) || c.bucket === 'pending');
+  const required = relevant ? requiredCheckContexts(gh) : null;
+  // AC4: `null` heisst "nicht ermittelbar" -- dann zaehlt wie frueher JEDER
+  // Check. Nie "nichts ist required".
+  const counts = (c: PrCheck) => required === null || required.includes(c.name);
+  const ignoredFailing = required === null ? [] : checks.filter((c) => isRed(c) && !counts(c)).map((c) => c.name);
+
+  if (checks.some((c) => c.bucket === 'pending' && counts(c))) return { state: 'pending', ignoredFailing };
+  // Ein verlangter Check, der in der Liste des PR ueberhaupt nicht auftaucht,
+  // hat noch nicht gemeldet -- das ist 'pending', nicht 'gruen'. Ohne diese
+  // Zeile koennte ein PR, an dem allein ein fremder Check haengt, gemergt
+  // werden, BEVOR die verlangten Checks auch nur gestartet sind. Das ist genau
+  // die Luecke, die das Filtern der 'pending'-Buckets sonst aufreisst.
+  if (required !== null && required.some((name) => !checks.some((c) => c.name === name))) {
+    return { state: 'pending', ignoredFailing };
+  }
+  if (checks.some((c) => isRed(c) && counts(c))) return { state: 'failing', ignoredFailing };
   // #880: EIN `prMergeState` fuer DIRTY UND BEHIND statt zweier (`prIsDirty`
   // dann `prIsBehind`) -- so bleibt die Zahl der `gh pr view`-Aufrufe gleich,
   // wenn `resolveWatchState` fuer den Entwurfsstatus denselben Aufruf noch
   // einmal spricht. Die Reihenfolge (DIRTY vor BEHIND) ist unveraendert.
   const status = prMergeState(pr, gh)?.mergeStateStatus;
-  if (status === 'DIRTY') return 'conflict';
-  if (status === 'BEHIND') return 'behind';
-  return 'success';
+  if (status === 'DIRTY') return { state: 'conflict', ignoredFailing };
+  if (status === 'BEHIND') return { state: 'behind', ignoredFailing };
+  return { state: 'success', ignoredFailing };
+}
+
+// Nur der Zustand, ohne die Liste der ignorierten roten Checks -- fuer die
+// CLI (`pr-ci-state`) und alles, was die Sichtbarkeitsspur nicht braucht.
+export function prCiState(pr: string, gh: GhAdapter): PrState {
+  return prCiEvaluation(pr, gh).state;
 }
 
 // Squash-Merge mit EIGENEM Subject/Body statt GitHub die Commit-Historie

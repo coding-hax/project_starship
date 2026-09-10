@@ -31,7 +31,7 @@ import type { Clock } from './clock.js';
 import type { GhAdapter } from './gh.js';
 import type { GitAdapter } from './git.js';
 import type { StateAdapter } from './state.js';
-import { prCiState, prFailureSummary, prForIssue, prMergeState, prSquashMerge } from './pr.js';
+import { prCiEvaluation, prFailureSummary, prForIssue, prMergeState, prSquashMerge, type PrState } from './pr.js';
 import { catchupFailEscalated, catchupFailReason, catchupFailReset, prCatchUpBehind } from './catchup.js';
 
 // #324: ab dieser Schwelle (Minuten) gilt ein 'pending' als haengen geblieben
@@ -174,6 +174,11 @@ interface ResolvedWatchState {
   // Nur fuer 'pending', nur bei laufenden Tickets berechnet (#324).
   pendingMinutes?: number;
   pendingEscalated?: boolean;
+  // #1174 (AC5): rote Checks, die 'main' nicht verlangt und die den Zustand
+  // deshalb nicht mehr bestimmt haben. Orthogonal zum Zustand -- ein fremder
+  // roter Check kann neben JEDEM Ausgang stehen. Nur gesetzt, wenn es
+  // ueberhaupt einen gibt, damit bestehende Erwartungen unberuehrt bleiben.
+  ignoredFailing?: string[];
 }
 
 // #324: Zeitpunkt, seit dem ein Ticket UNUNTERBROCHEN auf 'pending' steht --
@@ -209,8 +214,22 @@ function pendingReset(issue: number, state: StateAdapter): void {
 // fuer wartend und laufend; NUR die anschliessende `watchReaction()` wertet
 // `waiting` unterschiedlich.
 function resolveWatchState(issue: number, pr: string, parked: boolean, deps: WatchDeps): ResolvedWatchState {
-  const ciState = prCiState(pr, deps.gh);
+  // #1174: die Bewertung liefert neben dem Zustand die roten Checks, die
+  // 'main' gar nicht verlangt. Die haengen am Umschlag statt an einer
+  // einzelnen Variante -- ein fremder roter Check kann neben JEDEM Ausgang
+  // stehen (gruen, pending, behind, Konflikt), er bestimmt nur keinen mehr.
+  const { state: ciState, ignoredFailing } = prCiEvaluation(pr, deps.gh);
+  const resolved = resolveCiState(issue, pr, parked, ciState, deps);
+  return ignoredFailing.length > 0 ? { ...resolved, ignoredFailing } : resolved;
+}
 
+function resolveCiState(
+  issue: number,
+  pr: string,
+  parked: boolean,
+  ciState: PrState,
+  deps: WatchDeps,
+): ResolvedWatchState {
   if (ciState === 'pending') {
     // #324: die Zeitmessung ist nur fuer laufende Tickets relevant (siehe
     // Modulkommentar zur behind-retry-Eskalation) -- ein wartendes Ticket
@@ -272,7 +291,15 @@ function resolveWatchState(issue: number, pr: string, parked: boolean, deps: Wat
   return { state: 'behind-retry', retryReason: reason, retryPaths, retryEscalated: escalated };
 }
 
-export type RunningWatchResult =
+// #1174 (AC5): orthogonal zum Ausgang -- ein roter Check, den 'main' nicht
+// verlangt, kann neben jedem Zustand stehen. Deshalb haengt er am Umschlag,
+// nicht an einer Variante, und wird nur gesetzt, wenn es ihn gibt (bestehende
+// Erwartungen ohne das Feld bleiben so gueltig).
+export interface IgnoredFailingChecks {
+  ignoredFailing?: string[];
+}
+
+export type RunningWatchResult = (
   | { kind: 'pending'; escalated: boolean; minutes: number }
   | { kind: 'merged' }
   // #839/#880: gruen, aber der PR ist noch Entwurf. Die Wache haelt still und
@@ -281,7 +308,9 @@ export type RunningWatchResult =
   | { kind: 'gated' }
   | { kind: 'build-fix'; summary: string }
   | { kind: 'caught-up' }
-  | { kind: 'retry'; reason: string; paths: string[]; escalated: boolean };
+  | { kind: 'retry'; reason: string; paths: string[]; escalated: boolean }
+) &
+  IgnoredFailingChecks;
 
 // CI-Wache fuer EIN laufendes Bau-Ticket (#147/#160/#171), jetzt ueber die
 // gemeinsame Uebergangstabelle. `issue`/`pr` sind bereits bekannt (Aufrufer
@@ -302,6 +331,19 @@ export function watchRunningIssue(
   deps: WatchDeps,
 ): RunningWatchResult {
   const resolved = resolveWatchState(issue, pr, false, deps);
+  const result = runningReaction(issue, pr, resolved, deps);
+  // #1174 (AC5): der ignorierte rote Check reist mit, egal wie der Takt
+  // ausgeht -- der Aufrufer haengt ihn an JEDEN Statustext dieser Runde.
+  const ignored = resolved.ignoredFailing ?? [];
+  return ignored.length > 0 ? { ...result, ignoredFailing: ignored } : result;
+}
+
+function runningReaction(
+  issue: number,
+  pr: string,
+  resolved: ResolvedWatchState,
+  deps: WatchDeps,
+): RunningWatchResult {
   const reaction = watchReaction({
     state: resolved.state,
     waiting: false,

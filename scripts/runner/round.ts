@@ -284,12 +284,20 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
   // davon, welcher der vielen Status-Schreibvorgaenge am Ende greift (#154).
   // Dasselbe gilt fuer den Queue-Bericht (#265): er beschreibt den Zustand der
   // Liste, nicht den Ausgang dieses Takts.
+  //
+  // #1174 gilt dasselbe fuer den ignorierten roten Check: er hat die
+  // Entscheidung nicht beeinflusst, darf aber nicht lautlos verschwinden --
+  // sonst tauschen wir die Endlosschleife aus #1127 gegen Schweigen (AC5).
+  // Er haengt deshalb ebenfalls an JEDEM Statustext dieser Runde und nicht nur
+  // am Merge-Zweig: gruen-aber-Entwurf ('gated') faellt in den Rollen-Dispatch
+  // durch, hat also gar keinen eigenen Statustext.
   let releasedNote = '';
   let queueNote = '';
+  let ignoredChecksNote = '';
   const status = (title: string, emoji: string, text: string): StatusUpdate => ({
     title,
     emoji,
-    text: text + releasedNote + queueNote,
+    text: text + ignoredChecksNote + releasedNote + queueNote,
   });
 
   // #483 (F11): Text fuer beide Claim-Verlust-Stellen (Wache-Vorlauf UND
@@ -445,6 +453,13 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
       // der Pruefer bei einer Luecke ab, worauf die Wache den Entwurf wie vor
       // #839 mergte -- die Luecke aus #850).
       const watch = watchRunningIssue(issue, prNum, { gh, git, state, clock });
+      // #1174 (AC5): benannt, mit dem Grund, warum er den Takt nicht aufhaelt.
+      // GitHub verlangt diese Checks fuer 'main' nicht -- der Mensch hat das
+      // im Branch-Schutz so gesetzt. Aufgehoben ist das Signal damit nicht.
+      if (watch.ignoredFailing && watch.ignoredFailing.length > 0) {
+        const names = watch.ignoredFailing.map((n) => `\`${n}\``).join(', ');
+        ignoredChecksNote = `\n\n_Roter Check ohne Merge-Sperre an PR #${prNum}: ${names} — steht nicht im Branch-Schutz von \`main\` und hat diesen Takt nicht aufgehalten._`;
+      }
       switch (watch.kind) {
         case 'pending':
           // #324: haengt der Check laenger als PENDING_STALL_MINUTES, ist
