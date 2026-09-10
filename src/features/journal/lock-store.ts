@@ -8,6 +8,7 @@ import {
   openEnvelopeWithRecovery,
   reissueRecovery,
   rewrapPassphrase,
+  type Envelope,
 } from '@/crypto/journal';
 import { pull, sync } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
@@ -53,7 +54,7 @@ interface Snapshot {
 }
 
 type BroadcastMessage =
-  | { type: 'unlocked'; dek: CryptoKey }
+  | { type: 'unlocked'; dek: CryptoKey; envelope: Envelope | null }
   | { type: 'locked' }
   /** A tab that just opened, asking whether anyone is already unlocked. */
   | { type: 'request' };
@@ -62,6 +63,12 @@ const SERVER_SNAPSHOT: Snapshot = { state: 'loading', error: null };
 
 /** The unpacked DEK never lives in React state (ADR-0016) — only here, in memory. */
 let dek: CryptoKey | null = null;
+/** Which envelope `dek` was opened from — `null` when unknown (e.g. a persisted
+ * DEK restored without ever re-unlocking in this tab). Used by
+ * `recoverOrphanedEntries` to tell "readable under the DEK in memory" apart from
+ * "readable under the currently valid envelope" (issue #1143). Never sent to the
+ * server, only broadcast same-origin alongside the DEK it describes. */
+let dekEnvelope: Envelope | null = null;
 let current: Snapshot = SERVER_SNAPSHOT;
 let channel: BroadcastChannel | null = null;
 let autoLockTimer: ReturnType<typeof setTimeout> | null = null;
@@ -84,15 +91,17 @@ function getChannel(): BroadcastChannel {
       const message = event.data;
       if (message.type === 'unlocked') {
         dek = message.dek;
+        dekEnvelope = message.envelope;
         setSnapshot({ state: 'unlocked', error: null });
         armAutoLock();
       } else if (message.type === 'locked') {
         dek = null;
+        dekEnvelope = null;
         disarmAutoLock();
         setSnapshot({ state: 'locked', error: null });
       } else if (dek) {
         // Another tab just opened and is asking — only an unlocked tab replies.
-        channel?.postMessage({ type: 'unlocked', dek } satisfies BroadcastMessage);
+        channel?.postMessage({ type: 'unlocked', dek, envelope: dekEnvelope } satisfies BroadcastMessage);
       }
     };
   }
@@ -104,14 +113,16 @@ function getChannel(): BroadcastChannel {
  * another is already unlocked must not ask for the passphrase again. Resolves
  * `null` if nothing answers in time, i.e. no other tab is currently unlocked.
  */
-function requestSharedDek(ch: BroadcastChannel): Promise<CryptoKey | null> {
+function requestSharedDek(
+  ch: BroadcastChannel,
+): Promise<{ dek: CryptoKey; envelope: Envelope | null } | null> {
   return new Promise((resolve) => {
     let settled = false;
     const onMessage = (event: MessageEvent<BroadcastMessage>) => {
       if (event.data.type === 'unlocked' && !settled) {
         settled = true;
         ch.removeEventListener('message', onMessage);
-        resolve(event.data.dek);
+        resolve({ dek: event.data.dek, envelope: event.data.envelope });
       }
     };
     ch.addEventListener('message', onMessage);
@@ -234,7 +245,8 @@ async function settleWithEnvelope(ch: BroadcastChannel): Promise<void> {
   const shared = await requestSharedDek(ch);
   if (current.state !== 'loading') return;
   if (shared) {
-    dek = shared;
+    dek = shared.dek;
+    dekEnvelope = shared.envelope;
     setSnapshot({ state: 'unlocked', error: null });
     armAutoLock();
     return;
@@ -273,8 +285,13 @@ export async function journalSetup(passphrase: string): Promise<string | null> {
   const result = await createEnvelopesWithRecovery(passphrase);
   await writeEnvelopes(result.passphraseEnvelope, result.recoveryEnvelope);
   dek = result.dek;
+  dekEnvelope = result.passphraseEnvelope;
   setSnapshot({ state: 'unlocked', error: null });
-  getChannel().postMessage({ type: 'unlocked', dek: result.dek } satisfies BroadcastMessage);
+  getChannel().postMessage({
+    type: 'unlocked',
+    dek: result.dek,
+    envelope: result.passphraseEnvelope,
+  } satisfies BroadcastMessage);
   armAutoLock();
   if (readJournalPersistPref()) await persistDek(result.dek);
   return result.recoveryKey;
@@ -292,8 +309,13 @@ export async function debugCompetingSetup(passphrase: string): Promise<void> {
   const result = await createEnvelopesWithRecovery(passphrase);
   await writeEnvelopes(result.passphraseEnvelope, result.recoveryEnvelope);
   dek = result.dek;
+  dekEnvelope = result.passphraseEnvelope;
   setSnapshot({ state: 'unlocked', error: null });
-  getChannel().postMessage({ type: 'unlocked', dek: result.dek } satisfies BroadcastMessage);
+  getChannel().postMessage({
+    type: 'unlocked',
+    dek: result.dek,
+    envelope: result.passphraseEnvelope,
+  } satisfies BroadcastMessage);
   armAutoLock();
 }
 
@@ -304,8 +326,13 @@ export async function journalUnlock(passphrase: string): Promise<void> {
   try {
     const opened = await openEnvelope(envelope, passphrase);
     dek = opened;
+    dekEnvelope = envelope;
     setSnapshot({ state: 'unlocked', error: null });
-    getChannel().postMessage({ type: 'unlocked', dek: opened } satisfies BroadcastMessage);
+    getChannel().postMessage({
+      type: 'unlocked',
+      dek: opened,
+      envelope,
+    } satisfies BroadcastMessage);
     armAutoLock();
     if (readJournalPersistPref()) await persistDek(opened);
   } catch (error) {
@@ -329,8 +356,16 @@ export async function journalUnlockWithRecovery(recoveryKey: string): Promise<vo
   try {
     const opened = await openEnvelopeWithRecovery(recoveryEnvelope, recoveryKey);
     dek = opened;
+    // The passphrase wrap, not `recoveryEnvelope` above — it is the identity
+    // `recoverOrphanedEntries` compares against (both wraps enclose the same
+    // DEK, but the recovery wrap is a separate envelope, issue #1143).
+    dekEnvelope = await readEnvelope();
     setSnapshot({ state: 'unlocked', error: null });
-    getChannel().postMessage({ type: 'unlocked', dek: opened } satisfies BroadcastMessage);
+    getChannel().postMessage({
+      type: 'unlocked',
+      dek: opened,
+      envelope: dekEnvelope,
+    } satisfies BroadcastMessage);
     armAutoLock();
     if (readJournalPersistPref()) await persistDek(opened);
   } catch (error) {
@@ -351,6 +386,9 @@ export async function journalRewrapPassphrase(
   if (!recoveryEnvelope) throw new WrongPassphraseError();
   const newEnvelope = await rewrapPassphrase(recoveryEnvelope, recoveryKey, newPassphrase);
   await writeEnvelope(newEnvelope);
+  // Otherwise the provenance would falsely "go stale" after a passphrase
+  // change and `recoverOrphanedEntries` would refuse for no reason (#1143).
+  dekEnvelope = newEnvelope;
 }
 
 /** Re-issues the recovery key (issue #391) — only while `unlocked` (AC "gesperrt
@@ -389,6 +427,7 @@ export async function journalRecoverOrphaned(
 
 export async function journalLock(): Promise<void> {
   dek = null;
+  dekEnvelope = null;
   disarmAutoLock();
   await clearPersistedDek();
   setSnapshot({ state: 'locked', error: null });
@@ -404,6 +443,12 @@ export function journalLockSnapshot(): Snapshot {
  * variable above. `null` whenever the journal is not `unlocked`. */
 export function journalDek(): CryptoKey | null {
   return dek;
+}
+
+/** Which envelope `journalDek()` was opened from (issue #1143) — `null` when
+ * unknown, e.g. a persisted DEK restored without a re-unlock in this tab. */
+export function journalDekEnvelope(): Envelope | null {
+  return dekEnvelope;
 }
 
 function subscribe(onStoreChange: () => void) {

@@ -218,7 +218,7 @@ describe('lock-store', () => {
 
       await reachUnlocked();
 
-      expect(received).toEqual([{ type: 'unlocked', dek: fakeDek }]);
+      expect(received).toEqual([{ type: 'unlocked', dek: fakeDek, envelope: { fake: 'envelope' } }]);
     });
 
     it('folgt einem Lock, das ein anderer Tab meldet', async () => {
