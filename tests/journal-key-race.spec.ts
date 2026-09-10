@@ -267,6 +267,39 @@ test('AK7: Bergung offline geschrieben erreicht online die Datenbank', async ({ 
   }
 });
 
+test('Bergung vor dem Reload wirft den Stash nicht weg (#1143)', async ({ page, browser }) => {
+  await raceUntilDisplaced(page, browser);
+
+  // No reload yet — A is still the DEK in memory, B is the now-current local
+  // envelope. "Readable under A" must not count as proof of safety under B:
+  // the recovery has to refuse, not silently report success.
+  const recoveredBeforeReload = await page.evaluate(
+    (p) => window.__starship.journalRecoverOrphaned(p, false),
+    PASSPHRASE_A,
+  );
+  expect(recoveredBeforeReload).toBe(0);
+
+  // The line that is red before the fix: the bug deletes the stash
+  // unconditionally, even though nothing was actually recovered under the
+  // stale DEK — after that, TEXT_A would be gone for good once B takes over.
+  expect(await page.evaluate(() => window.__starship.debugJournalKeyStash())).toHaveLength(1);
+
+  await page.reload();
+  await page.locator('.journal-gate[data-state="locked"]').waitFor();
+  await page.evaluate((p) => window.__starship.journalUnlock(p), PASSPHRASE_B);
+  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
+
+  await expect(page.locator('.journal-orphaned-key')).toBeVisible();
+  await page.getByLabel('Damalige Passphrase').fill(PASSPHRASE_A);
+  await page.getByRole('button', { name: 'Bergen', exact: true }).click();
+  await expect(page.locator('.journal-orphaned-key__message')).toHaveText('1 Eintrag geborgen.');
+
+  const texts = await entryTexts(page, ENTRY_DATE);
+  expect(texts).toContain(TEXT_A);
+  expect(texts).toContain(TEXT_B);
+  expect(await entryCountInDb(ENTRY_DATE)).toBe(2); // recovered, not duplicated.
+});
+
 test.describe('Journal-Setup erst nach vollständig geprüftem Konto (#1135)', () => {
   const PASSPHRASE = '1135 vollstaendigkeit passphrase';
 

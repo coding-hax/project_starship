@@ -13,7 +13,7 @@ import { db, type JournalKeyStashEntry } from '@/local/dexie';
  * push, echoed back unchanged, a "foreign" envelope purely because the server
  * happened to re-serialize its keys in a different order, and stash it wrongly.
  */
-function sameJson(a: unknown, b: unknown): boolean {
+export function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b || a === null || b === null) return false;
   if (Array.isArray(a) || Array.isArray(b)) {

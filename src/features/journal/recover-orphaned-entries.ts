@@ -10,8 +10,9 @@ import {
 } from '@/crypto/journal';
 import { db } from '@/local/dexie';
 import { mutate } from '@/local/outbox';
-import { deleteJournalKeyStash, listJournalKeyStash } from './journal-key-stash';
-import { journalDek } from './lock-store';
+import { deleteJournalKeyStash, listJournalKeyStash, sameJson } from './journal-key-stash';
+import { readEnvelope } from './journal-keys';
+import { journalDek, journalDekEnvelope } from './lock-store';
 
 /**
  * Recovers entries a displaced `journal_keys` envelope (issue #518) left
@@ -21,10 +22,12 @@ import { journalDek } from './lock-store';
  * can, re-encrypts it under the current DEK and writes it back through the normal
  * outbox (same row id — a plain content update, not a new row).
  *
- * Returns the number of entries recovered. `0` covers both "wrong secret" and
- * "nothing to recover" indistinguishably on purpose (Regel 9, same as
- * `journalUnlock`'s uniform `WrongPassphraseError` message) — the caller shows one
- * calm message either way, never one that would let a guess be narrowed down.
+ * Returns the number of entries recovered. `0` covers "wrong secret", "nothing
+ * to recover", and "the DEK in memory is itself stale" (issue #1143 — a pull can
+ * displace the envelope the DEK was opened from before the tab reloads)
+ * indistinguishably on purpose (Regel 9, same as `journalUnlock`'s uniform
+ * `WrongPassphraseError` message) — the caller shows one calm message either
+ * way, never one that would let a guess be narrowed down.
  */
 export async function recoverOrphanedEntries(
   secret: string,
@@ -32,6 +35,16 @@ export async function recoverOrphanedEntries(
 ): Promise<number> {
   const currentDek = journalDek();
   if (!currentDek) return 0;
+
+  // "Readable under the DEK in memory" only proves anything about the *current*
+  // account key if that DEK was itself opened from the currently valid envelope
+  // (issue #1143). A DEK left over from an envelope a pull already displaced
+  // reads its own stash just fine — that is not evidence the entries are safe
+  // under the new one. `null` (unknown provenance, e.g. a persisted DEK that
+  // never re-unlocked in this tab) is treated the same as "stale": refuse
+  // rather than risk discarding the stash on a false positive.
+  const dekIsCurrent = sameJson(journalDekEnvelope(), await readEnvelope());
+  if (!dekIsCurrent) return 0;
 
   const stash = await listJournalKeyStash();
   if (stash.length === 0) return 0;
@@ -96,6 +109,12 @@ export async function recoverOrphanedEntries(
       });
       recovered++;
     }
+
+    // Re-checked immediately before the delete, not just once up front: an
+    // envelope change mid-recovery (another pull displacing `currentDek` itself)
+    // means the rows just re-encrypted above may already be stale again, so the
+    // stash that could still recover them must not be thrown away (AC5).
+    if (!sameJson(journalDekEnvelope(), await readEnvelope())) continue;
 
     // This stash entry served its purpose (recovered or not — a right secret with
     // zero orphans means every entry it once protected is readable some other way
