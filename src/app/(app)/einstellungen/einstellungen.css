@@ -84,3 +84,50 @@
 .einstellungen__group-items > .section-card {
   margin-bottom: 0;
 }
+
+/* Dritte Desktop-Stufe (issue #1129, Nachfolger von #1117): die Gruppen aus
+   #653 weichen ab 1440px einem durchgehenden Feld über drei Bahnen — die
+   Gruppierung bleibt nur noch für Vorleser erhalten (AC2), nicht mehr fürs
+   Auge. `column-count` statt eines Grids mit fester Platzierung, damit eine
+   abgeschaltete Karte keine Lücke reißt (AC5, gleiches Muster wie
+   task-list.css/aufgaben-page.css aus #1118): der Fluss balanciert sich beim
+   nächsten Render von selbst neu aus. */
+@media (min-width: 1440px) {
+  .einstellungen__groups {
+    display: block;
+    column-count: 3;
+    column-gap: var(--space-6);
+  }
+
+  /* AC2: Überschrift bleibt im DOM und in der Vorlese-Reihenfolge, verschwindet
+     nur fürs Auge — das `.visually-hidden`-Rezept aus globals.css, hier
+     dupliziert statt als Klasse in der TSX gesetzt, damit die Gruppen
+     unterhalb von 1440px unverändert sichtbar bleiben (AC6). */
+  .einstellungen__group-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* `.einstellungen__group-items` ist oben ein Flex-Spalten-Container —
+     `columns` auf der Vorfahrin greift nur auf Block-Kinder durch, deshalb
+     hier `display: block` (gleiches Muster wie `task-list.css` in #1118).
+     Der wegfallende Flex-`gap` wird unten je Karte durch echten margin
+     ersetzt — bewusst ohne Ausnahme fürs letzte Kind einer Gruppe: die Karten
+     sollen als EIN Feld mit gleichmäßigem Abstand wirken, nicht mehr gruppenweise. */
+  .einstellungen__group-items {
+    display: block;
+  }
+
+  /* AC1: keine Karte reißt an einer Bahnengrenze auf. */
+  .einstellungen__group-items > .section-card {
+    margin-bottom: var(--space-3);
+    break-inside: avoid;
+  }
+}
