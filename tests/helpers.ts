@@ -630,11 +630,24 @@ declare global {
           rowId: string;
           op: string;
           payload: Record<string, unknown>;
+          createdAt: string;
+          seq: number;
         }>
       >;
       startSync: () => () => void;
       persistStatus: () => 'granted' | 'denied' | 'unsupported' | null;
       debugPatchOutbox: (id: string, patch: Record<string, unknown>) => Promise<number>;
+      // issue #1145: seeds outbox entries the way a pre-#1145 build would have left
+      // them — no `seq`, only `createdAt` order (see e2e-bridge.tsx's doc comment).
+      debugSeedLegacyOutbox: (
+        entries: Array<{
+          table: string;
+          rowId: string;
+          op: 'upsert' | 'delete' | 'restore';
+          payload: Record<string, unknown>;
+          createdAt: string;
+        }>,
+      ) => Promise<unknown>;
       debugPatchRecord: (
         table: string,
         id: string,
