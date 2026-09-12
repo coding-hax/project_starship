@@ -300,6 +300,14 @@ export interface NextOccurrence {
  * reached. The early stop is what keeps an unbounded horizon cheap: a real
  * calendar answers within a handful of days, and only a genuinely empty one
  * pays for the full scan.
+ *
+ * `seenIds` skips an id already collected (issue #1187) — a multi-day all-day
+ * event's `id` stays the same across every day of its `[startDate, endDate]`
+ * span (`allDayEventsForDay` re-surfaces the same row on each of those days),
+ * so without this it would otherwise claim one result slot per day instead of
+ * one for the whole span. A recurring series' instances don't collide here:
+ * each carries its own `${eventId}:${originalDate}` id (recurrence.ts), so
+ * two occurrences of a multi-day series both still count.
  */
 export function nextUpcomingOccurrences(
   occurrencesForDay: (day: string) => TimelineSource[],
@@ -308,16 +316,21 @@ export function nextUpcomingOccurrences(
 ): NextOccurrence[] {
   const todayKey = berlinNow(now).dateKey;
   const result: NextOccurrence[] = [];
+  const seenIds = new Set<string>();
 
   for (let offset = 0; offset < MAX_LOOKAHEAD_DAYS; offset++) {
     const dayKey = addDays(todayKey, offset);
     const occurrences = occurrencesForDay(dayKey);
 
     for (const item of allDayEventsForDay(occurrences, dayKey)) {
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
       result.push({ item, dayKey });
     }
     for (const item of agendaForDay(occurrences, dayKey)) {
+      if (seenIds.has(item.id)) continue;
       if (new Date(item.endsAt).getTime() > now.getTime()) {
+        seenIds.add(item.id);
         result.push({ item, dayKey });
       }
     }
@@ -375,10 +388,38 @@ function weekdayDateLabel(dateKey: string): string {
   return `${WEEKDAY_SHORT_UTC_FORMATTER.format(date)}, ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
 }
 
+/** "21.–23.07." within a month, "30.07.–02.08." across one (issue #1187,
+ *  AK2/AK6) — the rest row's span for a multi-day all-day event that hasn't
+ *  started yet. No year (Nicht-Ziele): the start's own day.month is dropped
+ *  once it shares the end's month, since repeating it would just be noise the
+ *  end date already carries. */
+function multiDaySpanLabel(startDateKey: string, endDateKey: string): string {
+  const start = parseDateKey(startDateKey);
+  const end = parseDateKey(endDateKey);
+  const sameMonth =
+    start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
+  const startLabel = sameMonth
+    ? `${String(start.getUTCDate()).padStart(2, '0')}.`
+    : DAY_MONTH_UTC_FORMATTER.format(start);
+  return `${startLabel}–${DAY_MONTH_UTC_FORMATTER.format(end)}`;
+}
+
 export interface NextTimelineItem {
   allDay: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  /** Only present for an all-day item — a multi-day span (`startDate !==
+   *  endDate`) needs its own line shape (issue #1187), optional so the many
+   *  scheduled-event call sites/tests don't have to carry two more `null`s. */
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+/** True once `item` is all-day *and* actually spans more than one calendar
+ *  day (issue #1187) — a same-day all-day item (`startDate === endDate`, the
+ *  common case) keeps the existing single-day formatting untouched. */
+function isMultiDayAllDay(item: NextTimelineItem): item is NextTimelineItem & { startDate: string; endDate: string } {
+  return item.allDay && !!item.startDate && !!item.endDate && item.startDate !== item.endDate;
 }
 
 /**
@@ -391,12 +432,24 @@ export interface NextTimelineItem {
  * an all-day event today, `HH:MM–HH:MM` once the event isn't today needs a
  * span to stand on its own (prefixed with `weekdayDateLabel`), "Ganztägig"
  * (same prefix) for an all-day event on another day.
+ *
+ * A multi-day all-day event (issue #1187, AK4) branches further: already
+ * running today (started today or earlier, still not over) reads "Heute · bis
+ * <weekday>, <date>." instead of the bare "Heute" that would otherwise hide
+ * how long it still runs; not yet started reads "<weekday>, <date>–<weekday>,
+ * <date> · Ganztägig" instead of the single-day's one date. A span that ends
+ * today falls through to the plain "Heute" branch above unchanged (AK5) — by
+ * then it reads exactly like a one-day all-day event, nothing left to span.
  */
 export function formatNextTimeline(now: Date, dayKey: string, item: NextTimelineItem): string | null {
   const todayKey = berlinNow(now).dateKey;
   const isToday = dayKey === todayKey;
 
   if (item.allDay) {
+    if (isMultiDayAllDay(item)) {
+      if (isToday && item.endDate > todayKey) return `Heute · bis ${weekdayDateLabel(item.endDate)}`;
+      if (!isToday) return `${weekdayDateLabel(item.startDate)}–${weekdayDateLabel(item.endDate)} · Ganztägig`;
+    }
     return isToday ? 'Heute' : `${weekdayDateLabel(dayKey)} · Ganztägig`;
   }
   if (isToday) return null;
@@ -413,12 +466,23 @@ export function formatNextTimeline(now: Date, dayKey: string, item: NextTimeline
  * dropped by mistake when the date was added. All-day rows swap the time for
  * "ganztägig"/"Ganztägig", capitalised only standing alone (German
  * capitalises the noun, not a trailing adjective-like continuation).
+ *
+ * A multi-day all-day event (issue #1187, AK2/AK3) drops the weekday/date
+ * prefix scheme entirely in favour of its own span, regardless of how many
+ * days out it is (`multiDaySpanLabel`) — already running today reads "bis
+ * <date>.", not yet started reads "<start>–<end>.". Ending today falls
+ * through to the plain today-branch above unchanged (AK5), same reasoning as
+ * `formatNextTimeline`.
  */
 export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineItem): string {
   const todayKey = berlinNow(now).dateKey;
   if (dayKey === todayKey) {
+    if (isMultiDayAllDay(item) && item.endDate > todayKey) {
+      return `bis ${DAY_MONTH_UTC_FORMATTER.format(parseDateKey(item.endDate))}`;
+    }
     return item.allDay ? 'Ganztägig' : formatEventTime(item.startsAt as string);
   }
+  if (isMultiDayAllDay(item)) return multiDaySpanLabel(item.startDate, item.endDate);
   const daysAhead = dateKeyDiff(todayKey, dayKey);
   const date = parseDateKey(dayKey);
   const weekday = WEEKDAY_SHORT_UTC_FORMATTER.format(date);
