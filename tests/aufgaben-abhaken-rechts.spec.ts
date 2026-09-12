@@ -183,10 +183,19 @@ test('AK5: der Abhak-Button bleibt vertikal zentriert, auch wenn der Titel zweiz
   // short row's height, pinned by `--task-card-height` (task-list.css).
   expect(longBox.height).toBeGreaterThan(shortBox.height + 10);
 
-  const checkboxBox = await longRow.locator('.task-list__checkbox-wrap').boundingBox();
-  if (!checkboxBox) throw new Error('checkbox-wrap has no bounding box');
-  const rowCenter = longBox.y + longBox.height / 2;
-  const checkboxCenter = checkboxBox.y + checkboxBox.height / 2;
+  // Row and checkbox-wrap are read together in one `evaluate()` call, not via
+  // two separate `boundingBox()` round trips: a freshly seeded row still
+  // plays its translateY enter animation (motion.css `list-enter`), and two
+  // measurements taken a few milliseconds apart would otherwise sample two
+  // different animation frames and report a spurious vertical offset that has
+  // nothing to do with actual centering.
+  const { rowRect, checkboxRect } = await longRow.evaluate((el) => {
+    const wrap = el.querySelector('.task-list__checkbox-wrap');
+    if (!wrap) throw new Error('checkbox-wrap not found');
+    return { rowRect: el.getBoundingClientRect(), checkboxRect: wrap.getBoundingClientRect() };
+  });
+  const rowCenter = rowRect.y + rowRect.height / 2;
+  const checkboxCenter = checkboxRect.y + checkboxRect.height / 2;
   expect(Math.abs(rowCenter - checkboxCenter)).toBeLessThanOrEqual(2);
 });
 
