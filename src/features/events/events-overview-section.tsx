@@ -20,15 +20,11 @@ import { useEventExceptions } from './use-event-exceptions';
 import { EVENT_CATEGORIES, useEvents } from './use-events';
 import { useSubscribedEvents } from './use-ics-subscriptions';
 
-/** "in 40 Min · Arbeit", the countdown alone without a category (issue #974,
- *  AK2), or just the category once there's no countdown to show for an
- *  all-day event (issue #1091, AK4) — `null` when there's neither. */
-function nextMeta(now: Date, occurrence: NextOccurrence): string | null {
-  const categoryLabel =
-    EVENT_CATEGORIES.find((c) => c.value === occurrence.item.category)?.label ?? null;
-  if (occurrence.item.allDay) return categoryLabel;
-  const countdown = formatCountdown(now, occurrence.dayKey, occurrence.item.startsAt as string);
-  return categoryLabel ? `${countdown} · ${categoryLabel}` : countdown;
+/** The event's category label, or `null` when it has none — the meta line's
+ *  only content now that the countdown moved into its own element above the
+ *  start time (issue #1183, AK2; carried both together since issue #974). */
+function nextMeta(occurrence: NextOccurrence): string | null {
+  return EVENT_CATEGORIES.find((c) => c.value === occurrence.item.category)?.label ?? null;
 }
 
 /**
@@ -52,14 +48,16 @@ function nextMeta(now: Date, occurrence: NextOccurrence): string | null {
  * inside both the next-event card and the empty state, so a visible title
  * stands in the card head whether or not there is a next event.
  *
- * Row layout (issue #974, T3 von #971): the start time carries the row, large
- * and in the event's category colour, instead of a leading countdown line and
- * a trailing time-range line — the countdown/day-word moves into a muted meta
- * line next to the title, alongside the category. An all-day event has no
- * start time to anchor that big number on, so it's left out for those.
- * `formatNextTimeline` (issue #1091, AK4/AK5) adds a further line once the
- * event isn't today, or is all-day — carrying the date and/or the full time
- * span that the big number and the countdown alone no longer spell out.
+ * Row layout (issue #974, T3 von #971; countdown repositioned issue #1183,
+ * AK1/AK2): the start time carries the row, large and in the event's category
+ * colour, with the countdown in its own muted line directly above it,
+ * left-aligned to the same edge — the meta line next to the title now carries
+ * only the category. An all-day event has no start time to anchor either the
+ * big number or the countdown on, so both are left out for those; its meta
+ * line is just the category, same as before. `formatNextTimeline` (issue
+ * #1091, AK4/AK5) adds a further line once the event isn't today, or is
+ * all-day — carrying the date and/or the full time span that the big number
+ * and the countdown alone don't spell out.
  *
  * Ab 1440px (issue #1121) tritt an die Stelle dieser "Nächster Termin"-Karte
  * ein siebenspaltiges Wochenraster Mo–So (`weekOverview`, event-time.ts) —
@@ -122,8 +120,10 @@ export function EventsOverviewSection() {
   }
 
   const [next, ...rest] = nextUpcomingOccurrences(occurrencesForDay, now, 4);
-  const nextMetaText = next ? nextMeta(now, next) : null;
+  const nextMetaText = next ? nextMeta(next) : null;
   const nextTimeline = next ? formatNextTimeline(now, next.dayKey, next.item) : null;
+  const nextCountdown =
+    next && !next.item.allDay ? formatCountdown(now, next.dayKey, next.item.startsAt as string) : null;
 
   return (
     <OverviewBlock section="kalender">
@@ -132,12 +132,15 @@ export function EventsOverviewSection() {
           <OverviewCardHead title="Nächster Termin" href="/kalender" moreLabel="Kalender" />
           <div className="events-overview__next-row">
             {!next.item.allDay && (
-              <p
-                className="events-overview__next-time"
-                style={{ '--cat-color': categoryEdgeVar(next.item.category) } as CSSProperties}
-              >
-                {formatEventTime(next.item.startsAt as string)}
-              </p>
+              <div className="events-overview__next-time-col">
+                <p className="events-overview__next-countdown">{nextCountdown}</p>
+                <p
+                  className="events-overview__next-time"
+                  style={{ '--cat-color': categoryEdgeVar(next.item.category) } as CSSProperties}
+                >
+                  {formatEventTime(next.item.startsAt as string)}
+                </p>
+              </div>
             )}
             <div className="events-overview__next-body">
               <p className="events-overview__next-title">{next.item.title}</p>

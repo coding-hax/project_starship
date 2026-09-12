@@ -852,7 +852,7 @@ test('AK1: die Startzeit trägt die Zeile groß in --font-display, Titel und ein
   expect(bodyBox!.x).toBeGreaterThan(timeBox!.x + timeBox!.width - 1);
 });
 
-test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitraum entfällt (issue #974)', async ({
+test('AK1 (issue #1183): der Countdown steht als eigenes Element linksbündig über der Startzeit, gedämpft wie die Metazeile', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -867,12 +867,50 @@ test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitr
   });
 
   const next = page.locator('.events-overview__next');
-  await expect(next.locator('.events-overview__next-meta')).toHaveText('in 40 Min · Arbeit');
+  const countdown = next.locator('.events-overview__next-countdown');
+  const time = next.locator('.events-overview__next-time');
+  const meta = next.locator('.events-overview__next-meta');
+  await expect(countdown).toHaveText('in 40 Min');
+
+  const [countdownBox, timeBox] = await Promise.all([countdown.boundingBox(), time.boundingBox()]);
+  expect(Math.abs(countdownBox!.x - timeBox!.x)).toBeLessThanOrEqual(1);
+  expect(countdownBox!.y + countdownBox!.height).toBeLessThanOrEqual(timeBox!.y + 1);
+
+  const [countdownStyle, metaStyle] = await Promise.all([
+    countdown.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    }),
+    meta.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    }),
+  ]);
+  expect(countdownStyle).toEqual(metaStyle);
+});
+
+test('AK2 (issue #1183): die Metazeile zeigt nur noch die Kategorie, der Countdown steht über der Startzeit', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveText('Arbeit');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 40 Min');
   // Zeitraum "12:40–13:10" UTC = "14:40–15:10" Berlin — die Endzeit steht nirgends mehr.
   await expect(next).not.toContainText('15:10');
 });
 
-test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes Trennzeichen (issue #974)', async ({
+test('AK2 (issue #1183): ohne Kategorie wird die Metazeile gar nicht gerendert, der Countdown bleibt', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -886,7 +924,9 @@ test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 40 Min');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 40 Min');
 });
 
 test('AK3: die linke Kategorie-Kante entfällt, die Uhrzeit trägt jetzt die Kategoriefarbe (issue #974)', async ({
@@ -1174,7 +1214,7 @@ test('AK7 (issue #1091): der Leerzustand greift erst, wenn im 366-Tage-Fenster g
   await expect(page.locator('.events-overview__next')).toHaveCount(0);
 });
 
-test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974, vormals #559 AC4)', async ({
+test('AK6: der Countdown über der Startzeit aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974/#1183, vormals #559 AC4)', async ({
   page,
 }) => {
   // Must be installed before this goto — useNow's setInterval is registered on
@@ -1194,13 +1234,13 @@ test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne d
     category: null,
   });
 
-  const meta = page.locator('.events-overview__next-meta');
-  await expect(meta).toHaveText('in 40 Min');
+  const countdown = page.locator('.events-overview__next-countdown');
+  await expect(countdown).toHaveText('in 40 Min');
 
   await freezeClock(page);
   await page.clock.fastForward(10 * 60 * 1000);
 
-  await expect(meta).toHaveText('in 30 Min');
+  await expect(countdown).toHaveText('in 30 Min');
 });
 
 test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #974, vormals #559 AC5)', async ({
@@ -1415,7 +1455,221 @@ test('AK4 (issue #1091): ein mehrtägiger ganztägiger Termin, der heute schon l
 
   const next = page.locator('.events-overview__next');
   await expect(next).toContainText('Urlaub');
+  // "bis 20.07." statt nur "Heute" — der Termin läuft noch 2 weitere Tage (issue #1187 AK4).
+  await expect(next.locator('.events-overview__next-range')).toHaveText('Heute · bis Mo, 20.07.');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1187: ein mehrtägiger ganztägiger Termin steht einmal mit Spanne    */
+/* statt je Tag in einer eigenen Zeile.                                      */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (issue #1187): ein mehrtägiger Termin erscheint einmal statt je Tag, die frei werdenden Plätze füllen die nächsten Termine auf', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-21',
+    endDate: '2026-07-23',
+    category: null,
+  });
+  for (const [index, day] of ['2026-07-24', '2026-07-25', '2026-07-26'].entries()) {
+    await seedEvent(page, {
+      title: `Termin ${index + 1}`,
+      allDay: false,
+      startsAt: `${day}T08:00:00.000Z`,
+      endsAt: `${day}T09:00:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  const next = page.locator('.events-overview__next');
+  const restItems = page.locator('.events-overview__rest-item');
+  await expect(next).toContainText('Urlaub');
+  await expect(restItems).toHaveCount(3);
+  await expect(restItems.nth(0)).toContainText('Termin 1');
+  await expect(restItems.nth(1)).toContainText('Termin 2');
+  await expect(restItems.nth(2)).toContainText('Termin 3');
+});
+
+test('AK2 (issue #1187): eine Folgezeile zeigt bei einem mehrtägigen Termin die Spanne als Datum, ohne Wochentag und ohne „ganztägig"', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z',
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Umzug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-21',
+    endDate: '2026-07-23',
+    category: null,
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Umzug' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('21.–23.07.');
+});
+
+test('AK2 (issue #1187): die Spanne trägt beide Monate über die Monatsgrenze, unabhängig vom Abstand zu heute — auch ab dem 7. Tag', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z',
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Städtereise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: null,
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Städtereise' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('30.07.–02.08.');
+});
+
+test('AK3 (issue #1187): eine Folgezeile zeigt „bis <Datum>" für einen mehrtägigen Termin, der schon läuft', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // Zuerst gesät, damit "Feiertag" (nächster Termin) vor "Urlaub" (Folgezeile)
+  // steht — beide sind ganztägig heute, die Reihenfolge folgt der Seed-Reihenfolge
+  // (uuidv7-Zeilen-Ids, aufsteigend nach Erzeugungszeit).
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-18',
+    endDate: '2026-07-18',
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-16',
+    endDate: '2026-07-20',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Feiertag');
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Urlaub' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('bis 20.07.');
+});
+
+test('AK5 (issue #1187): endet ein mehrtägiger Termin heute, bleibt die Darstellung wie bei einem eintägigen Termin', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Umzug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-16',
+    endDate: '2026-07-18',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Umzug');
   await expect(next.locator('.events-overview__next-range')).toHaveText('Heute');
+});
+
+test('AK6 (issue #1187): bei 375×812 und Dark Mode bricht eine Folgezeile mit Monatsgrenzen-Spanne und langem Titel nicht um und läuft nicht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z', // morgen — wird "der nächste Termin".
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: 'arbeit',
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Ein sehr langer Terminname' });
+  const time = restItem.locator('.events-overview__rest-time');
+  const title = restItem.locator('.events-overview__rest-title');
+  await expect(time).toHaveText('30.07.–02.08.');
+
+  const [timeFits, titleTruncates] = await Promise.all([
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+  ]);
+  expect(timeFits, 'Zeitspanne bricht nicht um, läuft nicht über').toBe(true);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
+});
+
+test('AK6 (issue #1187): bei 375×812 und Dark Mode läuft der große Block mit Spanne über zwei Wochentage nicht waagerecht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Städtereise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const range = next.locator('.events-overview__next-range');
+  await expect(range).toHaveText('Do, 30.07.–So, 02.08. · Ganztägig');
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
 });
 
 test('AK5 (issue #1091): der Countdown zeigt "Morgen" für einen Termin am nächsten Tag', async ({ page }) => {
@@ -1430,10 +1684,12 @@ test('AK5 (issue #1091): der Countdown zeigt "Morgen" für einen Termin am näch
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('Morgen');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('Morgen');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
 });
 
-test('AK5 (issue #1091): der Countdown zeigt "in N Tagen", die Zeitzeile nennt zusätzlich Wochentag, Datum und Zeitspanne', async ({
+test('AK5 (issue #1091/#1183): der Countdown zeigt "in N T", die Zeitzeile nennt zusätzlich Wochentag, Datum und Zeitspanne', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -1447,15 +1703,64 @@ test('AK5 (issue #1091): der Countdown zeigt "in N Tagen", die Zeitzeile nennt z
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 4 Tagen');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 4 T');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
   await expect(page.locator('.events-overview__next-range')).toHaveText('Mi, 22.07. · 10:00–11:00');
+});
+
+test('AK5 (issue #1183): die linke Kante des Titels hängt nicht vom Countdown-Text ab, keine Überlappung ("Jetzt" / "in 59 Min" / "in 14 T")', async ({
+  page,
+}) => {
+  const cases = [
+    // NOW selbst -> "Jetzt".
+    { startsAt: '2026-07-18T12:00:00.000Z', endsAt: '2026-07-18T12:30:00.000Z', expectedCountdown: 'Jetzt' },
+    // +59 Min -> "in 59 Min".
+    { startsAt: '2026-07-18T12:59:00.000Z', endsAt: '2026-07-18T13:29:00.000Z', expectedCountdown: 'in 59 Min' },
+    // +14 Tage (Berlin-Kalendertag) -> "in 14 T".
+    { startsAt: '2026-08-01T08:00:00.000Z', endsAt: '2026-08-01T09:00:00.000Z', expectedCountdown: 'in 14 T' },
+  ];
+
+  const titleXs: number[] = [];
+  for (const [index, { startsAt, endsAt, expectedCountdown }] of cases.entries()) {
+    await page.goto('/uebersicht');
+    const id = await seedEvent(page, {
+      title: `Termin ${index}`,
+      allDay: false,
+      startsAt,
+      endsAt,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+
+    const next = page.locator('.events-overview__next');
+    const title = next.locator('.events-overview__next-title');
+    const countdown = next.locator('.events-overview__next-countdown');
+    await expect(countdown).toHaveText(expectedCountdown);
+
+    const [titleBox, countdownBox] = await Promise.all([title.boundingBox(), countdown.boundingBox()]);
+    titleXs.push(titleBox!.x);
+    const overlaps =
+      countdownBox!.x < titleBox!.x + titleBox!.width &&
+      countdownBox!.x + countdownBox!.width > titleBox!.x &&
+      countdownBox!.y < titleBox!.y + titleBox!.height &&
+      countdownBox!.y + countdownBox!.height > titleBox!.y;
+    expect(overlaps, `Countdown "${expectedCountdown}" überlappt den Titel nicht`).toBe(false);
+
+    await page.evaluate((rowId) => window.__starship.mutate({ table: 'events', rowId, op: 'delete' }), id);
+  }
+
+  expect(Math.abs(titleXs[0] - titleXs[1])).toBeLessThanOrEqual(1);
+  expect(Math.abs(titleXs[1] - titleXs[2])).toBeLessThanOrEqual(1);
 });
 
 test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeitspalte', async ({ page }) => {
   await page.goto('/uebersicht');
   // 19.07. (So, morgen) wird "der nächste Termin"; 20.07. (Mo) und 24.07. (Fr)
-  // liegen noch innerhalb der nächsten 6 Tage (Wochentag), 25.07. (Sa) ist der
-  // 7. Tag (Datum), 26.07. (So) ist der 5. Folgetermin und fällt weg.
+  // liegen noch innerhalb der nächsten 6 Tage (nur Wochentag), 25.07. (Sa) ist
+  // der 7. Tag (Wochentag + Datum, issue #1182), 26.07. (So) ist der 5.
+  // Folgetermin und fällt weg.
   const days = ['2026-07-19', '2026-07-20', '2026-07-24', '2026-07-25', '2026-07-26'];
   for (const [index, day] of days.entries()) {
     await seedEvent(page, {
@@ -1473,8 +1778,51 @@ test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeits
   await expect(restItems).toHaveCount(3);
   await expect(restItems.nth(0).locator('.events-overview__rest-time')).toHaveText('Mo 10:00');
   await expect(restItems.nth(1).locator('.events-overview__rest-time')).toHaveText('Fr 10:00');
-  await expect(restItems.nth(2).locator('.events-overview__rest-time')).toHaveText('25.07. 10:00');
+  await expect(restItems.nth(2).locator('.events-overview__rest-time')).toHaveText('Sa 25.07. 10:00');
   await expect(page.locator('.events-overview__next')).toContainText('Termin 1');
+});
+
+test('AK5 (issue #1182): bei 375×812 und Dark Mode bricht eine Folgezeile am 7. Tag mit langem Titel nicht um und läuft nicht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Kurztermin',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z', // morgen — wird "der nächste Termin".
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: false,
+    startsAt: '2026-07-25T08:00:00.000Z', // 7. Tag ab NOW — Wochentag + Datum in der Zeitspalte.
+    endsAt: '2026-07-25T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').first();
+  const time = restItem.locator('.events-overview__rest-time');
+  const title = restItem.locator('.events-overview__rest-title');
+  await expect(time).toHaveText('Sa 25.07. 10:00');
+
+  const [timeFits, titleTruncates] = await Promise.all([
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+  ]);
+  expect(timeFits, 'Zeitzeile mit Wochentag und Datum bricht nicht um, läuft nicht über').toBe(true);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
 });
 
 test('AK8 (issue #1091): bei 375×812 und Dark Mode bricht ein langer Titel plus Datumsangabe nicht um und läuft nicht über', async ({

@@ -300,6 +300,14 @@ export interface NextOccurrence {
  * reached. The early stop is what keeps an unbounded horizon cheap: a real
  * calendar answers within a handful of days, and only a genuinely empty one
  * pays for the full scan.
+ *
+ * `seenIds` skips an id already collected (issue #1187) — a multi-day all-day
+ * event's `id` stays the same across every day of its `[startDate, endDate]`
+ * span (`allDayEventsForDay` re-surfaces the same row on each of those days),
+ * so without this it would otherwise claim one result slot per day instead of
+ * one for the whole span. A recurring series' instances don't collide here:
+ * each carries its own `${eventId}:${originalDate}` id (recurrence.ts), so
+ * two occurrences of a multi-day series both still count.
  */
 export function nextUpcomingOccurrences(
   occurrencesForDay: (day: string) => TimelineSource[],
@@ -308,16 +316,21 @@ export function nextUpcomingOccurrences(
 ): NextOccurrence[] {
   const todayKey = berlinNow(now).dateKey;
   const result: NextOccurrence[] = [];
+  const seenIds = new Set<string>();
 
   for (let offset = 0; offset < MAX_LOOKAHEAD_DAYS; offset++) {
     const dayKey = addDays(todayKey, offset);
     const occurrences = occurrencesForDay(dayKey);
 
     for (const item of allDayEventsForDay(occurrences, dayKey)) {
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
       result.push({ item, dayKey });
     }
     for (const item of agendaForDay(occurrences, dayKey)) {
+      if (seenIds.has(item.id)) continue;
       if (new Date(item.endsAt).getTime() > now.getTime()) {
+        seenIds.add(item.id);
         result.push({ item, dayKey });
       }
     }
@@ -343,23 +356,28 @@ export function formatEventTime(instant: string): string {
 }
 
 /**
- * "in 40 Min" / "in 2 Std 5 Min" / "Jetzt" while `dayKey` is today (issue
- * #559's original countdown, unchanged) — "Morgen" the very next Berlin day,
- * "in N Tagen" beyond that (issue #1091, AK5), since a minute-precise
- * countdown stops being useful once the event isn't today.
+ * "in 6 T" / "in 2 W" / "Morgen" / "in 2 Std" / "in 40 Min" / "Jetzt" —
+ * compact wording (issue #1183, AK3/AK4) short enough to sit in its own line
+ * above the big start time instead of the former trailing metazeile spot
+ * (issue #1091's "in 40 Min · Arbeit"). Same-day rounds to full hours from 60
+ * minutes on (`Math.round(Minuten / 60)`, so 89 Min stays "in 1 Std" but 90
+ * Min already reads "in 2 Std") rather than spelling out the remainder —
+ * the minute-precise start time already stands right underneath. Other days
+ * round to full weeks from 15 days on (`Math.round(Tage / 7)`), "Morgen" for
+ * the very next Berlin day, otherwise the day count itself.
  */
 export function formatCountdown(now: Date, dayKey: string, startsAt: string): string {
   const todayKey = berlinNow(now).dateKey;
   if (dayKey !== todayKey) {
     const daysAhead = dateKeyDiff(todayKey, dayKey);
-    return daysAhead === 1 ? 'Morgen' : `in ${daysAhead} Tagen`;
+    if (daysAhead === 1) return 'Morgen';
+    if (daysAhead <= 14) return `in ${daysAhead} T`;
+    return `in ${Math.round(daysAhead / 7)} W`;
   }
   const diffMinutes = Math.round((new Date(startsAt).getTime() - now.getTime()) / 60_000);
   if (diffMinutes <= 0) return 'Jetzt';
   if (diffMinutes < 60) return `in ${diffMinutes} Min`;
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
+  return `in ${Math.round(diffMinutes / 60)} Std`;
 }
 
 const DAY_MONTH_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
@@ -375,10 +393,38 @@ function weekdayDateLabel(dateKey: string): string {
   return `${WEEKDAY_SHORT_UTC_FORMATTER.format(date)}, ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
 }
 
+/** "21.–23.07." within a month, "30.07.–02.08." across one (issue #1187,
+ *  AK2/AK6) — the rest row's span for a multi-day all-day event that hasn't
+ *  started yet. No year (Nicht-Ziele): the start's own day.month is dropped
+ *  once it shares the end's month, since repeating it would just be noise the
+ *  end date already carries. */
+function multiDaySpanLabel(startDateKey: string, endDateKey: string): string {
+  const start = parseDateKey(startDateKey);
+  const end = parseDateKey(endDateKey);
+  const sameMonth =
+    start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
+  const startLabel = sameMonth
+    ? `${String(start.getUTCDate()).padStart(2, '0')}.`
+    : DAY_MONTH_UTC_FORMATTER.format(start);
+  return `${startLabel}–${DAY_MONTH_UTC_FORMATTER.format(end)}`;
+}
+
 export interface NextTimelineItem {
   allDay: boolean;
   startsAt: string | null;
   endsAt: string | null;
+  /** Only present for an all-day item — a multi-day span (`startDate !==
+   *  endDate`) needs its own line shape (issue #1187), optional so the many
+   *  scheduled-event call sites/tests don't have to carry two more `null`s. */
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+/** True once `item` is all-day *and* actually spans more than one calendar
+ *  day (issue #1187) — a same-day all-day item (`startDate === endDate`, the
+ *  common case) keeps the existing single-day formatting untouched. */
+function isMultiDayAllDay(item: NextTimelineItem): item is NextTimelineItem & { startDate: string; endDate: string } {
+  return item.allDay && !!item.startDate && !!item.endDate && item.startDate !== item.endDate;
 }
 
 /**
@@ -391,12 +437,24 @@ export interface NextTimelineItem {
  * an all-day event today, `HH:MM–HH:MM` once the event isn't today needs a
  * span to stand on its own (prefixed with `weekdayDateLabel`), "Ganztägig"
  * (same prefix) for an all-day event on another day.
+ *
+ * A multi-day all-day event (issue #1187, AK4) branches further: already
+ * running today (started today or earlier, still not over) reads "Heute · bis
+ * <weekday>, <date>." instead of the bare "Heute" that would otherwise hide
+ * how long it still runs; not yet started reads "<weekday>, <date>–<weekday>,
+ * <date> · Ganztägig" instead of the single-day's one date. A span that ends
+ * today falls through to the plain "Heute" branch above unchanged (AK5) — by
+ * then it reads exactly like a one-day all-day event, nothing left to span.
  */
 export function formatNextTimeline(now: Date, dayKey: string, item: NextTimelineItem): string | null {
   const todayKey = berlinNow(now).dateKey;
   const isToday = dayKey === todayKey;
 
   if (item.allDay) {
+    if (isMultiDayAllDay(item)) {
+      if (isToday && item.endDate > todayKey) return `Heute · bis ${weekdayDateLabel(item.endDate)}`;
+      if (!isToday) return `${weekdayDateLabel(item.startDate)}–${weekdayDateLabel(item.endDate)} · Ganztägig`;
+    }
     return isToday ? 'Heute' : `${weekdayDateLabel(dayKey)} · Ganztägig`;
   }
   if (isToday) return null;
@@ -405,29 +463,43 @@ export function formatNextTimeline(now: Date, dayKey: string, item: NextTimeline
 }
 
 /**
- * The overview's rest-row time column (issue #1091, AK6): bare `HH:MM` today,
- * weekday-prefixed within the next 6 days ("Mo 10:00"), date-prefixed from
- * the 7th day on ("14.09. 10:00") — a bare weekday alone reads ambiguous a
- * week or more out. All-day rows swap the time for "ganztägig"/"Ganztägig",
- * capitalised only standing alone (German capitalises the noun, not a
- * trailing adjective-like continuation).
+ * The overview's rest-row time column (issue #1091, AK6; date added on top of
+ * the weekday from the 7th day on, issue #1182): bare `HH:MM` today,
+ * weekday-prefixed within the next 6 days ("Mo 10:00"), weekday **and**
+ * date-prefixed from the 7th day on ("Sa 25.07. 10:00") — a bare date alone
+ * still reads ambiguous a week or more out, the weekday answered that but got
+ * dropped by mistake when the date was added. All-day rows swap the time for
+ * "ganztägig"/"Ganztägig", capitalised only standing alone (German
+ * capitalises the noun, not a trailing adjective-like continuation).
+ *
+ * A multi-day all-day event (issue #1187, AK2/AK3) drops the weekday/date
+ * prefix scheme entirely in favour of its own span, regardless of how many
+ * days out it is (`multiDaySpanLabel`) — already running today reads "bis
+ * <date>.", not yet started reads "<start>–<end>.". Ending today falls
+ * through to the plain today-branch above unchanged (AK5), same reasoning as
+ * `formatNextTimeline`.
  */
 export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineItem): string {
   const todayKey = berlinNow(now).dateKey;
   if (dayKey === todayKey) {
+    if (isMultiDayAllDay(item) && item.endDate > todayKey) {
+      return `bis ${DAY_MONTH_UTC_FORMATTER.format(parseDateKey(item.endDate))}`;
+    }
     return item.allDay ? 'Ganztägig' : formatEventTime(item.startsAt as string);
   }
+  if (isMultiDayAllDay(item)) return multiDaySpanLabel(item.startDate, item.endDate);
   const daysAhead = dateKeyDiff(todayKey, dayKey);
   const date = parseDateKey(dayKey);
-  const prefix =
-    daysAhead <= 6 ? WEEKDAY_SHORT_UTC_FORMATTER.format(date) : DAY_MONTH_UTC_FORMATTER.format(date);
+  const weekday = WEEKDAY_SHORT_UTC_FORMATTER.format(date);
+  const prefix = daysAhead <= 6 ? weekday : `${weekday} ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
   return item.allDay ? `${prefix} ganztägig` : `${prefix} ${formatEventTime(item.startsAt as string)}`;
 }
 
 /**
  * "30 Min" / "1 Std" / "1 Std 30 Min" for an agenda row's second line (issue
- * #923, AK1) — same wording as `formatCountdown`, but from a fixed
- * `endsAt − startsAt` span instead of a countdown to now.
+ * #923, AK1) — a fixed `endsAt − startsAt` span, unlike `formatCountdown`'s
+ * countdown to now: it spells out the remainder rather than rounding to the
+ * nearest hour (issue #1183 dropped that form from the countdown, not here).
  */
 export function formatDuration(startsAt: string, endsAt: string): string {
   const minutes = Math.round((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000);

@@ -1014,6 +1014,131 @@ test('AK6 (#1037): bei 375px werden Label, Wert und Nenner keiner der vier Kache
 });
 
 /* -------------------------------------------------------------------------- */
+/* AK1–AK4 (issue #1185): der Nenner steht in jeder Kachel fest unter der     */
+/* Zahl, statt nur umzubrechen, wenn beide nicht nebeneinander passen         */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (#1185): der Nenner steht in jeder Kachel unter der Zahl, auch wenn beide nebeneinander passen würden', async ({
+  page,
+}) => {
+  // Zwei tägliche Routinen ohne Log ergeben "0 von 2" bei HEUTE — kurz genug,
+  // um bei der alten flex-wrap-Regel nebeneinander zu bleiben. Genau das darf
+  // den Umbruch nicht mehr steuern.
+  await seedHabit(page, { name: 'Stapel-Sonde A' });
+  await seedHabit(page, { name: 'Stapel-Sonde B' });
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+  for (let i = 0; i < count; i += 1) {
+    const tile = tiles.nth(i);
+    const [valueBox, denominatorBox] = await Promise.all([
+      tile.locator('.habit-tiles__value').evaluate((el) => el.getBoundingClientRect()),
+      tile.locator('.habit-tiles__denominator').evaluate((el) => el.getBoundingClientRect()),
+    ]);
+    expect(denominatorBox.top, `Kachel ${i}: Nenner unter Zahl`).toBeGreaterThanOrEqual(
+      valueBox.bottom - 1,
+    );
+  }
+});
+
+test('AK2 (#1185): Zahl und Nenner liegen horizontal mittig in der Kachel', async ({ page }) => {
+  const habitA = await seedHabit(page, { name: 'Mittig-Sonde' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+  for (let i = 0; i < count; i += 1) {
+    const tile = tiles.nth(i);
+    const [tileBox, valueBox, denominatorBox] = await Promise.all([
+      tile.evaluate((el) => el.getBoundingClientRect()),
+      tile.locator('.habit-tiles__value').evaluate((el) => el.getBoundingClientRect()),
+      tile.locator('.habit-tiles__denominator').evaluate((el) => el.getBoundingClientRect()),
+    ]);
+    const tileCenter = tileBox.left + tileBox.width / 2;
+    const valueCenter = valueBox.left + valueBox.width / 2;
+    const denominatorCenter = denominatorBox.left + denominatorBox.width / 2;
+    expect(Math.abs(valueCenter - tileCenter), `Kachel ${i}: Zahl mittig`).toBeLessThanOrEqual(1);
+    expect(Math.abs(denominatorCenter - tileCenter), `Kachel ${i}: Nenner mittig`).toBeLessThanOrEqual(
+      1,
+    );
+  }
+});
+
+test('AK3 (#1185): Zahlen, Nenner und Balken stehen je über alle vier Kacheln auf einer Linie', async ({
+  page,
+}) => {
+  const habitA = await seedHabit(page, { name: 'Linie-Sonde' });
+  await seedHabitLog(page, habitA, TODAY);
+  await page.goto('/routinen');
+
+  const values = page.locator('.habit-tiles__value');
+  const denominators = page.locator('.habit-tiles__denominator');
+  await expect(values).toHaveCount(4);
+  await expect(denominators).toHaveCount(4);
+
+  const [valueYs, denominatorYs] = await Promise.all([
+    values.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top)),
+    denominators.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top)),
+  ]);
+  for (const y of valueYs.slice(1)) {
+    expect(Math.abs(y - valueYs[0]), 'Zahlen auf einer Linie').toBeLessThanOrEqual(1);
+  }
+  for (const y of denominatorYs.slice(1)) {
+    expect(Math.abs(y - denominatorYs[0]), 'Nenner auf einer Linie').toBeLessThanOrEqual(1);
+  }
+
+  const bars = page.locator('.habit-tiles__bar');
+  await expect(bars).toHaveCount(2);
+  const barYs = await bars.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  expect(Math.abs(barYs[1] - barYs[0]), 'Balken auf einer Linie').toBeLessThanOrEqual(1);
+});
+
+test('AK4 (#1185): bei 375×812 wird Label, Zahl und Nenner keiner Kachel abgeschnitten, hell und dunkel', async ({
+  page,
+}) => {
+  // Breitester Nenner "von 14" (wie AK6 #1037) — der Härtefall bleibt
+  // derselbe, geprüft jetzt zusätzlich je Farbschema statt nur hell.
+  const habitA = await seedHabit(page, { name: 'Clip-Sonde A (1185)' });
+  await seedHabit(page, { name: 'Clip-Sonde B (1185)' });
+  await seedHabitLog(page, habitA, TODAY);
+  await seedHabitLog(page, habitA, '2026-07-14');
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+
+    for (let i = 0; i < count; i += 1) {
+      const tile = tiles.nth(i);
+      for (const selector of ['.habit-tiles__label', '.habit-tiles__value', '.habit-tiles__denominator']) {
+        const el = tile.locator(selector);
+        if ((await el.count()) === 0) continue;
+        const [scrollWidth, clientWidth] = await el.evaluate((node) => [node.scrollWidth, node.clientWidth]);
+        expect(
+          scrollWidth,
+          `${selector} in Kachel ${i} nicht abgeschnitten (${scheme})`,
+        ).toBeLessThanOrEqual(clientWidth + 1);
+      }
+    }
+
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth, `kein waagerechter Überlauf (${scheme})`).toBeLessThanOrEqual(
+      overflow.clientWidth,
+    );
+  }
+});
+
+/* -------------------------------------------------------------------------- */
 /* #1065: der Balken hält Abstand zur gerundeten Kachelecke                    */
 /* -------------------------------------------------------------------------- */
 
