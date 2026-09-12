@@ -59,10 +59,14 @@
 }
 
 .habit-tiles__value-row {
+  /* Fester Stapel statt breitenabhängigem Umbruch (issue #1185) — vorher
+     brach nur WOCHE ("18 von 28") auf zwei Zeilen um, die anderen drei
+     blieben einzeilig nebeneinander; das sah in der Kachelreihe uneinheitlich
+     aus. */
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
   gap: var(--space-1);
   margin: var(--space-1) 0 0;
 }
