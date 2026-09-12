@@ -343,23 +343,28 @@ export function formatEventTime(instant: string): string {
 }
 
 /**
- * "in 40 Min" / "in 2 Std 5 Min" / "Jetzt" while `dayKey` is today (issue
- * #559's original countdown, unchanged) — "Morgen" the very next Berlin day,
- * "in N Tagen" beyond that (issue #1091, AK5), since a minute-precise
- * countdown stops being useful once the event isn't today.
+ * "in 6 T" / "in 2 W" / "Morgen" / "in 2 Std" / "in 40 Min" / "Jetzt" —
+ * compact wording (issue #1183, AK3/AK4) short enough to sit in its own line
+ * above the big start time instead of the former trailing metazeile spot
+ * (issue #1091's "in 40 Min · Arbeit"). Same-day rounds to full hours from 60
+ * minutes on (`Math.round(Minuten / 60)`, so 89 Min stays "in 1 Std" but 90
+ * Min already reads "in 2 Std") rather than spelling out the remainder —
+ * the minute-precise start time already stands right underneath. Other days
+ * round to full weeks from 15 days on (`Math.round(Tage / 7)`), "Morgen" for
+ * the very next Berlin day, otherwise the day count itself.
  */
 export function formatCountdown(now: Date, dayKey: string, startsAt: string): string {
   const todayKey = berlinNow(now).dateKey;
   if (dayKey !== todayKey) {
     const daysAhead = dateKeyDiff(todayKey, dayKey);
-    return daysAhead === 1 ? 'Morgen' : `in ${daysAhead} Tagen`;
+    if (daysAhead === 1) return 'Morgen';
+    if (daysAhead <= 14) return `in ${daysAhead} T`;
+    return `in ${Math.round(daysAhead / 7)} W`;
   }
   const diffMinutes = Math.round((new Date(startsAt).getTime() - now.getTime()) / 60_000);
   if (diffMinutes <= 0) return 'Jetzt';
   if (diffMinutes < 60) return `in ${diffMinutes} Min`;
-  const hours = Math.floor(diffMinutes / 60);
-  const minutes = diffMinutes % 60;
-  return minutes === 0 ? `in ${hours} Std` : `in ${hours} Std ${minutes} Min`;
+  return `in ${Math.round(diffMinutes / 60)} Std`;
 }
 
 const DAY_MONTH_UTC_FORMATTER = new Intl.DateTimeFormat('de-DE', {
@@ -426,8 +431,9 @@ export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineI
 
 /**
  * "30 Min" / "1 Std" / "1 Std 30 Min" for an agenda row's second line (issue
- * #923, AK1) — same wording as `formatCountdown`, but from a fixed
- * `endsAt − startsAt` span instead of a countdown to now.
+ * #923, AK1) — a fixed `endsAt − startsAt` span, unlike `formatCountdown`'s
+ * countdown to now: it spells out the remainder rather than rounding to the
+ * nearest hour (issue #1183 dropped that form from the countdown, not here).
  */
 export function formatDuration(startsAt: string, endsAt: string): string {
   const minutes = Math.round((new Date(endsAt).getTime() - new Date(startsAt).getTime()) / 60_000);

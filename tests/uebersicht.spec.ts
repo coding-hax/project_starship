@@ -852,7 +852,7 @@ test('AK1: die Startzeit trägt die Zeile groß in --font-display, Titel und ein
   expect(bodyBox!.x).toBeGreaterThan(timeBox!.x + timeBox!.width - 1);
 });
 
-test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitraum entfällt (issue #974)', async ({
+test('AK1 (issue #1183): der Countdown steht als eigenes Element linksbündig über der Startzeit, gedämpft wie die Metazeile', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -867,12 +867,50 @@ test('AK2: die Metazeile zeigt Countdown und Kategorie in einer Zeile, der Zeitr
   });
 
   const next = page.locator('.events-overview__next');
-  await expect(next.locator('.events-overview__next-meta')).toHaveText('in 40 Min · Arbeit');
+  const countdown = next.locator('.events-overview__next-countdown');
+  const time = next.locator('.events-overview__next-time');
+  const meta = next.locator('.events-overview__next-meta');
+  await expect(countdown).toHaveText('in 40 Min');
+
+  const [countdownBox, timeBox] = await Promise.all([countdown.boundingBox(), time.boundingBox()]);
+  expect(Math.abs(countdownBox!.x - timeBox!.x)).toBeLessThanOrEqual(1);
+  expect(countdownBox!.y + countdownBox!.height).toBeLessThanOrEqual(timeBox!.y + 1);
+
+  const [countdownStyle, metaStyle] = await Promise.all([
+    countdown.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    }),
+    meta.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, fontSize: style.fontSize };
+    }),
+  ]);
+  expect(countdownStyle).toEqual(metaStyle);
+});
+
+test('AK2 (issue #1183): die Metazeile zeigt nur noch die Kategorie, der Countdown steht über der Startzeit', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Standup',
+    allDay: false,
+    startsAt: '2026-07-18T12:40:00.000Z',
+    endsAt: '2026-07-18T13:10:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveText('Arbeit');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 40 Min');
   // Zeitraum "12:40–13:10" UTC = "14:40–15:10" Berlin — die Endzeit steht nirgends mehr.
   await expect(next).not.toContainText('15:10');
 });
 
-test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes Trennzeichen (issue #974)', async ({
+test('AK2 (issue #1183): ohne Kategorie wird die Metazeile gar nicht gerendert, der Countdown bleibt', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -886,7 +924,9 @@ test('AK2: ohne Kategorie zeigt die Metazeile nur den Countdown, ohne baumelndes
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 40 Min');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 40 Min');
 });
 
 test('AK3: die linke Kategorie-Kante entfällt, die Uhrzeit trägt jetzt die Kategoriefarbe (issue #974)', async ({
@@ -1174,7 +1214,7 @@ test('AK7 (issue #1091): der Leerzustand greift erst, wenn im 366-Tage-Fenster g
   await expect(page.locator('.events-overview__next')).toHaveCount(0);
 });
 
-test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974, vormals #559 AC4)', async ({
+test('AK6: der Countdown über der Startzeit aktualisiert sich mit der Zeit, ohne dass die Seite neu lädt (issue #974/#1183, vormals #559 AC4)', async ({
   page,
 }) => {
   // Must be installed before this goto — useNow's setInterval is registered on
@@ -1194,13 +1234,13 @@ test('AK6: der Countdown in der Metazeile aktualisiert sich mit der Zeit, ohne d
     category: null,
   });
 
-  const meta = page.locator('.events-overview__next-meta');
-  await expect(meta).toHaveText('in 40 Min');
+  const countdown = page.locator('.events-overview__next-countdown');
+  await expect(countdown).toHaveText('in 40 Min');
 
   await freezeClock(page);
   await page.clock.fastForward(10 * 60 * 1000);
 
-  await expect(meta).toHaveText('in 30 Min');
+  await expect(countdown).toHaveText('in 30 Min');
 });
 
 test('die Übersicht-Sektion "Nächster Termin" funktioniert auf Mobile (375px) und Desktop (1280px), Dark Mode (issue #974, vormals #559 AC5)', async ({
@@ -1430,10 +1470,12 @@ test('AK5 (issue #1091): der Countdown zeigt "Morgen" für einen Termin am näch
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('Morgen');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('Morgen');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
 });
 
-test('AK5 (issue #1091): der Countdown zeigt "in N Tagen", die Zeitzeile nennt zusätzlich Wochentag, Datum und Zeitspanne', async ({
+test('AK5 (issue #1091/#1183): der Countdown zeigt "in N T", die Zeitzeile nennt zusätzlich Wochentag, Datum und Zeitspanne', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -1447,8 +1489,56 @@ test('AK5 (issue #1091): der Countdown zeigt "in N Tagen", die Zeitzeile nennt z
     category: null,
   });
 
-  await expect(page.locator('.events-overview__next-meta')).toHaveText('in 4 Tagen');
+  const next = page.locator('.events-overview__next');
+  await expect(next.locator('.events-overview__next-countdown')).toHaveText('in 4 T');
+  await expect(next.locator('.events-overview__next-meta')).toHaveCount(0);
   await expect(page.locator('.events-overview__next-range')).toHaveText('Mi, 22.07. · 10:00–11:00');
+});
+
+test('AK5 (issue #1183): die linke Kante des Titels hängt nicht vom Countdown-Text ab, keine Überlappung ("Jetzt" / "in 59 Min" / "in 14 T")', async ({
+  page,
+}) => {
+  const cases = [
+    // NOW selbst -> "Jetzt".
+    { startsAt: '2026-07-18T12:00:00.000Z', endsAt: '2026-07-18T12:30:00.000Z', expectedCountdown: 'Jetzt' },
+    // +59 Min -> "in 59 Min".
+    { startsAt: '2026-07-18T12:59:00.000Z', endsAt: '2026-07-18T13:29:00.000Z', expectedCountdown: 'in 59 Min' },
+    // +14 Tage (Berlin-Kalendertag) -> "in 14 T".
+    { startsAt: '2026-08-01T08:00:00.000Z', endsAt: '2026-08-01T09:00:00.000Z', expectedCountdown: 'in 14 T' },
+  ];
+
+  const titleXs: number[] = [];
+  for (const [index, { startsAt, endsAt, expectedCountdown }] of cases.entries()) {
+    await page.goto('/uebersicht');
+    const id = await seedEvent(page, {
+      title: `Termin ${index}`,
+      allDay: false,
+      startsAt,
+      endsAt,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+
+    const next = page.locator('.events-overview__next');
+    const title = next.locator('.events-overview__next-title');
+    const countdown = next.locator('.events-overview__next-countdown');
+    await expect(countdown).toHaveText(expectedCountdown);
+
+    const [titleBox, countdownBox] = await Promise.all([title.boundingBox(), countdown.boundingBox()]);
+    titleXs.push(titleBox!.x);
+    const overlaps =
+      countdownBox!.x < titleBox!.x + titleBox!.width &&
+      countdownBox!.x + countdownBox!.width > titleBox!.x &&
+      countdownBox!.y < titleBox!.y + titleBox!.height &&
+      countdownBox!.y + countdownBox!.height > titleBox!.y;
+    expect(overlaps, `Countdown "${expectedCountdown}" überlappt den Titel nicht`).toBe(false);
+
+    await page.evaluate((rowId) => window.__starship.mutate({ table: 'events', rowId, op: 'delete' }), id);
+  }
+
+  expect(Math.abs(titleXs[0] - titleXs[1])).toBeLessThanOrEqual(1);
+  expect(Math.abs(titleXs[1] - titleXs[2])).toBeLessThanOrEqual(1);
 });
 
 test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeitspalte', async ({ page }) => {
