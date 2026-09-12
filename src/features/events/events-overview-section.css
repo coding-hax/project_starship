@@ -1,8 +1,10 @@
 /**
  * Übersicht-Sektion „Nächster Termin" (issue #559, S8 von #473; Zeilen-Aufbau
- * issue #974, T3 von #971) — Kartenform wie streak-summary-card.css, damit
- * /uebersicht als ein System wirkt. Die Startzeit trägt die Zeile, Titel und
- * Metazeile folgen rechts daneben; der Rest des Tages folgt als dünne Zeilen.
+ * issue #974, T3 von #971; Countdown über der Startzeit issue #1183, AK1) —
+ * Kartenform wie streak-summary-card.css, damit /uebersicht als ein System
+ * wirkt. Countdown und Startzeit stapeln sich linksbündig in einer Spalte,
+ * Titel und Metazeile folgen rechts daneben; der Rest des Tages folgt als
+ * dünne Zeilen.
  */
 
 .events-overview__next,
@@ -30,8 +32,27 @@
   margin-top: var(--space-2);
 }
 
-.events-overview__next-time {
+.events-overview__next-time-col {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+}
+
+/* Gedämpft wie die bisherige Metazeile (issue #1183, AK1) — gleiche Behandlung
+   wie .events-overview__next-meta, nur eine Zeile höher: direkt über der
+   Startzeit statt daneben, linksbündig zu ihr durch die gemeinsame Spalte
+   (.events-overview__next-time-col, `align-items` default `stretch` reicht,
+   weil beide Zeilen linksbündigen Text ohne Einzug tragen). */
+.events-overview__next-countdown {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.events-overview__next-time {
   margin: 0;
   /* Kategoriefarbe abgedunkelt statt roh (issue #974, AK4): die Kategorie- und
      Swatch-Töne liegen im Hellmodus bei L 62–74%, gegen --surface (nahezu
