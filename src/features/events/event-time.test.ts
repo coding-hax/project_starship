@@ -1285,19 +1285,19 @@ describe('formatRestRowTime', () => {
     expect(formatRestRowTime(NOW, '2026-07-24', item)).toBe('Fr 10:00');
   });
 
-  it('switches to the date from the 7th day on (issue #1091 AK6)', () => {
+  it('adds the date after the weekday from the 7th day on (issue #1182)', () => {
     const item = {
       allDay: false,
       startsAt: iso(Date.UTC(2026, 6, 25, 8, 0)),
       endsAt: iso(Date.UTC(2026, 6, 25, 9, 0)),
     };
 
-    expect(formatRestRowTime(NOW, '2026-07-25', item)).toBe('25.07. 10:00');
+    expect(formatRestRowTime(NOW, '2026-07-25', item)).toBe('Sa 25.07. 10:00');
   });
 
-  it('prefixes the date, lower-case "ganztägig", from the 7th day on (issue #1091 AK6)', () => {
+  it('prefixes weekday and date, lower-case "ganztägig", from the 7th day on (issue #1182)', () => {
     expect(formatRestRowTime(NOW, '2026-07-25', { allDay: true, startsAt: null, endsAt: null })).toBe(
-      '25.07. ganztägig',
+      'Sa 25.07. ganztägig',
     );
   });
 });
