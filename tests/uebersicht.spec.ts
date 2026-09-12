@@ -1544,8 +1544,9 @@ test('AK5 (issue #1183): die linke Kante des Titels hängt nicht vom Countdown-T
 test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeitspalte', async ({ page }) => {
   await page.goto('/uebersicht');
   // 19.07. (So, morgen) wird "der nächste Termin"; 20.07. (Mo) und 24.07. (Fr)
-  // liegen noch innerhalb der nächsten 6 Tage (Wochentag), 25.07. (Sa) ist der
-  // 7. Tag (Datum), 26.07. (So) ist der 5. Folgetermin und fällt weg.
+  // liegen noch innerhalb der nächsten 6 Tage (nur Wochentag), 25.07. (Sa) ist
+  // der 7. Tag (Wochentag + Datum, issue #1182), 26.07. (So) ist der 5.
+  // Folgetermin und fällt weg.
   const days = ['2026-07-19', '2026-07-20', '2026-07-24', '2026-07-25', '2026-07-26'];
   for (const [index, day] of days.entries()) {
     await seedEvent(page, {
@@ -1563,8 +1564,51 @@ test('AK6 (issue #1091): höchstens 3 Folgezeilen, jede mit tagesbezogener Zeits
   await expect(restItems).toHaveCount(3);
   await expect(restItems.nth(0).locator('.events-overview__rest-time')).toHaveText('Mo 10:00');
   await expect(restItems.nth(1).locator('.events-overview__rest-time')).toHaveText('Fr 10:00');
-  await expect(restItems.nth(2).locator('.events-overview__rest-time')).toHaveText('25.07. 10:00');
+  await expect(restItems.nth(2).locator('.events-overview__rest-time')).toHaveText('Sa 25.07. 10:00');
   await expect(page.locator('.events-overview__next')).toContainText('Termin 1');
+});
+
+test('AK5 (issue #1182): bei 375×812 und Dark Mode bricht eine Folgezeile am 7. Tag mit langem Titel nicht um und läuft nicht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Kurztermin',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z', // morgen — wird "der nächste Termin".
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: false,
+    startsAt: '2026-07-25T08:00:00.000Z', // 7. Tag ab NOW — Wochentag + Datum in der Zeitspalte.
+    endsAt: '2026-07-25T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: 'arbeit',
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').first();
+  const time = restItem.locator('.events-overview__rest-time');
+  const title = restItem.locator('.events-overview__rest-title');
+  await expect(time).toHaveText('Sa 25.07. 10:00');
+
+  const [timeFits, titleTruncates] = await Promise.all([
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+  ]);
+  expect(timeFits, 'Zeitzeile mit Wochentag und Datum bricht nicht um, läuft nicht über').toBe(true);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
 });
 
 test('AK8 (issue #1091): bei 375×812 und Dark Mode bricht ein langer Titel plus Datumsangabe nicht um und läuft nicht über', async ({
