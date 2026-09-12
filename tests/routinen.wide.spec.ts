@@ -159,14 +159,45 @@ test('die rechte Spalte ist 440px breit, und eine vierstellige Total-Zahl bricht
   await expect(totalTile.locator('.habit-tiles__value')).toHaveText('1284');
   await expect(totalTile.locator('.habit-tiles__denominator')).toHaveText('mal');
 
-  // Bricht die Zeile um, wächst ihre Höhe auf etwa das Doppelte einer
-  // einzeiligen Kachel (HEUTE, immer kurz) — statt eine feste Pixelzahl zu
-  // raten, vergleicht das gegen die garantiert einzeilige Nachbarkachel.
+  // Seit dem festen Stapel Zahl-über-Nenner (issue #1185) ist die Wertzeile
+  // aller vier Kacheln zweizeilig — der Vergleich mit HEUTE prüft deshalb
+  // nicht mehr "bleibt einzeilig", sondern dass "1284" selbst nicht in sich
+  // umbricht: bräche die Zahl auf zwei Zeilen um, wäre TOTALs Wertzeile um
+  // eine weitere Zeile höher als die garantiert einzeilige Zahl bei HEUTE.
   const [heuteRowHeight, totalRowHeight] = await Promise.all([
     page.locator('.habit-tiles__tile').nth(0).locator('.habit-tiles__value-row').evaluate((el) => el.getBoundingClientRect().height),
     totalTile.locator('.habit-tiles__value-row').evaluate((el) => el.getBoundingClientRect().height),
   ]);
-  expect(totalRowHeight, '"1284 mal" bleibt einzeilig').toBeLessThanOrEqual(heuteRowHeight + 2);
+  expect(totalRowHeight, '"1284" bricht nicht in sich um').toBeLessThanOrEqual(heuteRowHeight + 2);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK5 (issue #1185): der Nenner steht in der rechten 440px-Spalte genauso    */
+/* fest unter der Zahl wie unter 1440px (AK1)                                */
+/* -------------------------------------------------------------------------- */
+
+test('AK5 (#1185): auch in der rechten 440px-Spalte steht der Nenner unter der Zahl', async ({
+  page,
+}) => {
+  // Zwei tägliche Routinen ohne Log ergeben "0 von 2" bei HEUTE — derselbe
+  // kurze Härtefall wie in routinen.spec.ts AK1 (#1185).
+  await seedHabit(page, { name: 'Stapel-Sonde (wide) A' });
+  await seedHabit(page, { name: 'Stapel-Sonde (wide) B' });
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles__tile');
+  const count = await tiles.count();
+  expect(count).toBe(4);
+  for (let i = 0; i < count; i += 1) {
+    const tile = tiles.nth(i);
+    const [valueBox, denominatorBox] = await Promise.all([
+      tile.locator('.habit-tiles__value').evaluate((el) => el.getBoundingClientRect()),
+      tile.locator('.habit-tiles__denominator').evaluate((el) => el.getBoundingClientRect()),
+    ]);
+    expect(denominatorBox.top, `Kachel ${i}: Nenner unter Zahl`).toBeGreaterThanOrEqual(
+      valueBox.bottom - 1,
+    );
+  }
 });
 
 /* -------------------------------------------------------------------------- */
