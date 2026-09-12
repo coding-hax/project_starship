@@ -78,7 +78,11 @@ test('AK1: das Raster ist waagerecht scrollbar (scroll-snap-type x proximity, Ei
   await page.goto('/routinen');
 
   const scroll = scrollContainer(page);
-  await expect(scroll).toHaveCSS('scroll-snap-type', 'x proximity');
+  // The CSS sets `x proximity` (habit-history-card.css) — this Chromium's
+  // `getComputedStyle` serializes the default "proximity" strictness away and
+  // reports just the axis, the same as it does for `both proximity` (verified
+  // against a bare repro element; `x mandatory` still serializes in full).
+  await expect(scroll).toHaveCSS('scroll-snap-type', 'x');
 
   const [scrollWidth, clientWidth] = await scroll.evaluate((el) => [el.scrollWidth, el.clientWidth]);
   expect(scrollWidth, 'das Raster reicht über den Container hinaus').toBeGreaterThan(clientWidth);
@@ -244,7 +248,11 @@ test('AK6: nach dem Wischen zeigt die Achse den Datumsbereich, mit Jahr außerha
 test('AK7: das aria-Label wechselt nach dem Wischen von der relativen Phrase zu "N Erledigungen vom … bis …", role="img" bleibt', async ({
   page,
 }) => {
-  const habitId = await seedHabit(page, { name: 'Label-Sonde', createdAt: daysAgo(90).toISOString() });
+  const habitId = await seedHabit(page, {
+    name: 'Label-Sonde',
+    emoji: '🏃',
+    createdAt: daysAgo(90).toISOString(),
+  });
   await seedHabitLog(page, habitId, TODAY);
   await page.goto('/routinen');
 
@@ -277,8 +285,12 @@ test('AK11: offline lässt sich das Raster mit lokal vorhandenen Logs wischen, d
   await seedHabitLog(page, b, TODAY);
   await seedHabitLog(page, c, dateKey(daysAgo(60)));
 
-  await context.setOffline(true);
+  // Navigate while still online (the dev server has no service worker, so
+  // `setOffline` first would also block the document/bundle request itself —
+  // same reason weather.spec.ts/weather-day.spec.ts flip the order), then go
+  // offline: everything the card needs is already in IndexedDB.
   await page.goto('/routinen');
+  await context.setOffline(true);
 
   await expect(page.locator('.habit-history-card__value')).toHaveText('2');
 

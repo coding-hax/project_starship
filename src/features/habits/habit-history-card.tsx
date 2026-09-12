@@ -251,13 +251,23 @@ export function HabitHistoryCard() {
 
   if (habits === undefined || logs === undefined || active.length === 0) return null;
 
+  // `visible`'s lazy initializer ran against whichever `windowDays` was live on
+  // this component's very first render — `useSyncExternalStore` (issue #1184
+  // Phase B) commits a second render right after with the real localStorage
+  // value once it differs from `getServerSnapshot`'s 30-day default, shrinking
+  // `grid.days` before the layout effect below gets a chance to re-anchor
+  // `visible` to it. Clamping here is what keeps that one render from indexing
+  // past the end of the new, shorter `days` array.
+  const lastDayIndex = grid.days.length - 1;
   const [firstIndex, lastIndex] = visible;
-  const doneCount = visibleDoneCount(grid.days, firstIndex, lastIndex);
+  const safeFirstIndex = Math.min(firstIndex, lastDayIndex);
+  const safeLastIndex = Math.min(lastIndex, lastDayIndex);
+  const doneCount = visibleDoneCount(grid.days, safeFirstIndex, safeLastIndex);
   const axis = historyAxis({
     windowDays,
     days: grid.days,
-    firstIndex,
-    lastIndex,
+    firstIndex: safeFirstIndex,
+    lastIndex: safeLastIndex,
     today: todayKey,
     doneCount,
   });
@@ -278,7 +288,14 @@ export function HabitHistoryCard() {
               // cell without relying on `aspect-ratio` to reconcile a
               // definite column track against a content-sized row track.
               gridTemplateRows: `repeat(${active.length}, ${cellPx}px)`,
-              '--history-emoji': `${cellPx * 0.82}px`,
+              // 0.75, not #1150's original 0.82 (issue #1184 AK8) — a color
+              // emoji glyph's rendered width doesn't scale linearly with
+              // `font-size` (the emoji font snaps to its own bitmap strikes),
+              // so 0.82 left some of the five periods' cells with an emoji
+              // 1-2px wider than the cell itself. 0.75 was checked against a
+              // rendered probe at all five reference cell widths and clears
+              // every one with margin to spare.
+              '--history-emoji': `${cellPx * 0.75}px`,
             } as CSSProperties
           }
           role="img"
