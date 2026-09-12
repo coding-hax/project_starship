@@ -405,12 +405,14 @@ export function formatNextTimeline(now: Date, dayKey: string, item: NextTimeline
 }
 
 /**
- * The overview's rest-row time column (issue #1091, AK6): bare `HH:MM` today,
- * weekday-prefixed within the next 6 days ("Mo 10:00"), date-prefixed from
- * the 7th day on ("14.09. 10:00") — a bare weekday alone reads ambiguous a
- * week or more out. All-day rows swap the time for "ganztägig"/"Ganztägig",
- * capitalised only standing alone (German capitalises the noun, not a
- * trailing adjective-like continuation).
+ * The overview's rest-row time column (issue #1091, AK6; date added on top of
+ * the weekday from the 7th day on, issue #1182): bare `HH:MM` today,
+ * weekday-prefixed within the next 6 days ("Mo 10:00"), weekday **and**
+ * date-prefixed from the 7th day on ("Sa 25.07. 10:00") — a bare date alone
+ * still reads ambiguous a week or more out, the weekday answered that but got
+ * dropped by mistake when the date was added. All-day rows swap the time for
+ * "ganztägig"/"Ganztägig", capitalised only standing alone (German
+ * capitalises the noun, not a trailing adjective-like continuation).
  */
 export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineItem): string {
   const todayKey = berlinNow(now).dateKey;
@@ -419,8 +421,8 @@ export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineI
   }
   const daysAhead = dateKeyDiff(todayKey, dayKey);
   const date = parseDateKey(dayKey);
-  const prefix =
-    daysAhead <= 6 ? WEEKDAY_SHORT_UTC_FORMATTER.format(date) : DAY_MONTH_UTC_FORMATTER.format(date);
+  const weekday = WEEKDAY_SHORT_UTC_FORMATTER.format(date);
+  const prefix = daysAhead <= 6 ? weekday : `${weekday} ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
   return item.allDay ? `${prefix} ganztägig` : `${prefix} ${formatEventTime(item.startsAt as string)}`;
 }
 
