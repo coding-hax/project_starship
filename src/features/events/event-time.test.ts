@@ -1224,12 +1224,18 @@ describe('formatCountdown', () => {
     expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 12, 40)))).toBe('in 40 Min');
   });
 
-  it('reports hours and minutes over an hour', () => {
-    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 14, 5)))).toBe('in 2 Std 5 Min');
+  it('rounds down just under the next full hour (issue #1183 AK3)', () => {
+    // 89 Min ab NOW (12:00) → 13:29
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 13, 29)))).toBe('in 1 Std');
   });
 
-  it('omits minutes on an exact hour boundary', () => {
-    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 14, 0)))).toBe('in 2 Std');
+  it('rounds up from the half-hour mark on (issue #1183 AK3)', () => {
+    // 90 Min ab NOW (12:00) → 13:30
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 13, 30)))).toBe('in 2 Std');
+  });
+
+  it('rounds full hours over an hour, no more "Std Min" form (issue #1183 AK3)', () => {
+    expect(formatCountdown(NOW, TODAY, iso(Date.UTC(2026, 6, 18, 14, 5)))).toBe('in 2 Std');
   });
 
   it('reads "Jetzt" once the event has started', () => {
@@ -1240,8 +1246,24 @@ describe('formatCountdown', () => {
     expect(formatCountdown(NOW, '2026-07-19', iso(Date.UTC(2026, 6, 19, 8, 0)))).toBe('Morgen');
   });
 
-  it('reads "in N Tagen" beyond tomorrow (issue #1091 AK5)', () => {
-    expect(formatCountdown(NOW, '2026-07-22', iso(Date.UTC(2026, 6, 22, 8, 0)))).toBe('in 4 Tagen');
+  it('reads "in N T" for 2 to 14 days ahead (issue #1183 AK4)', () => {
+    expect(formatCountdown(NOW, addDays(TODAY, 4), iso(Date.UTC(2026, 6, 22, 8, 0)))).toBe('in 4 T');
+  });
+
+  it('stays at "in 14 T" right at the boundary (issue #1183 AK4)', () => {
+    expect(formatCountdown(NOW, addDays(TODAY, 14), iso(Date.UTC(2026, 7, 1, 8, 0)))).toBe('in 14 T');
+  });
+
+  it('switches to rounded full weeks from 15 days on (issue #1183 AK4)', () => {
+    expect(formatCountdown(NOW, addDays(TODAY, 15), iso(Date.UTC(2026, 7, 2, 8, 0)))).toBe('in 2 W');
+  });
+
+  it('rounds 17 days down to "in 2 W" (issue #1183 AK4)', () => {
+    expect(formatCountdown(NOW, addDays(TODAY, 17), iso(Date.UTC(2026, 7, 4, 8, 0)))).toBe('in 2 W');
+  });
+
+  it('rounds 18 days up to "in 3 W" (issue #1183 AK4)', () => {
+    expect(formatCountdown(NOW, addDays(TODAY, 18), iso(Date.UTC(2026, 7, 5, 8, 0)))).toBe('in 3 W');
   });
 });
 
