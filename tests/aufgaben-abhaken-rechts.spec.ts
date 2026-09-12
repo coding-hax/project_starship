@@ -41,16 +41,22 @@ async function expandParent(page: Page, title: string) {
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The row's own content box, inside its `padding-inline` — what AK1/AK2/AK3/AK4
- *  actually measure against, not the row's outer (padding-including) edges. */
+/** The row's own content box, inside its `padding-inline` and its (transparent,
+ *  issue #704) `border-inline-start` — what AK1/AK2/AK3/AK4 actually measure
+ *  against, not the row's outer (border- and padding-including) edges. The
+ *  3px start border is invisible but still box-model space: skipping it here
+ *  would count it as content and misplace `left` by exactly its width. */
 async function contentEdges(row: Locator): Promise<{ left: number; right: number }> {
   const box = await row.boundingBox();
   if (!box) throw new Error('row has no bounding box');
-  const padding = await row.evaluate((el) => {
+  const edges = await row.evaluate((el) => {
     const style = getComputedStyle(el);
-    return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight) };
+    return {
+      left: parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth),
+      right: parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth),
+    };
   });
-  return { left: box.x + padding.left, right: box.x + box.width - padding.right };
+  return { left: box.x + edges.left, right: box.x + box.width - edges.right };
 }
 
 test.beforeEach(async ({ page }) => {
@@ -97,7 +103,9 @@ test('AK2: /uebersicht — dieselbe Anordnung bei einer überfälligen Aufgabe i
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Überfällige Randprobe', dueAt: YESTERDAY });
 
-  await expect(page.getByText('Überfällig')).toBeVisible();
+  // `exact` on purpose: the seeded title itself starts with "Überfällig" and
+  // would otherwise resolve this locator to two elements (strict mode).
+  await expect(page.getByText('Überfällig', { exact: true })).toBeVisible();
   const row = taskRowFor(page, 'Überfällige Randprobe');
   const { right } = await contentEdges(row);
   const checkboxBox = await row.locator('.task-list__checkbox-wrap').boundingBox();
