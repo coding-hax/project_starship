@@ -21,7 +21,18 @@ async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<
       window.__starship.mutate({
         table: 'habits',
         op: 'upsert',
-        payload: { schedule: 'daily', color: null, archivedAt: null, ...p },
+        payload: {
+          schedule: 'daily',
+          color: null,
+          archivedAt: null,
+          // Window-internal by default (issue #1184's history card now scrolls
+          // back to the oldest active habit's own createdAt) — a habit that
+          // doesn't care about its own creation day should never accidentally
+          // stretch the 30-day history grid. Tests that need an older habit
+          // (e.g. to exercise the scrollable case) override this explicitly.
+          createdAt: '2026-07-01T00:00:00.000Z',
+          ...p,
+        },
       }),
     payload,
   );
@@ -187,9 +198,9 @@ test('AK2: die drei Kacheln zeigen Zähler und Nenner als Text, der Balken ist a
 /* -------------------------------------------------------------------------- */
 
 test('AK1 (#1070): das Raster hat 30×N Zellen und kein SVG mehr', async ({ page }) => {
-  await seedHabit(page, { name: 'Raster-Sonde A', createdAt: '2026-06-01T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Raster-Sonde B', createdAt: '2026-06-02T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Raster-Sonde C', createdAt: '2026-06-03T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Raster-Sonde A', createdAt: '2026-06-20T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Raster-Sonde B', createdAt: '2026-06-21T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Raster-Sonde C', createdAt: '2026-06-22T00:00:00.000Z' });
   await page.goto('/routinen');
 
   await expect(page.locator('.habit-history-card__cell')).toHaveCount(90); // 30 Tage × 3 Routinen
@@ -204,9 +215,9 @@ test('AK1 (#1070): das Raster hat 30×N Zellen und kein SVG mehr', async ({ page
 test('AK1 (#1150): bei 3 aktiven Routinen mit Log nur für die zuletzt angelegte steht das Emoji in der untersten Zeile, nicht in der obersten', async ({
   page,
 }) => {
-  await seedHabit(page, { name: 'Erste', emoji: '🏃', createdAt: '2026-06-01T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Zweite', emoji: '📚', createdAt: '2026-06-02T00:00:00.000Z' });
-  const newest = await seedHabit(page, { name: 'Dritte', emoji: '🧘', createdAt: '2026-06-03T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Erste', emoji: '🏃', createdAt: '2026-06-20T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Zweite', emoji: '📚', createdAt: '2026-06-21T00:00:00.000Z' });
+  const newest = await seedHabit(page, { name: 'Dritte', emoji: '🧘', createdAt: '2026-06-22T00:00:00.000Z' });
   await seedHabitLog(page, newest, TODAY);
   await page.goto('/routinen');
 
@@ -220,8 +231,8 @@ test('AK1 (#1150): bei 3 aktiven Routinen mit Log nur für die zuletzt angelegte
 test('AK1 (#1150): fällt eine Routine an einem Tag aus, rückt keine andere Zeile nach — jede Routine bleibt in ihrer eigenen Zeile', async ({
   page,
 }) => {
-  const older = await seedHabit(page, { name: 'Älter', emoji: '🏃', createdAt: '2026-06-01T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Neuer', emoji: '📚', createdAt: '2026-06-15T00:00:00.000Z' });
+  const older = await seedHabit(page, { name: 'Älter', emoji: '🏃', createdAt: '2026-06-20T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Neuer', emoji: '📚', createdAt: '2026-06-25T00:00:00.000Z' });
   // Nur "Älter" ist heute erledigt, "Neuer" fällt aus.
   await seedHabitLog(page, older, TODAY);
   await page.goto('/routinen');
@@ -241,7 +252,7 @@ test('AK2 (#1150): eine erledigte Zelle mit Emoji zeigt es auf transparentem Gru
   const withEmoji = await seedHabit(page, {
     name: 'Emoji-Sonde',
     emoji: '🏃',
-    createdAt: '2026-06-01T00:00:00.000Z',
+    createdAt: '2026-06-20T00:00:00.000Z',
   });
   const withoutEmoji = await seedHabit(page, {
     name: 'Ohne-Emoji-Sonde',
@@ -249,7 +260,7 @@ test('AK2 (#1150): eine erledigte Zelle mit Emoji zeigt es auf transparentem Gru
     // Stale data from before #1101 — habits no longer read `color`, this must
     // not leak into the fill either.
     color: '--swatch-amber',
-    createdAt: '2026-06-02T00:00:00.000Z',
+    createdAt: '2026-06-21T00:00:00.000Z',
   });
   await seedHabitLog(page, withEmoji, TODAY);
   await seedHabitLog(page, withoutEmoji, TODAY);
@@ -270,8 +281,8 @@ test('AK2 (#1150): eine erledigte Zelle mit Emoji zeigt es auf transparentem Gru
 test('AK3 (#1150): eine offene Zelle bleibt --border-faint, die Zeilen stehen ohne Abstand aufeinander (row-gap 0)', async ({
   page,
 }) => {
-  await seedHabit(page, { name: 'Erste', createdAt: '2026-06-01T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Zweite', createdAt: '2026-06-02T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Erste', createdAt: '2026-06-20T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Zweite', createdAt: '2026-06-21T00:00:00.000Z' });
   await page.goto('/routinen');
 
   const emptyCell = page.locator('.habit-history-card__cell').first();
@@ -306,8 +317,8 @@ test('AK4 (#1150): vor jedem Montag im Fenster steht eine Wochenlücke — auße
 test('AK5 (#1150): jede Wochenlücke trägt eine 1px breite Linie über die volle Rasterhöhe, hell in --border, dunkel in --border-strong', async ({
   page,
 }) => {
-  await seedHabit(page, { name: 'Erste', createdAt: '2026-06-01T00:00:00.000Z' });
-  await seedHabit(page, { name: 'Zweite', createdAt: '2026-06-02T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Erste', createdAt: '2026-06-20T00:00:00.000Z' });
+  await seedHabit(page, { name: 'Zweite', createdAt: '2026-06-21T00:00:00.000Z' });
   await page.goto('/routinen');
 
   const grid = page.locator('.habit-history-card__grid');
