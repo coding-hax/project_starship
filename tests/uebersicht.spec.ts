@@ -1455,7 +1455,221 @@ test('AK4 (issue #1091): ein mehrtägiger ganztägiger Termin, der heute schon l
 
   const next = page.locator('.events-overview__next');
   await expect(next).toContainText('Urlaub');
+  // "bis 20.07." statt nur "Heute" — der Termin läuft noch 2 weitere Tage (issue #1187 AK4).
+  await expect(next.locator('.events-overview__next-range')).toHaveText('Heute · bis Mo, 20.07.');
+});
+
+/* -------------------------------------------------------------------------- */
+/* issue #1187: ein mehrtägiger ganztägiger Termin steht einmal mit Spanne    */
+/* statt je Tag in einer eigenen Zeile.                                      */
+/* -------------------------------------------------------------------------- */
+
+test('AK1 (issue #1187): ein mehrtägiger Termin erscheint einmal statt je Tag, die frei werdenden Plätze füllen die nächsten Termine auf', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-21',
+    endDate: '2026-07-23',
+    category: null,
+  });
+  for (const [index, day] of ['2026-07-24', '2026-07-25', '2026-07-26'].entries()) {
+    await seedEvent(page, {
+      title: `Termin ${index + 1}`,
+      allDay: false,
+      startsAt: `${day}T08:00:00.000Z`,
+      endsAt: `${day}T09:00:00.000Z`,
+      startDate: null,
+      endDate: null,
+      category: null,
+    });
+  }
+
+  const next = page.locator('.events-overview__next');
+  const restItems = page.locator('.events-overview__rest-item');
+  await expect(next).toContainText('Urlaub');
+  await expect(restItems).toHaveCount(3);
+  await expect(restItems.nth(0)).toContainText('Termin 1');
+  await expect(restItems.nth(1)).toContainText('Termin 2');
+  await expect(restItems.nth(2)).toContainText('Termin 3');
+});
+
+test('AK2 (issue #1187): eine Folgezeile zeigt bei einem mehrtägigen Termin die Spanne als Datum, ohne Wochentag und ohne „ganztägig"', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z',
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Umzug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-21',
+    endDate: '2026-07-23',
+    category: null,
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Umzug' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('21.–23.07.');
+});
+
+test('AK2 (issue #1187): die Spanne trägt beide Monate über die Monatsgrenze, unabhängig vom Abstand zu heute — auch ab dem 7. Tag', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z',
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Städtereise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: null,
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Städtereise' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('30.07.–02.08.');
+});
+
+test('AK3 (issue #1187): eine Folgezeile zeigt „bis <Datum>" für einen mehrtägigen Termin, der schon läuft', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // Zuerst gesät, damit "Feiertag" (nächster Termin) vor "Urlaub" (Folgezeile)
+  // steht — beide sind ganztägig heute, die Reihenfolge folgt der Seed-Reihenfolge
+  // (uuidv7-Zeilen-Ids, aufsteigend nach Erzeugungszeit).
+  await seedEvent(page, {
+    title: 'Feiertag',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-18',
+    endDate: '2026-07-18',
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Urlaub',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-16',
+    endDate: '2026-07-20',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Feiertag');
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Urlaub' });
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('bis 20.07.');
+});
+
+test('AK5 (issue #1187): endet ein mehrtägiger Termin heute, bleibt die Darstellung wie bei einem eintägigen Termin', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Umzug',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-16',
+    endDate: '2026-07-18',
+    category: null,
+  });
+
+  const next = page.locator('.events-overview__next');
+  await expect(next).toContainText('Umzug');
   await expect(next.locator('.events-overview__next-range')).toHaveText('Heute');
+});
+
+test('AK6 (issue #1187): bei 375×812 und Dark Mode bricht eine Folgezeile mit Monatsgrenzen-Spanne und langem Titel nicht um und läuft nicht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Zahnarzt',
+    allDay: false,
+    startsAt: '2026-07-19T08:00:00.000Z', // morgen — wird "der nächste Termin".
+    endsAt: '2026-07-19T09:00:00.000Z',
+    startDate: null,
+    endDate: null,
+    category: null,
+  });
+  await seedEvent(page, {
+    title: 'Ein sehr langer Terminname, der eigentlich nicht mehr in eine einzige Zeile passt',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: 'arbeit',
+  });
+
+  const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Ein sehr langer Terminname' });
+  const time = restItem.locator('.events-overview__rest-time');
+  const title = restItem.locator('.events-overview__rest-title');
+  await expect(time).toHaveText('30.07.–02.08.');
+
+  const [timeFits, titleTruncates] = await Promise.all([
+    time.evaluate((el) => el.scrollWidth <= el.clientWidth),
+    title.evaluate((el) => el.scrollWidth > el.clientWidth),
+  ]);
+  expect(timeFits, 'Zeitspanne bricht nicht um, läuft nicht über').toBe(true);
+  expect(titleTruncates, 'Titel kürzt einzeilig statt zu umbrechen').toBe(true);
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
+});
+
+test('AK6 (issue #1187): bei 375×812 und Dark Mode läuft der große Block mit Spanne über zwei Wochentage nicht waagerecht über', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedEvent(page, {
+    title: 'Städtereise',
+    allDay: true,
+    startsAt: null,
+    endsAt: null,
+    startDate: '2026-07-30',
+    endDate: '2026-08-02',
+    category: 'arbeit',
+  });
+
+  const next = page.locator('.events-overview__next');
+  const range = next.locator('.events-overview__next-range');
+  await expect(range).toHaveText('Do, 30.07.–So, 02.08. · Ganztägig');
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow, 'kein waagerechter Überlauf').toBe(0);
 });
 
 test('AK5 (issue #1091): der Countdown zeigt "Morgen" für einen Termin am nächsten Tag', async ({ page }) => {
