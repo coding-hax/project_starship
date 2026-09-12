@@ -108,6 +108,13 @@
   margin-inline-start: auto;
 }
 
+/* `grid-template-rows` comes inline too (habit-history-card.tsx), the same
+   fixed `cellPx` value as the columns — not `minmax(0, 14px)` any more: with
+   the columns now a fixed pixel width per period (issue #1184 F2) instead of
+   the old identical `minmax(0, 14px)` on both axes, only an explicit equal
+   value on both keeps a cell square (AK8) without leaning on how a browser
+   resolves `aspect-ratio` between a definite and a content-sized track — that
+   stays here as a second, belt-and-braces guarantee. */
 .habit-history-card__cell {
   display: grid;
   place-items: center;
@@ -126,11 +133,11 @@
   scroll-snap-align: start;
 }
 
-/* 0,82 × Zellbreite bei 10,1px (issue #1150), fest statt fluid: eine kleinere
-   Zelle auf breiteren Flächen wächst nur, nie schrumpft, also schneidet ein
-   fester Wert dort nie an. */
+/* 0,82 × Zellbreite (issue #1150/#1184) — `--history-emoji` comes inline
+   alongside `grid-template-columns` (habit-history-card.tsx), recomputed per
+   period (AK8: the emoji grows with the cell, never gets clipped). */
 .habit-history-card__emoji {
-  font-size: var(--text-history-emoji);
+  font-size: var(--history-emoji);
 }
 
 .habit-history-card__week-line {

@@ -31,6 +31,7 @@
 @import '../features/weather/weather-icon-motion.css';
 @import '../features/settings/weather-panel.css';
 @import '../features/settings/nav-order-panel.css';
+@import '../features/settings/routines-settings-panel.css';
 @import '../features/activities/activity-list.css';
 @import '../features/activities/activity-block.css';
 @import '../features/activities/activity-map.css';

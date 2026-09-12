@@ -1,10 +1,12 @@
 'use client';
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useHabitHistoryRange, type HabitHistoryRangeDays } from '../settings/use-habit-history-range';
 import { toDateKey } from './due-today';
 import {
   historyAxis,
   historyGrid,
+  historyRangeLabel,
   isHabitDoneOnDay,
   visibleDoneCount,
   type HistoryGridDay,
@@ -12,16 +14,18 @@ import {
 import { useHabitLogs } from './use-habit-logs';
 import { compareHabits, useHabits, type HabitView } from './use-habits';
 
-/** Fixed window size (issue #1184 Phase A) — Phase B (AK8–10) replaces this
- *  with `useHabitHistoryRange()`. */
-const HISTORY_WINDOW_DAYS = 30;
-
-/** Fixed cell width at the 375px reference layout (issue #1184's measurement
- *  table) — a constant, not fluid like the old `minmax(0, 14px)` track: a
- *  fixed pixel size is what lets the grid grow wider than its scroll
- *  container (F2) and lets `dayCenterOffsets` below stay purely arithmetic
- *  instead of a DOM measurement (F4). */
-const HISTORY_CELL_PX = 10.1;
+/** Cell width per period at the 375px reference layout (issue #1184's
+ *  measurement table, 311px card inner width) — fixed per period, not fluid
+ *  like the old `minmax(0, 14px)` track: a fixed pixel size is what lets the
+ *  grid grow wider than its scroll container (F2) and lets `dayCenterOffsets`
+ *  below stay purely arithmetic instead of a DOM measurement (F4). */
+const HISTORY_CELL_PX: Record<HabitHistoryRangeDays, number> = {
+  30: 10.1,
+  28: 10.8,
+  21: 14.5,
+  14: 21.9,
+  7: 44.1,
+};
 
 /** True when `dateKey` (`YYYY-MM-DD`) falls on a Monday, parsed as a local date to avoid UTC off-by-one. */
 function isMonday(dateKey: string): boolean {
@@ -174,6 +178,8 @@ const HistoryGridCells = memo(function HistoryGridCells({
 export function HabitHistoryCard() {
   const habits = useHabits();
   const logs = useHabitLogs();
+  const { windowDays } = useHabitHistoryRange();
+  const cellPx = HISTORY_CELL_PX[windowDays];
 
   // A stable `now` for this mount, not a fresh `new Date()` every render —
   // otherwise every dependent `useMemo` below would recompute on every
@@ -187,33 +193,34 @@ export function HabitHistoryCard() {
   );
 
   const grid = useMemo(
-    () => historyGrid(habits ?? [], logs ?? [], now, HISTORY_WINDOW_DAYS),
-    [habits, logs, now],
+    () => historyGrid(habits ?? [], logs ?? [], now, windowDays),
+    [habits, logs, now, windowDays],
   );
 
   const { gridTemplateColumns, dayColumns, weekLineColumns, dayCenters } = useMemo(
-    () => weekLayout(grid.days, HISTORY_CELL_PX),
-    [grid.days],
+    () => weekLayout(grid.days, cellPx),
+    [grid.days, cellPx],
   );
 
   const trackRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState<[number, number]>(() => [
-    Math.max(0, grid.days.length - HISTORY_WINDOW_DAYS),
+    Math.max(0, grid.days.length - windowDays),
     grid.days.length - 1,
   ]);
 
   // Scrolls all the way right, instantly (issue #1184 AK2) — on mount, and
-  // whenever the rendered day count changes (a habit/log loading in after
-  // this component's first paint). Always before paint (`useLayoutEffect`),
-  // same seamless-positioning trick `calendar-strip.tsx` uses for its own
-  // silent re-anchor.
+  // whenever the rendered day count or the cell width changes (a habit/log
+  // loading in after this component's first paint, or the settings panel's
+  // "Verlauf" range changing the period, issue #1184 AK10). Always before
+  // paint (`useLayoutEffect`), same seamless-positioning trick
+  // `calendar-strip.tsx` uses for its own silent re-anchor.
   useLayoutEffect(() => {
     const track = trackRef.current;
     if (!track) return;
     track.scrollLeft = track.scrollWidth - track.clientWidth;
     setVisible(visibleWindowFor(track.scrollLeft, track.clientWidth, dayCenters));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.days.length]);
+  }, [grid.days.length, cellPx]);
 
   // Tracks the live scroll position (issue #1184 AK5) — rAF-throttled like
   // `calendar-strip.tsx`'s own scroll handler, but with no buffer to
@@ -247,7 +254,7 @@ export function HabitHistoryCard() {
   const [firstIndex, lastIndex] = visible;
   const doneCount = visibleDoneCount(grid.days, firstIndex, lastIndex);
   const axis = historyAxis({
-    windowDays: HISTORY_WINDOW_DAYS,
+    windowDays,
     days: grid.days,
     firstIndex,
     lastIndex,
@@ -258,16 +265,22 @@ export function HabitHistoryCard() {
   return (
     <div className="habit-history-card">
       <div className="habit-history-card__head">
-        <p className="habit-history-card__label">Erledigt · 30 Tage</p>
+        <p className="habit-history-card__label">Erledigt · {historyRangeLabel(windowDays)}</p>
         <p className="habit-history-card__value">{doneCount}</p>
       </div>
       <div className="habit-history-card__scroll" ref={trackRef}>
         <div
           className="habit-history-card__grid"
-          style={{
-            gridTemplateColumns,
-            gridTemplateRows: `repeat(${active.length}, minmax(0, 14px))`,
-          }}
+          style={
+            {
+              gridTemplateColumns,
+              // Same fixed value on both axes (issue #1184 AK8) — squares the
+              // cell without relying on `aspect-ratio` to reconcile a
+              // definite column track against a content-sized row track.
+              gridTemplateRows: `repeat(${active.length}, ${cellPx}px)`,
+              '--history-emoji': `${cellPx * 0.82}px`,
+            } as CSSProperties
+          }
           role="img"
           aria-label={axis.ariaLabel}
         >

@@ -121,6 +121,20 @@ export function visibleDoneCount(days: HistoryGridDay[], firstIndex: number, las
   return sum;
 }
 
+const RANGE_LABEL: Record<number, string> = {
+  30: '30 Tage',
+  28: '4 Wochen',
+  21: '3 Wochen',
+  14: '2 Wochen',
+  7: '1 Woche',
+};
+
+/** "30 Tage" … "1 Woche" — the card head's own label (issue #1184 AK7/AK9),
+ *  nominative case, distinct from `historyAxis`'s dative "vor 30 Tagen" phrase. */
+export function historyRangeLabel(windowDays: number): string {
+  return RANGE_LABEL[windowDays];
+}
+
 const RELATIVE_LEFT_LABEL: Record<number, string> = {
   30: 'vor 30 Tagen',
   28: 'vor 4 Wochen',
