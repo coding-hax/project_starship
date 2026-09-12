@@ -153,6 +153,15 @@ for (const range of RANGES) {
     const filledCell = page
       .locator('.habit-history-card__cell')
       .filter({ has: page.locator('.habit-history-card__emoji') });
+    // `locator.boundingBox()` has no retry of its own (default `timeout: 0`,
+    // unlike `expect()`'s polling) — it takes a single, immediate measurement.
+    // The grid still commits a second time right after this card's first paint
+    // (`useSyncExternalStore`'s server-snapshot-vs-localStorage correction, see
+    // `habit-history-card.tsx`), so without an explicit wait here this could
+    // race that second commit and measure mid-flight. Wait for the cell itself
+    // before measuring it, the same way the label assertion above already
+    // waits for the corrected render.
+    await expect(filledCell).toBeVisible();
     const [cellBox, emojiBox] = await Promise.all([
       filledCell.boundingBox(),
       filledCell.locator('.habit-history-card__emoji').boundingBox(),
