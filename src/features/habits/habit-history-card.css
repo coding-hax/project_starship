@@ -68,21 +68,53 @@
   line-height: var(--leading-display);
 }
 
-/* 30 Spalten = Tage, N Zeilen = aktive Routinen, `grid-template-columns` kommt
-   inline (habit-history-card.tsx) — die Spur je Tag ist `minmax(0, 14px)`, sie
-   schrumpft auf schmalen Bildschirmen sauber (311px Karteninnenbreite, 4×2px
-   Wochenlinienspuren, kein Zellabstand ⇒ 10,1px) und deckelt sie auf breiten
-   Flächen bei 14px, statt auf dem Desktop einen Riesenblock aufzuziehen —
-   dieselbe `minmax`-Deckelung wie `.habit-week-grid` (habit-week-grid.css),
-   nur ohne `1fr`, weil hier die Zelle quadratisch bleiben muss. `gap: 0`: die
-   Zeilen stehen ohne Abstand aufeinander (issue #1150 AK3), die Wochenlücke
-   ist eine eigene 2px-Spur, kein `column-gap`. */
+/* Horizontal scroll viewport around the grid (issue #1184 AK1/AK2) — the
+   grid itself can be far wider than the card once history reaches back past
+   one window, this is what clips that overflow instead of the page
+   (`overflow-x`) and turns a swipe into native scrolling with day-boundary
+   snap points (`scroll-snap-align` on each day's row-0 cell, see
+   habit-history-card.tsx). Scrollbar hidden the same way `.nav__list`/
+   `calendar-strip__carousel` hide their own. `touch-action: pan-x` leaves a
+   vertical drag entirely to the page scroll underneath. */
+.habit-history-card__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
+}
+
+.habit-history-card__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* N columns = days, N rows = active routines, `grid-template-columns` comes
+   inline (habit-history-card.tsx) — each day's own track is now a fixed
+   pixel width (issue #1184 F2, replaces the fluid `minmax(0, 14px)` this
+   card used while the window itself was a fixed 30 days): a fixed size is
+   what lets the grid grow past its scroll container above, and what lets the
+   card's own scroll math stay purely arithmetic instead of measuring the DOM
+   (F4). `width: max-content` sizes the grid to its own tracks rather than
+   stretching to the container; `margin-inline-start: auto` keeps it flush
+   against the right edge when it's narrower than the container (a window
+   with no earlier history to scroll to, issue #1150's original "heute right,
+   own reference width" 375px sizing, or a wide desktop card, issue #1125).
+   `gap: 0`: the rows stand flush against each other (issue #1150 AK3), the
+   week gap is its own 2px track, not a `column-gap`. */
 .habit-history-card__grid {
   display: grid;
   gap: 0;
-  width: 100%;
+  width: max-content;
+  margin-inline-start: auto;
 }
 
+/* `grid-template-rows` comes inline too (habit-history-card.tsx), the same
+   fixed `cellPx` value as the columns — not `minmax(0, 14px)` any more: with
+   the columns now a fixed pixel width per period (issue #1184 F2) instead of
+   the old identical `minmax(0, 14px)` on both axes, only an explicit equal
+   value on both keeps a cell square (AK8) without leaning on how a browser
+   resolves `aspect-ratio` between a definite and a content-sized track — that
+   stays here as a second, belt-and-braces guarantee. */
 .habit-history-card__cell {
   display: grid;
   place-items: center;
@@ -92,11 +124,20 @@
   line-height: var(--leading-tight);
 }
 
-/* 0,82 × Zellbreite bei 10,1px (issue #1150), fest statt fluid: eine kleinere
-   Zelle auf breiteren Flächen wächst nur, nie schrumpft, also schneidet ein
-   fester Wert dort nie an. */
+/* One snap point per day column (issue #1184 AK1) — set on that day's row-0
+   cell only (`habit-history-card.tsx`, `data-day-start`): there is always at
+   least one active habit row, and `scroll-snap-align` only cares about that
+   element's own edge, not its height, so a single row per day is enough to
+   snap the whole column into place. */
+.habit-history-card__cell[data-day-start] {
+  scroll-snap-align: start;
+}
+
+/* 0,82 × Zellbreite (issue #1150/#1184) — `--history-emoji` comes inline
+   alongside `grid-template-columns` (habit-history-card.tsx), recomputed per
+   period (AK8: the emoji grows with the cell, never gets clipped). */
 .habit-history-card__emoji {
-  font-size: var(--text-history-emoji);
+  font-size: var(--history-emoji);
 }
 
 .habit-history-card__week-line {

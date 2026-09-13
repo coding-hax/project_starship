@@ -10,8 +10,9 @@ import { SessionPanel } from '@/features/settings/session-panel';
 import { useActiveSections } from '@/modules/module-sections';
 import type { ComponentType } from 'react';
 
-/** Panel order after the core ones: Aufgaben → Kalender → Wetter → Journal → Export (issue #308, #339, #560). */
-const ORDER = ['aufgaben', 'kalender', 'wetter', 'journal', 'export'];
+/** Panel order after the core ones: Aufgaben → Routinen → Kalender → Wetter → Journal → Export
+ *  (issue #308, #339, #560, #1184). */
+const ORDER = ['aufgaben', 'routinen', 'kalender', 'wetter', 'journal', 'export'];
 
 type GroupId = 'geraet' | 'module' | 'daten';
 
@@ -23,6 +24,7 @@ type GroupId = 'geraet' | 'module' | 'daten';
  */
 const MODULE_GROUP: Record<string, GroupId> = {
   aufgaben: 'geraet',
+  routinen: 'module',
   kalender: 'module',
   wetter: 'module',
   journal: 'module',

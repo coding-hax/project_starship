@@ -18,3 +18,4 @@
 - `use-category-colors.ts` / `category-colors-panel.tsx` / `.css` — Zehnerpalette je Kategorie
 - `category-colors-boot.tsx` — setzt/entfernt die Kategorie-Farbvariable am Root
 - `calendar-settings-panel.tsx` — Kalenders Settings-Slot: Farben + ICS-Abos
+- `use-habit-history-range.ts` / `routines-settings-panel.tsx` / `.css` — Zeitraum der Verlaufskarte (30 Tage … 1 Woche)
