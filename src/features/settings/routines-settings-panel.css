@@ -1,0 +1,13 @@
+/* "Verlauf" row (issue #1184 AK9) — a visible value next to the shared
+   `Slider` primitive. Scoped here instead of widening `.row__control`
+   (row.css) itself: no other row currently needs a gap between two control
+   children, and this is the only one that does. */
+.routines-settings-panel .row__control {
+  gap: var(--space-2);
+}
+
+.routines-settings-panel__value {
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
