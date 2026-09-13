@@ -360,19 +360,6 @@ export function TaskItem({
           <span className="task-list__disclosure-icon" aria-hidden="true" />
         </button>
       )}
-      {/* A <label>, not a <span> (issue #818): wraps the input so the whole
-          44 × 44 touch target checks off, not just the visibly smaller circle —
-          otherwise a tap that lands in the padding around it falls through to
-          the row's own tap-to-edit gesture instead. */}
-      <label className="task-list__checkbox-wrap">
-        <input
-          type="checkbox"
-          className="task-list__checkbox"
-          checked={isDone}
-          onChange={onToggle}
-          aria-label={`${task.title} als erledigt markieren`}
-        />
-      </label>
       <span
         className="task-list__title"
         title={priorityLabel ? `Priorität: ${priorityLabel}` : undefined}
@@ -393,6 +380,21 @@ export function TaskItem({
           {formatDueAt(task.dueAt)}
         </span>
       )}
+      {/* A <label>, not a <span> (issue #818): wraps the input so the whole
+          44 × 44 touch target checks off, not just the visibly smaller circle —
+          otherwise a tap that lands in the padding around it falls through to
+          the row's own tap-to-edit gesture instead. Sits last in DOM order
+          (issue #1186 AK10) — the checkbox reads at the row's right edge, so
+          tab order matches the visible left-to-right order instead of jumping. */}
+      <label className="task-list__checkbox-wrap">
+        <input
+          type="checkbox"
+          className="task-list__checkbox"
+          checked={isDone}
+          onChange={onToggle}
+          aria-label={`${task.title} als erledigt markieren`}
+        />
+      </label>
     </li>
   );
 }

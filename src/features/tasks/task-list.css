@@ -569,6 +569,11 @@
   align-items: center;
   gap: var(--space-2);
   flex: 1;
+  /* Same reset `.habit-today__name-group` uses — without it a flex item's
+     automatic minimum is its content's min-content width, which for a long
+     title can exceed the space left by the checkbox now sitting at the row's
+     end and push it past the row's right edge instead of wrapping earlier. */
+  min-width: 0;
   color: var(--text);
 }
 
