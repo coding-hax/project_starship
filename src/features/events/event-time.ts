@@ -393,20 +393,24 @@ function weekdayDateLabel(dateKey: string): string {
   return `${WEEKDAY_SHORT_UTC_FORMATTER.format(date)}, ${DAY_MONTH_UTC_FORMATTER.format(date)}`;
 }
 
-/** "21.–23.07." within a month, "30.07.–02.08." across one (issue #1187,
- *  AK2/AK6) — the rest row's span for a multi-day all-day event that hasn't
- *  started yet. No year (Nicht-Ziele): the start's own day.month is dropped
- *  once it shares the end's month, since repeating it would just be noise the
- *  end date already carries. */
+/** "Di 21.–Do 23.07." within a month, "Do 30.07.–So 02.08." across one (issue
+ *  #1187, AK2/AK6; weekday abbreviations added back on top, issue #1194) —
+ *  the rest row's span for a multi-day all-day event that hasn't started yet.
+ *  No year (Nicht-Ziele): the start's own day.month is dropped once it shares
+ *  the end's month, since repeating it would just be noise the end date
+ *  already carries; the weekday abbreviation is never dropped, unlike the
+ *  date. */
 function multiDaySpanLabel(startDateKey: string, endDateKey: string): string {
   const start = parseDateKey(startDateKey);
   const end = parseDateKey(endDateKey);
   const sameMonth =
     start.getUTCFullYear() === end.getUTCFullYear() && start.getUTCMonth() === end.getUTCMonth();
-  const startLabel = sameMonth
+  const startDateLabel = sameMonth
     ? `${String(start.getUTCDate()).padStart(2, '0')}.`
     : DAY_MONTH_UTC_FORMATTER.format(start);
-  return `${startLabel}–${DAY_MONTH_UTC_FORMATTER.format(end)}`;
+  const startLabel = `${WEEKDAY_SHORT_UTC_FORMATTER.format(start)} ${startDateLabel}`;
+  const endLabel = `${WEEKDAY_SHORT_UTC_FORMATTER.format(end)} ${DAY_MONTH_UTC_FORMATTER.format(end)}`;
+  return `${startLabel}–${endLabel}`;
 }
 
 export interface NextTimelineItem {
@@ -475,15 +479,17 @@ export function formatNextTimeline(now: Date, dayKey: string, item: NextTimeline
  * A multi-day all-day event (issue #1187, AK2/AK3) drops the weekday/date
  * prefix scheme entirely in favour of its own span, regardless of how many
  * days out it is (`multiDaySpanLabel`) — already running today reads "bis
- * <date>.", not yet started reads "<start>–<end>.". Ending today falls
- * through to the plain today-branch above unchanged (AK5), same reasoning as
- * `formatNextTimeline`.
+ * <weekday> <date>.", not yet started reads "<weekday> <start>–<weekday>
+ * <end>." (weekday abbreviations on both branches since issue #1194). Ending
+ * today falls through to the plain today-branch above unchanged (AK5), same
+ * reasoning as `formatNextTimeline`.
  */
 export function formatRestRowTime(now: Date, dayKey: string, item: NextTimelineItem): string {
   const todayKey = berlinNow(now).dateKey;
   if (dayKey === todayKey) {
     if (isMultiDayAllDay(item) && item.endDate > todayKey) {
-      return `bis ${DAY_MONTH_UTC_FORMATTER.format(parseDateKey(item.endDate))}`;
+      const end = parseDateKey(item.endDate);
+      return `bis ${WEEKDAY_SHORT_UTC_FORMATTER.format(end)} ${DAY_MONTH_UTC_FORMATTER.format(end)}`;
     }
     return item.allDay ? 'Ganztägig' : formatEventTime(item.startsAt as string);
   }
