@@ -1380,28 +1380,28 @@ describe('formatRestRowTime', () => {
     );
   });
 
-  it('shows the span for a multi-day all-day event within the same month, not yet started (issue #1187 AK2)', () => {
+  it('shows the span with weekday abbreviations for a multi-day all-day event within the same month, not yet started (issue #1187 AK2, weekday issue #1194 AK1)', () => {
     const item = { allDay: true, startsAt: null, endsAt: null, startDate: '2026-07-21', endDate: '2026-07-23' };
 
-    expect(formatRestRowTime(NOW, '2026-07-21', item)).toBe('21.–23.07.');
+    expect(formatRestRowTime(NOW, '2026-07-21', item)).toBe('Di 21.–Do 23.07.');
   });
 
-  it('shows both months once a multi-day all-day event crosses a month boundary (issue #1187 AK2)', () => {
+  it('shows both months once a multi-day all-day event crosses a month boundary (issue #1187 AK2, weekday issue #1194 AK2)', () => {
     const item = { allDay: true, startsAt: null, endsAt: null, startDate: '2026-07-30', endDate: '2026-08-02' };
 
-    expect(formatRestRowTime(NOW, '2026-07-30', item)).toBe('30.07.–02.08.');
+    expect(formatRestRowTime(NOW, '2026-07-30', item)).toBe('Do 30.07.–So 02.08.');
   });
 
-  it('shows the span with no weekday even from the 7th day on, unlike a single-day row (issue #1187 AK2)', () => {
+  it('keeps using the span with weekday abbreviations from the 7th day on, unlike a single-day row (issue #1187 AK2, weekday issue #1194 AK1)', () => {
     const item = { allDay: true, startsAt: null, endsAt: null, startDate: '2026-07-28', endDate: '2026-07-30' };
 
-    expect(formatRestRowTime(NOW, '2026-07-28', item)).toBe('28.–30.07.');
+    expect(formatRestRowTime(NOW, '2026-07-28', item)).toBe('Di 28.–Do 30.07.');
   });
 
-  it('shows "bis <date>" for a multi-day all-day event already running (issue #1187 AK3)', () => {
+  it('shows "bis <weekday> <date>" for a multi-day all-day event already running (issue #1187 AK3, weekday issue #1194 AK3)', () => {
     const item = { allDay: true, startsAt: null, endsAt: null, startDate: '2026-07-16', endDate: '2026-07-20' };
 
-    expect(formatRestRowTime(NOW, TODAY, item)).toBe('bis 20.07.');
+    expect(formatRestRowTime(NOW, TODAY, item)).toBe('bis Mo 20.07.');
   });
 
   it('shows plain "Ganztägig" once a multi-day all-day event ends today, same as a one-day event (issue #1187 AK5)', () => {

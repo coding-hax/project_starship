@@ -1498,7 +1498,7 @@ test('AK1 (issue #1187): ein mehrtägiger Termin erscheint einmal statt je Tag, 
   await expect(restItems.nth(2)).toContainText('Termin 3');
 });
 
-test('AK2 (issue #1187): eine Folgezeile zeigt bei einem mehrtägigen Termin die Spanne als Datum, ohne Wochentag und ohne „ganztägig"', async ({
+test('AK1 (issue #1194): eine Folgezeile zeigt bei einem mehrtägigen Termin die Spanne mit Wochentag-Kürzel vor jedem Datum, Monat nur einmal, ohne „ganztägig"', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -1522,10 +1522,10 @@ test('AK2 (issue #1187): eine Folgezeile zeigt bei einem mehrtägigen Termin die
   });
 
   const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Umzug' });
-  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('21.–23.07.');
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('Di 21.–Do 23.07.');
 });
 
-test('AK2 (issue #1187): die Spanne trägt beide Monate über die Monatsgrenze, unabhängig vom Abstand zu heute — auch ab dem 7. Tag', async ({
+test('AK2 (issue #1194): die Spanne trägt Wochentag-Kürzel und beide Monate über die Monatsgrenze, unabhängig vom Abstand zu heute — auch ab dem 7. Tag', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -1549,10 +1549,10 @@ test('AK2 (issue #1187): die Spanne trägt beide Monate über die Monatsgrenze, 
   });
 
   const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Städtereise' });
-  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('30.07.–02.08.');
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('Do 30.07.–So 02.08.');
 });
 
-test('AK3 (issue #1187): eine Folgezeile zeigt „bis <Datum>" für einen mehrtägigen Termin, der schon läuft', async ({
+test('AK3 (issue #1194): eine Folgezeile zeigt „bis <Wochentag> <Datum>" für einen mehrtägigen Termin, der schon läuft', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
@@ -1581,7 +1581,7 @@ test('AK3 (issue #1187): eine Folgezeile zeigt „bis <Datum>" für einen mehrt�
   const next = page.locator('.events-overview__next');
   await expect(next).toContainText('Feiertag');
   const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Urlaub' });
-  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('bis 20.07.');
+  await expect(restItem.locator('.events-overview__rest-time')).toHaveText('bis Mo 20.07.');
 });
 
 test('AK5 (issue #1187): endet ein mehrtägiger Termin heute, bleibt die Darstellung wie bei einem eintägigen Termin', async ({
@@ -1603,7 +1603,7 @@ test('AK5 (issue #1187): endet ein mehrtägiger Termin heute, bleibt die Darstel
   await expect(next.locator('.events-overview__next-range')).toHaveText('Heute');
 });
 
-test('AK6 (issue #1187): bei 375×812 und Dark Mode bricht eine Folgezeile mit Monatsgrenzen-Spanne und langem Titel nicht um und läuft nicht über', async ({
+test('AK5 (issue #1194, vormals AK6 #1187): bei 375×812 und Dark Mode bricht eine Folgezeile mit Monatsgrenzen-Spanne, Wochentag-Kürzeln und langem Titel nicht um und läuft nicht über', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
@@ -1631,7 +1631,7 @@ test('AK6 (issue #1187): bei 375×812 und Dark Mode bricht eine Folgezeile mit M
   const restItem = page.locator('.events-overview__rest-item').filter({ hasText: 'Ein sehr langer Terminname' });
   const time = restItem.locator('.events-overview__rest-time');
   const title = restItem.locator('.events-overview__rest-title');
-  await expect(time).toHaveText('30.07.–02.08.');
+  await expect(time).toHaveText('Do 30.07.–So 02.08.');
 
   const [timeFits, titleTruncates] = await Promise.all([
     time.evaluate((el) => el.scrollWidth <= el.clientWidth),
