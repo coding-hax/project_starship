@@ -290,6 +290,10 @@ test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)',
     page,
   }) => {
     await trackScrollTo(page);
+    // Ohne erzwungenen Überlauf gibt es seit #1200 nichts zu scrollen — fünf
+    // Einträge passen in fünf Plätze, `scrollIntoView` feuert nie, und der Test
+    // prüfte am Ende nur noch, dass nichts passiert.
+    await forceOverflow(page);
     await registerPasskey(page);
 
     await page
