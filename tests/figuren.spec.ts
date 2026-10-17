@@ -305,7 +305,7 @@ test('Regressions-Test (unverändert seit #830 AK2, Aktionsbündel seit #920 in 
 
   await page.goto('/uebersicht');
   const face = page.locator('.face');
-  const ring = page.locator('.daily-progress-ring-slot');
+  const ring = page.locator('.daily-progress-meter-slot');
   // Ring + Einstellungen-Einstieg (issue #920, zuvor die Titelzeilen-Aktionen aus #652).
   const actions = page.locator('.uebersicht__eyebrow-actions');
   const [faceBox, ringBox, actionsBox] = await Promise.all([

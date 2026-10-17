@@ -1,50 +1,70 @@
-.daily-progress-ring {
+/* Waagerechte Zählpille statt Ring (issue #1197): links die Zahl, rechts eine
+   schmale Spur — die Zahl allein war schon bei „11/14" breiter als der
+   34px-Ring und schnitt in dessen Kontur. */
+.daily-progress-meter {
   display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: 26px;
+  padding-inline: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
 }
 
-.daily-progress-ring__svg {
+.daily-progress-meter__count {
   flex-shrink: 0;
-}
-
-/* Groove/structure, not meaning — decorative tier, may stay under 3:1 on the
-   ground (issue #846 AK4, docs/design/farben-typografie.md). */
-.daily-progress-ring__track {
-  stroke: var(--border-faint);
-}
-
-/* Not --accent: on /uebersicht the ground IS --area-tasks == --accent, so a
-   filled --accent stroke was invisible against it (1.01:1, issue #846 AK2).
-   --on-ground is the route's measured ink, ≥4.5:1 against its own ground in
-   both themes, so the fill always clears 3:1 too. */
-.daily-progress-ring__fill {
-  stroke: var(--on-ground);
-  stroke-linecap: round;
-}
-
-.daily-progress-ring__count {
-  fill: var(--text);
-  color: var(--text);
-  font-size: var(--text-meta);
+  color: var(--text-base);
+  font-size: var(--text-chip);
   font-variant-numeric: tabular-nums;
-  /* Rundschrift-Rezept (issue #859, ADR-0027). `line-height` wirkt auf
-     SVG-`<text>` nicht, schadet aber nicht — bleibt Teil des Rezepts. */
+  /* Rundschrift-Rezept (issue #859, ADR-0027), wie zuvor am Ring. */
   font-family: var(--font-display);
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   line-height: var(--leading-display);
+  /* Überschreibt `.page-head__eyebrow`s `text-transform: uppercase` +
+     `letter-spacing: 0.06em` — die Zahl ist hier ein `<span>`, kein
+     SVG-`<text>` mehr, erbt also tatsächlich von der Augenbraue (issue #1197
+     AK2). */
+  text-transform: none;
 }
 
-/* Ring verschwindet ab 1440px (issue #1180, Nachfolger von #1122) — die
+.daily-progress-meter__track {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  /* Nicht --border-faint wie zuvor am Ring: die Spur sitzt jetzt auf der
+     Pillenfläche (--surface), nicht auf dem Routen-Grund — derselbe Mix wie
+     anderswo gegen --surface gemischt, oklab statt oklch (color-mix in oklch
+     mit Weiß kippt den Farbton, siehe #1197-Rezension). */
+  background: color-mix(in oklab, var(--text-base) 35%, var(--surface));
+}
+
+/* Füllbreite = done / total der Spurbreite, als Inline-`style` am Element
+   (issue #1197 AK5) — keine zusätzliche Property hier. --text-base gegen die
+   Spur oben misst ≥ 3:1 in hell und dunkel. */
+.daily-progress-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-base);
+}
+
+/* Die Pille verschwindet ab 1440px (issue #1180, Nachfolger von #1122) — die
    Zählpille im Zusatz-Slot der Kopfzeile (uebersicht.css) übernimmt dieselbe
-   Zahl. Der 34px-Slot-Käfig um den Ring steckt in `uebersicht.css`
-   (`.daily-progress-ring-slot`) — der Override hier löst nur den Ring selbst
-   ab dieser Breite ab. */
+   Zahl. Der 88×26px-Slot-Käfig steckt in `uebersicht.css`
+   (`.daily-progress-meter-slot`) — der Override hier löst nur die
+   Augenbrauen-Pille selbst ab dieser Breite ab. */
 @media (min-width: 1440px) {
-  .daily-progress-ring {
+  .daily-progress-meter {
     display: none;
   }
 
-  .daily-progress-ring-slot {
+  .daily-progress-meter-slot {
     width: auto;
     height: auto;
   }
