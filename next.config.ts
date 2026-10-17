@@ -65,11 +65,20 @@ const nextConfig: NextConfig = {
   //
   // "Heute" was renamed to "Übersicht" (issue #161), same reasoning: an
   // installed PWA's start_url, old bookmarks, and open tabs must keep working.
+  //
+  // Aktivitäten/Garmin was removed outright (issue #1200), not renamed — there is no
+  // successor page, so this sends bookmarks and open tabs to /uebersicht instead of
+  // Next's default 404. `module-route-guard.tsx`'s client-side guard cannot cover this
+  // case: it only fires for modules still listed in `MODULES` but switched off, and
+  // `/aktivitaeten` no longer resolves to any route at all, so the (app) layout it
+  // lives in never mounts.
   async redirects() {
     return [
       { source: '/heute/gewohnheiten', destination: '/routinen', permanent: true },
       { source: '/gewohnheiten', destination: '/routinen', permanent: true },
       { source: '/heute', destination: '/uebersicht', permanent: true },
+      { source: '/aktivitaeten', destination: '/uebersicht', permanent: true },
+      { source: '/aktivitaeten/:path*', destination: '/uebersicht', permanent: true },
     ];
   },
 };

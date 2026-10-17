@@ -1,7 +1,9 @@
 # Starship
 
-Eine persönliche Produktivitäts-PWA für **genau eine Person**: Termine, Aufgaben,
-Journal, Routinen. Mobile-first, offline-fähig, local-first.
+Eine persönliche Produktivitäts-PWA: Termine, Aufgaben, Journal, Routinen.
+Mobile-first, offline-fähig, local-first. **Mehrbenutzer seit ADR-0031** —
+mehrere Konten, jedes streng für sich, Zugang nur über Einladungs-Links vom
+Admin.
 
 Verbindliche Arbeitsanweisung: [CLAUDE.md](CLAUDE.md).
 Warum etwas so ist, wie es ist: [docs/](docs/) und [docs/adr/](docs/adr/).
@@ -10,7 +12,7 @@ Warum etwas so ist, wie es ist: [docs/](docs/) und [docs/adr/](docs/adr/).
 
 ```bash
 pnpm install
-cp .env.example .env.local          # OWNER_USER_ID setzen!
+cp .env.example .env.local
 docker compose up -d                # lokale Postgres
 pnpm db:migrate
 pnpm dev                            # http://localhost:3000
@@ -63,7 +65,7 @@ getrennten Datenbanken.
 - **Übersicht** — Dashboard, das alles zusammenführt
 - **Erinnerungen** — fällige Aufgaben und Streaks via Web Push
 - **Export** — vollständige Datenexporte, ohne Vendor-Lock-in
-- **Wetter & Aktivitäten** — Wetterdaten und Garmin-Integration
+- **Wetter** — Wetterdaten für die Übersicht
 
 Die App ist **auf dem iPhone installierbar** (Standalone-PWA), **funktioniert offline** und
 ist **lokal entwickelbar** — mit lokalem Postgres, eigenständigem Development und Tests ohne
@@ -71,6 +73,6 @@ externe Abhängigkeiten. Passkeys ermöglichen Login per Face ID.
 
 ## Lizenz
 
-Dieses Repo ist eine **persönliche Ein-Personen-App**. Alle Rechte bleiben beim Urheber
+Dieses Repo ist ein **persönliches Projekt**. Alle Rechte bleiben beim Urheber
 vorbehalten — es wird nicht als Angebot oder Grundlage zur Nachnutzung bereitgestellt.
 Das Repo ist aus Kostengründen öffentlich (CI), nicht wegen Lizenz.

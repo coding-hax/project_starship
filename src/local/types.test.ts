@@ -4,6 +4,7 @@ import {
   malformedFields,
   NATURAL_KEYS,
   naturalKeyOf,
+  READ_ONLY_TABLES,
   SYNC_TABLES,
   type Mutation,
 } from './types';
@@ -50,6 +51,10 @@ describe('Garmin ist ausgebaut (#1200, löst ADR-0011 ab)', () => {
   it('garmin_tokens never appears in SYNC_TABLES — tokens never leave the server through sync', () => {
     expect(isSyncTable('garmin_tokens')).toBe(false);
     expect(SYNC_TABLES).not.toContain('garmin_tokens');
+  });
+
+  it('READ_ONLY_TABLES is empty — garmin_activities was the only entry (AC2)', () => {
+    expect(READ_ONLY_TABLES).toEqual([]);
   });
 });
 

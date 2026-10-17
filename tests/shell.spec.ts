@@ -135,6 +135,21 @@ test('/heute permanently redirects to /uebersicht instead of 404ing (issue #161)
   expect(await redirected!.response().then((r) => r?.status())).toBe(308);
 });
 
+test('/aktivitaeten permanently redirects to /uebersicht instead of 404ing (issue #1200 AC1)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const response = await page.goto('/aktivitaeten');
+  expect(response?.status()).toBeLessThan(400);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expectUebersichtLoaded(page);
+
+  const redirected = response!.request().redirectedFrom();
+  expect(redirected).not.toBeNull();
+  expect(await redirected!.response().then((r) => r?.status())).toBe(308);
+});
+
 test('the manifest start_url points at /uebersicht, not the old /heute (issue #161)', async ({
   page,
   baseURL,

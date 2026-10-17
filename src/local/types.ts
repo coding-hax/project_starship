@@ -23,6 +23,16 @@ export function isSyncTable(value: unknown): value is SyncTable {
 }
 
 /**
+ * Tables the sync engine would read but never write: server-origin data (ADR-0011).
+ * Empty since issue #1200 — Garmin/`garmin_activities`, the only entry there ever
+ * was, was removed outright rather than migrated to `(user_id, id)`. The constant
+ * stays rather than disappearing so a future server-origin table has somewhere to
+ * register; nothing currently reads it (`push`/`outbox.mutate()` have no read-only
+ * branch to gate, since gating on an always-empty list would be dead code).
+ */
+export const READ_ONLY_TABLES: readonly SyncTable[] = [];
+
+/**
  * Tables with a natural key beyond `id` (a `uniqueIndex` in schema.ts, see
  * `habit_logs_habit_id_log_date_idx`, issue #475): two devices can
  * independently mint a row with a different `id` for the same `(habitId,
