@@ -1,0 +1,26 @@
+/**
+ * The archived section, standing on its own below `HabitHistoryCard` instead
+ * of directly behind the active table (issue #1196, replaces the sibling
+ * placement inside `habit-table.tsx`/habit-table.css's old `.habit-table +
+ * .section-card` rule — that selector no longer has anything to match once
+ * the two live in different components). `margin-top` instead of the usual
+ * `margin-bottom` other cards on this page carry: this is always the last
+ * card in the stack, so the gap belongs on its own leading edge regardless
+ * of which element happens to precede it (the history card, or — with no
+ * active habits — the empty-table message directly).
+ */
+.habit-archive-card {
+  margin-top: var(--space-4);
+}
+
+/* Fourth row of routinen-page.css's desktop grid (ADR-0030): same column as
+   the tiles/history card, below the history card. Zeroes its own margin-top
+   like habit-tiles.css/habit-history-card.css already do for their own
+   margins at this breakpoint — the grid's `row-gap` provides the space-4 gap
+   instead, so the two don't add up. */
+@media (min-width: 1440px) {
+  [data-ground='routinen'] .habit-archive-card {
+    grid-column: 2;
+    margin-top: 0;
+  }
+}

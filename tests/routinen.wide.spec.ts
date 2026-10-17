@@ -311,3 +311,92 @@ test('bei 1280 und 375 bleibt die gestapelte Reihenfolge Kacheln → Tabelle →
     expect(tableY, `${viewport.width}px: Tabelle steht über dem Verlauf`).toBeLessThan(historyY);
   }
 });
+
+/* -------------------------------------------------------------------------- */
+/* AK5 (issue #1196): Archiv-Karte rechts unterhalb der Verlaufskarte,       */
+/* gleiche linke Kante/Breite, Tabelle spannt weiterhin über die Verlauf-   */
+/* Zeile                                                                     */
+/* -------------------------------------------------------------------------- */
+
+test('die Karte „Archiviert" steht rechts unterhalb der Verlaufskarte, gleiche linke Kante und Breite, die Tabelle spannt weiterhin über die Verlauf-Zeile (issue #1196 AK5)', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, { name: 'Archiv-Spalten-Sonde' });
+  await seedHabitLog(page, habitId, TODAY);
+  await seedHabit(page, {
+    name: 'Archiv-Spalten-Sonde archiviert',
+    archivedAt: '2026-01-01T00:00:00.000Z',
+  });
+  await page.goto('/routinen');
+
+  const table = page.locator('.habit-table');
+  const history = page.locator('.habit-history-card');
+  const archive = page.locator('.habit-archive-card');
+  await expect(table).toBeVisible();
+  await expect(history).toBeVisible();
+  await expect(archive).toBeVisible();
+
+  const [tableBox, historyBox, archiveBox] = await Promise.all([
+    table.boundingBox(),
+    history.boundingBox(),
+    archive.boundingBox(),
+  ]);
+  if (!tableBox || !historyBox || !archiveBox) throw new Error('AK5: Karte ohne BoundingBox');
+
+  expect(
+    Math.abs(archiveBox.x - historyBox.x),
+    'gleiche linke Kante wie die Verlaufskarte',
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(archiveBox.width - historyBox.width),
+    'gleiche Breite wie die Verlaufskarte',
+  ).toBeLessThanOrEqual(1);
+  expect(
+    archiveBox.y,
+    'Oberkante der Archiv-Karte unter der Unterkante der Verlaufskarte',
+  ).toBeGreaterThanOrEqual(historyBox.y + historyBox.height);
+
+  // Die Tabelle spannt weiterhin über die Verlauf-Zeile (#1125 AK1) — mit der
+  // vierten Zeile jetzt auch über die Archiv-Zeile.
+  expect(
+    tableBox.y + tableBox.height,
+    'Tabelle reicht über das Ende der Verlauf-Zeile hinaus',
+  ).toBeGreaterThan(historyBox.y);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK6 (issue #1196): die neue vierte Grid-Zeile für die Archiv-Karte darf   */
+/* die Überhöhen-Verteilung aus #1125 AK3 nicht aufweichen                   */
+/* -------------------------------------------------------------------------- */
+
+test('zwischen Kacheln und Verlaufskarte bleibt höchstens --space-4, auch mit einer vierten Grid-Zeile für die Archiv-Karte (issue #1196 AK6)', async ({
+  page,
+}) => {
+  await seedTallTable(page, 12);
+  await seedHabit(page, {
+    name: 'Überhöhen-Sonde archiviert',
+    archivedAt: '2026-01-01T00:00:00.000Z',
+  });
+  await page.goto('/routinen');
+
+  const tiles = page.locator('.habit-tiles');
+  const history = page.locator('.habit-history-card');
+  const table = page.locator('.habit-table');
+  const archive = page.locator('.habit-archive-card');
+  const [tilesBox, historyBox, tableBox, archiveBox, space4] = await Promise.all([
+    tiles.boundingBox(),
+    history.boundingBox(),
+    table.boundingBox(),
+    archive.boundingBox(),
+    resolveSpaceToken(page, '--space-4'),
+  ]);
+  if (!tilesBox || !historyBox || !tableBox || !archiveBox) {
+    throw new Error('AK6: Karte ohne BoundingBox');
+  }
+
+  expect(tableBox.height).toBeGreaterThan(tilesBox.height + space4 + historyBox.height);
+
+  const gap = historyBox.y - (tilesBox.y + tilesBox.height);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap, `Lücke ${gap}px vs. --space-4 (${space4}px)`).toBeLessThanOrEqual(space4 + 1);
+});
