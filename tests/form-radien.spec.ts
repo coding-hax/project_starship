@@ -12,8 +12,8 @@ const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  // /uebersicht und /aktivitaeten lösen beim Laden echte Netzaufrufe aus, die
-  // ungemockt als Konsolenfehler/Dev-Overlay im DOM landen (siehe grundfarbe.spec.ts).
+  // /uebersicht löst beim Laden einen echten Netzaufruf aus, der ungemockt als
+  // Konsolenfehler/Dev-Overlay im DOM landet (siehe grundfarbe.spec.ts).
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({ dates: ['2026-07-18'], tempsMax: [20], tempsMin: [10] }),
@@ -58,7 +58,7 @@ interface RouteCase {
   header: (page: Page) => Locator;
 }
 
-// Acht der neun authentifizierten Routen — Anmelden braucht einen ausgeloggten
+// Sieben der acht authentifizierten Routen — Anmelden braucht einen ausgeloggten
 // Kontext und bekommt seinen eigenen Eintrag über forEachRoute unten (Vorlage:
 // figuren.spec.ts, seitenkopf.spec.ts).
 const ROUTES: RouteCase[] = [
@@ -70,15 +70,11 @@ const ROUTES: RouteCase[] = [
     header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen' }),
   },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },
-  {
-    path: '/aktivitaeten',
-    header: (page) => page.getByRole('heading', { level: 1, name: 'Aktivitäten' }),
-  },
   { path: '/wetter/2026-07-18', header: (page) => page.locator('.weather-day__topbar') },
   { path: '/einstellungen', header: (page) => page.locator('.einstellungen__topbar') },
 ];
 
-/** Läuft `fn` über alle neun Routen im gegebenen Theme — die acht angemeldeten auf
+/** Läuft `fn` über alle acht Routen im gegebenen Theme — die sieben angemeldeten auf
  * `page`, Anmelden über einen frischen, ausgeloggten Kontext. `colorScheme` wird
  * vor jeder Navigation gesetzt, damit auch Mount-Zeit-JS (z. B. use-appearance.ts)
  * die richtige Systempräferenz sieht (Vorlage: figuren.spec.ts AK3). */
@@ -155,13 +151,13 @@ test('AK2: der neue Kartenschatten liegt auf einer schwebenden Fläche (.section
   expect(await elementShadow(surfaceCard)).toBe(shadowToken);
 });
 
-// Zwei Tests statt einem gemeinsamen: ein Durchlauf über alle neun Routen inklusive
+// Zwei Tests statt einem gemeinsamen: ein Durchlauf über alle acht Routen inklusive
 // eigenem Anmelden-Kontext braucht bereits einen Teil des Standard-Testtimeouts (30s);
 // Hell und Dunkel im selben Test hintereinander lief unter CI-Last in den Timeout
 // (net::ERR_ABORTED beim Goto mitten im zweiten Durchlauf).
 for (const scheme of ['light', 'dark'] as const) {
   const label = scheme === 'light' ? 'Hell' : 'Dunkel';
-  test(`AK-Ü: kein Überlauf nach dem Radien-/Schattenwechsel, ${label}, alle neun Routen`, async ({
+  test(`AK-Ü: kein Überlauf nach dem Radien-/Schattenwechsel, ${label}, alle acht Routen`, async ({
     page,
     browser,
   }) => {

@@ -139,28 +139,31 @@ test('AK2/AK3: ab 1440px ist .uebersicht__sections ein dreispaltiges Raster, Wet
 test('AK4: ein abgeschaltetes Modul lässt das Raster ohne Lücke, die verbliebenen Sektionen rücken auf (issue #1120)', async ({
   page,
 }) => {
+  // Aufgaben aus, nicht Routinen: `waitForReveal` wartet auf `.habit-today`, also
+  // genau auf die Routinen-Sektion — die abzuschalten nähme dem Test seinen
+  // Enthüllungspunkt. Bis #1200 stand hier Aktivitäten, das weder spannt noch
+  // der Warte-Anker ist.
   await page.addInitScript(
     ({ key, value }) => localStorage.setItem(key, value),
-    { key: MODULES_OFF_KEY, value: JSON.stringify(['routinen']) },
+    { key: MODULES_OFF_KEY, value: JSON.stringify(['aufgaben']) },
   );
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
-  await seedTask(page, { title: 'Aufgabe', dueAt: NOW });
 
   await waitForReveal(page);
-  await expect(page.locator('.overview-block[data-section="routinen"]')).toHaveCount(0);
+  await expect(page.locator('.overview-block[data-section="aufgaben"]')).toHaveCount(0);
 
   const sections = page.locator('.uebersicht__sections');
   const gapPx = await sections.evaluate((el) => parseFloat(getComputedStyle(el).columnGap));
   const containerBox = await sections.boundingBox();
-  const aufgabenBox = await page.locator('.overview-block[data-section="aufgaben"]').boundingBox();
-  const wetterBox = await page.locator('.overview-block[data-section="wetter"]').boundingBox();
+  const routinenBox = await page.locator('.overview-block[data-section="routinen"]').boundingBox();
+  const kalenderBox = await page.locator('.overview-block[data-section="kalender"]').boundingBox();
 
-  // Aufgaben rückt in die erste Spalte, direkt unter die spannenden Sektionen …
-  expect(Math.round(aufgabenBox!.x)).toBe(Math.round(containerBox!.x));
+  // Routinen rückt in die erste Spalte, direkt unter die spannenden Sektionen …
+  expect(Math.round(routinenBox!.x)).toBe(Math.round(containerBox!.x));
   // … und lässt keine leere Spalte vor sich stehen: die Zeile beginnt links,
-  // nicht erst dort, wo Routinen vorher saß.
-  expect(aufgabenBox!.y).toBeGreaterThanOrEqual(wetterBox!.y + wetterBox!.height - 1);
+  // nicht erst dort, wo Aufgaben vorher saß.
+  expect(routinenBox!.y).toBeGreaterThanOrEqual(kalenderBox!.y + kalenderBox!.height - 1);
   expect(gapPx, 'Raster-Spaltenabstand steht').toBeGreaterThan(0);
 });
 

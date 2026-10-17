@@ -43,7 +43,7 @@ const ROUTES: RouteCase[] = [
   { face: 'einstellungen', path: '/einstellungen' },
 ];
 
-/** Läuft `fn` über alle neun Routen — die acht angemeldeten auf `page`, Anmelden über einen frischen, ausgeloggten Kontext. */
+/** Läuft `fn` über alle acht Routen — die sieben angemeldeten auf `page`, Anmelden über einen frischen, ausgeloggten Kontext. */
 async function forEachRoute(
   page: Page,
   browser: Browser,
@@ -247,7 +247,7 @@ const FACE_COLORS: Record<string, { body: string; ink: string }> = {
 // #870 T3) — alle anderen acht Routen bleiben bei der halbhohen Kopfgröße.
 const EXPECTED_FACE_SIZE: Record<string, number> = { anmelden: 136 };
 
-test('AK1: die neun Silhouetten stimmen wortgleich mit dem Entwurfsblatt überein', async ({ page, browser }) => {
+test('AK1: die acht Silhouetten stimmen wortgleich mit dem Entwurfsblatt überein', async ({ page, browser }) => {
   await registerPasskey(page);
 
   const seenFaces = new Set<string>();
@@ -273,7 +273,7 @@ test('AK1: die neun Silhouetten stimmen wortgleich mit dem Entwurfsblatt überei
     expect(geometry, `Körper-Geometrie auf ${path}`).toEqual(EXPECTED_BODY[face]);
   });
 
-  expect(seenFaces.size, 'neun paarweise verschiedene Silhouetten').toBe(9);
+  expect(seenFaces.size, 'acht paarweise verschiedene Silhouetten').toBe(8);
 });
 
 test('Regressions-Test (unverändert seit #830 AK2, Aktionsbündel seit #920 in der Augenbrauenzeile): die Figur steht im Fluss und überlappt weder Ring noch Aktionen auf der Übersicht', async ({
@@ -470,7 +470,7 @@ test('AK1 (#962): Figur sitzt rechts außen in der Titelzeile von /routinen', as
   }
 });
 
-test('AK7: die Figuren tragen aria-hidden auf allen neun Routen', async ({ page, browser }) => {
+test('AK7: die Figuren tragen aria-hidden auf allen acht Routen', async ({ page, browser }) => {
   await registerPasskey(page);
   await forEachRoute(page, browser, async (routePage, _face, path) => {
     await expect(routePage.locator('.face'), `aria-hidden auf ${path}`).toHaveAttribute('aria-hidden', 'true');

@@ -223,7 +223,6 @@ const NAV_ROUTES: NavRoute[] = [
   { path: '/routinen', label: 'Routinen' },
   { path: '/kalender', label: 'Kalender' },
   { path: '/journal', label: 'Journal' },
-  { path: '/aktivitaeten', label: 'Aktivitäten' },
 ];
 
 async function pseudoProp(locator: Locator, pseudo: string, prop: string): Promise<string> {
@@ -349,10 +348,6 @@ const OVERFLOW_ROUTES: OverflowRoute[] = [
   },
   { path: '/kalender', header: (page) => page.locator('.calendar-view__header') },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },
-  {
-    path: '/aktivitaeten',
-    header: (page) => page.getByRole('heading', { level: 1, name: 'Aktivitäten' }),
-  },
 ];
 
 for (const scheme of ['light', 'dark'] as const) {
