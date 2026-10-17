@@ -10,16 +10,23 @@ export interface PushPayload {
 }
 
 /**
- * Sends `payload` to every stored subscription. A 404/410 means the push
- * service itself says the endpoint is gone — that subscription is deleted
- * outright (no tombstone: this table isn't synced, see src/db/schema.ts).
- * Any other failure is only logged by id/status, never by endpoint or keys
- * (AC5 — those are secrets the moment they leave the device).
+ * Sends `payload` to every device of **one account** (ADR-0031). There is no
+ * send-to-everyone any more: a notification always belongs to somebody, and a
+ * function that could reach every device at once is one forgotten argument away
+ * from telling the wrong person about their tasks.
+ *
+ * A 404/410 means the push service itself says the endpoint is gone — that
+ * subscription is deleted outright (no tombstone: this table isn't synced, see
+ * src/db/schema.ts). Any other failure is only logged by id/status, never by
+ * endpoint or keys (AC5 — those are secrets the moment they leave the device).
  */
-export async function sendPushToAll(payload: PushPayload): Promise<void> {
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
   ensureVapidConfigured();
 
-  const subscriptions = await db.select().from(pushSubscriptions);
+  const subscriptions = await db
+    .select()
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, userId));
 
   await Promise.all(
     subscriptions.map(async (subscription) => {

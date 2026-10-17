@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mutation } from '@/local/types';
 
+const SESSION_USER = {
+  userId: '00000000-0000-0000-0000-0000000000aa',
+  role: 'user' as const,
+  sessionId: 'session-1',
+  credentialId: 'cred-1',
+  deviceId: null,
+  lastSeenAt: null,
+  blockedAt: null,
+};
 vi.mock('@/auth/session', () => ({
-  requireOwner: vi.fn().mockResolvedValue('owner-id'),
+  requireUser: vi.fn().mockResolvedValue(SESSION_USER),
   UnauthorizedError: class UnauthorizedError extends Error {},
+  AccountBlockedError: class AccountBlockedError extends Error {},
 }));
 
 const insertValues = vi.fn().mockResolvedValue(undefined);

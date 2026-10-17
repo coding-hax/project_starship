@@ -47,7 +47,7 @@ function buildCsp(nonce: string): string {
  * Auth check: cookie presence only, no DB access — this runs in the Edge runtime,
  * which session.ts cannot (next/headers cookies() aside, it also pulls drizzle and
  * node:crypto). The real check stays at the data layer: every `/api/sync/*` route
- * calls requireOwner() against Postgres. `/anmelden`, `/` and `/api/*` never redirect.
+ * calls requireUser() against Postgres. `/anmelden`, `/` and `/api/*` never redirect.
  *
  * CSP (production only, issue #753): dev needs 'unsafe-eval' for HMR and none of the
  * `mobile` project's specs expect a CSP, so the header is skipped there entirely

@@ -9,9 +9,15 @@ die sich schnell und leicht anfühlt und auf die ich jeden Tag freiwillig schaue
 
 ## Für wen
 
-Für **genau eine Person**. Es gibt keine anderen Nutzer, keine Rollen, keine Rechte,
-keine Einladungen, keine Mandantentrennung. Das ist eine Feature-Entscheidung,
-kein Zwischenstand — sie darf die Architektur radikal vereinfachen.
+Für **einen überschaubaren Kreis von Menschen, die je für sich arbeiten**
+(ADR-0031, seit 17.10.2026 — davor stand hier „für genau eine Person").
+
+Jedes Konto sieht ausschließlich die eigenen Daten; es gibt keinen Pfad dazwischen
+und keine Rollen außer `admin` und `user`. Neue Konten entstehen **nur** über einen
+Einladungs-Link, den der Admin erzeugt — eine offene Registrierung gibt es weiterhin
+nicht. Was damit wegfällt, ist die Vereinfachung „es gibt nur einen legitimen
+Subjekt", nicht das Produktversprechen: die App bleibt ein persönlicher Ort für den
+Tag, kein Werkzeug für Zusammenarbeit.
 
 ## Produktprinzipien
 
@@ -30,8 +36,10 @@ kein Zwischenstand — sie darf die Architektur radikal vereinfachen.
 
 Diese Dinge bauen wir **nicht**, und Vorschläge in diese Richtung werden abgelehnt:
 
-- Mehrbenutzer, Teilen, Kommentare, Kollaboration
-- Öffentliche Registrierung, Onboarding-Flows, Marketing-Seiten
+- Teilen, Kommentare, Kollaboration **zwischen** Konten — mehrere Konten ja
+  (ADR-0031), gemeinsame Daten nein
+- Öffentliche Registrierung, Onboarding-Flows, Marketing-Seiten — Zugang gibt es
+  ausschließlich über einen Einladungs-Link vom Admin
 - Monetarisierung, Abos, Zahlungsabwicklung
 - Native iOS-App im App Store (siehe ADR-0001)
 - Zwei-Wege-Sync mit externen Kalendern (iCloud, Google) — siehe ADR-0002

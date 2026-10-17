@@ -9,6 +9,7 @@
 - `runner/{prompts,round}.ts` — die Prompts + eine Runde je Takt
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session, Shim-Drift, Aufräumen, Multi-Slot
 - `check-{test-integrity,sync-invariants}.sh` — abgeschwächte Tests, API außerhalb der Outbox
+- `check-tenant-isolation.sh` — Mandanten-PK, requireUser je Route
 - `check-{dexie-bump,codemap}.sh` — Dexie-Bump-Hinweis, Wächter für diese Karten
 - `git-hooks/pre-push` / `tests/*.test.sh` — Slot-Claim-Guard; Bash-Fixture-Suiten
 - `starship-runner` — Shim, den launchd/systemd startet

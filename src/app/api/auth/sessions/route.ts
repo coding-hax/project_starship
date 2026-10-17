@@ -1,29 +1,30 @@
 import { NextResponse } from 'next/server';
-import { endOtherSessions, listSessions, requireOwner, UnauthorizedError } from '@/auth/session';
-
-async function guard() {
-  try {
-    await requireOwner();
-    return null;
-  } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    throw error;
-  }
-}
+import { authErrorResponse } from '@/auth/auth-response';
+import { endOtherSessions, listSessions, requireUser } from '@/auth/session';
 
 export async function GET() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  let user;
+  try {
+    user = await requireUser();
+  } catch (error) {
+    const response = authErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
 
-  const sessions = await listSessions();
+  const sessions = await listSessions(user.userId);
   return NextResponse.json({ sessions, otherCount: sessions.filter((s) => !s.current).length });
 }
 
 export async function DELETE() {
-  const unauthorized = await guard();
-  if (unauthorized) return unauthorized;
+  let user;
+  try {
+    user = await requireUser();
+  } catch (error) {
+    const response = authErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
 
-  return NextResponse.json({ endedCount: await endOtherSessions() });
+  return NextResponse.json({ endedCount: await endOtherSessions(user.userId) });
 }

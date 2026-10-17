@@ -1,20 +1,22 @@
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { enforce } from '@/auth/rate-limit';
-import { listCredentials, relyingParty, storeChallenge } from '@/auth/webauthn';
+import { listAllCredentials, relyingParty, storeChallenge } from '@/auth/webauthn';
 
 export async function POST(request: Request) {
   const limited = await enforce(request, 'options');
   if (limited) return limited;
 
   const rp = relyingParty();
-  // Deliberately unauthenticated: this is a usernameless WebAuthn flow, so
-  // allowCredentials must list the known credential IDs before login for the
-  // platform to offer them as a choice. IDs are not secrets; the only thing an
-  // observer learns is how many devices are registered. Accepted for a
-  // single-user app in exchange for better passkey selection at sign-in,
-  // rather than leaving allowCredentials empty (Deep Review F8, AK4).
-  const existing = await listCredentials();
+  // Deliberately unauthenticated and deliberately across all accounts: this is a
+  // usernameless WebAuthn flow, so allowCredentials must list the known credential
+  // IDs before login for the platform to offer them as a choice — and before the
+  // ceremony nobody knows whose account it will turn out to be. IDs are not
+  // secrets; an observer learns how many passkeys exist on the installation,
+  // which is the same trade #1200 inherited from the single-user version
+  // (Deep Review F8, AK4). Which account the ceremony belongs to is decided in
+  // login/verify, from the credential row.
+  const existing = await listAllCredentials();
 
   const options = await generateAuthenticationOptions({
     rpID: rp.id,

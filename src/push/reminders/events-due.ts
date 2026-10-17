@@ -11,7 +11,7 @@
  * re-implementing recurrence expansion here.
  */
 
-import { and, isNull, isNotNull } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { events, eventExceptions, type Event, type EventException } from '@/db/schema';
 import { expandForDay } from '@/features/events/recurrence';
@@ -179,13 +179,25 @@ function toEventExceptionRow(row: EventException): EventExceptionView {
  * the same "load broadly, filter in pure code" shape `habits-open.ts` uses
  * for logs/freezes, reasonable at this app's single-owner scale.
  */
-export async function collectDueEventReminders(now: Date): Promise<DueEventReminder[]> {
+export async function collectDueEventReminders(
+  now: Date,
+  userId: string,
+): Promise<DueEventReminder[]> {
   const eventRows = await db
     .select()
     .from(events)
-    .where(and(isNotNull(events.reminderMinutes), isNull(events.deletedAt)));
+    .where(
+      and(
+        eq(events.userId, userId),
+        isNotNull(events.reminderMinutes),
+        isNull(events.deletedAt),
+      ),
+    );
 
-  const exceptionRows = await db.select().from(eventExceptions).where(isNull(eventExceptions.deletedAt));
+  const exceptionRows = await db
+    .select()
+    .from(eventExceptions)
+    .where(and(eq(eventExceptions.userId, userId), isNull(eventExceptions.deletedAt)));
 
   return dueEventReminders(
     eventRows.map(toEventReminderSource),

@@ -20,9 +20,13 @@ import { build } from './tasks-due';
 // 08:00 Berlin (CEST, UTC+2) on 2026-07-15.
 const AT_0800_BERLIN = new Date(Date.UTC(2026, 6, 15, 6, 0));
 
+/** The one account this suite's rows belong to — `build()` takes it explicitly since #1200. */
+const USER_ID = '00000000-0000-0000-0000-00000000a002';
+
 function task(overrides: Partial<Task> = {}): Task {
   return {
     id: 'id',
+    userId: USER_ID,
     updatedAt: new Date(),
     deletedAt: null,
     syncedAt: null,
@@ -42,12 +46,12 @@ function task(overrides: Partial<Task> = {}): Task {
 describe('tasks-due build()', () => {
   it('returns null when nothing is due (0 Aufgaben)', async () => {
     rows = [];
-    expect(await build(AT_0800_BERLIN)).toBeNull();
+    expect(await build(AT_0800_BERLIN, USER_ID)).toBeNull();
   });
 
   it('singular text for exactly one due task', async () => {
     rows = [task({ title: 'Steuererklärung' })];
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: 'Heute fällig',
       body: 'Steuererklärung',
       url: '/aufgaben',
@@ -56,7 +60,7 @@ describe('tasks-due build()', () => {
 
   it('lists both titles for exactly two due tasks, no "weitere"', async () => {
     rows = [task({ title: 'Eins' }), task({ title: 'Zwei' })];
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: '2 Aufgaben heute fällig',
       body: 'Eins, Zwei',
       url: '/aufgaben',
@@ -65,7 +69,7 @@ describe('tasks-due build()', () => {
 
   it('names the first two and counts the rest for five due tasks', async () => {
     rows = ['Eins', 'Zwei', 'Drei', 'Vier', 'Fünf'].map((title) => task({ title }));
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: '5 Aufgaben heute fällig',
       body: 'Eins, Zwei und 3 weitere',
       url: '/aufgaben',
@@ -83,7 +87,7 @@ describe('tasks-due build()', () => {
     });
     rows = [dueLateToday, dueEarlyTomorrow];
 
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: 'Heute fällig',
       body: 'Spät heute',
       url: '/aufgaben',
@@ -92,7 +96,7 @@ describe('tasks-due build()', () => {
 
   it('an overdue task (past Berlin day) still counts', async () => {
     rows = [task({ title: 'Überfällig', dueAt: new Date(Date.UTC(2026, 6, 10, 6, 0)) })];
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: 'Heute fällig',
       body: 'Überfällig',
       url: '/aufgaben',
@@ -106,7 +110,7 @@ describe('tasks-due build()', () => {
       task({ title: 'Morgen', dueAt: new Date(Date.UTC(2026, 6, 16, 6, 0)) }),
       task({ title: 'Übrig' }),
     ];
-    expect(await build(AT_0800_BERLIN)).toEqual({
+    expect(await build(AT_0800_BERLIN, USER_ID)).toEqual({
       title: 'Heute fällig',
       body: 'Übrig',
       url: '/aufgaben',

@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { endSession, requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { endSession, requireUser } from '@/auth/session';
 
 /** Idempotent on "not-found"; the caller's own session is never revocable here (issue #1103 AC5) — that is "App sperren"'s job. */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
   const { id } = await params;
-  const result = await endSession(id);
+  const result = await endSession(user.userId, id);
 
   if (result === 'self') {
     return NextResponse.json(

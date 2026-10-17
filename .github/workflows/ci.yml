@@ -18,7 +18,6 @@ concurrency:
 env:
   # Not a secret: a throwaway database that lives for the length of one CI run.
   DATABASE_URL: postgresql://starship:starship@localhost:5432/starship
-  OWNER_USER_ID: 00000000-0000-0000-0000-00000000c1c1
   RP_ID: localhost
   RP_NAME: Starship
   RP_ORIGIN: http://localhost:3100
@@ -57,6 +56,8 @@ jobs:
       - run: bash scripts/tests/supervisor.test.sh
       - run: bash scripts/check-sync-invariants.sh
       - run: bash scripts/tests/sync-invariants.test.sh
+      - run: bash scripts/check-tenant-isolation.sh
+      - run: bash scripts/tests/tenant-isolation.test.sh
       - run: bash scripts/tests/test-integrity.test.sh
       - run: bash scripts/check-codemap.sh
       - run: bash scripts/tests/codemap.test.sh

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/auth/session';
+import { requireUser } from '@/auth/session';
 import { sendDueReminders } from '@/push/reminders';
 
 export const dynamic = 'force-dynamic';
@@ -17,10 +17,10 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(digestA, digestB);
 }
 
-async function hasValidOwnerSession(): Promise<boolean> {
+/** A signed-in admin may kick the cron by hand; nobody else, and never a blocked account. */
+async function hasValidAdminSession(): Promise<boolean> {
   try {
-    await requireOwner();
-    return true;
+    return (await requireUser()).role === 'admin';
   } catch {
     return false;
   }
@@ -40,8 +40,9 @@ function resolveNow(request: Request): Date {
 
 /**
  * Triggered by the GitHub-Actions cron (`Authorization: Bearer <REMINDER_SECRET>`)
- * and, for a manual kick, by a signed-in owner — same auth shape as
- * a cron run carries no session, so `requireOwner()` alone would lock it out.
+ * and, for a manual kick, by a signed-in **admin**: a cron run carries no session,
+ * so `requireUser()` alone would lock it out, and one tick now delivers to every
+ * account (ADR-0031) — not something an ordinary account may set off.
  */
 export async function POST(request: Request) {
   const secret = process.env.REMINDER_SECRET;
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
 
   const header = request.headers.get('authorization');
   const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
-  const authorized = (bearer !== null && safeEqual(bearer, secret)) || (await hasValidOwnerSession());
+  const authorized = (bearer !== null && safeEqual(bearer, secret)) || (await hasValidAdminSession());
 
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

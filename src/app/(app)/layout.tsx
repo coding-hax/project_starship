@@ -12,7 +12,7 @@ import { PageTransition } from './page-transition';
 /**
  * Cookie presence is gated by middleware.ts before this ever renders — that keeps
  * the segment static, so no DB round trip is left here. The real check stays at
- * the data layer (requireOwner()); an invalid cookie surfaces via the first sync
+ * the data layer (requireUser()); an invalid cookie surfaces via the first sync
  * pull's 401 (src/local/sync.ts) rather than here.
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {

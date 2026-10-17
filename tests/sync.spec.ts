@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import {
+  currentAccountId,
   FIXED_NOW,
   freezeClock,
   openSecondDevice,
@@ -1117,20 +1118,21 @@ test.describe('Routinen: Datenmodell + Sync (#101)', () => {
     // Two distinct rows (distinct ids, as two devices racing offline would produce)
     // for the same habit and calendar day. The whitelist/required-fields layer in
     // src/db/sync-tables.ts has no opinion on this — it is a database constraint.
+    const userId = await currentAccountId();
     await withDb((c) =>
       c.query(
-        'INSERT INTO habit_logs (id, sync_seq, habit_id, log_date, done) ' +
-          "VALUES ($1, nextval('sync_seq'), $2, '2026-07-15', true)",
-        [randomUUID(), habitId],
+        'INSERT INTO habit_logs (user_id, id, sync_seq, habit_id, log_date, done) ' +
+          "VALUES ($1, $2, nextval('sync_seq'), $3, '2026-07-15', true)",
+        [userId, randomUUID(), habitId],
       ),
     );
 
     await expect(
       withDb((c) =>
         c.query(
-          'INSERT INTO habit_logs (id, sync_seq, habit_id, log_date, done) ' +
-            "VALUES ($1, nextval('sync_seq'), $2, '2026-07-15', true)",
-          [randomUUID(), habitId],
+          'INSERT INTO habit_logs (user_id, id, sync_seq, habit_id, log_date, done) ' +
+            "VALUES ($1, $2, nextval('sync_seq'), $3, '2026-07-15', true)",
+          [userId, randomUUID(), habitId],
         ),
       ),
     ).rejects.toThrow(/duplicate key value violates unique constraint/);
@@ -1878,13 +1880,14 @@ test.describe('Serientermin-Ausnahmen: Konvergenz bei paralleler Verschiebung (#
 test.describe('Pull-Pagination: der Erstsync kippt nicht mehr in einem Rutsch (fund F5, #478)', () => {
   /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq. */
   async function seedTasks(count: number, titlePrefix: string) {
+    const userId = await currentAccountId();
     const result = await withDb((c) =>
       c.query(
-        `INSERT INTO tasks (id, title, sync_seq)
-         SELECT gen_random_uuid(), $1 || g, nextval('sync_seq')
+        `INSERT INTO tasks (user_id, id, title, sync_seq)
+         SELECT $3, gen_random_uuid(), $1 || g, nextval('sync_seq')
          FROM generate_series(1, $2) AS g
          RETURNING id, sync_seq`,
-        [titlePrefix, count],
+        [titlePrefix, count, userId],
       ),
     );
     return result.rows.map((r) => ({ id: r.id as string, syncSeq: Number(r.sync_seq) }));

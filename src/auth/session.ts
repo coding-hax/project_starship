@@ -3,7 +3,7 @@ import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
-import { sessions } from '@/db/schema';
+import { sessions, users } from '@/db/schema';
 import { ensureDeviceId, healDeviceCookie } from './device-cookie';
 import { SESSION_COOKIE } from './session-cookie';
 
@@ -20,12 +20,18 @@ function hashToken(token: string): string {
 }
 
 /**
- * Mints a session and sets the cookie. The raw token is returned to the browser
- * once, inside the cookie; the database only ever sees its hash. `credentialId`
- * binds the session to the passkey that minted it (issue #854) — omitted for the
- * throwaway/legacy paths that have no credential to bind to.
+ * Mints a session for `userId` and sets the cookie. The raw token is returned to
+ * the browser once, inside the cookie; the database only ever sees its hash.
+ * `credentialId` binds the session to the passkey that minted it (issue #854) —
+ * omitted for the throwaway/legacy paths that have no credential to bind to.
+ *
+ * `userId` is not optional and has no default on purpose (ADR-0031): every caller
+ * has to say whose session this is, and the compiler asks.
  */
-export async function createSession(credentialId: string | null = null): Promise<void> {
+export async function createSession(
+  userId: string,
+  credentialId: string | null = null,
+): Promise<void> {
   const id = uuidv7();
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -33,6 +39,7 @@ export async function createSession(credentialId: string | null = null): Promise
 
   await db.insert(sessions).values({
     id,
+    userId,
     tokenHash: hashToken(token),
     expiresAt,
     credentialId,
@@ -52,6 +59,7 @@ export async function createSession(credentialId: string | null = null): Promise
       .delete(sessions)
       .where(
         and(
+          eq(sessions.userId, userId),
           eq(sessions.credentialId, credentialId),
           ne(sessions.id, id),
           or(eq(sessions.deviceId, deviceId), isNull(sessions.deviceId)),
@@ -69,36 +77,51 @@ export async function createSession(credentialId: string | null = null): Promise
   });
 }
 
-/** Returns the owner id when the request carries a live session, otherwise null. */
-export async function getSession(): Promise<{
+/** Who the request is, once a live session has been resolved (ADR-0031). */
+export interface SessionUser {
   userId: string;
+  role: 'admin' | 'user';
   sessionId: string;
   credentialId: string | null;
   deviceId: string | null;
   lastSeenAt: Date | null;
-} | null> {
+  /** Set while the account is locked — `requireUser()` turns this into a 403. */
+  blockedAt: Date | null;
+}
+
+/**
+ * The account behind the request, or null when there is no live session.
+ *
+ * The join is what changed with ADR-0031: the identity comes out of the
+ * `sessions` row, not out of an environment variable. The pre-#1200 version
+ * read a single owner id out of the environment and then compared it back
+ * against itself, which checked nothing — it was always true.
+ *
+ * A blocked account still resolves here. Separating "who are you" from "may you"
+ * is what lets `requireUser()` answer 403 instead of 401, so the client can tell
+ * a lock from a logout (#1201, S2) instead of silently wiping the device.
+ */
+export async function getSession(): Promise<SessionUser | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
   const [row] = await db
-    .select()
+    .select({
+      userId: users.id,
+      role: users.role,
+      blockedAt: users.blockedAt,
+      sessionId: sessions.id,
+      credentialId: sessions.credentialId,
+      deviceId: sessions.deviceId,
+      lastSeenAt: sessions.lastSeenAt,
+    })
     .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
     .limit(1);
 
-  if (!row) return null;
-
-  const ownerId = process.env.OWNER_USER_ID;
-  if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
-
-  return {
-    userId: ownerId,
-    sessionId: row.id,
-    credentialId: row.credentialId,
-    deviceId: row.deviceId,
-    lastSeenAt: row.lastSeenAt,
-  };
+  return row ?? null;
 }
 
 /** The credential id of the current session, or null (no session / legacy session). */
@@ -121,17 +144,24 @@ export async function pruneExpired(): Promise<void> {
 }
 
 /**
- * Ends every live session except the caller's own. Missing cookie means nothing can
- * be identified as "own", so it deletes nothing rather than guessing.
+ * Ends every live session of `userId` except the caller's own. Missing cookie
+ * means nothing can be identified as "own", so it deletes nothing rather than
+ * guessing — and the account filter means it can never reach a second account.
  */
-export async function endOtherSessions(): Promise<number> {
+export async function endOtherSessions(userId: string): Promise<number> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return 0;
 
   const deleted = await db
     .delete(sessions)
-    .where(and(ne(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
+    .where(
+      and(
+        eq(sessions.userId, userId),
+        ne(sessions.tokenHash, hashToken(token)),
+        gt(sessions.expiresAt, new Date()),
+      ),
+    )
     .returning({ id: sessions.id });
   return deleted.length;
 }
@@ -143,8 +173,8 @@ export interface SessionSummary {
   current: boolean;
 }
 
-/** Live sessions — the rows behind the "Anmeldungen" card (issue #1103 AC2). */
-export async function listSessions(): Promise<SessionSummary[]> {
+/** Live sessions of one account — the rows behind the "Anmeldungen" card (issue #1103 AC2). */
+export async function listSessions(userId: string): Promise<SessionSummary[]> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   const currentHash = token ? hashToken(token) : null;
@@ -157,7 +187,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
       lastSeenAt: sessions.lastSeenAt,
     })
     .from(sessions)
-    .where(gt(sessions.expiresAt, new Date()));
+    .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, new Date())));
 
   return rows.map((row) => ({
     id: row.id,
@@ -174,20 +204,23 @@ export type EndSessionResult = 'deleted' | 'not-found' | 'self';
  * "App sperren"'s job, not this button's (AC5, the same separation #857 made for
  * "end all others").
  */
-export async function endSession(id: string): Promise<EndSessionResult> {
+export async function endSession(userId: string, id: string): Promise<EndSessionResult> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   const currentHash = token ? hashToken(token) : null;
 
+  // The account filter sits in the lookup, not after it: another account's
+  // session reads as `not-found`, which is also the honest answer to give —
+  // revealing that the id exists would leak that a second account has it.
   const [row] = await db
     .select({ tokenHash: sessions.tokenHash })
     .from(sessions)
-    .where(eq(sessions.id, id))
+    .where(and(eq(sessions.id, id), eq(sessions.userId, userId)))
     .limit(1);
   if (!row) return 'not-found';
   if (currentHash && row.tokenHash === currentHash) return 'self';
 
-  await db.delete(sessions).where(eq(sessions.id, id));
+  await db.delete(sessions).where(and(eq(sessions.id, id), eq(sessions.userId, userId)));
   return 'deleted';
 }
 
@@ -210,32 +243,61 @@ async function touchLastSeen(sessionId: string, lastSeenAt: Date | null): Promis
 }
 
 /**
- * The single authorisation gate. Single-user means there is exactly one legitimate
- * subject; every API route checks against it and there is no second path into the data.
- * Throws — route handlers turn this into a 401.
+ * The single authorisation gate (ADR-0031). Every route that touches `@/db`
+ * calls it and scopes every query to the `userId` it returns;
+ * `scripts/check-tenant-isolation.sh` keeps that honest.
  *
- * A live session is the entire check: getSession() already derives userId from
- * OWNER_USER_ID itself, so comparing it back against OWNER_USER_ID checked nothing —
- * it was always true. Only the owner can mint a session at all (passkey-gated), so
- * "session exists" already is the authorization. A real identity comparison only
- * becomes meaningful once a multi-user rework stores userId on the sessions row.
+ * Returns the account instead of a bare id, because callers need the role
+ * (/admin) and because a bare string invites passing the wrong one.
+ *
+ * The two throws mean different things to the client, and that difference is
+ * load-bearing:
+ * - `UnauthorizedError` → 401, "there is no session". The client wipes its local
+ *   database and goes to /anmelden.
+ * - `AccountBlockedError` → 403, "there is a session, the account is locked".
+ *   The client stops syncing and **keeps** its data — a lock is not a delete.
+ * `authErrorResponse()` (src/auth/auth-response.ts) is the one place that turns
+ * them into HTTP, so no route has to get that mapping right on its own.
  */
-export async function requireOwner(): Promise<string> {
+export async function requireUser(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) throw new UnauthorizedError();
+  if (session.blockedAt) throw new AccountBlockedError();
 
   // Route-handler context by construction — the CODEMAP invariant is that every
-  // route checks requireOwner(), and only a route handler may write a cookie.
+  // route checks requireUser(), and only a route handler may write a cookie.
   // Do not call this from a Server Component; getSession() is the read-only half.
   await healDeviceCookie(session.deviceId);
   await touchLastSeen(session.sessionId, session.lastSeenAt);
 
-  return session.userId;
+  return session;
+}
+
+/**
+ * The single admin account, or null while none exists. The bootstrap account the
+ * migration creates and the CLI bootstrap (#1202, S3) find each other through
+ * this — there is no second way to become admin.
+ */
+export async function findAdminUserId(): Promise<string | null> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.role, 'admin'))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 export class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized');
     this.name = 'UnauthorizedError';
+  }
+}
+
+/** A live session on a locked account (`users.blocked_at`) — 403, never 401. */
+export class AccountBlockedError extends Error {
+  constructor() {
+    super('Account blocked');
+    this.name = 'AccountBlockedError';
   }
 }

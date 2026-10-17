@@ -1,4 +1,4 @@
-import { asc, gt } from 'drizzle-orm';
+import { and, asc, eq, gt } from 'drizzle-orm';
 import { db } from '@/db';
 import { SYNC_REGISTRY } from '@/db/sync-tables';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
@@ -26,6 +26,7 @@ import { SYNC_TABLES, type ChangeRow } from '@/local/types';
 export async function readChangesSince(
   executor: Pick<typeof db, 'select'>,
   since: number,
+  userId: string,
 ): Promise<{ changes: ChangeRow[]; truncated: boolean }> {
   const changes: ChangeRow[] = [];
   let truncated = false;
@@ -38,10 +39,14 @@ export async function readChangesSince(
     const table = entry.table;
     const projection = entry.writable;
 
+    // The account filter is not an optimisation — it is the whole tenant
+    // boundary on the read side (ADR-0031). `sync_seq` stays one global
+    // sequence, so this account simply sees gaps where another one wrote;
+    // the cursor only ever compares "higher than", never "contiguous".
     const rows = await executor
       .select()
       .from(table)
-      .where(gt(table.syncSeq, since))
+      .where(and(eq(table.userId, userId), gt(table.syncSeq, since)))
       .orderBy(asc(table.syncSeq))
       .limit(PULL_PAGE_LIMIT);
 

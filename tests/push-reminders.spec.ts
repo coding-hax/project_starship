@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { resetAppData, resetPushData, resetReminderData, seedReminderPref, withDb } from './helpers';
+import {
+  currentAccountId,
+  resetAppData,
+  resetPushData,
+  resetReminderData,
+  seedReminderPref,
+  withDb,
+} from './helpers';
 
 /**
  * `e2e-smoke` (src/push/reminders/index.ts, gated behind NEXT_PUBLIC_E2E like the
@@ -24,12 +31,13 @@ async function insertHabit(overrides: {
   deletedAt?: string | null;
 } = {}): Promise<string> {
   const id = randomUUID();
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
       `INSERT INTO habits
-        (id, updated_at, deleted_at, synced_at, sync_seq, name, schedule, target, color, archived_at, created_at)
+        (user_id, id, updated_at, deleted_at, synced_at, sync_seq, name, schedule, target, color, archived_at, created_at)
        VALUES
-        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, NULL, $6, now())`,
+        ($7, $1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, NULL, $6, now())`,
       [
         id,
         overrides.deletedAt ?? null,
@@ -37,6 +45,7 @@ async function insertHabit(overrides: {
         overrides.schedule ?? 'daily',
         overrides.target ?? 1,
         overrides.archivedAt ?? null,
+        userId,
       ],
     ),
   );
@@ -44,11 +53,12 @@ async function insertHabit(overrides: {
 }
 
 async function insertHabitLog(habitId: string, logDate: string, done = true): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
-      `INSERT INTO habit_logs (id, updated_at, deleted_at, synced_at, sync_seq, habit_id, log_date, done)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)`,
-      [randomUUID(), habitId, logDate, done],
+      `INSERT INTO habit_logs (user_id, id, updated_at, deleted_at, synced_at, sync_seq, habit_id, log_date, done)
+       VALUES ($5, $1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)`,
+      [randomUUID(), habitId, logDate, done, userId],
     ),
   );
 }
@@ -65,12 +75,13 @@ async function insertEvent(overrides: {
   deletedAt?: string | null;
 } = {}): Promise<string> {
   const id = randomUUID();
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
       `INSERT INTO events
-        (id, updated_at, deleted_at, synced_at, sync_seq, title, all_day, starts_at, ends_at, start_date, end_date, category, recurrence, reminder_minutes)
+        (user_id, id, updated_at, deleted_at, synced_at, sync_seq, title, all_day, starts_at, ends_at, start_date, end_date, category, recurrence, reminder_minutes)
        VALUES
-        ($1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, $6, $7, $8, NULL, $9, $10)`,
+        ($11, $1, now(), $2, now(), nextval('sync_seq'), $3, $4, $5, $6, $7, $8, NULL, $9, $10)`,
       [
         id,
         overrides.deletedAt ?? null,
@@ -82,6 +93,7 @@ async function insertEvent(overrides: {
         overrides.endDate ?? null,
         overrides.recurrence ? JSON.stringify(overrides.recurrence) : null,
         overrides.reminderMinutes ?? 15,
+        userId,
       ],
     ),
   );
@@ -97,12 +109,13 @@ async function insertEventException(
     overrideEndsAt?: string | null;
   } = {},
 ): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
       `INSERT INTO event_exceptions
-        (id, updated_at, deleted_at, synced_at, sync_seq, event_id, original_date, cancelled, override_starts_at, override_ends_at, override_start_date, override_end_date)
+        (user_id, id, updated_at, deleted_at, synced_at, sync_seq, event_id, original_date, cancelled, override_starts_at, override_ends_at, override_start_date, override_end_date)
        VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, $5, $6, NULL, NULL)`,
+        ($7, $1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, $5, $6, NULL, NULL)`,
       [
         randomUUID(),
         eventId,
@@ -110,6 +123,7 @@ async function insertEventException(
         overrides.cancelled ?? false,
         overrides.overrideStartsAt ?? null,
         overrides.overrideEndsAt ?? null,
+        userId,
       ],
     ),
   );
@@ -123,12 +137,13 @@ async function insertTask(overrides: {
   deletedAt?: string | null;
 } = {}): Promise<string> {
   const id = randomUUID();
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
       `INSERT INTO tasks
-        (id, updated_at, deleted_at, synced_at, sync_seq, title, notes, due_at, priority, completed_at, recurrence_rule, created_at, parent_id)
+        (user_id, id, updated_at, deleted_at, synced_at, sync_seq, title, notes, due_at, priority, completed_at, recurrence_rule, created_at, parent_id)
        VALUES
-        ($1, now(), $2, now(), nextval('sync_seq'), $3, NULL, $4, $5, $6, NULL, now(), NULL)`,
+        ($7, $1, now(), $2, now(), nextval('sync_seq'), $3, NULL, $4, $5, $6, NULL, now(), NULL)`,
       [
         id,
         overrides.deletedAt ?? null,
@@ -136,6 +151,7 @@ async function insertTask(overrides: {
         overrides.dueAt ?? null,
         overrides.priority ?? 0,
         overrides.completedAt ?? null,
+        userId,
       ],
     ),
   );

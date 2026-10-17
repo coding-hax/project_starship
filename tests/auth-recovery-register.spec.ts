@@ -3,6 +3,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/server';
 import {
   createRegistrationCredential,
+  currentAccountId,
   enableVirtualAuthenticator,
   registerPasskey,
   resetDatabase,
@@ -26,10 +27,18 @@ function recoveryCodeHash(code: string): string {
   return createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
 }
 
+/**
+ * The code belongs to the account the existing passkey belongs to (#1200): a
+ * recovery code is presented without a session, so it has to carry the identity
+ * itself — that is how `register/options` learns which account the new passkey
+ * joins instead of creating a second one.
+ */
 async function seedRecoveryCode(code: string): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
-    client.query('INSERT INTO recovery_codes (id, code_hash) VALUES ($1, $2)', [
+    client.query('INSERT INTO recovery_codes (id, user_id, code_hash) VALUES ($1, $2, $3)', [
       randomUUID(),
+      userId,
       recoveryCodeHash(code),
     ]),
   );

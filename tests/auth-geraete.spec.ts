@@ -7,6 +7,7 @@ import {
   createThrowawayCredential,
   createThrowawaySession,
   credentialRowExists,
+  currentAccountId,
   enableVirtualAuthenticator,
   registerPasskey,
   resetAppData,
@@ -667,7 +668,12 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
         expect(await sessionColumns(client)).not.toContain('last_seen_at');
 
         await client.query(upSql);
-        expect(await sessionColumns(client)).toEqual(columnsBefore);
+        // Sortiert verglichen, wie die #1102-Runde weiter unten: `DROP COLUMN` +
+        // `ADD COLUMN` hängt die Spalte physisch hinten an. Bis #1200 war
+        // `last_seen_at` ohnehin die letzte, der Rundlauf erhielt die Reihenfolge
+        // also zufällig; seit `user_id` dahinter steht, tut er das nicht mehr.
+        // Geprüft war immer gemeint: dieselbe *Menge* an Spalten kommt zurück.
+        expect((await sessionColumns(client)).sort()).toEqual([...columnsBefore].sort());
       } finally {
         // DDL ist in Postgres transaktional — der Rollback macht auch ADD/DROP
         // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (journal.spec.ts:184).
@@ -992,10 +998,14 @@ test.describe('#1103: Karte "Anmeldungen" (destruktiv, frischer Context)', () =>
 
     await createThrowawaySession(undefined, randomUUID());
     // Abgelaufene Sitzung, direkt geseedet — darf in der Liste nicht auftauchen.
+    // Sie hängt am selben Konto wie die beiden lebenden (#1200): an einem fremden
+    // wäre sie schon durch die Mandantentrennung unsichtbar, und der Test würde
+    // dann die Ablauf-Filterung gar nicht mehr prüfen.
+    const account = await currentAccountId();
     await withDb((client) =>
       client.query(
-        'INSERT INTO sessions (id, token_hash, expires_at, device_id) VALUES ($1, $2, $3, $4)',
-        [randomUUID(), randomUUID(), new Date(Date.now() - 1000), randomUUID()],
+        'INSERT INTO sessions (id, user_id, token_hash, expires_at, device_id) VALUES ($1, $2, $3, $4, $5)',
+        [randomUUID(), account, randomUUID(), new Date(Date.now() - 1000), randomUUID()],
       ),
     );
 

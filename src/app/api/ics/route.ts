@@ -1,6 +1,7 @@
 import { promises as dns } from 'node:dns';
 import { NextResponse } from 'next/server';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
 import { assertPublicHttpsUrl, isBlockedAddress, SsrfBlockedError } from './ssrf';
 
 export const dynamic = 'force-dynamic';
@@ -66,11 +67,12 @@ async function readCappedText(response: Response): Promise<string> {
  */
 export async function GET(request: Request) {
   try {
-    await requireOwner();
+    // The proxy reads no account data of its own (ADR-0022) — the session is the
+    // whole check, and a per-account rate limit is #1205 (S6).
+    await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 

@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const requireOwnerMock = vi.fn();
+const requireUserMock = vi.fn();
 const { MockUnauthorizedError } = vi.hoisted(() => ({
   MockUnauthorizedError: class UnauthorizedError extends Error {},
 }));
 vi.mock('@/auth/session', () => ({
-  requireOwner: (...args: unknown[]) => requireOwnerMock(...args),
+  requireUser: (...args: unknown[]) => requireUserMock(...args),
   UnauthorizedError: MockUnauthorizedError,
+  AccountBlockedError: class AccountBlockedError extends Error {},
 }));
 
 const dnsLookupMock = vi.fn();
@@ -20,7 +21,7 @@ function makeRequest(url: string): Request {
 
 describe('GET /api/ics', () => {
   beforeEach(() => {
-    requireOwnerMock.mockReset().mockResolvedValue('owner-id');
+    requireUserMock.mockReset().mockResolvedValue({ userId: 'user-1', role: 'user' });
     dnsLookupMock.mockReset();
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -30,7 +31,7 @@ describe('GET /api/ics', () => {
   });
 
   it('answers 401 without an owner session', async () => {
-    requireOwnerMock.mockRejectedValue(new MockUnauthorizedError('no session'));
+    requireUserMock.mockRejectedValue(new MockUnauthorizedError('no session'));
     const { GET } = await import('./route');
 
     const response = await GET(makeRequest('http://localhost/api/ics?url=https://example.com/feiertage.ics'));

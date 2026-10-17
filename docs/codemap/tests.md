@@ -23,3 +23,4 @@
 - `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
 - `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
 - `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Reminder, Push-Panel, Modul-Panel/Route-Guard
+- `mandant.spec.ts` — Trennung zweier Konten: Pull, Push, Sperre, Kaskade, feste IDs

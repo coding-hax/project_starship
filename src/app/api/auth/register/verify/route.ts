@@ -11,7 +11,7 @@ import {
   relyingParty,
 } from '@/auth/webauthn';
 import { db } from '@/db';
-import { credentials } from '@/db/schema';
+import { credentials, users } from '@/db/schema';
 
 export async function POST(request: Request) {
   // Belt and suspenders — the single-use challenge from register/options is the
@@ -24,7 +24,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Ungültige Anfrage.' }, { status: 400 });
   }
 
-  const { ok, recoveryCodeId } = await consumeChallenge(body.challenge, 'registration');
+  // Both bindings come from the challenge row, never from the request body
+  // (ADR-0031): `userId` says whose account this passkey joins, and a client
+  // that could name it could enrol into a stranger's account.
+  const { ok, recoveryCodeId, userId } = await consumeChallenge(body.challenge, 'registration');
   if (!ok) {
     return NextResponse.json({ error: 'Challenge abgelaufen.' }, { status: 400 });
   }
@@ -33,6 +36,13 @@ export async function POST(request: Request) {
   // A recovery-backed verify is never firstCredential, so it never mints a new
   // recovery code — determined before the transaction, same as the credential count.
   const firstCredential = !(await hasAnyCredential());
+
+  // Null `userId` only ever means first setup (register/options). Anything else
+  // would be a challenge row that named no account for an installation that
+  // already has one — refuse rather than guess which account to join.
+  if (!userId && !firstCredential) {
+    return NextResponse.json({ error: 'Registrierung nicht erlaubt.' }, { status: 403 });
+  }
 
   let verification;
   try {
@@ -61,15 +71,25 @@ export async function POST(request: Request) {
 
   const { credential } = verification.registrationInfo;
   const newCredentialId = uuidv7();
+  // The first passkey on the installation also creates the account it belongs
+  // to — as `admin`, because the only way to become admin is to be first
+  // (ADR-0031). Created inside the transaction below, so an abandoned or failed
+  // ceremony leaves no empty account behind.
+  const targetUserId = userId ?? uuidv7();
 
   try {
     await db.transaction(async (tx) => {
+      if (!userId) {
+        await tx.insert(users).values({ id: targetUserId, role: 'admin' });
+      }
+
       if (recoveryCodeId && !(await burnRecoveryCode(recoveryCodeId, tx))) {
         throw new RecoveryCodeAlreadyUsedError();
       }
 
       await tx.insert(credentials).values({
         id: newCredentialId,
+        userId: targetUserId,
         credentialId: credential.id,
         publicKey: Buffer.from(credential.publicKey).toString('base64url'),
         counter: credential.counter,
@@ -84,10 +104,10 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  await createSession(newCredentialId);
+  await createSession(targetUserId, newCredentialId);
 
   // The recovery code exists once, at first setup, and is never recoverable again.
-  const recoveryCode = firstCredential ? await issueRecoveryCode() : null;
+  const recoveryCode = firstCredential ? await issueRecoveryCode(targetUserId) : null;
   return NextResponse.json({ verified: true, recoveryCode });
 }
 

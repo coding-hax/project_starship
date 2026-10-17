@@ -1,5 +1,6 @@
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
+import { uuidv7 } from 'uuidv7';
 import { enforce, noteRecoveryFailure, recoveryBlocked } from '@/auth/rate-limit';
 import { getSession } from '@/auth/session';
 import {
@@ -31,9 +32,10 @@ export async function POST(request: Request) {
   }
 
   const firstSetup = !(await hasAnyCredential());
-  const authenticated = (await getSession()) !== null;
-  const recoveryCodeId = wantsRecovery ? await verifyRecoveryCode(recoveryCode as string) : null;
-  const recovered = recoveryCodeId !== null;
+  const session = await getSession();
+  const authenticated = session !== null;
+  const recovery = wantsRecovery ? await verifyRecoveryCode(recoveryCode as string) : null;
+  const recovered = recovery !== null;
 
   if (wantsRecovery && !recovered) {
     await noteRecoveryFailure(request);
@@ -43,15 +45,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Registrierung nicht erlaubt.' }, { status: 403 });
   }
 
-  const rp = relyingParty();
-  const ownerId = process.env.OWNER_USER_ID;
-  if (!ownerId) throw new Error('OWNER_USER_ID is not set.');
+  // Which account this passkey will belong to, decided here and carried in the
+  // challenge row (ADR-0031) — never taken from the request body in `verify`.
+  // Null is the first-setup case: `verify` creates the admin account inside the
+  // same transaction as the credential, so an abandoned ceremony leaves no
+  // empty account behind.
+  const targetUserId = session?.userId ?? recovery?.userId ?? null;
 
-  const existing = await listCredentials();
+  const rp = relyingParty();
+  // `userID` is WebAuthn's opaque handle, and the platform keys its stored
+  // passkey on it: it has to be the account, not a constant, or two accounts on
+  // one device would overwrite each other's entry in the keychain.
+  const userHandle = targetUserId ?? uuidv7();
+
+  // `excludeCredentials` stops the *same authenticator* registering twice. For an
+  // existing account that is its own passkeys; for a first setup there are none.
+  // Deliberately not every account's credentials: that would tell an
+  // unauthenticated caller which authenticators exist on the installation.
+  const existing = targetUserId ? await listCredentials(targetUserId) : [];
   const options = await generateRegistrationOptions({
     rpName: rp.name,
     rpID: rp.id,
-    userID: new TextEncoder().encode(ownerId),
+    userID: new TextEncoder().encode(userHandle),
     userName: 'starship',
     userDisplayName: 'Starship',
     attestationType: 'none',
@@ -62,6 +77,9 @@ export async function POST(request: Request) {
     },
   });
 
-  await storeChallenge(options.challenge, 'registration', recoveryCodeId);
+  await storeChallenge(options.challenge, 'registration', {
+    recoveryCodeId: recovery?.id ?? null,
+    userId: targetUserId,
+  });
   return NextResponse.json(options);
 }

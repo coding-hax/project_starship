@@ -7,7 +7,7 @@ import { db } from '@/db';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs'; // pg needs the Node runtime, not Edge
 
-/** Public liveness probe — no requireOwner(), it only leaks DB-up + the already-public commit SHA. */
+/** Public liveness probe — no requireUser(), it only leaks DB-up + the already-public commit SHA. */
 export async function GET() {
   const version = process.env.VERCEL_GIT_COMMIT_SHA ?? null;
   try {

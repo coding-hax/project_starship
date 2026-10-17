@@ -30,7 +30,7 @@ function write(id: string, store: Awaited<ReturnType<typeof cookies>>): void {
  *
  * This is a *label*, never a key: it says which browser profile a session was
  * opened from, and nothing in the authorisation path ever reads it. Forging it
- * buys an attacker nothing — `requireOwner()` still needs the session token.
+ * buys an attacker nothing — `requireUser()` still needs the session token.
  *
  * Route-handler context only (it writes a cookie).
  */

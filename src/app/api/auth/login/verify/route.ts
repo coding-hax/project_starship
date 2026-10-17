@@ -63,7 +63,9 @@ export async function POST(request: Request) {
     .where(eq(credentials.id, credential.id));
 
   await pruneExpired();
-  await createSession(credential.id);
+  // Whose session this is comes from the credential row — the only place the
+  // identity can come from in a usernameless flow (ADR-0031).
+  await createSession(credential.userId, credential.id);
 
   return NextResponse.json({ verified: true });
 }
