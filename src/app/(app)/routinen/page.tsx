@@ -1,5 +1,6 @@
 import type { Viewport } from 'next';
 import { AddHabitFab } from '@/features/habits/add-habit-fab';
+import { HabitArchiveCard } from '@/features/habits/habit-archive-card';
 import { HabitHistoryCard } from '@/features/habits/habit-history-card';
 import { HabitTable } from '@/features/habits/habit-table';
 import { HabitTiles } from '@/features/habits/habit-tiles';
@@ -28,13 +29,16 @@ export default function RoutinenPage() {
       <HabitTiles />
       {/* Eigener Wrapper statt `HabitTable` direkt (issue #1125): die
           Komponente rendert je nach Zustand mehrere Geschwister auf
-          oberster Ebene (Offline-Hinweis, Tabelle/Leertext, archivierter
-          Bereich als eigene SectionCard) — dieser Block macht daraus
-          verlässlich EIN Grid-Item für routinen-page.css, ab 1440px. */}
+          oberster Ebene (Offline-Hinweis, Tabelle/Leertext) — dieser Block
+          macht daraus verlässlich EIN Grid-Item für routinen-page.css, ab
+          1440px. Der archivierte Bereich lebt seit issue #1196 nicht mehr
+          hier drin, sondern als eigene `<HabitArchiveCard />` hinter dem
+          Verlauf — siehe deren Reihenfolge unten. */}
       <div className="routinen-page__table">
         <HabitTable />
       </div>
       <HabitHistoryCard />
+      <HabitArchiveCard />
       <AddHabitFab />
     </div>
   );
